@@ -1,36 +1,87 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Potaléger
 
-## Getting Started
+Application de gestion de potager - planification des cultures, suivi des récoltes et rotations.
 
-First, run the development server:
+## Installation rapide (Docker)
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# Cloner le projet
+git clone https://github.com/VOTRE_USER/potaleger.git
+cd potaleger
+
+# Lancer l'application
+docker compose up -d
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+L'application sera accessible sur **http://localhost:3000**
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+La base de données et les données initiales (34 espèces, 12 familles botaniques) sont créées automatiquement au premier lancement.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Configuration (optionnel)
 
-## Learn More
+Créer un fichier `.env` pour personnaliser :
 
-To learn more about Next.js, take a look at the following resources:
+```env
+# Port de l'application (défaut: 3000)
+APP_PORT=3000
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+# Base de données (défauts recommandés)
+POSTGRES_USER=potaleger
+POSTGRES_PASSWORD=potaleger
+POSTGRES_DB=potaleger
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Fonctionnalités
 
-## Deploy on Vercel
+- **Cultures** : Planification et suivi des semis, plantations, récoltes
+- **Espèces** : Référentiel de plantes avec caractéristiques agronomiques
+- **Planches** : Gestion des parcelles et surfaces cultivables
+- **Récoltes** : Saisie rapide et statistiques de production
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Commandes utiles
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+# Démarrer
+docker compose up -d
+
+# Arrêter
+docker compose down
+
+# Voir les logs
+docker compose logs -f app
+
+# Réinitialiser la base de données
+docker compose down -v
+docker compose up -d
+```
+
+## Développement local
+
+```bash
+# Prérequis : Node.js 20+, PostgreSQL
+
+# Installer les dépendances
+npm install
+
+# Configurer la base de données
+cp .env.example .env
+# Éditer .env avec vos paramètres
+
+# Créer les tables et données initiales
+npx prisma db push
+npm run db:seed
+
+# Lancer en développement
+npm run dev
+```
+
+## Stack technique
+
+- **Frontend** : Next.js 16, React 19, TailwindCSS, shadcn/ui
+- **Backend** : Next.js API Routes, Prisma ORM
+- **Base de données** : PostgreSQL 16
+- **Conteneurisation** : Docker, Docker Compose
+
+## Licence
+
+MIT

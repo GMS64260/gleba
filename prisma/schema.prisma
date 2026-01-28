@@ -1,0 +1,343 @@
+// Potaléger - Schéma Prisma
+// Migré depuis SQLite (Qt) vers PostgreSQL
+// Voir ANALYSIS.md pour la documentation complète
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// NIVEAU 1 - RÉFÉRENTIELS INDÉPENDANTS
+// ============================================================
+
+/// Familles botaniques (rotation des cultures)
+model Famille {
+  id          String   @id @map("famille")
+  intervalle  Int      @default(4) @map("intervalle") // Années entre 2 cultures de même famille
+  couleur     String?  @map("couleur") // Code couleur UI (#RRGGBB)
+  description String?  @map("description")
+
+  // Relations
+  especes Espece[]
+
+  @@map("familles")
+}
+
+/// Fournisseurs de semences
+model Fournisseur {
+  id        String  @id @map("fournisseur")
+  contact   String? @map("contact")
+  adresse   String? @map("adresse")
+  email     String? @map("email")
+  telephone String? @map("telephone")
+  siteWeb   String? @map("site_web")
+  notes     String? @map("notes")
+
+  // Relations
+  varietes Variete[]
+
+  @@map("fournisseurs")
+}
+
+/// Destinations des récoltes (vente, don, consommation)
+model Destination {
+  id          String  @id @map("destination")
+  description String? @map("description")
+
+  // Relations
+  consommations Consommation[]
+
+  @@map("destinations")
+}
+
+/// Fertilisants (engrais, amendements)
+model Fertilisant {
+  id          String  @id @map("fertilisant")
+  type        String? @map("type") // Organique, Minéral, etc.
+  n           Float?  @map("n") // Azote (%)
+  p           Float?  @map("p") // Phosphore (%)
+  k           Float?  @map("k") // Potassium (%)
+  ca          Float?  @map("ca") // Calcium (%)
+  mg          Float?  @map("mg") // Magnésium (%)
+  s           Float?  @map("s") // Soufre (%)
+  densite     Float?  @map("densite") // kg/L
+  prix        Float?  @map("prix") // €/kg
+  description String? @map("description")
+
+  // Relations
+  fertilisations Fertilisation[]
+
+  @@map("fertilisants")
+}
+
+// ============================================================
+// NIVEAU 2 - DÉPENDANTS DES RÉFÉRENTIELS
+// ============================================================
+
+/// Espèces de plantes cultivables
+model Espece {
+  id              String   @id @map("espece")
+  familleId       String?  @map("famille")
+  famille         Famille? @relation(fields: [familleId], references: [id], onDelete: SetNull)
+  nomLatin        String?  @map("nom_latin")
+  rendement       Float?   @map("rendement") // kg/m²
+  vivace          Boolean  @default(false) @map("vivace")
+  besoinN         Float?   @map("besoin_n") // Besoin azote (1-5)
+  besoinP         Float?   @map("besoin_p") // Besoin phosphore (1-5)
+  besoinK         Float?   @map("besoin_k") // Besoin potassium (1-5)
+  besoinEau       Float?   @map("besoin_eau") // Besoin eau (1-5)
+  dateInventaire  DateTime? @map("date_inventaire")
+  inventaire      Float?   @map("inventaire") // Stock (kg)
+  aPlanifier      Boolean  @default(true) @map("a_planifier")
+  couleur         String?  @map("couleur") // Code couleur UI (#RRGGBB)
+  description     String?  @map("description")
+
+  // Relations
+  varietes      Variete[]
+  cultures      Culture[]
+  recoltes      Recolte[]
+  consommations Consommation[]
+  itps          ITP[]
+
+  @@map("especes")
+}
+
+/// Variétés (cultivars d'espèces)
+model Variete {
+  id             String       @id @map("variete")
+  especeId       String       @map("espece")
+  espece         Espece       @relation(fields: [especeId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  fournisseurId  String?      @map("fournisseur")
+  fournisseur    Fournisseur? @relation(fields: [fournisseurId], references: [id], onDelete: SetNull)
+  semaineRecolte Int?         @map("s_recolte") // Semaine récolte théorique (1-52)
+  dureeRecolte   Int?         @map("d_recolte") // Durée période récolte (semaines)
+  nbGrainesG     Float?       @map("nb_graines_g") // Nombre graines/gramme
+  prixGraine     Float?       @map("prix_graine") // €/kg ou €/1000 graines
+  stockGraines   Float?       @map("stock_graines") // Quantité en stock
+  dateStock      DateTime?    @map("date_stock")
+  bio            Boolean      @default(false) @map("bio")
+  description    String?      @map("description")
+
+  // Relations
+  cultures Culture[]
+
+  @@map("varietes")
+}
+
+/// ITP - Itinéraires Techniques des Plantes
+model ITP {
+  id              String  @id @map("it_plante")
+  especeId        String? @map("espece")
+  espece          Espece? @relation(fields: [especeId], references: [id], onDelete: SetNull)
+  semaineSemis    Int?    @map("s_semis") // Semaine semis (1-52)
+  semainePlantation Int?  @map("s_plantation") // Semaine plantation (1-52)
+  semaineRecolte  Int?    @map("s_recolte") // Semaine début récolte (1-52)
+  dureePepiniere  Int?    @map("d_pepiniere") // Durée pépinière (jours)
+  dureeCulture    Int?    @map("d_culture") // Durée culture (jours)
+  nbRangs         Int?    @map("nb_rangs") // Nombre de rangs par planche
+  espacement      Float?  @map("espacement") // Espacement entre plants (cm)
+  notes           String? @map("notes")
+
+  // Relations
+  cultures         Culture[]
+  rotationsDetails RotationDetail[]
+
+  @@map("itps")
+}
+
+// ============================================================
+// NIVEAU 3 - INFRASTRUCTURE SPATIALE ET TEMPORELLE
+// ============================================================
+
+/// Plans de rotation des cultures
+model Rotation {
+  id       String  @id @map("rotation")
+  active   Boolean @default(true) @map("active")
+  nbAnnees Int?    @map("nb_annees") // Calculé depuis les détails
+  notes    String? @map("notes")
+
+  // Relations
+  details  RotationDetail[]
+  planches Planche[]
+
+  @@map("rotations")
+}
+
+/// Détails des rotations (années)
+model RotationDetail {
+  id         Int      @id @default(autoincrement())
+  rotationId String   @map("rotation")
+  rotation   Rotation @relation(fields: [rotationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  itpId      String?  @map("it_plante")
+  itp        ITP?     @relation(fields: [itpId], references: [id], onDelete: SetNull)
+  annee      Int      @map("annee") // Position dans le cycle (1, 2, 3...)
+
+  @@map("rotations_details")
+}
+
+/// Planches de culture (parcelles)
+model Planche {
+  id                  String    @id @map("planche")
+  rotationId          String?   @map("rotation")
+  rotation            Rotation? @relation(fields: [rotationId], references: [id], onDelete: SetNull)
+  largeur             Float?    @map("largeur") // mètres
+  longueur            Float?    @map("longueur") // mètres
+  surface             Float?    @map("surface") // m² (calculé: largeur × longueur)
+  planchesInfluencees String?   @map("planches_influencees") // CSV des planches proches (associations)
+  ilot                String?   @map("ilot") // Groupement de planches
+  notes               String?   @map("notes")
+
+  // Relations
+  cultures       Culture[]
+  fertilisations Fertilisation[]
+  analyses       AnalyseSol[]
+
+  @@map("planches")
+}
+
+/// Analyses de sol
+model AnalyseSol {
+  id            String    @id @map("analyse")
+  plancheId     String?   @map("planche")
+  planche       Planche?  @relation(fields: [plancheId], references: [id], onDelete: SetNull)
+  dateAnalyse   DateTime? @map("date_analyse")
+  laboratoire   String?   @map("laboratoire")
+  // Texture
+  argile        Float?    @map("argile") // %
+  limon         Float?    @map("limon") // %
+  sable         Float?    @map("sable") // %
+  // Chimie
+  ph            Float?    @map("ph")
+  matiereOrg    Float?    @map("mo") // Matière organique %
+  cec           Float?    @map("cec") // Capacité d'échange cationique
+  // Éléments majeurs
+  n             Float?    @map("n") // Azote total
+  p             Float?    @map("p") // Phosphore assimilable (Olsen)
+  k             Float?    @map("k") // Potassium échangeable
+  ca            Float?    @map("ca") // Calcium échangeable
+  mg            Float?    @map("mg") // Magnésium échangeable
+  na            Float?    @map("na") // Sodium échangeable
+  // Oligo-éléments
+  fe            Float?    @map("fe") // Fer
+  mn            Float?    @map("mn") // Manganèse
+  cu            Float?    @map("cu") // Cuivre
+  zn            Float?    @map("zn") // Zinc
+  b             Float?    @map("b") // Bore
+  notes         String?   @map("notes")
+
+  @@map("analyses_de_sol")
+}
+
+// ============================================================
+// NIVEAU 4 - OPÉRATIONNEL (TRANSACTIONS)
+// ============================================================
+
+/// Cultures (instances de semis/plantation)
+model Culture {
+  id              Int       @id @default(autoincrement())
+  especeId        String    @map("espece")
+  espece          Espece    @relation(fields: [especeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  varieteId       String?   @map("variete")
+  variete         Variete?  @relation(fields: [varieteId], references: [id], onDelete: SetNull)
+  itpId           String?   @map("it_plante")
+  itp             ITP?      @relation(fields: [itpId], references: [id], onDelete: SetNull)
+  plancheId       String?   @map("planche")
+  planche         Planche?  @relation(fields: [plancheId], references: [id], onDelete: SetNull)
+
+  // Planification
+  annee           Int?      @map("annee") // Année de planification
+  dateSemis       DateTime? @map("date_semis")
+  datePlantation  DateTime? @map("date_plantation")
+  dateRecolte     DateTime? @map("date_recolte")
+
+  // État d'avancement
+  semisFait       Boolean   @default(false) @map("semis_fait")
+  plantationFaite Boolean   @default(false) @map("plantation_faite")
+  recolteFaite    Boolean   @default(false) @map("recolte_faite")
+  terminee        String?   @map("terminee") // NULL, 'x' (terminée), 'v' (vivace continue), 'NS' (non significative)
+
+  // Quantités
+  quantite        Float?    @map("quantite") // Surface ou nb plants
+  nbRangs         Int?      @map("nb_rangs")
+  longueur        Float?    @map("longueur") // mètres
+
+  notes           String?   @map("notes")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  recoltes Recolte[]
+
+  @@map("cultures")
+}
+
+/// Récoltes
+model Recolte {
+  id         Int      @id @default(autoincrement())
+  especeId   String   @map("espece")
+  espece     Espece   @relation(fields: [especeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  cultureId  Int      @map("culture")
+  culture    Culture  @relation(fields: [cultureId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  date       DateTime @default(now()) @map("date")
+  quantite   Float    @map("quantite") // kg
+  notes      String?  @map("notes")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@map("recoltes")
+}
+
+/// Consommations (sorties de stock)
+model Consommation {
+  id            Int          @id @default(autoincrement())
+  especeId      String       @map("espece")
+  espece        Espece       @relation(fields: [especeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  destinationId String?      @map("destination")
+  destination   Destination? @relation(fields: [destinationId], references: [id], onDelete: SetNull)
+  date          DateTime     @default(now()) @map("date")
+  quantite      Float        @map("quantite") // kg
+  notes         String?      @map("notes")
+  createdAt     DateTime     @default(now()) @map("created_at")
+
+  @@map("consommations")
+}
+
+/// Fertilisations (apports)
+model Fertilisation {
+  id            Int         @id @default(autoincrement())
+  plancheId     String      @map("planche")
+  planche       Planche     @relation(fields: [plancheId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  fertilisantId String      @map("fertilisant")
+  fertilisant   Fertilisant @relation(fields: [fertilisantId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  date          DateTime    @default(now()) @map("date")
+  quantite      Float       @map("quantite") // kg ou L
+  notes         String?     @map("notes")
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  @@map("fertilisations")
+}
+
+/// Notes générales
+model Note {
+  id        Int      @id @default(autoincrement())
+  titre     String?  @map("titre")
+  contenu   String?  @map("contenu") // Markdown
+  categorie String?  @map("categorie") // Catégorie libre
+  date      DateTime @default(now()) @map("date")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("notes")
+}
+
+/// Paramètres de l'application
+model Parametre {
+  id     String  @id @map("parametre")
+  valeur String? @map("valeur")
+
+  @@map("params")
+}

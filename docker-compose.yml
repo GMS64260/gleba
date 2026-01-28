@@ -1,0 +1,33 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: potaleger_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-potaleger}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-potaleger}
+      POSTGRES_DB: ${POSTGRES_DB:-potaleger}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-potaleger}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: potaleger_app
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-potaleger}:${POSTGRES_PASSWORD:-potaleger}@db:5432/${POSTGRES_DB:-potaleger}?schema=public
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
