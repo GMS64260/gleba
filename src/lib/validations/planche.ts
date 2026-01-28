@@ -10,6 +10,10 @@ export const plancheSchema = z.object({
   largeur: z.number().min(0).max(10).nullable().optional(),
   longueur: z.number().min(0).max(100).nullable().optional(),
   surface: z.number().min(0).nullable().optional(),
+  // Position sur le plan du jardin
+  posX: z.number().min(-100).max(100).nullable().optional(),
+  posY: z.number().min(-100).max(100).nullable().optional(),
+  rotation2D: z.number().min(0).max(360).nullable().optional(),
   planchesInfluencees: z.string().nullable().optional(),
   ilot: z.string().max(50).nullable().optional(),
   notes: z.string().max(5000).nullable().optional(),

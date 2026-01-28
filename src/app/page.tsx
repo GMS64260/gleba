@@ -7,14 +7,22 @@ import { Button } from "@/components/ui/button";
 import {
   Leaf,
   Sprout,
-  Calendar,
+  LayoutGrid,
   BarChart3,
   Settings,
   ArrowRight,
-  LayoutGrid
+  Map as MapIcon
 } from "lucide-react";
 
 const modules = [
+  {
+    title: "Plan du jardin",
+    description: "Visualiser et organiser vos planches",
+    href: "/jardin",
+    icon: MapIcon,
+    color: "text-teal-600",
+    bgColor: "bg-teal-50",
+  },
   {
     title: "Cultures",
     description: "Gérer vos cultures, semis et plantations",
@@ -35,7 +43,7 @@ const modules = [
     title: "Planches",
     description: "Gestion des parcelles et rotations",
     href: "/planches",
-    icon: Calendar,
+    icon: LayoutGrid,
     color: "text-amber-600",
     bgColor: "bg-amber-50",
   },
@@ -123,7 +131,7 @@ export default function Home() {
         </div>
 
         {/* Modules Grid */}
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 max-w-6xl mx-auto">
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-5 max-w-6xl mx-auto">
           {modules.map((module) => (
             <Link key={module.href} href={module.href}>
               <Card className="h-full hover:shadow-lg transition-shadow cursor-pointer group">
@@ -206,7 +214,17 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="border-t mt-16 py-8 text-center text-sm text-gray-500">
-        <p>Potaléger v0.1.0 - Migration React de l&apos;application Qt</p>
+        <p>
+          Potaléger v0.1.0 - Basé sur{" "}
+          <a
+            href="https://github.com/marcpley/potalern"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-green-600 hover:underline"
+          >
+            Potaléger Qt par marcpley
+          </a>
+        </p>
       </footer>
     </div>
   );

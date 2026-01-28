@@ -188,6 +188,10 @@ model Planche {
   largeur             Float?    @map("largeur") // mètres
   longueur            Float?    @map("longueur") // mètres
   surface             Float?    @map("surface") // m² (calculé: largeur × longueur)
+  // Position sur le plan du jardin
+  posX                Float?    @map("pos_x") // Position X en mètres
+  posY                Float?    @map("pos_y") // Position Y en mètres
+  rotation2D          Float?    @default(0) @map("rotation_2d") // Rotation en degrés
   planchesInfluencees String?   @map("planches_influencees") // CSV des planches proches (associations)
   ilot                String?   @map("ilot") // Groupement de planches
   notes               String?   @map("notes")
