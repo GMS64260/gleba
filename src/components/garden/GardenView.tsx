@@ -54,6 +54,10 @@ interface GardenViewProps {
   onObjetMove?: (id: number, x: number, y: number) => void
   onObjetClick?: (id: number) => void
   scale?: number // pixels per meter
+  // Couleurs personnalisables
+  plancheColor?: string
+  selectedColor?: string
+  gridColor?: string
 }
 
 export function GardenView({
@@ -66,7 +70,10 @@ export function GardenView({
   onPlancheClick,
   onObjetMove,
   onObjetClick,
-  scale = 50
+  scale = 50,
+  plancheColor = "#8B5A2B",
+  selectedColor = "#22c55e",
+  gridColor = "#e5e7eb",
 }: GardenViewProps) {
   const svgRef = React.useRef<SVGSVGElement>(null)
   const [dragging, setDragging] = React.useState<{ type: 'planche' | 'objet'; id: string | number } | null>(null)
@@ -114,10 +121,10 @@ export function GardenView({
     if (activeCulture) {
       return activeCulture.espece.couleur ||
              activeCulture.espece.famille?.couleur ||
-             "#22c55e"
+             selectedColor
     }
-    // Pas de culture - gris clair
-    return "#e5e7eb"
+    // Pas de culture - couleur par défaut
+    return plancheColor
   }
 
   const handlePlancheMouseDown = (e: React.MouseEvent, plancheId: string) => {

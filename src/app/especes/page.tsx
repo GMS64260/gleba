@@ -190,6 +190,10 @@ export default function EspecesPage() {
     router.push(`/especes/${encodeURIComponent(row.id)}`)
   }
 
+  const handleEdit = (row: EspeceWithRelations) => {
+    router.push(`/especes/${encodeURIComponent(row.id)}`)
+  }
+
   const handleDelete = async (row: EspeceWithRelations) => {
     if (row._count.cultures > 0) {
       toast({
@@ -278,6 +282,7 @@ export default function EspecesPage() {
           onRefresh={fetchData}
           onExport={handleExport}
           onRowClick={handleRowClick}
+          onRowEdit={handleEdit}
           onRowDelete={handleDelete}
           searchPlaceholder="Rechercher une espèce..."
           emptyMessage="Aucune espèce trouvée. Lancez npm run db:seed pour ajouter les données de base."

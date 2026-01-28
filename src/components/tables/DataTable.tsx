@@ -26,6 +26,8 @@ import {
   Search,
   Download,
   RefreshCw,
+  Pencil,
+  Trash2,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -110,34 +112,29 @@ export function DataTable<TData, TValue>({
       header: "",
       cell: ({ row }) => {
         return (
-          <div onClick={(e) => e.stopPropagation()}>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="h-8 w-8 p-0">
-                  <span className="sr-only">Actions</span>
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                {onRowEdit && (
-                  <DropdownMenuItem onClick={() => onRowEdit(row.original)}>
-                    Modifier
-                  </DropdownMenuItem>
-                )}
-                {onRowDelete && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      onClick={() => onRowDelete(row.original)}
-                      className="text-red-600"
-                    >
-                      Supprimer
-                    </DropdownMenuItem>
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+          <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+            {onRowEdit && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0 hover:bg-blue-100 hover:text-blue-600"
+                onClick={() => onRowEdit(row.original)}
+                title="Modifier"
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+            )}
+            {onRowDelete && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0 hover:bg-red-100 hover:text-red-600"
+                onClick={() => onRowDelete(row.original)}
+                title="Supprimer"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            )}
           </div>
         )
       },

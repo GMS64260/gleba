@@ -1,13 +1,13 @@
 "use client"
 
 /**
- * Page de création d'une nouvelle culture
+ * Page d'édition d'une culture
  */
 
 import * as React from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
-import { ArrowLeft, Sprout, Save } from "lucide-react"
+import { useRouter, useParams } from "next/navigation"
+import { ArrowLeft, Sprout, Save, Trash2 } from "lucide-react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { format } from "date-fns"
@@ -32,20 +32,23 @@ import {
   FormMessage,
 } from "@/components/ui/form"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
-import { createCultureSchema, type CreateCultureInput } from "@/lib/validations"
-import { RotationAdviceCompact } from "@/components/planche"
+import { updateCultureSchema, type UpdateCultureInput } from "@/lib/validations"
 
-export default function NewCulturePage() {
+export default function EditCulturePage() {
   const router = useRouter()
+  const params = useParams()
+  const cultureId = params.id as string
   const { toast } = useToast()
   const [especes, setEspeces] = React.useState<{ id: string }[]>([])
   const [varietes, setVarietes] = React.useState<{ id: string; especeId: string }[]>([])
   const [planches, setPlanches] = React.useState<{ id: string; longueur: number | null }[]>([])
+  const [isLoading, setIsLoading] = React.useState(true)
   const [isSubmitting, setIsSubmitting] = React.useState(false)
 
-  const form = useForm<CreateCultureInput>({
-    resolver: zodResolver(createCultureSchema),
+  const form = useForm<UpdateCultureInput>({
+    resolver: zodResolver(updateCultureSchema),
     defaultValues: {
       especeId: "",
       varieteId: null,
@@ -67,23 +70,50 @@ export default function NewCulturePage() {
 
   const selectedEspece = form.watch("especeId")
   const selectedPlanche = form.watch("plancheId")
-  const selectedAnnee = form.watch("annee")
 
-  // Charger les données de référence
+  // Charger les données
   React.useEffect(() => {
     Promise.all([
       fetch("/api/especes?pageSize=500").then((r) => r.json()),
       fetch("/api/planches?pageSize=500").then((r) => r.json()),
+      fetch(`/api/cultures/${cultureId}`).then((res) => {
+        if (!res.ok) throw new Error("Culture non trouvée")
+        return res.json()
+      }),
     ])
-      .then(([especesData, planchesData]) => {
+      .then(([especesData, planchesData, cultureData]) => {
         setEspeces(especesData.data || [])
         setPlanches(planchesData.data || [])
+
+        // Remplir le formulaire
+        form.reset({
+          especeId: cultureData.especeId || "",
+          varieteId: cultureData.varieteId || null,
+          plancheId: cultureData.plancheId || null,
+          annee: cultureData.annee || new Date().getFullYear(),
+          dateSemis: cultureData.dateSemis || null,
+          datePlantation: cultureData.datePlantation || null,
+          dateRecolte: cultureData.dateRecolte || null,
+          semisFait: cultureData.semisFait || false,
+          plantationFaite: cultureData.plantationFaite || false,
+          recolteFaite: cultureData.recolteFaite || false,
+          terminee: cultureData.terminee || null,
+          quantite: cultureData.quantite || null,
+          nbRangs: cultureData.nbRangs || null,
+          longueur: cultureData.longueur || null,
+          notes: cultureData.notes || null,
+        })
+        setIsLoading(false)
       })
-      .catch(() => {
-        setEspeces([])
-        setPlanches([])
+      .catch((error) => {
+        toast({
+          variant: "destructive",
+          title: "Erreur",
+          description: error.message,
+        })
+        router.push("/cultures")
       })
-  }, [])
+  }, [cultureId, form, router, toast])
 
   // Charger les variétés quand l'espèce change
   React.useEffect(() => {
@@ -107,24 +137,23 @@ export default function NewCulturePage() {
     }
   }, [selectedPlanche, planches, form])
 
-  const onSubmit = async (data: CreateCultureInput) => {
+  const onSubmit = async (data: UpdateCultureInput) => {
     setIsSubmitting(true)
     try {
-      const response = await fetch("/api/cultures", {
-        method: "POST",
+      const response = await fetch(`/api/cultures/${cultureId}`, {
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       })
 
       if (!response.ok) {
         const error = await response.json()
-        throw new Error(error.error || "Erreur lors de la création")
+        throw new Error(error.error || "Erreur lors de la mise à jour")
       }
 
-      const culture = await response.json()
       toast({
-        title: "Culture créée",
-        description: `La culture #${culture.id} a été créée avec succès`,
+        title: "Culture modifiée",
+        description: `La culture #${cultureId} a été mise à jour`,
       })
       router.push("/cultures")
     } catch (error) {
@@ -138,21 +167,70 @@ export default function NewCulturePage() {
     }
   }
 
+  const handleDelete = async () => {
+    if (!confirm(`Supprimer la culture #${cultureId} ?`)) return
+
+    try {
+      const response = await fetch(`/api/cultures/${cultureId}`, {
+        method: "DELETE",
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Erreur lors de la suppression")
+      }
+
+      toast({
+        title: "Culture supprimée",
+      })
+      router.push("/cultures")
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Erreur",
+        description: error instanceof Error ? error.message : "Erreur inconnue",
+      })
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <header className="border-b bg-white sticky top-0 z-50">
+          <div className="container mx-auto px-4 py-4 flex items-center gap-4">
+            <Skeleton className="h-8 w-24" />
+            <Skeleton className="h-8 w-48" />
+          </div>
+        </header>
+        <main className="container mx-auto px-4 py-6 max-w-2xl space-y-6">
+          <Skeleton className="h-64 w-full" />
+          <Skeleton className="h-48 w-full" />
+        </main>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="border-b bg-white sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center gap-4">
-          <Link href="/cultures">
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Retour
-            </Button>
-          </Link>
-          <div className="flex items-center gap-2">
-            <Sprout className="h-6 w-6 text-green-600" />
-            <h1 className="text-xl font-bold">Nouvelle culture</h1>
+        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Link href="/cultures">
+              <Button variant="ghost" size="sm">
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Retour
+              </Button>
+            </Link>
+            <div className="flex items-center gap-2">
+              <Sprout className="h-6 w-6 text-green-600" />
+              <h1 className="text-xl font-bold">Modifier culture #{cultureId}</h1>
+            </div>
           </div>
+          <Button variant="destructive" size="sm" onClick={handleDelete}>
+            <Trash2 className="h-4 w-4 mr-2" />
+            Supprimer
+          </Button>
         </div>
       </header>
 
@@ -247,15 +325,6 @@ export default function NewCulturePage() {
                   )}
                 />
 
-                {/* Conseils de rotation */}
-                {selectedPlanche && (
-                  <RotationAdviceCompact
-                    plancheId={selectedPlanche}
-                    especeId={selectedEspece || undefined}
-                    year={selectedAnnee || undefined}
-                  />
-                )}
-
                 <FormField
                   control={form.control}
                   name="annee"
@@ -285,7 +354,7 @@ export default function NewCulturePage() {
 
             <Card>
               <CardHeader>
-                <CardTitle>Dates prévisionnelles</CardTitle>
+                <CardTitle>Dates et état</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-3 gap-4">
@@ -298,10 +367,9 @@ export default function NewCulturePage() {
                         <FormControl>
                           <Input
                             type="date"
-                            {...field}
                             value={field.value ? format(new Date(field.value), "yyyy-MM-dd") : ""}
                             onChange={(e) =>
-                              field.onChange(e.target.value ? new Date(e.target.value) : null)
+                              field.onChange(e.target.value ? e.target.value : null)
                             }
                           />
                         </FormControl>
@@ -319,10 +387,9 @@ export default function NewCulturePage() {
                         <FormControl>
                           <Input
                             type="date"
-                            {...field}
                             value={field.value ? format(new Date(field.value), "yyyy-MM-dd") : ""}
                             onChange={(e) =>
-                              field.onChange(e.target.value ? new Date(e.target.value) : null)
+                              field.onChange(e.target.value ? e.target.value : null)
                             }
                           />
                         </FormControl>
@@ -340,10 +407,9 @@ export default function NewCulturePage() {
                         <FormControl>
                           <Input
                             type="date"
-                            {...field}
                             value={field.value ? format(new Date(field.value), "yyyy-MM-dd") : ""}
                             onChange={(e) =>
-                              field.onChange(e.target.value ? new Date(e.target.value) : null)
+                              field.onChange(e.target.value ? e.target.value : null)
                             }
                           />
                         </FormControl>
@@ -352,6 +418,82 @@ export default function NewCulturePage() {
                     )}
                   />
                 </div>
+
+                <div className="flex flex-wrap gap-6 pt-2">
+                  <FormField
+                    control={form.control}
+                    name="semisFait"
+                    render={({ field }) => (
+                      <FormItem className="flex items-center gap-2">
+                        <FormControl>
+                          <Checkbox
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        </FormControl>
+                        <FormLabel className="!mt-0">Semis fait</FormLabel>
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="plantationFaite"
+                    render={({ field }) => (
+                      <FormItem className="flex items-center gap-2">
+                        <FormControl>
+                          <Checkbox
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        </FormControl>
+                        <FormLabel className="!mt-0">Plantation faite</FormLabel>
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="recolteFaite"
+                    render={({ field }) => (
+                      <FormItem className="flex items-center gap-2">
+                        <FormControl>
+                          <Checkbox
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        </FormControl>
+                        <FormLabel className="!mt-0">Récolte faite</FormLabel>
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <FormField
+                  control={form.control}
+                  name="terminee"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Terminée</FormLabel>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value || undefined}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Non terminée" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="x">Terminée</SelectItem>
+                          <SelectItem value="v">Vivace (continue)</SelectItem>
+                          <SelectItem value="NS">Non significative</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               </CardContent>
             </Card>
 

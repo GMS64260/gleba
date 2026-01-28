@@ -181,6 +181,10 @@ export default function CulturesPage() {
     router.push(`/cultures/${row.id}`)
   }
 
+  const handleEdit = (row: CultureWithRelations) => {
+    router.push(`/cultures/${row.id}`)
+  }
+
   const handleDelete = async (row: CultureWithRelations) => {
     if (!confirm(`Supprimer la culture #${row.id} ?`)) return
 
@@ -234,6 +238,7 @@ export default function CulturesPage() {
           onAdd={handleAdd}
           onRefresh={fetchData}
           onRowClick={handleRowClick}
+          onRowEdit={handleEdit}
           onRowDelete={handleDelete}
           searchPlaceholder="Rechercher une culture..."
           emptyMessage="Aucune culture trouvée. Cliquez sur Ajouter pour créer la première."

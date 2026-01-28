@@ -146,6 +146,10 @@ export default function RecoltesPage() {
     router.push("/recoltes/saisie")
   }
 
+  const handleEdit = (row: RecolteWithRelations) => {
+    router.push(`/recoltes/${row.id}`)
+  }
+
   const handleDelete = async (row: RecolteWithRelations) => {
     if (!confirm(`Supprimer cette récolte de ${row.quantite} kg ?`)) return
 
@@ -226,6 +230,7 @@ export default function RecoltesPage() {
           onPaginationChange={(page) => setPageIndex(page)}
           onAdd={handleAdd}
           onRefresh={fetchData}
+          onRowEdit={handleEdit}
           onRowDelete={handleDelete}
           searchPlaceholder="Rechercher une récolte..."
           emptyMessage="Aucune récolte enregistrée."

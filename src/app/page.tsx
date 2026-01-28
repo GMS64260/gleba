@@ -111,10 +111,12 @@ export default function Home() {
             <Leaf className="h-8 w-8 text-green-600" />
             <h1 className="text-2xl font-bold text-green-800">Potaléger</h1>
           </div>
-          <Button variant="outline" size="sm">
-            <Settings className="h-4 w-4 mr-2" />
-            Paramètres
-          </Button>
+          <Link href="/parametres">
+            <Button variant="outline" size="sm">
+              <Settings className="h-4 w-4 mr-2" />
+              Paramètres
+            </Button>
+          </Link>
         </div>
       </header>
 

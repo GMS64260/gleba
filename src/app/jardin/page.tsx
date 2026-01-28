@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/select"
 import { GardenView } from "@/components/garden/GardenView"
 import { useToast } from "@/hooks/use-toast"
+import { useSettings } from "@/hooks/use-settings"
 
 interface PlancheWithCulture {
   id: string
@@ -77,6 +78,7 @@ const TYPES_OBJETS = [
 
 export default function JardinPage() {
   const { toast } = useToast()
+  const settings = useSettings()
   const [planches, setPlanches] = React.useState<PlancheWithCulture[]>([])
   const [objets, setObjets] = React.useState<ObjetJardin[]>([])
   const [especes, setEspeces] = React.useState<Espece[]>([])
@@ -91,8 +93,17 @@ export default function JardinPage() {
   const [selectedObjet, setSelectedObjet] = React.useState<number | null>(null)
   const [showNewPlancheDialog, setShowNewPlancheDialog] = React.useState(false)
   const [showNewObjetDialog, setShowNewObjetDialog] = React.useState(false)
-  const [newPlanche, setNewPlanche] = React.useState({ id: "", largeur: 0.8, longueur: 10 })
+  const [newPlanche, setNewPlanche] = React.useState({ id: "", largeur: settings.defaultPlancheLargeur, longueur: settings.defaultPlancheLongueur })
   const [newObjet, setNewObjet] = React.useState({ nom: "", type: "allee", largeur: 0.5, longueur: 5 })
+
+  // Mettre à jour les valeurs par défaut quand les settings changent
+  React.useEffect(() => {
+    setNewPlanche(prev => ({
+      ...prev,
+      largeur: prev.id ? prev.largeur : settings.defaultPlancheLargeur,
+      longueur: prev.id ? prev.longueur : settings.defaultPlancheLongueur,
+    }))
+  }, [settings.defaultPlancheLargeur, settings.defaultPlancheLongueur])
 
   // Charger les planches
   const fetchPlanches = React.useCallback(async () => {
@@ -318,7 +329,7 @@ export default function JardinPage() {
 
       toast({ title: "Planche créée", description: newPlanche.id })
       setShowNewPlancheDialog(false)
-      setNewPlanche({ id: "", largeur: 0.8, longueur: 10 })
+      setNewPlanche({ id: "", largeur: settings.defaultPlancheLargeur, longueur: settings.defaultPlancheLongueur })
       fetchPlanches()
     } catch (error) {
       toast({
@@ -537,6 +548,9 @@ export default function JardinPage() {
                   onObjetMove={handleObjetMove}
                   onObjetClick={handleObjetClick}
                   scale={scale}
+                  plancheColor={settings.plancheColor}
+                  selectedColor={settings.plancheSelectedColor}
+                  gridColor={settings.gridColor}
                 />
               )}
             </CardContent>
