@@ -110,9 +110,10 @@ export default function PlanchesPage() {
     router.push("/planches/new")
   }
 
-  const handleRowClick = (row: PlancheWithRelations) => {
-    router.push(`/planches/${encodeURIComponent(row.id)}`)
-  }
+  // Pas de page détail pour les planches pour l'instant
+  // const handleRowClick = (row: PlancheWithRelations) => {
+  //   router.push(`/planches/${encodeURIComponent(row.id)}`)
+  // }
 
   const handleDelete = async (row: PlancheWithRelations) => {
     if (row._count.cultures > 0) {
@@ -180,7 +181,6 @@ export default function PlanchesPage() {
           showPagination={false}
           onAdd={handleAdd}
           onRefresh={fetchData}
-          onRowClick={handleRowClick}
           onRowDelete={handleDelete}
           searchPlaceholder="Rechercher une planche..."
           emptyMessage="Aucune planche trouvée. Cliquez sur Ajouter pour créer la première."

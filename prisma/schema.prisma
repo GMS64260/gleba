@@ -345,3 +345,20 @@ model Parametre {
 
   @@map("params")
 }
+
+/// Objets du jardin (allées, passages, bordures, serres, etc.)
+model ObjetJardin {
+  id          Int      @id @default(autoincrement())
+  nom         String?  @map("nom")
+  type        String   @map("type") // "allee", "passage", "bordure", "serre", "compost", "autre"
+  largeur     Float    @map("largeur") // mètres
+  longueur    Float    @map("longueur") // mètres
+  posX        Float    @map("pos_x") // Position X en mètres
+  posY        Float    @map("pos_y") // Position Y en mètres
+  rotation2D  Float    @default(0) @map("rotation_2d") // Rotation en degrés
+  couleur     String?  @map("couleur") // Code couleur (#RRGGBB)
+  notes       String?  @map("notes")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("objets_jardin")
+}
