@@ -25,6 +25,7 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-potaleger}:${POSTGRES_PASSWORD:-potaleger}@db:5432/${POSTGRES_DB:-potaleger}?schema=public
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-changez-moi-en-production}
       NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      AUTH_TRUST_HOST: "true"
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@potaleger.local}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme}
       ADMIN_NAME: ${ADMIN_NAME:-Administrateur}
