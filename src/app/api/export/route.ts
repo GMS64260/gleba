@@ -35,6 +35,7 @@ export async function GET(request: NextRequest) {
       fertilisations,
       analyses,
       objetsJardin,
+      arbres,
     ] = await Promise.all([
       // Référentiels globaux (partagés)
       prisma.famille.findMany(),
@@ -52,11 +53,12 @@ export async function GET(request: NextRequest) {
       prisma.fertilisation.findMany({ where: { userId } }),
       prisma.analyseSol.findMany({ where: { userId } }),
       prisma.objetJardin.findMany({ where: { userId } }),
+      prisma.arbre.findMany({ where: { userId } }),
     ])
 
     const data = {
       exportDate: new Date().toISOString(),
-      version: '1.0',
+      version: '1.1',
       userId,
       // Référentiels
       familles,
@@ -74,6 +76,7 @@ export async function GET(request: NextRequest) {
       fertilisations,
       analyses,
       objetsJardin,
+      arbres,
     }
 
     if (format === 'json') {
@@ -115,6 +118,7 @@ export async function GET(request: NextRequest) {
       if (recoltes.length) csvData['recoltes.csv'] = toCSV(recoltes as Record<string, unknown>[])
       if (fertilisations.length) csvData['fertilisations.csv'] = toCSV(fertilisations as Record<string, unknown>[])
       if (objetsJardin.length) csvData['objets_jardin.csv'] = toCSV(objetsJardin as Record<string, unknown>[])
+      if (arbres.length) csvData['arbres.csv'] = toCSV(arbres as Record<string, unknown>[])
 
       return new NextResponse(JSON.stringify(csvData, null, 2), {
         headers: {

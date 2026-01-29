@@ -1,11 +1,26 @@
 "use client"
 
 import * as React from "react"
-import Link from "next/link";
-import { useSession } from "next-auth/react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { UserMenu } from "@/components/auth/UserMenu";
+import Link from "next/link"
+import { useSession } from "next-auth/react"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { UserMenu } from "@/components/auth/UserMenu"
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
+  AreaChart,
+  Area,
+} from "recharts"
 import {
   Leaf,
   Sprout,
@@ -13,8 +28,13 @@ import {
   BarChart3,
   Settings,
   ArrowRight,
-  Map as MapIcon
-} from "lucide-react";
+  Map as MapIcon,
+  TreeDeciduous,
+  TrendingUp,
+  TrendingDown,
+  Calendar,
+  Droplets,
+} from "lucide-react"
 
 const modules = [
   {
@@ -57,53 +77,77 @@ const modules = [
     color: "text-blue-600",
     bgColor: "bg-blue-50",
   },
-];
+]
 
-interface DashboardStats {
-  culturesActives: number
-  especesCount: number
-  planchesCount: number
-  recoltesTotal: number
-  recoltesMois: number
+interface DashboardData {
+  stats: {
+    culturesTotal: number
+    culturesActives: number
+    planches: number
+    surfaceTotale: number
+    especes: number
+    arbres: number
+    recoltesAnnee: number
+    recoltesCount: number
+    recoltesAnneePrecedente: number
+  }
+  charts: {
+    monthlyHarvest: { mois: string; quantite: number }[]
+    harvestBySpecies: { espece: string; quantite: number; couleur: string }[]
+    culturesByFamily: { famille: string; count: number; couleur: string }[]
+    yieldByPlanche: { planche: string; totalKg: number; surface: number; rendement: number }[]
+  }
+  activity: {
+    culturesStatus: { enCours: number; terminees: number; total: number }
+    upcomingTasks: {
+      id: number
+      especeId: string
+      plancheId: string | null
+      dateSemis: string | null
+      datePlantation: string | null
+      semisFait: boolean
+      plantationFaite: boolean
+    }[]
+  }
+  meta: {
+    year: number
+    generatedAt: string
+  }
 }
 
 export default function Home() {
   const { data: session } = useSession()
-  const [stats, setStats] = React.useState<DashboardStats | null>(null)
+  const [data, setData] = React.useState<DashboardData | null>(null)
   const [loading, setLoading] = React.useState(true)
 
   React.useEffect(() => {
-    async function fetchStats() {
+    async function fetchDashboard() {
       try {
-        const [culturesRes, especesRes, planchesRes, recoltesRes] = await Promise.all([
-          fetch("/api/cultures?pageSize=1"),
-          fetch("/api/especes?pageSize=1"),
-          fetch("/api/planches?pageSize=1"),
-          fetch("/api/recoltes?pageSize=1"),
-        ])
-
-        const [cultures, especes, planches, recoltes] = await Promise.all([
-          culturesRes.json(),
-          especesRes.json(),
-          planchesRes.json(),
-          recoltesRes.json(),
-        ])
-
-        setStats({
-          culturesActives: cultures.total || 0,
-          especesCount: especes.total || 0,
-          planchesCount: planches.total || 0,
-          recoltesTotal: recoltes.stats?.totalQuantite || 0,
-          recoltesMois: recoltes.stats?.count || 0,
-        })
+        const response = await fetch("/api/dashboard")
+        if (response.ok) {
+          const json = await response.json()
+          setData(json)
+        }
       } catch (error) {
-        console.error("Erreur chargement stats:", error)
+        console.error("Erreur chargement dashboard:", error)
       } finally {
         setLoading(false)
       }
     }
-    fetchStats()
+    fetchDashboard()
   }, [])
+
+  const progressPercent = data?.stats
+    ? Math.round((data.activity.culturesStatus.terminees / Math.max(data.activity.culturesStatus.total, 1)) * 100)
+    : 0
+
+  const yearDiff = data?.stats
+    ? data.stats.recoltesAnnee - data.stats.recoltesAnneePrecedente
+    : 0
+
+  const yearDiffPercent = data?.stats?.recoltesAnneePrecedente
+    ? Math.round((yearDiff / data.stats.recoltesAnneePrecedente) * 100)
+    : 0
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-green-50 to-white">
@@ -125,102 +169,375 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Hero */}
-      <main className="container mx-auto px-4 py-12">
-        <div className="text-center mb-12">
-          <h2 className="text-4xl font-bold text-gray-900 mb-4">
-            Gérez votre potager efficacement
-          </h2>
-          <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-            Planifiez vos cultures, suivez vos récoltes et optimisez vos rotations
-            avec une application moderne et intuitive.
-          </p>
-        </div>
-
+      <main className="container mx-auto px-4 py-8">
         {/* Modules Grid */}
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-5 max-w-6xl mx-auto">
+        <div className="grid gap-4 md:grid-cols-5 mb-8">
           {modules.map((module) => (
             <Link key={module.href} href={module.href}>
-              <Card className="h-full hover:shadow-lg transition-shadow cursor-pointer group">
-                <CardHeader>
-                  <div className={`w-12 h-12 rounded-lg ${module.bgColor} flex items-center justify-center mb-2`}>
-                    <module.icon className={`h-6 w-6 ${module.color}`} />
+              <Card className="h-full hover:shadow-lg transition-all hover:scale-[1.02] cursor-pointer group">
+                <CardHeader className="pb-2">
+                  <div className={`w-10 h-10 rounded-lg ${module.bgColor} flex items-center justify-center mb-1`}>
+                    <module.icon className={`h-5 w-5 ${module.color}`} />
                   </div>
-                  <CardTitle className="flex items-center justify-between">
+                  <CardTitle className="text-sm flex items-center justify-between">
                     {module.title}
-                    <ArrowRight className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <ArrowRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                   </CardTitle>
-                  <CardDescription>{module.description}</CardDescription>
                 </CardHeader>
               </Card>
             </Link>
           ))}
         </div>
 
-        {/* Tableau de bord */}
-        <div className="mt-16 max-w-6xl mx-auto">
-          <h3 className="text-2xl font-semibold text-gray-800 mb-6">
-            Tableau de bord
-          </h3>
-          <div className="grid gap-4 md:grid-cols-4">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>Cultures</CardDescription>
-                <CardTitle className="text-3xl text-green-600">
-                  {loading ? "..." : stats?.culturesActives || 0}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  cultures enregistrées
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>Espèces</CardDescription>
-                <CardTitle className="text-3xl text-emerald-600">
-                  {loading ? "..." : stats?.especesCount || 0}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  variétés disponibles
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>Planches</CardDescription>
-                <CardTitle className="text-3xl text-amber-600">
-                  {loading ? "..." : stats?.planchesCount || 0}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  parcelles configurées
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>Récoltes</CardDescription>
-                <CardTitle className="text-3xl text-blue-600">
-                  {loading ? "..." : `${stats?.recoltesTotal.toFixed(1) || 0} kg`}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  {stats?.recoltesMois || 0} récoltes enregistrées
-                </p>
-              </CardContent>
-            </Card>
-          </div>
+        {/* Stats Cards */}
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
+          <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white">
+            <CardHeader className="pb-2">
+              <CardDescription className="text-green-100">Cultures actives</CardDescription>
+              <CardTitle className="text-4xl">
+                {loading ? "..." : data?.stats.culturesActives || 0}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-green-100">
+                sur {data?.stats.culturesTotal || 0} total
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-amber-500 to-orange-500 text-white">
+            <CardHeader className="pb-2">
+              <CardDescription className="text-amber-100">Surface cultivée</CardDescription>
+              <CardTitle className="text-4xl">
+                {loading ? "..." : `${data?.stats.surfaceTotale || 0} m²`}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-amber-100">
+                {data?.stats.planches || 0} planches
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white">
+            <CardHeader className="pb-2">
+              <CardDescription className="text-blue-100">Récoltes {data?.meta.year}</CardDescription>
+              <CardTitle className="text-4xl">
+                {loading ? "..." : `${data?.stats.recoltesAnnee || 0} kg`}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-1 text-sm">
+                {yearDiff >= 0 ? (
+                  <TrendingUp className="h-4 w-4 text-green-200" />
+                ) : (
+                  <TrendingDown className="h-4 w-4 text-red-200" />
+                )}
+                <span className={yearDiff >= 0 ? "text-green-200" : "text-red-200"}>
+                  {yearDiff >= 0 ? "+" : ""}{yearDiffPercent}% vs {(data?.meta.year || 2024) - 1}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white">
+            <CardHeader className="pb-2">
+              <CardDescription className="text-purple-100">Arbres & arbustes</CardDescription>
+              <CardTitle className="text-4xl">
+                {loading ? "..." : data?.stats.arbres || 0}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-1">
+                <TreeDeciduous className="h-4 w-4 text-purple-200" />
+                <span className="text-sm text-purple-100">
+                  {data?.stats.especes || 0} espèces disponibles
+                </span>
+              </div>
+            </CardContent>
+          </Card>
         </div>
+
+        {/* Charts Row 1 */}
+        <div className="grid gap-6 lg:grid-cols-2 mb-6">
+          {/* Récoltes mensuelles */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <BarChart3 className="h-5 w-5 text-blue-600" />
+                Récoltes mensuelles
+              </CardTitle>
+              <CardDescription>
+                Production en kg par mois ({data?.meta.year})
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                  Chargement...
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={300}>
+                  <AreaChart data={data?.charts.monthlyHarvest || []}>
+                    <defs>
+                      <linearGradient id="colorQty" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#22c55e" stopOpacity={0.8}/>
+                        <stop offset="95%" stopColor="#22c55e" stopOpacity={0.1}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis dataKey="mois" tick={{ fontSize: 12 }} />
+                    <YAxis tick={{ fontSize: 12 }} unit=" kg" />
+                    <Tooltip
+                      formatter={(value) => [`${Number(value).toFixed(1)} kg`, "Récolte"]}
+                      contentStyle={{ borderRadius: 8, border: "1px solid #e5e7eb" }}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="quantite"
+                      stroke="#22c55e"
+                      strokeWidth={2}
+                      fillOpacity={1}
+                      fill="url(#colorQty)"
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Récoltes par espèce */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Leaf className="h-5 w-5 text-green-600" />
+                Top 10 des récoltes
+              </CardTitle>
+              <CardDescription>
+                Quantité récoltée par espèce (kg)
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                  Chargement...
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart
+                    data={data?.charts.harvestBySpecies || []}
+                    layout="vertical"
+                    margin={{ left: 20 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis type="number" tick={{ fontSize: 12 }} unit=" kg" />
+                    <YAxis dataKey="espece" type="category" tick={{ fontSize: 12 }} width={80} />
+                    <Tooltip
+                      formatter={(value) => [`${Number(value).toFixed(1)} kg`, "Récolte"]}
+                      contentStyle={{ borderRadius: 8, border: "1px solid #e5e7eb" }}
+                    />
+                    <Bar dataKey="quantite" radius={[0, 4, 4, 0]}>
+                      {(data?.charts.harvestBySpecies || []).map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.couleur} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Charts Row 2 */}
+        <div className="grid gap-6 lg:grid-cols-3 mb-6">
+          {/* Cultures par famille */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Sprout className="h-5 w-5 text-emerald-600" />
+                Cultures par famille
+              </CardTitle>
+              <CardDescription>
+                Répartition des cultures {data?.meta.year}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="h-[250px] flex items-center justify-center text-muted-foreground">
+                  Chargement...
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={250}>
+                  <PieChart>
+                    <Pie
+                      data={data?.charts.culturesByFamily || []}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={50}
+                      outerRadius={80}
+                      paddingAngle={2}
+                      dataKey="count"
+                      nameKey="famille"
+                      label={({ name, percent }) =>
+                        `${name} (${((percent || 0) * 100).toFixed(0)}%)`
+                      }
+                      labelLine={false}
+                    >
+                      {(data?.charts.culturesByFamily || []).map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.couleur} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(value, name) => [value, name]}
+                      contentStyle={{ borderRadius: 8, border: "1px solid #e5e7eb" }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Rendement par planche */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <LayoutGrid className="h-5 w-5 text-amber-600" />
+                Rendement par planche
+              </CardTitle>
+              <CardDescription>
+                kg/m² par parcelle
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="h-[250px] flex items-center justify-center text-muted-foreground">
+                  Chargement...
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={250}>
+                  <BarChart data={data?.charts.yieldByPlanche || []}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis dataKey="planche" tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 12 }} />
+                    <Tooltip
+                      formatter={(value, name) => [
+                        name === "rendement" ? `${Number(value).toFixed(1)} kg/m²` : `${Number(value).toFixed(1)} kg`,
+                        name === "rendement" ? "Rendement" : "Total",
+                      ]}
+                      contentStyle={{ borderRadius: 8, border: "1px solid #e5e7eb" }}
+                    />
+                    <Bar dataKey="rendement" fill="#f59e0b" radius={[4, 4, 0, 0]} name="rendement" />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* État des cultures */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Calendar className="h-5 w-5 text-blue-600" />
+                Avancement {data?.meta.year}
+              </CardTitle>
+              <CardDescription>
+                Progression des cultures
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-6">
+                {/* Progress circle */}
+                <div className="flex items-center justify-center">
+                  <div className="relative w-32 h-32">
+                    <svg className="w-32 h-32 transform -rotate-90">
+                      <circle
+                        cx="64"
+                        cy="64"
+                        r="56"
+                        stroke="#e5e7eb"
+                        strokeWidth="12"
+                        fill="none"
+                      />
+                      <circle
+                        cx="64"
+                        cy="64"
+                        r="56"
+                        stroke="#22c55e"
+                        strokeWidth="12"
+                        fill="none"
+                        strokeDasharray={`${progressPercent * 3.52} 352`}
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span className="text-2xl font-bold">{progressPercent}%</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Legend */}
+                <div className="grid grid-cols-2 gap-4 text-center">
+                  <div>
+                    <p className="text-2xl font-bold text-green-600">
+                      {data?.activity.culturesStatus.terminees || 0}
+                    </p>
+                    <p className="text-sm text-muted-foreground">Terminées</p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-amber-600">
+                      {data?.activity.culturesStatus.enCours || 0}
+                    </p>
+                    <p className="text-sm text-muted-foreground">En cours</p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Upcoming tasks */}
+        {data?.activity.upcomingTasks && data.activity.upcomingTasks.length > 0 && (
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Droplets className="h-5 w-5 text-cyan-600" />
+                Prochaines tâches
+              </CardTitle>
+              <CardDescription>
+                Semis et plantations à venir
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                {data.activity.upcomingTasks.map((task) => (
+                  <div
+                    key={task.id}
+                    className="flex items-center gap-3 p-3 rounded-lg border bg-gray-50"
+                  >
+                    <div className={`w-2 h-2 rounded-full ${
+                      !task.semisFait ? "bg-orange-500" : "bg-green-500"
+                    }`} />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium truncate">{task.especeId}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {!task.semisFait && task.dateSemis
+                          ? `Semis: ${new Date(task.dateSemis).toLocaleDateString("fr-FR")}`
+                          : !task.plantationFaite && task.datePlantation
+                          ? `Plantation: ${new Date(task.datePlantation).toLocaleDateString("fr-FR")}`
+                          : ""}
+                        {task.plancheId && ` • ${task.plancheId}`}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </main>
 
       {/* Footer */}
-      <footer className="border-t mt-16 py-8 text-center text-sm text-gray-500">
+      <footer className="border-t mt-8 py-6 text-center text-sm text-gray-500">
         <p>
           Potaléger v0.1.0 - Basé sur{" "}
           <a
@@ -234,5 +551,5 @@ export default function Home() {
         </p>
       </footer>
     </div>
-  );
+  )
 }
