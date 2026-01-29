@@ -13,6 +13,7 @@ interface ImportData {
   familles?: Array<{ id: string; intervalle?: number | null; couleur?: string | null }>
   especes?: Array<{
     id: string
+    type?: string
     familleId?: string | null
     nomLatin?: string | null
     rendement?: number | null
@@ -103,6 +104,25 @@ interface ImportData {
     couleur?: string | null
     notes?: string | null
   }>
+  arbres?: Array<{
+    id: number
+    nom: string
+    type: string
+    especeId?: string | null
+    espece?: string | null
+    variete?: string | null
+    portGreffe?: string | null
+    fournisseur?: string | null
+    dateAchat?: string | null
+    datePlantation?: string | null
+    age?: number | null
+    posX: number
+    posY: number
+    envergure?: number
+    hauteur?: number | null
+    etat?: string | null
+    notes?: string | null
+  }>
 }
 
 export async function POST(request: NextRequest) {
@@ -139,6 +159,7 @@ export async function POST(request: NextRequest) {
       fertilisants: 0,
       fertilisations: 0,
       objetsJardin: 0,
+      arbres: 0,
     }
 
     // Import dans l'ordre des dépendances
@@ -161,6 +182,7 @@ export async function POST(request: NextRequest) {
         await prisma.espece.upsert({
           where: { id: item.id },
           update: {
+            type: item.type ?? 'legume',
             familleId: item.familleId,
             nomLatin: item.nomLatin,
             rendement: item.rendement,
@@ -175,6 +197,7 @@ export async function POST(request: NextRequest) {
           },
           create: {
             id: item.id,
+            type: item.type ?? 'legume',
             familleId: item.familleId,
             nomLatin: item.nomLatin,
             rendement: item.rendement,
@@ -430,6 +453,54 @@ export async function POST(request: NextRequest) {
           },
         })
         stats.objetsJardin++
+      }
+    }
+
+    // 10. Arbres (données utilisateur)
+    if (data.arbres?.length) {
+      for (const item of data.arbres) {
+        await prisma.arbre.upsert({
+          where: { id: item.id },
+          update: {
+            nom: item.nom,
+            type: item.type,
+            especeId: item.especeId,
+            espece: item.espece,
+            variete: item.variete,
+            portGreffe: item.portGreffe,
+            fournisseur: item.fournisseur,
+            dateAchat: item.dateAchat ? new Date(item.dateAchat) : null,
+            datePlantation: item.datePlantation ? new Date(item.datePlantation) : null,
+            age: item.age,
+            posX: item.posX,
+            posY: item.posY,
+            envergure: item.envergure ?? 2,
+            hauteur: item.hauteur,
+            etat: item.etat,
+            notes: item.notes,
+          },
+          create: {
+            id: item.id,
+            userId,
+            nom: item.nom,
+            type: item.type,
+            especeId: item.especeId,
+            espece: item.espece,
+            variete: item.variete,
+            portGreffe: item.portGreffe,
+            fournisseur: item.fournisseur,
+            dateAchat: item.dateAchat ? new Date(item.dateAchat) : null,
+            datePlantation: item.datePlantation ? new Date(item.datePlantation) : null,
+            age: item.age,
+            posX: item.posX,
+            posY: item.posY,
+            envergure: item.envergure ?? 2,
+            hauteur: item.hauteur,
+            etat: item.etat,
+            notes: item.notes,
+          },
+        })
+        stats.arbres++
       }
     }
 
