@@ -18,6 +18,13 @@ export interface GardenSettings {
   plancheColor: string
   plancheSelectedColor: string
   gridColor: string
+  // Image de fond (satellite)
+  backgroundImage: string | null // Data URL ou URL
+  backgroundOpacity: number // 0-1
+  backgroundScale: number // metres par pixel de l'image originale
+  backgroundOffsetX: number // decalage X en metres
+  backgroundOffsetY: number // decalage Y en metres
+  backgroundRotation: number // rotation en degres
 }
 
 export const defaultSettings: GardenSettings = {
@@ -29,6 +36,12 @@ export const defaultSettings: GardenSettings = {
   plancheColor: '#8B5A2B',
   plancheSelectedColor: '#22c55e',
   gridColor: '#e5e7eb',
+  backgroundImage: null,
+  backgroundOpacity: 0.5,
+  backgroundScale: 0.1, // 10cm par pixel par defaut (1 pixel = 0.1m)
+  backgroundOffsetX: 0,
+  backgroundOffsetY: 0,
+  backgroundRotation: 0,
 }
 
 export function useSettings(): GardenSettings {

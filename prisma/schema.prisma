@@ -12,6 +12,53 @@ datasource db {
 }
 
 // ============================================================
+// AUTHENTIFICATION
+// ============================================================
+
+enum Role {
+  ADMIN
+  USER
+}
+
+/// Utilisateurs de l'application
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  password      String    // bcrypt hash
+  name          String?
+  role          Role      @default(USER)
+  active        Boolean   @default(true)
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  // NextAuth sessions
+  sessions      Session[]
+
+  // Relations avec données utilisateur
+  planches      Planche[]
+  cultures      Culture[]
+  recoltes      Recolte[]
+  fertilisations Fertilisation[]
+  objetsJardin  ObjetJardin[]
+  analysesSol   AnalyseSol[]
+  notes         Note[]
+  arbres        Arbre[]
+
+  @@map("users")
+}
+
+/// Sessions NextAuth
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expires      DateTime
+
+  @@map("sessions")
+}
+
+// ============================================================
 // NIVEAU 1 - RÉFÉRENTIELS INDÉPENDANTS
 // ============================================================
 
@@ -183,6 +230,8 @@ model RotationDetail {
 /// Planches de culture (parcelles)
 model Planche {
   id                  String    @id @map("planche")
+  userId              String    @map("user_id")
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   rotationId          String?   @map("rotation")
   rotation            Rotation? @relation(fields: [rotationId], references: [id], onDelete: SetNull)
   largeur             Float?    @map("largeur") // mètres
@@ -207,6 +256,8 @@ model Planche {
 /// Analyses de sol
 model AnalyseSol {
   id            String    @id @map("analyse")
+  userId        String    @map("user_id")
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   plancheId     String?   @map("planche")
   planche       Planche?  @relation(fields: [plancheId], references: [id], onDelete: SetNull)
   dateAnalyse   DateTime? @map("date_analyse")
@@ -244,6 +295,8 @@ model AnalyseSol {
 /// Cultures (instances de semis/plantation)
 model Culture {
   id              Int       @id @default(autoincrement())
+  userId          String    @map("user_id")
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   especeId        String    @map("espece")
   espece          Espece    @relation(fields: [especeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   varieteId       String?   @map("variete")
@@ -283,6 +336,8 @@ model Culture {
 /// Récoltes
 model Recolte {
   id         Int      @id @default(autoincrement())
+  userId     String   @map("user_id")
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   especeId   String   @map("espece")
   espece     Espece   @relation(fields: [especeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   cultureId  Int      @map("culture")
@@ -313,6 +368,8 @@ model Consommation {
 /// Fertilisations (apports)
 model Fertilisation {
   id            Int         @id @default(autoincrement())
+  userId        String      @map("user_id")
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   plancheId     String      @map("planche")
   planche       Planche     @relation(fields: [plancheId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   fertilisantId String      @map("fertilisant")
@@ -328,6 +385,8 @@ model Fertilisation {
 /// Notes générales
 model Note {
   id        Int      @id @default(autoincrement())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   titre     String?  @map("titre")
   contenu   String?  @map("contenu") // Markdown
   categorie String?  @map("categorie") // Catégorie libre
@@ -349,6 +408,8 @@ model Parametre {
 /// Objets du jardin (allées, passages, bordures, serres, etc.)
 model ObjetJardin {
   id          Int      @id @default(autoincrement())
+  userId      String   @map("user_id")
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   nom         String?  @map("nom")
   type        String   @map("type") // "allee", "passage", "bordure", "serre", "compost", "autre"
   largeur     Float    @map("largeur") // mètres
@@ -361,4 +422,34 @@ model ObjetJardin {
   createdAt   DateTime @default(now()) @map("created_at")
 
   @@map("objets_jardin")
+}
+
+/// Arbres et arbustes (fruitiers, petits fruits, ornementaux)
+model Arbre {
+  id              Int       @id @default(autoincrement())
+  userId          String    @map("user_id")
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  nom             String    @map("nom") // Nom d'affichage (ex: "Pommier Golden")
+  type            String    @map("type") // "fruitier", "petit_fruit", "ornement", "haie"
+  espece          String?   @map("espece") // Espèce (ex: "Pommier", "Framboisier")
+  variete         String?   @map("variete") // Variété (ex: "Golden", "Malling Promise")
+  portGreffe      String?   @map("port_greffe") // Porte-greffe si applicable
+  fournisseur     String?   @map("fournisseur") // Lieu d'achat / pépinière
+  dateAchat       DateTime? @map("date_achat")
+  datePlantation  DateTime? @map("date_plantation")
+  age             Int?      @map("age") // Âge à la plantation (années)
+  // Position sur le plan
+  posX            Float     @map("pos_x")
+  posY            Float     @map("pos_y")
+  envergure       Float     @default(2) @map("envergure") // Diamètre en mètres (pour affichage)
+  // Infos complémentaires
+  hauteur         Float?    @map("hauteur") // Hauteur actuelle en mètres
+  etat            String?   @map("etat") // "excellent", "bon", "moyen", "mauvais", "mort"
+  pollinisateur   String?   @map("pollinisateur") // Variété pollinisatrice associée
+  couleur         String?   @map("couleur") // Couleur d'affichage sur le plan
+  notes           String?   @map("notes")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@map("arbres")
 }

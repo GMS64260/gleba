@@ -1,10 +1,12 @@
 /**
  * API Import des données
  * POST /api/import
+ * Importe les données pour l'utilisateur connecté
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import prisma from '@/lib/prisma'
+import { requireAuthApi } from '@/lib/auth-utils'
 
 interface ImportData {
   version?: string
@@ -104,6 +106,9 @@ interface ImportData {
 }
 
 export async function POST(request: NextRequest) {
+  const { error, session } = await requireAuthApi()
+  if (error) return error
+
   try {
     const formData = await request.formData()
     const file = formData.get('file') as File
@@ -121,6 +126,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Format JSON invalide' }, { status: 400 })
     }
 
+    const userId = session!.user.id
+
     // Statistiques d'import
     const stats = {
       familles: 0,
@@ -135,7 +142,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Import dans l'ordre des dépendances
-    // 1. Familles
+
+    // 1. Familles (référentiel global)
     if (data.familles?.length) {
       for (const item of data.familles) {
         await prisma.famille.upsert({
@@ -147,7 +155,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 2. Espèces
+    // 2. Espèces (référentiel global)
     if (data.especes?.length) {
       for (const item of data.especes) {
         await prisma.espece.upsert({
@@ -184,10 +192,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 3. Variétés
+    // 3. Variétés (référentiel global)
     if (data.varietes?.length) {
       for (const item of data.varietes) {
-        // Vérifier que l'espèce existe
         const especeExists = await prisma.espece.findUnique({ where: { id: item.especeId } })
         if (!especeExists) continue
 
@@ -221,7 +228,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 4. Fertilisants
+    // 4. Fertilisants (référentiel global)
     if (data.fertilisants?.length) {
       for (const item of data.fertilisants) {
         await prisma.fertilisant.upsert({
@@ -233,45 +240,55 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 5. Planches
+    // 5. Planches (données utilisateur)
     if (data.planches?.length) {
       for (const item of data.planches) {
-        await prisma.planche.upsert({
-          where: { id: item.id },
-          update: {
-            rotationId: item.rotationId,
-            ilot: item.ilot,
-            surface: item.surface,
-            largeur: item.largeur,
-            longueur: item.longueur,
-            posX: item.posX,
-            posY: item.posY,
-            rotation2D: item.rotation2D,
-            planchesInfluencees: item.planchesInfluencees,
-            notes: item.notes,
-          },
-          create: {
-            id: item.id,
-            rotationId: item.rotationId,
-            ilot: item.ilot,
-            surface: item.surface,
-            largeur: item.largeur,
-            longueur: item.longueur,
-            posX: item.posX,
-            posY: item.posY,
-            rotation2D: item.rotation2D,
-            planchesInfluencees: item.planchesInfluencees,
-            notes: item.notes,
-          },
+        // Vérifier si la planche existe déjà pour cet utilisateur
+        const existing = await prisma.planche.findFirst({
+          where: { id: item.id, userId },
         })
+
+        if (existing) {
+          await prisma.planche.update({
+            where: { id: item.id },
+            data: {
+              rotationId: item.rotationId,
+              ilot: item.ilot,
+              surface: item.surface,
+              largeur: item.largeur,
+              longueur: item.longueur,
+              posX: item.posX,
+              posY: item.posY,
+              rotation2D: item.rotation2D,
+              planchesInfluencees: item.planchesInfluencees,
+              notes: item.notes,
+            },
+          })
+        } else {
+          await prisma.planche.create({
+            data: {
+              id: item.id,
+              userId,
+              rotationId: item.rotationId,
+              ilot: item.ilot,
+              surface: item.surface,
+              largeur: item.largeur,
+              longueur: item.longueur,
+              posX: item.posX,
+              posY: item.posY,
+              rotation2D: item.rotation2D,
+              planchesInfluencees: item.planchesInfluencees,
+              notes: item.notes,
+            },
+          })
+        }
         stats.planches++
       }
     }
 
-    // 6. Cultures
+    // 6. Cultures (données utilisateur)
     if (data.cultures?.length) {
       for (const item of data.cultures) {
-        // Vérifier que l'espèce existe
         const especeExists = await prisma.espece.findUnique({ where: { id: item.especeId } })
         if (!especeExists) continue
 
@@ -296,6 +313,7 @@ export async function POST(request: NextRequest) {
           },
           create: {
             id: item.id,
+            userId,
             especeId: item.especeId,
             varieteId: item.varieteId,
             plancheId: item.plancheId,
@@ -317,10 +335,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 7. Récoltes
+    // 7. Récoltes (données utilisateur)
     if (data.recoltes?.length) {
       for (const item of data.recoltes) {
-        const cultureExists = await prisma.culture.findUnique({ where: { id: item.cultureId } })
+        const cultureExists = await prisma.culture.findUnique({
+          where: { id: item.cultureId, userId },
+        })
         const especeExists = await prisma.espece.findUnique({ where: { id: item.especeId } })
         if (!cultureExists || !especeExists) continue
 
@@ -335,6 +355,7 @@ export async function POST(request: NextRequest) {
           },
           create: {
             id: item.id,
+            userId,
             especeId: item.especeId,
             cultureId: item.cultureId,
             date: new Date(item.date),
@@ -346,10 +367,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 8. Fertilisations
+    // 8. Fertilisations (données utilisateur)
     if (data.fertilisations?.length) {
       for (const item of data.fertilisations) {
-        const plancheExists = await prisma.planche.findUnique({ where: { id: item.plancheId } })
+        const plancheExists = await prisma.planche.findFirst({
+          where: { id: item.plancheId, userId },
+        })
         const fertilisantExists = await prisma.fertilisant.findUnique({ where: { id: item.fertilisantId } })
         if (!plancheExists || !fertilisantExists) continue
 
@@ -364,6 +387,7 @@ export async function POST(request: NextRequest) {
           },
           create: {
             id: item.id,
+            userId,
             plancheId: item.plancheId,
             fertilisantId: item.fertilisantId,
             date: new Date(item.date),
@@ -375,7 +399,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 9. Objets jardin
+    // 9. Objets jardin (données utilisateur)
     if (data.objetsJardin?.length) {
       for (const item of data.objetsJardin) {
         await prisma.objetJardin.upsert({
@@ -393,6 +417,7 @@ export async function POST(request: NextRequest) {
           },
           create: {
             id: item.id,
+            userId,
             nom: item.nom,
             type: item.type,
             largeur: item.largeur,

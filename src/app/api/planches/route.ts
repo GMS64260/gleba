@@ -8,9 +8,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { createPlancheSchema } from '@/lib/validations'
 import { Prisma } from '@prisma/client'
+import { requireAuthApi } from '@/lib/auth-utils'
 
 // GET /api/planches
 export async function GET(request: NextRequest) {
+  const { error, session } = await requireAuthApi()
+  if (error) return error
+
   try {
     const { searchParams } = new URL(request.url)
 
@@ -28,8 +32,10 @@ export async function GET(request: NextRequest) {
     const ilot = searchParams.get('ilot')
     const rotationId = searchParams.get('rotationId')
 
-    // Construction du where
-    const where: Prisma.PlancheWhereInput = {}
+    // Construction du where - FILTRE PAR USER
+    const where: Prisma.PlancheWhereInput = {
+      userId: session!.user.id,
+    }
 
     if (search) {
       where.OR = [
@@ -85,6 +91,9 @@ export async function GET(request: NextRequest) {
 
 // POST /api/planches
 export async function POST(request: NextRequest) {
+  const { error, session } = await requireAuthApi()
+  if (error) return error
+
   try {
     const body = await request.json()
 
@@ -99,9 +108,12 @@ export async function POST(request: NextRequest) {
 
     const data = validationResult.data
 
-    // Vérifier si la planche existe déjà
-    const existing = await prisma.planche.findUnique({
-      where: { id: data.id },
+    // Vérifier si la planche existe déjà pour cet utilisateur
+    const existing = await prisma.planche.findFirst({
+      where: {
+        id: data.id,
+        userId: session!.user.id,
+      },
     })
 
     if (existing) {
@@ -116,11 +128,12 @@ export async function POST(request: NextRequest) {
       ? data.largeur * data.longueur
       : data.surface
 
-    // Création
+    // Création avec userId
     const planche = await prisma.planche.create({
       data: {
         ...data,
         surface,
+        userId: session!.user.id,
       },
       include: {
         rotation: true,

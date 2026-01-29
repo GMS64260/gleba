@@ -5,18 +5,34 @@
  */
 
 import { NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
+import prisma from "@/lib/prisma"
+import { requireAuthApi } from "@/lib/auth-utils"
 
 interface Params {
   params: Promise<{ id: string }>
 }
 
 export async function PUT(request: NextRequest, { params }: Params) {
+  const { error, session } = await requireAuthApi()
+  if (error) return error
+
   try {
     const { id } = await params
     const objetId = parseInt(id, 10)
     if (isNaN(objetId)) {
       return NextResponse.json({ error: "ID invalide" }, { status: 400 })
+    }
+
+    // Vérifier propriété
+    const existing = await prisma.objetJardin.findUnique({
+      where: {
+        id: objetId,
+        userId: session!.user.id,
+      },
+    })
+
+    if (!existing) {
+      return NextResponse.json({ error: "Objet non trouvé" }, { status: 404 })
     }
 
     const body = await request.json()
@@ -47,11 +63,26 @@ export async function PUT(request: NextRequest, { params }: Params) {
 }
 
 export async function DELETE(request: NextRequest, { params }: Params) {
+  const { error, session } = await requireAuthApi()
+  if (error) return error
+
   try {
     const { id } = await params
     const objetId = parseInt(id, 10)
     if (isNaN(objetId)) {
       return NextResponse.json({ error: "ID invalide" }, { status: 400 })
+    }
+
+    // Vérifier propriété
+    const existing = await prisma.objetJardin.findUnique({
+      where: {
+        id: objetId,
+        userId: session!.user.id,
+      },
+    })
+
+    if (!existing) {
+      return NextResponse.json({ error: "Objet non trouvé" }, { status: 404 })
     }
 
     await prisma.objetJardin.delete({

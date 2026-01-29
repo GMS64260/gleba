@@ -4,14 +4,18 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import prisma from '@/lib/prisma'
 import { calculateRotationAdvice } from '@/lib/rotation'
+import { requireAuthApi } from '@/lib/auth-utils'
 
 interface Params {
   params: Promise<{ id: string }>
 }
 
 export async function GET(request: NextRequest, { params }: Params) {
+  const { error, session } = await requireAuthApi()
+  if (error) return error
+
   try {
     const { id } = await params
     const plancheId = decodeURIComponent(id)
@@ -20,9 +24,12 @@ export async function GET(request: NextRequest, { params }: Params) {
     const targetYear = parseInt(searchParams.get('year') || String(new Date().getFullYear()), 10)
     const especeId = searchParams.get('especeId')
 
-    // Vérifier que la planche existe
+    // Vérifier que la planche existe et appartient à l'utilisateur
     const planche = await prisma.planche.findUnique({
-      where: { id: plancheId },
+      where: {
+        id: plancheId,
+        userId: session!.user.id,
+      },
     })
 
     if (!planche) {
@@ -34,6 +41,7 @@ export async function GET(request: NextRequest, { params }: Params) {
     const cultures = await prisma.culture.findMany({
       where: {
         plancheId,
+        userId: session!.user.id,
         annee: { gte: minYear },
       },
       include: {

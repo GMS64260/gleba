@@ -8,9 +8,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { createCultureSchema } from '@/lib/validations'
 import { Prisma } from '@prisma/client'
+import { requireAuthApi } from '@/lib/auth-utils'
 
 // GET /api/cultures
 export async function GET(request: NextRequest) {
+  const { error, session } = await requireAuthApi()
+  if (error) return error
+
   try {
     const { searchParams } = new URL(request.url)
 
@@ -30,8 +34,10 @@ export async function GET(request: NextRequest) {
     const plancheId = searchParams.get('plancheId')
     const etat = searchParams.get('etat') // Planifiée, Semée, Plantée, En récolte, Terminée
 
-    // Construction du where
-    const where: Prisma.CultureWhereInput = {}
+    // Construction du where - FILTRE PAR USER
+    const where: Prisma.CultureWhereInput = {
+      userId: session!.user.id,
+    }
 
     if (search) {
       where.OR = [
@@ -146,6 +152,9 @@ export async function GET(request: NextRequest) {
 
 // POST /api/cultures
 export async function POST(request: NextRequest) {
+  const { error, session } = await requireAuthApi()
+  if (error) return error
+
   try {
     const body = await request.json()
 
@@ -172,9 +181,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Création
+    // Création avec userId
     const culture = await prisma.culture.create({
-      data,
+      data: {
+        ...data,
+        userId: session!.user.id,
+      },
       include: {
         espece: true,
         variete: true,

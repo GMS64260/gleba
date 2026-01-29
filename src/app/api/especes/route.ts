@@ -1,6 +1,6 @@
 /**
  * API Routes pour les Espèces
- * GET /api/especes - Liste des espèces (avec filtres, pagination, tri)
+ * GET /api/especes - Liste des espèces (référentiel global, lecture pour tous les users)
  * POST /api/especes - Créer une espèce
  */
 
@@ -8,9 +8,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { createEspeceSchema } from '@/lib/validations'
 import { Prisma } from '@prisma/client'
+import { requireAuthApi } from '@/lib/auth-utils'
 
-// GET /api/especes
+// GET /api/especes - Référentiel global (lecture)
 export async function GET(request: NextRequest) {
+  const { error } = await requireAuthApi()
+  if (error) return error
+
   try {
     const { searchParams } = new URL(request.url)
 
@@ -90,6 +94,9 @@ export async function GET(request: NextRequest) {
 
 // POST /api/especes
 export async function POST(request: NextRequest) {
+  const { error } = await requireAuthApi()
+  if (error) return error
+
   try {
     const body = await request.json()
 

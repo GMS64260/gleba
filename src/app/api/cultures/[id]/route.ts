@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { updateCultureSchema } from '@/lib/validations'
+import { requireAuthApi } from '@/lib/auth-utils'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -16,6 +17,9 @@ export async function GET(
   request: NextRequest,
   { params }: RouteParams
 ) {
+  const { error, session } = await requireAuthApi()
+  if (error) return error
+
   try {
     const { id } = await params
     const cultureId = parseInt(id)
@@ -28,7 +32,10 @@ export async function GET(
     }
 
     const culture = await prisma.culture.findUnique({
-      where: { id: cultureId },
+      where: {
+        id: cultureId,
+        userId: session!.user.id,
+      },
       include: {
         espece: {
           include: { famille: true },
@@ -83,6 +90,9 @@ export async function PUT(
   request: NextRequest,
   { params }: RouteParams
 ) {
+  const { error, session } = await requireAuthApi()
+  if (error) return error
+
   try {
     const { id } = await params
     const cultureId = parseInt(id)
@@ -104,9 +114,12 @@ export async function PUT(
       )
     }
 
-    // Vérifier existence
+    // Vérifier existence et propriété
     const existing = await prisma.culture.findUnique({
-      where: { id: cultureId },
+      where: {
+        id: cultureId,
+        userId: session!.user.id,
+      },
     })
 
     if (!existing) {
@@ -143,6 +156,9 @@ export async function DELETE(
   request: NextRequest,
   { params }: RouteParams
 ) {
+  const { error, session } = await requireAuthApi()
+  if (error) return error
+
   try {
     const { id } = await params
     const cultureId = parseInt(id)
@@ -154,9 +170,12 @@ export async function DELETE(
       )
     }
 
-    // Vérifier existence
+    // Vérifier existence et propriété
     const culture = await prisma.culture.findUnique({
-      where: { id: cultureId },
+      where: {
+        id: cultureId,
+        userId: session!.user.id,
+      },
     })
 
     if (!culture) {

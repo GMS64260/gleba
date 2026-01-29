@@ -1,5 +1,5 @@
 /**
- * API Routes pour une Espèce spécifique
+ * API Routes pour une Espèce spécifique (référentiel global)
  * GET /api/especes/[id] - Détail d'une espèce
  * PUT /api/especes/[id] - Modifier une espèce
  * DELETE /api/especes/[id] - Supprimer une espèce
@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { updateEspeceSchema } from '@/lib/validations'
+import { requireAuthApi } from '@/lib/auth-utils'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -16,6 +17,9 @@ export async function GET(
   request: NextRequest,
   { params }: RouteParams
 ) {
+  const { error } = await requireAuthApi()
+  if (error) return error
+
   try {
     const { id } = await params
 
@@ -60,6 +64,9 @@ export async function PUT(
   request: NextRequest,
   { params }: RouteParams
 ) {
+  const { error } = await requireAuthApi()
+  if (error) return error
+
   try {
     const { id } = await params
     const body = await request.json()
@@ -109,6 +116,9 @@ export async function DELETE(
   request: NextRequest,
   { params }: RouteParams
 ) {
+  const { error } = await requireAuthApi()
+  if (error) return error
+
   try {
     const { id } = await params
 

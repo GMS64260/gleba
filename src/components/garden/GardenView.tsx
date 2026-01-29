@@ -32,6 +32,18 @@ interface ObjetJardin {
   couleur: string | null
 }
 
+interface Arbre {
+  id: number
+  nom: string
+  type: string
+  espece: string | null
+  variete: string | null
+  posX: number
+  posY: number
+  envergure: number
+  couleur: string | null
+}
+
 // Couleurs par défaut pour les types d'objets
 const OBJET_COLORS: Record<string, string> = {
   allee: "#d4a574",      // Marron clair (gravier)
@@ -43,48 +55,107 @@ const OBJET_COLORS: Record<string, string> = {
   autre: "#d1d5db"       // Gris
 }
 
+// Couleurs par défaut pour les types d'arbres
+const ARBRE_COLORS: Record<string, string> = {
+  fruitier: "#22c55e",    // Vert
+  petit_fruit: "#ef4444", // Rouge
+  ornement: "#a855f7",    // Violet
+  haie: "#84cc16"         // Vert lime
+}
+
+interface BackgroundImageSettings {
+  image: string | null // Data URL ou URL
+  opacity: number // 0-1
+  scale: number // metres par pixel de l'image originale
+  offsetX: number // decalage X en metres
+  offsetY: number // decalage Y en metres
+  rotation: number // rotation en degres
+}
+
 interface GardenViewProps {
   planches: PlancheWithCulture[]
   objets?: ObjetJardin[]
+  arbres?: Arbre[]
   editable?: boolean
   selectedId?: string | null
   selectedObjetId?: number | null
+  selectedArbreId?: number | null
   onPlancheMove?: (id: string, x: number, y: number) => void
   onPlancheClick?: (id: string) => void
   onObjetMove?: (id: number, x: number, y: number) => void
   onObjetClick?: (id: number) => void
+  onArbreMove?: (id: number, x: number, y: number) => void
+  onArbreClick?: (id: number) => void
   scale?: number // pixels per meter
   // Couleurs personnalisables
   plancheColor?: string
   selectedColor?: string
   gridColor?: string
+  // Image de fond
+  backgroundImage?: BackgroundImageSettings
 }
 
 export function GardenView({
   planches,
   objets = [],
+  arbres = [],
   editable = false,
   selectedId,
   selectedObjetId,
+  selectedArbreId,
   onPlancheMove,
   onPlancheClick,
   onObjetMove,
   onObjetClick,
+  onArbreMove,
+  onArbreClick,
   scale = 50,
   plancheColor = "#8B5A2B",
   selectedColor = "#22c55e",
   gridColor = "#e5e7eb",
+  backgroundImage,
 }: GardenViewProps) {
   const svgRef = React.useRef<SVGSVGElement>(null)
-  const [dragging, setDragging] = React.useState<{ type: 'planche' | 'objet'; id: string | number } | null>(null)
+  const [dragging, setDragging] = React.useState<{ type: 'planche' | 'objet' | 'arbre'; id: string | number } | null>(null)
   const [offset, setOffset] = React.useState({ x: 0, y: 0 })
   const [viewBox, setViewBox] = React.useState({ x: -1, y: -1, w: 20, h: 15 })
+  const [bgImageSize, setBgImageSize] = React.useState<{ width: number; height: number } | null>(null)
 
-  // Calculer la taille du jardin basée sur les planches ET les objets
+  // Charger les dimensions de l'image de fond
   React.useEffect(() => {
-    if (planches.length === 0 && objets.length === 0) return
+    if (!backgroundImage?.image) {
+      setBgImageSize(null)
+      return
+    }
+    const img = new Image()
+    img.onload = () => {
+      setBgImageSize({ width: img.naturalWidth, height: img.naturalHeight })
+    }
+    img.src = backgroundImage.image
+  }, [backgroundImage?.image])
+
+  // Calculer la taille du jardin basée sur les planches, objets, arbres ET image de fond
+  React.useEffect(() => {
+    // Inclure l'image de fond meme s'il n'y a pas d'elements
+    const hasElements = planches.length > 0 || objets.length > 0 || arbres.length > 0
+    const hasBackground = backgroundImage?.image && bgImageSize
+
+    if (!hasElements && !hasBackground) return
 
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+
+    // Inclure l'image de fond dans les bounds
+    if (hasBackground && bgImageSize) {
+      const imgX = backgroundImage.offsetX
+      const imgY = backgroundImage.offsetY
+      const imgW = bgImageSize.width * backgroundImage.scale
+      const imgH = bgImageSize.height * backgroundImage.scale
+
+      minX = Math.min(minX, imgX)
+      minY = Math.min(minY, imgY)
+      maxX = Math.max(maxX, imgX + imgW)
+      maxY = Math.max(maxY, imgY + imgH)
+    }
 
     planches.forEach(p => {
       const x = p.posX ?? 0
@@ -105,6 +176,20 @@ export function GardenView({
       maxY = Math.max(maxY, o.posY + o.longueur)
     })
 
+    arbres.forEach(a => {
+      const r = a.envergure / 2
+      minX = Math.min(minX, a.posX - r)
+      minY = Math.min(minY, a.posY - r)
+      maxX = Math.max(maxX, a.posX + r)
+      maxY = Math.max(maxY, a.posY + r)
+    })
+
+    // Si aucune bound trouvee, utiliser des valeurs par defaut
+    if (minX === Infinity) minX = 0
+    if (minY === Infinity) minY = 0
+    if (maxX === -Infinity) maxX = 10
+    if (maxY === -Infinity) maxY = 8
+
     // Ajouter une marge
     const margin = 1
     setViewBox({
@@ -113,7 +198,7 @@ export function GardenView({
       w: Math.max(maxX - minX + margin * 2, 10),
       h: Math.max(maxY - minY + margin * 2, 8)
     })
-  }, [planches, objets])
+  }, [planches, objets, arbres, backgroundImage, bgImageSize])
 
   const getPlancheColor = (planche: PlancheWithCulture): string => {
     // Culture active
@@ -183,6 +268,34 @@ export function GardenView({
     })
   }
 
+  const handleArbreMouseDown = (e: React.MouseEvent, arbreId: number) => {
+    if (!editable) {
+      onArbreClick?.(arbreId)
+      return
+    }
+
+    e.stopPropagation()
+
+    const svg = svgRef.current
+    if (!svg) return
+
+    const pt = svg.createSVGPoint()
+    pt.x = e.clientX
+    pt.y = e.clientY
+    const ctm = svg.getScreenCTM()
+    if (!ctm) return
+    const svgP = pt.matrixTransform(ctm.inverse())
+
+    const arbre = arbres.find(a => a.id === arbreId)
+    if (!arbre) return
+
+    setDragging({ type: 'arbre', id: arbreId })
+    setOffset({
+      x: svgP.x - arbre.posX,
+      y: svgP.y - arbre.posY
+    })
+  }
+
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!dragging || !editable) return
 
@@ -196,14 +309,17 @@ export function GardenView({
     if (!ctm) return
     const svgP = pt.matrixTransform(ctm.inverse())
 
-    // Snap to 0.5m grid
-    const newX = Math.round((svgP.x - offset.x) * 2) / 2
-    const newY = Math.round((svgP.y - offset.y) * 2) / 2
+    // Snap to 0.1m grid (plus fin pour un deplacement fluide)
+    const snapGrid = 10 // 10 = 0.1m, 4 = 0.25m, 2 = 0.5m
+    const newX = Math.round((svgP.x - offset.x) * snapGrid) / snapGrid
+    const newY = Math.round((svgP.y - offset.y) * snapGrid) / snapGrid
 
     if (dragging.type === 'planche') {
       onPlancheMove?.(dragging.id as string, newX, newY)
-    } else {
+    } else if (dragging.type === 'objet') {
       onObjetMove?.(dragging.id as number, newX, newY)
+    } else if (dragging.type === 'arbre') {
+      onArbreMove?.(dragging.id as number, newX, newY)
     }
   }
 
@@ -211,8 +327,10 @@ export function GardenView({
     if (dragging && editable) {
       if (dragging.type === 'planche') {
         onPlancheClick?.(dragging.id as string)
-      } else {
+      } else if (dragging.type === 'objet') {
         onObjetClick?.(dragging.id as number)
+      } else if (dragging.type === 'arbre') {
+        onArbreClick?.(dragging.id as number)
       }
     }
     setDragging(null)
@@ -223,6 +341,7 @@ export function GardenView({
     if (e.target === svgRef.current) {
       onPlancheClick?.("")
       onObjetClick?.(0)
+      onArbreClick?.(0)
     }
   }
 
@@ -275,6 +394,27 @@ export function GardenView({
           height={viewBox.h}
           fill="#f0fdf4"
         />
+
+        {/* Image de fond (satellite) */}
+        {backgroundImage?.image && bgImageSize && (
+          <g
+            transform={`
+              translate(${backgroundImage.offsetX}, ${backgroundImage.offsetY})
+              rotate(${backgroundImage.rotation}, ${(bgImageSize.width * backgroundImage.scale) / 2}, ${(bgImageSize.height * backgroundImage.scale) / 2})
+            `}
+            style={{ pointerEvents: "none" }}
+          >
+            <image
+              href={backgroundImage.image}
+              x={0}
+              y={0}
+              width={bgImageSize.width * backgroundImage.scale}
+              height={bgImageSize.height * backgroundImage.scale}
+              opacity={backgroundImage.opacity}
+              preserveAspectRatio="none"
+            />
+          </g>
+        )}
 
         {/* Grille de fond - lignes réelles */}
         <g className="grid-lines">
@@ -429,6 +569,73 @@ export function GardenView({
                   {objet.nom}
                 </text>
               )}
+            </g>
+          )
+        })}
+
+        {/* Arbres et arbustes */}
+        {arbres.map((arbre) => {
+          const color = arbre.couleur || ARBRE_COLORS[arbre.type] || ARBRE_COLORS.fruitier
+          const isSelected = selectedArbreId === arbre.id
+          const isDraggingThis = dragging?.type === 'arbre' && dragging.id === arbre.id
+          const r = arbre.envergure / 2
+
+          return (
+            <g
+              key={`arbre-${arbre.id}`}
+              transform={`translate(${arbre.posX}, ${arbre.posY})`}
+              onMouseDown={(e) => handleArbreMouseDown(e, arbre.id)}
+              style={{ cursor: editable ? (isDraggingThis ? "grabbing" : "grab") : "pointer" }}
+            >
+              {/* Ombre */}
+              <circle
+                cx={0.05}
+                cy={0.05}
+                r={r}
+                fill="rgba(0,0,0,0.15)"
+              />
+              {/* Couronne de l'arbre */}
+              <circle
+                cx={0}
+                cy={0}
+                r={r}
+                fill={color}
+                fillOpacity={0.7}
+                stroke={isSelected ? "#3b82f6" : isDraggingThis ? "#60a5fa" : "#166534"}
+                strokeWidth={isSelected ? 0.1 : isDraggingThis ? 0.08 : 0.04}
+              />
+              {/* Point central (tronc) */}
+              <circle
+                cx={0}
+                cy={0}
+                r={0.1}
+                fill="#78350f"
+                style={{ pointerEvents: "none" }}
+              />
+              {/* Halo de sélection */}
+              {isSelected && (
+                <circle
+                  cx={0}
+                  cy={0}
+                  r={r + 0.1}
+                  fill="none"
+                  stroke="#3b82f6"
+                  strokeWidth={0.05}
+                  strokeDasharray="0.2 0.1"
+                />
+              )}
+              {/* Nom */}
+              <text
+                x={0}
+                y={r + 0.25}
+                textAnchor="middle"
+                fontSize={Math.min(r * 0.5, 0.25)}
+                fill="#1f2937"
+                fontWeight="600"
+                style={{ pointerEvents: "none" }}
+              >
+                {arbre.nom}
+              </text>
             </g>
           )
         })}

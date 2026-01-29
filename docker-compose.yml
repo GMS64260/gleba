@@ -23,6 +23,11 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-potaleger}:${POSTGRES_PASSWORD:-potaleger}@db:5432/${POSTGRES_DB:-potaleger}?schema=public
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-changez-moi-en-production}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@potaleger.local}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme}
+      ADMIN_NAME: ${ADMIN_NAME:-Administrateur}
     ports:
       - "${APP_PORT:-3000}:3000"
     depends_on:

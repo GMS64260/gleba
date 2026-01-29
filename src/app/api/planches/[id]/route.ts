@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { updatePlancheSchema } from '@/lib/validations'
+import { requireAuthApi } from '@/lib/auth-utils'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -16,11 +17,17 @@ export async function GET(
   request: NextRequest,
   { params }: RouteParams
 ) {
+  const { error, session } = await requireAuthApi()
+  if (error) return error
+
   try {
     const { id } = await params
 
     const planche = await prisma.planche.findUnique({
-      where: { id },
+      where: {
+        id,
+        userId: session!.user.id,
+      },
       include: {
         rotation: {
           include: {
@@ -72,6 +79,9 @@ export async function PUT(
   request: NextRequest,
   { params }: RouteParams
 ) {
+  const { error, session } = await requireAuthApi()
+  if (error) return error
+
   try {
     const { id } = await params
     const body = await request.json()
@@ -85,9 +95,12 @@ export async function PUT(
       )
     }
 
-    // Vérifier existence
+    // Vérifier existence et propriété
     const existing = await prisma.planche.findUnique({
-      where: { id },
+      where: {
+        id,
+        userId: session!.user.id,
+      },
     })
 
     if (!existing) {
@@ -131,12 +144,18 @@ export async function DELETE(
   request: NextRequest,
   { params }: RouteParams
 ) {
+  const { error, session } = await requireAuthApi()
+  if (error) return error
+
   try {
     const { id } = await params
 
-    // Vérifier existence et dépendances
+    // Vérifier existence, propriété et dépendances
     const planche = await prisma.planche.findUnique({
-      where: { id },
+      where: {
+        id,
+        userId: session!.user.id,
+      },
       include: {
         _count: {
           select: {

@@ -6,10 +6,11 @@
 
 import * as React from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Settings, Save, Download, Upload, Loader2 } from 'lucide-react'
+import { ArrowLeft, Settings, Save, Download, Upload, Loader2, ImageIcon, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/hooks/use-toast'
+import { Slider } from '@/components/ui/slider'
 
 // Clé localStorage pour les paramètres
 const SETTINGS_KEY = 'potaleger_settings'
@@ -26,6 +27,13 @@ interface GardenSettings {
   plancheColor: string
   plancheSelectedColor: string
   gridColor: string
+  // Image de fond (satellite)
+  backgroundImage: string | null
+  backgroundOpacity: number
+  backgroundScale: number
+  backgroundOffsetX: number
+  backgroundOffsetY: number
+  backgroundRotation: number
 }
 
 const defaultSettings: GardenSettings = {
@@ -37,6 +45,12 @@ const defaultSettings: GardenSettings = {
   plancheColor: '#8B5A2B',
   plancheSelectedColor: '#22c55e',
   gridColor: '#e5e7eb',
+  backgroundImage: null,
+  backgroundOpacity: 0.5,
+  backgroundScale: 0.1,
+  backgroundOffsetX: 0,
+  backgroundOffsetY: 0,
+  backgroundRotation: 0,
 }
 
 export default function ParametresPage() {
@@ -46,6 +60,7 @@ export default function ParametresPage() {
   const [exporting, setExporting] = React.useState(false)
   const [importing, setImporting] = React.useState(false)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const imageInputRef = React.useRef<HTMLInputElement>(null)
 
   // Charger les paramètres au montage
   React.useEffect(() => {
@@ -170,6 +185,64 @@ export default function ParametresPage() {
       if (fileInputRef.current) {
         fileInputRef.current.value = ''
       }
+    }
+  }
+
+  // Gestion de l'image de fond
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Verifier que c'est une image
+    if (!file.type.startsWith('image/')) {
+      toast({
+        variant: 'destructive',
+        title: 'Erreur',
+        description: 'Veuillez selectionner un fichier image (JPG, PNG, etc.)',
+      })
+      return
+    }
+
+    // Verifier la taille (max 10 MB)
+    if (file.size > 10 * 1024 * 1024) {
+      toast({
+        variant: 'destructive',
+        title: 'Erreur',
+        description: 'L\'image est trop volumineuse (max 10 MB)',
+      })
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string
+      setSettings((prev) => ({ ...prev, backgroundImage: dataUrl }))
+      toast({
+        title: 'Image chargee',
+        description: 'N\'oubliez pas d\'enregistrer les parametres',
+      })
+    }
+    reader.onerror = () => {
+      toast({
+        variant: 'destructive',
+        title: 'Erreur',
+        description: 'Impossible de lire le fichier image',
+      })
+    }
+    reader.readAsDataURL(file)
+
+    if (imageInputRef.current) {
+      imageInputRef.current.value = ''
+    }
+  }
+
+  const handleRemoveImage = () => {
+    if (confirm('Supprimer l\'image de fond ?')) {
+      setSettings((prev) => ({ ...prev, backgroundImage: null }))
+      toast({
+        title: 'Image supprimee',
+        description: 'N\'oubliez pas d\'enregistrer les parametres',
+      })
     }
   }
 
@@ -359,6 +432,165 @@ export default function ParametresPage() {
                 {saving ? 'Enregistrement...' : 'Enregistrer'}
               </Button>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Image de fond */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ImageIcon className="h-5 w-5" />
+              Image de fond (satellite)
+            </CardTitle>
+            <CardDescription>
+              Ajoutez une image satellite ou photo aerienne de votre jardin comme fond de plan
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Upload image */}
+            <div>
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleImageUpload}
+                className="hidden"
+              />
+
+              {settings.backgroundImage ? (
+                <div className="space-y-4">
+                  <div className="relative border rounded-lg overflow-hidden bg-gray-100">
+                    <img
+                      src={settings.backgroundImage}
+                      alt="Fond du jardin"
+                      className="max-h-48 w-auto mx-auto object-contain"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => imageInputRef.current?.click()}
+                    >
+                      <Upload className="h-4 w-4 mr-2" />
+                      Changer l'image
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={handleRemoveImage}
+                      className="text-red-600 hover:text-red-700"
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Supprimer
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  onClick={() => imageInputRef.current?.click()}
+                  className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-green-500 hover:bg-green-50 transition-colors"
+                >
+                  <ImageIcon className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+                  <p className="text-sm text-gray-600">
+                    Cliquez pour ajouter une image satellite
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    JPG, PNG (max 10 MB)
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Parametres de l'image */}
+            {settings.backgroundImage && (
+              <div className="space-y-4 pt-4 border-t">
+                <h4 className="text-sm font-medium text-gray-900">Ajustements</h4>
+
+                {/* Opacite */}
+                <div>
+                  <label className="flex justify-between text-sm text-gray-600 mb-2">
+                    <span>Opacite</span>
+                    <span>{Math.round(settings.backgroundOpacity * 100)}%</span>
+                  </label>
+                  <Slider
+                    value={[settings.backgroundOpacity]}
+                    onValueChange={([value]) => setSettings((prev) => ({ ...prev, backgroundOpacity: value }))}
+                    min={0.1}
+                    max={1}
+                    step={0.05}
+                    className="w-full"
+                  />
+                </div>
+
+                {/* Echelle */}
+                <div>
+                  <label className="flex justify-between text-sm text-gray-600 mb-2">
+                    <span>Echelle (metres par pixel)</span>
+                    <span>{settings.backgroundScale.toFixed(3)} m/px</span>
+                  </label>
+                  <Slider
+                    value={[settings.backgroundScale]}
+                    onValueChange={([value]) => setSettings((prev) => ({ ...prev, backgroundScale: value }))}
+                    min={0.01}
+                    max={1}
+                    step={0.005}
+                    className="w-full"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">
+                    Ajustez pour que l'image corresponde a l'echelle reelle de votre jardin
+                  </p>
+                </div>
+
+                {/* Position X/Y */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm text-gray-600 mb-1">Decalage X (m)</label>
+                    <input
+                      type="number"
+                      value={settings.backgroundOffsetX}
+                      onChange={(e) => setSettings((prev) => ({ ...prev, backgroundOffsetX: parseFloat(e.target.value) || 0 }))}
+                      step="0.5"
+                      className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-600 mb-1">Decalage Y (m)</label>
+                    <input
+                      type="number"
+                      value={settings.backgroundOffsetY}
+                      onChange={(e) => setSettings((prev) => ({ ...prev, backgroundOffsetY: parseFloat(e.target.value) || 0 }))}
+                      step="0.5"
+                      className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                    />
+                  </div>
+                </div>
+
+                {/* Rotation */}
+                <div>
+                  <label className="flex justify-between text-sm text-gray-600 mb-2">
+                    <span>Rotation</span>
+                    <span>{settings.backgroundRotation}°</span>
+                  </label>
+                  <Slider
+                    value={[settings.backgroundRotation]}
+                    onValueChange={([value]) => setSettings((prev) => ({ ...prev, backgroundRotation: value }))}
+                    min={-180}
+                    max={180}
+                    step={1}
+                    className="w-full"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Bouton sauvegarder */}
+            {settings.backgroundImage && (
+              <div className="flex justify-end pt-4 border-t">
+                <Button onClick={handleSave} disabled={saving}>
+                  <Save className="h-4 w-4 mr-2" />
+                  {saving ? 'Enregistrement...' : 'Enregistrer'}
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
 

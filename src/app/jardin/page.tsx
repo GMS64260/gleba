@@ -66,6 +66,21 @@ interface Espece {
   couleur: string | null
 }
 
+interface Arbre {
+  id: number
+  nom: string
+  type: string
+  espece: string | null
+  variete: string | null
+  fournisseur: string | null
+  datePlantation: string | null
+  posX: number
+  posY: number
+  envergure: number
+  couleur: string | null
+  notes: string | null
+}
+
 const TYPES_OBJETS = [
   { value: "allee", label: "Allée", color: "#d4a574" },
   { value: "passage", label: "Passage", color: "#a8a29e" },
@@ -76,11 +91,19 @@ const TYPES_OBJETS = [
   { value: "autre", label: "Autre", color: "#d1d5db" },
 ]
 
+const TYPES_ARBRES = [
+  { value: "fruitier", label: "Arbre fruitier", color: "#22c55e" },
+  { value: "petit_fruit", label: "Petit fruit", color: "#ef4444" },
+  { value: "ornement", label: "Ornement", color: "#a855f7" },
+  { value: "haie", label: "Haie", color: "#84cc16" },
+]
+
 export default function JardinPage() {
   const { toast } = useToast()
   const settings = useSettings()
   const [planches, setPlanches] = React.useState<PlancheWithCulture[]>([])
   const [objets, setObjets] = React.useState<ObjetJardin[]>([])
+  const [arbres, setArbres] = React.useState<Arbre[]>([])
   const [especes, setEspeces] = React.useState<Espece[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [editMode, setEditMode] = React.useState(false)
@@ -91,10 +114,13 @@ export default function JardinPage() {
   // Sélection et édition
   const [selectedPlanche, setSelectedPlanche] = React.useState<string | null>(null)
   const [selectedObjet, setSelectedObjet] = React.useState<number | null>(null)
+  const [selectedArbre, setSelectedArbre] = React.useState<number | null>(null)
   const [showNewPlancheDialog, setShowNewPlancheDialog] = React.useState(false)
   const [showNewObjetDialog, setShowNewObjetDialog] = React.useState(false)
+  const [showNewArbreDialog, setShowNewArbreDialog] = React.useState(false)
   const [newPlanche, setNewPlanche] = React.useState({ id: "", largeur: settings.defaultPlancheLargeur, longueur: settings.defaultPlancheLongueur })
   const [newObjet, setNewObjet] = React.useState({ nom: "", type: "allee", largeur: 0.5, longueur: 5 })
+  const [newArbre, setNewArbre] = React.useState({ nom: "", type: "fruitier", espece: "", variete: "", fournisseur: "", envergure: 2 })
 
   // Mettre à jour les valeurs par défaut quand les settings changent
   React.useEffect(() => {
@@ -170,15 +196,29 @@ export default function JardinPage() {
     }
   }, [])
 
+  // Charger les arbres
+  const fetchArbres = React.useCallback(async () => {
+    try {
+      const response = await fetch("/api/arbres")
+      if (!response.ok) return
+      const data = await response.json()
+      setArbres(data || [])
+    } catch (error) {
+      // Ignorer
+    }
+  }, [])
+
   React.useEffect(() => {
     fetchPlanches()
     fetchObjets()
     fetchEspeces()
-  }, [fetchPlanches, fetchObjets, fetchEspeces])
+    fetchArbres()
+  }, [fetchPlanches, fetchObjets, fetchEspeces, fetchArbres])
 
-  // Données de la planche sélectionnée
+  // Données de l'element selectionne
   const selectedPlancheData = planches.find(p => p.id === selectedPlanche)
   const selectedObjetData = objets.find(o => o.id === selectedObjet)
+  const selectedArbreData = arbres.find(a => a.id === selectedArbre)
 
   // Déplacer une planche
   const handlePlancheMove = (id: string, x: number, y: number) => {
@@ -196,16 +236,39 @@ export default function JardinPage() {
     setHasChanges(true)
   }
 
+  // Déplacer un arbre
+  const handleArbreMove = (id: number, x: number, y: number) => {
+    setArbres(prev => prev.map(a =>
+      a.id === id ? { ...a, posX: x, posY: y } : a
+    ))
+    setHasChanges(true)
+  }
+
   // Sélectionner une planche
   const handlePlancheClick = (id: string) => {
     setSelectedPlanche(prev => prev === id ? null : id)
-    if (id) setSelectedObjet(null)
+    if (id) {
+      setSelectedObjet(null)
+      setSelectedArbre(null)
+    }
   }
 
   // Sélectionner un objet
   const handleObjetClick = (id: number) => {
     setSelectedObjet(prev => prev === id ? null : id)
-    if (id) setSelectedPlanche(null)
+    if (id) {
+      setSelectedPlanche(null)
+      setSelectedArbre(null)
+    }
+  }
+
+  // Sélectionner un arbre
+  const handleArbreClick = (id: number) => {
+    setSelectedArbre(prev => prev === id ? null : id)
+    if (id) {
+      setSelectedPlanche(null)
+      setSelectedObjet(null)
+    }
   }
 
   // Tourner une planche
@@ -251,14 +314,38 @@ export default function JardinPage() {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            nom: o.nom,
+            type: o.type,
+            largeur: o.largeur,
+            longueur: o.longueur,
             posX: o.posX,
             posY: o.posY,
-            rotation2D: o.rotation2D
+            rotation2D: o.rotation2D,
+            couleur: o.couleur
           })
         })
       )
 
-      await Promise.all([...planchePromises, ...objetPromises])
+      const arbrePromises = arbres.map(a =>
+        fetch(`/api/arbres/${a.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            nom: a.nom,
+            type: a.type,
+            espece: a.espece,
+            variete: a.variete,
+            fournisseur: a.fournisseur,
+            posX: a.posX,
+            posY: a.posY,
+            envergure: a.envergure,
+            couleur: a.couleur,
+            notes: a.notes
+          })
+        })
+      )
+
+      await Promise.all([...planchePromises, ...objetPromises, ...arbrePromises])
 
       toast({
         title: "Plan sauvegardé",
@@ -439,6 +526,90 @@ export default function JardinPage() {
     }
   }
 
+  // Créer un nouvel arbre
+  const handleCreateArbre = async () => {
+    if (!newArbre.nom.trim()) {
+      toast({ variant: "destructive", title: "Nom requis" })
+      return
+    }
+
+    try {
+      // Trouver une position libre
+      let maxY = 0
+      planches.forEach(p => {
+        const bottom = (p.posY || 0) + (p.longueur || 2)
+        if (bottom > maxY) maxY = bottom
+      })
+      objets.forEach(o => {
+        const bottom = o.posY + o.longueur
+        if (bottom > maxY) maxY = bottom
+      })
+      arbres.forEach(a => {
+        const bottom = a.posY + a.envergure / 2
+        if (bottom > maxY) maxY = bottom
+      })
+
+      const response = await fetch("/api/arbres", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nom: newArbre.nom.trim(),
+          type: newArbre.type,
+          espece: newArbre.espece || null,
+          variete: newArbre.variete || null,
+          fournisseur: newArbre.fournisseur || null,
+          envergure: newArbre.envergure,
+          posX: 2,
+          posY: maxY + 1
+        })
+      })
+
+      if (!response.ok) {
+        const err = await response.json()
+        throw new Error(err.error || "Erreur création")
+      }
+
+      toast({ title: "Arbre créé", description: newArbre.nom })
+      setShowNewArbreDialog(false)
+      setNewArbre({ nom: "", type: "fruitier", espece: "", variete: "", fournisseur: "", envergure: 2 })
+      fetchArbres()
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Erreur",
+        description: error instanceof Error ? error.message : "Erreur inconnue"
+      })
+    }
+  }
+
+  // Supprimer l'arbre sélectionné
+  const handleDeleteArbre = async () => {
+    if (!selectedArbre) return
+    const arbre = arbres.find(a => a.id === selectedArbre)
+    if (!confirm(`Supprimer l'arbre "${arbre?.nom}" ?`)) return
+
+    try {
+      const response = await fetch(`/api/arbres/${selectedArbre}`, {
+        method: "DELETE"
+      })
+
+      if (!response.ok) {
+        const err = await response.json()
+        throw new Error(err.error || "Erreur suppression")
+      }
+
+      toast({ title: "Arbre supprimé" })
+      setSelectedArbre(null)
+      fetchArbres()
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Erreur",
+        description: error instanceof Error ? error.message : "Erreur inconnue"
+      })
+    }
+  }
+
   // Légende des couleurs
   const legendItems = React.useMemo(() => {
     const items = new Map<string, { color: string; name: string }>()
@@ -504,6 +675,10 @@ export default function JardinPage() {
                   <Plus className="h-4 w-4 mr-2" />
                   Objet
                 </Button>
+                <Button variant="outline" size="sm" onClick={() => setShowNewArbreDialog(true)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Arbre
+                </Button>
                 <Button variant="outline" size="sm" onClick={handleReset}>
                   <RotateCcw className="h-4 w-4 mr-2" />
                   Réorg.
@@ -540,17 +715,29 @@ export default function JardinPage() {
                 <GardenView
                   planches={planches}
                   objets={objets}
+                  arbres={arbres}
                   editable={editMode}
                   selectedId={selectedPlanche}
                   selectedObjetId={selectedObjet}
+                  selectedArbreId={selectedArbre}
                   onPlancheMove={handlePlancheMove}
                   onPlancheClick={handlePlancheClick}
                   onObjetMove={handleObjetMove}
                   onObjetClick={handleObjetClick}
+                  onArbreMove={handleArbreMove}
+                  onArbreClick={handleArbreClick}
                   scale={scale}
                   plancheColor={settings.plancheColor}
                   selectedColor={settings.plancheSelectedColor}
                   gridColor={settings.gridColor}
+                  backgroundImage={settings.backgroundImage ? {
+                    image: settings.backgroundImage,
+                    opacity: settings.backgroundOpacity,
+                    scale: settings.backgroundScale,
+                    offsetX: settings.backgroundOffsetX,
+                    offsetY: settings.backgroundOffsetY,
+                    rotation: settings.backgroundRotation,
+                  } : undefined}
                 />
               )}
             </CardContent>
@@ -653,28 +840,124 @@ export default function JardinPage() {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <div
-                      className="w-4 h-4 rounded"
-                      style={{ backgroundColor: selectedObjetData.couleur || TYPES_OBJETS.find(t => t.value === selectedObjetData.type)?.color }}
-                    />
-                    <span className="text-sm capitalize">{TYPES_OBJETS.find(t => t.value === selectedObjetData.type)?.label}</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-sm">
-                    <div>
-                      <span className="text-muted-foreground">Largeur:</span>
-                      <span className="ml-1 font-medium">{selectedObjetData.largeur}m</span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">Longueur:</span>
-                      <span className="ml-1 font-medium">{selectedObjetData.longueur}m</span>
-                    </div>
-                  </div>
+                  {editMode ? (
+                    /* Mode edition - champs modifiables */
+                    <div className="space-y-3">
+                      {/* Type */}
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Type</Label>
+                        <Select
+                          value={selectedObjetData.type}
+                          onValueChange={(v) => {
+                            setObjets(prev => prev.map(o =>
+                              o.id === selectedObjet ? { ...o, type: v } : o
+                            ))
+                            setHasChanges(true)
+                          }}
+                        >
+                          <SelectTrigger className="h-8 text-sm">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {TYPES_OBJETS.map(t => (
+                              <SelectItem key={t.value} value={t.value}>
+                                <div className="flex items-center gap-2">
+                                  <div className="w-3 h-3 rounded" style={{ backgroundColor: t.color }} />
+                                  {t.label}
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
 
-                  {editMode && (
-                    <div className="space-y-2 pt-2 border-t">
+                      {/* Nom */}
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Nom (optionnel)</Label>
+                        <Input
+                          className="h-8 text-sm"
+                          value={selectedObjetData.nom || ""}
+                          onChange={(e) => {
+                            setObjets(prev => prev.map(o =>
+                              o.id === selectedObjet ? { ...o, nom: e.target.value || null } : o
+                            ))
+                            setHasChanges(true)
+                          }}
+                          placeholder="Ex: Allee principale"
+                        />
+                      </div>
+
+                      {/* Dimensions */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Largeur (m)</Label>
+                          <Input
+                            className="h-8 text-sm"
+                            type="number"
+                            step="0.1"
+                            min="0.1"
+                            value={selectedObjetData.largeur}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value) || 0.1
+                              setObjets(prev => prev.map(o =>
+                                o.id === selectedObjet ? { ...o, largeur: val } : o
+                              ))
+                              setHasChanges(true)
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Longueur (m)</Label>
+                          <Input
+                            className="h-8 text-sm"
+                            type="number"
+                            step="0.1"
+                            min="0.1"
+                            value={selectedObjetData.longueur}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value) || 0.1
+                              setObjets(prev => prev.map(o =>
+                                o.id === selectedObjet ? { ...o, longueur: val } : o
+                              ))
+                              setHasChanges(true)
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Couleur personnalisee */}
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Couleur</Label>
+                        <div className="flex gap-2">
+                          <input
+                            type="color"
+                            value={selectedObjetData.couleur || TYPES_OBJETS.find(t => t.value === selectedObjetData.type)?.color || "#d1d5db"}
+                            onChange={(e) => {
+                              setObjets(prev => prev.map(o =>
+                                o.id === selectedObjet ? { ...o, couleur: e.target.value } : o
+                              ))
+                              setHasChanges(true)
+                            }}
+                            className="h-8 w-12 rounded border border-gray-300 cursor-pointer"
+                          />
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 text-xs"
+                            onClick={() => {
+                              setObjets(prev => prev.map(o =>
+                                o.id === selectedObjet ? { ...o, couleur: null } : o
+                              ))
+                              setHasChanges(true)
+                            }}
+                          >
+                            Par defaut
+                          </Button>
+                        </div>
+                      </div>
+
                       {/* Rotation */}
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between pt-2 border-t">
                         <span className="text-sm text-muted-foreground">Rotation: {selectedObjetData.rotation2D}°</span>
                         <div className="flex gap-1">
                           <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => handleRotateObjet(-15)}>
@@ -688,11 +971,261 @@ export default function JardinPage() {
                           </Button>
                         </div>
                       </div>
+
+                      {/* Bouton supprimer */}
                       <Button variant="destructive" size="sm" onClick={handleDeleteObjet} className="w-full">
                         <Trash2 className="h-4 w-4 mr-2" />
                         Supprimer
                       </Button>
                     </div>
+                  ) : (
+                    /* Mode lecture seule */
+                    <>
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="w-4 h-4 rounded"
+                          style={{ backgroundColor: selectedObjetData.couleur || TYPES_OBJETS.find(t => t.value === selectedObjetData.type)?.color }}
+                        />
+                        <span className="text-sm capitalize">{TYPES_OBJETS.find(t => t.value === selectedObjetData.type)?.label}</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div>
+                          <span className="text-muted-foreground">Largeur:</span>
+                          <span className="ml-1 font-medium">{selectedObjetData.largeur}m</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Longueur:</span>
+                          <span className="ml-1 font-medium">{selectedObjetData.longueur}m</span>
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground italic pt-2">
+                        Activez le mode Editer pour modifier
+                      </p>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            ) : selectedArbreData ? (
+              <Card>
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-base">{selectedArbreData.nom}</CardTitle>
+                    <Button variant="ghost" size="icon" onClick={() => setSelectedArbre(null)}>
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {editMode ? (
+                    /* Mode edition - champs modifiables */
+                    <div className="space-y-3">
+                      {/* Nom */}
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Nom</Label>
+                        <Input
+                          className="h-8 text-sm"
+                          value={selectedArbreData.nom}
+                          onChange={(e) => {
+                            setArbres(prev => prev.map(a =>
+                              a.id === selectedArbre ? { ...a, nom: e.target.value } : a
+                            ))
+                            setHasChanges(true)
+                          }}
+                        />
+                      </div>
+
+                      {/* Type */}
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Type</Label>
+                        <Select
+                          value={selectedArbreData.type}
+                          onValueChange={(v) => {
+                            setArbres(prev => prev.map(a =>
+                              a.id === selectedArbre ? { ...a, type: v } : a
+                            ))
+                            setHasChanges(true)
+                          }}
+                        >
+                          <SelectTrigger className="h-8 text-sm">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {TYPES_ARBRES.map(t => (
+                              <SelectItem key={t.value} value={t.value}>
+                                <div className="flex items-center gap-2">
+                                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: t.color }} />
+                                  {t.label}
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {/* Espece & Variete */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Espece</Label>
+                          <Input
+                            className="h-8 text-sm"
+                            value={selectedArbreData.espece || ""}
+                            onChange={(e) => {
+                              setArbres(prev => prev.map(a =>
+                                a.id === selectedArbre ? { ...a, espece: e.target.value || null } : a
+                              ))
+                              setHasChanges(true)
+                            }}
+                            placeholder="Ex: Pommier"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Variete</Label>
+                          <Input
+                            className="h-8 text-sm"
+                            value={selectedArbreData.variete || ""}
+                            onChange={(e) => {
+                              setArbres(prev => prev.map(a =>
+                                a.id === selectedArbre ? { ...a, variete: e.target.value || null } : a
+                              ))
+                              setHasChanges(true)
+                            }}
+                            placeholder="Ex: Golden"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Fournisseur */}
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Fournisseur</Label>
+                        <Input
+                          className="h-8 text-sm"
+                          value={selectedArbreData.fournisseur || ""}
+                          onChange={(e) => {
+                            setArbres(prev => prev.map(a =>
+                              a.id === selectedArbre ? { ...a, fournisseur: e.target.value || null } : a
+                            ))
+                            setHasChanges(true)
+                          }}
+                          placeholder="Ex: Pepiniere locale"
+                        />
+                      </div>
+
+                      {/* Envergure */}
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Envergure (m)</Label>
+                        <Input
+                          className="h-8 text-sm"
+                          type="number"
+                          step="0.5"
+                          min="0.5"
+                          value={selectedArbreData.envergure}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value) || 1
+                            setArbres(prev => prev.map(a =>
+                              a.id === selectedArbre ? { ...a, envergure: val } : a
+                            ))
+                            setHasChanges(true)
+                          }}
+                        />
+                      </div>
+
+                      {/* Couleur personnalisee */}
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Couleur</Label>
+                        <div className="flex gap-2">
+                          <input
+                            type="color"
+                            value={selectedArbreData.couleur || TYPES_ARBRES.find(t => t.value === selectedArbreData.type)?.color || "#22c55e"}
+                            onChange={(e) => {
+                              setArbres(prev => prev.map(a =>
+                                a.id === selectedArbre ? { ...a, couleur: e.target.value } : a
+                              ))
+                              setHasChanges(true)
+                            }}
+                            className="h-8 w-12 rounded border border-gray-300 cursor-pointer"
+                          />
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 text-xs"
+                            onClick={() => {
+                              setArbres(prev => prev.map(a =>
+                                a.id === selectedArbre ? { ...a, couleur: null } : a
+                              ))
+                              setHasChanges(true)
+                            }}
+                          >
+                            Par defaut
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* Notes */}
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Notes</Label>
+                        <Input
+                          className="h-8 text-sm"
+                          value={selectedArbreData.notes || ""}
+                          onChange={(e) => {
+                            setArbres(prev => prev.map(a =>
+                              a.id === selectedArbre ? { ...a, notes: e.target.value || null } : a
+                            ))
+                            setHasChanges(true)
+                          }}
+                          placeholder="Notes..."
+                        />
+                      </div>
+
+                      {/* Bouton supprimer */}
+                      <Button variant="destructive" size="sm" onClick={handleDeleteArbre} className="w-full">
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Supprimer
+                      </Button>
+                    </div>
+                  ) : (
+                    /* Mode lecture seule */
+                    <>
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="w-4 h-4 rounded-full"
+                          style={{ backgroundColor: selectedArbreData.couleur || TYPES_ARBRES.find(t => t.value === selectedArbreData.type)?.color }}
+                        />
+                        <span className="text-sm">{TYPES_ARBRES.find(t => t.value === selectedArbreData.type)?.label}</span>
+                      </div>
+                      <div className="text-sm space-y-1">
+                        {selectedArbreData.espece && (
+                          <div>
+                            <span className="text-muted-foreground">Espece:</span>
+                            <span className="ml-1 font-medium">{selectedArbreData.espece}</span>
+                          </div>
+                        )}
+                        {selectedArbreData.variete && (
+                          <div>
+                            <span className="text-muted-foreground">Variete:</span>
+                            <span className="ml-1 font-medium">{selectedArbreData.variete}</span>
+                          </div>
+                        )}
+                        {selectedArbreData.fournisseur && (
+                          <div>
+                            <span className="text-muted-foreground">Fournisseur:</span>
+                            <span className="ml-1 font-medium">{selectedArbreData.fournisseur}</span>
+                          </div>
+                        )}
+                        <div>
+                          <span className="text-muted-foreground">Envergure:</span>
+                          <span className="ml-1 font-medium">{selectedArbreData.envergure}m</span>
+                        </div>
+                        {selectedArbreData.notes && (
+                          <div>
+                            <span className="text-muted-foreground">Notes:</span>
+                            <span className="ml-1">{selectedArbreData.notes}</span>
+                          </div>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground italic pt-2">
+                        Activez le mode Editer pour modifier
+                      </p>
+                    </>
                   )}
                 </CardContent>
               </Card>
@@ -745,6 +1278,12 @@ export default function JardinPage() {
                     {planches.reduce((sum, p) => sum + (p.largeur || 0) * (p.longueur || 0), 0).toFixed(1)} m²
                   </span>
                 </div>
+                {arbres.length > 0 && (
+                  <div className="flex justify-between pt-1 border-t">
+                    <span className="text-muted-foreground">Arbres</span>
+                    <span className="font-medium">{arbres.length}</span>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -874,6 +1413,89 @@ export default function JardinPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowNewObjetDialog(false)}>Annuler</Button>
             <Button onClick={handleCreateObjet}>Créer</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog création arbre */}
+      <Dialog open={showNewArbreDialog} onOpenChange={setShowNewArbreDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Nouvel arbre / arbuste</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label htmlFor="arbre-nom">Nom *</Label>
+              <Input
+                id="arbre-nom"
+                value={newArbre.nom}
+                onChange={e => setNewArbre(a => ({ ...a, nom: e.target.value }))}
+                placeholder="Ex: Pommier Golden, Framboisier..."
+              />
+            </div>
+            <div>
+              <Label htmlFor="arbre-type">Type</Label>
+              <Select value={newArbre.type} onValueChange={v => setNewArbre(a => ({ ...a, type: v }))}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {TYPES_ARBRES.map(t => (
+                    <SelectItem key={t.value} value={t.value}>
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: t.color }} />
+                        {t.label}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="arbre-espece">Espece</Label>
+                <Input
+                  id="arbre-espece"
+                  value={newArbre.espece}
+                  onChange={e => setNewArbre(a => ({ ...a, espece: e.target.value }))}
+                  placeholder="Ex: Pommier"
+                />
+              </div>
+              <div>
+                <Label htmlFor="arbre-variete">Variete</Label>
+                <Input
+                  id="arbre-variete"
+                  value={newArbre.variete}
+                  onChange={e => setNewArbre(a => ({ ...a, variete: e.target.value }))}
+                  placeholder="Ex: Golden"
+                />
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="arbre-fournisseur">Fournisseur / Lieu d'achat</Label>
+              <Input
+                id="arbre-fournisseur"
+                value={newArbre.fournisseur}
+                onChange={e => setNewArbre(a => ({ ...a, fournisseur: e.target.value }))}
+                placeholder="Ex: Pepiniere du coin"
+              />
+            </div>
+            <div>
+              <Label htmlFor="arbre-envergure">Envergure (m)</Label>
+              <Input
+                id="arbre-envergure"
+                type="number"
+                step="0.5"
+                min="0.5"
+                value={newArbre.envergure}
+                onChange={e => setNewArbre(a => ({ ...a, envergure: parseFloat(e.target.value) || 2 }))}
+              />
+              <p className="text-xs text-muted-foreground mt-1">Diametre de la couronne</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowNewArbreDialog(false)}>Annuler</Button>
+            <Button onClick={handleCreateArbre}>Créer</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

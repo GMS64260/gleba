@@ -8,9 +8,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { createRecolteSchema } from '@/lib/validations'
 import { Prisma } from '@prisma/client'
+import { requireAuthApi } from '@/lib/auth-utils'
 
 // GET /api/recoltes
 export async function GET(request: NextRequest) {
+  const { error, session } = await requireAuthApi()
+  if (error) return error
+
   try {
     const { searchParams } = new URL(request.url)
 
@@ -30,8 +34,10 @@ export async function GET(request: NextRequest) {
     const dateFrom = searchParams.get('dateFrom')
     const dateTo = searchParams.get('dateTo')
 
-    // Construction du where
-    const where: Prisma.RecolteWhereInput = {}
+    // Construction du where - FILTRE PAR USER
+    const where: Prisma.RecolteWhereInput = {
+      userId: session!.user.id,
+    }
 
     if (search) {
       where.OR = [
@@ -108,6 +114,9 @@ export async function GET(request: NextRequest) {
 
 // POST /api/recoltes
 export async function POST(request: NextRequest) {
+  const { error, session } = await requireAuthApi()
+  if (error) return error
+
   try {
     const body = await request.json()
 
@@ -122,9 +131,12 @@ export async function POST(request: NextRequest) {
 
     const data = validationResult.data
 
-    // Vérifier que la culture existe
+    // Vérifier que la culture existe et appartient à l'utilisateur
     const culture = await prisma.culture.findUnique({
-      where: { id: data.cultureId },
+      where: {
+        id: data.cultureId,
+        userId: session!.user.id,
+      },
       include: { espece: true },
     })
 
@@ -143,9 +155,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Création de la récolte
+    // Création de la récolte avec userId
     const recolte = await prisma.recolte.create({
-      data,
+      data: {
+        ...data,
+        userId: session!.user.id,
+      },
       include: {
         espece: true,
         culture: true,

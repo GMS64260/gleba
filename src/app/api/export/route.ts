@@ -1,64 +1,77 @@
 /**
  * API Export des données
  * GET /api/export?format=json|csv
+ * Exporte uniquement les données de l'utilisateur connecté
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import prisma from '@/lib/prisma'
+import { requireAuthApi } from '@/lib/auth-utils'
 
 export async function GET(request: NextRequest) {
+  const { error, session } = await requireAuthApi()
+  if (error) return error
+
   try {
     const { searchParams } = new URL(request.url)
     const format = searchParams.get('format') || 'json'
+    const userId = session!.user.id
 
-    // Récupérer toutes les données
+    // Récupérer toutes les données de l'utilisateur
     const [
+      // Référentiels globaux
       familles,
       especes,
       varietes,
-      planches,
       rotations,
       rotationDetails,
       itps,
+      fertilisants,
+      fournisseurs,
+      // Données utilisateur
+      planches,
       cultures,
       recoltes,
-      fertilisants,
       fertilisations,
-      fournisseurs,
       analyses,
       objetsJardin,
     ] = await Promise.all([
+      // Référentiels globaux (partagés)
       prisma.famille.findMany(),
       prisma.espece.findMany(),
       prisma.variete.findMany(),
-      prisma.planche.findMany(),
       prisma.rotation.findMany(),
       prisma.rotationDetail.findMany(),
       prisma.iTP.findMany(),
-      prisma.culture.findMany(),
-      prisma.recolte.findMany(),
       prisma.fertilisant.findMany(),
-      prisma.fertilisation.findMany(),
       prisma.fournisseur.findMany(),
-      prisma.analyseSol.findMany(),
-      prisma.objetJardin.findMany(),
+      // Données utilisateur (filtrées)
+      prisma.planche.findMany({ where: { userId } }),
+      prisma.culture.findMany({ where: { userId } }),
+      prisma.recolte.findMany({ where: { userId } }),
+      prisma.fertilisation.findMany({ where: { userId } }),
+      prisma.analyseSol.findMany({ where: { userId } }),
+      prisma.objetJardin.findMany({ where: { userId } }),
     ])
 
     const data = {
       exportDate: new Date().toISOString(),
       version: '1.0',
+      userId,
+      // Référentiels
       familles,
       especes,
       varietes,
-      planches,
       rotations,
       rotationDetails,
       itps,
+      fertilisants,
+      fournisseurs,
+      // Données utilisateur
+      planches,
       cultures,
       recoltes,
-      fertilisants,
       fertilisations,
-      fournisseurs,
       analyses,
       objetsJardin,
     }
@@ -72,9 +85,8 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // Format CSV - créer un fichier ZIP avec plusieurs CSV
+    // Format CSV - créer un fichier avec plusieurs CSV
     if (format === 'csv') {
-      // Pour simplifier, on retourne un JSON avec les données en format CSV-ready
       const csvData: Record<string, string> = {}
 
       // Fonction pour convertir un tableau d'objets en CSV
@@ -104,7 +116,6 @@ export async function GET(request: NextRequest) {
       if (fertilisations.length) csvData['fertilisations.csv'] = toCSV(fertilisations as Record<string, unknown>[])
       if (objetsJardin.length) csvData['objets_jardin.csv'] = toCSV(objetsJardin as Record<string, unknown>[])
 
-      // Retourner comme JSON contenant les CSV (le vrai ZIP nécessiterait une lib)
       return new NextResponse(JSON.stringify(csvData, null, 2), {
         headers: {
           'Content-Type': 'application/json',

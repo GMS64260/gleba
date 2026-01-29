@@ -2,8 +2,10 @@
 
 import * as React from "react"
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { UserMenu } from "@/components/auth/UserMenu";
 import {
   Leaf,
   Sprout,
@@ -66,6 +68,7 @@ interface DashboardStats {
 }
 
 export default function Home() {
+  const { data: session } = useSession()
   const [stats, setStats] = React.useState<DashboardStats | null>(null)
   const [loading, setLoading] = React.useState(true)
 
@@ -111,12 +114,14 @@ export default function Home() {
             <Leaf className="h-8 w-8 text-green-600" />
             <h1 className="text-2xl font-bold text-green-800">Potaléger</h1>
           </div>
-          <Link href="/parametres">
-            <Button variant="outline" size="sm">
-              <Settings className="h-4 w-4 mr-2" />
-              Paramètres
-            </Button>
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link href="/parametres">
+              <Button variant="ghost" size="sm">
+                <Settings className="h-4 w-4" />
+              </Button>
+            </Link>
+            {session?.user && <UserMenu user={session.user} />}
+          </div>
         </div>
       </header>
 
@@ -219,7 +224,7 @@ export default function Home() {
         <p>
           Potaléger v0.1.0 - Basé sur{" "}
           <a
-            href="https://github.com/marcpley/potalern"
+            href="https://github.com/marcpley/potaleger"
             target="_blank"
             rel="noopener noreferrer"
             className="text-green-600 hover:underline"

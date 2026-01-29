@@ -3,15 +3,20 @@
  * GET /api/jardin - Récupère les planches avec positions et cultures actives
  */
 
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
+import { requireAuthApi } from '@/lib/auth-utils'
 
 // GET /api/jardin
-export async function GET(request: NextRequest) {
+export async function GET() {
+  const { error, session } = await requireAuthApi()
+  if (error) return error
+
   try {
     const currentYear = new Date().getFullYear()
 
     const planches = await prisma.planche.findMany({
+      where: { userId: session!.user.id },
       select: {
         id: true,
         largeur: true,

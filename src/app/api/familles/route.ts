@@ -1,5 +1,5 @@
 /**
- * API Routes pour les Familles botaniques
+ * API Routes pour les Familles botaniques (référentiel global)
  * GET /api/familles - Liste des familles
  * POST /api/familles - Créer une famille
  */
@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { z } from 'zod'
+import { requireAuthApi } from '@/lib/auth-utils'
 
 const familleSchema = z.object({
   id: z.string().min(1, "Le nom de la famille est requis").max(100),
@@ -17,6 +18,9 @@ const familleSchema = z.object({
 
 // GET /api/familles
 export async function GET() {
+  const { error } = await requireAuthApi()
+  if (error) return error
+
   try {
     const familles = await prisma.famille.findMany({
       include: {
@@ -39,6 +43,9 @@ export async function GET() {
 
 // POST /api/familles
 export async function POST(request: NextRequest) {
+  const { error } = await requireAuthApi()
+  if (error) return error
+
   try {
     const body = await request.json()
 
