@@ -32,9 +32,14 @@ export async function GET(request: NextRequest) {
     const familleId = searchParams.get('familleId')
     const vivace = searchParams.get('vivace')
     const aPlanifier = searchParams.get('aPlanifier')
+    const type = searchParams.get('type')
 
     // Construction du where
     const where: Prisma.EspeceWhereInput = {}
+
+    if (type) {
+      where.type = type
+    }
 
     if (search) {
       where.OR = [
@@ -86,7 +91,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('GET /api/especes error:', error)
     return NextResponse.json(
-      { error: 'Erreur lors de la récupération des espèces' },
+      { error: 'Erreur lors de la récupération des espèces', details: String(error) },
       { status: 500 }
     )
   }

@@ -4,9 +4,13 @@
 
 import { z } from 'zod'
 
-// Schéma de base pour une espèce
-export const especeSchema = z.object({
+// Types d'espèces valides
+export const ESPECE_TYPES = ['legume', 'arbre_fruitier', 'petit_fruit', 'aromatique', 'engrais_vert'] as const
+
+// Schéma de base pour une espèce (correspond au modèle Prisma)
+export const baseEspeceSchema = z.object({
   id: z.string().min(1, "Le nom de l'espèce est requis").max(100),
+  type: z.enum(ESPECE_TYPES),
   familleId: z.string().nullable().optional(),
   nomLatin: z.string().max(200).nullable().optional(),
   rendement: z.number().min(0).max(100).nullable().optional(),
@@ -23,12 +27,12 @@ export const especeSchema = z.object({
 })
 
 // Schéma pour la création (id requis)
-export const createEspeceSchema = especeSchema
+export const createEspeceSchema = baseEspeceSchema
 
 // Schéma pour la mise à jour (id optionnel, tous les champs optionnels)
-export const updateEspeceSchema = especeSchema.partial().omit({ id: true })
+export const updateEspeceSchema = baseEspeceSchema.partial().omit({ id: true })
 
 // Types inférés
-export type EspeceInput = z.infer<typeof especeSchema>
+export type EspeceInput = z.infer<typeof baseEspeceSchema>
 export type CreateEspeceInput = z.infer<typeof createEspeceSchema>
 export type UpdateEspeceInput = z.infer<typeof updateEspeceSchema>

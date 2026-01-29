@@ -44,6 +44,7 @@ export function UserForm({ user }: UserFormProps) {
     password: "",
     role: user?.role || "USER",
     active: user?.active ?? true,
+    createSampleData: true, // Par défaut, créer les données d'exemple
   })
 
   async function handleSubmit(e: React.FormEvent) {
@@ -173,6 +174,23 @@ export function UserForm({ user }: UserFormProps) {
           disabled={loading}
         />
       </div>
+
+      {!isEdit && (
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <Label htmlFor="createSampleData">Données d&apos;exemple</Label>
+            <p className="text-xs text-muted-foreground">
+              Créer 2 planches, 4 cultures et 2 arbres pour démarrer
+            </p>
+          </div>
+          <Switch
+            id="createSampleData"
+            checked={formData.createSampleData}
+            onCheckedChange={(checked) => setFormData({ ...formData, createSampleData: checked })}
+            disabled={loading}
+          />
+        </div>
+      )}
 
       <div className="flex gap-2 justify-end">
         <Button

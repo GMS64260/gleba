@@ -129,10 +129,11 @@ model Fertilisant {
 /// Espèces de plantes cultivables
 model Espece {
   id              String   @id @map("espece")
+  type            String   @default("legume") @map("type") // legume, arbre_fruitier, petit_fruit, aromatique, engrais_vert
   familleId       String?  @map("famille")
   famille         Famille? @relation(fields: [familleId], references: [id], onDelete: SetNull)
   nomLatin        String?  @map("nom_latin")
-  rendement       Float?   @map("rendement") // kg/m²
+  rendement       Float?   @map("rendement") // kg/m² ou kg/arbre
   vivace          Boolean  @default(false) @map("vivace")
   besoinN         Float?   @map("besoin_n") // Besoin azote (1-5)
   besoinP         Float?   @map("besoin_p") // Besoin phosphore (1-5)
@@ -150,6 +151,7 @@ model Espece {
   recoltes      Recolte[]
   consommations Consommation[]
   itps          ITP[]
+  arbres        Arbre[]
 
   @@map("especes")
 }
@@ -431,7 +433,9 @@ model Arbre {
   user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   nom             String    @map("nom") // Nom d'affichage (ex: "Pommier Golden")
   type            String    @map("type") // "fruitier", "petit_fruit", "ornement", "haie"
-  espece          String?   @map("espece") // Espèce (ex: "Pommier", "Framboisier")
+  especeId        String?   @map("espece_id") // Lien optionnel vers le catalogue Espece
+  especeRef       Espece?   @relation(fields: [especeId], references: [id], onDelete: SetNull)
+  espece          String?   @map("espece") // Espèce texte libre (ex: "Pommier", "Framboisier")
   variete         String?   @map("variete") // Variété (ex: "Golden", "Malling Promise")
   portGreffe      String?   @map("port_greffe") // Porte-greffe si applicable
   fournisseur     String?   @map("fournisseur") // Lieu d'achat / pépinière

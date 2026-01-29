@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAdminApi, hashPassword } from "@/lib/auth-utils"
+import { createSampleDataForUser } from "@/lib/user-sample-data"
 
 // GET /api/admin/users
 export async function GET() {
@@ -51,7 +52,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { email, password, name, role, active } = body
+    const { email, password, name, role, active, createSampleData = true } = body
 
     // Validation
     if (!email || !password) {
@@ -101,6 +102,16 @@ export async function POST(request: NextRequest) {
         createdAt: true,
       },
     })
+
+    // Créer les données d'exemple pour le nouvel utilisateur si demandé
+    if (createSampleData !== false) {
+      try {
+        await createSampleDataForUser(user.id)
+      } catch (sampleError) {
+        console.error("Erreur création données exemple:", sampleError)
+        // On ne bloque pas la création de l'utilisateur si les données exemple échouent
+      }
+    }
 
     return NextResponse.json(user, { status: 201 })
   } catch (error) {

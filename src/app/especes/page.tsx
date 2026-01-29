@@ -2,22 +2,44 @@
 
 /**
  * Page Espèces - Référentiel des plantes cultivables
+ * Filtrable par type : Légumes, Arbres fruitiers, Petits fruits, Aromatiques, Engrais verts
  */
 
 import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ColumnDef } from "@tanstack/react-table"
-import { ArrowLeft, Leaf, Droplets } from "lucide-react"
+import { ArrowLeft, Leaf, Droplets, TreeDeciduous, Cherry, Salad, Sprout, Flower2 } from "lucide-react"
 
 import { DataTable } from "@/components/tables/DataTable"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/hooks/use-toast"
+
+// Types d'espèces
+const ESPECE_TYPES = [
+  { value: 'all', label: 'Tous', icon: Leaf },
+  { value: 'legume', label: 'Légumes', icon: Salad },
+  { value: 'arbre_fruitier', label: 'Arbres fruitiers', icon: TreeDeciduous },
+  { value: 'petit_fruit', label: 'Petits fruits', icon: Cherry },
+  { value: 'aromatique', label: 'Aromatiques', icon: Flower2 },
+  { value: 'engrais_vert', label: 'Engrais verts', icon: Sprout },
+] as const
+
+// Labels pour l'affichage
+const TYPE_LABELS: Record<string, string> = {
+  legume: 'Légume',
+  arbre_fruitier: 'Arbre fruitier',
+  petit_fruit: 'Petit fruit',
+  aromatique: 'Aromatique',
+  engrais_vert: 'Engrais vert',
+}
 
 // Type pour les espèces avec relations
 interface EspeceWithRelations {
   id: string
+  type: string
   familleId: string | null
   nomLatin: string | null
   rendement: number | null
@@ -30,7 +52,7 @@ interface EspeceWithRelations {
   couleur: string | null
   description: string | null
   famille: { id: string; couleur: string | null } | null
-  _count: { varietes: number; cultures: number }
+  _count: { varietes: number; cultures: number; arbres?: number }
 }
 
 // Composant pour afficher les besoins NPK
@@ -80,6 +102,18 @@ const columns: ColumnDef<EspeceWithRelations>[] = [
     },
   },
   {
+    accessorKey: "type",
+    header: "Type",
+    cell: ({ getValue }) => {
+      const type = getValue() as string
+      return (
+        <Badge variant="secondary" className="text-xs">
+          {TYPE_LABELS[type] || type}
+        </Badge>
+      )
+    },
+  },
+  {
     accessorKey: "famille.id",
     header: "Famille",
     cell: ({ row }) => row.original.famille?.id || "-",
@@ -95,10 +129,16 @@ const columns: ColumnDef<EspeceWithRelations>[] = [
   },
   {
     accessorKey: "rendement",
-    header: "Rdt (kg/m²)",
-    cell: ({ getValue }) => {
-      const val = getValue() as number | null
-      return val ? val.toFixed(1) : "-"
+    header: "Rendement",
+    cell: ({ row }) => {
+      const val = row.original.rendement
+      const type = row.original.type
+      if (!val) return "-"
+      // Affichage différent selon le type
+      if (type === 'arbre_fruitier') {
+        return `${val} kg/arbre`
+      }
+      return `${val} kg/m²`
     },
   },
   {
@@ -153,15 +193,18 @@ export default function EspecesPage() {
   const [isLoading, setIsLoading] = React.useState(true)
   const [pageIndex, setPageIndex] = React.useState(0)
   const [pageCount, setPageCount] = React.useState(0)
+  const [selectedType, setSelectedType] = React.useState('all')
   const pageSize = 50
 
   // Charger les données
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
     try {
-      const response = await fetch(
-        `/api/especes?page=${pageIndex + 1}&pageSize=${pageSize}`
-      )
+      let url = `/api/especes?page=${pageIndex + 1}&pageSize=${pageSize}`
+      if (selectedType && selectedType !== 'all') {
+        url += `&type=${selectedType}`
+      }
+      const response = await fetch(url)
       if (!response.ok) throw new Error("Erreur lors du chargement")
       const result = await response.json()
       setData(result.data)
@@ -175,15 +218,24 @@ export default function EspecesPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [pageIndex, toast])
+  }, [pageIndex, selectedType, toast])
 
   React.useEffect(() => {
     fetchData()
   }, [fetchData])
 
+  // Reset page when type changes
+  const handleTypeChange = (type: string) => {
+    setSelectedType(type)
+    setPageIndex(0)
+  }
+
   // Handlers
   const handleAdd = () => {
-    router.push("/especes/new")
+    const url = selectedType && selectedType !== 'all'
+      ? `/especes/new?type=${selectedType}`
+      : "/especes/new"
+    router.push(url)
   }
 
   const handleRowClick = (row: EspeceWithRelations) => {
@@ -227,9 +279,10 @@ export default function EspecesPage() {
 
   // Export CSV
   const handleExport = () => {
-    const headers = ["Espèce", "Famille", "Nom latin", "Rendement", "Vivace", "Besoin N", "Besoin P", "Besoin K", "Besoin Eau"]
+    const headers = ["Espèce", "Type", "Famille", "Nom latin", "Rendement", "Vivace", "Besoin N", "Besoin P", "Besoin K", "Besoin Eau"]
     const rows = data.map(e => [
       e.id,
+      TYPE_LABELS[e.type] || e.type,
       e.famille?.id || "",
       e.nomLatin || "",
       e.rendement?.toString() || "",
@@ -245,7 +298,7 @@ export default function EspecesPage() {
     const url = URL.createObjectURL(blob)
     const link = document.createElement("a")
     link.href = url
-    link.download = "especes.csv"
+    link.download = `especes${selectedType && selectedType !== 'all' ? `-${selectedType}` : ''}.csv`
     link.click()
     URL.revokeObjectURL(url)
   }
@@ -270,6 +323,18 @@ export default function EspecesPage() {
 
       {/* Content */}
       <main className="container mx-auto px-4 py-6">
+        {/* Filtres par type */}
+        <Tabs value={selectedType} onValueChange={handleTypeChange} className="mb-4">
+          <TabsList className="flex-wrap h-auto gap-1">
+            {ESPECE_TYPES.map(({ value, label, icon: Icon }) => (
+              <TabsTrigger key={value} value={value} className="flex items-center gap-1">
+                <Icon className="h-4 w-4" />
+                <span className="hidden sm:inline">{label}</span>
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+
         <DataTable
           columns={columns}
           data={data}

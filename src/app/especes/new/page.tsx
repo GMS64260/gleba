@@ -33,7 +33,16 @@ import {
 } from "@/components/ui/form"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useToast } from "@/hooks/use-toast"
-import { createEspeceSchema, type CreateEspeceInput } from "@/lib/validations"
+import { createEspeceSchema, ESPECE_TYPES, type CreateEspeceInput } from "@/lib/validations"
+
+// Labels pour les types
+const TYPE_LABELS: Record<string, string> = {
+  legume: 'Légume',
+  arbre_fruitier: 'Arbre fruitier',
+  petit_fruit: 'Petit fruit',
+  aromatique: 'Aromatique',
+  engrais_vert: 'Engrais vert',
+}
 
 export default function NewEspecePage() {
   const router = useRouter()
@@ -45,6 +54,7 @@ export default function NewEspecePage() {
     resolver: zodResolver(createEspeceSchema),
     defaultValues: {
       id: "",
+      type: "legume",
       familleId: null,
       nomLatin: null,
       rendement: null,
@@ -133,6 +143,31 @@ export default function NewEspecePage() {
                       <FormControl>
                         <Input placeholder="Ex: Tomate" {...field} />
                       </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="type"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Type</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Sélectionner un type" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {ESPECE_TYPES.map((type) => (
+                            <SelectItem key={type} value={type}>
+                              {TYPE_LABELS[type]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       <FormMessage />
                     </FormItem>
                   )}
