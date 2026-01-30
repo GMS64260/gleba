@@ -15,6 +15,13 @@ import { ArrowLeft, BarChart3 } from "lucide-react"
 import { DataTable } from "@/components/tables/DataTable"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
 
 // Type pour les récoltes
@@ -112,15 +119,35 @@ export default function RecoltesPage() {
   const [pageIndex, setPageIndex] = React.useState(0)
   const [pageCount, setPageCount] = React.useState(0)
   const [stats, setStats] = React.useState({ totalQuantite: 0, count: 0 })
+  const [selectedAnnee, setSelectedAnnee] = React.useState<string>('all')
+  const [selectedEspece, setSelectedEspece] = React.useState<string>('all')
+  const [especes, setEspeces] = React.useState<{ id: string }[]>([])
   const pageSize = 50
+
+  // Générer les années disponibles (5 dernières années)
+  const currentYear = new Date().getFullYear()
+  const years = Array.from({ length: 5 }, (_, i) => currentYear - i)
+
+  // Charger les espèces pour le filtre
+  React.useEffect(() => {
+    fetch("/api/especes?pageSize=200")
+      .then((res) => res.json())
+      .then((data) => setEspeces(data.data || []))
+      .catch(() => setEspeces([]))
+  }, [])
 
   // Charger les données
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
     try {
-      const response = await fetch(
-        `/api/recoltes?page=${pageIndex + 1}&pageSize=${pageSize}`
-      )
+      let url = `/api/recoltes?page=${pageIndex + 1}&pageSize=${pageSize}`
+      if (selectedAnnee && selectedAnnee !== 'all') {
+        url += `&annee=${selectedAnnee}`
+      }
+      if (selectedEspece && selectedEspece !== 'all') {
+        url += `&especeId=${encodeURIComponent(selectedEspece)}`
+      }
+      const response = await fetch(url)
       if (!response.ok) throw new Error("Erreur lors du chargement")
       const result = await response.json()
       setData(result.data)
@@ -135,11 +162,22 @@ export default function RecoltesPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [pageIndex, toast])
+  }, [pageIndex, selectedAnnee, selectedEspece, toast])
 
   React.useEffect(() => {
     fetchData()
   }, [fetchData])
+
+  // Handlers pour les filtres
+  const handleAnneeChange = (value: string) => {
+    setSelectedAnnee(value)
+    setPageIndex(0)
+  }
+
+  const handleEspeceChange = (value: string) => {
+    setSelectedEspece(value)
+    setPageIndex(0)
+  }
 
   // Handlers
   const handleAdd = () => {
@@ -191,6 +229,42 @@ export default function RecoltesPage() {
 
       {/* Content */}
       <main className="container mx-auto px-4 py-6 space-y-6">
+        {/* Filtres */}
+        <div className="flex flex-wrap gap-4">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Année :</span>
+            <Select value={selectedAnnee} onValueChange={handleAnneeChange}>
+              <SelectTrigger className="w-[120px]">
+                <SelectValue placeholder="Toutes" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Toutes</SelectItem>
+                {years.map((year) => (
+                  <SelectItem key={year} value={year.toString()}>
+                    {year}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Espèce :</span>
+            <Select value={selectedEspece} onValueChange={handleEspeceChange}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Toutes" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Toutes</SelectItem>
+                {especes.map((e) => (
+                  <SelectItem key={e.id} value={e.id}>
+                    {e.id}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
         {/* Stats */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <Card>

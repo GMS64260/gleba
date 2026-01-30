@@ -10,12 +10,23 @@ import { useRouter } from "next/navigation"
 import { ColumnDef } from "@tanstack/react-table"
 import { format } from "date-fns"
 import { fr } from "date-fns/locale"
-import { ArrowLeft, Leaf } from "lucide-react"
+import { ArrowLeft, Leaf, ListTodo, Sprout, TreeDeciduous, Apple, CheckCircle } from "lucide-react"
 
 import { DataTable } from "@/components/tables/DataTable"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/hooks/use-toast"
+
+// Types d'états pour le filtre
+const CULTURE_ETATS = [
+  { value: 'all', label: 'Toutes', icon: Leaf },
+  { value: 'Planifiée', label: 'Planifiées', icon: ListTodo },
+  { value: 'Semée', label: 'Semées', icon: Sprout },
+  { value: 'Plantée', label: 'Plantées', icon: TreeDeciduous },
+  { value: 'En récolte', label: 'En récolte', icon: Apple },
+  { value: 'Terminée', label: 'Terminées', icon: CheckCircle },
+] as const
 
 // Type pour les cultures avec relations
 interface CultureWithRelations {
@@ -144,15 +155,18 @@ export default function CulturesPage() {
   const [isLoading, setIsLoading] = React.useState(true)
   const [pageIndex, setPageIndex] = React.useState(0)
   const [pageCount, setPageCount] = React.useState(0)
+  const [selectedEtat, setSelectedEtat] = React.useState('all')
   const pageSize = 50
 
   // Charger les données
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
     try {
-      const response = await fetch(
-        `/api/cultures?page=${pageIndex + 1}&pageSize=${pageSize}`
-      )
+      let url = `/api/cultures?page=${pageIndex + 1}&pageSize=${pageSize}`
+      if (selectedEtat && selectedEtat !== 'all') {
+        url += `&etat=${encodeURIComponent(selectedEtat)}`
+      }
+      const response = await fetch(url)
       if (!response.ok) throw new Error("Erreur lors du chargement")
       const result = await response.json()
       setData(result.data)
@@ -166,11 +180,17 @@ export default function CulturesPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [pageIndex, toast])
+  }, [pageIndex, selectedEtat, toast])
 
   React.useEffect(() => {
     fetchData()
   }, [fetchData])
+
+  // Reset page when etat changes
+  const handleEtatChange = (etat: string) => {
+    setSelectedEtat(etat)
+    setPageIndex(0)
+  }
 
   // Handlers
   const handleAdd = () => {
@@ -227,6 +247,18 @@ export default function CulturesPage() {
 
       {/* Content */}
       <main className="container mx-auto px-4 py-6">
+        {/* Filtres par état */}
+        <Tabs value={selectedEtat} onValueChange={handleEtatChange} className="mb-4">
+          <TabsList className="flex-wrap h-auto gap-1">
+            {CULTURE_ETATS.map(({ value, label, icon: Icon }) => (
+              <TabsTrigger key={value} value={value} className="flex items-center gap-1">
+                <Icon className="h-4 w-4" />
+                <span className="hidden sm:inline">{label}</span>
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+
         <DataTable
           columns={columns}
           data={data}

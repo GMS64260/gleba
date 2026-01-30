@@ -33,6 +33,7 @@ export async function GET(request: NextRequest) {
     const cultureId = searchParams.get('cultureId')
     const dateFrom = searchParams.get('dateFrom')
     const dateTo = searchParams.get('dateTo')
+    const annee = searchParams.get('annee')
 
     // Construction du where - FILTRE PAR USER
     const where: Prisma.RecolteWhereInput = {
@@ -54,7 +55,13 @@ export async function GET(request: NextRequest) {
       where.cultureId = parseInt(cultureId)
     }
 
-    if (dateFrom || dateTo) {
+    if (annee) {
+      const year = parseInt(annee)
+      where.date = {
+        gte: new Date(year, 0, 1),
+        lt: new Date(year + 1, 0, 1),
+      }
+    } else if (dateFrom || dateTo) {
       where.date = {}
       if (dateFrom) {
         where.date.gte = new Date(dateFrom)
