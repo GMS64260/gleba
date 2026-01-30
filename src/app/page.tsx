@@ -2,10 +2,13 @@
 
 import * as React from "react"
 import Link from "next/link"
+import Image from "next/image"
 import { useSession } from "next-auth/react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { UserMenu } from "@/components/auth/UserMenu"
+import { WelcomeDialog } from "@/components/onboarding/WelcomeDialog"
 import {
   BarChart,
   Bar,
@@ -46,16 +49,24 @@ const modules = [
     bgColor: "bg-teal-50",
   },
   {
+    title: "Planification",
+    description: "Planifier les cultures et recoltes",
+    href: "/planification",
+    icon: Calendar,
+    color: "text-purple-600",
+    bgColor: "bg-purple-50",
+  },
+  {
     title: "Cultures",
-    description: "Gérer vos cultures, semis et plantations",
+    description: "Gerer vos cultures, semis et plantations",
     href: "/cultures",
     icon: Sprout,
     color: "text-green-600",
     bgColor: "bg-green-50",
   },
   {
-    title: "Espèces",
-    description: "Référentiel des plantes cultivables",
+    title: "Especes",
+    description: "Referentiel des plantes cultivables",
     href: "/especes",
     icon: Leaf,
     color: "text-emerald-600",
@@ -70,12 +81,28 @@ const modules = [
     bgColor: "bg-amber-50",
   },
   {
-    title: "Récoltes",
+    title: "Recoltes",
     description: "Suivi de la production",
     href: "/recoltes",
     icon: BarChart3,
     color: "text-blue-600",
     bgColor: "bg-blue-50",
+  },
+  {
+    title: "ITPs",
+    description: "Itineraires techniques des plantes",
+    href: "/itps",
+    icon: Sprout,
+    color: "text-indigo-600",
+    bgColor: "bg-indigo-50",
+  },
+  {
+    title: "Rotations",
+    description: "Plans de rotation des cultures",
+    href: "/rotations",
+    icon: BarChart3,
+    color: "text-orange-600",
+    bgColor: "bg-orange-50",
   },
 ]
 
@@ -115,15 +142,54 @@ interface DashboardData {
   }
 }
 
+// Générer la liste des années disponibles (5 ans en arrière + année courante)
+const currentYearNow = new Date().getFullYear()
+const availableYears = Array.from({ length: 6 }, (_, i) => currentYearNow - 5 + i).reverse()
+
 export default function Home() {
   const { data: session } = useSession()
   const [data, setData] = React.useState<DashboardData | null>(null)
   const [loading, setLoading] = React.useState(true)
+  const [showWelcome, setShowWelcome] = React.useState(false)
+  const [selectedYear, setSelectedYear] = React.useState(currentYearNow)
+
+  // Vérifier si l'utilisateur est nouveau (pas de données)
+  React.useEffect(() => {
+    async function checkNewUser() {
+      // Ne pas afficher si déjà vu
+      if (localStorage.getItem("gleba-onboarding-complete")) {
+        return
+      }
+
+      try {
+        const response = await fetch("/api/import-test-data")
+        if (response.ok) {
+          const result = await response.json()
+          if (result.canImport) {
+            setShowWelcome(true)
+          }
+        }
+      } catch (error) {
+        console.error("Erreur vérification nouvel utilisateur:", error)
+      }
+    }
+
+    if (session?.user) {
+      checkNewUser()
+    }
+  }, [session])
+
+  const handleOnboardingComplete = React.useCallback(() => {
+    localStorage.setItem("gleba-onboarding-complete", "true")
+    // Recharger les données du dashboard
+    window.location.reload()
+  }, [])
 
   React.useEffect(() => {
     async function fetchDashboard() {
+      setLoading(true)
       try {
-        const response = await fetch("/api/dashboard")
+        const response = await fetch(`/api/dashboard?year=${selectedYear}`)
         if (response.ok) {
           const json = await response.json()
           setData(json)
@@ -135,7 +201,7 @@ export default function Home() {
       }
     }
     fetchDashboard()
-  }, [])
+  }, [selectedYear])
 
   const progressPercent = data?.stats
     ? Math.round((data.activity.culturesStatus.terminees / Math.max(data.activity.culturesStatus.total, 1)) * 100)
@@ -151,13 +217,26 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-green-50 to-white">
+      {/* Dialog de bienvenue pour les nouveaux utilisateurs */}
+      <WelcomeDialog
+        open={showWelcome}
+        onOpenChange={setShowWelcome}
+        onComplete={handleOnboardingComplete}
+      />
+
       {/* Header */}
       <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Leaf className="h-8 w-8 text-green-600" />
-            <h1 className="text-2xl font-bold text-green-800">Potaléger</h1>
-          </div>
+        <div className="container mx-auto px-4 py-3 flex items-center justify-between">
+          <Link href="/" className="flex items-center hover:opacity-90 transition-opacity">
+            <Image
+              src="/gleba.png"
+              alt="Gleba"
+              width={150}
+              height={100}
+              className="rounded-lg"
+              priority
+            />
+          </Link>
           <div className="flex items-center gap-2">
             <Link href="/parametres">
               <Button variant="ghost" size="sm">
@@ -170,8 +249,29 @@ export default function Home() {
       </header>
 
       <main className="container mx-auto px-4 py-8">
+        {/* Sélecteur d'année */}
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-lg font-semibold text-gray-700">Tableau de bord</h2>
+          <Select
+            value={selectedYear.toString()}
+            onValueChange={(value) => setSelectedYear(parseInt(value))}
+          >
+            <SelectTrigger className="w-[120px]">
+              <Calendar className="h-4 w-4 mr-2 text-muted-foreground" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {availableYears.map((year) => (
+                <SelectItem key={year} value={year.toString()}>
+                  {year}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
         {/* Modules Grid */}
-        <div className="grid gap-4 md:grid-cols-5 mb-8">
+        <div className="grid gap-4 md:grid-cols-4 mb-8">
           {modules.map((module) => (
             <Link key={module.href} href={module.href}>
               <Card className="h-full hover:shadow-lg transition-all hover:scale-[1.02] cursor-pointer group">
@@ -539,7 +639,7 @@ export default function Home() {
       {/* Footer */}
       <footer className="border-t mt-8 py-6 text-center text-sm text-gray-500">
         <p>
-          Potaléger v0.1.0 - Basé sur{" "}
+          Gleba v0.1.0 - Basé sur{" "}
           <a
             href="https://github.com/marcpley/potaleger"
             target="_blank"

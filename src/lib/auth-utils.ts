@@ -93,3 +93,13 @@ export async function verifyPassword(
   const bcrypt = await import("bcryptjs")
   return bcrypt.compare(password, hashedPassword)
 }
+
+/**
+ * Extrait l'ID utilisateur de la session
+ */
+export function getUserId(session: { user: { id: string } } | null): string {
+  if (!session?.user?.id) {
+    throw new Error("Session invalide")
+  }
+  return session.user.id
+}

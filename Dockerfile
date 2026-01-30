@@ -1,4 +1,4 @@
-# Dockerfile multi-stage pour Potaléger React
+# Dockerfile multi-stage pour Gleba
 
 # ==========================================
 # Stage 1: Dependencies

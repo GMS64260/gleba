@@ -83,7 +83,7 @@ export async function GET(request: NextRequest) {
       return new NextResponse(JSON.stringify(data, null, 2), {
         headers: {
           'Content-Type': 'application/json',
-          'Content-Disposition': `attachment; filename="potaleger_export_${new Date().toISOString().split('T')[0]}.json"`,
+          'Content-Disposition': `attachment; filename="gleba_export_${new Date().toISOString().split('T')[0]}.json"`,
         },
       })
     }
@@ -123,7 +123,7 @@ export async function GET(request: NextRequest) {
       return new NextResponse(JSON.stringify(csvData, null, 2), {
         headers: {
           'Content-Type': 'application/json',
-          'Content-Disposition': `attachment; filename="potaleger_export_${new Date().toISOString().split('T')[0]}_csv.json"`,
+          'Content-Disposition': `attachment; filename="gleba_export_${new Date().toISOString().split('T')[0]}_csv.json"`,
         },
       })
     }

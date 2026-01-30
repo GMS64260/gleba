@@ -1,5 +1,5 @@
 /**
- * Types TypeScript pour Potaléger
+ * Types TypeScript pour Gleba
  * Complètent les types générés par Prisma
  */
 

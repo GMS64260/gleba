@@ -72,7 +72,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Requête avec comptage
-    const [recoltes, total, stats] = await Promise.all([
+    const [recoltes, total, stats, especesDistinctes] = await Promise.all([
       prisma.recolte.findMany({
         where,
         include: {
@@ -97,6 +97,13 @@ export async function GET(request: NextRequest) {
         _sum: { quantite: true },
         _count: { _all: true },
       }),
+      // Espèces distinctes présentes dans les récoltes de l'utilisateur
+      prisma.recolte.findMany({
+        where: { userId: session!.user.id },
+        select: { especeId: true },
+        distinct: ['especeId'],
+        orderBy: { especeId: 'asc' },
+      }),
     ])
 
     return NextResponse.json({
@@ -109,6 +116,7 @@ export async function GET(request: NextRequest) {
         totalQuantite: stats._sum.quantite || 0,
         count: stats._count._all,
       },
+      especes: especesDistinctes.map(e => ({ id: e.especeId })),
     })
   } catch (error) {
     console.error('GET /api/recoltes error:', error)

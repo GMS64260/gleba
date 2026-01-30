@@ -16,9 +16,9 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Potaléger - Gestion Maraîchère",
-  description: "Application de gestion de potager et cultures maraîchères",
-  keywords: ["potager", "jardin", "maraîchage", "cultures", "rotation"],
+  title: "Gleba - Gestion Maraîchère",
+  description: "Votre compagnon pour la gestion complète de votre potager : planification des cultures, rotations, suivi des récoltes, gestion des planches et des arbres fruitiers",
+  keywords: ["potager", "jardin", "maraîchage", "cultures", "rotation", "planification", "récoltes", "arbres fruitiers"],
 };
 
 export default function RootLayout({

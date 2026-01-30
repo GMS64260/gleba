@@ -128,14 +128,6 @@ export default function RecoltesPage() {
   const currentYear = new Date().getFullYear()
   const years = Array.from({ length: 5 }, (_, i) => currentYear - i)
 
-  // Charger les espèces pour le filtre
-  React.useEffect(() => {
-    fetch("/api/especes?pageSize=200")
-      .then((res) => res.json())
-      .then((data) => setEspeces(data.data || []))
-      .catch(() => setEspeces([]))
-  }, [])
-
   // Charger les données
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
@@ -153,6 +145,10 @@ export default function RecoltesPage() {
       setData(result.data)
       setPageCount(result.totalPages)
       setStats(result.stats)
+      // Mettre à jour les espèces disponibles (seulement celles avec des récoltes)
+      if (result.especes) {
+        setEspeces(result.especes)
+      }
     } catch (error) {
       toast({
         variant: "destructive",

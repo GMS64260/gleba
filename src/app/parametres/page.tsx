@@ -13,7 +13,7 @@ import { useToast } from '@/hooks/use-toast'
 import { Slider } from '@/components/ui/slider'
 
 // Clé localStorage pour les paramètres
-const SETTINGS_KEY = 'potaleger_settings'
+const SETTINGS_KEY = 'gleba_settings'
 
 interface GardenSettings {
   // Dimensions du plan
@@ -124,7 +124,7 @@ export default function ParametresPage() {
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `potaleger_export_${new Date().toISOString().split('T')[0]}.${format === 'json' ? 'json' : 'zip'}`
+      a.download = `gleba_export_${new Date().toISOString().split('T')[0]}.${format === 'json' ? 'json' : 'zip'}`
       document.body.appendChild(a)
       a.click()
       window.URL.revokeObjectURL(url)

@@ -3,17 +3,22 @@
  * GET /api/dashboard - Retourne toutes les stats du dashboard
  */
 
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
   if (error) return error
 
   try {
     const userId = session!.user.id
-    const currentYear = new Date().getFullYear()
+
+    // Récupérer l'année depuis les paramètres de requête
+    const searchParams = request.nextUrl.searchParams
+    const yearParam = searchParams.get("year")
+    const currentYear = yearParam ? parseInt(yearParam) : new Date().getFullYear()
+
     const startOfYear = new Date(currentYear, 0, 1)
     const endOfYear = new Date(currentYear, 11, 31)
 

@@ -4,7 +4,7 @@
 
 import { useState, useEffect } from 'react'
 
-const SETTINGS_KEY = 'potaleger_settings'
+const SETTINGS_KEY = 'gleba_settings'
 
 export interface GardenSettings {
   // Dimensions du plan
