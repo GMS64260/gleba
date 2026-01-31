@@ -38,13 +38,13 @@ export default function LoginPage() {
         <div className="space-y-8">
           {/* Logo et titre */}
           <div>
-            <div className="mb-6">
+            <div className="mb-4">
               <Image
-                src="/gleba.webp"
+                src="/gleba.png"
                 alt="Gleba - Gestion de potager"
-                width={400}
-                height={150}
-                className="max-w-full h-auto"
+                width={300}
+                height={100}
+                className="h-24 w-auto"
                 priority
               />
             </div>
