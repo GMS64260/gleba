@@ -101,54 +101,32 @@ export async function GET(request: NextRequest) {
       orderBy: { dateRecolte: 'asc' },
     })
 
-    // Cultures a irriguer (besoin eau eleve, pas arrosees depuis 2+ jours)
-    const deuxJoursAvant = new Date()
-    deuxJoursAvant.setDate(deuxJoursAvant.getDate() - 2)
-
-    const culturesIrrigation = await prisma.culture.findMany({
+    // Irrigations planifiées cette semaine
+    const irrigationsPlanifiees = await prisma.irrigationPlanifiee.findMany({
       where: {
         userId,
-        annee,
-        terminee: null,
-        plantationFaite: true,
-        AND: [
-          {
-            OR: [
-              { aIrriguer: true },
-              {
-                espece: {
-                  OR: [
-                    { besoinEau: { gte: 3 } },
-                    { irrigation: 'Eleve' },
-                  ],
-                },
-              },
-            ],
-          },
-          {
-            OR: [
-              { derniereIrrigation: null },
-              { derniereIrrigation: { lt: deuxJoursAvant } },
-            ],
-          },
-        ],
-      },
-      select: {
-        id: true,
-        especeId: true,
-        plancheId: true,
-        derniereIrrigation: true,
-        espece: {
-          select: { couleur: true },
-        },
-        planche: {
-          select: { ilot: true },
+        fait: false,
+        datePrevue: {
+          gte: start,
+          lte: end,
         },
       },
-      orderBy: [
-        { derniereIrrigation: 'asc' },
-        { planche: { ilot: 'asc' } },
-      ],
+      include: {
+        culture: {
+          select: {
+            id: true,
+            especeId: true,
+            plancheId: true,
+            espece: {
+              select: { couleur: true },
+            },
+            planche: {
+              select: { ilot: true },
+            },
+          },
+        },
+      },
+      orderBy: { datePrevue: 'asc' },
     })
 
     // Formatter les donnees
@@ -185,21 +163,16 @@ export async function GET(request: NextRequest) {
       couleur: c.espece?.couleur || null,
     }))
 
-    const irrigation = culturesIrrigation.map(c => {
-      const joursDepuis = c.derniereIrrigation
-        ? Math.floor((Date.now() - c.derniereIrrigation.getTime()) / (1000 * 60 * 60 * 24))
-        : null
-
-      return {
-        id: c.id,
-        especeId: c.especeId,
-        plancheId: c.plancheId,
-        ilot: c.planche?.ilot || null,
-        derniereIrrigation: c.derniereIrrigation?.toISOString() || null,
-        joursDepuis,
-        couleur: c.espece?.couleur || null,
-      }
-    })
+    const irrigation = irrigationsPlanifiees.map(i => ({
+      id: i.id, // ID de l'irrigation planifiée
+      cultureId: i.culture.id,
+      especeId: i.culture.especeId,
+      plancheId: i.culture.plancheId,
+      ilot: i.culture.planche?.ilot || null,
+      datePrevue: i.datePrevue.toISOString(),
+      fait: i.fait,
+      couleur: i.culture.espece?.couleur || null,
+    }))
 
     return NextResponse.json({
       semis,
