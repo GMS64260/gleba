@@ -173,9 +173,9 @@ export default function LoginPage() {
                 <Image
                   src="/gleba.png"
                   alt="Gleba"
-                  width={120}
-                  height={40}
-                  className="h-16 w-auto mx-auto"
+                  width={180}
+                  height={60}
+                  className="h-20 w-auto mx-auto"
                   priority
                 />
               </div>
