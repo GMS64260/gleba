@@ -209,6 +209,15 @@ interface ImportData {
     nom: string
     description?: string | null
     notes?: string | null
+    details?: Array<{
+      id: number
+      associationId: string
+      especeId?: string | null
+      familleId?: string | null
+      groupe?: string | null
+      requise?: boolean
+      notes?: string | null
+    }>
   }>
   associationDetails?: Array<{
     id: number
@@ -593,10 +602,38 @@ export async function POST(request: NextRequest) {
           },
         })
         stats.associations++
+
+        // 9b. Importer les détails imbriqués si présents
+        if (item.details && Array.isArray(item.details)) {
+          for (const detail of item.details) {
+            const existing = await prisma.associationDetail.findFirst({
+              where: {
+                associationId: item.id,
+                especeId: detail.especeId,
+                familleId: detail.familleId,
+                groupe: detail.groupe,
+              },
+            })
+
+            if (!existing) {
+              await prisma.associationDetail.create({
+                data: {
+                  associationId: item.id,
+                  especeId: detail.especeId,
+                  familleId: detail.familleId,
+                  groupe: detail.groupe,
+                  requise: detail.requise ?? false,
+                  notes: detail.notes,
+                },
+              })
+              stats.associationDetails++
+            }
+          }
+        }
       }
     }
 
-    // 10. Association Details
+    // 10. Association Details (format alternatif si fourni séparément)
     if (data.associationDetails?.length) {
       for (const item of data.associationDetails) {
         const associationExists = await prisma.association.findUnique({ where: { id: item.associationId } })
