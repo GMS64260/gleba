@@ -7,7 +7,7 @@ import prisma from "@/lib/prisma"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
-import { Users, UserPlus, Shield, Activity } from "lucide-react"
+import { Users, UserPlus, Shield, Activity, Database } from "lucide-react"
 
 export default async function AdminPage() {
   await requireAdmin()
@@ -113,6 +113,26 @@ export default async function AdminPage() {
                 <Button>
                   <UserPlus className="mr-2 h-4 w-4" />
                   Nouveau
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Database className="h-5 w-5 text-green-600" />
+                Référentiels globaux
+              </CardTitle>
+              <CardDescription>
+                Gérer les espèces, ITPs, variétés (partagés entre tous)
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link href="/admin/referentiels">
+                <Button variant="outline" className="w-full">
+                  <Database className="mr-2 h-4 w-4" />
+                  Import / Export référentiels
                 </Button>
               </Link>
             </CardContent>
