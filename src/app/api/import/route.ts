@@ -834,10 +834,63 @@ export async function POST(request: NextRequest) {
 
     const totalImported = Object.values(stats).reduce((a, b) => a + b, 0)
 
+    // Générer automatiquement les irrigations planifiées pour les cultures importées
+    let irrigationsCreated = 0
+    const currentYear = new Date().getFullYear()
+
+    // Récupérer les cultures avec irrigation de l'année en cours et suivante
+    const culturesAIrriguer = await prisma.culture.findMany({
+      where: {
+        userId,
+        aIrriguer: true,
+        terminee: null,
+        annee: { in: [currentYear, currentYear + 1] },
+      },
+      include: {
+        espece: { select: { besoinEau: true } },
+      },
+    })
+
+    for (const culture of culturesAIrriguer) {
+      const dateDebut = culture.datePlantation || culture.dateSemis
+      const dateFin = culture.finRecolte || culture.dateRecolte
+
+      if (!dateDebut) continue
+
+      const besoinEau = culture.espece.besoinEau || 3
+      const frequenceJours = besoinEau >= 4 ? 2 : 3
+
+      const irrigations: Date[] = []
+      let currentDate = new Date(dateDebut)
+      currentDate.setDate(currentDate.getDate() + frequenceJours)
+
+      const finDate = dateFin ? new Date(dateFin) : new Date(dateDebut.getFullYear(), 11, 31)
+
+      while (currentDate <= finDate) {
+        irrigations.push(new Date(currentDate))
+        currentDate.setDate(currentDate.getDate() + frequenceJours)
+      }
+
+      if (irrigations.length > 0) {
+        await prisma.irrigationPlanifiee.createMany({
+          data: irrigations.map(date => ({
+            userId,
+            cultureId: culture.id,
+            datePrevue: date,
+            fait: false,
+          })),
+        })
+        irrigationsCreated += irrigations.length
+      }
+    }
+
     return NextResponse.json({
       success: true,
-      message: `${totalImported} enregistrements importés`,
-      stats,
+      message: `${totalImported} enregistrements importés + ${irrigationsCreated} irrigations générées`,
+      stats: {
+        ...stats,
+        irrigations: irrigationsCreated,
+      },
     })
   } catch (error) {
     console.error('Erreur import:', error)

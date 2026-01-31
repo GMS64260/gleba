@@ -34,6 +34,13 @@ export async function GET() {
           },
           select: {
             id: true,
+            nbRangs: true,
+            espacement: true,
+            itp: {
+              select: {
+                espacementRangs: true
+              }
+            },
             espece: {
               select: {
                 id: true,
@@ -44,7 +51,6 @@ export async function GET() {
               }
             }
           },
-          take: 1,
           orderBy: { annee: 'desc' }
         }
       },

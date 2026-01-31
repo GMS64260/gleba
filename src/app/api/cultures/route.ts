@@ -9,6 +9,7 @@ import prisma from '@/lib/prisma'
 import { createCultureSchema } from '@/lib/validations'
 import { Prisma } from '@prisma/client'
 import { requireAuthApi } from '@/lib/auth-utils'
+import { peutAjouterCulture, suggererAjustements } from '@/lib/planche-validation'
 
 // GET /api/cultures
 export async function GET(request: NextRequest) {
@@ -179,6 +180,80 @@ export async function POST(request: NextRequest) {
         { error: `L'espèce "${data.especeId}" n'existe pas` },
         { status: 400 }
       )
+    }
+
+    // Valider l'occupation de la planche si plancheId fourni
+    if (data.plancheId) {
+      const planche = await prisma.planche.findFirst({
+        where: {
+          id: data.plancheId,
+          userId: session!.user.id,
+        },
+        include: {
+          cultures: {
+            where: { terminee: null },
+            select: {
+              nbRangs: true,
+              itp: {
+                select: { espacementRangs: true },
+              },
+            },
+          },
+        },
+      })
+
+      if (planche) {
+        // Récupérer l'ITP pour avoir l'espacementRangs
+        let espacementRangs = 30 // Défaut 30cm
+        if (data.itpId) {
+          const itp = await prisma.iTP.findUnique({
+            where: { id: data.itpId },
+            select: { espacementRangs: true },
+          })
+          espacementRangs = itp?.espacementRangs || 30
+        }
+
+        // Cultures existantes avec leur espacement
+        const culturesExistantes = planche.cultures.map(c => ({
+          nbRangs: c.nbRangs || 1,
+          espacementRangs: c.itp?.espacementRangs || 30,
+        }))
+
+        // Nouvelle culture
+        const nouvelleCulture = {
+          nbRangs: data.nbRangs || 1,
+          espacementRangs,
+          longueur: data.longueur || undefined,
+        }
+
+        const validation = peutAjouterCulture(
+          { largeur: planche.largeur || 0.8, longueur: planche.longueur || 2 },
+          culturesExistantes,
+          nouvelleCulture
+        )
+
+        if (!validation.possible) {
+          const suggestions = suggererAjustements(
+            { largeur: planche.largeur || 0.8, longueur: planche.longueur || 2 },
+            culturesExistantes,
+            nouvelleCulture
+          )
+
+          return NextResponse.json(
+            {
+              error: validation.message,
+              suggestions: suggestions.map(s => s.message),
+              details: {
+                largeurPlanche: planche.largeur,
+                largeurOccupee: validation.largeurOccupee,
+                largeurDisponible: validation.largeurDisponible,
+                largeurNecessaire: validation.largeurNecessaire,
+              },
+            },
+            { status: 400 }
+          )
+        }
+      }
     }
 
     // Auto-remplir aIrriguer si non fourni et espèce a besoin eau élevé

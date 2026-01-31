@@ -59,6 +59,7 @@ export default function ParametresPage() {
   const [saving, setSaving] = React.useState(false)
   const [exporting, setExporting] = React.useState(false)
   const [importing, setImporting] = React.useState(false)
+  const [deleting, setDeleting] = React.useState(false)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const imageInputRef = React.useRef<HTMLInputElement>(null)
 
@@ -243,6 +244,57 @@ export default function ParametresPage() {
         title: 'Image supprimee',
         description: 'N\'oubliez pas d\'enregistrer les parametres',
       })
+    }
+  }
+
+  // Suppression de toutes les données utilisateur
+  const handleDeleteAllData = async () => {
+    const confirmation1 = confirm(
+      '⚠️ ATTENTION ⚠️\n\nVous allez supprimer TOUTES vos données :\n- Cultures, récoltes, irrigations\n- Planches, fertilisations\n- Arbres, objets jardin\n- Notes\n\nCette action est IRRÉVERSIBLE.\n\nContinuer ?'
+    )
+    if (!confirmation1) return
+
+    const confirmation2 = prompt(
+      'Pour confirmer, tapez "SUPPRIMER" en majuscules :'
+    )
+    if (confirmation2 !== 'SUPPRIMER') {
+      toast({
+        title: 'Annulé',
+        description: 'Suppression annulée',
+      })
+      return
+    }
+
+    setDeleting(true)
+    try {
+      const response = await fetch('/api/user/delete-data', {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Erreur suppression')
+      }
+
+      const result = await response.json()
+
+      toast({
+        title: 'Données supprimées',
+        description: result.message,
+      })
+
+      // Recharger la page après 2 secondes
+      setTimeout(() => {
+        window.location.href = '/'
+      }, 2000)
+    } catch (err) {
+      toast({
+        variant: 'destructive',
+        title: 'Erreur',
+        description: err instanceof Error ? err.message : 'Impossible de supprimer les données',
+      })
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -665,6 +717,53 @@ export default function ParametresPage() {
                 <strong>Attention :</strong> L'import remplacera les données existantes.
                 Pensez à faire un export avant d'importer.
               </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Zone de danger */}
+        <Card className="border-red-200 bg-red-50">
+          <CardHeader>
+            <CardTitle className="text-red-700">Zone de danger</CardTitle>
+            <CardDescription className="text-red-600">
+              Actions irréversibles - utilisez avec précaution
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1">
+                  <h4 className="text-sm font-medium text-gray-900 mb-1">
+                    Supprimer toutes mes données
+                  </h4>
+                  <p className="text-sm text-gray-600">
+                    Supprime toutes vos cultures, planches, récoltes, arbres et objets.
+                    Les référentiels (espèces, ITPs, etc.) sont conservés.
+                  </p>
+                </div>
+                <Button
+                  variant="destructive"
+                  onClick={handleDeleteAllData}
+                  disabled={deleting}
+                >
+                  {deleting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Suppression...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Tout supprimer
+                    </>
+                  )}
+                </Button>
+              </div>
+              <div className="p-3 bg-white border border-red-300 rounded-lg">
+                <p className="text-xs text-red-700">
+                  ⚠️ Cette action est <strong>irréversible</strong>. Exportez vos données avant si vous souhaitez les conserver.
+                </p>
+              </div>
             </div>
           </CardContent>
         </Card>

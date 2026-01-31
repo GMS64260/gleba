@@ -60,6 +60,7 @@ export interface ITPData {
   dureeCulture?: number | null
   nbRangs?: number | null
   espacement?: number | null
+  espacementRangs?: number | null
   typePlanche?: string | null
   notes?: string | null
   decalageMax?: number | null

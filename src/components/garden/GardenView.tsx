@@ -12,6 +12,11 @@ interface PlancheWithCulture {
   ilot: string | null
   cultures: {
     id: number
+    nbRangs: number | null
+    espacement: number | null
+    itp: {
+      espacementRangs: number | null
+    } | null
     espece: {
       id: string
       couleur: string | null
@@ -691,19 +696,94 @@ export function GardenView({
               >
                 {planche.id}
               </text>
-              {/* Culture en cours */}
-              {planche.cultures[0] && (
-                <text
-                  x={w / 2}
-                  y={l / 2 + Math.min(w * 0.25, l * 0.1, 0.3)}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  fontSize={Math.min(w * 0.25, l * 0.1, 0.25)}
-                  fill="#4b5563"
-                  style={{ pointerEvents: "none" }}
-                >
-                  {planche.cultures[0].espece.id}
-                </text>
+              {/* Cultures en cours - sillons en pointillés */}
+              {planche.cultures.length > 0 && (
+                <>
+                  {/* Bandes de couleurs en haut pour identification rapide */}
+                  {planche.cultures.slice(0, 5).map((culture, idx) => {
+                    const bandHeight = Math.min(0.1, l * 0.03)
+                    const bandWidth = w / Math.min(planche.cultures.length, 5)
+                    return (
+                      <rect
+                        key={`band-${culture.id}`}
+                        x={idx * bandWidth}
+                        y={0}
+                        width={bandWidth}
+                        height={bandHeight}
+                        fill={culture.espece.couleur || culture.espece.famille?.couleur || "#22c55e"}
+                        opacity={0.8}
+                        style={{ pointerEvents: "none" }}
+                      />
+                    )
+                  })}
+
+                  {/* Sillons en pointillés - dans le sens de la longueur avec espacement réel */}
+                  {planche.cultures.slice(0, 3).map((culture, cultureIdx) => {
+                    const nbRangs = culture.nbRangs || 3
+                    const couleur = culture.espece.couleur || culture.espece.famille?.couleur || "#22c55e"
+                    // Espacement entre rangs en mètres (espacementRangs est en cm dans l'ITP)
+                    const espacementRangsM = (culture.itp?.espacementRangs || 30) / 100
+
+                    // Calculer la largeur totale occupée par les rangs
+                    const largeurOccupee = (nbRangs - 1) * espacementRangsM
+                    const largeurPlanche = planche.largeur || 0.8
+
+                    // Si la culture occupe plus que la largeur, proportionner
+                    let spacing = espacementRangsM
+                    let startX = (largeurPlanche - largeurOccupee) / 2 // Centrer
+
+                    if (largeurOccupee > largeurPlanche - 0.1) {
+                      // Réduire l'espacement pour tenir dans la planche
+                      spacing = (largeurPlanche - 0.1) / (nbRangs - 1)
+                      startX = 0.05
+                    }
+
+                    // Si plusieurs cultures, décaler selon la zone
+                    if (planche.cultures.length > 1) {
+                      const cultureWidth = largeurPlanche / Math.min(planche.cultures.length, 3)
+                      startX = cultureIdx * cultureWidth + 0.05
+                      spacing = Math.min(spacing, (cultureWidth - 0.1) / (nbRangs - 1 || 1))
+                    }
+
+                    return (
+                      <g key={`sillons-${culture.id}`}>
+                        {Array.from({ length: Math.min(nbRangs, 8) }).map((_, rangIdx) => {
+                          const x = startX + rangIdx * spacing
+                          return (
+                            <line
+                              key={rangIdx}
+                              x1={x}
+                              y1={0.1}
+                              x2={x}
+                              y2={l - 0.1}
+                              stroke={couleur}
+                              strokeWidth={0.04}
+                              strokeDasharray="0.08,0.08"
+                              opacity={0.9}
+                              style={{ pointerEvents: "none" }}
+                            />
+                          )
+                        })}
+                      </g>
+                    )
+                  })}
+
+                  {/* Texte : nom de la première culture ou compteur */}
+                  {planche.cultures.length > 3 && (
+                    <text
+                      x={w / 2}
+                      y={l - 0.15}
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      fontSize={0.12}
+                      fill="#4b5563"
+                      fontWeight="500"
+                      style={{ pointerEvents: "none" }}
+                    >
+                      +{planche.cultures.length - 3} autres
+                    </text>
+                  )}
+                </>
               )}
             </g>
           )

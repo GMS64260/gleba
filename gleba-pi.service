@@ -1,0 +1,19 @@
+[Unit]
+Description=Gleba - Application maraîchage
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/gleba
+Environment="NODE_ENV=production"
+Environment="PORT=3000"
+ExecStart=/usr/bin/npm run start
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gleba
+
+[Install]
+WantedBy=multi-user.target

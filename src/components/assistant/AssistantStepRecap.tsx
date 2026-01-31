@@ -31,6 +31,7 @@ import {
   necesiteIrrigation,
   verifierStockSemences,
 } from "@/lib/assistant-helpers"
+import { peutAjouterCulture, suggererAjustements } from "@/lib/planche-validation"
 import type { AssistantState } from "./AssistantDialog"
 import { useToast } from "@/hooks/use-toast"
 
@@ -53,6 +54,11 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
     suffisant: boolean
     stockActuel: number
     besoin: number
+  } | null>(null)
+  const [plancheCheck, setPlancheCheck] = React.useState<{
+    possible: boolean
+    message?: string
+    suggestions?: string[]
   } | null>(null)
 
   const { planche, culture } = state
@@ -78,6 +84,68 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
       setStockCheck(check)
     }
   }, [culture.variete, nbPlants, culture.itp?.nbGrainesPlant])
+
+  // Vérifier si la culture rentre dans la planche
+  React.useEffect(() => {
+    async function checkPlanche() {
+      if (!planche.id || !culture.nbRangs || !culture.itp?.espacementRangs) {
+        setPlancheCheck(null)
+        return
+      }
+
+      try {
+        // Récupérer les cultures existantes de la planche
+        const res = await fetch(`/api/planches/${encodeURIComponent(planche.id)}`)
+        if (!res.ok) return
+
+        const plancheData = await res.json()
+
+        const culturesExistantes = (plancheData.cultures || [])
+          .filter((c: any) => c.terminee === null)
+          .map((c: any) => ({
+            nbRangs: c.nbRangs || 1,
+            espacementRangs: c.itp?.espacementRangs || 30,
+          }))
+
+        const nouvelleCulture = {
+          nbRangs: culture.nbRangs || 1,
+          espacementRangs: culture.itp.espacementRangs || 30,
+          longueur: culture.longueur || undefined,
+        }
+
+        const validation = peutAjouterCulture(
+          {
+            largeur: plancheData.largeur || 0.8,
+            longueur: plancheData.longueur || 2,
+          },
+          culturesExistantes,
+          nouvelleCulture
+        )
+
+        if (!validation.possible) {
+          const suggestions = suggererAjustements(
+            {
+              largeur: plancheData.largeur || 0.8,
+              longueur: plancheData.longueur || 2,
+            },
+            culturesExistantes,
+            nouvelleCulture
+          )
+
+          setPlancheCheck({
+            possible: false,
+            message: validation.message,
+            suggestions: suggestions.map(s => s.message),
+          })
+        } else {
+          setPlancheCheck({ possible: true })
+        }
+      } catch (e) {
+        console.error('Error checking planche:', e)
+      }
+    }
+    checkPlanche()
+  }, [planche.id, culture.nbRangs, culture.itp?.espacementRangs])
 
   // Charger les associations recommandées
   React.useEffect(() => {
@@ -294,6 +362,26 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
       </Card>
 
       {/* Alertes */}
+      {plancheCheck && !plancheCheck.possible && (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>La culture ne rentre pas dans la planche</AlertTitle>
+          <AlertDescription>
+            <p className="mb-2">{plancheCheck.message}</p>
+            {plancheCheck.suggestions && plancheCheck.suggestions.length > 0 && (
+              <div className="text-xs mt-2 space-y-1">
+                <p className="font-medium">Suggestions:</p>
+                <ul className="list-disc list-inside">
+                  {plancheCheck.suggestions.map((s, i) => (
+                    <li key={i}>{s}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
+
       {stockCheck && !stockCheck.suffisant && (
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
@@ -340,7 +428,7 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
       <div className="pt-4">
         <Button
           onClick={handleCreate}
-          disabled={loading}
+          disabled={loading || (plancheCheck !== null && !plancheCheck.possible)}
           className="w-full"
           size="lg"
         >
@@ -356,6 +444,11 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
             </>
           )}
         </Button>
+        {plancheCheck && !plancheCheck.possible && (
+          <p className="text-xs text-center text-muted-foreground mt-2">
+            Modifiez le nombre de rangs ou l'espacement pour continuer
+          </p>
+        )}
       </div>
     </div>
   )

@@ -41,6 +41,11 @@ interface PlancheWithCulture {
   ilot: string | null
   cultures: {
     id: number
+    nbRangs: number | null
+    espacement: number | null
+    itp: {
+      espacementRangs: number | null
+    } | null
     espece: {
       id: string
       couleur: string | null
@@ -614,17 +619,22 @@ export default function JardinPage() {
     }
   }
 
-  // Légende des couleurs
+  // Légende des couleurs - toutes les cultures
   const legendItems = React.useMemo(() => {
-    const items = new Map<string, { color: string; name: string }>()
+    const items = new Map<string, { color: string; name: string; count: number }>()
     planches.forEach(p => {
-      if (p.cultures[0]) {
-        const espece = p.cultures[0].espece
+      p.cultures.forEach(c => {
+        const espece = c.espece
         const color = espece.couleur || espece.famille?.couleur || "#22c55e"
-        items.set(espece.id, { color, name: espece.id })
-      }
+        const existing = items.get(espece.id)
+        if (existing) {
+          existing.count++
+        } else {
+          items.set(espece.id, { color, name: espece.id, count: 1 })
+        }
+      })
     })
-    return Array.from(items.values())
+    return Array.from(items.values()).sort((a, b) => b.count - a.count)
   }, [planches])
 
   return (
@@ -780,18 +790,43 @@ export default function JardinPage() {
 
                   {selectedPlancheData.cultures.length > 0 ? (
                     <div>
-                      <span className="text-sm text-muted-foreground">Culture:</span>
-                      <div className="flex items-center gap-2 mt-1">
-                        <div
-                          className="w-4 h-4 rounded"
-                          style={{
-                            backgroundColor:
-                              selectedPlancheData.cultures[0].espece.couleur ||
-                              selectedPlancheData.cultures[0].espece.famille?.couleur ||
-                              "#22c55e"
-                          }}
-                        />
-                        <span className="font-medium">{selectedPlancheData.cultures[0].espece.id}</span>
+                      <span className="text-sm text-muted-foreground">
+                        Culture{selectedPlancheData.cultures.length > 1 ? 's' : ''} ({selectedPlancheData.cultures.length}):
+                      </span>
+                      <div className="space-y-1.5 mt-1">
+                        {selectedPlancheData.cultures.map((culture) => {
+                          const espacementRangs = culture.itp?.espacementRangs || 30
+                          const largeurNecessaire = ((culture.nbRangs || 1) - 1) * espacementRangs / 100
+                          const largeurPlanche = selectedPlancheData.largeur || 0.8
+                          const ajuste = largeurNecessaire > largeurPlanche
+
+                          return (
+                            <Link
+                              key={culture.id}
+                              href={`/cultures/${culture.id}`}
+                              className="block"
+                            >
+                              <div className="flex items-center gap-2 p-2 rounded hover:bg-gray-100 transition-colors">
+                                <div
+                                  className="w-4 h-4 rounded flex-shrink-0"
+                                  style={{
+                                    backgroundColor:
+                                      culture.espece.couleur ||
+                                      culture.espece.famille?.couleur ||
+                                      "#22c55e"
+                                  }}
+                                />
+                                <div className="flex-1">
+                                  <span className="font-medium text-sm block">{culture.espece.id}</span>
+                                  <span className="text-xs text-muted-foreground">
+                                    {culture.nbRangs || 1} rang{(culture.nbRangs || 1) > 1 ? 's' : ''} × {espacementRangs}cm
+                                    {ajuste && <span className="text-orange-600 ml-1">⚠ ajusté</span>}
+                                  </span>
+                                </div>
+                              </div>
+                            </Link>
+                          )
+                        })}
                       </div>
                     </div>
                   ) : (
@@ -1252,9 +1287,14 @@ export default function JardinPage() {
                 ) : (
                   <ul className="space-y-1">
                     {legendItems.map(item => (
-                      <li key={item.name} className="flex items-center gap-2 text-sm">
-                        <div className="w-3 h-3 rounded" style={{ backgroundColor: item.color }} />
-                        {item.name}
+                      <li key={item.name} className="flex items-center justify-between gap-2 text-sm">
+                        <div className="flex items-center gap-2">
+                          <div className="w-3 h-3 rounded" style={{ backgroundColor: item.color }} />
+                          <span>{item.name}</span>
+                        </div>
+                        {item.count > 1 && (
+                          <span className="text-xs text-muted-foreground">×{item.count}</span>
+                        )}
                       </li>
                     ))}
                   </ul>
