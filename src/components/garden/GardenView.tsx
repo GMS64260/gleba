@@ -717,53 +717,76 @@ export function GardenView({
                     )
                   })}
 
-                  {/* Sillons en pointillés - dans le sens de la longueur avec espacement réel */}
+                  {/* Cultures avec fond coloré + sillons visibles */}
                   {planche.cultures.slice(0, 3).map((culture, cultureIdx) => {
                     const nbRangs = culture.nbRangs || 3
                     const couleur = culture.espece.couleur || culture.espece.famille?.couleur || "#22c55e"
-                    // Espacement entre rangs en mètres (espacementRangs est en cm dans l'ITP)
-                    const espacementRangsM = (culture.itp?.espacementRangs || 30) / 100
-
-                    // Calculer la largeur totale occupée par les rangs
-                    const largeurOccupee = (nbRangs - 1) * espacementRangsM
                     const largeurPlanche = planche.largeur || 0.8
 
-                    // Si la culture occupe plus que la largeur, proportionner
+                    // Si plusieurs cultures, diviser la planche en zones
+                    const nbCultures = Math.min(planche.cultures.length, 3)
+                    const zoneWidth = largeurPlanche / nbCultures
+                    const zoneStartX = cultureIdx * zoneWidth
+
+                    // Espacement entre rangs en mètres
+                    const espacementRangsM = (culture.itp?.espacementRangs || 30) / 100
+                    const largeurOccupee = (nbRangs - 1) * espacementRangsM
+
+                    // Centrer les rangs dans la zone
                     let spacing = espacementRangsM
-                    let startX = (largeurPlanche - largeurOccupee) / 2 // Centrer
+                    let startX = zoneStartX + (zoneWidth - largeurOccupee) / 2
 
-                    if (largeurOccupee > largeurPlanche - 0.1) {
-                      // Réduire l'espacement pour tenir dans la planche
-                      spacing = (largeurPlanche - 0.1) / (nbRangs - 1)
-                      startX = 0.05
-                    }
-
-                    // Si plusieurs cultures, décaler selon la zone
-                    if (planche.cultures.length > 1) {
-                      const cultureWidth = largeurPlanche / Math.min(planche.cultures.length, 3)
-                      startX = cultureIdx * cultureWidth + 0.05
-                      spacing = Math.min(spacing, (cultureWidth - 0.1) / (nbRangs - 1 || 1))
+                    // Si ça dépasse, ajuster
+                    if (largeurOccupee > zoneWidth - 0.1) {
+                      spacing = (zoneWidth - 0.1) / (nbRangs - 1 || 1)
+                      startX = zoneStartX + 0.05
                     }
 
                     return (
-                      <g key={`sillons-${culture.id}`}>
-                        {Array.from({ length: Math.min(nbRangs, 8) }).map((_, rangIdx) => {
+                      <g key={`culture-${culture.id}`}>
+                        {/* Fond semi-transparent de la zone culture */}
+                        <rect
+                          x={zoneStartX}
+                          y={0}
+                          width={zoneWidth}
+                          height={l}
+                          fill={couleur}
+                          opacity={0.08}
+                          style={{ pointerEvents: "none" }}
+                        />
+
+                        {/* Sillons bien visibles */}
+                        {Array.from({ length: Math.min(nbRangs, 10) }).map((_, rangIdx) => {
                           const x = startX + rangIdx * spacing
                           return (
                             <line
                               key={rangIdx}
                               x1={x}
-                              y1={0.1}
+                              y1={0.15}
                               x2={x}
-                              y2={l - 0.1}
+                              y2={l - 0.15}
                               stroke={couleur}
-                              strokeWidth={0.04}
-                              strokeDasharray="0.08,0.08"
-                              opacity={0.9}
+                              strokeWidth={0.06}
+                              strokeDasharray="0.15,0.10"
+                              opacity={0.7}
                               style={{ pointerEvents: "none" }}
                             />
                           )
                         })}
+
+                        {/* Label de la culture */}
+                        <text
+                          x={zoneStartX + zoneWidth / 2}
+                          y={l - 0.2}
+                          textAnchor="middle"
+                          fontSize={0.12}
+                          fill={couleur}
+                          fontWeight="600"
+                          opacity={0.8}
+                          style={{ pointerEvents: "none" }}
+                        >
+                          {culture.especeId}
+                        </text>
                       </g>
                     )
                   })}
