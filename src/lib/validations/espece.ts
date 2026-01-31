@@ -7,6 +7,18 @@ import { z } from 'zod'
 // Types d'espèces valides
 export const ESPECE_TYPES = ['legume', 'arbre_fruitier', 'petit_fruit', 'aromatique', 'engrais_vert'] as const
 
+// Catégories visuelles
+export const ESPECE_CATEGORIES = [
+  'racine', 'bulbe', 'feuille', 'fleur', 'fruit_legume', 'grain',
+  'petit_fruit', 'fruit', 'agrume', 'engrais_vert', 'mellifere', 'bois', 'arbre', 'ornement'
+] as const
+
+// Niveaux de difficulté
+export const ESPECE_NIVEAUX = ['Facile', 'Moyen', 'Difficile'] as const
+
+// Niveaux d'irrigation
+export const ESPECE_IRRIGATION = ['Faible', 'Moyen', 'Eleve'] as const
+
 // Schéma de base pour une espèce (correspond au modèle Prisma)
 export const baseEspeceSchema = z.object({
   id: z.string().min(1, "Le nom de l'espèce est requis").max(100),
@@ -24,6 +36,21 @@ export const baseEspeceSchema = z.object({
   aPlanifier: z.boolean(),
   couleur: z.string().regex(/^#[0-9A-Fa-f]{6}$/, "Format couleur invalide (#RRGGBB)").nullable().optional(),
   description: z.string().max(5000).nullable().optional(),
+  // Nouveaux champs (parite Potaleger)
+  categorie: z.string().max(50).nullable().optional(),
+  niveau: z.string().max(20).nullable().optional(),
+  densite: z.number().min(0).max(1000).nullable().optional(),
+  doseSemis: z.number().min(0).max(1000).nullable().optional(),
+  tauxGermination: z.number().min(0).max(100).nullable().optional(),
+  temperatureGerm: z.string().max(50).nullable().optional(),
+  joursLevee: z.number().int().min(0).max(365).nullable().optional(),
+  irrigation: z.string().max(20).nullable().optional(),
+  conservation: z.boolean().nullable().optional(),
+  effet: z.string().max(1000).nullable().optional(),
+  usages: z.string().max(1000).nullable().optional(),
+  objectifAnnuel: z.number().min(0).nullable().optional(),
+  prixKg: z.number().min(0).nullable().optional(),
+  semaineTaille: z.number().int().min(1).max(52).nullable().optional(),
 })
 
 // Schéma pour la création (id requis)

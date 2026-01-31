@@ -34,7 +34,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
-import { updateITPSchema, type UpdateITPInput } from "@/lib/validations"
+import { updateITPSchema, type UpdateITPInput, ITP_TYPE_PLANCHE } from "@/lib/validations/itp"
 
 interface Espece {
   id: string
@@ -48,11 +48,17 @@ interface ITPData {
   semaineSemis: number | null
   semainePlantation: number | null
   semaineRecolte: number | null
+  dureeRecolte: number | null
   dureePepiniere: number | null
   dureeCulture: number | null
   nbRangs: number | null
   espacement: number | null
   notes: string | null
+  typePlanche: string | null
+  decalageMax: number | null
+  espacementRangs: number | null
+  nbGrainesPlant: number | null
+  doseSemis: number | null
   espece: { id: string; famille: { id: string } | null } | null
   _count: { cultures: number; rotationsDetails: number }
 }
@@ -99,11 +105,17 @@ export default function EditITPPage() {
           semaineSemis: itp.semaineSemis,
           semainePlantation: itp.semainePlantation,
           semaineRecolte: itp.semaineRecolte,
+          dureeRecolte: itp.dureeRecolte,
           dureePepiniere: itp.dureePepiniere,
           dureeCulture: itp.dureeCulture,
           nbRangs: itp.nbRangs,
           espacement: itp.espacement,
           notes: itp.notes,
+          typePlanche: itp.typePlanche,
+          decalageMax: itp.decalageMax,
+          espacementRangs: itp.espacementRangs,
+          nbGrainesPlant: itp.nbGrainesPlant,
+          doseSemis: itp.doseSemis,
         })
       } catch (error) {
         toast({
@@ -286,72 +298,121 @@ export default function EditITPPage() {
                 <CardTitle>Calendrier</CardTitle>
                 <CardDescription>Semaines de semis, plantation et recolte (1-52)</CardDescription>
               </CardHeader>
-              <CardContent className="grid grid-cols-3 gap-4">
-                <FormField
-                  control={form.control}
-                  name="semaineSemis"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Semaine semis</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          min={1}
-                          max={52}
-                          placeholder="1-52"
-                          {...field}
-                          value={field.value ?? ""}
-                          onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : null)}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-3 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="semaineSemis"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Semaine semis</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={52}
+                            placeholder="1-52"
+                            {...field}
+                            value={field.value ?? ""}
+                            onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : null)}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-                <FormField
-                  control={form.control}
-                  name="semainePlantation"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Semaine plantation</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          min={1}
-                          max={52}
-                          placeholder="1-52"
-                          {...field}
-                          value={field.value ?? ""}
-                          onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : null)}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                  <FormField
+                    control={form.control}
+                    name="semainePlantation"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Semaine plantation</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={52}
+                            placeholder="1-52"
+                            {...field}
+                            value={field.value ?? ""}
+                            onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : null)}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-                <FormField
-                  control={form.control}
-                  name="semaineRecolte"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Semaine recolte</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          min={1}
-                          max={52}
-                          placeholder="1-52"
-                          {...field}
-                          value={field.value ?? ""}
-                          onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : null)}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                  <FormField
+                    control={form.control}
+                    name="semaineRecolte"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Semaine recolte</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={52}
+                            placeholder="1-52"
+                            {...field}
+                            value={field.value ?? ""}
+                            onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : null)}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="dureeRecolte"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Duree recolte (semaines)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min={0}
+                            max={52}
+                            placeholder="Ex: 4"
+                            {...field}
+                            value={field.value ?? ""}
+                            onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : null)}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="decalageMax"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Decalage max (semaines)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min={0}
+                            max={52}
+                            placeholder="Flexibilite"
+                            {...field}
+                            value={field.value ?? ""}
+                            onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : null)}
+                          />
+                        </FormControl>
+                        <FormDescription>Flexibilite de planification</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
               </CardContent>
             </Card>
 
@@ -416,52 +477,152 @@ export default function EditITPPage() {
                 <CardTitle>Parametres de plantation</CardTitle>
                 <CardDescription>Configuration des rangs et espacements</CardDescription>
               </CardHeader>
-              <CardContent className="grid grid-cols-2 gap-4">
+              <CardContent className="space-y-4">
                 <FormField
                   control={form.control}
-                  name="nbRangs"
+                  name="typePlanche"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Nombre de rangs</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          min={1}
-                          max={20}
-                          placeholder="Rangs par planche"
-                          {...field}
-                          value={field.value ?? ""}
-                          onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : null)}
-                        />
-                      </FormControl>
+                      <FormLabel>Type de planche</FormLabel>
+                      <Select
+                        onValueChange={(value) => field.onChange(value === "_none" ? null : value)}
+                        value={field.value || "_none"}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selectionner..." />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="_none">Non specifie</SelectItem>
+                          {ITP_TYPE_PLANCHE.map((t) => (
+                            <SelectItem key={t} value={t}>
+                              {t}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
 
-                <FormField
-                  control={form.control}
-                  name="espacement"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Espacement (cm)</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          min={1}
-                          max={200}
-                          step={0.5}
-                          placeholder="Entre plants"
-                          {...field}
-                          value={field.value ?? ""}
-                          onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : null)}
-                        />
-                      </FormControl>
-                      <FormDescription>Espacement sur le rang</FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                <div className="grid grid-cols-3 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="nbRangs"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Nombre de rangs</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={20}
+                            placeholder="Rangs par planche"
+                            {...field}
+                            value={field.value ?? ""}
+                            onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : null)}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="espacement"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Espacement plants (cm)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={200}
+                            step={0.5}
+                            placeholder="Sur le rang"
+                            {...field}
+                            value={field.value ?? ""}
+                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : null)}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="espacementRangs"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Espacement rangs (cm)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={200}
+                            placeholder="Entre rangs"
+                            {...field}
+                            value={field.value ?? ""}
+                            onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : null)}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="nbGrainesPlant"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Graines par plant</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min={0}
+                            step={0.1}
+                            placeholder="Ex: 2"
+                            {...field}
+                            value={field.value ?? ""}
+                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : null)}
+                          />
+                        </FormControl>
+                        <FormDescription>Pour calcul semences</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="doseSemis"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Dose semis (g/m2)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min={0}
+                            step={0.1}
+                            placeholder="Ex: 3"
+                            {...field}
+                            value={field.value ?? ""}
+                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : null)}
+                          />
+                        </FormControl>
+                        <FormDescription>Semis direct</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
               </CardContent>
             </Card>
 

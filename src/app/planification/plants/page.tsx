@@ -9,7 +9,7 @@ import { Suspense } from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { ColumnDef } from "@tanstack/react-table"
-import { ArrowLeft, Package } from "lucide-react"
+import { ArrowLeft, Package, AlertTriangle, Leaf } from "lucide-react"
 
 import { DataTable } from "@/components/tables/DataTable"
 import { Button } from "@/components/ui/button"
@@ -31,6 +31,8 @@ interface BesoinPlant {
   varieteId: string | null
   nbPlants: number
   semainePlantation: number | null
+  stockActuel: number
+  aCommander: number
   cultures: { plancheId: string; surface: number; nbPlants: number }[]
 }
 
@@ -38,6 +40,8 @@ interface Stats {
   nbEspeces: number
   totalPlants: number
   totalCultures: number
+  totalACommander: number
+  especesSansStock: number
   parSemaine: Record<number, number>
 }
 
@@ -81,6 +85,30 @@ const columns: ColumnDef<BesoinPlant>[] = [
     cell: ({ getValue }) => (
       <span className="font-medium">{(getValue() as number).toLocaleString()}</span>
     ),
+  },
+  {
+    accessorKey: "stockActuel",
+    header: "Stock",
+    cell: ({ getValue }) => {
+      const val = getValue() as number
+      return val > 0 ? val.toLocaleString() : "-"
+    },
+  },
+  {
+    accessorKey: "aCommander",
+    header: "A commander",
+    cell: ({ row }) => {
+      const val = row.original.aCommander
+      if (val <= 0) {
+        return <Badge variant="default" className="bg-green-600">OK</Badge>
+      }
+      return (
+        <Badge variant="destructive" className="flex items-center gap-1">
+          <AlertTriangle className="h-3 w-3" />
+          {val.toLocaleString()}
+        </Badge>
+      )
+    },
   },
   {
     id: "cultures",
@@ -147,12 +175,14 @@ function PlantsContent() {
   }, [fetchData])
 
   const handleExport = () => {
-    const headers = ["Espece", "Variete", "Semaine plantation", "Nb plants", "Planches"]
+    const headers = ["Espece", "Variete", "Semaine plantation", "Nb plants", "Stock", "A commander", "Planches"]
     const rows = data.map(b => [
       b.especeId,
       b.varieteId || "",
       b.semainePlantation?.toString() || "",
       b.nbPlants.toString(),
+      b.stockActuel.toString(),
+      b.aCommander.toString(),
       b.cultures.map(c => c.plancheId).join(", "),
     ])
 
@@ -178,33 +208,41 @@ function PlantsContent() {
               </Button>
             </Link>
             <div className="flex items-center gap-2">
-              <Package className="h-6 w-6 text-cyan-600" />
+              <Leaf className="h-6 w-6 text-cyan-600" />
               <h1 className="text-xl font-bold">Plants necessaires</h1>
             </div>
           </div>
 
-          <Select
-            value={annee.toString()}
-            onValueChange={(value) => setAnnee(parseInt(value))}
-          >
-            <SelectTrigger className="w-[100px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {annees.map((a) => (
-                <SelectItem key={a} value={a.toString()}>
-                  {a}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2">
+            <Link href="/stocks">
+              <Button variant="outline" size="sm">
+                <Package className="h-4 w-4 mr-2" />
+                Gerer stocks
+              </Button>
+            </Link>
+            <Select
+              value={annee.toString()}
+              onValueChange={(value) => setAnnee(parseInt(value))}
+            >
+              <SelectTrigger className="w-[100px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {annees.map((a) => (
+                  <SelectItem key={a} value={a.toString()}>
+                    {a}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </header>
 
       <main className="container mx-auto px-4 py-6">
         {/* Stats */}
         {stats && (
-          <div className="grid gap-4 md:grid-cols-3 mb-6">
+          <div className="grid gap-4 md:grid-cols-4 mb-6">
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm text-muted-foreground">Especes</CardTitle>
@@ -227,6 +265,17 @@ function PlantsContent() {
               </CardHeader>
               <CardContent>
                 <p className="text-2xl font-bold">{stats.totalCultures}</p>
+              </CardContent>
+            </Card>
+            <Card className={stats.especesSansStock > 0 ? "border-red-200 bg-red-50" : ""}>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm text-muted-foreground">A commander</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold">{stats.totalACommander.toLocaleString()}</p>
+                {stats.especesSansStock > 0 && (
+                  <p className="text-sm text-red-600">{stats.especesSansStock} espece(s) sans stock</p>
+                )}
               </CardContent>
             </Card>
           </div>

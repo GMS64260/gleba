@@ -58,9 +58,11 @@
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "better-sqlite3": "^12.6.2",
     "eslint": "^8",
     "eslint-config-next": "14.2.18",
     "postcss": "^8",

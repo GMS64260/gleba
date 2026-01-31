@@ -9,7 +9,7 @@ import { Suspense } from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { ColumnDef } from "@tanstack/react-table"
-import { ArrowLeft, Sprout, AlertTriangle } from "lucide-react"
+import { ArrowLeft, Sprout, AlertTriangle, Package } from "lucide-react"
 
 import { DataTable } from "@/components/tables/DataTable"
 import { Button } from "@/components/ui/button"
@@ -194,21 +194,29 @@ function SemencesContent() {
             </div>
           </div>
 
-          <Select
-            value={annee.toString()}
-            onValueChange={(value) => setAnnee(parseInt(value))}
-          >
-            <SelectTrigger className="w-[100px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {annees.map((a) => (
-                <SelectItem key={a} value={a.toString()}>
-                  {a}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2">
+            <Link href="/stocks">
+              <Button variant="outline" size="sm">
+                <Package className="h-4 w-4 mr-2" />
+                Gerer stocks
+              </Button>
+            </Link>
+            <Select
+              value={annee.toString()}
+              onValueChange={(value) => setAnnee(parseInt(value))}
+            >
+              <SelectTrigger className="w-[100px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {annees.map((a) => (
+                  <SelectItem key={a} value={a.toString()}>
+                    {a}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </header>
 

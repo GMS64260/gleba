@@ -37,9 +37,22 @@ import {
   TrendingDown,
   Calendar,
   Droplets,
+  Heart,
+  Package,
+  ClipboardCheck,
 } from "lucide-react"
+import { AssistantDialog, AssistantButton } from "@/components/assistant"
+import { CalendarView } from "@/components/dashboard/CalendarView"
 
 const modules = [
+  {
+    title: "Taches",
+    description: "Actions du jour et de la semaine",
+    href: "/taches",
+    icon: ClipboardCheck,
+    color: "text-red-600",
+    bgColor: "bg-red-50",
+  },
   {
     title: "Plan du jardin",
     description: "Visualiser et organiser vos planches",
@@ -104,6 +117,30 @@ const modules = [
     color: "text-orange-600",
     bgColor: "bg-orange-50",
   },
+  {
+    title: "Associations",
+    description: "Compagnonnage des plantes",
+    href: "/associations",
+    icon: Heart,
+    color: "text-pink-600",
+    bgColor: "bg-pink-50",
+  },
+  {
+    title: "Stocks",
+    description: "Semences, plants, fertilisants",
+    href: "/stocks",
+    icon: Package,
+    color: "text-violet-600",
+    bgColor: "bg-violet-50",
+  },
+  {
+    title: "Irrigation",
+    description: "Cultures a irriguer",
+    href: "/cultures/irriguer",
+    icon: Droplets,
+    color: "text-cyan-600",
+    bgColor: "bg-cyan-50",
+  },
 ]
 
 interface DashboardData {
@@ -152,6 +189,7 @@ export default function Home() {
   const [loading, setLoading] = React.useState(true)
   const [showWelcome, setShowWelcome] = React.useState(false)
   const [selectedYear, setSelectedYear] = React.useState(currentYearNow)
+  const [showAssistant, setShowAssistant] = React.useState(false)
 
   // Vérifier si l'utilisateur est nouveau (pas de données)
   React.useEffect(() => {
@@ -224,6 +262,9 @@ export default function Home() {
         onComplete={handleOnboardingComplete}
       />
 
+      {/* Assistant Maraîcher */}
+      <AssistantDialog open={showAssistant} onOpenChange={setShowAssistant} />
+
       {/* Header */}
       <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-3 flex items-center justify-between">
@@ -238,6 +279,7 @@ export default function Home() {
             />
           </Link>
           <div className="flex items-center gap-2">
+            <AssistantButton onClick={() => setShowAssistant(true)} />
             <Link href="/parametres">
               <Button variant="ghost" size="sm">
                 <Settings className="h-4 w-4" />
@@ -595,45 +637,10 @@ export default function Home() {
           </Card>
         </div>
 
-        {/* Upcoming tasks */}
-        {data?.activity.upcomingTasks && data.activity.upcomingTasks.length > 0 && (
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Droplets className="h-5 w-5 text-cyan-600" />
-                Prochaines tâches
-              </CardTitle>
-              <CardDescription>
-                Semis et plantations à venir
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-                {data.activity.upcomingTasks.map((task) => (
-                  <div
-                    key={task.id}
-                    className="flex items-center gap-3 p-3 rounded-lg border bg-gray-50"
-                  >
-                    <div className={`w-2 h-2 rounded-full ${
-                      !task.semisFait ? "bg-orange-500" : "bg-green-500"
-                    }`} />
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium truncate">{task.especeId}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {!task.semisFait && task.dateSemis
-                          ? `Semis: ${new Date(task.dateSemis).toLocaleDateString("fr-FR")}`
-                          : !task.plantationFaite && task.datePlantation
-                          ? `Plantation: ${new Date(task.datePlantation).toLocaleDateString("fr-FR")}`
-                          : ""}
-                        {task.plancheId && ` • ${task.plancheId}`}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        {/* Calendrier des cultures */}
+        <div className="mb-6">
+          <CalendarView year={selectedYear} />
+        </div>
       </main>
 
       {/* Footer */}

@@ -22,7 +22,13 @@ interface Planche {
   posY: number | null
   rotation2D: number | null
   notes: string | null
+  type: string | null
+  irrigation: string | null
+  annee: number | null
 }
+
+const PLANCHE_TYPES = ['Serre', 'Plein champ', 'Tunnel', 'Chassis']
+const PLANCHE_IRRIGATION = ['Goutte-a-goutte', 'Aspersion', 'Manuel', 'Aucun']
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -174,6 +180,9 @@ function PlancheInfo({ planche, onUpdate }: PlancheInfoProps) {
     posY: planche.posY?.toString() || '',
     rotation2D: planche.rotation2D?.toString() || '0',
     notes: planche.notes || '',
+    type: planche.type || '',
+    irrigation: planche.irrigation || '',
+    annee: planche.annee?.toString() || '',
   })
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -193,6 +202,9 @@ function PlancheInfo({ planche, onUpdate }: PlancheInfoProps) {
         posY: formData.posY ? parseFloat(formData.posY) : null,
         rotation2D: formData.rotation2D ? parseFloat(formData.rotation2D) : 0,
         notes: formData.notes || null,
+        type: formData.type || null,
+        irrigation: formData.irrigation || null,
+        annee: formData.annee ? parseInt(formData.annee) : null,
       }
 
       const res = await fetch(`/api/planches/${encodeURIComponent(planche.id)}`, {
@@ -225,6 +237,9 @@ function PlancheInfo({ planche, onUpdate }: PlancheInfoProps) {
       posY: planche.posY?.toString() || '',
       rotation2D: planche.rotation2D?.toString() || '0',
       notes: planche.notes || '',
+      type: planche.type || '',
+      irrigation: planche.irrigation || '',
+      annee: planche.annee?.toString() || '',
     })
     setIsEditing(false)
   }
@@ -283,11 +298,54 @@ function PlancheInfo({ planche, onUpdate }: PlancheInfoProps) {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700">Îlot</label>
+            <label className="block text-sm font-medium text-gray-700">Ilot</label>
             <input
               type="text"
               name="ilot"
               value={formData.ilot}
+              onChange={handleChange}
+              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-green-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Type</label>
+            <select
+              name="type"
+              value={formData.type}
+              onChange={handleChange}
+              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-green-500"
+            >
+              <option value="">-</option>
+              {PLANCHE_TYPES.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Irrigation</label>
+            <select
+              name="irrigation"
+              value={formData.irrigation}
+              onChange={handleChange}
+              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-green-500"
+            >
+              <option value="">-</option>
+              {PLANCHE_IRRIGATION.map((i) => (
+                <option key={i} value={i}>{i}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Annee rotation</label>
+            <input
+              type="number"
+              name="annee"
+              min="2000"
+              max="2100"
+              value={formData.annee}
               onChange={handleChange}
               className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-green-500"
             />
@@ -416,8 +474,20 @@ function PlancheInfo({ planche, onUpdate }: PlancheInfoProps) {
           <dd className="mt-1 text-sm text-gray-900">{planche.nom || '-'}</dd>
         </div>
         <div>
-          <dt className="text-sm font-medium text-gray-500">Îlot</dt>
+          <dt className="text-sm font-medium text-gray-500">Ilot</dt>
           <dd className="mt-1 text-sm text-gray-900">{planche.ilot || '-'}</dd>
+        </div>
+        <div>
+          <dt className="text-sm font-medium text-gray-500">Type</dt>
+          <dd className="mt-1 text-sm text-gray-900">{planche.type || '-'}</dd>
+        </div>
+        <div>
+          <dt className="text-sm font-medium text-gray-500">Irrigation</dt>
+          <dd className="mt-1 text-sm text-gray-900">{planche.irrigation || '-'}</dd>
+        </div>
+        <div>
+          <dt className="text-sm font-medium text-gray-500">Annee rotation</dt>
+          <dd className="mt-1 text-sm text-gray-900">{planche.annee || '-'}</dd>
         </div>
         <div>
           <dt className="text-sm font-medium text-gray-500">Orientation</dt>

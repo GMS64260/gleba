@@ -151,6 +151,81 @@ export async function PUT(
   }
 }
 
+// PATCH /api/cultures/[id] - Mise a jour partielle rapide (pour actions rapides)
+export async function PATCH(
+  request: NextRequest,
+  { params }: RouteParams
+) {
+  const { error, session } = await requireAuthApi()
+  if (error) return error
+
+  try {
+    const { id } = await params
+    const cultureId = parseInt(id)
+    const body = await request.json()
+
+    if (isNaN(cultureId)) {
+      return NextResponse.json(
+        { error: 'ID de culture invalide' },
+        { status: 400 }
+      )
+    }
+
+    // Verifier existence et propriete
+    const existing = await prisma.culture.findUnique({
+      where: {
+        id: cultureId,
+        userId: session!.user.id,
+      },
+    })
+
+    if (!existing) {
+      return NextResponse.json(
+        { error: `Culture #${id} non trouvee` },
+        { status: 404 }
+      )
+    }
+
+    // Champs autorises pour PATCH rapide
+    const allowedFields = [
+      'semisFait',
+      'plantationFaite',
+      'recolteFaite',
+      'terminee',
+      'aIrriguer',
+      'derniereIrrigation',
+      'notes',
+    ]
+
+    const updateData: Record<string, unknown> = {}
+    for (const field of allowedFields) {
+      if (field in body) {
+        updateData[field] = body[field]
+      }
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json(
+        { error: 'Aucun champ valide a mettre a jour' },
+        { status: 400 }
+      )
+    }
+
+    const culture = await prisma.culture.update({
+      where: { id: cultureId },
+      data: updateData,
+    })
+
+    return NextResponse.json(culture)
+  } catch (error) {
+    console.error('PATCH /api/cultures/[id] error:', error)
+    return NextResponse.json(
+      { error: 'Erreur lors de la mise a jour de la culture' },
+      { status: 500 }
+    )
+  }
+}
+
 // DELETE /api/cultures/[id]
 export async function DELETE(
   request: NextRequest,

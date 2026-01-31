@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/hooks/use-toast"
+import { getCategorieEmoji } from "@/lib/categories-emojis"
 
 // Types d'espèces
 const ESPECE_TYPES = [
@@ -51,6 +52,7 @@ interface EspeceWithRelations {
   aPlanifier: boolean
   couleur: string | null
   description: string | null
+  categorie: string | null
   famille: { id: string; couleur: string | null } | null
   _count: { varietes: number; cultures: number; arbres?: number }
 }
@@ -83,16 +85,21 @@ function BesoinsNPK({ n, p, k }: { n: number | null; p: number | null; k: number
 const columns: ColumnDef<EspeceWithRelations>[] = [
   {
     accessorKey: "id",
-    header: "Espèce",
+    header: "Espece",
     cell: ({ row }) => {
       const espece = row.original
       const couleur = espece.couleur || espece.famille?.couleur || '#888888'
+      const emoji = getCategorieEmoji(espece.categorie)
       return (
         <div className="flex items-center gap-2">
-          <div
-            className="w-3 h-3 rounded-full"
-            style={{ backgroundColor: couleur }}
-          />
+          {emoji ? (
+            <span className="text-lg">{emoji}</span>
+          ) : (
+            <div
+              className="w-3 h-3 rounded-full"
+              style={{ backgroundColor: couleur }}
+            />
+          )}
           <span className="font-medium">{espece.id}</span>
           {espece.vivace && (
             <Badge variant="outline" className="text-xs">Vivace</Badge>

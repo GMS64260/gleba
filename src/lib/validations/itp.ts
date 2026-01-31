@@ -1,21 +1,31 @@
 /**
- * Schémas de validation Zod pour les ITPs (Itinéraires Techniques de Plantes)
+ * Schemas de validation Zod pour les ITPs (Itineraires Techniques de Plantes)
  */
 
 import { z } from 'zod'
 
-// Schéma de base pour un ITP
+// Types de planche
+export const ITP_TYPE_PLANCHE = ['Serre', 'Plein champ', 'Tunnel', 'Chassis'] as const
+
+// Schema de base pour un ITP
 export const baseITPSchema = z.object({
   id: z.string().min(1, "L'identifiant de l'ITP est requis").max(100),
   especeId: z.string().nullable().optional(),
   semaineSemis: z.number().int().min(1).max(52).nullable().optional(),
   semainePlantation: z.number().int().min(1).max(52).nullable().optional(),
   semaineRecolte: z.number().int().min(1).max(52).nullable().optional(),
+  dureeRecolte: z.number().int().min(0).max(52).nullable().optional(),
   dureePepiniere: z.number().int().min(0).max(365).nullable().optional(),
   dureeCulture: z.number().int().min(0).max(365).nullable().optional(),
   nbRangs: z.number().int().min(1).max(20).nullable().optional(),
   espacement: z.number().min(1).max(200).nullable().optional(), // cm entre plants
   notes: z.string().max(5000).nullable().optional(),
+  // Nouveaux champs (parite Potaleger)
+  typePlanche: z.string().max(50).nullable().optional(),
+  decalageMax: z.number().int().min(0).max(52).nullable().optional(),
+  espacementRangs: z.number().int().min(1).max(200).nullable().optional(), // cm entre rangs
+  nbGrainesPlant: z.number().min(0).max(100).nullable().optional(),
+  doseSemis: z.number().min(0).max(1000).nullable().optional(), // g/m2 ou g/ml
 })
 
 // Schéma pour la création

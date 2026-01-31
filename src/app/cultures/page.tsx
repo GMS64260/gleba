@@ -10,12 +10,14 @@ import { useRouter } from "next/navigation"
 import { ColumnDef } from "@tanstack/react-table"
 import { format } from "date-fns"
 import { fr } from "date-fns/locale"
-import { ArrowLeft, Leaf, ListTodo, Sprout, TreeDeciduous, Apple, CheckCircle } from "lucide-react"
+import { ArrowLeft, Leaf, ListTodo, Sprout, TreeDeciduous, Apple, CheckCircle, Circle, Droplets, Wand2 } from "lucide-react"
+import { AssistantDialog, AssistantButton } from "@/components/assistant"
 
 import { DataTable } from "@/components/tables/DataTable"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { useToast } from "@/hooks/use-toast"
 
 // Types d'états pour le filtre
@@ -63,90 +65,172 @@ const etatColors: Record<string, string> = {
   'Terminée': 'bg-gray-100 text-gray-800',
 }
 
-// Colonnes du tableau
-const columns: ColumnDef<CultureWithRelations>[] = [
-  {
-    accessorKey: "id",
-    header: "#",
-    cell: ({ getValue }) => (
-      <span className="font-mono text-sm text-muted-foreground">
-        {getValue() as number}
-      </span>
-    ),
-  },
-  {
-    accessorKey: "espece.id",
-    header: "Espèce",
-    cell: ({ row }) => {
-      const espece = row.original.espece
-      const couleur = espece?.famille?.couleur || '#888888'
-      return (
-        <div className="flex items-center gap-2">
-          <div
-            className="w-3 h-3 rounded-full"
-            style={{ backgroundColor: couleur }}
-          />
-          <span className="font-medium">{espece?.id}</span>
-        </div>
-      )
+// Fonction pour creer les colonnes avec les callbacks
+function createColumns(
+  onQuickUpdate: (id: number, field: string, value: boolean) => void
+): ColumnDef<CultureWithRelations>[] {
+  return [
+    {
+      accessorKey: "id",
+      header: "#",
+      cell: ({ getValue }) => (
+        <span className="font-mono text-sm text-muted-foreground">
+          {getValue() as number}
+        </span>
+      ),
     },
-  },
-  {
-    accessorKey: "variete.id",
-    header: "Variété",
-    cell: ({ getValue }) => getValue() || "-",
-  },
-  {
-    accessorKey: "planche.id",
-    header: "Planche",
-    cell: ({ getValue }) => getValue() || "-",
-  },
-  {
-    accessorKey: "annee",
-    header: "Année",
-  },
-  {
-    accessorKey: "dateSemis",
-    header: "Semis",
-    cell: ({ getValue }) => {
-      const date = getValue() as string | null
-      return date ? format(new Date(date), "dd/MM", { locale: fr }) : "-"
+    {
+      accessorKey: "espece.id",
+      header: "Espèce",
+      cell: ({ row }) => {
+        const espece = row.original.espece
+        const couleur = espece?.famille?.couleur || '#888888'
+        return (
+          <div className="flex items-center gap-2">
+            <div
+              className="w-3 h-3 rounded-full"
+              style={{ backgroundColor: couleur }}
+            />
+            <span className="font-medium">{espece?.id}</span>
+          </div>
+        )
+      },
     },
-  },
-  {
-    accessorKey: "datePlantation",
-    header: "Plantation",
-    cell: ({ getValue }) => {
-      const date = getValue() as string | null
-      return date ? format(new Date(date), "dd/MM", { locale: fr }) : "-"
+    {
+      accessorKey: "variete.id",
+      header: "Variété",
+      cell: ({ getValue }) => getValue() || "-",
     },
-  },
-  {
-    accessorKey: "dateRecolte",
-    header: "Récolte",
-    cell: ({ getValue }) => {
-      const date = getValue() as string | null
-      return date ? format(new Date(date), "dd/MM", { locale: fr }) : "-"
+    {
+      accessorKey: "planche.id",
+      header: "Planche",
+      cell: ({ getValue }) => getValue() || "-",
     },
-  },
-  {
-    accessorKey: "etat",
-    header: "État",
-    cell: ({ getValue }) => {
-      const etat = getValue() as string
-      return (
-        <Badge variant="outline" className={etatColors[etat] || ''}>
-          {etat}
-        </Badge>
-      )
+    {
+      accessorKey: "annee",
+      header: "Année",
     },
-  },
-  {
-    accessorKey: "_count.recoltes",
-    header: "Réc.",
-    cell: ({ getValue }) => getValue() || 0,
-  },
-]
+    {
+      id: "actions_rapides",
+      header: "Actions",
+      cell: ({ row }) => {
+        const culture = row.original
+        return (
+          <TooltipProvider delayDuration={100}>
+            <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+              {/* Semis */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onQuickUpdate(culture.id, 'semisFait', !culture.semisFait)
+                    }}
+                    className={`p-1.5 rounded-md transition-colors ${
+                      culture.semisFait
+                        ? 'bg-orange-100 text-orange-600 hover:bg-orange-200'
+                        : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                    }`}
+                  >
+                    <Sprout className="h-4 w-4" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {culture.semisFait ? 'Semis fait ✓' : 'Marquer semis fait'}
+                </TooltipContent>
+              </Tooltip>
+
+              {/* Plantation */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onQuickUpdate(culture.id, 'plantationFaite', !culture.plantationFaite)
+                    }}
+                    className={`p-1.5 rounded-md transition-colors ${
+                      culture.plantationFaite
+                        ? 'bg-green-100 text-green-600 hover:bg-green-200'
+                        : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                    }`}
+                  >
+                    <TreeDeciduous className="h-4 w-4" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {culture.plantationFaite ? 'Plantation faite ✓' : 'Marquer plantation faite'}
+                </TooltipContent>
+              </Tooltip>
+
+              {/* Récolte */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onQuickUpdate(culture.id, 'recolteFaite', !culture.recolteFaite)
+                    }}
+                    className={`p-1.5 rounded-md transition-colors ${
+                      culture.recolteFaite
+                        ? 'bg-amber-100 text-amber-600 hover:bg-amber-200'
+                        : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                    }`}
+                  >
+                    <Apple className="h-4 w-4" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {culture.recolteFaite ? 'Récolte faite ✓' : 'Marquer récolte faite'}
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          </TooltipProvider>
+        )
+      },
+    },
+    {
+      accessorKey: "dateSemis",
+      header: "Semis",
+      cell: ({ getValue }) => {
+        const date = getValue() as string | null
+        return date ? format(new Date(date), "dd/MM", { locale: fr }) : "-"
+      },
+    },
+    {
+      accessorKey: "datePlantation",
+      header: "Plant.",
+      cell: ({ getValue }) => {
+        const date = getValue() as string | null
+        return date ? format(new Date(date), "dd/MM", { locale: fr }) : "-"
+      },
+    },
+    {
+      accessorKey: "dateRecolte",
+      header: "Réc.",
+      cell: ({ getValue }) => {
+        const date = getValue() as string | null
+        return date ? format(new Date(date), "dd/MM", { locale: fr }) : "-"
+      },
+    },
+    {
+      accessorKey: "etat",
+      header: "État",
+      cell: ({ getValue }) => {
+        const etat = getValue() as string
+        return (
+          <Badge variant="outline" className={etatColors[etat] || ''}>
+            {etat}
+          </Badge>
+        )
+      },
+    },
+    {
+      accessorKey: "_count.recoltes",
+      header: "Nb",
+      cell: ({ getValue }) => getValue() || 0,
+    },
+  ]
+}
 
 export default function CulturesPage() {
   const router = useRouter()
@@ -156,7 +240,54 @@ export default function CulturesPage() {
   const [pageIndex, setPageIndex] = React.useState(0)
   const [pageCount, setPageCount] = React.useState(0)
   const [selectedEtat, setSelectedEtat] = React.useState('all')
+  const [showAssistant, setShowAssistant] = React.useState(false)
   const pageSize = 50
+
+  // Mise a jour rapide d'une culture
+  const handleQuickUpdate = React.useCallback(async (id: number, field: string, value: boolean) => {
+    try {
+      const response = await fetch(`/api/cultures/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [field]: value }),
+      })
+      if (!response.ok) throw new Error('Erreur')
+
+      // Mettre a jour localement
+      setData(prev => prev.map(c => {
+        if (c.id !== id) return c
+        const updated = { ...c, [field]: value }
+        // Recalculer l'etat
+        updated.etat = updated.terminee
+          ? 'Terminée'
+          : updated.recolteFaite
+            ? 'En récolte'
+            : updated.plantationFaite
+              ? 'Plantée'
+              : updated.semisFait
+                ? 'Semée'
+                : 'Planifiée'
+        return updated
+      }))
+
+      toast({
+        title: value ? 'Fait !' : 'Annule',
+        description: `${field.replace(/Fait.*/, '').replace(/Faite.*/, '')} mis a jour`,
+      })
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Erreur',
+        description: 'Impossible de mettre a jour',
+      })
+    }
+  }, [toast])
+
+  // Colonnes avec callbacks
+  const columns = React.useMemo(
+    () => createColumns(handleQuickUpdate),
+    [handleQuickUpdate]
+  )
 
   // Charger les données
   const fetchData = React.useCallback(async () => {
@@ -229,18 +360,38 @@ export default function CulturesPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Assistant Maraîcher */}
+      <AssistantDialog open={showAssistant} onOpenChange={setShowAssistant} />
+
       {/* Header */}
       <header className="border-b bg-white sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center gap-4">
-          <Link href="/">
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Accueil
-            </Button>
-          </Link>
+        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Link href="/">
+              <Button variant="ghost" size="sm">
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Accueil
+              </Button>
+            </Link>
+            <div className="flex items-center gap-2">
+              <Leaf className="h-6 w-6 text-green-600" />
+              <h1 className="text-xl font-bold">Cultures</h1>
+            </div>
+          </div>
           <div className="flex items-center gap-2">
-            <Leaf className="h-6 w-6 text-green-600" />
-            <h1 className="text-xl font-bold">Cultures</h1>
+            <AssistantButton onClick={() => setShowAssistant(true)} />
+            <Link href="/taches">
+              <Button variant="outline" size="sm">
+                <CheckCircle className="h-4 w-4 mr-2" />
+                Taches
+              </Button>
+            </Link>
+            <Link href="/cultures/irriguer">
+              <Button variant="outline" size="sm">
+                <Droplets className="h-4 w-4 mr-2" />
+                Irrigation
+              </Button>
+            </Link>
           </div>
         </div>
       </header>

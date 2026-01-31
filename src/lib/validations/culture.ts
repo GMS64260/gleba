@@ -20,6 +20,8 @@ export const cultureSchema = z.object({
   quantite: z.number().min(0).nullable().optional(),
   nbRangs: z.number().int().min(1).nullable().optional(),
   longueur: z.number().min(0).nullable().optional(),
+  espacement: z.number().int().min(1).nullable().optional(),
+  aIrriguer: z.boolean().nullable().optional(),
   notes: z.string().max(5000).nullable().optional(),
 })
 

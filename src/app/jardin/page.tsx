@@ -107,7 +107,7 @@ export default function JardinPage() {
   const [especes, setEspeces] = React.useState<Espece[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [editMode, setEditMode] = React.useState(false)
-  const [scale, setScale] = React.useState(50)
+  const [scale, setScale] = React.useState(20)
   const [hasChanges, setHasChanges] = React.useState(false)
   const [saving, setSaving] = React.useState(false)
 
@@ -130,6 +130,10 @@ export default function JardinPage() {
       longueur: prev.id ? prev.longueur : settings.defaultPlancheLongueur,
     }))
   }, [settings.defaultPlancheLargeur, settings.defaultPlancheLongueur])
+
+  // Ref pour toast (evite les re-renders)
+  const toastRef = React.useRef(toast)
+  toastRef.current = toast
 
   // Charger les planches
   const fetchPlanches = React.useCallback(async () => {
@@ -162,7 +166,7 @@ export default function JardinPage() {
       setPlanches(data)
       if (needsPositioning) setHasChanges(true)
     } catch (error) {
-      toast({
+      toastRef.current({
         variant: "destructive",
         title: "Erreur",
         description: "Impossible de charger le plan du jardin"
@@ -170,7 +174,7 @@ export default function JardinPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [toast])
+  }, [])
 
   // Charger les objets du jardin
   const fetchObjets = React.useCallback(async () => {
@@ -378,7 +382,7 @@ export default function JardinPage() {
   // Recentrer la vue
   const handleRecenter = () => {
     // Reset scale et laisser le GardenView recalculer le viewBox
-    setScale(50)
+    setScale(20)
   }
 
   // Créer une nouvelle planche

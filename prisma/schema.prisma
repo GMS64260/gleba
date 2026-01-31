@@ -38,6 +38,7 @@ model User {
   planches      Planche[]
   cultures      Culture[]
   recoltes      Recolte[]
+  irrigationsPlanifiees IrrigationPlanifiee[]
   fertilisations Fertilisation[]
   objetsJardin  ObjetJardin[]
   analysesSol   AnalyseSol[]
@@ -70,7 +71,8 @@ model Famille {
   description String?  @map("description")
 
   // Relations
-  especes Espece[]
+  especes            Espece[]
+  associationDetails AssociationDetail[]
 
   @@map("familles")
 }
@@ -114,6 +116,8 @@ model Fertilisant {
   s           Float?  @map("s") // Soufre (%)
   densite     Float?  @map("densite") // kg/L
   prix        Float?  @map("prix") // €/kg
+  stock       Float?  @map("stock") // Quantité en stock (kg ou L)
+  dateStock   DateTime? @map("date_stock")
   description String? @map("description")
 
   // Relations
@@ -145,13 +149,30 @@ model Espece {
   couleur         String?  @map("couleur") // Code couleur UI (#RRGGBB)
   description     String?  @map("description")
 
+  // Nouveaux champs (parité Potaleger)
+  categorie       String?  @map("categorie")       // Catégorie visuelle (emoji)
+  niveau          String?  @map("niveau")          // Facile, Moyen, Difficile
+  densite         Float?   @map("densite")         // Plants/m²
+  doseSemis       Float?   @map("dose_semis")      // g/m²
+  tauxGermination Float?   @map("taux_germination") // % germination
+  temperatureGerm String?  @map("temp_germination") // Ex: "15-25°C"
+  joursLevee      Int?     @map("jours_levee")     // Nombre de jours
+  irrigation      String?  @map("irrigation")      // Faible/Moyen/Élevé
+  conservation    Boolean? @map("conservation")    // Se conserve bien ?
+  effet           String?  @map("effet")           // Effet sur le sol/autres
+  usages          String?  @map("usages")          // Usages culinaires
+  objectifAnnuel  Float?   @map("obj_annuel")      // kg ou unités visées/an
+  prixKg          Float?   @map("prix_kg")         // Prix de vente €/kg
+  semaineTaille   Int?     @map("s_taille")        // Semaine de taille (1-52)
+
   // Relations
-  varietes      Variete[]
-  cultures      Culture[]
-  recoltes      Recolte[]
-  consommations Consommation[]
-  itps          ITP[]
-  arbres        Arbre[]
+  varietes           Variete[]
+  cultures           Culture[]
+  recoltes           Recolte[]
+  consommations      Consommation[]
+  itps               ITP[]
+  arbres             Arbre[]
+  associationDetails AssociationDetail[]
 
   @@map("especes")
 }
@@ -167,7 +188,8 @@ model Variete {
   dureeRecolte   Int?         @map("d_recolte") // Durée période récolte (semaines)
   nbGrainesG     Float?       @map("nb_graines_g") // Nombre graines/gramme
   prixGraine     Float?       @map("prix_graine") // €/kg ou €/1000 graines
-  stockGraines   Float?       @map("stock_graines") // Quantité en stock
+  stockGraines   Float?       @map("stock_graines") // Quantité graines en stock (g)
+  stockPlants    Int?         @map("stock_plants")  // Quantité plants en stock
   dateStock      DateTime?    @map("date_stock")
   bio            Boolean      @default(false) @map("bio")
   description    String?      @map("description")
@@ -180,17 +202,25 @@ model Variete {
 
 /// ITP - Itinéraires Techniques des Plantes
 model ITP {
-  id              String  @id @map("it_plante")
-  especeId        String? @map("espece")
-  espece          Espece? @relation(fields: [especeId], references: [id], onDelete: SetNull)
-  semaineSemis    Int?    @map("s_semis") // Semaine semis (1-52)
-  semainePlantation Int?  @map("s_plantation") // Semaine plantation (1-52)
-  semaineRecolte  Int?    @map("s_recolte") // Semaine début récolte (1-52)
-  dureePepiniere  Int?    @map("d_pepiniere") // Durée pépinière (jours)
-  dureeCulture    Int?    @map("d_culture") // Durée culture (jours)
-  nbRangs         Int?    @map("nb_rangs") // Nombre de rangs par planche
-  espacement      Float?  @map("espacement") // Espacement entre plants (cm)
-  notes           String? @map("notes")
+  id                String  @id @map("it_plante")
+  especeId          String? @map("espece")
+  espece            Espece? @relation(fields: [especeId], references: [id], onDelete: SetNull)
+  semaineSemis      Int?    @map("s_semis") // Semaine semis (1-52)
+  semainePlantation Int?    @map("s_plantation") // Semaine plantation (1-52)
+  semaineRecolte    Int?    @map("s_recolte") // Semaine début récolte (1-52)
+  dureeRecolte      Int?    @map("d_recolte") // Durée récolte (semaines, 1-52)
+  dureePepiniere    Int?    @map("d_pepiniere") // Durée pépinière (jours)
+  dureeCulture      Int?    @map("d_culture") // Durée culture (jours)
+  nbRangs           Int?    @map("nb_rangs") // Nombre de rangs par planche
+  espacement        Float?  @map("espacement") // Espacement entre plants (cm)
+  notes             String? @map("notes")
+
+  // Nouveaux champs (parité Potaleger)
+  typePlanche     String?  @map("type_planche")     // Serre, Plein champ, Tunnel
+  decalageMax     Int?     @map("decal_max")        // Semaines de flexibilité (0-52)
+  espacementRangs Int?     @map("esp_rangs")        // cm entre rangs
+  nbGrainesPlant  Float?   @map("nb_graines_plant") // Graines par plant
+  doseSemis       Float?   @map("dose_semis")       // g/m² ou g/ml
 
   // Relations
   cultures         Culture[]
@@ -246,6 +276,11 @@ model Planche {
   planchesInfluencees String?   @map("planches_influencees") // CSV des planches proches (associations)
   ilot                String?   @map("ilot") // Groupement de planches
   notes               String?   @map("notes")
+
+  // Nouveaux champs (parité Potaleger)
+  type                String?   @map("type")       // Serre, Plein champ, Tunnel, Châssis
+  irrigation          String?   @map("irrigation") // Goutte-à-goutte, Aspersion, Manuel, Aucun
+  annee               Int?      @map("annee")      // Année de référence pour rotation
 
   // Relations
   cultures       Culture[]
@@ -324,6 +359,14 @@ model Culture {
   quantite        Float?    @map("quantite") // Surface ou nb plants
   nbRangs         Int?      @map("nb_rangs")
   longueur        Float?    @map("longueur") // mètres
+  espacement      Int?      @map("espacement") // cm entre plants
+
+  // Nouveaux champs (parité Potaleger)
+  finRecolte          DateTime? @map("fin_recolte") // Date fin récolte
+  aFaire              String?   @map("a_faire")     // Tâches à faire
+  dPlanif             String?   @map("d_planif")    // Date de planification
+  aIrriguer           Boolean?  @map("a_irriguer")  // Besoin d'irrigation
+  derniereIrrigation  DateTime? @map("derniere_irrigation") // Dernière date d'arrosage
 
   notes           String?   @map("notes")
   createdAt       DateTime  @default(now()) @map("created_at")
@@ -331,6 +374,7 @@ model Culture {
 
   // Relations
   recoltes Recolte[]
+  irrigationsPlanifiees IrrigationPlanifiee[]
 
   @@map("cultures")
 }
@@ -350,6 +394,26 @@ model Recolte {
   createdAt  DateTime @default(now()) @map("created_at")
 
   @@map("recoltes")
+}
+
+/// Irrigations planifiées
+model IrrigationPlanifiee {
+  id             Int      @id @default(autoincrement())
+  userId         String   @map("user_id")
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cultureId      Int      @map("culture_id")
+  culture        Culture  @relation(fields: [cultureId], references: [id], onDelete: Cascade)
+  datePrevue     DateTime @map("date_prevue")
+  fait           Boolean  @default(false) @map("fait")
+  dateEffective  DateTime? @map("date_effective") // Date réelle si différente
+  notes          String?  @map("notes") @db.Text
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@index([cultureId])
+  @@index([datePrevue])
+  @@map("irrigations_planifiees")
 }
 
 /// Consommations (sorties de stock)
@@ -456,4 +520,37 @@ model Arbre {
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
   @@map("arbres")
+}
+
+// ============================================================
+// ASSOCIATIONS DE PLANTES (COMPAGNONNAGE)
+// ============================================================
+
+/// Associations de plantes (compagnonnage)
+model Association {
+  id          String  @id @default(cuid())
+  nom         String  @unique // Ex: "Tomates-Basilic"
+  description String?
+  notes       String?
+
+  // Relations
+  details AssociationDetail[]
+
+  @@map("associations")
+}
+
+/// Détails des associations (espèces/familles associées)
+model AssociationDetail {
+  id            Int          @id @default(autoincrement())
+  associationId String       @map("association_id")
+  association   Association  @relation(fields: [associationId], references: [id], onDelete: Cascade)
+  especeId      String?      @map("espece")
+  espece        Espece?      @relation(fields: [especeId], references: [id], onDelete: SetNull)
+  familleId     String?      @map("famille")
+  famille       Famille?     @relation(fields: [familleId], references: [id], onDelete: SetNull)
+  groupe        String?      @map("groupe") // Groupe libre (ex: "Liliacées")
+  requise       Boolean      @default(false) @map("requise") // Association requise ou bénéfique
+  notes         String?      @map("notes")
+
+  @@map("associations_details")
 }

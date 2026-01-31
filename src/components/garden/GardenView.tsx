@@ -452,30 +452,17 @@ export function GardenView({
             >
               {/* Forme selon le type */}
               {objet.type === 'allee' || objet.type === 'passage' ? (
-                // Allée/passage: texture gravier
-                <>
-                  <rect
-                    x={0}
-                    y={0}
-                    width={objet.largeur}
-                    height={objet.longueur}
-                    fill={color}
-                    stroke={isSelected ? "#3b82f6" : "#a8a29e"}
-                    strokeWidth={isSelected ? 0.08 : 0.02}
-                    strokeDasharray={objet.type === 'passage' ? "0.1 0.05" : undefined}
-                  />
-                  {/* Motif gravier */}
-                  {Array.from({ length: Math.floor(objet.largeur * objet.longueur * 3) }).map((_, i) => (
-                    <circle
-                      key={i}
-                      cx={Math.random() * objet.largeur}
-                      cy={Math.random() * objet.longueur}
-                      r={0.03}
-                      fill={i % 2 === 0 ? "#c4b8a8" : "#b8a898"}
-                      style={{ pointerEvents: "none" }}
-                    />
-                  ))}
-                </>
+                // Allée/passage: texture simple
+                <rect
+                  x={0}
+                  y={0}
+                  width={objet.largeur}
+                  height={objet.longueur}
+                  fill={color}
+                  stroke={isSelected ? "#3b82f6" : "#a8a29e"}
+                  strokeWidth={isSelected ? 0.08 : 0.02}
+                  strokeDasharray={objet.type === 'passage' ? "0.1 0.05" : undefined}
+                />
               ) : objet.type === 'bordure' ? (
                 // Bordure: trait épais
                 <rect

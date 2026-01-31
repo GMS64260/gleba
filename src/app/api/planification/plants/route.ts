@@ -22,6 +22,8 @@ export async function GET(request: NextRequest) {
     // Calculer les totaux
     const totalPlants = besoins.reduce((sum, b) => sum + b.nbPlants, 0)
     const totalCultures = besoins.reduce((sum, b) => sum + b.cultures.length, 0)
+    const totalACommander = besoins.reduce((sum, b) => sum + b.aCommander, 0)
+    const besoinsSansStock = besoins.filter(b => b.aCommander > 0)
 
     // Grouper par semaine de plantation
     const parSemaine: Record<number, number> = {}
@@ -37,6 +39,8 @@ export async function GET(request: NextRequest) {
         nbEspeces: besoins.length,
         totalPlants,
         totalCultures,
+        totalACommander,
+        especesSansStock: besoinsSansStock.length,
         parSemaine,
       },
       annee,

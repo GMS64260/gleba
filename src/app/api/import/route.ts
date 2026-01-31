@@ -10,7 +10,22 @@ import { requireAuthApi } from '@/lib/auth-utils'
 
 interface ImportData {
   version?: string
-  familles?: Array<{ id: string; intervalle?: number | null; couleur?: string | null }>
+  exportDate?: string
+  familles?: Array<{
+    id: string
+    intervalle?: number | null
+    couleur?: string | null
+    description?: string | null
+  }>
+  fournisseurs?: Array<{
+    id: string
+    contact?: string | null
+    adresse?: string | null
+    email?: string | null
+    telephone?: string | null
+    siteWeb?: string | null
+    notes?: string | null
+  }>
   especes?: Array<{
     id: string
     type?: string
@@ -25,6 +40,20 @@ interface ImportData {
     aPlanifier?: boolean
     couleur?: string | null
     description?: string | null
+    categorie?: string | null
+    niveau?: string | null
+    densite?: number | null
+    doseSemis?: number | null
+    tauxGermination?: number | null
+    temperatureGerm?: string | null
+    joursLevee?: number | null
+    irrigation?: string | null
+    conservation?: boolean | null
+    effet?: string | null
+    usages?: string | null
+    objectifAnnuel?: number | null
+    prixKg?: number | null
+    semaineTaille?: number | null
   }>
   varietes?: Array<{
     id: string
@@ -35,7 +64,54 @@ interface ImportData {
     nbGrainesG?: number | null
     prixGraine?: number | null
     stockGraines?: number | null
+    stockPlants?: number | null
+    dateStock?: string | null
     bio?: boolean
+    description?: string | null
+  }>
+  itps?: Array<{
+    id: string
+    especeId?: string | null
+    semaineSemis?: number | null
+    semainePlantation?: number | null
+    semaineRecolte?: number | null
+    dureeRecolte?: number | null
+    dureePepiniere?: number | null
+    dureeCulture?: number | null
+    nbRangs?: number | null
+    espacement?: number | null
+    notes?: string | null
+    typePlanche?: string | null
+    decalageMax?: number | null
+    espacementRangs?: number | null
+    nbGrainesPlant?: number | null
+    doseSemis?: number | null
+  }>
+  rotations?: Array<{
+    id: string
+    active?: boolean
+    nbAnnees?: number | null
+    notes?: string | null
+  }>
+  rotationDetails?: Array<{
+    id: number
+    rotationId: string
+    itpId?: string | null
+    annee: number
+  }>
+  fertilisants?: Array<{
+    id: string
+    type?: string | null
+    n?: number | null
+    p?: number | null
+    k?: number | null
+    ca?: number | null
+    mg?: number | null
+    s?: number | null
+    densite?: number | null
+    prix?: number | null
+    stock?: number | null
+    dateStock?: string | null
     description?: string | null
   }>
   planches?: Array<{
@@ -50,6 +126,9 @@ interface ImportData {
     rotation2D?: number | null
     planchesInfluencees?: string | null
     notes?: string | null
+    type?: string | null
+    irrigation?: string | null
+    annee?: number | null
   }>
   cultures?: Array<{
     id: number
@@ -68,6 +147,12 @@ interface ImportData {
     quantite?: number | null
     nbRangs?: number | null
     longueur?: number | null
+    espacement?: number | null
+    finRecolte?: string | null
+    aFaire?: string | null
+    dPlanif?: string | null
+    aIrriguer?: boolean | null
+    derniereIrrigation?: string | null
     notes?: string | null
   }>
   recoltes?: Array<{
@@ -77,12 +162,6 @@ interface ImportData {
     date: string
     quantite: number
     notes?: string | null
-  }>
-  fertilisants?: Array<{
-    id: string
-    n?: number | null
-    p?: number | null
-    k?: number | null
   }>
   fertilisations?: Array<{
     id: number
@@ -121,6 +200,23 @@ interface ImportData {
     envergure?: number
     hauteur?: number | null
     etat?: string | null
+    pollinisateur?: string | null
+    couleur?: string | null
+    notes?: string | null
+  }>
+  associations?: Array<{
+    id: string
+    nom: string
+    description?: string | null
+    notes?: string | null
+  }>
+  associationDetails?: Array<{
+    id: number
+    associationId: string
+    especeId?: string | null
+    familleId?: string | null
+    groupe?: string | null
+    requise?: boolean
     notes?: string | null
   }>
 }
@@ -151,32 +247,80 @@ export async function POST(request: NextRequest) {
     // Statistiques d'import
     const stats = {
       familles: 0,
+      fournisseurs: 0,
       especes: 0,
       varietes: 0,
+      itps: 0,
+      rotations: 0,
+      rotationDetails: 0,
+      fertilisants: 0,
       planches: 0,
       cultures: 0,
       recoltes: 0,
-      fertilisants: 0,
       fertilisations: 0,
       objetsJardin: 0,
       arbres: 0,
+      associations: 0,
+      associationDetails: 0,
     }
 
-    // Import dans l'ordre des dépendances
+    // Mapping des anciens IDs vers les nouveaux (pour les entités avec ID auto-généré)
+    const cultureIdMap = new Map<number, number>()
+    const rotationDetailIdMap = new Map<number, number>()
 
-    // 1. Familles (référentiel global)
+    // ========================================
+    // RÉFÉRENTIELS GLOBAUX (upsert par ID string)
+    // ========================================
+
+    // 1. Familles
     if (data.familles?.length) {
       for (const item of data.familles) {
         await prisma.famille.upsert({
           where: { id: item.id },
-          update: { intervalle: item.intervalle ?? 4, couleur: item.couleur },
-          create: { id: item.id, intervalle: item.intervalle ?? 4, couleur: item.couleur },
+          update: {
+            intervalle: item.intervalle ?? 4,
+            couleur: item.couleur,
+            description: item.description,
+          },
+          create: {
+            id: item.id,
+            intervalle: item.intervalle ?? 4,
+            couleur: item.couleur,
+            description: item.description,
+          },
         })
         stats.familles++
       }
     }
 
-    // 2. Espèces (référentiel global)
+    // 2. Fournisseurs
+    if (data.fournisseurs?.length) {
+      for (const item of data.fournisseurs) {
+        await prisma.fournisseur.upsert({
+          where: { id: item.id },
+          update: {
+            contact: item.contact,
+            adresse: item.adresse,
+            email: item.email,
+            telephone: item.telephone,
+            siteWeb: item.siteWeb,
+            notes: item.notes,
+          },
+          create: {
+            id: item.id,
+            contact: item.contact,
+            adresse: item.adresse,
+            email: item.email,
+            telephone: item.telephone,
+            siteWeb: item.siteWeb,
+            notes: item.notes,
+          },
+        })
+        stats.fournisseurs++
+      }
+    }
+
+    // 3. Espèces
     if (data.especes?.length) {
       for (const item of data.especes) {
         await prisma.espece.upsert({
@@ -194,6 +338,20 @@ export async function POST(request: NextRequest) {
             aPlanifier: item.aPlanifier,
             couleur: item.couleur,
             description: item.description,
+            categorie: item.categorie,
+            niveau: item.niveau,
+            densite: item.densite,
+            doseSemis: item.doseSemis,
+            tauxGermination: item.tauxGermination,
+            temperatureGerm: item.temperatureGerm,
+            joursLevee: item.joursLevee,
+            irrigation: item.irrigation,
+            conservation: item.conservation,
+            effet: item.effet,
+            usages: item.usages,
+            objectifAnnuel: item.objectifAnnuel,
+            prixKg: item.prixKg,
+            semaineTaille: item.semaineTaille,
           },
           create: {
             id: item.id,
@@ -209,13 +367,27 @@ export async function POST(request: NextRequest) {
             aPlanifier: item.aPlanifier ?? true,
             couleur: item.couleur,
             description: item.description,
+            categorie: item.categorie,
+            niveau: item.niveau,
+            densite: item.densite,
+            doseSemis: item.doseSemis,
+            tauxGermination: item.tauxGermination,
+            temperatureGerm: item.temperatureGerm,
+            joursLevee: item.joursLevee,
+            irrigation: item.irrigation,
+            conservation: item.conservation,
+            effet: item.effet,
+            usages: item.usages,
+            objectifAnnuel: item.objectifAnnuel,
+            prixKg: item.prixKg,
+            semaineTaille: item.semaineTaille,
           },
         })
         stats.especes++
       }
     }
 
-    // 3. Variétés (référentiel global)
+    // 4. Variétés
     if (data.varietes?.length) {
       for (const item of data.varietes) {
         const especeExists = await prisma.espece.findUnique({ where: { id: item.especeId } })
@@ -231,6 +403,8 @@ export async function POST(request: NextRequest) {
             nbGrainesG: item.nbGrainesG,
             prixGraine: item.prixGraine,
             stockGraines: item.stockGraines,
+            stockPlants: item.stockPlants,
+            dateStock: item.dateStock ? new Date(item.dateStock) : null,
             bio: item.bio,
             description: item.description,
           },
@@ -243,6 +417,8 @@ export async function POST(request: NextRequest) {
             nbGrainesG: item.nbGrainesG,
             prixGraine: item.prixGraine,
             stockGraines: item.stockGraines,
+            stockPlants: item.stockPlants,
+            dateStock: item.dateStock ? new Date(item.dateStock) : null,
             bio: item.bio ?? false,
             description: item.description,
           },
@@ -251,19 +427,212 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 4. Fertilisants (référentiel global)
+    // 5. ITPs
+    if (data.itps?.length) {
+      for (const item of data.itps) {
+        // Vérifier que l'espèce existe si fournie
+        if (item.especeId) {
+          const especeExists = await prisma.espece.findUnique({ where: { id: item.especeId } })
+          if (!especeExists) continue
+        }
+
+        await prisma.iTP.upsert({
+          where: { id: item.id },
+          update: {
+            especeId: item.especeId,
+            semaineSemis: item.semaineSemis,
+            semainePlantation: item.semainePlantation,
+            semaineRecolte: item.semaineRecolte,
+            dureeRecolte: item.dureeRecolte,
+            dureePepiniere: item.dureePepiniere,
+            dureeCulture: item.dureeCulture,
+            nbRangs: item.nbRangs,
+            espacement: item.espacement,
+            notes: item.notes,
+            typePlanche: item.typePlanche,
+            decalageMax: item.decalageMax,
+            espacementRangs: item.espacementRangs,
+            nbGrainesPlant: item.nbGrainesPlant,
+            doseSemis: item.doseSemis,
+          },
+          create: {
+            id: item.id,
+            especeId: item.especeId,
+            semaineSemis: item.semaineSemis,
+            semainePlantation: item.semainePlantation,
+            semaineRecolte: item.semaineRecolte,
+            dureeRecolte: item.dureeRecolte,
+            dureePepiniere: item.dureePepiniere,
+            dureeCulture: item.dureeCulture,
+            nbRangs: item.nbRangs,
+            espacement: item.espacement,
+            notes: item.notes,
+            typePlanche: item.typePlanche,
+            decalageMax: item.decalageMax,
+            espacementRangs: item.espacementRangs,
+            nbGrainesPlant: item.nbGrainesPlant,
+            doseSemis: item.doseSemis,
+          },
+        })
+        stats.itps++
+      }
+    }
+
+    // 6. Rotations
+    if (data.rotations?.length) {
+      for (const item of data.rotations) {
+        await prisma.rotation.upsert({
+          where: { id: item.id },
+          update: {
+            active: item.active ?? true,
+            nbAnnees: item.nbAnnees,
+            notes: item.notes,
+          },
+          create: {
+            id: item.id,
+            active: item.active ?? true,
+            nbAnnees: item.nbAnnees,
+            notes: item.notes,
+          },
+        })
+        stats.rotations++
+      }
+    }
+
+    // 7. Rotation Details (ID auto-généré - créer de nouveaux)
+    if (data.rotationDetails?.length) {
+      for (const item of data.rotationDetails) {
+        const rotationExists = await prisma.rotation.findUnique({ where: { id: item.rotationId } })
+        if (!rotationExists) continue
+
+        // Vérifier si l'ITP existe si fourni
+        if (item.itpId) {
+          const itpExists = await prisma.iTP.findUnique({ where: { id: item.itpId } })
+          if (!itpExists) continue
+        }
+
+        // Vérifier si un détail existe déjà pour cette rotation et cette année
+        const existing = await prisma.rotationDetail.findFirst({
+          where: { rotationId: item.rotationId, annee: item.annee },
+        })
+
+        if (existing) {
+          await prisma.rotationDetail.update({
+            where: { id: existing.id },
+            data: { itpId: item.itpId },
+          })
+          rotationDetailIdMap.set(item.id, existing.id)
+        } else {
+          const created = await prisma.rotationDetail.create({
+            data: {
+              rotationId: item.rotationId,
+              itpId: item.itpId,
+              annee: item.annee,
+            },
+          })
+          rotationDetailIdMap.set(item.id, created.id)
+        }
+        stats.rotationDetails++
+      }
+    }
+
+    // 8. Fertilisants
     if (data.fertilisants?.length) {
       for (const item of data.fertilisants) {
         await prisma.fertilisant.upsert({
           where: { id: item.id },
-          update: { n: item.n, p: item.p, k: item.k },
-          create: { id: item.id, n: item.n, p: item.p, k: item.k },
+          update: {
+            type: item.type,
+            n: item.n,
+            p: item.p,
+            k: item.k,
+            ca: item.ca,
+            mg: item.mg,
+            s: item.s,
+            densite: item.densite,
+            prix: item.prix,
+            stock: item.stock,
+            dateStock: item.dateStock ? new Date(item.dateStock) : null,
+            description: item.description,
+          },
+          create: {
+            id: item.id,
+            type: item.type,
+            n: item.n,
+            p: item.p,
+            k: item.k,
+            ca: item.ca,
+            mg: item.mg,
+            s: item.s,
+            densite: item.densite,
+            prix: item.prix,
+            stock: item.stock,
+            dateStock: item.dateStock ? new Date(item.dateStock) : null,
+            description: item.description,
+          },
         })
         stats.fertilisants++
       }
     }
 
-    // 5. Planches (données utilisateur)
+    // 9. Associations
+    if (data.associations?.length) {
+      for (const item of data.associations) {
+        await prisma.association.upsert({
+          where: { id: item.id },
+          update: {
+            nom: item.nom,
+            description: item.description,
+            notes: item.notes,
+          },
+          create: {
+            id: item.id,
+            nom: item.nom,
+            description: item.description,
+            notes: item.notes,
+          },
+        })
+        stats.associations++
+      }
+    }
+
+    // 10. Association Details
+    if (data.associationDetails?.length) {
+      for (const item of data.associationDetails) {
+        const associationExists = await prisma.association.findUnique({ where: { id: item.associationId } })
+        if (!associationExists) continue
+
+        // Vérifier si un détail similaire existe
+        const existing = await prisma.associationDetail.findFirst({
+          where: {
+            associationId: item.associationId,
+            especeId: item.especeId,
+            familleId: item.familleId,
+            groupe: item.groupe,
+          },
+        })
+
+        if (!existing) {
+          await prisma.associationDetail.create({
+            data: {
+              associationId: item.associationId,
+              especeId: item.especeId,
+              familleId: item.familleId,
+              groupe: item.groupe,
+              requise: item.requise ?? false,
+              notes: item.notes,
+            },
+          })
+          stats.associationDetails++
+        }
+      }
+    }
+
+    // ========================================
+    // DONNÉES UTILISATEUR
+    // ========================================
+
+    // 11. Planches (ID string - upsert par utilisateur)
     if (data.planches?.length) {
       for (const item of data.planches) {
         // Vérifier si la planche existe déjà pour cet utilisateur
@@ -285,6 +654,9 @@ export async function POST(request: NextRequest) {
               rotation2D: item.rotation2D,
               planchesInfluencees: item.planchesInfluencees,
               notes: item.notes,
+              type: item.type,
+              irrigation: item.irrigation,
+              annee: item.annee,
             },
           })
         } else {
@@ -302,6 +674,9 @@ export async function POST(request: NextRequest) {
               rotation2D: item.rotation2D,
               planchesInfluencees: item.planchesInfluencees,
               notes: item.notes,
+              type: item.type,
+              irrigation: item.irrigation,
+              annee: item.annee,
             },
           })
         }
@@ -309,36 +684,29 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 6. Cultures (données utilisateur)
+    // 12. Cultures (ID auto-généré - toujours créer de nouvelles)
     if (data.cultures?.length) {
       for (const item of data.cultures) {
         const especeExists = await prisma.espece.findUnique({ where: { id: item.especeId } })
         if (!especeExists) continue
 
-        await prisma.culture.upsert({
-          where: { id: item.id },
-          update: {
-            especeId: item.especeId,
-            varieteId: item.varieteId,
-            plancheId: item.plancheId,
-            annee: item.annee,
-            dateSemis: item.dateSemis ? new Date(item.dateSemis) : null,
-            datePlantation: item.datePlantation ? new Date(item.datePlantation) : null,
-            dateRecolte: item.dateRecolte ? new Date(item.dateRecolte) : null,
-            semisFait: item.semisFait ?? false,
-            plantationFaite: item.plantationFaite ?? false,
-            recolteFaite: item.recolteFaite ?? false,
-            terminee: item.terminee,
-            quantite: item.quantite,
-            nbRangs: item.nbRangs,
-            longueur: item.longueur,
-            notes: item.notes,
-          },
-          create: {
-            id: item.id,
+        // Vérifier si la planche existe pour cet utilisateur
+        if (item.plancheId) {
+          const plancheExists = await prisma.planche.findFirst({
+            where: { id: item.plancheId, userId },
+          })
+          if (!plancheExists) {
+            item.plancheId = null // Ignorer la planche si elle n'existe pas
+          }
+        }
+
+        // Créer une nouvelle culture (ne pas écraser les existantes)
+        const created = await prisma.culture.create({
+          data: {
             userId,
             especeId: item.especeId,
             varieteId: item.varieteId,
+            itpId: item.itpId,
             plancheId: item.plancheId,
             annee: item.annee,
             dateSemis: item.dateSemis ? new Date(item.dateSemis) : null,
@@ -351,36 +719,36 @@ export async function POST(request: NextRequest) {
             quantite: item.quantite,
             nbRangs: item.nbRangs,
             longueur: item.longueur,
+            espacement: item.espacement,
+            finRecolte: item.finRecolte ? new Date(item.finRecolte) : null,
+            aFaire: item.aFaire,
+            dPlanif: item.dPlanif,
+            aIrriguer: item.aIrriguer,
+            derniereIrrigation: item.derniereIrrigation ? new Date(item.derniereIrrigation) : null,
             notes: item.notes,
           },
         })
+        // Garder le mapping ancien ID -> nouveau ID pour les récoltes
+        cultureIdMap.set(item.id, created.id)
         stats.cultures++
       }
     }
 
-    // 7. Récoltes (données utilisateur)
+    // 13. Récoltes (ID auto-généré - créer de nouvelles avec le bon cultureId)
     if (data.recoltes?.length) {
       for (const item of data.recoltes) {
-        const cultureExists = await prisma.culture.findUnique({
-          where: { id: item.cultureId, userId },
-        })
-        const especeExists = await prisma.espece.findUnique({ where: { id: item.especeId } })
-        if (!cultureExists || !especeExists) continue
+        // Trouver le nouvel ID de la culture
+        const newCultureId = cultureIdMap.get(item.cultureId)
+        if (!newCultureId) continue // Skip si la culture n'a pas été importée
 
-        await prisma.recolte.upsert({
-          where: { id: item.id },
-          update: {
-            especeId: item.especeId,
-            cultureId: item.cultureId,
-            date: new Date(item.date),
-            quantite: item.quantite,
-            notes: item.notes,
-          },
-          create: {
-            id: item.id,
+        const especeExists = await prisma.espece.findUnique({ where: { id: item.especeId } })
+        if (!especeExists) continue
+
+        await prisma.recolte.create({
+          data: {
             userId,
             especeId: item.especeId,
-            cultureId: item.cultureId,
+            cultureId: newCultureId,
             date: new Date(item.date),
             quantite: item.quantite,
             notes: item.notes,
@@ -390,7 +758,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 8. Fertilisations (données utilisateur)
+    // 14. Fertilisations
     if (data.fertilisations?.length) {
       for (const item of data.fertilisations) {
         const plancheExists = await prisma.planche.findFirst({
@@ -399,17 +767,8 @@ export async function POST(request: NextRequest) {
         const fertilisantExists = await prisma.fertilisant.findUnique({ where: { id: item.fertilisantId } })
         if (!plancheExists || !fertilisantExists) continue
 
-        await prisma.fertilisation.upsert({
-          where: { id: item.id },
-          update: {
-            plancheId: item.plancheId,
-            fertilisantId: item.fertilisantId,
-            date: new Date(item.date),
-            quantite: item.quantite,
-            notes: item.notes,
-          },
-          create: {
-            id: item.id,
+        await prisma.fertilisation.create({
+          data: {
             userId,
             plancheId: item.plancheId,
             fertilisantId: item.fertilisantId,
@@ -422,24 +781,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 9. Objets jardin (données utilisateur)
+    // 15. Objets jardin
     if (data.objetsJardin?.length) {
       for (const item of data.objetsJardin) {
-        await prisma.objetJardin.upsert({
-          where: { id: item.id },
-          update: {
-            nom: item.nom,
-            type: item.type,
-            largeur: item.largeur,
-            longueur: item.longueur,
-            posX: item.posX,
-            posY: item.posY,
-            rotation2D: item.rotation2D ?? 0,
-            couleur: item.couleur,
-            notes: item.notes,
-          },
-          create: {
-            id: item.id,
+        await prisma.objetJardin.create({
+          data: {
             userId,
             nom: item.nom,
             type: item.type,
@@ -456,31 +802,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 10. Arbres (données utilisateur)
+    // 16. Arbres
     if (data.arbres?.length) {
       for (const item of data.arbres) {
-        await prisma.arbre.upsert({
-          where: { id: item.id },
-          update: {
-            nom: item.nom,
-            type: item.type,
-            especeId: item.especeId,
-            espece: item.espece,
-            variete: item.variete,
-            portGreffe: item.portGreffe,
-            fournisseur: item.fournisseur,
-            dateAchat: item.dateAchat ? new Date(item.dateAchat) : null,
-            datePlantation: item.datePlantation ? new Date(item.datePlantation) : null,
-            age: item.age,
-            posX: item.posX,
-            posY: item.posY,
-            envergure: item.envergure ?? 2,
-            hauteur: item.hauteur,
-            etat: item.etat,
-            notes: item.notes,
-          },
-          create: {
-            id: item.id,
+        await prisma.arbre.create({
+          data: {
             userId,
             nom: item.nom,
             type: item.type,
@@ -497,6 +823,8 @@ export async function POST(request: NextRequest) {
             envergure: item.envergure ?? 2,
             hauteur: item.hauteur,
             etat: item.etat,
+            pollinisateur: item.pollinisateur,
+            couleur: item.couleur,
             notes: item.notes,
           },
         })

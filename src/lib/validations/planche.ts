@@ -1,8 +1,14 @@
 /**
- * Schémas de validation Zod pour les Planches
+ * Schemas de validation Zod pour les Planches
  */
 
 import { z } from 'zod'
+
+// Types de planche
+export const PLANCHE_TYPES = ['Serre', 'Plein champ', 'Tunnel', 'Chassis'] as const
+
+// Types d'irrigation
+export const PLANCHE_IRRIGATION = ['Goutte-a-goutte', 'Aspersion', 'Manuel', 'Aucun'] as const
 
 export const plancheSchema = z.object({
   id: z.string().min(1, "Le nom de la planche est requis").max(50),
@@ -17,6 +23,10 @@ export const plancheSchema = z.object({
   planchesInfluencees: z.string().nullable().optional(),
   ilot: z.string().max(50).nullable().optional(),
   notes: z.string().max(5000).nullable().optional(),
+  // Nouveaux champs (parite Potaleger)
+  type: z.string().max(50).nullable().optional(),
+  irrigation: z.string().max(50).nullable().optional(),
+  annee: z.number().int().min(2000).max(2100).nullable().optional(),
 })
 
 export const createPlancheSchema = plancheSchema

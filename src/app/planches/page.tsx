@@ -8,7 +8,8 @@ import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ColumnDef } from "@tanstack/react-table"
-import { ArrowLeft, LayoutGrid } from "lucide-react"
+import { ArrowLeft, LayoutGrid, Wand2 } from "lucide-react"
+import { AssistantDialog, AssistantButton } from "@/components/assistant"
 
 import { DataTable } from "@/components/tables/DataTable"
 import { Button } from "@/components/ui/button"
@@ -81,6 +82,7 @@ export default function PlanchesPage() {
   const { toast } = useToast()
   const [data, setData] = React.useState<PlancheWithRelations[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
+  const [showAssistant, setShowAssistant] = React.useState(false)
 
   // Charger les données
   const fetchData = React.useCallback(async () => {
@@ -154,6 +156,9 @@ export default function PlanchesPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Assistant Maraîcher */}
+      <AssistantDialog open={showAssistant} onOpenChange={setShowAssistant} />
+
       {/* Header */}
       <header className="border-b bg-white sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
@@ -169,8 +174,11 @@ export default function PlanchesPage() {
               <h1 className="text-xl font-bold">Planches</h1>
             </div>
           </div>
-          <div className="text-sm text-muted-foreground">
-            {data.length} planches • {totalSurface.toFixed(0)} m² total
+          <div className="flex items-center gap-4">
+            <AssistantButton onClick={() => setShowAssistant(true)} />
+            <div className="text-sm text-muted-foreground">
+              {data.length} planches • {totalSurface.toFixed(0)} m² total
+            </div>
           </div>
         </div>
       </header>

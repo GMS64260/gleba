@@ -64,6 +64,8 @@ export interface BesoinPlant {
   varieteId: string | null
   nbPlants: number
   semainePlantation: number | null
+  stockActuel: number
+  aCommander: number
   cultures: {
     plancheId: string
     surface: number
@@ -401,6 +403,12 @@ export async function getBesoinsPlants(
     c => c.semainePlantation !== null && c.especeId
   )
 
+  // Recuperer les infos des varietes pour stockPlants
+  const varietes = await prisma.variete.findMany({
+    select: { id: true, especeId: true, stockPlants: true },
+  })
+  const varieteMap = new Map(varietes.map(v => [v.id, v]))
+
   // Grouper par espece/variete
   const besoinsMap = new Map<string, BesoinPlant>()
 
@@ -416,12 +424,16 @@ export async function getBesoinsPlants(
     )
 
     if (!besoinsMap.has(key)) {
+      const variete = culture.varieteId ? varieteMap.get(culture.varieteId) : null
+
       besoinsMap.set(key, {
         especeId: culture.especeId,
         especeCouleur: culture.especeCouleur,
         varieteId: culture.varieteId,
         nbPlants: 0,
         semainePlantation: culture.semainePlantation,
+        stockActuel: variete?.stockPlants || 0,
+        aCommander: 0,
         cultures: [],
       })
     }
@@ -433,6 +445,13 @@ export async function getBesoinsPlants(
       surface: culture.surface,
       nbPlants,
     })
+  }
+
+  // Calculer les plants a commander
+  for (const besoin of besoinsMap.values()) {
+    // Ajouter 10% de marge pour pertes
+    const nbPlantsAvecMarge = Math.ceil(besoin.nbPlants * 1.1)
+    besoin.aCommander = Math.max(0, nbPlantsAvecMarge - besoin.stockActuel)
   }
 
   return Array.from(besoinsMap.values()).sort((a, b) => a.especeId.localeCompare(b.especeId))

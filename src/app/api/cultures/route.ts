@@ -181,11 +181,25 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Auto-remplir aIrriguer si non fourni et espèce a besoin eau élevé
+    let aIrriguer = data.aIrriguer
+    if (aIrriguer === undefined || aIrriguer === null) {
+      // Besoin eau >= 3 ou irrigation explicitement "Eleve"/"Élevé"
+      if (
+        (espece.besoinEau && espece.besoinEau >= 3) ||
+        espece.irrigation?.toLowerCase() === 'eleve' ||
+        espece.irrigation?.toLowerCase() === 'élevé'
+      ) {
+        aIrriguer = true
+      }
+    }
+
     // Création avec userId
     const culture = await prisma.culture.create({
       data: {
         ...data,
         userId: session!.user.id,
+        aIrriguer,
       },
       include: {
         espece: true,
