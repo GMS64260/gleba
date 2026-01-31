@@ -55,7 +55,7 @@ let culturesProblems = 0
 
 data.cultures.forEach((culture: any) => {
   const itp = itpMap.get(culture.itpId)
-  const planche = plancheMap.get(culture.plancheId)
+  const planche: any = plancheMap.get(culture.plancheId)
 
   if (!planche || !itp) {
     culturesOK++
@@ -66,17 +66,17 @@ data.cultures.forEach((culture: any) => {
   const original = { nbRangs: culture.nbRangs, longueur: culture.longueur }
 
   // Contrainte 1: Longueur de culture ≤ longueur de planche
-  if (culture.longueur && culture.longueur > planche.longueur) {
+  if (culture.longueur && culture.longueur > (planche as any).longueur) {
     culture.longueur = planche.longueur
     modified = true
     console.log(`  ⚠️  Culture #${culture.id} (${culture.especeId}) - longueur réduite de ${original.longueur}m à ${culture.longueur}m`)
   }
 
   // Contrainte 2: Largeur occupée ≤ largeur planche
-  const nbRangs = culture.nbRangs || itp.nbRangs || 1
-  const espacementRangs = itp.espacementRangs || 30
+  const nbRangs = culture.nbRangs || (itp as any).nbRangs || 1
+  const espacementRangs = (itp as any).espacementRangs || 30
   const largeurNecessaire = ((nbRangs - 1) * espacementRangs) / 100
-  const largeurDisponible = planche.largeur - 0.2 // Marges 10cm de chaque côté
+  const largeurDisponible = (planche as any).largeur - 0.2 // Marges 10cm de chaque côté
 
   if (largeurNecessaire > largeurDisponible) {
     // Calculer le nb de rangs max possible
