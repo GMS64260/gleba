@@ -169,8 +169,15 @@ export default function LoginPage() {
             <div className="h-2 bg-gradient-to-r from-green-500 via-emerald-500 to-green-600" />
 
             <CardHeader className="text-center pb-6 pt-8 bg-gradient-to-b from-green-50/30 to-transparent">
-              <div className="mx-auto mb-4 w-16 h-16 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center shadow-lg">
-                <Package className="h-8 w-8 text-white" />
+              <div className="mx-auto mb-4">
+                <Image
+                  src="/gleba.png"
+                  alt="Gleba"
+                  width={120}
+                  height={40}
+                  className="h-16 w-auto mx-auto"
+                  priority
+                />
               </div>
               <CardTitle className="text-2xl text-gray-900">Bienvenue</CardTitle>
               <CardDescription className="text-base">
