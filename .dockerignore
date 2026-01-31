@@ -43,6 +43,11 @@ AGENT_PROMPT.md
 ANALYSIS.md
 *.md
 !README.md
+!LICENSE
+!COPYRIGHT.md
+
+# IMPORTANT: Ne pas ignorer scripts/ (nécessaires pour migrations et seeds)
+# IMPORTANT: Ne pas ignorer *_enriched.csv (données de référentiel)
 
 # Misc
 *.log
