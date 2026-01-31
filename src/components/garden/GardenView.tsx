@@ -717,30 +717,37 @@ export function GardenView({
                     )
                   })}
 
-                  {/* Cultures avec fond coloré + sillons visibles */}
+                  {/* Cultures avec fond coloré + sillons centrés */}
                   {planche.cultures.slice(0, 3).map((culture, cultureIdx) => {
                     const nbRangs = culture.nbRangs || 3
                     const couleur = culture.espece.couleur || culture.espece.famille?.couleur || "#22c55e"
                     const largeurPlanche = planche.largeur || 0.8
+                    const strokeWidth = 0.06
+                    const marge = 0.1 // Marge de chaque côté
 
                     // Si plusieurs cultures, diviser la planche en zones
                     const nbCultures = Math.min(planche.cultures.length, 3)
                     const zoneWidth = largeurPlanche / nbCultures
                     const zoneStartX = cultureIdx * zoneWidth
+                    const zoneCenterX = zoneStartX + zoneWidth / 2
 
                     // Espacement entre rangs en mètres
                     const espacementRangsM = (culture.itp?.espacementRangs || 30) / 100
+
+                    // Largeur totale occupée par les rangs (du centre du 1er au centre du dernier)
                     const largeurOccupee = (nbRangs - 1) * espacementRangsM
 
-                    // Centrer les rangs dans la zone
+                    // Calculer l'espacement et la position de départ pour centrer
                     let spacing = espacementRangsM
-                    let startX = zoneStartX + (zoneWidth - largeurOccupee) / 2
+                    const largeurDisponible = zoneWidth - 2 * marge
 
-                    // Si ça dépasse, ajuster
-                    if (largeurOccupee > zoneWidth - 0.1) {
-                      spacing = (zoneWidth - 0.1) / (nbRangs - 1 || 1)
-                      startX = zoneStartX + 0.05
+                    // Si ça dépasse la zone, ajuster l'espacement
+                    if (largeurOccupee > largeurDisponible) {
+                      spacing = nbRangs > 1 ? largeurDisponible / (nbRangs - 1) : 0
                     }
+
+                    // Position du premier rang (centré)
+                    const startX = zoneCenterX - (nbRangs - 1) * spacing / 2
 
                     return (
                       <g key={`culture-${culture.id}`}>
