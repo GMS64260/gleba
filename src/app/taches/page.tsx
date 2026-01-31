@@ -44,11 +44,12 @@ interface TacheItem {
 
 interface IrrigationItem {
   id: number
+  cultureId: number
   especeId: string
   plancheId: string | null
   ilot: string | null
-  derniereIrrigation: string | null
-  joursDepuis: number | null
+  datePrevue: string
+  fait: boolean
   couleur: string | null
 }
 
@@ -160,13 +161,13 @@ function TachesContent() {
     }
   }
 
-  // Marquer irrigation
-  const marquerIrrigation = async (cultureId: number) => {
+  // Marquer irrigation planifiée comme faite
+  const marquerIrrigation = async (irrigationId: number) => {
     try {
-      const response = await fetch("/api/cultures/irriguer", {
+      const response = await fetch(`/api/irrigations/${irrigationId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cultureId, marquerArrosage: true }),
+        body: JSON.stringify({ fait: true, dateEffective: new Date().toISOString() }),
       })
       if (!response.ok) throw new Error("Erreur")
 
@@ -175,12 +176,12 @@ function TachesContent() {
         if (!prev) return prev
         return {
           ...prev,
-          irrigation: prev.irrigation.filter(i => i.id !== cultureId),
+          irrigation: prev.irrigation.filter(i => i.id !== irrigationId),
           stats: { ...prev.stats, aIrriguer: prev.stats.aIrriguer - 1 },
         }
       })
 
-      toast({ title: "Arrose !" })
+      toast({ title: "Arrosage noté !" })
     } catch (error) {
       toast({
         variant: "destructive",
@@ -416,22 +417,21 @@ function TachesContent() {
                 ) : (
                   <div className="space-y-2">
                     {data.irrigation.map(item => {
-                      const urgence =
-                        item.joursDepuis === null
-                          ? "text-gray-500"
-                          : item.joursDepuis >= 3
-                          ? "text-red-600"
-                          : item.joursDepuis >= 2
-                          ? "text-orange-500"
-                          : "text-yellow-600"
+                      const datePrevue = new Date(item.datePrevue)
+                      const isToday = datePrevue.toDateString() === new Date().toDateString()
+                      const isPast = datePrevue < new Date() && !isToday
 
                       return (
                         <button
                           key={item.id}
                           onClick={() => marquerIrrigation(item.id)}
-                          className="w-full flex items-center gap-3 p-3 rounded-lg border bg-white border-gray-200 hover:border-cyan-300 hover:shadow-sm transition-all"
+                          className={`w-full flex items-center gap-3 p-3 rounded-lg border bg-white transition-all ${
+                            isPast ? 'border-red-300 bg-red-50' : 'border-gray-200 hover:border-cyan-300 hover:shadow-sm'
+                          }`}
                         >
-                          <Droplets className={`h-5 w-5 ${urgence} flex-shrink-0`} />
+                          <Droplets className={`h-5 w-5 flex-shrink-0 ${
+                            isPast ? 'text-red-600' : isToday ? 'text-cyan-600' : 'text-blue-500'
+                          }`} />
                           <div className="flex items-center gap-2 flex-1 min-w-0">
                             {item.couleur && (
                               <div
@@ -440,13 +440,14 @@ function TachesContent() {
                               />
                             )}
                             <span className="font-medium truncate">{item.especeId}</span>
+                            {item.plancheId && (
+                              <span className="text-xs text-muted-foreground">({item.plancheId})</span>
+                            )}
                           </div>
-                          <span className={`text-sm ${urgence}`}>
-                            {item.joursDepuis === null
-                              ? "Jamais"
-                              : item.joursDepuis === 0
-                              ? "Auj."
-                              : `${item.joursDepuis}j`}
+                          <span className={`text-sm ${
+                            isPast ? 'text-red-600 font-medium' : isToday ? 'text-cyan-600' : 'text-blue-500'
+                          }`}>
+                            {isToday ? "Aujourd'hui" : format(datePrevue, "EEE d", { locale: fr })}
                           </span>
                           {item.plancheId && (
                             <Badge variant="outline" className="flex-shrink-0">
