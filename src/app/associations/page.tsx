@@ -243,7 +243,7 @@ export default function AssociationsPage() {
           data={data}
           isLoading={isLoading}
           showPagination={true}
-          pageSize={10}
+          pageSize={20}
           onAdd={handleAdd}
           onRefresh={fetchData}
           onExport={handleExport}
