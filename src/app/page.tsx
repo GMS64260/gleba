@@ -276,7 +276,7 @@ export default function Home() {
 
       {/* Header */}
       <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-3 flex items-center justify-between">
+        <div className="container mx-auto px-4 py-3 flex items-center justify-between max-w-[1600px]">
           <Link href="/" className="flex items-center hover:opacity-90 transition-opacity">
             <Image
               src="/gleba.png"
@@ -299,7 +299,7 @@ export default function Home() {
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-8">
+      <main className="container mx-auto px-4 py-8 max-w-[1600px]">
         {/* Sélecteur d'année */}
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-lg font-semibold text-gray-700">Tableau de bord</h2>
@@ -683,7 +683,7 @@ export default function Home() {
       {/* Footer */}
       <footer className="border-t mt-8 py-6 text-center text-sm text-gray-500">
         <p>
-          Gleba v0.1.0 - Basé sur{" "}
+          Gleba v1.0.0 - Basé sur{" "}
           <a
             href="https://github.com/marcpley/potaleger"
             target="_blank"
