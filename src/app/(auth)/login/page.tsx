@@ -191,7 +191,17 @@ export default function LoginPage() {
               </Suspense>
 
               {/* Footer du formulaire */}
-              <div className="mt-6 pt-6 border-t">
+              <div className="mt-6 pt-6 border-t space-y-3">
+                <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                  <p className="text-sm text-blue-900 font-medium mb-1">
+                    🎯 Compte de démonstration
+                  </p>
+                  <div className="text-xs text-blue-700 space-y-1">
+                    <p>Email: <code className="bg-white px-2 py-0.5 rounded">demo@gleba.fr</code></p>
+                    <p>Mot de passe: <code className="bg-white px-2 py-0.5 rounded">demo2026</code></p>
+                  </div>
+                </div>
+
                 <p className="text-center text-sm text-muted-foreground">
                   Première visite ?{" "}
                   <span className="text-green-600 font-medium">
