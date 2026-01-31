@@ -1,0 +1,51 @@
+GNU AFFERO GENERAL PUBLIC LICENSE
+Version 3, 19 November 2007
+
+Copyright (C) 2024-2026 GMS64260 (Gleba Project)
+https://github.com/GMS64260/gleba
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+ADDITIONAL TERMS:
+
+1. ATTRIBUTION REQUIREMENT
+   Any deployment or modification of this software MUST display
+   "Powered by Gleba" with a link to the original repository
+   (https://github.com/GMS64260/gleba) in a visible location
+   of the user interface.
+
+2. NETWORK USE CLAUSE (AGPL-3.0 Section 13)
+   If you run a modified version of this program as a network service,
+   you MUST make the complete source code (including your modifications)
+   available to all users of that service under the same AGPL-3.0 license.
+
+3. COMMERCIAL USE
+   Commercial use is permitted under AGPL-3.0 terms, provided that:
+   - All modifications are shared publicly under AGPL-3.0
+   - Attribution to the original project is maintained
+   - Source code is made available to service users
+
+4. NO WARRANTY
+   This software is provided "as is", without warranty of any kind.
+   The author(s) shall not be liable for any damages arising from
+   the use of this software.
+
+For the complete AGPL-3.0 license text, see:
+https://www.gnu.org/licenses/agpl-3.0.html
+
+---
+
+ORIGINAL AUTHOR: GMS64260
+PROJECT: Gleba - Garden Management Software
+REPOSITORY: https://github.com/GMS64260/gleba

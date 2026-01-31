@@ -38,16 +38,15 @@ export default function LoginPage() {
         <div className="space-y-8">
           {/* Logo et titre */}
           <div>
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center shadow-lg">
-                <Leaf className="h-7 w-7 text-white" />
-              </div>
-              <div>
-                <h1 className="text-4xl font-bold bg-gradient-to-r from-green-700 to-emerald-600 bg-clip-text text-transparent">
-                  Gleba
-                </h1>
-                <p className="text-sm text-muted-foreground">Cultivez l'avenir</p>
-              </div>
+            <div className="mb-6">
+              <Image
+                src="/gleba.webp"
+                alt="Gleba - Gestion de potager"
+                width={400}
+                height={150}
+                className="max-w-full h-auto"
+                priority
+              />
             </div>
 
             <p className="text-xl text-gray-700 leading-relaxed">
@@ -199,7 +198,12 @@ export default function LoginPage() {
           {/* Info technique */}
           <div className="mt-4 text-center">
             <p className="text-xs text-muted-foreground">
-              Gleba v0.1.0 • Licence Open Source • Made with 🌱 for gardeners
+              Gleba v1.0.0 • AGPL-3.0 License • Made with 🌱 for gardeners
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              <a href="https://github.com/GMS64260/gleba" target="_blank" rel="noopener noreferrer" className="text-green-600 hover:underline">
+                github.com/GMS64260/gleba
+              </a>
             </p>
           </div>
         </div>

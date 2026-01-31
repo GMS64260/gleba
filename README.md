@@ -1,6 +1,28 @@
 # Gleba
 
-**Gleba** est une application web de gestion de potager permettant la planification des cultures, le suivi des récoltes et la gestion des rotations.
+🌱 **Logiciel gratuit et open source de gestion de potager et verger** 🌳
+
+[![Licence AGPL-3.0](https://img.shields.io/badge/License-AGPL%203.0-green.svg)](LICENSE)
+[![Next.js](https://img.shields.io/badge/Next.js-16-black)](https://nextjs.org/)
+
+---
+
+## © Licence et Copyright
+
+**Copyright © 2024-2026 GMS64260 (Gleba Project)**
+
+Ce logiciel est distribué sous **licence AGPL-3.0** (GNU Affero General Public License).
+
+**En résumé :**
+- ✅ Usage gratuit (personnel ou commercial)
+- ✅ Modification et distribution autorisées
+- ⚠️ Obligation de partager les modifications (même en SaaS)
+- ⚠️ Obligation d'afficher "Powered by Gleba" dans l'interface
+- ⚠️ Même licence pour les versions dérivées
+
+Voir [LICENSE](LICENSE) et [COPYRIGHT.md](COPYRIGHT.md) pour tous les détails.
+
+**Repository :** https://github.com/GMS64260/gleba
 
 ---
 
@@ -155,12 +177,6 @@ npm run dev
 | Base de données | PostgreSQL 16 |
 | Authentification | NextAuth.js v5 |
 | Conteneurisation | Docker, Docker Compose |
-
----
-
-## Licence
-
-MIT
 
 ---
 
