@@ -712,13 +712,13 @@ export default function JardinPage() {
         <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
           {/* Plan */}
           <Card className="overflow-hidden">
-            <CardContent className="p-0">
+            <CardContent className="p-0" style={{ height: 'calc(100vh - 200px)', minHeight: '500px' }}>
               {isLoading ? (
-                <div className="h-[600px] flex items-center justify-center text-muted-foreground">
+                <div className="h-full flex items-center justify-center text-muted-foreground">
                   Chargement...
                 </div>
               ) : planches.length === 0 ? (
-                <div className="h-[600px] flex flex-col items-center justify-center text-muted-foreground">
+                <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
                   <MapIcon className="h-12 w-12 mb-4 opacity-50" />
                   <p>Aucune planche configurée</p>
                   <Button variant="link" onClick={() => setShowNewPlancheDialog(true)}>

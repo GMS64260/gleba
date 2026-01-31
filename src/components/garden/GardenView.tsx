@@ -379,7 +379,7 @@ export function GardenView({
   }, [viewBox])
 
   return (
-    <div className="overflow-auto" style={{ maxHeight: "600px" }}>
+    <div className="overflow-auto h-full">
       <svg
         ref={svgRef}
         width={width}
