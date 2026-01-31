@@ -9,6 +9,15 @@ import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { createAssociationSchema } from "@/lib/validations/association"
 
+function generateAssociationId(nom: string): string {
+  return "asso-" + nom
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+}
+
 export async function GET(request: NextRequest) {
   const { error } = await requireAuthApi()
   if (error) return error
@@ -71,9 +80,11 @@ export async function POST(request: NextRequest) {
     const validated = createAssociationSchema.parse(body)
 
     const { details, ...associationData } = validated
+    const id = generateAssociationId(associationData.nom)
 
     const association = await prisma.association.create({
       data: {
+        id,
         ...associationData,
         details: details
           ? {
