@@ -323,47 +323,47 @@ export function CalendarView({ year }: CalendarViewProps) {
                     {dayEvents.length > 0 && (
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <div className="absolute bottom-1 left-1 right-1 flex gap-0.5 flex-wrap">
+                          <div className="absolute bottom-1 left-1 right-1 flex gap-1 flex-wrap cursor-pointer">
                             {counts.semis > 0 && (
-                              <div className={`flex items-center justify-center w-6 h-6 rounded ${typeIcons.semis.bg}`}>
-                                <Sprout className={`h-4 w-4 ${typeIcons.semis.color}`} />
+                              <div className={`flex items-center justify-center w-8 h-8 rounded ${typeIcons.semis.bg}`}>
+                                <Sprout className={`h-5 w-5 ${typeIcons.semis.color}`} />
                                 {counts.semis > 1 && (
-                                  <span className="text-[9px] font-bold ml-px">{counts.semis}</span>
+                                  <span className="text-[10px] font-bold ml-px">{counts.semis}</span>
                                 )}
                               </div>
                             )}
                             {counts.plantation > 0 && (
-                              <div className={`flex items-center justify-center w-6 h-6 rounded ${typeIcons.plantation.bg}`}>
-                                <Leaf className={`h-4 w-4 ${typeIcons.plantation.color}`} />
+                              <div className={`flex items-center justify-center w-8 h-8 rounded ${typeIcons.plantation.bg}`}>
+                                <Leaf className={`h-5 w-5 ${typeIcons.plantation.color}`} />
                                 {counts.plantation > 1 && (
-                                  <span className="text-[9px] font-bold ml-px">{counts.plantation}</span>
+                                  <span className="text-[10px] font-bold ml-px">{counts.plantation}</span>
                                 )}
                               </div>
                             )}
                             {counts.recolte > 0 && (
-                              <div className={`flex items-center justify-center w-6 h-6 rounded ${typeIcons.recolte.bg}`}>
-                                <Package className={`h-4 w-4 ${typeIcons.recolte.color}`} />
+                              <div className={`flex items-center justify-center w-8 h-8 rounded ${typeIcons.recolte.bg}`}>
+                                <Package className={`h-5 w-5 ${typeIcons.recolte.color}`} />
                                 {counts.recolte > 1 && (
-                                  <span className="text-[9px] font-bold ml-px">{counts.recolte}</span>
+                                  <span className="text-[10px] font-bold ml-px">{counts.recolte}</span>
                                 )}
                               </div>
                             )}
                             {counts.irrigation > 0 && (
-                              <div className={`flex items-center justify-center w-6 h-6 rounded ${typeIcons.irrigation.bg}`}>
-                                <Droplets className={`h-4 w-4 ${typeIcons.irrigation.color}`} />
+                              <div className={`flex items-center justify-center w-8 h-8 rounded ${typeIcons.irrigation.bg}`}>
+                                <Droplets className={`h-5 w-5 ${typeIcons.irrigation.color}`} />
                                 {counts.irrigation > 1 && (
-                                  <span className="text-[9px] font-bold ml-px">{counts.irrigation}</span>
+                                  <span className="text-[10px] font-bold ml-px">{counts.irrigation}</span>
                                 )}
                               </div>
                             )}
                           </div>
                         </TooltipTrigger>
-                        <TooltipContent side="bottom" className="max-w-[200px]">
+                        <TooltipContent side="bottom" className="max-w-[300px]">
                           <div className="space-y-1">
                             <p className="font-medium text-xs">
                               {format(dayDate, "EEEE d MMMM", { locale: fr })}
                             </p>
-                            {dayEvents.slice(0, 5).map(event => {
+                            {dayEvents.map(event => {
                               const { icon: Icon, color } = typeIcons[event.type]
                               return (
                                 <div
@@ -386,11 +386,6 @@ export function CalendarView({ year }: CalendarViewProps) {
                                 </div>
                               )
                             })}
-                            {dayEvents.length > 5 && (
-                              <p className="text-xs text-muted-foreground">
-                                +{dayEvents.length - 5} autres...
-                              </p>
-                            )}
                           </div>
                         </TooltipContent>
                       </Tooltip>
