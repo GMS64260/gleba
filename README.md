@@ -13,14 +13,6 @@
 
 Ce logiciel est distribué sous **licence AGPL-3.0** (GNU Affero General Public License).
 
-**En résumé :**
-- ✅ Usage gratuit (personnel ou commercial)
-- ✅ Modification et distribution autorisées
-- ⚠️ Obligation de partager les modifications (même en SaaS)
-- ⚠️ Obligation d'afficher "Powered by Gleba" dans l'interface
-- ⚠️ Même licence pour les versions dérivées
-
-Voir [LICENSE](LICENSE) et [COPYRIGHT.md](COPYRIGHT.md) pour tous les détails.
 
 **Repository :** https://github.com/GMS64260/gleba
 
