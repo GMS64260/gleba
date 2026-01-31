@@ -31,6 +31,14 @@ interface CultureIrriguer {
   plancheId: string | null
   aIrriguer: boolean | null
   derniereIrrigation: string | null
+  nbRangs: number | null
+  longueur: number | null
+  joursSansEau: number | null
+  ageJours: number | null
+  isJeune: boolean
+  urgence: 'critique' | 'haute' | 'moyenne' | 'faible'
+  consommationEauSemaine: number
+  prochainesIrrigations: number
   espece: {
     id: string
     couleur: string | null
@@ -42,6 +50,9 @@ interface CultureIrriguer {
     ilot: string | null
     type: string | null
     irrigation: string | null
+    surface: number | null
+    largeur: number | null
+    longueur: number | null
   } | null
   variete: {
     id: string
@@ -51,6 +62,12 @@ interface CultureIrriguer {
 interface Stats {
   total: number
   nbIlots: number
+  critique: number
+  haute: number
+  jamaisArrose: number
+  prochainesIrrigations7j: number
+  consommationTotaleEstimee: number
+  parTypeIrrigation: { type: string; count: number }[]
 }
 
 function CulturesIrriguerContent() {
@@ -59,11 +76,16 @@ function CulturesIrriguerContent() {
 
   const [data, setData] = React.useState<CultureIrriguer[]>([])
   const [parIlot, setParIlot] = React.useState<Record<string, CultureIrriguer[]>>({})
+  const [parTypeIrrigation, setParTypeIrrigation] = React.useState<Record<string, CultureIrriguer[]>>({})
   const [stats, setStats] = React.useState<Stats | null>(null)
   const [isLoading, setIsLoading] = React.useState(true)
   const [annee, setAnnee] = React.useState(
     parseInt(searchParams.get("annee") || new Date().getFullYear().toString())
   )
+  const [groupBy, setGroupBy] = React.useState<'ilot' | 'type-irrigation' | 'urgence'>('ilot')
+  const [filtreUrgence, setFiltreUrgence] = React.useState<'all' | 'critique' | 'haute' | 'jamais'>('all')
+  const [filtreTypeIrrigation, setFiltreTypeIrrigation] = React.useState<string>('all')
+  const [filtreBesoinEau, setFiltreBesoinEau] = React.useState<'all' | '3' | '4'>('all')
 
   const annees = React.useMemo(() => {
     const currentYear = new Date().getFullYear()
@@ -78,6 +100,7 @@ function CulturesIrriguerContent() {
       const result = await response.json()
       setData(result.data)
       setParIlot(result.parIlot)
+      setParTypeIrrigation(result.parTypeIrrigation || {})
       setStats(result.stats)
     } catch (error) {
       toast({
@@ -212,31 +235,94 @@ function CulturesIrriguerContent() {
     }
   }
 
-  // Calculer le nombre de jours depuis derniere irrigation
-  const joursDepuisIrrigation = (date: string | null): number | null => {
-    if (!date) return null
-    const diff = Date.now() - new Date(date).getTime()
-    return Math.floor(diff / (1000 * 60 * 60 * 24))
+  // Couleur selon urgence
+  const getUrgenceColor = (urgence: string, jamais: boolean): string => {
+    if (jamais) return "text-gray-500"
+    if (urgence === 'critique') return "text-red-600"
+    if (urgence === 'haute') return "text-orange-500"
+    if (urgence === 'moyenne') return "text-yellow-600"
+    return "text-green-600"
   }
 
-  // Couleur selon urgence (jours sans arrosage)
-  const getUrgenceColor = (jours: number | null): string => {
-    if (jours === null) return "text-gray-400"
-    if (jours >= 3) return "text-red-600"
-    if (jours >= 2) return "text-orange-500"
-    if (jours >= 1) return "text-yellow-600"
-    return "text-green-600"
+  const getUrgenceBadge = (urgence: string, jamais: boolean) => {
+    if (jamais) return <Badge variant="secondary" className="bg-gray-100 text-gray-600">Jamais arrosé</Badge>
+    if (urgence === 'critique') return <Badge variant="destructive">Urgent</Badge>
+    if (urgence === 'haute') return <Badge className="bg-orange-500">Priorité</Badge>
+    if (urgence === 'moyenne') return <Badge className="bg-yellow-500">Moyen</Badge>
+    return <Badge variant="secondary" className="bg-green-100 text-green-700">OK</Badge>
   }
 
   const getBesoinEauBadge = (besoinEau: number | null, irrigation: string | null) => {
     if (irrigation === 'Eleve' || (besoinEau && besoinEau >= 4)) {
-      return <Badge variant="destructive">Eleve</Badge>
+      return <Badge variant="destructive">Élevé</Badge>
     }
     if (besoinEau && besoinEau >= 3) {
       return <Badge variant="default" className="bg-orange-500">Moyen</Badge>
     }
     return <Badge variant="secondary">Faible</Badge>
   }
+
+  // Appliquer les filtres
+  const filteredData = React.useMemo(() => {
+    let filtered = data
+
+    // Filtre urgence
+    if (filtreUrgence !== 'all') {
+      if (filtreUrgence === 'jamais') {
+        filtered = filtered.filter(c => c.joursSansEau === null)
+      } else {
+        filtered = filtered.filter(c => c.urgence === filtreUrgence)
+      }
+    }
+
+    // Filtre type irrigation
+    if (filtreTypeIrrigation !== 'all') {
+      filtered = filtered.filter(c => c.planche?.irrigation === filtreTypeIrrigation)
+    }
+
+    // Filtre besoin eau
+    if (filtreBesoinEau !== 'all') {
+      const seuil = parseInt(filtreBesoinEau)
+      filtered = filtered.filter(c => (c.espece?.besoinEau || 0) >= seuil)
+    }
+
+    return filtered
+  }, [data, filtreUrgence, filtreTypeIrrigation, filtreBesoinEau])
+
+  // Regrouper selon le choix
+  const groupedData = React.useMemo(() => {
+    if (groupBy === 'ilot') {
+      const groups: Record<string, typeof filteredData> = {}
+      filteredData.forEach(c => {
+        const key = c.planche?.ilot || 'Sans ilot'
+        if (!groups[key]) groups[key] = []
+        groups[key].push(c)
+      })
+      return groups
+    } else if (groupBy === 'type-irrigation') {
+      const groups: Record<string, typeof filteredData> = {}
+      filteredData.forEach(c => {
+        const key = c.planche?.irrigation || 'Non défini'
+        if (!groups[key]) groups[key] = []
+        groups[key].push(c)
+      })
+      return groups
+    } else {
+      // Grouper par urgence
+      const groups: Record<string, typeof filteredData> = {
+        'Critique (>3j)': filteredData.filter(c => c.urgence === 'critique'),
+        'Haute (3j)': filteredData.filter(c => c.urgence === 'haute'),
+        'Jamais arrosé': filteredData.filter(c => c.joursSansEau === null),
+        'Moyenne (2j)': filteredData.filter(c => c.urgence === 'moyenne'),
+        'OK (<2j)': filteredData.filter(c => c.urgence === 'faible'),
+      }
+      // Retirer les groupes vides
+      Object.keys(groups).forEach(key => {
+        if (groups[key].length === 0) delete groups[key]
+      })
+      return groups
+    }
+  }, [filteredData, groupBy])
 
   if (isLoading) {
     return (
@@ -297,9 +383,62 @@ function CulturesIrriguerContent() {
 
       {/* Content */}
       <main className="container mx-auto px-4 py-6">
-        {/* Stats */}
+        {/* Filtres */}
+        <div className="mb-4 flex flex-wrap gap-2">
+          <Select value={groupBy} onValueChange={(v: any) => setGroupBy(v)}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ilot">Grouper par îlot</SelectItem>
+              <SelectItem value="type-irrigation">Par type irrigation</SelectItem>
+              <SelectItem value="urgence">Par urgence</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={filtreUrgence} onValueChange={(v: any) => setFiltreUrgence(v)}>
+            <SelectTrigger className="w-[150px]">
+              <SelectValue placeholder="Urgence" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Toutes urgences</SelectItem>
+              <SelectItem value="critique">🔴 Critique</SelectItem>
+              <SelectItem value="haute">🟠 Haute</SelectItem>
+              <SelectItem value="jamais">⚪ Jamais arrosé</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {stats && stats.parTypeIrrigation.length > 0 && (
+            <Select value={filtreTypeIrrigation} onValueChange={setFiltreTypeIrrigation}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Type irrigation" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tous types</SelectItem>
+                {stats.parTypeIrrigation.map(t => (
+                  <SelectItem key={t.type} value={t.type}>
+                    {t.type} ({t.count})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+
+          <Select value={filtreBesoinEau} onValueChange={(v: any) => setFiltreBesoinEau(v)}>
+            <SelectTrigger className="w-[150px]">
+              <SelectValue placeholder="Besoin eau" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tous besoins</SelectItem>
+              <SelectItem value="4">Élevé (≥4)</SelectItem>
+              <SelectItem value="3">Moyen (3)</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Stats enrichies */}
         {stats && (
-          <div className="grid gap-4 md:grid-cols-2 mb-6">
+          <div className="grid gap-4 md:grid-cols-4 mb-6">
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
@@ -311,12 +450,33 @@ function CulturesIrriguerContent() {
                 <p className="text-2xl font-bold">{stats.total}</p>
               </CardContent>
             </Card>
-            <Card>
+            <Card className={stats.critique > 0 ? "border-red-300 bg-red-50" : ""}>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm text-muted-foreground">Ilots concernes</CardTitle>
+                <CardTitle className="text-sm text-muted-foreground">Urgences</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold">{stats.nbIlots}</p>
+                <p className="text-2xl font-bold text-red-600">{stats.critique + stats.haute}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {stats.critique} critique · {stats.haute} haute · {stats.jamaisArrose} jamais
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm text-muted-foreground">7 prochains jours</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold text-blue-600">{stats.prochainesIrrigations7j}</p>
+                <p className="text-xs text-muted-foreground mt-1">irrigations planifiées</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm text-muted-foreground">Consommation</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold text-cyan-600">{stats.consommationTotaleEstimee}L</p>
+                <p className="text-xs text-muted-foreground mt-1">par semaine (estimé)</p>
               </CardContent>
             </Card>
           </div>
@@ -330,80 +490,145 @@ function CulturesIrriguerContent() {
           </p>
         </div>
 
-        {/* Par ilot */}
-        {Object.keys(parIlot).length === 0 ? (
+        {/* Groupes */}
+        {Object.keys(groupedData).length === 0 ? (
           <Card>
             <CardContent className="py-8 text-center text-muted-foreground">
-              Aucune culture a irriguer pour {annee}
+              {filtreUrgence !== 'all' || filtreTypeIrrigation !== 'all' || filtreBesoinEau !== 'all'
+                ? 'Aucune culture ne correspond aux filtres'
+                : `Aucune culture a irriguer pour ${annee}`}
             </CardContent>
           </Card>
         ) : (
           <div className="space-y-6">
-            {Object.entries(parIlot).map(([ilot, cultures]) => (
-              <Card key={ilot}>
+            {Object.entries(groupedData).map(([groupe, cultures]) => {
+              // Calculer la consommation totale du groupe
+              const consommationGroupe = cultures.reduce((sum, c) => sum + c.consommationEauSemaine, 0)
+              const prochainesGroupe = cultures.reduce((sum, c) => sum + c.prochainesIrrigations, 0)
+
+              return (
+              <Card key={groupe}>
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline">{ilot}</Badge>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge variant="outline">{groupe}</Badge>
                       <span className="text-sm text-muted-foreground">
                         {cultures.length} culture(s)
                       </span>
+                      {groupBy === 'ilot' && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => marquerIlotArrose(groupe)}
+                          className="text-cyan-600 border-cyan-300 hover:bg-cyan-50"
+                        >
+                          <Droplet className="h-4 w-4 mr-1" />
+                          Tout arroser
+                        </Button>
+                      )}
                     </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => marquerIlotArrose(ilot)}
-                      className="text-cyan-600 border-cyan-300 hover:bg-cyan-50"
-                    >
-                      <Droplet className="h-4 w-4 mr-1" />
-                      Tout arroser
-                    </Button>
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-1">
+                        <Droplets className="h-3 w-3 text-cyan-600" />
+                        <span>{Math.round(consommationGroupe)}L/sem</span>
+                      </div>
+                      {prochainesGroupe > 0 && (
+                        <div className="flex items-center gap-1">
+                          <span className="text-blue-600">+{prochainesGroupe} à venir</span>
+                        </div>
+                      )}
+                    </div>
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
                     {cultures.map((culture) => {
-                      const jours = joursDepuisIrrigation(culture.derniereIrrigation)
-                      const urgenceColor = getUrgenceColor(jours)
+                      const jamais = culture.joursSansEau === null
+                      const urgenceColor = getUrgenceColor(culture.urgence, jamais)
 
                       return (
                         <div
                           key={culture.id}
-                          className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                          className={`flex items-center justify-between p-3 rounded-lg transition-colors ${
+                            culture.urgence === 'critique' ? 'bg-red-50 border border-red-200' :
+                            culture.urgence === 'haute' ? 'bg-orange-50 border border-orange-200' :
+                            jamais ? 'bg-gray-100 border border-gray-300' :
+                            'bg-gray-50'
+                          }`}
                         >
-                          <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-3 flex-1">
                             <Checkbox
                               checked={culture.aIrriguer || false}
                               onCheckedChange={() => toggleIrrigation(culture.id, culture.aIrriguer)}
                             />
-                            <div className="flex items-center gap-2">
-                              {culture.espece?.couleur && (
-                                <div
-                                  className="w-3 h-3 rounded-full"
-                                  style={{ backgroundColor: culture.espece.couleur }}
-                                />
-                              )}
-                              <span className="font-medium">{culture.especeId}</span>
-                              {culture.variete && (
-                                <span className="text-sm text-muted-foreground">
-                                  ({culture.variete.id})
-                                </span>
-                              )}
+
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                {culture.espece?.couleur && (
+                                  <div
+                                    className="w-3 h-3 rounded-full"
+                                    style={{ backgroundColor: culture.espece.couleur }}
+                                  />
+                                )}
+                                <span className="font-medium">{culture.especeId}</span>
+                                {culture.variete && (
+                                  <span className="text-sm text-muted-foreground">
+                                    ({culture.variete.id})
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Info complémentaire */}
+                              <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
+                                {/* Âge de la culture */}
+                                {culture.ageJours !== null && (
+                                  <span className={culture.isJeune ? "text-green-600 font-medium" : ""}>
+                                    {culture.isJeune && "🌱 "}
+                                    {culture.ageJours < 7
+                                      ? `${culture.ageJours}j`
+                                      : `${Math.floor(culture.ageJours / 7)}sem`}
+                                    {culture.isJeune && " (jeune)"}
+                                  </span>
+                                )}
+
+                                {/* Type irrigation planche */}
+                                {culture.planche?.irrigation && (
+                                  <span className="flex items-center gap-1">
+                                    <Droplets className="h-3 w-3" />
+                                    {culture.planche.irrigation}
+                                  </span>
+                                )}
+
+                                {/* Consommation */}
+                                {culture.consommationEauSemaine > 0 && (
+                                  <span>~{Math.round(culture.consommationEauSemaine)}L/sem</span>
+                                )}
+
+                                {/* Prochaines irrigations */}
+                                {culture.prochainesIrrigations > 0 && (
+                                  <span className="text-blue-600">
+                                    +{culture.prochainesIrrigations} planifiée{culture.prochainesIrrigations > 1 ? 's' : ''} (7j)
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </div>
 
                           <div className="flex items-center gap-3">
+                            {/* Urgence badge */}
+                            {getUrgenceBadge(culture.urgence, jamais)}
+
                             {/* Derniere irrigation */}
-                            <div className={`text-sm flex items-center gap-1 ${urgenceColor}`}>
-                              {jours !== null ? (
+                            <div className={`text-sm flex items-center gap-1 min-w-[80px] ${urgenceColor}`}>
+                              {!jamais ? (
                                 <>
                                   <Droplets className="h-3 w-3" />
                                   <span>
-                                    {jours === 0 ? "Aujourd'hui" : `${jours}j`}
+                                    {culture.joursSansEau === 0 ? "Aujourd'hui" : `Il y a ${culture.joursSansEau}j`}
                                   </span>
                                 </>
                               ) : (
-                                <span className="text-gray-400 text-xs">Jamais</span>
+                                <span className="text-gray-400 text-xs">Jamais arrosé</span>
                               )}
                             </div>
 
@@ -441,8 +666,53 @@ function CulturesIrriguerContent() {
                   </div>
                 </CardContent>
               </Card>
-            ))}
+            )
+            })}
           </div>
+        )}
+
+        {/* Historique récent (10 derniers arrosages) */}
+        {filteredData.length > 0 && (
+          <Card className="mt-6">
+            <CardHeader>
+              <CardTitle className="text-sm">Historique récent</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-1">
+                {filteredData
+                  .filter(c => c.derniereIrrigation)
+                  .sort((a, b) => new Date(b.derniereIrrigation!).getTime() - new Date(a.derniereIrrigation!).getTime())
+                  .slice(0, 10)
+                  .map(c => (
+                    <div key={c.id} className="flex items-center justify-between text-sm py-1">
+                      <div className="flex items-center gap-2">
+                        {c.espece?.couleur && (
+                          <div
+                            className="w-2 h-2 rounded-full"
+                            style={{ backgroundColor: c.espece.couleur }}
+                          />
+                        )}
+                        <span>{c.especeId}</span>
+                        {c.planche && (
+                          <Badge variant="secondary" className="text-xs">{c.planche.id}</Badge>
+                        )}
+                      </div>
+                      <span className="text-muted-foreground text-xs">
+                        {new Date(c.derniereIrrigation!).toLocaleDateString('fr-FR', {
+                          day: 'numeric',
+                          month: 'short',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </span>
+                    </div>
+                  ))}
+                {filteredData.filter(c => c.derniereIrrigation).length === 0 && (
+                  <p className="text-sm text-muted-foreground italic">Aucun arrosage enregistré</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
         )}
       </main>
     </div>

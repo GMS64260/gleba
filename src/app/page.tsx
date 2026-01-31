@@ -156,7 +156,7 @@ interface DashboardData {
     recoltesAnneePrecedente: number
   }
   charts: {
-    monthlyHarvest: { mois: string; quantite: number }[]
+    monthlyHarvest: { mois: string; quantite: number; previsionnel: number }[]
     harvestBySpecies: { espece: string; quantite: number; couleur: string }[]
     culturesByFamily: { famille: string; count: number; couleur: string }[]
     yieldByPlanche: { planche: string; totalKg: number; surface: number; rendement: number }[]
@@ -421,6 +421,16 @@ export default function Home() {
               <CardDescription>
                 Production en kg par mois ({data?.meta.year})
               </CardDescription>
+              <div className="flex items-center gap-4 text-xs text-muted-foreground mt-2">
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-0.5 bg-green-500" />
+                  <span>Récolté</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-0.5 bg-blue-500 border-dashed border-t-2 border-blue-500" />
+                  <span>Prévu</span>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               {loading ? (
@@ -435,12 +445,19 @@ export default function Home() {
                         <stop offset="5%" stopColor="#22c55e" stopOpacity={0.8}/>
                         <stop offset="95%" stopColor="#22c55e" stopOpacity={0.1}/>
                       </linearGradient>
+                      <linearGradient id="colorPrev" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.6}/>
+                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.1}/>
+                      </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                     <XAxis dataKey="mois" tick={{ fontSize: 12 }} />
                     <YAxis tick={{ fontSize: 12 }} unit=" kg" />
                     <Tooltip
-                      formatter={(value) => [`${Number(value).toFixed(1)} kg`, "Récolte"]}
+                      formatter={(value, name) => [
+                        `${Number(value).toFixed(1)} kg`,
+                        name === 'quantite' ? 'Récolté' : 'Prévu'
+                      ]}
                       contentStyle={{ borderRadius: 8, border: "1px solid #e5e7eb" }}
                     />
                     <Area
@@ -450,6 +467,17 @@ export default function Home() {
                       strokeWidth={2}
                       fillOpacity={1}
                       fill="url(#colorQty)"
+                      name="Récolté"
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="previsionnel"
+                      stroke="#3b82f6"
+                      strokeWidth={2}
+                      strokeDasharray="5 5"
+                      fillOpacity={1}
+                      fill="url(#colorPrev)"
+                      name="Prévu"
                     />
                   </AreaChart>
                 </ResponsiveContainer>

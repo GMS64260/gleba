@@ -63,20 +63,71 @@ export async function GET(request: NextRequest) {
       _sum: { quantite: true },
     })
 
-    // Agréger par mois
-    const monthlyHarvest: { mois: string; quantite: number }[] = []
+    // Récoltes prévisionnelles (cultures non récoltées)
+    const recoltesPrevisionnelles = await prisma.culture.findMany({
+      where: {
+        userId,
+        annee: currentYear,
+        recolteFaite: false,
+        terminee: null,
+        dateRecolte: {
+          gte: startOfYear,
+          lte: endOfYear,
+        },
+      },
+      select: {
+        dateRecolte: true,
+        nbRangs: true,
+        longueur: true,
+        espece: {
+          select: {
+            rendement: true,
+          },
+        },
+        planche: {
+          select: {
+            largeur: true,
+            surface: true,
+          },
+        },
+      },
+    })
+
+    // Agréger par mois (récoltes réelles)
+    const monthlyHarvest: { mois: string; quantite: number; previsionnel: number }[] = []
     const moisNoms = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Août", "Sep", "Oct", "Nov", "Déc"]
     const monthData: number[] = new Array(12).fill(0)
+    const monthDataPrev: number[] = new Array(12).fill(0)
 
     recoltesParMois.forEach((r) => {
       const month = new Date(r.date).getMonth()
       monthData[month] += r._sum.quantite || 0
     })
 
+    // Ajouter les récoltes prévisionnelles
+    recoltesPrevisionnelles.forEach((c) => {
+      if (!c.dateRecolte) return
+      const month = new Date(c.dateRecolte).getMonth()
+
+      // Estimer la quantité : surface × rendement
+      let surface = 0
+      if (c.nbRangs && c.longueur && c.planche?.largeur) {
+        surface = (c.nbRangs * c.longueur * c.planche.largeur) / (c.nbRangs || 1)
+      } else {
+        surface = c.planche?.surface || 0
+      }
+
+      const rendement = c.espece?.rendement || 0
+      const quantitePrevue = surface * rendement
+
+      monthDataPrev[month] += quantitePrevue
+    })
+
     moisNoms.forEach((nom, i) => {
       monthlyHarvest.push({
         mois: nom,
         quantite: Math.round(monthData[i] * 100) / 100,
+        previsionnel: Math.round(monthDataPrev[i] * 100) / 100,
       })
     })
 

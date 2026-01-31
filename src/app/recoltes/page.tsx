@@ -34,6 +34,7 @@ interface RecolteWithRelations {
   notes: string | null
   espece: {
     id: string
+    prixKg: number | null
     famille: { id: string; couleur: string | null } | null
   }
   culture: {
@@ -93,6 +94,25 @@ const columns: ColumnDef<RecolteWithRelations>[] = [
     },
   },
   {
+    id: "valeur",
+    header: "Valeur €",
+    cell: ({ row }) => {
+      const quantite = row.original.quantite
+      const prixKg = row.original.espece?.prixKg
+
+      if (!prixKg) {
+        return <span className="text-muted-foreground text-sm">-</span>
+      }
+
+      const valeur = quantite * prixKg
+      return (
+        <span className="font-medium text-blue-600">
+          {valeur.toFixed(2)} €
+        </span>
+      )
+    },
+  },
+  {
     accessorKey: "cultureId",
     header: "Culture",
     cell: ({ getValue }) => `#${getValue()}`,
@@ -119,6 +139,14 @@ export default function RecoltesPage() {
   const [pageIndex, setPageIndex] = React.useState(0)
   const [pageCount, setPageCount] = React.useState(0)
   const [stats, setStats] = React.useState({ totalQuantite: 0, count: 0 })
+
+  // Calculer la valeur totale en euros
+  const valeurTotale = React.useMemo(() => {
+    return data.reduce((sum, r) => {
+      const prix = r.espece?.prixKg || 0
+      return sum + (r.quantite * prix)
+    }, 0)
+  }, [data])
   const [selectedAnnee, setSelectedAnnee] = React.useState<string>('all')
   const [selectedEspece, setSelectedEspece] = React.useState<string>('all')
   const [especes, setEspeces] = React.useState<{ id: string }[]>([])
@@ -262,7 +290,7 @@ export default function RecoltesPage() {
         </div>
 
         {/* Stats */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-3">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -273,6 +301,21 @@ export default function RecoltesPage() {
               <div className="text-2xl font-bold text-green-600">
                 {stats.totalQuantite.toFixed(1)} kg
               </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                Valeur estimée
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-blue-600">
+                {valeurTotale.toFixed(2)} €
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Circuit court bio
+              </p>
             </CardContent>
           </Card>
           <Card>
