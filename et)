@@ -1,0 +1,39 @@
+[33md169f4e[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m HEAD@{0}: reset: moving to origin/main
+[33m6861c00[m HEAD@{1}: checkout: moving from bbc946488796336784aca1847402156431be127e to main
+[33mbbc9464[m HEAD@{2}: commit: merge: résolution conflits
+[33mf1a40a3[m HEAD@{3}: pull origin main --rebase (pick): fix: stocks éditables plus visibles + responsive
+[33m0a2a000[m HEAD@{4}: pull origin main --rebase (pick): fix: plan jardin responsive - adapte hauteur écran
+[33m14784e9[m HEAD@{5}: pull origin main --rebase (pick): data: CSV enrichis v2_2026 actualisés
+[33mbd27549[m HEAD@{6}: pull origin main --rebase (pick): fix: planification supporte cultures sans rotation
+[33m3d35b13[m HEAD@{7}: pull origin main --rebase (pick): fix: dashboard responsive - centré max-width 1600px
+[33ma46f079[m HEAD@{8}: pull origin main --rebase (pick): fix: import auto CSV enrichis + logo h-20 + types script
+[33md169f4e[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m HEAD@{9}: pull origin main --rebase (start): checkout d169f4e02e751750ba0304b8d10382b3b5d1cc4e
+[33m6861c00[m HEAD@{10}: commit: feat: compte démo auto-créé + affiché sur login
+[33m07adcf0[m HEAD@{11}: commit: feat: migration auto données v1.0.0 au démarrage
+[33m7c1e2d1[m HEAD@{12}: commit: fix: stocks éditables plus visibles + responsive
+[33md4574ad[m HEAD@{13}: commit: fix: plan jardin responsive - adapte hauteur écran
+[33mb616f1d[m HEAD@{14}: commit: data: CSV enrichis v2_2026 actualisés
+[33mf8cfc98[m HEAD@{15}: commit: fix: planification supporte cultures sans rotation
+[33m134a974[m HEAD@{16}: commit: fix: dashboard responsive - centré max-width 1600px
+[33m9e0d5dd[m HEAD@{17}: commit: fix: import auto CSV enrichis + logo h-20 + types script
+[33mb76e0c4[m HEAD@{18}: commit: fix: types TypeScript script fix-demo-data
+[33mbdb5f19[m HEAD@{19}: commit: fix: logo dans formulaire login au lieu de icône Package
+[33m0895c56[m HEAD@{20}: commit: fix: logo haute qualité + taille réduite (h-24)
+[33m61b5734[m HEAD@{21}: commit: release: v1.0.0 - Protection PI AGPL-3.0 + logo corrigé
+[33m9d41c30[m HEAD@{22}: commit: feat: page login stylisée nature + landing page
+[33m38b67d3[m HEAD@{23}: commit: feat: page irrigation enrichie + récoltes prévisionnelles + prix
+[33m8aa8152[m HEAD@{24}: commit: feat: validation planches + sillons + suppression données
+[33m6012ef0[m HEAD@{25}: commit: perf: optimisations DB et requêtes
+[33m3b3b079[m HEAD@{26}: commit: feat: assistant maraîcher + irrigations planifiées + calendrier interactif
+[33m2b6f464[m HEAD@{27}: commit: feat: assistant maraîcher + irrigations planifiées + calendrier interactif
+[33m115f53b[m HEAD@{28}: commit: Initial commit - Gleba v0.1.0
+[33m1d0e4bf[m HEAD@{29}: commit: feat: filtres etat cultures + annee/espece recoltes
+[33maead056[m HEAD@{30}: commit: fix:
+[33m81e9c6e[m HEAD@{31}: commit: feat: dashboard + fix export/import avec arbres
+[33m2405710[m HEAD@{32}: commit: feat: filtres par type espèce + données exemple nouveaux users
+[33m10d58d1[m HEAD@{33}: commit: Fix Docker: permissions, openssl, prisma local
+[33mb00fe79[m HEAD@{34}: commit: Docker: add auth variables
+[33mc3d5bcf[m HEAD@{35}: commit: feat: page paramètres, historique planches et rotation
+[33m7274c7f[m HEAD@{36}: filter-branch: rewrite
+[33m70fd967[m HEAD@{37}: filter-branch: rewrite
+[33mc66bfee[m HEAD@{38}: clone: from https://github.com/GMS64260/potaleger_clientserveur.git

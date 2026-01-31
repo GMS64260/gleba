@@ -116,14 +116,41 @@ export async function POST(request: NextRequest) {
           })
           stats.associations++
 
-          // Import des détails
-          if (item.details) {
+          // Import des détails imbriqués
+          if (item.details && Array.isArray(item.details)) {
             for (const detail of item.details) {
-              await prisma.associationDetail.upsert({
-                where: { id: detail.id },
-                update: { ...detail },
-                create: detail,
+              // Vérifier si existe déjà pour éviter doublons
+              const existing = await prisma.associationDetail.findFirst({
+                where: {
+                  associationId: item.id,
+                  especeId: detail.especeId,
+                  familleId: detail.familleId,
+                  groupe: detail.groupe,
+                },
               })
+
+              if (existing) {
+                // Update
+                await prisma.associationDetail.update({
+                  where: { id: existing.id },
+                  data: {
+                    requise: detail.requise ?? false,
+                    notes: detail.notes,
+                  },
+                })
+              } else {
+                // Create
+                await prisma.associationDetail.create({
+                  data: {
+                    associationId: item.id,
+                    especeId: detail.especeId,
+                    familleId: detail.familleId,
+                    groupe: detail.groupe,
+                    requise: detail.requise ?? false,
+                    notes: detail.notes,
+                  },
+                })
+              }
             }
           }
         }

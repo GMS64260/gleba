@@ -587,8 +587,8 @@ export async function POST(request: NextRequest) {
     // 9. Associations
     if (data.associations?.length) {
       for (const item of data.associations) {
-        // Chercher par nom d'abord (unique constraint)
-        const existingByNom = await prisma.association.findUnique({
+        // Chercher par nom d'abord
+        const existingByNom = await prisma.association.findFirst({
           where: { nom: item.nom },
         })
 

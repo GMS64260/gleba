@@ -792,7 +792,7 @@ export function GardenView({
                           opacity={0.9}
                           style={{ pointerEvents: "none" }}
                         >
-                          {culture.especeId}
+                          {culture.espece.id}
                         </text>
                       </g>
                     )

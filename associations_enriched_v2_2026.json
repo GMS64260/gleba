@@ -1,0 +1,6319 @@
+{
+  "associations": [
+    {
+      "id": "asso-3-soeurs",
+      "nom": "Trois Soeurs",
+      "description": "Maïs, haricot, courge - association amérindienne traditionnelle. Courge: Azote. (Réciproque)",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 560,
+          "associationId": "asso-3-soeurs",
+          "especeId": "Haricot vert",
+          "familleId": null,
+          "groupe": "A",
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 561,
+          "associationId": "asso-3-soeurs",
+          "especeId": "Courge",
+          "familleId": null,
+          "groupe": "A",
+          "requise": true,
+          "notes": "Azote. (Réciproque)"
+        }
+      ]
+    },
+    {
+      "id": "asso-carotte-poireau",
+      "nom": "Carotte-Poireau",
+      "description": "Le poireau repousse la mouche de la carotte, la carotte repousse la teigne du poireau. Poireau: Le classique : La carotte chasse la teigne du poireau, le poireau chasse la mouche de la carotte.",
+      "notes": "Éviter l'aneth en fin de cycle (montée à graines conjointe). (Source: Le Poireau préfère les Fraises)",
+      "details": [
+        {
+          "id": 558,
+          "associationId": "asso-carotte-poireau",
+          "especeId": "Carotte",
+          "familleId": null,
+          "groupe": "A",
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 559,
+          "associationId": "asso-carotte-poireau",
+          "especeId": "Poireau",
+          "familleId": null,
+          "groupe": "A",
+          "requise": true,
+          "notes": "Le classique : La carotte chasse la teigne du poireau, le poireau chasse la mouche de la carotte."
+        }
+      ]
+    },
+    {
+      "id": "asso-tomate-basilic",
+      "nom": "Tomate-Basilic",
+      "description": "Le basilic repousse les pucerons et améliore le goût des tomates. Basilic: Goût et Mildiou.",
+      "notes": "Éviter Pomme de terre, Fenouil, Concombre. (Source: Le Poireau préfère les Fraises)",
+      "details": [
+        {
+          "id": 556,
+          "associationId": "asso-tomate-basilic",
+          "especeId": "Tomate",
+          "familleId": null,
+          "groupe": "A",
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 557,
+          "associationId": "asso-tomate-basilic",
+          "especeId": "Basilic",
+          "familleId": null,
+          "groupe": "A",
+          "requise": true,
+          "notes": "Goût et Mildiou."
+        }
+      ]
+    },
+    {
+      "id": "cml1gbbtq00002vbmxox3pb54",
+      "nom": "Absinthe + Groseillier, Navet",
+      "description": "Groseillier: Protège contre la rouille. Navet: Éloigne les altises.",
+      "notes": "Plante à effet allélopathique : peut inhiber la croissance des plantes voisines. Utiliser de préférence en purin ou branches coupées au sol plutôt qu'en plantation directe trop proche. (Source: Terre Vivante, Traité Rustica)",
+      "details": [
+        {
+          "id": 1,
+          "associationId": "cml1gbbtq00002vbmxox3pb54",
+          "especeId": "Absinthe",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": true,
+          "notes": "Couper des feuilles fraîches et les mettre sur la planche à protéger."
+        },
+        {
+          "id": 2,
+          "associationId": "cml1gbbtq00002vbmxox3pb54",
+          "especeId": null,
+          "familleId": "Brassicaceae",
+          "groupe": "Chou",
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 3,
+          "associationId": "cml1gbbtq00002vbmxox3pb54",
+          "especeId": "Groseillier",
+          "familleId": "Grossulariaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Protège contre la rouille."
+        },
+        {
+          "id": 4,
+          "associationId": "cml1gbbtq00002vbmxox3pb54",
+          "especeId": "Navet",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Éloigne les altises."
+        },
+        {
+          "id": 5,
+          "associationId": "cml1gbbtq00002vbmxox3pb54",
+          "especeId": null,
+          "familleId": "Rutaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Agrumes"
+        }
+      ]
+    },
+    {
+      "id": "cml1gbbu800012vbm3wea5fl1",
+      "nom": "Absinthe + Haricot",
+      "description": "Haricot: Peut inhiber la croissance (attention).",
+      "notes": "Plante à effet allélopathique : peut inhiber la croissance des plantes voisines. Utiliser de préférence en purin ou branches coupées au sol plutôt qu'en plantation directe trop proche. (Source: Terre Vivante, Traité Rustica)",
+      "details": [
+        {
+          "id": 6,
+          "associationId": "cml1gbbu800012vbm3wea5fl1",
+          "especeId": "Absinthe",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": true,
+          "notes": "Couper des feuilles fraîches et les mettre sur la planche à protéger."
+        },
+        {
+          "id": 7,
+          "associationId": "cml1gbbu800012vbm3wea5fl1",
+          "especeId": "Haricot",
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Peut inhiber la croissance (attention)."
+        }
+      ]
+    },
+    {
+      "id": "cml1gbbuf00022vbm3k325nsf",
+      "nom": "Absinthe Sauge !",
+      "description": "Association expérimentale ou structurelle avec Absinthe.",
+      "notes": "Plante à effet allélopathique : peut inhiber la croissance des plantes voisines. Utiliser de préférence en purin ou branches coupées au sol plutôt qu'en plantation directe trop proche. (Source: Terre Vivante, Traité Rustica)",
+      "details": [
+        {
+          "id": 8,
+          "associationId": "cml1gbbuf00022vbm3k325nsf",
+          "especeId": "Absinthe",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 9,
+          "associationId": "cml1gbbuf00022vbm3k325nsf",
+          "especeId": "Sauge",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbbum00032vbm1wd9zeyz",
+      "nom": "Ail !",
+      "description": "Pomme de terre: Aide contre le mildiou.",
+      "notes": "Éviter la proximité des légumineuses (haricots, pois, fèves) car il inhibe leur croissance. (Source: ITAB, Guide Bio)",
+      "details": [
+        {
+          "id": 10,
+          "associationId": "cml1gbbum00032vbm1wd9zeyz",
+          "especeId": "Ail",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 11,
+          "associationId": "cml1gbbum00032vbm1wd9zeyz",
+          "especeId": "Artichaut",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 12,
+          "associationId": "cml1gbbum00032vbm1wd9zeyz",
+          "especeId": "Asperge",
+          "familleId": "Asparagaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 13,
+          "associationId": "cml1gbbum00032vbm1wd9zeyz",
+          "especeId": null,
+          "familleId": "Brassicaceae",
+          "groupe": "Chou",
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 14,
+          "associationId": "cml1gbbum00032vbm1wd9zeyz",
+          "especeId": "Coriandre",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 15,
+          "associationId": "cml1gbbum00032vbm1wd9zeyz",
+          "especeId": "Pomme de terre",
+          "familleId": "Solanaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Aide contre le mildiou."
+        }
+      ]
+    },
+    {
+      "id": "cml1gbbuz00042vbm4qgqcs65",
+      "nom": "Ail + Laitue, Topinambour",
+      "description": "Association expérimentale ou structurelle avec Ail.",
+      "notes": "Éviter la proximité des légumineuses (haricots, pois, fèves) car il inhibe leur croissance. (Source: ITAB, Guide Bio)",
+      "details": [
+        {
+          "id": 16,
+          "associationId": "cml1gbbuz00042vbm4qgqcs65",
+          "especeId": "Ail",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 17,
+          "associationId": "cml1gbbuz00042vbm4qgqcs65",
+          "especeId": "Laitue",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Cycle court"
+        },
+        {
+          "id": 18,
+          "associationId": "cml1gbbuz00042vbm4qgqcs65",
+          "especeId": null,
+          "familleId": "Rosaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 19,
+          "associationId": "cml1gbbuz00042vbm4qgqcs65",
+          "especeId": "Topinambour",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbbva00052vbm4udq3h1z",
+      "nom": "Ail + Concombre",
+      "description": "Association expérimentale ou structurelle avec Ail.",
+      "notes": "Éviter la proximité des légumineuses (haricots, pois, fèves) car il inhibe leur croissance. (Source: ITAB, Guide Bio)",
+      "details": [
+        {
+          "id": 20,
+          "associationId": "cml1gbbva00052vbm4udq3h1z",
+          "especeId": "Ail",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 21,
+          "associationId": "cml1gbbva00052vbm4udq3h1z",
+          "especeId": "Concombre",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbbvg00062vbmdeicljst",
+      "nom": "Ail Haricot !",
+      "description": "Association expérimentale ou structurelle avec Ail.",
+      "notes": "Éviter la proximité des légumineuses (haricots, pois, fèves) car il inhibe leur croissance. (Source: ITAB, Guide Bio)",
+      "details": [
+        {
+          "id": 22,
+          "associationId": "cml1gbbvg00062vbmdeicljst",
+          "especeId": "Ail",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 23,
+          "associationId": "cml1gbbvg00062vbmdeicljst",
+          "especeId": "Haricot",
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbbvm00072vbms78uzlvv",
+      "nom": "Ail + Pois",
+      "description": "Association expérimentale ou structurelle avec Ail.",
+      "notes": "Éviter la proximité des légumineuses (haricots, pois, fèves) car il inhibe leur croissance. (Source: ITAB, Guide Bio)",
+      "details": [
+        {
+          "id": 24,
+          "associationId": "cml1gbbvm00072vbms78uzlvv",
+          "especeId": "Ail",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 25,
+          "associationId": "cml1gbbvm00072vbms78uzlvv",
+          "especeId": "Pois",
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbbvt00082vbm98c47l5t",
+      "nom": "Ail + Tomate",
+      "description": "Tomate: Protège contre les acariens et maladies fongiques.",
+      "notes": "Éviter la proximité des légumineuses (haricots, pois, fèves) car il inhibe leur croissance. (Source: ITAB, Guide Bio)",
+      "details": [
+        {
+          "id": 26,
+          "associationId": "cml1gbbvt00082vbm98c47l5t",
+          "especeId": "Ail",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 27,
+          "associationId": "cml1gbbvt00082vbm98c47l5t",
+          "especeId": "Tomate",
+          "familleId": "Solanaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": "Protège contre les acariens et maladies fongiques."
+        }
+      ]
+    },
+    {
+      "id": "cml1gbbvz00092vbmy6oxtcol",
+      "nom": "Aubergine + Aneth, Tagètes",
+      "description": "Tagètes: Protège des nématodes.",
+      "notes": "Demande beaucoup de chaleur et de nutriments. (Source: Terre Vivante)",
+      "details": [
+        {
+          "id": 28,
+          "associationId": "cml1gbbvz00092vbmy6oxtcol",
+          "especeId": "Aubergine",
+          "familleId": "Solanaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 29,
+          "associationId": "cml1gbbvz00092vbmy6oxtcol",
+          "especeId": "Aneth",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 30,
+          "associationId": "cml1gbbvz00092vbmy6oxtcol",
+          "especeId": null,
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 31,
+          "associationId": "cml1gbbvz00092vbmy6oxtcol",
+          "especeId": "Tagètes",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Protège des nématodes."
+        }
+      ]
+    },
+    {
+      "id": "cml1gbbwc000a2vbm04jmwkw3",
+      "nom": "Aubergine + Basilic",
+      "description": "Association expérimentale ou structurelle avec Aubergine.",
+      "notes": "Demande beaucoup de chaleur et de nutriments. (Source: Terre Vivante)",
+      "details": [
+        {
+          "id": 32,
+          "associationId": "cml1gbbwc000a2vbm04jmwkw3",
+          "especeId": "Aubergine",
+          "familleId": "Solanaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 33,
+          "associationId": "cml1gbbwc000a2vbm04jmwkw3",
+          "especeId": "Basilic",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbbwj000b2vbmyvrhclcz",
+      "nom": "Basilic !",
+      "description": "Association expérimentale ou structurelle avec Basilic.",
+      "notes": "Aime la chaleur, planter au pied des cultures hautes. (Source: Le Poireau préfère les Fraises)",
+      "details": [
+        {
+          "id": 34,
+          "associationId": "cml1gbbwj000b2vbmyvrhclcz",
+          "especeId": "Basilic",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 35,
+          "associationId": "cml1gbbwj000b2vbmyvrhclcz",
+          "especeId": "Absinthe",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbbwq000c2vbmseegj2ma",
+      "nom": "Basilic + Asperge, Concombre, Courge...",
+      "description": "Concombre: Protège contre l'oïdium. Courge: Aide contre l'oïdium. Courgette: Aide contre l'oïdium. Poivron piment: Mêmes bénéfices que pour la tomate.",
+      "notes": "Aime la chaleur, planter au pied des cultures hautes. (Source: Le Poireau préfère les Fraises)",
+      "details": [
+        {
+          "id": 36,
+          "associationId": "cml1gbbwq000c2vbmseegj2ma",
+          "especeId": "Basilic",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 37,
+          "associationId": "cml1gbbwq000c2vbmseegj2ma",
+          "especeId": "Asperge",
+          "familleId": "Asparagaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 38,
+          "associationId": "cml1gbbwq000c2vbmseegj2ma",
+          "especeId": "Concombre",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Protège contre l'oïdium."
+        },
+        {
+          "id": 39,
+          "associationId": "cml1gbbwq000c2vbmseegj2ma",
+          "especeId": "Courge",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Aide contre l'oïdium."
+        },
+        {
+          "id": 40,
+          "associationId": "cml1gbbwq000c2vbmseegj2ma",
+          "especeId": "Courgette",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Aide contre l'oïdium."
+        },
+        {
+          "id": 41,
+          "associationId": "cml1gbbwq000c2vbmseegj2ma",
+          "especeId": "Melon",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 42,
+          "associationId": "cml1gbbwq000c2vbmseegj2ma",
+          "especeId": "Poivron piment",
+          "familleId": "Solanaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Piment"
+        }
+      ]
+    },
+    {
+      "id": "cml1gbbxc000d2vbmd6cc6h2i",
+      "nom": "Culture de Basilic",
+      "description": "Association expérimentale ou structurelle avec Basilic.",
+      "notes": "Aime la chaleur, planter au pied des cultures hautes. (Source: Le Poireau préfère les Fraises)",
+      "details": [
+        {
+          "id": 43,
+          "associationId": "cml1gbbxc000d2vbmd6cc6h2i",
+          "especeId": "Basilic",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 44,
+          "associationId": "cml1gbbxc000d2vbmd6cc6h2i",
+          "especeId": null,
+          "familleId": "Brassicaceae",
+          "groupe": "Chou",
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbbxl000e2vbmp2f8k0mo",
+      "nom": "Basilic + Fenouil",
+      "description": "Association expérimentale ou structurelle avec Basilic.",
+      "notes": "Aime la chaleur, planter au pied des cultures hautes. (Source: Le Poireau préfère les Fraises)",
+      "details": [
+        {
+          "id": 45,
+          "associationId": "cml1gbbxl000e2vbmp2f8k0mo",
+          "especeId": "Basilic",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 46,
+          "associationId": "cml1gbbxl000e2vbmp2f8k0mo",
+          "especeId": "Fenouil",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbbxy000f2vbmsfhxocap",
+      "nom": "Basilic + Fève",
+      "description": "Association expérimentale ou structurelle avec Basilic.",
+      "notes": "Aime la chaleur, planter au pied des cultures hautes. (Source: Le Poireau préfère les Fraises)",
+      "details": [
+        {
+          "id": 47,
+          "associationId": "cml1gbbxy000f2vbmsfhxocap",
+          "especeId": "Basilic",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 48,
+          "associationId": "cml1gbbxy000f2vbmsfhxocap",
+          "especeId": "Fève",
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbby9000g2vbmb12ms0mq",
+      "nom": "Basilic + Tomate",
+      "description": "Tomate: Renforce le goût, aide contre le mildiou et repousse les mouches/moustiques.",
+      "notes": "Aime la chaleur, planter au pied des cultures hautes. (Source: Le Poireau préfère les Fraises)",
+      "details": [
+        {
+          "id": 49,
+          "associationId": "cml1gbby9000g2vbmb12ms0mq",
+          "especeId": "Basilic",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": "Repousse la mouche blanche des serres et protège du mildiou."
+        },
+        {
+          "id": 50,
+          "associationId": "cml1gbby9000g2vbmb12ms0mq",
+          "especeId": "Tomate",
+          "familleId": "Solanaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": "65 cm entre les plants"
+        }
+      ]
+    },
+    {
+      "id": "cml1gbbyh000h2vbm7bnvy0ec",
+      "nom": "Betterave !",
+      "description": "Association expérimentale ou structurelle avec Betterave.",
+      "notes": "Éviter la proximité de l'épinard (même famille) ou du maïs. (Source: Guide Bio)",
+      "details": [
+        {
+          "id": 51,
+          "associationId": "cml1gbbyh000h2vbm7bnvy0ec",
+          "especeId": "Betterave",
+          "familleId": "Amaranthaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 52,
+          "associationId": "cml1gbbyh000h2vbm7bnvy0ec",
+          "especeId": "Epinard",
+          "familleId": "Amaranthaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 53,
+          "associationId": "cml1gbbyh000h2vbm7bnvy0ec",
+          "especeId": "Poireau",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbbyt000i2vbmtad78e49",
+      "nom": "Betterave + Coriandre, Céleri",
+      "description": "Association expérimentale ou structurelle avec Betterave.",
+      "notes": "Éviter la proximité de l'épinard (même famille) ou du maïs. (Source: Guide Bio)",
+      "details": [
+        {
+          "id": 54,
+          "associationId": "cml1gbbyt000i2vbmtad78e49",
+          "especeId": "Betterave",
+          "familleId": "Amaranthaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 55,
+          "associationId": "cml1gbbyt000i2vbmtad78e49",
+          "especeId": "Coriandre",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 56,
+          "associationId": "cml1gbbyt000i2vbmtad78e49",
+          "especeId": "Céleri",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbbz4000j2vbm1mmeuvt6",
+      "nom": "Culture de Betterave",
+      "description": "Association expérimentale ou structurelle avec Betterave.",
+      "notes": "Éviter la proximité de l'épinard (même famille) ou du maïs. (Source: Guide Bio)",
+      "details": [
+        {
+          "id": 57,
+          "associationId": "cml1gbbz4000j2vbm1mmeuvt6",
+          "especeId": "Betterave",
+          "familleId": "Amaranthaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 58,
+          "associationId": "cml1gbbz4000j2vbm1mmeuvt6",
+          "especeId": null,
+          "familleId": "Brassicaceae",
+          "groupe": "Chou",
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbbzb000k2vbmfkwq693h",
+      "nom": "Betterave + Laitue",
+      "description": "Laitue: La laitue couvre le sol et garde l'humidité.",
+      "notes": "Éviter la proximité de l'épinard (même famille) ou du maïs. (Source: Guide Bio)",
+      "details": [
+        {
+          "id": 59,
+          "associationId": "cml1gbbzb000k2vbmfkwq693h",
+          "especeId": "Betterave",
+          "familleId": "Amaranthaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 60,
+          "associationId": "cml1gbbzb000k2vbmfkwq693h",
+          "especeId": "Laitue",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": true,
+          "notes": "La laitue couvre le sol et garde l'humidité."
+        }
+      ]
+    },
+    {
+      "id": "cml1gbbzh000l2vbmsbtzc55u",
+      "nom": "Betterave + Panais",
+      "description": "Association expérimentale ou structurelle avec Betterave.",
+      "notes": "Éviter la proximité de l'épinard (même famille) ou du maïs. (Source: Guide Bio)",
+      "details": [
+        {
+          "id": 61,
+          "associationId": "cml1gbbzh000l2vbmsbtzc55u",
+          "especeId": "Betterave",
+          "familleId": "Amaranthaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 62,
+          "associationId": "cml1gbbzh000l2vbmsbtzc55u",
+          "especeId": "Panais",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbbzq000m2vbmonih8f68",
+      "nom": "Betterave Tomate !",
+      "description": "Association expérimentale ou structurelle avec Betterave.",
+      "notes": "Éviter la proximité de l'épinard (même famille) ou du maïs. (Source: Guide Bio)",
+      "details": [
+        {
+          "id": 63,
+          "associationId": "cml1gbbzq000m2vbmonih8f68",
+          "especeId": "Betterave",
+          "familleId": "Amaranthaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 64,
+          "associationId": "cml1gbbzq000m2vbmonih8f68",
+          "especeId": "Tomate",
+          "familleId": "Solanaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbbzx000n2vbm2wazxk2f",
+      "nom": "Blette !",
+      "description": "Association expérimentale ou structurelle avec Blette.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 65,
+          "associationId": "cml1gbbzx000n2vbm2wazxk2f",
+          "especeId": "Blette",
+          "familleId": "Amaranthaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 66,
+          "associationId": "cml1gbbzx000n2vbm2wazxk2f",
+          "especeId": "Absinthe",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbc03000o2vbmwba5yn8k",
+      "nom": "Blette + Courge, Fève, Laitue",
+      "description": "Association expérimentale ou structurelle avec Blette.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 67,
+          "associationId": "cml1gbc03000o2vbmwba5yn8k",
+          "especeId": "Blette",
+          "familleId": "Amaranthaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 68,
+          "associationId": "cml1gbc03000o2vbmwba5yn8k",
+          "especeId": "Courge",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Cucurbita pepo"
+        },
+        {
+          "id": 69,
+          "associationId": "cml1gbc03000o2vbmwba5yn8k",
+          "especeId": "Fève",
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 70,
+          "associationId": "cml1gbc03000o2vbmwba5yn8k",
+          "especeId": "Laitue",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbc0d000p2vbmkhj0n4dl",
+      "nom": "Culture de Blette",
+      "description": "Association expérimentale ou structurelle avec Blette.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 71,
+          "associationId": "cml1gbc0d000p2vbmkhj0n4dl",
+          "especeId": "Blette",
+          "familleId": "Amaranthaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 72,
+          "associationId": "cml1gbc0d000p2vbmkhj0n4dl",
+          "especeId": null,
+          "familleId": "Brassicaceae",
+          "groupe": "Chou",
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbc0i000q2vbmks2dman7",
+      "nom": "Blette + Mâche",
+      "description": "Association expérimentale ou structurelle avec Blette.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 73,
+          "associationId": "cml1gbc0i000q2vbmks2dman7",
+          "especeId": "Blette",
+          "familleId": "Amaranthaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 74,
+          "associationId": "cml1gbc0i000q2vbmks2dman7",
+          "especeId": "Mâche",
+          "familleId": "Valerianaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbc0o000r2vbmq0lsomff",
+      "nom": "Blette + Navet",
+      "description": "Association expérimentale ou structurelle avec Blette.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 75,
+          "associationId": "cml1gbc0o000r2vbmq0lsomff",
+          "especeId": "Blette",
+          "familleId": "Amaranthaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 76,
+          "associationId": "cml1gbc0o000r2vbmq0lsomff",
+          "especeId": "Navet",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbc0u000s2vbmjtko1uyo",
+      "nom": "Capucine + Artichaut, Chou brocoli",
+      "description": "Association expérimentale ou structurelle avec Capucine.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 77,
+          "associationId": "cml1gbc0u000s2vbmjtko1uyo",
+          "especeId": "Capucine",
+          "familleId": "Tropaeolaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 78,
+          "associationId": "cml1gbc0u000s2vbmjtko1uyo",
+          "especeId": "Artichaut",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 79,
+          "associationId": "cml1gbc0u000s2vbmjtko1uyo",
+          "especeId": "Chou brocoli",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 80,
+          "associationId": "cml1gbc0u000s2vbmjtko1uyo",
+          "especeId": null,
+          "familleId": "Brassicaceae",
+          "groupe": "Radis",
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbc16000t2vbm0peh3shm",
+      "nom": "Carotte !",
+      "description": "Aneth: Stimule la germination et la croissance, repousse la mouche. (Réciproque)",
+      "notes": "Éviter l'aneth en fin de cycle (montée à graines conjointe). (Source: Le Poireau préfère les Fraises)",
+      "details": [
+        {
+          "id": 81,
+          "associationId": "cml1gbc16000t2vbm0peh3shm",
+          "especeId": "Carotte",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 82,
+          "associationId": "cml1gbc16000t2vbm0peh3shm",
+          "especeId": "Aneth",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Stimule la germination et la croissance, repousse la mouche. (Réciproque)"
+        },
+        {
+          "id": 83,
+          "associationId": "cml1gbc16000t2vbm0peh3shm",
+          "especeId": "Blette",
+          "familleId": "Amaranthaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 84,
+          "associationId": "cml1gbc16000t2vbm0peh3shm",
+          "especeId": "Maïs",
+          "familleId": "Poaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbc1k000u2vbm6572i7x1",
+      "nom": "Carotte + Absinthe, Betterave, Ciboulette...",
+      "description": "Pois: Bon voisinage. (Réciproque) Romarin: Repousse la mouche. Sauge: Repousse la mouche.",
+      "notes": "Éviter l'aneth en fin de cycle (montée à graines conjointe). (Source: Le Poireau préfère les Fraises)",
+      "details": [
+        {
+          "id": 85,
+          "associationId": "cml1gbc1k000u2vbm6572i7x1",
+          "especeId": "Carotte",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 86,
+          "associationId": "cml1gbc1k000u2vbm6572i7x1",
+          "especeId": "Absinthe",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Couper des feuilles fraîches et les mettre sur la planche à protéger."
+        },
+        {
+          "id": 87,
+          "associationId": "cml1gbc1k000u2vbm6572i7x1",
+          "especeId": "Betterave",
+          "familleId": "Amaranthaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 88,
+          "associationId": "cml1gbc1k000u2vbm6572i7x1",
+          "especeId": "Ciboulette",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 89,
+          "associationId": "cml1gbc1k000u2vbm6572i7x1",
+          "especeId": "Coriandre",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 90,
+          "associationId": "cml1gbc1k000u2vbm6572i7x1",
+          "especeId": "Echalote",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 91,
+          "associationId": "cml1gbc1k000u2vbm6572i7x1",
+          "especeId": "Panais",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 92,
+          "associationId": "cml1gbc1k000u2vbm6572i7x1",
+          "especeId": "Pois",
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Bon voisinage. (Réciproque)"
+        },
+        {
+          "id": 93,
+          "associationId": "cml1gbc1k000u2vbm6572i7x1",
+          "especeId": "Poivron piment",
+          "familleId": "Solanaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Piment"
+        },
+        {
+          "id": 94,
+          "associationId": "cml1gbc1k000u2vbm6572i7x1",
+          "especeId": "Romarin",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Repousse la mouche."
+        },
+        {
+          "id": 95,
+          "associationId": "cml1gbc1k000u2vbm6572i7x1",
+          "especeId": "Salsifis",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 96,
+          "associationId": "cml1gbc1k000u2vbm6572i7x1",
+          "especeId": "Sauge",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Repousse la mouche."
+        }
+      ]
+    },
+    {
+      "id": "cml1gbc2g000v2vbmijilo90c",
+      "nom": "Carotte + Haricot",
+      "description": "Association expérimentale ou structurelle avec Carotte.",
+      "notes": "Éviter l'aneth en fin de cycle (montée à graines conjointe). (Source: Le Poireau préfère les Fraises)",
+      "details": [
+        {
+          "id": 97,
+          "associationId": "cml1gbc2g000v2vbmijilo90c",
+          "especeId": "Carotte",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 98,
+          "associationId": "cml1gbc2g000v2vbmijilo90c",
+          "especeId": "Haricot",
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbc2n000w2vbmqa76xrts",
+      "nom": "Carotte + Laitue",
+      "description": "Laitue: Intercalaire. (Réciproque)",
+      "notes": "Éviter l'aneth en fin de cycle (montée à graines conjointe). (Source: Le Poireau préfère les Fraises)",
+      "details": [
+        {
+          "id": 99,
+          "associationId": "cml1gbc2n000w2vbmqa76xrts",
+          "especeId": "Carotte",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 100,
+          "associationId": "cml1gbc2n000w2vbmqa76xrts",
+          "especeId": "Laitue",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": true,
+          "notes": "Cycle court"
+        }
+      ]
+    },
+    {
+      "id": "cml1gbc2v000x2vbmj14nnwa6",
+      "nom": "Carotte + Oignon",
+      "description": "Oignon: Même effet anti-mouche que le poireau.",
+      "notes": "Éviter l'aneth en fin de cycle (montée à graines conjointe). (Source: Le Poireau préfère les Fraises)",
+      "details": [
+        {
+          "id": 101,
+          "associationId": "cml1gbc2v000x2vbmj14nnwa6",
+          "especeId": "Carotte",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 102,
+          "associationId": "cml1gbc2v000x2vbmj14nnwa6",
+          "especeId": "Oignon",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": "Même effet anti-mouche que le poireau."
+        }
+      ]
+    },
+    {
+      "id": "cml1gbc31000y2vbmplyzwdt5",
+      "nom": "Carotte + Poireau",
+      "description": "Poireau: Le classique : La carotte chasse la teigne du poireau, le poireau chasse la mouche de la carotte.",
+      "notes": "Éviter l'aneth en fin de cycle (montée à graines conjointe). (Source: Le Poireau préfère les Fraises)",
+      "details": [
+        {
+          "id": 103,
+          "associationId": "cml1gbc31000y2vbmplyzwdt5",
+          "especeId": "Carotte",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": "Eloigne la teigne et le thrips du poireau. \n\nUn rang de poireaux entre 2 rangs de carottes.\n\n30 cm entres les rangs de poireaux et carottes."
+        },
+        {
+          "id": 104,
+          "associationId": "cml1gbc31000y2vbmplyzwdt5",
+          "especeId": "Poireau",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": "Eloigne la mouche de la carotte. \n\nUn rang de poireaux entre 2 rangs de carottes.\n\n30 cm entres les rangs de poireaux et carottes."
+        }
+      ]
+    },
+    {
+      "id": "cml1gbc38000z2vbmnx472kjo",
+      "nom": "Carotte + Radis",
+      "description": "Radis: Le radis (semis mélangé) marque le rang et ameublit le sol pour la carotte.",
+      "notes": "Éviter l'aneth en fin de cycle (montée à graines conjointe). (Source: Le Poireau préfère les Fraises)",
+      "details": [
+        {
+          "id": 105,
+          "associationId": "cml1gbc38000z2vbmnx472kjo",
+          "especeId": "Carotte",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 106,
+          "associationId": "cml1gbc38000z2vbmnx472kjo",
+          "especeId": "Radis",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": "Cycle court, marque le rang.\n\nSemer en mélange carotte et radis sur le même rang.\n\nRangs espacés de 25 cm."
+        }
+      ]
+    },
+    {
+      "id": "cml1gbc3f00102vbmqttl8im4",
+      "nom": "Carotte + Roquette",
+      "description": "Association expérimentale ou structurelle avec Carotte.",
+      "notes": "Éviter l'aneth en fin de cycle (montée à graines conjointe). (Source: Le Poireau préfère les Fraises)",
+      "details": [
+        {
+          "id": 107,
+          "associationId": "cml1gbc3f00102vbmqttl8im4",
+          "especeId": "Carotte",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 108,
+          "associationId": "cml1gbc3f00102vbmqttl8im4",
+          "especeId": "Roquette",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbc3m00112vbmhwzk812o",
+      "nom": "Carotte + Tomate",
+      "description": "Tomate: La tomate repousse la mouche, la carotte aère le sol.",
+      "notes": "Éviter l'aneth en fin de cycle (montée à graines conjointe). (Source: Le Poireau préfère les Fraises)",
+      "details": [
+        {
+          "id": 109,
+          "associationId": "cml1gbc3m00112vbmhwzk812o",
+          "especeId": "Carotte",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 110,
+          "associationId": "cml1gbc3m00112vbmhwzk812o",
+          "especeId": "Tomate",
+          "familleId": "Solanaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": "La tomate repousse la mouche, la carotte aère le sol."
+        }
+      ]
+    },
+    {
+      "id": "cml1gbc3s00122vbmqlg1jfnp",
+      "nom": "Chicorée frisée !",
+      "description": "Association expérimentale ou structurelle avec Chicorée frisée.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 111,
+          "associationId": "cml1gbc3s00122vbmqlg1jfnp",
+          "especeId": "Chicorée frisée",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 112,
+          "associationId": "cml1gbc3s00122vbmqlg1jfnp",
+          "especeId": "Asperge",
+          "familleId": "Asparagaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 113,
+          "associationId": "cml1gbc3s00122vbmqlg1jfnp",
+          "especeId": "Chou de Bruxelles",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbc4000132vbm6wbo7wy6",
+      "nom": "Chicorée frisée Navet !",
+      "description": "Association expérimentale ou structurelle avec Chicorée frisée.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 114,
+          "associationId": "cml1gbc4000132vbm6wbo7wy6",
+          "especeId": "Chicorée frisée",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 115,
+          "associationId": "cml1gbc4000132vbm6wbo7wy6",
+          "especeId": "Navet",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbc4600142vbmgg3sg6po",
+      "nom": "Chicorée frisée + Roquette",
+      "description": "Association expérimentale ou structurelle avec Chicorée frisée.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 116,
+          "associationId": "cml1gbc4600142vbmgg3sg6po",
+          "especeId": "Chicorée frisée",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 117,
+          "associationId": "cml1gbc4600142vbmgg3sg6po",
+          "especeId": "Roquette",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbc4d00152vbmofcobt88",
+      "nom": "Chicorée sauvage !",
+      "description": "Association expérimentale ou structurelle avec Chicorée sauvage.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 118,
+          "associationId": "cml1gbc4d00152vbmofcobt88",
+          "especeId": "Chicorée sauvage",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 119,
+          "associationId": "cml1gbc4d00152vbmofcobt88",
+          "especeId": "Asperge",
+          "familleId": "Asparagaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbc4k00162vbmwe3cgua9",
+      "nom": "Chicorée sauvage + Chicorée frisée, Pommier",
+      "description": "Association expérimentale ou structurelle avec Chicorée sauvage.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 120,
+          "associationId": "cml1gbc4k00162vbmwe3cgua9",
+          "especeId": "Chicorée sauvage",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 121,
+          "associationId": "cml1gbc4k00162vbmwe3cgua9",
+          "especeId": "Chicorée frisée",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 122,
+          "associationId": "cml1gbc4k00162vbmwe3cgua9",
+          "especeId": "Pommier",
+          "familleId": "Rosaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbc4u00172vbmbu6tf917",
+      "nom": "Chicorée sauvage + Navet",
+      "description": "Association expérimentale ou structurelle avec Chicorée sauvage.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 123,
+          "associationId": "cml1gbc4u00172vbmbu6tf917",
+          "especeId": "Chicorée sauvage",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 124,
+          "associationId": "cml1gbc4u00172vbmbu6tf917",
+          "especeId": "Navet",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbc5100182vbmyf2kqkd2",
+      "nom": "Culture de Coriandre",
+      "description": "Association expérimentale ou structurelle avec Coriandre.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 125,
+          "associationId": "cml1gbc5100182vbmyf2kqkd2",
+          "especeId": "Coriandre",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 126,
+          "associationId": "cml1gbc5100182vbmyf2kqkd2",
+          "especeId": null,
+          "familleId": "Brassicaceae",
+          "groupe": "Chou",
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbc5800192vbmwtyqem87",
+      "nom": "Culture de Cosmos",
+      "description": "Association expérimentale ou structurelle avec Cosmos.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 127,
+          "associationId": "cml1gbc5800192vbmwtyqem87",
+          "especeId": "Cosmos",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": true,
+          "notes": "Rang au sud de celui des choux\n\nDésoriente la péiride du chou (?)."
+        },
+        {
+          "id": 128,
+          "associationId": "cml1gbc5800192vbmwtyqem87",
+          "especeId": null,
+          "familleId": "Brassicaceae",
+          "groupe": "Chou",
+          "requise": false,
+          "notes": "Rang au nord de celui des cosmos"
+        }
+      ]
+    },
+    {
+      "id": "cml1gbc5e001a2vbm9rdh7654",
+      "nom": "Chou Fenouil !",
+      "description": "Association expérimentale ou structurelle avec Fenouil.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 129,
+          "associationId": "cml1gbc5e001a2vbm9rdh7654",
+          "especeId": "Fenouil",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 130,
+          "associationId": "cml1gbc5e001a2vbm9rdh7654",
+          "especeId": null,
+          "familleId": "Brassicaceae",
+          "groupe": "Chou",
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbc5m001b2vbmf6jxepgj",
+      "nom": "Culture de Laitue",
+      "description": "Association expérimentale ou structurelle avec Laitue.",
+      "notes": "Culture rapide bouche-trou. (Source: )",
+      "details": [
+        {
+          "id": 131,
+          "associationId": "cml1gbc5m001b2vbmf6jxepgj",
+          "especeId": "Laitue",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": true,
+          "notes": "Culture intercalaire.\n\nDébut mai planter 1 chou pour 1 laitue à 40 cm de distance. \n\nRécolter en juillet."
+        },
+        {
+          "id": 132,
+          "associationId": "cml1gbc5m001b2vbmf6jxepgj",
+          "especeId": null,
+          "familleId": "Brassicaceae",
+          "groupe": "Chou",
+          "requise": false,
+          "notes": "Début mai planter 1 chou pour 1 laitue à 40 cm de distance. \n\nRécolter en septembre octobre."
+        }
+      ]
+    },
+    {
+      "id": "cml1gbc5t001c2vbm1ft5fb4z",
+      "nom": "Chou Mâche !",
+      "description": "Association expérimentale ou structurelle avec Mâche.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 133,
+          "associationId": "cml1gbc5t001c2vbm1ft5fb4z",
+          "especeId": "Mâche",
+          "familleId": "Valerianaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 134,
+          "associationId": "cml1gbc5t001c2vbm1ft5fb4z",
+          "especeId": null,
+          "familleId": "Brassicaceae",
+          "groupe": "Chou",
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbc61001d2vbmpc555fut",
+      "nom": "Chou brocoli !",
+      "description": "Association expérimentale ou structurelle avec Chou brocoli.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 135,
+          "associationId": "cml1gbc61001d2vbmpc555fut",
+          "especeId": "Chou brocoli",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 136,
+          "associationId": "cml1gbc61001d2vbmpc555fut",
+          "especeId": "Courgette",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 137,
+          "associationId": "cml1gbc61001d2vbmpc555fut",
+          "especeId": "Maïs",
+          "familleId": "Poaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 138,
+          "associationId": "cml1gbc61001d2vbmpc555fut",
+          "especeId": "Origan",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 139,
+          "associationId": "cml1gbc61001d2vbmpc555fut",
+          "especeId": "Poireau",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbc6g001e2vbmbo7wx13z",
+      "nom": "Chou brocoli + Artichaut, Camomille, Concombre...",
+      "description": "Concombre: Bon voisinage. (Réciproque)",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 140,
+          "associationId": "cml1gbc6g001e2vbmbo7wx13z",
+          "especeId": "Chou brocoli",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 141,
+          "associationId": "cml1gbc6g001e2vbmbo7wx13z",
+          "especeId": "Artichaut",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 142,
+          "associationId": "cml1gbc6g001e2vbmbo7wx13z",
+          "especeId": "Camomille",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 143,
+          "associationId": "cml1gbc6g001e2vbmbo7wx13z",
+          "especeId": "Concombre",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Bon voisinage. (Réciproque)"
+        },
+        {
+          "id": 144,
+          "associationId": "cml1gbc6g001e2vbmbo7wx13z",
+          "especeId": "Courge",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 145,
+          "associationId": "cml1gbc6g001e2vbmbo7wx13z",
+          "especeId": null,
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 146,
+          "associationId": "cml1gbc6g001e2vbmbo7wx13z",
+          "especeId": "Mélisse",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 147,
+          "associationId": "cml1gbc6g001e2vbmbo7wx13z",
+          "especeId": "Oignon",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 148,
+          "associationId": "cml1gbc6g001e2vbmbo7wx13z",
+          "especeId": "Romarin",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbc74001f2vbmarfxdtab",
+      "nom": "Chou de Bruxelles !",
+      "description": "Association expérimentale ou structurelle avec Chou de Bruxelles.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 149,
+          "associationId": "cml1gbc74001f2vbmarfxdtab",
+          "especeId": "Chou de Bruxelles",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 150,
+          "associationId": "cml1gbc74001f2vbmarfxdtab",
+          "especeId": "Courgette",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 151,
+          "associationId": "cml1gbc74001f2vbmarfxdtab",
+          "especeId": "Maïs",
+          "familleId": "Poaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 152,
+          "associationId": "cml1gbc74001f2vbmarfxdtab",
+          "especeId": "Origan",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 153,
+          "associationId": "cml1gbc74001f2vbmarfxdtab",
+          "especeId": "Poireau",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbc7j001g2vbm1o1j0lcm",
+      "nom": "Chou de Bruxelles + Artichaut, Camomille, Concombre...",
+      "description": "Concombre: Bon voisinage. (Réciproque)",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 154,
+          "associationId": "cml1gbc7j001g2vbm1o1j0lcm",
+          "especeId": "Chou de Bruxelles",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 155,
+          "associationId": "cml1gbc7j001g2vbm1o1j0lcm",
+          "especeId": "Artichaut",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 156,
+          "associationId": "cml1gbc7j001g2vbm1o1j0lcm",
+          "especeId": "Camomille",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 157,
+          "associationId": "cml1gbc7j001g2vbm1o1j0lcm",
+          "especeId": "Concombre",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Bon voisinage. (Réciproque)"
+        },
+        {
+          "id": 158,
+          "associationId": "cml1gbc7j001g2vbm1o1j0lcm",
+          "especeId": "Courge",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 159,
+          "associationId": "cml1gbc7j001g2vbm1o1j0lcm",
+          "especeId": null,
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 160,
+          "associationId": "cml1gbc7j001g2vbm1o1j0lcm",
+          "especeId": "Menthe",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Menthe pouliot"
+        },
+        {
+          "id": 161,
+          "associationId": "cml1gbc7j001g2vbm1o1j0lcm",
+          "especeId": "Mélisse",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 162,
+          "associationId": "cml1gbc7j001g2vbm1o1j0lcm",
+          "especeId": "Oignon",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 163,
+          "associationId": "cml1gbc7j001g2vbm1o1j0lcm",
+          "especeId": "Romarin",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbc8a001h2vbmirskpix2",
+      "nom": "Chou de Chine !",
+      "description": "Association expérimentale ou structurelle avec Chou de Chine.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 164,
+          "associationId": "cml1gbc8a001h2vbmirskpix2",
+          "especeId": "Chou de Chine",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 165,
+          "associationId": "cml1gbc8a001h2vbmirskpix2",
+          "especeId": "Courgette",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 166,
+          "associationId": "cml1gbc8a001h2vbmirskpix2",
+          "especeId": "Maïs",
+          "familleId": "Poaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 167,
+          "associationId": "cml1gbc8a001h2vbmirskpix2",
+          "especeId": "Origan",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 168,
+          "associationId": "cml1gbc8a001h2vbmirskpix2",
+          "especeId": "Poireau",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbc8o001i2vbm6jdfv653",
+      "nom": "Chou de Chine + Artichaut, Camomille, Concombre...",
+      "description": "Concombre: Bon voisinage. (Réciproque)",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 169,
+          "associationId": "cml1gbc8o001i2vbm6jdfv653",
+          "especeId": "Chou de Chine",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 170,
+          "associationId": "cml1gbc8o001i2vbm6jdfv653",
+          "especeId": "Artichaut",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 171,
+          "associationId": "cml1gbc8o001i2vbm6jdfv653",
+          "especeId": "Camomille",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 172,
+          "associationId": "cml1gbc8o001i2vbm6jdfv653",
+          "especeId": "Concombre",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Bon voisinage. (Réciproque)"
+        },
+        {
+          "id": 173,
+          "associationId": "cml1gbc8o001i2vbm6jdfv653",
+          "especeId": "Courge",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 174,
+          "associationId": "cml1gbc8o001i2vbm6jdfv653",
+          "especeId": null,
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 175,
+          "associationId": "cml1gbc8o001i2vbm6jdfv653",
+          "especeId": "Mélisse",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 176,
+          "associationId": "cml1gbc8o001i2vbm6jdfv653",
+          "especeId": "Oignon",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 177,
+          "associationId": "cml1gbc8o001i2vbm6jdfv653",
+          "especeId": "Romarin",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbc9e001j2vbm8xj20qff",
+      "nom": "Chou frisé !",
+      "description": "Association expérimentale ou structurelle avec Chou frisé.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 178,
+          "associationId": "cml1gbc9e001j2vbm8xj20qff",
+          "especeId": "Chou frisé",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 179,
+          "associationId": "cml1gbc9e001j2vbm8xj20qff",
+          "especeId": "Courgette",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 180,
+          "associationId": "cml1gbc9e001j2vbm8xj20qff",
+          "especeId": "Maïs",
+          "familleId": "Poaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 181,
+          "associationId": "cml1gbc9e001j2vbm8xj20qff",
+          "especeId": "Origan",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 182,
+          "associationId": "cml1gbc9e001j2vbm8xj20qff",
+          "especeId": "Poireau",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbc9u001k2vbmgjuweths",
+      "nom": "Chou frisé + Artichaut, Camomille, Concombre...",
+      "description": "Concombre: Bon voisinage. (Réciproque)",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 183,
+          "associationId": "cml1gbc9u001k2vbmgjuweths",
+          "especeId": "Chou frisé",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 184,
+          "associationId": "cml1gbc9u001k2vbmgjuweths",
+          "especeId": "Artichaut",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 185,
+          "associationId": "cml1gbc9u001k2vbmgjuweths",
+          "especeId": "Camomille",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 186,
+          "associationId": "cml1gbc9u001k2vbmgjuweths",
+          "especeId": "Concombre",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Bon voisinage. (Réciproque)"
+        },
+        {
+          "id": 187,
+          "associationId": "cml1gbc9u001k2vbmgjuweths",
+          "especeId": "Courge",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 188,
+          "associationId": "cml1gbc9u001k2vbmgjuweths",
+          "especeId": null,
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 189,
+          "associationId": "cml1gbc9u001k2vbmgjuweths",
+          "especeId": "Mélisse",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 190,
+          "associationId": "cml1gbc9u001k2vbmgjuweths",
+          "especeId": "Oignon",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 191,
+          "associationId": "cml1gbc9u001k2vbmgjuweths",
+          "especeId": "Romarin",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcaj001l2vbm7pjrs9q1",
+      "nom": "Chou pommé !",
+      "description": "Association expérimentale ou structurelle avec Chou pommé.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 192,
+          "associationId": "cml1gbcaj001l2vbm7pjrs9q1",
+          "especeId": "Chou pommé",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 193,
+          "associationId": "cml1gbcaj001l2vbm7pjrs9q1",
+          "especeId": "Courgette",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 194,
+          "associationId": "cml1gbcaj001l2vbm7pjrs9q1",
+          "especeId": "Maïs",
+          "familleId": "Poaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 195,
+          "associationId": "cml1gbcaj001l2vbm7pjrs9q1",
+          "especeId": "Origan",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 196,
+          "associationId": "cml1gbcaj001l2vbm7pjrs9q1",
+          "especeId": "Poireau",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcb1001m2vbm7kky6ri5",
+      "nom": "Chou pommé + Artichaut, Camomille, Concombre...",
+      "description": "Concombre: Bon voisinage. (Réciproque)",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 197,
+          "associationId": "cml1gbcb1001m2vbm7kky6ri5",
+          "especeId": "Chou pommé",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 198,
+          "associationId": "cml1gbcb1001m2vbm7kky6ri5",
+          "especeId": "Artichaut",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 199,
+          "associationId": "cml1gbcb1001m2vbm7kky6ri5",
+          "especeId": "Camomille",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 200,
+          "associationId": "cml1gbcb1001m2vbm7kky6ri5",
+          "especeId": "Concombre",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Bon voisinage. (Réciproque)"
+        },
+        {
+          "id": 201,
+          "associationId": "cml1gbcb1001m2vbm7kky6ri5",
+          "especeId": "Courge",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 202,
+          "associationId": "cml1gbcb1001m2vbm7kky6ri5",
+          "especeId": null,
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 203,
+          "associationId": "cml1gbcb1001m2vbm7kky6ri5",
+          "especeId": "Mélisse",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 204,
+          "associationId": "cml1gbcb1001m2vbm7kky6ri5",
+          "especeId": "Oignon",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 205,
+          "associationId": "cml1gbcb1001m2vbm7kky6ri5",
+          "especeId": "Romarin",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcbp001n2vbmgt3w3f7o",
+      "nom": "Chou-fleur !",
+      "description": "Association expérimentale ou structurelle avec Chou-fleur.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 206,
+          "associationId": "cml1gbcbp001n2vbmgt3w3f7o",
+          "especeId": "Chou-fleur",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 207,
+          "associationId": "cml1gbcbp001n2vbmgt3w3f7o",
+          "especeId": "Courgette",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 208,
+          "associationId": "cml1gbcbp001n2vbmgt3w3f7o",
+          "especeId": "Maïs",
+          "familleId": "Poaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 209,
+          "associationId": "cml1gbcbp001n2vbmgt3w3f7o",
+          "especeId": "Origan",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 210,
+          "associationId": "cml1gbcbp001n2vbmgt3w3f7o",
+          "especeId": "Poireau",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcc5001o2vbmg0zz03nr",
+      "nom": "Chou-fleur + Artichaut, Camomille, Concombre...",
+      "description": "Concombre: Bon voisinage. (Réciproque)",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 211,
+          "associationId": "cml1gbcc5001o2vbmg0zz03nr",
+          "especeId": "Chou-fleur",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 212,
+          "associationId": "cml1gbcc5001o2vbmg0zz03nr",
+          "especeId": "Artichaut",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 213,
+          "associationId": "cml1gbcc5001o2vbmg0zz03nr",
+          "especeId": "Camomille",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 214,
+          "associationId": "cml1gbcc5001o2vbmg0zz03nr",
+          "especeId": "Concombre",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Bon voisinage. (Réciproque)"
+        },
+        {
+          "id": 215,
+          "associationId": "cml1gbcc5001o2vbmg0zz03nr",
+          "especeId": "Courge",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 216,
+          "associationId": "cml1gbcc5001o2vbmg0zz03nr",
+          "especeId": null,
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 217,
+          "associationId": "cml1gbcc5001o2vbmg0zz03nr",
+          "especeId": "Mélisse",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 218,
+          "associationId": "cml1gbcc5001o2vbmg0zz03nr",
+          "especeId": "Oignon",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 219,
+          "associationId": "cml1gbcc5001o2vbmg0zz03nr",
+          "especeId": "Romarin",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbccs001p2vbmmm3in7ji",
+      "nom": "Chou-rave !",
+      "description": "Association expérimentale ou structurelle avec Chou-fleur.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 220,
+          "associationId": "cml1gbccs001p2vbmmm3in7ji",
+          "especeId": "Chou-fleur",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 221,
+          "associationId": "cml1gbccs001p2vbmmm3in7ji",
+          "especeId": "Courgette",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 222,
+          "associationId": "cml1gbccs001p2vbmmm3in7ji",
+          "especeId": "Maïs",
+          "familleId": "Poaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 223,
+          "associationId": "cml1gbccs001p2vbmmm3in7ji",
+          "especeId": "Origan",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 224,
+          "associationId": "cml1gbccs001p2vbmmm3in7ji",
+          "especeId": "Poireau",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 225,
+          "associationId": "cml1gbccs001p2vbmmm3in7ji",
+          "especeId": "Poivron piment",
+          "familleId": "Solanaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Piment"
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcda001q2vbmxc7efo20",
+      "nom": "Chou-rave + Artichaut, Camomille, Concombre...",
+      "description": "Concombre: Bon voisinage. (Réciproque)",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 226,
+          "associationId": "cml1gbcda001q2vbmxc7efo20",
+          "especeId": "Chou-rave",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 227,
+          "associationId": "cml1gbcda001q2vbmxc7efo20",
+          "especeId": "Artichaut",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 228,
+          "associationId": "cml1gbcda001q2vbmxc7efo20",
+          "especeId": "Camomille",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 229,
+          "associationId": "cml1gbcda001q2vbmxc7efo20",
+          "especeId": "Concombre",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Bon voisinage. (Réciproque)"
+        },
+        {
+          "id": 230,
+          "associationId": "cml1gbcda001q2vbmxc7efo20",
+          "especeId": "Courge",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 231,
+          "associationId": "cml1gbcda001q2vbmxc7efo20",
+          "especeId": null,
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 232,
+          "associationId": "cml1gbcda001q2vbmxc7efo20",
+          "especeId": "Mélisse",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 233,
+          "associationId": "cml1gbcda001q2vbmxc7efo20",
+          "especeId": "Oignon",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 234,
+          "associationId": "cml1gbcda001q2vbmxc7efo20",
+          "especeId": "Romarin",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbce4001r2vbmoitqrajc",
+      "nom": "Concombre + Tomate",
+      "description": "Association expérimentale ou structurelle avec Concombre.",
+      "notes": "Éviter la pomme de terre et les courges (compétition). (Source: )",
+      "details": [
+        {
+          "id": 235,
+          "associationId": "cml1gbce4001r2vbmoitqrajc",
+          "especeId": "Concombre",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 236,
+          "associationId": "cml1gbce4001r2vbmoitqrajc",
+          "especeId": "Tomate",
+          "familleId": "Solanaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcef001s2vbmexnbka5p",
+      "nom": "Culture de Coriandre",
+      "description": "Association expérimentale ou structurelle avec Coriandre.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 237,
+          "associationId": "cml1gbcef001s2vbmexnbka5p",
+          "especeId": "Coriandre",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 238,
+          "associationId": "cml1gbcef001s2vbmexnbka5p",
+          "especeId": null,
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcel001t2vbm2ma09d2v",
+      "nom": "Coriandre + Pois",
+      "description": "Association expérimentale ou structurelle avec Coriandre.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 239,
+          "associationId": "cml1gbcel001t2vbm2ma09d2v",
+          "especeId": "Coriandre",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 240,
+          "associationId": "cml1gbcel001t2vbm2ma09d2v",
+          "especeId": "Pois",
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcer001u2vbmr9wph269",
+      "nom": "Coriandre Sauge !",
+      "description": "Association expérimentale ou structurelle avec Coriandre.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 241,
+          "associationId": "cml1gbcer001u2vbmr9wph269",
+          "especeId": "Coriandre",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 242,
+          "associationId": "cml1gbcer001u2vbmr9wph269",
+          "especeId": "Sauge",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcex001v2vbmked5y18h",
+      "nom": "Courge + Pomme de terre",
+      "description": "Association expérimentale ou structurelle avec Courge.",
+      "notes": "Association 'Milpa' ou '3 Soeurs'. (Source: Traditionnel)",
+      "details": [
+        {
+          "id": 243,
+          "associationId": "cml1gbcex001v2vbmked5y18h",
+          "especeId": "Courge",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": "Potirons, courges spaguettis ou courges coureuses.\n\nSemer en mars.\n\n1 rangs sur 4, rangs espacés de 40 cm."
+        },
+        {
+          "id": 244,
+          "associationId": "cml1gbcex001v2vbmked5y18h",
+          "especeId": "Pomme de terre",
+          "familleId": "Solanaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": "Planter en janvier février et récolter en mai.\n\n3 rangs sur 4, rangs espacé de 40 cm."
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcf4001w2vbmp5iqyoj5",
+      "nom": "Céleri + Poivron piment",
+      "description": "Association expérimentale ou structurelle avec Céleri.",
+      "notes": "Plante gourmande en eau. (Source: Guide Bio)",
+      "details": [
+        {
+          "id": 245,
+          "associationId": "cml1gbcf4001w2vbmp5iqyoj5",
+          "especeId": "Céleri",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 246,
+          "associationId": "cml1gbcf4001w2vbmp5iqyoj5",
+          "especeId": null,
+          "familleId": "Brassicaceae",
+          "groupe": "Chou",
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 247,
+          "associationId": "cml1gbcf4001w2vbmp5iqyoj5",
+          "especeId": "Poivron piment",
+          "familleId": "Solanaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcfb001x2vbm57fsp97a",
+      "nom": "Céleri + Haricot",
+      "description": "Association expérimentale ou structurelle avec Céleri.",
+      "notes": "Plante gourmande en eau. (Source: Guide Bio)",
+      "details": [
+        {
+          "id": 248,
+          "associationId": "cml1gbcfb001x2vbm57fsp97a",
+          "especeId": "Céleri",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 249,
+          "associationId": "cml1gbcfb001x2vbm57fsp97a",
+          "especeId": "Haricot",
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcfh001y2vbm2ccuhiqf",
+      "nom": "Céleri + Poireau",
+      "description": "Poireau: Bonne entente.",
+      "notes": "Plante gourmande en eau. (Source: Guide Bio)",
+      "details": [
+        {
+          "id": 250,
+          "associationId": "cml1gbcfh001y2vbm2ccuhiqf",
+          "especeId": "Céleri",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 251,
+          "associationId": "cml1gbcfh001y2vbm2ccuhiqf",
+          "especeId": "Poireau",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": "Bonne entente."
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcfo001z2vbm7p4d8s69",
+      "nom": "Epinard + Artichaut, Fraisier, Salsifis",
+      "description": "Fraisier: Bon couvre sol d'hiver pour les fraisiers.",
+      "notes": "Racines sécrètent des saponines bénéfiques. (Source: )",
+      "details": [
+        {
+          "id": 252,
+          "associationId": "cml1gbcfo001z2vbm7p4d8s69",
+          "especeId": "Epinard",
+          "familleId": "Amaranthaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 253,
+          "associationId": "cml1gbcfo001z2vbm7p4d8s69",
+          "especeId": "Artichaut",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 254,
+          "associationId": "cml1gbcfo001z2vbm7p4d8s69",
+          "especeId": null,
+          "familleId": "Asteraceae",
+          "groupe": "Chicorée",
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 255,
+          "associationId": "cml1gbcfo001z2vbm7p4d8s69",
+          "especeId": "Fraisier",
+          "familleId": "Rosaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Bon couvre sol d'hiver pour les fraisiers."
+        },
+        {
+          "id": 256,
+          "associationId": "cml1gbcfo001z2vbm7p4d8s69",
+          "especeId": "Salsifis",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcfz00202vbma7q7tbrk",
+      "nom": "Culture de Epinard",
+      "description": "Association expérimentale ou structurelle avec Epinard.",
+      "notes": "Racines sécrètent des saponines bénéfiques. (Source: )",
+      "details": [
+        {
+          "id": 257,
+          "associationId": "cml1gbcfz00202vbma7q7tbrk",
+          "especeId": "Epinard",
+          "familleId": "Amaranthaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 258,
+          "associationId": "cml1gbcfz00202vbma7q7tbrk",
+          "especeId": null,
+          "familleId": "Brassicaceae",
+          "groupe": "Chou",
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcg400212vbmcb7mbbz5",
+      "nom": "Epinard + Haricot",
+      "description": "Haricot: Bon voisinage.",
+      "notes": "Racines sécrètent des saponines bénéfiques. (Source: )",
+      "details": [
+        {
+          "id": 259,
+          "associationId": "cml1gbcg400212vbmcb7mbbz5",
+          "especeId": "Epinard",
+          "familleId": "Amaranthaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 260,
+          "associationId": "cml1gbcg400212vbmcb7mbbz5",
+          "especeId": "Haricot",
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Bon voisinage."
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcg900222vbmhmm0cvro",
+      "nom": "Epinard + Navet",
+      "description": "Association expérimentale ou structurelle avec Epinard.",
+      "notes": "Racines sécrètent des saponines bénéfiques. (Source: )",
+      "details": [
+        {
+          "id": 261,
+          "associationId": "cml1gbcg900222vbmhmm0cvro",
+          "especeId": "Epinard",
+          "familleId": "Amaranthaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 262,
+          "associationId": "cml1gbcg900222vbmhmm0cvro",
+          "especeId": "Navet",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcge00232vbmgsnryuun",
+      "nom": "Epinard + Oignon",
+      "description": "Association expérimentale ou structurelle avec Epinard.",
+      "notes": "Racines sécrètent des saponines bénéfiques. (Source: )",
+      "details": [
+        {
+          "id": 263,
+          "associationId": "cml1gbcge00232vbmgsnryuun",
+          "especeId": "Epinard",
+          "familleId": "Amaranthaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 264,
+          "associationId": "cml1gbcge00232vbmgsnryuun",
+          "especeId": "Oignon",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcgl00242vbmyskp5s7k",
+      "nom": "Epinard + Radis",
+      "description": "Association expérimentale ou structurelle avec Epinard.",
+      "notes": "Racines sécrètent des saponines bénéfiques. (Source: )",
+      "details": [
+        {
+          "id": 265,
+          "associationId": "cml1gbcgl00242vbmyskp5s7k",
+          "especeId": "Epinard",
+          "familleId": "Amaranthaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 266,
+          "associationId": "cml1gbcgl00242vbmyskp5s7k",
+          "especeId": "Radis",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcgr00252vbmmo94nbeg",
+      "nom": "Fenouil !",
+      "description": "Association expérimentale ou structurelle avec Fenouil.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 267,
+          "associationId": "cml1gbcgr00252vbmmo94nbeg",
+          "especeId": "Fenouil",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 268,
+          "associationId": "cml1gbcgr00252vbmmo94nbeg",
+          "especeId": "Absinthe",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 269,
+          "associationId": "cml1gbcgr00252vbmmo94nbeg",
+          "especeId": "Concombre",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 270,
+          "associationId": "cml1gbcgr00252vbmmo94nbeg",
+          "especeId": "Coriandre",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 271,
+          "associationId": "cml1gbcgr00252vbmmo94nbeg",
+          "especeId": "Courge",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Pâtisson"
+        },
+        {
+          "id": 272,
+          "associationId": "cml1gbcgr00252vbmmo94nbeg",
+          "especeId": "Epinard",
+          "familleId": "Amaranthaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 273,
+          "associationId": "cml1gbcgr00252vbmmo94nbeg",
+          "especeId": "Poivron piment",
+          "familleId": "Solanaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Piment"
+        },
+        {
+          "id": 274,
+          "associationId": "cml1gbcgr00252vbmmo94nbeg",
+          "especeId": "Souci",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 275,
+          "associationId": "cml1gbcgr00252vbmmo94nbeg",
+          "especeId": "Tomate",
+          "familleId": "Solanaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbchn00262vbmy8q60fxs",
+      "nom": "Fenouil + Céleri",
+      "description": "Association expérimentale ou structurelle avec Fenouil.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 276,
+          "associationId": "cml1gbchn00262vbmy8q60fxs",
+          "especeId": "Fenouil",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 277,
+          "associationId": "cml1gbchn00262vbmy8q60fxs",
+          "especeId": "Céleri",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Céleri-rave"
+        }
+      ]
+    },
+    {
+      "id": "cml1gbchu00272vbm8eww1lg9",
+      "nom": "Fenouil Haricot !",
+      "description": "Association expérimentale ou structurelle avec Fenouil.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 278,
+          "associationId": "cml1gbchu00272vbm8eww1lg9",
+          "especeId": "Fenouil",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 279,
+          "associationId": "cml1gbchu00272vbm8eww1lg9",
+          "especeId": "Haricot",
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbci300282vbmsebpnyuq",
+      "nom": "Fenouil Navet !",
+      "description": "Association expérimentale ou structurelle avec Fenouil.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 280,
+          "associationId": "cml1gbci300282vbmsebpnyuq",
+          "especeId": "Fenouil",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 281,
+          "associationId": "cml1gbci300282vbmsebpnyuq",
+          "especeId": "Navet",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcib00292vbmzre7jfwo",
+      "nom": "Fenouil + Poireau",
+      "description": "Association expérimentale ou structurelle avec Fenouil.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 282,
+          "associationId": "cml1gbcib00292vbmzre7jfwo",
+          "especeId": "Fenouil",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 283,
+          "associationId": "cml1gbcib00292vbmzre7jfwo",
+          "especeId": "Poireau",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcij002a2vbmbbt46ykj",
+      "nom": "Fraisier !",
+      "description": "Association expérimentale ou structurelle avec Fraisier.",
+      "notes": "Éviter le chou. (Source: Le Poireau préfère les Fraises)",
+      "details": [
+        {
+          "id": 284,
+          "associationId": "cml1gbcij002a2vbmbbt46ykj",
+          "especeId": "Fraisier",
+          "familleId": "Rosaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 285,
+          "associationId": "cml1gbcij002a2vbmbbt46ykj",
+          "especeId": null,
+          "familleId": "Brassicaceae",
+          "groupe": "Chou",
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbciq002b2vbme9pxapfi",
+      "nom": "Fraisier + Ail, Ciboulette, Oignon",
+      "description": "Ail: Protection botrytis. Oignon: Protection botrytis.",
+      "notes": "Éviter le chou. (Source: Le Poireau préfère les Fraises)",
+      "details": [
+        {
+          "id": 286,
+          "associationId": "cml1gbciq002b2vbme9pxapfi",
+          "especeId": "Fraisier",
+          "familleId": "Rosaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 287,
+          "associationId": "cml1gbciq002b2vbme9pxapfi",
+          "especeId": "Ail",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Protection botrytis."
+        },
+        {
+          "id": 288,
+          "associationId": "cml1gbciq002b2vbme9pxapfi",
+          "especeId": "Ciboulette",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 289,
+          "associationId": "cml1gbciq002b2vbme9pxapfi",
+          "especeId": "Oignon",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Protection botrytis."
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcj4002c2vbmcph9h9rc",
+      "nom": "Fraisier + Poireau",
+      "description": "Poireau: Échange sanitaire (champignons/insectes).",
+      "notes": "Éviter le chou. (Source: Le Poireau préfère les Fraises)",
+      "details": [
+        {
+          "id": 290,
+          "associationId": "cml1gbcj4002c2vbmcph9h9rc",
+          "especeId": "Fraisier",
+          "familleId": "Rosaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 291,
+          "associationId": "cml1gbcj4002c2vbmcph9h9rc",
+          "especeId": "Poireau",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": "Échange sanitaire (champignons/insectes)."
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcje002d2vbmwvplrdf6",
+      "nom": "Fraisier + Pêcher",
+      "description": "Association expérimentale ou structurelle avec Fraisier.",
+      "notes": "Éviter le chou. (Source: Le Poireau préfère les Fraises)",
+      "details": [
+        {
+          "id": 292,
+          "associationId": "cml1gbcje002d2vbmwvplrdf6",
+          "especeId": "Fraisier",
+          "familleId": "Rosaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 293,
+          "associationId": "cml1gbcje002d2vbmwvplrdf6",
+          "especeId": "Pêcher",
+          "familleId": "Rosaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcjo002e2vbmg2fia0jr",
+      "nom": "Fève + Maïs, Sarriette",
+      "description": "Maïs: Tuteur.",
+      "notes": "Éviter l'ail et l'oignon. (Source: )",
+      "details": [
+        {
+          "id": 294,
+          "associationId": "cml1gbcjo002e2vbmg2fia0jr",
+          "especeId": "Fève",
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 295,
+          "associationId": "cml1gbcjo002e2vbmg2fia0jr",
+          "especeId": null,
+          "familleId": "Brassicaceae",
+          "groupe": "Chou",
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 296,
+          "associationId": "cml1gbcjo002e2vbmg2fia0jr",
+          "especeId": "Maïs",
+          "familleId": "Poaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Tuteur."
+        },
+        {
+          "id": 297,
+          "associationId": "cml1gbcjo002e2vbmg2fia0jr",
+          "especeId": null,
+          "familleId": "Rosaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 298,
+          "associationId": "cml1gbcjo002e2vbmg2fia0jr",
+          "especeId": "Sarriette",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbck1002f2vbmremgobtw",
+      "nom": "Fève + Laitue",
+      "description": "Association expérimentale ou structurelle avec Fève.",
+      "notes": "Éviter l'ail et l'oignon. (Source: )",
+      "details": [
+        {
+          "id": 299,
+          "associationId": "cml1gbck1002f2vbmremgobtw",
+          "especeId": "Fève",
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 300,
+          "associationId": "cml1gbck1002f2vbmremgobtw",
+          "especeId": "Laitue",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbck8002g2vbm7oem9tas",
+      "nom": "Fève + Pomme de terre",
+      "description": "Pomme de terre: Protège un peu du doryphore.",
+      "notes": "Éviter l'ail et l'oignon. (Source: )",
+      "details": [
+        {
+          "id": 301,
+          "associationId": "cml1gbck8002g2vbm7oem9tas",
+          "especeId": "Fève",
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 302,
+          "associationId": "cml1gbck8002g2vbm7oem9tas",
+          "especeId": "Pomme de terre",
+          "familleId": "Solanaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": "Protège un peu du doryphore."
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcki002h2vbmrigpx9jc",
+      "nom": "Groseillier !",
+      "description": "Association expérimentale ou structurelle avec Groseillier.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 303,
+          "associationId": "cml1gbcki002h2vbmrigpx9jc",
+          "especeId": "Groseillier",
+          "familleId": "Grossulariaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 304,
+          "associationId": "cml1gbcki002h2vbmrigpx9jc",
+          "especeId": "Haricot",
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Haricot à rames"
+        },
+        {
+          "id": 305,
+          "associationId": "cml1gbcki002h2vbmrigpx9jc",
+          "especeId": "Maïs",
+          "familleId": "Poaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbckx002i2vbmxkeajykj",
+      "nom": "Groseillier + Abricotier, Carotte, Ciboulette...",
+      "description": "Association expérimentale ou structurelle avec Groseillier.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 306,
+          "associationId": "cml1gbckx002i2vbmxkeajykj",
+          "especeId": "Groseillier",
+          "familleId": "Grossulariaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 307,
+          "associationId": "cml1gbckx002i2vbmxkeajykj",
+          "especeId": "Abricotier",
+          "familleId": "Rosaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 308,
+          "associationId": "cml1gbckx002i2vbmxkeajykj",
+          "especeId": "Carotte",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 309,
+          "associationId": "cml1gbckx002i2vbmxkeajykj",
+          "especeId": "Ciboulette",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 310,
+          "associationId": "cml1gbckx002i2vbmxkeajykj",
+          "especeId": "Haricot",
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Haricot nain"
+        },
+        {
+          "id": 311,
+          "associationId": "cml1gbckx002i2vbmxkeajykj",
+          "especeId": "Navet",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 312,
+          "associationId": "cml1gbckx002i2vbmxkeajykj",
+          "especeId": "Oignon",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbclg002j2vbmpr5dir3x",
+      "nom": "Haricot !",
+      "description": "Courgette: Couvre-sol.",
+      "notes": "Fixateur d'azote. Incompatible avec Ail, Oignon, Echalote. (Source: Terre Vivante)",
+      "details": [
+        {
+          "id": 313,
+          "associationId": "cml1gbclg002j2vbmpr5dir3x",
+          "especeId": "Haricot",
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 314,
+          "associationId": "cml1gbclg002j2vbmpr5dir3x",
+          "especeId": "Actinidia",
+          "familleId": "Actinidiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 315,
+          "associationId": "cml1gbclg002j2vbmpr5dir3x",
+          "especeId": "Ciboulette",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 316,
+          "associationId": "cml1gbclg002j2vbmpr5dir3x",
+          "especeId": "Courgette",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Couvre-sol."
+        },
+        {
+          "id": 317,
+          "associationId": "cml1gbclg002j2vbmpr5dir3x",
+          "especeId": "Echalote",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 318,
+          "associationId": "cml1gbclg002j2vbmpr5dir3x",
+          "especeId": "Pois",
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcm0002k2vbmtsxy7kj5",
+      "nom": "Haricot + Bourrache, Capucine, Concombre...",
+      "description": "Concombre: Azote. Courge: Couvre-sol. Sarriette: Repousse les pucerons noirs du haricot.",
+      "notes": "Fixateur d'azote. Incompatible avec Ail, Oignon, Echalote. (Source: Terre Vivante)",
+      "details": [
+        {
+          "id": 319,
+          "associationId": "cml1gbcm0002k2vbmtsxy7kj5",
+          "especeId": "Haricot",
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 320,
+          "associationId": "cml1gbcm0002k2vbmtsxy7kj5",
+          "especeId": "Bourrache",
+          "familleId": "Boraginaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 321,
+          "associationId": "cml1gbcm0002k2vbmtsxy7kj5",
+          "especeId": "Capucine",
+          "familleId": "Tropaeolaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 322,
+          "associationId": "cml1gbcm0002k2vbmtsxy7kj5",
+          "especeId": null,
+          "familleId": "Brassicaceae",
+          "groupe": "Chou",
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 323,
+          "associationId": "cml1gbcm0002k2vbmtsxy7kj5",
+          "especeId": "Concombre",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Azote."
+        },
+        {
+          "id": 324,
+          "associationId": "cml1gbcm0002k2vbmtsxy7kj5",
+          "especeId": "Courge",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Potimaron"
+        },
+        {
+          "id": 325,
+          "associationId": "cml1gbcm0002k2vbmtsxy7kj5",
+          "especeId": "Melon",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 326,
+          "associationId": "cml1gbcm0002k2vbmtsxy7kj5",
+          "especeId": "Sarriette",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Repousse les pucerons noirs du haricot."
+        },
+        {
+          "id": 327,
+          "associationId": "cml1gbcm0002k2vbmtsxy7kj5",
+          "especeId": "Tournesol",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcmz002l2vbm1v8h57uv",
+      "nom": "Laitue + Haricot",
+      "description": "Association expérimentale ou structurelle avec Laitue.",
+      "notes": "Culture rapide bouche-trou. (Source: )",
+      "details": [
+        {
+          "id": 328,
+          "associationId": "cml1gbcmz002l2vbm1v8h57uv",
+          "especeId": "Laitue",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 329,
+          "associationId": "cml1gbcmz002l2vbm1v8h57uv",
+          "especeId": "Haricot",
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcn9002m2vbmdvjtsw11",
+      "nom": "Maïs + Haricot",
+      "description": "Haricot: Tuteur pour haricot à rame.",
+      "notes": "Gourmand. (Source: Milpa)",
+      "details": [
+        {
+          "id": 330,
+          "associationId": "cml1gbcn9002m2vbmdvjtsw11",
+          "especeId": "Maïs",
+          "familleId": "Poaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 331,
+          "associationId": "cml1gbcn9002m2vbmdvjtsw11",
+          "especeId": "Haricot",
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Tuteur pour haricot à rame."
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcnj002n2vbmsobgrudz",
+      "nom": "Haricot Oignon !",
+      "description": "Association expérimentale ou structurelle avec Oignon.",
+      "notes": "Pas de Fabacées (Haricot/Pois/Fève). (Source: Standard)",
+      "details": [
+        {
+          "id": 332,
+          "associationId": "cml1gbcnj002n2vbmsobgrudz",
+          "especeId": "Oignon",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 333,
+          "associationId": "cml1gbcnj002n2vbmsobgrudz",
+          "especeId": "Haricot",
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcnq002o2vbm7agaonse",
+      "nom": "Haricot Poireau !",
+      "description": "Association expérimentale ou structurelle avec Poireau.",
+      "notes": "Pas de Fabacées. (Source: Standard)",
+      "details": [
+        {
+          "id": 334,
+          "associationId": "cml1gbcnq002o2vbm7agaonse",
+          "especeId": "Poireau",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 335,
+          "associationId": "cml1gbcnq002o2vbm7agaonse",
+          "especeId": "Haricot",
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcnv002p2vbmkkfg11ai",
+      "nom": "Pomme de terre + Haricot",
+      "description": "Haricot: Doryphore/Coccinelle.",
+      "notes": "Pas de Tomate (Mildiou commun), Courge, Tournesol. (Source: ITAB)",
+      "details": [
+        {
+          "id": 336,
+          "associationId": "cml1gbcnv002p2vbmkkfg11ai",
+          "especeId": "Pomme de terre",
+          "familleId": "Solanaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 337,
+          "associationId": "cml1gbcnv002p2vbmkkfg11ai",
+          "especeId": "Haricot",
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Doryphore/Coccinelle."
+        }
+      ]
+    },
+    {
+      "id": "cml1gbco0002q2vbm58d4h0qo",
+      "nom": "Laitue !",
+      "description": "Association expérimentale ou structurelle avec Laitue.",
+      "notes": "Culture rapide bouche-trou. (Source: )",
+      "details": [
+        {
+          "id": 338,
+          "associationId": "cml1gbco0002q2vbm58d4h0qo",
+          "especeId": "Laitue",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 339,
+          "associationId": "cml1gbco0002q2vbm58d4h0qo",
+          "especeId": "Panais",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 340,
+          "associationId": "cml1gbco0002q2vbm58d4h0qo",
+          "especeId": "Persil",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbco7002r2vbme6enej8y",
+      "nom": "Laitue + Aneth, Artichaut, Courge...",
+      "description": "Aneth: Bon voisinage. (Réciproque) Artichaut: Utilisation de l'espace (étages différents). (Réciproque) Fraisier: Intercalaire. Pois: Ombrage pour la laitue en été.",
+      "notes": "Culture rapide bouche-trou. (Source: )",
+      "details": [
+        {
+          "id": 341,
+          "associationId": "cml1gbco7002r2vbme6enej8y",
+          "especeId": "Laitue",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 342,
+          "associationId": "cml1gbco7002r2vbme6enej8y",
+          "especeId": "Aneth",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Bon voisinage. (Réciproque)"
+        },
+        {
+          "id": 343,
+          "associationId": "cml1gbco7002r2vbme6enej8y",
+          "especeId": "Artichaut",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Utilisation de l'espace (étages différents). (Réciproque)"
+        },
+        {
+          "id": 344,
+          "associationId": "cml1gbco7002r2vbme6enej8y",
+          "especeId": "Courge",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 345,
+          "associationId": "cml1gbco7002r2vbme6enej8y",
+          "especeId": "Fraisier",
+          "familleId": "Rosaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Intercalaire."
+        },
+        {
+          "id": 346,
+          "associationId": "cml1gbco7002r2vbme6enej8y",
+          "especeId": "Melon",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 347,
+          "associationId": "cml1gbco7002r2vbme6enej8y",
+          "especeId": "Navet",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 348,
+          "associationId": "cml1gbco7002r2vbme6enej8y",
+          "especeId": "Pois",
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Ombrage pour la laitue en été."
+        },
+        {
+          "id": 349,
+          "associationId": "cml1gbco7002r2vbme6enej8y",
+          "especeId": "Poivron piment",
+          "familleId": "Solanaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Poivron"
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcow002s2vbmo9h77kjj",
+      "nom": "Laitue + Oignon",
+      "description": "Oignon: Neutre/Bon. (Réciproque)",
+      "notes": "Culture rapide bouche-trou. (Source: )",
+      "details": [
+        {
+          "id": 350,
+          "associationId": "cml1gbcow002s2vbmo9h77kjj",
+          "especeId": "Laitue",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": true,
+          "notes": "Cycle court"
+        },
+        {
+          "id": 351,
+          "associationId": "cml1gbcow002s2vbmo9h77kjj",
+          "especeId": "Oignon",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": "Cycle long"
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcp3002t2vbma0445t7u",
+      "nom": "Laitue + Poireau",
+      "description": "Association expérimentale ou structurelle avec Laitue.",
+      "notes": "Culture rapide bouche-trou. (Source: )",
+      "details": [
+        {
+          "id": 352,
+          "associationId": "cml1gbcp3002t2vbma0445t7u",
+          "especeId": "Laitue",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 353,
+          "associationId": "cml1gbcp3002t2vbma0445t7u",
+          "especeId": "Poireau",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcpc002u2vbmyv5gb1qy",
+      "nom": "Laitue Tomate !",
+      "description": "Association expérimentale ou structurelle avec Laitue.",
+      "notes": "Culture rapide bouche-trou. (Source: )",
+      "details": [
+        {
+          "id": 354,
+          "associationId": "cml1gbcpc002u2vbmyv5gb1qy",
+          "especeId": "Laitue",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 355,
+          "associationId": "cml1gbcpc002u2vbmyv5gb1qy",
+          "especeId": "Tomate",
+          "familleId": "Solanaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcpk002v2vbm4ulxarek",
+      "nom": "Lavande !",
+      "description": "Association expérimentale ou structurelle avec Lavande.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 356,
+          "associationId": "cml1gbcpk002v2vbm4ulxarek",
+          "especeId": "Lavande",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 357,
+          "associationId": "cml1gbcpk002v2vbm4ulxarek",
+          "especeId": "Mélisse",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcps002w2vbmz3ce7lul",
+      "nom": "Culture de Lavande",
+      "description": "Association expérimentale ou structurelle avec Lavande.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 358,
+          "associationId": "cml1gbcps002w2vbmz3ce7lul",
+          "especeId": "Lavande",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 359,
+          "associationId": "cml1gbcps002w2vbmz3ce7lul",
+          "especeId": null,
+          "familleId": "Rutaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Agrumes"
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcpx002x2vbmqjq5yifw",
+      "nom": "Maïs !",
+      "description": "Association expérimentale ou structurelle avec Maïs.",
+      "notes": "Gourmand. (Source: Milpa)",
+      "details": [
+        {
+          "id": 360,
+          "associationId": "cml1gbcpx002x2vbmqjq5yifw",
+          "especeId": "Maïs",
+          "familleId": "Poaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 361,
+          "associationId": "cml1gbcpx002x2vbmqjq5yifw",
+          "especeId": "Actinidia",
+          "familleId": "Actinidiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 362,
+          "associationId": "cml1gbcpx002x2vbmqjq5yifw",
+          "especeId": "Laitue",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 363,
+          "associationId": "cml1gbcpx002x2vbmqjq5yifw",
+          "especeId": "Oignon",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcq6002y2vbmb723zisl",
+      "nom": "Maïs + Achillée millefeuille, Betterave, Courge...",
+      "description": "Courge: Ombrage au pied. Pois: Tuteur.",
+      "notes": "Gourmand. (Source: Milpa)",
+      "details": [
+        {
+          "id": 364,
+          "associationId": "cml1gbcq6002y2vbmb723zisl",
+          "especeId": "Maïs",
+          "familleId": "Poaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 365,
+          "associationId": "cml1gbcq6002y2vbmb723zisl",
+          "especeId": "Achillée millefeuille",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 366,
+          "associationId": "cml1gbcq6002y2vbmb723zisl",
+          "especeId": "Betterave",
+          "familleId": "Amaranthaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 367,
+          "associationId": "cml1gbcq6002y2vbmb723zisl",
+          "especeId": "Courge",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Potiron"
+        },
+        {
+          "id": 368,
+          "associationId": "cml1gbcq6002y2vbmb723zisl",
+          "especeId": "Pois",
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Tuteur."
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcqk002z2vbmgllfhupp",
+      "nom": "Culture de Melon",
+      "description": "Association expérimentale ou structurelle avec Melon.",
+      "notes": " (Source: Association traditionelle)",
+      "details": [
+        {
+          "id": 369,
+          "associationId": "cml1gbcqk002z2vbmgllfhupp",
+          "especeId": "Melon",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 370,
+          "associationId": "cml1gbcqk002z2vbmgllfhupp",
+          "especeId": null,
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcqp00302vbmh9e2phhg",
+      "nom": "Menthe + Poirier, Pommier",
+      "description": "Association expérimentale ou structurelle avec Menthe.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 371,
+          "associationId": "cml1gbcqp00302vbmh9e2phhg",
+          "especeId": "Menthe",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 372,
+          "associationId": "cml1gbcqp00302vbmh9e2phhg",
+          "especeId": "Poirier",
+          "familleId": "Rosaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 373,
+          "associationId": "cml1gbcqp00302vbmh9e2phhg",
+          "especeId": "Pommier",
+          "familleId": "Rosaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcqx00312vbmnypb3k2o",
+      "nom": "Courge + Haricot, Maïs",
+      "description": "Haricot: Azote. Maïs: Tuteur.",
+      "notes": "Association 'Milpa' ou '3 Soeurs'. (Source: Traditionnel)",
+      "details": [
+        {
+          "id": 374,
+          "associationId": "cml1gbcqx00312vbmnypb3k2o",
+          "especeId": "Courge",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": "Potiron de préférence.\n\nCouvre sol, freine les adventisses et préserve l'humidité du sol."
+        },
+        {
+          "id": 375,
+          "associationId": "cml1gbcqx00312vbmnypb3k2o",
+          "especeId": "Haricot",
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": "Haricots à rames, ils apportent de l'azote."
+        },
+        {
+          "id": 376,
+          "associationId": "cml1gbcqx00312vbmnypb3k2o",
+          "especeId": "Maïs",
+          "familleId": "Poaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": "Tuteur pour les haricots"
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcr600322vbm03g1gnoy",
+      "nom": "Moutarde !",
+      "description": "Association expérimentale ou structurelle avec Moutarde.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 377,
+          "associationId": "cml1gbcr600322vbm03g1gnoy",
+          "especeId": "Moutarde",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 378,
+          "associationId": "cml1gbcr600322vbm03g1gnoy",
+          "especeId": "Tournesol",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcrc00332vbm67gmwciu",
+      "nom": "Moutarde + Laitue",
+      "description": "Association expérimentale ou structurelle avec Moutarde.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 379,
+          "associationId": "cml1gbcrc00332vbm67gmwciu",
+          "especeId": "Moutarde",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 380,
+          "associationId": "cml1gbcrc00332vbm67gmwciu",
+          "especeId": null,
+          "familleId": "Asteraceae",
+          "groupe": "Chicorée",
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 381,
+          "associationId": "cml1gbcrc00332vbm67gmwciu",
+          "especeId": null,
+          "familleId": "Brassicaceae",
+          "groupe": "Chou",
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 382,
+          "associationId": "cml1gbcrc00332vbm67gmwciu",
+          "especeId": "Laitue",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcrm00342vbm8ohlw4w9",
+      "nom": "Mâche !",
+      "description": "Association expérimentale ou structurelle avec Mâche.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 383,
+          "associationId": "cml1gbcrm00342vbm8ohlw4w9",
+          "especeId": "Mâche",
+          "familleId": "Valerianaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 384,
+          "associationId": "cml1gbcrm00342vbm8ohlw4w9",
+          "especeId": "Actinidia",
+          "familleId": "Actinidiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 385,
+          "associationId": "cml1gbcrm00342vbm8ohlw4w9",
+          "especeId": "Amarante",
+          "familleId": "Amaranthaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 386,
+          "associationId": "cml1gbcrm00342vbm8ohlw4w9",
+          "especeId": "Radis noir",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcs000352vbml4fs9vbz",
+      "nom": "Mâche + Courge, Fraisier",
+      "description": "Association expérimentale ou structurelle avec Mâche.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 387,
+          "associationId": "cml1gbcs000352vbml4fs9vbz",
+          "especeId": "Mâche",
+          "familleId": "Valerianaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 388,
+          "associationId": "cml1gbcs000352vbml4fs9vbz",
+          "especeId": "Courge",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Potiron"
+        },
+        {
+          "id": 389,
+          "associationId": "cml1gbcs000352vbml4fs9vbz",
+          "especeId": "Fraisier",
+          "familleId": "Rosaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcs700362vbms12bndkn",
+      "nom": "Mâche Navet !",
+      "description": "Association expérimentale ou structurelle avec Mâche.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 390,
+          "associationId": "cml1gbcs700362vbms12bndkn",
+          "especeId": "Mâche",
+          "familleId": "Valerianaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 391,
+          "associationId": "cml1gbcs700362vbms12bndkn",
+          "especeId": "Navet",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcsd00372vbmo6lj8c5m",
+      "nom": "Mâche + Oignon",
+      "description": "Association expérimentale ou structurelle avec Mâche.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 392,
+          "associationId": "cml1gbcsd00372vbmo6lj8c5m",
+          "especeId": "Mâche",
+          "familleId": "Valerianaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 393,
+          "associationId": "cml1gbcsd00372vbmo6lj8c5m",
+          "especeId": "Oignon",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcsj00382vbm2w2a5nsf",
+      "nom": "Mâche + Poireau",
+      "description": "Association expérimentale ou structurelle avec Mâche.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 394,
+          "associationId": "cml1gbcsj00382vbm2w2a5nsf",
+          "especeId": "Mâche",
+          "familleId": "Valerianaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 395,
+          "associationId": "cml1gbcsj00382vbm2w2a5nsf",
+          "especeId": "Poireau",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcsr00392vbmvhtoijti",
+      "nom": "Navet !",
+      "description": "Association expérimentale ou structurelle avec Navet.",
+      "notes": " (Source: )",
+      "details": [
+        {
+          "id": 396,
+          "associationId": "cml1gbcsr00392vbmvhtoijti",
+          "especeId": "Navet",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 397,
+          "associationId": "cml1gbcsr00392vbmvhtoijti",
+          "especeId": "Actinidia",
+          "familleId": "Actinidiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 398,
+          "associationId": "cml1gbcsr00392vbmvhtoijti",
+          "especeId": null,
+          "familleId": "Brassicaceae",
+          "groupe": "Chou",
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 399,
+          "associationId": "cml1gbcsr00392vbmvhtoijti",
+          "especeId": "Sarriette",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbct4003a2vbmo9aq0nqa",
+      "nom": "Navet + Fraisier, Poireau",
+      "description": "Association expérimentale ou structurelle avec Navet.",
+      "notes": " (Source: )",
+      "details": [
+        {
+          "id": 400,
+          "associationId": "cml1gbct4003a2vbmo9aq0nqa",
+          "especeId": "Navet",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 401,
+          "associationId": "cml1gbct4003a2vbmo9aq0nqa",
+          "especeId": "Fraisier",
+          "familleId": "Rosaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 402,
+          "associationId": "cml1gbct4003a2vbmo9aq0nqa",
+          "especeId": "Poireau",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcte003b2vbm5x8ehs8l",
+      "nom": "Oignon !",
+      "description": "Association expérimentale ou structurelle avec Oignon.",
+      "notes": "Pas de Fabacées (Haricot/Pois/Fève). (Source: Standard)",
+      "details": [
+        {
+          "id": 403,
+          "associationId": "cml1gbcte003b2vbm5x8ehs8l",
+          "especeId": "Oignon",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 404,
+          "associationId": "cml1gbcte003b2vbm5x8ehs8l",
+          "especeId": "Actinidia",
+          "familleId": "Actinidiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 405,
+          "associationId": "cml1gbcte003b2vbm5x8ehs8l",
+          "especeId": "Fève",
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbctl003c2vbm9i8fcvcl",
+      "nom": "Oignon + Tomate",
+      "description": "Tomate: Protection. (Réciproque)",
+      "notes": "Pas de Fabacées (Haricot/Pois/Fève). (Source: Standard)",
+      "details": [
+        {
+          "id": 406,
+          "associationId": "cml1gbctl003c2vbm9i8fcvcl",
+          "especeId": "Oignon",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 407,
+          "associationId": "cml1gbctl003c2vbm9i8fcvcl",
+          "especeId": "Tomate",
+          "familleId": "Solanaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Protection. (Réciproque)"
+        },
+        {
+          "id": 408,
+          "associationId": "cml1gbctl003c2vbm9i8fcvcl",
+          "especeId": null,
+          "familleId": "Fabaceae",
+          "groupe": "Trèfle",
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbctw003d2vbmjjwfe6b6",
+      "nom": "Oignon Pois !",
+      "description": "Association expérimentale ou structurelle avec Oignon.",
+      "notes": "Pas de Fabacées (Haricot/Pois/Fève). (Source: Standard)",
+      "details": [
+        {
+          "id": 409,
+          "associationId": "cml1gbctw003d2vbmjjwfe6b6",
+          "especeId": "Oignon",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 410,
+          "associationId": "cml1gbctw003d2vbmjjwfe6b6",
+          "especeId": "Pois",
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcu9003e2vbmapfzgecv",
+      "nom": "Oignon + Radis",
+      "description": "Association expérimentale ou structurelle avec Oignon.",
+      "notes": "Pas de Fabacées (Haricot/Pois/Fève). (Source: Standard)",
+      "details": [
+        {
+          "id": 411,
+          "associationId": "cml1gbcu9003e2vbmapfzgecv",
+          "especeId": "Oignon",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 412,
+          "associationId": "cml1gbcu9003e2vbmapfzgecv",
+          "especeId": "Radis",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcum003f2vbmjjawg16u",
+      "nom": "Panais + Chou-rave, Oignon",
+      "description": "Association expérimentale ou structurelle avec Panais.",
+      "notes": " (Source: Association traditionelle)",
+      "details": [
+        {
+          "id": 413,
+          "associationId": "cml1gbcum003f2vbmjjawg16u",
+          "especeId": "Panais",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 414,
+          "associationId": "cml1gbcum003f2vbmjjawg16u",
+          "especeId": "Chou-rave",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 415,
+          "associationId": "cml1gbcum003f2vbmjjawg16u",
+          "especeId": "Oignon",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Oignon blanc"
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcuz003g2vbmopd9byqj",
+      "nom": "Panais + Radis",
+      "description": "Radis: Marquage rang.",
+      "notes": " (Source: Association traditionelle)",
+      "details": [
+        {
+          "id": 416,
+          "associationId": "cml1gbcuz003g2vbmopd9byqj",
+          "especeId": "Panais",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 417,
+          "associationId": "cml1gbcuz003g2vbmopd9byqj",
+          "especeId": "Radis",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": "Marquage rang."
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcv6003h2vbmw9df2ure",
+      "nom": "Patate douce !",
+      "description": "Association expérimentale ou structurelle avec Patate douce.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 418,
+          "associationId": "cml1gbcv6003h2vbmw9df2ure",
+          "especeId": "Patate douce",
+          "familleId": "Convolvulaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 419,
+          "associationId": "cml1gbcv6003h2vbmw9df2ure",
+          "especeId": "Poivron piment",
+          "familleId": "Solanaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcvd003i2vbmm2bbtkm6",
+      "nom": "Culture de Physalis",
+      "description": "Association expérimentale ou structurelle avec Physalis.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 420,
+          "associationId": "cml1gbcvd003i2vbmm2bbtkm6",
+          "especeId": "Physalis",
+          "familleId": "Solanaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 421,
+          "associationId": "cml1gbcvd003i2vbmm2bbtkm6",
+          "especeId": null,
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcvl003j2vbmmgcm3qb3",
+      "nom": "Poireau + Artichaut, Asperge, Moutarde...",
+      "description": "Asperge: Bonne association. (Réciproque) Tomate: Sanitaire.",
+      "notes": "Pas de Fabacées. (Source: Standard)",
+      "details": [
+        {
+          "id": 422,
+          "associationId": "cml1gbcvl003j2vbmmgcm3qb3",
+          "especeId": "Poireau",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 423,
+          "associationId": "cml1gbcvl003j2vbmmgcm3qb3",
+          "especeId": "Artichaut",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 424,
+          "associationId": "cml1gbcvl003j2vbmmgcm3qb3",
+          "especeId": "Asperge",
+          "familleId": "Asparagaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Bonne association. (Réciproque)"
+        },
+        {
+          "id": 425,
+          "associationId": "cml1gbcvl003j2vbmmgcm3qb3",
+          "especeId": "Moutarde",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 426,
+          "associationId": "cml1gbcvl003j2vbmmgcm3qb3",
+          "especeId": "Tomate",
+          "familleId": "Solanaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Sanitaire."
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcw3003k2vbm69olxlic",
+      "nom": "Poireau Pois !",
+      "description": "Association expérimentale ou structurelle avec Poireau.",
+      "notes": "Pas de Fabacées. (Source: Standard)",
+      "details": [
+        {
+          "id": 427,
+          "associationId": "cml1gbcw3003k2vbm69olxlic",
+          "especeId": "Poireau",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 428,
+          "associationId": "cml1gbcw3003k2vbm69olxlic",
+          "especeId": "Pois",
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcwd003l2vbm5spvil24",
+      "nom": "Culture de Poirier",
+      "description": "Association expérimentale ou structurelle avec Poirier.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 429,
+          "associationId": "cml1gbcwd003l2vbm5spvil24",
+          "especeId": "Poirier",
+          "familleId": "Rosaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 430,
+          "associationId": "cml1gbcwd003l2vbm5spvil24",
+          "especeId": null,
+          "familleId": "Fabaceae",
+          "groupe": "Trèfle",
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcwp003m2vbm2sow7ycj",
+      "nom": "Pois !",
+      "description": "Association expérimentale ou structurelle avec Pois.",
+      "notes": "Pas d'Alliacées. (Source: )",
+      "details": [
+        {
+          "id": 431,
+          "associationId": "cml1gbcwp003m2vbm2sow7ycj",
+          "especeId": "Pois",
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 432,
+          "associationId": "cml1gbcwp003m2vbm2sow7ycj",
+          "especeId": "Echalote",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 433,
+          "associationId": "cml1gbcwp003m2vbm2sow7ycj",
+          "especeId": "Persil",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcx6003n2vbmht3zsltd",
+      "nom": "Pois + Ricin, Sarriette",
+      "description": "Association expérimentale ou structurelle avec Pois.",
+      "notes": "Pas d'Alliacées. (Source: )",
+      "details": [
+        {
+          "id": 434,
+          "associationId": "cml1gbcx6003n2vbmht3zsltd",
+          "especeId": "Pois",
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 435,
+          "associationId": "cml1gbcx6003n2vbmht3zsltd",
+          "especeId": "Ricin",
+          "familleId": "Euphorbiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 436,
+          "associationId": "cml1gbcx6003n2vbmht3zsltd",
+          "especeId": "Sarriette",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcxi003o2vbmhxl2zvnm",
+      "nom": "Poivron piment !",
+      "description": "Association expérimentale ou structurelle avec Poivron piment.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 437,
+          "associationId": "cml1gbcxi003o2vbmhxl2zvnm",
+          "especeId": "Poivron piment",
+          "familleId": "Solanaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 438,
+          "associationId": "cml1gbcxi003o2vbmhxl2zvnm",
+          "especeId": null,
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcxo003p2vbmtrtkf5oa",
+      "nom": "Culture de Poivron piment",
+      "description": "Association expérimentale ou structurelle avec Poivron piment.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 439,
+          "associationId": "cml1gbcxo003p2vbmtrtkf5oa",
+          "especeId": "Poivron piment",
+          "familleId": "Solanaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 440,
+          "associationId": "cml1gbcxo003p2vbmtrtkf5oa",
+          "especeId": null,
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcxu003q2vbm30lwi9o6",
+      "nom": "Pomme de terre !",
+      "description": "Association expérimentale ou structurelle avec Pomme de terre.",
+      "notes": "Pas de Tomate (Mildiou commun), Courge, Tournesol. (Source: ITAB)",
+      "details": [
+        {
+          "id": 441,
+          "associationId": "cml1gbcxu003q2vbm30lwi9o6",
+          "especeId": "Pomme de terre",
+          "familleId": "Solanaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 442,
+          "associationId": "cml1gbcxu003q2vbm30lwi9o6",
+          "especeId": "Actinidia",
+          "familleId": "Actinidiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 443,
+          "associationId": "cml1gbcxu003q2vbm30lwi9o6",
+          "especeId": "Noyer",
+          "familleId": "Juglandaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 444,
+          "associationId": "cml1gbcxu003q2vbm30lwi9o6",
+          "especeId": "Tournesol",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcy7003r2vbmgp7pqisx",
+      "nom": "Pomme de terre + Asperge, Capucine, Chou de Bruxelles...",
+      "description": "Association expérimentale ou structurelle avec Pomme de terre.",
+      "notes": "Pas de Tomate (Mildiou commun), Courge, Tournesol. (Source: ITAB)",
+      "details": [
+        {
+          "id": 445,
+          "associationId": "cml1gbcy7003r2vbmgp7pqisx",
+          "especeId": "Pomme de terre",
+          "familleId": "Solanaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 446,
+          "associationId": "cml1gbcy7003r2vbmgp7pqisx",
+          "especeId": "Asperge",
+          "familleId": "Asparagaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 447,
+          "associationId": "cml1gbcy7003r2vbmgp7pqisx",
+          "especeId": "Capucine",
+          "familleId": "Tropaeolaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 448,
+          "associationId": "cml1gbcy7003r2vbmgp7pqisx",
+          "especeId": "Chou de Bruxelles",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 449,
+          "associationId": "cml1gbcy7003r2vbmgp7pqisx",
+          "especeId": "Chou pommé",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 450,
+          "associationId": "cml1gbcy7003r2vbmgp7pqisx",
+          "especeId": "Coriandre",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 451,
+          "associationId": "cml1gbcy7003r2vbmgp7pqisx",
+          "especeId": "Céleri",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 452,
+          "associationId": "cml1gbcy7003r2vbmgp7pqisx",
+          "especeId": "Maïs",
+          "familleId": "Poaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 453,
+          "associationId": "cml1gbcy7003r2vbmgp7pqisx",
+          "especeId": "Souci",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcyx003s2vbmx0g4mhgn",
+      "nom": "Pomme de terre + Pois",
+      "description": "Pois: Azote.",
+      "notes": "Pas de Tomate (Mildiou commun), Courge, Tournesol. (Source: ITAB)",
+      "details": [
+        {
+          "id": 454,
+          "associationId": "cml1gbcyx003s2vbmx0g4mhgn",
+          "especeId": "Pomme de terre",
+          "familleId": "Solanaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 455,
+          "associationId": "cml1gbcyx003s2vbmx0g4mhgn",
+          "especeId": "Pois",
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Azote."
+        }
+      ]
+    },
+    {
+      "id": "cml1gbcz5003t2vbmcyh9ngpe",
+      "nom": "Pommier + Camomille, Capucine, Noyer...",
+      "description": "Association expérimentale ou structurelle avec Pommier.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 456,
+          "associationId": "cml1gbcz5003t2vbmcyh9ngpe",
+          "especeId": "Pommier",
+          "familleId": "Rosaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 457,
+          "associationId": "cml1gbcz5003t2vbmcyh9ngpe",
+          "especeId": null,
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 458,
+          "associationId": "cml1gbcz5003t2vbmcyh9ngpe",
+          "especeId": "Camomille",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Camomille allemande"
+        },
+        {
+          "id": 459,
+          "associationId": "cml1gbcz5003t2vbmcyh9ngpe",
+          "especeId": "Capucine",
+          "familleId": "Tropaeolaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 460,
+          "associationId": "cml1gbcz5003t2vbmcyh9ngpe",
+          "especeId": "Noyer",
+          "familleId": "Juglandaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 461,
+          "associationId": "cml1gbcz5003t2vbmcyh9ngpe",
+          "especeId": "Phacélie",
+          "familleId": "Hydrophyllaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 462,
+          "associationId": "cml1gbcz5003t2vbmcyh9ngpe",
+          "especeId": null,
+          "familleId": null,
+          "groupe": "Potentille",
+          "requise": false,
+          "notes": "Plante hôte d'acariens auxiliaires"
+        },
+        {
+          "id": 463,
+          "associationId": "cml1gbcz5003t2vbmcyh9ngpe",
+          "especeId": null,
+          "familleId": "Fabaceae",
+          "groupe": "Trèfle",
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbczu003u2vbmhppi7wqm",
+      "nom": "Pêcher !",
+      "description": "Association expérimentale ou structurelle avec Pêcher.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 464,
+          "associationId": "cml1gbczu003u2vbmhppi7wqm",
+          "especeId": "Pêcher",
+          "familleId": "Rosaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 465,
+          "associationId": "cml1gbczu003u2vbmhppi7wqm",
+          "especeId": null,
+          "familleId": null,
+          "groupe": "Erable",
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 466,
+          "associationId": "cml1gbczu003u2vbmhppi7wqm",
+          "especeId": "Noisetier",
+          "familleId": null,
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 467,
+          "associationId": "cml1gbczu003u2vbmhppi7wqm",
+          "especeId": null,
+          "familleId": null,
+          "groupe": "Orme",
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbd07003v2vbmjxjie23t",
+      "nom": "Pêcher + Absinthe, Ail, Chénopode vivace...",
+      "description": "Ail: Contre la cloque. (Réciproque)",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 468,
+          "associationId": "cml1gbd07003v2vbmjxjie23t",
+          "especeId": "Pêcher",
+          "familleId": "Rosaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 469,
+          "associationId": "cml1gbd07003v2vbmjxjie23t",
+          "especeId": "Absinthe",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 470,
+          "associationId": "cml1gbd07003v2vbmjxjie23t",
+          "especeId": "Ail",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Protège des ravageurs, des maladies cryptogamiques et de la cloque."
+        },
+        {
+          "id": 471,
+          "associationId": "cml1gbd07003v2vbmjxjie23t",
+          "especeId": "Chénopode vivace",
+          "familleId": "Amaranthaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Chénopode blanc (invasif)"
+        },
+        {
+          "id": 472,
+          "associationId": "cml1gbd07003v2vbmjxjie23t",
+          "especeId": "Ciboulette",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Protège des ravageurs, des maladies cryptogamiques et de la cloque."
+        }
+      ]
+    },
+    {
+      "id": "cml1gbd0n003w2vbmgef0526c",
+      "nom": "Radis !",
+      "description": "Association expérimentale ou structurelle avec Radis.",
+      "notes": "Cycle court. (Source: )",
+      "details": [
+        {
+          "id": 473,
+          "associationId": "cml1gbd0n003w2vbmgef0526c",
+          "especeId": "Radis",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 474,
+          "associationId": "cml1gbd0n003w2vbmgef0526c",
+          "especeId": null,
+          "familleId": "Brassicaceae",
+          "groupe": "Chou",
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 475,
+          "associationId": "cml1gbd0n003w2vbmgef0526c",
+          "especeId": "Ciboulette",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 476,
+          "associationId": "cml1gbd0n003w2vbmgef0526c",
+          "especeId": "Mâche",
+          "familleId": "Valerianaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbd0z003x2vbmd3qu7abz",
+      "nom": "Radis + Concombre, Céleri, Haricot...",
+      "description": "Pois: Azote.",
+      "notes": "Cycle court. (Source: )",
+      "details": [
+        {
+          "id": 477,
+          "associationId": "cml1gbd0z003x2vbmd3qu7abz",
+          "especeId": "Radis",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 478,
+          "associationId": "cml1gbd0z003x2vbmd3qu7abz",
+          "especeId": "Concombre",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 479,
+          "associationId": "cml1gbd0z003x2vbmd3qu7abz",
+          "especeId": "Céleri",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Céleri-rave"
+        },
+        {
+          "id": 480,
+          "associationId": "cml1gbd0z003x2vbmd3qu7abz",
+          "especeId": "Haricot",
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 481,
+          "associationId": "cml1gbd0z003x2vbmd3qu7abz",
+          "especeId": "Pois",
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Azote."
+        },
+        {
+          "id": 482,
+          "associationId": "cml1gbd0z003x2vbmd3qu7abz",
+          "especeId": "Pomme de terre",
+          "familleId": "Solanaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbd1i003y2vbmv02ce34c",
+      "nom": "Radis + Tomate",
+      "description": "Tomate: Ombrage.",
+      "notes": "Cycle court. (Source: )",
+      "details": [
+        {
+          "id": 483,
+          "associationId": "cml1gbd1i003y2vbmv02ce34c",
+          "especeId": "Radis",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 484,
+          "associationId": "cml1gbd1i003y2vbmv02ce34c",
+          "especeId": "Tomate",
+          "familleId": "Solanaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": "Ombrage."
+        }
+      ]
+    },
+    {
+      "id": "cml1gbd1p003z2vbmbyj9rykf",
+      "nom": "Raifort !",
+      "description": "Association expérimentale ou structurelle avec Raifort.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 485,
+          "associationId": "cml1gbd1p003z2vbmbyj9rykf",
+          "especeId": "Raifort",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 486,
+          "associationId": "cml1gbd1p003z2vbmbyj9rykf",
+          "especeId": "Concombre",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbd1w00402vbm0kmzzaz4",
+      "nom": "Raifort + Abricotier, Amandier, Cerisier...",
+      "description": "Association expérimentale ou structurelle avec Raifort.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 487,
+          "associationId": "cml1gbd1w00402vbm0kmzzaz4",
+          "especeId": "Raifort",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 488,
+          "associationId": "cml1gbd1w00402vbm0kmzzaz4",
+          "especeId": "Abricotier",
+          "familleId": "Rosaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 489,
+          "associationId": "cml1gbd1w00402vbm0kmzzaz4",
+          "especeId": "Amandier",
+          "familleId": "Rosaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 490,
+          "associationId": "cml1gbd1w00402vbm0kmzzaz4",
+          "especeId": "Cerisier",
+          "familleId": "Rosaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 491,
+          "associationId": "cml1gbd1w00402vbm0kmzzaz4",
+          "especeId": "Néflier",
+          "familleId": "Rosaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 492,
+          "associationId": "cml1gbd1w00402vbm0kmzzaz4",
+          "especeId": "Poirier",
+          "familleId": "Rosaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 493,
+          "associationId": "cml1gbd1w00402vbm0kmzzaz4",
+          "especeId": "Pommier",
+          "familleId": "Rosaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 494,
+          "associationId": "cml1gbd1w00402vbm0kmzzaz4",
+          "especeId": "Prunier",
+          "familleId": "Rosaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbd2i00412vbm3r7l78np",
+      "nom": "Ricin + Tomate",
+      "description": "Association expérimentale ou structurelle avec Ricin.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 495,
+          "associationId": "cml1gbd2i00412vbm3r7l78np",
+          "especeId": "Ricin",
+          "familleId": "Euphorbiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 496,
+          "associationId": "cml1gbd2i00412vbm3r7l78np",
+          "especeId": "Tomate",
+          "familleId": "Solanaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbd2q00422vbmgnu2yzu8",
+      "nom": "Romarin !",
+      "description": "Association expérimentale ou structurelle avec Romarin.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 497,
+          "associationId": "cml1gbd2q00422vbmgnu2yzu8",
+          "especeId": "Romarin",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 498,
+          "associationId": "cml1gbd2q00422vbmgnu2yzu8",
+          "especeId": null,
+          "familleId": "Amaranthaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 499,
+          "associationId": "cml1gbd2q00422vbmgnu2yzu8",
+          "especeId": null,
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 500,
+          "associationId": "cml1gbd2q00422vbmgnu2yzu8",
+          "especeId": null,
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 501,
+          "associationId": "cml1gbd2q00422vbmgnu2yzu8",
+          "especeId": null,
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 502,
+          "associationId": "cml1gbd2q00422vbmgnu2yzu8",
+          "especeId": null,
+          "familleId": "Solanaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbd3600432vbmlcqmuyvc",
+      "nom": "Sauge !",
+      "description": "Association expérimentale ou structurelle avec Sauge.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 503,
+          "associationId": "cml1gbd3600432vbmlcqmuyvc",
+          "especeId": "Sauge",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 504,
+          "associationId": "cml1gbd3600432vbmlcqmuyvc",
+          "especeId": "Mélisse",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 505,
+          "associationId": "cml1gbd3600432vbmlcqmuyvc",
+          "especeId": "Romarin",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 506,
+          "associationId": "cml1gbd3600432vbmlcqmuyvc",
+          "especeId": "Sarriette",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 507,
+          "associationId": "cml1gbd3600432vbmlcqmuyvc",
+          "especeId": "Thym",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbd3p00442vbma1n86aaw",
+      "nom": "Culture de Sauge",
+      "description": "Association expérimentale ou structurelle avec Sauge.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 508,
+          "associationId": "cml1gbd3p00442vbma1n86aaw",
+          "especeId": "Sauge",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 509,
+          "associationId": "cml1gbd3p00442vbma1n86aaw",
+          "especeId": null,
+          "familleId": "Brassicaceae",
+          "groupe": "Chou",
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbd3u00452vbm2rb4i3vz",
+      "nom": "Souci !",
+      "description": "Association expérimentale ou structurelle avec Souci.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 510,
+          "associationId": "cml1gbd3u00452vbm2rb4i3vz",
+          "especeId": "Souci",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 511,
+          "associationId": "cml1gbd3u00452vbm2rb4i3vz",
+          "especeId": "Ail",
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 512,
+          "associationId": "cml1gbd3u00452vbm2rb4i3vz",
+          "especeId": "Sarrasin",
+          "familleId": "Polygonaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbd4100462vbml4i2gn6s",
+      "nom": "Souci + Chicorée sauvage, Fraisier, Haricot...",
+      "description": "Association expérimentale ou structurelle avec Souci.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 513,
+          "associationId": "cml1gbd4100462vbml4i2gn6s",
+          "especeId": "Souci",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 514,
+          "associationId": "cml1gbd4100462vbml4i2gn6s",
+          "especeId": "Chicorée sauvage",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 515,
+          "associationId": "cml1gbd4100462vbml4i2gn6s",
+          "especeId": "Fraisier",
+          "familleId": "Rosaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 516,
+          "associationId": "cml1gbd4100462vbml4i2gn6s",
+          "especeId": "Haricot",
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 517,
+          "associationId": "cml1gbd4100462vbml4i2gn6s",
+          "especeId": "Tomate",
+          "familleId": "Solanaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbd4d00472vbmm25ch56z",
+      "nom": "Thym + Fraisier",
+      "description": "Association expérimentale ou structurelle avec Thym.",
+      "notes": " (Source: Jardinage Bio Standard)",
+      "details": [
+        {
+          "id": 518,
+          "associationId": "cml1gbd4d00472vbmm25ch56z",
+          "especeId": "Thym",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 519,
+          "associationId": "cml1gbd4d00472vbmm25ch56z",
+          "especeId": null,
+          "familleId": "Brassicaceae",
+          "groupe": "Chou",
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 520,
+          "associationId": "cml1gbd4d00472vbmm25ch56z",
+          "especeId": "Fraisier",
+          "familleId": "Rosaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbd4k00482vbmvmkh22l3",
+      "nom": "Tomate !",
+      "description": "Association expérimentale ou structurelle avec Tomate.",
+      "notes": "Éviter Pomme de terre, Fenouil, Concombre. (Source: Le Poireau préfère les Fraises)",
+      "details": [
+        {
+          "id": 521,
+          "associationId": "cml1gbd4k00482vbmvmkh22l3",
+          "especeId": "Tomate",
+          "familleId": "Solanaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 522,
+          "associationId": "cml1gbd4k00482vbmvmkh22l3",
+          "especeId": "Abricotier",
+          "familleId": "Rosaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 523,
+          "associationId": "cml1gbd4k00482vbmvmkh22l3",
+          "especeId": "Absinthe",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 524,
+          "associationId": "cml1gbd4k00482vbmvmkh22l3",
+          "especeId": null,
+          "familleId": "Alliaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 525,
+          "associationId": "cml1gbd4k00482vbmvmkh22l3",
+          "especeId": "Aneth",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 526,
+          "associationId": "cml1gbd4k00482vbmvmkh22l3",
+          "especeId": "Blette",
+          "familleId": "Amaranthaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 527,
+          "associationId": "cml1gbd4k00482vbmvmkh22l3",
+          "especeId": "Chicorée sauvage",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 528,
+          "associationId": "cml1gbd4k00482vbmvmkh22l3",
+          "especeId": "Chou de Bruxelles",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 529,
+          "associationId": "cml1gbd4k00482vbmvmkh22l3",
+          "especeId": "Coriandre",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 530,
+          "associationId": "cml1gbd4k00482vbmvmkh22l3",
+          "especeId": "Melon",
+          "familleId": "Cucurbitaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 531,
+          "associationId": "cml1gbd4k00482vbmvmkh22l3",
+          "especeId": "Moutarde",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Moutarde blanche"
+        },
+        {
+          "id": 532,
+          "associationId": "cml1gbd4k00482vbmvmkh22l3",
+          "especeId": "Noyer",
+          "familleId": "Juglandaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 533,
+          "associationId": "cml1gbd4k00482vbmvmkh22l3",
+          "especeId": "Persil",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 534,
+          "associationId": "cml1gbd4k00482vbmvmkh22l3",
+          "especeId": "Poivron piment",
+          "familleId": "Solanaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Poivron"
+        },
+        {
+          "id": 535,
+          "associationId": "cml1gbd4k00482vbmvmkh22l3",
+          "especeId": "Tournesol",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    },
+    {
+      "id": "cml1gbd5p00492vbmorhxnbrm",
+      "nom": "Tomate + Camomille, Capucine, Chou brocoli...",
+      "description": "Céleri: Stimulation de croissance. (Réciproque) Tagètes: Nématodes.",
+      "notes": "Éviter Pomme de terre, Fenouil, Concombre. (Source: Le Poireau préfère les Fraises)",
+      "details": [
+        {
+          "id": 536,
+          "associationId": "cml1gbd5p00492vbmorhxnbrm",
+          "especeId": "Tomate",
+          "familleId": "Solanaceae",
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 537,
+          "associationId": "cml1gbd5p00492vbmorhxnbrm",
+          "especeId": "Camomille",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Camomille allemande"
+        },
+        {
+          "id": 538,
+          "associationId": "cml1gbd5p00492vbmorhxnbrm",
+          "especeId": "Capucine",
+          "familleId": "Tropaeolaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 539,
+          "associationId": "cml1gbd5p00492vbmorhxnbrm",
+          "especeId": "Chou brocoli",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 540,
+          "associationId": "cml1gbd5p00492vbmorhxnbrm",
+          "especeId": "Chou de Chine",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 541,
+          "associationId": "cml1gbd5p00492vbmorhxnbrm",
+          "especeId": "Chou frisé",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 542,
+          "associationId": "cml1gbd5p00492vbmorhxnbrm",
+          "especeId": "Chou pommé",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 543,
+          "associationId": "cml1gbd5p00492vbmorhxnbrm",
+          "especeId": "Chou-fleur",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 544,
+          "associationId": "cml1gbd5p00492vbmorhxnbrm",
+          "especeId": "Chou-rave",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 545,
+          "associationId": "cml1gbd5p00492vbmorhxnbrm",
+          "especeId": "Cosmos",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 546,
+          "associationId": "cml1gbd5p00492vbmorhxnbrm",
+          "especeId": "Céleri",
+          "familleId": "Apiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Stimulation de croissance. (Réciproque)"
+        },
+        {
+          "id": 547,
+          "associationId": "cml1gbd5p00492vbmorhxnbrm",
+          "especeId": null,
+          "familleId": "Fabaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 548,
+          "associationId": "cml1gbd5p00492vbmorhxnbrm",
+          "especeId": "Maïs",
+          "familleId": "Poaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 549,
+          "associationId": "cml1gbd5p00492vbmorhxnbrm",
+          "especeId": "Navet",
+          "familleId": "Brassicaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 550,
+          "associationId": "cml1gbd5p00492vbmorhxnbrm",
+          "especeId": "Pomme de terre",
+          "familleId": "Solanaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 551,
+          "associationId": "cml1gbd5p00492vbmorhxnbrm",
+          "especeId": "Tagètes",
+          "familleId": "Asteraceae",
+          "groupe": null,
+          "requise": false,
+          "notes": "Laisser en place plusieurs semaines pour une action efficace contre les nématodes.\n\n1 plan pour 3 de tomate."
+        }
+      ]
+    },
+    {
+      "id": "cml1gbd6w004a2vbmcrw445fr",
+      "nom": "Vigne + Origan, Prunier, Pêcher",
+      "description": "Association expérimentale ou structurelle avec Vigne.",
+      "notes": " (Source: Viticulture Bio)",
+      "details": [
+        {
+          "id": 552,
+          "associationId": "cml1gbd6w004a2vbmcrw445fr",
+          "especeId": "Vigne",
+          "familleId": null,
+          "groupe": null,
+          "requise": true,
+          "notes": null
+        },
+        {
+          "id": 553,
+          "associationId": "cml1gbd6w004a2vbmcrw445fr",
+          "especeId": "Origan",
+          "familleId": "Lamiaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 554,
+          "associationId": "cml1gbd6w004a2vbmcrw445fr",
+          "especeId": "Prunier",
+          "familleId": "Rosaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        },
+        {
+          "id": 555,
+          "associationId": "cml1gbd6w004a2vbmcrw445fr",
+          "especeId": "Pêcher",
+          "familleId": "Rosaceae",
+          "groupe": null,
+          "requise": false,
+          "notes": null
+        }
+      ]
+    }
+  ],
+  "exportDate": "2026-01-31T20:59:44.104Z",
+  "version": "1.0.0"
+}
