@@ -103,6 +103,12 @@ export function DataTable<TData, TValue>({
   const [rowSelection, setRowSelection] = React.useState({})
   const [globalFilter, setGlobalFilter] = React.useState("")
 
+  // Pagination state interne pour mode client (quand pas de onPaginationChange)
+  const [paginationState, setPaginationState] = React.useState({
+    pageIndex: pageIndex,
+    pageSize: pageSize,
+  })
+
   // Ajouter une colonne d'actions si des handlers sont fournis
   const columnsWithActions = React.useMemo(() => {
     if (!onRowEdit && !onRowDelete) return columns
@@ -155,16 +161,20 @@ export function DataTable<TData, TValue>({
       columnVisibility,
       rowSelection,
       globalFilter,
-      pagination: {
-        pageIndex,
-        pageSize,
-      },
+      pagination: onPaginationChange ? { pageIndex, pageSize } : paginationState,
     },
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: setColumnVisibility,
     onRowSelectionChange: setRowSelection,
     onGlobalFilterChange: setGlobalFilter,
+    onPaginationChange: onPaginationChange ? (updater) => {
+      const newState = typeof updater === 'function'
+        ? updater(paginationState)
+        : updater
+      setPaginationState(newState)
+      onPaginationChange?.(newState.pageIndex, newState.pageSize)
+    } : setPaginationState,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
@@ -329,10 +339,7 @@ export function DataTable<TData, TValue>({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => {
-                table.previousPage()
-                onPaginationChange?.(table.getState().pagination.pageIndex - 1, pageSize)
-              }}
+              onClick={() => table.previousPage()}
               disabled={!table.getCanPreviousPage()}
             >
               Précédent
@@ -344,10 +351,7 @@ export function DataTable<TData, TValue>({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => {
-                table.nextPage()
-                onPaginationChange?.(table.getState().pagination.pageIndex + 1, pageSize)
-              }}
+              onClick={() => table.nextPage()}
               disabled={!table.getCanNextPage()}
             >
               Suivant
