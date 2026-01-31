@@ -10,11 +10,12 @@ npx tsx prisma/seed.ts 2>/dev/null || echo "Database already seeded or seed skip
 echo "==> Creating admin user (if not exists)..."
 npx tsx prisma/seed-admin.ts 2>/dev/null || echo "Admin already exists or creation skipped"
 
-echo "==> Importing enriched data (if CSV files present)..."
+echo "==> Checking data migration v1.0.0..."
 if [ -f "especes_enriched.csv" ]; then
-  npx tsx scripts/import-enriched-csv.ts 2>/dev/null || echo "Data already enriched or import skipped"
+  # Lancer la migration automatique (avec force si première installation)
+  npx tsx scripts/migrate-data-v1.ts --force 2>/dev/null || echo "Migration skipped or already done"
 else
-  echo "No enriched CSV files found, skipping data enrichment"
+  echo "No enriched CSV files found, skipping data migration"
 fi
 
 echo "==> Starting application..."
