@@ -39,7 +39,8 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# OpenSSL pour Prisma
+# OpenSSL pour Prisma (OBLIGATOIRE - ne pas retirer)
+# libc6-compat nécessaire pour compatibilité binaires Prisma sur Alpine
 RUN apk add --no-cache openssl libc6-compat
 
 RUN addgroup --system --gid 1001 nodejs
