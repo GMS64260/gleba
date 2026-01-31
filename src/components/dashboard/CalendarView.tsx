@@ -288,12 +288,25 @@ export function CalendarView({ year }: CalendarViewProps) {
                 const isCurrentMonth = isSameMonth(dayDate, currentMonth)
                 const isCurrentDay = isToday(dayDate)
 
-                // Compter par type
+                // Compter par type et statut
+                const semisEvents = dayEvents.filter(e => e.type === "semis")
+                const plantationEvents = dayEvents.filter(e => e.type === "plantation")
+                const recolteEvents = dayEvents.filter(e => e.type === "recolte")
+                const irrigationEvents = dayEvents.filter(e => e.type === "irrigation")
+
                 const counts = {
-                  semis: dayEvents.filter(e => e.type === "semis").length,
-                  plantation: dayEvents.filter(e => e.type === "plantation").length,
-                  recolte: dayEvents.filter(e => e.type === "recolte").length,
-                  irrigation: dayEvents.filter(e => e.type === "irrigation").length,
+                  semis: semisEvents.length,
+                  plantation: plantationEvents.length,
+                  recolte: recolteEvents.length,
+                  irrigation: irrigationEvents.length,
+                }
+
+                // Indicateurs de complétion (tous faits)
+                const allDone = {
+                  semis: semisEvents.length > 0 && semisEvents.every(e => e.fait),
+                  plantation: plantationEvents.length > 0 && plantationEvents.every(e => e.fait),
+                  recolte: recolteEvents.length > 0 && recolteEvents.every(e => e.fait),
+                  irrigation: irrigationEvents.length > 0 && irrigationEvents.every(e => e.fait),
                 }
 
                 return (
@@ -325,33 +338,53 @@ export function CalendarView({ year }: CalendarViewProps) {
                         <TooltipTrigger asChild>
                           <div className="absolute bottom-1 left-1 right-1 flex gap-1 flex-wrap cursor-pointer">
                             {counts.semis > 0 && (
-                              <div className={`flex items-center justify-center w-8 h-8 rounded ${typeIcons.semis.bg}`}>
-                                <Sprout className={`h-5 w-5 ${typeIcons.semis.color}`} />
-                                {counts.semis > 1 && (
+                              <div className={`relative flex items-center justify-center w-8 h-8 rounded ${
+                                allDone.semis ? 'bg-green-200 ring-1 ring-green-500' : typeIcons.semis.bg
+                              }`}>
+                                <Sprout className={`h-5 w-5 ${allDone.semis ? 'text-green-700' : typeIcons.semis.color}`} />
+                                {allDone.semis && (
+                                  <span className="absolute -top-1 -right-1 text-green-600 text-xs">✓</span>
+                                )}
+                                {counts.semis > 1 && !allDone.semis && (
                                   <span className="text-[10px] font-bold ml-px">{counts.semis}</span>
                                 )}
                               </div>
                             )}
                             {counts.plantation > 0 && (
-                              <div className={`flex items-center justify-center w-8 h-8 rounded ${typeIcons.plantation.bg}`}>
-                                <Leaf className={`h-5 w-5 ${typeIcons.plantation.color}`} />
-                                {counts.plantation > 1 && (
+                              <div className={`relative flex items-center justify-center w-8 h-8 rounded ${
+                                allDone.plantation ? 'bg-green-200 ring-1 ring-green-500' : typeIcons.plantation.bg
+                              }`}>
+                                <Leaf className={`h-5 w-5 ${allDone.plantation ? 'text-green-700' : typeIcons.plantation.color}`} />
+                                {allDone.plantation && (
+                                  <span className="absolute -top-1 -right-1 text-green-600 text-xs">✓</span>
+                                )}
+                                {counts.plantation > 1 && !allDone.plantation && (
                                   <span className="text-[10px] font-bold ml-px">{counts.plantation}</span>
                                 )}
                               </div>
                             )}
                             {counts.recolte > 0 && (
-                              <div className={`flex items-center justify-center w-8 h-8 rounded ${typeIcons.recolte.bg}`}>
-                                <Package className={`h-5 w-5 ${typeIcons.recolte.color}`} />
-                                {counts.recolte > 1 && (
+                              <div className={`relative flex items-center justify-center w-8 h-8 rounded ${
+                                allDone.recolte ? 'bg-green-200 ring-1 ring-green-500' : typeIcons.recolte.bg
+                              }`}>
+                                <Package className={`h-5 w-5 ${allDone.recolte ? 'text-green-700' : typeIcons.recolte.color}`} />
+                                {allDone.recolte && (
+                                  <span className="absolute -top-1 -right-1 text-green-600 text-xs">✓</span>
+                                )}
+                                {counts.recolte > 1 && !allDone.recolte && (
                                   <span className="text-[10px] font-bold ml-px">{counts.recolte}</span>
                                 )}
                               </div>
                             )}
                             {counts.irrigation > 0 && (
-                              <div className={`flex items-center justify-center w-8 h-8 rounded ${typeIcons.irrigation.bg}`}>
-                                <Droplets className={`h-5 w-5 ${typeIcons.irrigation.color}`} />
-                                {counts.irrigation > 1 && (
+                              <div className={`relative flex items-center justify-center w-8 h-8 rounded ${
+                                allDone.irrigation ? 'bg-green-200 ring-1 ring-green-500' : typeIcons.irrigation.bg
+                              }`}>
+                                <Droplets className={`h-5 w-5 ${allDone.irrigation ? 'text-green-700' : typeIcons.irrigation.color}`} />
+                                {allDone.irrigation && (
+                                  <span className="absolute -top-1 -right-1 text-green-600 text-xs">✓</span>
+                                )}
+                                {counts.irrigation > 1 && !allDone.irrigation && (
                                   <span className="text-[10px] font-bold ml-px">{counts.irrigation}</span>
                                 )}
                               </div>
