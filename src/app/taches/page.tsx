@@ -116,7 +116,47 @@ function TachesContent() {
   }, [fetchData])
 
   // Marquer une tache comme faite
-  const toggleTache = async (cultureId: number, type: "semis" | "plantation" | "recolte", currentValue: boolean) => {
+  const toggleTache = async (cultureId: number, type: "semis" | "plantation" | "recolte", currentValue: boolean, especeId: string) => {
+    // Pour les récoltes, demander la quantité
+    if (type === "recolte" && !currentValue) {
+      const quantiteStr = prompt("Quantité récoltée (kg) :")
+      if (!quantiteStr) return
+
+      const quantite = parseFloat(quantiteStr)
+      if (isNaN(quantite) || quantite <= 0) {
+        toast({ variant: "destructive", title: "Quantité invalide" })
+        return
+      }
+
+      try {
+        // Créer la récolte
+        await fetch("/api/recoltes", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            cultureId,
+            especeId,
+            date: new Date().toISOString(),
+            quantite,
+          }),
+        })
+
+        // Marquer comme fait
+        await fetch(`/api/cultures/${cultureId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ recolteFaite: true }),
+        })
+
+        toast({ title: "Récolte enregistrée", description: `${quantite} kg` })
+        fetchData() // Recharger
+      } catch (error) {
+        toast({ variant: "destructive", title: "Erreur" })
+      }
+      return
+    }
+
+    // Pour les autres (semis, plantation, annuler récolte)
     try {
       const fieldMap = {
         semis: "semisFait",
@@ -226,7 +266,7 @@ function TachesContent() {
             {items.map(item => (
               <button
                 key={item.id}
-                onClick={() => toggleTache(item.id, type, item.fait)}
+                onClick={() => toggleTache(item.id, type, item.fait, item.especeId)}
                 className={`w-full flex items-center gap-3 p-3 rounded-lg border transition-all ${
                   item.fait
                     ? "bg-green-50 border-green-200 opacity-60"
