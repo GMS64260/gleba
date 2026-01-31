@@ -203,11 +203,20 @@ function TachesContent() {
 
   // Marquer irrigation planifiée comme faite
   const marquerIrrigation = async (irrigationId: number) => {
+    // Demander si quantité différente du prévu
+    const noteStr = prompt(
+      "Notes sur l'arrosage ?\n(ex: \"Plus que prévu\", \"Sol sec\", \"Pluie\" ou laissez vide)"
+    )
+
     try {
       const response = await fetch(`/api/irrigations/${irrigationId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fait: true, dateEffective: new Date().toISOString() }),
+        body: JSON.stringify({
+          fait: true,
+          dateEffective: new Date().toISOString(),
+          notes: noteStr || null,
+        }),
       })
       if (!response.ok) throw new Error("Erreur")
 
@@ -221,7 +230,10 @@ function TachesContent() {
         }
       })
 
-      toast({ title: "Arrosage noté !" })
+      toast({
+        title: "Arrosage noté !",
+        description: noteStr || "Irrigation standard",
+      })
     } catch (error) {
       toast({
         variant: "destructive",

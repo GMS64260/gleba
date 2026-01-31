@@ -144,6 +144,15 @@ export function EventDialog({ event, open, onOpenChange, onUpdate }: EventDialog
     setLoading(true)
     try {
       if (event.type === "irrigation") {
+        // Si on marque comme fait, demander des notes
+        let notes = null
+        if (!event.fait) {
+          const noteStr = prompt(
+            "Notes sur l'arrosage ?\n(ex: \"Plus que prévu\", \"Sol sec\", \"Pluie\" ou laissez vide)"
+          )
+          notes = noteStr || null
+        }
+
         // Marquer l'irrigation planifiée comme faite
         const response = await fetch(`/api/irrigations/${event.id}`, {
           method: "PATCH",
@@ -151,6 +160,7 @@ export function EventDialog({ event, open, onOpenChange, onUpdate }: EventDialog
           body: JSON.stringify({
             fait: !event.fait,
             dateEffective: !event.fait ? new Date().toISOString() : null,
+            notes,
           }),
         })
         if (!response.ok) throw new Error("Erreur")
