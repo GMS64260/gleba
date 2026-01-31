@@ -751,18 +751,18 @@ export function GardenView({
 
                     return (
                       <g key={`culture-${culture.id}`}>
-                        {/* Fond semi-transparent de la zone culture */}
+                        {/* Fond coloré de la zone culture */}
                         <rect
                           x={zoneStartX}
                           y={0}
                           width={zoneWidth}
                           height={l}
                           fill={couleur}
-                          opacity={0.08}
+                          opacity={0.15}
                           style={{ pointerEvents: "none" }}
                         />
 
-                        {/* Sillons bien visibles */}
+                        {/* Sillons noirs bien visibles et centrés */}
                         {Array.from({ length: Math.min(nbRangs, 10) }).map((_, rangIdx) => {
                           const x = startX + rangIdx * spacing
                           return (
@@ -772,10 +772,10 @@ export function GardenView({
                               y1={0.15}
                               x2={x}
                               y2={l - 0.15}
-                              stroke={couleur}
-                              strokeWidth={0.06}
-                              strokeDasharray="0.15,0.10"
-                              opacity={0.7}
+                              stroke="#1f2937"
+                              strokeWidth={0.08}
+                              strokeDasharray="0.2,0.12"
+                              opacity={0.6}
                               style={{ pointerEvents: "none" }}
                             />
                           )
@@ -786,10 +786,10 @@ export function GardenView({
                           x={zoneStartX + zoneWidth / 2}
                           y={l - 0.2}
                           textAnchor="middle"
-                          fontSize={0.12}
-                          fill={couleur}
-                          fontWeight="600"
-                          opacity={0.8}
+                          fontSize={0.14}
+                          fill="#1f2937"
+                          fontWeight="700"
+                          opacity={0.9}
                           style={{ pointerEvents: "none" }}
                         >
                           {culture.especeId}
