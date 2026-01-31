@@ -153,7 +153,7 @@ export async function getCulturesPrevues(
     plancheId?: string
   }
 ): Promise<CulturePrevue[]> {
-  // Recuperer toutes les planches avec leur rotation
+  // Mode 1: Cultures basées sur rotations
   const planches = await prisma.planche.findMany({
     where: {
       userId,
@@ -245,6 +245,67 @@ export async function getCulturesPrevues(
           break // Sortir de la boucle cycleOffset
         }
       }
+    }
+  }
+
+  // Mode 2: Cultures directes (sans rotation)
+  const culturesDirectes = await prisma.culture.findMany({
+    where: {
+      userId,
+      annee,
+      ...(options?.especeId && { especeId: options.especeId }),
+      ...(options?.plancheId && { plancheId: options.plancheId }),
+      ...(options?.ilot && { planche: { ilot: options.ilot } }),
+    },
+    include: {
+      espece: {
+        select: {
+          id: true,
+          couleur: true,
+          rendement: true,
+        },
+      },
+      itp: true,
+      planche: true,
+      variete: true,
+    },
+  })
+
+  // Ajouter les cultures directes qui ne sont pas déjà dans les prévues (via rotation)
+  for (const culture of culturesDirectes) {
+    // Vérifier si déjà ajoutée via rotation
+    const dejaPresente = culturesPrevues.some(cp =>
+      cp.plancheId === culture.plancheId && cp.cultureId === culture.id
+    )
+
+    if (!dejaPresente && culture.planche) {
+      const surface = (culture.planche.longueur || 0) * (culture.planche.largeur || 0)
+
+      culturesPrevues.push({
+        plancheId: culture.plancheId || '',
+        plancheLongueur: culture.planche.longueur,
+        plancheLargeur: culture.planche.largeur,
+        plancheSurface: culture.planche.surface,
+        ilot: culture.planche.ilot,
+        rotationId: culture.planche.rotationId,
+        rotationAnnee: 0, // Pas de rotation
+        itpId: culture.itpId,
+        especeId: culture.especeId,
+        especeCouleur: culture.espece?.couleur || null,
+        varieteId: culture.varieteId,
+        annee: culture.annee || annee,
+        semaineSemis: culture.itp?.semaineSemis || null,
+        semainePlantation: culture.itp?.semainePlantation || null,
+        semaineRecolte: culture.itp?.semaineRecolte || null,
+        dureeCulture: culture.itp?.dureeCulture || null,
+        nbRangs: culture.nbRangs || culture.itp?.nbRangs || null,
+        espacement: culture.espacement || culture.itp?.espacement || null,
+        surface: culture.longueur && culture.planche.largeur && culture.nbRangs
+          ? (culture.longueur * culture.planche.largeur * culture.nbRangs) / (culture.nbRangs || 1)
+          : surface,
+        existante: true, // Culture déjà créée
+        cultureId: culture.id,
+      })
     }
   }
 
