@@ -587,20 +587,35 @@ export async function POST(request: NextRequest) {
     // 9. Associations
     if (data.associations?.length) {
       for (const item of data.associations) {
-        await prisma.association.upsert({
-          where: { id: item.id },
-          update: {
-            nom: item.nom,
-            description: item.description,
-            notes: item.notes,
-          },
-          create: {
-            id: item.id,
-            nom: item.nom,
-            description: item.description,
-            notes: item.notes,
-          },
+        // Chercher par nom d'abord (unique constraint)
+        const existingByNom = await prisma.association.findUnique({
+          where: { nom: item.nom },
         })
+
+        let associationId = item.id
+
+        if (existingByNom) {
+          // Mettre à jour l'existante
+          await prisma.association.update({
+            where: { id: existingByNom.id },
+            data: {
+              nom: item.nom,
+              description: item.description,
+              notes: item.notes,
+            },
+          })
+          associationId = existingByNom.id
+        } else {
+          // Créer nouvelle
+          await prisma.association.create({
+            data: {
+              id: item.id,
+              nom: item.nom,
+              description: item.description,
+              notes: item.notes,
+            },
+          })
+        }
         stats.associations++
 
         // 9b. Importer les détails imbriqués si présents
@@ -608,7 +623,7 @@ export async function POST(request: NextRequest) {
           for (const detail of item.details) {
             const existing = await prisma.associationDetail.findFirst({
               where: {
-                associationId: item.id,
+                associationId,
                 especeId: detail.especeId,
                 familleId: detail.familleId,
                 groupe: detail.groupe,
@@ -618,7 +633,7 @@ export async function POST(request: NextRequest) {
             if (!existing) {
               await prisma.associationDetail.create({
                 data: {
-                  associationId: item.id,
+                  associationId,
                   especeId: detail.especeId,
                   familleId: detail.familleId,
                   groupe: detail.groupe,

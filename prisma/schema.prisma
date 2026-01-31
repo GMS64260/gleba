@@ -542,8 +542,8 @@ model Arbre {
 
 /// Associations de plantes (compagnonnage)
 model Association {
-  id          String  @id @default(cuid())
-  nom         String  @unique // Ex: "Tomates-Basilic"
+  id          String  @id // Ex: "asso-tomate-basilic"
+  nom         String  // Ex: "Tomates-Basilic"
   description String?
   notes       String?
 
