@@ -287,6 +287,8 @@ model Planche {
   fertilisations Fertilisation[]
   analyses       AnalyseSol[]
 
+  @@index([userId])
+  @@index([userId, ilot])
   @@map("planches")
 }
 
@@ -376,6 +378,14 @@ model Culture {
   recoltes Recolte[]
   irrigationsPlanifiees IrrigationPlanifiee[]
 
+  @@index([userId])
+  @@index([userId, annee])
+  @@index([especeId])
+  @@index([plancheId])
+  @@index([dateSemis])
+  @@index([datePlantation])
+  @@index([dateRecolte])
+  @@index([aIrriguer])
   @@map("cultures")
 }
 
@@ -393,6 +403,10 @@ model Recolte {
   notes      String?  @map("notes")
   createdAt  DateTime @default(now()) @map("created_at")
 
+  @@index([userId])
+  @@index([especeId])
+  @@index([cultureId])
+  @@index([date])
   @@map("recoltes")
 }
 

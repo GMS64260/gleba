@@ -92,23 +92,6 @@ export async function GET(request: NextRequest) {
       take: 10,
     })
 
-    // Récupérer les couleurs des espèces
-    const especeIds = recoltesParEspece.map((r) => r.especeId)
-    const especesData = await prisma.espece.findMany({
-      where: { id: { in: especeIds } },
-      select: { id: true, couleur: true, familleId: true, famille: { select: { couleur: true } } },
-    })
-
-    const especeColorMap = new Map(
-      especesData.map((e) => [e.id, e.couleur || e.famille?.couleur || "#22c55e"])
-    )
-
-    const harvestBySpecies = recoltesParEspece.map((r) => ({
-      espece: r.especeId,
-      quantite: Math.round((r._sum.quantite || 0) * 100) / 100,
-      couleur: especeColorMap.get(r.especeId) || "#22c55e",
-    }))
-
     // Cultures par famille (année en cours)
     const culturesByFamily = await prisma.culture.groupBy({
       by: ["especeId"],
@@ -116,16 +99,38 @@ export async function GET(request: NextRequest) {
       _count: { _all: true },
     })
 
-    // Récupérer les familles
-    const allEspeceIds = culturesByFamily.map((c) => c.especeId)
-    const allEspecesData = await prisma.espece.findMany({
+    // Récupérer toutes les espèces utilisées (pour récoltes ET cultures) en UNE SEULE requête
+    const allEspeceIds = [
+      ...new Set([
+        ...recoltesParEspece.map((r) => r.especeId),
+        ...culturesByFamily.map((c) => c.especeId),
+      ])
+    ]
+
+    const especesData = await prisma.espece.findMany({
       where: { id: { in: allEspeceIds } },
-      select: { id: true, familleId: true, famille: { select: { couleur: true } } },
+      select: {
+        id: true,
+        couleur: true,
+        familleId: true,
+        famille: { select: { couleur: true } }
+      },
     })
 
-    const especeFamilyMap = new Map(
-      allEspecesData.map((e) => [e.id, { famille: e.familleId || "Autre", couleur: e.famille?.couleur || "#9ca3af" }])
+    // Maps pour éviter les lookups multiples
+    const especeColorMap = new Map(
+      especesData.map((e) => [e.id, e.couleur || e.famille?.couleur || "#22c55e"])
     )
+
+    const especeFamilyMap = new Map(
+      especesData.map((e) => [e.id, { famille: e.familleId || "Autre", couleur: e.famille?.couleur || "#9ca3af" }])
+    )
+
+    const harvestBySpecies = recoltesParEspece.map((r) => ({
+      espece: r.especeId,
+      quantite: Math.round((r._sum.quantite || 0) * 100) / 100,
+      couleur: especeColorMap.get(r.especeId) || "#22c55e",
+    }))
 
     const familyCount: Record<string, { count: number; couleur: string }> = {}
     culturesByFamily.forEach((c) => {
@@ -202,37 +207,55 @@ export async function GET(request: NextRequest) {
       statusData.total += s._count._all
     })
 
-    // Rendement par planche
-    const recoltesParPlanche = await prisma.$queryRaw<
-      { plancheId: string; totalKg: number }[]
-    >`
-      SELECT c.planche as "plancheId", SUM(r.quantite) as "totalKg"
-      FROM recoltes r
-      JOIN cultures c ON r.culture = c.id
-      WHERE r.user_id = ${userId}
-        AND r.date >= ${startOfYear}
-        AND r.date <= ${endOfYear}
-        AND c.planche IS NOT NULL
-      GROUP BY c.planche
-      ORDER BY "totalKg" DESC
-      LIMIT 10
-    `
-
-    // Récupérer les surfaces des planches
-    const plancheIds = recoltesParPlanche.map((r) => r.plancheId)
-    const planchesData = await prisma.planche.findMany({
-      where: { id: { in: plancheIds } },
-      select: { id: true, surface: true },
+    // Rendement par planche - avec Prisma au lieu de SQL brut
+    const recoltesAvecPlanche = await prisma.recolte.findMany({
+      where: {
+        userId,
+        date: { gte: startOfYear, lte: endOfYear },
+        culture: {
+          plancheId: { not: null },
+        },
+      },
+      select: {
+        quantite: true,
+        culture: {
+          select: {
+            plancheId: true,
+            planche: {
+              select: {
+                id: true,
+                surface: true,
+              },
+            },
+          },
+        },
+      },
     })
 
-    const plancheSurfaceMap = new Map(planchesData.map((p) => [p.id, p.surface || 1]))
+    // Agréger par planche
+    const plancheStats = new Map<string, { totalKg: number; surface: number }>()
+    recoltesAvecPlanche.forEach((r) => {
+      const plancheId = r.culture.plancheId
+      if (!plancheId) return
 
-    const yieldByPlanche = recoltesParPlanche.map((r) => ({
-      planche: r.plancheId,
-      totalKg: Math.round(Number(r.totalKg) * 100) / 100,
-      surface: plancheSurfaceMap.get(r.plancheId) || 1,
-      rendement: Math.round((Number(r.totalKg) / (plancheSurfaceMap.get(r.plancheId) || 1)) * 100) / 100,
-    }))
+      const existing = plancheStats.get(plancheId) || {
+        totalKg: 0,
+        surface: r.culture.planche?.surface || 1,
+      }
+      existing.totalKg += r.quantite
+      plancheStats.set(plancheId, existing)
+    })
+
+    // Trier et limiter au top 10
+    const yieldByPlanche = Array.from(plancheStats.entries())
+      .map(([planche, stats]) => ({
+        planche,
+        totalKg: Math.round(stats.totalKg * 100) / 100,
+        surface: stats.surface,
+        rendement: Math.round((stats.totalKg / stats.surface) * 100) / 100,
+      }))
+      .sort((a, b) => b.totalKg - a.totalKg)
+      .slice(0, 10)
 
     return NextResponse.json({
       // Stats générales

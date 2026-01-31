@@ -45,16 +45,29 @@ export async function GET(request: NextRequest) {
       where.active = active === 'true'
     }
 
-    // Requete avec comptage
+    // Requete avec comptage - optimisée avec select au lieu de include
     const [rotations, total] = await Promise.all([
       prisma.rotation.findMany({
         where,
-        include: {
+        select: {
+          id: true,
+          active: true,
+          nbAnnees: true,
+          notes: true,
           details: {
-            include: {
+            select: {
+              id: true,
+              annee: true,
+              itpId: true,
               itp: {
-                include: {
-                  espece: true,
+                select: {
+                  id: true,
+                  espece: {
+                    select: {
+                      id: true,
+                      couleur: true,
+                    },
+                  },
                 },
               },
             },
@@ -125,7 +138,7 @@ export async function POST(request: NextRequest) {
       ? Math.max(...details.map(d => d.annee))
       : rotationData.nbAnnees
 
-    // Creation avec details
+    // Creation avec details - optimisée avec select
     const rotation = await prisma.rotation.create({
       data: {
         ...rotationData,
@@ -137,12 +150,25 @@ export async function POST(request: NextRequest) {
           })),
         } : undefined,
       },
-      include: {
+      select: {
+        id: true,
+        active: true,
+        nbAnnees: true,
+        notes: true,
         details: {
-          include: {
+          select: {
+            id: true,
+            annee: true,
+            itpId: true,
             itp: {
-              include: {
-                espece: true,
+              select: {
+                id: true,
+                espece: {
+                  select: {
+                    id: true,
+                    couleur: true,
+                  },
+                },
               },
             },
           },

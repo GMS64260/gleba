@@ -241,17 +241,26 @@ export default function Home() {
     fetchDashboard()
   }, [selectedYear])
 
-  const progressPercent = data?.stats
-    ? Math.round((data.activity.culturesStatus.terminees / Math.max(data.activity.culturesStatus.total, 1)) * 100)
-    : 0
+  // Memoization des calculs de stats pour éviter recalculs inutiles
+  const { progressPercent, yearDiff, yearDiffPercent } = React.useMemo(() => {
+    const progress = data?.stats
+      ? Math.round((data.activity.culturesStatus.terminees / Math.max(data.activity.culturesStatus.total, 1)) * 100)
+      : 0
 
-  const yearDiff = data?.stats
-    ? data.stats.recoltesAnnee - data.stats.recoltesAnneePrecedente
-    : 0
+    const diff = data?.stats
+      ? data.stats.recoltesAnnee - data.stats.recoltesAnneePrecedente
+      : 0
 
-  const yearDiffPercent = data?.stats?.recoltesAnneePrecedente
-    ? Math.round((yearDiff / data.stats.recoltesAnneePrecedente) * 100)
-    : 0
+    const diffPercent = data?.stats?.recoltesAnneePrecedente
+      ? Math.round((diff / data.stats.recoltesAnneePrecedente) * 100)
+      : 0
+
+    return {
+      progressPercent: progress,
+      yearDiff: diff,
+      yearDiffPercent: diffPercent,
+    }
+  }, [data?.stats, data?.activity.culturesStatus])
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-green-50 to-white">
