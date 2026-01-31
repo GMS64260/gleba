@@ -128,9 +128,15 @@ function StockInput({
   return (
     <button
       onClick={() => setEditing(true)}
-      className="px-2 py-1 rounded hover:bg-gray-100 min-w-[60px] text-left"
+      className="px-2 py-1 rounded hover:bg-green-50 hover:ring-1 hover:ring-green-300 min-w-[60px] text-left transition-all group relative"
+      title="Cliquer pour éditer"
     >
-      {value !== null ? `${value} ${unit}` : "-"}
+      <span className={value !== null ? "" : "text-muted-foreground"}>
+        {value !== null ? `${value} ${unit}` : "Cliquer pour ajouter"}
+      </span>
+      <span className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
+        ✏️
+      </span>
     </button>
   )
 }
@@ -311,7 +317,18 @@ export default function StocksPage() {
       </header>
 
       {/* Content */}
-      <main className="container mx-auto px-4 py-6">
+      <main className="container mx-auto px-4 py-6 max-w-[1600px]">
+        {/* Info édition */}
+        <div className="mb-4 p-4 bg-green-50 rounded-lg border border-green-200">
+          <p className="text-sm text-green-800 flex items-center gap-2">
+            <span>✏️</span>
+            <span>
+              <strong>Édition rapide :</strong> Cliquez sur les valeurs de stock pour les modifier directement.
+              Appuyez sur Entrée pour valider, Échap pour annuler.
+            </span>
+          </p>
+        </div>
+
         {/* Stats */}
         <div className="grid gap-4 md:grid-cols-4 mb-6">
           <Card>
