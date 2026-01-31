@@ -84,6 +84,63 @@ export function EventDialog({ event, open, onOpenChange, onUpdate }: EventDialog
   const Icon = config.icon
 
   const handleToggle = async () => {
+    // Pour les récoltes, demander la quantité si on marque comme fait
+    if (event.type === "recolte" && !event.fait) {
+      const quantiteStr = prompt("Quantité récoltée (kg) :")
+      if (!quantiteStr) return // Annulé
+
+      const quantite = parseFloat(quantiteStr)
+      if (isNaN(quantite) || quantite <= 0) {
+        toast({
+          variant: "destructive",
+          title: "Erreur",
+          description: "Quantité invalide",
+        })
+        return
+      }
+
+      setLoading(true)
+      try {
+        // Créer la récolte
+        const responseRecolte = await fetch("/api/recoltes", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            cultureId: event.id,
+            especeId: event.especeId,
+            date: new Date().toISOString(),
+            quantite,
+          }),
+        })
+        if (!responseRecolte.ok) throw new Error("Erreur création récolte")
+
+        // Marquer la culture comme récoltée
+        await fetch(`/api/cultures/${event.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ recolteFaite: true }),
+        })
+
+        toast({
+          title: "Récolte enregistrée",
+          description: `${quantite} kg de ${event.especeId}`,
+        })
+
+        onUpdate()
+        onOpenChange(false)
+      } catch (error) {
+        toast({
+          variant: "destructive",
+          title: "Erreur",
+          description: "Impossible d'enregistrer la récolte",
+        })
+      } finally {
+        setLoading(false)
+      }
+      return
+    }
+
+    // Pour les autres types (semis, plantation, irrigation)
     setLoading(true)
     try {
       if (event.type === "irrigation") {
