@@ -694,33 +694,35 @@ export async function POST(request: NextRequest) {
           where: { id: item.id },
         })
 
+        if (existing && existing.userId !== userId) {
+          // Skip : planche appartient à un autre utilisateur
+          continue
+        }
+
         if (existing) {
-          // Mettre à jour seulement si appartient à l'utilisateur
-          if (existing.userId === userId) {
-            await prisma.planche.update({
-              where: { id: item.id },
-              data: {
-                rotationId: item.rotationId,
-                ilot: item.ilot,
-                surface: item.surface,
-                largeur: item.largeur,
-                longueur: item.longueur,
-                posX: item.posX,
-                posY: item.posY,
-                rotation2D: item.rotation2D,
-                planchesInfluencees: item.planchesInfluencees,
-                notes: item.notes,
-                type: item.type,
-                irrigation: item.irrigation,
-                annee: item.annee,
-                typeSol: item.typeSol,
-                retentionEau: item.retentionEau,
-              },
-            })
-            stats.planches++
-          }
-          // Sinon skip (planche appartient à un autre utilisateur)
+          // Mettre à jour (appartient à l'utilisateur)
+          await prisma.planche.update({
+            where: { id: item.id },
+            data: {
+              rotationId: item.rotationId,
+              ilot: item.ilot,
+              surface: item.surface,
+              largeur: item.largeur,
+              longueur: item.longueur,
+              posX: item.posX,
+              posY: item.posY,
+              rotation2D: item.rotation2D,
+              planchesInfluencees: item.planchesInfluencees,
+              notes: item.notes,
+              type: item.type,
+              irrigation: item.irrigation,
+              annee: item.annee,
+              typeSol: item.typeSol,
+              retentionEau: item.retentionEau,
+            },
+          })
         } else {
+          // Créer nouvelle planche
           await prisma.planche.create({
             data: {
               id: item.id,
@@ -742,8 +744,8 @@ export async function POST(request: NextRequest) {
               retentionEau: item.retentionEau,
             },
           })
-          stats.planches++
         }
+        stats.planches++
       }
     }
 
