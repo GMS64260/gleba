@@ -2,7 +2,7 @@
 
 /**
  * Cellule éditable pour tanstack-table
- * Click → Select natif → Save auto
+ * Même pattern que StockInput de la page stocks
  */
 
 import * as React from "react"
@@ -24,30 +24,47 @@ export function EditableSelectCell({
   placeholder = "-",
   onUpdate,
 }: EditableSelectCellProps) {
-  const [isEditing, setIsEditing] = React.useState(false)
-  const [isSaving, setIsSaving] = React.useState(false)
+  const [editing, setEditing] = React.useState(false)
+  const [localValue, setLocalValue] = React.useState(value || '')
 
-  const handleChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newValue = e.target.value
-    setIsSaving(true)
+  React.useEffect(() => {
+    setLocalValue(value || '')
+  }, [value])
 
-    try {
-      const res = await fetch(`/api/planches/${encodeURIComponent(plancheId)}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ [field]: newValue || null }),
-      })
+  const handleBlur = async () => {
+    setEditing(false)
 
-      if (!res.ok) {
-        throw new Error('Erreur sauvegarde')
+    if (localValue !== value) {
+      // Sauvegarder
+      try {
+        const res = await fetch(`/api/planches/${encodeURIComponent(plancheId)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ [field]: localValue || null }),
+        })
+
+        if (!res.ok) {
+          throw new Error('Erreur sauvegarde')
+        }
+
+        // Rafraîchir les données
+        onUpdate()
+      } catch (error) {
+        console.error('Erreur:', error)
+        alert('Erreur lors de la sauvegarde')
+        // Revenir à l'ancienne valeur
+        setLocalValue(value || '')
       }
+    }
+  }
 
-      onUpdate()
-    } catch (error) {
-      console.error('Erreur:', error)
-      alert('Erreur lors de la sauvegarde')
-    } finally {
-      setIsSaving(false)
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      ;(e.target as HTMLSelectElement).blur()
+    }
+    if (e.key === 'Escape') {
+      setLocalValue(value || '')
+      setEditing(false)
     }
   }
 
@@ -56,23 +73,39 @@ export function EditableSelectCell({
     ? `${currentOption.icon || ''} ${currentOption.label}`.trim()
     : placeholder
 
+  if (editing) {
+    return (
+      <select
+        value={localValue}
+        onChange={(e) => setLocalValue(e.target.value)}
+        onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
+        onClick={(e) => e.stopPropagation()}
+        className="h-8 text-xs rounded-md border border-green-500 bg-background px-2 py-1 focus:outline-none focus:ring-2 focus:ring-green-500"
+        autoFocus
+      >
+        <option value="">{placeholder}</option>
+        {options.map(opt => (
+          <option key={opt.value} value={opt.value}>
+            {opt.icon} {opt.label}
+          </option>
+        ))}
+      </select>
+    )
+  }
+
   return (
-    <select
-      value={value || ''}
-      onChange={handleChange}
-      disabled={isSaving}
-      onClick={(e) => e.stopPropagation()}
-      className="h-8 text-xs rounded-md border border-input bg-background px-3 py-1 hover:bg-accent hover:ring-1 hover:ring-yellow-400 transition-all cursor-pointer disabled:opacity-50"
-      title="Cliquer pour modifier"
+    <button
+      onClick={() => setEditing(true)}
+      className="px-2 py-1 rounded hover:bg-yellow-50 hover:ring-1 hover:ring-yellow-400 min-w-[100px] text-left transition-all group relative text-xs"
+      title="Cliquer pour éditer"
     >
-      <option value="">
-        {placeholder}
-      </option>
-      {options.map(opt => (
-        <option key={opt.value} value={opt.value}>
-          {opt.icon} {opt.label}
-        </option>
-      ))}
-    </select>
+      <span className={value ? "font-medium" : "text-muted-foreground"}>
+        {displayValue}
+      </span>
+      <span className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity text-[10px]">
+        ✏️
+      </span>
+    </button>
   )
 }
