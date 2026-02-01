@@ -79,15 +79,13 @@ export function EditableSelectCell({
   }
 
   return (
-    <div onClick={(e) => e.stopPropagation()}>
+    <div onClick={(e) => e.stopPropagation()} className="min-w-[140px]">
       <Select
         value={value || ''}
         onValueChange={handleChange}
         disabled={isSaving}
-        open={isEditing}
-        onOpenChange={setIsEditing}
       >
-        <SelectTrigger className="h-8 text-xs w-[140px]">
+        <SelectTrigger className="h-8 text-xs w-full">
           <SelectValue placeholder={placeholder} />
         </SelectTrigger>
         <SelectContent>
