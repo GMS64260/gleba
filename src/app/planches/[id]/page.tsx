@@ -25,10 +25,14 @@ interface Planche {
   type: string | null
   irrigation: string | null
   annee: number | null
+  typeSol: string | null
+  retentionEau: string | null
 }
 
 const PLANCHE_TYPES = ['Serre', 'Plein champ', 'Tunnel', 'Chassis']
 const PLANCHE_IRRIGATION = ['Goutte-a-goutte', 'Aspersion', 'Manuel', 'Aucun']
+const TYPES_SOL = ['Argileux', 'Limoneux', 'Sableux', 'Mixte']
+const RETENTION_EAU = ['Faible', 'Moyenne', 'Élevée']
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -183,6 +187,8 @@ function PlancheInfo({ planche, onUpdate }: PlancheInfoProps) {
     type: planche.type || '',
     irrigation: planche.irrigation || '',
     annee: planche.annee?.toString() || '',
+    typeSol: planche.typeSol || '',
+    retentionEau: planche.retentionEau || '',
   })
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -205,6 +211,8 @@ function PlancheInfo({ planche, onUpdate }: PlancheInfoProps) {
         type: formData.type || null,
         irrigation: formData.irrigation || null,
         annee: formData.annee ? parseInt(formData.annee) : null,
+        typeSol: formData.typeSol || null,
+        retentionEau: formData.retentionEau || null,
       }
 
       const res = await fetch(`/api/planches/${encodeURIComponent(planche.id)}`, {
@@ -240,6 +248,8 @@ function PlancheInfo({ planche, onUpdate }: PlancheInfoProps) {
       type: planche.type || '',
       irrigation: planche.irrigation || '',
       annee: planche.annee?.toString() || '',
+      typeSol: planche.typeSol || '',
+      retentionEau: planche.retentionEau || '',
     })
     setIsEditing(false)
   }
@@ -334,6 +344,36 @@ function PlancheInfo({ planche, onUpdate }: PlancheInfoProps) {
               <option value="">-</option>
               {PLANCHE_IRRIGATION.map((i) => (
                 <option key={i} value={i}>{i}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Type de sol</label>
+            <select
+              name="typeSol"
+              value={formData.typeSol}
+              onChange={handleChange}
+              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-green-500"
+            >
+              <option value="">Non renseigné</option>
+              {TYPES_SOL.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Rétention eau</label>
+            <select
+              name="retentionEau"
+              value={formData.retentionEau}
+              onChange={handleChange}
+              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-green-500"
+            >
+              <option value="">Non renseigné</option>
+              {RETENTION_EAU.map((r) => (
+                <option key={r} value={r}>{r}</option>
               ))}
             </select>
           </div>
