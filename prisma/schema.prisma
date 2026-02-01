@@ -38,6 +38,7 @@ model User {
   planches      Planche[]
   cultures      Culture[]
   recoltes      Recolte[]
+  consommations Consommation[]
   irrigationsPlanifiees IrrigationPlanifiee[]
   fertilisations Fertilisation[]
   objetsJardin  ObjetJardin[]
@@ -433,15 +434,21 @@ model IrrigationPlanifiee {
 /// Consommations (sorties de stock)
 model Consommation {
   id            Int          @id @default(autoincrement())
+  userId        String       @map("user_id")
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   especeId      String       @map("espece")
   espece        Espece       @relation(fields: [especeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   destinationId String?      @map("destination")
   destination   Destination? @relation(fields: [destinationId], references: [id], onDelete: SetNull)
   date          DateTime     @default(now()) @map("date")
   quantite      Float        @map("quantite") // kg
+  prix          Float?       @map("prix") // € total
   notes         String?      @map("notes")
   createdAt     DateTime     @default(now()) @map("created_at")
 
+  @@index([userId])
+  @@index([especeId])
+  @@index([date])
   @@map("consommations")
 }
 

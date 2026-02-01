@@ -111,7 +111,10 @@ export function AssistantStepMode({ mode, plancheId, onModeChange, onPlancheSele
       {/* Sélecteur de planche pour les modes qui en ont besoin */}
       {(mode === 'existing-planche' || mode === 'add-culture') && (
         <div className="pt-4 space-y-2">
-          <Label htmlFor="planche-select">Sélectionner une planche</Label>
+          <Label htmlFor="planche-select" className="flex items-center gap-1">
+            Sélectionner une planche
+            <span className="text-red-500">*</span>
+          </Label>
           <Select
             value={plancheId || ''}
             onValueChange={(value) => {
@@ -128,7 +131,10 @@ export function AssistantStepMode({ mode, plancheId, onModeChange, onPlancheSele
             }}
             disabled={loading}
           >
-            <SelectTrigger id="planche-select">
+            <SelectTrigger
+              id="planche-select"
+              className={!plancheId ? 'border-red-300' : ''}
+            >
               <SelectValue placeholder={loading ? "Chargement..." : "Choisir une planche..."} />
             </SelectTrigger>
             <SelectContent>
@@ -146,6 +152,12 @@ export function AssistantStepMode({ mode, plancheId, onModeChange, onPlancheSele
               ))}
             </SelectContent>
           </Select>
+          {!plancheId && (
+            <p className="text-sm text-red-600 flex items-center gap-1">
+              <span className="font-medium">→</span>
+              Veuillez sélectionner une planche pour continuer
+            </p>
+          )}
           {planches.length === 0 && !loading && (
             <p className="text-sm text-amber-600">
               Aucune planche existante. Créez d'abord une nouvelle planche.

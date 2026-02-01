@@ -21,12 +21,13 @@ import {
   subMonths,
 } from "date-fns"
 import { fr } from "date-fns/locale"
-import { ChevronLeft, ChevronRight, Sprout, Leaf, Package, Droplets } from "lucide-react"
+import { ChevronLeft, ChevronRight, Sprout, Leaf, Package, Droplets, Calendar, CalendarDays } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Tooltip,
   TooltipContent,
@@ -34,6 +35,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { EventDialog } from "./EventDialog"
+import { YearView } from "./YearView"
 
 interface CalendarEvent {
   id: number
@@ -50,11 +52,13 @@ interface CalendarViewProps {
 }
 
 export function CalendarView({ year }: CalendarViewProps) {
+  const [viewMode, setViewMode] = React.useState<'month' | 'year'>('month')
   const [currentMonth, setCurrentMonth] = React.useState(() => {
     const now = new Date()
     return new Date(year, now.getMonth(), 1)
   })
   const [events, setEvents] = React.useState<CalendarEvent[]>([])
+  const [yearEvents, setYearEvents] = React.useState<CalendarEvent[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [selectedEvent, setSelectedEvent] = React.useState<CalendarEvent | null>(null)
   const [eventDialogOpen, setEventDialogOpen] = React.useState(false)
@@ -66,20 +70,35 @@ export function CalendarView({ year }: CalendarViewProps) {
     setCurrentMonth(prev => new Date(year, prev.getMonth(), 1))
   }, [year])
 
-  // Charger les événements du mois
+  // Charger les événements (mois ou année)
   React.useEffect(() => {
     async function fetchEvents() {
       setIsLoading(true)
       try {
-        const start = startOfMonth(currentMonth)
-        const end = endOfMonth(currentMonth)
+        if (viewMode === 'month') {
+          // Charger événements du mois
+          const start = startOfMonth(currentMonth)
+          const end = endOfMonth(currentMonth)
 
-        const response = await fetch(
-          `/api/calendrier?start=${start.toISOString()}&end=${end.toISOString()}`
-        )
-        if (response.ok) {
-          const data = await response.json()
-          setEvents(data.events || [])
+          const response = await fetch(
+            `/api/calendrier?start=${start.toISOString()}&end=${end.toISOString()}`
+          )
+          if (response.ok) {
+            const data = await response.json()
+            setEvents(data.events || [])
+          }
+        } else {
+          // Charger événements de l'année
+          const start = new Date(year, 0, 1)
+          const end = new Date(year, 11, 31, 23, 59, 59)
+
+          const response = await fetch(
+            `/api/calendrier?start=${start.toISOString()}&end=${end.toISOString()}`
+          )
+          if (response.ok) {
+            const data = await response.json()
+            setYearEvents(data.events || [])
+          }
         }
       } catch (error) {
         console.error("Erreur chargement calendrier:", error)
@@ -88,7 +107,7 @@ export function CalendarView({ year }: CalendarViewProps) {
       }
     }
     fetchEvents()
-  }, [currentMonth])
+  }, [currentMonth, viewMode, year])
 
   // Navigation
   const prevMonth = () => setCurrentMonth(subMonths(currentMonth, 1))
@@ -240,19 +259,37 @@ export function CalendarView({ year }: CalendarViewProps) {
   return (
     <Card>
       <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <CardTitle className="text-lg flex items-center gap-2">
             Calendrier des cultures
           </CardTitle>
-          <div className="flex items-center gap-1">
-            <Button variant="ghost" size="sm" onClick={prevMonth} className="h-8 w-8 p-0">
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={goToToday}
-              className="h-8 px-2 text-xs"
+
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Toggle Vue Mois/Année */}
+            <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as 'month' | 'year')}>
+              <TabsList className="h-8">
+                <TabsTrigger value="month" className="text-xs h-7 px-2">
+                  <Calendar className="h-3 w-3 mr-1" />
+                  Mois
+                </TabsTrigger>
+                <TabsTrigger value="year" className="text-xs h-7 px-2">
+                  <CalendarDays className="h-3 w-3 mr-1" />
+                  Année
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+
+            {/* Navigation (seulement en vue mois) */}
+            {viewMode === 'month' && (
+              <div className="flex items-center gap-1">
+                <Button variant="ghost" size="sm" onClick={prevMonth} className="h-8 w-8 p-0">
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={goToToday}
+                  className="h-8 px-2 text-xs"
             >
               Aujourd'hui
             </Button>
@@ -260,14 +297,27 @@ export function CalendarView({ year }: CalendarViewProps) {
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
+            )}
+          </div>
         </div>
-        <p className="text-sm text-muted-foreground capitalize">
-          {format(currentMonth, "MMMM yyyy", { locale: fr })}
-        </p>
+        {viewMode === 'month' && (
+          <p className="text-sm text-muted-foreground capitalize">
+            {format(currentMonth, "MMMM yyyy", { locale: fr })}
+          </p>
+        )}
       </CardHeader>
       <CardContent>
         {isLoading ? (
           <Skeleton className="h-[300px] w-full" />
+        ) : viewMode === 'year' ? (
+          <YearView
+            year={year}
+            events={yearEvents}
+            onMonthClick={(month) => {
+              setCurrentMonth(new Date(year, month, 1))
+              setViewMode('month')
+            }}
+          />
         ) : (
           <TooltipProvider delayDuration={100}>
             <div className="grid grid-cols-7 gap-px bg-muted rounded-lg overflow-hidden">

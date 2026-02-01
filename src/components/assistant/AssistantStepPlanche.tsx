@@ -71,7 +71,10 @@ export function AssistantStepPlanche({ mode, planche, onPlancheChange }: Assista
             {/* Nom de la planche */}
             <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <Label htmlFor="planche-nom">Nom de la planche *</Label>
+                <Label htmlFor="planche-nom" className="flex items-center gap-1">
+                  Nom de la planche
+                  <span className="text-red-500">*</span>
+                </Label>
                 <Tooltip>
                   <TooltipTrigger>
                     <HelpCircle className="h-4 w-4 text-muted-foreground" />
@@ -86,8 +89,9 @@ export function AssistantStepPlanche({ mode, planche, onPlancheChange }: Assista
               <Input
                 id="planche-nom"
                 value={planche.nom || ''}
-                onChange={(e) => onPlancheChange({ nom: e.target.value, id: e.target.value })}
+                onChange={(e) => onPlancheChange({ nom: e.target.value })}
                 placeholder="Ex: P1, Potager-Nord..."
+                className={!planche.nom ? 'border-red-300 focus:border-red-500' : ''}
               />
             </div>
 
@@ -95,7 +99,10 @@ export function AssistantStepPlanche({ mode, planche, onPlancheChange }: Assista
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <Label htmlFor="planche-largeur">Largeur (m) *</Label>
+                  <Label htmlFor="planche-largeur" className="flex items-center gap-1">
+                    Largeur (m)
+                    <span className="text-red-500">*</span>
+                  </Label>
                   <Tooltip>
                     <TooltipTrigger>
                       <HelpCircle className="h-4 w-4 text-muted-foreground" />
@@ -115,11 +122,15 @@ export function AssistantStepPlanche({ mode, planche, onPlancheChange }: Assista
                   value={planche.largeur || ''}
                   onChange={(e) => onPlancheChange({ largeur: parseFloat(e.target.value) || undefined })}
                   placeholder="0.80"
+                  className={!planche.largeur ? 'border-red-300 focus:border-red-500' : ''}
                 />
               </div>
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <Label htmlFor="planche-longueur">Longueur (m) *</Label>
+                  <Label htmlFor="planche-longueur" className="flex items-center gap-1">
+                    Longueur (m)
+                    <span className="text-red-500">*</span>
+                  </Label>
                   <Tooltip>
                     <TooltipTrigger>
                       <HelpCircle className="h-4 w-4 text-muted-foreground" />
@@ -139,6 +150,7 @@ export function AssistantStepPlanche({ mode, planche, onPlancheChange }: Assista
                   value={planche.longueur || ''}
                   onChange={(e) => onPlancheChange({ longueur: parseFloat(e.target.value) || undefined })}
                   placeholder="10"
+                  className={!planche.longueur ? 'border-red-300 focus:border-red-500' : ''}
                 />
               </div>
             </div>

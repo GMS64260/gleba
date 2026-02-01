@@ -4,6 +4,7 @@
  */
 
 import prisma from '@/lib/prisma'
+import { calculerDateDepuisSemaine } from './assistant-helpers'
 
 // ============================================================
 // TYPES
@@ -603,13 +604,13 @@ export async function creerCulturesBatch(
     // Calculer les dates a partir des semaines
     const annee = culture.annee
     const dateSemis = itp.semaineSemis
-      ? new Date(annee, 0, 1 + (itp.semaineSemis - 1) * 7)
+      ? calculerDateDepuisSemaine(annee, itp.semaineSemis)
       : null
     const datePlantation = itp.semainePlantation
-      ? new Date(annee, 0, 1 + (itp.semainePlantation - 1) * 7)
+      ? calculerDateDepuisSemaine(annee, itp.semainePlantation)
       : null
     const dateRecolte = itp.semaineRecolte
-      ? new Date(annee, 0, 1 + (itp.semaineRecolte - 1) * 7)
+      ? calculerDateDepuisSemaine(annee, itp.semaineRecolte)
       : null
 
     // Creer la culture
@@ -627,6 +628,54 @@ export async function creerCulturesBatch(
         nbRangs: itp.nbRangs,
       },
     })
+
+    // Décrément automatique du stock de semences
+    if (culture.varieteId && dateSemis) {
+      try {
+        const variete = await prisma.variete.findUnique({
+          where: { id: culture.varieteId },
+          select: { nbGrainesG: true, stockGraines: true },
+        })
+
+        const planche = await prisma.planche.findUnique({
+          where: { id: culture.plancheId },
+          select: { largeur: true },
+        })
+
+        if (variete && variete.stockGraines && variete.stockGraines > 0 && variete.nbGrainesG && planche && planche.largeur) {
+          const longueur = newCulture.longueur || 0
+          const nbRangs = newCulture.nbRangs || 1
+          const espacement = newCulture.espacement || 0
+
+          let grammesNecessaires = 0
+
+          if (espacement > 0 && variete.nbGrainesG > 0) {
+            // Semis en ligne
+            const nbGrainesPlant = itp.nbGrainesPlant || 1
+            grammesNecessaires = Math.ceil(
+              (longueur * nbRangs / espacement * 100 * nbGrainesPlant) /
+              variete.nbGrainesG
+            )
+          } else if (itp.doseSemis && planche.largeur > 0) {
+            // Semis à la volée
+            grammesNecessaires = Math.ceil(longueur * planche.largeur * itp.doseSemis)
+          }
+
+          if (grammesNecessaires > 0) {
+            await prisma.variete.update({
+              where: { id: culture.varieteId },
+              data: {
+                stockGraines: Math.max(0, variete.stockGraines - grammesNecessaires),
+                dateStock: new Date(),
+              },
+            })
+          }
+        }
+      } catch (stockError) {
+        console.warn('Erreur décrément stock (culture batch):', stockError)
+        // Ne pas bloquer la création
+      }
+    }
 
     results.push({
       id: newCulture.id,

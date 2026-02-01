@@ -218,7 +218,14 @@ export function AssistantDialog({ open, onOpenChange }: AssistantDialogProps) {
   // Vérifier si l'étape actuelle est valide pour continuer
   const canContinue = () => {
     switch (state.step) {
-      case 1: return state.mode !== null
+      case 1:
+        // Mode doit être sélectionné
+        if (!state.mode) return false
+        // Si mode nécessite planche existante, elle doit être sélectionnée
+        if (state.mode === 'existing-planche' || state.mode === 'add-culture') {
+          return !!state.planche.id
+        }
+        return true
       case 2: return state.planche.id || (state.planche.nom && state.planche.largeur && state.planche.longueur)
       case 3: return !!state.culture.especeId
       case 4: return !!state.culture.itpId

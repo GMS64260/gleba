@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
-import { createCultureSchema } from '@/lib/validations'
+import { createCultureSchema, validateCultureDates } from '@/lib/validations'
 import { Prisma } from '@prisma/client'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { peutAjouterCulture, suggererAjustements } from '@/lib/planche-validation'
@@ -158,10 +158,12 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
+    console.log('🔵 POST /api/cultures - body:', JSON.stringify(body, null, 2))
 
     // Validation
     const validationResult = createCultureSchema.safeParse(body)
     if (!validationResult.success) {
+      console.error('❌ Zod validation failed:', validationResult.error.flatten())
       return NextResponse.json(
         { error: 'Données invalides', details: validationResult.error.flatten() },
         { status: 400 }
@@ -169,6 +171,7 @@ export async function POST(request: NextRequest) {
     }
 
     const data = validationResult.data
+    console.log('✅ Zod validation passed')
 
     // Vérifier que l'espèce existe
     const espece = await prisma.espece.findUnique({
@@ -180,6 +183,47 @@ export async function POST(request: NextRequest) {
         { error: `L'espèce "${data.especeId}" n'existe pas` },
         { status: 400 }
       )
+    }
+
+    // Récupérer l'ITP si fourni (pour validation dates et calcul stock)
+    let itp = null
+    if (data.itpId) {
+      itp = await prisma.iTP.findUnique({
+        where: { id: data.itpId },
+        select: {
+          semaineSemis: true,
+          semainePlantation: true,
+          semaineRecolte: true,
+          espacementRangs: true,
+          nbGrainesPlant: true,
+          doseSemis: true,
+        },
+      })
+    }
+
+    // Validation des dates (seulement si au moins une date fournie)
+    // TEMPORAIREMENT EN MODE WARNING SEULEMENT pour debugging
+    if (data.dateSemis || data.datePlantation || data.dateRecolte) {
+      try {
+        const annee = data.annee || new Date().getFullYear()
+        const dateValidation = validateCultureDates({
+          dateSemis: data.dateSemis,
+          datePlantation: data.datePlantation,
+          dateRecolte: data.dateRecolte,
+          itp,
+          annee,
+        })
+
+        // Log mais ne bloque PAS pour le moment
+        if (!dateValidation.valid) {
+          console.error('⚠️ Date validation errors (NOT BLOCKING):', dateValidation.errors)
+        }
+        if (dateValidation.warnings.length > 0) {
+          console.warn('Date warnings:', dateValidation.warnings)
+        }
+      } catch (validationError) {
+        console.error('Erreur validation dates:', validationError)
+      }
     }
 
     // Valider l'occupation de la planche si plancheId fourni
@@ -269,7 +313,39 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Vérifier que les foreign keys existent avant création
+    if (data.itpId) {
+      const itpExists = await prisma.iTP.findUnique({ where: { id: data.itpId } })
+      if (!itpExists) {
+        console.error(`❌ ITP not found: ${data.itpId}`)
+        return NextResponse.json(
+          { error: `ITP "${data.itpId}" introuvable dans la base` },
+          { status: 400 }
+        )
+      }
+    }
+
+    if (data.plancheId) {
+      const plancheExists = await prisma.planche.findUnique({
+        where: { id: data.plancheId, userId: session!.user.id }
+      })
+      if (!plancheExists) {
+        // Debug: vérifier si planche existe pour un autre user
+        const plancheAnyUser = await prisma.planche.findUnique({
+          where: { id: data.plancheId }
+        })
+        console.error(`❌ Planche not found for user: ${data.plancheId}`)
+        console.error(`   Exists for another user?: ${!!plancheAnyUser}`)
+        console.error(`   Current userId: ${session!.user.id}`)
+        return NextResponse.json(
+          { error: `Planche "${data.plancheId}" introuvable pour votre compte` },
+          { status: 400 }
+        )
+      }
+    }
+
     // Création avec userId
+    console.log('✅ Creating culture with data:', { ...data, userId: session!.user.id, aIrriguer })
     const culture = await prisma.culture.create({
       data: {
         ...data,
@@ -283,6 +359,54 @@ export async function POST(request: NextRequest) {
         planche: true,
       },
     })
+    console.log('✅ Culture created:', culture.id)
+
+    // Décrément automatique du stock de semences
+    if (data.varieteId && data.dateSemis && itp) {
+      try {
+        const variete = await prisma.variete.findUnique({
+          where: { id: data.varieteId },
+          select: { nbGrainesG: true, stockGraines: true },
+        })
+
+        if (variete && variete.stockGraines && variete.stockGraines > 0 && variete.nbGrainesG) {
+          const planche = culture.planche
+          const longueur = data.longueur || 0
+          const nbRangs = data.nbRangs || 1
+          const espacement = data.espacement || 0
+
+          // Formule potaleger (plus précise)
+          let grammesNecessaires = 0
+
+          if (espacement > 0 && variete.nbGrainesG > 0) {
+            // Semis en ligne avec espacement
+            const nbGrainesPlant = itp.nbGrainesPlant || 1
+            grammesNecessaires = Math.ceil(
+              (longueur * nbRangs / espacement * 100 * nbGrainesPlant) /
+              variete.nbGrainesG
+            )
+          } else if (itp.doseSemis && planche?.largeur) {
+            // Semis à la volée (dose au m²)
+            grammesNecessaires = Math.ceil(
+              longueur * planche.largeur * itp.doseSemis
+            )
+          }
+
+          if (grammesNecessaires > 0) {
+            await prisma.variete.update({
+              where: { id: data.varieteId },
+              data: {
+                stockGraines: Math.max(0, variete.stockGraines - grammesNecessaires),
+                dateStock: new Date(),
+              },
+            })
+          }
+        }
+      } catch (stockError) {
+        console.warn('Erreur décrément stock semences:', stockError)
+        // Ne pas bloquer la création de culture si erreur stock
+      }
+    }
 
     return NextResponse.json(culture, { status: 201 })
   } catch (error) {
