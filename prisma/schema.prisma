@@ -283,6 +283,16 @@ model Planche {
   irrigation          String?   @map("irrigation") // Goutte-à-goutte, Aspersion, Manuel, Aucun
   annee               Int?      @map("annee")      // Année de référence pour rotation
 
+  // Qualité du sol (influence irrigation/fertilisation)
+  typeSol             String?   @map("type_sol")         // Argileux, Limoneux, Sableux, Mixte
+  retentionEau        String?   @map("retention_eau")    // Faible, Moyenne, Élevée
+  argile              Float?    @map("argile_pct")       // % argile (0-100)
+  limon               Float?    @map("limon_pct")        // % limon
+  sable               Float?    @map("sable_pct")        // % sable
+  phSol               Float?    @map("ph_sol")           // pH du sol
+  carboneOrg          Float?    @map("carbone_org")      // % carbone organique
+  derniereAnalyseSol  DateTime? @map("derniere_analyse") // Date dernière maj données sol
+
   // Relations
   cultures       Culture[]
   fertilisations Fertilisation[]

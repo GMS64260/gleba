@@ -184,6 +184,8 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
           ilot: planche.ilot || null,
           type: planche.type || null,
           irrigation: planche.irrigation || null,
+          typeSol: planche.typeSol || null,
+          retentionEau: planche.retentionEau || null,
         }
         console.log('📤 Planche data:', plancheData)
 

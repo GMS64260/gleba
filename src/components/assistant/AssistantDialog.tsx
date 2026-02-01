@@ -32,6 +32,8 @@ export interface PlancheData {
   ilot?: string
   type?: string
   irrigation?: string
+  typeSol?: string
+  retentionEau?: string
   isNew?: boolean
 }
 
