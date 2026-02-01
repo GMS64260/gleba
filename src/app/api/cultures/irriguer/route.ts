@@ -6,6 +6,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi, getUserId } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import {
+  calculerUrgenceAvecSol,
+  calculerConsommationEauAvecSol,
+  alerteSecheresse
+} from '@/lib/soil-quality'
 
 export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
@@ -67,6 +72,8 @@ export async function GET(request: NextRequest) {
             surface: true,
             largeur: true,
             longueur: true,
+            retentionEau: true,
+            typeSol: true,
           },
         },
         variete: {
@@ -119,15 +126,37 @@ export async function GET(request: NextRequest) {
         : (c.planche?.surface || 0)
 
       const besoinEau = c.espece?.besoinEau || 3
-      // Estimation: 5-15L/m²/semaine selon besoin
-      const consommationSemaine = surface * (besoinEau >= 4 ? 15 : besoinEau >= 3 ? 10 : 5)
+      const retentionEauSol = c.planche?.retentionEau || null
+
+      // Consommation ajustée selon type de sol
+      const consommationSemaine = calculerConsommationEauAvecSol(
+        surface,
+        besoinEau,
+        retentionEauSol
+      )
+
+      // Urgence ajustée selon rétention sol
+      const urgence = calculerUrgenceAvecSol(
+        joursSansEau,
+        besoinEau,
+        retentionEauSol
+      )
+
+      // Alerte sécheresse pour sols à faible rétention
+      const alerteSecheresseActive = alerteSecheresse(
+        joursSansEau,
+        retentionEauSol,
+        besoinEau,
+        0 // TODO: intégrer jours sans pluie depuis météo API
+      )
 
       return {
         ...c,
         joursSansEau,
         ageJours,
         isJeune,
-        urgence: joursSansEau === null ? 999 : joursSansEau >= 4 ? 'critique' : joursSansEau >= 3 ? 'haute' : joursSansEau >= 2 ? 'moyenne' : 'faible',
+        urgence,
+        alerteSecheresse: alerteSecheresseActive,
         consommationEauSemaine: Math.round(consommationSemaine * 10) / 10,
         prochainesIrrigations: c.irrigationsPlanifiees.length,
       }

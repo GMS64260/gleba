@@ -261,6 +261,64 @@ export function AssistantStepPlanche({ mode, planche, onPlancheChange }: Assista
                 </Select>
               </div>
             </div>
+
+            {/* Qualité du sol */}
+            <div className="space-y-3 pt-3 border-t">
+              <div className="flex items-center gap-2">
+                <Label className="text-sm font-medium">Qualité du sol (optionnel)</Label>
+                <Tooltip>
+                  <TooltipTrigger>
+                    <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="max-w-xs text-xs">
+                      Le type de sol influence l'irrigation (fréquence et quantité d'eau nécessaire)
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="type-sol">Type de sol</Label>
+                  <Select
+                    value={planche.typeSol || ''}
+                    onValueChange={(value) => onPlancheChange({ typeSol: value, retentionEau: undefined })}
+                  >
+                    <SelectTrigger id="type-sol" className="text-sm">
+                      <SelectValue placeholder="Non renseigné" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Argileux">🟤 Argileux (lourd)</SelectItem>
+                      <SelectItem value="Limoneux">🟫 Limoneux (équilibré)</SelectItem>
+                      <SelectItem value="Sableux">🟡 Sableux (léger)</SelectItem>
+                      <SelectItem value="Mixte">🌈 Mixte</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="retention-eau">Rétention eau</Label>
+                  <Select
+                    value={planche.retentionEau || ''}
+                    onValueChange={(value) => onPlancheChange({ retentionEau: value })}
+                  >
+                    <SelectTrigger id="retention-eau" className="text-sm">
+                      <SelectValue placeholder="Non renseigné" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Faible">💧 Faible (arroser+)</SelectItem>
+                      <SelectItem value="Moyenne">💦 Moyenne</SelectItem>
+                      <SelectItem value="Élevée">💙 Élevée (arroser-)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="text-xs text-muted-foreground bg-blue-50 p-2 rounded">
+                💡 <strong>Astuce</strong> : Sol sableux (léger) = arrosage fréquent. Sol argileux (lourd) = arrosage espacé.
+              </div>
+            </div>
           </>
         ) : (
           /* Affichage planche existante */
