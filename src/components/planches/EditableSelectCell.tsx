@@ -2,17 +2,10 @@
 
 /**
  * Cellule éditable pour tanstack-table
- * Click → Select dropdown → Save auto
+ * Click → Select natif → Save auto
  */
 
 import * as React from "react"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 
 interface EditableSelectCellProps {
   plancheId: string
@@ -34,8 +27,10 @@ export function EditableSelectCell({
   const [isEditing, setIsEditing] = React.useState(false)
   const [isSaving, setIsSaving] = React.useState(false)
 
-  const handleChange = async (newValue: string) => {
+  const handleChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newValue = e.target.value
     setIsSaving(true)
+
     try {
       const res = await fetch(`/api/planches/${encodeURIComponent(plancheId)}`, {
         method: 'PUT',
@@ -47,7 +42,6 @@ export function EditableSelectCell({
         throw new Error('Erreur sauvegarde')
       }
 
-      setIsEditing(false)
       onUpdate()
     } catch (error) {
       console.error('Erreur:', error)
@@ -62,43 +56,23 @@ export function EditableSelectCell({
     ? `${currentOption.icon || ''} ${currentOption.label}`.trim()
     : placeholder
 
-  if (!isEditing) {
-    return (
-      <div
-        onClick={() => setIsEditing(true)}
-        className="cursor-pointer hover:bg-yellow-50 hover:ring-1 hover:ring-yellow-400 rounded px-2 py-1 transition-all inline-block"
-        title="Cliquer pour modifier"
-      >
-        {value ? (
-          <span className="text-xs font-medium">{displayValue}</span>
-        ) : (
-          <span className="text-xs text-muted-foreground">{placeholder}</span>
-        )}
-      </div>
-    )
-  }
-
   return (
-    <div onClick={(e) => e.stopPropagation()} className="min-w-[140px]">
-      <Select
-        value={value || ''}
-        onValueChange={handleChange}
-        disabled={isSaving}
-      >
-        <SelectTrigger className="h-8 text-xs w-full">
-          <SelectValue placeholder={placeholder} />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="">
-            <span className="text-muted-foreground">{placeholder}</span>
-          </SelectItem>
-          {options.map(opt => (
-            <SelectItem key={opt.value} value={opt.value}>
-              {opt.icon} {opt.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
+    <select
+      value={value || ''}
+      onChange={handleChange}
+      disabled={isSaving}
+      onClick={(e) => e.stopPropagation()}
+      className="h-8 text-xs rounded-md border border-input bg-background px-3 py-1 hover:bg-accent hover:ring-1 hover:ring-yellow-400 transition-all cursor-pointer disabled:opacity-50"
+      title="Cliquer pour modifier"
+    >
+      <option value="">
+        {placeholder}
+      </option>
+      {options.map(opt => (
+        <option key={opt.value} value={opt.value}>
+          {opt.icon} {opt.label}
+        </option>
+      ))}
+    </select>
   )
 }
