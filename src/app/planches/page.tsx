@@ -14,6 +14,7 @@ import { AssistantDialog, AssistantButton } from "@/components/assistant"
 import { DataTable } from "@/components/tables/DataTable"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
+import { EditableSelectCell } from "@/components/planches/EditableSelectCell"
 
 // Type pour les planches
 interface PlancheWithRelations {
@@ -31,8 +32,22 @@ interface PlancheWithRelations {
   _count: { cultures: number; fertilisations: number }
 }
 
-// Colonnes du tableau
-const columns: ColumnDef<PlancheWithRelations>[] = [
+// Options pour les selects
+const TYPES_SOL = [
+  { value: 'Argileux', label: 'Argileux', icon: '🟤' },
+  { value: 'Limoneux', label: 'Limoneux', icon: '🟫' },
+  { value: 'Sableux', label: 'Sableux', icon: '🟡' },
+  { value: 'Mixte', label: 'Mixte', icon: '🌈' },
+]
+
+const RETENTION_EAU = [
+  { value: 'Faible', label: 'Faible', icon: '💧' },
+  { value: 'Moyenne', label: 'Moyenne', icon: '💦' },
+  { value: 'Élevée', label: 'Élevée', icon: '💙' },
+]
+
+// Fonction pour créer les colonnes (avec callback)
+const createColumns = (onUpdate: () => void): ColumnDef<PlancheWithRelations>[] => [
   {
     accessorKey: "id",
     header: "Planche",
@@ -82,48 +97,30 @@ const columns: ColumnDef<PlancheWithRelations>[] = [
   {
     accessorKey: "typeSol",
     header: "Sol",
-    cell: ({ row }) => {
-      const val = row.original.typeSol
-      if (!val) return <span className="text-muted-foreground">-</span>
-
-      const icons: Record<string, string> = {
-        'Argileux': '🟤',
-        'Limoneux': '🟫',
-        'Sableux': '🟡',
-        'Mixte': '🌈'
-      }
-
-      return (
-        <span className="text-xs">
-          {icons[val]} {val}
-        </span>
-      )
-    },
+    cell: ({ row }) => (
+      <EditableSelectCell
+        plancheId={row.original.id}
+        field="typeSol"
+        value={row.original.typeSol}
+        options={TYPES_SOL}
+        placeholder="Définir"
+        onUpdate={onUpdate}
+      />
+    ),
   },
   {
     accessorKey: "retentionEau",
     header: "Rétention",
-    cell: ({ row }) => {
-      const val = row.original.retentionEau
-      if (!val) return <span className="text-muted-foreground">-</span>
-
-      const icons: Record<string, string> = {
-        'Faible': '💧',
-        'Moyenne': '💦',
-        'Élevée': '💙'
-      }
-      const colors: Record<string, string> = {
-        'Faible': 'text-orange-600',
-        'Moyenne': 'text-blue-600',
-        'Élevée': 'text-cyan-600'
-      }
-
-      return (
-        <span className={`text-xs font-medium ${colors[val]}`}>
-          {icons[val]} {val}
-        </span>
-      )
-    },
+    cell: ({ row }) => (
+      <EditableSelectCell
+        plancheId={row.original.id}
+        field="retentionEau"
+        value={row.original.retentionEau}
+        options={RETENTION_EAU}
+        placeholder="Définir"
+        onUpdate={onUpdate}
+      />
+    ),
   },
   {
     accessorKey: "_count.cultures",
@@ -157,6 +154,9 @@ export default function PlanchesPage() {
       setIsLoading(false)
     }
   }, [toast])
+
+  // Créer colonnes avec callback
+  const columns = React.useMemo(() => createColumns(fetchData), [fetchData])
 
   React.useEffect(() => {
     fetchData()
