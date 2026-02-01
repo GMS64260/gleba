@@ -255,6 +255,18 @@ export async function POST(request: NextRequest) {
 
     const userId = session!.user.id
 
+    // Vérifier que l'utilisateur existe
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+    })
+
+    if (!user) {
+      return NextResponse.json(
+        { error: `Utilisateur ${userId} introuvable dans la base de données` },
+        { status: 404 }
+      )
+    }
+
     // Statistiques d'import
     const stats = {
       familles: 0,
