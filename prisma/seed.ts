@@ -28,6 +28,24 @@ async function main() {
 
   console.log("Début du seed...")
 
+  // Créer l'utilisateur admin
+  const bcrypt = await import("bcryptjs")
+  const hashedPassword = await bcrypt.hash(process.env.ADMIN_PASSWORD || "changeme", 12)
+
+  await prisma.user.upsert({
+    where: { id: userId },
+    update: {},
+    create: {
+      id: userId,
+      email: process.env.ADMIN_EMAIL || "admin@gleba.local",
+      password: hashedPassword,
+      name: process.env.ADMIN_NAME || "Administrateur",
+      role: "ADMIN",
+      active: true,
+    },
+  })
+  console.log(`✓ Utilisateur admin créé`)
+
   // Familles
   for (const f of familles) {
     await prisma.famille.upsert({ where: { id: f.id }, update: {}, create: f })
