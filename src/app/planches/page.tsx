@@ -24,6 +24,10 @@ interface PlancheWithRelations {
   ilot: string | null
   rotationId: string | null
   rotation: { id: string } | null
+  type: string | null
+  irrigation: string | null
+  typeSol: string | null
+  retentionEau: string | null
   _count: { cultures: number; fertilisations: number }
 }
 
@@ -69,6 +73,57 @@ const columns: ColumnDef<PlancheWithRelations>[] = [
     accessorKey: "rotation.id",
     header: "Rotation",
     cell: ({ row }) => row.original.rotation?.id || "-",
+  },
+  {
+    accessorKey: "type",
+    header: "Type",
+    cell: ({ getValue }) => getValue() || "-",
+  },
+  {
+    accessorKey: "typeSol",
+    header: "Sol",
+    cell: ({ row }) => {
+      const val = row.original.typeSol
+      if (!val) return <span className="text-muted-foreground">-</span>
+
+      const icons: Record<string, string> = {
+        'Argileux': '🟤',
+        'Limoneux': '🟫',
+        'Sableux': '🟡',
+        'Mixte': '🌈'
+      }
+
+      return (
+        <span className="text-xs">
+          {icons[val]} {val}
+        </span>
+      )
+    },
+  },
+  {
+    accessorKey: "retentionEau",
+    header: "Rétention",
+    cell: ({ row }) => {
+      const val = row.original.retentionEau
+      if (!val) return <span className="text-muted-foreground">-</span>
+
+      const icons: Record<string, string> = {
+        'Faible': '💧',
+        'Moyenne': '💦',
+        'Élevée': '💙'
+      }
+      const colors: Record<string, string> = {
+        'Faible': 'text-orange-600',
+        'Moyenne': 'text-blue-600',
+        'Élevée': 'text-cyan-600'
+      }
+
+      return (
+        <span className={`text-xs font-medium ${colors[val]}`}>
+          {icons[val]} {val}
+        </span>
+      )
+    },
   },
   {
     accessorKey: "_count.cultures",
