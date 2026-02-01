@@ -509,10 +509,10 @@ function CulturesIrriguerContent() {
               return (
               <Card key={groupe}>
                 <CardHeader>
-                  <CardTitle className="flex items-center justify-between">
+                  <CardTitle className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <Badge variant="outline">{groupe}</Badge>
-                      <span className="text-sm text-muted-foreground">
+                      <Badge variant="outline" className="whitespace-nowrap">{groupe}</Badge>
+                      <span className="text-sm text-muted-foreground whitespace-nowrap">
                         {cultures.length} culture(s)
                       </span>
                       {groupBy === 'ilot' && (
@@ -520,20 +520,20 @@ function CulturesIrriguerContent() {
                           size="sm"
                           variant="outline"
                           onClick={() => marquerIlotArrose(groupe)}
-                          className="text-cyan-600 border-cyan-300 hover:bg-cyan-50"
+                          className="text-cyan-600 border-cyan-300 hover:bg-cyan-50 whitespace-nowrap"
                         >
                           <Droplet className="h-4 w-4 mr-1" />
                           Tout arroser
                         </Button>
                       )}
                     </div>
-                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                      <div className="flex items-center gap-1">
-                        <Droplets className="h-3 w-3 text-cyan-600" />
+                    <div className="flex items-center gap-2 sm:gap-3 text-xs text-muted-foreground flex-wrap">
+                      <div className="flex items-center gap-1 whitespace-nowrap">
+                        <Droplets className="h-3 w-3 text-cyan-600 flex-shrink-0" />
                         <span>{Math.round(consommationGroupe)}L/sem</span>
                       </div>
                       {prochainesGroupe > 0 && (
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1 whitespace-nowrap">
                           <span className="text-blue-600">+{prochainesGroupe} à venir</span>
                         </div>
                       )}
@@ -549,37 +549,38 @@ function CulturesIrriguerContent() {
                       return (
                         <div
                           key={culture.id}
-                          className={`flex items-center justify-between p-3 rounded-lg transition-colors ${
+                          className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 rounded-lg transition-colors ${
                             culture.urgence === 'critique' ? 'bg-red-50 border border-red-200' :
                             culture.urgence === 'haute' ? 'bg-orange-50 border border-orange-200' :
                             jamais ? 'bg-gray-100 border border-gray-300' :
                             'bg-gray-50'
                           }`}
                         >
-                          <div className="flex items-center gap-3 flex-1">
+                          <div className="flex items-start sm:items-center gap-3 flex-1 min-w-0">
                             <Checkbox
                               checked={culture.aIrriguer || false}
                               onCheckedChange={() => toggleIrrigation(culture.id, culture.aIrriguer)}
+                              className="mt-1 sm:mt-0"
                             />
 
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-1">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1 flex-wrap">
                                 {culture.espece?.couleur && (
                                   <div
-                                    className="w-3 h-3 rounded-full"
+                                    className="w-3 h-3 rounded-full flex-shrink-0"
                                     style={{ backgroundColor: culture.espece.couleur }}
                                   />
                                 )}
-                                <span className="font-medium">{culture.especeId}</span>
+                                <span className="font-medium break-words">{culture.especeId}</span>
                                 {culture.variete && (
-                                  <span className="text-sm text-muted-foreground">
+                                  <span className="text-sm text-muted-foreground break-words">
                                     ({culture.variete.id})
                                   </span>
                                 )}
                               </div>
 
                               {/* Info complémentaire */}
-                              <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
+                              <div className="flex items-center gap-2 sm:gap-3 text-xs text-muted-foreground flex-wrap">
                                 {/* Âge de la culture */}
                                 {culture.ageJours !== null && (
                                   <span className={culture.isJeune ? "text-green-600 font-medium" : ""}>
@@ -614,21 +615,21 @@ function CulturesIrriguerContent() {
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
                             {/* Urgence badge */}
                             {getUrgenceBadge(culture.urgence, jamais)}
 
                             {/* Derniere irrigation */}
-                            <div className={`text-sm flex items-center gap-1 min-w-[80px] ${urgenceColor}`}>
+                            <div className={`text-xs sm:text-sm flex items-center gap-1 whitespace-nowrap ${urgenceColor}`}>
                               {!jamais ? (
                                 <>
-                                  <Droplets className="h-3 w-3" />
+                                  <Droplets className="h-3 w-3 flex-shrink-0" />
                                   <span>
-                                    {culture.joursSansEau === 0 ? "Aujourd'hui" : `Il y a ${culture.joursSansEau}j`}
+                                    {culture.joursSansEau === 0 ? "Auj." : `${culture.joursSansEau}j`}
                                   </span>
                                 </>
                               ) : (
-                                <span className="text-gray-400 text-xs">Jamais arrosé</span>
+                                <span className="text-gray-400 text-xs">Jamais</span>
                               )}
                             </div>
 
@@ -643,7 +644,7 @@ function CulturesIrriguerContent() {
                             {/* Planche */}
                             {culture.planche && (
                               <Link href={`/planches/${encodeURIComponent(culture.planche.id)}`}>
-                                <Badge variant="secondary" className="cursor-pointer hover:bg-gray-200">
+                                <Badge variant="secondary" className="cursor-pointer hover:bg-gray-200 whitespace-nowrap">
                                   {culture.planche.id}
                                 </Badge>
                               </Link>

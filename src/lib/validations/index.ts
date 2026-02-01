@@ -1,5 +1,5 @@
 /**
- * Export centralisé des validations Zod
+ * Export centralisé des validations Zod et fonctions de validation
  */
 
 export * from './espece'
@@ -9,3 +9,5 @@ export * from './planche'
 export * from './recolte'
 export * from './itp'
 export * from './rotation'
+export * from './association'
+export * from './date-validation'

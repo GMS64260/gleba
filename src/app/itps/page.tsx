@@ -238,17 +238,25 @@ export default function ITPsPage() {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="border-b bg-white sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center gap-4">
-          <Link href="/">
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Accueil
+        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Link href="/">
+              <Button variant="ghost" size="sm">
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Accueil
+              </Button>
+            </Link>
+            <div className="flex items-center gap-2">
+              <Route className="h-6 w-6 text-indigo-600" />
+              <h1 className="text-xl font-bold">Itineraires Techniques (ITP)</h1>
+            </div>
+          </div>
+          <Link href="/itps/calendrier">
+            <Button variant="outline" size="sm">
+              <Calendar className="h-4 w-4 mr-2" />
+              <span className="hidden sm:inline">Calendrier</span>
             </Button>
           </Link>
-          <div className="flex items-center gap-2">
-            <Route className="h-6 w-6 text-indigo-600" />
-            <h1 className="text-xl font-bold">Itineraires Techniques (ITP)</h1>
-          </div>
         </div>
       </header>
 

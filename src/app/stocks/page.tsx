@@ -15,7 +15,8 @@ import {
   Apple,
   Save,
   RefreshCw,
-  Search
+  Search,
+  TrendingDown
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -32,6 +33,7 @@ import {
 } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
+import { ConsommationsTab } from "@/components/stocks/ConsommationsTab"
 
 interface VarieteStock {
   id: string
@@ -400,6 +402,10 @@ export default function StocksPage() {
               <Apple className="h-4 w-4" />
               Recoltes ({data.recoltes.length})
             </TabsTrigger>
+            <TabsTrigger value="consommations" className="flex items-center gap-2">
+              <TrendingDown className="h-4 w-4" />
+              Consommations
+            </TabsTrigger>
           </TabsList>
 
           {/* Semences */}
@@ -630,6 +636,11 @@ export default function StocksPage() {
                 </Table>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* Consommations */}
+          <TabsContent value="consommations">
+            <ConsommationsTab />
           </TabsContent>
         </Tabs>
       </main>

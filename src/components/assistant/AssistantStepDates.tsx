@@ -186,7 +186,10 @@ export function AssistantStepDates({ culture, planche, onCultureChange }: Assist
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <Label htmlFor="nbRangs">Nombre de rangs</Label>
+              <Label htmlFor="nbRangs" className="flex items-center gap-1">
+                Nombre de rangs
+                <span className="text-red-500">*</span>
+              </Label>
               <Tooltip>
                 <TooltipTrigger>
                   <HelpCircle className="h-4 w-4 text-muted-foreground" />
@@ -206,11 +209,15 @@ export function AssistantStepDates({ culture, planche, onCultureChange }: Assist
               value={culture.nbRangs || itp?.nbRangs || ''}
               onChange={(e) => onCultureChange({ nbRangs: parseInt(e.target.value) || undefined })}
               placeholder={itp?.nbRangs?.toString() || '1'}
+              className={!culture.nbRangs && !itp?.nbRangs ? 'border-red-300 focus:border-red-500' : ''}
             />
           </div>
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <Label htmlFor="longueur">Longueur cultivée (m)</Label>
+              <Label htmlFor="longueur" className="flex items-center gap-1">
+                Longueur cultivée (m)
+                <span className="text-red-500">*</span>
+              </Label>
               <Tooltip>
                 <TooltipTrigger>
                   <HelpCircle className="h-4 w-4 text-muted-foreground" />
@@ -230,13 +237,17 @@ export function AssistantStepDates({ culture, planche, onCultureChange }: Assist
               value={culture.longueur || ''}
               onChange={(e) => onCultureChange({ longueur: parseFloat(e.target.value) || undefined })}
               placeholder={planche.longueur?.toString() || '10'}
+              className={!culture.longueur ? 'border-red-300 focus:border-red-500' : ''}
             />
           </div>
         </div>
 
         <div className="space-y-2">
           <div className="flex items-center gap-2">
-            <Label htmlFor="espacement">Espacement entre plants (cm)</Label>
+            <Label htmlFor="espacement" className="flex items-center gap-1">
+              Espacement entre plants (cm)
+              <span className="text-red-500">*</span>
+            </Label>
             <Tooltip>
               <TooltipTrigger>
                 <HelpCircle className="h-4 w-4 text-muted-foreground" />
@@ -256,6 +267,7 @@ export function AssistantStepDates({ culture, planche, onCultureChange }: Assist
             value={culture.espacement || itp?.espacement || ''}
             onChange={(e) => onCultureChange({ espacement: parseInt(e.target.value) || undefined })}
             placeholder={itp?.espacement?.toString() || '30'}
+            className={!culture.espacement && !itp?.espacement ? 'border-red-300 focus:border-red-500' : ''}
           />
         </div>
 

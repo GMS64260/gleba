@@ -173,33 +173,44 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
       let plancheId = planche.id
 
       // 1. Créer la planche si nouvelle
+      console.log('🔍 Mode:', state.mode, '| planche.id:', planche.id, '| planche.nom:', planche.nom)
       if (state.mode === 'new-planche' && !planche.id) {
+        console.log('➡️ Creating new planche...')
+        const plancheData = {
+          id: planche.nom,
+          largeur: planche.largeur,
+          longueur: planche.longueur,
+          surface: planche.surface,
+          ilot: planche.ilot || null,
+          type: planche.type || null,
+          irrigation: planche.irrigation || null,
+        }
+        console.log('📤 Planche data:', plancheData)
+
         const plancheRes = await fetch('/api/planches', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            id: planche.nom,
-            largeur: planche.largeur,
-            longueur: planche.longueur,
-            surface: planche.surface,
-            ilot: planche.ilot || null,
-            type: planche.type || null,
-            irrigation: planche.irrigation || null,
-          }),
+          body: JSON.stringify(plancheData),
         })
+
+        console.log('📥 Planche response status:', plancheRes.status, plancheRes.ok)
 
         if (!plancheRes.ok) {
           const err = await plancheRes.json()
+          console.error('❌ Planche creation failed:', err)
           throw new Error(err.error || 'Erreur création planche')
         }
 
         const newPlanche = await plancheRes.json()
         plancheId = newPlanche.id
+        console.log('✅ Planche created with ID:', plancheId)
 
         toast({
           title: "Planche créée",
           description: `La planche "${plancheId}" a été créée`,
         })
+      } else {
+        console.log('⏭️ Skipping planche creation (existing or already has ID)')
       }
 
       // 2. Créer la culture
@@ -230,7 +241,10 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
 
       if (!cultureRes.ok) {
         const err = await cultureRes.json()
-        throw new Error(err.error || 'Erreur création culture')
+        console.error('API Error details:', err)
+        const errorMsg = err.error || 'Erreur création culture'
+        const details = err.details ? JSON.stringify(err.details) : ''
+        throw new Error(`${errorMsg}${details ? ' - ' + details : ''}`)
       }
 
       const newCulture = await cultureRes.json()
