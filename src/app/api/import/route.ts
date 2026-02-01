@@ -129,6 +129,8 @@ interface ImportData {
     type?: string | null
     irrigation?: string | null
     annee?: number | null
+    typeSol?: string | null
+    retentionEau?: string | null
   }>
   cultures?: Array<{
     id: number
@@ -687,30 +689,37 @@ export async function POST(request: NextRequest) {
     // 11. Planches (ID string - upsert par utilisateur)
     if (data.planches?.length) {
       for (const item of data.planches) {
-        // Vérifier si la planche existe déjà pour cet utilisateur
-        const existing = await prisma.planche.findFirst({
-          where: { id: item.id, userId },
+        // Vérifier si la planche existe globalement (ID unique)
+        const existing = await prisma.planche.findUnique({
+          where: { id: item.id },
         })
 
         if (existing) {
-          await prisma.planche.update({
-            where: { id: item.id },
-            data: {
-              rotationId: item.rotationId,
-              ilot: item.ilot,
-              surface: item.surface,
-              largeur: item.largeur,
-              longueur: item.longueur,
-              posX: item.posX,
-              posY: item.posY,
-              rotation2D: item.rotation2D,
-              planchesInfluencees: item.planchesInfluencees,
-              notes: item.notes,
-              type: item.type,
-              irrigation: item.irrigation,
-              annee: item.annee,
-            },
-          })
+          // Mettre à jour seulement si appartient à l'utilisateur
+          if (existing.userId === userId) {
+            await prisma.planche.update({
+              where: { id: item.id },
+              data: {
+                rotationId: item.rotationId,
+                ilot: item.ilot,
+                surface: item.surface,
+                largeur: item.largeur,
+                longueur: item.longueur,
+                posX: item.posX,
+                posY: item.posY,
+                rotation2D: item.rotation2D,
+                planchesInfluencees: item.planchesInfluencees,
+                notes: item.notes,
+                type: item.type,
+                irrigation: item.irrigation,
+                annee: item.annee,
+                typeSol: item.typeSol,
+                retentionEau: item.retentionEau,
+              },
+            })
+            stats.planches++
+          }
+          // Sinon skip (planche appartient à un autre utilisateur)
         } else {
           await prisma.planche.create({
             data: {
@@ -729,10 +738,12 @@ export async function POST(request: NextRequest) {
               type: item.type,
               irrigation: item.irrigation,
               annee: item.annee,
+              typeSol: item.typeSol,
+              retentionEau: item.retentionEau,
             },
           })
+          stats.planches++
         }
-        stats.planches++
       }
     }
 
