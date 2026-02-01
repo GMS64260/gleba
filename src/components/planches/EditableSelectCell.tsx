@@ -96,7 +96,10 @@ export function EditableSelectCell({
 
   return (
     <button
-      onClick={() => setEditing(true)}
+      onClick={(e) => {
+        e.stopPropagation()
+        setEditing(true)
+      }}
       className="px-2 py-1 rounded hover:bg-yellow-50 hover:ring-1 hover:ring-yellow-400 min-w-[100px] text-left transition-all group relative text-xs"
       title="Cliquer pour éditer"
     >
