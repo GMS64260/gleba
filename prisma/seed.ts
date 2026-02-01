@@ -49,20 +49,20 @@ async function main() {
   console.log(`✓ Utilisateur admin créé (email: ${process.env.ADMIN_EMAIL || "admin@gleba.local"}, password: ${process.env.ADMIN_PASSWORD || "changeme"})`)
 
   // Demo (utilisateur normal pour tests)
-  const demoUserId = "demo"
-  await prisma.user.upsert({
-    where: { id: demoUserId },
+  const hashedPasswordDemoReal = await bcrypt.hash("demo2026", 12)
+  const demoUser = await prisma.user.upsert({
+    where: { email: "demo@gleba.fr" },
     update: {},
     create: {
-      id: demoUserId,
-      email: "demo@gleba.local",
-      password: hashedPasswordDemo,
-      name: "Utilisateur Demo",
+      email: "demo@gleba.fr",
+      password: hashedPasswordDemoReal,
+      name: "Compte Démo",
       role: "USER",
       active: true,
     },
   })
-  console.log(`✓ Utilisateur demo créé (email: demo@gleba.local, password: demo)`)
+  const demoUserId = demoUser.id
+  console.log(`✓ Utilisateur demo créé (email: demo@gleba.fr, password: demo2026, id: ${demoUserId})`)
 
   // Familles
   for (const f of familles) {
@@ -182,14 +182,116 @@ async function main() {
       })
     }
   }
-  console.log(`✓ Planches: ${planches.length}`)
+  console.log(`✓ Planches admin: ${planches.length}`)
 
-  // Cultures
+  // Planches DEMO (3 planches simples)
+  const planchesDemo = [
+    {
+      id: "Demo-A",
+      largeur: 1.2,
+      longueur: 10,
+      surface: 12,
+      ilot: "Potager",
+      type: "Plein champ",
+      irrigation: "Goutte-à-goutte",
+      typeSol: "Limoneux",
+      retentionEau: "Moyenne",
+      posX: 0,
+      posY: 0
+    },
+    {
+      id: "Demo-B",
+      largeur: 0.8,
+      longueur: 8,
+      surface: 6.4,
+      ilot: "Potager",
+      type: "Plein champ",
+      irrigation: "Manuel",
+      typeSol: "Sableux",
+      retentionEau: "Faible",
+      posX: 1.5,
+      posY: 0
+    },
+    {
+      id: "Serre-Demo",
+      largeur: 1.0,
+      longueur: 6,
+      surface: 6,
+      ilot: "Serre",
+      type: "Serre",
+      irrigation: "Goutte-à-goutte",
+      typeSol: "Mixte",
+      retentionEau: "Moyenne",
+      posX: 0,
+      posY: 10
+    },
+  ]
+
+  for (const p of planchesDemo) {
+    await prisma.planche.create({
+      data: { ...p, userId: demoUserId },
+    })
+  }
+  console.log(`✓ Planches demo: ${planchesDemo.length}`)
+
+  // Cultures ADMIN
   const cultures = generateCultures(userId)
   for (const c of cultures) {
     await prisma.culture.create({ data: c })
   }
-  console.log(`✓ Cultures: ${cultures.length}`)
+  console.log(`✓ Cultures admin: ${cultures.length}`)
+
+  // Cultures DEMO (simples pour tester)
+  const culturesDemo = [
+    {
+      userId: demoUserId,
+      especeId: "Tomate",
+      varieteId: null, // Pas de variété pour simplifier
+      plancheId: "Serre-Demo",
+      annee: 2026,
+      dateSemis: new Date("2026-03-15"),
+      datePlantation: new Date("2026-05-01"),
+      dateRecolte: new Date("2026-07-15"),
+      nbRangs: 2,
+      longueur: 5,
+      aIrriguer: true,
+      semisFait: true,
+      plantationFaite: true,
+    },
+    {
+      userId: demoUserId,
+      especeId: "Laitue",
+      varieteId: null, // Pas de variété spécifique
+      plancheId: "Demo-A",
+      annee: 2026,
+      dateSemis: new Date("2026-04-01"),
+      datePlantation: new Date("2026-04-20"),
+      dateRecolte: new Date("2026-06-01"),
+      nbRangs: 3,
+      longueur: 8,
+      aIrriguer: true,
+      semisFait: true,
+      plantationFaite: true,
+    },
+    {
+      userId: demoUserId,
+      especeId: "Carotte",
+      varieteId: null,
+      plancheId: "Demo-B",
+      annee: 2026,
+      dateSemis: new Date("2026-03-20"),
+      dateRecolte: new Date("2026-07-01"),
+      nbRangs: 4,
+      longueur: 6,
+      aIrriguer: true,
+      semisFait: true,
+    },
+  ]
+
+  for (const c of culturesDemo) {
+    await prisma.culture.create({ data: c })
+  }
+  console.log(`✓ Cultures demo: ${culturesDemo.length}`)
 
   // Récoltes
   const recoltesData = generateRecoltes(cultures)
