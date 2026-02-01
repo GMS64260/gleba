@@ -8,7 +8,7 @@ import { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { PlancheHistory, RotationAdvice } from '@/components/planche'
-import { Pencil, Save, X } from 'lucide-react'
+import { PlancheInfoTable } from '@/components/planches/PlancheInfoTable'
 
 interface Planche {
   id: string
@@ -157,7 +157,7 @@ export default function PlancheDetailPage({ params }: PageProps) {
       {/* Content */}
       <div className="mt-6">
         {activeTab === 'info' && (
-          <PlancheInfo planche={planche} onUpdate={fetchPlanche} />
+          <PlancheInfoTable planche={planche} onUpdate={fetchPlanche} />
         )}
         {activeTab === 'history' && <PlancheHistory plancheId={planche.id} />}
         {activeTab === 'rotation' && <RotationAdvice plancheId={planche.id} />}
@@ -166,12 +166,8 @@ export default function PlancheDetailPage({ params }: PageProps) {
   )
 }
 
-interface PlancheInfoProps {
-  planche: Planche
-  onUpdate: () => void
-}
-
-function PlancheInfo({ planche, onUpdate }: PlancheInfoProps) {
+// ===== Ancien composant PlancheInfo supprimé - remplacé par PlancheInfoTable =====
+/* function PlancheInfo({ planche, onUpdate }: PlancheInfoProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [formData, setFormData] = useState({
@@ -578,4 +574,4 @@ function PlancheInfo({ planche, onUpdate }: PlancheInfoProps) {
       )}
     </div>
   )
-}
+} */
