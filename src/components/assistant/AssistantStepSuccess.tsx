@@ -1,9 +1,11 @@
 "use client"
 
 /**
- * Étape 8 : Confirmation de succès
- * - Message de succès
- * - Actions suivantes
+ * Etape 5 : Confirmation de succes
+ * - Message de succes
+ * - Lien vers la culture
+ * - Action "Marquer comme semee"
+ * - Boutons pour ajouter une autre culture ou fermer
  */
 
 import * as React from "react"
@@ -27,7 +29,7 @@ export function AssistantStepSuccess({
 }: AssistantStepSuccessProps) {
   return (
     <div className="space-y-6 text-center py-4">
-      {/* Icône de succès */}
+      {/* Icone de succes */}
       <div className="flex justify-center">
         <div className="relative">
           <div className="w-20 h-20 rounded-full bg-green-100 flex items-center justify-center">
@@ -42,14 +44,14 @@ export function AssistantStepSuccess({
       {/* Message */}
       <div>
         <h3 className="text-lg font-semibold text-green-700 mb-2">
-          Culture créée avec succès !
+          Culture creee avec succes !
         </h3>
         <p className="text-sm text-muted-foreground">
-          Votre culture a été enregistrée et apparaît maintenant dans votre liste.
+          Votre culture a ete enregistree et apparait maintenant dans votre liste.
         </p>
       </div>
 
-      {/* Références */}
+      {/* References */}
       <Card className="bg-muted/50">
         <CardContent className="py-4">
           <div className="grid grid-cols-2 gap-4 text-sm">
@@ -80,6 +82,15 @@ export function AssistantStepSuccess({
           </Link>
         )}
 
+        {cultureId && (
+          <Link href={`/cultures/${cultureId}`} className="block">
+            <Button variant="outline" className="w-full border-green-300 text-green-700 hover:bg-green-50">
+              <Sprout className="h-4 w-4 mr-2" />
+              Marquer comme semee
+            </Button>
+          </Link>
+        )}
+
         <Button
           variant="outline"
           onClick={onAddAnother}
@@ -99,12 +110,13 @@ export function AssistantStepSuccess({
         </Button>
       </div>
 
-      {/* Conseil */}
+      {/* Conseil actionnable */}
       <div className="p-3 bg-green-50 rounded-lg border border-green-200 mt-6">
         <p className="text-xs text-green-700">
-          <strong>Prochaine étape:</strong> Pensez à marquer votre culture comme "semée"
-          quand vous aurez effectué le semis. L'application suivra automatiquement
-          l'avancement de votre culture.
+          <strong>Prochaine etape :</strong> Rendez-vous sur la fiche de la culture
+          pour marquer le semis comme effectue. L'application calculera automatiquement
+          les dates de plantation et de recolte a partir de ce moment.
+          Vous pouvez aussi suivre l'avancement depuis le tableau de bord.
         </p>
       </div>
     </div>

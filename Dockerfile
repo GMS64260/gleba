@@ -62,10 +62,12 @@ COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modul
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/prisma ./node_modules/prisma
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/bcryptjs ./node_modules/bcryptjs
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/ollama ./node_modules/ollama
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/whatwg-fetch ./node_modules/whatwg-fetch
 
 # Copier scripts et CSV enrichis
 COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
-COPY --from=builder --chown=nextjs:nodejs /app/*_enriched.csv ./ 2>/dev/null || true
+COPY --from=builder --chown=nextjs:nodejs /app/especes_enriched.csv /app/itps_enriched.csv /app/varietes_enriched.csv ./
 
 # Script d'entrypoint
 COPY --chown=nextjs:nodejs docker-entrypoint.sh ./

@@ -49,6 +49,9 @@ export async function GET(request: NextRequest) {
         espece: {
           select: { couleur: true },
         },
+        planche: {
+          select: { nom: true },
+        },
       },
       orderBy: { dateSemis: 'asc' },
     })
@@ -72,6 +75,9 @@ export async function GET(request: NextRequest) {
         plantationFaite: true,
         espece: {
           select: { couleur: true },
+        },
+        planche: {
+          select: { nom: true },
         },
       },
       orderBy: { datePlantation: 'asc' },
@@ -97,6 +103,9 @@ export async function GET(request: NextRequest) {
         espece: {
           select: { couleur: true },
         },
+        planche: {
+          select: { nom: true },
+        },
       },
       orderBy: { dateRecolte: 'asc' },
     })
@@ -121,7 +130,7 @@ export async function GET(request: NextRequest) {
               select: { couleur: true },
             },
             planche: {
-              select: { ilot: true },
+              select: { nom: true, ilot: true },
             },
           },
         },
@@ -129,13 +138,13 @@ export async function GET(request: NextRequest) {
       orderBy: { datePrevue: 'asc' },
     })
 
-    // Formatter les donnees
+    // Formatter les donnees (plancheId = nom lisible de la planche)
     const semis = culturesAvecSemis.map(c => ({
       id: c.id,
       type: 'semis' as const,
       especeId: c.especeId,
       varieteId: c.varieteId,
-      plancheId: c.plancheId,
+      plancheId: c.planche?.nom || null,
       date: c.dateSemis?.toISOString() || '',
       fait: c.semisFait,
       couleur: c.espece?.couleur || null,
@@ -146,7 +155,7 @@ export async function GET(request: NextRequest) {
       type: 'plantation' as const,
       especeId: c.especeId,
       varieteId: c.varieteId,
-      plancheId: c.plancheId,
+      plancheId: c.planche?.nom || null,
       date: c.datePlantation?.toISOString() || '',
       fait: c.plantationFaite,
       couleur: c.espece?.couleur || null,
@@ -157,7 +166,7 @@ export async function GET(request: NextRequest) {
       type: 'recolte' as const,
       especeId: c.especeId,
       varieteId: c.varieteId,
-      plancheId: c.plancheId,
+      plancheId: c.planche?.nom || null,
       date: c.dateRecolte?.toISOString() || '',
       fait: c.recolteFaite,
       couleur: c.espece?.couleur || null,
@@ -167,7 +176,7 @@ export async function GET(request: NextRequest) {
       id: i.id, // ID de l'irrigation planifiée
       cultureId: i.culture.id,
       especeId: i.culture.especeId,
-      plancheId: i.culture.plancheId,
+      plancheId: i.culture.planche?.nom || null,
       ilot: i.culture.planche?.ilot || null,
       datePrevue: i.datePrevue.toISOString(),
       fait: i.fait,
@@ -192,7 +201,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('GET /api/taches error:', error)
     return NextResponse.json(
-      { error: 'Erreur lors de la recuperation des taches', details: String(error) },
+      { error: 'Erreur lors de la recuperation des taches', details: "Erreur interne du serveur" },
       { status: 500 }
     )
   }

@@ -10,7 +10,7 @@ import { useRouter } from "next/navigation"
 import { ColumnDef } from "@tanstack/react-table"
 import { format } from "date-fns"
 import { fr } from "date-fns/locale"
-import { ArrowLeft, Leaf, ListTodo, Sprout, TreeDeciduous, Apple, CheckCircle, Circle, Droplets, Wand2 } from "lucide-react"
+import { ArrowLeft, Leaf, ListTodo, Sprout, TreeDeciduous, Apple, CheckCircle, Droplets } from "lucide-react"
 import { AssistantDialog, AssistantButton } from "@/components/assistant"
 
 import { DataTable } from "@/components/tables/DataTable"
@@ -102,7 +102,7 @@ function createColumns(
       cell: ({ getValue }) => getValue() || "-",
     },
     {
-      accessorKey: "planche.id",
+      accessorKey: "planche.nom",
       header: "Planche",
       cell: ({ getValue }) => getValue() || "-",
     },

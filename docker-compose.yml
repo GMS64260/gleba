@@ -8,7 +8,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gleba}
       POSTGRES_DB: ${POSTGRES_DB:-gleba}
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -31,6 +31,8 @@ services:
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@gleba.local}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme}
       ADMIN_NAME: ${ADMIN_NAME:-Administrateur}
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-glm-4.7}
     ports:
       - "${APP_PORT:-3000}:3000"
     depends_on:

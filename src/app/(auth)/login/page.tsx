@@ -19,7 +19,9 @@ import {
   Package,
   Shield,
   Zap,
-  Heart
+  Heart,
+  MessageCircle,
+  Plug
 } from "lucide-react"
 
 function LoginFormFallback() {
@@ -51,7 +53,8 @@ export default function LoginPage() {
 
             <p className="text-xl text-gray-700 leading-relaxed">
               Votre compagnon <span className="font-semibold text-green-700">100% gratuit</span> pour
-              la gestion complète de votre potager et verger.
+              la gestion complète de votre potager et verger, avec <span className="font-semibold text-indigo-600">IA integree</span> et
+              compatible <span className="font-semibold text-rose-600">MCP</span>.
             </p>
           </div>
 
@@ -68,6 +71,14 @@ export default function LoginPage() {
             <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-200 px-3 py-1">
               <Leaf className="h-3 w-3 mr-1" />
               Agriculture bio
+            </Badge>
+            <Badge className="bg-indigo-100 text-indigo-700 hover:bg-indigo-200 px-3 py-1">
+              <MessageCircle className="h-3 w-3 mr-1" />
+              IA integree
+            </Badge>
+            <Badge className="bg-rose-100 text-rose-700 hover:bg-rose-200 px-3 py-1">
+              <Plug className="h-3 w-3 mr-1" />
+              Compatible MCP
             </Badge>
           </div>
 
@@ -123,6 +134,30 @@ export default function LoginPage() {
                   <h4 className="font-medium text-gray-900">Plan du jardin 2D</h4>
                   <p className="text-sm text-gray-600">
                     Visualisation, planches, arbres, drag & drop
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3 p-3 rounded-lg bg-white/50 border border-indigo-100">
+                <div className="p-2 rounded-lg bg-indigo-100">
+                  <MessageCircle className="h-5 w-5 text-indigo-600" />
+                </div>
+                <div className="flex-1">
+                  <h4 className="font-medium text-gray-900">Agent IA integre</h4>
+                  <p className="text-sm text-gray-600">
+                    Posez vos questions en langage naturel, l'IA gere votre potager pour vous
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3 p-3 rounded-lg bg-white/50 border border-rose-100">
+                <div className="p-2 rounded-lg bg-rose-100">
+                  <Plug className="h-5 w-5 text-rose-600" />
+                </div>
+                <div className="flex-1">
+                  <h4 className="font-medium text-gray-900">Compatible MCP</h4>
+                  <p className="text-sm text-gray-600">
+                    Connectez Claude, ChatGPT ou votre IA preferee directement a votre potager
                   </p>
                 </div>
               </div>

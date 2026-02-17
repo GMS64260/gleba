@@ -41,3 +41,19 @@ next-env.d.ts
 # Development notes (not for production)
 AGENT_PROMPT.md
 ANALYSIS.md
+CLAUDE.md
+CLAUDE.md.*
+
+# Confidential
+dl/
+PROMPT_AI_ENRICHMENT.md
+
+# AI / MCP (proprietary)
+/src/lib/chat/
+/src/lib/ollama.ts
+/src/app/api/chat/
+/src/app/api/mcp/
+/src/app/api/user/api-token/
+/src/components/chat/
+/src/hooks/use-chat.ts
+/mcp-server/

@@ -13,7 +13,7 @@ export async function createSampleDataForUser(userId: string): Promise<void> {
   // Créer 2 planches
   const planche1 = await prisma.planche.create({
     data: {
-      id: "Planche A",
+      nom: "Planche A",
       userId,
       largeur: 1.2,
       longueur: 10,
@@ -28,7 +28,7 @@ export async function createSampleDataForUser(userId: string): Promise<void> {
 
   const planche2 = await prisma.planche.create({
     data: {
-      id: "Planche B",
+      nom: "Planche B",
       userId,
       largeur: 1.2,
       longueur: 8,

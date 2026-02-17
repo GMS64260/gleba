@@ -3,10 +3,15 @@
 /**
  * Page de gestion des stocks
  * Semences, Plants, Fertilisants, Recoltes
+ *
+ * Query params:
+ *   - especeType: 'arbres' | 'legumes' (filtre les varietes par type d'espece)
  */
 
 import * as React from "react"
+import { Suspense } from "react"
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import {
   ArrowLeft,
   Package,
@@ -16,7 +21,8 @@ import {
   Save,
   RefreshCw,
   Search,
-  TrendingDown
+  TrendingDown,
+  TreeDeciduous
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -78,7 +84,7 @@ function StockInput({
 }: {
   value: number | null
   onChange: (val: number | null) => void
-  onSave: () => void
+  onSave: (value: number | null) => void
   unit?: string
   isInteger?: boolean
 }) {
@@ -97,7 +103,7 @@ function StockInput({
       : parseFloat(localValue) || null
     if (numVal !== value) {
       onChange(numVal)
-      onSave()
+      onSave(numVal)
     }
   }
 
@@ -143,8 +149,12 @@ function StockInput({
   )
 }
 
-export default function StocksPage() {
+function StocksPageContent() {
   const { toast } = useToast()
+  const searchParams = useSearchParams()
+  const especeType = searchParams.get('especeType') // 'arbres' | 'legumes' | null
+  const isArbresMode = especeType === 'arbres'
+
   const [isLoading, setIsLoading] = React.useState(true)
   const [isSaving, setIsSaving] = React.useState(false)
   const [data, setData] = React.useState<StockData>({
@@ -159,7 +169,12 @@ export default function StocksPage() {
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
     try {
-      const response = await fetch("/api/stocks")
+      // Construire l'URL avec le filtre especeType si present
+      let url = "/api/stocks"
+      if (especeType) {
+        url += `?especeType=${especeType}`
+      }
+      const response = await fetch(url)
       if (!response.ok) throw new Error("Erreur chargement")
       const result = await response.json()
       setData(result)
@@ -172,7 +187,7 @@ export default function StocksPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [toast])
+  }, [toast, especeType])
 
   React.useEffect(() => {
     fetchData()
@@ -288,15 +303,21 @@ export default function StocksPage() {
       <header className="border-b bg-white sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Link href="/">
+            <Link href={isArbresMode ? "/arbres" : "/"}>
               <Button variant="ghost" size="sm">
                 <ArrowLeft className="h-4 w-4 mr-2" />
-                Accueil
+                {isArbresMode ? "Verger" : "Accueil"}
               </Button>
             </Link>
             <div className="flex items-center gap-2">
-              <Package className="h-6 w-6 text-purple-600" />
-              <h1 className="text-xl font-bold">Gestion des stocks</h1>
+              {isArbresMode ? (
+                <TreeDeciduous className="h-6 w-6 text-lime-600" />
+              ) : (
+                <Package className="h-6 w-6 text-purple-600" />
+              )}
+              <h1 className="text-xl font-bold">
+                {isArbresMode ? "Stocks Plants d'arbres" : "Gestion des stocks"}
+              </h1>
             </div>
           </div>
 
@@ -332,80 +353,117 @@ export default function StocksPage() {
         </div>
 
         {/* Stats */}
-        <div className="grid gap-4 md:grid-cols-4 mb-6">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
-                <Sprout className="h-4 w-4 text-orange-600" />
-                Semences
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">{data.graines.length}</p>
-              <p className="text-sm text-muted-foreground">varietes en stock</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
-                <Leaf className="h-4 w-4 text-green-600" />
-                Plants
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">{data.plants.length}</p>
-              <p className="text-sm text-muted-foreground">varietes en stock</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
-                <Package className="h-4 w-4 text-amber-600" />
-                Fertilisants
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">{data.fertilisants.length}</p>
-              <p className="text-sm text-muted-foreground">produits</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
-                <Apple className="h-4 w-4 text-red-600" />
-                Recoltes
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">{data.recoltes.length}</p>
-              <p className="text-sm text-muted-foreground">especes en stock</p>
-            </CardContent>
-          </Card>
-        </div>
+        {isArbresMode ? (
+          <div className="grid gap-4 md:grid-cols-2 mb-6">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
+                  <TreeDeciduous className="h-4 w-4 text-lime-600" />
+                  Plants d'arbres
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold">{data.plants.length}</p>
+                <p className="text-sm text-muted-foreground">varietes disponibles</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
+                  <Leaf className="h-4 w-4 text-green-600" />
+                  En stock
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold">
+                  {data.plants.filter(p => p.stockPlants && p.stockPlants > 0).length}
+                </p>
+                <p className="text-sm text-muted-foreground">varietes avec stock</p>
+              </CardContent>
+            </Card>
+          </div>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-4 mb-6">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
+                  <Sprout className="h-4 w-4 text-orange-600" />
+                  Semences
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold">{data.graines.length}</p>
+                <p className="text-sm text-muted-foreground">varietes en stock</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
+                  <Leaf className="h-4 w-4 text-green-600" />
+                  Plants
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold">{data.plants.length}</p>
+                <p className="text-sm text-muted-foreground">varietes en stock</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
+                  <Package className="h-4 w-4 text-amber-600" />
+                  Fertilisants
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold">{data.fertilisants.length}</p>
+                <p className="text-sm text-muted-foreground">produits</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
+                  <Apple className="h-4 w-4 text-red-600" />
+                  Recoltes
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold">{data.recoltes.length}</p>
+                <p className="text-sm text-muted-foreground">especes en stock</p>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         {/* Tabs */}
-        <Tabs defaultValue="graines" className="space-y-4">
+        <Tabs defaultValue={isArbresMode ? "plants" : "graines"} className="space-y-4">
           <TabsList>
-            <TabsTrigger value="graines" className="flex items-center gap-2">
-              <Sprout className="h-4 w-4" />
-              Semences ({data.graines.length})
-            </TabsTrigger>
+            {!isArbresMode && (
+              <TabsTrigger value="graines" className="flex items-center gap-2">
+                <Sprout className="h-4 w-4" />
+                Semences ({data.graines.length})
+              </TabsTrigger>
+            )}
             <TabsTrigger value="plants" className="flex items-center gap-2">
-              <Leaf className="h-4 w-4" />
+              {isArbresMode ? <TreeDeciduous className="h-4 w-4" /> : <Leaf className="h-4 w-4" />}
               Plants ({data.plants.length})
             </TabsTrigger>
-            <TabsTrigger value="fertilisants" className="flex items-center gap-2">
-              <Package className="h-4 w-4" />
-              Fertilisants ({data.fertilisants.length})
-            </TabsTrigger>
-            <TabsTrigger value="recoltes" className="flex items-center gap-2">
-              <Apple className="h-4 w-4" />
-              Recoltes ({data.recoltes.length})
-            </TabsTrigger>
-            <TabsTrigger value="consommations" className="flex items-center gap-2">
-              <TrendingDown className="h-4 w-4" />
-              Consommations
-            </TabsTrigger>
+            {!isArbresMode && (
+              <>
+                <TabsTrigger value="fertilisants" className="flex items-center gap-2">
+                  <Package className="h-4 w-4" />
+                  Fertilisants ({data.fertilisants.length})
+                </TabsTrigger>
+                <TabsTrigger value="recoltes" className="flex items-center gap-2">
+                  <Apple className="h-4 w-4" />
+                  Recoltes ({data.recoltes.length})
+                </TabsTrigger>
+                <TabsTrigger value="consommations" className="flex items-center gap-2">
+                  <TrendingDown className="h-4 w-4" />
+                  Consommations
+                </TabsTrigger>
+              </>
+            )}
           </TabsList>
 
           {/* Semences */}
@@ -439,7 +497,7 @@ export default function StocksPage() {
                           <StockInput
                             value={v.stockGraines}
                             onChange={(val) => updateLocalStock("graines", v.id, "stockGraines", val)}
-                            onSave={() => saveStock("graines", v.id, v.stockGraines)}
+                            onSave={(val) => saveStock("graines", v.id, val)}
                             unit="g"
                           />
                         </TableCell>
@@ -494,7 +552,7 @@ export default function StocksPage() {
                           <StockInput
                             value={v.stockPlants}
                             onChange={(val) => updateLocalStock("plants", v.id, "stockPlants", val)}
-                            onSave={() => saveStock("plants", v.id, v.stockPlants)}
+                            onSave={(val) => saveStock("plants", v.id, val)}
                             isInteger
                           />
                         </TableCell>
@@ -549,7 +607,7 @@ export default function StocksPage() {
                           <StockInput
                             value={f.stock}
                             onChange={(val) => updateLocalStock("fertilisants", f.id, "stock", val)}
-                            onSave={() => saveStock("fertilisant", f.id, f.stock)}
+                            onSave={(val) => saveStock("fertilisant", f.id, val)}
                             unit="kg"
                           />
                         </TableCell>
@@ -613,7 +671,7 @@ export default function StocksPage() {
                           <StockInput
                             value={e.inventaire}
                             onChange={(val) => updateLocalStock("recoltes", e.id, "inventaire", val)}
-                            onSave={() => saveStock("recolte", e.id, e.inventaire)}
+                            onSave={(val) => saveStock("recolte", e.id, val)}
                             unit="kg"
                           />
                         </TableCell>
@@ -645,5 +703,31 @@ export default function StocksPage() {
         </Tabs>
       </main>
     </div>
+  )
+}
+
+// Loading fallback for Suspense
+function StocksLoadingFallback() {
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <header className="border-b bg-white sticky top-0 z-50">
+        <div className="container mx-auto px-4 py-4">
+          <Skeleton className="h-8 w-64" />
+        </div>
+      </header>
+      <main className="container mx-auto px-4 py-6">
+        <Skeleton className="h-12 w-full mb-4" />
+        <Skeleton className="h-96 w-full" />
+      </main>
+    </div>
+  )
+}
+
+// Export wrapped component with Suspense
+export default function StocksPage() {
+  return (
+    <Suspense fallback={<StocksLoadingFallback />}>
+      <StocksPageContent />
+    </Suspense>
   )
 }

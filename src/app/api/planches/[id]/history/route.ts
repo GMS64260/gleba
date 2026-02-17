@@ -43,11 +43,13 @@ export async function GET(request: NextRequest, { params }: Params) {
     const currentYear = new Date().getFullYear()
     const minYear = currentYear - years
 
-    // Vérifier que la planche existe et appartient à l'utilisateur
+    // Vérifier que la planche existe et appartient à l'utilisateur (URL param is nom)
     const planche = await prisma.planche.findUnique({
       where: {
-        id: plancheId,
-        userId: session!.user.id,
+        nom_userId: {
+          nom: plancheId,
+          userId: session!.user.id,
+        },
       },
     })
 
@@ -55,10 +57,10 @@ export async function GET(request: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Planche non trouvée' }, { status: 404 })
     }
 
-    // Récupérer les cultures
+    // Récupérer les cultures (use the real PK id)
     const cultures = await prisma.culture.findMany({
       where: {
-        plancheId,
+        plancheId: planche.id,
         userId: session!.user.id,
         annee: { gte: minYear },
       },
@@ -105,7 +107,7 @@ export async function GET(request: NextRequest, { params }: Params) {
     if (includeFertilisations) {
       const fertilisations = await prisma.fertilisation.findMany({
         where: {
-          plancheId,
+          plancheId: planche.id,
           userId: session!.user.id,
           date: { gte: new Date(minYear, 0, 1) },
         },
@@ -133,7 +135,7 @@ export async function GET(request: NextRequest, { params }: Params) {
     )
 
     const response: PlancheHistory = {
-      plancheId,
+      plancheId: planche.nom,
       cultures: culturesHistory,
       fertilisations: fertilisationsHistory,
       yearsAvailable,

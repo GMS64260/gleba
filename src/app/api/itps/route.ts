@@ -80,7 +80,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('GET /api/itps error:', error)
     return NextResponse.json(
-      { error: 'Erreur lors de la récupération des ITPs', details: String(error) },
+      { error: 'Erreur lors de la récupération des ITPs', details: "Erreur interne du serveur" },
       { status: 500 }
     )
   }

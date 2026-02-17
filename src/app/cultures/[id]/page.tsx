@@ -36,6 +36,27 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 import { updateCultureSchema, type UpdateCultureInput } from "@/lib/validations"
 
+// Convertir un numéro de semaine (1-52) en date pour une année donnée
+function weekToDate(year: number, week: number): Date {
+  const jan4 = new Date(year, 0, 4)
+  const dayOfWeek = jan4.getDay() || 7
+  const monday = new Date(jan4)
+  monday.setDate(jan4.getDate() - dayOfWeek + 1 + (week - 1) * 7)
+  return monday
+}
+
+interface ITPData {
+  id: string
+  especeId: string | null
+  semaineSemis: number | null
+  semainePlantation: number | null
+  semaineRecolte: number | null
+  dureeRecolte: number | null
+  nbRangs: number | null
+  espacement: number | null
+  espacementRangs: number | null
+}
+
 export default function EditCulturePage() {
   const router = useRouter()
   const params = useParams()
@@ -43,15 +64,23 @@ export default function EditCulturePage() {
   const { toast } = useToast()
   const [especes, setEspeces] = React.useState<{ id: string }[]>([])
   const [varietes, setVarietes] = React.useState<{ id: string; especeId: string }[]>([])
-  const [planches, setPlanches] = React.useState<{ id: string; longueur: number | null }[]>([])
+  const [itps, setItps] = React.useState<ITPData[]>([])
+  const [planches, setPlanches] = React.useState<{ id: string; nom?: string; longueur: number | null }[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [isSubmitting, setIsSubmitting] = React.useState(false)
+  // Empêcher l'auto-remplissage au chargement initial
+  const initialLoadDone = React.useRef(false)
+  const initialItpId = React.useRef<string | null>(null)
+  // Mémoriser les valeurs de l'ITP précédent pour la logique d'écrasement intelligent
+  const prevItpNbRangs = React.useRef<number | null>(null)
+  const prevItpEspacement = React.useRef<number | null>(null)
 
   const form = useForm<UpdateCultureInput>({
     resolver: zodResolver(updateCultureSchema),
     defaultValues: {
       especeId: "",
       varieteId: null,
+      itpId: null,
       plancheId: null,
       annee: new Date().getFullYear(),
       dateSemis: null,
@@ -64,12 +93,22 @@ export default function EditCulturePage() {
       quantite: null,
       nbRangs: null,
       longueur: null,
+      espacement: null,
       notes: null,
     },
   })
 
   const selectedEspece = form.watch("especeId")
   const selectedPlanche = form.watch("plancheId")
+  const selectedItp = form.watch("itpId")
+  const watchedNbRangs = form.watch("nbRangs")
+  const watchedLongueur = form.watch("longueur")
+  const watchedEspacement = form.watch("espacement")
+
+  // ITP actuellement sélectionné (pour indicateurs "depuis l'ITP")
+  const currentItp = React.useMemo(() => itps.find((i) => i.id === selectedItp), [itps, selectedItp])
+  const nbRangsDepuisITP = !!currentItp?.nbRangs && watchedNbRangs === currentItp.nbRangs
+  const espacementDepuisITP = !!currentItp?.espacement && watchedEspacement === Math.round(currentItp.espacement)
 
   // Charger les données
   React.useEffect(() => {
@@ -85,10 +124,17 @@ export default function EditCulturePage() {
         setEspeces(especesData.data || [])
         setPlanches(planchesData.data || [])
 
+        // Mémoriser l'ITP initial pour ne pas écraser les données existantes
+        initialItpId.current = cultureData.itpId || null
+        // Mémoriser les valeurs initiales de nbRangs/espacement de l'ITP
+        prevItpNbRangs.current = cultureData.nbRangs || null
+        prevItpEspacement.current = cultureData.espacement || null
+
         // Remplir le formulaire
         form.reset({
           especeId: cultureData.especeId || "",
           varieteId: cultureData.varieteId || null,
+          itpId: cultureData.itpId || null,
           plancheId: cultureData.plancheId || null,
           annee: cultureData.annee || new Date().getFullYear(),
           dateSemis: cultureData.dateSemis || null,
@@ -101,9 +147,12 @@ export default function EditCulturePage() {
           quantite: cultureData.quantite || null,
           nbRangs: cultureData.nbRangs || null,
           longueur: cultureData.longueur || null,
+          espacement: cultureData.espacement || null,
           notes: cultureData.notes || null,
         })
         setIsLoading(false)
+        // Marquer le chargement initial comme terminé après le prochain cycle de rendu
+        setTimeout(() => { initialLoadDone.current = true }, 100)
       })
       .catch((error) => {
         toast({
@@ -115,17 +164,69 @@ export default function EditCulturePage() {
       })
   }, [cultureId, form, router, toast])
 
-  // Charger les variétés quand l'espèce change
+  // Charger les variétés et ITPs quand l'espèce change
   React.useEffect(() => {
     if (selectedEspece) {
-      fetch(`/api/especes/${encodeURIComponent(selectedEspece)}`)
-        .then((r) => r.json())
-        .then((data) => setVarietes(data.varietes || []))
-        .catch(() => setVarietes([]))
+      Promise.all([
+        fetch(`/api/especes/${encodeURIComponent(selectedEspece)}`).then((r) => r.json()),
+        fetch(`/api/itps?especeId=${encodeURIComponent(selectedEspece)}&pageSize=500`).then((r) => r.json()),
+      ])
+        .then(([especeData, itpsData]) => {
+          setVarietes(especeData.varietes || [])
+          setItps(itpsData.data || [])
+        })
+        .catch(() => {
+          setVarietes([])
+          setItps([])
+        })
     } else {
       setVarietes([])
+      setItps([])
     }
   }, [selectedEspece])
+
+  // Quand l'ITP change (seulement si c'est un changement utilisateur, pas le chargement initial)
+  React.useEffect(() => {
+    if (!initialLoadDone.current) return
+    if (!selectedItp) return
+    // Si c'est le même ITP qu'au chargement, ne rien écraser
+    if (selectedItp === initialItpId.current) return
+
+    const itp = itps.find((i) => i.id === selectedItp)
+    if (!itp) return
+
+    const year = form.getValues("annee") || new Date().getFullYear()
+
+    if (itp.semaineSemis) {
+      form.setValue("dateSemis", weekToDate(year, itp.semaineSemis))
+    }
+    if (itp.semainePlantation) {
+      form.setValue("datePlantation", weekToDate(year, itp.semainePlantation))
+    }
+    if (itp.semaineRecolte) {
+      form.setValue("dateRecolte", weekToDate(year, itp.semaineRecolte))
+    }
+
+    // Auto-remplir nbRangs seulement si vide ou encore égal à la valeur de l'ITP précédent
+    const currentNbRangs = form.getValues("nbRangs")
+    if (itp.nbRangs && (!currentNbRangs || currentNbRangs === prevItpNbRangs.current)) {
+      form.setValue("nbRangs", itp.nbRangs)
+    }
+
+    // Auto-remplir espacement seulement si vide ou encore égal à la valeur de l'ITP précédent
+    const currentEspacement = form.getValues("espacement")
+    const itpEspacement = itp.espacement ? Math.round(itp.espacement) : null
+    if (itpEspacement && (!currentEspacement || currentEspacement === prevItpEspacement.current)) {
+      form.setValue("espacement", itpEspacement)
+    }
+
+    // Mémoriser les valeurs de cet ITP pour la prochaine comparaison
+    prevItpNbRangs.current = itp.nbRangs ?? null
+    prevItpEspacement.current = itpEspacement
+
+    // Mettre à jour la référence pour les changements suivants
+    initialItpId.current = selectedItp
+  }, [selectedItp, itps, form])
 
   // Mettre à jour la longueur quand la planche change
   React.useEffect(() => {
@@ -136,6 +237,15 @@ export default function EditCulturePage() {
       }
     }
   }, [selectedPlanche, planches, form])
+
+  // Auto-calculer la quantité de plants
+  React.useEffect(() => {
+    if (!initialLoadDone.current) return
+    if (watchedNbRangs && watchedLongueur && watchedEspacement && watchedEspacement > 0) {
+      const quantite = watchedNbRangs * Math.floor((watchedLongueur * 100) / watchedEspacement)
+      form.setValue("quantite", quantite)
+    }
+  }, [watchedNbRangs, watchedLongueur, watchedEspacement, form])
 
   const onSubmit = async (data: UpdateCultureInput) => {
     setIsSubmitting(true)
@@ -299,6 +409,35 @@ export default function EditCulturePage() {
 
                 <FormField
                   control={form.control}
+                  name="itpId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Itinéraire technique (ITP)</FormLabel>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value || undefined}
+                        disabled={!selectedEspece || itps.length === 0}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder={itps.length === 0 ? "Aucun ITP" : "Sélectionner un ITP"} />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {itps.map((itp) => (
+                            <SelectItem key={itp.id} value={itp.id}>
+                              {itp.id}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
                   name="plancheId"
                   render={({ field }) => (
                     <FormItem>
@@ -315,7 +454,7 @@ export default function EditCulturePage() {
                         <SelectContent>
                           {planches.map((p) => (
                             <SelectItem key={p.id} value={p.id}>
-                              {p.id}
+                              {p.nom || p.id}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -502,7 +641,7 @@ export default function EditCulturePage() {
                 <CardTitle>Quantités</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
                     name="longueur"
@@ -546,6 +685,38 @@ export default function EditCulturePage() {
                             }
                           />
                         </FormControl>
+                        {nbRangsDepuisITP && (
+                          <p className="text-xs text-blue-600">depuis l'ITP</p>
+                        )}
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="espacement"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Espacement (cm)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min="1"
+                            {...field}
+                            value={field.value ?? ""}
+                            onChange={(e) =>
+                              field.onChange(
+                                e.target.value ? parseInt(e.target.value) : null
+                              )
+                            }
+                          />
+                        </FormControl>
+                        {espacementDepuisITP && (
+                          <p className="text-xs text-blue-600">depuis l'ITP</p>
+                        )}
                         <FormMessage />
                       </FormItem>
                     )}
@@ -556,7 +727,7 @@ export default function EditCulturePage() {
                     name="quantite"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Quantité / plants</FormLabel>
+                        <FormLabel>Quantité / plants (auto)</FormLabel>
                         <FormControl>
                           <Input
                             type="number"

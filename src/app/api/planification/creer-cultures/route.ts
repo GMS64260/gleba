@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('POST /api/planification/creer-cultures error:', error)
     return NextResponse.json(
-      { error: 'Erreur lors de la creation des cultures', details: String(error) },
+      { error: 'Erreur lors de la creation des cultures', details: "Erreur interne du serveur" },
       { status: 500 }
     )
   }

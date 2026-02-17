@@ -5,16 +5,11 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
-import { requireAuthApi } from '@/lib/auth-utils'
+import { requireAdminApi } from '@/lib/auth-utils'
 
 export async function GET(request: NextRequest) {
-  const { error, session } = await requireAuthApi()
+  const { error, session } = await requireAdminApi()
   if (error) return error
-
-  // Vérifier que l'utilisateur est admin
-  if (session!.user.role !== 'ADMIN') {
-    return NextResponse.json({ error: 'Accès refusé - Admin requis' }, { status: 403 })
-  }
 
   try {
     const [

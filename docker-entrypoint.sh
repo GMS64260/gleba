@@ -2,13 +2,10 @@
 set -e
 
 echo "==> Applying database migrations..."
-node node_modules/prisma/build/index.js db push
+node node_modules/prisma/build/index.js db push --accept-data-loss 2>/dev/null || echo "Warning: prisma db push failed (schema may already be in sync)"
 
 echo "==> Seeding database (if empty)..."
 npx tsx prisma/seed.ts 2>/dev/null || echo "Database already seeded or seed skipped"
-
-echo "==> Creating admin user (if not exists)..."
-npx tsx prisma/seed-admin.ts 2>/dev/null || echo "Admin already exists or creation skipped"
 
 echo "==> Creating demo account (if not exists)..."
 npx tsx prisma/seed-demo.ts 2>/dev/null || echo "Demo account already exists or creation skipped"

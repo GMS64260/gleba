@@ -19,6 +19,7 @@ export async function GET() {
       where: { userId: session!.user.id },
       select: {
         id: true,
+        nom: true,
         largeur: true,
         longueur: true,
         posX: true,
@@ -54,7 +55,7 @@ export async function GET() {
           orderBy: { annee: 'desc' }
         }
       },
-      orderBy: { id: 'asc' }
+      orderBy: { nom: 'asc' }
     })
 
     return NextResponse.json(planches)

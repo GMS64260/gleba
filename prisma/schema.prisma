@@ -3,7 +3,8 @@
 // Voir ANALYSIS.md pour la documentation complète
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
@@ -28,6 +29,7 @@ model User {
   name          String?
   role          Role      @default(USER)
   active        Boolean   @default(true)
+  apiToken      String?   @unique @map("api_token")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
@@ -45,6 +47,36 @@ model User {
   analysesSol   AnalyseSol[]
   notes         Note[]
   arbres        Arbre[]
+
+  // Relations module arbres
+  recoltesArbres    RecolteArbre[]
+  productionsBois   ProductionBois[]
+  operationsArbres  OperationArbre[]
+
+  // Relations module élevage
+  animaux               Animal[]
+  lotsAnimaux           LotAnimaux[]
+  productionsOeufs      ProductionOeuf[]
+  ventesProduits        VenteProduit[]
+  abattages             Abattage[]
+  consommationsAliments ConsommationAliment[]
+  soinsAnimaux          SoinAnimal[]
+  naissancesAnimales    NaissanceAnimale[]
+
+  // Relations module comptabilité
+  ventesManuelles       VenteManuelle[]
+  depensesManuelles     DepenseManuelle[]
+  clients               Client[]
+  facturesEmises        Facture[]
+
+  // Relations stocks per-user (multi-tenancy)
+  userStockVarietes     UserStockVariete[]
+  userStockFertilisants UserStockFertilisant[]
+  userStockAliments     UserStockAliment[]
+  userStockEspeces      UserStockEspece[]
+
+  // Relations chat IA
+  conversations         Conversation[]
 
   @@map("users")
 }
@@ -78,29 +110,40 @@ model Famille {
   @@map("familles")
 }
 
-/// Fournisseurs de semences
+/// Fournisseurs (semences, aliments, animaux)
 model Fournisseur {
-  id        String  @id @map("fournisseur")
-  contact   String? @map("contact")
-  adresse   String? @map("adresse")
-  email     String? @map("email")
-  telephone String? @map("telephone")
-  siteWeb   String? @map("site_web")
-  notes     String? @map("notes")
+  id                 String   @id @map("fournisseur")
+  contact            String?  @map("contact")
+  adresse            String?  @map("adresse")
+  ville              String?  @map("ville")
+  codePostal         String?  @map("code_postal")
+  pays               String?  @default("France") @map("pays")
+  email              String?  @map("email")
+  telephone          String?  @map("telephone")
+  siteWeb            String?  @map("site_web")
+  siret              String?  @map("siret")
+  tvaIntra           String?  @map("tva_intra") // Numéro TVA intracommunautaire
+  type               String?  @map("type") // "semences", "aliments", "animaux", "materiel", "mixte"
+  conditionsPaiement Int?     @default(30) @map("conditions_paiement") // Délai paiement en jours
+  notes              String?  @map("notes")
+  actif              Boolean  @default(true) @map("actif")
+  createdAt          DateTime @default(now()) @map("created_at")
 
   // Relations
-  varietes Variete[]
+  varietes  Variete[]
+  aliments  Aliment[]
 
   @@map("fournisseurs")
 }
 
-/// Destinations des récoltes (vente, don, consommation)
+/// Destinations des récoltes et ventes (vente, don, consommation)
 model Destination {
   id          String  @id @map("destination")
   description String? @map("description")
 
   // Relations
-  consommations Consommation[]
+  consommations  Consommation[]
+  ventesProduits VenteProduit[]
 
   @@map("destinations")
 }
@@ -123,6 +166,7 @@ model Fertilisant {
 
   // Relations
   fertilisations Fertilisation[]
+  userStocks     UserStockFertilisant[]
 
   @@map("fertilisants")
 }
@@ -174,6 +218,7 @@ model Espece {
   itps               ITP[]
   arbres             Arbre[]
   associationDetails AssociationDetail[]
+  userStocks         UserStockEspece[]
 
   @@map("especes")
 }
@@ -196,7 +241,8 @@ model Variete {
   description    String?      @map("description")
 
   // Relations
-  cultures Culture[]
+  cultures         Culture[]
+  userStocks       UserStockVariete[]
 
   @@map("varietes")
 }
@@ -262,7 +308,8 @@ model RotationDetail {
 
 /// Planches de culture (parcelles)
 model Planche {
-  id                  String    @id @map("planche")
+  id                  String    @id @default(cuid())
+  nom                 String    @map("nom")
   userId              String    @map("user_id")
   user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   rotationId          String?   @map("rotation")
@@ -298,6 +345,7 @@ model Planche {
   fertilisations Fertilisation[]
   analyses       AnalyseSol[]
 
+  @@unique([nom, userId])
   @@index([userId])
   @@index([userId, ilot])
   @@map("planches")
@@ -305,7 +353,8 @@ model Planche {
 
 /// Analyses de sol
 model AnalyseSol {
-  id            String    @id @map("analyse")
+  id            String    @id @default(cuid())
+  nom           String    @map("nom")
   userId        String    @map("user_id")
   user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   plancheId     String?   @map("planche")
@@ -335,6 +384,9 @@ model AnalyseSol {
   b             Float?    @map("b") // Bore
   notes         String?   @map("notes")
 
+  @@unique([nom, userId])
+  @@index([userId])
+  @@index([plancheId])
   @@map("analyses_de_sol")
 }
 
@@ -402,22 +454,34 @@ model Culture {
 
 /// Récoltes
 model Recolte {
-  id         Int      @id @default(autoincrement())
-  userId     String   @map("user_id")
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  especeId   String   @map("espece")
-  espece     Espece   @relation(fields: [especeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  cultureId  Int      @map("culture")
-  culture    Culture  @relation(fields: [cultureId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  date       DateTime @default(now()) @map("date")
-  quantite   Float    @map("quantite") // kg
-  notes      String?  @map("notes")
-  createdAt  DateTime @default(now()) @map("created_at")
+  id             Int       @id @default(autoincrement())
+  userId         String    @map("user_id")
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  especeId       String    @map("espece")
+  espece         Espece    @relation(fields: [especeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  cultureId      Int       @map("culture")
+  culture        Culture   @relation(fields: [cultureId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  date           DateTime  @default(now()) @map("date")
+  quantite       Float     @map("quantite") // kg
+  // Statut et vente
+  statut         String    @default("en_stock") @map("statut") // "en_stock", "vendu", "consomme", "perte"
+  dateVente      DateTime? @map("date_vente")
+  prixKg         Float?    @map("prix_kg")
+  prixTotal      Float?    @map("prix_total")
+  clientId       Int?      @map("client_id")
+  clientNom      String?   @map("client_nom")
+  factureId      Int?      @map("facture_id")
+  // Péremption (pour sortie auto du stock)
+  datePeremption DateTime? @map("date_peremption") // Date limite avant que le produit soit périmé
+  notes          String?   @map("notes")
+  createdAt      DateTime  @default(now()) @map("created_at")
 
   @@index([userId])
   @@index([especeId])
   @@index([cultureId])
+  @@index([cultureId, date])
   @@index([date])
+  @@index([statut])
   @@map("recoltes")
 }
 
@@ -476,6 +540,9 @@ model Fertilisation {
   notes         String?     @map("notes")
   createdAt     DateTime    @default(now()) @map("created_at")
 
+  @@index([userId])
+  @@index([userId, date])
+  @@index([plancheId, date])
   @@map("fertilisations")
 }
 
@@ -491,6 +558,7 @@ model Note {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  @@index([userId])
   @@map("notes")
 }
 
@@ -518,16 +586,17 @@ model ObjetJardin {
   notes       String?  @map("notes")
   createdAt   DateTime @default(now()) @map("created_at")
 
+  @@index([userId])
   @@map("objets_jardin")
 }
 
-/// Arbres et arbustes (fruitiers, petits fruits, ornementaux)
+/// Arbres et arbustes (fruitiers, petits fruits, forestiers, ornementaux)
 model Arbre {
   id              Int       @id @default(autoincrement())
   userId          String    @map("user_id")
   user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   nom             String    @map("nom") // Nom d'affichage (ex: "Pommier Golden")
-  type            String    @map("type") // "fruitier", "petit_fruit", "ornement", "haie"
+  type            String    @map("type") // "fruitier", "petit_fruit", "forestier", "ornement", "haie"
   especeId        String?   @map("espece_id") // Lien optionnel vers le catalogue Espece
   especeRef       Espece?   @relation(fields: [especeId], references: [id], onDelete: SetNull)
   espece          String?   @map("espece") // Espèce texte libre (ex: "Pommier", "Framboisier")
@@ -535,6 +604,7 @@ model Arbre {
   portGreffe      String?   @map("port_greffe") // Porte-greffe si applicable
   fournisseur     String?   @map("fournisseur") // Lieu d'achat / pépinière
   dateAchat       DateTime? @map("date_achat")
+  prixAchat       Float?    @map("prix_achat") // Prix d'achat en €
   datePlantation  DateTime? @map("date_plantation")
   age             Int?      @map("age") // Âge à la plantation (années)
   // Position sur le plan
@@ -547,10 +617,115 @@ model Arbre {
   pollinisateur   String?   @map("pollinisateur") // Variété pollinisatrice associée
   couleur         String?   @map("couleur") // Couleur d'affichage sur le plan
   notes           String?   @map("notes")
+  // Gestion production
+  productif       Boolean   @default(true) @map("productif") // Est-ce que l'arbre produit ?
+  anneeProduction Int?      @map("annee_production") // Première année de production
+  rendementMoyen  Float?    @map("rendement_moyen") // kg/an estimé
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
+  // Relations module arbres
+  recoltesArbres    RecolteArbre[]
+  productionsBois   ProductionBois[]
+  operationsArbres  OperationArbre[]
+
+  @@index([userId])
+  @@index([type])
+  @@index([especeId])
   @@map("arbres")
+}
+
+// ============================================================
+// MODULE ARBRES - RÉCOLTES, BOIS, OPÉRATIONS
+// ============================================================
+
+/// Récoltes d'arbres (fruits, noix, etc.)
+model RecolteArbre {
+  id             Int       @id @default(autoincrement())
+  userId         String    @map("user_id")
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  arbreId        Int       @map("arbre_id")
+  arbre          Arbre     @relation(fields: [arbreId], references: [id], onDelete: Cascade)
+  date           DateTime  @default(now()) @map("date")
+  quantite       Float     @map("quantite") // kg
+  qualite        String?   @map("qualite") // "excellent", "bon", "moyen", "mauvais"
+  prixKg         Float?    @map("prix_kg") // Prix de vente €/kg
+  // Statut et vente
+  statut         String    @default("en_stock") @map("statut") // "en_stock", "vendu", "consomme", "perte"
+  dateVente      DateTime? @map("date_vente")
+  prixTotal      Float?    @map("prix_total")
+  clientId       Int?      @map("client_id")
+  clientNom      String?   @map("client_nom")
+  factureId      Int?      @map("facture_id")
+  facture        Facture?  @relation("RecolteArbreFacture", fields: [factureId], references: [id])
+  datePeremption DateTime? @map("date_peremption")
+  notes          String?   @map("notes")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([arbreId])
+  @@index([date])
+  @@index([statut])
+  @@index([factureId])
+  @@map("recoltes_arbres")
+}
+
+/// Production de bois (élagage, abattage, branchage)
+model ProductionBois {
+  id          Int       @id @default(autoincrement())
+  userId      String    @map("user_id")
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  arbreId     Int?      @map("arbre_id") // Null si arbre abattu/supprimé
+  arbre       Arbre?    @relation(fields: [arbreId], references: [id], onDelete: SetNull)
+  date        DateTime  @default(now()) @map("date")
+  type        String    @map("type") // "elagage", "abattage", "branchage"
+  volumeM3    Float?    @map("volume_m3") // Stères ou m³
+  poidsKg     Float?    @map("poids_kg")
+  // Statut et destination
+  statut      String    @default("en_stock") @map("statut") // "en_stock", "vendu", "utilise"
+  destination String?   @map("destination") // "chauffage", "BRF", "vente", "construction"
+  // Vente
+  dateVente   DateTime? @map("date_vente")
+  prixVente   Float?    @map("prix_vente") // € si vendu
+  clientId    Int?      @map("client_id")
+  clientNom   String?   @map("client_nom")
+  factureId   Int?      @map("facture_id")
+  facture     Facture?  @relation("ProductionBoisFacture", fields: [factureId], references: [id])
+  notes       String?   @map("notes")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([arbreId])
+  @@index([date])
+  @@index([statut])
+  @@index([factureId])
+  @@map("production_bois")
+}
+
+/// Opérations sur arbres (taille, greffe, traitement, fertilisation)
+model OperationArbre {
+  id          Int       @id @default(autoincrement())
+  userId      String    @map("user_id")
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  arbreId     Int       @map("arbre_id")
+  arbre       Arbre     @relation(fields: [arbreId], references: [id], onDelete: Cascade)
+  date        DateTime  @default(now()) @map("date")
+  type        String    @map("type") // "taille", "greffe", "traitement", "fertilisation", "autre"
+  description String?   @map("description")
+  produit     String?   @map("produit") // Produit utilisé
+  quantite    Float?    @map("quantite") // Quantité
+  unite       String?   @map("unite") // L, kg, etc.
+  cout        Float?    @map("cout") // Coût en €
+  datePrevue  DateTime? @map("date_prevue") // Date planifiée (si tâche future)
+  fait        Boolean   @default(true) @map("fait")
+  notes       String?   @map("notes")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([arbreId])
+  @@index([type])
+  @@index([fait])
+  @@map("operations_arbres")
 }
 
 // ============================================================
@@ -583,5 +758,567 @@ model AssociationDetail {
   requise       Boolean      @default(false) @map("requise") // Association requise ou bénéfique
   notes         String?      @map("notes")
 
+  @@index([associationId])
   @@map("associations_details")
+}
+
+// ============================================================
+// MODULE ÉLEVAGE - GESTION DES ANIMAUX
+// ============================================================
+
+/// Espèces animales (référentiel)
+model EspeceAnimale {
+  id                String    @id @map("espece_animale") // Ex: "poule_pondeuse", "lapin_chair"
+  nom               String    @map("nom") // Nom d'affichage
+  type              String    @map("type") // "volaille", "mammifere_petit", "mammifere_grand"
+  production        String    @map("production") // "oeufs", "viande", "lait", "laine", "mixte"
+  dureeGestation    Int?      @map("duree_gestation") // Jours (mammifères)
+  dureeCouvaison    Int?      @map("duree_couvaison") // Jours (volailles)
+  dureeElevage      Int?      @map("duree_elevage") // Jours jusqu'à maturité/abattage
+  poidsAdulte       Float?    @map("poids_adulte") // kg
+  rendementCarcasse Float?    @map("rendement_carcasse") // % du poids vif
+  ponteAnnuelle     Int?      @map("ponte_annuelle") // Nombre d'œufs/an (pondeuses)
+  consommationJour  Float?    @map("conso_jour") // kg aliment/jour
+  prixAchat         Float?    @map("prix_achat") // Prix moyen d'achat €
+  couleur           String?   @map("couleur") // Couleur UI
+  description       String?   @map("description")
+
+  // Relations
+  animaux     Animal[]
+  lots        LotAnimaux[]
+
+  @@map("especes_animales")
+}
+
+/// Aliments pour animaux (similaire à Fertilisant)
+model Aliment {
+  id            String       @id @map("aliment") // Ex: "granules_pondeuses", "foin"
+  nom           String       @map("nom")
+  type          String?      @map("type") // "granules", "cereales", "foin", "complement"
+  especesCibles String?      @map("especes_cibles") // CSV: "volaille,lapin"
+  proteines     Float?       @map("proteines") // % protéines
+  energie       Float?       @map("energie") // kcal/kg
+  prix          Float?       @map("prix") // €/kg
+  stock         Float?       @map("stock") // kg en stock
+  dateStock     DateTime?    @map("date_stock")
+  stockMin      Float?       @map("stock_min") // Seuil alerte
+  fournisseurId String?      @map("fournisseur")
+  fournisseur   Fournisseur? @relation(fields: [fournisseurId], references: [id], onDelete: SetNull)
+  description   String?      @map("description")
+
+  // Relations
+  consommations ConsommationAliment[]
+  userStocks    UserStockAliment[]
+
+  @@map("aliments")
+}
+
+/// Animaux individuels
+model Animal {
+  id              Int            @id @default(autoincrement())
+  userId          String         @map("user_id")
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  especeAnimaleId String         @map("espece_animale_id")
+  especeAnimale   EspeceAnimale  @relation(fields: [especeAnimaleId], references: [id], onDelete: Restrict)
+  lotId           Int?           @map("lot_id") // Appartenance à un lot (optionnel)
+  lot             LotAnimaux?    @relation(fields: [lotId], references: [id], onDelete: SetNull)
+  identifiant     String?        @map("identifiant") // Bague, boucle, puce
+  nom             String?        @map("nom")
+  race            String?        @map("race") // Race/variété
+  sexe            String?        @map("sexe") // "male", "femelle", "inconnu"
+  dateNaissance   DateTime?      @map("date_naissance")
+  dateArrivee     DateTime?      @map("date_arrivee")
+  provenance      String?        @map("provenance") // Éleveur, couvoir, etc.
+  prixAchat       Float?         @map("prix_achat")
+  statut          String         @default("actif") @map("statut") // "actif", "vendu", "abattu", "mort"
+  dateSortie      DateTime?      @map("date_sortie") // Date vente/abattage/mort
+  causeSortie     String?        @map("cause_sortie") // Raison de sortie
+  // Position sur le plan (optionnel)
+  posX            Float?         @map("pos_x")
+  posY            Float?         @map("pos_y")
+  // Généalogie
+  mereId          Int?           @map("mere_id")
+  mere            Animal?        @relation("ParentEnfant", fields: [mereId], references: [id], onDelete: SetNull)
+  enfants         Animal[]       @relation("ParentEnfant")
+  pereIdentifiant String?        @map("pere_identifiant") // Référence texte si père externe
+  // Infos complémentaires
+  poidsActuel     Float?         @map("poids_actuel") // kg
+  couleur         String?        @map("couleur_robe") // Couleur de l'animal
+  notes           String?        @map("notes")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  // Relations
+  productionsOeufs ProductionOeuf[]
+  soins            SoinAnimal[]
+  abattages        Abattage[]
+  naissancesMere   NaissanceAnimale[] @relation("NaissanceMere")
+
+  @@index([userId])
+  @@index([especeAnimaleId])
+  @@index([statut])
+  @@index([lotId])
+  @@index([mereId])
+  @@map("animaux")
+}
+
+/// Lots d'animaux (gestion par groupe, surtout volailles)
+model LotAnimaux {
+  id                Int           @id @default(autoincrement())
+  userId            String        @map("user_id")
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  especeAnimaleId   String        @map("espece_animale_id")
+  especeAnimale     EspeceAnimale @relation(fields: [especeAnimaleId], references: [id], onDelete: Restrict)
+  nom               String?       @map("nom") // Ex: "Lot pondeuses 2024"
+  dateArrivee       DateTime?     @map("date_arrivee")
+  quantiteInitiale  Int           @map("quantite_initiale")
+  quantiteActuelle  Int           @map("quantite_actuelle")
+  provenance        String?       @map("provenance")
+  prixAchatTotal    Float?        @map("prix_achat_total")
+  statut            String        @default("actif") @map("statut") // "actif", "reforme", "termine"
+  dateReforme       DateTime?     @map("date_reforme")
+  notes             String?       @map("notes")
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+
+  // Relations
+  animaux          Animal[]
+  productionsOeufs ProductionOeuf[]
+  soins            SoinAnimal[]
+  abattages        Abattage[]
+  consommations    ConsommationAliment[]
+
+  @@index([userId])
+  @@index([especeAnimaleId])
+  @@index([statut])
+  @@map("lots_animaux")
+}
+
+/// Production d'œufs (quotidienne)
+model ProductionOeuf {
+  id         Int         @id @default(autoincrement())
+  userId     String      @map("user_id")
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lotId      Int?        @map("lot_id")
+  lot        LotAnimaux? @relation(fields: [lotId], references: [id], onDelete: SetNull)
+  animalId   Int?        @map("animal_id") // Si suivi individuel
+  animal     Animal?     @relation(fields: [animalId], references: [id], onDelete: SetNull)
+  date       DateTime    @default(now()) @map("date")
+  quantite   Int         @map("quantite") // Nombre d'œufs
+  casses     Int?        @default(0) @map("casses")
+  sales      Int?        @default(0) @map("sales") // Œufs sales
+  calibre    String?     @map("calibre") // "petit", "moyen", "gros", "tres_gros"
+  notes      String?     @map("notes")
+  createdAt  DateTime    @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([lotId])
+  @@index([animalId])
+  @@index([date])
+  @@map("production_oeufs")
+}
+
+/// Ventes de produits (œufs, viande, animaux vivants)
+model VenteProduit {
+  id            Int          @id @default(autoincrement())
+  userId        String       @map("user_id")
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date          DateTime     @default(now()) @map("date")
+  type          String       @map("type") // "oeufs", "viande", "animal_vivant", "lait", "autre"
+  description   String?      @map("description") // Ex: "Poulet fermier", "Œufs plein air"
+  quantite      Float        @map("quantite")
+  unite         String       @map("unite") // "unite", "douzaine", "kg", "L"
+  prixUnitaire  Float        @map("prix_unitaire")
+  prixTotal     Float        @map("prix_total")
+  client        String?      @map("client") // Nom du client
+  destinationId String?      @map("destination")
+  destination   Destination? @relation(fields: [destinationId], references: [id], onDelete: SetNull)
+  factureId     Int?         @map("facture_id")
+  facture       Facture?     @relation("VenteProduitFacture", fields: [factureId], references: [id])
+  paye          Boolean      @default(true) @map("paye")
+  notes         String?      @map("notes")
+  createdAt     DateTime     @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([type])
+  @@index([date])
+  @@index([factureId])
+  @@map("ventes_produits")
+}
+
+/// Abattages
+model Abattage {
+  id           Int         @id @default(autoincrement())
+  userId       String      @map("user_id")
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  animalId     Int?        @map("animal_id")
+  animal       Animal?     @relation(fields: [animalId], references: [id], onDelete: SetNull)
+  lotId        Int?        @map("lot_id")
+  lot          LotAnimaux? @relation(fields: [lotId], references: [id], onDelete: SetNull)
+  date         DateTime    @default(now()) @map("date")
+  quantite     Int         @default(1) @map("quantite") // Nombre d'animaux (si lot)
+  poidsVif     Float?      @map("poids_vif") // kg total
+  poidsCarcasse Float?     @map("poids_carcasse") // kg total
+  destination  String      @map("destination") // "auto_consommation", "vente", "don"
+  prixVente    Float?      @map("prix_vente") // € si vendu
+  factureId    Int?        @map("facture_id")
+  facture      Facture?    @relation("AbattageFacture", fields: [factureId], references: [id])
+  lieu         String?     @map("lieu") // "ferme", "abattoir"
+  notes        String?     @map("notes")
+  createdAt    DateTime    @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([date])
+  @@index([factureId])
+  @@map("abattages")
+}
+
+/// Consommation d'aliments
+model ConsommationAliment {
+  id         Int         @id @default(autoincrement())
+  userId     String      @map("user_id")
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  alimentId  String      @map("aliment_id")
+  aliment    Aliment     @relation(fields: [alimentId], references: [id], onDelete: Restrict)
+  lotId      Int?        @map("lot_id")
+  lot        LotAnimaux? @relation(fields: [lotId], references: [id], onDelete: SetNull)
+  date       DateTime    @default(now()) @map("date")
+  quantite   Float       @map("quantite") // kg
+  notes      String?     @map("notes")
+  createdAt  DateTime    @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([alimentId])
+  @@index([lotId])
+  @@index([date])
+  @@map("consommations_aliments")
+}
+
+/// Soins et traitements des animaux
+model SoinAnimal {
+  id          Int         @id @default(autoincrement())
+  userId      String      @map("user_id")
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  animalId    Int?        @map("animal_id")
+  animal      Animal?     @relation(fields: [animalId], references: [id], onDelete: SetNull)
+  lotId       Int?        @map("lot_id")
+  lot         LotAnimaux? @relation(fields: [lotId], references: [id], onDelete: SetNull)
+  date        DateTime    @default(now()) @map("date")
+  type        String      @map("type") // "vaccination", "vermifuge", "traitement", "autre"
+  description String?     @map("description")
+  produit     String?     @map("produit") // Produit utilisé
+  quantite    Float?      @map("quantite")
+  unite       String?     @map("unite")
+  cout        Float?      @map("cout") // €
+  veterinaire String?     @map("veterinaire") // Nom du véto si applicable
+  datePrevue  DateTime?   @map("date_prevue") // Rappel planifié
+  fait        Boolean     @default(true) @map("fait")
+  notes       String?     @map("notes")
+  createdAt   DateTime    @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([animalId])
+  @@index([lotId])
+  @@index([type])
+  @@index([fait])
+  @@map("soins_animaux")
+}
+
+/// Naissances d'animaux
+model NaissanceAnimale {
+  id            Int       @id @default(autoincrement())
+  userId        String    @map("user_id")
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mereId        Int?      @map("mere_id")
+  mere          Animal?   @relation("NaissanceMere", fields: [mereId], references: [id], onDelete: SetNull)
+  pereIdentifiant String? @map("pere_identifiant") // Référence si père connu
+  date          DateTime  @default(now()) @map("date")
+  nombreNes     Int       @map("nombre_nes")
+  nombreVivants Int       @map("nombre_vivants")
+  nombreMales   Int?      @map("nombre_males")
+  nombreFemelles Int?     @map("nombre_femelles")
+  poidsTotal    Float?    @map("poids_total") // kg total portée
+  notes         String?   @map("notes")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([mereId])
+  @@index([date])
+  @@map("naissances_animales")
+}
+
+// ============================================================
+// MODULE COMPTABILITÉ
+// ============================================================
+
+/// Ventes manuelles (légumes, services, etc. - non trackées ailleurs)
+// ============================================================
+// COMPTABILITÉ - CLIENTS & FACTURES
+// ============================================================
+
+/// Clients (acheteurs)
+model Client {
+  id                 Int      @id @default(autoincrement())
+  userId             String   @map("user_id")
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  nom                String   @map("nom")
+  type               String   @default("particulier") @map("type") // "particulier", "professionnel", "association", "amap"
+  email              String?  @map("email")
+  telephone          String?  @map("telephone")
+  adresse            String?  @map("adresse")
+  ville              String?  @map("ville")
+  codePostal         String?  @map("code_postal")
+  pays               String?  @default("France") @map("pays")
+  siret              String?  @map("siret") // Pour professionnels
+  tvaIntra           String?  @map("tva_intra") // Numéro TVA intracommunautaire
+  conditionsPaiement Int?     @default(0) @map("conditions_paiement") // Délai paiement en jours (0 = comptant)
+  exonererTVA        Boolean  @default(false) @map("exonerer_tva") // Client exonéré de TVA
+  notes              String?  @map("notes")
+  actif              Boolean  @default(true) @map("actif")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  ventesManuelles VenteManuelle[]
+  factures        Facture[]
+
+  @@index([userId])
+  @@index([nom])
+  @@map("clients")
+}
+
+/// Factures émises
+model Facture {
+  id              Int       @id @default(autoincrement())
+  userId          String    @map("user_id")
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  numero          String    @map("numero") // F-2026-0001
+  type            String    @default("facture") @map("type") // "facture", "avoir", "acompte"
+  clientId        Int?      @map("client_id")
+  client          Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  clientNom       String    @map("client_nom") // Copie pour archivage
+  clientAdresse   String?   @map("client_adresse")
+  date            DateTime  @default(now()) @map("date")
+  dateEcheance    DateTime? @map("date_echeance")
+  objet           String?   @map("objet")
+  // Montants
+  totalHT         Float     @map("total_ht")
+  totalTVA        Float     @default(0) @map("total_tva")
+  totalTTC        Float     @map("total_ttc")
+  // Statut
+  statut          String    @default("emise") @map("statut") // "brouillon", "emise", "payee", "annulee"
+  datePaiement    DateTime? @map("date_paiement")
+  modePaiement    String?   @map("mode_paiement") // "especes", "cheque", "cb", "virement"
+  // Référence avoir
+  factureOrigineId Int?     @map("facture_origine_id") // Pour les avoirs
+  notes           String?   @map("notes")
+  mentionsLegales String?   @map("mentions_legales")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  lignes           LigneFacture[]
+  ventesProduits   VenteProduit[]   @relation("VenteProduitFacture")
+  abattages        Abattage[]       @relation("AbattageFacture")
+  recoltesArbres   RecolteArbre[]   @relation("RecolteArbreFacture")
+  productionsBois  ProductionBois[] @relation("ProductionBoisFacture")
+
+  @@unique([userId, numero])
+  @@index([userId])
+  @@index([clientId])
+  @@index([date])
+  @@index([statut])
+  @@map("factures")
+}
+
+/// Lignes de facture
+model LigneFacture {
+  id           Int     @id @default(autoincrement())
+  factureId    Int     @map("facture_id")
+  facture      Facture @relation(fields: [factureId], references: [id], onDelete: Cascade)
+  ordre        Int     @default(0) @map("ordre")
+  description  String  @map("description")
+  quantite     Float   @map("quantite")
+  unite        String  @default("unité") @map("unite")
+  prixUnitaire Float   @map("prix_unitaire") // HT
+  tauxTVA      Float   @default(5.5) @map("taux_tva") // 5.5, 10, 20
+  montantHT    Float   @map("montant_ht")
+  montantTVA   Float   @map("montant_tva")
+  montantTTC   Float   @map("montant_ttc")
+
+  @@index([factureId])
+  @@map("lignes_factures")
+}
+
+// ============================================================
+// COMPTABILITÉ - VENTES & DÉPENSES MANUELLES
+// ============================================================
+
+model VenteManuelle {
+  id           Int      @id @default(autoincrement())
+  userId       String   @map("user_id")
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date         DateTime @default(now()) @map("date")
+  categorie    String   @map("categorie") // "legumes", "fruits", "transformation", "service", "autre"
+  description  String   @map("description")
+  quantite     Float?   @map("quantite")
+  unite        String?  @map("unite") // kg, unite, heure
+  prixUnitaire Float?   @map("prix_unitaire")
+  // Montants avec TVA
+  tauxTVA      Float    @default(5.5) @map("taux_tva") // 5.5%, 10%, 20%
+  montantHT    Float?   @map("montant_ht")
+  montantTVA   Float?   @map("montant_tva")
+  montant      Float    @map("montant") // Total TTC en €
+  // Client
+  clientId     Int?     @map("client_id")
+  client       Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  clientNom    String?  @map("client_nom") // Nom client (si pas de fiche client)
+  module       String?  @map("module") // "potager", "verger", "elevage", "general"
+  paye         Boolean  @default(true) @map("paye")
+  notes        String?  @map("notes")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([clientId])
+  @@index([date])
+  @@index([categorie])
+  @@map("ventes_manuelles")
+}
+
+/// Dépenses manuelles (matériel, carburant, etc. - non trackées ailleurs)
+model DepenseManuelle {
+  id             Int      @id @default(autoincrement())
+  userId         String   @map("user_id")
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date           DateTime @default(now()) @map("date")
+  categorie      String   @map("categorie") // "materiel", "carburant", "main_oeuvre", "abonnement", "autre"
+  description    String   @map("description")
+  // Montants avec TVA
+  tauxTVA        Float    @default(20) @map("taux_tva") // 5.5%, 10%, 20%
+  montantHT      Float?   @map("montant_ht")
+  montantTVA     Float?   @map("montant_tva") // TVA déductible
+  montant        Float    @map("montant") // Total TTC en €
+  module         String?  @map("module") // "potager", "verger", "elevage", "general"
+  // Fournisseur
+  fournisseurId  String?  @map("fournisseur_id")
+  fournisseurNom String?  @map("fournisseur_nom") // Nom fournisseur (si pas de fiche)
+  refFacture     String?  @map("ref_facture") // Référence facture fournisseur
+  paye           Boolean  @default(true) @map("paye")
+  dateEcheance   DateTime? @map("date_echeance")
+  notes          String?  @map("notes")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([fournisseurId])
+  @@index([date])
+  @@index([categorie])
+  @@map("depenses_manuelles")
+}
+
+// ============================================================
+// STOCKS PER-USER (MULTI-TENANCY)
+// ============================================================
+
+/// Stock de variétés par utilisateur (graines + plants)
+model UserStockVariete {
+  id           Int       @id @default(autoincrement())
+  userId       String    @map("user_id")
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  varieteId    String    @map("variete_id")
+  variete      Variete   @relation(fields: [varieteId], references: [id], onDelete: Cascade)
+  stockGraines Float?    @map("stock_graines") // g
+  stockPlants  Int?      @map("stock_plants")
+  dateStock    DateTime? @map("date_stock")
+
+  @@unique([userId, varieteId])
+  @@index([userId])
+  @@index([varieteId])
+  @@map("user_stock_varietes")
+}
+
+/// Stock de fertilisants par utilisateur
+model UserStockFertilisant {
+  id            Int       @id @default(autoincrement())
+  userId        String    @map("user_id")
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fertilisantId String    @map("fertilisant_id")
+  fertilisant   Fertilisant @relation(fields: [fertilisantId], references: [id], onDelete: Cascade)
+  stock         Float?    @map("stock") // kg ou L
+  dateStock     DateTime? @map("date_stock")
+  prix          Float?    @map("prix") // €/kg (prix per-user)
+
+  @@unique([userId, fertilisantId])
+  @@index([userId])
+  @@index([fertilisantId])
+  @@map("user_stock_fertilisants")
+}
+
+/// Stock d'aliments par utilisateur
+model UserStockAliment {
+  id        Int       @id @default(autoincrement())
+  userId    String    @map("user_id")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  alimentId String    @map("aliment_id")
+  aliment   Aliment   @relation(fields: [alimentId], references: [id], onDelete: Cascade)
+  stock     Float?    @map("stock") // kg
+  dateStock DateTime? @map("date_stock")
+  stockMin  Float?    @map("stock_min") // seuil alerte
+  prix      Float?    @map("prix") // €/kg
+
+  @@unique([userId, alimentId])
+  @@index([userId])
+  @@index([alimentId])
+  @@map("user_stock_aliments")
+}
+
+/// Inventaire d'espèces par utilisateur (récoltes en stock)
+model UserStockEspece {
+  id             Int       @id @default(autoincrement())
+  userId         String    @map("user_id")
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  especeId       String    @map("espece_id")
+  espece         Espece    @relation(fields: [especeId], references: [id], onDelete: Cascade)
+  inventaire     Float?    @map("inventaire") // kg
+  dateInventaire DateTime? @map("date_inventaire")
+  prixKg         Float?    @map("prix_kg") // €/kg
+  objectifAnnuel Float?    @map("obj_annuel") // kg ou unités visées/an
+
+  @@unique([userId, especeId])
+  @@index([userId])
+  @@index([especeId])
+  @@map("user_stock_especes")
+}
+
+// ============================================================
+// CHAT IA (Assistant Ollama)
+// ============================================================
+
+/// Conversations de chat IA
+model Conversation {
+  id        String        @id @default(cuid())
+  userId    String        @map("user_id")
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String?
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+  messages  ChatMessage[]
+
+  @@index([userId])
+  @@index([updatedAt])
+  @@map("conversations")
+}
+
+/// Messages de chat IA
+model ChatMessage {
+  id             Int          @id @default(autoincrement())
+  conversationId String       @map("conversation_id")
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String       // "user", "assistant", "tool"
+  content        String       @db.Text
+  toolCalls      Json?        @map("tool_calls")
+  toolResults    Json?        @map("tool_results")
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  @@index([conversationId])
+  @@map("chat_messages")
 }

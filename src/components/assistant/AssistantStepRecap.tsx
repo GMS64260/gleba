@@ -1,14 +1,14 @@
 "use client"
 
 /**
- * Étape 7 : Récapitulatif et création
- * - Résumé des choix
- * - Alertes (stock, associations)
- * - Création de la planche et culture
+ * Etape 4 : Recapitulatif et creation
+ * - Resume des choix (planche, culture, dates, quantites)
+ * - Alertes (stock, associations, irrigation)
+ * - Creation de la planche et culture via API
  */
 
 import * as React from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -21,7 +21,6 @@ import {
   Leaf,
   LayoutGrid,
   Loader2,
-  Package,
   Sprout,
 } from "lucide-react"
 import { format } from "date-fns"
@@ -29,9 +28,7 @@ import { fr } from "date-fns/locale"
 import {
   estimerNombrePlants,
   necesiteIrrigation,
-  verifierStockSemences,
 } from "@/lib/assistant-helpers"
-import { peutAjouterCulture, suggererAjustements } from "@/lib/planche-validation"
 import type { AssistantState } from "./AssistantDialog"
 import { useToast } from "@/hooks/use-toast"
 
@@ -54,14 +51,10 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
     suffisant: boolean
     stockActuel: number
     besoin: number
-  } | null>(null)
-  const [plancheCheck, setPlancheCheck] = React.useState<{
-    possible: boolean
-    message?: string
-    suggestions?: string[]
+    unite: string // 'g' ou 'plants'
   } | null>(null)
 
-  const { planche, culture } = state
+  const { planche, culture, espece, itp, variete } = state
 
   // Calculer le nombre de plants
   const nbPlants = React.useMemo(() => {
@@ -71,91 +64,60 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
       culture.nbRangs || 1,
       culture.espacement || 30
     )
-  }, [culture, planche])
+  }, [culture.longueur, planche.longueur, planche.largeur, culture.nbRangs, culture.espacement])
 
-  // Vérifier le stock de semences
+  // Verifier le stock (graines OU plants selon la variete)
   React.useEffect(() => {
-    if (culture.variete) {
-      const check = verifierStockSemences(
-        culture.variete.stockGraines,
-        nbPlants,
-        culture.itp?.nbGrainesPlant || 1
-      )
-      setStockCheck(check)
+    if (!variete) {
+      setStockCheck(null)
+      return
     }
-  }, [culture.variete, nbPlants, culture.itp?.nbGrainesPlant])
 
-  // Vérifier si la culture rentre dans la planche
-  React.useEffect(() => {
-    async function checkPlanche() {
-      if (!planche.id || !culture.nbRangs || !culture.itp?.espacementRangs) {
-        setPlancheCheck(null)
-        return
-      }
+    const stockGraines = variete.userStockGraines ?? variete.stockGraines ?? 0
+    const stockPlants = variete.userStockPlants ?? variete.stockPlants ?? 0
+    const grainesParPlant = itp?.nbGrainesPlant || culture.itp?.nbGrainesPlant || 0
 
-      try {
-        // Récupérer les cultures existantes de la planche
-        const res = await fetch(`/api/planches/${encodeURIComponent(planche.id)}`)
-        if (!res.ok) return
+    // Determiner si on est en mode "plants" ou "graines"
+    // Mode plants: pas de graines/g defini, ou stock plants > 0 et pas de graines
+    const modeGraines = grainesParPlant > 0 && stockGraines > 0
 
-        const plancheData = await res.json()
-
-        const culturesExistantes = (plancheData.cultures || [])
-          .filter((c: any) => c.terminee === null)
-          .map((c: any) => ({
-            nbRangs: c.nbRangs || 1,
-            espacementRangs: c.itp?.espacementRangs || 30,
-          }))
-
-        const nouvelleCulture = {
-          nbRangs: culture.nbRangs || 1,
-          espacementRangs: culture.itp.espacementRangs || 30,
-          longueur: culture.longueur || undefined,
-        }
-
-        const validation = peutAjouterCulture(
-          {
-            largeur: plancheData.largeur || 0.8,
-            longueur: plancheData.longueur || 2,
-          },
-          culturesExistantes,
-          nouvelleCulture
-        )
-
-        if (!validation.possible) {
-          const suggestions = suggererAjustements(
-            {
-              largeur: plancheData.largeur || 0.8,
-              longueur: plancheData.longueur || 2,
-            },
-            culturesExistantes,
-            nouvelleCulture
-          )
-
-          setPlancheCheck({
-            possible: false,
-            message: validation.message,
-            suggestions: suggestions.map(s => s.message),
-          })
-        } else {
-          setPlancheCheck({ possible: true })
-        }
-      } catch (e) {
-        console.error('Error checking planche:', e)
-      }
+    if (modeGraines) {
+      // Verif en grammes de graines
+      const besoin = nbPlants * grainesParPlant
+      setStockCheck({
+        suffisant: stockGraines >= besoin,
+        stockActuel: stockGraines,
+        besoin,
+        unite: 'g',
+      })
+    } else if (stockPlants > 0 || stockGraines === 0) {
+      // Verif en nombre de plants/caieux/bulbes
+      setStockCheck({
+        suffisant: stockPlants >= nbPlants,
+        stockActuel: stockPlants,
+        besoin: nbPlants,
+        unite: 'plants',
+      })
+    } else {
+      // Fallback graines sans nbGrainesPlant connu → besoin = nbPlants (1 graine/plant)
+      setStockCheck({
+        suffisant: stockGraines >= nbPlants,
+        stockActuel: stockGraines,
+        besoin: nbPlants,
+        unite: 'g',
+      })
     }
-    checkPlanche()
-  }, [planche.id, culture.nbRangs, culture.itp?.espacementRangs])
+  }, [variete, nbPlants, itp?.nbGrainesPlant, culture.itp?.nbGrainesPlant])
 
-  // Charger les associations recommandées
+  // Charger les associations recommandees
   React.useEffect(() => {
     async function fetchAssociations() {
-      if (!culture.especeId) return
+      const especeId = espece?.id || culture.especeId
+      if (!especeId) return
       try {
-        const res = await fetch(`/api/associations?especeId=${encodeURIComponent(culture.especeId)}`)
+        const res = await fetch(`/api/associations?especeId=${encodeURIComponent(especeId)}`)
         if (res.ok) {
           const data = await res.json()
-          // L'API retourne directement un tableau, pas { data: [...] }
           const associationsList = Array.isArray(data) ? data : (data.data || [])
           setAssociations(associationsList.slice(0, 3))
         }
@@ -164,20 +126,17 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
       }
     }
     fetchAssociations()
-  }, [culture.especeId])
+  }, [espece?.id, culture.especeId])
 
-  // Créer la planche et/ou la culture
+  // Creer la planche et/ou la culture
   const handleCreate = async () => {
     setLoading(true)
     try {
-      let plancheId = planche.id
+      let plancheId = planche.id || state.selectedPlancheId
 
-      // 1. Créer la planche si nouvelle
-      console.log('🔍 Mode:', state.mode, '| planche.id:', planche.id, '| planche.nom:', planche.nom)
+      // 1. Creer la planche si nouvelle
       if (state.mode === 'new-planche' && !planche.id) {
-        console.log('➡️ Creating new planche...')
-        const plancheData = {
-          id: planche.nom,
+        const basePlancheData = {
           largeur: planche.largeur,
           longueur: planche.longueur,
           surface: planche.surface,
@@ -187,64 +146,76 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
           typeSol: planche.typeSol || null,
           retentionEau: planche.retentionEau || null,
         }
-        console.log('📤 Planche data:', plancheData)
 
+        // Creer la planche (names are now per-user unique, no need for suffix retry)
+        const plancheName = planche.nom || 'Planche'
         const plancheRes = await fetch('/api/planches', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(plancheData),
+          body: JSON.stringify({ ...basePlancheData, nom: plancheName }),
         })
 
-        console.log('📥 Planche response status:', plancheRes.status, plancheRes.ok)
-
-        if (!plancheRes.ok) {
+        if (plancheRes.ok) {
+          const newPlanche = await plancheRes.json()
+          plancheId = newPlanche.id // cuid for FK
+          toast({
+            title: "Planche creee",
+            description: `La planche "${plancheName}" a ete creee`,
+          })
+        } else if (plancheRes.status === 409) {
+          // Name already exists for this user — fetch and reuse
+          const existingRes = await fetch(`/api/planches/${encodeURIComponent(plancheName)}`)
+          if (existingRes.ok) {
+            const existingPlanche = await existingRes.json()
+            plancheId = existingPlanche.id // cuid for FK
+          } else {
+            throw new Error(`La planche "${plancheName}" existe deja`)
+          }
+        } else {
           const err = await plancheRes.json()
-          console.error('❌ Planche creation failed:', err)
-          throw new Error(err.error || 'Erreur création planche')
+          throw new Error(err.error || 'Erreur creation planche')
         }
-
-        const newPlanche = await plancheRes.json()
-        plancheId = newPlanche.id
-        console.log('✅ Planche created with ID:', plancheId)
-
-        toast({
-          title: "Planche créée",
-          description: `La planche "${plancheId}" a été créée`,
-        })
-      } else {
-        console.log('⏭️ Skipping planche creation (existing or already has ID)')
       }
 
-      // 2. Créer la culture
-      const aIrriguer = culture.espece ? necesiteIrrigation(culture.espece) : false
+      // 2. Creer la culture
+      const especeRef = espece || culture.espece
+      const aIrriguer = especeRef ? necesiteIrrigation(especeRef) : false
+
+      // Convertir les dates de maniere robuste (string ou Date)
+      const toISO = (d: any) => {
+        if (!d) return null
+        if (d instanceof Date) return d.toISOString()
+        if (typeof d === 'string') return new Date(d).toISOString()
+        return null
+      }
+
+      const cultureBody = {
+        especeId: espece?.id || culture.especeId,
+        varieteId: variete?.id || culture.varieteId || null,
+        itpId: itp?.id || culture.itpId || null,
+        plancheId: plancheId || null,
+        annee: culture.annee,
+        dateSemis: toISO(culture.dateSemis),
+        datePlantation: toISO(culture.datePlantation),
+        dateRecolte: toISO(culture.dateRecolte),
+        nbRangs: culture.nbRangs || null,
+        longueur: culture.longueur || null,
+        espacement: culture.espacement || null,
+        aIrriguer,
+        semisFait: false,
+        plantationFaite: false,
+        recolteFaite: false,
+      }
 
       const cultureRes = await fetch('/api/cultures', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          especeId: culture.especeId,
-          varieteId: culture.varieteId || null,
-          itpId: culture.itpId || null,
-          plancheId: plancheId || null,
-          annee: culture.annee,
-          dateSemis: culture.dateSemis?.toISOString() || null,
-          datePlantation: culture.datePlantation?.toISOString() || null,
-          dateRecolte: culture.dateRecolte?.toISOString() || null,
-          nbRangs: culture.nbRangs || null,
-          longueur: culture.longueur || null,
-          espacement: culture.espacement || null,
-          aIrriguer,
-          // Champs requis par le schéma
-          semisFait: false,
-          plantationFaite: false,
-          recolteFaite: false,
-        }),
+        body: JSON.stringify(cultureBody),
       })
 
       if (!cultureRes.ok) {
         const err = await cultureRes.json()
-        console.error('API Error details:', err)
-        const errorMsg = err.error || 'Erreur création culture'
+        const errorMsg = err.error || 'Erreur creation culture'
         const details = err.details ? JSON.stringify(err.details) : ''
         throw new Error(`${errorMsg}${details ? ' - ' + details : ''}`)
       }
@@ -252,27 +223,33 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
       const newCulture = await cultureRes.json()
 
       toast({
-        title: "Culture créée",
-        description: `La culture de ${culture.especeId} a été créée`,
+        title: "Culture creee",
+        description: `La culture de ${espece?.id || culture.especeId} a ete creee`,
       })
 
-      onSuccess(plancheId, newCulture.id)
+      onSuccess(plancheId || undefined, newCulture.id)
     } catch (error) {
       console.error('Error creating:', error)
       toast({
         variant: "destructive",
         title: "Erreur",
-        description: error instanceof Error ? error.message : 'Erreur lors de la création',
+        description: error instanceof Error ? error.message : 'Erreur lors de la creation',
       })
     } finally {
       setLoading(false)
     }
   }
 
+  // Display helpers
+  const especeId = espece?.id || culture.especeId || '-'
+  const itpId = itp?.id || culture.itpId || '-'
+  const varieteId = variete?.id || culture.varieteId || 'Non definie'
+  const especeRef = espece || culture.espece
+
   return (
     <div className="space-y-4">
-      {/* Résumé Planche */}
-      {(state.mode === 'new-planche' || planche.id) && (
+      {/* Resume Planche */}
+      {(state.mode === 'new-planche' || planche.id || state.selectedPlancheId) && (
         <Card>
           <CardHeader className="py-3">
             <CardTitle className="text-sm flex items-center gap-2">
@@ -287,17 +264,17 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
             <div className="grid grid-cols-2 gap-2 text-sm">
               <div>
                 <span className="text-muted-foreground">Nom:</span>{' '}
-                <span className="font-medium">{planche.nom || planche.id}</span>
+                <span className="font-medium">{planche.nom || planche.id || state.selectedPlancheId}</span>
               </div>
               {planche.surface && (
                 <div>
                   <span className="text-muted-foreground">Surface:</span>{' '}
-                  <span className="font-medium">{planche.surface.toFixed(1)} m²</span>
+                  <span className="font-medium">{planche.surface.toFixed(1)} m2</span>
                 </div>
               )}
               {planche.ilot && (
                 <div>
-                  <span className="text-muted-foreground">Îlot:</span>{' '}
+                  <span className="text-muted-foreground">Ilot:</span>{' '}
                   <span className="font-medium">{planche.ilot}</span>
                 </div>
               )}
@@ -312,7 +289,7 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
         </Card>
       )}
 
-      {/* Résumé Culture */}
+      {/* Resume Culture */}
       <Card>
         <CardHeader className="py-3">
           <CardTitle className="text-sm flex items-center gap-2">
@@ -323,19 +300,19 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
         <CardContent className="py-2 space-y-3">
           <div className="grid grid-cols-2 gap-2 text-sm">
             <div>
-              <span className="text-muted-foreground">Espèce:</span>{' '}
-              <span className="font-medium">{culture.especeId}</span>
+              <span className="text-muted-foreground">Espece:</span>{' '}
+              <span className="font-medium">{especeId}</span>
             </div>
             <div>
               <span className="text-muted-foreground">ITP:</span>{' '}
-              <span className="font-medium">{culture.itpId || '-'}</span>
+              <span className="font-medium">{itpId}</span>
             </div>
             <div>
-              <span className="text-muted-foreground">Variété:</span>{' '}
-              <span className="font-medium">{culture.varieteId || 'Non définie'}</span>
+              <span className="text-muted-foreground">Variete:</span>{' '}
+              <span className="font-medium">{varieteId}</span>
             </div>
             <div>
-              <span className="text-muted-foreground">Année:</span>{' '}
+              <span className="text-muted-foreground">Annee:</span>{' '}
               <span className="font-medium">{culture.annee}</span>
             </div>
           </div>
@@ -357,7 +334,7 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
                 </span>
               </div>
               <div>
-                <span className="text-muted-foreground">Réc.:</span>{' '}
+                <span className="text-muted-foreground">Rec.:</span>{' '}
                 <span className="font-medium">
                   {culture.dateRecolte ? format(culture.dateRecolte, "dd/MM", { locale: fr }) : '-'}
                 </span>
@@ -365,11 +342,11 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
             </div>
           </div>
 
-          {/* Quantités */}
+          {/* Quantites */}
           <div className="flex items-center gap-4 text-sm">
             <Grid3X3 className="h-4 w-4 text-muted-foreground" />
             <span>
-              {culture.nbRangs || '-'} rangs × {culture.longueur || '-'}m
+              {culture.nbRangs || '-'} rangs x {culture.longueur || '-'}m
               ({culture.espacement || '-'}cm esp.)
               = ~{nbPlants} plants
             </span>
@@ -377,44 +354,24 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
         </CardContent>
       </Card>
 
-      {/* Alertes */}
-      {plancheCheck && !plancheCheck.possible && (
-        <Alert variant="destructive">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>La culture ne rentre pas dans la planche</AlertTitle>
-          <AlertDescription>
-            <p className="mb-2">{plancheCheck.message}</p>
-            {plancheCheck.suggestions && plancheCheck.suggestions.length > 0 && (
-              <div className="text-xs mt-2 space-y-1">
-                <p className="font-medium">Suggestions:</p>
-                <ul className="list-disc list-inside">
-                  {plancheCheck.suggestions.map((s, i) => (
-                    <li key={i}>{s}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </AlertDescription>
-        </Alert>
-      )}
-
+      {/* Alerte stock insuffisant */}
       {stockCheck && !stockCheck.suffisant && (
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
           <AlertTitle>Stock insuffisant</AlertTitle>
           <AlertDescription>
-            Stock actuel: {stockCheck.stockActuel}g - Besoin estimé: {stockCheck.besoin.toFixed(0)}g
+            Stock actuel: {stockCheck.stockActuel}{stockCheck.unite === 'g' ? 'g' : ' plants'} - Besoin estime: {stockCheck.besoin.toFixed(0)}{stockCheck.unite === 'g' ? 'g' : ' plants'}
           </AlertDescription>
         </Alert>
       )}
 
-      {/* Associations recommandées */}
+      {/* Associations recommandees */}
       {associations.length > 0 && (
         <Card className="bg-pink-50 border-pink-200">
           <CardHeader className="py-2 px-3">
             <CardTitle className="text-sm flex items-center gap-2">
               <Heart className="h-4 w-4 text-pink-600" />
-              Associations recommandées
+              Associations recommandees
             </CardTitle>
           </CardHeader>
           <CardContent className="py-2 px-3">
@@ -430,41 +387,36 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
       )}
 
       {/* Irrigation auto */}
-      {culture.espece && necesiteIrrigation(culture.espece) && (
+      {especeRef && necesiteIrrigation(especeRef) && (
         <Alert>
           <Leaf className="h-4 w-4" />
           <AlertTitle>Irrigation automatique</AlertTitle>
           <AlertDescription>
-            Cette espèce a un besoin en eau élevé. La culture sera marquée "à irriguer".
+            Cette espece a un besoin en eau eleve. La culture sera marquee "a irriguer".
           </AlertDescription>
         </Alert>
       )}
 
-      {/* Bouton création */}
+      {/* Bouton creation */}
       <div className="pt-4">
         <Button
           onClick={handleCreate}
-          disabled={loading || (plancheCheck !== null && !plancheCheck.possible)}
+          disabled={loading}
           className="w-full"
           size="lg"
         >
           {loading ? (
             <>
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              Création en cours...
+              Creation en cours...
             </>
           ) : (
             <>
               <Check className="h-4 w-4 mr-2" />
-              Créer la culture
+              Creer la culture
             </>
           )}
         </Button>
-        {plancheCheck && !plancheCheck.possible && (
-          <p className="text-xs text-center text-muted-foreground mt-2">
-            Modifiez le nombre de rangs ou l'espacement pour continuer
-          </p>
-        )}
       </div>
     </div>
   )

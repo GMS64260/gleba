@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
       where.OR = [
         { espece: { id: { contains: search, mode: 'insensitive' } } },
         { variete: { id: { contains: search, mode: 'insensitive' } } },
-        { planche: { id: { contains: search, mode: 'insensitive' } } },
+        { planche: { nom: { contains: search, mode: 'insensitive' } } },
         { notes: { contains: search, mode: 'insensitive' } },
       ]
     }
@@ -99,6 +99,9 @@ export async function GET(request: NextRequest) {
           variete: true,
           itp: true,
           planche: true,
+          recoltes: {
+            select: { quantite: true },
+          },
           _count: {
             select: { recoltes: true },
           },
@@ -123,6 +126,8 @@ export async function GET(request: NextRequest) {
             : culture.semisFait
               ? 'Semée'
               : 'Planifiée',
+      // Total récolté (kg)
+      totalRecolte: culture.recoltes.reduce((sum, r) => sum + r.quantite, 0),
       // Calcul du type
       type: culture.espece?.vivace
         ? 'Vivace'
@@ -158,7 +163,6 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    console.log('🔵 POST /api/cultures - body:', JSON.stringify(body, null, 2))
 
     // Validation
     const validationResult = createCultureSchema.safeParse(body)
@@ -171,7 +175,6 @@ export async function POST(request: NextRequest) {
     }
 
     const data = validationResult.data
-    console.log('✅ Zod validation passed')
 
     // Vérifier que l'espèce existe
     const espece = await prisma.espece.findUnique({
@@ -344,69 +347,74 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Création avec userId
-    console.log('✅ Creating culture with data:', { ...data, userId: session!.user.id, aIrriguer })
-    const culture = await prisma.culture.create({
-      data: {
-        ...data,
-        userId: session!.user.id,
-        aIrriguer,
-      },
-      include: {
-        espece: true,
-        variete: true,
-        itp: true,
-        planche: true,
-      },
-    })
-    console.log('✅ Culture created:', culture.id)
+    // Création + décrément stock dans une transaction atomique
+    const culture = await prisma.$transaction(async (tx) => {
+      // Création avec userId
+      const newCulture = await tx.culture.create({
+        data: {
+          ...data,
+          userId: session!.user.id,
+          aIrriguer,
+        },
+        include: {
+          espece: true,
+          variete: true,
+          itp: true,
+          planche: true,
+        },
+      })
 
-    // Décrément automatique du stock de semences
-    if (data.varieteId && data.dateSemis && itp) {
-      try {
-        const variete = await prisma.variete.findUnique({
+      // Décrément automatique du stock de semences (per-user)
+      if (data.varieteId && data.dateSemis && itp) {
+        const variete = await tx.variete.findUnique({
           where: { id: data.varieteId },
-          select: { nbGrainesG: true, stockGraines: true },
+          select: { nbGrainesG: true },
         })
 
-        if (variete && variete.stockGraines && variete.stockGraines > 0 && variete.nbGrainesG) {
-          const planche = culture.planche
+        const userStock = await tx.userStockVariete.findFirst({
+          where: { userId: session!.user.id, varieteId: data.varieteId },
+        })
+
+        if (variete && userStock && userStock.stockGraines && userStock.stockGraines > 0 && variete.nbGrainesG) {
+          const planche = newCulture.planche
           const longueur = data.longueur || 0
           const nbRangs = data.nbRangs || 1
           const espacement = data.espacement || 0
 
-          // Formule potaleger (plus précise)
           let grammesNecessaires = 0
 
           if (espacement > 0 && variete.nbGrainesG > 0) {
-            // Semis en ligne avec espacement
             const nbGrainesPlant = itp.nbGrainesPlant || 1
             grammesNecessaires = Math.ceil(
               (longueur * nbRangs / espacement * 100 * nbGrainesPlant) /
               variete.nbGrainesG
             )
           } else if (itp.doseSemis && planche?.largeur) {
-            // Semis à la volée (dose au m²)
             grammesNecessaires = Math.ceil(
               longueur * planche.largeur * itp.doseSemis
             )
           }
 
           if (grammesNecessaires > 0) {
-            await prisma.variete.update({
-              where: { id: data.varieteId },
-              data: {
-                stockGraines: Math.max(0, variete.stockGraines - grammesNecessaires),
+            await tx.userStockVariete.upsert({
+              where: { userId_varieteId: { userId: session!.user.id, varieteId: data.varieteId } },
+              create: {
+                userId: session!.user.id,
+                varieteId: data.varieteId,
+                stockGraines: 0,
+                dateStock: new Date(),
+              },
+              update: {
+                stockGraines: Math.max(0, userStock.stockGraines - grammesNecessaires),
                 dateStock: new Date(),
               },
             })
           }
         }
-      } catch (stockError) {
-        console.warn('Erreur décrément stock semences:', stockError)
-        // Ne pas bloquer la création de culture si erreur stock
       }
-    }
+
+      return newCulture
+    })
 
     return NextResponse.json(culture, { status: 201 })
   } catch (error) {

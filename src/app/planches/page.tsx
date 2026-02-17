@@ -19,6 +19,7 @@ import { EditableSelectCell } from "@/components/planches/EditableSelectCell"
 // Type pour les planches
 interface PlancheWithRelations {
   id: string
+  nom: string
   largeur: number | null
   longueur: number | null
   surface: number | null
@@ -49,7 +50,7 @@ const RETENTION_EAU = [
 // Fonction pour créer les colonnes (avec callback)
 const createColumns = (onUpdate: () => void): ColumnDef<PlancheWithRelations>[] => [
   {
-    accessorKey: "id",
+    accessorKey: "nom",
     header: "Planche",
     cell: ({ getValue }) => (
       <span className="font-medium">{getValue() as string}</span>
@@ -99,7 +100,7 @@ const createColumns = (onUpdate: () => void): ColumnDef<PlancheWithRelations>[] 
     header: "Sol",
     cell: ({ row }) => (
       <EditableSelectCell
-        plancheId={row.original.id}
+        plancheId={row.original.nom}
         field="typeSol"
         value={row.original.typeSol}
         options={TYPES_SOL}
@@ -113,7 +114,7 @@ const createColumns = (onUpdate: () => void): ColumnDef<PlancheWithRelations>[] 
     header: "Rétention",
     cell: ({ row }) => (
       <EditableSelectCell
-        plancheId={row.original.id}
+        plancheId={row.original.nom}
         field="retentionEau"
         value={row.original.retentionEau}
         options={RETENTION_EAU}
@@ -168,11 +169,11 @@ export default function PlanchesPage() {
   }
 
   const handleRowClick = (row: PlancheWithRelations) => {
-    router.push(`/planches/${encodeURIComponent(row.id)}`)
+    router.push(`/planches/${encodeURIComponent(row.nom)}`)
   }
 
   const handleEdit = (row: PlancheWithRelations) => {
-    router.push(`/planches/${encodeURIComponent(row.id)}`)
+    router.push(`/planches/${encodeURIComponent(row.nom)}`)
   }
 
   const handleDelete = async (row: PlancheWithRelations) => {
@@ -180,21 +181,21 @@ export default function PlanchesPage() {
       toast({
         variant: "destructive",
         title: "Impossible de supprimer",
-        description: `${row.id} a ${row._count.cultures} culture(s) associée(s)`,
+        description: `${row.nom} a ${row._count.cultures} culture(s) associée(s)`,
       })
       return
     }
 
-    if (!confirm(`Supprimer la planche "${row.id}" ?`)) return
+    if (!confirm(`Supprimer la planche "${row.nom}" ?`)) return
 
     try {
-      const response = await fetch(`/api/planches/${encodeURIComponent(row.id)}`, {
+      const response = await fetch(`/api/planches/${encodeURIComponent(row.nom)}`, {
         method: "DELETE",
       })
       if (!response.ok) throw new Error("Erreur lors de la suppression")
       toast({
         title: "Planche supprimée",
-        description: `La planche "${row.id}" a été supprimée`,
+        description: `La planche "${row.nom}" a été supprimée`,
       })
       fetchData()
     } catch (error) {

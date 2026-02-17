@@ -6,7 +6,7 @@
 
 import * as React from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Settings, Save, Download, Upload, Loader2, ImageIcon, Trash2 } from 'lucide-react'
+import { ArrowLeft, Settings, Save, Download, Upload, Loader2, ImageIcon, Trash2, Key, Copy, Check, RefreshCw, Bot } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/hooks/use-toast'
@@ -60,6 +60,12 @@ export default function ParametresPage() {
   const [exporting, setExporting] = React.useState(false)
   const [importing, setImporting] = React.useState(false)
   const [deleting, setDeleting] = React.useState(false)
+  // MCP / API Token
+  const [mcpLoading, setMcpLoading] = React.useState(false)
+  const [mcpToken, setMcpToken] = React.useState<string | null>(null)
+  const [mcpMaskedToken, setMcpMaskedToken] = React.useState<string | null>(null)
+  const [mcpHasToken, setMcpHasToken] = React.useState(false)
+  const [mcpCopied, setMcpCopied] = React.useState<string | null>(null)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const imageInputRef = React.useRef<HTMLInputElement>(null)
 
@@ -75,6 +81,76 @@ export default function ParametresPage() {
       }
     }
   }, [])
+
+  // Charger le statut du token MCP
+  React.useEffect(() => {
+    fetch('/api/user/api-token')
+      .then(r => r.json())
+      .then(data => {
+        setMcpHasToken(data.hasToken)
+        setMcpMaskedToken(data.maskedToken || null)
+      })
+      .catch(() => {})
+  }, [])
+
+  const handleGenerateToken = async () => {
+    if (mcpHasToken && !confirm('Un token existe déjà. Le régénérer va invalider le précédent. Continuer ?')) return
+    setMcpLoading(true)
+    try {
+      const res = await fetch('/api/user/api-token', { method: 'POST' })
+      const data = await res.json()
+      if (data.token) {
+        setMcpToken(data.token)
+        setMcpHasToken(true)
+        setMcpMaskedToken(null)
+        toast({ title: 'Token généré', description: 'Copiez-le maintenant, il ne sera plus affiché en clair.' })
+      }
+    } catch {
+      toast({ variant: 'destructive', title: 'Erreur', description: 'Impossible de générer le token' })
+    } finally {
+      setMcpLoading(false)
+    }
+  }
+
+  const handleRevokeToken = async () => {
+    if (!confirm('Révoquer le token ? Les connexions MCP existantes seront coupées.')) return
+    setMcpLoading(true)
+    try {
+      await fetch('/api/user/api-token', { method: 'DELETE' })
+      setMcpToken(null)
+      setMcpMaskedToken(null)
+      setMcpHasToken(false)
+      toast({ title: 'Token révoqué' })
+    } catch {
+      toast({ variant: 'destructive', title: 'Erreur', description: 'Impossible de révoquer le token' })
+    } finally {
+      setMcpLoading(false)
+    }
+  }
+
+  const handleCopyMcp = (text: string, label: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setMcpCopied(label)
+      setTimeout(() => setMcpCopied(null), 2000)
+      toast({ title: 'Copié !' })
+    })
+  }
+
+  // Génère la config Claude Desktop JSON
+  const claudeDesktopConfig = mcpToken
+    ? JSON.stringify({
+        mcpServers: {
+          gleba: {
+            command: 'npx',
+            args: ['-y', '@gleba/mcp-server'],
+            env: {
+              GLEBA_URL: typeof window !== 'undefined' ? window.location.origin : 'https://gleba.fr',
+              GLEBA_TOKEN: mcpToken,
+            },
+          },
+        },
+      }, null, 2)
+    : null
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type } = e.target
@@ -718,6 +794,137 @@ export default function ParametresPage() {
                 Pensez à faire un export avant d'importer.
               </p>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Connexion MCP / IA */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Bot className="h-5 w-5" />
+              Connexion MCP / IA
+            </CardTitle>
+            <CardDescription>
+              Connectez votre assistant IA (Claude, ChatGPT, etc.) pour interagir avec votre ferme en langage naturel
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Statut du token */}
+            <div className="space-y-3">
+              <h4 className="text-sm font-medium text-gray-900 flex items-center gap-2">
+                <Key className="h-4 w-4" />
+                Token API
+              </h4>
+
+              {mcpHasToken && !mcpToken && (
+                <div className="flex items-center gap-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="h-2 w-2 bg-green-500 rounded-full" />
+                  <span className="text-sm text-green-700">
+                    Token actif : <code className="bg-green-100 px-1 rounded">{mcpMaskedToken}</code>
+                  </span>
+                </div>
+              )}
+
+              {mcpToken && (
+                <div className="space-y-2">
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                    <p className="text-xs text-amber-700 font-medium mb-2">
+                      Copiez ce token maintenant. Il ne sera plus affiché en clair.
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <code className="flex-1 text-xs bg-white border rounded px-2 py-1.5 font-mono break-all select-all">
+                        {mcpToken}
+                      </code>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleCopyMcp(mcpToken, 'token')}
+                      >
+                        {mcpCopied === 'token' ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <Button
+                  variant={mcpHasToken ? 'outline' : 'default'}
+                  onClick={handleGenerateToken}
+                  disabled={mcpLoading}
+                >
+                  {mcpLoading ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : mcpHasToken ? (
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                  ) : (
+                    <Key className="h-4 w-4 mr-2" />
+                  )}
+                  {mcpHasToken ? 'Régénérer' : 'Générer un token'}
+                </Button>
+                {mcpHasToken && (
+                  <Button
+                    variant="outline"
+                    onClick={handleRevokeToken}
+                    disabled={mcpLoading}
+                    className="text-red-600 hover:text-red-700"
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Révoquer
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* Configuration Claude Desktop */}
+            {mcpToken && (
+              <div className="space-y-3 pt-4 border-t">
+                <h4 className="text-sm font-medium text-gray-900">
+                  Configuration Claude Desktop
+                </h4>
+                <p className="text-sm text-gray-500">
+                  Ajoutez cette configuration dans le fichier <code className="bg-gray-100 px-1 rounded text-xs">claude_desktop_config.json</code> de Claude Desktop :
+                </p>
+                <div className="relative">
+                  <pre className="text-xs bg-gray-900 text-green-400 p-4 rounded-lg overflow-x-auto font-mono">
+                    {claudeDesktopConfig}
+                  </pre>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="absolute top-2 right-2 bg-gray-800 text-white hover:bg-gray-700 border-gray-600"
+                    onClick={() => handleCopyMcp(claudeDesktopConfig!, 'config')}
+                  >
+                    {mcpCopied === 'config' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                  </Button>
+                </div>
+
+                <div className="space-y-2 text-sm text-gray-600">
+                  <p className="font-medium text-gray-900">Installation :</p>
+                  <ol className="list-decimal list-inside space-y-1 text-xs">
+                    <li>Ouvrez Claude Desktop &rarr; Settings &rarr; Developer &rarr; Edit Config</li>
+                    <li>Collez la configuration ci-dessus</li>
+                    <li>Redémarrez Claude Desktop</li>
+                    <li>Les outils Gleba apparaissent dans la liste des serveurs MCP</li>
+                  </ol>
+                </div>
+              </div>
+            )}
+
+            {/* Guide */}
+            {!mcpToken && (
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-sm text-blue-800">
+                  <strong>MCP (Model Context Protocol)</strong> permet à votre assistant IA d'interagir directement
+                  avec vos données Gleba. Vous pourrez par exemple dire :
+                </p>
+                <ul className="mt-2 text-sm text-blue-700 space-y-1">
+                  <li>&laquo; Qu'est-ce que je dois faire au potager cette semaine ? &raquo;</li>
+                  <li>&laquo; Enregistre 3kg de tomates récoltées sur la planche S4 &raquo;</li>
+                  <li>&laquo; Combien d'oeufs mes poules ont pondu ce mois-ci ? &raquo;</li>
+                </ul>
+              </div>
+            )}
           </CardContent>
         </Card>
 

@@ -17,7 +17,6 @@ import {
   Leaf,
   Package,
   Droplets,
-  Calendar,
   ChevronLeft,
   ChevronRight,
   RefreshCw,
@@ -28,7 +27,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
-import { format, startOfWeek, endOfWeek, addWeeks, isWithinInterval, parseISO } from "date-fns"
+import { format, startOfWeek, endOfWeek, addWeeks } from "date-fns"
 import { fr } from "date-fns/locale"
 
 interface TacheItem {

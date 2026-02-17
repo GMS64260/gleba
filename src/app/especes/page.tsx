@@ -6,8 +6,9 @@
  */
 
 import * as React from "react"
+import { Suspense } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { ColumnDef } from "@tanstack/react-table"
 import { ArrowLeft, Leaf, Droplets, TreeDeciduous, Cherry, Salad, Sprout, Flower2 } from "lucide-react"
 
@@ -15,17 +16,25 @@ import { DataTable } from "@/components/tables/DataTable"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 import { getCategorieEmoji } from "@/lib/categories-emojis"
 
 // Types d'espèces
 const ESPECE_TYPES = [
-  { value: 'all', label: 'Tous', icon: Leaf },
-  { value: 'legume', label: 'Légumes', icon: Salad },
+  { value: 'all', label: 'Tous', icon: Leaf, arbresOnly: false },
+  { value: 'legume', label: 'Légumes', icon: Salad, arbresOnly: false },
+  { value: 'arbre_fruitier', label: 'Arbres fruitiers', icon: TreeDeciduous, arbresOnly: true },
+  { value: 'petit_fruit', label: 'Petits fruits', icon: Cherry, arbresOnly: true },
+  { value: 'aromatique', label: 'Aromatiques', icon: Flower2, arbresOnly: false },
+  { value: 'engrais_vert', label: 'Engrais verts', icon: Sprout, arbresOnly: false },
+] as const
+
+// Types pour le mode arbres (filtrés)
+const ESPECE_TYPES_ARBRES = [
+  { value: 'all_arbres', label: 'Tous', icon: TreeDeciduous },
   { value: 'arbre_fruitier', label: 'Arbres fruitiers', icon: TreeDeciduous },
   { value: 'petit_fruit', label: 'Petits fruits', icon: Cherry },
-  { value: 'aromatique', label: 'Aromatiques', icon: Flower2 },
-  { value: 'engrais_vert', label: 'Engrais verts', icon: Sprout },
 ] as const
 
 // Labels pour l'affichage
@@ -193,15 +202,51 @@ const columns: ColumnDef<EspeceWithRelations>[] = [
   },
 ]
 
-export default function EspecesPage() {
+function EspecesPageContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { toast } = useToast()
   const [data, setData] = React.useState<EspeceWithRelations[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [pageIndex, setPageIndex] = React.useState(0)
   const [pageCount, setPageCount] = React.useState(0)
+
+  // Lire le type depuis l'URL (pour filtrage depuis dashboard arbres)
+  // Supporte 'arbres' qui active le mode arbres (arbre_fruitier + petit_fruit seulement)
+  const typeFromUrl = searchParams.get('type')
+  const validTypes = ['legume', 'arbre_fruitier', 'petit_fruit', 'aromatique', 'engrais_vert']
+
+  // Mode arbres: détecté depuis l'URL, persiste en état
+  const [isArbresMode, setIsArbresMode] = React.useState(false)
   const [selectedType, setSelectedType] = React.useState('all')
+  const [isInitialized, setIsInitialized] = React.useState(false)
+  const [searchInput, setSearchInput] = React.useState('')
+  const [debouncedSearch, setDebouncedSearch] = React.useState('')
   const pageSize = 50
+
+  // Debounce de la recherche (300ms)
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchInput)
+      setPageIndex(0)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [searchInput])
+
+  // Initialiser et mettre à jour quand l'URL change
+  React.useEffect(() => {
+    if (typeFromUrl === 'arbres') {
+      setIsArbresMode(true)
+      setSelectedType('all_arbres')
+    } else if (typeFromUrl && validTypes.includes(typeFromUrl)) {
+      setIsArbresMode(false)
+      setSelectedType(typeFromUrl)
+    } else {
+      setIsArbresMode(false)
+      setSelectedType('all')
+    }
+    setIsInitialized(true)
+  }, [typeFromUrl])
 
   // Charger les données
   const fetchData = React.useCallback(async () => {
@@ -210,6 +255,9 @@ export default function EspecesPage() {
       let url = `/api/especes?page=${pageIndex + 1}&pageSize=${pageSize}`
       if (selectedType && selectedType !== 'all') {
         url += `&type=${selectedType}`
+      }
+      if (debouncedSearch) {
+        url += `&search=${encodeURIComponent(debouncedSearch)}`
       }
       const response = await fetch(url)
       if (!response.ok) throw new Error("Erreur lors du chargement")
@@ -225,11 +273,14 @@ export default function EspecesPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [pageIndex, selectedType, toast])
+  }, [pageIndex, selectedType, debouncedSearch, toast])
 
+  // Ne charger les données qu'après initialisation
   React.useEffect(() => {
-    fetchData()
-  }, [fetchData])
+    if (isInitialized) {
+      fetchData()
+    }
+  }, [isInitialized, fetchData])
 
   // Reset page when type changes
   const handleTypeChange = (type: string) => {
@@ -310,20 +361,46 @@ export default function EspecesPage() {
     URL.revokeObjectURL(url)
   }
 
+  // Determine which types to show based on mode
+  const displayTypes = isArbresMode ? ESPECE_TYPES_ARBRES : ESPECE_TYPES
+
+  // Afficher un état de chargement pendant l'initialisation
+  if (!isInitialized) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <header className="border-b bg-white sticky top-0 z-50">
+          <div className="container mx-auto px-4 py-4">
+            <Skeleton className="h-8 w-64" />
+          </div>
+        </header>
+        <main className="container mx-auto px-4 py-6">
+          <Skeleton className="h-12 w-full mb-4" />
+          <Skeleton className="h-96 w-full" />
+        </main>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="border-b bg-white sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center gap-4">
-          <Link href="/">
+          <Link href={isArbresMode ? "/arbres" : "/"}>
             <Button variant="ghost" size="sm">
               <ArrowLeft className="h-4 w-4 mr-2" />
-              Accueil
+              {isArbresMode ? "Verger" : "Accueil"}
             </Button>
           </Link>
           <div className="flex items-center gap-2">
-            <Leaf className="h-6 w-6 text-emerald-600" />
-            <h1 className="text-xl font-bold">Espèces</h1>
+            {isArbresMode ? (
+              <TreeDeciduous className="h-6 w-6 text-lime-600" />
+            ) : (
+              <Leaf className="h-6 w-6 text-emerald-600" />
+            )}
+            <h1 className="text-xl font-bold">
+              {isArbresMode ? "Espèces d'arbres" : "Espèces"}
+            </h1>
           </div>
         </div>
       </header>
@@ -333,7 +410,7 @@ export default function EspecesPage() {
         {/* Filtres par type */}
         <Tabs value={selectedType} onValueChange={handleTypeChange} className="mb-4">
           <TabsList className="flex-wrap h-auto gap-1">
-            {ESPECE_TYPES.map(({ value, label, icon: Icon }) => (
+            {displayTypes.map(({ value, label, icon: Icon }) => (
               <TabsTrigger key={value} value={value} className="flex items-center gap-1">
                 <Icon className="h-4 w-4" />
                 <span className="hidden sm:inline">{label}</span>
@@ -350,6 +427,8 @@ export default function EspecesPage() {
           pageIndex={pageIndex}
           pageSize={pageSize}
           onPaginationChange={(page) => setPageIndex(page)}
+          onSearch={setSearchInput}
+          searchValue={searchInput}
           onAdd={handleAdd}
           onRefresh={fetchData}
           onExport={handleExport}
@@ -361,5 +440,31 @@ export default function EspecesPage() {
         />
       </main>
     </div>
+  )
+}
+
+// Loading fallback for Suspense
+function EspecesLoadingFallback() {
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <header className="border-b bg-white sticky top-0 z-50">
+        <div className="container mx-auto px-4 py-4">
+          <Skeleton className="h-8 w-64" />
+        </div>
+      </header>
+      <main className="container mx-auto px-4 py-6">
+        <Skeleton className="h-12 w-full mb-4" />
+        <Skeleton className="h-96 w-full" />
+      </main>
+    </div>
+  )
+}
+
+// Export wrapped component with Suspense
+export default function EspecesPage() {
+  return (
+    <Suspense fallback={<EspecesLoadingFallback />}>
+      <EspecesPageContent />
+    </Suspense>
   )
 }

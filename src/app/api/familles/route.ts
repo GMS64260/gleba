@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { z } from 'zod'
-import { requireAuthApi } from '@/lib/auth-utils'
+import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
 
 const familleSchema = z.object({
   id: z.string().min(1, "Le nom de la famille est requis").max(100),
@@ -41,9 +41,9 @@ export async function GET() {
   }
 }
 
-// POST /api/familles
+// POST /api/familles (admin only - données de référence globales)
 export async function POST(request: NextRequest) {
-  const { error } = await requireAuthApi()
+  const { error } = await requireAdminApi()
   if (error) return error
 
   try {

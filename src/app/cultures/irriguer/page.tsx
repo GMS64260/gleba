@@ -47,6 +47,7 @@ interface CultureIrriguer {
   } | null
   planche: {
     id: string
+    nom?: string
     ilot: string | null
     type: string | null
     irrigation: string | null
@@ -643,9 +644,9 @@ function CulturesIrriguerContent() {
 
                             {/* Planche */}
                             {culture.planche && (
-                              <Link href={`/planches/${encodeURIComponent(culture.planche.id)}`}>
+                              <Link href={`/planches/${encodeURIComponent(culture.planche.nom || culture.planche.id)}`}>
                                 <Badge variant="secondary" className="cursor-pointer hover:bg-gray-200 whitespace-nowrap">
-                                  {culture.planche.id}
+                                  {culture.planche.nom || culture.planche.id}
                                 </Badge>
                               </Link>
                             )}
@@ -695,7 +696,7 @@ function CulturesIrriguerContent() {
                         )}
                         <span>{c.especeId}</span>
                         {c.planche && (
-                          <Badge variant="secondary" className="text-xs">{c.planche.id}</Badge>
+                          <Badge variant="secondary" className="text-xs">{c.planche.nom || c.planche.id}</Badge>
                         )}
                       </div>
                       <span className="text-muted-foreground text-xs">

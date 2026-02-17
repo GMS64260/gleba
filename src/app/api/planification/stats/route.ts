@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('GET /api/planification/stats error:', error)
     return NextResponse.json(
-      { error: 'Erreur lors de la recuperation des statistiques', details: String(error) },
+      { error: 'Erreur lors de la recuperation des statistiques', details: "Erreur interne du serveur" },
       { status: 500 }
     )
   }

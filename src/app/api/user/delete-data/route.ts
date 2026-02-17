@@ -85,7 +85,7 @@ export async function DELETE(request: NextRequest) {
   } catch (error) {
     console.error('DELETE /api/user/delete-data error:', error)
     return NextResponse.json(
-      { error: 'Erreur lors de la suppression des données', details: String(error) },
+      { error: 'Erreur lors de la suppression des données', details: "Erreur interne du serveur" },
       { status: 500 }
     )
   }

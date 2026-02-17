@@ -13,6 +13,7 @@ import { Droplets, Ruler, MapPin } from "lucide-react"
 
 interface Planche {
   id: string
+  nom?: string | null
   ilot: string | null
   surface: number | null
   largeur: number | null
@@ -35,10 +36,19 @@ const PLANCHE_TYPES = ['Serre', 'Plein champ', 'Tunnel', 'Chassis']
 const PLANCHE_IRRIGATION = ['Goutte-a-goutte', 'Aspersion', 'Manuel', 'Aucun']
 
 export function PlancheInfoTable({ planche, onUpdate }: PlancheInfoTableProps) {
+  const [ilotOptions, setIlotOptions] = React.useState<{value: string, label: string}[]>([])
+
+  React.useEffect(() => {
+    fetch("/api/planches?pageSize=500").then(r => r.json()).then(data => {
+      const planches = data.data || data || []
+      const unique = [...new Set(planches.map((p: any) => p.ilot).filter(Boolean))] as string[]
+      setIlotOptions(unique.sort().map(v => ({ value: v, label: v })))
+    }).catch(() => {})
+  }, [])
 
   const handleUpdate = async (field: string, value: string | number | null) => {
     try {
-      const res = await fetch(`/api/planches/${encodeURIComponent(planche.id)}`, {
+      const res = await fetch(`/api/planches/${encodeURIComponent(planche.nom || planche.id)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ [field]: value }),
@@ -108,8 +118,9 @@ export function PlancheInfoTable({ planche, onUpdate }: PlancheInfoTableProps) {
                   <InlineEditField
                     value={planche.ilot}
                     onSave={(v) => handleUpdate('ilot', v)}
-                    type="text"
-                    placeholder="Non défini"
+                    type="combobox"
+                    comboboxOptions={ilotOptions}
+                    placeholder="Ex: Nord, Serre, Jardin..."
                   />
                 </td>
               </tr>

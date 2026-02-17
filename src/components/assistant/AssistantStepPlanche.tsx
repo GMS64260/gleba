@@ -12,8 +12,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { Button } from "@/components/ui/button"
 import { HelpCircle, LayoutGrid, Ruler } from "lucide-react"
-import { TYPES_PLANCHE, TYPES_IRRIGATION } from "@/lib/assistant-helpers"
+import { TYPES_PLANCHE, TYPES_IRRIGATION, PRESETS_DIMENSIONS_PLANCHE, PLANCHE_DEFAUT_LARGEUR, PLANCHE_DEFAUT_LONGUEUR } from "@/lib/assistant-helpers"
 import type { AssistantMode, PlancheData } from "./AssistantDialog"
 
 interface AssistantStepPlancheProps {
@@ -24,10 +25,12 @@ interface AssistantStepPlancheProps {
 
 export function AssistantStepPlanche({ mode, planche, onPlancheChange }: AssistantStepPlancheProps) {
   const [ilots, setIlots] = React.useState<string[]>([])
+  const [plancheCount, setPlancheCount] = React.useState<number>(0)
+  const defaultsAppliedRef = React.useRef(false)
 
-  // Charger les îlots existants pour suggestions
+  // Charger les îlots existants et le nombre de planches
   React.useEffect(() => {
-    async function fetchIlots() {
+    async function fetchPlanchesData() {
       try {
         const res = await fetch('/api/planches?pageSize=200')
         if (res.ok) {
@@ -38,13 +41,39 @@ export function AssistantStepPlanche({ mode, planche, onPlancheChange }: Assista
               .filter(Boolean)
           )] as string[]
           setIlots(uniqueIlots)
+          setPlancheCount(data.total || 0)
         }
       } catch (e) {
-        console.error('Error fetching ilots:', e)
+        console.error('Error fetching planches data:', e)
       }
     }
-    fetchIlots()
+    fetchPlanchesData()
   }, [])
+
+  // Appliquer les valeurs par défaut au premier rendu pour une nouvelle planche
+  React.useEffect(() => {
+    if (mode === 'new-planche' && !defaultsAppliedRef.current) {
+      defaultsAppliedRef.current = true
+      const updates: Partial<PlancheData> = {}
+      if (!planche.largeur) updates.largeur = PLANCHE_DEFAUT_LARGEUR
+      if (!planche.longueur) updates.longueur = PLANCHE_DEFAUT_LONGUEUR
+      if (Object.keys(updates).length > 0) {
+        onPlancheChange(updates)
+      }
+    }
+  }, [mode, planche.largeur, planche.longueur, onPlancheChange])
+
+  // Suggérer un nom automatique si le champ est vide
+  React.useEffect(() => {
+    if (mode === 'new-planche' && !planche.nom && plancheCount >= 0) {
+      onPlancheChange({ nom: `Planche ${plancheCount + 1}` })
+    }
+  }, [plancheCount]) // Volontairement limité à plancheCount pour ne s'exécuter qu'une fois
+
+  // Appliquer un preset de dimensions
+  const applyPreset = (preset: typeof PRESETS_DIMENSIONS_PLANCHE[number]) => {
+    onPlancheChange({ largeur: preset.largeur, longueur: preset.longueur })
+  }
 
   // Calcul automatique de la surface
   const calculatedSurface = React.useMemo(() => {
@@ -93,6 +122,28 @@ export function AssistantStepPlanche({ mode, planche, onPlancheChange }: Assista
                 placeholder="Ex: P1, Potager-Nord..."
                 className={!planche.nom ? 'border-red-300 focus:border-red-500' : ''}
               />
+            </div>
+
+            {/* Presets de dimensions */}
+            <div className="space-y-2">
+              <Label className="text-sm">Dimensions rapides</Label>
+              <div className="flex flex-wrap gap-2">
+                {PRESETS_DIMENSIONS_PLANCHE.map((preset) => (
+                  <Button
+                    key={preset.label}
+                    type="button"
+                    variant={
+                      planche.largeur === preset.largeur && planche.longueur === preset.longueur
+                        ? 'default'
+                        : 'outline'
+                    }
+                    size="sm"
+                    onClick={() => applyPreset(preset)}
+                  >
+                    {preset.label}
+                  </Button>
+                ))}
+              </div>
             </div>
 
             {/* Dimensions */}

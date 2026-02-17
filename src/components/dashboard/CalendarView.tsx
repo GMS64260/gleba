@@ -29,11 +29,17 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
 import { EventDialog } from "./EventDialog"
 import { YearView } from "./YearView"
 
@@ -41,6 +47,9 @@ interface CalendarEvent {
   id: number
   type: "semis" | "plantation" | "recolte" | "irrigation"
   especeId: string
+  varieteId: string | null
+  plancheName: string | null
+  ilot: string | null
   date: string
   fait: boolean
   couleur: string | null
@@ -64,6 +73,11 @@ export function CalendarView({ year }: CalendarViewProps) {
   const [eventDialogOpen, setEventDialogOpen] = React.useState(false)
   const [draggedEvent, setDraggedEvent] = React.useState<CalendarEvent | null>(null)
   const [draggedOverDay, setDraggedOverDay] = React.useState<string | null>(null)
+  // Desktop: popover state for day events
+  const [openPopoverDay, setOpenPopoverDay] = React.useState<string | null>(null)
+  // Mobile: day sheet state
+  const [selectedDayForMobile, setSelectedDayForMobile] = React.useState<{ date: Date; events: CalendarEvent[] } | null>(null)
+  const [daySheetOpen, setDaySheetOpen] = React.useState(false)
 
   // Mettre à jour le mois quand l'année change
   React.useEffect(() => {
@@ -135,6 +149,7 @@ export function CalendarView({ year }: CalendarViewProps) {
   // Gestion du drag & drop
   const handleDragStart = (event: CalendarEvent, e: React.DragEvent) => {
     setDraggedEvent(event)
+    setOpenPopoverDay(null) // Fermer le popover pour voir les cellules cibles
     e.dataTransfer.effectAllowed = "move"
   }
 
@@ -319,7 +334,7 @@ export function CalendarView({ year }: CalendarViewProps) {
             }}
           />
         ) : (
-          <TooltipProvider delayDuration={100}>
+          <>
             <div className="grid grid-cols-7 gap-px bg-muted rounded-lg overflow-hidden">
               {/* En-têtes des jours */}
               {weekDays.map(d => (
@@ -384,94 +399,154 @@ export function CalendarView({ year }: CalendarViewProps) {
 
                     {/* Indicateurs d'événements */}
                     {dayEvents.length > 0 && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <div className="absolute bottom-1 left-1 right-1 flex gap-1 flex-wrap cursor-pointer">
-                            {counts.semis > 0 && (
-                              <div className={`relative flex items-center justify-center w-8 h-8 rounded ${
-                                allDone.semis ? 'bg-green-200 ring-1 ring-green-500' : typeIcons.semis.bg
-                              }`}>
-                                <Sprout className={`h-5 w-5 ${allDone.semis ? 'text-green-700' : typeIcons.semis.color}`} />
-                                {allDone.semis && (
-                                  <span className="absolute -top-1 -right-1 text-green-600 text-xs">✓</span>
+                      <>
+                        {/* Desktop: Popover au clic */}
+                        <div className="hidden sm:block">
+                          <Popover open={openPopoverDay === dateKey} onOpenChange={(open) => setOpenPopoverDay(open ? dateKey : null)}>
+                            <PopoverTrigger asChild>
+                              <div className="absolute bottom-1 left-1 right-1 flex gap-1 flex-wrap cursor-pointer">
+                                {counts.semis > 0 && (
+                                  <div className={`relative flex items-center justify-center w-8 h-8 rounded ${
+                                    allDone.semis ? 'bg-green-200 ring-1 ring-green-500' : typeIcons.semis.bg
+                                  }`}>
+                                    <Sprout className={`h-5 w-5 ${allDone.semis ? 'text-green-700' : typeIcons.semis.color}`} />
+                                    {allDone.semis && (
+                                      <span className="absolute -top-1 -right-1 text-green-600 text-xs">✓</span>
+                                    )}
+                                    {counts.semis > 1 && !allDone.semis && (
+                                      <span className="text-[10px] font-bold ml-px">{counts.semis}</span>
+                                    )}
+                                  </div>
                                 )}
-                                {counts.semis > 1 && !allDone.semis && (
-                                  <span className="text-[10px] font-bold ml-px">{counts.semis}</span>
+                                {counts.plantation > 0 && (
+                                  <div className={`relative flex items-center justify-center w-8 h-8 rounded ${
+                                    allDone.plantation ? 'bg-green-200 ring-1 ring-green-500' : typeIcons.plantation.bg
+                                  }`}>
+                                    <Leaf className={`h-5 w-5 ${allDone.plantation ? 'text-green-700' : typeIcons.plantation.color}`} />
+                                    {allDone.plantation && (
+                                      <span className="absolute -top-1 -right-1 text-green-600 text-xs">✓</span>
+                                    )}
+                                    {counts.plantation > 1 && !allDone.plantation && (
+                                      <span className="text-[10px] font-bold ml-px">{counts.plantation}</span>
+                                    )}
+                                  </div>
+                                )}
+                                {counts.recolte > 0 && (
+                                  <div className={`relative flex items-center justify-center w-8 h-8 rounded ${
+                                    allDone.recolte ? 'bg-green-200 ring-1 ring-green-500' : typeIcons.recolte.bg
+                                  }`}>
+                                    <Package className={`h-5 w-5 ${allDone.recolte ? 'text-green-700' : typeIcons.recolte.color}`} />
+                                    {allDone.recolte && (
+                                      <span className="absolute -top-1 -right-1 text-green-600 text-xs">✓</span>
+                                    )}
+                                    {counts.recolte > 1 && !allDone.recolte && (
+                                      <span className="text-[10px] font-bold ml-px">{counts.recolte}</span>
+                                    )}
+                                  </div>
+                                )}
+                                {counts.irrigation > 0 && (
+                                  <div className={`relative flex items-center justify-center w-8 h-8 rounded ${
+                                    allDone.irrigation ? 'bg-green-200 ring-1 ring-green-500' : typeIcons.irrigation.bg
+                                  }`}>
+                                    <Droplets className={`h-5 w-5 ${allDone.irrigation ? 'text-green-700' : typeIcons.irrigation.color}`} />
+                                    {allDone.irrigation && (
+                                      <span className="absolute -top-1 -right-1 text-green-600 text-xs">✓</span>
+                                    )}
+                                    {counts.irrigation > 1 && !allDone.irrigation && (
+                                      <span className="text-[10px] font-bold ml-px">{counts.irrigation}</span>
+                                    )}
+                                  </div>
                                 )}
                               </div>
-                            )}
-                            {counts.plantation > 0 && (
-                              <div className={`relative flex items-center justify-center w-8 h-8 rounded ${
-                                allDone.plantation ? 'bg-green-200 ring-1 ring-green-500' : typeIcons.plantation.bg
-                              }`}>
-                                <Leaf className={`h-5 w-5 ${allDone.plantation ? 'text-green-700' : typeIcons.plantation.color}`} />
-                                {allDone.plantation && (
-                                  <span className="absolute -top-1 -right-1 text-green-600 text-xs">✓</span>
-                                )}
-                                {counts.plantation > 1 && !allDone.plantation && (
-                                  <span className="text-[10px] font-bold ml-px">{counts.plantation}</span>
-                                )}
+                            </PopoverTrigger>
+                            <PopoverContent side="bottom" className="w-auto max-w-[320px] p-2">
+                              <div className="space-y-1">
+                                <p className="font-medium text-xs capitalize px-1">
+                                  {format(dayDate, "EEEE d MMMM", { locale: fr })}
+                                </p>
+                                {dayEvents.map(event => {
+                                  const { icon: Icon, color } = typeIcons[event.type]
+                                  return (
+                                    <div
+                                      key={`${event.id}-${event.type}`}
+                                      draggable
+                                      onDragStart={(e) => handleDragStart(event, e)}
+                                      onDragEnd={handleDragEnd}
+                                      onClick={() => {
+                                        setOpenPopoverDay(null)
+                                        setSelectedEvent(event)
+                                        setEventDialogOpen(true)
+                                      }}
+                                      className="flex items-center gap-1.5 text-xs hover:bg-accent rounded px-1.5 py-1 w-full cursor-grab active:cursor-grabbing transition-colors"
+                                      title="Glisser pour déplacer, cliquer pour détails"
+                                    >
+                                      <Icon className={`h-4 w-4 ${color} flex-shrink-0`} />
+                                      <span className={`truncate ${event.fait ? "line-through opacity-60" : ""}`}>
+                                        {event.especeId}
+                                        {event.varieteId && <span className="text-muted-foreground"> ({event.varieteId})</span>}
+                                      </span>
+                                      {event.plancheName && (
+                                        <span className="text-muted-foreground flex-shrink-0">→ {event.plancheName}</span>
+                                      )}
+                                      {event.fait && <span className="text-green-600 ml-auto flex-shrink-0">✓</span>}
+                                    </div>
+                                  )
+                                })}
                               </div>
-                            )}
-                            {counts.recolte > 0 && (
-                              <div className={`relative flex items-center justify-center w-8 h-8 rounded ${
-                                allDone.recolte ? 'bg-green-200 ring-1 ring-green-500' : typeIcons.recolte.bg
-                              }`}>
-                                <Package className={`h-5 w-5 ${allDone.recolte ? 'text-green-700' : typeIcons.recolte.color}`} />
-                                {allDone.recolte && (
-                                  <span className="absolute -top-1 -right-1 text-green-600 text-xs">✓</span>
-                                )}
-                                {counts.recolte > 1 && !allDone.recolte && (
-                                  <span className="text-[10px] font-bold ml-px">{counts.recolte}</span>
-                                )}
-                              </div>
-                            )}
-                            {counts.irrigation > 0 && (
-                              <div className={`relative flex items-center justify-center w-8 h-8 rounded ${
-                                allDone.irrigation ? 'bg-green-200 ring-1 ring-green-500' : typeIcons.irrigation.bg
-                              }`}>
-                                <Droplets className={`h-5 w-5 ${allDone.irrigation ? 'text-green-700' : typeIcons.irrigation.color}`} />
-                                {allDone.irrigation && (
-                                  <span className="absolute -top-1 -right-1 text-green-600 text-xs">✓</span>
-                                )}
-                                {counts.irrigation > 1 && !allDone.irrigation && (
-                                  <span className="text-[10px] font-bold ml-px">{counts.irrigation}</span>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom" className="max-w-[300px]">
-                          <div className="space-y-1">
-                            <p className="font-medium text-xs">
-                              {format(dayDate, "EEEE d MMMM", { locale: fr })}
-                            </p>
-                            {dayEvents.map(event => {
-                              const { icon: Icon, color } = typeIcons[event.type]
-                              return (
-                                <div
-                                  key={`${event.id}-${event.type}`}
-                                  draggable
-                                  onDragStart={(e) => handleDragStart(event, e)}
-                                  onDragEnd={handleDragEnd}
-                                  onClick={() => {
-                                    setSelectedEvent(event)
-                                    setEventDialogOpen(true)
-                                  }}
-                                  className="flex items-center gap-1 text-xs hover:bg-accent/50 rounded px-1 py-0.5 w-full cursor-move transition-colors"
-                                  title="Glisser pour déplacer"
-                                >
-                                  <Icon className={`h-4 w-4 ${color} flex-shrink-0`} />
-                                  <span className={event.fait ? "line-through opacity-60" : ""}>
-                                    {event.especeId}
-                                  </span>
-                                  {event.fait && <span className="text-green-600 ml-auto">✓</span>}
-                                </div>
-                              )
-                            })}
-                          </div>
-                        </TooltipContent>
-                      </Tooltip>
+                            </PopoverContent>
+                          </Popover>
+                        </div>
+
+                        {/* Mobile: Clic direct ouvre le Sheet */}
+                        <div
+                          className="sm:hidden absolute bottom-1 left-1 right-1 flex gap-0.5 flex-wrap cursor-pointer"
+                          onClick={() => {
+                            setSelectedDayForMobile({ date: dayDate, events: dayEvents })
+                            setDaySheetOpen(true)
+                          }}
+                        >
+                          {counts.semis > 0 && (
+                            <div className={`relative flex items-center justify-center w-6 h-6 rounded ${
+                              allDone.semis ? 'bg-green-200' : typeIcons.semis.bg
+                            }`}>
+                              <Sprout className={`h-4 w-4 ${allDone.semis ? 'text-green-700' : typeIcons.semis.color}`} />
+                              {counts.semis > 1 && (
+                                <span className="absolute -top-0.5 -right-0.5 bg-orange-500 text-white text-[8px] w-3 h-3 rounded-full flex items-center justify-center">{counts.semis}</span>
+                              )}
+                            </div>
+                          )}
+                          {counts.plantation > 0 && (
+                            <div className={`relative flex items-center justify-center w-6 h-6 rounded ${
+                              allDone.plantation ? 'bg-green-200' : typeIcons.plantation.bg
+                            }`}>
+                              <Leaf className={`h-4 w-4 ${allDone.plantation ? 'text-green-700' : typeIcons.plantation.color}`} />
+                              {counts.plantation > 1 && (
+                                <span className="absolute -top-0.5 -right-0.5 bg-green-500 text-white text-[8px] w-3 h-3 rounded-full flex items-center justify-center">{counts.plantation}</span>
+                              )}
+                            </div>
+                          )}
+                          {counts.recolte > 0 && (
+                            <div className={`relative flex items-center justify-center w-6 h-6 rounded ${
+                              allDone.recolte ? 'bg-green-200' : typeIcons.recolte.bg
+                            }`}>
+                              <Package className={`h-4 w-4 ${allDone.recolte ? 'text-green-700' : typeIcons.recolte.color}`} />
+                              {counts.recolte > 1 && (
+                                <span className="absolute -top-0.5 -right-0.5 bg-purple-500 text-white text-[8px] w-3 h-3 rounded-full flex items-center justify-center">{counts.recolte}</span>
+                              )}
+                            </div>
+                          )}
+                          {counts.irrigation > 0 && (
+                            <div className={`relative flex items-center justify-center w-6 h-6 rounded ${
+                              allDone.irrigation ? 'bg-green-200' : typeIcons.irrigation.bg
+                            }`}>
+                              <Droplets className={`h-4 w-4 ${allDone.irrigation ? 'text-green-700' : typeIcons.irrigation.color}`} />
+                              {counts.irrigation > 1 && (
+                                <span className="absolute -top-0.5 -right-0.5 bg-cyan-500 text-white text-[8px] w-3 h-3 rounded-full flex items-center justify-center">{counts.irrigation}</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </>
                     )}
                   </div>
                 )
@@ -504,8 +579,11 @@ export function CalendarView({ year }: CalendarViewProps) {
                 </div>
                 <span>Irrigation</span>
               </div>
-              <div className="flex items-center gap-1 ml-2 text-[10px] text-blue-600">
-                <span>💡 Glissez les événements pour les déplacer</span>
+              <div className="hidden sm:flex items-center gap-1 ml-2 text-[10px] text-blue-600">
+                <span>💡 Cliquez sur un jour, puis glissez un événement pour le déplacer</span>
+              </div>
+              <div className="sm:hidden flex items-center gap-1 ml-2 text-[10px] text-blue-600">
+                <span>💡 Cliquez sur un jour pour voir les détails</span>
               </div>
             </div>
 
@@ -525,7 +603,62 @@ export function CalendarView({ year }: CalendarViewProps) {
               onOpenChange={setEventDialogOpen}
               onUpdate={refreshEvents}
             />
-          </TooltipProvider>
+
+            {/* Sheet mobile pour les événements du jour */}
+            <Sheet open={daySheetOpen} onOpenChange={setDaySheetOpen}>
+              <SheetContent side="bottom" className="h-auto max-h-[70vh]">
+                <SheetHeader>
+                  <SheetTitle>
+                    {selectedDayForMobile && format(selectedDayForMobile.date, "EEEE d MMMM yyyy", { locale: fr })}
+                  </SheetTitle>
+                  <SheetDescription>
+                    {selectedDayForMobile?.events.length} événement(s)
+                  </SheetDescription>
+                </SheetHeader>
+                <div className="py-4 space-y-2 overflow-y-auto">
+                  {selectedDayForMobile?.events.map(event => {
+                    const { icon: Icon, color, bg } = typeIcons[event.type]
+                    const typeLabel = {
+                      semis: "Semis",
+                      plantation: "Plantation",
+                      recolte: "Récolte",
+                      irrigation: "Irrigation",
+                    }
+                    return (
+                      <div
+                        key={`${event.id}-${event.type}`}
+                        onClick={() => {
+                          setSelectedEvent(event)
+                          setDaySheetOpen(false)
+                          setEventDialogOpen(true)
+                        }}
+                        className={`flex items-center gap-3 p-3 rounded-lg ${bg} cursor-pointer active:opacity-70 transition-opacity`}
+                      >
+                        <div className={`w-10 h-10 rounded-full bg-white/80 flex items-center justify-center`}>
+                          <Icon className={`h-5 w-5 ${color}`} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`font-medium ${event.fait ? "line-through opacity-60" : ""}`}>
+                            {event.especeId}
+                            {event.varieteId && <span className="font-normal text-muted-foreground"> ({event.varieteId})</span>}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            {typeLabel[event.type]}
+                            {event.plancheName && <span> · {event.plancheName}</span>}
+                          </p>
+                        </div>
+                        {event.fait ? (
+                          <Badge className="bg-green-100 text-green-800">Fait</Badge>
+                        ) : (
+                          <Badge variant="outline">À faire</Badge>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </SheetContent>
+            </Sheet>
+          </>
         )}
       </CardContent>
     </Card>

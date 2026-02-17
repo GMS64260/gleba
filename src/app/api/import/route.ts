@@ -244,6 +244,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Aucun fichier fourni' }, { status: 400 })
     }
 
+    // Limite taille fichier : 10 Mo
+    const MAX_FILE_SIZE = 10 * 1024 * 1024
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        { error: 'Fichier trop volumineux (max 10 Mo)' },
+        { status: 413 }
+      )
+    }
+
     const text = await file.text()
     let data: ImportData
 
@@ -267,6 +276,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Wrap all database operations in a transaction for atomicity
+    const result = await prisma.$transaction(async (tx) => {
     // Statistiques d'import
     const stats = {
       familles: 0,
@@ -298,7 +309,7 @@ export async function POST(request: NextRequest) {
     // 1. Familles
     if (data.familles?.length) {
       for (const item of data.familles) {
-        await prisma.famille.upsert({
+        await tx.famille.upsert({
           where: { id: item.id },
           update: {
             intervalle: item.intervalle ?? 4,
@@ -319,7 +330,7 @@ export async function POST(request: NextRequest) {
     // 2. Fournisseurs
     if (data.fournisseurs?.length) {
       for (const item of data.fournisseurs) {
-        await prisma.fournisseur.upsert({
+        await tx.fournisseur.upsert({
           where: { id: item.id },
           update: {
             contact: item.contact,
@@ -346,7 +357,7 @@ export async function POST(request: NextRequest) {
     // 3. Espèces
     if (data.especes?.length) {
       for (const item of data.especes) {
-        await prisma.espece.upsert({
+        await tx.espece.upsert({
           where: { id: item.id },
           update: {
             type: item.type ?? 'legume',
@@ -413,10 +424,10 @@ export async function POST(request: NextRequest) {
     // 4. Variétés
     if (data.varietes?.length) {
       for (const item of data.varietes) {
-        const especeExists = await prisma.espece.findUnique({ where: { id: item.especeId } })
+        const especeExists = await tx.espece.findUnique({ where: { id: item.especeId } })
         if (!especeExists) continue
 
-        await prisma.variete.upsert({
+        await tx.variete.upsert({
           where: { id: item.id },
           update: {
             especeId: item.especeId,
@@ -425,8 +436,6 @@ export async function POST(request: NextRequest) {
             dureeRecolte: item.dureeRecolte,
             nbGrainesG: item.nbGrainesG,
             prixGraine: item.prixGraine,
-            stockGraines: item.stockGraines,
-            stockPlants: item.stockPlants,
             dateStock: item.dateStock ? new Date(item.dateStock) : null,
             bio: item.bio,
             description: item.description,
@@ -439,13 +448,31 @@ export async function POST(request: NextRequest) {
             dureeRecolte: item.dureeRecolte,
             nbGrainesG: item.nbGrainesG,
             prixGraine: item.prixGraine,
-            stockGraines: item.stockGraines,
-            stockPlants: item.stockPlants,
             dateStock: item.dateStock ? new Date(item.dateStock) : null,
             bio: item.bio ?? false,
             description: item.description,
           },
         })
+
+        // Stock per-user
+        if (item.stockGraines !== undefined || item.stockPlants !== undefined) {
+          await tx.userStockVariete.upsert({
+            where: { userId_varieteId: { userId, varieteId: item.id } },
+            create: {
+              userId,
+              varieteId: item.id,
+              stockGraines: item.stockGraines ?? null,
+              stockPlants: item.stockPlants ?? null,
+              dateStock: item.dateStock ? new Date(item.dateStock) : new Date(),
+            },
+            update: {
+              ...(item.stockGraines !== undefined && { stockGraines: item.stockGraines }),
+              ...(item.stockPlants !== undefined && { stockPlants: item.stockPlants }),
+              dateStock: item.dateStock ? new Date(item.dateStock) : new Date(),
+            },
+          })
+        }
+
         stats.varietes++
       }
     }
@@ -455,11 +482,11 @@ export async function POST(request: NextRequest) {
       for (const item of data.itps) {
         // Vérifier que l'espèce existe si fournie
         if (item.especeId) {
-          const especeExists = await prisma.espece.findUnique({ where: { id: item.especeId } })
+          const especeExists = await tx.espece.findUnique({ where: { id: item.especeId } })
           if (!especeExists) continue
         }
 
-        await prisma.iTP.upsert({
+        await tx.iTP.upsert({
           where: { id: item.id },
           update: {
             especeId: item.especeId,
@@ -504,7 +531,7 @@ export async function POST(request: NextRequest) {
     // 6. Rotations
     if (data.rotations?.length) {
       for (const item of data.rotations) {
-        await prisma.rotation.upsert({
+        await tx.rotation.upsert({
           where: { id: item.id },
           update: {
             active: item.active ?? true,
@@ -525,28 +552,28 @@ export async function POST(request: NextRequest) {
     // 7. Rotation Details (ID auto-généré - créer de nouveaux)
     if (data.rotationDetails?.length) {
       for (const item of data.rotationDetails) {
-        const rotationExists = await prisma.rotation.findUnique({ where: { id: item.rotationId } })
+        const rotationExists = await tx.rotation.findUnique({ where: { id: item.rotationId } })
         if (!rotationExists) continue
 
         // Vérifier si l'ITP existe si fourni
         if (item.itpId) {
-          const itpExists = await prisma.iTP.findUnique({ where: { id: item.itpId } })
+          const itpExists = await tx.iTP.findUnique({ where: { id: item.itpId } })
           if (!itpExists) continue
         }
 
         // Vérifier si un détail existe déjà pour cette rotation et cette année
-        const existing = await prisma.rotationDetail.findFirst({
+        const existing = await tx.rotationDetail.findFirst({
           where: { rotationId: item.rotationId, annee: item.annee },
         })
 
         if (existing) {
-          await prisma.rotationDetail.update({
+          await tx.rotationDetail.update({
             where: { id: existing.id },
             data: { itpId: item.itpId },
           })
           rotationDetailIdMap.set(item.id, existing.id)
         } else {
-          const created = await prisma.rotationDetail.create({
+          const created = await tx.rotationDetail.create({
             data: {
               rotationId: item.rotationId,
               itpId: item.itpId,
@@ -562,7 +589,7 @@ export async function POST(request: NextRequest) {
     // 8. Fertilisants
     if (data.fertilisants?.length) {
       for (const item of data.fertilisants) {
-        await prisma.fertilisant.upsert({
+        await tx.fertilisant.upsert({
           where: { id: item.id },
           update: {
             type: item.type,
@@ -602,7 +629,7 @@ export async function POST(request: NextRequest) {
     if (data.associations?.length) {
       for (const item of data.associations) {
         // Chercher par nom d'abord
-        const existingByNom = await prisma.association.findFirst({
+        const existingByNom = await tx.association.findFirst({
           where: { nom: item.nom },
         })
 
@@ -610,7 +637,7 @@ export async function POST(request: NextRequest) {
 
         if (existingByNom) {
           // Mettre à jour l'existante
-          await prisma.association.update({
+          await tx.association.update({
             where: { id: existingByNom.id },
             data: {
               nom: item.nom,
@@ -621,7 +648,7 @@ export async function POST(request: NextRequest) {
           associationId = existingByNom.id
         } else {
           // Créer nouvelle
-          await prisma.association.create({
+          await tx.association.create({
             data: {
               id: item.id,
               nom: item.nom,
@@ -635,7 +662,7 @@ export async function POST(request: NextRequest) {
         // 9b. Importer les détails imbriqués si présents
         if (item.details && Array.isArray(item.details)) {
           for (const detail of item.details) {
-            const existing = await prisma.associationDetail.findFirst({
+            const existing = await tx.associationDetail.findFirst({
               where: {
                 associationId,
                 especeId: detail.especeId,
@@ -645,7 +672,7 @@ export async function POST(request: NextRequest) {
             })
 
             if (!existing) {
-              await prisma.associationDetail.create({
+              await tx.associationDetail.create({
                 data: {
                   associationId,
                   especeId: detail.especeId,
@@ -665,11 +692,11 @@ export async function POST(request: NextRequest) {
     // 10. Association Details (format alternatif si fourni séparément)
     if (data.associationDetails?.length) {
       for (const item of data.associationDetails) {
-        const associationExists = await prisma.association.findUnique({ where: { id: item.associationId } })
+        const associationExists = await tx.association.findUnique({ where: { id: item.associationId } })
         if (!associationExists) continue
 
         // Vérifier si un détail similaire existe
-        const existing = await prisma.associationDetail.findFirst({
+        const existing = await tx.associationDetail.findFirst({
           where: {
             associationId: item.associationId,
             especeId: item.especeId,
@@ -679,7 +706,7 @@ export async function POST(request: NextRequest) {
         })
 
         if (!existing) {
-          await prisma.associationDetail.create({
+          await tx.associationDetail.create({
             data: {
               associationId: item.associationId,
               especeId: item.especeId,
@@ -698,23 +725,25 @@ export async function POST(request: NextRequest) {
     // DONNÉES UTILISATEUR
     // ========================================
 
-    // 11. Planches (ID string - upsert par utilisateur)
+    // 11. Planches (per-user unique by nom)
+    // Incoming item.id is the planche name (from old exports or nom field)
+    const plancheNameToIdMap = new Map<string, string>() // name → cuid
     if (data.planches?.length) {
       for (const item of data.planches) {
-        // Vérifier si la planche existe globalement (ID unique)
-        const existing = await prisma.planche.findUnique({
-          where: { id: item.id },
+        const plancheName = (item as any).nom || item.id // support both old (id) and new (nom) export formats
+        const existing = await tx.planche.findUnique({
+          where: {
+            nom_userId: {
+              nom: plancheName,
+              userId,
+            },
+          },
         })
-
-        if (existing && existing.userId !== userId) {
-          // Skip : planche appartient à un autre utilisateur
-          continue
-        }
 
         if (existing) {
           // Mettre à jour (appartient à l'utilisateur)
-          await prisma.planche.update({
-            where: { id: item.id },
+          await tx.planche.update({
+            where: { id: existing.id },
             data: {
               rotationId: item.rotationId,
               ilot: item.ilot,
@@ -733,11 +762,12 @@ export async function POST(request: NextRequest) {
               retentionEau: item.retentionEau,
             },
           })
+          plancheNameToIdMap.set(plancheName, existing.id)
         } else {
-          // Créer nouvelle planche
-          await prisma.planche.create({
+          // Créer nouvelle planche (id auto-generated)
+          const created = await tx.planche.create({
             data: {
-              id: item.id,
+              nom: plancheName,
               userId,
               rotationId: item.rotationId,
               ilot: item.ilot,
@@ -756,6 +786,7 @@ export async function POST(request: NextRequest) {
               retentionEau: item.retentionEau,
             },
           })
+          plancheNameToIdMap.set(plancheName, created.id)
         }
         stats.planches++
       }
@@ -764,21 +795,36 @@ export async function POST(request: NextRequest) {
     // 12. Cultures (ID auto-généré - toujours créer de nouvelles)
     if (data.cultures?.length) {
       for (const item of data.cultures) {
-        const especeExists = await prisma.espece.findUnique({ where: { id: item.especeId } })
+        const especeExists = await tx.espece.findUnique({ where: { id: item.especeId } })
         if (!especeExists) continue
 
-        // Vérifier si la planche existe pour cet utilisateur
+        // Resolve planche name → cuid (support old exports with name-based plancheId)
         if (item.plancheId) {
-          const plancheExists = await prisma.planche.findFirst({
-            where: { id: item.plancheId, userId },
-          })
-          if (!plancheExists) {
-            item.plancheId = null // Ignorer la planche si elle n'existe pas
+          // First check if it's already a cuid in the map values
+          const resolvedId = plancheNameToIdMap.get(item.plancheId)
+          if (resolvedId) {
+            item.plancheId = resolvedId
+          } else {
+            // Try to find by cuid directly (new export format)
+            const plancheExists = await tx.planche.findFirst({
+              where: { id: item.plancheId, userId },
+            })
+            if (!plancheExists) {
+              // Try to find by nom (old export format)
+              const plancheByNom = await tx.planche.findUnique({
+                where: { nom_userId: { nom: item.plancheId, userId } },
+              })
+              if (plancheByNom) {
+                item.plancheId = plancheByNom.id
+              } else {
+                item.plancheId = null
+              }
+            }
           }
         }
 
         // Créer une nouvelle culture (ne pas écraser les existantes)
-        const created = await prisma.culture.create({
+        const created = await tx.culture.create({
           data: {
             userId,
             especeId: item.especeId,
@@ -818,10 +864,10 @@ export async function POST(request: NextRequest) {
         const newCultureId = cultureIdMap.get(item.cultureId)
         if (!newCultureId) continue // Skip si la culture n'a pas été importée
 
-        const especeExists = await prisma.espece.findUnique({ where: { id: item.especeId } })
+        const especeExists = await tx.espece.findUnique({ where: { id: item.especeId } })
         if (!especeExists) continue
 
-        await prisma.recolte.create({
+        await tx.recolte.create({
           data: {
             userId,
             especeId: item.especeId,
@@ -838,16 +884,33 @@ export async function POST(request: NextRequest) {
     // 14. Fertilisations
     if (data.fertilisations?.length) {
       for (const item of data.fertilisations) {
-        const plancheExists = await prisma.planche.findFirst({
-          where: { id: item.plancheId, userId },
-        })
-        const fertilisantExists = await prisma.fertilisant.findUnique({ where: { id: item.fertilisantId } })
-        if (!plancheExists || !fertilisantExists) continue
+        // Resolve planche name → cuid
+        let resolvedPlancheId = item.plancheId
+        const mappedId = plancheNameToIdMap.get(item.plancheId)
+        if (mappedId) {
+          resolvedPlancheId = mappedId
+        } else {
+          const plancheExists = await tx.planche.findFirst({
+            where: { id: item.plancheId, userId },
+          })
+          if (!plancheExists) {
+            const plancheByNom = await tx.planche.findUnique({
+              where: { nom_userId: { nom: item.plancheId, userId } },
+            })
+            if (plancheByNom) {
+              resolvedPlancheId = plancheByNom.id
+            } else {
+              continue
+            }
+          }
+        }
+        const fertilisantExists = await tx.fertilisant.findUnique({ where: { id: item.fertilisantId } })
+        if (!fertilisantExists) continue
 
-        await prisma.fertilisation.create({
+        await tx.fertilisation.create({
           data: {
             userId,
-            plancheId: item.plancheId,
+            plancheId: resolvedPlancheId,
             fertilisantId: item.fertilisantId,
             date: new Date(item.date),
             quantite: item.quantite,
@@ -861,7 +924,7 @@ export async function POST(request: NextRequest) {
     // 15. Objets jardin
     if (data.objetsJardin?.length) {
       for (const item of data.objetsJardin) {
-        await prisma.objetJardin.create({
+        await tx.objetJardin.create({
           data: {
             userId,
             nom: item.nom,
@@ -882,7 +945,7 @@ export async function POST(request: NextRequest) {
     // 16. Arbres
     if (data.arbres?.length) {
       for (const item of data.arbres) {
-        await prisma.arbre.create({
+        await tx.arbre.create({
           data: {
             userId,
             nom: item.nom,
@@ -916,7 +979,7 @@ export async function POST(request: NextRequest) {
     const currentYear = new Date().getFullYear()
 
     // Récupérer les cultures avec irrigation de l'année en cours et suivante
-    const culturesAIrriguer = await prisma.culture.findMany({
+    const culturesAIrriguer = await tx.culture.findMany({
       where: {
         userId,
         aIrriguer: true,
@@ -949,7 +1012,7 @@ export async function POST(request: NextRequest) {
       }
 
       if (irrigations.length > 0) {
-        await prisma.irrigationPlanifiee.createMany({
+        await tx.irrigationPlanifiee.createMany({
           data: irrigations.map(date => ({
             userId,
             cultureId: culture.id,
@@ -961,18 +1024,25 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    return {
+      totalImported,
+      irrigationsCreated,
+      stats,
+    }
+    }, { timeout: 60000 }) // 60 second timeout for bulk import
+
     return NextResponse.json({
       success: true,
-      message: `${totalImported} enregistrements importés + ${irrigationsCreated} irrigations générées`,
+      message: `${result.totalImported} enregistrements importés + ${result.irrigationsCreated} irrigations générées`,
       stats: {
-        ...stats,
-        irrigations: irrigationsCreated,
+        ...result.stats,
+        irrigations: result.irrigationsCreated,
       },
     })
   } catch (error) {
     console.error('Erreur import:', error)
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Erreur lors de l'import" },
+      { error: "Erreur lors de l'import" },
       { status: 500 }
     )
   }

@@ -194,13 +194,22 @@ export async function PATCH(
       'terminee',
       'aIrriguer',
       'derniereIrrigation',
+      'dateSemis',
+      'datePlantation',
+      'dateRecolte',
       'notes',
     ]
 
+    const dateFields = ['dateSemis', 'datePlantation', 'dateRecolte', 'derniereIrrigation']
     const updateData: Record<string, unknown> = {}
     for (const field of allowedFields) {
       if (field in body) {
-        updateData[field] = body[field]
+        // Convertir les chaînes ISO en Date pour les champs DateTime
+        if (dateFields.includes(field) && body[field]) {
+          updateData[field] = new Date(body[field])
+        } else {
+          updateData[field] = body[field]
+        }
       }
     }
 

@@ -8,11 +8,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { createVarieteSchema } from '@/lib/validations'
 import { Prisma } from '@prisma/client'
-import { requireAuthApi } from '@/lib/auth-utils'
+import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
 
 // GET /api/varietes - Référentiel global (lecture)
 export async function GET(request: NextRequest) {
-  const { error } = await requireAuthApi()
+  const { session, error } = await requireAuthApi()
   if (error) return error
 
   try {
@@ -59,6 +59,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Requête avec comptage
+    const userId = session!.user.id
     const [varietes, total] = await Promise.all([
       prisma.variete.findMany({
         where,
@@ -74,6 +75,14 @@ export async function GET(request: NextRequest) {
               cultures: true,
             },
           },
+          userStocks: {
+            where: { userId },
+            select: {
+              stockGraines: true,
+              stockPlants: true,
+              dateStock: true,
+            },
+          },
         },
         orderBy: { [sortBy]: sortOrder },
         skip,
@@ -82,8 +91,20 @@ export async function GET(request: NextRequest) {
       prisma.variete.count({ where }),
     ])
 
+    // Enrichir les variétés avec le stock per-user
+    const enriched = varietes.map(v => {
+      const userStock = v.userStocks[0]
+      const { userStocks: _us, ...rest } = v
+      return {
+        ...rest,
+        userStockGraines: userStock?.stockGraines ?? null,
+        userStockPlants: userStock?.stockPlants ?? null,
+        userStockDate: userStock?.dateStock ?? null,
+      }
+    })
+
     return NextResponse.json({
-      data: varietes,
+      data: enriched,
       total,
       page,
       pageSize,
@@ -92,15 +113,15 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('GET /api/varietes error:', error)
     return NextResponse.json(
-      { error: 'Erreur lors de la récupération des variétés', details: String(error) },
+      { error: 'Erreur lors de la récupération des variétés', details: "Erreur interne du serveur" },
       { status: 500 }
     )
   }
 }
 
-// POST /api/varietes
+// POST /api/varietes (admin only - données de référence globales)
 export async function POST(request: NextRequest) {
-  const { error } = await requireAuthApi()
+  const { error } = await requireAdminApi()
   if (error) return error
 
   try {
