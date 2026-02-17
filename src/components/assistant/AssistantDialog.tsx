@@ -2,25 +2,36 @@
 
 /**
  * Assistant Maraîcher - Dialog principal
- * Guide pas-à-pas pour créer une planche et/ou une culture
+ * Guide pas-à-pas en 5 étapes pour créer une planche et/ou une culture
+ *
+ * Flow: Emplacement -> Plante -> Planning -> Récapitulatif -> Terminé
  */
 
 import * as React from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Progress } from "@/components/ui/progress"
-import { ChevronLeft, ChevronRight, X, Wand2 } from "lucide-react"
+import {
+  ChevronLeft,
+  ChevronRight,
+  X,
+  Wand2,
+  MapPin,
+  Leaf,
+  Calendar,
+  CheckSquare,
+  PartyPopper,
+  Check,
+  RotateCcw,
+} from "lucide-react"
 
-import { AssistantStepMode } from "./AssistantStepMode"
-import { AssistantStepPlanche } from "./AssistantStepPlanche"
-import { AssistantStepEspece } from "./AssistantStepEspece"
-import { AssistantStepITP } from "./AssistantStepITP"
-import { AssistantStepVariete } from "./AssistantStepVariete"
+import { AssistantStepEmplacement } from "./AssistantStepEmplacement"
+import { AssistantStepPlante } from "./AssistantStepPlante"
 import { AssistantStepDates } from "./AssistantStepDates"
 import { AssistantStepRecap } from "./AssistantStepRecap"
 import { AssistantStepSuccess } from "./AssistantStepSuccess"
 
-// Types pour l'état de l'assistant
+// ---- Types pour l'état de l'assistant ----
+
 export type AssistantMode = 'new-planche' | 'existing-planche' | 'add-culture' | null
 
 export interface PlancheData {
@@ -75,6 +86,8 @@ export interface VarieteData {
   fournisseurId?: string | null
   stockGraines?: number | null
   stockPlants?: number | null
+  userStockGraines?: number | null
+  userStockPlants?: number | null
   bio?: boolean
 }
 
@@ -97,99 +110,248 @@ export interface CultureData {
 }
 
 export interface AssistantState {
-  step: number
-  mode: AssistantMode
+  step: number // 1-5
+  mode: 'new-planche' | 'existing-planche' | 'add-culture'
   planche: PlancheData
+  selectedPlancheId: string | null
+  espece: EspeceData | null
+  itp: ITPData | null
+  variete: VarieteData | null
+  skipVariete: boolean
   culture: CultureData
-  createdPlancheId?: string
-  createdCultureId?: number
+  cultureId: number | null
+  plancheId: string | null
 }
 
 const INITIAL_STATE: AssistantState = {
   step: 1,
-  mode: null,
+  mode: 'new-planche',
   planche: {},
+  selectedPlancheId: null,
+  espece: null,
+  itp: null,
+  variete: null,
+  skipVariete: false,
   culture: {
     annee: new Date().getFullYear(),
     decalage: 0,
   },
+  cultureId: null,
+  plancheId: null,
 }
 
 const STORAGE_KEY = 'gleba-assistant-state'
 
-// Noms des étapes
-const STEP_NAMES: Record<number, string> = {
-  1: "Mode",
-  2: "Planche",
-  3: "Espèce",
-  4: "ITP",
-  5: "Variété",
-  6: "Dates",
-  7: "Récap",
-  8: "Terminé",
-}
+// ---- Steps definition ----
+
+const STEPS = [
+  { label: 'Emplacement', icon: MapPin },
+  { label: 'Plante', icon: Leaf },
+  { label: 'Planning', icon: Calendar },
+  { label: 'Recapitulatif', icon: CheckSquare },
+  { label: 'Termine', icon: PartyPopper },
+] as const
+
+// ---- Props ----
 
 interface AssistantDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
 }
 
-export function AssistantDialog({ open, onOpenChange }: AssistantDialogProps) {
-  // État principal
-  const [state, setState] = React.useState<AssistantState>(INITIAL_STATE)
+// ---- Serialisation helpers ----
+// Dates are serialised as ISO strings by JSON.stringify; we need to
+// revive them when restoring from localStorage.
 
-  // Fonctions de navigation
-  const nextStep = () => {
-    setState(prev => {
-      let nextStepNum = prev.step + 1
-
-      // Skip étape planche si mode "add-culture" et planche déjà sélectionnée
-      if (nextStepNum === 2 && prev.mode === 'add-culture' && prev.planche.id) {
-        nextStepNum = 3
+function reviveDates(state: any): AssistantState {
+  const dateFields: (keyof CultureData)[] = ['dateSemis', 'datePlantation', 'dateRecolte']
+  if (state.culture) {
+    for (const field of dateFields) {
+      if (typeof state.culture[field] === 'string') {
+        state.culture[field] = new Date(state.culture[field])
       }
+    }
+  }
+  return state as AssistantState
+}
 
-      return { ...prev, step: nextStepNum }
-    })
+// ---- Component ----
+
+export function AssistantDialog({ open, onOpenChange }: AssistantDialogProps) {
+  const [state, setState] = React.useState<AssistantState>(INITIAL_STATE)
+  const [restored, setRestored] = React.useState(false)
+
+  // Data fetched on mount
+  const [especes, setEspeces] = React.useState<EspeceData[]>([])
+  const [planches, setPlanches] = React.useState<any[]>([])
+
+  // ---- Data fetching ----
+
+  React.useEffect(() => {
+    if (!open) return
+
+    // Fetch especes and planches in parallel
+    const fetchEspeces = fetch('/api/especes?pageSize=500')
+      .then(res => res.ok ? res.json() : { data: [] })
+      .then(data => setEspeces(data.data || []))
+      .catch(() => setEspeces([]))
+
+    const fetchPlanches = fetch('/api/planches?pageSize=200')
+      .then(res => res.ok ? res.json() : { data: [] })
+      .then(data => setPlanches(data.data || []))
+      .catch(() => setPlanches([]))
+  }, [open])
+
+  // ---- localStorage Persistence ----
+
+  // Restore from localStorage on mount
+  React.useEffect(() => {
+    if (!open) return
+    const saved = localStorage.getItem(STORAGE_KEY)
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved)
+        const revived = reviveDates(parsed)
+        // Only restore if not on success step
+        if (revived.step < 5) {
+          setState(revived)
+          setRestored(true)
+        } else {
+          localStorage.removeItem(STORAGE_KEY)
+        }
+      } catch {
+        localStorage.removeItem(STORAGE_KEY)
+      }
+    }
+  }, [open])
+
+  // Save state on every change (except step 5)
+  React.useEffect(() => {
+    if (state.step < 5) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+    }
+  }, [state])
+
+  // ---- Navigation ----
+
+  const nextStep = () => {
+    setState(prev => ({ ...prev, step: Math.min(prev.step + 1, 5) }))
   }
 
   const prevStep = () => {
-    setState(prev => {
-      let prevStepNum = prev.step - 1
-
-      // Skip étape planche si mode "add-culture"
-      if (prevStepNum === 2 && prev.mode === 'add-culture') {
-        prevStepNum = 1
-      }
-
-      return { ...prev, step: Math.max(1, prevStepNum) }
-    })
+    setState(prev => ({ ...prev, step: Math.max(prev.step - 1, 1) }))
   }
 
-  const updateState = (updates: Partial<AssistantState>) => {
-    setState(prev => ({ ...prev, ...updates }))
+  const goToStep = (step: number) => {
+    // Only allow going back to completed steps (not forward)
+    if (step < state.step) {
+      setState(prev => ({ ...prev, step }))
+    }
   }
 
-  const updatePlanche = (updates: Partial<PlancheData>) => {
+  // ---- State updaters ----
+
+  const handleModeChange = React.useCallback((mode: string) => {
+    setState(prev => ({ ...prev, mode: mode as AssistantState['mode'] }))
+  }, [])
+
+  const handlePlancheChange = React.useCallback((data: Partial<PlancheData>) => {
+    setState(prev => ({ ...prev, planche: { ...prev.planche, ...data } }))
+  }, [])
+
+  const handleSelectedPlancheIdChange = React.useCallback((id: string | null) => {
+    setState(prev => ({ ...prev, selectedPlancheId: id }))
+  }, [])
+
+  const handleEspeceChange = React.useCallback((espece: EspeceData | null) => {
     setState(prev => ({
       ...prev,
-      planche: { ...prev.planche, ...updates },
+      espece,
+      itp: null,
+      variete: null,
+      culture: {
+        ...prev.culture,
+        especeId: espece?.id,
+        espece: espece || undefined,
+        itpId: undefined,
+        itp: undefined,
+        varieteId: undefined,
+        variete: undefined,
+      },
     }))
-  }
+  }, [])
 
-  const updateCulture = (updates: Partial<CultureData>) => {
+  const handleItpChange = React.useCallback((itp: ITPData | null) => {
+    setState(prev => ({
+      ...prev,
+      itp,
+      culture: {
+        ...prev.culture,
+        itpId: itp?.id,
+        itp: itp || undefined,
+        nbRangs: itp?.nbRangs || prev.culture.nbRangs,
+        espacement: itp?.espacement ? Math.round(itp.espacement) : prev.culture.espacement,
+      },
+    }))
+  }, [])
+
+  const handleVarieteChange = React.useCallback((variete: VarieteData | null) => {
+    setState(prev => ({
+      ...prev,
+      variete,
+      culture: {
+        ...prev.culture,
+        varieteId: variete?.id || null,
+        variete: variete || null,
+      },
+    }))
+  }, [])
+
+  const handleSkipVarieteChange = React.useCallback((skip: boolean) => {
+    setState(prev => ({ ...prev, skipVariete: skip }))
+  }, [])
+
+  const updateCulture = React.useCallback((updates: Partial<CultureData>) => {
     setState(prev => ({
       ...prev,
       culture: { ...prev.culture, ...updates },
     }))
+  }, [])
+
+  // ---- canContinue logic ----
+
+  const canContinue = (step: number): boolean => {
+    switch (step) {
+      case 1: {
+        if (!state.mode) return false
+        if (state.mode === 'existing-planche' || state.mode === 'add-culture') {
+          return !!state.selectedPlancheId
+        }
+        if (state.mode === 'new-planche') {
+          return !!(state.planche.nom && state.planche.largeur && state.planche.largeur > 0 && state.planche.longueur && state.planche.longueur > 0)
+        }
+        return true
+      }
+      case 2:
+        return !!state.espece
+      case 3:
+        return true // Dates auto-calculated, validation is informational
+      case 4:
+        return true // Has its own create button
+      default:
+        return false
+    }
   }
+
+  // ---- Reset ----
 
   const reset = () => {
     localStorage.removeItem(STORAGE_KEY)
     setState(INITIAL_STATE)
+    setRestored(false)
   }
 
   const handleClose = () => {
-    // Garder l'état pour reprise
     onOpenChange(false)
   }
 
@@ -198,171 +360,210 @@ export function AssistantDialog({ open, onOpenChange }: AssistantDialogProps) {
     onOpenChange(false)
   }
 
-  // Calcul de la progression
-  const totalSteps = 8
-  const progressPercent = ((state.step - 1) / (totalSteps - 1)) * 100
-
-  // Titre dynamique
-  const getTitle = () => {
-    switch (state.step) {
-      case 1: return "Que souhaitez-vous faire ?"
-      case 2: return state.mode === 'new-planche' ? "Créer une nouvelle planche" : "Choisir une planche"
-      case 3: return "Choisir une espèce à cultiver"
-      case 4: return "Choisir l'itinéraire technique"
-      case 5: return "Choisir une variété (optionnel)"
-      case 6: return "Dates et quantités"
-      case 7: return "Récapitulatif"
-      case 8: return "Culture créée !"
-      default: return "Assistant"
-    }
+  const handleClearAndRestart = () => {
+    reset()
   }
 
-  // Vérifier si l'étape actuelle est valide pour continuer
-  const canContinue = () => {
+  // ---- Success handler ----
+
+  const handleSuccess = (plancheId?: string, cultureId?: number) => {
+    localStorage.removeItem(STORAGE_KEY)
+    setState(prev => ({
+      ...prev,
+      step: 5,
+      plancheId: plancheId || null,
+      cultureId: cultureId ? Number(cultureId) : null,
+    }))
+  }
+
+  // ---- Close from success ----
+
+  const handleCloseFromSuccess = () => {
+    localStorage.removeItem(STORAGE_KEY)
+    reset()
+    onOpenChange(false)
+  }
+
+  // ---- Progress ----
+
+  const progressPercent = ((state.step - 1) / (STEPS.length - 1)) * 100
+
+  // ---- Title ----
+
+  const getTitle = (): string => {
     switch (state.step) {
-      case 1:
-        // Mode doit être sélectionné
-        if (!state.mode) return false
-        // Si mode nécessite planche existante, elle doit être sélectionnée
-        if (state.mode === 'existing-planche' || state.mode === 'add-culture') {
-          return !!state.planche.id
-        }
-        return true
-      case 2: return state.planche.id || (state.planche.nom && state.planche.largeur && state.planche.longueur)
-      case 3: return !!state.culture.especeId
-      case 4: return !!state.culture.itpId
-      case 5: return true // Variété optionnelle
-      case 6: return true // Dates calculées automatiquement
-      case 7: return true // Récap toujours valide
-      default: return false
+      case 1: return "Emplacement"
+      case 2: return "Choisir une plante"
+      case 3: return "Planning"
+      case 4: return "Recapitulatif"
+      case 5: return "Culture creee !"
+      default: return "Assistant"
     }
   }
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="sm:max-w-[650px] max-h-[90vh] !flex !flex-col overflow-hidden">
         <DialogHeader className="flex-shrink-0">
           <div className="flex items-center gap-2 mb-2">
             <Wand2 className="h-5 w-5 text-green-600" />
             <DialogTitle>{getTitle()}</DialogTitle>
           </div>
           <DialogDescription className="sr-only">
-            Assistant pas-à-pas pour créer une culture
+            Assistant pas-a-pas pour creer une culture
           </DialogDescription>
 
-          {/* Indicateur de progression */}
+          {/* Restored session banner */}
+          {restored && state.step < 5 && (
+            <div className="flex items-center justify-between gap-2 p-2 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+              <span>Session precedente restauree.</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-blue-700 hover:text-blue-900 hover:bg-blue-100"
+                onClick={handleClearAndRestart}
+              >
+                <RotateCcw className="h-3 w-3 mr-1" />
+                Recommencer
+              </Button>
+            </div>
+          )}
+
+          {/* Progress bar - 5 steps */}
           <div className="space-y-2">
-            <Progress value={progressPercent} className="h-2" />
-            <div className="flex justify-between text-xs text-muted-foreground">
-              {[1, 2, 3, 4, 5, 6, 7, 8].map(step => (
-                <span
-                  key={step}
-                  className={`${
-                    step === state.step
-                      ? 'font-medium text-green-600'
-                      : step < state.step
-                        ? 'text-green-500'
-                        : ''
-                  }`}
-                >
-                  {step <= state.step ? STEP_NAMES[step] : ''}
-                </span>
-              ))}
+            {/* Step indicator bar */}
+            <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+              <div
+                className="bg-green-500 h-full rounded-full transition-all duration-300 ease-in-out"
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
+
+            {/* Step labels */}
+            <div className="flex justify-between">
+              {STEPS.map((stepDef, index) => {
+                const stepNum = index + 1
+                const isCurrent = stepNum === state.step
+                const isCompleted = stepNum < state.step
+                const isClickable = isCompleted
+
+                return (
+                  <button
+                    key={stepDef.label}
+                    type="button"
+                    disabled={!isClickable}
+                    onClick={() => isClickable && goToStep(stepNum)}
+                    className={`flex flex-col items-center gap-1 text-xs transition-colors ${
+                      isClickable ? 'cursor-pointer' : 'cursor-default'
+                    } ${
+                      isCurrent
+                        ? 'text-green-600 font-medium'
+                        : isCompleted
+                          ? 'text-green-500 hover:text-green-700'
+                          : 'text-muted-foreground'
+                    }`}
+                  >
+                    <div
+                      className={`w-6 h-6 rounded-full flex items-center justify-center text-xs border-2 transition-colors ${
+                        isCurrent
+                          ? 'border-green-500 bg-green-500 text-white'
+                          : isCompleted
+                            ? 'border-green-500 bg-green-50 text-green-600'
+                            : 'border-gray-300 bg-white text-gray-400'
+                      }`}
+                    >
+                      {isCompleted ? (
+                        <Check className="h-3 w-3" />
+                      ) : (
+                        <stepDef.icon className="h-3 w-3" />
+                      )}
+                    </div>
+                    <span className="hidden sm:inline">{stepDef.label}</span>
+                  </button>
+                )
+              })}
             </div>
           </div>
         </DialogHeader>
 
-        {/* Contenu de l'étape */}
-        <div className="flex-1 overflow-y-auto py-4 min-h-0">
-          {state.step === 1 && (
-            <AssistantStepMode
-              mode={state.mode}
-              plancheId={state.planche.id}
-              onModeChange={(mode) => updateState({ mode })}
-              onPlancheSelect={(planche) => updatePlanche(planche)}
-            />
-          )}
-          {state.step === 2 && (
-            <AssistantStepPlanche
-              mode={state.mode}
-              planche={state.planche}
-              onPlancheChange={updatePlanche}
-            />
-          )}
-          {state.step === 3 && (
-            <AssistantStepEspece
-              selectedId={state.culture.especeId}
-              onSelect={(espece) => updateCulture({
-                especeId: espece.id,
-                espece,
-                // Reset ITP et variété si espèce change
-                itpId: undefined,
-                itp: undefined,
-                varieteId: undefined,
-                variete: undefined,
-              })}
-            />
-          )}
-          {state.step === 4 && (
-            <AssistantStepITP
-              especeId={state.culture.especeId}
-              selectedId={state.culture.itpId}
-              onSelect={(itp) => updateCulture({
-                itpId: itp.id,
-                itp,
-                nbRangs: itp.nbRangs || undefined,
-                espacement: itp.espacement || undefined,
-              })}
-            />
-          )}
-          {state.step === 5 && (
-            <AssistantStepVariete
-              especeId={state.culture.especeId}
-              selectedId={state.culture.varieteId}
-              onSelect={(variete) => updateCulture({
-                varieteId: variete?.id || null,
-                variete: variete || null,
-              })}
-            />
-          )}
-          {state.step === 6 && (
-            <AssistantStepDates
-              culture={state.culture}
-              planche={state.planche}
-              onCultureChange={updateCulture}
-            />
-          )}
-          {state.step === 7 && (
-            <AssistantStepRecap
-              state={state}
-              onSuccess={(plancheId, cultureId) => {
-                updateState({
-                  step: 8,
-                  createdPlancheId: plancheId,
-                  createdCultureId: cultureId,
-                })
-                localStorage.removeItem(STORAGE_KEY)
-              }}
-            />
-          )}
-          {state.step === 8 && (
-            <AssistantStepSuccess
-              cultureId={state.createdCultureId}
-              plancheId={state.createdPlancheId}
-              onAddAnother={() => {
-                setState({
-                  ...INITIAL_STATE,
-                  mode: state.mode,
-                  planche: state.planche,
-                })
-              }}
-              onClose={handleReset}
-            />
-          )}
+        {/* Content area with scrolling */}
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <div className="py-4 pr-4">
+            {/* Step 1: Emplacement */}
+            {state.step === 1 && (
+              <AssistantStepEmplacement
+                mode={state.mode}
+                planche={state.planche}
+                selectedPlancheId={state.selectedPlancheId}
+                planches={planches}
+                onModeChange={handleModeChange}
+                onPlancheChange={handlePlancheChange}
+                onSelectedPlancheIdChange={handleSelectedPlancheIdChange}
+              />
+            )}
+
+            {/* Step 2: Plante */}
+            {state.step === 2 && (
+              <AssistantStepPlante
+                especes={especes}
+                espece={state.espece}
+                itp={state.itp}
+                variete={state.variete}
+                skipVariete={state.skipVariete}
+                onEspeceChange={handleEspeceChange}
+                onItpChange={handleItpChange}
+                onVarieteChange={handleVarieteChange}
+                onSkipVarieteChange={handleSkipVarieteChange}
+                onCultureChange={updateCulture}
+              />
+            )}
+
+            {/* Step 3: Planning / Dates */}
+            {state.step === 3 && (
+              <AssistantStepDates
+                espece={state.espece}
+                itp={state.itp}
+                culture={state.culture}
+                planche={state.planche}
+                selectedPlancheId={state.selectedPlancheId || state.planche.id || null}
+                mode={state.mode || ''}
+                onCultureChange={updateCulture}
+              />
+            )}
+
+            {/* Step 4: Recap */}
+            {state.step === 4 && (
+              <AssistantStepRecap
+                state={state}
+                onSuccess={handleSuccess}
+              />
+            )}
+
+            {/* Step 5: Success */}
+            {state.step === 5 && (
+              <AssistantStepSuccess
+                cultureId={state.cultureId ?? undefined}
+                plancheId={state.plancheId ?? undefined}
+                onAddAnother={() => {
+                  const preservedMode = state.mode
+                  const preservedPlanche = state.planche
+                  const preservedSelectedPlancheId = state.selectedPlancheId
+                  reset()
+                  setState(prev => ({
+                    ...prev,
+                    mode: preservedMode,
+                    planche: preservedPlanche,
+                    selectedPlancheId: preservedSelectedPlancheId,
+                  }))
+                }}
+                onClose={handleCloseFromSuccess}
+              />
+            )}
+          </div>
         </div>
 
-        {/* Footer avec navigation */}
-        {state.step < 8 && (
+        {/* Footer navigation - hidden on success step */}
+        {state.step < 5 && (
           <div className="flex-shrink-0 flex items-center justify-between border-t pt-4">
             <div>
               {state.step > 1 && (
@@ -377,8 +578,8 @@ export function AssistantDialog({ open, onOpenChange }: AssistantDialogProps) {
                 <X className="h-4 w-4 mr-1" />
                 Annuler
               </Button>
-              {state.step < 7 && (
-                <Button onClick={nextStep} disabled={!canContinue()}>
+              {state.step < 4 && (
+                <Button onClick={nextStep} disabled={!canContinue(state.step)}>
                   Suivant
                   <ChevronRight className="h-4 w-4 ml-1" />
                 </Button>
@@ -391,7 +592,7 @@ export function AssistantDialog({ open, onOpenChange }: AssistantDialogProps) {
   )
 }
 
-// Bouton pour ouvrir l'assistant (à utiliser dans les headers)
+// Bouton pour ouvrir l'assistant (a utiliser dans les headers)
 export function AssistantButton({ onClick }: { onClick: () => void }) {
   return (
     <Button

@@ -8,7 +8,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { createEspeceSchema } from '@/lib/validations'
 import { Prisma } from '@prisma/client'
-import { requireAuthApi } from '@/lib/auth-utils'
+import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
 
 // GET /api/especes - Référentiel global (lecture)
 export async function GET(request: NextRequest) {
@@ -38,7 +38,12 @@ export async function GET(request: NextRequest) {
     const where: Prisma.EspeceWhereInput = {}
 
     if (type) {
-      where.type = type
+      // Support special 'all_arbres' type which filters for tree types
+      if (type === 'all_arbres') {
+        where.type = { in: ['arbre_fruitier', 'petit_fruit'] }
+      } else {
+        where.type = type
+      }
     }
 
     if (search) {
@@ -91,15 +96,15 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('GET /api/especes error:', error)
     return NextResponse.json(
-      { error: 'Erreur lors de la récupération des espèces', details: String(error) },
+      { error: 'Erreur lors de la récupération des espèces', details: "Erreur interne du serveur" },
       { status: 500 }
     )
   }
 }
 
-// POST /api/especes
+// POST /api/especes (admin only - données de référence globales)
 export async function POST(request: NextRequest) {
-  const { error } = await requireAuthApi()
+  const { error } = await requireAdminApi()
   if (error) return error
 
   try {

@@ -51,11 +51,11 @@ export async function GET(request: NextRequest) {
       prisma.association.findMany({ orderBy: { nom: 'asc' } }),
       prisma.associationDetail.findMany({ orderBy: { id: 'asc' } }),
       // Données utilisateur
-      prisma.planche.findMany({ where: { userId }, orderBy: { id: 'asc' } }),
+      prisma.planche.findMany({ where: { userId }, orderBy: { nom: 'asc' } }),
       prisma.culture.findMany({ where: { userId }, orderBy: { id: 'asc' } }),
       prisma.recolte.findMany({ where: { userId }, orderBy: { id: 'asc' } }),
       prisma.fertilisation.findMany({ where: { userId }, orderBy: { id: 'asc' } }),
-      prisma.analyseSol.findMany({ where: { userId }, orderBy: { id: 'asc' } }),
+      prisma.analyseSol.findMany({ where: { userId }, orderBy: { nom: 'asc' } }),
       prisma.objetJardin.findMany({ where: { userId }, orderBy: { id: 'asc' } }),
       prisma.arbre.findMany({ where: { userId }, orderBy: { id: 'asc' } }),
     ])
@@ -181,7 +181,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Erreur export:', error)
     return NextResponse.json(
-      { error: "Erreur lors de l'export", details: String(error) },
+      { error: "Erreur lors de l'export", details: "Erreur interne du serveur" },
       { status: 500 }
     )
   }

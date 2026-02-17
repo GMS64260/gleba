@@ -82,6 +82,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
         portGreffe: body.portGreffe,
         fournisseur: body.fournisseur,
         dateAchat: body.dateAchat ? new Date(body.dateAchat) : null,
+        prixAchat: body.prixAchat != null ? parseFloat(body.prixAchat) : null,
         datePlantation: body.datePlantation ? new Date(body.datePlantation) : null,
         age: body.age,
         posX: body.posX,
@@ -92,6 +93,10 @@ export async function PUT(request: NextRequest, { params }: Params) {
         pollinisateur: body.pollinisateur,
         couleur: body.couleur,
         notes: body.notes,
+        productif: body.productif !== undefined ? body.productif : undefined,
+        anneeProduction: body.anneeProduction ? parseInt(body.anneeProduction) : undefined,
+        rendementMoyen: body.rendementMoyen ? parseFloat(body.rendementMoyen) : undefined,
+        especeId: body.especeId || undefined,
       },
     })
 

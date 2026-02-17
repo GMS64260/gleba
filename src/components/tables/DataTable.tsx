@@ -60,6 +60,9 @@ interface DataTableProps<TData, TValue> {
   pageIndex?: number
   pageSize?: number
   onPaginationChange?: (pageIndex: number, pageSize: number) => void
+  // Recherche côté serveur (si fourni, remplace le globalFilter client)
+  onSearch?: (search: string) => void
+  searchValue?: string
   // Actions
   onAdd?: () => void
   onRefresh?: () => void
@@ -84,6 +87,8 @@ export function DataTable<TData, TValue>({
   pageIndex = 0,
   pageSize = 50,
   onPaginationChange,
+  onSearch,
+  searchValue,
   onAdd,
   onRefresh,
   onExport,
@@ -193,8 +198,14 @@ export function DataTable<TData, TValue>({
               <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder={searchPlaceholder}
-                value={globalFilter ?? ""}
-                onChange={(e) => setGlobalFilter(e.target.value)}
+                value={onSearch ? (searchValue ?? "") : (globalFilter ?? "")}
+                onChange={(e) => {
+                  if (onSearch) {
+                    onSearch(e.target.value)
+                  } else {
+                    setGlobalFilter(e.target.value)
+                  }
+                }}
                 className="pl-8 w-[250px]"
               />
             </div>

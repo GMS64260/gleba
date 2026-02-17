@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
     const skip = (page - 1) * pageSize
 
     // Tri
-    const sortBy = searchParams.get('sortBy') || 'id'
+    const sortBy = searchParams.get('sortBy') || 'nom'
     const sortOrder = searchParams.get('sortOrder') || 'asc'
 
     // Filtres
@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
 
     if (search) {
       where.OR = [
-        { id: { contains: search, mode: 'insensitive' } },
+        { nom: { contains: search, mode: 'insensitive' } },
         { ilot: { contains: search, mode: 'insensitive' } },
         { notes: { contains: search, mode: 'insensitive' } },
       ]
@@ -108,17 +108,19 @@ export async function POST(request: NextRequest) {
 
     const data = validationResult.data
 
-    // Vérifier si la planche existe déjà pour cet utilisateur
-    const existing = await prisma.planche.findFirst({
+    // Vérifier si la planche existe déjà pour cet utilisateur (per-user unique)
+    const existing = await prisma.planche.findUnique({
       where: {
-        id: data.id,
-        userId: session!.user.id,
+        nom_userId: {
+          nom: data.nom,
+          userId: session!.user.id,
+        },
       },
     })
 
     if (existing) {
       return NextResponse.json(
-        { error: `La planche "${data.id}" existe déjà` },
+        { error: `La planche "${data.nom}" existe déjà` },
         { status: 409 }
       )
     }
@@ -128,10 +130,12 @@ export async function POST(request: NextRequest) {
       ? data.largeur * data.longueur
       : data.surface
 
-    // Création avec userId
+    // Création avec userId (id auto-generated as cuid)
+    const { nom, ...rest } = data
     const planche = await prisma.planche.create({
       data: {
-        ...data,
+        ...rest,
+        nom,
         surface,
         userId: session!.user.id,
       },
@@ -141,7 +145,7 @@ export async function POST(request: NextRequest) {
     })
 
     return NextResponse.json(planche, { status: 201 })
-  } catch (error) {
+  } catch (error: any) {
     console.error('POST /api/planches error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la création de la planche' },

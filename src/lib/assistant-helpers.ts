@@ -198,6 +198,21 @@ export const TYPES_IRRIGATION = [
 ] as const
 
 /**
+ * Dimensions par défaut pour une nouvelle planche
+ */
+export const PLANCHE_DEFAUT_LARGEUR = 0.80
+export const PLANCHE_DEFAUT_LONGUEUR = 10
+
+/**
+ * Presets de dimensions de planches
+ */
+export const PRESETS_DIMENSIONS_PLANCHE = [
+  { label: 'Standard (0.80 x 10m)', largeur: 0.80, longueur: 10 },
+  { label: 'Large (1.20 x 15m)', largeur: 1.20, longueur: 15 },
+  { label: 'Petite (0.60 x 5m)', largeur: 0.60, longueur: 5 },
+] as const
+
+/**
  * Niveaux de difficulté
  */
 export const NIVEAUX_DIFFICULTE = {

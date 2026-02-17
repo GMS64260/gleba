@@ -36,12 +36,34 @@ import { useToast } from "@/hooks/use-toast"
 import { createCultureSchema, type CreateCultureInput } from "@/lib/validations"
 import { RotationAdviceCompact } from "@/components/planche"
 
+// Convertir un numéro de semaine (1-52) en date pour une année donnée
+function weekToDate(year: number, week: number): Date {
+  const jan4 = new Date(year, 0, 4)
+  const dayOfWeek = jan4.getDay() || 7
+  const monday = new Date(jan4)
+  monday.setDate(jan4.getDate() - dayOfWeek + 1 + (week - 1) * 7)
+  return monday
+}
+
+interface ITPData {
+  id: string
+  especeId: string | null
+  semaineSemis: number | null
+  semainePlantation: number | null
+  semaineRecolte: number | null
+  dureeRecolte: number | null
+  nbRangs: number | null
+  espacement: number | null
+  espacementRangs: number | null
+}
+
 export default function NewCulturePage() {
   const router = useRouter()
   const { toast } = useToast()
   const [especes, setEspeces] = React.useState<{ id: string }[]>([])
   const [varietes, setVarietes] = React.useState<{ id: string; especeId: string }[]>([])
-  const [planches, setPlanches] = React.useState<{ id: string; longueur: number | null }[]>([])
+  const [itps, setItps] = React.useState<ITPData[]>([])
+  const [planches, setPlanches] = React.useState<{ id: string; nom?: string; longueur: number | null }[]>([])
   const [isSubmitting, setIsSubmitting] = React.useState(false)
 
   const form = useForm<CreateCultureInput>({
@@ -49,6 +71,7 @@ export default function NewCulturePage() {
     defaultValues: {
       especeId: "",
       varieteId: null,
+      itpId: null,
       plancheId: null,
       annee: new Date().getFullYear(),
       dateSemis: null,
@@ -61,6 +84,7 @@ export default function NewCulturePage() {
       quantite: null,
       nbRangs: null,
       longueur: null,
+      espacement: null,
       notes: null,
     },
   })
@@ -68,6 +92,10 @@ export default function NewCulturePage() {
   const selectedEspece = form.watch("especeId")
   const selectedPlanche = form.watch("plancheId")
   const selectedAnnee = form.watch("annee")
+  const selectedItp = form.watch("itpId")
+  const watchedNbRangs = form.watch("nbRangs")
+  const watchedLongueur = form.watch("longueur")
+  const watchedEspacement = form.watch("espacement")
 
   // Charger les données de référence
   React.useEffect(() => {
@@ -85,17 +113,62 @@ export default function NewCulturePage() {
       })
   }, [])
 
-  // Charger les variétés quand l'espèce change
+  // Charger les variétés et ITPs quand l'espèce change
   React.useEffect(() => {
     if (selectedEspece) {
-      fetch(`/api/especes/${encodeURIComponent(selectedEspece)}`)
-        .then((r) => r.json())
-        .then((data) => setVarietes(data.varietes || []))
-        .catch(() => setVarietes([]))
+      Promise.all([
+        fetch(`/api/especes/${encodeURIComponent(selectedEspece)}`).then((r) => r.json()),
+        fetch(`/api/itps?especeId=${encodeURIComponent(selectedEspece)}&pageSize=500`).then((r) => r.json()),
+      ])
+        .then(([especeData, itpsData]) => {
+          setVarietes(especeData.varietes || [])
+          const loadedItps = itpsData.data || []
+          setItps(loadedItps)
+          // Auto-sélectionner le premier ITP disponible
+          if (loadedItps.length > 0) {
+            form.setValue("itpId", loadedItps[0].id)
+          } else {
+            form.setValue("itpId", null)
+          }
+        })
+        .catch(() => {
+          setVarietes([])
+          setItps([])
+          form.setValue("itpId", null)
+        })
     } else {
       setVarietes([])
+      setItps([])
     }
-  }, [selectedEspece])
+  }, [selectedEspece, form])
+
+  // Quand un ITP est sélectionné : remplir dates, nbRangs, espacement
+  React.useEffect(() => {
+    if (!selectedItp) return
+    const itp = itps.find((i) => i.id === selectedItp)
+    if (!itp) return
+
+    const year = form.getValues("annee") || new Date().getFullYear()
+
+    // Dates prévisionnelles depuis les semaines ITP
+    if (itp.semaineSemis) {
+      form.setValue("dateSemis", weekToDate(year, itp.semaineSemis))
+    }
+    if (itp.semainePlantation) {
+      form.setValue("datePlantation", weekToDate(year, itp.semainePlantation))
+    }
+    if (itp.semaineRecolte) {
+      form.setValue("dateRecolte", weekToDate(year, itp.semaineRecolte))
+    }
+
+    // Nb rangs et espacement depuis l'ITP
+    if (itp.nbRangs) {
+      form.setValue("nbRangs", itp.nbRangs)
+    }
+    if (itp.espacement) {
+      form.setValue("espacement", Math.round(itp.espacement))
+    }
+  }, [selectedItp, itps, form])
 
   // Mettre à jour la longueur quand la planche change
   React.useEffect(() => {
@@ -106,6 +179,14 @@ export default function NewCulturePage() {
       }
     }
   }, [selectedPlanche, planches, form])
+
+  // Auto-calculer la quantité de plants
+  React.useEffect(() => {
+    if (watchedNbRangs && watchedLongueur && watchedEspacement && watchedEspacement > 0) {
+      const quantite = watchedNbRangs * Math.floor((watchedLongueur * 100) / watchedEspacement)
+      form.setValue("quantite", quantite)
+    }
+  }, [watchedNbRangs, watchedLongueur, watchedEspacement, form])
 
   const onSubmit = async (data: CreateCultureInput) => {
     setIsSubmitting(true)
@@ -221,6 +302,35 @@ export default function NewCulturePage() {
 
                 <FormField
                   control={form.control}
+                  name="itpId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Itinéraire technique (ITP)</FormLabel>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value || undefined}
+                        disabled={!selectedEspece || itps.length === 0}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder={itps.length === 0 ? "Aucun ITP" : "Sélectionner un ITP"} />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {itps.map((itp) => (
+                            <SelectItem key={itp.id} value={itp.id}>
+                              {itp.id}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
                   name="plancheId"
                   render={({ field }) => (
                     <FormItem>
@@ -237,7 +347,7 @@ export default function NewCulturePage() {
                         <SelectContent>
                           {planches.map((p) => (
                             <SelectItem key={p.id} value={p.id}>
-                              {p.id}
+                              {p.nom || p.id}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -250,7 +360,7 @@ export default function NewCulturePage() {
                 {/* Conseils de rotation */}
                 {selectedPlanche && (
                   <RotationAdviceCompact
-                    plancheId={selectedPlanche}
+                    plancheId={planches.find(p => p.id === selectedPlanche)?.nom || selectedPlanche}
                     especeId={selectedEspece || undefined}
                     year={selectedAnnee || undefined}
                   />
@@ -360,7 +470,7 @@ export default function NewCulturePage() {
                 <CardTitle>Quantités</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
                     name="longueur"
@@ -408,13 +518,39 @@ export default function NewCulturePage() {
                       </FormItem>
                     )}
                   />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="espacement"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Espacement (cm)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min="1"
+                            {...field}
+                            value={field.value ?? ""}
+                            onChange={(e) =>
+                              field.onChange(
+                                e.target.value ? parseInt(e.target.value) : null
+                              )
+                            }
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
                   <FormField
                     control={form.control}
                     name="quantite"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Quantité / plants</FormLabel>
+                        <FormLabel>Quantité / plants (auto)</FormLabel>
                         <FormControl>
                           <Input
                             type="number"

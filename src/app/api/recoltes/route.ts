@@ -170,25 +170,28 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Création de la récolte avec userId
-    const recolte = await prisma.recolte.create({
-      data: {
-        ...data,
-        userId: session!.user.id,
-      },
-      include: {
-        espece: true,
-        culture: true,
-      },
-    })
-
-    // Mettre à jour l'état de la culture si nécessaire
-    if (!culture.recolteFaite) {
-      await prisma.culture.update({
-        where: { id: data.cultureId },
-        data: { recolteFaite: true },
+    // Création de la récolte + mise à jour culture en transaction
+    const recolte = await prisma.$transaction(async (tx) => {
+      const newRecolte = await tx.recolte.create({
+        data: {
+          ...data,
+          userId: session!.user.id,
+        },
+        include: {
+          espece: true,
+          culture: true,
+        },
       })
-    }
+
+      if (!culture.recolteFaite) {
+        await tx.culture.update({
+          where: { id: data.cultureId },
+          data: { recolteFaite: true },
+        })
+      }
+
+      return newRecolte
+    })
 
     return NextResponse.json(recolte, { status: 201 })
   } catch (error) {

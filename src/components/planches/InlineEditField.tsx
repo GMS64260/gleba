@@ -7,12 +7,14 @@
 
 import * as React from "react"
 import { Check, X } from "lucide-react"
+import { Combobox, type ComboboxOption } from "@/components/ui/combobox"
 
 interface InlineEditFieldProps {
   value: string | number | null
   onSave: (value: string | null) => Promise<void>
-  type?: 'text' | 'number' | 'select'
+  type?: 'text' | 'number' | 'select' | 'combobox'
   options?: string[]
+  comboboxOptions?: ComboboxOption[]
   unit?: string
   placeholder?: string
   className?: string
@@ -23,6 +25,7 @@ export function InlineEditField({
   onSave,
   type = 'text',
   options,
+  comboboxOptions,
   unit = '',
   placeholder = '-',
   className = '',
@@ -113,6 +116,37 @@ export function InlineEditField({
           disabled={isSaving}
           className="text-gray-400 hover:text-gray-600"
           title="Annuler"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+    )
+  }
+
+  if (type === 'combobox' && comboboxOptions) {
+    return (
+      <div className="flex items-center gap-1">
+        <Combobox
+          value={editValue}
+          onValueChange={(v) => setEditValue(v)}
+          options={comboboxOptions}
+          placeholder={placeholder}
+          disabled={isSaving}
+          className="w-full rounded border border-green-500 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+        />
+        <button
+          onClick={handleSave}
+          disabled={isSaving}
+          className="text-green-600 hover:text-green-700 disabled:opacity-50"
+          title="Enregistrer (Entrée)"
+        >
+          <Check className="h-4 w-4" />
+        </button>
+        <button
+          onClick={handleCancel}
+          disabled={isSaving}
+          className="text-gray-400 hover:text-gray-600"
+          title="Annuler (Échap)"
         >
           <X className="h-4 w-4" />
         </button>

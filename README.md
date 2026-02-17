@@ -8,6 +8,7 @@
 
 [![Licence AGPL-3.0](https://img.shields.io/badge/License-AGPL%203.0-green.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/Version-1.0.0-blue.svg)](package.json)
+[![MCP Server](https://img.shields.io/npm/v/gleba-mcp-server?label=MCP%20Server&color=orange)](https://www.npmjs.com/package/gleba-mcp-server)
 [![Next.js](https://img.shields.io/badge/Next.js-16-black)](https://nextjs.org/)
 [![Prisma](https://img.shields.io/badge/Prisma-5-2D3748)](https://www.prisma.io/)
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED)](Dockerfile)
@@ -130,6 +131,24 @@ docker compose up -d
 - **Récoltes** - Suivi production, valorisation €
 - **Plan jardin** - Vue 2D, positionnement
 - **Stocks** - Semences, plants, fertilisants
+
+---
+
+## 🤖 Serveur MCP - Pilotez Gleba depuis l'IA
+
+Gleba intègre un serveur [MCP (Model Context Protocol)](https://modelcontextprotocol.io) avec **39 outils** permettant de piloter votre ferme depuis **Claude Desktop**, **Claude Code**, **ChatGPT** ou tout client MCP compatible.
+
+```bash
+npx -y gleba-mcp-server
+```
+
+**Exemples de commandes en langage naturel :**
+- *« Qu'est-ce que je dois faire au potager cette semaine ? »*
+- *« Enregistre 3kg de tomates récoltées sur la planche S4 »*
+- *« Combien d'oeufs mes poules ont pondu ce mois-ci ? »*
+- *« Quel est mon chiffre d'affaires ce mois-ci ? »*
+
+> Voir la [documentation MCP complète](mcp-server/README.md) et le [package npm](https://www.npmjs.com/package/gleba-mcp-server).
 
 ---
 

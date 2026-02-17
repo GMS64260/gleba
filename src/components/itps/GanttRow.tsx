@@ -3,10 +3,12 @@
 /**
  * Ligne Gantt pour un ITP
  * Affiche les barres colorées par phase sur 12 mois
+ * Cliquable pour édition si onEdit est fourni
  */
 
 import * as React from "react"
 import { Badge } from "@/components/ui/badge"
+import { Pencil } from "lucide-react"
 
 interface ITPWithEspece {
   id: string
@@ -25,9 +27,10 @@ interface ITPWithEspece {
 
 interface GanttRowProps {
   itp: ITPWithEspece
+  onEdit?: (itp: ITPWithEspece) => void
 }
 
-export function GanttRow({ itp }: GanttRowProps) {
+export function GanttRow({ itp, onEdit }: GanttRowProps) {
   // Calculer le type de culture
   const getTypeCulture = () => {
     if (itp.semaineSemis && itp.semainePlantation && itp.semaineRecolte) {
@@ -89,9 +92,17 @@ export function GanttRow({ itp }: GanttRowProps) {
 
   const bars = calculateBars()
   const typeCulture = getTypeCulture()
+  const isEditable = !!onEdit
 
   return (
-    <tr className="border-b hover:bg-muted/50 transition-colors">
+    <tr
+      className={`border-b transition-colors ${
+        isEditable
+          ? "hover:bg-muted/70 cursor-pointer group"
+          : "hover:bg-muted/50"
+      }`}
+      onClick={isEditable ? () => onEdit(itp) : undefined}
+    >
       {/* Colonne ITP/Espèce (sticky) */}
       <td className="p-2 sticky left-0 bg-white z-10 border-r">
         <div className="flex items-center gap-2">
@@ -101,12 +112,15 @@ export function GanttRow({ itp }: GanttRowProps) {
               style={{ backgroundColor: itp.espece.couleur }}
             />
           )}
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="font-medium text-sm truncate">{itp.id}</div>
             {itp.especeId && (
               <div className="text-xs text-muted-foreground truncate">{itp.especeId}</div>
             )}
           </div>
+          {isEditable && (
+            <Pencil className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+          )}
         </div>
       </td>
 

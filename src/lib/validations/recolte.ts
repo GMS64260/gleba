@@ -9,6 +9,7 @@ export const recolteSchema = z.object({
   cultureId: z.number().int().min(1, "La culture est requise"),
   date: z.coerce.date().default(() => new Date()),
   quantite: z.number().min(0, "La quantité doit être positive"),
+  datePeremption: z.coerce.date().nullable().optional(),
   notes: z.string().max(5000).nullable().optional(),
 })
 

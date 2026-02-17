@@ -350,7 +350,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         error: "Erreur lors de la récupération des statistiques",
-        details: errorMessage,
+        details: process.env.NODE_ENV === "development" ? errorMessage : "Erreur interne du serveur",
         stack: process.env.NODE_ENV === "development" ? errorStack : undefined
       },
       { status: 500 }

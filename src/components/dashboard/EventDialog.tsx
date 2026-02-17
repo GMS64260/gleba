@@ -19,13 +19,16 @@ import {
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Sprout, Leaf, Package, Droplets, ExternalLink, Loader2 } from "lucide-react"
+import { Sprout, Leaf, Package, Droplets, ExternalLink, Loader2, MapPin } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 interface CalendarEvent {
   id: number
   type: "semis" | "plantation" | "recolte" | "irrigation"
   especeId: string
+  varieteId: string | null
+  plancheName: string | null
+  ilot: string | null
   date: string
   fait: boolean
   couleur: string | null
@@ -223,7 +226,12 @@ export function EventDialog({ event, open, onOpenChange, onUpdate }: EventDialog
                   style={{ backgroundColor: event.couleur }}
                 />
               )}
-              <span className="font-medium">{event.especeId}</span>
+              <div>
+                <span className="font-medium">{event.especeId}</span>
+                {event.varieteId && (
+                  <span className="text-sm text-muted-foreground ml-1">({event.varieteId})</span>
+                )}
+              </div>
             </div>
             <Link href={`/cultures/${event.type === 'irrigation' ? event.cultureId : event.id}`}>
               <Button variant="ghost" size="sm">
@@ -232,6 +240,19 @@ export function EventDialog({ event, open, onOpenChange, onUpdate }: EventDialog
               </Button>
             </Link>
           </div>
+
+          {/* Destination */}
+          {event.plancheName && (
+            <div className="flex items-center gap-2 p-3 bg-teal-50 rounded-lg">
+              <MapPin className="h-4 w-4 text-teal-600 flex-shrink-0" />
+              <div className="text-sm">
+                <span className="font-medium text-teal-800">Planche : {event.plancheName}</span>
+                {event.ilot && (
+                  <span className="text-teal-600 ml-1">(Ilot {event.ilot})</span>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Statut */}
           <div className="flex items-center justify-between p-3 border rounded-lg">

@@ -163,11 +163,11 @@ async function main() {
 
   // Planches
   for (const p of planches) {
-    const existing = await prisma.planche.findUnique({ where: { id: p.id } })
+    const existing = await prisma.planche.findFirst({ where: { nom: p.id, userId } })
     if (!existing) {
       await prisma.planche.create({
         data: {
-          id: p.id,
+          nom: p.id,
           userId,
           rotationId: p.rotationId || null,
           largeur: p.largeur || null,
@@ -187,7 +187,7 @@ async function main() {
   // Planches DEMO (3 planches simples)
   const planchesDemo = [
     {
-      id: "Demo-A",
+      nom: "Demo-A",
       largeur: 1.2,
       longueur: 10,
       surface: 12,
@@ -200,7 +200,7 @@ async function main() {
       posY: 0
     },
     {
-      id: "Demo-B",
+      nom: "Demo-B",
       largeur: 0.8,
       longueur: 8,
       surface: 6.4,
@@ -213,7 +213,7 @@ async function main() {
       posY: 0
     },
     {
-      id: "Serre-Demo",
+      nom: "Serre-Demo",
       largeur: 1.0,
       longueur: 6,
       surface: 6,
@@ -234,10 +234,21 @@ async function main() {
   }
   console.log(`✓ Planches demo: ${planchesDemo.length}`)
 
+  // Build planche name → cuid map for culture FK resolution
+  const plancheNameToId: Record<string, string> = {}
+  const allSeededPlanches = await prisma.planche.findMany({
+    where: { userId },
+    select: { id: true, nom: true },
+  })
+  for (const p of allSeededPlanches) {
+    plancheNameToId[p.nom] = p.id
+  }
+
   // Cultures ADMIN
   const cultures = generateCultures(userId)
   for (const c of cultures) {
-    await prisma.culture.create({ data: c })
+    const resolvedPlancheId = c.plancheId ? plancheNameToId[c.plancheId] || c.plancheId : null
+    await prisma.culture.create({ data: { ...c, plancheId: resolvedPlancheId } })
   }
   console.log(`✓ Cultures admin: ${cultures.length}`)
 
@@ -288,8 +299,19 @@ async function main() {
     },
   ]
 
+  // Build demo planche name → cuid map
+  const demoPlanches = await prisma.planche.findMany({
+    where: { userId: demoUserId },
+    select: { id: true, nom: true },
+  })
+  const demoPlancheNameToId: Record<string, string> = {}
+  for (const p of demoPlanches) {
+    demoPlancheNameToId[p.nom] = p.id
+  }
+
   for (const c of culturesDemo) {
-    await prisma.culture.create({ data: c })
+    const resolvedPlancheId = c.plancheId ? demoPlancheNameToId[c.plancheId] || c.plancheId : null
+    await prisma.culture.create({ data: { ...c, plancheId: resolvedPlancheId } })
   }
   console.log(`✓ Cultures demo: ${culturesDemo.length}`)
 

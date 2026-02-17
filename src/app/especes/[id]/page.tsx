@@ -7,7 +7,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { useRouter, useParams } from "next/navigation"
-import { ArrowLeft, Leaf, Save, Trash2 } from "lucide-react"
+import { ArrowLeft, Leaf, Save, Trash2, Plus, Pencil } from "lucide-react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 
@@ -33,6 +33,21 @@ import {
 } from "@/components/ui/form"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 import {
@@ -43,6 +58,35 @@ import {
   ESPECE_IRRIGATION,
 } from "@/lib/validations/espece"
 
+interface Variete {
+  id: string
+  especeId: string
+  fournisseurId: string | null
+  fournisseur: { id: string } | null
+  semaineRecolte: number | null
+  dureeRecolte: number | null
+  nbGrainesG: number | null
+  prixGraine: number | null
+  stockGraines: number | null
+  stockPlants: number | null
+  bio: boolean
+  description: string | null
+  _count?: { cultures: number }
+}
+
+const EMPTY_VARIETE_FORM = {
+  id: "",
+  fournisseurId: "",
+  bio: false,
+  semaineRecolte: "",
+  dureeRecolte: "",
+  nbGrainesG: "",
+  prixGraine: "",
+  stockGraines: "",
+  stockPlants: "",
+  description: "",
+}
+
 export default function EditEspecePage() {
   const router = useRouter()
   const params = useParams()
@@ -51,6 +95,13 @@ export default function EditEspecePage() {
   const [familles, setFamilles] = React.useState<{ id: string }[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [isSubmitting, setIsSubmitting] = React.useState(false)
+
+  // Variétés
+  const [varietes, setVarietes] = React.useState<Variete[]>([])
+  const [fournisseurs, setFournisseurs] = React.useState<{ id: string }[]>([])
+  const [showVarieteDialog, setShowVarieteDialog] = React.useState(false)
+  const [editingVariete, setEditingVariete] = React.useState<Variete | null>(null)
+  const [varieteForm, setVarieteForm] = React.useState(EMPTY_VARIETE_FORM)
 
   const form = useForm<UpdateEspeceInput>({
     resolver: zodResolver(updateEspeceSchema),
@@ -91,9 +142,12 @@ export default function EditEspecePage() {
         if (!res.ok) throw new Error("Espece non trouvee")
         return res.json()
       }),
+      fetch("/api/comptabilite/fournisseurs?pageSize=500").then((res) => res.json()).catch(() => ({ data: [] })),
     ])
-      .then(([famillesData, especeData]) => {
+      .then(([famillesData, especeData, fournisseursData]) => {
         setFamilles(Array.isArray(famillesData) ? famillesData : [])
+        setVarietes(especeData.varietes || [])
+        setFournisseurs(fournisseursData.data || fournisseursData || [])
         form.reset({
           familleId: especeData.familleId || null,
           nomLatin: especeData.nomLatin || null,
@@ -190,6 +244,117 @@ export default function EditEspecePage() {
     }
   }
 
+  // --- Variétés handlers ---
+  const resetVarieteForm = () => {
+    setVarieteForm(EMPTY_VARIETE_FORM)
+    setEditingVariete(null)
+  }
+
+  const openEditVariete = (v: Variete) => {
+    setEditingVariete(v)
+    setVarieteForm({
+      id: v.id,
+      fournisseurId: v.fournisseurId || "",
+      bio: v.bio,
+      semaineRecolte: v.semaineRecolte?.toString() || "",
+      dureeRecolte: v.dureeRecolte?.toString() || "",
+      nbGrainesG: v.nbGrainesG?.toString() || "",
+      prixGraine: v.prixGraine?.toString() || "",
+      stockGraines: v.stockGraines?.toString() || "",
+      stockPlants: v.stockPlants?.toString() || "",
+      description: v.description || "",
+    })
+    setShowVarieteDialog(true)
+  }
+
+  const handleVarieteSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    try {
+      if (editingVariete) {
+        // PUT
+        const res = await fetch(`/api/varietes/${encodeURIComponent(editingVariete.id)}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            especeId,
+            fournisseurId: varieteForm.fournisseurId || null,
+            bio: varieteForm.bio,
+            semaineRecolte: varieteForm.semaineRecolte ? parseInt(varieteForm.semaineRecolte) : null,
+            dureeRecolte: varieteForm.dureeRecolte ? parseInt(varieteForm.dureeRecolte) : null,
+            nbGrainesG: varieteForm.nbGrainesG ? parseFloat(varieteForm.nbGrainesG) : null,
+            prixGraine: varieteForm.prixGraine ? parseFloat(varieteForm.prixGraine) : null,
+            stockGraines: varieteForm.stockGraines ? parseFloat(varieteForm.stockGraines) : null,
+            stockPlants: varieteForm.stockPlants ? parseInt(varieteForm.stockPlants) : null,
+            description: varieteForm.description || null,
+          }),
+        })
+        if (!res.ok) {
+          const err = await res.json()
+          throw new Error(err.error || "Erreur")
+        }
+        const updated = await res.json()
+        setVarietes(varietes.map((v) => (v.id === updated.id ? updated : v)))
+        toast({ title: "Variete modifiee" })
+      } else {
+        // POST
+        if (!varieteForm.id.trim()) return
+        const res = await fetch("/api/varietes", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: varieteForm.id.trim(),
+            especeId,
+            fournisseurId: varieteForm.fournisseurId || null,
+            bio: varieteForm.bio,
+            semaineRecolte: varieteForm.semaineRecolte ? parseInt(varieteForm.semaineRecolte) : null,
+            dureeRecolte: varieteForm.dureeRecolte ? parseInt(varieteForm.dureeRecolte) : null,
+            nbGrainesG: varieteForm.nbGrainesG ? parseFloat(varieteForm.nbGrainesG) : null,
+            prixGraine: varieteForm.prixGraine ? parseFloat(varieteForm.prixGraine) : null,
+            stockGraines: varieteForm.stockGraines ? parseFloat(varieteForm.stockGraines) : null,
+            stockPlants: varieteForm.stockPlants ? parseInt(varieteForm.stockPlants) : null,
+            description: varieteForm.description || null,
+          }),
+        })
+        if (!res.ok) {
+          const err = await res.json()
+          throw new Error(err.error || "Erreur")
+        }
+        const created = await res.json()
+        setVarietes([...varietes, created])
+        toast({ title: "Variete ajoutee" })
+      }
+      setShowVarieteDialog(false)
+      resetVarieteForm()
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Erreur",
+        description: error instanceof Error ? error.message : "Erreur inconnue",
+      })
+    }
+  }
+
+  const handleVarieteDelete = async (v: Variete) => {
+    if (!confirm(`Supprimer la variete "${v.id}" ?`)) return
+    try {
+      const res = await fetch(`/api/varietes/${encodeURIComponent(v.id)}`, {
+        method: "DELETE",
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || "Erreur")
+      }
+      setVarietes(varietes.filter((x) => x.id !== v.id))
+      toast({ title: "Variete supprimee" })
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Erreur",
+        description: error instanceof Error ? error.message : "Erreur inconnue",
+      })
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -235,11 +400,12 @@ export default function EditEspecePage() {
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             <Tabs defaultValue="general" className="w-full">
-              <TabsList className="grid w-full grid-cols-4">
+              <TabsList className="grid w-full grid-cols-5">
                 <TabsTrigger value="general">General</TabsTrigger>
                 <TabsTrigger value="culture">Culture</TabsTrigger>
                 <TabsTrigger value="recolte">Recolte</TabsTrigger>
                 <TabsTrigger value="notes">Notes</TabsTrigger>
+                <TabsTrigger value="varietes">Varietes ({varietes.length})</TabsTrigger>
               </TabsList>
 
               {/* Onglet General */}
@@ -883,6 +1049,79 @@ export default function EditEspecePage() {
                   </CardContent>
                 </Card>
               </TabsContent>
+
+              {/* Onglet Varietes */}
+              <TabsContent value="varietes">
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between">
+                    <CardTitle>Varietes de {especeId}</CardTitle>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => {
+                        resetVarieteForm()
+                        setShowVarieteDialog(true)
+                      }}
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      Ajouter
+                    </Button>
+                  </CardHeader>
+                  <CardContent>
+                    {varietes.length === 0 ? (
+                      <p className="text-muted-foreground text-sm">Aucune variete pour cette espece</p>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Nom</TableHead>
+                            <TableHead>Fournisseur</TableHead>
+                            <TableHead>Bio</TableHead>
+                            <TableHead className="text-right">Stock graines (g)</TableHead>
+                            <TableHead className="text-right">Stock plants</TableHead>
+                            <TableHead className="text-right">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {varietes.map((v) => (
+                            <TableRow key={v.id}>
+                              <TableCell className="font-medium">{v.id}</TableCell>
+                              <TableCell>{v.fournisseur?.id || "-"}</TableCell>
+                              <TableCell>{v.bio ? "Oui" : "-"}</TableCell>
+                              <TableCell className="text-right">{v.stockGraines ?? "-"}</TableCell>
+                              <TableCell className="text-right">{v.stockPlants ?? "-"}</TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex justify-end gap-1">
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 w-8 p-0 hover:bg-blue-100 hover:text-blue-600"
+                                    onClick={() => openEditVariete(v)}
+                                    title="Modifier"
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 w-8 p-0 hover:bg-red-100 hover:text-red-600"
+                                    onClick={() => handleVarieteDelete(v)}
+                                    title="Supprimer"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
             </Tabs>
 
             <div className="flex justify-end gap-4">
@@ -896,6 +1135,144 @@ export default function EditEspecePage() {
             </div>
           </form>
         </Form>
+
+        {/* Dialog Variete */}
+        <Dialog open={showVarieteDialog} onOpenChange={(open) => {
+          setShowVarieteDialog(open)
+          if (!open) resetVarieteForm()
+        }}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>{editingVariete ? `Modifier : ${editingVariete.id}` : "Nouvelle variete"}</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleVarieteSubmit} className="space-y-4">
+              {!editingVariete && (
+                <div>
+                  <Label>Nom de la variete *</Label>
+                  <Input
+                    value={varieteForm.id}
+                    onChange={(e) => setVarieteForm({ ...varieteForm, id: e.target.value })}
+                    placeholder="Ex: Coeur de boeuf"
+                    required
+                  />
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Fournisseur</Label>
+                  <Select
+                    value={varieteForm.fournisseurId}
+                    onValueChange={(v) => setVarieteForm({ ...varieteForm, fournisseurId: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Aucun" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {fournisseurs.map((f) => (
+                        <SelectItem key={f.id} value={f.id}>
+                          {f.id}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-end pb-2">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="variete-bio"
+                      checked={varieteForm.bio}
+                      onCheckedChange={(checked) => setVarieteForm({ ...varieteForm, bio: checked === true })}
+                    />
+                    <label htmlFor="variete-bio" className="text-sm">Bio</label>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Semaine recolte (1-52)</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    max="52"
+                    value={varieteForm.semaineRecolte}
+                    onChange={(e) => setVarieteForm({ ...varieteForm, semaineRecolte: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label>Duree recolte (sem.)</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    max="52"
+                    value={varieteForm.dureeRecolte}
+                    onChange={(e) => setVarieteForm({ ...varieteForm, dureeRecolte: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Graines/gramme</Label>
+                  <Input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    value={varieteForm.nbGrainesG}
+                    onChange={(e) => setVarieteForm({ ...varieteForm, nbGrainesG: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label>Prix graines (euro)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={varieteForm.prixGraine}
+                    onChange={(e) => setVarieteForm({ ...varieteForm, prixGraine: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Stock graines (g)</Label>
+                  <Input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    value={varieteForm.stockGraines}
+                    onChange={(e) => setVarieteForm({ ...varieteForm, stockGraines: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label>Stock plants</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={varieteForm.stockPlants}
+                    onChange={(e) => setVarieteForm({ ...varieteForm, stockPlants: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label>Description</Label>
+                <Textarea
+                  value={varieteForm.description}
+                  onChange={(e) => setVarieteForm({ ...varieteForm, description: e.target.value })}
+                  rows={2}
+                  placeholder="Notes sur cette variete..."
+                />
+              </div>
+
+              <Button type="submit" className="w-full">
+                {editingVariete ? "Enregistrer" : "Ajouter"}
+              </Button>
+            </form>
+          </DialogContent>
+        </Dialog>
       </main>
     </div>
   )

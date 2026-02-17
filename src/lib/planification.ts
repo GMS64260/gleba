@@ -160,7 +160,7 @@ export async function getCulturesPrevues(
       userId,
       rotationId: { not: null },
       ...(options?.ilot && { ilot: options.ilot }),
-      ...(options?.plancheId && { id: options.plancheId }),
+      ...(options?.plancheId && { nom: options.plancheId }),
     },
     include: {
       rotation: {
@@ -221,7 +221,7 @@ export async function getCulturesPrevues(
           )
 
           culturesPrevues.push({
-            plancheId: planche.id,
+            plancheId: planche.nom,
             plancheLongueur: planche.longueur,
             plancheLargeur: planche.largeur,
             plancheSurface: planche.surface,
@@ -255,7 +255,7 @@ export async function getCulturesPrevues(
       userId,
       annee,
       ...(options?.especeId && { especeId: options.especeId }),
-      ...(options?.plancheId && { plancheId: options.plancheId }),
+      ...(options?.plancheId && { planche: { nom: options.plancheId } }),
       ...(options?.ilot && { planche: { ilot: options.ilot } }),
     },
     include: {
@@ -283,7 +283,7 @@ export async function getCulturesPrevues(
       const surface = (culture.planche.longueur || 0) * (culture.planche.largeur || 0)
 
       culturesPrevues.push({
-        plancheId: culture.plancheId || '',
+        plancheId: culture.planche.nom || culture.plancheId || '',
         plancheLongueur: culture.planche.longueur,
         plancheLargeur: culture.planche.largeur,
         plancheSurface: culture.planche.surface,
@@ -402,9 +402,16 @@ export async function getBesoinsSemences(
 
   // Recuperer les infos des varietes pour nbGrainesG
   const varietes = await prisma.variete.findMany({
-    select: { id: true, especeId: true, nbGrainesG: true, stockGraines: true },
+    select: { id: true, especeId: true, nbGrainesG: true },
   })
   const varieteMap = new Map(varietes.map(v => [v.id, v]))
+
+  // Recuperer les stocks par utilisateur
+  const userStocks = await prisma.userStockVariete.findMany({
+    where: { userId },
+    select: { varieteId: true, stockGraines: true, stockPlants: true },
+  })
+  const userStockMap = new Map(userStocks.map(us => [us.varieteId, us]))
 
   for (const culture of culturesPrevues) {
     if (!culture.especeId) continue
@@ -427,7 +434,7 @@ export async function getBesoinsSemences(
         surfaceTotale: 0,
         nbPlants: 0,
         grainesNecessaires: 0,
-        stockActuel: variete?.stockGraines || 0,
+        stockActuel: culture.varieteId ? (userStockMap.get(culture.varieteId)?.stockGraines || 0) : 0,
         nbGrainesG: variete?.nbGrainesG || null,
         aCommander: 0,
       })
@@ -465,11 +472,12 @@ export async function getBesoinsPlants(
     c => c.semainePlantation !== null && c.especeId
   )
 
-  // Recuperer les infos des varietes pour stockPlants
-  const varietes = await prisma.variete.findMany({
-    select: { id: true, especeId: true, stockPlants: true },
+  // Recuperer les stocks par utilisateur
+  const userStocks = await prisma.userStockVariete.findMany({
+    where: { userId },
+    select: { varieteId: true, stockGraines: true, stockPlants: true },
   })
-  const varieteMap = new Map(varietes.map(v => [v.id, v]))
+  const userStockMap = new Map(userStocks.map(us => [us.varieteId, us]))
 
   // Grouper par espece/variete
   const besoinsMap = new Map<string, BesoinPlant>()
@@ -486,15 +494,13 @@ export async function getBesoinsPlants(
     )
 
     if (!besoinsMap.has(key)) {
-      const variete = culture.varieteId ? varieteMap.get(culture.varieteId) : null
-
       besoinsMap.set(key, {
         especeId: culture.especeId,
         especeCouleur: culture.especeCouleur,
         varieteId: culture.varieteId,
         nbPlants: 0,
         semainePlantation: culture.semainePlantation,
-        stockActuel: variete?.stockPlants || 0,
+        stockActuel: culture.varieteId ? (userStockMap.get(culture.varieteId)?.stockPlants || 0) : 0,
         aCommander: 0,
         cultures: [],
       })
@@ -531,9 +537,9 @@ export async function getAssociations(
   // Recuperer les planches avec leurs influences
   const planches = await prisma.planche.findMany({
     where: { userId },
-    select: { id: true, ilot: true, planchesInfluencees: true },
+    select: { id: true, nom: true, ilot: true, planchesInfluencees: true },
   })
-  const plancheMap = new Map(planches.map(p => [p.id, p]))
+  const plancheMap = new Map(planches.map(p => [p.nom, p]))
   const cultureMap = new Map(culturesPrevues.map(c => [c.plancheId, c]))
 
   const associations: AssociationCulture[] = []
@@ -585,15 +591,26 @@ export async function creerCulturesBatch(
   })
   const itpMap = new Map(itps.map(itp => [itp.id, itp]))
 
+  // Resolve planche noms to cuid IDs
+  const plancheNoms = [...new Set(cultures.map(c => c.plancheId))]
+  const planchesDb = await prisma.planche.findMany({
+    where: { userId, nom: { in: plancheNoms } },
+    select: { id: true, nom: true, largeur: true },
+  })
+  const plancheNomToId = new Map(planchesDb.map(p => [p.nom, p.id]))
+
   for (const culture of cultures) {
     const itp = itpMap.get(culture.itpId)
     if (!itp || !itp.especeId) continue
+
+    // Resolve planche nom → cuid
+    const plancheCuidId = plancheNomToId.get(culture.plancheId) || culture.plancheId
 
     // Verifier si la culture existe deja
     const existing = await prisma.culture.findFirst({
       where: {
         userId,
-        plancheId: culture.plancheId,
+        plancheId: plancheCuidId,
         especeId: itp.especeId,
         annee: culture.annee,
       },
@@ -620,7 +637,7 @@ export async function creerCulturesBatch(
         especeId: itp.especeId,
         varieteId: culture.varieteId || null,
         itpId: culture.itpId,
-        plancheId: culture.plancheId,
+        plancheId: plancheCuidId,
         annee: culture.annee,
         dateSemis,
         datePlantation,
@@ -629,20 +646,26 @@ export async function creerCulturesBatch(
       },
     })
 
-    // Décrément automatique du stock de semences
+    // Décrément automatique du stock de semences (per-user)
     if (culture.varieteId && dateSemis) {
       try {
         const variete = await prisma.variete.findUnique({
           where: { id: culture.varieteId },
-          select: { nbGrainesG: true, stockGraines: true },
+          select: { nbGrainesG: true },
         })
 
+        const userStock = await prisma.userStockVariete.findFirst({
+          where: { userId, varieteId: culture.varieteId },
+        })
+
+        const currentStock = userStock?.stockGraines || 0
+
         const planche = await prisma.planche.findUnique({
-          where: { id: culture.plancheId },
+          where: { id: plancheCuidId },
           select: { largeur: true },
         })
 
-        if (variete && variete.stockGraines && variete.stockGraines > 0 && variete.nbGrainesG && planche && planche.largeur) {
+        if (variete && currentStock > 0 && variete.nbGrainesG && planche && planche.largeur) {
           const longueur = newCulture.longueur || 0
           const nbRangs = newCulture.nbRangs || 1
           const espacement = newCulture.espacement || 0
@@ -662,10 +685,16 @@ export async function creerCulturesBatch(
           }
 
           if (grammesNecessaires > 0) {
-            await prisma.variete.update({
-              where: { id: culture.varieteId },
-              data: {
-                stockGraines: Math.max(0, variete.stockGraines - grammesNecessaires),
+            await prisma.userStockVariete.upsert({
+              where: { userId_varieteId: { userId, varieteId: culture.varieteId } },
+              create: {
+                userId,
+                varieteId: culture.varieteId,
+                stockGraines: Math.max(0, -grammesNecessaires),
+                dateStock: new Date(),
+              },
+              update: {
+                stockGraines: Math.max(0, currentStock - grammesNecessaires),
                 dateStock: new Date(),
               },
             })
@@ -679,7 +708,7 @@ export async function creerCulturesBatch(
 
     results.push({
       id: newCulture.id,
-      plancheId: culture.plancheId,
+      plancheId: culture.plancheId, // Keep nom for display
       especeId: itp.especeId,
     })
   }

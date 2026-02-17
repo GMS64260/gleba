@@ -24,11 +24,13 @@ export async function GET(request: NextRequest, { params }: Params) {
     const targetYear = parseInt(searchParams.get('year') || String(new Date().getFullYear()), 10)
     const especeId = searchParams.get('especeId')
 
-    // Vérifier que la planche existe et appartient à l'utilisateur
+    // Vérifier que la planche existe et appartient à l'utilisateur (URL param is nom)
     const planche = await prisma.planche.findUnique({
       where: {
-        id: plancheId,
-        userId: session!.user.id,
+        nom_userId: {
+          nom: plancheId,
+          userId: session!.user.id,
+        },
       },
     })
 
@@ -36,11 +38,11 @@ export async function GET(request: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Planche non trouvée' }, { status: 404 })
     }
 
-    // Récupérer les cultures des 10 dernières années
+    // Récupérer les cultures des 10 dernières années (use real PK id)
     const minYear = targetYear - 10
     const cultures = await prisma.culture.findMany({
       where: {
-        plancheId,
+        plancheId: planche.id,
         userId: session!.user.id,
         annee: { gte: minYear },
       },

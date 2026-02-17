@@ -10,14 +10,15 @@ export default auth((req) => {
   const isLoggedIn = !!req.auth
 
   // Routes publiques
-  const publicRoutes = ["/login"]
-  const isPublicRoute = publicRoutes.some((route) => pathname.startsWith(route))
+  const publicRoutes = ["/login", "/robots.txt", "/sitemap.xml", "/manifest.json"]
+  const isPublicRoute = publicRoutes.some((route) => pathname === route || pathname.startsWith(route + "/"))
 
-  // Routes API auth (publiques)
+  // Routes API publiques (auth NextAuth + MCP avec bearer token)
   const isAuthApi = pathname.startsWith("/api/auth")
+  const isMcpApi = pathname.startsWith("/api/mcp")
 
-  // Si route publique ou API auth, laisser passer
-  if (isPublicRoute || isAuthApi) {
+  // Si route publique ou API auth/MCP, laisser passer
+  if (isPublicRoute || isAuthApi || isMcpApi) {
     // Si connecté et sur login, rediriger vers home
     if (isLoggedIn && pathname === "/login") {
       return NextResponse.redirect(new URL("/", req.nextUrl))

@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('GET /api/planification/recoltes-prevues error:', error)
     return NextResponse.json(
-      { error: 'Erreur lors de la recuperation des recoltes prevues', details: String(error) },
+      { error: 'Erreur lors de la recuperation des recoltes prevues', details: "Erreur interne du serveur" },
       { status: 500 }
     )
   }

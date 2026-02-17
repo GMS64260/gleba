@@ -216,7 +216,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('GET /api/cultures/irriguer error:', error)
     return NextResponse.json(
-      { error: 'Erreur lors de la recuperation des cultures a irriguer', details: String(error) },
+      { error: 'Erreur lors de la recuperation des cultures a irriguer', details: "Erreur interne du serveur" },
       { status: 500 }
     )
   }
@@ -287,7 +287,7 @@ export async function PATCH(request: NextRequest) {
   } catch (error) {
     console.error('PATCH /api/cultures/irriguer error:', error)
     return NextResponse.json(
-      { error: 'Erreur lors de la mise a jour', details: String(error) },
+      { error: 'Erreur lors de la mise a jour', details: "Erreur interne du serveur" },
       { status: 500 }
     )
   }

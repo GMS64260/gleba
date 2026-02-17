@@ -159,8 +159,8 @@ export default function PlancheDetailPage({ params }: PageProps) {
         {activeTab === 'info' && (
           <PlancheInfoTable planche={planche} onUpdate={fetchPlanche} />
         )}
-        {activeTab === 'history' && <PlancheHistory plancheId={planche.id} />}
-        {activeTab === 'rotation' && <RotationAdvice plancheId={planche.id} />}
+        {activeTab === 'history' && <PlancheHistory plancheId={planche.nom || planche.id} />}
+        {activeTab === 'rotation' && <RotationAdvice plancheId={planche.nom || planche.id} />}
       </div>
     </div>
   )

@@ -43,10 +43,14 @@ export async function GET(request: NextRequest) {
         select: {
           id: true,
           especeId: true,
+          varieteId: true,
           dateSemis: true,
           semisFait: true,
           espece: {
             select: { couleur: true },
+          },
+          planche: {
+            select: { nom: true, ilot: true },
           },
         },
       }),
@@ -62,10 +66,14 @@ export async function GET(request: NextRequest) {
         select: {
           id: true,
           especeId: true,
+          varieteId: true,
           datePlantation: true,
           plantationFaite: true,
           espece: {
             select: { couleur: true },
+          },
+          planche: {
+            select: { nom: true, ilot: true },
           },
         },
       }),
@@ -81,10 +89,14 @@ export async function GET(request: NextRequest) {
         select: {
           id: true,
           especeId: true,
+          varieteId: true,
           dateRecolte: true,
           recolteFaite: true,
           espece: {
             select: { couleur: true },
+          },
+          planche: {
+            select: { nom: true, ilot: true },
           },
         },
       }),
@@ -102,8 +114,12 @@ export async function GET(request: NextRequest) {
             select: {
               id: true,
               especeId: true,
+              varieteId: true,
               espece: {
                 select: { couleur: true },
+              },
+              planche: {
+                select: { nom: true, ilot: true },
               },
             },
           },
@@ -117,6 +133,9 @@ export async function GET(request: NextRequest) {
         id: c.id,
         type: 'semis' as const,
         especeId: c.especeId,
+        varieteId: c.varieteId || null,
+        plancheName: c.planche?.nom || null,
+        ilot: c.planche?.ilot || null,
         date: c.dateSemis?.toISOString() || '',
         fait: c.semisFait,
         couleur: c.espece?.couleur || null,
@@ -125,6 +144,9 @@ export async function GET(request: NextRequest) {
         id: c.id,
         type: 'plantation' as const,
         especeId: c.especeId,
+        varieteId: c.varieteId || null,
+        plancheName: c.planche?.nom || null,
+        ilot: c.planche?.ilot || null,
         date: c.datePlantation?.toISOString() || '',
         fait: c.plantationFaite,
         couleur: c.espece?.couleur || null,
@@ -133,6 +155,9 @@ export async function GET(request: NextRequest) {
         id: c.id,
         type: 'recolte' as const,
         especeId: c.especeId,
+        varieteId: c.varieteId || null,
+        plancheName: c.planche?.nom || null,
+        ilot: c.planche?.ilot || null,
         date: c.dateRecolte?.toISOString() || '',
         fait: c.recolteFaite,
         couleur: c.espece?.couleur || null,
@@ -141,6 +166,9 @@ export async function GET(request: NextRequest) {
         id: i.id, // ID de l'irrigation, pas de la culture
         type: 'irrigation' as const,
         especeId: i.culture.especeId,
+        varieteId: i.culture.varieteId || null,
+        plancheName: i.culture.planche?.nom || null,
+        ilot: i.culture.planche?.ilot || null,
         date: i.datePrevue.toISOString(),
         fait: i.fait,
         couleur: i.culture.espece?.couleur || null,
@@ -164,7 +192,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('GET /api/calendrier error:', error)
     return NextResponse.json(
-      { error: 'Erreur lors de la récupération du calendrier', details: String(error) },
+      { error: 'Erreur lors de la récupération du calendrier', details: "Erreur interne du serveur" },
       { status: 500 }
     )
   }

@@ -17,7 +17,7 @@ export const TYPES_SOL = ['Argileux', 'Limoneux', 'Sableux', 'Mixte'] as const
 export const RETENTION_EAU = ['Faible', 'Moyenne', 'Élevée'] as const
 
 export const plancheSchema = z.object({
-  id: z.string().min(1, "Le nom de la planche est requis").max(50),
+  nom: z.string().min(1, "Le nom de la planche est requis").max(50),
   rotationId: z.string().nullable().optional(),
   largeur: z.number().min(0).max(10).nullable().optional(),
   longueur: z.number().min(0).max(100).nullable().optional(),
@@ -45,7 +45,7 @@ export const plancheSchema = z.object({
 })
 
 export const createPlancheSchema = plancheSchema
-export const updatePlancheSchema = plancheSchema.partial().omit({ id: true })
+export const updatePlancheSchema = plancheSchema.partial().omit({ nom: true })
 
 export type PlancheInput = z.infer<typeof plancheSchema>
 export type CreatePlancheInput = z.infer<typeof createPlancheSchema>

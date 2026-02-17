@@ -5,16 +5,11 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
-import { requireAuthApi } from '@/lib/auth-utils'
+import { requireAdminApi } from '@/lib/auth-utils'
 
 export async function POST(request: NextRequest) {
-  const { error, session } = await requireAuthApi()
+  const { error, session } = await requireAdminApi()
   if (error) return error
-
-  // Vérifier que l'utilisateur est admin
-  if (session!.user.role !== 'ADMIN') {
-    return NextResponse.json({ error: 'Accès refusé - Admin requis' }, { status: 403 })
-  }
 
   try {
     const formData = await request.formData()
@@ -23,6 +18,15 @@ export async function POST(request: NextRequest) {
 
     if (!file) {
       return NextResponse.json({ error: 'Aucun fichier fourni' }, { status: 400 })
+    }
+
+    // Limite taille fichier : 10 Mo
+    const MAX_FILE_SIZE = 10 * 1024 * 1024
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        { error: 'Fichier trop volumineux (max 10 Mo)' },
+        { status: 413 }
+      )
     }
 
     const text = await file.text()
@@ -199,7 +203,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('POST /api/admin/referentiels/import error:', error)
     return NextResponse.json(
-      { error: 'Erreur lors de l\'import', details: String(error) },
+      { error: 'Erreur lors de l\'import', details: "Erreur interne du serveur" },
       { status: 500 }
     )
   }

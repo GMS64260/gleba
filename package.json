@@ -46,6 +46,7 @@
     "mathjs": "^15.1.0",
     "next": "^16.1.6",
     "next-auth": "^5.0.0-beta.30",
+    "ollama": "^0.6.3",
     "prisma": "^5.22.0",
     "react": "^18",
     "react-day-picker": "^9.13.0",

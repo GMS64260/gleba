@@ -6,7 +6,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { ArrowLeft, Map as MapIcon, Save, RotateCcw, ZoomIn, ZoomOut, Plus, Crosshair, Pencil, Trash2, X, RotateCw } from "lucide-react"
+import { ArrowLeft, Map as MapIcon, Save, RotateCcw, ZoomIn, ZoomOut, Plus, Crosshair, Pencil, Trash2, X, RotateCw, Copy } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -27,12 +27,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { GardenView } from "@/components/garden/GardenView"
+import { GardenView, type SelectionItem } from "@/components/garden/GardenView"
+import { Combobox } from "@/components/ui/combobox"
 import { useToast } from "@/hooks/use-toast"
 import { useSettings } from "@/hooks/use-settings"
 
 interface PlancheWithCulture {
   id: string
+  nom: string
   largeur: number | null
   longueur: number | null
   posX: number | null
@@ -116,14 +118,17 @@ export default function JardinPage() {
   const [hasChanges, setHasChanges] = React.useState(false)
   const [saving, setSaving] = React.useState(false)
 
-  // Sélection et édition
-  const [selectedPlanche, setSelectedPlanche] = React.useState<string | null>(null)
-  const [selectedObjet, setSelectedObjet] = React.useState<number | null>(null)
-  const [selectedArbre, setSelectedArbre] = React.useState<number | null>(null)
+  // Sélection multi-éléments
+  const [selection, setSelection] = React.useState<SelectionItem[]>([])
+
+  // Valeurs dérivées pour la sidebar (quand 1 seul sélectionné)
+  const selectedPlanche = selection.length === 1 && selection[0].type === 'planche' ? selection[0].id as string : null
+  const selectedObjet = selection.length === 1 && selection[0].type === 'objet' ? selection[0].id as number : null
+  const selectedArbre = selection.length === 1 && selection[0].type === 'arbre' ? selection[0].id as number : null
   const [showNewPlancheDialog, setShowNewPlancheDialog] = React.useState(false)
   const [showNewObjetDialog, setShowNewObjetDialog] = React.useState(false)
   const [showNewArbreDialog, setShowNewArbreDialog] = React.useState(false)
-  const [newPlanche, setNewPlanche] = React.useState({ id: "", largeur: settings.defaultPlancheLargeur, longueur: settings.defaultPlancheLongueur })
+  const [newPlanche, setNewPlanche] = React.useState({ nom: "", largeur: settings.defaultPlancheLargeur, longueur: settings.defaultPlancheLongueur })
   const [newObjet, setNewObjet] = React.useState({ nom: "", type: "allee", largeur: 0.5, longueur: 5 })
   const [newArbre, setNewArbre] = React.useState({ nom: "", type: "fruitier", espece: "", variete: "", fournisseur: "", envergure: 2 })
 
@@ -131,8 +136,8 @@ export default function JardinPage() {
   React.useEffect(() => {
     setNewPlanche(prev => ({
       ...prev,
-      largeur: prev.id ? prev.largeur : settings.defaultPlancheLargeur,
-      longueur: prev.id ? prev.longueur : settings.defaultPlancheLongueur,
+      largeur: prev.nom ? prev.largeur : settings.defaultPlancheLargeur,
+      longueur: prev.nom ? prev.longueur : settings.defaultPlancheLongueur,
     }))
   }, [settings.defaultPlancheLargeur, settings.defaultPlancheLongueur])
 
@@ -217,11 +222,24 @@ export default function JardinPage() {
     }
   }, [])
 
+  const arbreEspeceOptions = React.useMemo(() => {
+    const unique = [...new Set(arbres.map(a => a.espece).filter(Boolean))] as string[]
+    return unique.sort().map(v => ({ value: v, label: v }))
+  }, [arbres])
+
+  const arbreVarieteOptions = React.useMemo(() => {
+    const unique = [...new Set(arbres.map(a => a.variete).filter(Boolean))] as string[]
+    return unique.sort().map(v => ({ value: v, label: v }))
+  }, [arbres])
+
+  const arbreFournisseurOptions = React.useMemo(() => {
+    const unique = [...new Set(arbres.map(a => a.fournisseur).filter(Boolean))] as string[]
+    return unique.sort().map(v => ({ value: v, label: v }))
+  }, [arbres])
+
   React.useEffect(() => {
-    fetchPlanches()
-    fetchObjets()
-    fetchEspeces()
-    fetchArbres()
+    // Charger toutes les données en parallèle
+    Promise.all([fetchPlanches(), fetchObjets(), fetchEspeces(), fetchArbres()])
   }, [fetchPlanches, fetchObjets, fetchEspeces, fetchArbres])
 
   // Données de l'element selectionne
@@ -253,32 +271,34 @@ export default function JardinPage() {
     setHasChanges(true)
   }
 
-  // Sélectionner une planche
-  const handlePlancheClick = (id: string) => {
-    setSelectedPlanche(prev => prev === id ? null : id)
-    if (id) {
-      setSelectedObjet(null)
-      setSelectedArbre(null)
-    }
-  }
+  // Gestion de la sélection
+  const handleSelectionChange = React.useCallback((newSelection: SelectionItem[]) => {
+    setSelection(newSelection)
+  }, [])
 
-  // Sélectionner un objet
-  const handleObjetClick = (id: number) => {
-    setSelectedObjet(prev => prev === id ? null : id)
-    if (id) {
-      setSelectedPlanche(null)
-      setSelectedArbre(null)
-    }
-  }
+  // Déplacement groupé
+  const handleGroupMove = React.useCallback((dx: number, dy: number) => {
+    const selPlanches = new Set(selection.filter(s => s.type === 'planche').map(s => s.id as string))
+    const selObjets = new Set(selection.filter(s => s.type === 'objet').map(s => s.id as number))
+    const selArbres = new Set(selection.filter(s => s.type === 'arbre').map(s => s.id as number))
 
-  // Sélectionner un arbre
-  const handleArbreClick = (id: number) => {
-    setSelectedArbre(prev => prev === id ? null : id)
-    if (id) {
-      setSelectedPlanche(null)
-      setSelectedObjet(null)
+    if (selPlanches.size > 0) {
+      setPlanches(prev => prev.map(p =>
+        selPlanches.has(p.id) ? { ...p, posX: (p.posX ?? 0) + dx, posY: (p.posY ?? 0) + dy } : p
+      ))
     }
-  }
+    if (selObjets.size > 0) {
+      setObjets(prev => prev.map(o =>
+        selObjets.has(o.id) ? { ...o, posX: o.posX + dx, posY: o.posY + dy } : o
+      ))
+    }
+    if (selArbres.size > 0) {
+      setArbres(prev => prev.map(a =>
+        selArbres.has(a.id) ? { ...a, posX: a.posX + dx, posY: a.posY + dy } : a
+      ))
+    }
+    setHasChanges(true)
+  }, [selection])
 
   // Tourner une planche
   const handleRotatePlanche = (degrees: number) => {
@@ -307,7 +327,7 @@ export default function JardinPage() {
     setSaving(true)
     try {
       const planchePromises = planches.map(p =>
-        fetch(`/api/planches/${encodeURIComponent(p.id)}`, {
+        fetch(`/api/planches/${encodeURIComponent(p.nom || p.id)}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -392,7 +412,7 @@ export default function JardinPage() {
 
   // Créer une nouvelle planche
   const handleCreatePlanche = async () => {
-    if (!newPlanche.id.trim()) {
+    if (!newPlanche.nom.trim()) {
       toast({ variant: "destructive", title: "Nom requis" })
       return
     }
@@ -409,7 +429,7 @@ export default function JardinPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          id: newPlanche.id,
+          nom: newPlanche.nom,
           largeur: newPlanche.largeur,
           longueur: newPlanche.longueur,
           surface: newPlanche.largeur * newPlanche.longueur,
@@ -423,9 +443,9 @@ export default function JardinPage() {
         throw new Error(err.error || "Erreur création")
       }
 
-      toast({ title: "Planche créée", description: newPlanche.id })
+      toast({ title: "Planche créée", description: newPlanche.nom })
       setShowNewPlancheDialog(false)
-      setNewPlanche({ id: "", largeur: settings.defaultPlancheLargeur, longueur: settings.defaultPlancheLongueur })
+      setNewPlanche({ nom: "", largeur: settings.defaultPlancheLargeur, longueur: settings.defaultPlancheLongueur })
       fetchPlanches()
     } catch (error) {
       toast({
@@ -439,10 +459,11 @@ export default function JardinPage() {
   // Supprimer la planche sélectionnée
   const handleDeletePlanche = async () => {
     if (!selectedPlanche) return
-    if (!confirm(`Supprimer la planche "${selectedPlanche}" ?`)) return
+    const plancheNom = selectedPlancheData?.nom || selectedPlanche
+    if (!confirm(`Supprimer la planche "${plancheNom}" ?`)) return
 
     try {
-      const response = await fetch(`/api/planches/${encodeURIComponent(selectedPlanche)}`, {
+      const response = await fetch(`/api/planches/${encodeURIComponent(plancheNom)}`, {
         method: "DELETE"
       })
 
@@ -452,8 +473,56 @@ export default function JardinPage() {
       }
 
       toast({ title: "Planche supprimée" })
-      setSelectedPlanche(null)
+      setSelection([])
       fetchPlanches()
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Erreur",
+        description: error instanceof Error ? error.message : "Erreur inconnue"
+      })
+    }
+  }
+
+  // Dupliquer la planche sélectionnée
+  const handleDuplicatePlanche = async () => {
+    if (!selectedPlanche) return
+    const source = planches.find(p => p.id === selectedPlanche)
+    if (!source) return
+
+    // Générer un nom unique basé sur l'original
+    const sourceName = source.nom || source.id
+    let newName = sourceName + "-copie"
+    let suffix = 2
+    while (planches.some(p => (p.nom || p.id) === newName)) {
+      newName = sourceName + "-copie" + suffix
+      suffix++
+    }
+
+    try {
+      const response = await fetch("/api/planches", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nom: newName,
+          largeur: source.largeur,
+          longueur: source.longueur,
+          surface: (source.largeur || 0) * (source.longueur || 0),
+          posX: (source.posX ?? 0) + 1,
+          posY: (source.posY ?? 0) + 1,
+          rotation2D: source.rotation2D,
+        })
+      })
+
+      if (!response.ok) {
+        const err = await response.json()
+        throw new Error(err.error || "Erreur duplication")
+      }
+
+      const created = await response.json()
+      toast({ title: "Planche dupliquée", description: newName })
+      await fetchPlanches()
+      setSelection([{ type: 'planche', id: created.id }])
     } catch (error) {
       toast({
         variant: "destructive",
@@ -524,8 +593,48 @@ export default function JardinPage() {
       }
 
       toast({ title: "Objet supprimé" })
-      setSelectedObjet(null)
+      setSelection([])
       fetchObjets()
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Erreur",
+        description: error instanceof Error ? error.message : "Erreur inconnue"
+      })
+    }
+  }
+
+  // Dupliquer l'objet sélectionné
+  const handleDuplicateObjet = async () => {
+    if (!selectedObjet) return
+    const source = objets.find(o => o.id === selectedObjet)
+    if (!source) return
+
+    try {
+      const response = await fetch("/api/objets-jardin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nom: source.nom ? source.nom + " (copie)" : null,
+          type: source.type,
+          largeur: source.largeur,
+          longueur: source.longueur,
+          posX: source.posX + 1,
+          posY: source.posY + 1,
+          rotation2D: source.rotation2D,
+          couleur: source.couleur,
+        })
+      })
+
+      if (!response.ok) {
+        const err = await response.json()
+        throw new Error(err.error || "Erreur duplication")
+      }
+
+      const created = await response.json()
+      toast({ title: "Objet dupliqué" })
+      await fetchObjets()
+      setSelection([{ type: 'objet', id: created.id }])
     } catch (error) {
       toast({
         variant: "destructive",
@@ -608,7 +717,7 @@ export default function JardinPage() {
       }
 
       toast({ title: "Arbre supprimé" })
-      setSelectedArbre(null)
+      setSelection([])
       fetchArbres()
     } catch (error) {
       toast({
@@ -731,15 +840,12 @@ export default function JardinPage() {
                   objets={objets}
                   arbres={arbres}
                   editable={editMode}
-                  selectedId={selectedPlanche}
-                  selectedObjetId={selectedObjet}
-                  selectedArbreId={selectedArbre}
+                  selection={selection}
+                  onSelectionChange={handleSelectionChange}
+                  onGroupMove={handleGroupMove}
                   onPlancheMove={handlePlancheMove}
-                  onPlancheClick={handlePlancheClick}
                   onObjetMove={handleObjetMove}
-                  onObjetClick={handleObjetClick}
                   onArbreMove={handleArbreMove}
-                  onArbreClick={handleArbreClick}
                   scale={scale}
                   plancheColor={settings.plancheColor}
                   selectedColor={settings.plancheSelectedColor}
@@ -764,8 +870,8 @@ export default function JardinPage() {
               <Card>
                 <CardHeader className="pb-2">
                   <div className="flex items-center justify-between">
-                    <CardTitle className="text-base">{selectedPlancheData.id}</CardTitle>
-                    <Button variant="ghost" size="icon" onClick={() => setSelectedPlanche(null)}>
+                    <CardTitle className="text-base">{selectedPlancheData.nom || selectedPlancheData.id}</CardTitle>
+                    <Button variant="ghost" size="icon" onClick={() => setSelection([])}>
                       <X className="h-4 w-4" />
                     </Button>
                   </div>
@@ -858,6 +964,9 @@ export default function JardinPage() {
                             Culture
                           </Button>
                         </Link>
+                        <Button variant="outline" size="sm" onClick={handleDuplicatePlanche} title="Dupliquer">
+                          <Copy className="h-4 w-4" />
+                        </Button>
                         <Button variant="destructive" size="sm" onClick={handleDeletePlanche}>
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -873,7 +982,7 @@ export default function JardinPage() {
                     <CardTitle className="text-base">
                       {selectedObjetData.nom || TYPES_OBJETS.find(t => t.value === selectedObjetData.type)?.label || "Objet"}
                     </CardTitle>
-                    <Button variant="ghost" size="icon" onClick={() => setSelectedObjet(null)}>
+                    <Button variant="ghost" size="icon" onClick={() => setSelection([])}>
                       <X className="h-4 w-4" />
                     </Button>
                   </div>
@@ -1011,11 +1120,17 @@ export default function JardinPage() {
                         </div>
                       </div>
 
-                      {/* Bouton supprimer */}
-                      <Button variant="destructive" size="sm" onClick={handleDeleteObjet} className="w-full">
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Supprimer
-                      </Button>
+                      {/* Actions */}
+                      <div className="flex gap-2">
+                        <Button variant="outline" size="sm" onClick={handleDuplicateObjet} className="flex-1">
+                          <Copy className="h-4 w-4 mr-2" />
+                          Dupliquer
+                        </Button>
+                        <Button variant="destructive" size="sm" onClick={handleDeleteObjet} className="flex-1">
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Supprimer
+                        </Button>
+                      </div>
                     </div>
                   ) : (
                     /* Mode lecture seule */
@@ -1049,7 +1164,7 @@ export default function JardinPage() {
                 <CardHeader className="pb-2">
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-base">{selectedArbreData.nom}</CardTitle>
-                    <Button variant="ghost" size="icon" onClick={() => setSelectedArbre(null)}>
+                    <Button variant="ghost" size="icon" onClick={() => setSelection([])}>
                       <X className="h-4 w-4" />
                     </Button>
                   </div>
@@ -1105,30 +1220,32 @@ export default function JardinPage() {
                       <div className="grid grid-cols-2 gap-2">
                         <div>
                           <Label className="text-xs text-muted-foreground">Espece</Label>
-                          <Input
-                            className="h-8 text-sm"
+                          <Combobox
                             value={selectedArbreData.espece || ""}
-                            onChange={(e) => {
+                            onValueChange={(v) => {
                               setArbres(prev => prev.map(a =>
-                                a.id === selectedArbre ? { ...a, espece: e.target.value || null } : a
+                                a.id === selectedArbre ? { ...a, espece: v || null } : a
                               ))
                               setHasChanges(true)
                             }}
+                            options={arbreEspeceOptions}
                             placeholder="Ex: Pommier"
+                            className="h-8 text-sm"
                           />
                         </div>
                         <div>
                           <Label className="text-xs text-muted-foreground">Variete</Label>
-                          <Input
-                            className="h-8 text-sm"
+                          <Combobox
                             value={selectedArbreData.variete || ""}
-                            onChange={(e) => {
+                            onValueChange={(v) => {
                               setArbres(prev => prev.map(a =>
-                                a.id === selectedArbre ? { ...a, variete: e.target.value || null } : a
+                                a.id === selectedArbre ? { ...a, variete: v || null } : a
                               ))
                               setHasChanges(true)
                             }}
+                            options={arbreVarieteOptions}
                             placeholder="Ex: Golden"
+                            className="h-8 text-sm"
                           />
                         </div>
                       </div>
@@ -1136,16 +1253,17 @@ export default function JardinPage() {
                       {/* Fournisseur */}
                       <div>
                         <Label className="text-xs text-muted-foreground">Fournisseur</Label>
-                        <Input
-                          className="h-8 text-sm"
+                        <Combobox
                           value={selectedArbreData.fournisseur || ""}
-                          onChange={(e) => {
+                          onValueChange={(v) => {
                             setArbres(prev => prev.map(a =>
-                              a.id === selectedArbre ? { ...a, fournisseur: e.target.value || null } : a
+                              a.id === selectedArbre ? { ...a, fournisseur: v || null } : a
                             ))
                             setHasChanges(true)
                           }}
+                          options={arbreFournisseurOptions}
                           placeholder="Ex: Pepiniere locale"
+                          className="h-8 text-sm"
                         />
                       </div>
 
@@ -1268,6 +1386,36 @@ export default function JardinPage() {
                   )}
                 </CardContent>
               </Card>
+            ) : selection.length > 1 ? (
+              <Card>
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-base">{selection.length} éléments</CardTitle>
+                    <Button variant="ghost" size="icon" onClick={() => setSelection([])}>
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="text-sm space-y-1">
+                  {(() => {
+                    const nbP = selection.filter(s => s.type === 'planche').length
+                    const nbO = selection.filter(s => s.type === 'objet').length
+                    const nbA = selection.filter(s => s.type === 'arbre').length
+                    return (
+                      <>
+                        {nbP > 0 && <div>{nbP} planche{nbP > 1 ? 's' : ''}</div>}
+                        {nbO > 0 && <div>{nbO} objet{nbO > 1 ? 's' : ''}</div>}
+                        {nbA > 0 && <div>{nbA} arbre{nbA > 1 ? 's' : ''}</div>}
+                      </>
+                    )
+                  })()}
+                  {editMode && (
+                    <p className="text-xs text-muted-foreground pt-2">
+                      Glissez pour déplacer le groupe
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
             ) : (
               <Card>
                 <CardContent className="py-8 text-center text-sm text-muted-foreground">
@@ -1338,9 +1486,10 @@ export default function JardinPage() {
                   <CardTitle className="text-sm">Aide</CardTitle>
                 </CardHeader>
                 <CardContent className="text-xs text-muted-foreground space-y-1">
-                  <p>• Glissez les planches pour les déplacer</p>
-                  <p>• Cliquez pour sélectionner et éditer</p>
-                  <p>• Grille: 0.5m</p>
+                  <p>• Glissez un élément pour le déplacer</p>
+                  <p>• Shift+clic pour multi-sélection</p>
+                  <p>• Dessinez un rectangle pour sélectionner un groupe</p>
+                  <p>• Glissez un élément du groupe pour tout déplacer</p>
                 </CardContent>
               </Card>
             )}
@@ -1359,8 +1508,8 @@ export default function JardinPage() {
               <Label htmlFor="planche-id">Nom</Label>
               <Input
                 id="planche-id"
-                value={newPlanche.id}
-                onChange={e => setNewPlanche(p => ({ ...p, id: e.target.value }))}
+                value={newPlanche.nom}
+                onChange={e => setNewPlanche(p => ({ ...p, nom: e.target.value }))}
                 placeholder="Ex: P1, A-Nord..."
               />
             </div>
@@ -1498,29 +1647,29 @@ export default function JardinPage() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="arbre-espece">Espece</Label>
-                <Input
-                  id="arbre-espece"
+                <Combobox
                   value={newArbre.espece}
-                  onChange={e => setNewArbre(a => ({ ...a, espece: e.target.value }))}
+                  onValueChange={v => setNewArbre(a => ({ ...a, espece: v }))}
+                  options={arbreEspeceOptions}
                   placeholder="Ex: Pommier"
                 />
               </div>
               <div>
                 <Label htmlFor="arbre-variete">Variete</Label>
-                <Input
-                  id="arbre-variete"
+                <Combobox
                   value={newArbre.variete}
-                  onChange={e => setNewArbre(a => ({ ...a, variete: e.target.value }))}
+                  onValueChange={v => setNewArbre(a => ({ ...a, variete: v }))}
+                  options={arbreVarieteOptions}
                   placeholder="Ex: Golden"
                 />
               </div>
             </div>
             <div>
               <Label htmlFor="arbre-fournisseur">Fournisseur / Lieu d'achat</Label>
-              <Input
-                id="arbre-fournisseur"
+              <Combobox
                 value={newArbre.fournisseur}
-                onChange={e => setNewArbre(a => ({ ...a, fournisseur: e.target.value }))}
+                onValueChange={v => setNewArbre(a => ({ ...a, fournisseur: v }))}
+                options={arbreFournisseurOptions}
                 placeholder="Ex: Pepiniere du coin"
               />
             </div>

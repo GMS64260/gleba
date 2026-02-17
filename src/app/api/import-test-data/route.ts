@@ -163,7 +163,7 @@ export async function POST() {
     for (const planche of planches) {
       await prisma.planche.create({
         data: {
-          id: planche.id,
+          nom: planche.id,
           userId,
           rotationId: planche.rotationId || null,
           largeur: planche.largeur || null,
@@ -178,13 +178,27 @@ export async function POST() {
       })
     }
 
+    // Build planche name → cuid map for culture FK resolution
+    const plancheNameToId: Record<string, string> = {}
+    const allPlanches = await prisma.planche.findMany({
+      where: { userId },
+      select: { id: true, nom: true },
+    })
+    for (const p of allPlanches) {
+      plancheNameToId[p.nom] = p.id
+    }
+
     // Cultures
     const culturesData = generateCultures(userId)
     const createdCultures: { [key: string]: number } = {}
 
     for (const culture of culturesData) {
+      // Resolve planche name to cuid
+      const resolvedPlancheId = culture.plancheId
+        ? plancheNameToId[culture.plancheId] || culture.plancheId
+        : null
       const created = await prisma.culture.create({
-        data: culture,
+        data: { ...culture, plancheId: resolvedPlancheId },
       })
       // Créer une clé unique pour retrouver la culture
       const key = `${culture.annee}-${culture.especeId}-${culture.varieteId || "novar"}-${culture.plancheId}`

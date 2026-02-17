@@ -70,6 +70,7 @@ export async function POST(request: NextRequest) {
         portGreffe: body.portGreffe || null,
         fournisseur: body.fournisseur || null,
         dateAchat: body.dateAchat ? new Date(body.dateAchat) : null,
+        prixAchat: body.prixAchat ? parseFloat(body.prixAchat) : null,
         datePlantation: body.datePlantation ? new Date(body.datePlantation) : null,
         age: body.age || null,
         posX: body.posX ?? 0,
@@ -80,6 +81,9 @@ export async function POST(request: NextRequest) {
         pollinisateur: body.pollinisateur || null,
         couleur: body.couleur || null,
         notes: body.notes || null,
+        productif: body.productif !== undefined ? body.productif : true,
+        anneeProduction: body.anneeProduction ? parseInt(body.anneeProduction) : null,
+        rendementMoyen: body.rendementMoyen ? parseFloat(body.rendementMoyen) : null,
       },
     })
 

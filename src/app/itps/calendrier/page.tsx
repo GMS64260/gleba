@@ -3,6 +3,7 @@
 /**
  * Page Calendrier Gantt des ITPs
  * Vue annuelle type potaleger avec barres colorées par phase
+ * Éditable : cliquer sur une ligne pour modifier les semaines
  */
 
 import * as React from "react"
@@ -21,6 +22,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { GanttRow } from "@/components/itps/GanttRow"
+import { ItpEditDialog } from "@/components/itps/ItpEditDialog"
 
 interface ITPWithEspece {
   id: string
@@ -44,6 +46,8 @@ export default function ITCalendrierPage() {
   const [isLoading, setIsLoading] = React.useState(true)
   const [filtreTypePlanche, setFiltreTypePlanche] = React.useState('all')
   const [recherche, setRecherche] = React.useState('')
+  const [editingItp, setEditingItp] = React.useState<ITPWithEspece | null>(null)
+  const [editDialogOpen, setEditDialogOpen] = React.useState(false)
 
   // Charger les ITPs
   React.useEffect(() => {
@@ -86,6 +90,15 @@ export default function ITCalendrierPage() {
     })
   }, [itps, filtreTypePlanche, recherche])
 
+  const handleEdit = (itp: ITPWithEspece) => {
+    setEditingItp(itp)
+    setEditDialogOpen(true)
+  }
+
+  const handleSaved = (updated: ITPWithEspece) => {
+    setItps(prev => prev.map(itp => itp.id === updated.id ? updated : itp))
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -101,7 +114,7 @@ export default function ITCalendrierPage() {
             <div>
               <h1 className="text-xl font-bold">Calendrier des ITPs</h1>
               <p className="text-sm text-muted-foreground">
-                Timeline annuelle de tous les itinéraires techniques
+                Timeline annuelle - Cliquez sur une ligne pour modifier
               </p>
             </div>
           </div>
@@ -189,7 +202,7 @@ export default function ITCalendrierPage() {
                   </thead>
                   <tbody>
                     {itpsFiltres.map(itp => (
-                      <GanttRow key={itp.id} itp={itp} />
+                      <GanttRow key={itp.id} itp={itp} onEdit={handleEdit} />
                     ))}
                   </tbody>
                 </table>
@@ -204,11 +217,19 @@ export default function ITCalendrierPage() {
             <p className="text-sm text-blue-800">
               <strong>Comment lire ce calendrier :</strong>
               {' '}Les barres colorées montrent les périodes de semis (orange), croissance (vert) et récolte (violet) pour chaque ITP.
-              Cliquez sur un mois dans la timeline pour voir en détail.
+              Cliquez sur une ligne pour modifier les semaines directement.
             </p>
           </CardContent>
         </Card>
       </main>
+
+      {/* Dialog d'édition */}
+      <ItpEditDialog
+        itp={editingItp}
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        onSaved={handleSaved}
+      />
     </div>
   )
 }

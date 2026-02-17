@@ -5,6 +5,7 @@
 import { auth } from "./auth"
 import { redirect } from "next/navigation"
 import { NextResponse } from "next/server"
+import { checkRateLimit, getClientIP } from "./rate-limit"
 
 /**
  * Récupère la session courante (Server Component)
@@ -40,8 +41,16 @@ export async function requireAdmin() {
 /**
  * Vérifie l'authentification pour les API routes
  * Retourne une erreur 401 si non connecté
+ * Applique le rate limiting par IP (100 req/15min)
  */
-export async function requireAuthApi() {
+export async function requireAuthApi(request?: Request) {
+  // Rate limiting par IP
+  if (request) {
+    const ip = getClientIP(request)
+    const rateLimitError = checkRateLimit(`api:${ip}`, { windowMs: 15 * 60 * 1000, max: 100 })
+    if (rateLimitError) return { error: rateLimitError, session: null }
+  }
+
   const session = await auth()
   if (!session?.user) {
     return {
@@ -59,8 +68,8 @@ export async function requireAuthApi() {
  * Vérifie le rôle admin pour les API routes
  * Retourne une erreur 403 si non admin
  */
-export async function requireAdminApi() {
-  const { error, session } = await requireAuthApi()
+export async function requireAdminApi(request?: Request) {
+  const { error, session } = await requireAuthApi(request)
   if (error) return { error, session: null }
 
   if (session!.user.role !== "ADMIN") {

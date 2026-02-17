@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('GET /api/irrigations error:', error)
     return NextResponse.json(
-      { error: 'Erreur lors de la récupération des irrigations', details: String(error) },
+      { error: 'Erreur lors de la récupération des irrigations', details: "Erreur interne du serveur" },
       { status: 500 }
     )
   }
@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('POST /api/irrigations error:', error)
     return NextResponse.json(
-      { error: "Erreur lors de la création de l'irrigation", details: String(error) },
+      { error: "Erreur lors de la création de l'irrigation", details: "Erreur interne du serveur" },
       { status: 500 }
     )
   }

@@ -2,8 +2,14 @@
 
 import * as React from "react"
 
+export interface SelectionItem {
+  type: 'planche' | 'objet' | 'arbre'
+  id: string | number
+}
+
 interface PlancheWithCulture {
   id: string
+  nom: string
   largeur: number | null
   longueur: number | null
   posX: number | null
@@ -82,15 +88,12 @@ interface GardenViewProps {
   objets?: ObjetJardin[]
   arbres?: Arbre[]
   editable?: boolean
-  selectedId?: string | null
-  selectedObjetId?: number | null
-  selectedArbreId?: number | null
+  selection?: SelectionItem[]
+  onSelectionChange?: (selection: SelectionItem[]) => void
+  onGroupMove?: (dx: number, dy: number) => void
   onPlancheMove?: (id: string, x: number, y: number) => void
-  onPlancheClick?: (id: string) => void
   onObjetMove?: (id: number, x: number, y: number) => void
-  onObjetClick?: (id: number) => void
   onArbreMove?: (id: number, x: number, y: number) => void
-  onArbreClick?: (id: number) => void
   scale?: number // pixels per meter
   // Couleurs personnalisables
   plancheColor?: string
@@ -105,15 +108,12 @@ export function GardenView({
   objets = [],
   arbres = [],
   editable = false,
-  selectedId,
-  selectedObjetId,
-  selectedArbreId,
+  selection = [],
+  onSelectionChange,
+  onGroupMove,
   onPlancheMove,
-  onPlancheClick,
   onObjetMove,
-  onObjetClick,
   onArbreMove,
-  onArbreClick,
   scale = 50,
   plancheColor = "#8B5A2B",
   selectedColor = "#22c55e",
@@ -121,10 +121,51 @@ export function GardenView({
   backgroundImage,
 }: GardenViewProps) {
   const svgRef = React.useRef<SVGSVGElement>(null)
+  const containerRef = React.useRef<HTMLDivElement>(null)
   const [dragging, setDragging] = React.useState<{ type: 'planche' | 'objet' | 'arbre'; id: string | number } | null>(null)
+  const [groupDrag, setGroupDrag] = React.useState<{ startX: number; startY: number; lastX: number; lastY: number } | null>(null)
+  const [marquee, setMarquee] = React.useState<{ startX: number; startY: number; currentX: number; currentY: number } | null>(null)
   const [offset, setOffset] = React.useState({ x: 0, y: 0 })
+  const [hasMoved, setHasMoved] = React.useState(false)
   const [viewBox, setViewBox] = React.useState({ x: -1, y: -1, w: 20, h: 15 })
   const [bgImageSize, setBgImageSize] = React.useState<{ width: number; height: number } | null>(null)
+  const [containerSize, setContainerSize] = React.useState({ width: 0, height: 0 })
+
+  // Memoized selection sets for O(1) lookup
+  const selectedPlanches = React.useMemo(() => new Set(
+    selection.filter(s => s.type === 'planche').map(s => s.id as string)
+  ), [selection])
+  const selectedObjets = React.useMemo(() => new Set(
+    selection.filter(s => s.type === 'objet').map(s => s.id as number)
+  ), [selection])
+  const selectedArbres = React.useMemo(() => new Set(
+    selection.filter(s => s.type === 'arbre').map(s => s.id as number)
+  ), [selection])
+
+  // Convert client coordinates to SVG coordinates
+  const clientToSvg = React.useCallback((clientX: number, clientY: number) => {
+    const svg = svgRef.current
+    if (!svg) return null
+    const pt = svg.createSVGPoint()
+    pt.x = clientX
+    pt.y = clientY
+    const ctm = svg.getScreenCTM()
+    if (!ctm) return null
+    return pt.matrixTransform(ctm.inverse())
+  }, [])
+
+  // Observer la taille du conteneur parent (pas le SVG)
+  React.useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    // Mesurer immédiatement
+    setContainerSize({ width: el.clientWidth, height: el.clientHeight })
+    const ro = new ResizeObserver(() => {
+      setContainerSize({ width: el.clientWidth, height: el.clientHeight })
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
 
   // Charger les dimensions de l'image de fond
   React.useEffect(() => {
@@ -217,151 +258,209 @@ export function GardenView({
     return plancheColor
   }
 
-  const handlePlancheMouseDown = (e: React.MouseEvent, plancheId: string) => {
+  // Check if an item is in the current selection
+  const isItemSelected = React.useCallback((type: SelectionItem['type'], id: string | number) => {
+    if (type === 'planche') return selectedPlanches.has(id as string)
+    if (type === 'objet') return selectedObjets.has(id as number)
+    return selectedArbres.has(id as number)
+  }, [selectedPlanches, selectedObjets, selectedArbres])
+
+  // Hit-test: find all items whose bounding box intersects the given rect
+  const computeItemsInRect = React.useCallback((x1: number, y1: number, x2: number, y2: number): SelectionItem[] => {
+    const minX = Math.min(x1, x2), maxX = Math.max(x1, x2)
+    const minY = Math.min(y1, y2), maxY = Math.max(y1, y2)
+    const items: SelectionItem[] = []
+
+    planches.forEach(p => {
+      const px = p.posX ?? 0, py = p.posY ?? 0
+      const pw = p.largeur ?? 0.8, pl = p.longueur ?? 2
+      if (px + pw > minX && px < maxX && py + pl > minY && py < maxY) {
+        items.push({ type: 'planche', id: p.id })
+      }
+    })
+
+    objets.forEach(o => {
+      if (o.posX + o.largeur > minX && o.posX < maxX && o.posY + o.longueur > minY && o.posY < maxY) {
+        items.push({ type: 'objet', id: o.id })
+      }
+    })
+
+    arbres.forEach(a => {
+      const r = a.envergure / 2
+      if (a.posX + r > minX && a.posX - r < maxX && a.posY + r > minY && a.posY - r < maxY) {
+        items.push({ type: 'arbre', id: a.id })
+      }
+    })
+
+    return items
+  }, [planches, objets, arbres])
+
+  const handleItemMouseDown = (e: React.MouseEvent, type: SelectionItem['type'], id: string | number) => {
     if (!editable) {
-      onPlancheClick?.(plancheId)
+      // Non-edit mode: simple click select
+      onSelectionChange?.([{ type, id }])
       return
     }
 
     e.stopPropagation()
+    setHasMoved(false)
 
-    const svg = svgRef.current
-    if (!svg) return
+    const svgP = clientToSvg(e.clientX, e.clientY)
+    if (!svgP) return
 
-    const pt = svg.createSVGPoint()
-    pt.x = e.clientX
-    pt.y = e.clientY
-    const ctm = svg.getScreenCTM()
-    if (!ctm) return
-    const svgP = pt.matrixTransform(ctm.inverse())
+    // Shift+click: toggle in selection
+    if (e.shiftKey) {
+      const alreadySelected = isItemSelected(type, id)
+      if (alreadySelected) {
+        onSelectionChange?.(selection.filter(s => !(s.type === type && s.id === id)))
+      } else {
+        onSelectionChange?.([...selection, { type, id }])
+      }
+      return
+    }
 
-    const planche = planches.find(p => p.id === plancheId)
-    if (!planche) return
+    const alreadySelected = isItemSelected(type, id)
 
-    setDragging({ type: 'planche', id: plancheId })
-    setOffset({
-      x: svgP.x - (planche.posX ?? 0),
-      y: svgP.y - (planche.posY ?? 0)
-    })
+    if (alreadySelected && selection.length > 1) {
+      // Start group drag
+      setGroupDrag({ startX: svgP.x, startY: svgP.y, lastX: svgP.x, lastY: svgP.y })
+    } else {
+      // Select only this item and start single drag
+      if (!alreadySelected) {
+        onSelectionChange?.([{ type, id }])
+      }
+
+      // Compute offset for single drag
+      if (type === 'planche') {
+        const planche = planches.find(p => p.id === id)
+        if (planche) setOffset({ x: svgP.x - (planche.posX ?? 0), y: svgP.y - (planche.posY ?? 0) })
+      } else if (type === 'objet') {
+        const objet = objets.find(o => o.id === id)
+        if (objet) setOffset({ x: svgP.x - objet.posX, y: svgP.y - objet.posY })
+      } else {
+        const arbre = arbres.find(a => a.id === id)
+        if (arbre) setOffset({ x: svgP.x - arbre.posX, y: svgP.y - arbre.posY })
+      }
+      setDragging({ type, id })
+    }
   }
 
-  const handleObjetMouseDown = (e: React.MouseEvent, objetId: number) => {
-    if (!editable) {
-      onObjetClick?.(objetId)
-      return
-    }
+  // Mouse down on SVG background: start marquee
+  const handleSvgMouseDown = (e: React.MouseEvent) => {
+    if (!editable) return
+    // Only react to background clicks (not bubbled from items)
+    if (e.target !== svgRef.current && !(e.target as Element)?.closest?.('rect[data-bg]')) return
 
-    e.stopPropagation()
+    const svgP = clientToSvg(e.clientX, e.clientY)
+    if (!svgP) return
 
-    const svg = svgRef.current
-    if (!svg) return
-
-    const pt = svg.createSVGPoint()
-    pt.x = e.clientX
-    pt.y = e.clientY
-    const ctm = svg.getScreenCTM()
-    if (!ctm) return
-    const svgP = pt.matrixTransform(ctm.inverse())
-
-    const objet = objets.find(o => o.id === objetId)
-    if (!objet) return
-
-    setDragging({ type: 'objet', id: objetId })
-    setOffset({
-      x: svgP.x - objet.posX,
-      y: svgP.y - objet.posY
-    })
-  }
-
-  const handleArbreMouseDown = (e: React.MouseEvent, arbreId: number) => {
-    if (!editable) {
-      onArbreClick?.(arbreId)
-      return
-    }
-
-    e.stopPropagation()
-
-    const svg = svgRef.current
-    if (!svg) return
-
-    const pt = svg.createSVGPoint()
-    pt.x = e.clientX
-    pt.y = e.clientY
-    const ctm = svg.getScreenCTM()
-    if (!ctm) return
-    const svgP = pt.matrixTransform(ctm.inverse())
-
-    const arbre = arbres.find(a => a.id === arbreId)
-    if (!arbre) return
-
-    setDragging({ type: 'arbre', id: arbreId })
-    setOffset({
-      x: svgP.x - arbre.posX,
-      y: svgP.y - arbre.posY
-    })
+    setHasMoved(false)
+    setMarquee({ startX: svgP.x, startY: svgP.y, currentX: svgP.x, currentY: svgP.y })
   }
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (!dragging || !editable) return
+    if (!editable) return
 
-    const svg = svgRef.current
-    if (!svg) return
+    const svgP = clientToSvg(e.clientX, e.clientY)
+    if (!svgP) return
 
-    const pt = svg.createSVGPoint()
-    pt.x = e.clientX
-    pt.y = e.clientY
-    const ctm = svg.getScreenCTM()
-    if (!ctm) return
-    const svgP = pt.matrixTransform(ctm.inverse())
+    // Marquee mode
+    if (marquee) {
+      setHasMoved(true)
+      setMarquee(prev => prev ? { ...prev, currentX: svgP.x, currentY: svgP.y } : null)
+      return
+    }
 
-    // Snap to 0.1m grid (plus fin pour un deplacement fluide)
-    const snapGrid = 10 // 10 = 0.1m, 4 = 0.25m, 2 = 0.5m
-    const newX = Math.round((svgP.x - offset.x) * snapGrid) / snapGrid
-    const newY = Math.round((svgP.y - offset.y) * snapGrid) / snapGrid
+    // Group drag mode
+    if (groupDrag) {
+      setHasMoved(true)
+      const snapGrid = 10
+      const dx = Math.round((svgP.x - groupDrag.lastX) * snapGrid) / snapGrid
+      const dy = Math.round((svgP.y - groupDrag.lastY) * snapGrid) / snapGrid
+      if (dx !== 0 || dy !== 0) {
+        onGroupMove?.(dx, dy)
+        setGroupDrag(prev => prev ? { ...prev, lastX: prev.lastX + dx, lastY: prev.lastY + dy } : null)
+      }
+      return
+    }
 
-    if (dragging.type === 'planche') {
-      onPlancheMove?.(dragging.id as string, newX, newY)
-    } else if (dragging.type === 'objet') {
-      onObjetMove?.(dragging.id as number, newX, newY)
-    } else if (dragging.type === 'arbre') {
-      onArbreMove?.(dragging.id as number, newX, newY)
+    // Single drag mode
+    if (dragging) {
+      setHasMoved(true)
+      const snapGrid = 10
+      const newX = Math.round((svgP.x - offset.x) * snapGrid) / snapGrid
+      const newY = Math.round((svgP.y - offset.y) * snapGrid) / snapGrid
+
+      if (dragging.type === 'planche') {
+        onPlancheMove?.(dragging.id as string, newX, newY)
+      } else if (dragging.type === 'objet') {
+        onObjetMove?.(dragging.id as number, newX, newY)
+      } else if (dragging.type === 'arbre') {
+        onArbreMove?.(dragging.id as number, newX, newY)
+      }
     }
   }
 
   const handleMouseUp = () => {
-    if (dragging && editable) {
-      if (dragging.type === 'planche') {
-        onPlancheClick?.(dragging.id as string)
-      } else if (dragging.type === 'objet') {
-        onObjetClick?.(dragging.id as number)
-      } else if (dragging.type === 'arbre') {
-        onArbreClick?.(dragging.id as number)
+    // Marquee release: select items in rect
+    if (marquee) {
+      if (hasMoved) {
+        const items = computeItemsInRect(marquee.startX, marquee.startY, marquee.currentX, marquee.currentY)
+        onSelectionChange?.(items)
+      } else {
+        // Click on background without moving = deselect all
+        onSelectionChange?.([])
       }
+      setMarquee(null)
+      setHasMoved(false)
+      return
+    }
+
+    // Group drag release
+    if (groupDrag) {
+      setGroupDrag(null)
+      setHasMoved(false)
+      return
+    }
+
+    // Single drag release: if didn't move, it was a click → select the item
+    if (dragging && !hasMoved) {
+      onSelectionChange?.([{ type: dragging.type, id: dragging.id }])
     }
     setDragging(null)
+    setHasMoved(false)
   }
 
   const handleSvgClick = (e: React.MouseEvent) => {
-    // Clic sur le fond = désélectionner
-    if (e.target === svgRef.current) {
-      onPlancheClick?.("")
-      onObjetClick?.(0)
-      onArbreClick?.(0)
+    // In non-edit mode, click on background = deselect
+    if (!editable && (e.target === svgRef.current || (e.target as Element)?.closest?.('rect[data-bg]'))) {
+      onSelectionChange?.([])
     }
   }
 
-  const width = viewBox.w * scale
-  const height = viewBox.h * scale
+  // Dimensions en pixels : au minimum la taille du conteneur
+  const svgWidth = Math.max(viewBox.w * scale, containerSize.width)
+  const svgHeight = Math.max(viewBox.h * scale, containerSize.height)
 
-  // Générer les lignes de grille
+  // ViewBox effectif : couvre le contenu ET remplit le conteneur
+  const effectiveViewBox = React.useMemo(() => {
+    return {
+      x: viewBox.x,
+      y: viewBox.y,
+      w: svgWidth / scale,
+      h: svgHeight / scale,
+    }
+  }, [viewBox, svgWidth, svgHeight, scale])
+
+  // Générer les lignes de grille basées sur le viewBox effectif
   const gridLines = React.useMemo(() => {
     const lines: { x1: number; y1: number; x2: number; y2: number; type: 'small' | 'medium' | 'large' }[] = []
 
     // Arrondir aux mètres pour aligner la grille
-    const startX = Math.floor(viewBox.x)
-    const endX = Math.ceil(viewBox.x + viewBox.w)
-    const startY = Math.floor(viewBox.y)
-    const endY = Math.ceil(viewBox.y + viewBox.h)
+    const startX = Math.floor(effectiveViewBox.x)
+    const endX = Math.ceil(effectiveViewBox.x + effectiveViewBox.w)
+    const startY = Math.floor(effectiveViewBox.y)
+    const endY = Math.ceil(effectiveViewBox.y + effectiveViewBox.h)
 
     // Lignes verticales
     for (let x = startX; x <= endX; x += 0.5) {
@@ -376,16 +475,18 @@ export function GardenView({
     }
 
     return lines
-  }, [viewBox])
+  }, [effectiveViewBox])
 
   return (
-    <div className="overflow-auto h-full">
+    <div ref={containerRef} className="h-full w-full relative">
+      <div className="absolute inset-0 overflow-auto">
       <svg
         ref={svgRef}
-        width={width}
-        height={height}
-        viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`}
+        width={svgWidth}
+        height={svgHeight}
+        viewBox={`${effectiveViewBox.x} ${effectiveViewBox.y} ${effectiveViewBox.w} ${effectiveViewBox.h}`}
         className={editable ? "cursor-crosshair" : ""}
+        onMouseDown={handleSvgMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
@@ -393,10 +494,11 @@ export function GardenView({
       >
         {/* Fond */}
         <rect
-          x={viewBox.x}
-          y={viewBox.y}
-          width={viewBox.w}
-          height={viewBox.h}
+          data-bg="true"
+          x={effectiveViewBox.x}
+          y={effectiveViewBox.y}
+          width={effectiveViewBox.w}
+          height={effectiveViewBox.h}
           fill="#f0fdf4"
         />
 
@@ -445,14 +547,14 @@ export function GardenView({
         {/* Objets de jardin (rendus en premier, sous les planches) */}
         {objets.map((objet) => {
           const color = objet.couleur || OBJET_COLORS[objet.type] || OBJET_COLORS.autre
-          const isSelected = selectedObjetId === objet.id
+          const isSelected = selectedObjets.has(objet.id)
           const isDraggingThis = dragging?.type === 'objet' && dragging.id === objet.id
 
           return (
             <g
               key={`objet-${objet.id}`}
               transform={`translate(${objet.posX}, ${objet.posY}) rotate(${objet.rotation2D}, ${objet.largeur/2}, ${objet.longueur/2})`}
-              onMouseDown={(e) => handleObjetMouseDown(e, objet.id)}
+              onMouseDown={(e) => handleItemMouseDown(e, 'objet', objet.id)}
               style={{ cursor: editable ? (isDraggingThis ? "grabbing" : "grab") : "pointer" }}
             >
               {/* Forme selon le type */}
@@ -568,7 +670,7 @@ export function GardenView({
         {/* Arbres et arbustes */}
         {arbres.map((arbre) => {
           const color = arbre.couleur || ARBRE_COLORS[arbre.type] || ARBRE_COLORS.fruitier
-          const isSelected = selectedArbreId === arbre.id
+          const isSelected = selectedArbres.has(arbre.id)
           const isDraggingThis = dragging?.type === 'arbre' && dragging.id === arbre.id
           const r = arbre.envergure / 2
 
@@ -576,7 +678,7 @@ export function GardenView({
             <g
               key={`arbre-${arbre.id}`}
               transform={`translate(${arbre.posX}, ${arbre.posY})`}
-              onMouseDown={(e) => handleArbreMouseDown(e, arbre.id)}
+              onMouseDown={(e) => handleItemMouseDown(e, 'arbre', arbre.id)}
               style={{ cursor: editable ? (isDraggingThis ? "grabbing" : "grab") : "pointer" }}
             >
               {/* Ombre */}
@@ -639,14 +741,14 @@ export function GardenView({
           const w = planche.largeur ?? 0.8
           const l = planche.longueur ?? 2
           const color = getPlancheColor(planche)
-          const isSelected = selectedId === planche.id
+          const isSelected = selectedPlanches.has(planche.id)
           const isDraggingThis = dragging?.type === 'planche' && dragging.id === planche.id
 
           return (
             <g
               key={planche.id}
               transform={`translate(${x}, ${y}) rotate(${planche.rotation2D ?? 0}, ${w/2}, ${l/2})`}
-              onMouseDown={(e) => handlePlancheMouseDown(e, planche.id)}
+              onMouseDown={(e) => handleItemMouseDown(e, 'planche', planche.id)}
               style={{ cursor: editable ? (isDraggingThis ? "grabbing" : "grab") : "pointer" }}
             >
               {/* Ombre */}
@@ -694,7 +796,7 @@ export function GardenView({
                 fontWeight="600"
                 style={{ pointerEvents: "none" }}
               >
-                {planche.id}
+                {planche.nom || planche.id}
               </text>
               {/* Cultures en cours - sillons en pointillés */}
               {planche.cultures.length > 0 && (
@@ -819,8 +921,23 @@ export function GardenView({
           )
         })}
 
+        {/* Rectangle de sélection (marquee) */}
+        {marquee && hasMoved && (
+          <rect
+            x={Math.min(marquee.startX, marquee.currentX)}
+            y={Math.min(marquee.startY, marquee.currentY)}
+            width={Math.abs(marquee.currentX - marquee.startX)}
+            height={Math.abs(marquee.currentY - marquee.startY)}
+            fill="rgba(59, 130, 246, 0.1)"
+            stroke="#3b82f6"
+            strokeWidth={0.04}
+            strokeDasharray="0.15 0.08"
+            style={{ pointerEvents: "none" }}
+          />
+        )}
+
         {/* Échelle */}
-        <g transform={`translate(${viewBox.x + 0.3}, ${viewBox.y + viewBox.h - 0.3})`}>
+        <g transform={`translate(${effectiveViewBox.x + 0.3}, ${effectiveViewBox.y + effectiveViewBox.h - 0.3})`}>
           <rect x={-0.1} y={-0.25} width={1.4} height={0.4} fill="white" fillOpacity={0.8} rx={0.05} />
           <line x1={0} y1={0} x2={1} y2={0} stroke="#374151" strokeWidth={0.04} />
           <line x1={0} y1={-0.08} x2={0} y2={0.08} stroke="#374151" strokeWidth={0.04} />
@@ -828,6 +945,7 @@ export function GardenView({
           <text x={0.5} y={-0.12} textAnchor="middle" fontSize={0.15} fill="#374151" fontWeight="500">1m</text>
         </g>
       </svg>
+      </div>
     </div>
   )
 }

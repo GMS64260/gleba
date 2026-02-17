@@ -13,6 +13,7 @@ import { requireAuthApi } from '@/lib/auth-utils'
 type RouteParams = { params: Promise<{ id: string }> }
 
 // GET /api/planches/[id]
+// URL param "id" is the planche nom (human-readable name)
 export async function GET(
   request: NextRequest,
   { params }: RouteParams
@@ -22,11 +23,14 @@ export async function GET(
 
   try {
     const { id } = await params
+    const nom = decodeURIComponent(id)
 
     const planche = await prisma.planche.findUnique({
       where: {
-        id,
-        userId: session!.user.id,
+        nom_userId: {
+          nom,
+          userId: session!.user.id,
+        },
       },
       include: {
         rotation: {
@@ -59,7 +63,7 @@ export async function GET(
 
     if (!planche) {
       return NextResponse.json(
-        { error: `Planche "${id}" non trouvée` },
+        { error: `Planche "${nom}" non trouvée` },
         { status: 404 }
       )
     }
@@ -75,6 +79,7 @@ export async function GET(
 }
 
 // PUT /api/planches/[id]
+// URL param "id" is the planche nom
 export async function PUT(
   request: NextRequest,
   { params }: RouteParams
@@ -84,6 +89,7 @@ export async function PUT(
 
   try {
     const { id } = await params
+    const nom = decodeURIComponent(id)
     const body = await request.json()
 
     // Validation
@@ -98,14 +104,16 @@ export async function PUT(
     // Vérifier existence et propriété
     const existing = await prisma.planche.findUnique({
       where: {
-        id,
-        userId: session!.user.id,
+        nom_userId: {
+          nom,
+          userId: session!.user.id,
+        },
       },
     })
 
     if (!existing) {
       return NextResponse.json(
-        { error: `Planche "${id}" non trouvée` },
+        { error: `Planche "${nom}" non trouvée` },
         { status: 404 }
       )
     }
@@ -119,7 +127,7 @@ export async function PUT(
 
     // Mise à jour
     const planche = await prisma.planche.update({
-      where: { id },
+      where: { id: existing.id },
       data: {
         ...data,
         surface,
@@ -140,6 +148,7 @@ export async function PUT(
 }
 
 // DELETE /api/planches/[id]
+// URL param "id" is the planche nom
 export async function DELETE(
   request: NextRequest,
   { params }: RouteParams
@@ -149,12 +158,15 @@ export async function DELETE(
 
   try {
     const { id } = await params
+    const nom = decodeURIComponent(id)
 
     // Vérifier existence, propriété et dépendances
     const planche = await prisma.planche.findUnique({
       where: {
-        id,
-        userId: session!.user.id,
+        nom_userId: {
+          nom,
+          userId: session!.user.id,
+        },
       },
       include: {
         _count: {
@@ -167,7 +179,7 @@ export async function DELETE(
 
     if (!planche) {
       return NextResponse.json(
-        { error: `Planche "${id}" non trouvée` },
+        { error: `Planche "${nom}" non trouvée` },
         { status: 404 }
       )
     }
@@ -176,7 +188,7 @@ export async function DELETE(
     if (planche._count.cultures > 0) {
       return NextResponse.json(
         {
-          error: `Impossible de supprimer la planche "${id}" car elle a des cultures`,
+          error: `Impossible de supprimer la planche "${nom}" car elle a des cultures`,
           details: { cultures: planche._count.cultures }
         },
         { status: 409 }
@@ -185,10 +197,10 @@ export async function DELETE(
 
     // Suppression
     await prisma.planche.delete({
-      where: { id },
+      where: { id: planche.id },
     })
 
-    return NextResponse.json({ success: true, deleted: id })
+    return NextResponse.json({ success: true, deleted: nom })
   } catch (error) {
     console.error('DELETE /api/planches/[id] error:', error)
     return NextResponse.json(

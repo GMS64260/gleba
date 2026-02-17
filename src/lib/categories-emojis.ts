@@ -27,11 +27,3 @@ export function getCategorieEmoji(categorie: string | null | undefined): string 
   return CATEGORIES_EMOJIS[categorie.toLowerCase()] || ''
 }
 
-/**
- * Retourne le nom de la categorie avec emoji
- */
-export function getCategorieWithEmoji(categorie: string | null | undefined): string {
-  if (!categorie) return ''
-  const emoji = getCategorieEmoji(categorie)
-  return emoji ? `${emoji} ${categorie}` : categorie
-}
