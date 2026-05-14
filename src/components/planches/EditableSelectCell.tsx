@@ -100,8 +100,9 @@ export function EditableSelectCell({
         e.stopPropagation()
         setEditing(true)
       }}
-      className="px-2 py-1 rounded hover:bg-yellow-50 hover:ring-1 hover:ring-yellow-400 min-w-[100px] text-left transition-all group relative text-xs"
-      title="Cliquer pour éditer"
+      // PROMPT 20c — Indicateur visuel d'édition rapide
+      className="cursor-text px-2 py-1 rounded hover:bg-yellow-50 hover:ring-1 hover:ring-yellow-400 hover:underline hover:decoration-dotted hover:decoration-yellow-500 min-w-[100px] text-left transition-all group relative text-xs"
+      title="Cliquez pour éditer (Entrée = valider, Échap = annuler)"
     >
       <span className={value ? "font-medium" : "text-muted-foreground"}>
         {displayValue}
