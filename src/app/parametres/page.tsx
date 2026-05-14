@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
 import { StationMeteoConfig } from '@/components/meteo'
 import { useToast } from '@/hooks/use-toast'
 import { Slider } from '@/components/ui/slider'
@@ -828,6 +829,9 @@ export default function ParametresPage() {
         </Card>
 
         {/* Stations météo */}
+        {/* Sécurité : changement de mot de passe */}
+        <ChangePasswordSection />
+
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -1087,6 +1091,146 @@ function ModulesSection() {
         <p className="text-xs text-muted-foreground italic pt-2">
           💡 Astuce : un changement est visible immédiatement après rechargement de la page.
         </p>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ============================================================
+// Section : Changement de mot de passe (self-service)
+// ============================================================
+
+function ChangePasswordSection() {
+  const { toast } = useToast()
+  const [currentPassword, setCurrentPassword] = React.useState("")
+  const [newPassword, setNewPassword] = React.useState("")
+  const [confirmPassword, setConfirmPassword] = React.useState("")
+  const [showCurrent, setShowCurrent] = React.useState(false)
+  const [showNew, setShowNew] = React.useState(false)
+  const [submitting, setSubmitting] = React.useState(false)
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (newPassword !== confirmPassword) {
+      toast({ variant: "destructive", title: "Confirmation différente du nouveau mot de passe" })
+      return
+    }
+    if (newPassword.length < 12) {
+      toast({ variant: "destructive", title: "Au moins 12 caractères requis" })
+      return
+    }
+    setSubmitting(true)
+    try {
+      const res = await fetch("/api/auth/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast({
+          variant: "destructive",
+          title: data.error || "Erreur lors du changement",
+        })
+        return
+      }
+      toast({ title: "Mot de passe modifié ✓" })
+      setCurrentPassword("")
+      setNewPassword("")
+      setConfirmPassword("")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Key className="h-5 w-5" />
+          Sécurité — Mot de passe
+        </CardTitle>
+        <CardDescription>
+          Changez votre mot de passe. Minimum 12 caractères, différent de l'actuel.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleSubmit} className="space-y-3 max-w-md">
+          <div>
+            <Label htmlFor="cp-current">Mot de passe actuel</Label>
+            <div className="flex gap-2">
+              <Input
+                id="cp-current"
+                type={showCurrent ? "text" : "password"}
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                autoComplete="current-password"
+                required
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowCurrent((v) => !v)}
+              >
+                {showCurrent ? "Cacher" : "Voir"}
+              </Button>
+            </div>
+          </div>
+          <div>
+            <Label htmlFor="cp-new">Nouveau mot de passe</Label>
+            <div className="flex gap-2">
+              <Input
+                id="cp-new"
+                type={showNew ? "text" : "password"}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                autoComplete="new-password"
+                minLength={12}
+                required
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowNew((v) => !v)}
+              >
+                {showNew ? "Cacher" : "Voir"}
+              </Button>
+            </div>
+            <p className="text-[11px] text-slate-500 mt-1">
+              {newPassword.length}/12 caractères minimum
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="cp-confirm">Confirmer le nouveau mot de passe</Label>
+            <Input
+              id="cp-confirm"
+              type={showNew ? "text" : "password"}
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              autoComplete="new-password"
+              required
+            />
+            {confirmPassword && newPassword !== confirmPassword && (
+              <p className="text-[11px] text-red-600 mt-1">
+                Les mots de passe ne correspondent pas
+              </p>
+            )}
+          </div>
+          <Button
+            type="submit"
+            disabled={
+              submitting ||
+              !currentPassword ||
+              !newPassword ||
+              newPassword !== confirmPassword ||
+              newPassword.length < 12
+            }
+          >
+            {submitting ? "Mise à jour..." : "Changer le mot de passe"}
+          </Button>
+        </form>
       </CardContent>
     </Card>
   )
