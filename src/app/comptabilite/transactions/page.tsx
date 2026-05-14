@@ -20,6 +20,24 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
+import {
+  compteVente,
+  compteAchat,
+  JOURNAUX,
+} from "@/lib/comptabilite/plan-comptable-agricole"
+
+// DEV1 #3 — Modes de règlement (lus par compteTresorerie pour générer
+// la contrepartie 512 banque / 530 caisse / 411 client / 401 fournisseur).
+const MODES_REGLEMENT = [
+  { value: "Espèces", label: "Espèces" },
+  { value: "Chèque", label: "Chèque" },
+  { value: "Virement", label: "Virement" },
+  { value: "CB", label: "Carte bancaire" },
+  { value: "Prélèvement", label: "Prélèvement SEPA" },
+  { value: "À crédit", label: "À crédit (pas de mouvement)" },
+] as const
+
+const TAUX_TVA = ["0", "2.1", "5.5", "10", "20"] as const
 
 interface SourceBreakdown {
   module: string
@@ -67,7 +85,7 @@ export default function TransactionsPage() {
   const [selectedYear, setSelectedYear] = React.useState(new Date().getFullYear())
   const [selectedModule, setSelectedModule] = React.useState<string>("all")
 
-  // Form states for manual entry
+  // Form states for manual entry (DEV1 #3 — refonte conforme)
   const [formType, setFormType] = React.useState<"vente" | "depense">("vente")
   const [formData, setFormData] = React.useState({
     date: new Date().toISOString().split('T')[0],
@@ -81,7 +99,27 @@ export default function TransactionsPage() {
     fournisseur: "",
     module: "potager",
     paye: true,
+    // DEV1 #3 — nouveaux champs réglementaires
+    tauxTVA: "5.5",
+    journal: "VE",
+    modeReglement: "",
+    numeroPiece: "",
+    pjUrl: "",
+    pjFilename: "",
   })
+  const [pjUploading, setPjUploading] = React.useState(false)
+
+  // DEV1 #3 — Synchroniser le journal par défaut avec le type d'opération.
+  React.useEffect(() => {
+    setFormData((prev) => {
+      const defaultJournal = formType === "vente" ? "VE" : "AC"
+      // Ne change que si l'utilisateur n'a pas explicitement choisi autre chose.
+      if (prev.journal === "VE" || prev.journal === "AC") {
+        return { ...prev, journal: defaultJournal }
+      }
+      return prev
+    })
+  }, [formType])
 
   const currentYear = new Date().getFullYear()
   const years = Array.from({ length: 5 }, (_, i) => currentYear - i)
@@ -125,12 +163,55 @@ export default function TransactionsPage() {
     return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(value)
   }
 
+  // DEV1 #3 — Upload PJ (PDF / JPG / PNG, max 10 Mo, Art. L102 B LPF).
+  const handlePjUpload = async (file: File) => {
+    setPjUploading(true)
+    try {
+      const fd = new FormData()
+      fd.append("file", file)
+      const res = await fetch("/api/upload/justificatif", { method: "POST", body: fd })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || "Échec de l'upload")
+      }
+      const data = await res.json()
+      setFormData((prev) => ({ ...prev, pjUrl: data.url, pjFilename: data.filename }))
+      toast({ title: "Pièce justificative jointe", description: data.filename })
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Erreur upload PJ",
+        description: err instanceof Error ? err.message : "Inconnue",
+      })
+    } finally {
+      setPjUploading(false)
+    }
+  }
+
+  // DEV1 #3 — Compte PCA dérivé pour affichage temps réel sous le sélecteur.
+  const comptePCADerivé = React.useMemo(() => {
+    if (!formData.categorie) return null
+    return formType === "vente"
+      ? compteVente(formData.categorie)
+      : compteAchat(formData.categorie)
+  }, [formType, formData.categorie])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     const endpoint = formType === "vente"
       ? "/api/comptabilite/ventes-manuelles"
       : "/api/comptabilite/depenses-manuelles"
+
+    const tauxTVA = parseFloat(formData.tauxTVA) || 0
+
+    const commonExtras = {
+      tauxTVA,
+      journal: formData.journal,
+      modeReglement: formData.modeReglement || null,
+      numeroPiece: formData.numeroPiece || null,
+      pjUrl: formData.pjUrl || null,
+    }
 
     const body = formType === "vente" ? {
       date: formData.date,
@@ -143,6 +224,7 @@ export default function TransactionsPage() {
       client: formData.client || null,
       module: formData.module,
       paye: formData.paye,
+      ...commonExtras,
     } : {
       date: formData.date,
       categorie: formData.categorie,
@@ -151,6 +233,7 @@ export default function TransactionsPage() {
       fournisseur: formData.fournisseur || null,
       module: formData.module,
       paye: formData.paye,
+      ...commonExtras,
     }
 
     try {
@@ -174,6 +257,12 @@ export default function TransactionsPage() {
           fournisseur: "",
           module: "potager",
           paye: true,
+          tauxTVA: "5.5",
+          journal: formType === "vente" ? "VE" : "AC",
+          modeReglement: "",
+          numeroPiece: "",
+          pjUrl: "",
+          pjFilename: "",
         })
         fetchData()
       } else {
@@ -570,26 +659,133 @@ export default function TransactionsPage() {
                             <>
                               <SelectItem value="legumes">Légumes</SelectItem>
                               <SelectItem value="fruits">Fruits</SelectItem>
-                              <SelectItem value="oeufs">Oeufs</SelectItem>
+                              <SelectItem value="oeufs">Œufs</SelectItem>
                               <SelectItem value="viande">Viande</SelectItem>
                               <SelectItem value="transformation">Transformation</SelectItem>
-                              <SelectItem value="service">Service</SelectItem>
+                              <SelectItem value="service">Service / prestation</SelectItem>
+                              <SelectItem value="bois">Bois et produits forestiers</SelectItem>
                               <SelectItem value="autre">Autre</SelectItem>
                             </>
                           ) : (
                             <>
-                              <SelectItem value="materiel">Matériel</SelectItem>
-                              <SelectItem value="semences">Semences/Plants</SelectItem>
+                              <SelectItem value="semences">Semences / Plants</SelectItem>
                               <SelectItem value="aliments">Aliments animaux</SelectItem>
+                              <SelectItem value="fertilisants">Fertilisants / engrais</SelectItem>
+                              <SelectItem value="phyto">Produits phytosanitaires</SelectItem>
                               <SelectItem value="carburant">Carburant</SelectItem>
-                              <SelectItem value="main_oeuvre">Main d'oeuvre</SelectItem>
-                              <SelectItem value="abonnement">Abonnement</SelectItem>
+                              <SelectItem value="energie">Énergie (eau, élec, gaz)</SelectItem>
+                              <SelectItem value="materiel">Matériel agricole</SelectItem>
+                              <SelectItem value="petit_outillage">Petit outillage</SelectItem>
+                              <SelectItem value="prestation">Prestation / sous-traitance</SelectItem>
+                              <SelectItem value="veterinaire">Vétérinaire</SelectItem>
+                              <SelectItem value="msa">Cotisations MSA</SelectItem>
+                              <SelectItem value="main_oeuvre">Main d&apos;œuvre</SelectItem>
+                              <SelectItem value="abonnement">Abonnement / services</SelectItem>
                               <SelectItem value="autre">Autre</SelectItem>
                             </>
                           )}
                         </SelectContent>
                       </Select>
+                      {/* DEV1 #3 — Compte PCA dérivé affiché en temps réel */}
+                      {comptePCADerivé && (
+                        <p className="text-[11px] text-muted-foreground mt-1">
+                          PCA : <span className="font-mono font-medium">{comptePCADerivé.num}</span> · {comptePCADerivé.lib}
+                        </p>
+                      )}
                     </div>
+                  </div>
+
+                  {/* DEV1 #3 — Bloc compta réglementaire : Journal / Mode règlement / N° pièce / TVA */}
+                  <div className="grid gap-4 md:grid-cols-4 border-t pt-4">
+                    <div>
+                      <Label>Journal *</Label>
+                      <Select
+                        value={formData.journal}
+                        onValueChange={(v) => setFormData({ ...formData, journal: v })}
+                      >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(JOURNAUX).map(([code, lib]) => (
+                            <SelectItem key={code} value={code}>{code} — {lib}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>Mode de règlement</Label>
+                      <Select
+                        value={formData.modeReglement}
+                        onValueChange={(v) => setFormData({ ...formData, modeReglement: v })}
+                      >
+                        <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+                        <SelectContent>
+                          {MODES_REGLEMENT.map((m) => (
+                            <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>N° pièce justificative</Label>
+                      <Input
+                        value={formData.numeroPiece}
+                        onChange={(e) => setFormData({ ...formData, numeroPiece: e.target.value })}
+                        placeholder={formType === "vente" ? "Auto" : "Ex: FA-2026-042"}
+                      />
+                    </div>
+                    <div>
+                      <Label>Taux TVA (%)</Label>
+                      <Select
+                        value={formData.tauxTVA}
+                        onValueChange={(v) => setFormData({ ...formData, tauxTVA: v })}
+                      >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {TAUX_TVA.map((t) => (
+                            <SelectItem key={t} value={t}>{t} %</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  {/* DEV1 #3 — Upload pièce justificative (Art. L102 B LPF) */}
+                  <div>
+                    <Label>Pièce justificative (PDF / JPG / PNG, max 10 Mo)</Label>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Input
+                        type="file"
+                        accept="application/pdf,image/jpeg,image/png"
+                        disabled={pjUploading}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0]
+                          if (f) handlePjUpload(f)
+                        }}
+                        className="flex-1"
+                      />
+                      {formData.pjUrl && (
+                        <>
+                          <a
+                            href={formData.pjUrl}
+                            target="_blank"
+                            className="text-xs text-blue-600 hover:underline whitespace-nowrap"
+                          >
+                            📎 {formData.pjFilename || "PJ jointe"}
+                          </a>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setFormData({ ...formData, pjUrl: "", pjFilename: "" })}
+                          >
+                            Retirer
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                    {pjUploading && (
+                      <p className="text-xs text-muted-foreground mt-1">Upload en cours…</p>
+                    )}
                   </div>
 
                   <div>
