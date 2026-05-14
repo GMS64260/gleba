@@ -96,6 +96,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Bug #2 — Date plantation requise (audit Marc 2026-05-14).
+    if (!body.datePlantation) {
+      return NextResponse.json(
+        { error: "La date de plantation est requise" },
+        { status: 400 }
+      )
+    }
+
     const arbre = await prisma.arbre.create({
       data: {
         userId: session!.user.id,

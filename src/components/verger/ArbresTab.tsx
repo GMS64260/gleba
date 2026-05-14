@@ -397,6 +397,17 @@ export function ArbresTab() {
       toast({ title: "Le nom est requis", variant: "destructive" })
       return
     }
+    // Bug #2 — Date plantation requise (audit Marc 2026-05-14 : sans elle,
+    // le calendrier d'entretien, la pyramide d'âge et les aides PCAE/HVE
+    // ne fonctionnent pas).
+    if (!newArbre.datePlantation) {
+      toast({
+        title: "Date de plantation requise",
+        description: "Renseignez la date de plantation pour activer le calendrier d'entretien et les calculs d'âge.",
+        variant: "destructive",
+      })
+      return
+    }
     if (batchMode) {
       const n = parseInt(batchCount)
       if (!batchPrefix.trim() || !n || n < 1 || n > 200) {
@@ -641,9 +652,10 @@ export function ArbresTab() {
               </div>
             </div>
             <div>
-              <Label>Date de plantation</Label>
+              <Label>Date de plantation *</Label>
               <Input
                 type="date"
+                required
                 value={newArbre.datePlantation}
                 onChange={(e) => setNewArbre({ ...newArbre, datePlantation: e.target.value })}
               />
