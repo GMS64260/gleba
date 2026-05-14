@@ -9,7 +9,7 @@ import { useRouter } from "next/navigation"
 import { ColumnDef } from "@tanstack/react-table"
 import { format } from "date-fns"
 import { fr } from "date-fns/locale"
-import { CloudRain, Droplets, House, Leaf, ListTodo, Sprout, TreeDeciduous, Apple, CheckCircle } from "lucide-react"
+import { CloudRain, Droplets, Leaf, ListTodo, Sprout, TreeDeciduous, Apple, CheckCircle } from "lucide-react"
 
 import { DataTable } from "@/components/tables/DataTable"
 import { Badge } from "@/components/ui/badge"
@@ -53,55 +53,6 @@ interface CultureWithRelations {
   _count: { recoltes: number }
 }
 
-// Indicateur de pluie pour une planche dans le tableau
-function PluieIndicateur({ pluie }: { pluie: PluviometrieBulkItem | undefined }) {
-  if (!pluie) return <span className="text-muted-foreground text-xs">—</span>
-
-  if (pluie.sousAbri) {
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className="inline-flex items-center gap-1 text-slate-400 text-xs">
-            <House className="h-3 w-3" />
-            Abri
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>Planche sous abri — pas de précipitations directes</TooltipContent>
-      </Tooltip>
-    )
-  }
-
-  if (pluie.total7j === null) {
-    return <span className="text-muted-foreground text-xs">—</span>
-  }
-
-  const dry = (pluie.joursSansPluie ?? 0) >= 3
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span className={`inline-flex items-center gap-1 text-xs font-medium ${
-          pluie.total7j >= 10 ? "text-blue-600"
-          : pluie.total7j >= 3 ? "text-blue-400"
-          : dry ? "text-amber-600"
-          : "text-slate-400"
-        }`}>
-          {dry && pluie.total7j < 3
-            ? <Droplets className="h-3 w-3" />
-            : <CloudRain className="h-3 w-3" />
-          }
-          {pluie.total7j} mm
-        </span>
-      </TooltipTrigger>
-      <TooltipContent>
-        {pluie.total7j} mm sur 7 jours
-        {pluie.joursSansPluie !== null && pluie.joursSansPluie > 0
-          ? ` — ${pluie.joursSansPluie}j sans pluie`
-          : ""}
-      </TooltipContent>
-    </Tooltip>
-  )
-}
-
 const etatColors: Record<string, string> = {
   Planifiée: "bg-blue-100 text-blue-800",
   Semée: "bg-green-100 text-green-800",
@@ -110,9 +61,13 @@ const etatColors: Record<string, string> = {
   Terminée: "bg-slate-100 text-slate-800",
 }
 
+// Audit Marc 2026-05-14 — Bug 32 : la colonne "Pluie 7j" affichait la
+// même valeur sur les 19 lignes du tableau (toutes les planches d'une
+// exploitation partagent le même centroïde météo). C'est du bruit qui
+// ne porte aucune info par ligne. On la sort du tableau et on affiche
+// l'info une seule fois en bandeau au-dessus.
 function createColumns(
-  onQuickUpdate: (id: number, field: string, value: boolean) => void,
-  pluieMap: Map<string, PluviometrieBulkItem>
+  onQuickUpdate: (id: number, field: string, value: boolean) => void
 ): ColumnDef<CultureWithRelations>[] {
   return [
     {
@@ -155,19 +110,6 @@ function createColumns(
       accessorKey: "planche.nom",
       header: "Planche",
       cell: ({ getValue }) => getValue() || "-",
-    },
-    {
-      id: "pluie_7j",
-      header: "Pluie 7j",
-      cell: ({ row }) => {
-        const plancheId = row.original.planche?.id
-        const pluie = plancheId ? pluieMap.get(plancheId) : undefined
-        return (
-          <TooltipProvider delayDuration={100}>
-            <PluieIndicateur pluie={pluie} />
-          </TooltipProvider>
-        )
-      },
     },
     {
       accessorKey: "annee",
@@ -335,7 +277,18 @@ export function CulturesTab() {
     [toast]
   )
 
-  const columns = React.useMemo(() => createColumns(handleQuickUpdate, pluieMap), [handleQuickUpdate, pluieMap])
+  const columns = React.useMemo(() => createColumns(handleQuickUpdate), [handleQuickUpdate])
+
+  // Bug 32 — Résumé pluie global (au lieu de la colonne dupliquée 19×).
+  // On prend la médiane des planches en plein air (les planches sous abri
+  // ne reçoivent pas de pluie directe et sont exclues).
+  const pluieResume = React.useMemo(() => {
+    const items = Array.from(pluieMap.values()).filter((p) => !p.sousAbri && p.total7j !== null)
+    if (items.length === 0) return null
+    const total7j = items.reduce((s, i) => s + (i.total7j ?? 0), 0) / items.length
+    const joursSansPluie = Math.max(...items.map((i) => i.joursSansPluie ?? 0))
+    return { total7j: Math.round(total7j * 10) / 10, joursSansPluie, nbPlanches: items.length }
+  }, [pluieMap])
 
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
@@ -383,6 +336,25 @@ export function CulturesTab() {
 
   return (
     <div className="space-y-4">
+      {/* Bug 32 — Bandeau pluie (avant : colonne dupliquée sur chaque
+          ligne, info inutile car identique pour toutes les planches). */}
+      {pluieResume && (
+        <div className="flex items-center gap-3 px-3 py-2 rounded-md border bg-slate-50 text-xs text-slate-600">
+          {pluieResume.total7j >= 5 ? (
+            <CloudRain className="h-4 w-4 text-blue-600 flex-shrink-0" />
+          ) : (
+            <Droplets className="h-4 w-4 text-amber-600 flex-shrink-0" />
+          )}
+          <span>
+            <strong>{pluieResume.total7j} mm</strong> de pluie cumulée sur 7 j
+            {pluieResume.joursSansPluie > 0 && (
+              <> · {pluieResume.joursSansPluie} jour{pluieResume.joursSansPluie > 1 ? "s" : ""} sans pluie</>
+            )}
+            <span className="text-muted-foreground"> (moyenne {pluieResume.nbPlanches} planches plein air)</span>
+          </span>
+        </div>
+      )}
+
       {/* Filtres par état */}
       <Tabs value={selectedEtat} onValueChange={handleEtatChange}>
         <TabsList className="flex-wrap h-auto gap-1">

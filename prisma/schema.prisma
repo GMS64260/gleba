@@ -1432,11 +1432,18 @@ model ObservationCampagne {
 // ============================================================
 
 /// Associations de plantes (compagnonnage)
+/// Audit Marc 2026-05-14 — Bug 19 : la sémantique compatible/incompatible
+/// reposait sur la présence des caractères "!", "+", "×" dans le nom de
+/// la règle, ce qui est fragile (les nouvelles règles créées via l'UI
+/// n'avaient aucun symbole et étaient donc toutes traitées comme
+/// "favorable"). On externalise désormais cette information via le champ
+/// `type` ∈ { favorable, incompatible, neutre }.
 model Association {
   id          String  @id // Ex: "asso-tomate-basilic"
   nom         String  // Ex: "Tomates-Basilic"
   description String?
   notes       String?
+  type        String  @default("favorable") @map("type") // favorable | incompatible | neutre
 
   // Relations
   details AssociationDetail[]

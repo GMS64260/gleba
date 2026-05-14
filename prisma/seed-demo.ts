@@ -109,7 +109,9 @@ async function seedParcellesGeo(userId: string) {
   const parcelles = [
     { nom: "Demo-A · Serre", surface: 0.02, geometry: geoSquare(lat + 0.0002, lng, 14), centroidLat: lat + 0.0002, centroidLng: lng, couches: ["MARAICHAGE" as const], typeSol: "limono-sableux", usage: "culture", commune: "La Boissière-de-Montaigu", couleur: "#10b981" },
     { nom: "Demo-B · Plein champ", surface: 0.08, geometry: geoSquare(lat + 0.0005, lng + 0.0003, 28), centroidLat: lat + 0.0005, centroidLng: lng + 0.0003, couches: ["MARAICHAGE" as const], typeSol: "limono-argileux", usage: "culture", commune: "La Boissière-de-Montaigu", couleur: "#16a34a" },
-    { nom: "Demo-C · Tunnel", surface: 0.02, geometry: geoSquare(lat - 0.0002, lng - 0.0003, 14), centroidLat: lat - 0.0002, centroidLng: lng - 0.0003, couches: ["MARAICHAGE" as const], typeSol: "limono-sableux", usage: "culture", commune: "La Boissière-de-Montaigu", couleur: "#22c55e" },
+    // Audit Marc 2026-05-14 — Bug 18 : "Tunnel" seul prêtait à confusion
+    // (lecteurs y voyaient des arbres). On précise "maraîcher".
+    { nom: "Demo-C · Tunnel maraîcher", surface: 0.02, geometry: geoSquare(lat - 0.0002, lng - 0.0003, 14), centroidLat: lat - 0.0002, centroidLng: lng - 0.0003, couches: ["MARAICHAGE" as const], typeSol: "limono-sableux", usage: "culture", commune: "La Boissière-de-Montaigu", couleur: "#22c55e" },
     { nom: "Demo-V · Verger", surface: 0.08, geometry: geoSquare(lat + 0.0008, lng - 0.0005, 28), centroidLat: lat + 0.0008, centroidLng: lng - 0.0005, couches: ["VERGER" as const], typeSol: "limono-argileux", usage: "verger", commune: "La Boissière-de-Montaigu", couleur: "#65a30d" },
     { nom: "Demo-P · Pâture", surface: 0.4, geometry: geoSquare(lat - 0.0008, lng + 0.0008, 63), centroidLat: lat - 0.0008, centroidLng: lng + 0.0008, couches: ["PATURAGE" as const, "ELEVAGE" as const], typeSol: "limono-argileux", usage: "prairie", commune: "La Boissière-de-Montaigu", couleur: "#a3a300" },
   ]

@@ -220,8 +220,8 @@ function CulturesPrevuesContent() {
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2 text-sm">
               <Badge variant="outline">{stats.total} cultures</Badge>
-              <Badge variant="default" className="bg-green-600">{stats.existantes} creees</Badge>
-              <Badge variant="secondary">{stats.aCreer} a creer</Badge>
+              <Badge variant="default" className="bg-green-600">{stats.existantes} créées</Badge>
+              <Badge variant="secondary">{stats.aCreer} à créer</Badge>
             </div>
             <Select
               value={annee.toString()}
@@ -252,7 +252,7 @@ function CulturesPrevuesContent() {
           </Link>
           <Link href={`/maraichage/planification/cultures-prevues/par-ilots?annee=${annee}`}>
             <Button variant="outline" size="sm">
-              Par ilots
+              Par îlots
             </Button>
           </Link>
           <Link href={`/maraichage/planification/cultures-prevues/par-planches?annee=${annee}`}>

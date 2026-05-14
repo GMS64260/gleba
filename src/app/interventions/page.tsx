@@ -1293,14 +1293,14 @@ export default function InterventionsPage() {
                                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 text-sm">
                                   {/* General info */}
                                   <div className="space-y-1">
-                                    <p className="font-medium text-slate-700">Informations generales</p>
+                                    <p className="font-medium text-slate-700">Informations générales</p>
                                     <p>
                                       <span className="text-muted-foreground">Nb personnes :</span>{" "}
                                       {intervention.nbPersonnes || 1}
                                     </p>
                                     {intervention.coutMainOeuvre !== null && (
                                       <p>
-                                        <span className="text-muted-foreground">Cout main d'oeuvre :</span>{" "}
+                                        <span className="text-muted-foreground">Coût main d'œuvre :</span>{" "}
                                         {formatEuro(intervention.coutMainOeuvre)}
                                       </p>
                                     )}

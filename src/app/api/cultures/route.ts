@@ -226,8 +226,10 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Validation des dates (seulement si au moins une date fournie)
-    // TEMPORAIREMENT EN MODE WARNING SEULEMENT pour debugging
+    // Audit Marc 2026-05-14 — Bug 04 : remonter les warnings dates/ITP
+    // au client (non bloquant). Le client peut alors afficher un toast
+    // explicite "Semis le 01/06 hors fenêtre ITP recommandée (mars–avril)".
+    const dateWarnings: string[] = []
     if (data.dateSemis || data.datePlantation || data.dateRecolte) {
       try {
         const annee = data.annee || new Date().getFullYear()
@@ -239,13 +241,10 @@ export async function POST(request: NextRequest) {
           annee,
         })
 
-        // Log mais ne bloque PAS pour le moment
         if (!dateValidation.valid) {
           console.error('⚠️ Date validation errors (NOT BLOCKING):', dateValidation.errors)
         }
-        if (dateValidation.warnings.length > 0) {
-          console.warn('Date warnings:', dateValidation.warnings)
-        }
+        dateWarnings.push(...dateValidation.warnings)
       } catch (validationError) {
         console.error('Erreur validation dates:', validationError)
       }
@@ -446,7 +445,11 @@ export async function POST(request: NextRequest) {
     })
 
     invalidateKpi(session!.user.id)
-    return NextResponse.json(culture, { status: 201 })
+    // Audit Marc 2026-05-14 — Bug 04 : warnings remontés non bloquants
+    return NextResponse.json(
+      dateWarnings.length > 0 ? { ...culture, warnings: dateWarnings } : culture,
+      { status: 201 }
+    )
   } catch (error) {
     console.error('POST /api/cultures error:', error)
     return NextResponse.json(

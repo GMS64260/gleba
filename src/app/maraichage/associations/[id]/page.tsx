@@ -50,6 +50,7 @@ interface AssociationData {
   nom: string
   description: string | null
   notes: string | null
+  type: "favorable" | "incompatible" | "neutre"
   details: {
     id: number
     especeId: string | null
@@ -78,6 +79,7 @@ export default function EditAssociationPage() {
       nom: "",
       description: null,
       notes: null,
+      type: "favorable",
       details: [],
     },
   })
@@ -109,6 +111,7 @@ export default function EditAssociationPage() {
           nom: associationData.nom,
           description: associationData.description,
           notes: associationData.notes,
+          type: associationData.type || "favorable",
           details: associationData.details.map((d: any) => ({
             id: d.id,
             especeId: d.especeId,
@@ -216,10 +219,10 @@ export default function EditAssociationPage() {
       <main className="container mx-auto px-4 py-6 max-w-3xl">
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            {/* Informations generales */}
+            {/* Informations générales */}
             <Card>
               <CardHeader>
-                <CardTitle>Informations generales</CardTitle>
+                <CardTitle>Informations générales</CardTitle>
                 <CardDescription>
                   Nom et description de l'association
                 </CardDescription>
@@ -236,6 +239,35 @@ export default function EditAssociationPage() {
                       </FormControl>
                       <FormDescription>
                         Nom unique pour identifier cette association
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="type"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Type *</FormLabel>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value || "favorable"}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Sélectionner..." />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="favorable">Favorable (compagnonnage)</SelectItem>
+                          <SelectItem value="incompatible">Incompatible (à éviter)</SelectItem>
+                          <SelectItem value="neutre">Neutre</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormDescription>
+                        Détermine si l'association est favorable ou à éviter
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
