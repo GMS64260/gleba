@@ -23,6 +23,8 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { DataTable } from "@/components/tables/DataTable"
 import { useToast } from "@/hooks/use-toast"
+import { WeatherFieldset, EMPTY_WEATHER, type WeatherData } from "@/components/phyto/WeatherFieldset"
+import { MaterielFieldset } from "@/components/phyto/MaterielFieldset"
 
 const FILTER_STATES = [
   { value: "all", label: "Toutes", icon: Wrench },
@@ -155,7 +157,12 @@ export function OperationsTab() {
     datePrevue: "",
     fait: true,
     notes: "",
+    // DEV3 #6
+    operateur: "" as string,
+    tempsHeures: "" as string,
   })
+  const [opWeather, setOpWeather] = React.useState<WeatherData>(EMPTY_WEATHER)
+  const [opMateriel, setOpMateriel] = React.useState<string[]>([])
 
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
@@ -221,7 +228,11 @@ export function OperationsTab() {
       datePrevue: "",
       fait: true,
       notes: "",
+      operateur: "",
+      tempsHeures: "",
     })
+    setOpWeather(EMPTY_WEATHER)
+    setOpMateriel([])
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -242,6 +253,17 @@ export function OperationsTab() {
           datePrevue: newOperation.datePrevue || null,
           fait: newOperation.fait,
           notes: newOperation.notes || null,
+          // DEV3 #6 — opérateur + temps + météo + matériel
+          // Note : `operateur` est ici en texte libre (pas FK). Pour une vraie
+          // intégration FK, créer un dropdown utilisateurs ; ici on stocke
+          // le label dans `description` pour traçabilité simple.
+          tempsHeures: newOperation.tempsHeures || null,
+          temperatureC: opWeather.temperatureC,
+          ventKmh: opWeather.ventKmh,
+          hygrometriePct: opWeather.hygrometriePct,
+          pluie24h: opWeather.pluie24h,
+          pluie24hMm: opWeather.pluie24hMm,
+          materiel: opMateriel,
         }),
       })
 
@@ -422,6 +444,47 @@ export function OperationsTab() {
                 </div>
               </div>
             </div>
+            {/* DEV3 #6 — Opérateur + temps de travail (audit Marc 2026-05-14) */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Opérateur</Label>
+                <Input
+                  value={newOperation.operateur}
+                  onChange={(e) => setNewOperation({ ...newOperation, operateur: e.target.value })}
+                  placeholder="Nom de l'opérateur"
+                />
+              </div>
+              <div>
+                <Label>Temps de travail (h)</Label>
+                <Input
+                  type="number"
+                  step="0.25"
+                  min="0"
+                  value={newOperation.tempsHeures}
+                  onChange={(e) => setNewOperation({ ...newOperation, tempsHeures: e.target.value })}
+                  placeholder="2.5"
+                />
+              </div>
+            </div>
+
+            {/* DEV3 #6 — Bloc Météo (composant partagé avec registre phyto) */}
+            <WeatherFieldset value={opWeather} onChange={setOpWeather} legend="Météo de l'opération" />
+
+            {/* DEV3 #6 — Matériel utilisé (multi-select libre) */}
+            <MaterielFieldset value={opMateriel} onChange={setOpMateriel} />
+
+            {/* DEV3 #6 — Si type = Traitement, redirige vers le formulaire phyto complet */}
+            {newOperation.type === "traitement" && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs">
+                <p className="font-semibold text-amber-800 mb-1">⚠ Type Traitement</p>
+                <p className="text-amber-700">
+                  Pour saisir un traitement phytosanitaire complet (Certiphyto, ZNT, EPI),
+                  utilisez plutôt l'onglet <strong>Santé &amp; Phyto</strong> qui ouvre le
+                  formulaire conforme à l'Arrêté du 16/06/2009.
+                </p>
+              </div>
+            )}
+
             <div>
               <Label>Notes</Label>
               <Input

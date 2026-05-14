@@ -103,6 +103,8 @@ model User {
   interventionsOperateur Intervention[]     @relation("InterventionOperateur")
   // DEV3 #1 — Observations phyto où ce user est l'opérateur.
   observationsOperateur  ObservationSante[] @relation("ObservationOperateur")
+  // DEV3 #6 — Opérations verger où ce user est l'opérateur.
+  operationsArbresOp     OperationArbre[]   @relation("OperationArbreOperateur")
   // PROMPT 11 — Certiphyto (snapshot copié dans chaque Intervention pour traçabilité).
   certiphytoNum         String?       @map("certiphyto_num")
   certiphytoValidite    DateTime?     @map("certiphyto_validite")
@@ -1111,6 +1113,17 @@ model OperationArbre {
   nbPersonnes     Int?      @default(1) @map("nb_personnes")
   recurrence      String?   @map("recurrence") // "annuelle", "semestrielle", "mensuelle"
   saisonRecommandee String? @map("saison_recommandee") // "hiver", "printemps", "ete", "automne"
+  // DEV3 audit Marc 2026-05-14 - Majeur #6
+  // Opérateur, temps, météo, matériel pour traçabilité complète
+  operateurId     String?   @map("operateur_id")
+  operateur       User?     @relation("OperationArbreOperateur", fields: [operateurId], references: [id], onDelete: SetNull)
+  tempsHeures     Float?    @map("temps_heures")
+  temperatureC    Float?    @map("temperature_c")
+  ventKmh         Float?    @map("vent_kmh")
+  hygrometriePct  Int?      @map("hygrometrie_pct")
+  pluie24h        Boolean?  @map("pluie_24h")
+  pluie24hMm      Float?    @map("pluie_24h_mm")
+  materiel        String[]  @default([]) @map("materiel")
   notes       String?   @map("notes")
   createdAt   DateTime  @default(now()) @map("created_at")
 
