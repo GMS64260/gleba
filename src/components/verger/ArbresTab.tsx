@@ -505,6 +505,18 @@ export function ArbresTab() {
         >
           Sans GPS
         </Button>
+        {/* Bug #8 — Planche A4 QR codes pour étiqueter les arbres. */}
+        <a
+          href={`/api/verger/etiquettes-planche${
+            filteredData.length > 0 && filteredData.length <= 60
+              ? `?ids=${filteredData.map((a) => a.id).join(",")}`
+              : ""
+          }`}
+          className="ml-auto inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700"
+          title="Imprimer une planche A4 d'étiquettes QR codes (6 par page)"
+        >
+          📥 Planche QR codes
+        </a>
       </div>
 
       <DataTable
