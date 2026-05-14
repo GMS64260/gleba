@@ -56,7 +56,7 @@ describe('getRecoltesAnneeAggregat', () => {
     mocked.culture.findMany.mockResolvedValue([
       // 10 m² × 5 kg/m² = 50 kg projection
       {
-        semaineRecolte: 35,
+        dateRecolte: new Date(2026, 7, 28), // août
         plancheId: 'p1',
         especeId: 'carotte',
         planche: { surface: 10, largeur: null, longueur: null },
@@ -72,7 +72,7 @@ describe('getRecoltesAnneeAggregat', () => {
   it('fallback surface = largeur × longueur quand surface=null', async () => {
     mocked.culture.findMany.mockResolvedValue([
       {
-        semaineRecolte: 30,
+        dateRecolte: new Date(2026, 6, 26),
         plancheId: 'p1',
         especeId: 'salade',
         planche: { surface: null, largeur: 2, longueur: 5 }, // = 10 m²
@@ -86,7 +86,7 @@ describe('getRecoltesAnneeAggregat', () => {
   it('ignore une culture sans rendement (projection impossible)', async () => {
     mocked.culture.findMany.mockResolvedValue([
       {
-        semaineRecolte: 30,
+        dateRecolte: new Date(2026, 6, 26),
         plancheId: 'p1',
         especeId: 'inconnue',
         planche: { surface: 100, largeur: null, longueur: null },
@@ -103,7 +103,7 @@ describe('getRecoltesAnneeAggregat', () => {
     ])
     mocked.culture.findMany.mockResolvedValue([
       {
-        semaineRecolte: 30,
+        dateRecolte: new Date(2026, 6, 26),
         plancheId: 'p1',
         especeId: 'tomate',
         planche: { surface: 5, largeur: null, longueur: null },

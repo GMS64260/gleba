@@ -77,7 +77,9 @@ export async function getRecoltesAnneeAggregat(
       recolteFaite: false,
     },
     select: {
-      semaineRecolte: true,
+      // Note DEV2 : Culture.dateRecolte (pas .semaineRecolte qui
+      // n'existe pas sur le modèle Culture — seulement sur ITP/Variete).
+      dateRecolte: true,
       plancheId: true,
       especeId: true,
       planche: { select: { surface: true, largeur: true, longueur: true } },
@@ -118,7 +120,9 @@ export async function getRecoltesAnneeAggregat(
         : 0)
     if (surface <= 0) continue
     const quantite = surface * c.espece.rendement
-    const mois = c.semaineRecolte ? MOIS_PAR_SEMAINE(c.semaineRecolte) - 1 : null
+    // Note DEV2 : dérive le mois (0..11) depuis Culture.dateRecolte si
+    // saisie (la projection se mappe au mois prévu de récolte).
+    const mois = c.dateRecolte ? c.dateRecolte.getMonth() : null
     if (mois !== null) moisBuckets[mois].projectionKg += quantite
 
     const existing = parEspeceMap.get(c.especeId) ?? {
