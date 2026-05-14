@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/tooltip"
 import { Info } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { BulkActions } from "@/components/calendrier/BulkActions"
 import { CalendarView } from "@/components/dashboard/CalendarView"
 import { ItpCalendarView } from "@/components/dashboard/ItpCalendarView"
 import { IrrigationAdvisor } from "@/components/meteo"
@@ -232,6 +233,31 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
       toast({ title: currentValue ? "Annule" : "Fait !" })
     } catch {
       toast({ variant: "destructive", title: "Erreur" })
+    }
+  }
+
+  // PROMPT 20a — Bulk "Tout fait" pour semis ou plantation (récolte exclu : qty manuelle)
+  const bulkDoneTaches = async (type: "semis" | "plantation" | "recolte") => {
+    if (!taches || type === "recolte") return
+    const key = type === "semis" ? "semis" : "plantations"
+    const ids = taches[key].filter((t) => !t.fait).map((t) => t.id)
+    if (ids.length === 0) return
+    // Optimistic update
+    setTaches((prev) => {
+      if (!prev) return prev
+      return { ...prev, [key]: prev[key].map((t) => (ids.includes(t.id) ? { ...t, fait: true } : t)) }
+    })
+    try {
+      const res = await fetch("/api/cultures/bulk-fait", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids, type }),
+      })
+      if (!res.ok) throw new Error("Échec")
+      toast({ title: `${ids.length} tâche${ids.length > 1 ? "s" : ""} marquée${ids.length > 1 ? "s" : ""} comme faite${ids.length > 1 ? "s" : ""}` })
+    } catch {
+      toast({ variant: "destructive", title: "Erreur, recharge en cours" })
+      fetchTaches()
     }
   }
 
@@ -532,6 +558,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                 type="semis"
                 emptyText="Aucun semis cette semaine"
                 onToggle={toggleTache}
+                onBulkDone={bulkDoneTaches}
               />
               <TaskSection
                 title="Plantations"
@@ -541,6 +568,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                 type="plantation"
                 emptyText="Aucune plantation cette semaine"
                 onToggle={toggleTache}
+                onBulkDone={bulkDoneTaches}
               />
               <TaskSection
                 title="Récoltes"
@@ -665,6 +693,7 @@ function TaskSection({
   type,
   emptyText,
   onToggle,
+  onBulkDone,
 }: {
   title: string
   icon: React.ElementType
@@ -673,8 +702,10 @@ function TaskSection({
   type: "semis" | "plantation" | "recolte"
   emptyText: string
   onToggle: (id: number, type: "semis" | "plantation" | "recolte", fait: boolean, especeId: string) => void
+  onBulkDone?: (type: "semis" | "plantation" | "recolte") => void | Promise<void>
 }) {
   const enRetardCount = items.filter(i => i.retardJours > 0 && !i.fait).length
+  const aFaireCount = items.filter(i => !i.fait).length
 
   return (
     <Card>
@@ -690,8 +721,13 @@ function TaskSection({
             )}
             {items.length > 0 && (
               <Badge variant="secondary">
-                {items.filter((i) => !i.fait).length}/{items.length}
+                {aFaireCount}/{items.length}
               </Badge>
+            )}
+            {/* PROMPT 20a — bouton "Tout fait" sur semis/plantation seulement
+                (la récolte requiert saisie quantité, traitée individuellement) */}
+            {type !== "recolte" && aFaireCount >= 2 && onBulkDone && (
+              <BulkActions count={aFaireCount} onMarkAllDone={() => onBulkDone(type)} reportEnabled={false} />
             )}
           </div>
         </CardTitle>
