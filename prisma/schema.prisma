@@ -1603,9 +1603,22 @@ model SoinAnimal {
   lotId       Int?        @map("lot_id")
   lot         LotAnimaux? @relation(fields: [lotId], references: [id], onDelete: SetNull)
   date        DateTime    @default(now()) @map("date")
-  type        String      @map("type") // "vaccination", "vermifuge", "traitement", "autre"
+  type        String      @map("type") // étendue P19B : Vaccination, Vermifuge, Traitement, Tonte, Parage, Castration, Identification, Prophylaxie, Coproscopie, Mise en lutte, Tarissement, Autre
   description String?     @map("description")
-  produit     String?     @map("produit") // Produit utilisé
+  produit     String?     @map("produit") // Libellé legacy (compat) — la FK produit_id est prioritaire
+  // PROMPT 19B — Produit vétérinaire référencé (snapshot des temps d'attente)
+  produitId   String?     @map("produit_id")
+  produitVeterinaire ProduitVeterinaire? @relation(fields: [produitId], references: [id], onDelete: SetNull)
+  dose        String?     @map("dose") // ex "2 ml/10 kg PV"
+  voie        String?     @map("voie") // 'IM','SC','PO','Local','Autre'
+  motif       String?     @map("motif") // Indication clinique
+  ordonnanceUrl String?   @map("ordonnance_url") // PDF ordonnance archivée
+  // Temps d'attente snapshot au moment de l'application (en jours)
+  tempsAttenteLaitJ   Int? @map("temps_attente_lait_j")
+  tempsAttenteViandeJ Int? @map("temps_attente_viande_j")
+  // Dates calculées (date_soin + temps_attente)
+  finAttenteLait      DateTime? @map("fin_attente_lait")
+  finAttenteViande    DateTime? @map("fin_attente_viande")
   quantite    Float?      @map("quantite")
   unite       String?     @map("unite")
   cout        Float?      @map("cout") // €
@@ -1620,7 +1633,35 @@ model SoinAnimal {
   @@index([lotId])
   @@index([type])
   @@index([fait])
+  @@index([produitId])
+  @@index([finAttenteLait])
+  @@index([finAttenteViande])
   @@map("soins_animaux")
+}
+
+/// Produit vétérinaire référencé (PROMPT 19B).
+/// Table partagée (pas de userId) : référentiel commun aux exploitations.
+model ProduitVeterinaire {
+  id                       String   @id @default(cuid())
+  nom                      String   @map("nom")
+  substanceActive          String?  @map("substance_active")
+  amm                      String?  @map("amm") // n° AMM ANSES-ANMV
+  // Espèces ciblées (JSON pour souplesse — accept ['bovin','caprin',...])
+  especesCibles            String[] @default([]) @map("especes_cibles")
+  tempsAttenteLaitJ        Int      @default(0) @map("temps_attente_lait_j")
+  tempsAttenteViandeJ      Int      @default(0) @map("temps_attente_viande_j")
+  ordonnanceObligatoire    Boolean  @default(true) @map("ordonnance_obligatoire")
+  autoriseAB               Boolean  @default(false) @map("autorise_ab")
+  voiesAdmin               String[] @default([]) @map("voies_admin") // ['IM','SC','PO']
+  description              String?  @map("description")
+  createdAt                DateTime @default(now()) @map("created_at")
+
+  soins                    SoinAnimal[]
+
+  @@unique([nom, amm])
+  @@index([nom])
+  @@index([substanceActive])
+  @@map("produits_veterinaires")
 }
 
 /// Naissances d'animaux
