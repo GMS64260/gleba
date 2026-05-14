@@ -53,6 +53,16 @@ interface DashboardArbresData {
     productionBoisKg: number
     venteBoisAnnee: number
     operationsEnAttente: number
+    // Bug #6 — KPI verger
+    surfaceVergerHa?: number
+    pyramideAge?: {
+      age_0_5: number
+      age_5_15: number
+      age_15_30: number
+      age_30_plus: number
+      sansDate: number
+    }
+    topEspeces?: { espece: string; count: number }[]
   }
   charts: {
     recoltesFruitsMois: { mois: string; quantite: number }[]
@@ -183,6 +193,21 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
           </CardContent>
         </Card>
 
+        {/* Bug #6 — Surface verger (ha) */}
+        <Card className="bg-gradient-to-br from-emerald-500 to-emerald-600 text-white">
+          <CardHeader className="pb-1 pt-3 px-4">
+            <CardDescription className="text-emerald-100 text-xs">Surface verger</CardDescription>
+            <CardTitle className="text-2xl">
+              {loading ? <Skeleton className="h-8 w-16 bg-emerald-400" /> : `${data?.stats.surfaceVergerHa ?? 0} ha`}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pb-3 px-4">
+            <p className="text-xs text-emerald-100">
+              Parcelles avec arbres
+            </p>
+          </CardContent>
+        </Card>
+
         <Card className="bg-gradient-to-br from-slate-700 to-slate-800 text-white">
           <CardHeader className="pb-1 pt-3 px-4">
             <CardDescription className="text-slate-300 text-xs">Fruitiers</CardDescription>
@@ -230,6 +255,98 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
           </CardContent>
         </Card>
       </div>
+
+      {/* Bug #6 — Pyramide d'âge + Top 5 espèces */}
+      {(data?.stats.pyramideAge || data?.stats.topEspeces) && (
+        <div className="grid gap-3 lg:grid-cols-2">
+          {data?.stats.pyramideAge && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <TreeDeciduous className="h-4 w-4 text-lime-600" />
+                  Pyramide d'âge des arbres
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Tranches d'âge des fruitiers et petits fruits (basé sur la date de plantation)
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {(() => {
+                  const p = data.stats.pyramideAge!
+                  const max = Math.max(p.age_0_5, p.age_5_15, p.age_15_30, p.age_30_plus, 1)
+                  const tranches: { label: string; n: number; color: string }[] = [
+                    { label: "0 – 5 ans", n: p.age_0_5, color: "bg-emerald-400" },
+                    { label: "5 – 15 ans", n: p.age_5_15, color: "bg-lime-500" },
+                    { label: "15 – 30 ans", n: p.age_15_30, color: "bg-amber-500" },
+                    { label: "30 ans et +", n: p.age_30_plus, color: "bg-orange-600" },
+                  ]
+                  return (
+                    <div className="space-y-2">
+                      {tranches.map((t) => (
+                        <div key={t.label} className="flex items-center gap-3 text-xs">
+                          <div className="w-24 text-muted-foreground">{t.label}</div>
+                          <div className="flex-1 h-5 bg-slate-100 rounded overflow-hidden">
+                            <div
+                              className={`h-full ${t.color}`}
+                              style={{ width: `${(t.n / max) * 100}%` }}
+                            />
+                          </div>
+                          <div className="w-12 text-right font-medium">{t.n}</div>
+                        </div>
+                      ))}
+                      {p.sansDate > 0 && (
+                        <p className="text-xs text-muted-foreground italic mt-2">
+                          {p.sansDate} arbre(s) sans date de plantation
+                        </p>
+                      )}
+                    </div>
+                  )
+                })()}
+              </CardContent>
+            </Card>
+          )}
+
+          {data?.stats.topEspeces && data.stats.topEspeces.length > 0 && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Apple className="h-4 w-4 text-orange-500" />
+                  Top 5 espèces du verger
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Répartition par nombre d'arbres
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="h-[200px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={data.stats.topEspeces}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={40}
+                        outerRadius={75}
+                        dataKey="count"
+                        nameKey="espece"
+                        label={({ name, value }) => `${name}: ${value}`}
+                      >
+                        {data.stats.topEspeces.map((_, i) => (
+                          <Cell
+                            key={i}
+                            fill={["#84cc16", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"][i % 5]}
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
 
       {/* Calendrier des operations */}
       <VergerCalendarView year={year} />
