@@ -44,7 +44,104 @@ export interface CreerFactureParams {
   mentionsLegales?: string | null
   notes?: string | null
   factureOrigineId?: number | null
+  conditionsPaiement?: string | null
+  mentionsSpecifiques?: string[]
   lignes: LigneFactureInput[]
+}
+
+/**
+ * Calcule les totaux HT/TVA par taux à partir des lignes.
+ * Retour : `{ "5.5": { ht, tva, ttc }, "20": { ht, tva, ttc }, ... }`
+ */
+export function totauxParTaux(lignes: LigneFactureInput[]): Record<string, { ht: number; tva: number; ttc: number }> {
+  const out: Record<string, { ht: number; tva: number; ttc: number }> = {}
+  for (const l of lignes) {
+    const k = String(l.tauxTVA)
+    if (!out[k]) out[k] = { ht: 0, tva: 0, ttc: 0 }
+    out[k].ht += l.montantHT
+    out[k].tva += l.montantTVA
+    out[k].ttc += l.montantTTC
+  }
+  // Arrondi à 2 décimales
+  for (const k of Object.keys(out)) {
+    out[k].ht = Math.round(out[k].ht * 100) / 100
+    out[k].tva = Math.round(out[k].tva * 100) / 100
+    out[k].ttc = Math.round(out[k].ttc * 100) / 100
+  }
+  return out
+}
+
+/**
+ * Snapshot d'identité émetteur figé à l'émission de la facture.
+ * Toute modification ultérieure sur Exploitation ne touche pas les factures déjà émises.
+ */
+export interface EmetteurSnapshot {
+  raisonSociale: string
+  formeJuridique: string
+  siret: string
+  siren: string
+  numeroTvaIntracom: string | null
+  regimeFiscal: string
+  regimeTva: string
+  adresseSiege: string
+  codePostal: string
+  ville: string
+  pays: string
+  emailContact: string
+  telContact: string | null
+  capitalSocial: number | null
+  rib: string | null
+  bic: string | null
+  banqueNom: string | null
+  logoUrl: string | null
+  certifBioOrganisme: string | null
+  tauxPenalitesRetard: string | null
+  indemniteRecouvrement: number
+  tauxEscompte: string | null
+}
+
+async function snapshotEmetteur(tx: PrismaTx, userId: string): Promise<EmetteurSnapshot | null> {
+  const e = await tx.exploitation.findUnique({ where: { userId } })
+  if (!e) return null
+  return {
+    raisonSociale: e.raisonSociale,
+    formeJuridique: e.formeJuridique,
+    siret: e.siret,
+    siren: e.siren,
+    numeroTvaIntracom: e.numeroTvaIntracom,
+    regimeFiscal: e.regimeFiscal,
+    regimeTva: e.regimeTva,
+    adresseSiege: e.adresseSiege,
+    codePostal: e.codePostal,
+    ville: e.ville,
+    pays: e.pays,
+    emailContact: e.emailContact,
+    telContact: e.telContact,
+    capitalSocial: e.capitalSocial ? Number(e.capitalSocial) : null,
+    rib: e.rib,
+    bic: e.bic,
+    banqueNom: e.banqueNom,
+    logoUrl: e.logoUrl,
+    certifBioOrganisme: e.certifBioOrganisme,
+    tauxPenalitesRetard: e.tauxPenalitesRetard,
+    indemniteRecouvrement: Number(e.indemniteRecouvrement),
+    tauxEscompte: e.tauxEscompte,
+  }
+}
+
+/**
+ * Construit la liste des mentions par défaut à partir du régime de l'exploitation
+ * et du contenu des lignes (présence de lignes AB par exemple).
+ */
+function mentionsParDefaut(snapshot: EmetteurSnapshot | null, lignes: LigneFactureInput[]): string[] {
+  const out: string[] = []
+  // Mention 293 B si franchise
+  if (snapshot?.regimeTva === 'franchise-293b') out.push('293b')
+  // Mentions générales obligatoires (pro)
+  out.push('escompte', 'penalites', 'indemnite-40')
+  // Mention AB si au moins une ligne en AB
+  if (lignes.some((l) => l.statutBio === 'AB')) out.push('ab')
+  return out
 }
 
 /**
@@ -146,6 +243,10 @@ export async function creerFacture(tx: PrismaTx, params: CreerFactureParams) {
     }
   }
 
+  const emetteur = await snapshotEmetteur(tx, params.userId)
+  const totaux = totauxParTaux(params.lignes)
+  const mentions = params.mentionsSpecifiques ?? mentionsParDefaut(emetteur, params.lignes)
+
   return tx.facture.create({
     data: {
       userId: params.userId,
@@ -160,11 +261,15 @@ export async function creerFacture(tx: PrismaTx, params: CreerFactureParams) {
       totalHT: params.totalHT,
       totalTVA: params.totalTVA,
       totalTTC: params.totalTTC,
+      totauxParTauxTva: totaux as any,
       statut: params.statut || 'emise',
       modePaiement: params.modePaiement || null,
       datePaiement: params.datePaiement || null,
       factureOrigineId: params.factureOrigineId || null,
       mentionsLegales: params.mentionsLegales || null,
+      conditionsPaiement: params.conditionsPaiement ?? null,
+      mentionsSpecifiques: mentions,
+      emetteurSnapshot: emetteur as any,
       notes: params.notes || null,
       lignes: {
         create: params.lignes.map((l, index) => ({
