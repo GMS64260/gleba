@@ -8,7 +8,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { ColumnDef } from "@tanstack/react-table"
-import { Leaf, TreeDeciduous, Cherry, Loader2, ExternalLink } from "lucide-react"
+import { Leaf, TreeDeciduous, Cherry, Loader2, ExternalLink, GitBranch, Bug, TreePine, Download } from "lucide-react"
 
 import { DataTable } from "@/components/tables/DataTable"
 import { Badge } from "@/components/ui/badge"
@@ -157,7 +157,52 @@ const columns: ColumnDef<EspeceWithRelations>[] = [
   },
 ]
 
+// Bug #4 — Sous-référentiels supplémentaires : porte-greffes, bioagresseurs,
+// essences bocagères. Wrapper exporté qui switche entre 4 vues.
+const SOUS_REFS = [
+  { key: "especes", label: "Espèces", icon: Leaf },
+  { key: "porte-greffes", label: "Porte-greffes", icon: GitBranch },
+  { key: "bioagresseurs", label: "Bioagresseurs", icon: Bug },
+  { key: "essences", label: "Essences bocagères", icon: TreePine },
+] as const
+type SousRef = typeof SOUS_REFS[number]["key"]
+
 export function ReferentielTab() {
+  const [sousRef, setSousRef] = React.useState<SousRef>("especes")
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="inline-flex rounded-md border bg-white">
+          {SOUS_REFS.map(({ key, label, icon: Icon }) => (
+            <button
+              key={key}
+              onClick={() => setSousRef(key)}
+              className={`inline-flex items-center gap-1 px-3 py-1.5 text-sm border-l first:border-l-0 ${
+                sousRef === key ? "bg-lime-600 text-white" : "text-slate-700 hover:bg-slate-100"
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {label}
+            </button>
+          ))}
+        </div>
+        <a
+          href={`/api/verger/referentiel/export?onglet=${sousRef}`}
+          className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700"
+        >
+          <Download className="h-3.5 w-3.5" />
+          Export CSV
+        </a>
+      </div>
+      {sousRef === "especes" && <EspecesReferentiel />}
+      {sousRef === "porte-greffes" && <PorteGreffesReferentiel />}
+      {sousRef === "bioagresseurs" && <BioagresseursReferentiel />}
+      {sousRef === "essences" && <EssencesReferentiel />}
+    </div>
+  )
+}
+
+function EspecesReferentiel() {
   const { toast } = useToast()
   const [data, setData] = React.useState<EspeceWithRelations[]>([])
   const [filteredData, setFilteredData] = React.useState<EspeceWithRelations[]>([])
@@ -353,5 +398,219 @@ export function ReferentielTab() {
         </SheetContent>
       </Sheet>
     </div>
+  )
+}
+
+// ============================================================================
+// Bug #4 — Sous-référentiels Porte-greffes / Bioagresseurs / Essences
+// ============================================================================
+
+type PorteGreffeRow = {
+  id: string
+  nom: string
+  vigueur: number
+  precocite: number
+  sensibilites: string[]
+  drageonnement: boolean
+  especesCompatibles: string[]
+  notes: string | null
+}
+
+function PorteGreffesReferentiel() {
+  const { toast } = useToast()
+  const [data, setData] = React.useState<PorteGreffeRow[]>([])
+  const [isLoading, setIsLoading] = React.useState(true)
+
+  React.useEffect(() => {
+    setIsLoading(true)
+    fetch("/api/verger/porte-greffes")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((res) => setData(res?.data || []))
+      .catch(() => toast({ variant: "destructive", title: "Erreur de chargement" }))
+      .finally(() => setIsLoading(false))
+  }, [toast])
+
+  const columns: ColumnDef<PorteGreffeRow>[] = [
+    { accessorKey: "nom", header: "Nom", cell: ({ getValue }) => <span className="font-medium">{getValue() as string}</span> },
+    { accessorKey: "vigueur", header: "Vigueur", cell: ({ getValue }) => `${getValue()}/5` },
+    { accessorKey: "precocite", header: "Précocité", cell: ({ getValue }) => `${getValue()}/5` },
+    {
+      accessorKey: "especesCompatibles",
+      header: "Espèces compatibles",
+      cell: ({ getValue }) => {
+        const arr = (getValue() as string[]) ?? []
+        if (arr.length === 0) return <span className="text-muted-foreground">—</span>
+        return <span className="text-xs">{arr.slice(0, 3).join(", ")}{arr.length > 3 ? ` +${arr.length - 3}` : ""}</span>
+      },
+    },
+    {
+      accessorKey: "sensibilites",
+      header: "Sensibilités",
+      cell: ({ getValue }) => {
+        const arr = (getValue() as string[]) ?? []
+        if (arr.length === 0) return <span className="text-muted-foreground">—</span>
+        return <span className="text-xs">{arr.join(", ")}</span>
+      },
+    },
+    { accessorKey: "drageonnement", header: "Drageonne", cell: ({ getValue }) => (getValue() ? "Oui" : "Non") },
+  ]
+
+  return (
+    <DataTable
+      columns={columns}
+      data={data}
+      isLoading={isLoading}
+      showPagination={false}
+      searchPlaceholder="Rechercher un porte-greffe..."
+      emptyMessage="Aucun porte-greffe en référentiel."
+    />
+  )
+}
+
+type BioagresseurRow = {
+  id: string
+  nomCommun: string
+  nomLatin: string
+  type: string
+  organeCible: string
+  periodePression: string[]
+  methodesPbi: string[]
+  seuilNuisibilite: string | null
+  especesCibles: string[]
+}
+
+function BioagresseursReferentiel() {
+  const { toast } = useToast()
+  const [data, setData] = React.useState<BioagresseurRow[]>([])
+  const [isLoading, setIsLoading] = React.useState(true)
+
+  React.useEffect(() => {
+    setIsLoading(true)
+    fetch("/api/verger/bioagresseurs")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((res) => setData(res?.data || []))
+      .catch(() => toast({ variant: "destructive", title: "Erreur de chargement" }))
+      .finally(() => setIsLoading(false))
+  }, [toast])
+
+  const columns: ColumnDef<BioagresseurRow>[] = [
+    {
+      accessorKey: "nomCommun",
+      header: "Bioagresseur",
+      cell: ({ row }) => (
+        <div>
+          <div className="font-medium">{row.original.nomCommun}</div>
+          <div className="text-xs text-muted-foreground italic">{row.original.nomLatin}</div>
+        </div>
+      ),
+    },
+    {
+      accessorKey: "type",
+      header: "Type",
+      cell: ({ getValue }) => {
+        const t = getValue() as string
+        const color = t === "Maladie" ? "bg-red-100 text-red-700" : t === "Ravageur" ? "bg-orange-100 text-orange-700" : "bg-slate-100 text-slate-700"
+        return <Badge variant="outline" className={color}>{t}</Badge>
+      },
+    },
+    { accessorKey: "organeCible", header: "Organe cible" },
+    {
+      accessorKey: "periodePression",
+      header: "Période",
+      cell: ({ getValue }) => (((getValue() as string[]) ?? []).join(", ") || "—"),
+    },
+    {
+      accessorKey: "methodesPbi",
+      header: "Méthodes biocontrôle",
+      cell: ({ getValue }) => (((getValue() as string[]) ?? []).slice(0, 3).join(", ") || "—"),
+    },
+    {
+      accessorKey: "especesCibles",
+      header: "Cibles",
+      cell: ({ getValue }) => {
+        const arr = (getValue() as string[]) ?? []
+        return <span className="text-xs">{arr.slice(0, 3).join(", ")}{arr.length > 3 ? ` +${arr.length - 3}` : ""}</span>
+      },
+    },
+  ]
+
+  return (
+    <DataTable
+      columns={columns}
+      data={data}
+      isLoading={isLoading}
+      showPagination={false}
+      searchPlaceholder="Rechercher un bioagresseur..."
+      emptyMessage="Aucun bioagresseur en référentiel."
+    />
+  )
+}
+
+type EssenceBocageRow = {
+  id: string
+  nomCommun: string
+  nomLatin: string
+  hauteurM: number
+  croissance: string
+  roles: string[]
+  persistant: boolean
+  epineux: boolean
+}
+
+function EssencesReferentiel() {
+  const { toast } = useToast()
+  const [data, setData] = React.useState<EssenceBocageRow[]>([])
+  const [isLoading, setIsLoading] = React.useState(true)
+
+  React.useEffect(() => {
+    setIsLoading(true)
+    fetch("/api/verger/essences-bocageres")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((res) => setData(res?.data || []))
+      .catch(() => toast({ variant: "destructive", title: "Erreur de chargement" }))
+      .finally(() => setIsLoading(false))
+  }, [toast])
+
+  const columns: ColumnDef<EssenceBocageRow>[] = [
+    {
+      accessorKey: "nomCommun",
+      header: "Essence",
+      cell: ({ row }) => (
+        <div>
+          <div className="font-medium">{row.original.nomCommun}</div>
+          <div className="text-xs text-muted-foreground italic">{row.original.nomLatin}</div>
+        </div>
+      ),
+    },
+    { accessorKey: "hauteurM", header: "Hauteur (m)", cell: ({ getValue }) => `${getValue()} m` },
+    { accessorKey: "croissance", header: "Croissance" },
+    {
+      accessorKey: "roles",
+      header: "Rôles écologiques",
+      cell: ({ getValue }) => {
+        const arr = (getValue() as string[]) ?? []
+        return (
+          <div className="flex flex-wrap gap-1">
+            {arr.slice(0, 3).map((r) => (
+              <Badge key={r} variant="outline" className="text-[10px] py-0">{r}</Badge>
+            ))}
+            {arr.length > 3 && <span className="text-xs text-muted-foreground">+{arr.length - 3}</span>}
+          </div>
+        )
+      },
+    },
+    { accessorKey: "persistant", header: "Persistant", cell: ({ getValue }) => (getValue() ? "Oui" : "—") },
+    { accessorKey: "epineux", header: "Épineux", cell: ({ getValue }) => (getValue() ? "Oui" : "—") },
+  ]
+
+  return (
+    <DataTable
+      columns={columns}
+      data={data}
+      isLoading={isLoading}
+      showPagination={false}
+      searchPlaceholder="Rechercher une essence..."
+      emptyMessage="Aucune essence en référentiel."
+    />
   )
 }
