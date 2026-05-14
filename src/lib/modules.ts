@@ -4,9 +4,11 @@
  * dans leur page Paramètres pour personnaliser leur navigation.
  */
 
+// PROMPT 21 — Convention REST unifiée. Les paths historiques (`/`, `/arbres`)
+// restent fonctionnels via redirects 301 (cf next.config.mjs).
 export const MODULES = {
-  maraichage: { id: "maraichage", label: "Maraîchage", path: "/", description: "Cultures potagères, planches, ITPs, récoltes, calendrier lunaire" },
-  verger: { id: "verger", label: "Verger & Forêt", path: "/arbres", description: "Arbres, vergers, replantation forestière, agroforesterie, haies" },
+  maraichage: { id: "maraichage", label: "Maraîchage", path: "/maraichage", description: "Cultures potagères, planches, ITPs, récoltes, calendrier lunaire" },
+  verger: { id: "verger", label: "Verger & Forêt", path: "/verger", description: "Arbres, vergers, replantation forestière, agroforesterie, haies" },
   elevage: { id: "elevage", label: "Élevage", path: "/elevage", description: "Animaux, lots, production œufs, abattages, soins, ventes" },
   comptabilite: { id: "comptabilite", label: "Comptabilité", path: "/comptabilite", description: "Factures, ventes, dépenses, TVA, clients, fournisseurs" },
 } as const
