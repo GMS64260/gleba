@@ -66,6 +66,51 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       }
     }
 
+    // DEV3 audit fix — Validation PUT : si la méthode finale (post-merge) est
+    // chimique, vérifier que les champs réglementaires obligatoires ne sont
+    // pas vidés. Évite un trou de conformité Arrêté 16/06/2009 où on créerait
+    // en règle puis on viderait via PATCH.
+    const methodeFinale = data.methodeTraitement ?? existing.methodeTraitement
+    const isChimique =
+      methodeFinale === "chimique_conventionnel" ||
+      methodeFinale === "chimique_cuivre" ||
+      methodeFinale === "chimique"
+    if (isChimique) {
+      const get = (k: string, oldVal: unknown) =>
+        k in data ? (data as Record<string, unknown>)[k] : oldVal
+      const numAMMFinal = get("numAMM", existing.numAMM)
+      const surfaceFinal = get("surfaceTraiteeHa", existing.surfaceTraiteeHa)
+      const volumeFinal = get("volumeBouillieLHa", existing.volumeBouillieLHa) ?? get("volumeBouillieLTotal", existing.volumeBouillieLTotal)
+      const tempFinal = get("temperatureC", existing.temperatureC)
+      const ventFinal = get("ventKmh", existing.ventKmh)
+      const hygroFinal = get("hygrometriePct", existing.hygrometriePct)
+      const pluieFinal = get("pluie24h", existing.pluie24h)
+      const certiFinal = get("certiphytoNum", existing.certiphytoNum)
+      const zntFinal = get("zntRespectee", existing.zntRespectee)
+
+      const manquants: string[] = []
+      if (!numAMMFinal) manquants.push("N° AMM")
+      if (surfaceFinal == null) manquants.push("Surface traitée (ha)")
+      if (volumeFinal == null) manquants.push("Volume de bouillie")
+      if (tempFinal == null) manquants.push("Température (°C)")
+      if (ventFinal == null) manquants.push("Vent (km/h)")
+      if (hygroFinal == null) manquants.push("Hygrométrie (%)")
+      if (pluieFinal == null) manquants.push("Pluie ±24h")
+      if (!certiFinal) manquants.push("N° Certiphyto opérateur")
+      if (zntFinal == null) manquants.push("ZNT cours d'eau")
+      if (manquants.length > 0) {
+        return NextResponse.json(
+          {
+            error:
+              "Champs réglementaires manquants (Arrêté 16/06/2009) : " +
+              manquants.join(", "),
+            manquants,
+          },
+          { status: 400 }
+        )
+      }
+    }
+
     const observation = await prisma.observationSante.update({
       where: { id: obsId },
       data,
