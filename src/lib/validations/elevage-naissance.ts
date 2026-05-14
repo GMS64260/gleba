@@ -10,4 +10,6 @@ export const naissanceSchema = z.object({
   nombreFemelles: z.number().int().min(0).nullable().optional(),
   poidsTotal: z.number().min(0).nullable().optional(),
   notes: z.string().max(5000).nullable().optional(),
+  // PROMPT 18 — lien optionnel vers la saillie d'origine
+  saillieId: z.string().nullable().optional(),
 })

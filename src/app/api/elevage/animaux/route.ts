@@ -95,6 +95,7 @@ export async function POST(request: NextRequest) {
       posX,
       posY,
       mereId,
+      pereId,
       pereIdentifiant,
       poidsActuel,
       couleur,
@@ -142,6 +143,7 @@ export async function POST(request: NextRequest) {
         posX,
         posY,
         mereId: mereId ?? null,
+        pereId: pereId ?? null,
         pereIdentifiant,
         poidsActuel,
         couleur,
@@ -169,7 +171,7 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { id, nom, race, sexe, statut, lotId, posX, posY, poidsActuel, couleur, notes, dateSortie, causeSortie } = body
+    const { id, nom, race, sexe, statut, lotId, posX, posY, poidsActuel, couleur, notes, dateSortie, causeSortie, mereId, pereId, pereIdentifiant } = body
 
     if (!id) {
       return NextResponse.json({ error: 'ID requis' }, { status: 400 })
@@ -196,6 +198,9 @@ export async function PATCH(request: NextRequest) {
     if (notes !== undefined) updateData.notes = notes
     if (dateSortie !== undefined) updateData.dateSortie = dateSortie ? new Date(dateSortie) : null
     if (causeSortie !== undefined) updateData.causeSortie = causeSortie
+    if (mereId !== undefined) updateData.mereId = mereId ? parseInt(mereId) : null
+    if (pereId !== undefined) updateData.pereId = pereId ? parseInt(pereId) : null
+    if (pereIdentifiant !== undefined) updateData.pereIdentifiant = pereIdentifiant ?? null
 
     const animal = await prisma.animal.update({
       where: { id: parseInt(id) },

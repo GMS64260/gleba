@@ -78,6 +78,8 @@ model User {
   // PROMPT 17 — production laitière
   collectesLait         CollecteLait[]
   lotsFromage           LotFromage[]
+  // PROMPT 18 — saillies / reproduction
+  saillies              Saillie[]
 
   // Relations module comptabilité
   ventesManuelles       VenteManuelle[]
@@ -1396,7 +1398,11 @@ model Animal {
   mereId          Int?           @map("mere_id")
   mere            Animal?        @relation("ParentEnfant", fields: [mereId], references: [id], onDelete: SetNull)
   enfants         Animal[]       @relation("ParentEnfant")
-  pereIdentifiant String?        @map("pere_identifiant") // Référence texte si père externe
+  // PROMPT 18 — Père relié au cheptel (FK) avec fallback texte si externe
+  pereId          Int?           @map("pere_id")
+  pere            Animal?        @relation("PereEnfant", fields: [pereId], references: [id], onDelete: SetNull)
+  enfantsPere     Animal[]       @relation("PereEnfant")
+  pereIdentifiant String?        @map("pere_identifiant") // Référence texte si père externe non géré
   // Infos complémentaires
   poidsActuel     Float?         @map("poids_actuel") // kg
   couleur         String?        @map("couleur_robe") // Couleur de l'animal
@@ -1411,12 +1417,16 @@ model Animal {
   naissancesMere   NaissanceAnimale[] @relation("NaissanceMere")
   // PROMPT 17 — collectes individuelles
   collectesLait    CollecteLait[]
+  // PROMPT 18 — saillies en tant que femelle ou mâle
+  sailliesFemelle  Saillie[] @relation("SaillieFemelle")
+  sailliesMale     Saillie[] @relation("SaillieMale")
 
   @@index([userId])
   @@index([especeAnimaleId])
   @@index([statut])
   @@index([lotId])
   @@index([mereId])
+  @@index([pereId])
   @@map("animaux")
 }
 
@@ -1610,12 +1620,60 @@ model NaissanceAnimale {
   nombreFemelles Int?     @map("nombre_femelles")
   poidsTotal    Float?    @map("poids_total") // kg total portée
   notes         String?   @map("notes")
+  // PROMPT 18 — lien vers la saillie d'origine pour calcul gestation
+  saillieId     String?   @unique @map("saillie_id")
+  saillie       Saillie?  @relation("SaillieMiseBas", fields: [saillieId], references: [id], onDelete: SetNull)
   createdAt     DateTime  @default(now()) @map("created_at")
 
   @@index([userId])
   @@index([mereId])
   @@index([date])
   @@map("naissances_animales")
+}
+
+// ============================================================
+// PROMPT 18 — REPRODUCTION (Saillies)
+// ============================================================
+
+/// Saillies / Inséminations artificielles / Transferts d'embryon.
+/// Origine traçable des futures naissances. Permet le calcul des dates
+/// de mise-bas attendues, des tarissements et du carnet de saillies
+/// exigible en contrôle bovin.
+model Saillie {
+  id                   String   @id @default(cuid())
+  userId               String   @map("user_id")
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date                 DateTime @map("date")
+  femelleId            Int      @map("femelle_id")
+  femelle              Animal   @relation("SaillieFemelle", fields: [femelleId], references: [id], onDelete: Cascade)
+  maleId               Int?     @map("male_id")
+  male                 Animal?  @relation("SaillieMale", fields: [maleId], references: [id], onDelete: SetNull)
+  // Type de monte
+  type                 String   @map("type") // 'Monte naturelle' | 'IA' | 'Transfert embryon'
+  // Si IA externe : agent inséminateur + n° lot de semence
+  agentInseminateur    String?  @map("agent_inseminateur")
+  semenceLot           String?  @map("semence_lot")
+  // Référence texte du père si externe (compat fallback)
+  pereExterneRef       String?  @map("pere_externe_ref")
+  // Cycle de gestation
+  confirmationGestation DateTime? @map("confirmation_gestation") // Date diagnostic +
+  dateMiseBasAttendue   DateTime  @map("date_mise_bas_attendue") // = date + durée espèce
+  dateTarissementPrevue DateTime? @map("date_tarissement_prevue") // ~60j avant mise-bas (caprin/bovin)
+  // Statut courant — synchronisé par triggers applicatifs
+  statut               String   @default("En attente") @map("statut") // 'En attente','Gestante','Non gestante','Mise-bas réalisée','Avortement'
+  notes                String?  @map("notes")
+  // Lien retour vers la mise-bas réalisée (1:1)
+  miseBas              NaissanceAnimale? @relation("SaillieMiseBas")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@index([femelleId])
+  @@index([maleId])
+  @@index([date])
+  @@index([dateMiseBasAttendue])
+  @@index([statut])
+  @@map("saillies")
 }
 
 // ============================================================
