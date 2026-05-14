@@ -34,6 +34,8 @@ import {
 } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Switch } from "@/components/ui/switch"
+import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
 
 interface BesoinSemence {
@@ -147,27 +149,47 @@ function uniteLabel(u: BesoinSemence["uniteDose"]): string {
   }
 }
 
-// Audit Marc Bug #7 — Tooltip pédagogique sur la quantité finale.
-// formule = besoin brut × (1 + marge/100). Affiche aussi le taux de
-// germination de référence pour justifier la marge.
-function GrainesTooltip({ b }: { b: BesoinSemence }) {
-  const brut = b.margeSecuritePct > 0
-    ? b.grainesNecessaires / (1 + b.margeSecuritePct / 100)
-    : b.grainesNecessaires
+// Besoin brut sans marge (réversion du calcul stocké côté API).
+function brutGraines(b: BesoinSemence): number {
+  if (!b.margeSecuritePct || b.margeSecuritePct <= 0) return b.grainesNecessaires
+  return b.grainesNecessaires / (1 + b.margeSecuritePct / 100)
+}
+
+// Audit Marc BUG-01 — Tooltip explicite : dose × surface, puis marge,
+// puis total. Le toggle « appliquer la marge » dans le header bascule entre
+// affichage brut et total.
+function GrainesTooltip({ b, appliquerMarge }: { b: BesoinSemence; appliquerMarge: boolean }) {
+  const brut = brutGraines(b)
+  const valeurAffichee = appliquerMarge ? b.grainesNecessaires : brut
+  const margeG = b.grainesNecessaires - brut
   return (
     <TooltipProvider delayDuration={150}>
       <Tooltip>
         <TooltipTrigger asChild>
           <span className="inline-flex items-center gap-1 cursor-help underline decoration-dotted decoration-slate-400 underline-offset-4">
-            {b.grainesNecessaires.toFixed(1)} g
+            {valeurAffichee.toFixed(1)} g
             <Info className="h-3 w-3 text-slate-400" />
           </span>
         </TooltipTrigger>
         <TooltipContent className="max-w-xs text-xs">
           <div className="font-semibold mb-1">Formule de besoin semences</div>
-          <div>Besoin brut : <strong>{brut.toFixed(1)} g</strong></div>
-          <div>+ marge sécurité <strong>{b.margeSecuritePct}%</strong></div>
-          <div>= total : <strong>{b.grainesNecessaires.toFixed(1)} g</strong></div>
+          <div>
+            Dose × surface : <strong>{brut.toFixed(1)} g</strong>
+            {b.doseSemis !== null && (
+              <span className="text-slate-300"> ({b.doseSemis} {uniteLabel(b.uniteDose)} × {b.surfaceTotale.toFixed(1)} m²)</span>
+            )}
+          </div>
+          {b.margeSecuritePct > 0 && (
+            <>
+              <div>+ marge sécurité <strong>{b.margeSecuritePct}%</strong> ({margeG.toFixed(1)} g)</div>
+              <div>= total avec marge : <strong>{b.grainesNecessaires.toFixed(1)} g</strong></div>
+            </>
+          )}
+          {!appliquerMarge && b.margeSecuritePct > 0 && (
+            <div className="mt-2 text-amber-300">
+              ⚠️ Affichage <strong>sans marge</strong> activé en header.
+            </div>
+          )}
           {b.tauxGerminationPct !== null && (
             <div className="mt-2 text-slate-300">
               Marge dimensionnée sur le taux de germination réaliste de l'espèce&nbsp;: <strong>{b.tauxGerminationPct}%</strong>.
@@ -179,82 +201,91 @@ function GrainesTooltip({ b }: { b: BesoinSemence }) {
   )
 }
 
-const grainesColumns: ColumnDef<BesoinSemence>[] = [
-  ...baseColumns,
-  {
-    accessorKey: "doseSemis",
-    header: "Dose",
-    cell: ({ row }) => {
-      const v = row.original.doseSemis
-      if (v === null || v === undefined) return "-"
-      return `${v} ${uniteLabel(row.original.uniteDose)}`
+function makeGrainesColumns(appliquerMarge: boolean): ColumnDef<BesoinSemence>[] {
+  return [
+    ...baseColumns,
+    {
+      accessorKey: "doseSemis",
+      header: "Dose",
+      cell: ({ row }) => {
+        const v = row.original.doseSemis
+        if (v === null || v === undefined) return "-"
+        return `${v} ${uniteLabel(row.original.uniteDose)}`
+      },
     },
-  },
-  {
-    accessorKey: "grainesNecessaires",
-    header: "Graines (g)",
-    cell: ({ row }) => <GrainesTooltip b={row.original} />,
-  },
-  {
-    accessorKey: "stockActuel",
-    header: "Stock (g)",
-    cell: ({ getValue }) => `${(getValue() as number).toFixed(1)} g`,
-  },
-  {
-    accessorKey: "aCommander",
-    header: "À commander",
-    cell: ({ row }) => {
-      const v = row.original.aCommander
-      return v > 0 ? `${v.toFixed(1)} g` : "—"
+    {
+      accessorKey: "grainesNecessaires",
+      header: appliquerMarge ? "Graines (g) avec marge" : "Graines (g) sans marge",
+      cell: ({ row }) => <GrainesTooltip b={row.original} appliquerMarge={appliquerMarge} />,
     },
-  },
-  {
-    accessorKey: "statut",
-    header: "Statut",
-    cell: ({ row }) => <StatutBadge statut={row.original.statut} />,
-  },
-]
+    {
+      accessorKey: "stockActuel",
+      header: "Stock (g)",
+      cell: ({ getValue }) => `${(getValue() as number).toFixed(1)} g`,
+    },
+    {
+      accessorKey: "aCommander",
+      header: "À commander",
+      cell: ({ row }) => {
+        const cible = appliquerMarge ? row.original.grainesNecessaires : brutGraines(row.original)
+        const v = Math.max(0, cible - row.original.stockActuel)
+        return v > 0 ? `${v.toFixed(1)} g` : "—"
+      },
+    },
+    {
+      accessorKey: "statut",
+      header: "Statut",
+      cell: ({ row }) => <StatutBadge statut={row.original.statut} />,
+    },
+  ]
+}
 
-const plantsColumns: ColumnDef<BesoinSemence>[] = [
-  ...baseColumns,
-  {
-    accessorKey: "nbGrainesG",
-    header: "Graines/g",
-    cell: ({ getValue }) => {
-      const v = getValue() as number | null
-      return v ? v.toLocaleString() : "-"
+function makePlantsColumns(appliquerMarge: boolean): ColumnDef<BesoinSemence>[] {
+  return [
+    ...baseColumns,
+    {
+      accessorKey: "nbGrainesG",
+      header: "Graines/g",
+      cell: ({ getValue }) => {
+        const v = getValue() as number | null
+        return v ? v.toLocaleString() : "-"
+      },
     },
-  },
-  {
-    accessorKey: "grainesNecessaires",
-    header: "Graines (g)",
-    cell: ({ getValue }) => `${(getValue() as number).toFixed(1)} g`,
-  },
-  {
-    accessorKey: "stockActuel",
-    header: "Stock (g)",
-    cell: ({ getValue }) => `${(getValue() as number).toFixed(1)} g`,
-  },
-  {
-    accessorKey: "aCommander",
-    header: "À commander",
-    cell: ({ row }) => {
-      const v = row.original.aCommander
-      return v > 0 ? `${v.toFixed(1)} g` : "—"
+    {
+      accessorKey: "grainesNecessaires",
+      header: appliquerMarge ? "Graines (g) avec marge" : "Graines (g) sans marge",
+      cell: ({ row }) => {
+        const v = appliquerMarge ? row.original.grainesNecessaires : brutGraines(row.original)
+        return `${v.toFixed(1)} g`
+      },
     },
-  },
-  {
-    accessorKey: "statut",
-    header: "Statut",
-    cell: ({ row }) => <StatutBadge statut={row.original.statut} />,
-  },
-]
+    {
+      accessorKey: "stockActuel",
+      header: "Stock (g)",
+      cell: ({ getValue }) => `${(getValue() as number).toFixed(1)} g`,
+    },
+    {
+      accessorKey: "aCommander",
+      header: "À commander",
+      cell: ({ row }) => {
+        const cible = appliquerMarge ? row.original.grainesNecessaires : brutGraines(row.original)
+        const v = Math.max(0, cible - row.original.stockActuel)
+        return v > 0 ? `${v.toFixed(1)} g` : "—"
+      },
+    },
+    {
+      accessorKey: "statut",
+      header: "Statut",
+      cell: ({ row }) => <StatutBadge statut={row.original.statut} />,
+    },
+  ]
+}
 
 const caieuxColumns: ColumnDef<BesoinSemence>[] = [
   ...baseColumns,
   {
     accessorKey: "besoinCaieux",
-    header: "Caieux nécessaires",
+    header: "Caïeux nécessaires",
     cell: ({ getValue }) => (getValue() as number).toLocaleString(),
   },
   {
@@ -287,6 +318,23 @@ function SemencesContent() {
   const [annee, setAnnee] = React.useState(
     parseInt(searchParams.get("annee") || new Date().getFullYear().toString())
   )
+  // BUG-01 audit Marc : toggle pour basculer entre besoin brut et besoin
+  // majoré (marge sécurité). Persistence via localStorage afin que la
+  // préférence du maraîcher tienne d'une session à l'autre.
+  const [appliquerMarge, setAppliquerMarge] = React.useState<boolean>(true)
+  React.useEffect(() => {
+    const stored = typeof window !== "undefined" ? window.localStorage.getItem("planif.appliquerMarge") : null
+    if (stored === "false") setAppliquerMarge(false)
+  }, [])
+  const toggleMarge = React.useCallback((next: boolean) => {
+    setAppliquerMarge(next)
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("planif.appliquerMarge", next ? "true" : "false")
+    }
+  }, [])
+
+  const grainesColumns = React.useMemo(() => makeGrainesColumns(appliquerMarge), [appliquerMarge])
+  const plantsColumns = React.useMemo(() => makePlantsColumns(appliquerMarge), [appliquerMarge])
 
   const annees = React.useMemo(() => {
     const currentYear = new Date().getFullYear()
@@ -324,11 +372,11 @@ function SemencesContent() {
       "Surface (m²)",
       "Nb plants",
       "Graines nec. (g)",
-      "Caieux nec.",
+      "Caïeux nec.",
       "Stock (g)",
       "Stock (unités)",
       "À commander (g)",
-      "À commander (caieux)",
+      "À commander (caïeux)",
       "Statut",
     ]
     const rows = data.map(b => [
@@ -360,6 +408,15 @@ function SemencesContent() {
   const plantRepique = data.filter(b => b.mode === "plant_repique")
   const bulbeCaieu = data.filter(b => b.mode === "bulbe_caieu")
 
+  // BUG-01 : total brut sommé ligne à ligne (chaque espèce peut avoir une
+  // marge différente). Le serveur ne renvoie que le total majoré.
+  const totalGrainesBrut = data
+    .filter(b => b.mode === "graine_directe" || b.mode === "plant_repique")
+    .reduce((s, b) => s + brutGraines(b), 0)
+  const totalGrainesMarge = stats?.totalGraines ?? 0
+  const grainesAffichees = appliquerMarge ? totalGrainesMarge : totalGrainesBrut
+  const margeCumulee = Math.max(0, totalGrainesMarge - totalGrainesBrut)
+
   return (
     <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
       <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
@@ -378,7 +435,17 @@ function SemencesContent() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 border rounded-md px-3 py-1.5 bg-white">
+              <Switch
+                id="toggle-marge"
+                checked={appliquerMarge}
+                onCheckedChange={toggleMarge}
+              />
+              <Label htmlFor="toggle-marge" className="text-xs cursor-pointer">
+                Marge sécurité
+              </Label>
+            </div>
             <Link href="/maraichage/stocks">
               <Button variant="outline" size="sm">
                 <Package className="h-4 w-4 mr-2" />
@@ -441,13 +508,20 @@ function SemencesContent() {
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm text-muted-foreground">
                   Graines nécessaires
+                  {appliquerMarge && <span className="text-[10px] ml-1">(+ marge)</span>}
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold">{stats.totalGraines.toFixed(0)} g</p>
-                <p className="text-xs text-muted-foreground">
-                  {stats.nbGraineDirecte + stats.nbPlantRepique} besoins
-                </p>
+                <p className="text-2xl font-bold">{grainesAffichees.toFixed(0)} g</p>
+                {appliquerMarge && margeCumulee > 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    dose×surface {totalGrainesBrut.toFixed(0)} g + marges {margeCumulee.toFixed(0)} g
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    {stats.nbGraineDirecte + stats.nbPlantRepique} besoins (sans marge)
+                  </p>
+                )}
               </CardContent>
             </Card>
             <Card>
