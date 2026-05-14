@@ -182,14 +182,32 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Facture non trouvée' }, { status: 404 })
     }
 
-    // On annule plutôt que supprimer (obligation légale)
+    // PROMPT 14B — obligation légale : pas de suppression définitive d'une
+    // facture émise/payée. Brouillon → suppression OK. Émise → annulation
+    // (statut). Payée → refus (passer par un avoir).
+    if (existing.statut === 'brouillon') {
+      await prisma.facture.delete({ where: { id: parseInt(id) } })
+      invalidateKpi(session.user.id)
+      return NextResponse.json({ success: true, action: 'deleted' })
+    }
+    if (existing.statut === 'payee') {
+      return NextResponse.json(
+        {
+          error: 'Suppression interdite',
+          details:
+            "Une facture payée ne peut être supprimée. Émettez un avoir pour la régulariser (obligation art. 242 nonies A CGI).",
+        },
+        { status: 409 }
+      )
+    }
+
     await prisma.facture.update({
       where: { id: parseInt(id) },
       data: { statut: 'annulee' },
     })
 
     invalidateKpi(session.user.id)
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, action: 'cancelled' })
   } catch (error) {
     console.error('DELETE /api/comptabilite/factures error:', error)
     return NextResponse.json(
