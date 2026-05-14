@@ -39,6 +39,7 @@ import { WeatherFieldset, EMPTY_WEATHER, type WeatherData } from "@/components/p
 import { EpiFieldset } from "@/components/phyto/EpiFieldset"
 import { ZntFieldset } from "@/components/phyto/ZntFieldset"
 import { ExportPhytoButton } from "@/components/phyto/ExportPhytoButton"
+import { CuivreCounterCard } from "@/components/phyto/CuivreCounterCard"
 
 interface Arbre {
   id: number
@@ -919,6 +920,9 @@ function RegistrePhytoSubTab() {
           </div>
         </CardHeader>
       </Card>
+
+      {/* DEV3 #7 — Widget compteur cuivre Bio (plafonds 4 kg/ha/an et 28 kg/ha/7 ans) */}
+      <CuivreCounterCard />
 
       {/* Stats */}
       <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
