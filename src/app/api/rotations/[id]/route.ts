@@ -108,6 +108,39 @@ export async function PUT(
 
     const { details, ...rotationData } = validationResult.data
 
+    // PROMPT DEV 2 Bug #1 — Cross-check si `active` passe à true sans envoyer
+    // `details`. Le superRefine du schema valide uniquement le payload reçu :
+    // si le client met active=true sans toucher au plan, on doit charger les
+    // détails existants pour vérifier que le plan est complet.
+    if (rotationData.active === true && !details) {
+      const existingDetails = await prisma.rotationDetail.findMany({
+        where: { rotationId: id },
+        select: { annee: true, itpId: true },
+      })
+      const plancheCount = await prisma.planche.count({ where: { rotationId: id } })
+      if (existingDetails.length === 0) {
+        return NextResponse.json(
+          { error: "Une rotation Active doit avoir un plan complet. Ajoutez au moins une étape." },
+          { status: 400 }
+        )
+      }
+      if (existingDetails.every((d) => !d.itpId)) {
+        return NextResponse.json(
+          { error: "Une rotation Active doit avoir au moins une étape avec un ITP." },
+          { status: 400 }
+        )
+      }
+      const effectiveCycle = rotationData.nbAnnees ?? existing.nbAnnees ?? existingDetails.length
+      if (effectiveCycle !== existingDetails.length) {
+        return NextResponse.json(
+          { error: `Le cycle déclaré (${effectiveCycle} ans) doit correspondre au nombre d'étapes (${existingDetails.length}).` },
+          { status: 400 }
+        )
+      }
+      // Note: pas de planche rattachée n'est PAS bloquant (banner UI à la place).
+      void plancheCount
+    }
+
     // Calculer nbAnnees si des details sont fournis
     const nbAnnees = details && details.length > 0
       ? Math.max(...details.map(d => d.annee))

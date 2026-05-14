@@ -71,8 +71,11 @@ export default function NewRotationPage() {
   const form = useForm<CreateRotationInput>({
     resolver: zodResolver(createRotationSchema),
     defaultValues: {
+      // Bug #1 — active: false par défaut. Le superRefine refusera une
+      // rotation Active sans plan complet, et l'utilisateur active ensuite
+      // une fois les étapes saisies.
       id: "",
-      active: true,
+      active: false,
       nbAnnees: null,
       notes: null,
       details: [{ annee: 1, itpId: null }],
@@ -95,14 +98,18 @@ export default function NewRotationPage() {
 
       if (!response.ok) {
         const error = await response.json()
-        throw new Error(error.error || "Erreur lors de la creation")
+        const fieldErrors = error?.details?.fieldErrors as Record<string, string[]> | undefined
+        const messages = fieldErrors
+          ? Object.values(fieldErrors).flat().join(" · ")
+          : error.error
+        throw new Error(messages || "Erreur lors de la création")
       }
 
       toast({
         title: "Rotation créée",
-        description: `La rotation "${data.id}" a ete creee avec succes`,
+        description: `La rotation "${data.id}" a été créée avec succès`,
       })
-      router.push("/rotations")
+      router.push("/maraichage/rotations")
     } catch (error) {
       toast({
         variant: "destructive",
@@ -169,22 +176,43 @@ export default function NewRotationPage() {
                 <FormField
                   control={form.control}
                   name="active"
-                  render={({ field }) => (
-                    <FormItem className="flex items-center justify-between rounded-lg border p-4">
-                      <div className="space-y-0.5">
-                        <FormLabel className="text-base">Active</FormLabel>
-                        <FormDescription>
-                          Rotation utilisable pour la planification
-                        </FormDescription>
-                      </div>
-                      <FormControl>
-                        <Switch
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                        />
-                      </FormControl>
-                    </FormItem>
-                  )}
+                  render={({ field }) => {
+                    const details = form.watch("details") ?? []
+                    const planComplet = details.length > 0 && details.some((d) => d.itpId)
+                    const cycleCoherent =
+                      !form.watch("nbAnnees") || form.watch("nbAnnees") === details.length
+                    const peutActiver = planComplet && cycleCoherent
+                    return (
+                      <FormItem className="flex items-center justify-between rounded-lg border p-4">
+                        <div className="space-y-0.5">
+                          <FormLabel className="text-base">Active</FormLabel>
+                          <FormDescription>
+                            {peutActiver
+                              ? "Rotation utilisable pour la planification"
+                              : "Plan incomplet : ajoutez au moins une étape avec un ITP avant d'activer"}
+                          </FormDescription>
+                        </div>
+                        <FormControl>
+                          <Switch
+                            checked={field.value}
+                            onCheckedChange={(checked) => {
+                              if (checked && !peutActiver) {
+                                toast({
+                                  variant: "destructive",
+                                  title: "Plan incomplet",
+                                  description:
+                                    "Ajoutez au moins une étape avec un ITP avant d'activer la rotation.",
+                                })
+                                return
+                              }
+                              field.onChange(checked)
+                            }}
+                            disabled={!peutActiver && !field.value}
+                          />
+                        </FormControl>
+                      </FormItem>
+                    )
+                  }}
                 />
               </CardContent>
             </Card>

@@ -32,9 +32,26 @@ import {
   FormMessage,
 } from "@/components/ui/form"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
 import { createCultureSchema, type CreateCultureInput } from "@/lib/validations"
 import { RotationAdviceCompact } from "@/components/planche"
+
+// Bug #1 — payload de violation renvoyé par POST /api/cultures (status 409).
+type RotationViolation = {
+  rotationId: string
+  etapeAttendue: number
+  familleAttendue: string | null
+  familleDemandee: string | null
+  message: string
+}
 
 // Convertir un numéro de semaine (1-52) en date pour une annee donnée
 function weekToDate(year: number, week: number): Date {
@@ -65,6 +82,11 @@ export default function NewCulturePage() {
   const [itps, setItps] = React.useState<ITPData[]>([])
   const [planches, setPlanches] = React.useState<{ id: string; nom?: string; longueur: number | null }[]>([])
   const [isSubmitting, setIsSubmitting] = React.useState(false)
+  // Bug #1 — modale violation rotation (renvoyée par le backend en 409).
+  const [rotationWarning, setRotationWarning] = React.useState<{
+    payload: CreateCultureInput
+    violation: RotationViolation
+  } | null>(null)
 
   const form = useForm<CreateCultureInput>({
     resolver: zodResolver(createCultureSchema),
@@ -187,14 +209,27 @@ export default function NewCulturePage() {
     }
   }, [watchedNbRangs, watchedLongueur, watchedEspacement, form])
 
-  const onSubmit = async (data: CreateCultureInput) => {
+  /**
+   * Bug #1 — Soumission avec gestion du 409 rotationViolation.
+   * Si `confirmRotation` est true, on bypass le warning et flag rotationViolee
+   * côté serveur. Sinon, on ouvre la modale et on attend l'arbitrage user.
+   */
+  const submitCulture = async (data: CreateCultureInput, confirmRotation = false) => {
     setIsSubmitting(true)
     try {
       const response = await fetch("/api/cultures", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify({ ...data, confirmRotation }),
       })
+
+      if (response.status === 409) {
+        const payload = await response.json()
+        if (payload?.rotationViolation) {
+          setRotationWarning({ payload: data, violation: payload.rotationViolation })
+          return
+        }
+      }
 
       if (!response.ok) {
         const error = await response.json()
@@ -206,7 +241,7 @@ export default function NewCulturePage() {
         title: "Culture créée",
         description: `La culture #${culture.id} a été créée avec succès`,
       })
-      router.push("/cultures")
+      router.push("/maraichage/cultures")
     } catch (error) {
       toast({
         variant: "destructive",
@@ -217,6 +252,8 @@ export default function NewCulturePage() {
       setIsSubmitting(false)
     }
   }
+
+  const onSubmit = (data: CreateCultureInput) => submitCulture(data, false)
 
   return (
     <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
@@ -637,6 +674,74 @@ export default function NewCulturePage() {
           </form>
         </Form>
       </main>
+
+      {/* Bug #1 — Modale alerte violation de rotation. */}
+      <Dialog
+        open={rotationWarning !== null}
+        onOpenChange={(open) => {
+          if (!open) setRotationWarning(null)
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              ⚠️ Plan de rotation non respecté
+            </DialogTitle>
+            <DialogDescription>
+              Cette planche suit un plan de rotation qui prévoit une autre famille botanique cette année.
+            </DialogDescription>
+          </DialogHeader>
+          {rotationWarning && (
+            <div className="space-y-3 text-sm">
+              <div className="rounded-md bg-amber-50 border border-amber-200 p-3 text-amber-900">
+                {rotationWarning.violation.message}
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <div className="text-muted-foreground">Famille attendue</div>
+                  <div className="font-medium">
+                    {rotationWarning.violation.familleAttendue ?? "—"}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Famille demandée</div>
+                  <div className="font-medium">
+                    {rotationWarning.violation.familleDemandee ?? "—"}
+                  </div>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Si vous continuez, la culture sera créée mais marquée « rotation violée » pour traçabilité.
+              </p>
+            </div>
+          )}
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="outline" onClick={() => setRotationWarning(null)}>
+              Annuler
+            </Button>
+            {rotationWarning && (
+              <Link
+                href={`/maraichage/rotations/${encodeURIComponent(rotationWarning.violation.rotationId)}`}
+                target="_blank"
+              >
+                <Button variant="outline">Voir la rotation</Button>
+              </Link>
+            )}
+            <Button
+              variant="default"
+              onClick={() => {
+                if (!rotationWarning) return
+                const payload = rotationWarning.payload
+                setRotationWarning(null)
+                void submitCulture(payload, true)
+              }}
+              disabled={isSubmitting}
+            >
+              Continuer quand même
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
