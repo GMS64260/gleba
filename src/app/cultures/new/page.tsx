@@ -142,15 +142,16 @@ export default function NewCulturePage() {
     }
   }, [selectedEspece, form])
 
-  // Quand un ITP est sélectionné : remplir dates, nbRangs, espacement
+  // PROMPT 20b — Auto-remplissage ITP → dates de culture
+  // L'année est dans les deps : changer d'année recalcule les dates si ITP fixé.
+  const selectedYear = form.watch("annee")
   React.useEffect(() => {
     if (!selectedItp) return
     const itp = itps.find((i) => i.id === selectedItp)
     if (!itp) return
 
-    const year = form.getValues("annee") || new Date().getFullYear()
+    const year = selectedYear || new Date().getFullYear()
 
-    // Dates prévisionnelles depuis les semaines ITP
     if (itp.semaineSemis) {
       form.setValue("dateSemis", weekToDate(year, itp.semaineSemis))
     }
@@ -160,15 +161,13 @@ export default function NewCulturePage() {
     if (itp.semaineRecolte) {
       form.setValue("dateRecolte", weekToDate(year, itp.semaineRecolte))
     }
-
-    // Nb rangs et espacement depuis l'ITP
     if (itp.nbRangs) {
       form.setValue("nbRangs", itp.nbRangs)
     }
     if (itp.espacement) {
       form.setValue("espacement", Math.round(itp.espacement))
     }
-  }, [selectedItp, itps, form])
+  }, [selectedItp, selectedYear, itps, form])
 
   // Mettre à jour la longueur quand la planche change
   React.useEffect(() => {
@@ -397,6 +396,34 @@ export default function NewCulturePage() {
             <Card>
               <CardHeader>
                 <CardTitle>Dates prévisionnelles</CardTitle>
+                {selectedItp && (() => {
+                  const itp = itps.find((i) => i.id === selectedItp)
+                  if (!itp || (!itp.semaineSemis && !itp.semainePlantation && !itp.semaineRecolte)) return null
+                  return (
+                    <div className="flex items-center justify-between gap-2 text-xs text-slate-600 bg-blue-50 border border-blue-100 rounded p-2 mt-2">
+                      <span>
+                        💡 Dates pré-remplies depuis l'ITP <strong>{itp.id}</strong> (
+                        {[
+                          itp.semaineSemis ? `S${itp.semaineSemis} semis` : null,
+                          itp.semainePlantation ? `S${itp.semainePlantation} plantation` : null,
+                          itp.semaineRecolte ? `S${itp.semaineRecolte} récolte` : null,
+                        ].filter(Boolean).join(" · ")}). Modifiable.
+                      </span>
+                      <button
+                        type="button"
+                        className="text-blue-700 underline hover:text-blue-900"
+                        onClick={() => {
+                          const year = form.getValues("annee") || new Date().getFullYear()
+                          if (itp.semaineSemis) form.setValue("dateSemis", weekToDate(year, itp.semaineSemis))
+                          if (itp.semainePlantation) form.setValue("datePlantation", weekToDate(year, itp.semainePlantation))
+                          if (itp.semaineRecolte) form.setValue("dateRecolte", weekToDate(year, itp.semaineRecolte))
+                        }}
+                      >
+                        Resynchroniser
+                      </button>
+                    </div>
+                  )
+                })()}
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-3 gap-4">
