@@ -75,6 +75,9 @@ model User {
   consommationsAliments ConsommationAliment[]
   soinsAnimaux          SoinAnimal[]
   naissancesAnimales    NaissanceAnimale[]
+  // PROMPT 17 — production laitière
+  collectesLait         CollecteLait[]
+  lotsFromage           LotFromage[]
 
   // Relations module comptabilité
   ventesManuelles       VenteManuelle[]
@@ -1406,6 +1409,8 @@ model Animal {
   soins            SoinAnimal[]
   abattages        Abattage[]
   naissancesMere   NaissanceAnimale[] @relation("NaissanceMere")
+  // PROMPT 17 — collectes individuelles
+  collectesLait    CollecteLait[]
 
   @@index([userId])
   @@index([especeAnimaleId])
@@ -1442,6 +1447,8 @@ model LotAnimaux {
   soins            SoinAnimal[]
   abattages        Abattage[]
   consommations    ConsommationAliment[]
+  // PROMPT 17 — collectes par lot (volaille de chair vs caprin individuel)
+  collectesLait    CollecteLait[]
 
   @@index([userId])
   @@index([especeAnimaleId])
@@ -1494,6 +1501,9 @@ model VenteProduit {
   annule        Boolean      @default(false) @map("annule")
   dateAnnulation DateTime?   @map("date_annulation")
   tauxTVA       Float        @default(5.5) @map("taux_tva")
+  // PROMPT 17 — traçabilité fromage : lien vers lot de fabrication
+  lotFromageId  String?      @map("lot_fromage_id")
+  lotFromage    LotFromage?  @relation(fields: [lotFromageId], references: [id], onDelete: SetNull)
   notes         String?      @map("notes")
   createdAt     DateTime     @default(now()) @map("created_at")
 
@@ -1501,6 +1511,7 @@ model VenteProduit {
   @@index([type])
   @@index([date])
   @@index([factureId])
+  @@index([lotFromageId])
   @@map("ventes_produits")
 }
 
@@ -1605,6 +1616,76 @@ model NaissanceAnimale {
   @@index([mereId])
   @@index([date])
   @@map("naissances_animales")
+}
+
+// ============================================================
+// PROMPT 17 — PRODUCTION LAITIÈRE & FROMAGES
+// ============================================================
+
+/// Collecte de lait — saisie biquotidienne par animal ou par lot.
+model CollecteLait {
+  id              String   @id @default(cuid())
+  userId          String   @map("user_id")
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date            DateTime @map("date") // jour de la traite (sans heure)
+  traite          String   @map("traite") // 'Matin' | 'Soir' | 'Unique'
+  // L'un des deux doit être renseigné (validation applicative)
+  animalId        Int?     @map("animal_id")
+  animal          Animal?  @relation(fields: [animalId], references: [id], onDelete: SetNull)
+  lotId           Int?     @map("lot_id")
+  lot             LotAnimaux? @relation(fields: [lotId], references: [id], onDelete: SetNull)
+  quantiteLitres  Decimal  @map("quantite_litres") @db.Decimal(10, 3)
+  // Analyses laboratoire (optionnel — saisie périodique)
+  mgGpl           Decimal? @map("mg_gpl") @db.Decimal(5, 2) // matière grasse g/L
+  mpGpl           Decimal? @map("mp_gpl") @db.Decimal(5, 2) // matière protéique g/L
+  cellulesParMl   Int?     @map("cellules_par_ml")          // numération cellulaire (×1000/mL)
+  temperatureC    Decimal? @map("temperature_c") @db.Decimal(4, 1)
+  // PROMPT 19 LOT B — lait écarté car animal en temps d'attente vétérinaire
+  ecarteAttente   Boolean  @default(false) @map("ecarte_attente")
+  notes           String?  @map("notes")
+  // Affectation à un lot fromage (NULL = lait cru vendu ou non encore affecté)
+  lotFromageId    String?  @map("lot_fromage_id")
+  lotFromage      LotFromage? @relation(fields: [lotFromageId], references: [id], onDelete: SetNull)
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@unique([userId, date, traite, animalId, lotId], map: "uniq_collecte_traite")
+  @@index([userId, date])
+  @@index([animalId])
+  @@index([lotId])
+  @@index([lotFromageId])
+  @@map("collectes_lait")
+}
+
+/// Lot de fabrication fromage (paquet hygiène : traçabilité descendante).
+model LotFromage {
+  id                  String   @id @default(cuid())
+  userId              String   @map("user_id")
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  numeroLot           String   @map("numero_lot") // L-2026-W20-01
+  dateFabrication     DateTime @map("date_fabrication")
+  typeFromage         String   @map("type_fromage") // 'Frais','Tomme','Crottin','Brique',...
+  volumeLaitUtiliseL  Decimal  @map("volume_lait_utilise_l") @db.Decimal(10, 2)
+  nbPieces            Int      @map("nb_pieces")
+  poidsTotalKg        Decimal  @map("poids_total_kg") @db.Decimal(10, 3)
+  dluo                DateTime? @map("dluo")
+  // Snapshot du statut Bio majoritaire (cf PROMPT 12)
+  statutBioSnapshot   String?  @map("statut_bio_snapshot") // 'AB' | 'C1' | 'C2' | 'C3' | 'Conventionnel'
+  // Mention sur étiquette : 'cru' | 'thermise' | 'pasteurise'
+  traitementThermique String   @default("cru") @map("traitement_thermique")
+  // Allergènes additionnels au-delà du lait (texte libre)
+  allergenes          String?  @map("allergenes")
+  // N° d'agrément sanitaire éventuel (CE FR XX-XXX-XXX)
+  numeroAgrement      String?  @map("numero_agrement")
+  notes               String?  @map("notes")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  collectes           CollecteLait[]
+  ventesProduit       VenteProduit[]
+
+  @@unique([userId, numeroLot])
+  @@index([userId, dateFabrication])
+  @@map("lots_fromage")
 }
 
 // ============================================================

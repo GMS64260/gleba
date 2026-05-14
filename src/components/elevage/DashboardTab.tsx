@@ -57,6 +57,12 @@ interface DashboardData {
     nbPondeuses: number
     fcr: number | null
     consoAlimentsKg: number
+    // PROMPT 17 — KPI lait
+    laitTotalAnnee?: number
+    laitMoyenJourJ30?: number
+    laitStockTransformable?: number
+    nbCollectesAnnee?: number
+    tauxPonteSaisonAttendu?: number | null
   }
   animauxParType: {
     especeAnimaleId: string
@@ -263,14 +269,50 @@ export function DashboardTab({ year }: DashboardTabProps) {
                 <CardHeader className="pb-1 pt-3 px-4">
                   <CardDescription className="text-xs flex items-center gap-1">
                     <Egg className="h-3 w-3" />
-                    Taux de ponte
+                    Taux de ponte (saisonnalisé)
                   </CardDescription>
                   <CardTitle className={`text-2xl ${data.stats.tauxPonte >= 70 ? 'text-green-600' : data.stats.tauxPonte >= 50 ? 'text-amber-600' : 'text-red-600'}`}>
                     {data.stats.tauxPonte}%
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="pb-3 px-4">
-                  <p className="text-xs text-muted-foreground">{data.stats.nbPondeuses} pondeuses actives</p>
+                  <p className="text-xs text-muted-foreground">
+                    {data.stats.nbPondeuses} pondeuses
+                    {data.stats.tauxPonteSaisonAttendu != null && (
+                      <> — attendu période ≈ {data.stats.tauxPonteSaisonAttendu}%</>
+                    )}
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+            {/* PROMPT 17 — KPI Lait */}
+            {data.stats.laitMoyenJourJ30 != null && data.stats.laitMoyenJourJ30 > 0 && (
+              <Card>
+                <CardHeader className="pb-1 pt-3 px-4">
+                  <CardDescription className="text-xs flex items-center gap-1">
+                    🥛 Production lait (30 j)
+                  </CardDescription>
+                  <CardTitle className="text-2xl text-blue-700">
+                    {data.stats.laitMoyenJourJ30} L/j
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pb-3 px-4">
+                  <p className="text-xs text-muted-foreground">{data.stats.nbCollectesAnnee ?? 0} collectes cette année</p>
+                </CardContent>
+              </Card>
+            )}
+            {data.stats.laitStockTransformable != null && data.stats.laitStockTransformable > 0 && (
+              <Card>
+                <CardHeader className="pb-1 pt-3 px-4">
+                  <CardDescription className="text-xs flex items-center gap-1">
+                    📦 Stock lait transformable
+                  </CardDescription>
+                  <CardTitle className="text-2xl text-cyan-700">
+                    {data.stats.laitStockTransformable} L
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pb-3 px-4">
+                  <p className="text-xs text-muted-foreground">non affecté à un lot</p>
                 </CardContent>
               </Card>
             )}

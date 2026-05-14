@@ -17,7 +17,10 @@ import {
   Trash2,
   Filter,
   X,
+  Milk,
+  Wheat,
 } from "lucide-react"
+import { LaitSubTab } from "./LaitSubTab"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -49,6 +52,10 @@ export function ProductionTab() {
           <Egg className="h-4 w-4" />
           Oeufs
         </TabsTrigger>
+        <TabsTrigger value="lait" className="flex items-center gap-1.5">
+          <Milk className="h-4 w-4" />
+          Lait
+        </TabsTrigger>
         <TabsTrigger value="ventes" className="flex items-center gap-1.5">
           <ShoppingCart className="h-4 w-4" />
           Ventes
@@ -61,6 +68,9 @@ export function ProductionTab() {
 
       <TabsContent value="oeufs">
         <OeufsSubTab />
+      </TabsContent>
+      <TabsContent value="lait">
+        <LaitSubTab />
       </TabsContent>
       <TabsContent value="ventes">
         <VentesSubTab />
