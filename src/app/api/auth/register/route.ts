@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // Creer les donnees d'exemple
+    // Creer les données d'exemple
     try {
       await createSampleDataForUser(user.id)
     } catch (sampleError) {

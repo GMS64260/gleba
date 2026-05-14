@@ -37,7 +37,7 @@ export interface RecommandationIrrigation {
   pluiePrevue48h: number // mm
   conseilQuantite: number // L/m²
   conseilMessage: string
-  prochainePluie: string | null // date ISO si pluie prevue
+  prochainePluie: string | null // date ISO si pluie prévue
   joursSansPluie: number
 }
 
@@ -258,7 +258,7 @@ export function genererRecommandationIrrigation(
   const deficit = Math.abs(Math.min(0, bilanHydrique7j)) * facteurSol
   const besoinNormalise = culture.besoinEau / 5 // 0-1
 
-  // Bilan prospectif : si on ajoute la pluie prevue 5j, est-ce que le déficit se comble ?
+  // Bilan prospectif : si on ajoute la pluie prévue 5j, est-ce que le déficit se comble ?
   const bilanProspectif = bilanHydrique7j + pluiePrevue5j
 
   // Cas favorable : pluie récente abondante (>8mm en 48h)

@@ -217,7 +217,7 @@ function StocksPageContent() {
       if (!response.ok) throw new Error("Erreur sauvegarde")
       toast({
         title: "Stock mis a jour",
-        description: `Le stock a ete enregistre`,
+        description: `Le stock a été enregistré`,
       })
     } catch (error) {
       toast({

@@ -169,7 +169,7 @@ export default function AssociationsPage() {
       if (!response.ok) throw new Error("Erreur lors de la suppression")
       toast({
         title: "Association supprimée",
-        description: `L'association "${row.nom}" a ete supprimee`,
+        description: `L'association "${row.nom}" a été supprimée`,
       })
       fetchData()
     } catch (error) {

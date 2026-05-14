@@ -21,7 +21,7 @@ import type { PluviometrieBulkItem } from "@/app/api/meteo/pluviometrie-bulk/rou
 
 const CULTURE_ETATS = [
   { value: "all", label: "Toutes", icon: Leaf },
-  { value: "Planifiée", label: "Planifiees", icon: ListTodo },
+  { value: "Planifiée", label: "Planifiées", icon: ListTodo },
   { value: "Semée", label: "Semées", icon: Sprout },
   { value: "Plantée", label: "Plantées", icon: TreeDeciduous },
   { value: "En récolte", label: "En récolte", icon: Apple },

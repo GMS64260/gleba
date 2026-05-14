@@ -1,7 +1,7 @@
 "use client"
 
 /**
- * Onglet Productions - Recoltes fruits + Production bois
+ * Onglet Productions - Récoltes fruits + Production bois
  */
 
 import * as React from "react"

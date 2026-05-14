@@ -87,7 +87,7 @@ export default function EditAssociationPage() {
     name: "details",
   })
 
-  // Charger les donnees
+  // Charger les données
   React.useEffect(() => {
     async function loadData() {
       try {
@@ -162,7 +162,7 @@ export default function EditAssociationPage() {
 
       toast({
         title: "Association mise à jour",
-        description: `L'association "${data.nom}" a ete modifiee avec succes`,
+        description: `L'association "${data.nom}" a été modifiée avec succès`,
       })
       router.push("/associations")
     } catch (error) {

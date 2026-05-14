@@ -1043,7 +1043,7 @@ export default function InterventionsPage() {
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                     <Calendar className="h-4 w-4" />
-                    Planifiees
+                    Planifiées
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -1101,7 +1101,7 @@ export default function InterventionsPage() {
                   className="h-9 rounded-md border border-input bg-background px-3 text-sm"
                 >
                   <option value="all">Toutes</option>
-                  <option value="false">Planifiees uniquement</option>
+                  <option value="false">Planifiées uniquement</option>
                   <option value="true">Realisees</option>
                 </select>
               </div>

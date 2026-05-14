@@ -147,7 +147,7 @@ export default function EditITPPage() {
 
       toast({
         title: "ITP mis a jour",
-        description: `L'ITP "${id}" a ete modifie`,
+        description: `L'ITP "${id}" a été modifié`,
       })
       router.push("/itps")
     } catch (error) {
@@ -186,7 +186,7 @@ export default function EditITPPage() {
 
       toast({
         title: "ITP supprime",
-        description: `L'ITP "${id}" a ete supprime`,
+        description: `L'ITP "${id}" a été supprimé`,
       })
       router.push("/itps")
     } catch (error) {

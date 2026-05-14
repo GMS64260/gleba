@@ -166,7 +166,7 @@ function NaissancesSubTab() {
         setFemelles(result.data || [])
       }
     } catch {
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les donnees" })
+      toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les données" })
     } finally {
       setIsLoading(false)
     }

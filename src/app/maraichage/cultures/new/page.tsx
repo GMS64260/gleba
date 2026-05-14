@@ -90,6 +90,8 @@ export default function NewCulturePage() {
     payload: CreateCultureInput
     violation: RotationViolation
   } | null>(null)
+  // Bug #33 — message informatif quand la date ITP a été dépassée et rectifiée.
+  const [dateSemisInfo, setDateSemisInfo] = React.useState<string | null>(null)
 
   const form = useForm<CreateCultureInput>({
     resolver: zodResolver(createCultureSchema),
@@ -176,12 +178,31 @@ export default function NewCulturePage() {
     if (!itp) return
 
     const year = selectedYear || new Date().getFullYear()
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
 
+    // Bug #33 — Si la date ITP S<n> tombe dans le passé pour l'année courante,
+    // on propose aujourd'hui à la place et on affiche un message explicatif.
+    // Pour les années futures, l'ITP est laissé tel quel.
+    setDateSemisInfo(null)
     if (itp.semaineSemis) {
-      form.setValue("dateSemis", weekToDate(year, itp.semaineSemis))
+      const itpDate = weekToDate(year, itp.semaineSemis)
+      if (year === today.getFullYear() && itpDate < today) {
+        form.setValue("dateSemis", today)
+        setDateSemisInfo(
+          `Date ITP S${itp.semaineSemis} dépassée — proposition : ${today.toLocaleDateString("fr-FR")}`
+        )
+      } else {
+        form.setValue("dateSemis", itpDate)
+      }
     }
     if (itp.semainePlantation) {
-      form.setValue("datePlantation", weekToDate(year, itp.semainePlantation))
+      const itpDate = weekToDate(year, itp.semainePlantation)
+      if (year === today.getFullYear() && itpDate < today) {
+        form.setValue("datePlantation", today)
+      } else {
+        form.setValue("datePlantation", itpDate)
+      }
     }
     if (itp.semaineRecolte) {
       form.setValue("dateRecolte", weekToDate(year, itp.semaineRecolte))
@@ -189,8 +210,12 @@ export default function NewCulturePage() {
     if (itp.nbRangs) {
       form.setValue("nbRangs", itp.nbRangs)
     }
-    if (itp.espacement) {
-      form.setValue("espacement", Math.round(itp.espacement))
+    // Bug #29 — Pré-remplir espacement depuis l'ITP. Fallback sur espacementRangs
+    // si espacement (sur le rang) absent, pour ne pas laisser le champ vide alors
+    // que le calcul "Quantité plants" l'utilise.
+    const espVal = itp.espacement ?? itp.espacementRangs
+    if (espVal) {
+      form.setValue("espacement", Math.round(espVal))
     }
   }, [selectedItp, selectedYear, itps, form])
 
@@ -481,11 +506,15 @@ export default function NewCulturePage() {
                             type="date"
                             {...field}
                             value={field.value ? format(new Date(field.value), "yyyy-MM-dd") : ""}
-                            onChange={(e) =>
+                            onChange={(e) => {
                               field.onChange(e.target.value ? new Date(e.target.value) : null)
-                            }
+                              setDateSemisInfo(null)
+                            }}
                           />
                         </FormControl>
+                        {dateSemisInfo && (
+                          <p className="text-xs text-amber-700 mt-1">{dateSemisInfo}</p>
+                        )}
                         <FormMessage />
                       </FormItem>
                     )}
@@ -621,7 +650,12 @@ export default function NewCulturePage() {
                     name="quantite"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Quantité / plants (auto)</FormLabel>
+                        <FormLabel
+                          title="Formule : nbRangs × ⌊longueur (cm) ÷ espacement⌋. Si vous modifiez ce champ, la valeur n'est plus recalculée."
+                          className="cursor-help"
+                        >
+                          Quantité / plants (auto) ⓘ
+                        </FormLabel>
                         <FormControl>
                           <Input
                             type="number"

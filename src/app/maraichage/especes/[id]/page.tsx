@@ -135,7 +135,7 @@ export default function EditEspecePage() {
     },
   })
 
-  // Charger les donnees
+  // Charger les données
   React.useEffect(() => {
     Promise.all([
       fetch("/api/familles").then((res) => res.json()),
@@ -204,7 +204,7 @@ export default function EditEspecePage() {
 
       toast({
         title: "Espèce modifiée",
-        description: `L'espece "${especeId}" a ete mise a jour`,
+        description: `L'espece "${especeId}" a été mise à jour`,
       })
       router.push("/especes")
     } catch (error) {
@@ -233,7 +233,7 @@ export default function EditEspecePage() {
 
       toast({
         title: "Espèce supprimée",
-        description: `L'espece "${especeId}" a ete supprimee`,
+        description: `L'espece "${especeId}" a été supprimée`,
       })
       router.push("/especes")
     } catch (error) {
@@ -1166,7 +1166,7 @@ export default function EditEspecePage() {
                   <Input
                     value={varieteForm.id}
                     onChange={(e) => setVarieteForm({ ...varieteForm, id: e.target.value })}
-                    placeholder="Ex: Coeur de boeuf"
+                    placeholder="Ex: Cœur de Bœuf"
                     required
                   />
                 </div>

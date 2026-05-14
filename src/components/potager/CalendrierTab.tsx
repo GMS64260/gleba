@@ -287,6 +287,9 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
   const yearDiffPercent = stats?.recoltesAnneePrecedente
     ? Math.round((yearDiff / stats.recoltesAnneePrecedente) * 100)
     : 0
+  // Bug #26 — Ne pas afficher "+0% vs N-1" si la donnée N-1 n'existe pas ou
+  // est trop faible (< 5 kg → 1 cagette, statistiquement non significatif).
+  const hasComparatifN1 = (stats?.recoltesAnneePrecedente ?? 0) >= 5
 
   return (
     <div className="space-y-6">
@@ -379,20 +382,28 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
               </CardTitle>
             </CardHeader>
             <CardContent className="pb-3 px-4">
-              <div className="flex items-center gap-1 text-xs">
-                {yearDiff >= 0 ? (
-                  <TrendingUp className="h-3 w-3 text-green-200" />
-                ) : (
-                  <TrendingDown className="h-3 w-3 text-red-200" />
-                )}
-                <span className={yearDiff >= 0 ? "text-green-200" : "text-red-200"}>
-                  {yearDiff >= 0 ? "+" : ""}
-                  {yearDiffPercent}% vs {year - 1}
-                </span>
-              </div>
-              <p className="text-[10px] text-amber-100 mt-0.5">
-                (YTD vs YTD année dernière)
-              </p>
+              {hasComparatifN1 ? (
+                <>
+                  <div className="flex items-center gap-1 text-xs">
+                    {yearDiff >= 0 ? (
+                      <TrendingUp className="h-3 w-3 text-green-200" />
+                    ) : (
+                      <TrendingDown className="h-3 w-3 text-red-200" />
+                    )}
+                    <span className={yearDiff >= 0 ? "text-green-200" : "text-red-200"}>
+                      {yearDiff >= 0 ? "+" : ""}
+                      {yearDiffPercent}% vs {year - 1}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-amber-100 mt-0.5">
+                    (YTD vs YTD année dernière)
+                  </p>
+                </>
+              ) : (
+                <p className="text-[10px] text-amber-100 italic">
+                  Pas de comparatif N-1 disponible
+                </p>
+              )}
             </CardContent>
           </Card>
 
@@ -476,7 +487,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
       {/* Tâches de la semaine */}
       <div>
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-3">
-          <h2 className="text-lg font-semibold">Taches de la semaine</h2>
+          <h2 className="text-lg font-semibold">Tâches de la semaine</h2>
           <div className="flex items-center gap-1">
             <Button variant="ghost" size="sm" onClick={() => setWeekOffset((o) => o - 1)}>
               <ChevronLeft className="h-4 w-4" />
@@ -658,7 +669,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                             </div>
                             {inutile && item.pluiePrevue != null && (
                               <p className="text-[11px] text-blue-500 pl-7">
-                                {Math.round(item.pluiePrevue)}mm de pluie prevue — irrigation probablement inutile
+                                {Math.round(item.pluiePrevue)}mm de pluie prévue — irrigation probablement inutile
                               </p>
                             )}
                           </button>

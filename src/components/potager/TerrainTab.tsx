@@ -376,7 +376,7 @@ function RotationsSubTab() {
       <div className="p-3 bg-orange-50 rounded-lg border border-orange-200 text-sm text-orange-800">
         <p className="font-medium">Rotations des cultures</p>
         <p className="mt-1 text-orange-700">
-          Définissez la succession des cultures sur plusieurs annees. Assignez une rotation a vos
+          Définissez la succession des cultures sur plusieurs années. Assignez une rotation a vos
           planches pour planifier automatiquement.
         </p>
       </div>

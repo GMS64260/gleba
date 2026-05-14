@@ -160,7 +160,7 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
           plancheId = newPlanche.id // cuid for FK
           toast({
             title: "Planche créée",
-            description: `La planche "${plancheName}" a ete creee`,
+            description: `La planche "${plancheName}" a été créée`,
           })
         } else if (plancheRes.status === 409) {
           // Name already exists for this user — fetch and reuse
@@ -224,7 +224,7 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
 
       toast({
         title: "Culture créée",
-        description: `La culture de ${espece?.id || culture.especeId} a ete creee`,
+        description: `La culture de ${espece?.id || culture.especeId} a été créée`,
       })
 
       onSuccess(plancheId || undefined, newCulture.id)

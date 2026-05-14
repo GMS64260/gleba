@@ -100,7 +100,7 @@ function calculerUrgenceMeteo(
   const bilanHydrique = pluie7j - etc7j
 
   // ── Cas favorable : beaucoup de pluie récente ──
-  // S'il a plu > seuil ces dernières 48h et qu'il y a encore de la pluie prevue
+  // S'il a plu > seuil ces dernières 48h et qu'il y a encore de la pluie prévue
   if (pluie48h >= SEUIL_PLUIE_AUTO_VALIDE) {
     const et0Moy = meteo.et0_7j / Math.max(meteo.historique.length, 1)
     const joursCouv = joursCouverts(pluie48h, retentionEau, et0Moy)
@@ -165,7 +165,7 @@ function calculerUrgenceMeteo(
   if (deficit > 20 * besoinNorm && joursEffectifsSansEau >= 5 && pluiePrevue48h < 5 && pluiePrevue5j < 8) {
     return {
       urgence: 'critique',
-      raison: `Déficit hydrique de ${Math.round(deficit)}mm. ${joursEffectifsSansEau}j sans eau. Pas de pluie prevue.`,
+      raison: `Déficit hydrique de ${Math.round(deficit)}mm. ${joursEffectifsSansEau}j sans eau. Pas de pluie prévue.`,
     }
   }
 

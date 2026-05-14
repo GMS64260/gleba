@@ -148,10 +148,10 @@ function CreerCulturesContent() {
       const result = await response.json()
       toast({
         title: "Cultures creees",
-        description: `${result.created} culture(s) creee(s) avec succes`,
+        description: `${result.created} culture(s) creee(s) avec succès`,
       })
 
-      // Recharger les donnees
+      // Recharger les données
       fetchData()
     } catch (error) {
       toast({
@@ -215,7 +215,7 @@ function CreerCulturesContent() {
           </Card>
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-muted-foreground">Deja creees</CardTitle>
+              <CardTitle className="text-sm text-muted-foreground">Déjà créées</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-2xl font-bold text-green-600">
@@ -273,7 +273,7 @@ function CreerCulturesContent() {
             ) : culturesACreer.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <CheckCircle2 className="h-12 w-12 mx-auto mb-4 text-green-600" />
-                <p className="text-lg font-medium">Toutes les cultures sont deja creees</p>
+                <p className="text-lg font-medium">Toutes les cultures sont déjà créées</p>
                 <p className="mt-2">
                   Ou aucune planche n'a de rotation assignee.
                 </p>

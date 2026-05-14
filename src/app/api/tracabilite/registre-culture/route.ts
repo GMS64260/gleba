@@ -154,7 +154,7 @@ export async function GET(request: NextRequest) {
           chronologie.push({
             date: culture.dateSemis.toISOString(),
             type: 'semis',
-            description: `Semis ${culture.semisFait ? '(realise)' : '(prevu)'}`,
+            description: `Semis ${culture.semisFait ? '(réalisé)' : '(prévu)'}`,
             details: {
               quantite: culture.quantite,
               nbRangs: culture.nbRangs,

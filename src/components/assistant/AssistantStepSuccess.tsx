@@ -44,7 +44,7 @@ export function AssistantStepSuccess({
       {/* Message */}
       <div>
         <h3 className="text-lg font-semibold text-green-700 mb-2">
-          Culture créée avec succes !
+          Culture créée avec succès !
         </h3>
         <p className="text-sm text-muted-foreground">
           Votre culture a été enregistrée et apparait maintenant dans votre liste.

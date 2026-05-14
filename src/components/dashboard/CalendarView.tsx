@@ -490,7 +490,7 @@ export function CalendarView({ year }: CalendarViewProps) {
                                         setEventDialogOpen(true)
                                       }}
                                       className={`flex items-center gap-1.5 text-xs hover:bg-accent rounded px-1.5 py-1 w-full cursor-grab active:cursor-grabbing transition-colors ${inutile ? "opacity-60" : ""}`}
-                                      title={inutile ? `${Math.round(event.pluiePrevue!)}mm de pluie prevue — irrigation probablement inutile` : "Glisser pour deplacer, cliquer pour details"}
+                                      title={inutile ? `${Math.round(event.pluiePrevue!)}mm de pluie prévue — irrigation probablement inutile` : "Glisser pour deplacer, cliquer pour details"}
                                     >
                                       <EventIcon className={`h-4 w-4 ${iconColor} flex-shrink-0`} />
                                       <span className={`truncate ${event.fait ? "line-through opacity-60" : ""} ${inutile ? "line-through text-muted-foreground" : ""}`}>
@@ -673,7 +673,7 @@ export function CalendarView({ year }: CalendarViewProps) {
                           </p>
                           {inutile && event.pluiePrevue != null && (
                             <p className="text-xs text-blue-500 mt-0.5">
-                              {Math.round(event.pluiePrevue)}mm de pluie prevue — probablement inutile
+                              {Math.round(event.pluiePrevue)}mm de pluie prévue — probablement inutile
                             </p>
                           )}
                         </div>

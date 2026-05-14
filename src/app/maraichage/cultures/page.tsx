@@ -399,6 +399,18 @@ export default function CulturesPage() {
 
       {/* Content */}
       <main className="container mx-auto px-4 py-6">
+        {/* Bug #30 — Légende repliable des icônes Actions du tableau. */}
+        <details className="mb-3 text-xs bg-slate-50 border rounded-md px-3 py-1.5">
+          <summary className="cursor-pointer text-slate-700 select-none">
+            Actions rapides — légende des icônes
+          </summary>
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-slate-600">
+            <span><Sprout className="inline h-3 w-3 mr-1 text-orange-500" />Semis fait</span>
+            <span><TreeDeciduous className="inline h-3 w-3 mr-1 text-green-600" />Plantation faite</span>
+            <span><Apple className="inline h-3 w-3 mr-1 text-amber-600" />Récolte faite</span>
+          </div>
+        </details>
+
         {/* Filtres par état */}
         <Tabs value={selectedEtat} onValueChange={handleEtatChange} className="mb-4">
           <TabsList className="flex-wrap h-auto gap-1">
