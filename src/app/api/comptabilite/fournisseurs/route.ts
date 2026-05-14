@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { createFournisseurSchema, updateFournisseurSchema } from '@/lib/validations'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -68,14 +69,17 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-
-    if (!body.id) {
-      return NextResponse.json({ error: 'Nom/ID requis' }, { status: 400 })
+    const parsed = createFournisseurSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: 'Données invalides', details: parsed.error.flatten() },
+        { status: 400 }
+      )
     }
+    const data = parsed.data
 
-    // Vérifier si existe déjà
     const existing = await prisma.fournisseur.findUnique({
-      where: { id: body.id },
+      where: { id: data.id },
     })
 
     if (existing) {
@@ -84,21 +88,21 @@ export async function POST(request: NextRequest) {
 
     const fournisseur = await prisma.fournisseur.create({
       data: {
-        id: body.id,
-        contact: body.contact || null,
-        adresse: body.adresse || null,
-        ville: body.ville || null,
-        codePostal: body.codePostal || null,
-        pays: body.pays || 'France',
-        email: body.email || null,
-        telephone: body.telephone || null,
-        siteWeb: body.siteWeb || null,
-        siret: body.siret || null,
-        tvaIntra: body.tvaIntra || null,
-        type: body.type || 'mixte',
-        conditionsPaiement: body.conditionsPaiement ? parseInt(body.conditionsPaiement) : 30,
-        notes: body.notes || null,
-        actif: body.actif !== false,
+        id: data.id,
+        contact: data.contact ?? null,
+        adresse: data.adresse ?? null,
+        ville: data.ville ?? null,
+        codePostal: data.codePostal ?? null,
+        pays: data.pays || 'France',
+        email: data.email ?? null,
+        telephone: data.telephone ?? null,
+        siteWeb: data.siteWeb ?? null,
+        siret: data.siret || null,
+        tvaIntra: data.tvaIntra || null,
+        type: data.type || 'mixte',
+        conditionsPaiement: data.conditionsPaiement,
+        notes: data.notes ?? null,
+        actif: data.actif,
       },
     })
 
@@ -118,11 +122,14 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { id, ...updateData } = body
-
-    if (!id) {
-      return NextResponse.json({ error: 'ID requis' }, { status: 400 })
+    const parsed = updateFournisseurSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: 'Données invalides', details: parsed.error.flatten() },
+        { status: 400 }
+      )
     }
+    const { id, ...updateData } = parsed.data
 
     const existing = await prisma.fournisseur.findUnique({
       where: { id },
@@ -143,10 +150,10 @@ export async function PATCH(request: NextRequest) {
         ...(updateData.email !== undefined && { email: updateData.email }),
         ...(updateData.telephone !== undefined && { telephone: updateData.telephone }),
         ...(updateData.siteWeb !== undefined && { siteWeb: updateData.siteWeb }),
-        ...(updateData.siret !== undefined && { siret: updateData.siret }),
-        ...(updateData.tvaIntra !== undefined && { tvaIntra: updateData.tvaIntra }),
+        ...(updateData.siret !== undefined && { siret: updateData.siret || null }),
+        ...(updateData.tvaIntra !== undefined && { tvaIntra: updateData.tvaIntra || null }),
         ...(updateData.type !== undefined && { type: updateData.type }),
-        ...(updateData.conditionsPaiement !== undefined && { conditionsPaiement: parseInt(updateData.conditionsPaiement) }),
+        ...(updateData.conditionsPaiement !== undefined && { conditionsPaiement: updateData.conditionsPaiement }),
         ...(updateData.notes !== undefined && { notes: updateData.notes }),
         ...(updateData.actif !== undefined && { actif: updateData.actif }),
       },
