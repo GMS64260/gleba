@@ -482,6 +482,14 @@ export async function POST(request: NextRequest) {
         intrantCout: d.intrantCout ?? null,
         intrantNumLot: d.intrantNumLot ?? null,
         notes: d.notes ?? null,
+        // PROMPT 11 LOT B/D — Traçabilité PBI (justification + lien observation)
+        justification: d.justification ?? null,
+        observationLieeId: d.observationLieeId ?? null,
+        volumeBouillieLHa: d.volumeBouillieLHa ?? null,
+        temperatureC: d.temperatureC ?? null,
+        ventKmh: d.ventKmh ?? null,
+        hygrometriePct: d.hygrometriePct ?? null,
+        produitPhytoId: d.produitPhytoId ?? null,
       },
     })
 

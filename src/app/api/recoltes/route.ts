@@ -10,6 +10,7 @@ import { createRecolteSchema } from '@/lib/validations'
 import { Prisma } from '@prisma/client'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { invalidateKpi } from '@/lib/kpi'
+import { snapshotStatutBio } from '@/lib/statut-bio'
 
 // GET /api/recoltes
 export async function GET(request: NextRequest) {
@@ -147,13 +148,18 @@ export async function POST(request: NextRequest) {
 
     const data = validationResult.data
 
-    // Vérifier que la culture existe et appartient à l'utilisateur
+    // Vérifier que la culture existe et appartient à l'utilisateur.
+    // PROMPT 12 : on charge aussi la planche pour snapshoter le statut Bio
+    // au moment de la récolte (la valeur reste figée même si la planche évolue).
     const culture = await prisma.culture.findUnique({
       where: {
         id: data.cultureId,
         userId: session!.user.id,
       },
-      include: { espece: true },
+      include: {
+        espece: true,
+        planche: { select: { statutBio: true, dateDebutConversion: true } },
+      },
     })
 
     if (!culture) {
@@ -171,12 +177,23 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // PROMPT 12 — snapshot statut Bio depuis la planche (si rattachée).
+    const dateRecolte = data.date ? new Date(data.date as unknown as string) : new Date()
+    const statutBioSnapshot = culture.planche
+      ? snapshotStatutBio(
+          culture.planche.statutBio,
+          culture.planche.dateDebutConversion,
+          dateRecolte
+        )
+      : null
+
     // Création de la recolte + mise à jour culture en transaction
     const recolte = await prisma.$transaction(async (tx) => {
       const newRecolte = await tx.recolte.create({
         data: {
           ...data,
           userId: session!.user.id,
+          statutBioSnapshot,
         },
         include: {
           espece: true,

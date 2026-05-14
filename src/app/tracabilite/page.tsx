@@ -466,6 +466,41 @@ function TracabiliteContent() {
                 <Printer className="h-4 w-4 mr-1" />
                 <span className="hidden sm:inline">Imprimer / PDF</span>
               </Button>
+              {/* PROMPT 11 LOT C — Export PDF / CSV du registre phyto (conforme arrêté 2009). */}
+              {activeTab === "phyto" && (
+                <>
+                  <a
+                    href={`/api/registre-phyto/export?from=${selectedYear}-01-01&to=${selectedYear}-12-31&format=pdf`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+                    >
+                      <FileText className="h-4 w-4 mr-1" />
+                      <span className="hidden sm:inline">Export PDF officiel</span>
+                      <span className="sm:hidden">PDF</span>
+                    </Button>
+                  </a>
+                  <a
+                    href={`/api/registre-phyto/export?from=${selectedYear}-01-01&to=${selectedYear}-12-31&format=csv`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+                    >
+                      <FileText className="h-4 w-4 mr-1" />
+                      <span className="hidden sm:inline">Export CSV (Excel)</span>
+                      <span className="sm:hidden">CSV</span>
+                    </Button>
+                  </a>
+                </>
+              )}
               <select
                 value={selectedYear}
                 onChange={(e) => setSelectedYear(parseInt(e.target.value))}

@@ -151,7 +151,9 @@ function ObservationsSubTab() {
   const defaultFormData = {
     arbreId: "",
     date: new Date().toISOString().split("T")[0],
-    type: "observation_generale",
+    // PROMPT 11 LOT D — Pas de défaut sur le type : forcer l'utilisateur à choisir
+    // (audit A5 : "Observation" par défaut induisait en erreur).
+    type: "",
     symptome: "",
     diagnostic: "",
     gravite: "faible",
@@ -164,6 +166,10 @@ function ObservationsSubTab() {
     dar: "",
     numAMM: "",
     notes: "",
+    // PROMPT 11 LOT D — Enrichissement PBI
+    stadeBBCH: "",
+    pctOrganesTouches: "",
+    photoUrl: "",
   }
   const [formData, setFormData] = React.useState(defaultFormData)
 
@@ -210,12 +216,34 @@ function ObservationsSubTab() {
       dar: obs.dar?.toString() || "",
       numAMM: obs.numAMM || "",
       notes: obs.notes || "",
+      stadeBBCH: (obs as Observation & { stadeBBCH?: string | null }).stadeBBCH || "",
+      pctOrganesTouches:
+        (obs as Observation & { pctOrganesTouches?: number | null }).pctOrganesTouches?.toString() || "",
+      photoUrl: (obs as Observation & { photoUrl?: string | null }).photoUrl || "",
     })
     setShowDialog(true)
   }
 
+  // PROMPT 11 LOT D — Bouton "Déclencher un traitement" : ouvre la page
+  // Interventions pré-remplie depuis cette observation.
+  const triggerTraitement = (obs: Observation) => {
+    const params = new URLSearchParams({
+      type: "traitement_phyto",
+      arbreId: String(obs.arbreId),
+      cible: obs.diagnostic || obs.symptome || "",
+      justification: `Observation #${obs.id} — ${obs.diagnostic || obs.symptome || obs.type}`,
+      observationLieeId: String(obs.id),
+    })
+    window.location.href = `/interventions?prefill=${encodeURIComponent(params.toString())}`
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    // PROMPT 11 LOT D — Le type est désormais obligatoire (plus de défaut).
+    if (!formData.type) {
+      toast({ title: "Choisissez un type d'observation", variant: "destructive" })
+      return
+    }
     try {
       const url = editingObs
         ? `/api/arbres/observations/${editingObs.id}`
@@ -227,6 +255,9 @@ function ObservationsSubTab() {
           ...formData,
           doseAppliquee: formData.doseAppliquee || null,
           dar: formData.dar || null,
+          stadeBBCH: formData.stadeBBCH || null,
+          pctOrganesTouches: formData.pctOrganesTouches ? parseInt(formData.pctOrganesTouches) : null,
+          photoUrl: formData.photoUrl || null,
         }),
       })
       if (res.ok) {
@@ -397,6 +428,17 @@ function ObservationsSubTab() {
                         </Button>
                       </TableCell>
                       <TableCell className="text-right space-x-1">
+                        {/* PROMPT 11 LOT D — Déclencher un traitement depuis cette observation */}
+                        {(obs.type === "maladie" || obs.type === "ravageur") && !obs.resolu && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => triggerTraitement(obs)}
+                            title="Déclencher un traitement phyto pré-rempli"
+                          >
+                            <Shield className="h-4 w-4 text-orange-600" />
+                          </Button>
+                        )}
                         <Button variant="ghost" size="sm" onClick={() => openEdit(obs)}>
                           <Pencil className="h-4 w-4 text-lime-600" />
                         </Button>
@@ -439,9 +481,11 @@ function ObservationsSubTab() {
             </div>
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <Label>Type *</Label>
+                <Label>Type <span className="text-red-500">*</span></Label>
                 <Select value={formData.type} onValueChange={(v) => setFormData({ ...formData, type: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger className={!formData.type ? "border-amber-400" : ""}>
+                    <SelectValue placeholder="— Choisir un type —" />
+                  </SelectTrigger>
                   <SelectContent>
                     {TYPES_OBS.map((t) => (
                       <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
@@ -470,6 +514,48 @@ function ObservationsSubTab() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+            </div>
+            {/* PROMPT 11 LOT D — Champs PBI (Production Bio Intégrée) */}
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <Label>Stade phénologique (BBCH)</Label>
+                <Select value={formData.stadeBBCH} onValueChange={(v) => setFormData({ ...formData, stadeBBCH: v })}>
+                  <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="BBCH 00 - Dormance">BBCH 00 — Dormance</SelectItem>
+                    <SelectItem value="BBCH 03 - Gonflement bourgeons">BBCH 03 — Gonflement bourgeons</SelectItem>
+                    <SelectItem value="BBCH 10 - Débourrement">BBCH 10 — Débourrement</SelectItem>
+                    <SelectItem value="BBCH 51 - Boutons floraux visibles">BBCH 51 — Boutons floraux visibles</SelectItem>
+                    <SelectItem value="BBCH 65 - Pleine floraison">BBCH 65 — Pleine floraison</SelectItem>
+                    <SelectItem value="BBCH 69 - Nouaison">BBCH 69 — Nouaison</SelectItem>
+                    <SelectItem value="BBCH 75 - Grossissement fruit">BBCH 75 — Grossissement fruit</SelectItem>
+                    <SelectItem value="BBCH 81 - Véraison">BBCH 81 — Véraison</SelectItem>
+                    <SelectItem value="BBCH 89 - Maturité">BBCH 89 — Maturité</SelectItem>
+                    <SelectItem value="BBCH 93 - Sénescence">BBCH 93 — Sénescence</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>% organes touchés ({formData.pctOrganesTouches || 0}%)</Label>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={5}
+                  value={formData.pctOrganesTouches || 0}
+                  onChange={(e) => setFormData({ ...formData, pctOrganesTouches: e.target.value })}
+                  className="w-full mt-2 accent-orange-500"
+                />
+              </div>
+              <div>
+                <Label>Photo (URL)</Label>
+                <Input
+                  type="url"
+                  value={formData.photoUrl}
+                  onChange={(e) => setFormData({ ...formData, photoUrl: e.target.value })}
+                  placeholder="https://… (upload local en chantier)"
+                />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">

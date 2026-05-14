@@ -238,8 +238,35 @@ export default function InterventionsPage() {
     intrantCout: "",
     intrantNumLot: "",
     notes: "",
+    // PROMPT 11 LOT D — Champs de traçabilité pré-remplis depuis Observation Santé
+    arbreId: "",
+    observationLieeId: "",
+    justification: "",
   }
   const [form, setForm] = React.useState(emptyForm)
+
+  // PROMPT 11 LOT D — Si un param `?prefill=` est présent (depuis le bouton
+  // "Déclencher un traitement" sur la fiche Observation Santé), ouvrir le
+  // dialog pré-rempli en mode "traitement_phyto".
+  // Note : on lit `window.location.search` plutôt que `useSearchParams` pour
+  // éviter d'avoir à envelopper toute la page dans un <Suspense> (Next 16).
+  React.useEffect(() => {
+    if (typeof window === "undefined") return
+    const sp = new URLSearchParams(window.location.search)
+    const prefill = sp.get("prefill")
+    if (!prefill) return
+    const params = new URLSearchParams(prefill)
+    setForm((f) => ({
+      ...f,
+      type: params.get("type") || "traitement_phyto",
+      arbreId: params.get("arbreId") || "",
+      cibleTraitement: params.get("cible") || "",
+      justification: params.get("justification") || "",
+      observationLieeId: params.get("observationLieeId") || "",
+    }))
+    setDialogOpen(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // ============================================================
   // Data fetching
@@ -342,6 +369,10 @@ export default function InterventionsPage() {
       intrantCout: form.intrantCout,
       intrantNumLot: form.intrantNumLot,
       notes: form.notes,
+      // PROMPT 11 LOT D — Traçabilité origine observation santé (verger)
+      arbreId: form.arbreId ? parseInt(form.arbreId) : null,
+      observationLieeId: form.observationLieeId ? parseInt(form.observationLieeId) : null,
+      justification: form.justification || null,
     }
 
     try {
@@ -440,6 +471,11 @@ export default function InterventionsPage() {
       intrantCout: intervention.intrantCout?.toString() || "",
       intrantNumLot: intervention.intrantNumLot || "",
       notes: intervention.notes || "",
+      // PROMPT 11 LOT D — Champs PBI (recharger si présents sur la fiche)
+      arbreId: (intervention as Intervention & { arbreId?: number | null }).arbreId?.toString() || "",
+      observationLieeId:
+        (intervention as Intervention & { observationLieeId?: number | null }).observationLieeId?.toString() || "",
+      justification: (intervention as Intervention & { justification?: string | null }).justification || "",
     })
     setDialogOpen(true)
   }
@@ -614,6 +650,16 @@ export default function InterventionsPage() {
                   </DialogDescription>
                 </DialogHeader>
                 <form onSubmit={handleCreate} className="space-y-4">
+                  {/* PROMPT 11 LOT D — Bannière de traçabilité si l'intervention
+                      est déclenchée depuis une observation santé verger. */}
+                  {form.observationLieeId && (
+                    <div className="rounded-md border border-orange-300 bg-orange-50 p-3 text-sm text-orange-900">
+                      <p className="font-medium">🔗 Lié à l'observation santé #{form.observationLieeId}</p>
+                      <p className="text-xs mt-1">
+                        L'arbre cible et la justification sont pré-remplis. Vous pouvez les ajuster avant validation.
+                      </p>
+                    </div>
+                  )}
                   {/* Row 1: Date, Type, Status */}
                   <div className="grid gap-4 sm:grid-cols-3">
                     <div>
@@ -832,6 +878,16 @@ export default function InterventionsPage() {
                             placeholder="Soleil, vent faible..."
                           />
                         </div>
+                      </div>
+                      {/* PROMPT 11 LOT B/D — Justification du traitement (obligatoire en PBI). */}
+                      <div>
+                        <Label>Justification du traitement</Label>
+                        <Textarea
+                          value={form.justification}
+                          onChange={(e) => setForm({ ...form, justification: e.target.value })}
+                          placeholder="Ex: Seuil PBI franchi (5 captures/piège/semaine), BSV régional du 12/05, observation #42"
+                          rows={2}
+                        />
                       </div>
                     </div>
                   )}

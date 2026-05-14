@@ -32,6 +32,8 @@ const TYPES_LABEL: Record<string, string> = {
   haie: "Haie",
   verger: "Verger",
   bosquet: "Bosquet",
+  maraichage: "Maraîchage",
+  polyculture: "Polyculture",
 }
 
 const PUBLIC_LABEL: Record<string, string> = {
@@ -52,11 +54,28 @@ export default function AidesPage() {
   const [search, setSearch] = React.useState("")
   const [filterType, setFilterType] = React.useState<string>("all")
   const [filterNiveau, setFilterNiveau] = React.useState<string>("all")
+  // PROMPT 13 — filtres AB & région
+  const [filterCumulAB, setFilterCumulAB] = React.useState<"all" | "oui" | "non">("all")
+  const [filterRegion, setFilterRegion] = React.useState<string>("all")
+
+  // Liste dynamique des régions présentes dans le référentiel.
+  const regionsDispo = React.useMemo(() => {
+    const set = new Set<string>()
+    for (const a of AIDES_PLANTATION) for (const r of a.regions ?? []) set.add(r)
+    return [...set].sort()
+  }, [])
 
   const aidesFiltrees = AIDES_PLANTATION.filter((a) => {
     if (!a.actif) return false
     if (filterType !== "all" && !a.typesEligibles.includes(filterType)) return false
     if (filterNiveau !== "all" && a.niveau !== filterNiveau) return false
+    if (filterCumulAB === "oui" && !a.cumulAB) return false
+    if (filterCumulAB === "non" && a.cumulAB) return false
+    if (filterRegion !== "all") {
+      // Si l'aide n'a pas de liste de régions, on la considère nationale
+      // → toujours affichée. Sinon on filtre par région exacte.
+      if (a.regions && a.regions.length > 0 && !a.regions.includes(filterRegion)) return false
+    }
     if (search) {
       const s = search.toLowerCase()
       if (
@@ -143,6 +162,30 @@ export default function AidesPage() {
               <SelectItem value="departemental">Départemental</SelectItem>
             </SelectContent>
           </Select>
+          {/* PROMPT 13 — Filtres AB & région */}
+          <Select value={filterCumulAB} onValueChange={(v) => setFilterCumulAB(v as "all" | "oui" | "non")}>
+            <SelectTrigger className="w-[180px] h-9">
+              <SelectValue placeholder="Cumul AB" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Cumul AB : tous</SelectItem>
+              <SelectItem value="oui">Cumulable AB</SelectItem>
+              <SelectItem value="non">Non cumulable AB</SelectItem>
+            </SelectContent>
+          </Select>
+          {regionsDispo.length > 0 && (
+            <Select value={filterRegion} onValueChange={setFilterRegion}>
+              <SelectTrigger className="w-[180px] h-9">
+                <SelectValue placeholder="Région" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Toutes régions</SelectItem>
+                {regionsDispo.map((r) => (
+                  <SelectItem key={r} value={r}>{r}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <Badge variant="outline" className="ml-auto">{aidesFiltrees.length} aide{aidesFiltrees.length > 1 ? "s" : ""}</Badge>
         </div>
 
@@ -175,6 +218,12 @@ export default function AidesPage() {
                           {NIVEAU_LIBELLE[aide.niveau]}
                         </Badge>
                         <Badge variant="secondary">{PUBLIC_LABEL[aide.publicCible] || aide.publicCible}</Badge>
+                        {/* PROMPT 13 — Badge AB-compatible */}
+                        {aide.abCompatible && (
+                          <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 border-emerald-200">
+                            🌱 AB-compatible
+                          </Badge>
+                        )}
                       </div>
                     </div>
 
@@ -219,12 +268,29 @@ export default function AidesPage() {
                       </div>
                     )}
 
+                    {/* PROMPT 13 — Pièces à fournir + échéance */}
+                    {aide.piecesAFournir && aide.piecesAFournir.length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground mb-1">Pièces à fournir :</p>
+                        <ul className="text-xs space-y-0.5 list-disc list-inside text-muted-foreground">
+                          {aide.piecesAFournir.map((p, i) => (
+                            <li key={i}>{p}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {aide.echeance && (
+                      <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 inline-block">
+                        📅 {aide.echeance}
+                      </p>
+                    )}
+
                     {/* Lien */}
                     <div className="pt-2">
                       <a href={aide.url} target="_blank" rel="noopener noreferrer">
                         <Button variant="outline" size="sm">
                           <ExternalLink className="h-3.5 w-3.5 mr-1" />
-                          En savoir plus
+                          Portail de dépôt / En savoir plus
                         </Button>
                       </a>
                     </div>
