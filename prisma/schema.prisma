@@ -141,8 +141,34 @@ model User {
   exploitation          Exploitation?
   // PROMPT 14 — Séquences de numérotation factures/avoirs/devis par exercice
   sequencesFacture      SequenceFacture[]
+  // DEV2 #2 — Consentement cookies (RGPD)
+  cookieConsents        CookieConsent[]
 
   @@map("users")
+}
+
+/// DEV2 audit Larcher - P0 #2
+/// Stockage du consentement cookies (CNIL : durée max 13 mois,
+/// IP hashée, traçabilité de la version du bandeau acceptée).
+model CookieConsent {
+  id               String   @id @default(cuid())
+  userId           String?  @map("user_id")
+  user             User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  sessionId        String?  @map("session_id")  // cookie technique anonyme
+  ipHash           String?  @map("ip_hash")     // IP hashée (RGPD)
+  userAgent        String?  @map("user_agent")
+  essentiel        Boolean  @default(true) @map("essentiel")
+  analytics        Boolean  @default(false) @map("analytics")
+  marketing        Boolean  @default(false) @map("marketing")
+  personnalisation Boolean  @default(false) @map("personnalisation")
+  createdAt        DateTime @default(now()) @map("created_at")
+  expiresAt        DateTime @map("expires_at")
+  revokedAt        DateTime? @map("revoked_at")
+
+  @@index([userId])
+  @@index([sessionId])
+  @@index([expiresAt])
+  @@map("cookie_consents")
 }
 
 /// Logs de connexion

@@ -9,14 +9,22 @@ export default auth((req) => {
   const { pathname } = req.nextUrl
   const isLoggedIn = !!req.auth
 
-  // Routes publiques
-  const publicRoutes = ["/login", "/register", "/mot-de-passe-oublie", "/reset-password", "/roadmap", "/robots.txt", "/sitemap.xml", "/manifest.json", "/feedback"]
+  // Routes publiques (DEV2 #2 : pages légales accessibles sans login)
+  const publicRoutes = [
+    "/login", "/register", "/mot-de-passe-oublie", "/reset-password",
+    "/roadmap", "/robots.txt", "/sitemap.xml", "/manifest.json", "/feedback",
+    // RGPD / LCEN : doivent rester accessibles sans authentification
+    "/cgv", "/mentions-legales", "/confidentialite",
+  ]
   const isPublicRoute = publicRoutes.some((route) => pathname === route || pathname.startsWith(route + "/"))
 
   // Routes API publiques (auth NextAuth + MCP avec bearer token + feedback par token)
   const isAuthApi = pathname.startsWith("/api/auth")
   const isMcpApi = pathname.startsWith("/api/mcp")
   const isFeedbackTokenApi = /^\/api\/feedback\/[^/]+$/.test(pathname)
+  // DEV2 #2 — Consentement cookies doit pouvoir être enregistré
+  // pour les visiteurs anonymes (avant connexion).
+  const isCookieConsentApi = pathname === "/api/cookie-consent"
 
   // Boutiques publiques : /boutique/[slug] (pas /boutique seul qui est admin)
   // et /api/boutique/public/*
@@ -24,7 +32,7 @@ export default auth((req) => {
   const isPublicBoutiqueApi = pathname.startsWith("/api/boutique/public/")
 
   // Si route publique ou API auth/MCP/feedback, laisser passer
-  if (isPublicRoute || isAuthApi || isMcpApi || isFeedbackTokenApi || isPublicBoutiquePage || isPublicBoutiqueApi) {
+  if (isPublicRoute || isAuthApi || isMcpApi || isFeedbackTokenApi || isCookieConsentApi || isPublicBoutiquePage || isPublicBoutiqueApi) {
     // Si connecté et sur login, rediriger vers home
     if (isLoggedIn && (pathname === "/login" || pathname === "/register")) {
       return NextResponse.redirect(new URL("/", req.nextUrl))
