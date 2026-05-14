@@ -186,14 +186,19 @@ export default function EditRotationPage() {
 
       if (!response.ok) {
         const error = await response.json()
-        throw new Error(error.error || "Erreur lors de la mise a jour")
+        // Le superRefine Zod retourne details.fieldErrors par champ.
+        const fieldErrors = error?.details?.fieldErrors as Record<string, string[]> | undefined
+        const messages = fieldErrors
+          ? Object.values(fieldErrors).flat().join(" · ")
+          : error.error
+        throw new Error(messages || "Erreur lors de la mise à jour")
       }
 
       toast({
         title: "Rotation mise à jour",
-        description: `La rotation "${id}" a ete modifiee`,
+        description: `La rotation "${id}" a été modifiée`,
       })
-      router.push("/rotations")
+      router.push("/maraichage/rotations")
     } catch (error) {
       toast({
         variant: "destructive",
@@ -309,22 +314,44 @@ export default function EditRotationPage() {
                 <FormField
                   control={form.control}
                   name="active"
-                  render={({ field }) => (
-                    <FormItem className="flex items-center justify-between rounded-lg border p-4">
-                      <div className="space-y-0.5">
-                        <FormLabel className="text-base">Active</FormLabel>
-                        <FormDescription>
-                          Rotation utilisable pour la planification
-                        </FormDescription>
-                      </div>
-                      <FormControl>
-                        <Switch
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                        />
-                      </FormControl>
-                    </FormItem>
-                  )}
+                  render={({ field }) => {
+                    // Bug #1 — Active désactivable uniquement si plan complet.
+                    const details = form.watch("details") ?? []
+                    const planComplet = details.length > 0 && details.some((d) => d.itpId)
+                    const cycleCoherent =
+                      !form.watch("nbAnnees") || form.watch("nbAnnees") === details.length
+                    const peutActiver = planComplet && cycleCoherent
+                    return (
+                      <FormItem className="flex items-center justify-between rounded-lg border p-4">
+                        <div className="space-y-0.5">
+                          <FormLabel className="text-base">Active</FormLabel>
+                          <FormDescription>
+                            {peutActiver
+                              ? "Rotation utilisable pour la planification"
+                              : "Plan incomplet : impossible d'activer cette rotation"}
+                          </FormDescription>
+                        </div>
+                        <FormControl>
+                          <Switch
+                            checked={field.value}
+                            onCheckedChange={(checked) => {
+                              if (checked && !peutActiver) {
+                                toast({
+                                  variant: "destructive",
+                                  title: "Plan incomplet",
+                                  description:
+                                    "Ajoutez au moins une étape avec un ITP et vérifiez que le cycle correspond.",
+                                })
+                                return
+                              }
+                              field.onChange(checked)
+                            }}
+                            disabled={!peutActiver && !field.value}
+                          />
+                        </FormControl>
+                      </FormItem>
+                    )
+                  }}
                 />
               </CardContent>
             </Card>

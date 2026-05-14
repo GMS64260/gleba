@@ -171,21 +171,40 @@ export function NewCultureDialog({ open, onOpenChange, plancheId, plancheNom, pl
         notes: notes || null,
       }
 
-      const response = await fetch("/api/cultures", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      })
+      const tryPost = async (confirmRotation: boolean) =>
+        fetch("/api/cultures", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...body, confirmRotation }),
+        })
+
+      let response = await tryPost(false)
+
+      // Bug #1 — Confirmation violation rotation (dialog déjà imbriqué :
+      // on utilise confirm() natif pour ne pas empiler les Dialog shadcn).
+      if (response.status === 409) {
+        const payload = await response.json()
+        if (payload?.rotationViolation) {
+          const ok = window.confirm(
+            `⚠️ ${payload.rotationViolation.message}\n\nCréer la culture quand même ? Elle sera marquée « rotation violée ».`
+          )
+          if (!ok) {
+            setIsSubmitting(false)
+            return
+          }
+          response = await tryPost(true)
+        }
+      }
 
       if (!response.ok) {
         const error = await response.json()
-        throw new Error(error.error || "Erreur lors de la creation")
+        throw new Error(error.error || "Erreur lors de la création")
       }
 
       const culture = await response.json()
       toast({
         title: "Culture créée",
-        description: `Culture #${culture.id} ajoutee sur ${plancheNom}`,
+        description: `Culture #${culture.id} ajoutée sur ${plancheNom}`,
       })
       onOpenChange(false)
       onCreated()

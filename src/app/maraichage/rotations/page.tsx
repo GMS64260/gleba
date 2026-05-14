@@ -8,7 +8,7 @@ import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ColumnDef } from "@tanstack/react-table"
-import { ArrowLeft, RefreshCw, CheckCircle2, XCircle, LayoutGrid } from "lucide-react"
+import { ArrowLeft, RefreshCw, CheckCircle2, XCircle, LayoutGrid, AlertTriangle } from "lucide-react"
 
 import { DataTable } from "@/components/tables/DataTable"
 import { Button } from "@/components/ui/button"
@@ -234,6 +234,50 @@ export default function RotationsPage() {
 
       {/* Content */}
       <main className="container mx-auto px-4 py-6">
+        {/* Bug #1 — Banner cohérence : rotations actives sans planche assignée */}
+        {(() => {
+          const orphelines = data.filter((r) => r.active && r._count.planches === 0)
+          if (orphelines.length === 0) return null
+          const first = orphelines[0]
+          return (
+            <div className="mb-4 p-4 bg-amber-50 rounded-lg border border-amber-300 flex items-start gap-3">
+              <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
+              <div className="flex-1 text-sm text-amber-900">
+                <p className="font-medium">
+                  {orphelines.length === 1
+                    ? "1 rotation active mais non appliquée"
+                    : `${orphelines.length} rotations actives mais non appliquées`}
+                </p>
+                <p className="mt-1 text-amber-800">
+                  Une rotation Active sans planche rattachée n'a aucun effet. Rattachez-la à au moins une planche depuis sa page d'édition.
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {orphelines.slice(0, 5).map((r) => (
+                    <Link
+                      key={r.id}
+                      href={`/maraichage/rotations/${encodeURIComponent(r.id)}`}
+                      className="text-xs px-2 py-1 bg-white border border-amber-300 rounded hover:bg-amber-100 font-medium"
+                    >
+                      {r.id} →
+                    </Link>
+                  ))}
+                  {orphelines.length > 5 && (
+                    <span className="text-xs text-amber-700 self-center">
+                      +{orphelines.length - 5} autres
+                    </span>
+                  )}
+                </div>
+                <Link
+                  href={`/maraichage/rotations/${encodeURIComponent(first.id)}`}
+                  className="inline-block mt-2 text-xs font-medium text-amber-900 underline"
+                >
+                  Assigner maintenant
+                </Link>
+              </div>
+            </div>
+          )
+        })()}
+
         {/* Info */}
         <div className="mb-4 p-4 bg-orange-50 rounded-lg border border-orange-200">
           <div className="flex items-start gap-3">
