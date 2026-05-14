@@ -185,19 +185,27 @@ export async function GET(request: NextRequest) {
 
     // ProductionBois -> revenus
     venteBois.forEach(b => {
+      // DEV1 Ticket 4 (audit QA 2026-05-14) : avant ce fix, `client` et
+      // `paye` étaient hardcodés à null. La ligne affichée dans
+      // /comptabilite/transactions présentait "Client : vide" + "Statut : N/A"
+      // alors que le champ existe en BDD (b.clientNom) et que la vente est
+      // de facto encaissée si une dateVente / factureId est set.
+      const facturee = b.factureId != null || b.dateVente != null
       revenues.push({
         id: `bois-${b.id}`,
         source: 'ProductionBois',
         sourceId: b.id,
         module: 'verger',
-        date: b.date.toISOString(),
+        date: (b.dateVente || b.date).toISOString(),
         description: `Vente bois ${b.type} ${b.arbre?.nom || ''}`.trim(),
         quantite: b.volumeM3 || b.poidsKg,
         unite: b.volumeM3 ? 'm³' : 'kg',
         prixUnitaire: null,
         montant: b.prixVente || 0,
-        client: null,
-        paye: null,
+        client: b.clientNom ?? null,
+        // Si dateVente est renseigné OU une facture a été créée, on
+        // considère la transaction payée. Sinon, statut "à régler".
+        paye: facturee,
         categorie: 'Bois',
       })
     })
