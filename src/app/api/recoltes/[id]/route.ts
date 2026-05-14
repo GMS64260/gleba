@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
-import { updateRecolteSchema } from '@/lib/validations'
+import { updateRecolteSchema, recoltePatchSchema } from '@/lib/validations'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { createVenteFromRecolte, deleteAutoEntry } from '@/lib/auto-compta'
 import { invalidateKpi } from '@/lib/kpi'
@@ -175,6 +175,28 @@ export async function PATCH(
 
     const body = await request.json()
     const userId = session!.user.id
+
+    // BUG-07 : validation Zod. Si statut=vendu sans prix/date/client → 400.
+    // On préserve l'existant pour les champs non transmis : on construit
+    // le payload effectif (body merged sur existing) pour que le refinement
+    // n'invalide pas une transition partielle « j'ajoute juste le prix ».
+    const effectiveStatut = body.statut ?? existing.statut
+    const effectivePayload = {
+      ...body,
+      statut: effectiveStatut,
+      prixKg: body.prixKg ?? existing.prixKg,
+      prixTotal: body.prixTotal ?? existing.prixTotal,
+      dateVente: body.dateVente ?? existing.dateVente,
+      clientId: body.clientId ?? existing.clientId,
+      clientNom: body.clientNom ?? existing.clientNom,
+    }
+    const validation = recoltePatchSchema.safeParse(effectivePayload)
+    if (!validation.success) {
+      return NextResponse.json(
+        { error: 'Données invalides', details: validation.error.flatten() },
+        { status: 400 }
+      )
+    }
 
     // Préparer les données de mise à jour
     const updateData: any = {}
