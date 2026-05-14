@@ -52,7 +52,7 @@ export function useGardenLayout() {
         if (list.length === 0) return Promise.resolve()
         const endpoint =
           kind === "planche"
-            ? "/api/planches/bulk-position"
+            ? "/api/maraichage/planches/bulk-position"
             : kind === "objet"
             ? "/api/objets/bulk-position"
             : "/api/arbres/bulk-position"

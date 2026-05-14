@@ -37,6 +37,7 @@ import { SanteTab } from "@/components/verger/SanteTab"
 import { PlantationsTab } from "@/components/verger/PlantationsTab"
 import { AssistantPlantationDialog } from "@/components/verger/AssistantPlantationDialog"
 import { TourVerger } from "@/components/tours/tour-verger"
+import { PremiersPasBanner } from "@/components/premiers-pas-banner"
 
 const TABS = [
   { id: "calendrier", label: "Calendrier", icon: Calendar, shortLabel: "Calendrier" },
@@ -201,7 +202,8 @@ function VergerPageInner() {
       {/* POSTREVIEW Sprint 6 — Tour Shepherd.js Verger */}
       <TourVerger />
       {/* Contenu de l'onglet actif */}
-      <main className="container mx-auto px-4 py-6 max-w-[1600px]">
+      <main className="container mx-auto px-4 py-6 max-w-[1600px] space-y-4">
+        <PremiersPasBanner module="verger" />
         {activeTab === "calendrier" && <CalendrierTab year={selectedYear} />}
         {activeTab === "plantations" && <PlantationsTab />}
         {activeTab === "arbres" && <ArbresTab />}

@@ -50,14 +50,27 @@ export async function POST(request: NextRequest, { params }: Params) {
     const data: any = {
       mortaliteCauses: causes,
       dateDernObservation: new Date(),
-      tauxReprise: taux,
     }
     if (annee === 1) { data.nbPlantsRepriseAn1 = nbPlantsReprise; data.tauxRepriseAn1 = taux }
     if (annee === 2) { data.nbPlantsRepriseAn2 = nbPlantsReprise; data.tauxRepriseAn2 = taux }
     if (annee === 3) { data.nbPlantsRepriseAn3 = nbPlantsReprise; data.tauxRepriseAn3 = taux }
 
+    // POSTREVIEW Sprint 7 — tauxReprise global = taux de la PLUS GRANDE année
+    // observée parmi {an1, an2, an3} ∪ {nouvelle saisie}. Avant : on écrasait
+    // systématiquement avec `taux` → saisir N+1 après N+2 faisait remonter
+    // le taux global, masquant la mortalité ultérieure.
+    const candidats: Array<[number, number]> = []
+    if (annee === 1 || campagne.tauxRepriseAn1 != null) candidats.push([1, annee === 1 ? taux : campagne.tauxRepriseAn1!])
+    if (annee === 2 || campagne.tauxRepriseAn2 != null) candidats.push([2, annee === 2 ? taux : campagne.tauxRepriseAn2!])
+    if (annee === 3 || campagne.tauxRepriseAn3 != null) candidats.push([3, annee === 3 ? taux : campagne.tauxRepriseAn3!])
+    if (candidats.length > 0) {
+      candidats.sort((a, b) => b[0] - a[0]) // tri descendant par année
+      data.tauxReprise = candidats[0][1]
+    }
+    const tauxGlobalAfter: number = data.tauxReprise ?? taux
+
     // Si taux < 90 % et regarnissage pas encore planifié, on flag
-    if (taux < 90 && !campagne.regarnissagePlanifie && !campagne.regarnissageRealiseDate) {
+    if (tauxGlobalAfter < 90 && !campagne.regarnissagePlanifie && !campagne.regarnissageRealiseDate) {
       data.regarnissagePlanifie = true
     }
 
@@ -66,7 +79,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       data,
     })
 
-    return NextResponse.json({ data: updated, suggererRegarnissage: taux < 90 })
+    return NextResponse.json({ data: updated, suggererRegarnissage: tauxGlobalAfter < 90 })
   } catch (err) {
     console.error("POST /api/arbres/campagnes/[id]/reprise error:", err)
     return NextResponse.json({ error: "Erreur interne du serveur" }, { status: 500 })

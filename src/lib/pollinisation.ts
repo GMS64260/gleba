@@ -7,25 +7,34 @@
  */
 
 /** Liste des variétés triploïdes connues (fallback si Variete.ploidie non renseignée). */
-export const TRIPLOIDES_CONNUES = new Set<string>(
-  [
-    "belle de boskoop",
-    "reinette du canada",
-    "reinette grise du canada",
-    "jonagold",
-    "bramley",
-    "bramley's seedling",
-    "mutsu",
-    "ribston pippin",
-    "spartan",
-    "stayman",
-  ].map((s) => s.toLowerCase())
-)
+/**
+ * Patterns de variétés triploïdes connues (fallback si Variete.ploidie non
+ * renseignée). POSTREVIEW Sprint 7 — match en `startsWith` après lowercase
+ * pour attraper les variantes courantes en pépinière FR :
+ * "Belle de Boskoop rouge", "Reinette du Canada gris", "Jonagold de Carrare"…
+ */
+export const TRIPLOIDES_PATTERNS = [
+  "belle de boskoop",
+  "reinette du canada",
+  "reinette grise du canada",
+  "jonagold",
+  "bramley",
+  "mutsu",
+  "ribston pippin",
+  "spartan",
+  "stayman",
+]
+
+/** @deprecated Utiliser isTriploide() (POSTREVIEW Sprint 7). */
+export const TRIPLOIDES_CONNUES = new Set<string>(TRIPLOIDES_PATTERNS)
 
 export function isTriploide(variete: { nomNormalise?: string | null; ploidie?: string | null } | null): boolean {
   if (!variete) return false
   if (variete.ploidie === "Triploïde") return true
-  if (variete.nomNormalise && TRIPLOIDES_CONNUES.has(variete.nomNormalise.toLowerCase())) return true
+  if (variete.nomNormalise) {
+    const n = variete.nomNormalise.toLowerCase().trim()
+    return TRIPLOIDES_PATTERNS.some((p) => n.startsWith(p))
+  }
   return false
 }
 

@@ -31,8 +31,22 @@ export async function GET(request: NextRequest, { params }: Params) {
   })
   if (!arbre) return NextResponse.json({ error: "Arbre non trouvé" }, { status: 404 })
 
-  // URL canonique pour le QR : prefère l'origin de la requête
-  const origin = request.headers.get("origin") || "https://gleba.fr"
+  // POSTREVIEW Sprint 7 — URL canonique pour le QR. Origin du request est
+  // spoofable et absent en GET same-origin ; on préfère APP_URL (env var
+  // pour self-hosters), puis NEXTAUTH_URL, puis origin du request, puis
+  // host header. Fallback final : gleba.fr (production).
+  function originDeRequest(): string {
+    const host = request.headers.get("host")
+    const proto = request.headers.get("x-forwarded-proto") || "https"
+    if (host) return `${proto}://${host}`
+    return ""
+  }
+  const origin =
+    (process.env.APP_URL && process.env.APP_URL.replace(/\/$/, "")) ||
+    (process.env.NEXTAUTH_URL && process.env.NEXTAUTH_URL.replace(/\/$/, "")) ||
+    request.headers.get("origin") ||
+    originDeRequest() ||
+    "https://gleba.fr"
   const url = `${origin}/verger/${arbreId}`
 
   // QR Code en PNG data URL

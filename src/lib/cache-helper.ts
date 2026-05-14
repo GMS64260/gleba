@@ -13,6 +13,13 @@
 
 import prisma from "@/lib/prisma"
 
+/**
+ * POSTREVIEW Sprint 7 — Limite stale-while-error : on accepte de servir
+ * une valeur périmée si l'origin échoue, mais pas indéfiniment.
+ * Borné à 24 h après expiresAt.
+ */
+const STALE_GRACE_MS = 24 * 60 * 60 * 1000
+
 export async function getOrFetch<T>(
   key: string,
   fetcher: () => Promise<T>,
@@ -30,10 +37,11 @@ export async function getOrFetch<T>(
   try {
     value = await fetcher()
   } catch (err) {
-    // Si le fetcher échoue et qu'on a une valeur expirée, mieux vaut renvoyer
-    // l'ancienne que rien — l'utilisateur s'attend à des données, même périmées
-    if (cached) {
-      console.warn(`[cache-helper] fetcher failed for ${key}, returning stale cache`)
+    // POSTREVIEW Sprint 7 — Stale-while-error borné : on n'accepte le cache
+    // périmé que si la péremption date de moins de STALE_GRACE_MS (24 h).
+    // Avant : un fetcher qui plante toujours servait du cache indéfiniment.
+    if (cached && cached.expiresAt.getTime() + STALE_GRACE_MS > now.getTime()) {
+      console.warn(`[cache-helper] fetcher failed for ${key}, returning stale cache (< 24h)`)
       return cached.data as T
     }
     throw err

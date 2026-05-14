@@ -17,6 +17,7 @@ import { UserMenu } from "@/components/auth/UserMenu"
 import { ModulesNav } from "@/components/auth/ModulesNav"
 import { BoutiqueHeaderButton } from "@/components/auth/BoutiqueHeaderButton"
 import { TourComptabilite } from "@/components/tours/tour-comptabilite"
+import { PremiersPasBanner } from "@/components/premiers-pas-banner"
 import {
   BarChart,
   Bar,
@@ -287,6 +288,9 @@ export default function DashboardComptabilite() {
       {/* POSTREVIEW Sprint 6 — Tour Shepherd.js Comptabilité */}
       <TourComptabilite />
       <main className="container mx-auto px-4 py-8 max-w-[1600px]">
+        <div className="mb-6">
+          <PremiersPasBanner module="comptabilite" />
+        </div>
         {/* Titre + Sélecteur d'annee */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
