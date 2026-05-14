@@ -80,6 +80,18 @@ export async function PUT(request: NextRequest, { params }: Params) {
         espece: body.espece,
         variete: body.variete,
         portGreffe: body.portGreffe,
+        // Bug #1 — Le PUT ignorait porte-greffe structuré + circonférence + GPS,
+        // d'où le bug "fiche détail vide" alors que la création persistait bien.
+        porteGreffeId: body.porteGreffeId !== undefined ? (body.porteGreffeId || null) : undefined,
+        circonferenceCm: body.circonferenceCm !== undefined
+          ? (body.circonferenceCm != null ? parseFloat(body.circonferenceCm) : null)
+          : undefined,
+        gpsLat: body.gpsLat !== undefined
+          ? (body.gpsLat != null ? parseFloat(body.gpsLat) : null)
+          : undefined,
+        gpsLng: body.gpsLng !== undefined
+          ? (body.gpsLng != null ? parseFloat(body.gpsLng) : null)
+          : undefined,
         fournisseur: body.fournisseur,
         dateAchat: body.dateAchat ? new Date(body.dateAchat) : null,
         prixAchat: body.prixAchat != null ? parseFloat(body.prixAchat) : null,
