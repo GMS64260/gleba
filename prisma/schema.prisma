@@ -653,6 +653,9 @@ model ParcelleGeo {
   // DEV3 #1 — Traitements appliqués sur la parcelle (registre phyto)
   interventionsPhyto Intervention[]   @relation("InterventionParcelle")
   observationsPhyto  ObservationSante[] @relation("ObservationParcelle")
+  // DEV3 #4 — Récoltes fruits/bois rattachées à la parcelle
+  recoltesArbres     RecolteArbre[]   @relation("RecolteArbreParcelle")
+  productionsBois    ProductionBois[] @relation("ProductionBoisParcelle")
 
   // PROMPT 12 — Statut Bio (Conventionnel | C1 | C2 | C3 | AB)
   statutBio            String    @default("Conventionnel") @map("statut_bio")
@@ -1022,6 +1025,14 @@ model RecolteArbre {
   datePeremption DateTime? @map("date_peremption")
   // PROMPT 12 — Snapshot du statut Bio AU MOMENT de la récolte (n'évolue plus).
   statutBioSnapshot String? @map("statut_bio_snapshot") // Conventionnel | C1 | C2 | C3 | AB
+  // DEV3 audit Marc 2026-05-14 - Bloquant #4
+  // Traçabilité Bio/HVE : parcelle d'origine, N° lot, catégorie, destination, conditionnement
+  parcelleId          String?     @map("parcelle_id")
+  parcelle            ParcelleGeo? @relation("RecolteArbreParcelle", fields: [parcelleId], references: [id], onDelete: SetNull)
+  numLot              String?     @map("num_lot") // YYYYMMDD-PARCELLE-ESPECE-NN
+  categorieCommerciale String?    @map("categorie_commerciale") // Cat I Extra | Cat I | Cat II | Industrie | Écart de tri
+  destinationCommerce  String?    @map("destination_commerce") // Frais marché | Frais AMAP | Transformation | Jus/Cidre | Industrie | Don | Compost
+  conditionnement      String?    @map("conditionnement") // Vrac | Cagette 5kg | Cagette 10kg | Palox | Big-bag
   notes          String?   @map("notes")
   createdAt      DateTime  @default(now()) @map("created_at")
 
@@ -1031,6 +1042,8 @@ model RecolteArbre {
   @@index([statut])
   @@index([factureId])
   @@index([statutBioSnapshot])
+  @@index([parcelleId])
+  @@index([numLot])
   @@map("recoltes_arbres")
 }
 
@@ -1043,11 +1056,18 @@ model ProductionBois {
   arbre       Arbre?    @relation(fields: [arbreId], references: [id], onDelete: SetNull)
   date        DateTime  @default(now()) @map("date")
   type        String    @map("type") // "elagage", "abattage", "branchage"
-  volumeM3    Float?    @map("volume_m3") // Stères ou m³
+  volumeM3    Float?    @map("volume_m3") // m³ plein (= ~0.6 × stère pour bois fendu)
+  volumeStere Float?    @map("volume_stere") // m³ apparent (1 stère = 1 m³ apparent)
   poidsKg     Float?    @map("poids_kg")
   // Statut et destination
   statut      String    @default("en_stock") @map("statut") // "en_stock", "vendu", "utilise"
-  destination String?   @map("destination") // "chauffage", "BRF", "vente", "construction"
+  destination String?   @map("destination") // Stock interne | Vente | Auto-consommation | Don
+  // DEV3 audit Marc 2026-05-14 - Bloquant #4
+  // Traçabilité Bois : parcelle d'origine, N° lot, qualité
+  parcelleId  String?   @map("parcelle_id")
+  parcelle    ParcelleGeo? @relation("ProductionBoisParcelle", fields: [parcelleId], references: [id], onDelete: SetNull)
+  numLot      String?   @map("num_lot") // YYYYMMDD-PARCELLE-ESPECE-NN
+  qualiteBois String?   @map("qualite_bois") // Bois d'œuvre | Bois de chauffage | BRF | Plaquette | Piquet | Déchet vert
   // Vente
   dateVente   DateTime? @map("date_vente")
   prixVente   Float?    @map("prix_vente") // € si vendu
@@ -1066,6 +1086,8 @@ model ProductionBois {
   @@index([date])
   @@index([statut])
   @@index([factureId])
+  @@index([parcelleId])
+  @@index([numLot])
   @@map("production_bois")
 }
 

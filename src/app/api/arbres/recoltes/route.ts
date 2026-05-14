@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { snapshotStatutBio } from "@/lib/statut-bio"
+import { genererNumeroLot } from "@/lib/recolte/lot"
 
 // GET /api/arbres/recoltes
 export async function GET(request: NextRequest) {
@@ -92,11 +93,12 @@ export async function POST(request: NextRequest) {
 
     // Vérifier que l'arbre appartient à l'utilisateur.
     // PROMPT 12 — on charge la zone et la parcelle pour snapshoter le statut Bio.
+    // DEV3 #4 — on charge aussi parcelleGeo.nom pour le N° de lot.
     const arbre = await prisma.arbre.findFirst({
       where: { id: body.arbreId, userId },
       include: {
         zone: { select: { statutBio: true, dateDebutConversion: true } },
-        parcelleGeo: { select: { statutBio: true, dateDebutConversion: true } },
+        parcelleGeo: { select: { id: true, nom: true, statutBio: true, dateDebutConversion: true } },
       },
     })
 
@@ -110,9 +112,43 @@ export async function POST(request: NextRequest) {
     // Statut Bio : priorité à la zone verger, sinon parcelle géo.
     const sourceBio = arbre.zone ?? arbre.parcelleGeo
     const dateRecolte = body.date ? new Date(body.date) : new Date()
-    const statutBioSnapshot = sourceBio
-      ? snapshotStatutBio(sourceBio.statutBio, sourceBio.dateDebutConversion, dateRecolte)
-      : null
+    // DEV3 #4 — statut Bio surchargeable depuis le formulaire (auto-rempli
+    // depuis la parcelle d'origine par défaut).
+    const statutBioSnapshot =
+      body.statutBioSnapshot ||
+      (sourceBio
+        ? snapshotStatutBio(sourceBio.statutBio, sourceBio.dateDebutConversion, dateRecolte)
+        : null)
+
+    // DEV3 #4 — parcelle d'origine : par défaut celle de l'arbre, surchargeable
+    const parcelleId = body.parcelleId !== undefined ? body.parcelleId : arbre.parcelleGeo?.id ?? null
+
+    // DEV3 #4 — Numéro de lot auto YYYYMMDD-PARCELLE-ESPECE-NN si non fourni.
+    // Pour le séquentiel NN, on compte le nb de lots du jour + même parcelle + même espèce.
+    let numLot = body.numLot || null
+    if (!numLot) {
+      const parcelleNom = parcelleId
+        ? (await prisma.parcelleGeo.findUnique({ where: { id: parcelleId }, select: { nom: true } }))?.nom
+        : null
+      const dayStart = new Date(dateRecolte)
+      dayStart.setHours(0, 0, 0, 0)
+      const dayEnd = new Date(dateRecolte)
+      dayEnd.setHours(23, 59, 59, 999)
+      const sameDayCount = await prisma.recolteArbre.count({
+        where: {
+          userId,
+          date: { gte: dayStart, lte: dayEnd },
+          ...(parcelleId ? { parcelleId } : {}),
+          arbre: { espece: arbre.espece },
+        },
+      })
+      numLot = genererNumeroLot({
+        date: dateRecolte,
+        parcelleNom: parcelleNom ?? null,
+        espece: arbre.espece,
+        numeroSequence: sameDayCount + 1,
+      })
+    }
 
     const recolte = await prisma.recolteArbre.create({
       data: {
@@ -126,6 +162,12 @@ export async function POST(request: NextRequest) {
         datePeremption: body.datePeremption ? new Date(body.datePeremption) : null,
         notes: body.notes || null,
         statutBioSnapshot,
+        // DEV3 #4
+        parcelleId,
+        numLot,
+        categorieCommerciale: body.categorieCommerciale || null,
+        destinationCommerce: body.destinationCommerce || null,
+        conditionnement: body.conditionnement || null,
       },
       include: {
         arbre: {
@@ -135,6 +177,7 @@ export async function POST(request: NextRequest) {
             type: true,
           },
         },
+        parcelle: { select: { id: true, nom: true } },
       },
     })
 

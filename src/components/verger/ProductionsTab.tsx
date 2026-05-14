@@ -144,6 +144,7 @@ function RecoltesFruitsSubTab() {
     prixKg: "",
     creerFacture: false,
   })
+  // DEV3 #4 — Champs traçabilité AB (audit Marc 2026-05-14)
   const [newRecolte, setNewRecolte] = React.useState({
     arbreId: "",
     date: new Date().toISOString().split("T")[0],
@@ -152,6 +153,13 @@ function RecoltesFruitsSubTab() {
     prixKg: "",
     datePeremption: "",
     notes: "",
+    // Bloquant #4
+    statutBioSnapshot: "" as string, // auto depuis parcelle si vide
+    parcelleId: "",
+    numLot: "", // auto-généré si vide
+    categorieCommerciale: "",
+    destinationCommerce: "",
+    conditionnement: "",
   })
 
   const fetchData = React.useCallback(async () => {
@@ -233,6 +241,13 @@ function RecoltesFruitsSubTab() {
           prixKg: newRecolte.prixKg ? parseFloat(newRecolte.prixKg) : null,
           datePeremption: newRecolte.datePeremption || null,
           notes: newRecolte.notes || null,
+          // DEV3 #4 — traçabilité AB
+          statutBioSnapshot: newRecolte.statutBioSnapshot || null,
+          parcelleId: newRecolte.parcelleId || null,
+          numLot: newRecolte.numLot || null,
+          categorieCommerciale: newRecolte.categorieCommerciale || null,
+          destinationCommerce: newRecolte.destinationCommerce || null,
+          conditionnement: newRecolte.conditionnement || null,
         }),
       })
       if (res.ok) {
@@ -245,6 +260,12 @@ function RecoltesFruitsSubTab() {
           prixKg: "",
           datePeremption: "",
           notes: "",
+          statutBioSnapshot: "",
+          parcelleId: "",
+          numLot: "",
+          categorieCommerciale: "",
+          destinationCommerce: "",
+          conditionnement: "",
         })
         toast({ title: "Récolte enregistrée" })
         fetchData()
@@ -641,6 +662,92 @@ function RecoltesFruitsSubTab() {
                 onChange={(e) => setNewRecolte({ ...newRecolte, datePeremption: e.target.value })}
               />
             </div>
+
+            {/* DEV3 #4 — Bloc traçabilité Bio/HVE */}
+            <fieldset className="rounded-md border bg-emerald-50/40 p-3 space-y-3">
+              <legend className="px-2 text-xs font-semibold text-emerald-800">
+                Traçabilité Bio / HVE
+              </legend>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-xs">Statut Bio</Label>
+                  <Select
+                    value={newRecolte.statutBioSnapshot}
+                    onValueChange={(v) => setNewRecolte({ ...newRecolte, statutBioSnapshot: v })}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Auto (depuis parcelle)" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="AB">AB</SelectItem>
+                      <SelectItem value="C3">C3 (3e année conversion)</SelectItem>
+                      <SelectItem value="C2">C2 (2e année conversion)</SelectItem>
+                      <SelectItem value="C1">C1 (1re année conversion)</SelectItem>
+                      <SelectItem value="Conventionnel">Conventionnel</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">N° de lot</Label>
+                  <Input
+                    placeholder="Auto YYYYMMDD-PARCELLE-ESPECE-NN"
+                    value={newRecolte.numLot}
+                    onChange={(e) => setNewRecolte({ ...newRecolte, numLot: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <Label className="text-xs">Catégorie</Label>
+                  <Select
+                    value={newRecolte.categorieCommerciale}
+                    onValueChange={(v) => setNewRecolte({ ...newRecolte, categorieCommerciale: v })}
+                  >
+                    <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Cat I Extra">Cat I Extra</SelectItem>
+                      <SelectItem value="Cat I">Cat I</SelectItem>
+                      <SelectItem value="Cat II">Cat II</SelectItem>
+                      <SelectItem value="Industrie">Industrie</SelectItem>
+                      <SelectItem value="Écart de tri">Écart de tri</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">Destination</Label>
+                  <Select
+                    value={newRecolte.destinationCommerce}
+                    onValueChange={(v) => setNewRecolte({ ...newRecolte, destinationCommerce: v })}
+                  >
+                    <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Frais marché">Frais marché</SelectItem>
+                      <SelectItem value="Frais AMAP">Frais AMAP</SelectItem>
+                      <SelectItem value="Transformation interne">Transformation interne</SelectItem>
+                      <SelectItem value="Jus/Cidre">Jus / Cidre</SelectItem>
+                      <SelectItem value="Industrie">Industrie</SelectItem>
+                      <SelectItem value="Don">Don</SelectItem>
+                      <SelectItem value="Compost">Compost</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">Conditionnement</Label>
+                  <Select
+                    value={newRecolte.conditionnement}
+                    onValueChange={(v) => setNewRecolte({ ...newRecolte, conditionnement: v })}
+                  >
+                    <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Vrac">Vrac</SelectItem>
+                      <SelectItem value="Cagette 5kg">Cagette 5kg</SelectItem>
+                      <SelectItem value="Cagette 10kg">Cagette 10kg</SelectItem>
+                      <SelectItem value="Palox">Palox</SelectItem>
+                      <SelectItem value="Big-bag">Big-bag</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </fieldset>
+
             <div>
               <Label>Notes</Label>
               <Input
@@ -738,12 +845,16 @@ function ProductionBoisSubTab() {
   const [showUtiliseDialog, setShowUtiliseDialog] = React.useState(false)
   const [selectedProduction, setSelectedProduction] = React.useState<ProductionBois | null>(null)
 
+  // DEV3 #4 — Champs traçabilité bois (audit Marc)
   const [newProduction, setNewProduction] = React.useState({
     arbreId: "",
     date: new Date().toISOString().split("T")[0],
     type: "elagage",
     volumeM3: "",
+    volumeStere: "",
     poidsKg: "",
+    qualiteBois: "",
+    destination: "",
     notes: "",
   })
 
@@ -821,7 +932,10 @@ function ProductionBoisSubTab() {
           date: newProduction.date,
           type: newProduction.type,
           volumeM3: newProduction.volumeM3 ? parseFloat(newProduction.volumeM3) : null,
+          volumeStere: newProduction.volumeStere ? parseFloat(newProduction.volumeStere) : null,
           poidsKg: newProduction.poidsKg ? parseFloat(newProduction.poidsKg) : null,
+          qualiteBois: newProduction.qualiteBois || null,
+          destination: newProduction.destination || null,
           statut: "en_stock",
           notes: newProduction.notes || null,
         }),
@@ -833,7 +947,10 @@ function ProductionBoisSubTab() {
           date: new Date().toISOString().split("T")[0],
           type: "elagage",
           volumeM3: "",
+          volumeStere: "",
           poidsKg: "",
+          qualiteBois: "",
+          destination: "",
           notes: "",
         })
         toast({ title: "Production enregistrée en stock" })
