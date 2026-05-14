@@ -33,6 +33,7 @@ import {
   Pencil,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { ImageUploader } from "@/components/ui/image-uploader"
 
 interface Arbre {
   id: number
@@ -549,12 +550,12 @@ function ObservationsSubTab() {
                 />
               </div>
               <div>
-                <Label>Photo (URL)</Label>
-                <Input
-                  type="url"
+                <Label>Photo</Label>
+                <ImageUploader
                   value={formData.photoUrl}
-                  onChange={(e) => setFormData({ ...formData, photoUrl: e.target.value })}
-                  placeholder="https://… (upload local en chantier)"
+                  onChange={(url) => setFormData({ ...formData, photoUrl: url || "" })}
+                  placeholder="Glisser une photo de l'organe touché"
+                  heightClass="h-32"
                 />
               </div>
             </div>

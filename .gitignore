@@ -9,6 +9,12 @@
 # testing
 /coverage
 
+# PROMPT 16 LOT A — uploads utilisateurs (photos produits, observations, arbres).
+# Le dossier doit exister dans l'image Docker mais ses contenus ne doivent pas
+# être commités (données user-specific).
+/public/uploads/*
+!/public/uploads/.gitkeep
+
 # next.js
 /.next/
 /out/
