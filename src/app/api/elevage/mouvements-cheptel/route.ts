@@ -67,10 +67,30 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Données invalides', details: parsed.error.flatten() }, { status: 400 })
     }
     const d = parsed.data
+    const userId = session.user.id
+
+    // POSTREVIEW Sprint 5 — Validation tenant : chaque ressource référencée
+    // doit appartenir au user authentifié (avant : IDOR exploitable trivialement)
+    if (d.animalId) {
+      const a = await prisma.animal.findFirst({ where: { id: d.animalId, userId }, select: { id: true } })
+      if (!a) return NextResponse.json({ error: 'Animal introuvable' }, { status: 404 })
+    }
+    if (d.lotId) {
+      const l = await prisma.lotAnimaux.findFirst({ where: { id: d.lotId, userId }, select: { id: true } })
+      if (!l) return NextResponse.json({ error: 'Lot introuvable' }, { status: 404 })
+    }
+    if (d.parcelleAvantId) {
+      const p = await prisma.parcelleGeo.findFirst({ where: { id: d.parcelleAvantId, userId }, select: { id: true } })
+      if (!p) return NextResponse.json({ error: 'Parcelle origine introuvable' }, { status: 404 })
+    }
+    if (d.parcelleApresId) {
+      const p = await prisma.parcelleGeo.findFirst({ where: { id: d.parcelleApresId, userId }, select: { id: true } })
+      if (!p) return NextResponse.json({ error: 'Parcelle destination introuvable' }, { status: 404 })
+    }
 
     const m = await prisma.mouvementCheptel.create({
       data: {
-        userId: session.user.id,
+        userId,
         animalId: d.animalId ?? null,
         lotId: d.lotId ?? null,
         parcelleAvantId: d.parcelleAvantId ?? null,
@@ -81,10 +101,12 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // Mise à jour optionnelle de la parcelle courante du lot (vu LotAnimaux.parcelleGeoId)
+    // POSTREVIEW Sprint 5 — Mise à jour parcelle du lot SCOPÉE userId
+    // (avant : updateMany sans where userId → un utilisateur pouvait
+    // déplacer le lot d'un autre éleveur en POSTant son lotId)
     if (d.lotId && d.parcelleApresId) {
-      await prisma.lotAnimaux.update({
-        where: { id: d.lotId },
+      await prisma.lotAnimaux.updateMany({
+        where: { id: d.lotId, userId },
         data: { parcelleGeoId: d.parcelleApresId },
       })
     }

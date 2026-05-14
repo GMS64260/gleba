@@ -78,6 +78,8 @@ model User {
   // PROMPT 17 — production laitière
   collectesLait         CollecteLait[]
   lotsFromage           LotFromage[]
+  // POSTREVIEW Sprint 5 — séquences lot fromage
+  sequencesLotFromage   SequenceLotFromage[]
   // PROMPT 18 — saillies / reproduction
   saillies              Saillie[]
   // PROMPT 19A — mouvements de cheptel
@@ -1666,6 +1668,23 @@ model SoinAnimal {
   @@index([finAttenteLait])
   @@index([finAttenteViande])
   @@map("soins_animaux")
+}
+
+/// Séquence de numérotation continue pour les lots fromage (POSTREVIEW Sprint 5).
+/// Lock FOR UPDATE comme SequenceFacture pour éviter les doublons concurrents.
+model SequenceLotFromage {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exercice    Int      @map("exercice")
+  semaineIso  Int      @map("semaine_iso")
+  prochainNum Int      @default(1) @map("prochain_num")
+  prefixe     String   @map("prefixe")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([userId, exercice, semaineIso])
+  @@map("sequences_lot_fromage")
 }
 
 /// Produit vétérinaire référencé (PROMPT 19B).

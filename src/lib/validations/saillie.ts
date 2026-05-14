@@ -17,6 +17,9 @@ export const saillieSchema = z.object({
 
 export const updateSaillieSchema = z.object({
   id: z.string().min(1),
+  // POSTREVIEW Sprint 5 — Autoriser la modification de la date pour recalculer
+  // dateMiseBasAttendue (avant : impossible sans DELETE+POST)
+  date: z.coerce.date().optional(),
   confirmationGestation: z.coerce.date().nullable().optional(),
   statut: z.enum(STATUTS_SAILLIE).optional(),
   notes: z.string().max(2000).nullable().optional(),

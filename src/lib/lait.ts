@@ -22,23 +22,55 @@ export function isoWeek(date: Date): { year: number; week: number } {
 }
 
 /**
- * Génère le prochain numéro de lot pour la semaine ISO d'une date,
- * en cherchant le plus grand index existant pour (user, semaine).
+ * Génère le prochain numéro de lot fromage en réservant via SequenceLotFromage
+ * avec lock SQL FOR UPDATE (POSTREVIEW Sprint 5 — avant : findMany + max
+ * applicatif vulnérable à la concurrence, doublons possibles sur conflit
+ * `@@unique(userId, numeroLot)`).
+ *
+ * Pattern identique à `reserverProchainNumero` dans facture-utils.ts.
  * Format : L-YYYY-Www-NN
  */
 export async function prochainNumeroLot(tx: PrismaTx, userId: string, date: Date): Promise<string> {
   const { year, week } = isoWeek(date)
   const prefixe = `L-${year}-W${String(week).padStart(2, '0')}-`
-  const lots = await tx.lotFromage.findMany({
-    where: { userId, numeroLot: { startsWith: prefixe } },
-    select: { numeroLot: true },
-  })
-  let max = 0
-  for (const l of lots) {
-    const idx = parseInt(l.numeroLot.split('-')[3] || '0', 10)
-    if (!isNaN(idx) && idx > max) max = idx
-  }
-  return `${prefixe}${String(max + 1).padStart(2, '0')}`
+
+  // Idempotent insert si la séquence n'existe pas pour cette semaine
+  await tx.$executeRawUnsafe(
+    `
+    INSERT INTO sequences_lot_fromage (id, user_id, exercice, semaine_iso, prochain_num, prefixe, created_at, updated_at)
+    VALUES (gen_random_uuid()::text, $1, $2, $3, 1, $4, NOW(), NOW())
+    ON CONFLICT (user_id, exercice, semaine_iso) DO NOTHING
+    `,
+    userId,
+    year,
+    week,
+    prefixe
+  )
+
+  // Lock + lecture du numéro courant
+  const rows = await tx.$queryRawUnsafe<Array<{ prochain_num: number }>>(
+    `
+    SELECT prochain_num FROM sequences_lot_fromage
+    WHERE user_id = $1 AND exercice = $2 AND semaine_iso = $3
+    FOR UPDATE
+    `,
+    userId,
+    year,
+    week
+  )
+  if (rows.length === 0) throw new Error('Séquence lot fromage introuvable après upsert')
+  const num = Number(rows[0].prochain_num)
+
+  // Incrément atomique
+  await tx.$executeRawUnsafe(
+    `UPDATE sequences_lot_fromage SET prochain_num = prochain_num + 1, updated_at = NOW()
+     WHERE user_id = $1 AND exercice = $2 AND semaine_iso = $3`,
+    userId,
+    year,
+    week
+  )
+
+  return `${prefixe}${String(num).padStart(2, '0')}`
 }
 
 /** Days In Milk : jours écoulés depuis la dernière mise-bas. */

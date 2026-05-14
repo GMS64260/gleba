@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
     // Détection consanguinité (informative, non bloquante)
     let consanguinite: number[] = []
     if (data.maleId) {
-      consanguinite = await detecterConsanguinite(prisma, data.femelleId, data.maleId, 3)
+      consanguinite = await detecterConsanguinite(prisma, data.femelleId, data.maleId, 3, session.user.id)
     }
 
     const saillie = await prisma.saillie.create({
@@ -150,12 +150,29 @@ export async function PATCH(request: NextRequest) {
     }
     const { id, ...updates } = parsed.data
 
-    const existing = await prisma.saillie.findFirst({ where: { id, userId: session.user.id } })
+    const existing = await prisma.saillie.findFirst({
+      where: { id, userId: session.user.id },
+      include: { femelle: { include: { especeAnimale: true } } },
+    })
     if (!existing) return NextResponse.json({ error: 'Saillie non trouvée' }, { status: 404 })
 
     const data: any = { ...updates }
     if (updates.confirmationGestation && existing.statut === 'En attente') {
       data.statut = 'Gestante'
+    }
+    // POSTREVIEW Sprint 5 — Si la date change, recalculer dateMiseBasAttendue
+    // et dateTarissementPrevue (avant : impossible de corriger une date saisie
+    // par erreur sans DELETE+POST)
+    if (updates.date) {
+      const espece = existing.femelle.especeAnimale
+      const duree = espece.dureeGestation ??
+        DUREE_GESTATION_DEFAUTS[espece.id.toLowerCase()] ??
+        DUREE_GESTATION_DEFAUTS[(espece.type || '').toLowerCase()]
+      if (duree) {
+        const dateMb = dateMiseBasAttendue(updates.date, duree)
+        data.dateMiseBasAttendue = dateMb
+        data.dateTarissementPrevue = dateTarissementPrevue(dateMb, espece.production)
+      }
     }
     const saillie = await prisma.saillie.update({ where: { id }, data })
     return NextResponse.json({ data: saillie })

@@ -93,13 +93,17 @@ export async function POST(request: NextRequest) {
     const dateAbattage = date || new Date()
 
     // PROMPT 19B §8 — Blocage si soin en temps d'attente viande actif
-    const soinsAttenteViande = await prisma.soinAnimal.findMany({
+    // POSTREVIEW Sprint 5 — Filtre `fait: true` ajouté : un soin prévu mais
+    // non administré ne devrait pas bloquer ; le calcul `finAttenteViande`
+    // n'est valide que pour les soins effectivement réalisés.
+    const cibleFilters: any[] = []
+    if (animalId) cibleFilters.push({ animalId })
+    if (lotId) cibleFilters.push({ lotId })
+    const soinsAttenteViande = cibleFilters.length === 0 ? [] : await prisma.soinAnimal.findMany({
       where: {
         userId: session.user.id,
-        OR: [
-          animalId ? { animalId } : { id: -1 },
-          lotId ? { lotId } : { id: -1 },
-        ],
+        fait: true,
+        OR: cibleFilters,
         finAttenteViande: { gte: dateAbattage },
         date: { lte: dateAbattage },
       },
