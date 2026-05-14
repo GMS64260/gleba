@@ -241,6 +241,16 @@ export function CampagneDetailDialog({ campagneId, open, onOpenChange, onUpdate 
           <DialogTitle className="flex items-center gap-2">
             <TreeDeciduous className="h-5 w-5 text-lime-600" />
             {campagne?.nom || "Chargement..."}
+            {/* Bug #7 — Export PDF dossier campagne (aides PCAE / Plantons en Normandie). */}
+            {campagne && (
+              <a
+                href={`/api/arbres/campagnes/${campagne.id}/export`}
+                className="ml-auto text-xs px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-normal"
+                title="Télécharger le dossier complet pour montage d'aides"
+              >
+                📥 Dossier PDF
+              </a>
+            )}
           </DialogTitle>
           <DialogDescription>
             Suivi détaillé de la campagne de plantation
