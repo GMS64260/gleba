@@ -80,6 +80,14 @@ function VergerPageInner() {
     }
   }, [tabParam])
 
+  // POSTREVIEW — ?action=plantation ouvre le dialog AssistantPlantation
+  // (utilisé par le bandeau "Premiers pas" pour ce step)
+  React.useEffect(() => {
+    if (searchParams.get("action") === "plantation") {
+      setShowAssistant(true)
+    }
+  }, [searchParams])
+
   return (
     <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
       <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
