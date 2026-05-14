@@ -265,7 +265,26 @@ export async function GET(request: NextRequest) {
     })
 
     // CommandeBoutique livrées -> revenus
+    //
+    // DEV1 Ticket 3 (audit QA 2026-05-14) : pour chaque commande livrée,
+    // une VenteManuelle existe déjà (créée par confirmCommandeBoutique ou
+    // par le seed). Sans dédoublonnage, chaque CMD-XXXX apparaissait 2 fois
+    // dans /comptabilite/transactions : 1 ligne module 'general' (depuis
+    // VenteManuelle) + 1 ligne module 'boutique' (ici).
+    //
+    // Règle : on n'émet la ligne 'CommandeBoutique' QUE si aucune
+    // VenteManuelle ne référence déjà cette commande
+    // (sourceType='commande_boutique', sourceId=c.id).
+    const commandeIdsDejaComptees = new Set(
+      ventesManuelles
+        .filter((v) => v.sourceType === 'commande_boutique' && v.sourceId != null)
+        .map((v) => v.sourceId as number)
+    )
+
     commandesBoutique.forEach(c => {
+      if (commandeIdsDejaComptees.has(c.id)) return // déjà comptée via VenteManuelle
+      if (c.venteManuelleId != null) return // safeguard supplémentaire
+
       const description = c.lignes.length > 0
         ? `Commande boutique ${c.numero} : ${c.lignes.slice(0, 3).map(l => `${l.quantite} ${l.unite} ${l.nom}`).join(', ')}${c.lignes.length > 3 ? '...' : ''}`
         : `Commande boutique ${c.numero}`
