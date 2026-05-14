@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { isValidIdentifiant, TYPES_IDENTIFIANT, type TypeIdentifiant } from '@/lib/identification-animal'
+import { caseInsensitiveEnum } from './case-insensitive-enum'
 
 export const animalSchema = z
   .object({
@@ -17,7 +18,8 @@ export const animalSchema = z
     // PROMPT 19A — exploitations origine/destination (registre élevage)
     nExploitationOrigine: z.string().max(50).nullable().optional(),
     nExploitationDestination: z.string().max(50).nullable().optional(),
-    motifSortie: z.enum(['Vente', 'Mort', 'Abattage', 'Réforme', 'Don']).nullable().optional(),
+    // DEV1 T1 — Résilient à la casse : 'vente', 'VENTE', 'Vente' → 'Vente'.
+    motifSortie: caseInsensitiveEnum(['Vente', 'Mort', 'Abattage', 'Réforme', 'Don'] as const).nullable().optional(),
     statutSanitaire: z.array(z.string()).optional().default([]),
     prixAchat: z.number().min(0).nullable().optional(),
     statut: z.string().max(50).default('actif'),

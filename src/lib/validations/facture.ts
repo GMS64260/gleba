@@ -2,6 +2,7 @@
  * POSTREVIEW — Validation Zod facture (Sprint 3 review : bloquant validation manquante).
  */
 import { z } from "zod"
+import { caseInsensitiveEnum } from "./case-insensitive-enum"
 
 const TAUX_TVA = [0, 2.1, 5.5, 10, 20] as const
 
@@ -32,7 +33,8 @@ const ligneSchema = z
 
 export const createFactureSchema = z
   .object({
-    type: z.enum(["facture", "avoir", "acompte"]).optional().default("facture"),
+    // DEV1 T1 — Résilient à la casse.
+    type: caseInsensitiveEnum(["facture", "avoir", "acompte"] as const).optional().default("facture"),
     clientId: z.coerce.number().int().positive().nullable().optional(),
     clientNom: z.string().max(200).optional(),
     clientAdresse: z.string().max(500).nullable().optional(),
@@ -42,7 +44,7 @@ export const createFactureSchema = z
     totalHT: z.coerce.number().min(0),
     totalTVA: z.coerce.number().min(0),
     totalTTC: z.coerce.number().min(0),
-    statut: z.enum(["brouillon", "emise", "payee", "annulee"]).optional().default("emise"),
+    statut: caseInsensitiveEnum(["brouillon", "emise", "payee", "annulee"] as const).optional().default("emise"),
     modePaiement: z.string().max(50).nullable().optional(),
     factureOrigineId: z.coerce.number().int().positive().nullable().optional(),
     notes: z.string().max(5000).nullable().optional(),
