@@ -5,6 +5,7 @@ import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { SessionProvider } from "@/components/auth/SessionProvider";
 import { FeedbackWidget } from "@/components/feedback/FeedbackWidget";
+import { GlobalSearch } from "@/components/global-search";
 
 
 const spaceGrotesk = Space_Grotesk({
@@ -135,6 +136,7 @@ export default function RootLayout({
       >
         <SessionProvider>
           {children}
+          <GlobalSearch />
           <Toaster />
           <FeedbackWidget />
         </SessionProvider>

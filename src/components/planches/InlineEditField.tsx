@@ -79,8 +79,10 @@ export function InlineEditField({
     return (
       <span
         onClick={handleEdit}
-        className={`cursor-pointer hover:bg-yellow-50 hover:ring-1 hover:ring-yellow-400 rounded px-2 py-1 transition-all ${className}`}
-        title="Cliquer pour modifier"
+        // PROMPT 20c — Indicateur visuel d'édition rapide :
+        // underline dotted en hover + curseur "text", tooltip explicite
+        className={`cursor-text hover:bg-yellow-50 hover:ring-1 hover:ring-yellow-400 hover:underline hover:decoration-dotted hover:decoration-yellow-500 rounded px-2 py-1 transition-all ${className}`}
+        title="Cliquez pour éditer (Entrée = valider, Échap = annuler)"
       >
         {displayValue}
       </span>
