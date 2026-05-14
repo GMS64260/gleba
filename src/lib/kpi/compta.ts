@@ -40,9 +40,15 @@ async function computeKpiCompta(
   asOf: Date
 ): Promise<KPICompta> {
   const startOfYear = new Date(year, 0, 1, 0, 0, 0, 0)
+  const endOfYear = new Date(year, 11, 31, 23, 59, 59, 999)
   const startOfYearN1 = new Date(year - 1, 0, 1, 0, 0, 0, 0)
   const endOfYearN1 = new Date(year - 1, 11, 31, 23, 59, 59, 999)
-  const asOfN1 = shiftToPrevYear(asOf)
+  // Ticket DEV2 #1 — Borne haute "YTD" : pour l'année passée, on lit
+  // l'année entière. Sinon une sélection 2024 retournait tout depuis
+  // 2024 jusqu'à `now`.
+  const isCurrentYear = asOf.getFullYear() === year
+  const upperBound = isCurrentYear ? asOf : endOfYear
+  const asOfN1 = isCurrentYear ? shiftToPrevYear(asOf) : endOfYearN1
 
   // ============================================================
   // REVENUS : VenteManuelle + LigneFacture (factures non annulées)
@@ -55,10 +61,10 @@ async function computeKpiCompta(
     factureN1Ytd,
     factureN1Total,
   ] = await Promise.all([
-    sumVenteManuelle(userId, startOfYear, asOf),
+    sumVenteManuelle(userId, startOfYear, upperBound),
     sumVenteManuelle(userId, startOfYearN1, asOfN1),
     sumVenteManuelle(userId, startOfYearN1, endOfYearN1),
-    sumLigneFacture(userId, startOfYear, asOf),
+    sumLigneFacture(userId, startOfYear, upperBound),
     sumLigneFacture(userId, startOfYearN1, asOfN1),
     sumLigneFacture(userId, startOfYearN1, endOfYearN1),
   ])
@@ -71,7 +77,7 @@ async function computeKpiCompta(
   // DÉPENSES : DepenseManuelle
   // ============================================================
   const [depenseYtd, depenseN1Ytd, depenseN1Total] = await Promise.all([
-    sumDepenseManuelle(userId, startOfYear, asOf),
+    sumDepenseManuelle(userId, startOfYear, upperBound),
     sumDepenseManuelle(userId, startOfYearN1, asOfN1),
     sumDepenseManuelle(userId, startOfYearN1, endOfYearN1),
   ])
