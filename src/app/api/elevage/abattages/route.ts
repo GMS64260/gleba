@@ -254,7 +254,8 @@ export async function PATCH(request: NextRequest) {
 
         const facture = await creerFacture(tx, {
           userId,
-          type: 'abattage',
+          // POSTREVIEW — 'abattage' cassait PDF + FEC ; mettre 'facture'
+          type: 'facture',
           clientNom: 'Client vente abattage',
           date: existing.date,
           objet: `Vente abattage - ${animalInfo}`,

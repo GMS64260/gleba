@@ -219,6 +219,12 @@ function typeSequence(typeFacture: string): 'FACTURE' | 'AVOIR' | 'DEVIS' {
   return 'FACTURE' // facture, acompte
 }
 
+// POSTREVIEW — Re-exports nominaux utilisés par PATCH /api/comptabilite/factures
+// pour la transition brouillon → émise. Les fonctions internes restent privées
+// dans creerFacture ; ces alias publient l'API minimale nécessaire.
+export const reserverProchainNumeroForEmission = reserverProchainNumero
+export const snapshotEmetteurForEmission = snapshotEmetteur
+
 /**
  * Crée une facture dans une transaction Prisma.
  * Gère la numérotation séquentielle avec lock FOR UPDATE (PROMPT 14B).
@@ -227,8 +233,19 @@ export async function creerFacture(tx: PrismaTx, params: CreerFactureParams) {
   const date = params.date || new Date()
   const exercice = date.getFullYear()
   const typeSeq = typeSequence(params.type)
+  const statut = params.statut || 'emise'
 
-  const { numero } = await reserverProchainNumero(tx, params.userId, exercice, typeSeq)
+  // POSTREVIEW — Un brouillon ne doit PAS consommer un numéro de séquence,
+  // sinon le supprimer crée un trou (viole art. 242 nonies A : numérotation
+  // chronologique sans rupture). On lui assigne un numéro temporaire BR-<cuid>
+  // remplacé lors de la transition brouillon → émise dans PATCH /factures.
+  let numero: string
+  if (statut === 'brouillon') {
+    numero = `BR-${Date.now()}-${Math.floor(Math.random() * 10_000)}`
+  } else {
+    const reserved = await reserverProchainNumero(tx, params.userId, exercice, typeSeq)
+    numero = reserved.numero
+  }
 
   let clientNom = params.clientNom || 'Client anonyme'
   let clientAdresse = params.clientAdresse || null
@@ -262,7 +279,7 @@ export async function creerFacture(tx: PrismaTx, params: CreerFactureParams) {
       totalTVA: params.totalTVA,
       totalTTC: params.totalTTC,
       totauxParTauxTva: totaux as any,
-      statut: params.statut || 'emise',
+      statut,
       modePaiement: params.modePaiement || null,
       datePaiement: params.datePaiement || null,
       factureOrigineId: params.factureOrigineId || null,

@@ -30,12 +30,10 @@ describe("fec", () => {
     expect(v.totalDebit).toBeCloseTo(v.totalCredit, 1)
   })
 
-  it("équilibre Débit = Crédit sur une facture multi-taux", () => {
-    // Note : `genererFec` reconstruit le TTC client à partir de la ventilation
-    // HT/TVA fournie (pas du totalTTC fourni). On garde la cohérence interne :
-    // si ht=100 et tva=5.5 alors le TTC dérivé = 105.5 ; idem 10% = 110.
-    // Total client crédité doit donc être 215.5, donc on règle totalTTC sur la
-    // somme des sous-totaux ventilés.
+  it("équilibre Débit = Crédit sur une facture multi-catégories (POSTREVIEW)", () => {
+    // POSTREVIEW : la facture ventile désormais ses lignes par catégorie
+    // → on doit retrouver les comptes 701100 (legumes), 701300 (œufs),
+    // 701400 (viande) au lieu d'un seul 701100 forcé.
     const lignes = genererFec({
       ventes: [],
       depenses: [],
@@ -46,20 +44,74 @@ describe("fec", () => {
           type: "facture",
           date: new Date("2026-03-15"),
           statut: "emise",
+          clientId: 42,
           clientNom: "Restaurant Le Coin",
           totalHT: 200,
-          totalTVA: 15.5,
-          totalTTC: 215.5,
-          totauxParTauxTva: {
-            "5.5": { ht: 100, tva: 5.5 },
-            "10": { ht: 100, tva: 10 },
-          },
+          totalTVA: 11,
+          totalTTC: 211,
+          totauxParTauxTva: null,
           modePaiement: "Virement",
+          lignes: [
+            { description: "Carottes", categorie: "legumes", montantHT: 100, montantTVA: 5.5, tauxTVA: 5.5 },
+            { description: "Œufs frais", categorie: "oeufs", montantHT: 50, montantTVA: 2.75, tauxTVA: 5.5 },
+            { description: "Poulet fermier", categorie: "viande", montantHT: 50, montantTVA: 2.75, tauxTVA: 5.5 },
+          ],
         },
       ],
     })
     const v = validerEquilibre(lignes)
     expect(v.equilibre).toBe(true)
+    const comptesVentes = new Set(
+      lignes.filter((l) => l.CompteNum.startsWith("701")).map((l) => l.CompteNum)
+    )
+    expect(comptesVentes.size).toBe(3)
+    expect(comptesVentes.has("701100")).toBe(true)
+    expect(comptesVentes.has("701300")).toBe(true)
+    expect(comptesVentes.has("701400")).toBe(true)
+  })
+
+  it("compte auxiliaire client basé sur clientId, pas factureId (POSTREVIEW)", () => {
+    // 2 factures pour le MÊME client doivent partager le même tiers 411XXX
+    // pour permettre le lettrage et la balance âgée.
+    const lignes = genererFec({
+      ventes: [],
+      depenses: [],
+      factures: [
+        {
+          id: 1,
+          numero: "F-2026-0001",
+          type: "facture",
+          date: new Date("2026-03-15"),
+          statut: "emise",
+          clientId: 42,
+          clientNom: "Client X",
+          totalHT: 100,
+          totalTVA: 5.5,
+          totalTTC: 105.5,
+          totauxParTauxTva: null,
+          modePaiement: null,
+          lignes: [{ description: "Carottes", categorie: "legumes", montantHT: 100, montantTVA: 5.5, tauxTVA: 5.5 }],
+        },
+        {
+          id: 99,
+          numero: "F-2026-0099",
+          type: "facture",
+          date: new Date("2026-04-15"),
+          statut: "emise",
+          clientId: 42, // même client
+          clientNom: "Client X",
+          totalHT: 200,
+          totalTVA: 11,
+          totalTTC: 211,
+          totauxParTauxTva: null,
+          modePaiement: null,
+          lignes: [{ description: "Tomates", categorie: "legumes", montantHT: 200, montantTVA: 11, tauxTVA: 5.5 }],
+        },
+      ],
+    })
+    const tiers = lignes.filter((l) => l.CompAuxNum.startsWith("411"))
+    const uniqueAuxNum = new Set(tiers.map((l) => l.CompAuxNum))
+    expect(uniqueAuxNum.size).toBe(1)
   })
 
   it("ignore les factures annulées", () => {

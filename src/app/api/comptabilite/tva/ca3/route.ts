@@ -36,17 +36,39 @@ export async function GET(request: NextRequest) {
   const year = searchParams.get('year') || String(new Date().getFullYear())
   const trimestre = searchParams.get('trimestre') || ''
 
-  // On délègue à la route TVA pour le calcul (DRY)
-  const baseUrl = new URL(request.url)
-  const tvaUrl = new URL('/api/comptabilite/tva', baseUrl)
-  tvaUrl.searchParams.set('year', year)
-  if (trimestre) tvaUrl.searchParams.set('trimestre', trimestre)
-  // Forward cookies pour l'auth
-  const tvaRes = await fetch(tvaUrl.toString(), {
-    headers: { cookie: request.headers.get('cookie') || '' },
-  })
-  if (!tvaRes.ok) {
-    return NextResponse.json({ error: 'Échec calcul TVA' }, { status: 500 })
+  // POSTREVIEW — On délègue à la route TVA pour le calcul. Le fetch via le
+  // hostname public peut échouer derrière un reverse proxy (Caddy) ou en SSR
+  // preview. On essaie 3 hôtes successivement : la requête courante, puis
+  // localhost:3000 (Docker interne), puis APP_URL si configuré.
+  async function fetchTva(): Promise<Response | null> {
+    const candidates: string[] = []
+    try {
+      candidates.push(new URL('/api/comptabilite/tva', request.url).toString())
+    } catch {
+      // request.url malformé : on continue avec les fallbacks
+    }
+    candidates.push('http://localhost:3000/api/comptabilite/tva')
+    if (process.env.APP_URL) {
+      candidates.push(`${process.env.APP_URL.replace(/\/$/, '')}/api/comptabilite/tva`)
+    }
+    const cookie = request.headers.get('cookie') || ''
+    for (const base of candidates) {
+      const url = new URL(base)
+      url.searchParams.set('year', year)
+      if (trimestre) url.searchParams.set('trimestre', trimestre)
+      try {
+        const res = await fetch(url.toString(), { headers: { cookie } })
+        if (res.ok) return res
+      } catch {
+        // try next
+      }
+    }
+    return null
+  }
+
+  const tvaRes = await fetchTva()
+  if (!tvaRes) {
+    return NextResponse.json({ error: 'Échec calcul TVA (toutes les routes ont échoué)' }, { status: 500 })
   }
   const tva = await tvaRes.json()
 

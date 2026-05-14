@@ -165,22 +165,34 @@ function line(base: Partial<FecLine>, compteNum: string, compteLib: string, debi
  * Les sources brutes auto (élevage, récoltes…) sont déjà répliquées en
  * VenteManuelle auto=true → on les exclut pour ne pas doubler.
  */
+export interface FecInputFacture {
+  id: number
+  numero: string
+  type: string // facture | avoir | acompte
+  date: Date
+  statut: string
+  clientId: number | null
+  clientNom: string
+  totalHT: number
+  totalTVA: number
+  totalTTC: number
+  totauxParTauxTva: Record<string, { ht: number; tva: number; ttc?: number }> | null
+  modePaiement: string | null
+  // POSTREVIEW — Lignes pour ventiler le compte de produits par catégorie
+  // (sinon fallback compte 708000 "autres produits", pas 701100 légumes)
+  lignes?: Array<{
+    description: string
+    categorie?: string | null // 'legumes'|'fruits'|'oeufs'|'viande'|... depuis VenteManuelle ou heuristique
+    montantHT: number
+    montantTVA: number
+    tauxTVA: number
+  }>
+}
+
 export function genererFec(input: {
   ventes: FecInputVente[]
   depenses: FecInputDepense[]
-  factures: Array<{
-    id: number
-    numero: string
-    type: string // facture | avoir | acompte
-    date: Date
-    statut: string
-    clientNom: string
-    totalHT: number
-    totalTVA: number
-    totalTTC: number
-    totauxParTauxTva: Record<string, { ht: number; tva: number; ttc?: number }> | null
-    modePaiement: string | null
-  }>
+  factures: FecInputFacture[]
 }): FecLine[] {
   const out: FecLine[] = []
   let ecritNum = 1
@@ -196,24 +208,50 @@ export function genererFec(input: {
     const libelle = `${isAvoir ? 'Avoir' : 'Facture'} ${f.numero}${f.clientNom ? ' — ' + f.clientNom : ''}`
     const base = ecritureBase(journal, ecritNum++, f.date, pieceRef, libelle)
 
-    // Tiers client (compte auxiliaire)
-    const tiers = { num: `411${String(f.id).padStart(6, '0').slice(-6)}`, lib: f.clientNom || 'Client' }
+    // POSTREVIEW — Compte auxiliaire client basé sur clientId (et non factureId)
+    // pour permettre le lettrage et le suivi de balance âgée.
+    // Si clientId est null (client anonyme), on utilise un hash stable du nom
+    // pour préserver le regroupement par nom.
+    const tiersNum = f.clientId
+      ? `411${String(f.clientId).padStart(6, '0').slice(-6)}`
+      : `411A${(f.clientNom || 'ANONYME').replace(/[^A-Z0-9]/gi, '').slice(0, 6).toUpperCase().padEnd(6, 'X')}`
+    const tiers = { num: tiersNum, lib: f.clientNom || 'Client anonyme' }
 
     // Débit client (créance) = TTC * sign
     out.push(line(base, COMPTES_BILAN.clients, 'Créances clients', sign * f.totalTTC, 0, tiers))
 
-    // Ventilation TVA par taux (utilise totauxParTauxTva si dispo)
-    const ventilation = f.totauxParTauxTva && Object.keys(f.totauxParTauxTva).length > 0
-      ? Object.entries(f.totauxParTauxTva)
-      : [[String(5.5), { ht: f.totalHT, tva: f.totalTVA }]] as Array<[string, { ht: number; tva: number }]>
-
-    for (const [, t] of ventilation) {
-      // Crédit vente HT (libellé générique pour facture multi-catégorie)
-      if (t.ht !== 0) {
-        out.push(line(base, COMPTES_VENTES.legumes.num, 'Ventes (générique facture)', 0, sign * t.ht))
+    // POSTREVIEW — Compte de produits selon les lignes de facture si disponibles
+    // (fallback : 708000 "autres produits" plutôt que 701100 légumes par défaut)
+    const lignesCateg = f.lignes || []
+    // Map des HT par compte de produit (somme par catégorie sur toutes les lignes)
+    const htParCompte = new Map<string, { num: string; lib: string; ht: number; tva: number }>()
+    if (lignesCateg.length > 0) {
+      for (const l of lignesCateg) {
+        const compte = compteVente(l.categorie)
+        const key = compte.num
+        const tva = l.montantHT > 0 ? (l.montantTVA || 0) : 0
+        const ex = htParCompte.get(key)
+        if (ex) {
+          ex.ht += l.montantHT
+          ex.tva += tva
+        } else {
+          htParCompte.set(key, { num: compte.num, lib: compte.lib, ht: l.montantHT, tva })
+        }
       }
-      if (t.tva !== 0) {
-        out.push(line(base, COMPTES_BILAN.tvaCollectee, 'TVA collectée', 0, sign * t.tva))
+      // Émission ligne par compte
+      for (const c of htParCompte.values()) {
+        if (c.ht !== 0) out.push(line(base, c.num, c.lib, 0, sign * c.ht))
+        if (c.tva !== 0) out.push(line(base, COMPTES_BILAN.tvaCollectee, 'TVA collectée', 0, sign * c.tva))
+      }
+    } else {
+      // Fallback (pas de lignes : facture historique pré-14C) → 708000 + ventilation TVA par taux
+      const compteFallback = COMPTES_VENTES.autre
+      const ventilation = f.totauxParTauxTva && Object.keys(f.totauxParTauxTva).length > 0
+        ? Object.entries(f.totauxParTauxTva)
+        : ([[String(5.5), { ht: f.totalHT, tva: f.totalTVA }]] as Array<[string, { ht: number; tva: number }]>)
+      for (const [, t] of ventilation) {
+        if (t.ht !== 0) out.push(line(base, compteFallback.num, compteFallback.lib, 0, sign * t.ht))
+        if (t.tva !== 0) out.push(line(base, COMPTES_BILAN.tvaCollectee, 'TVA collectée', 0, sign * t.tva))
       }
     }
   }
