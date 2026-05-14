@@ -14,6 +14,10 @@ import {
 
 const CACHE_KEY = "gleba_modules_actifs"
 const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
+// DEV2 #5 — Bus d'événements interne pour propager les changements
+// de modules entre tous les composants useModules de la page (ModulesNav,
+// page Paramètres, etc.) sans avoir à refresh navigateur.
+const MODULES_CHANGED_EVENT = "gleba:modules-changed"
 
 interface Cached {
   ts: number
@@ -69,10 +73,40 @@ export function useModules() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // DEV2 #5 — Écoute les changements émis par `save()` d'un autre useModules
+  // ou d'un autre onglet (storage event natif).
+  React.useEffect(() => {
+    if (typeof window === "undefined") return
+    const onCustom = (e: Event) => {
+      const detail = (e as CustomEvent<{ modules: ModuleId[] }>).detail
+      if (detail?.modules) setModules(detail.modules)
+    }
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== CACHE_KEY || !e.newValue) return
+      try {
+        const parsed = JSON.parse(e.newValue) as Cached
+        if (Array.isArray(parsed.modules)) setModules(parsed.modules)
+      } catch {
+        // ignore
+      }
+    }
+    window.addEventListener(MODULES_CHANGED_EVENT, onCustom)
+    window.addEventListener("storage", onStorage)
+    return () => {
+      window.removeEventListener(MODULES_CHANGED_EVENT, onCustom)
+      window.removeEventListener("storage", onStorage)
+    }
+  }, [])
+
   const save = React.useCallback(async (next: ModuleId[]) => {
     const sanitized = sanitizeModulesActifs(next)
     setModules(sanitized)
     writeCache(sanitized)
+    // DEV2 #5 — broadcast au reste de la page pour que tous les
+    // composants useModules (ModulesNav notamment) se ré-rendent.
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent(MODULES_CHANGED_EVENT, { detail: { modules: sanitized } }))
+    }
     await fetch("/api/user/preferences", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
