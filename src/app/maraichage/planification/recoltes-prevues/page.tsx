@@ -50,6 +50,9 @@ interface RecoltePrevue {
 
 interface Stats {
   totalAnnee: number
+  realiseesKg?: number
+  projectionKg?: number
+  totalAttenduKg?: number
   surfaceTotale: number
   meilleurePeriode: string
   meilleureQuantite: number
@@ -121,7 +124,7 @@ function RecoltesPrevuesContent() {
           <div className="flex items-center gap-4">
             {stats && (
               <Badge variant="outline" className="text-lg">
-                {stats.totalAnnee} kg/an
+                {(stats.totalAttenduKg ?? stats.totalAnnee).toFixed(1)} kg attendu
               </Badge>
             )}
             <Select
@@ -144,6 +147,45 @@ function RecoltesPrevuesContent() {
       </header>
 
       <main className="container mx-auto px-4 py-6">
+        {/* BUG-03 : 3 stat cards qui partagent la même source que Calendrier/Récoltes */}
+        {stats && (stats.realiseesKg !== undefined || stats.projectionKg !== undefined) && (
+          <div className="grid gap-4 md:grid-cols-3 mb-6">
+            <Card className="border-emerald-200">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm text-muted-foreground">Récoltes réalisées</CardTitle>
+                <CardDescription className="text-[10px]">données saisies cette année</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold text-emerald-600">
+                  {(stats.realiseesKg ?? 0).toFixed(1)} kg
+                </p>
+              </CardContent>
+            </Card>
+            <Card className="border-purple-200">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm text-muted-foreground">Projection restante</CardTitle>
+                <CardDescription className="text-[10px]">cultures × rendement à récolter</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold text-purple-600">
+                  {(stats.projectionKg ?? 0).toFixed(1)} kg
+                </p>
+              </CardContent>
+            </Card>
+            <Card className="border-slate-300">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm text-muted-foreground">Total attendu {annee}</CardTitle>
+                <CardDescription className="text-[10px]">réalisé + projection</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold">
+                  {(stats.totalAttenduKg ?? stats.totalAnnee).toFixed(1)} kg
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
         {/* Onglets */}
         <div className="flex gap-2 mb-4">
           <Link href={`/maraichage/planification/recoltes-prevues?annee=${annee}`}>

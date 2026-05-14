@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi, getUserId } from '@/lib/auth-utils'
 import { getRecoltesPrevues } from '@/lib/planification'
+import { getRecoltesAnneeAggregat } from '@/lib/kpi/recoltes-annee'
 
 export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
@@ -18,10 +19,15 @@ export async function GET(request: NextRequest) {
     const annee = parseInt(searchParams.get('annee') || new Date().getFullYear().toString())
     const groupBy = (searchParams.get('groupBy') || 'mois') as 'mois' | 'semaine'
 
-    const recoltesPrevues = await getRecoltesPrevues(userId, annee, groupBy)
+    // BUG-03 : projection détaillée (utilisée pour le tableau par mois/sem
+    // avec breakdown par espèce) + agrégat unifié (réalisé + projection)
+    // utilisé par les 3 écrans Planif / Calendrier / Récoltes.
+    const [recoltesPrevues, aggregat] = await Promise.all([
+      getRecoltesPrevues(userId, annee, groupBy),
+      getRecoltesAnneeAggregat(userId, annee),
+    ])
 
-    // Calculer le total annuel
-    const totalAnnee = recoltesPrevues.reduce((sum, r) => sum + r.totalKg, 0)
+    const projectionAnnee = recoltesPrevues.reduce((sum, r) => sum + r.totalKg, 0)
     const surfaceTotale = recoltesPrevues.reduce((sum, r) => sum + r.totalSurface, 0)
 
     // Trouver les mois/semaines avec le plus de recoltes
@@ -33,7 +39,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       data: recoltesPrevues,
       stats: {
-        totalAnnee: Math.round(totalAnnee * 100) / 100,
+        // Compat ancien front : totalAnnee = projection pure (champ déjà utilisé).
+        totalAnnee: Math.round(projectionAnnee * 100) / 100,
+        // BUG-03 : nouveaux champs unifiés (alignés avec Dashboard/Calendrier).
+        realiseesKg: aggregat.realiseesKg,
+        projectionKg: aggregat.projectionKg,
+        totalAttenduKg: aggregat.totalAttenduKg,
         surfaceTotale: Math.round(surfaceTotale * 100) / 100,
         meilleurePeriode: meilleurePeriode.periode,
         meilleureQuantite: Math.round(meilleurePeriode.totalKg * 100) / 100,
