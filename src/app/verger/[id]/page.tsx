@@ -22,6 +22,12 @@ interface Arbre {
   espece: string | null
   variete: string | null
   portGreffe: string | null
+  // Bug #1 — Champs saisis à la création mais non restitués sur la fiche détail.
+  porteGreffeId: string | null
+  circonferenceCm: number | null
+  gpsLat: number | null
+  gpsLng: number | null
+  formeTaille: string | null
   fournisseur: string | null
   dateAchat: string | null
   prixAchat: number | null
@@ -39,6 +45,9 @@ interface Arbre {
   anneeProduction: number | null
   rendementMoyen: number | null
 }
+
+// Mêmes valeurs que ArbresTab (création) pour cohérence.
+const CONDUITES_ARBRE = ["Gobelet", "Axe central", "Palmette", "Espalier", "Libre"] as const
 
 const TYPES_ARBRES = [
   { value: "fruitier", label: "Fruitier" },
@@ -68,6 +77,8 @@ export default function DetailArbrePage() {
   const [especesRef, setEspecesRef] = React.useState<{id: string, type: string}[]>([])
   const [varietesRef, setVarietesRef] = React.useState<{id: string, especeId: string}[]>([])
   const [fournisseursRef, setFournisseursRef] = React.useState<string[]>([])
+  // Bug #1 — Référentiel des porte-greffes compatibles avec l'espèce.
+  const [portesGreffesRef, setPortesGreffesRef] = React.useState<Array<{ id: string; nom: string; vigueur: number | null; precocite: number | null }>>([])
 
   React.useEffect(() => {
     // Suggestions issues des arbres déjà saisis
@@ -147,6 +158,19 @@ export default function DetailArbrePage() {
 
     if (session?.user && id) fetchArbre()
   }, [session?.user, id, router])
+
+  // Bug #1 — Recharger la liste des porte-greffes quand l'espèce change.
+  // L'API filtre par especeId via la table porte_greffe_especes.
+  React.useEffect(() => {
+    if (!arbre?.espece) {
+      setPortesGreffesRef([])
+      return
+    }
+    fetch(`/api/verger/porte-greffes?especeId=${encodeURIComponent(arbre.espece)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((res) => setPortesGreffesRef(res?.data || []))
+      .catch(() => setPortesGreffesRef([]))
+  }, [arbre?.espece])
 
   const handleSave = async () => {
     if (!arbre) return
@@ -299,11 +323,122 @@ export default function DetailArbrePage() {
                   </div>
                   <div>
                     <Label>Porte-greffe</Label>
-                    <Combobox
-                      value={arbre.portGreffe || ""}
-                      onValueChange={(v) => setArbre({ ...arbre, portGreffe: v })}
-                      options={suggestions.portGreffes.map(v => ({ value: v, label: v }))}
-                      placeholder="Ex: M26"
+                    {/* Bug #1 — Select sur le référentiel (M9/M26/MM106…) avec
+                        fallback Combobox texte libre si aucune correspondance
+                        pour l'espèce. portGreffe texte libre conservé pour
+                        rétro-compat. */}
+                    {portesGreffesRef.length > 0 ? (
+                      <Select
+                        value={arbre.porteGreffeId || "_none"}
+                        onValueChange={(v) =>
+                          setArbre({
+                            ...arbre,
+                            porteGreffeId: v === "_none" ? null : v,
+                            // Reflet texte libre pour rétro-compat affichage.
+                            portGreffe:
+                              v === "_none"
+                                ? null
+                                : portesGreffesRef.find((p) => p.id === v)?.nom ?? null,
+                          })
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Sélectionner" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="_none">— Aucun</SelectItem>
+                          {portesGreffesRef.map((pg) => (
+                            <SelectItem key={pg.id} value={pg.id}>
+                              {pg.nom}
+                              {pg.vigueur != null && (
+                                <span className="text-muted-foreground text-xs ml-2">
+                                  vigueur {pg.vigueur}/5
+                                </span>
+                              )}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Combobox
+                        value={arbre.portGreffe || ""}
+                        onValueChange={(v) => setArbre({ ...arbre, portGreffe: v })}
+                        options={suggestions.portGreffes.map((v) => ({ value: v, label: v }))}
+                        placeholder="Ex: M26"
+                      />
+                    )}
+                  </div>
+                </div>
+
+                {/* Bug #1 — Conduite (formeTaille) + Circonférence + GPS lat/lng */}
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <Label>Conduite</Label>
+                    <Select
+                      value={arbre.formeTaille || "_none"}
+                      onValueChange={(v) =>
+                        setArbre({ ...arbre, formeTaille: v === "_none" ? null : v })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="—" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="_none">— Non défini</SelectItem>
+                        {CONDUITES_ARBRE.map((c) => (
+                          <SelectItem key={c} value={c}>{c}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Circonférence tronc (cm)</Label>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      value={arbre.circonferenceCm ?? ""}
+                      onChange={(e) =>
+                        setArbre({
+                          ...arbre,
+                          circonferenceCm: e.target.value ? parseFloat(e.target.value) : null,
+                        })
+                      }
+                      placeholder="ex: 15 (utile PCAE/HVE)"
+                    />
+                  </div>
+                  <div>{/* spacer */}</div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>GPS Latitude</Label>
+                    <Input
+                      type="number"
+                      step="0.000001"
+                      value={arbre.gpsLat ?? ""}
+                      onChange={(e) =>
+                        setArbre({
+                          ...arbre,
+                          gpsLat: e.target.value ? parseFloat(e.target.value) : null,
+                        })
+                      }
+                      placeholder="ex: 49.183456"
+                    />
+                  </div>
+                  <div>
+                    <Label>GPS Longitude</Label>
+                    <Input
+                      type="number"
+                      step="0.000001"
+                      value={arbre.gpsLng ?? ""}
+                      onChange={(e) =>
+                        setArbre({
+                          ...arbre,
+                          gpsLng: e.target.value ? parseFloat(e.target.value) : null,
+                        })
+                      }
+                      placeholder="ex: 0.345678"
                     />
                   </div>
                 </div>
