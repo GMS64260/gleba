@@ -70,6 +70,10 @@ interface Stats {
   especesSansStock: number
   nbMissing: number
   nbLow: number
+  nbMissingGraines?: number
+  nbMissingCaieux?: number
+  nbLowGraines?: number
+  nbLowCaieux?: number
   nbGraineDirecte: number
   nbPlantRepique: number
   nbBulbeCaieu: number
@@ -527,7 +531,7 @@ function SemencesContent() {
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm text-muted-foreground">
-                  Caieux nécessaires
+                  Caïeux nécessaires
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -547,13 +551,27 @@ function SemencesContent() {
                   {stats.totalCaieuxACommander > 0 && (
                     <span className="text-base font-normal">
                       {" "}
-                      + {stats.totalCaieuxACommander} caieux
+                      + {stats.totalCaieuxACommander} caïeux
                     </span>
                   )}
                 </p>
                 {stats.nbMissing + stats.nbLow > 0 && (
                   <p className="text-sm text-red-600">
-                    {stats.nbMissing} manquant · {stats.nbLow} insuffisant
+                    {/* BUG-15 : breakdown explicite graines / caïeux, plutôt
+                        qu'un total ambigu qui ne colle pas à la liste */}
+                    {stats.nbMissingGraines !== undefined && stats.nbMissingCaieux !== undefined
+                      ? (
+                        <>
+                          {stats.nbMissingGraines} graine(s)
+                          {stats.nbMissingCaieux > 0 && ` + ${stats.nbMissingCaieux} caïeux`} manquant
+                          {(stats.nbLowGraines ?? 0) + (stats.nbLowCaieux ?? 0) > 0 && (
+                            <> · {(stats.nbLowGraines ?? 0)} graine(s)
+                              {(stats.nbLowCaieux ?? 0) > 0 && ` + ${stats.nbLowCaieux} caïeux`} insuffisant
+                            </>
+                          )}
+                        </>
+                      )
+                      : `${stats.nbMissing} manquant · ${stats.nbLow} insuffisant`}
                   </p>
                 )}
               </CardContent>
@@ -580,7 +598,7 @@ function SemencesContent() {
               )}
             </TabsTrigger>
             <TabsTrigger value="caieux">
-              Caieux / bulbes
+              Caïeux / bulbes
               {stats && (
                 <span className="ml-2 text-xs text-muted-foreground">
                   ({stats.nbBulbeCaieu})
