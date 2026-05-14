@@ -44,13 +44,15 @@ import { useToast } from "@/hooks/use-toast"
 // Composant principal
 // ============================================================
 
-export function ProductionTab() {
+// DEV2 Ticket #3 — `year` propagé depuis le selecteur d'année du module
+// pour que Dashboard et Production partagent la même fenêtre temporelle.
+export function ProductionTab({ year }: { year?: number } = {}) {
   return (
     <Tabs defaultValue="oeufs" className="space-y-4">
       <TabsList>
         <TabsTrigger value="oeufs" className="flex items-center gap-1.5">
           <Egg className="h-4 w-4" />
-          Oeufs
+          Œufs
         </TabsTrigger>
         <TabsTrigger value="lait" className="flex items-center gap-1.5">
           <Milk className="h-4 w-4" />
@@ -67,7 +69,7 @@ export function ProductionTab() {
       </TabsList>
 
       <TabsContent value="oeufs">
-        <OeufsSubTab />
+        <OeufsSubTab year={year} />
       </TabsContent>
       <TabsContent value="lait">
         <LaitSubTab />
@@ -117,7 +119,8 @@ interface StockOeufs {
   detail: { produits: number; casses: number; vendus: number }
 }
 
-function OeufsSubTab() {
+function OeufsSubTab({ year }: { year?: number } = {}) {
+  const effectiveYear = year ?? new Date().getFullYear()
   const { toast } = useToast()
   const [isLoading, setIsLoading] = React.useState(true)
   const [productions, setProductions] = React.useState<Production[]>([])
@@ -134,10 +137,11 @@ function OeufsSubTab() {
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
     try {
+      // DEV2 #3 — `?annee={year}` cohérent avec le Dashboard
       const [prodRes, lotsRes, statsRes] = await Promise.all([
-        fetch('/api/elevage/production-oeufs?limit=100'),
+        fetch(`/api/elevage/production-oeufs?limit=500&annee=${effectiveYear}`),
         fetch('/api/elevage/lots?statut=actif'),
-        fetch('/api/elevage/stats'),
+        fetch(`/api/elevage/stats?annee=${effectiveYear}`),
       ])
 
       if (prodRes.ok) {
@@ -163,7 +167,7 @@ function OeufsSubTab() {
     } finally {
       setIsLoading(false)
     }
-  }, [toast])
+  }, [toast, effectiveYear])
 
   React.useEffect(() => { fetchData() }, [fetchData])
 
