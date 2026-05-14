@@ -88,7 +88,7 @@ export default function PlancheDetailPage({ params }: PageProps) {
       <div className="container mx-auto p-6">
         <div className="text-center">
           <p className="text-red-500">{error || 'Planche non trouvée'}</p>
-          <Link href="/planches" className="mt-4 text-blue-600 hover:underline">
+          <Link href="/maraichage/planches" className="mt-4 text-blue-600 hover:underline">
             Retour à la liste
           </Link>
         </div>
@@ -109,7 +109,7 @@ export default function PlancheDetailPage({ params }: PageProps) {
         <div>
           <div className="flex items-center gap-2">
             <Link
-              href="/planches"
+              href="/maraichage/planches"
               className="text-slate-500 hover:text-slate-700"
             >
               Planches

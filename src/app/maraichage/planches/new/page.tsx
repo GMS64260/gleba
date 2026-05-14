@@ -139,7 +139,7 @@ export default function NewPlanchePage() {
       {/* Header */}
       <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center gap-4">
-          <Link href="/planches">
+          <Link href="/maraichage/planches">
             <Button variant="ghost" size="sm">
               <ArrowLeft className="h-4 w-4 mr-2" />
               Retour
@@ -471,7 +471,7 @@ export default function NewPlanchePage() {
             </Card>
 
             <div className="flex justify-end gap-4">
-              <Link href="/planches">
+              <Link href="/maraichage/planches">
                 <Button variant="outline">Annuler</Button>
               </Link>
               <Button type="submit" disabled={isSubmitting}>

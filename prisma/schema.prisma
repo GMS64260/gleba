@@ -2284,6 +2284,20 @@ model ChatMessage {
 // ============================================================
 
 /// Cache des données météo par coordonnées et date
+/// Cache générique clé-valeur persistant (PROMPT 25 LOT A).
+/// Sert pour les caches externes type SoilGrids ou Hubeau : la clé inclut
+/// le préfixe (ex: 'soilgrids:lat,lng') et la valeur est un JSON arbitraire.
+/// expiresAt est utilisée par `getOrFetch()` pour décider de re-fetcher.
+model GenericCache {
+  key       String   @id @map("key")
+  data      Json     @map("data")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([expiresAt])
+  @@map("generic_cache")
+}
+
 model MeteoCache {
   id              Int      @id @default(autoincrement())
   lat             Float    @map("lat")

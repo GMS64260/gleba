@@ -387,7 +387,7 @@ export default function CulturesPage() {
                 Taches
               </Button>
             </Link>
-            <Link href="/cultures/irriguer">
+            <Link href="/maraichage/cultures/irriguer">
               <Button variant="outline" size="sm">
                 <Droplets className="h-4 w-4 mr-2" />
                 Irrigation

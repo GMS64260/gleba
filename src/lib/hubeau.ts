@@ -34,28 +34,14 @@ export interface NappeInfo {
   dateReleve: string | null           // date du dernier relevé
 }
 
-// ── Cache mémoire (TTL 6h) ────────────────────────────────
+// PROMPT 25 LOT A — Cache persistant via GenericCache
+// (avant : Map en mémoire vidée à chaque redémarrage Docker)
+import { getOrFetch } from "./cache-helper"
 
-const CACHE_TTL_MS = 6 * 60 * 60 * 1000 // 6 heures
-const cache = new Map<string, { data: NappeInfo | null; cachedAt: number }>()
+const CACHE_TTL_MS = 6 * 60 * 60 * 1000 // 6 heures (la nappe varie lentement)
 
 function cacheKey(lat: number, lng: number): string {
-  return `${lat.toFixed(2)}_${lng.toFixed(2)}`
-}
-
-function getCached(lat: number, lng: number): { data: NappeInfo | null; found: boolean } {
-  const key = cacheKey(lat, lng)
-  const entry = cache.get(key)
-  if (!entry) return { data: null, found: false }
-  if (Date.now() - entry.cachedAt > CACHE_TTL_MS) {
-    cache.delete(key)
-    return { data: null, found: false }
-  }
-  return { data: entry.data, found: true }
-}
-
-function setCache(lat: number, lng: number, data: NappeInfo | null): void {
-  cache.set(cacheKey(lat, lng), { data, cachedAt: Date.now() })
+  return `hubeau:${lat.toFixed(2)},${lng.toFixed(2)}`
 }
 
 // ── API Hub'Eau ────────────────────────────────────────────
@@ -214,27 +200,21 @@ function calculerTendance(mesures: MesureNappe[]): {
  * Récupère les informations de la nappe phréatique la plus proche
  */
 export async function fetchNappeInfo(lat: number, lng: number): Promise<NappeInfo | null> {
-  // Vérifier le cache
-  const { data: cached, found } = getCached(lat, lng)
-  if (found) return cached
+  // PROMPT 25 LOT A — Cache persistant DB
+  return getOrFetch<NappeInfo | null>(cacheKey(lat, lng), () => _fetchNappeInfoLive(lat, lng), CACHE_TTL_MS)
+}
 
+async function _fetchNappeInfoLive(lat: number, lng: number): Promise<NappeInfo | null> {
   try {
-    // 1. Trouver les stations les plus proches (rayon 100km, 10 candidates)
     const stations = await fetchStationsProches(lat, lng, 100, 10)
-    if (stations.length === 0) {
-      setCache(lat, lng, null)
-      return null
-    }
+    if (stations.length === 0) return null
 
-    // 2. Essayer les stations une par une (la plus proche d'abord)
-    // Ignorer les stations dont le dernier relevé date de plus de 2 ans
     const MAX_AGE_MS = 2 * 365 * 24 * 60 * 60 * 1000
 
     for (const station of stations) {
       const mesures = await fetchChroniques(station.code_bss, 30)
       if (mesures.length === 0) continue
 
-      // Vérifier la fraîcheur du dernier relevé
       const derniereMesure = mesures[0]
       const ageMesure = Date.now() - new Date(derniereMesure.date_mesure).getTime()
       if (ageMesure > MAX_AGE_MS) {
@@ -242,25 +222,17 @@ export async function fetchNappeInfo(lat: number, lng: number): Promise<NappeInf
         continue
       }
 
-      // 3. Calculer les infos
       const { tendance, variationMensuelle } = calculerTendance(mesures)
-
-      const info: NappeInfo = {
+      return {
         station,
-        mesures: mesures.slice(0, 10), // Garder les 10 dernières pour l'affichage
+        mesures: mesures.slice(0, 10),
         niveauActuel: derniereMesure.niveau_nappe_eau,
         profondeurActuelle: derniereMesure.profondeur_nappe,
         tendance,
         variationMensuelle,
         dateReleve: derniereMesure.date_mesure,
       }
-
-      setCache(lat, lng, info)
-      return info
     }
-
-    // Aucune station avec des données
-    setCache(lat, lng, null)
     return null
   } catch (error) {
     console.error("Hub'Eau fetchNappeInfo error:", error)

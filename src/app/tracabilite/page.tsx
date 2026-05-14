@@ -395,7 +395,7 @@ function TracabiliteContent() {
                     <span className="hidden sm:inline">Maraîchage</span>
                   </Button>
                 </Link>
-                <Link href="/arbres">
+                <Link href="/verger">
                   <Button variant="ghost" size="sm" className="rounded-none text-lime-700 hover:text-lime-800 hover:bg-lime-50 border-r">
                     <TreeDeciduous className="h-4 w-4 mr-1" />
                     <span className="hidden sm:inline">Verger</span>

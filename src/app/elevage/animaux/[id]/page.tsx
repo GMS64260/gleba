@@ -250,7 +250,7 @@ export default function AnimalDetailPage() {
           <div className="flex items-center gap-2">
             <div className="flex items-center border rounded-lg overflow-hidden">
               <Link href="/"><Button variant="ghost" size="sm" className="rounded-none text-green-700 hover:text-green-800 hover:bg-green-50 border-r"><Sprout className="h-4 w-4 mr-1" /><span className="hidden sm:inline">Maraîchage</span></Button></Link>
-              <Link href="/arbres"><Button variant="ghost" size="sm" className="rounded-none text-lime-700 hover:text-lime-800 hover:bg-lime-50 border-r"><TreeDeciduous className="h-4 w-4 mr-1" /><span className="hidden sm:inline">Verger</span></Button></Link>
+              <Link href="/verger"><Button variant="ghost" size="sm" className="rounded-none text-lime-700 hover:text-lime-800 hover:bg-lime-50 border-r"><TreeDeciduous className="h-4 w-4 mr-1" /><span className="hidden sm:inline">Verger</span></Button></Link>
               <Link href="/elevage?tab=animaux"><Button variant="ghost" size="sm" className="rounded-none bg-amber-50 text-amber-700 border-r"><Bird className="h-4 w-4 mr-1" /><span className="hidden sm:inline">Élevage</span></Button></Link>
               <Link href="/comptabilite"><Button variant="ghost" size="sm" className="rounded-none text-blue-700 hover:text-blue-800 hover:bg-blue-50"><Wallet className="h-4 w-4 mr-1" /><span className="hidden sm:inline">Compta</span></Button></Link>
             </div>

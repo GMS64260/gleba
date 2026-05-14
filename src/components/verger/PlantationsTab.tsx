@@ -149,7 +149,7 @@ export function PlantationsTab() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Link href="/arbres/aides">
+          <Link href="/verger/aides">
             <Button variant="outline" size="sm">
               <HelpCircle className="h-4 w-4 mr-1" />
               Aides financières

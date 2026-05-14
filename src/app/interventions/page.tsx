@@ -554,7 +554,7 @@ export default function InterventionsPage() {
                   <span className="hidden sm:inline">Maraîchage</span>
                 </Button>
               </Link>
-              <Link href="/arbres">
+              <Link href="/verger">
                 <Button
                   variant="ghost"
                   size="sm"
