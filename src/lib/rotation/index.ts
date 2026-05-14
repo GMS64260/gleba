@@ -32,6 +32,7 @@ interface FamilleData {
   id: string
   intervalle: number
   couleur: string | null
+  nomFr?: string | null
 }
 
 interface RotationContext {
@@ -98,14 +99,15 @@ function calculateSoilStatus(
     ? { year: heavyFeeders[0].annee, especeId: heavyFeeders[0].especeId }
     : null
 
-  // Suggestion basée sur l'état
+  // Suggestion basée sur l'état (les noms latins APG IV sont les IDs en base
+  // depuis l'audit Marc — voir migration 20260514240000_ref_agronomique_v1)
   let suggestion = ''
   if (estimatedN === 'depleted') {
     suggestion =
-      'Sol appauvri en azote - privilégiez les légumineuses (Fabacées) pour régénérer'
+      'Sol appauvri en azote — privilégiez les légumineuses (Fabacées) pour régénérer'
   } else if (estimatedN === 'enriched') {
     suggestion =
-      'Sol riche en azote - idéal pour les cultures gourmandes (Solanacées, Cucurbitacées)'
+      'Sol riche en azote — idéal pour les cultures gourmandes (Solanacées, Cucurbitacées)'
   } else {
     suggestion = 'Sol équilibré - continuez les rotations variées'
   }
@@ -189,13 +191,14 @@ function calculateRecommendedFamilies(
     }
   }
 
-  // Si azote appauvri, recommander fortement les Fabacées
-  if (soilStatus.estimatedN === 'depleted' && !blockedIds.has('Fabacées')) {
+  // Si azote appauvri, recommander fortement les Fabaceae (= Fabacées,
+  // nomenclature APG IV — audit Marc 2026-05-14).
+  if (soilStatus.estimatedN === 'depleted' && !blockedIds.has('Fabaceae')) {
+    const fab = allFamilies.find((f) => f.id === 'Fabaceae')
     recommended.push({
-      familleId: 'Fabacées',
-      familleNom: 'Fabacées',
-      familleCouleur:
-        allFamilies.find((f) => f.id === 'Fabacées')?.couleur ?? '#22c55e',
+      familleId: 'Fabaceae',
+      familleNom: fab?.nomFr ?? 'Fabacées',
+      familleCouleur: fab?.couleur ?? '#22c55e',
       reason: 'Fixe l\'azote - idéal après cultures gourmandes',
       score: 95,
     })
@@ -221,10 +224,11 @@ function calculateRecommendedFamilies(
       reason = `Dernière utilisation en ${lastUsed}`
     }
 
-    // Bonus si le sol est enrichi et la famille est gourmande
+    // Bonus si le sol est enrichi et la famille est gourmande (nomenclature
+    // APG IV - audit Marc).
     if (
       soilStatus.estimatedN === 'enriched' &&
-      ['Solanacées', 'Cucurbitacées', 'Brassicacées'].includes(famille.id)
+      ['Solanaceae', 'Cucurbitaceae', 'Brassicaceae'].includes(famille.id)
     ) {
       score = Math.min(100, score + 10)
       reason += ' - sol riche, idéal'
@@ -232,7 +236,8 @@ function calculateRecommendedFamilies(
 
     recommended.push({
       familleId: famille.id,
-      familleNom: famille.id,
+      // Affiche le nom français si disponible, sinon l'ID latin
+      familleNom: famille.nomFr ?? famille.id,
       familleCouleur: famille.couleur,
       reason,
       score,

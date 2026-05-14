@@ -62,7 +62,7 @@ interface EspeceWithRelations {
   couleur: string | null
   description: string | null
   categorie: string | null
-  famille: { id: string; couleur: string | null } | null
+  famille: { id: string; couleur: string | null; nomFr: string | null } | null
   _count: { varietes: number; cultures: number; arbres?: number }
 }
 
@@ -132,7 +132,18 @@ const columns: ColumnDef<EspeceWithRelations>[] = [
   {
     accessorKey: "famille.id",
     header: "Famille",
-    cell: ({ row }) => row.original.famille?.id || "-",
+    // Préfère le nom français (Brassicacées) avec le latin en tooltip.
+    // L'ID en BDD reste latin (APG IV) depuis l'audit Marc.
+    cell: ({ row }) => {
+      const f = row.original.famille
+      if (!f) return "-"
+      if (f.nomFr) {
+        return (
+          <span title={f.id}>{f.nomFr}</span>
+        )
+      }
+      return f.id
+    },
   },
   {
     accessorKey: "nomLatin",
@@ -222,6 +233,8 @@ function EspecesPageContent() {
   const [isInitialized, setIsInitialized] = React.useState(false)
   const [searchInput, setSearchInput] = React.useState('')
   const [debouncedSearch, setDebouncedSearch] = React.useState('')
+  // Audit Marc Bug #6 — Toggle "Saison active" / "Historique total"
+  const [cultureCount, setCultureCount] = React.useState<'saison' | 'historique'>('saison')
   const pageSize = 50
 
   // Debounce de la recherche (300ms)
@@ -252,7 +265,7 @@ function EspecesPageContent() {
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
     try {
-      let url = `/api/especes?page=${pageIndex + 1}&pageSize=${pageSize}`
+      let url = `/api/especes?page=${pageIndex + 1}&pageSize=${pageSize}&cultureCount=${cultureCount}`
       if (selectedType && selectedType !== 'all') {
         url += `&type=${selectedType}`
       }
@@ -273,7 +286,7 @@ function EspecesPageContent() {
     } finally {
       setIsLoading(false)
     }
-  }, [pageIndex, selectedType, debouncedSearch, toast])
+  }, [pageIndex, selectedType, debouncedSearch, cultureCount, toast])
 
   // Ne charger les données qu'après initialisation
   React.useEffect(() => {
@@ -408,17 +421,44 @@ function EspecesPageContent() {
 
       {/* Content */}
       <main className="container mx-auto px-4 py-6">
-        {/* Filtres par type */}
-        <Tabs value={selectedType} onValueChange={handleTypeChange} className="mb-4">
-          <TabsList className="flex-wrap h-auto gap-1">
-            {displayTypes.map(({ value, label, icon: Icon }) => (
-              <TabsTrigger key={value} value={value} className="flex items-center gap-1">
-                <Icon className="h-4 w-4" />
-                <span className="hidden sm:inline">{label}</span>
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+        {/* Filtres par type + toggle Saison/Historique */}
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+          <Tabs value={selectedType} onValueChange={handleTypeChange}>
+            <TabsList className="flex-wrap h-auto gap-1">
+              {displayTypes.map(({ value, label, icon: Icon }) => (
+                <TabsTrigger key={value} value={value} className="flex items-center gap-1">
+                  <Icon className="h-4 w-4" />
+                  <span className="hidden sm:inline">{label}</span>
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+          {/* Audit Marc Bug #6 — Sens de la colonne Cult. */}
+          {!isArbresMode && (
+            <div className="inline-flex rounded-md border bg-white text-xs overflow-hidden" role="tablist" aria-label="Compteur cultures">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={cultureCount === 'saison'}
+                onClick={() => setCultureCount('saison')}
+                className={`px-3 py-1.5 font-medium transition-colors ${cultureCount === 'saison' ? 'bg-emerald-600 text-white' : 'hover:bg-slate-50'}`}
+                title="Cultures de la saison active (non terminées)"
+              >
+                Saison active
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={cultureCount === 'historique'}
+                onClick={() => setCultureCount('historique')}
+                className={`px-3 py-1.5 font-medium transition-colors ${cultureCount === 'historique' ? 'bg-emerald-600 text-white' : 'hover:bg-slate-50'}`}
+                title="Cumul historique depuis le début"
+              >
+                Historique total
+              </button>
+            </div>
+          )}
+        </div>
 
         <DataTable
           columns={columns}

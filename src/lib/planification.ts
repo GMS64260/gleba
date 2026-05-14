@@ -67,6 +67,10 @@ export interface BesoinSemence {
   /** Nombre de graines par gramme (renseigné sur Variete). */
   nbGrainesG: number | null
   doseSemis: number | null
+  /** Unité dans laquelle est exprimée la dose (cf. Espece.uniteDose). */
+  uniteDose: 'g_m2' | 'pieces_m2' | 'graines_plant' | 'caieux_m2' | null
+  /** Taux de germination réaliste (mémo pour tooltip marge). */
+  tauxGerminationPct: number | null
   /** Manque à commander (en grammes pour modes graine). */
   aCommander: number
   /** Manque à commander (en unités pour mode bulbe_caieu). */
@@ -428,6 +432,8 @@ export async function getBesoinsSemences(
         couleur: true,
         modeSemis: true,
         doseSemis: true,
+        uniteDose: true,
+        tauxGermination: true,
         margeSecuritePct: true,
         famille: { select: { couleur: true } },
       },
@@ -491,6 +497,8 @@ export async function getBesoinsSemences(
       surfaceM2: acc.surfaceTotale,
       nbPlants: acc.nbPlants,
       doseGParM2: espece?.doseSemis ?? null,
+      uniteDose: (espece?.uniteDose ?? null) as 'g_m2' | 'pieces_m2' | 'graines_plant' | 'caieux_m2' | null,
+      tauxGerminationPct: espece?.tauxGermination ?? null,
       grainesParGramme: variete?.nbGrainesG ?? null,
       margeSecuritePct: espece?.margeSecuritePct ?? 15,
       stockGrammes: stock?.stockGraines ?? 0,
@@ -511,6 +519,8 @@ export async function getBesoinsSemences(
       stockUnites: calc.stockUnites,
       nbGrainesG: variete?.nbGrainesG ?? null,
       doseSemis: espece?.doseSemis ?? null,
+      uniteDose: (espece?.uniteDose ?? null) as 'g_m2' | 'pieces_m2' | 'graines_plant' | 'caieux_m2' | null,
+      tauxGerminationPct: espece?.tauxGermination ?? null,
       aCommander: calc.manqueGrammes,
       caieuxACommander: calc.manqueCaieux,
       statut: calc.statut,

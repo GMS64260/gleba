@@ -92,14 +92,25 @@ export async function PUT(
 
     const data = validationResult.data
 
-    // Vérifier que l'espece existe si fournie
-    if (data.especeId) {
+    // Vérifier que l'espece existe si fournie + cohérence semis_direct
+    // (Audit Marc Bug F : pas de plantation pour les semis directs)
+    const especeIdEffectif = data.especeId ?? existing.especeId
+    if (especeIdEffectif) {
       const espece = await prisma.espece.findUnique({
-        where: { id: data.especeId },
+        where: { id: especeIdEffectif },
+        select: { id: true, typeCultureSemis: true },
       })
-      if (!espece) {
+      if (data.especeId && !espece) {
         return NextResponse.json(
           { error: `L'espèce "${data.especeId}" n'existe pas` },
+          { status: 400 }
+        )
+      }
+      if (espece?.typeCultureSemis === 'semis_direct' && data.semainePlantation != null) {
+        return NextResponse.json(
+          {
+            error: `L'espèce "${especeIdEffectif}" est en semis direct. Le champ Plantation doit être vide.`,
+          },
           { status: 400 }
         )
       }

@@ -82,6 +82,7 @@ export async function GET(request: NextRequest, { params }: Params) {
       id: f.id,
       intervalle: f.intervalle ?? 4,
       couleur: f.couleur,
+      nomFr: f.nomFr,
     }))
 
     // Préparer l'espece à vérifier si demandée

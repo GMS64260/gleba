@@ -35,6 +35,12 @@ export async function GET(request: NextRequest) {
     const aPlanifier = searchParams.get('aPlanifier')
     const type = searchParams.get('type')
 
+    // Audit Marc Bug #6 — Compteur "Cultures" : par défaut "saison active"
+    // = cultures de l'année en cours non terminées. Mode "historique"
+    // restitue le cumul depuis le début (ancien comportement).
+    const cultureCount = searchParams.get('cultureCount') || 'saison'
+    const saisonAnnee = parseInt(searchParams.get('annee') || new Date().getFullYear().toString())
+
     // Construction du where
     const where: Prisma.EspeceWhereInput = {}
 
@@ -67,6 +73,13 @@ export async function GET(request: NextRequest) {
       where.aPlanifier = aPlanifier === 'true'
     }
 
+    // Audit Marc Bug #6 — _count.cultures filtré sur année + non-terminée
+    // pour le mode "saison". Sinon cumul historique.
+    const cultureCountWhere =
+      cultureCount === 'saison'
+        ? { annee: saisonAnnee, terminee: null }
+        : undefined
+
     // Requête avec comptage
     const [especes, total] = await Promise.all([
       prisma.espece.findMany({
@@ -76,7 +89,7 @@ export async function GET(request: NextRequest) {
           _count: {
             select: {
               varietes: true,
-              cultures: true,
+              cultures: cultureCountWhere ? { where: cultureCountWhere } : true,
             },
           },
         },
@@ -93,6 +106,8 @@ export async function GET(request: NextRequest) {
       page,
       pageSize,
       totalPages: Math.ceil(total / pageSize),
+      cultureCount,
+      annee: saisonAnnee,
     })
   } catch (error) {
     console.error('GET /api/especes error:', error)

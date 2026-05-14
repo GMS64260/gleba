@@ -123,6 +123,51 @@ describe('calculerBesoin', () => {
     })
   })
 
+  describe('uniteDose (audit Marc)', () => {
+    it("graines_plant : besoin = nbPlants × graines/godet / graines/g × marge", () => {
+      // Tomate : 2 graines/godet, 325 graines/g, 100 plants, marge 15%.
+      // attendu : 100 × 2 / 325 × 1.15 ≈ 0.708 g
+      const r = calculerBesoin({
+        mode: 'plant_repique',
+        surfaceM2: 0,
+        nbPlants: 100,
+        doseGParM2: 2,
+        uniteDose: 'graines_plant',
+        grainesParGramme: 325,
+        margeSecuritePct: 15,
+      })
+      expect(r.besoinGrammes).toBeCloseTo(0.71, 1)
+    })
+
+    it("caieux_m2 : besoin = surface × caieux/m² × marge (Ail 16 m² × 20)", () => {
+      const r = calculerBesoin({
+        mode: 'bulbe_caieu',
+        surfaceM2: 16,
+        nbPlants: 0,
+        doseGParM2: 20,
+        uniteDose: 'caieux_m2',
+        margeSecuritePct: 15,
+      })
+      // 16 × 20 × 1.15 = 368
+      expect(r.besoinCaieux).toBe(368)
+      expect(r.besoinGrammes).toBe(0)
+    })
+
+    it("pieces_m2 : besoin en plants à produire (Patate douce 10 m² × 4)", () => {
+      const r = calculerBesoin({
+        mode: 'graine_directe',
+        surfaceM2: 10,
+        nbPlants: 0,
+        doseGParM2: 4,
+        uniteDose: 'pieces_m2',
+        margeSecuritePct: 15,
+      })
+      // 10 × 4 × 1.15 = 46 plants
+      expect(r.besoinCaieux).toBe(46)
+      expect(r.besoinGrammes).toBe(0)
+    })
+  })
+
   describe('robustesse', () => {
     it("ne plante pas si mode est null (fallback graine_directe)", () => {
       const r = calculerBesoin({
