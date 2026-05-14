@@ -123,7 +123,7 @@ export default function RotationsPage() {
   const [pageCount, setPageCount] = React.useState(0)
   const pageSize = 50
 
-  // Charger les donnees
+  // Charger les données
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
     try {
@@ -180,7 +180,7 @@ export default function RotationsPage() {
       if (!response.ok) throw new Error("Erreur lors de la suppression")
       toast({
         title: "Rotation supprimée",
-        description: `La rotation "${row.id}" a ete supprimee`,
+        description: `La rotation "${row.id}" a été supprimée`,
       })
       fetchData()
     } catch (error) {
@@ -285,7 +285,7 @@ export default function RotationsPage() {
             <div className="text-sm text-orange-800">
               <p className="font-medium">Qu'est-ce qu'une rotation ?</p>
               <p className="mt-1 text-orange-700">
-                Une rotation définit la succession des cultures sur plusieurs annees.
+                Une rotation définit la succession des cultures sur plusieurs années.
                 Chaque annee du cycle est associée a un ITP (Itinéraire Technique de Plante).
                 Assignez une rotation a vos planches pour planifier automatiquement les cultures futures.
               </p>

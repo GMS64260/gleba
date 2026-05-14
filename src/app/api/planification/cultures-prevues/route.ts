@@ -1,5 +1,5 @@
 /**
- * API Route pour les cultures prevues
+ * API Route pour les cultures prévues
  * GET /api/planification/cultures-prevues
  */
 
@@ -73,7 +73,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('GET /api/planification/cultures-prevues error:', error)
     return NextResponse.json(
-      { error: 'Erreur lors de la recuperation des cultures prevues', details: "Erreur interne du serveur" },
+      { error: 'Erreur lors de la recuperation des cultures prévues', details: "Erreur interne du serveur" },
       { status: 500 }
     )
   }

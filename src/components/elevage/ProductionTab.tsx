@@ -159,7 +159,7 @@ function OeufsSubTab() {
         }
       }
     } catch {
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les donnees" })
+      toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les données" })
     } finally {
       setIsLoading(false)
     }
@@ -680,7 +680,7 @@ function AbattagesSubTab() {
       if (abatRes.ok) { const r = await abatRes.json(); setAbattages(r.data); setStats(r.stats) }
       if (lotsRes.ok) setLots((await lotsRes.json()).data)
     } catch {
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les donnees" })
+      toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les données" })
     } finally {
       setIsLoading(false)
     }

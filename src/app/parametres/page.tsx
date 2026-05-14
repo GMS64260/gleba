@@ -322,7 +322,7 @@ export default function ParametresPage() {
     if (confirm('Supprimer l\'image de fond ?')) {
       setSettings((prev) => ({ ...prev, backgroundImage: null }))
       toast({
-        title: 'Image supprimee',
+        title: 'Image supprimée',
         description: 'N\'oubliez pas d\'enregistrer les parametres',
       })
     }
@@ -835,7 +835,7 @@ export default function ParametresPage() {
               Stations meteo
             </CardTitle>
             <CardDescription>
-              Connectez votre station meteo personnelle pour des donnees ultra-locales sur vos parcelles
+              Connectez votre station meteo personnelle pour des données ultra-locales sur vos parcelles
             </CardDescription>
           </CardHeader>
           <CardContent>

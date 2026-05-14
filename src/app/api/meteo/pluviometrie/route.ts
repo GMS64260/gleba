@@ -26,7 +26,7 @@ export interface PluviometriePlancheResponse {
     total7j: number
     total30j: number
     joursSansPluie: number    // jours consécutifs sans pluie (< 1mm) jusqu'à aujourd'hui
-    prochainePluie: string | null  // date ISO de la prochaine pluie prevue >= 5mm
+    prochainePluie: string | null  // date ISO de la prochaine pluie prévue >= 5mm
     prochaineQuantite: number
   } | null
 }

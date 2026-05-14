@@ -324,7 +324,7 @@ function ConsommationsSubTab() {
       if (alimRes.ok) setAliments((await alimRes.json()).data)
       if (lotsRes.ok) setLots((await lotsRes.json()).data)
     } catch {
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les donnees" })
+      toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les données" })
     } finally {
       setIsLoading(false)
     }
@@ -568,7 +568,7 @@ function SoinsSubTab() {
       if (animauxRes.ok) setAnimaux((await animauxRes.json()).data)
       if (produitsRes.ok) setProduits((await produitsRes.json()).data)
     } catch {
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les donnees" })
+      toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les données" })
     } finally {
       setIsLoading(false)
     }

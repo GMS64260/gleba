@@ -93,7 +93,7 @@ export default function EditRotationPage() {
     name: "details",
   })
 
-  // Charger les donnees
+  // Charger les données
   React.useEffect(() => {
     async function loadData() {
       try {
@@ -235,7 +235,7 @@ export default function EditRotationPage() {
 
       toast({
         title: "Rotation supprimée",
-        description: `La rotation "${id}" a ete supprimee`,
+        description: `La rotation "${id}" a été supprimée`,
       })
       router.push("/rotations")
     } catch (error) {

@@ -171,7 +171,7 @@ function AnimauxSubTab() {
       if (animauxRes.ok) setAnimaux((await animauxRes.json()).data)
       if (especesRes.ok) setEspeces((await especesRes.json()).data)
     } catch {
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les donnees" })
+      toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les données" })
     } finally {
       setIsLoading(false)
     }
@@ -860,7 +860,7 @@ function LotsSubTab() {
       if (especesRes.ok) setEspeces((await especesRes.json()).data)
       if (parcellesRes.ok) setParcelles(await parcellesRes.json())
     } catch {
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les donnees" })
+      toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les données" })
     } finally {
       setIsLoading(false)
     }

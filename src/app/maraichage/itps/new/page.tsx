@@ -94,7 +94,7 @@ export default function NewITPPage() {
 
       toast({
         title: "ITP cree",
-        description: `L'ITP "${data.id}" a ete cree avec succes`,
+        description: `L'ITP "${data.id}" a été créé avec succès`,
       })
       router.push("/itps")
     } catch (error) {

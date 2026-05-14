@@ -152,7 +152,7 @@ export function StationMeteoConfig() {
             Stations meteo personnelles
           </h3>
           <p className="text-xs text-slate-500 mt-0.5">
-            Connectez votre station pour des donnees ultra-locales
+            Connectez votre station pour des données ultra-locales
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={() => setShowForm(!showForm)}>

@@ -110,7 +110,7 @@ export default function NewAssociationPage() {
 
       toast({
         title: "Association créée",
-        description: `L'association "${data.nom}" a ete creee avec succes`,
+        description: `L'association "${data.nom}" a été créée avec succès`,
       })
       router.push("/associations")
     } catch (error) {

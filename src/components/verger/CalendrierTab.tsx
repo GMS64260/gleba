@@ -197,7 +197,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
 
         <Card className="bg-gradient-to-br from-amber-600 to-amber-700 text-white">
           <CardHeader className="pb-1 pt-3 px-4">
-            <CardDescription className="text-amber-100 text-xs">Recoltes fruits {year}</CardDescription>
+            <CardDescription className="text-amber-100 text-xs">Récoltes fruits {year}</CardDescription>
             <CardTitle className="text-2xl">
               {loading ? <Skeleton className="h-8 w-16 bg-amber-400" /> : `${data?.stats.recoltesFruitsAnnee || 0} kg`}
             </CardTitle>

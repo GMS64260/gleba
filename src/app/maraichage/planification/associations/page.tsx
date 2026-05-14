@@ -219,7 +219,7 @@ function AssociationsContent() {
         {/* Info */}
         <div className="mb-4 p-4 bg-pink-50 rounded-lg border border-pink-200">
           <p className="text-sm text-pink-800">
-            Cette page affiche les cultures prevues et leurs voisines.
+            Cette page affiche les cultures prévues et leurs voisines.
             Les planches voisines sont definies dans le champ "Planches influencées" de chaque planche (liste CSV).
             Cela permet de verifier les associations benefiques ou nefastes entre cultures.
           </p>

@@ -98,7 +98,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       }
     }
 
-    // Preparer les donnees de mise a jour
+    // Preparer les données de mise a jour
     const updateData: {
       name?: string | null
       password?: string
@@ -172,7 +172,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       )
     }
 
-    // Suppression (cascade sur les donnees)
+    // Suppression (cascade sur les données)
     await prisma.user.delete({
       where: { id },
     })

@@ -94,7 +94,7 @@ function RecoltesPrevuesContent() {
     fetchData()
   }, [fetchData])
 
-  // Preparer les donnees pour le graphique
+  // Preparer les données pour le graphique
   const chartData = data.map(r => ({
     mois: r.periode.substring(0, 3),
     quantite: Math.round(r.totalKg * 10) / 10,

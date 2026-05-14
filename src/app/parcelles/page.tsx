@@ -157,7 +157,7 @@ export default function ParcellesPage() {
     try {
       const res = await fetch(`/api/parcelles/${deletingParcelle.id}`, { method: "DELETE" })
       if (!res.ok) throw new Error("Erreur suppression")
-      toast({ title: "Parcelle supprimée", description: `"${deletingParcelle.nom}" a ete supprimee` })
+      toast({ title: "Parcelle supprimée", description: `"${deletingParcelle.nom}" a été supprimée` })
       setDeletingParcelle(null)
       fetchData()
     } catch {

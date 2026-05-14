@@ -176,7 +176,7 @@ function CartePageContent() {
           const err = await res.json().catch(() => null)
           throw new Error(err?.error || "Erreur lors de la creation")
         }
-        toast({ title: "Parcelle créée", description: `"${data.nom}" a ete ajoutee.` })
+        toast({ title: "Parcelle créée", description: `"${data.nom}" a été ajoutée.` })
       } else if (selectedParcelle) {
         // Edition
         const res = await fetch(`/api/carte/${selectedParcelle.id}`, {
@@ -188,7 +188,7 @@ function CartePageContent() {
           const err = await res.json().catch(() => null)
           throw new Error(err?.error || "Erreur lors de la mise a jour")
         }
-        toast({ title: "Parcelle modifiée", description: `"${data.nom}" a ete mise a jour.` })
+        toast({ title: "Parcelle modifiée", description: `"${data.nom}" a été mise à jour.` })
       }
 
       // Recharger et fermer le panel
@@ -294,7 +294,7 @@ function CartePageContent() {
       }
       toast({
         title: "Parcelle modifiée",
-        description: `Le trace de "${editingParcelle.nom}" a ete mis a jour.`,
+        description: `Le trace de "${editingParcelle.nom}" a été mis à jour.`,
       })
       await fetchParcelles()
     } catch (err) {
@@ -329,7 +329,7 @@ function CartePageContent() {
 
       mapRef.flyToBounds(bounds, { padding: [50, 50], maxZoom: 18 })
     } catch {
-      // Fallback : si le centroid est disponible dans les donnees
+      // Fallback : si le centroid est disponible dans les données
       console.warn("Impossible de parser la geometrie pour flyTo")
     }
   }, [mapRef])

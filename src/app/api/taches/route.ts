@@ -201,7 +201,7 @@ export async function GET(request: NextRequest) {
       })
     )
 
-    // Helper : obtenir la pluie prevue pour une irrigation + check pluie récente
+    // Helper : obtenir la pluie prévue pour une irrigation + check pluie récente
     const SEUIL_PLUIE_RECENTE = 5 // mm en 3j pour considérer le sol encore humide
     const JOURS_COUVERTURE_PLUIE = 3 // jours après une pluie significative où le sol reste humide
 

@@ -235,13 +235,15 @@ export default function DashboardComptabilite() {
   }, [selectedYear, session?.user])
 
   // Calcul différence annee précédente
+  // Bug #26 — `hasComparatif` true uniquement si N-1 ≥ 100 € (seuil non
+  // significatif en dessous : peu de transactions).
   const yearDiff = React.useMemo(() => {
-    if (!data?.stats) return { diff: 0, percent: "0" }
+    if (!data?.stats) return { diff: 0, percent: "0", hasComparatif: false }
     const current = data.stats.revenus
     const previous = data.stats.revenusAnneePrecedente
     const diff = current - previous
     const percent = previous > 0 ? Math.round((diff / previous) * 100) : 0
-    return { diff, percent: percent.toString() }
+    return { diff, percent: percent.toString(), hasComparatif: previous >= 100 }
   }, [data?.stats])
 
   const formatEuro = (value: number) => {
@@ -359,7 +361,7 @@ export default function DashboardComptabilite() {
                 </CardHeader>
                 <CardContent>
                   <p className="text-3xl font-bold">{formatEuro(data.stats.revenus)}</p>
-                  {parseInt(yearDiff.percent) !== 0 && (
+                  {yearDiff.hasComparatif ? (
                     <>
                       <p className="text-sm text-blue-100 mt-1">
                         {parseInt(yearDiff.percent) > 0 ? "+" : ""}{yearDiff.percent}% vs {selectedYear - 1}
@@ -368,6 +370,10 @@ export default function DashboardComptabilite() {
                         (YTD vs YTD année dernière)
                       </p>
                     </>
+                  ) : (
+                    <p className="text-[10px] text-blue-100 italic mt-1">
+                      Pas de comparatif N-1 disponible
+                    </p>
                   )}
                 </CardContent>
               </Card>

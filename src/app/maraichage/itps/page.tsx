@@ -211,7 +211,7 @@ export default function ITPsPage() {
       if (!response.ok) throw new Error("Erreur lors de la suppression")
       toast({
         title: "ITP supprime",
-        description: `L'ITP "${row.id}" a ete supprime`,
+        description: `L'ITP "${row.id}" a été supprimé`,
       })
       fetchData()
     } catch (error) {
