@@ -7,6 +7,7 @@ import { SessionProvider } from "@/components/auth/SessionProvider";
 import { FeedbackWidget } from "@/components/feedback/FeedbackWidget";
 import { GlobalSearch } from "@/components/global-search";
 import { OnboardingRedirect } from "@/components/onboarding-redirect";
+import { CookieBanner } from "@/components/CookieBanner";
 
 
 const spaceGrotesk = Space_Grotesk({
@@ -141,6 +142,8 @@ export default function RootLayout({
           <GlobalSearch />
           <Toaster />
           <FeedbackWidget />
+          {/* DEV2 #2 — Bandeau cookies RGPD/CNIL */}
+          <CookieBanner />
         </SessionProvider>
       </body>
     </html>
