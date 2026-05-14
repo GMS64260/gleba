@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { createVenteFromRecolteArbre, deleteAutoEntry } from "@/lib/auto-compta"
+import { creerFacture } from "@/lib/facture-utils"
 
 interface Params {
   params: Promise<{ id: string }>
@@ -152,71 +153,33 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     // Transaction atomique : facture + update recolte arbre
     const recolte = await prisma.$transaction(async (tx) => {
       if (body.statut === "vendu" && body.creerFacture && body.prixTotal) {
-        const year = new Date().getFullYear()
-        const lastFacture = await tx.facture.findFirst({
-          where: {
-            userId,
-            numero: { startsWith: `F-${year}-` },
-          },
-          orderBy: { numero: 'desc' },
-        })
-
-        let nextNum = 1
-        if (lastFacture) {
-          const parts = lastFacture.numero.split('-')
-          nextNum = parseInt(parts[2]) + 1
-        }
-        const numero = `F-${year}-${String(nextNum).padStart(4, '0')}`
-
-        let clientNom = body.clientNom || 'Client anonyme'
-        let clientAdresse = null
-
-        if (body.clientId) {
-          const client = await tx.client.findFirst({
-            where: { id: body.clientId, userId },
-          })
-          if (client) {
-            clientNom = client.nom
-            clientAdresse = [client.adresse, client.codePostal, client.ville].filter(Boolean).join(', ')
-          }
-        }
-
         const totalHT = body.prixTotal / 1.055
         const totalTVA = body.prixTotal - totalHT
-
         const arbreNom = existing.arbre?.nom || 'Fruits'
         const especeNom = existing.arbre?.espece || ''
 
-        const facture = await tx.facture.create({
-          data: {
-            userId,
-            numero,
-            type: 'facture',
-            clientId: body.clientId || null,
-            clientNom,
-            clientAdresse,
-            date: new Date(),
-            objet: `Vente de ${arbreNom}${especeNom ? ` (${especeNom})` : ''}`,
-            totalHT,
-            totalTVA,
-            totalTTC: body.prixTotal,
-            statut: 'payee',
-            datePaiement: new Date(),
-            modePaiement: 'especes',
-            lignes: {
-              create: [{
-                ordre: 0,
-                description: `${arbreNom}${especeNom ? ` - ${especeNom}` : ''}`,
-                quantite: existing.quantite,
-                unite: 'kg',
-                prixUnitaire: (body.prixKg || 0) / 1.055,
-                tauxTVA: 5.5,
-                montantHT: totalHT,
-                montantTVA: totalTVA,
-                montantTTC: body.prixTotal,
-              }],
-            },
-          },
+        const facture = await creerFacture(tx, {
+          userId,
+          type: 'facture',
+          clientId: body.clientId || null,
+          clientNom: body.clientNom,
+          objet: `Vente de ${arbreNom}${especeNom ? ` (${especeNom})` : ''}`,
+          totalHT,
+          totalTVA,
+          totalTTC: body.prixTotal,
+          statut: 'payee',
+          datePaiement: new Date(),
+          modePaiement: 'especes',
+          lignes: [{
+            description: `${arbreNom}${especeNom ? ` - ${especeNom}` : ''}`,
+            quantite: existing.quantite,
+            unite: 'kg',
+            prixUnitaire: (body.prixKg || 0) / 1.055,
+            tauxTVA: 5.5,
+            montantHT: totalHT,
+            montantTVA: totalTVA,
+            montantTTC: body.prixTotal,
+          }],
         })
 
         updateData.factureId = facture.id
