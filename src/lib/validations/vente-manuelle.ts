@@ -1,5 +1,8 @@
 import { z } from 'zod'
 
+const JOURNAUX = ['VE', 'AC', 'BQ', 'CA', 'OD'] as const
+const MODES_REGLEMENT = ['Espèces', 'Chèque', 'Virement', 'CB', 'Prélèvement', 'À crédit'] as const
+
 export const createVenteManuelleSchema = z.object({
   date: z.coerce.date().optional(),
   categorie: z.string().min(1, 'Catégorie requise'),
@@ -16,6 +19,11 @@ export const createVenteManuelleSchema = z.object({
   module: z.string().max(50).nullable().optional(),
   paye: z.boolean().optional().default(true),
   notes: z.string().max(5000).nullable().optional(),
+  // PROMPT 15A
+  journal: z.enum(JOURNAUX).optional().default('VE'),
+  modeReglement: z.enum(MODES_REGLEMENT).nullable().optional(),
+  numeroPiece: z.string().max(50).nullable().optional(),
+  pjUrl: z.string().url().nullable().optional().or(z.literal('')),
 })
 
 export const updateVenteManuelleSchema = createVenteManuelleSchema.partial().extend({

@@ -1739,6 +1739,12 @@ model VenteManuelle {
   montantHT    Float?   @map("montant_ht")
   montantTVA   Float?   @map("montant_tva")
   montant      Float    @map("montant") // Total TTC en €
+  // PROMPT 15A — Comptabilité enrichie
+  journal      String   @default("VE") @map("journal") // VE, AC, BQ, CA, OD
+  modeReglement String? @map("mode_reglement") // Espèces, Chèque, Virement, CB, Prélèvement, À crédit
+  numeroPiece  String?  @map("numero_piece")
+  pjUrl        String?  @map("pj_url") // pièce justificative scannée
+  tvaInferee   Boolean  @default(false) @map("tva_inferee") // true si taux dérivé en migration
   // Client
   clientId     Int?     @map("client_id")
   client       Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
@@ -1773,6 +1779,12 @@ model DepenseManuelle {
   montantHT      Float?   @map("montant_ht")
   montantTVA     Float?   @map("montant_tva") // TVA déductible
   montant        Float    @map("montant") // Total TTC en €
+  // PROMPT 15A — Comptabilité enrichie
+  journal        String   @default("AC") @map("journal") // VE, AC, BQ, CA, OD
+  modeReglement  String?  @map("mode_reglement")
+  numeroPiece    String?  @map("numero_piece")
+  pjUrl          String?  @map("pj_url")
+  tvaInferee     Boolean  @default(false) @map("tva_inferee")
   module         String?  @map("module") // "potager", "verger", "elevage", "general"
   // Fournisseur
   fournisseurId  String?  @map("fournisseur_id")
