@@ -266,7 +266,7 @@ export default function ITPsPage() {
               <h1 className="text-xl font-bold">Itinéraires Techniques (ITP)</h1>
             </div>
           </div>
-          <Link href="/itps/calendrier">
+          <Link href="/maraichage/itps/calendrier">
             <Button variant="outline" size="sm">
               <Calendar className="h-4 w-4 mr-2" />
               <span className="hidden sm:inline">Calendrier</span>

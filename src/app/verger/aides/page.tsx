@@ -93,7 +93,7 @@ export default function AidesPage() {
       <header className="border-b bg-white/95 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-3 max-w-[1200px] flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Link href="/arbres">
+            <Link href="/verger">
               <Button variant="ghost" size="sm">
                 <ArrowLeft className="h-4 w-4 mr-1" />
                 Retour Verger & Forêt

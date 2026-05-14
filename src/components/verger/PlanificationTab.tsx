@@ -599,7 +599,7 @@ function ZonesSubTab() {
 function StocksSubTab() {
   return (
     <div className="grid gap-4 grid-cols-1 md:grid-cols-3">
-      <Link href="/stocks">
+      <Link href="/maraichage/stocks">
         <Card className="hover:shadow-md transition-shadow cursor-pointer">
           <CardHeader>
             <CardTitle className="text-sm flex items-center gap-2">
@@ -610,7 +610,7 @@ function StocksSubTab() {
           </CardHeader>
         </Card>
       </Link>
-      <Link href="/arbres?tab=productions">
+      <Link href="/verger?tab=productions">
         <Card className="hover:shadow-md transition-shadow cursor-pointer">
           <CardHeader>
             <CardTitle className="text-sm flex items-center gap-2">
@@ -621,7 +621,7 @@ function StocksSubTab() {
           </CardHeader>
         </Card>
       </Link>
-      <Link href="/arbres?tab=sante">
+      <Link href="/verger?tab=sante">
         <Card className="hover:shadow-md transition-shadow cursor-pointer">
           <CardHeader>
             <CardTitle className="text-sm flex items-center gap-2">

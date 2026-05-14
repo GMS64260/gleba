@@ -500,7 +500,7 @@ export function CampagneDetailDialog({ campagneId, open, onOpenChange, onUpdate 
                 Dispositifs d'aide compatibles avec ce type de plantation.
               </p>
               {aides.length === 0 ? (
-                <Card><CardContent className="py-6 text-center text-muted-foreground text-sm">Aucune aide spécifique référencée pour ce type. <Link href="/arbres/aides" className="underline">Voir tout le catalogue</Link></CardContent></Card>
+                <Card><CardContent className="py-6 text-center text-muted-foreground text-sm">Aucune aide spécifique référencée pour ce type. <Link href="/verger/aides" className="underline">Voir tout le catalogue</Link></CardContent></Card>
               ) : (
                 <div className="space-y-2">
                   {aides.map((aide) => (
@@ -518,7 +518,7 @@ export function CampagneDetailDialog({ campagneId, open, onOpenChange, onUpdate 
                     </Card>
                   ))}
                   <div className="text-center pt-2">
-                    <Link href="/arbres/aides"><Button variant="outline" size="sm"><HelpCircle className="h-4 w-4 mr-1" />Voir tout le catalogue d'aides</Button></Link>
+                    <Link href="/verger/aides"><Button variant="outline" size="sm"><HelpCircle className="h-4 w-4 mr-1" />Voir tout le catalogue d'aides</Button></Link>
                   </div>
                 </div>
               )}

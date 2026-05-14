@@ -208,7 +208,7 @@ export default function DetailArbrePage() {
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-4">
-            <Link href="/arbres?tab=arbres">
+            <Link href="/verger?tab=arbres">
               <Button variant="ghost" size="sm">
                 <ArrowLeft className="h-4 w-4 mr-1" />
                 Retour
@@ -496,7 +496,7 @@ export default function DetailArbrePage() {
                 <p className="text-muted-foreground mb-4">
                   Consultez les récoltes de cet arbre dans la page dédiée.
                 </p>
-                <Link href="/arbres?tab=productions">
+                <Link href="/verger?tab=productions">
                   <Button variant="outline">Voir les récoltes</Button>
                 </Link>
               </CardContent>
@@ -512,7 +512,7 @@ export default function DetailArbrePage() {
                 <p className="text-muted-foreground mb-4">
                   Consultez les opérations de cet arbre dans la page dédiée.
                 </p>
-                <Link href="/arbres?tab=operations">
+                <Link href="/verger?tab=operations">
                   <Button variant="outline">Voir les opérations</Button>
                 </Link>
               </CardContent>

@@ -414,7 +414,7 @@ function StocksSubTab() {
         </p>
       </div>
       <div className="grid gap-4 md:grid-cols-3">
-        <Link href="/stocks">
+        <Link href="/maraichage/stocks">
           <Card className="hover:shadow-md transition-all hover:scale-[1.01] cursor-pointer group">
             <CardHeader>
               <div className="flex items-center gap-3">
@@ -429,7 +429,7 @@ function StocksSubTab() {
             </CardHeader>
           </Card>
         </Link>
-        <Link href="/recoltes">
+        <Link href="/maraichage/recoltes">
           <Card className="hover:shadow-md transition-all hover:scale-[1.01] cursor-pointer group">
             <CardHeader>
               <div className="flex items-center gap-3">
@@ -444,7 +444,7 @@ function StocksSubTab() {
             </CardHeader>
           </Card>
         </Link>
-        <Link href="/cultures/irriguer">
+        <Link href="/maraichage/cultures/irriguer">
           <Card className="hover:shadow-md transition-all hover:scale-[1.01] cursor-pointer group">
             <CardHeader>
               <div className="flex items-center gap-3">

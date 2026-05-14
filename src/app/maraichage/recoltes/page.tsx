@@ -273,7 +273,7 @@ export default function RecoltesPage() {
             <Button variant="outline" size="sm" onClick={fetchData}>
               <RefreshCw className="h-4 w-4" />
             </Button>
-            <Link href="/recoltes/saisie">
+            <Link href="/maraichage/recoltes/saisie">
               <Button className="bg-green-600 hover:bg-green-700">
                 <Plus className="h-4 w-4 mr-1" />
                 Nouvelle récolte

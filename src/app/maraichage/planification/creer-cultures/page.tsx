@@ -277,7 +277,7 @@ function CreerCulturesContent() {
                 <p className="mt-2">
                   Ou aucune planche n'a de rotation assignee.
                 </p>
-                <Link href="/planches" className="mt-4 inline-block">
+                <Link href="/maraichage/planches" className="mt-4 inline-block">
                   <Button variant="outline">
                     Gerer les planches
                   </Button>

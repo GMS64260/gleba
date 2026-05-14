@@ -330,7 +330,7 @@ function SemencesContent() {
           </div>
 
           <div className="flex items-center gap-2">
-            <Link href="/stocks">
+            <Link href="/maraichage/stocks">
               <Button variant="outline" size="sm">
                 <Package className="h-4 w-4 mr-2" />
                 Gérer stocks
@@ -366,7 +366,7 @@ function SemencesContent() {
                 <strong>{stats.stockObsoleteSeuilJours} jours</strong>. Les
                 statuts ci-dessous peuvent être inexacts.{" "}
                 <Link
-                  href="/stocks"
+                  href="/maraichage/stocks"
                   className="underline underline-offset-2 hover:text-amber-900"
                 >
                   Mettre à jour

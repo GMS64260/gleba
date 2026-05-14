@@ -215,7 +215,7 @@ function PlantsContent() {
           </div>
 
           <div className="flex items-center gap-2">
-            <Link href="/stocks">
+            <Link href="/maraichage/stocks">
               <Button variant="outline" size="sm">
                 <Package className="h-4 w-4 mr-2" />
                 Gerer stocks

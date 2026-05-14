@@ -33,29 +33,15 @@ interface SoilGridsAPIResponse {
   }
 }
 
-// ── Cache mémoire (TTL 24h) ───────────────────────────────
+// PROMPT 25 LOT A — Cache persistant via GenericCache
+// (avant : Map en mémoire vidée à chaque redémarrage Docker)
+import { getOrFetch } from "./cache-helper"
 
-const CACHE_TTL_MS = 24 * 60 * 60 * 1000 // 24 heures
-const cache = new Map<string, { data: SoilGridsData; cachedAt: number }>()
+const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000 // 30 jours (les sols changent peu)
 
 function cacheKey(lat: number, lng: number): string {
-  // Arrondir à 3 décimales (~110m de précision, compatible avec résolution 250m)
-  return `${lat.toFixed(3)}_${lng.toFixed(3)}`
-}
-
-function getCached(lat: number, lng: number): SoilGridsData | null {
-  const key = cacheKey(lat, lng)
-  const entry = cache.get(key)
-  if (!entry) return null
-  if (Date.now() - entry.cachedAt > CACHE_TTL_MS) {
-    cache.delete(key)
-    return null
-  }
-  return entry.data
-}
-
-function setCache(lat: number, lng: number, data: SoilGridsData): void {
-  cache.set(cacheKey(lat, lng), { data, cachedAt: Date.now() })
+  // Arrondir à 3 décimales (~110 m, compatible avec résolution 250 m de SoilGrids)
+  return `soilgrids:${lat.toFixed(3)},${lng.toFixed(3)}`
 }
 
 // ── API ────────────────────────────────────────────────────
@@ -72,10 +58,11 @@ const SOILGRIDS_BASE_URL = 'https://rest.isric.org/soilgrids/v2.0/properties/que
  * - soc (soil organic carbon) : dg/kg → % (÷ 100)
  */
 export async function fetchSoilData(lat: number, lng: number): Promise<SoilGridsData | null> {
-  // Vérifier le cache
-  const cached = getCached(lat, lng)
-  if (cached) return cached
+  // PROMPT 25 LOT A — Cache persistant DB (avant : Map en mémoire)
+  return getOrFetch<SoilGridsData | null>(cacheKey(lat, lng), () => _fetchSoilDataLive(lat, lng), CACHE_TTL_MS)
+}
 
+async function _fetchSoilDataLive(lat: number, lng: number): Promise<SoilGridsData | null> {
   try {
     const params = new URLSearchParams({
       lon: lng.toFixed(4),
@@ -141,9 +128,6 @@ export async function fetchSoilData(lat: number, lng: number): Promise<SoilGrids
       data.limon = Math.round(data.limon * factor * 10) / 10
       data.sable = Math.round((100 - data.argile - data.limon) * 10) / 10
     }
-
-    // Mettre en cache
-    setCache(lat, lng, data)
 
     return data
   } catch (error) {
