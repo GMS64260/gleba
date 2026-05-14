@@ -3,6 +3,23 @@ const nextConfig = {
   // Output standalone pour Docker
   output: 'standalone',
 
+  // Bug PDFKit (audit 2026-05-14) : Next.js standalone ne trace pas les .afm
+  // car PDFKit les charge via fs.readFileSync dynamique non détectable par
+  // le bundler. Sans ça, tous nos exports PDF crashent avec
+  // `ENOENT: no such file or directory, open '/ROOT/node_modules/pdfkit/js/data/Helvetica.afm'`
+  // (registre phyto, factures, calendrier verger, dossier campagne, étiquettes QR).
+  outputFileTracingIncludes: {
+    '/**': [
+      './node_modules/pdfkit/js/data/*.afm',
+      './node_modules/pdfkit/js/data/*.trie',
+    ],
+  },
+
+  // Ne pas bundler pdfkit côté serveur : il utilise __dirname pour résoudre
+  // ses .afm, et Turbopack le remplace par un placeholder `/ROOT/...` qui
+  // n'existe pas au runtime. En externe, le require() natif fonctionne.
+  serverExternalPackages: ['pdfkit', 'qrcode'],
+
   // Optimisations
   poweredByHeader: false,
 
