@@ -159,7 +159,13 @@ export async function GET(request: NextRequest) {
 
     for (const culture of cultures) {
       const production = culture.recoltes.reduce((sum, r) => sum + r.quantite, 0)
-      const recoltesVendues = culture.recoltes.filter(r => r.statut === 'vendu')
+      // BUG-07 : on n'inclut dans le « CA moyen kg » que les lignes vendues
+      // qui ont effectivement un prix (sinon prixMoyenKg = 0,19 €/kg sur 90 kg).
+      const recoltesVendues = culture.recoltes.filter(
+        (r) =>
+          r.statut === 'vendu' &&
+          ((r.prixKg ?? 0) > 0 || (r.prixTotal ?? 0) > 0)
+      )
       const revenus = recoltesVendues.reduce((sum, r) => sum + (r.prixTotal || (r.quantite * (r.prixKg || 0))), 0)
       const quantiteVendue = recoltesVendues.reduce((sum, r) => sum + r.quantite, 0)
 
@@ -266,7 +272,7 @@ export async function GET(request: NextRequest) {
 
     // Agrégation verger par espece d'arbre
     const vergerRevenus = recoltesArbres
-      .filter(r => r.statut === 'vendu')
+      .filter((r) => r.statut === 'vendu' && ((r.prixKg ?? 0) > 0 || (r.prixTotal ?? 0) > 0))
       .reduce((sum, r) => sum + (r.prixTotal || (r.quantite * (r.prixKg || 0))), 0)
       + ventesArbres.reduce((sum, v) => sum + (v.prixVente || 0), 0)
     const vergerProduction = recoltesArbres.reduce((sum, r) => sum + r.quantite, 0)
