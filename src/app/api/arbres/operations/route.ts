@@ -137,6 +137,15 @@ export async function POST(request: NextRequest) {
         nbPersonnes: body.nbPersonnes ? parseInt(body.nbPersonnes) : undefined,
         recurrence: body.recurrence || null,
         saisonRecommandee: body.saisonRecommandee || null,
+        // DEV3 #6 — opérateur, temps, météo, matériel
+        operateurId: body.operateurId || null,
+        tempsHeures: body.tempsHeures != null ? parseFloat(body.tempsHeures) : null,
+        temperatureC: body.temperatureC != null ? parseFloat(body.temperatureC) : null,
+        ventKmh: body.ventKmh != null ? parseFloat(body.ventKmh) : null,
+        hygrometriePct: body.hygrometriePct != null ? parseInt(body.hygrometriePct) : null,
+        pluie24h: body.pluie24h != null ? Boolean(body.pluie24h) : null,
+        pluie24hMm: body.pluie24hMm != null ? parseFloat(body.pluie24hMm) : null,
+        materiel: Array.isArray(body.materiel) ? body.materiel : [],
       },
       include: {
         arbre: {
