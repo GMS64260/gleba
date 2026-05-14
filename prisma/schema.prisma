@@ -241,8 +241,14 @@ model Fournisseur {
   telephone          String?  @map("telephone")
   siteWeb            String?  @map("site_web")
   siret              String?  @map("siret")
+  siren              String?  @map("siren")
   tvaIntra           String?  @map("tva_intra") // Numéro TVA intracommunautaire
-  type               String?  @map("type") // "semences", "aliments", "animaux", "materiel", "mixte"
+  type               String?  @map("type") // Semencier|Aliment|Animal|Materiel|Phyto|Engrais|Service|Mixte
+  // DEV2 #5 — Bloc bancaire (TODO chiffrer en base via Vault/KMS)
+  iban               String?  @map("iban")
+  bic                String?  @map("bic")
+  ribCle             String?  @map("rib_cle")    // clé RIB française (2 chiffres)
+  banqueNom          String?  @map("banque_nom")
   conditionsPaiement Int?     @default(30) @map("conditions_paiement") // Délai paiement en jours
   notes              String?  @map("notes")
   actif              Boolean  @default(true) @map("actif")
