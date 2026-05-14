@@ -8,6 +8,8 @@ import { useSearchParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { UserMenu } from "@/components/auth/UserMenu"
+import { ModulesNav } from "@/components/auth/ModulesNav"
+import { BoutiqueHeaderButton } from "@/components/auth/BoutiqueHeaderButton"
 import { WelcomeDialog } from "@/components/onboarding/WelcomeDialog"
 import {
   Sprout,
@@ -15,13 +17,19 @@ import {
   BarChart3,
   Settings,
   Map as MapIcon,
+  MapPin,
   TreeDeciduous,
   Calendar,
   Leaf,
   Bird,
   Wallet,
+  CloudRain,
+  X,
 } from "lucide-react"
-import { AssistantDialog, AssistantButton } from "@/components/assistant"
+import { AssistantDialog } from "@/components/assistant"
+import { Wand2, Bot } from "lucide-react"
+import { ChatPanel } from "@/components/chat/ChatPanel"
+import { HeaderMeteoWidget } from "@/components/meteo/HeaderMeteoWidget"
 import { CalendrierTab } from "@/components/potager/CalendrierTab"
 import { CulturesTab } from "@/components/potager/CulturesTab"
 import { TerrainTab } from "@/components/potager/TerrainTab"
@@ -29,11 +37,11 @@ import { PlanificationTab } from "@/components/potager/PlanificationTab"
 import { ReferentielTab } from "@/components/potager/ReferentielTab"
 
 const TABS = [
-  { id: "calendrier", label: "Calendrier & Taches", icon: Calendar, shortLabel: "Calendrier" },
+  { id: "calendrier", label: "Calendrier", icon: Calendar, shortLabel: "Calendrier" },
   { id: "cultures", label: "Cultures", icon: Sprout, shortLabel: "Cultures" },
   { id: "terrain", label: "Terrain", icon: LayoutGrid, shortLabel: "Terrain" },
   { id: "planification", label: "Planification", icon: BarChart3, shortLabel: "Planif." },
-  { id: "referentiel", label: "Referentiel", icon: Leaf, shortLabel: "Ref." },
+  { id: "referentiel", label: "Référentiel", icon: Leaf, shortLabel: "Ref." },
 ] as const
 
 type TabId = (typeof TABS)[number]["id"]
@@ -56,7 +64,19 @@ function HomeContent() {
   const [showWelcome, setShowWelcome] = React.useState(false)
   const [selectedYear, setSelectedYear] = React.useState(currentYearNow)
   const [showAssistant, setShowAssistant] = React.useState(false)
+  const [showChat, setShowChat] = React.useState(false)
+  const [showPluieBanner, setShowPluieBanner] = React.useState(false)
 
+  React.useEffect(() => {
+    if (!localStorage.getItem("gleba-banner-pluie-v1")) {
+      setShowPluieBanner(true)
+    }
+  }, [])
+
+  const dismissPluieBanner = React.useCallback(() => {
+    localStorage.setItem("gleba-banner-pluie-v1", "1")
+    setShowPluieBanner(false)
+  }, [])
   // Lire l'onglet actif depuis l'URL (?tab=planification)
   const tabFromUrl = searchParams.get("tab") as TabId | null
   const validTabs = TABS.map((t) => t.id)
@@ -99,7 +119,8 @@ function HomeContent() {
   }, [])
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gris-nuage aurora-bg-subtle">
+      <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
       {/* Dialog de bienvenue */}
       <WelcomeDialog
         open={showWelcome}
@@ -107,67 +128,38 @@ function HomeContent() {
         onComplete={handleOnboardingComplete}
       />
 
-      {/* Assistant */}
+      {/* Assistant culture */}
       <AssistantDialog open={showAssistant} onOpenChange={setShowAssistant} />
+
+      {/* Assistant IA */}
+      {showChat && (
+        <div className="fixed bottom-2 left-4 right-4 z-50 h-[45vh] max-w-sm mx-auto rounded-xl border bg-background shadow-2xl flex flex-col overflow-hidden sm:mx-0 sm:left-auto sm:bottom-4 sm:right-4 sm:h-[540px] sm:w-[400px] sm:max-w-none sm:rounded-lg sm:border sm:shadow-xl">
+          <ChatPanel onClose={() => setShowChat(false)} section="potager" sectionLabel="Maraîchage" />
+        </div>
+      )}
+
+
 
       {/* Header global */}
       <header className="border-b bg-white/95 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-2.5 flex items-center justify-between max-w-[1600px]">
-          <Link href="/" className="flex items-center hover:opacity-90 transition-opacity">
-            <Image
-              src="/gleba.png"
-              alt="Gleba"
-              width={120}
-              height={80}
-              className="rounded-lg"
-              priority
-            />
-          </Link>
+        <div className="container mx-auto px-4 py-2.5 flex items-center justify-between gap-2 max-w-[1600px]">
+          <div className="flex items-center gap-3">
+            <Link href="/" className="flex items-center hover:opacity-90 transition-opacity">
+              <Image
+                src="/gleba-logo.png"
+                alt="Gleba"
+                width={120}
+                height={80}
+                className="h-10 w-auto rounded-lg"
+                priority
+              />
+            </Link>
+            {session?.user && <HeaderMeteoWidget showLune />}
+          </div>
           <div className="flex items-center gap-2">
             {/* Sections globales */}
-            {session?.user && (
-              <div className="flex items-center border rounded-lg overflow-hidden">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="rounded-none bg-green-50 text-green-700 border-r"
-                >
-                  <Sprout className="h-4 w-4 mr-1" />
-                  <span className="hidden sm:inline">Potager</span>
-                </Button>
-                <Link href="/arbres">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="rounded-none text-lime-700 hover:text-lime-800 hover:bg-lime-50 border-r"
-                  >
-                    <TreeDeciduous className="h-4 w-4 mr-1" />
-                    <span className="hidden sm:inline">Verger</span>
-                  </Button>
-                </Link>
-                <Link href="/elevage">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="rounded-none text-amber-700 hover:text-amber-800 hover:bg-amber-50 border-r"
-                  >
-                    <Bird className="h-4 w-4 mr-1" />
-                    <span className="hidden sm:inline">Elevage</span>
-                  </Button>
-                </Link>
-                <Link href="/comptabilite">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="rounded-none text-blue-700 hover:text-blue-800 hover:bg-blue-50"
-                  >
-                    <Wallet className="h-4 w-4 mr-1" />
-                    <span className="hidden sm:inline">Compta</span>
-                  </Button>
-                </Link>
-              </div>
-            )}
-            <AssistantButton onClick={() => setShowAssistant(true)} />
+            {session?.user && <ModulesNav current="maraichage" />}
+            {session?.user && <BoutiqueHeaderButton />}
             <Link href="/parametres">
               <Button variant="ghost" size="sm">
                 <Settings className="h-4 w-4" />
@@ -178,27 +170,27 @@ function HomeContent() {
         </div>
       </header>
 
-      {/* Navigation par onglets + sélecteur d'année + bouton Plan jardin */}
-      <nav className="border-b bg-white sticky top-[57px] z-40">
+      {/* Navigation par onglets + sélecteur d'annee + bouton Plan jardin */}
+      <nav className="border-b border-t-2 border-t-emerald-500 bg-white/80 backdrop-blur-sm sticky top-[61px] z-40">
         <div className="container mx-auto px-4 max-w-[1600px]">
           <div className="flex items-center justify-between">
             {/* Onglets */}
-            <div className="flex items-center -mb-px overflow-x-auto">
+            <div className="flex items-center -mb-px">
               {TABS.map((tab) => {
                 const isActive = activeTab === tab.id
                 return (
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                    className={`flex items-center gap-1.5 px-3 lg:px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                       isActive
-                        ? "border-green-600 text-green-700"
-                        : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                        ? "border-emerald-600 text-emerald-700"
+                        : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
                     }`}
+                    title={tab.label}
                   >
-                    <tab.icon className={`h-4 w-4 ${isActive ? "text-green-600" : ""}`} />
-                    <span className="hidden md:inline">{tab.label}</span>
-                    <span className="md:hidden">{tab.shortLabel}</span>
+                    <tab.icon className={`h-4 w-4 ${isActive ? "text-emerald-600" : ""}`} />
+                    <span className="hidden lg:inline">{tab.label}</span>
                   </button>
                 )
               })}
@@ -206,10 +198,36 @@ function HomeContent() {
 
             {/* Actions à droite: Plan jardin + Année */}
             <div className="flex items-center gap-2 py-2">
-              <Link href="/jardin">
+              <Link href="/jardin?usage=culture">
                 <Button variant="outline" size="sm" className="text-teal-700 border-teal-300 hover:bg-teal-50">
                   <MapIcon className="h-4 w-4 mr-1" />
                   <span className="hidden sm:inline">Plan</span>
+                </Button>
+              </Link>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowAssistant(true)}
+                className="text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+                title="Assistant culture"
+              >
+                <Wand2 className="h-4 w-4 mr-1" />
+                <span className="hidden sm:inline">Semer</span>
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowChat((v) => !v)}
+                className={showChat ? "text-white bg-emerald-600 hover:bg-emerald-700 border-emerald-600" : "text-emerald-700 border-emerald-300 hover:bg-emerald-50"}
+                title="Assistant IA"
+              >
+                <Bot className="h-4 w-4 mr-1" />
+                <span className="hidden sm:inline">IA</span>
+              </Button>
+              <Link href="/parcelles">
+                <Button variant="outline" size="sm" className="text-purple-700 border-purple-300 hover:bg-purple-50">
+                  <MapPin className="h-4 w-4 mr-1" />
+                  <span className="hidden sm:inline">Parcelles</span>
                 </Button>
               </Link>
               <Select
@@ -233,6 +251,34 @@ function HomeContent() {
         </div>
       </nav>
 
+      {/* Bannière nouveauté - pluviométrie */}
+      {showPluieBanner && session?.user && (
+        <div className="border-b bg-emerald-50/80 backdrop-blur-sm">
+          <div className="container mx-auto px-4 py-2 max-w-[1600px] flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-sm text-emerald-700">
+              <CloudRain className="h-4 w-4 flex-shrink-0" />
+              <span>
+                <strong>Nouveau —</strong> Pluviométrie par planche disponible : cliquez sur une planche dans le{" "}
+                <button
+                  onClick={() => { dismissPluieBanner(); window.location.href = "/jardin" }}
+                  className="underline underline-offset-2 hover:text-emerald-900 font-medium"
+                >
+                  Plan du jardin
+                </button>{" "}
+                pour voir les précipitations. Les planches sous serre sont automatiquement exclues.
+              </span>
+            </div>
+            <button
+              onClick={dismissPluieBanner}
+              className="flex-shrink-0 text-emerald-400 hover:text-emerald-700 transition-colors"
+              aria-label="Fermer"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Contenu de l'onglet actif */}
       <main className="container mx-auto px-4 py-6 max-w-[1600px]">
         {activeTab === "calendrier" && <CalendrierTab year={selectedYear} />}
@@ -243,7 +289,7 @@ function HomeContent() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t mt-8 py-4 text-center text-sm text-gray-500">
+      <footer className="border-t mt-8 py-4 text-center text-sm text-slate-500">
         <p>Gleba v1.0.0</p>
       </footer>
     </div>

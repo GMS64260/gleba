@@ -6,6 +6,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { creerFacture } from '@/lib/facture-utils'
+import { invalidateKpi } from '@/lib/kpi'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -72,77 +74,37 @@ export async function POST(request: NextRequest) {
 
     // Transaction atomique : numéro facture + création (évite les doublons)
     const facture = await prisma.$transaction(async (tx) => {
-      const year = new Date().getFullYear()
-      const prefix = body.type === 'avoir' ? 'AV' : 'F'
-
-      const lastFacture = await tx.facture.findFirst({
-        where: {
-          userId,
-          numero: { startsWith: `${prefix}-${year}-` },
-        },
-        orderBy: { numero: 'desc' },
-      })
-
-      let nextNum = 1
-      if (lastFacture) {
-        const parts = lastFacture.numero.split('-')
-        nextNum = parseInt(parts[2]) + 1
-      }
-      const numero = `${prefix}-${year}-${String(nextNum).padStart(4, '0')}`
-
-      let clientNom = body.clientNom || 'Client anonyme'
-      let clientAdresse = body.clientAdresse || null
-
-      if (body.clientId) {
-        const client = await tx.client.findFirst({
-          where: { id: parseInt(body.clientId), userId },
-        })
-        if (client) {
-          clientNom = client.nom
-          clientAdresse = [client.adresse, client.codePostal, client.ville].filter(Boolean).join(', ')
-        }
-      }
-
-      return tx.facture.create({
-        data: {
-          userId,
-          numero,
-          type: body.type || 'facture',
-          clientId: body.clientId ? parseInt(body.clientId) : null,
-          clientNom,
-          clientAdresse,
-          date: body.date ? new Date(body.date) : new Date(),
-          dateEcheance: body.dateEcheance ? new Date(body.dateEcheance) : null,
-          objet: body.objet || null,
-          totalHT: parseFloat(body.totalHT) || 0,
-          totalTVA: parseFloat(body.totalTVA) || 0,
-          totalTTC: parseFloat(body.totalTTC) || 0,
-          statut: body.statut || 'emise',
-          modePaiement: body.modePaiement || null,
-          factureOrigineId: body.factureOrigineId ? parseInt(body.factureOrigineId) : null,
-          notes: body.notes || null,
-          mentionsLegales: body.mentionsLegales || null,
-          lignes: body.lignes ? {
-            create: body.lignes.map((l: any, index: number) => ({
-              ordre: index,
-              description: l.description,
-              quantite: parseFloat(l.quantite) || 1,
-              unite: l.unite || 'unité',
-              prixUnitaire: parseFloat(l.prixUnitaire) || 0,
-              tauxTVA: parseFloat(l.tauxTVA) || 5.5,
-              montantHT: parseFloat(l.montantHT) || 0,
-              montantTVA: parseFloat(l.montantTVA) || 0,
-              montantTTC: parseFloat(l.montantTTC) || 0,
-            })),
-          } : undefined,
-        },
-        include: {
-          lignes: true,
-          client: true,
-        },
+      return creerFacture(tx, {
+        userId,
+        type: body.type || 'facture',
+        clientId: body.clientId ? parseInt(body.clientId) : null,
+        clientNom: body.clientNom,
+        clientAdresse: body.clientAdresse,
+        date: body.date ? new Date(body.date) : new Date(),
+        dateEcheance: body.dateEcheance ? new Date(body.dateEcheance) : null,
+        objet: body.objet || '',
+        totalHT: parseFloat(body.totalHT) || 0,
+        totalTVA: parseFloat(body.totalTVA) || 0,
+        totalTTC: parseFloat(body.totalTTC) || 0,
+        statut: body.statut || 'emise',
+        modePaiement: body.modePaiement || null,
+        factureOrigineId: body.factureOrigineId ? parseInt(body.factureOrigineId) : null,
+        notes: body.notes || null,
+        mentionsLegales: body.mentionsLegales || null,
+        lignes: (body.lignes || []).map((l: any) => ({
+          description: l.description,
+          quantite: parseFloat(l.quantite) || 1,
+          unite: l.unite || 'unité',
+          prixUnitaire: parseFloat(l.prixUnitaire) || 0,
+          tauxTVA: parseFloat(l.tauxTVA) || 5.5,
+          montantHT: parseFloat(l.montantHT) || 0,
+          montantTVA: parseFloat(l.montantTVA) || 0,
+          montantTTC: parseFloat(l.montantTTC) || 0,
+        })),
       })
     })
 
+    invalidateKpi(session.user.id)
     return NextResponse.json({ data: facture }, { status: 201 })
   } catch (error) {
     console.error('POST /api/comptabilite/factures error:', error)
@@ -189,6 +151,7 @@ export async function PATCH(request: NextRequest) {
       include: { lignes: true, client: true },
     })
 
+    invalidateKpi(session.user.id)
     return NextResponse.json({ data: facture })
   } catch (error) {
     console.error('PATCH /api/comptabilite/factures error:', error)
@@ -225,6 +188,7 @@ export async function DELETE(request: NextRequest) {
       data: { statut: 'annulee' },
     })
 
+    invalidateKpi(session.user.id)
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('DELETE /api/comptabilite/factures error:', error)

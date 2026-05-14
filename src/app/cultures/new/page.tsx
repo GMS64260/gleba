@@ -36,7 +36,7 @@ import { useToast } from "@/hooks/use-toast"
 import { createCultureSchema, type CreateCultureInput } from "@/lib/validations"
 import { RotationAdviceCompact } from "@/components/planche"
 
-// Convertir un numéro de semaine (1-52) en date pour une année donnée
+// Convertir un numéro de semaine (1-52) en date pour une annee donnée
 function weekToDate(year: number, week: number): Date {
   const jan4 = new Date(year, 0, 4)
   const dayOfWeek = jan4.getDay() || 7
@@ -97,7 +97,7 @@ export default function NewCulturePage() {
   const watchedLongueur = form.watch("longueur")
   const watchedEspacement = form.watch("espacement")
 
-  // Charger les données de référence
+  // Charger les données de reference
   React.useEffect(() => {
     Promise.all([
       fetch("/api/especes?pageSize=500").then((r) => r.json()),
@@ -113,7 +113,7 @@ export default function NewCulturePage() {
       })
   }, [])
 
-  // Charger les variétés et ITPs quand l'espèce change
+  // Charger les varietes et ITPs quand l'espece change
   React.useEffect(() => {
     if (selectedEspece) {
       Promise.all([
@@ -220,9 +220,10 @@ export default function NewCulturePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
+      <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
       {/* Header */}
-      <header className="border-b bg-white sticky top-0 z-50">
+      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center gap-4">
           <Link href="/cultures">
             <Button variant="ghost" size="sm">

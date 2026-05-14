@@ -57,7 +57,7 @@ export function peutAjouterCulture(
     0
   )
 
-  // Largeur nécessaire pour la nouvelle culture
+  // Largeur necessaire pour la nouvelle culture
   const largeurNecessaire = calculerLargeurOccupee(nouvelleCulture)
 
   // Largeur disponible (avec marge de 10cm de chaque côté)

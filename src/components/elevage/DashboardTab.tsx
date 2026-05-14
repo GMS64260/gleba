@@ -1,7 +1,7 @@
 "use client"
 
 /**
- * Onglet Dashboard & Soins - Vue d'ensemble de l'élevage
+ * Onglet Dashboard & Soins - Vue d'ensemble de l'elevage
  * Stats, alertes, graphiques, et soins à planifier
  */
 
@@ -41,7 +41,9 @@ interface DashboardData {
     animauxActifs: number
     lotsActifs: number
     productionOeufsAnnee: number
+    productionOeufsAnneePrecedente: number
     ventesAnnee: number
+    ventesAnneePrecedente: number
     nbVentes: number
     abattagesAnnee: number
     poidsCarcasseAnnee: number
@@ -49,6 +51,12 @@ interface DashboardData {
     alimentsStockBas: number
     stockOeufs: number
     stockOeufsDetail: { produits: number; casses: number; vendus: number }
+    mortaliteAnnee: number
+    tauxMortalite: number
+    tauxPonte: number | null
+    nbPondeuses: number
+    fcr: number | null
+    consoAlimentsKg: number
   }
   animauxParType: {
     especeAnimaleId: string
@@ -167,8 +175,9 @@ export function DashboardTab({ year }: DashboardTabProps) {
         </div>
       ) : data && (
         <>
+          {/* Ligne 1 : Stats principales avec tendances N-1 */}
           <div className="grid gap-3 grid-cols-2 lg:grid-cols-5">
-            <Card className="bg-gradient-to-br from-amber-500 to-orange-500 text-white">
+            <Card className="bg-gradient-to-br from-amber-500 to-amber-600 text-white">
               <CardHeader className="pb-1 pt-3 px-4">
                 <CardDescription className="text-amber-100 text-xs">Animaux actifs</CardDescription>
                 <CardTitle className="text-2xl">{data.stats.animauxActifs}</CardTitle>
@@ -178,43 +187,133 @@ export function DashboardTab({ year }: DashboardTabProps) {
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-br from-yellow-400 to-yellow-500 text-white">
+            <Card className="bg-gradient-to-br from-slate-700 to-slate-800 text-white">
               <CardHeader className="pb-1 pt-3 px-4">
-                <CardDescription className="text-yellow-100 text-xs">Production oeufs</CardDescription>
+                <CardDescription className="text-slate-300 text-xs flex items-center gap-1">
+                  Production oeufs
+                  {(() => {
+                    const diff = data.stats.productionOeufsAnnee - data.stats.productionOeufsAnneePrecedente
+                    if (data.stats.productionOeufsAnneePrecedente === 0) return null
+                    return diff >= 0
+                      ? <TrendingUp className="h-3 w-3 text-slate-300" />
+                      : <TrendingDown className="h-3 w-3 text-red-300" />
+                  })()}
+                </CardDescription>
                 <CardTitle className="text-2xl">{data.stats.productionOeufsAnnee}</CardTitle>
               </CardHeader>
               <CardContent className="pb-3 px-4">
-                <p className="text-xs text-yellow-100">oeufs en {year}</p>
+                <p className="text-xs text-slate-300">
+                  {data.stats.productionOeufsAnneePrecedente > 0
+                    ? `${data.stats.productionOeufsAnnee >= data.stats.productionOeufsAnneePrecedente ? '+' : ''}${Math.round(((data.stats.productionOeufsAnnee - data.stats.productionOeufsAnneePrecedente) / data.stats.productionOeufsAnneePrecedente) * 100)}% vs ${year - 1}`
+                    : `oeufs en ${year}`
+                  }
+                </p>
               </CardContent>
             </Card>
 
-            <Card className={`bg-gradient-to-br ${data.stats.stockOeufs < 24 ? "from-orange-500 to-red-500" : "from-emerald-500 to-green-500"} text-white`}>
+            <Card className={`bg-gradient-to-br ${data.stats.stockOeufs < 24 ? "from-orange-500 to-orange-600" : "from-emerald-500 to-emerald-600"} text-white`}>
               <CardHeader className="pb-1 pt-3 px-4">
-                <CardDescription className="text-white/80 text-xs">Stock oeufs</CardDescription>
+                <CardDescription className={`text-xs ${data.stats.stockOeufs < 24 ? "text-orange-100" : "text-emerald-100"}`}>Stock oeufs</CardDescription>
                 <CardTitle className="text-2xl">{data.stats.stockOeufs}</CardTitle>
               </CardHeader>
               <CardContent className="pb-3 px-4">
-                <p className="text-xs text-white/80">disponibles</p>
+                <p className={`text-xs ${data.stats.stockOeufs < 24 ? "text-orange-100" : "text-emerald-100"}`}>disponibles</p>
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-br from-green-500 to-emerald-600 text-white">
+            <Card className="bg-gradient-to-br from-emerald-500 to-emerald-600 text-white">
               <CardHeader className="pb-1 pt-3 px-4">
-                <CardDescription className="text-green-100 text-xs">Ventes {year}</CardDescription>
+                <CardDescription className="text-emerald-100 text-xs flex items-center gap-1">
+                  Ventes {year}
+                  {(() => {
+                    const diff = data.stats.ventesAnnee - data.stats.ventesAnneePrecedente
+                    if (data.stats.ventesAnneePrecedente === 0) return null
+                    return diff >= 0
+                      ? <TrendingUp className="h-3 w-3 text-emerald-200" />
+                      : <TrendingDown className="h-3 w-3 text-red-200" />
+                  })()}
+                </CardDescription>
                 <CardTitle className="text-2xl">{data.stats.ventesAnnee.toFixed(0)} &euro;</CardTitle>
               </CardHeader>
               <CardContent className="pb-3 px-4">
-                <p className="text-xs text-green-100">{data.stats.nbVentes} ventes</p>
+                <p className="text-xs text-emerald-100">
+                  {data.stats.ventesAnneePrecedente > 0
+                    ? `${data.stats.ventesAnnee >= data.stats.ventesAnneePrecedente ? '+' : ''}${Math.round(((data.stats.ventesAnnee - data.stats.ventesAnneePrecedente) / data.stats.ventesAnneePrecedente) * 100)}% vs ${year - 1}`
+                    : `${data.stats.nbVentes} ventes`
+                  }
+                </p>
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-br from-red-400 to-red-500 text-white">
+            <Card className="bg-gradient-to-br from-orange-500 to-orange-600 text-white">
               <CardHeader className="pb-1 pt-3 px-4">
-                <CardDescription className="text-red-100 text-xs">Abattages {year}</CardDescription>
+                <CardDescription className="text-orange-100 text-xs">Abattages {year}</CardDescription>
                 <CardTitle className="text-2xl">{data.stats.abattagesAnnee}</CardTitle>
               </CardHeader>
               <CardContent className="pb-3 px-4">
-                <p className="text-xs text-red-100">{data.stats.poidsCarcasseAnnee.toFixed(1)} kg carcasse</p>
+                <p className="text-xs text-orange-100">{data.stats.poidsCarcasseAnnee.toFixed(1)} kg carcasse</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Ligne 2 : Métriques de performance */}
+          <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+            {data.stats.tauxPonte !== null && (
+              <Card>
+                <CardHeader className="pb-1 pt-3 px-4">
+                  <CardDescription className="text-xs flex items-center gap-1">
+                    <Egg className="h-3 w-3" />
+                    Taux de ponte
+                  </CardDescription>
+                  <CardTitle className={`text-2xl ${data.stats.tauxPonte >= 70 ? 'text-green-600' : data.stats.tauxPonte >= 50 ? 'text-amber-600' : 'text-red-600'}`}>
+                    {data.stats.tauxPonte}%
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pb-3 px-4">
+                  <p className="text-xs text-muted-foreground">{data.stats.nbPondeuses} pondeuses actives</p>
+                </CardContent>
+              </Card>
+            )}
+            {data.stats.mortaliteAnnee > 0 && (
+              <Card className={data.stats.tauxMortalite > 5 ? "border-red-200 bg-red-50" : ""}>
+                <CardHeader className="pb-1 pt-3 px-4">
+                  <CardDescription className="text-xs flex items-center gap-1">
+                    <AlertTriangle className="h-3 w-3" />
+                    Mortalite {year}
+                  </CardDescription>
+                  <CardTitle className={`text-2xl ${data.stats.tauxMortalite > 5 ? 'text-red-600' : 'text-slate-700'}`}>
+                    {data.stats.mortaliteAnnee}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pb-3 px-4">
+                  <p className="text-xs text-muted-foreground">taux : {data.stats.tauxMortalite}%</p>
+                </CardContent>
+              </Card>
+            )}
+            {data.stats.fcr !== null && (
+              <Card>
+                <CardHeader className="pb-1 pt-3 px-4">
+                  <CardDescription className="text-xs flex items-center gap-1">
+                    <Package className="h-3 w-3" />
+                    Indice conso. (FCR)
+                  </CardDescription>
+                  <CardTitle className="text-2xl">{data.stats.fcr}</CardTitle>
+                </CardHeader>
+                <CardContent className="pb-3 px-4">
+                  <p className="text-xs text-muted-foreground">kg aliment / kg carcasse</p>
+                </CardContent>
+              </Card>
+            )}
+            <Card>
+              <CardHeader className="pb-1 pt-3 px-4">
+                <CardDescription className="text-xs flex items-center gap-1">
+                  <Package className="h-3 w-3" />
+                  Alimentation {year}
+                </CardDescription>
+                <CardTitle className="text-2xl">{data.stats.consoAlimentsKg} kg</CardTitle>
+              </CardHeader>
+              <CardContent className="pb-3 px-4">
+                <p className="text-xs text-muted-foreground">total distribue</p>
               </CardContent>
             </Card>
           </div>
@@ -280,7 +379,7 @@ export function DashboardTab({ year }: DashboardTabProps) {
             {/* Repartition animaux par type */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm">Repartition par espece</CardTitle>
+                <CardTitle className="text-sm">Repartition par espèce</CardTitle>
                 <CardDescription>Animaux actifs</CardDescription>
               </CardHeader>
               <CardContent>
@@ -375,7 +474,7 @@ export function DashboardTab({ year }: DashboardTabProps) {
                     {new Date(soin.datePrevue).toLocaleDateString('fr-FR')}
                   </span>
                 )}
-                <Check className="h-4 w-4 text-gray-300 flex-shrink-0" />
+                <Check className="h-4 w-4 text-slate-300 flex-shrink-0" />
               </button>
             ))}
           </div>

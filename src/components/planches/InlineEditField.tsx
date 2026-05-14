@@ -114,7 +114,7 @@ export function InlineEditField({
         <button
           onClick={handleCancel}
           disabled={isSaving}
-          className="text-gray-400 hover:text-gray-600"
+          className="text-slate-400 hover:text-slate-600"
           title="Annuler"
         >
           <X className="h-4 w-4" />
@@ -145,7 +145,7 @@ export function InlineEditField({
         <button
           onClick={handleCancel}
           disabled={isSaving}
-          className="text-gray-400 hover:text-gray-600"
+          className="text-slate-400 hover:text-slate-600"
           title="Annuler (Échap)"
         >
           <X className="h-4 w-4" />
@@ -177,7 +177,7 @@ export function InlineEditField({
       <button
         onClick={handleCancel}
         disabled={isSaving}
-        className="text-gray-400 hover:text-gray-600"
+        className="text-slate-400 hover:text-slate-600"
         title="Annuler (Échap)"
       >
         <X className="h-4 w-4" />

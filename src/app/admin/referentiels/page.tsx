@@ -69,7 +69,7 @@ export default function ReferentielsAdminPage() {
     fetchStats()
   }, [])
 
-  // Export d'un référentiel
+  // Export d'un referentiel
   const handleExport = async (type: string) => {
     setLoading(type)
     try {
@@ -101,7 +101,7 @@ export default function ReferentielsAdminPage() {
     }
   }
 
-  // Import d'un référentiel
+  // Import d'un referentiel
   const handleImportClick = (type: string) => {
     setCurrentRefType(type)
     fileInputRef.current?.click()
@@ -152,7 +152,7 @@ export default function ReferentielsAdminPage() {
 
   if (status === "loading") {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-green-600" />
       </div>
     )
@@ -163,9 +163,10 @@ export default function ReferentielsAdminPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
+      <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
       {/* Header */}
-      <header className="border-b bg-white sticky top-0 z-50">
+      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 max-w-[1200px]">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">

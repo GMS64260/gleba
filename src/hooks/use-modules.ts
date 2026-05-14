@@ -1,0 +1,86 @@
+"use client"
+
+/**
+ * Hook React pour gérer les modules actifs de l'utilisateur.
+ * Met en cache au niveau du navigateur pour éviter de fetch sur chaque page.
+ */
+
+import * as React from "react"
+import {
+  DEFAULT_MODULES_ACTIFS,
+  sanitizeModulesActifs,
+  type ModuleId,
+} from "@/lib/modules"
+
+const CACHE_KEY = "gleba_modules_actifs"
+const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
+
+interface Cached {
+  ts: number
+  modules: ModuleId[]
+}
+
+function readCache(): Cached | null {
+  if (typeof window === "undefined") return null
+  try {
+    const raw = localStorage.getItem(CACHE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Cached
+    if (Date.now() - parsed.ts > CACHE_TTL_MS) return null
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+function writeCache(modules: ModuleId[]) {
+  if (typeof window === "undefined") return
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), modules } satisfies Cached))
+  } catch {
+    // localStorage may fail (private mode, quota, etc.)
+  }
+}
+
+export function useModules() {
+  const cached = readCache()
+  const [modules, setModules] = React.useState<ModuleId[]>(cached?.modules ?? DEFAULT_MODULES_ACTIFS)
+  const [loading, setLoading] = React.useState(!cached)
+
+  const refresh = React.useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await fetch("/api/user/preferences")
+      if (res.ok) {
+        const prefs = await res.json()
+        const m = sanitizeModulesActifs(prefs.modulesActifs)
+        setModules(m)
+        writeCache(m)
+      }
+    } catch {
+      // Silent: keep default
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  React.useEffect(() => {
+    if (!cached) refresh()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const save = React.useCallback(async (next: ModuleId[]) => {
+    const sanitized = sanitizeModulesActifs(next)
+    setModules(sanitized)
+    writeCache(sanitized)
+    await fetch("/api/user/preferences", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ modulesActifs: sanitized }),
+    })
+  }, [])
+
+  const isActif = React.useCallback((id: ModuleId) => modules.includes(id), [modules])
+
+  return { modules, loading, refresh, save, isActif }
+}

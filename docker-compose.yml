@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgres:16-alpine
+    image: postgis/postgis:16-3.4-alpine
     container_name: gleba_db
     restart: unless-stopped
     environment:
@@ -33,6 +33,12 @@ services:
       ADMIN_NAME: ${ADMIN_NAME:-Administrateur}
       OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-glm-4.7}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      FEEDBACK_EMAIL: ${FEEDBACK_EMAIL:-guillaume.ossau64@gmail.com}
     ports:
       - "${APP_PORT:-3000}:3000"
     depends_on:

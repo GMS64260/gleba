@@ -53,10 +53,28 @@ export interface BesoinSemence {
   varieteId: string | null
   surfaceTotale: number
   nbPlants: number
-  grainesNecessaires: number // g
+  /** Mode de propagation décidé par l'espèce (cf. `Espece.modeSemis`). */
+  mode: 'graine_directe' | 'plant_repique' | 'bulbe_caieu' | 'bouture'
+  /** Besoin en grammes — 0 si `mode === 'bulbe_caieu'`. */
+  grainesNecessaires: number
+  /** Besoin en caieux/bulbes/plants entiers — 0 si mode graine_*. */
+  besoinCaieux: number
+  margeSecuritePct: number
+  /** Stock actuel en grammes (modes graine). */
   stockActuel: number
+  /** Stock actuel en plants/caieux (modes bulbe_caieu / bouture). */
+  stockUnites: number
+  /** Nombre de graines par gramme (renseigné sur Variete). */
   nbGrainesG: number | null
+  doseSemis: number | null
+  /** Manque à commander (en grammes pour modes graine). */
   aCommander: number
+  /** Manque à commander (en unités pour mode bulbe_caieu). */
+  caieuxACommander: number
+  /** Statut métier : OK / LOW / MISSING / IGNORE. */
+  statut: 'OK' | 'LOW' | 'MISSING' | 'IGNORE'
+  /** Date de la dernière mise à jour du stock pour la variété (null si absent). */
+  stockDateMaj: string | null
 }
 
 export interface BesoinPlant {
@@ -272,7 +290,7 @@ export async function getCulturesPrevues(
     },
   })
 
-  // Ajouter les cultures directes qui ne sont pas déjà dans les prévues (via rotation)
+  // Ajouter les cultures directes qui ne sont pas déjà dans les prevues (via rotation)
   for (const culture of culturesDirectes) {
     // Vérifier si déjà ajoutée via rotation
     const dejaPresente = culturesPrevues.some(cp =>
@@ -389,33 +407,59 @@ export async function getRecoltesPrevues(
 }
 
 /**
- * Calcule les besoins en semences pour une annee
+ * Calcule les besoins en semences pour une annee.
+ *
+ * Refactor PROMPT 06 : on délègue le calcul à `calculerBesoin` qui couvre
+ * les 3 modes (graine_directe, plant_repique, bulbe_caieu) et applique une
+ * marge de sécurité paramétrée sur l'espèce.
  */
 export async function getBesoinsSemences(
   userId: string,
   annee: number
 ): Promise<BesoinSemence[]> {
+  const { calculerBesoin } = await import('./semences/calcul')
   const culturesPrevues = await getCulturesPrevues(userId, annee)
 
-  // Grouper par espece/variete
-  const besoinsMap = new Map<string, BesoinSemence>()
-
-  // Recuperer les infos des varietes pour nbGrainesG
-  const varietes = await prisma.variete.findMany({
-    select: { id: true, especeId: true, nbGrainesG: true },
-  })
+  // Référentiel : modes/dose par espèce, graines/g par variété, stocks user.
+  const [especes, varietes, userStocks] = await Promise.all([
+    prisma.espece.findMany({
+      select: {
+        id: true,
+        couleur: true,
+        modeSemis: true,
+        doseSemis: true,
+        margeSecuritePct: true,
+        famille: { select: { couleur: true } },
+      },
+    }),
+    prisma.variete.findMany({
+      select: { id: true, especeId: true, nbGrainesG: true },
+    }),
+    prisma.userStockVariete.findMany({
+      where: { userId },
+      select: {
+        varieteId: true,
+        stockGraines: true,
+        stockPlants: true,
+        dateStock: true,
+      },
+    }),
+  ])
+  const especeMap = new Map(especes.map(e => [e.id, e]))
   const varieteMap = new Map(varietes.map(v => [v.id, v]))
-
-  // Recuperer les stocks par utilisateur
-  const userStocks = await prisma.userStockVariete.findMany({
-    where: { userId },
-    select: { varieteId: true, stockGraines: true, stockPlants: true },
-  })
   const userStockMap = new Map(userStocks.map(us => [us.varieteId, us]))
 
+  // Accumulation par couple espèce + variété.
+  type Acc = {
+    especeId: string
+    especeCouleur: string | null
+    varieteId: string | null
+    surfaceTotale: number
+    nbPlants: number
+  }
+  const accMap = new Map<string, Acc>()
   for (const culture of culturesPrevues) {
     if (!culture.especeId) continue
-
     const key = `${culture.especeId}|${culture.varieteId || ''}`
     const nbPlants = calculerNbPlants(
       culture.plancheLongueur,
@@ -423,38 +467,67 @@ export async function getBesoinsSemences(
       culture.nbRangs,
       culture.espacement
     )
-
-    if (!besoinsMap.has(key)) {
-      const variete = culture.varieteId ? varieteMap.get(culture.varieteId) : null
-
-      besoinsMap.set(key, {
-        especeId: culture.especeId,
-        especeCouleur: culture.especeCouleur,
-        varieteId: culture.varieteId,
-        surfaceTotale: 0,
-        nbPlants: 0,
-        grainesNecessaires: 0,
-        stockActuel: culture.varieteId ? (userStockMap.get(culture.varieteId)?.stockGraines || 0) : 0,
-        nbGrainesG: variete?.nbGrainesG || null,
-        aCommander: 0,
-      })
+    const cur = accMap.get(key) || {
+      especeId: culture.especeId,
+      especeCouleur: culture.especeCouleur,
+      varieteId: culture.varieteId,
+      surfaceTotale: 0,
+      nbPlants: 0,
     }
-
-    const besoin = besoinsMap.get(key)!
-    besoin.surfaceTotale += culture.surface
-    besoin.nbPlants += nbPlants
+    cur.surfaceTotale += culture.surface
+    cur.nbPlants += nbPlants
+    accMap.set(key, cur)
   }
 
-  // Calculer les graines necessaires
-  for (const besoin of besoinsMap.values()) {
-    if (besoin.nbGrainesG && besoin.nbGrainesG > 0) {
-      // Ajouter 20% de marge pour pertes
-      besoin.grainesNecessaires = Math.ceil((besoin.nbPlants * 1.2) / besoin.nbGrainesG)
-    }
-    besoin.aCommander = Math.max(0, besoin.grainesNecessaires - besoin.stockActuel)
+  // Pour chaque couple, on applique le mode déclaré sur l'espèce.
+  const results: BesoinSemence[] = []
+  for (const acc of accMap.values()) {
+    const espece = especeMap.get(acc.especeId)
+    const variete = acc.varieteId ? varieteMap.get(acc.varieteId) : null
+    const stock = acc.varieteId ? userStockMap.get(acc.varieteId) : undefined
+
+    const calc = calculerBesoin({
+      mode: (espece?.modeSemis ?? 'graine_directe') as 'graine_directe' | 'plant_repique' | 'bulbe_caieu' | 'bouture',
+      surfaceM2: acc.surfaceTotale,
+      nbPlants: acc.nbPlants,
+      doseGParM2: espece?.doseSemis ?? null,
+      grainesParGramme: variete?.nbGrainesG ?? null,
+      margeSecuritePct: espece?.margeSecuritePct ?? 15,
+      stockGrammes: stock?.stockGraines ?? 0,
+      stockUnites: stock?.stockPlants ?? 0,
+    })
+
+    results.push({
+      especeId: acc.especeId,
+      especeCouleur: acc.especeCouleur,
+      varieteId: acc.varieteId,
+      surfaceTotale: Math.round(acc.surfaceTotale * 10) / 10,
+      nbPlants: acc.nbPlants,
+      mode: calc.mode,
+      grainesNecessaires: calc.besoinGrammes,
+      besoinCaieux: calc.besoinCaieux,
+      margeSecuritePct: calc.margeSecuritePct,
+      stockActuel: calc.stockGrammes,
+      stockUnites: calc.stockUnites,
+      nbGrainesG: variete?.nbGrainesG ?? null,
+      doseSemis: espece?.doseSemis ?? null,
+      aCommander: calc.manqueGrammes,
+      caieuxACommander: calc.manqueCaieux,
+      statut: calc.statut,
+      stockDateMaj: stock?.dateStock?.toISOString() ?? null,
+    })
   }
 
-  return Array.from(besoinsMap.values()).sort((a, b) => a.especeId.localeCompare(b.especeId))
+  // Trier : on garde IGNORE en fin de liste, sinon par espèce/variété.
+  return results
+    .filter(b => b.statut !== 'IGNORE')
+    .concat(results.filter(b => b.statut === 'IGNORE'))
+    .sort((a, b) => {
+      // IGNORE toujours après les autres.
+      if (a.statut === 'IGNORE' && b.statut !== 'IGNORE') return 1
+      if (b.statut === 'IGNORE' && a.statut !== 'IGNORE') return -1
+      return a.especeId.localeCompare(b.especeId)
+    })
 }
 
 /**

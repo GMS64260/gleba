@@ -3,20 +3,31 @@
  * GET /api/jardin - Récupère les planches avec positions et cultures actives
  */
 
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireAuthApi } from '@/lib/auth-utils'
 
-// GET /api/jardin
-export async function GET() {
+// GET /api/jardin?parcelle=ID|all|none
+export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
   if (error) return error
 
   try {
+    const parcelle = request.nextUrl.searchParams.get('parcelle')
     const currentYear = new Date().getFullYear()
 
+    // Filtre par parcelle (optionnel)
+    const where: Record<string, unknown> = { userId: session!.user.id }
+    if (parcelle && parcelle !== 'all') {
+      if (parcelle === 'none') {
+        where.parcelleGeoId = null
+      } else {
+        where.parcelleGeoId = parcelle
+      }
+    }
+
     const planches = await prisma.planche.findMany({
-      where: { userId: session!.user.id },
+      where,
       select: {
         id: true,
         nom: true,
@@ -26,6 +37,8 @@ export async function GET() {
         posY: true,
         rotation2D: true,
         ilot: true,
+        type: true,
+        parcelleGeoId: true,
         cultures: {
           where: {
             OR: [

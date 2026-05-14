@@ -8,6 +8,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { createVenteFromVenteProduit, deleteAutoEntry } from '@/lib/auto-compta'
+import { creerFacture } from '@/lib/facture-utils'
+import { venteProduitSchema } from '@/lib/validations/elevage-vente'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -19,11 +22,13 @@ export async function GET(request: NextRequest) {
     const dateDebut = searchParams.get('dateDebut')
     const dateFin = searchParams.get('dateFin')
     const limit = parseInt(searchParams.get('limit') || '100')
+    const annee = parseInt(searchParams.get('annee') || String(new Date().getFullYear()))
+    const yearStart = new Date(annee, 0, 1)
+    const yearEnd = new Date(annee, 11, 31, 23, 59, 59)
 
-    const where: any = { userId: session.user.id }
+    const where: any = { userId: session.user.id, annule: { not: true }, date: { gte: yearStart, lte: yearEnd } }
     if (type) where.type = type
     if (dateDebut || dateFin) {
-      where.date = {}
       if (dateDebut) where.date.gte = new Date(dateDebut)
       if (dateFin) where.date.lte = new Date(dateFin)
     }
@@ -69,6 +74,7 @@ export async function GET(request: NextRequest) {
           count: s._count,
         })),
       },
+      meta: { year: annee, total: ventes.length },
     })
   } catch (error) {
     console.error('GET /api/elevage/ventes error:', error)
@@ -85,42 +91,32 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const {
-      date,
-      type,
-      description,
-      quantite,
-      unite,
-      prixUnitaire,
-      client,
-      destinationId,
-      paye,
-      notes,
-    } = body
-
-    if (!type || !quantite || !prixUnitaire || !unite) {
+    const parsed = venteProduitSchema.safeParse(body)
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Type, quantité, unité et prix unitaire requis' },
+        { error: 'Données invalides', details: parsed.error.flatten() },
         { status: 400 }
       )
     }
 
-    const prixTotal = parseFloat(quantite) * parseFloat(prixUnitaire)
+    const { date, type, description, quantite, unite, prixUnitaire, client, destinationId, paye, tauxTVA, notes } = parsed.data
+    const prixTotal = quantite * prixUnitaire
 
     const result = await prisma.$transaction(async (tx) => {
       const vente = await tx.venteProduit.create({
         data: {
           userId: session.user.id,
-          date: date ? new Date(date) : new Date(),
+          date: date || new Date(),
           type,
           description,
-          quantite: parseFloat(quantite),
+          quantite,
           unite,
-          prixUnitaire: parseFloat(prixUnitaire),
+          prixUnitaire,
           prixTotal,
           client,
           destinationId,
-          paye: paye !== false,
+          paye,
+          tauxTVA,
           notes,
         },
         include: {
@@ -129,16 +125,16 @@ export async function POST(request: NextRequest) {
       })
 
       // Si vente d'animal vivant, mettre à jour le statut de l'animal
-      if (type === 'animal_vivant' && body.animalId) {
+      if (type === 'animal_vivant' && parsed.data.animalId) {
         const animal = await tx.animal.findFirst({
-          where: { id: parseInt(body.animalId), userId: session.user.id },
+          where: { id: parsed.data.animalId, userId: session.user.id },
         })
         if (animal) {
           await tx.animal.update({
             where: { id: animal.id },
             data: {
               statut: 'vendu',
-              dateSortie: date ? new Date(date) : new Date(),
+              dateSortie: date || new Date(),
               causeSortie: 'Vente',
             },
           })
@@ -147,6 +143,24 @@ export async function POST(request: NextRequest) {
 
       return vente
     })
+
+    // Auto-comptabilite : creer une vente manuelle
+    try {
+      await createVenteFromVenteProduit(session.user.id, {
+        id: result.id,
+        type: result.type,
+        description: result.description,
+        prixTotal: result.prixTotal,
+        quantite: result.quantite,
+        unite: result.unite,
+        prixUnitaire: result.prixUnitaire,
+        client: result.client,
+        date: result.date,
+        tauxTVA: result.tauxTVA,
+      })
+    } catch (autoComptaError) {
+      console.error('Auto-compta error (vente_produit):', autoComptaError)
+    }
 
     return NextResponse.json({ data: result }, { status: 201 })
   } catch (error) {
@@ -178,8 +192,17 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Vente non trouvée' }, { status: 404 })
     }
 
-    await prisma.venteProduit.delete({
+    // Supprimer les ecritures auto-compta liees
+    try {
+      await deleteAutoEntry('vente_produit', parseInt(id), 'vente')
+    } catch (autoComptaError) {
+      console.error('Auto-compta cleanup error (vente_produit):', autoComptaError)
+    }
+
+    // Soft-delete : marquer comme annule au lieu de supprimer
+    await prisma.venteProduit.update({
       where: { id: parseInt(id) },
+      data: { annule: true, dateAnnulation: new Date() },
     })
 
     return NextResponse.json({ success: true })
@@ -222,68 +245,33 @@ export async function PATCH(request: NextRequest) {
     // Transaction atomique : facture + update vente
     const vente = await prisma.$transaction(async (tx) => {
       if (body.creerFacture && existing.prixTotal) {
-        const year = new Date().getFullYear()
-        const lastFacture = await tx.facture.findFirst({
-          where: {
-            userId,
-            numero: { startsWith: `F-${year}-` },
-          },
-          orderBy: { numero: 'desc' },
-        })
-
-        let nextNum = 1
-        if (lastFacture) {
-          const parts = lastFacture.numero.split('-')
-          nextNum = parseInt(parts[2]) + 1
-        }
-        const numero = `F-${year}-${String(nextNum).padStart(4, '0')}`
-
-        let clientNom = existing.client || 'Client anonyme'
-        let clientAdresse = null
-
-        if (body.clientId) {
-          const clientData = await tx.client.findFirst({
-            where: { id: body.clientId, userId },
-          })
-          if (clientData) {
-            clientNom = clientData.nom
-            clientAdresse = [clientData.adresse, clientData.codePostal, clientData.ville].filter(Boolean).join(', ')
-          }
-        }
-
-        const totalHT = existing.prixTotal / 1.055
+        const tva = existing.tauxTVA || 5.5
+        const totalHT = existing.prixTotal / (1 + tva / 100)
         const totalTVA = existing.prixTotal - totalHT
 
-        const facture = await tx.facture.create({
-          data: {
-            userId,
-            numero,
-            type: 'vente_elevage',
-            clientId: body.clientId || null,
-            clientNom,
-            clientAdresse,
-            date: new Date(),
-            objet: `Vente de ${existing.type} - ${existing.description || ''}`,
-            totalHT,
-            totalTVA,
-            totalTTC: existing.prixTotal,
-            statut: 'payee',
-            datePaiement: new Date(),
-            modePaiement: 'especes',
-            lignes: {
-              create: [{
-                ordre: 0,
-                description: `${existing.type} - ${existing.description || ''}`,
-                quantite: existing.quantite,
-                unite: existing.unite,
-                prixUnitaire: existing.prixUnitaire / 1.055,
-                tauxTVA: 5.5,
-                montantHT: totalHT,
-                montantTVA: totalTVA,
-                montantTTC: existing.prixTotal,
-              }],
-            },
-          },
+        const facture = await creerFacture(tx, {
+          userId,
+          type: 'vente_elevage',
+          clientId: body.clientId || null,
+          clientNom: existing.client || undefined,
+          date: existing.date,
+          objet: `Vente de ${existing.type} - ${existing.description || ''}`,
+          totalHT,
+          totalTVA,
+          totalTTC: existing.prixTotal,
+          statut: 'payee',
+          datePaiement: new Date(),
+          modePaiement: body.modePaiement || 'especes',
+          lignes: [{
+            description: `${existing.type} - ${existing.description || ''}`,
+            quantite: existing.quantite,
+            unite: existing.unite,
+            prixUnitaire: existing.prixUnitaire / (1 + tva / 100),
+            tauxTVA: tva,
+            montantHT: totalHT,
+            montantTVA: totalTVA,
+            montantTTC: existing.prixTotal,
+          }],
         })
 
         updateData.factureId = facture.id
@@ -297,6 +285,24 @@ export async function PATCH(request: NextRequest) {
         },
       })
     })
+
+    // Auto-comptabilite : mettre a jour l'ecriture auto
+    try {
+      await createVenteFromVenteProduit(userId, {
+        id: parseInt(id),
+        type: vente.type,
+        description: vente.description,
+        prixTotal: vente.prixTotal,
+        quantite: vente.quantite,
+        unite: vente.unite,
+        prixUnitaire: vente.prixUnitaire,
+        client: vente.client,
+        date: vente.date,
+        tauxTVA: vente.tauxTVA,
+      })
+    } catch (autoComptaError) {
+      console.error('Auto-compta error (vente_produit PATCH):', autoComptaError)
+    }
 
     return NextResponse.json({ data: vente })
   } catch (error) {

@@ -100,12 +100,14 @@ export async function POST() {
     }
 
     // Variétés
+    const { normalizeVarieteName } = await import('@/lib/normalize')
     for (const variete of varietes) {
       await prisma.variete.upsert({
         where: { id: variete.id },
         update: {},
         create: {
           id: variete.id,
+          nomNormalise: normalizeVarieteName(variete.id),
           especeId: variete.especeId,
           fournisseurId: variete.fournisseurId || null,
           nbGrainesG: variete.nbGrainesG || null,

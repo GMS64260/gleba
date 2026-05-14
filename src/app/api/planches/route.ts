@@ -9,6 +9,7 @@ import prisma from '@/lib/prisma'
 import { createPlancheSchema } from '@/lib/validations'
 import { Prisma } from '@prisma/client'
 import { requireAuthApi } from '@/lib/auth-utils'
+import { invalidateKpi } from '@/lib/kpi'
 
 // GET /api/planches
 export async function GET(request: NextRequest) {
@@ -144,6 +145,7 @@ export async function POST(request: NextRequest) {
       },
     })
 
+    invalidateKpi(session!.user.id)
     return NextResponse.json(planche, { status: 201 })
   } catch (error: any) {
     console.error('POST /api/planches error:', error)

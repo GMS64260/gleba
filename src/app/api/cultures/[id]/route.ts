@@ -9,6 +9,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { updateCultureSchema } from '@/lib/validations'
 import { requireAuthApi } from '@/lib/auth-utils'
+import { irrigationCache } from '@/lib/irrigation-cache'
+import { invalidateKpi } from '@/lib/kpi'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -141,6 +143,7 @@ export async function PUT(
       },
     })
 
+    invalidateKpi(session!.user.id)
     return NextResponse.json(culture)
   } catch (error) {
     console.error('PUT /api/cultures/[id] error:', error)
@@ -225,6 +228,12 @@ export async function PATCH(
       data: updateData,
     })
 
+    // Invalider le cache irrigation si la date d'arrosage a changé
+    if ('derniereIrrigation' in updateData) {
+      irrigationCache.invalidateUser(session!.user.id)
+    }
+
+    invalidateKpi(session!.user.id)
     return NextResponse.json(culture)
   } catch (error) {
     console.error('PATCH /api/cultures/[id] error:', error)
@@ -269,11 +278,12 @@ export async function DELETE(
       )
     }
 
-    // Suppression (les récoltes seront supprimées en cascade)
+    // Suppression (les recoltes seront supprimées en cascade)
     await prisma.culture.delete({
       where: { id: cultureId },
     })
 
+    invalidateKpi(session!.user.id)
     return NextResponse.json({ success: true, deleted: cultureId })
   } catch (error) {
     console.error('DELETE /api/cultures/[id] error:', error)

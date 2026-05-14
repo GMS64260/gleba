@@ -1,13 +1,13 @@
 /**
- * API Routes pour une Variété spécifique (référentiel global)
- * PUT /api/varietes/[id] - Modifier une variété
- * DELETE /api/varietes/[id] - Supprimer une variété
+ * API Routes pour une Variété spécifique (referentiel global)
+ * PUT /api/varietes/[id] - Modifier une variete
+ * DELETE /api/varietes/[id] - Supprimer une variete
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { updateVarieteSchema } from '@/lib/validations'
-import { requireAuthApi } from '@/lib/auth-utils'
+import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -16,7 +16,7 @@ export async function PUT(
   request: NextRequest,
   { params }: RouteParams
 ) {
-  const { error } = await requireAuthApi()
+  const { error } = await requireAdminApi()
   if (error) return error
 
   try {
@@ -82,7 +82,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: RouteParams
 ) {
-  const { error } = await requireAuthApi()
+  const { error } = await requireAdminApi()
   if (error) return error
 
   try {
@@ -111,7 +111,7 @@ export async function DELETE(
     if (variete._count.cultures > 0) {
       return NextResponse.json(
         {
-          error: `Impossible de supprimer la variété "${id}" car elle est utilisée par ${variete._count.cultures} culture(s)`,
+          error: `Impossible de supprimer la variete "${id}" car elle est utilisée par ${variete._count.cultures} culture(s)`,
           details: { cultures: variete._count.cultures },
         },
         { status: 409 }

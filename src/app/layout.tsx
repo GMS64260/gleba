@@ -1,32 +1,43 @@
 import type { Metadata } from "next";
-import localFont from "next/font/local";
+import { Space_Grotesk, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+
 import { Toaster } from "@/components/ui/toaster";
 import { SessionProvider } from "@/components/auth/SessionProvider";
-import { ChatBubble } from "@/components/chat/ChatBubble";
+import { FeedbackWidget } from "@/components/feedback/FeedbackWidget";
 
-const geistSans = localFont({
-  src: "./fonts/GeistVF.woff",
-  variable: "--font-geist-sans",
-  weight: "100 900",
+
+const spaceGrotesk = Space_Grotesk({
+  subsets: ["latin"],
+  variable: "--font-space-grotesk",
+  display: "swap",
+  weight: ["400", "500", "600", "700"],
 });
-const geistMono = localFont({
-  src: "./fonts/GeistMonoVF.woff",
-  variable: "--font-geist-mono",
-  weight: "100 900",
+
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+  display: "swap",
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-jetbrains-mono",
+  display: "swap",
+  weight: ["400", "500"],
 });
 
 export const metadata: Metadata = {
-  title: "GLEBA | Logiciel gratuit gestion micro-ferme & maraichage",
-  description: "ERP 100% gratuit pour micro-fermes : maraichage, verger, elevage, ventes. Open source, auto-hebergeable. 135+ especes. Essayez sans inscription.",
-  keywords: ["logiciel maraichage gratuit", "gestion micro-ferme", "planification cultures", "ERP agricole", "open source", "verger", "elevage volailles", "potager", "rotation cultures"],
+  title: "GLEBA | Logiciel open source gestion micro-ferme & maraîchage",
+  description: "ERP open source pour micro-fermes : maraîchage, verger, élevage, ventes. Auto-hebergeable ou heberge pour vous. 135+ espèces.",
+  keywords: ["logiciel maraîchage", "gestion micro-ferme", "planification cultures", "ERP agricole", "open source", "verger", "élevage volailles", "maraîchage", "rotation cultures"],
   authors: [{ name: "Guillaume Gomes" }],
   creator: "Guillaume Gomes",
   publisher: "GLEBA",
   metadataBase: new URL("https://gleba.fr"),
   openGraph: {
-    title: "GLEBA - Gerez votre micro-ferme gratuitement",
-    description: "Maraichage + Verger + Elevage + Ventes en un seul outil open source. 100% gratuit.",
+    title: "GLEBA - Gérez votre micro-ferme efficacement",
+    description: "Maraîchage + Verger + Élevage + Ventes en un seul outil open source.",
     url: "https://gleba.fr",
     siteName: "GLEBA",
     locale: "fr_FR",
@@ -36,14 +47,14 @@ export const metadata: Metadata = {
         url: "/og-image.png",
         width: 1200,
         height: 630,
-        alt: "GLEBA - Logiciel gratuit gestion micro-ferme",
+        alt: "GLEBA - Logiciel open source gestion micro-ferme",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "GLEBA | Logiciel gratuit gestion micro-ferme",
-    description: "ERP 100% gratuit : maraichage, verger, elevage, ventes. Open source.",
+    title: "GLEBA | Logiciel open source gestion micro-ferme",
+    description: "ERP open source : maraîchage, verger, élevage, ventes. Hébergé pour vous ou auto-hebergeable.",
     images: ["/og-image.png"],
   },
   robots: {
@@ -68,6 +79,12 @@ export const metadata: Metadata = {
   category: "agriculture",
 };
 
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+};
+
 // JSON-LD Structured Data
 const jsonLd = {
   "@context": "https://schema.org",
@@ -81,7 +98,7 @@ const jsonLd = {
     price: "0",
     priceCurrency: "EUR",
   },
-  description: "ERP gratuit et open source pour micro-fermes diversifiees : maraichage, verger, elevage, ventes.",
+  description: "ERP open source pour micro-fermes diversifiees : maraîchage, verger, élevage, ventes.",
   url: "https://gleba.fr",
   author: {
     "@type": "Person",
@@ -91,12 +108,12 @@ const jsonLd = {
   screenshot: "https://gleba.fr/screenshot.png",
   softwareVersion: "1.0.0",
   featureList: [
-    "Planification maraichere",
+    "Planification maraîchère",
     "Gestion de verger",
-    "Suivi d'elevage",
+    "Suivi d'élevage",
     "Gestion des ventes",
     "Plan 2D interactif",
-    "135+ especes pre-configurees",
+    "135+ espèces pre-configurees",
   ],
 };
 
@@ -114,12 +131,12 @@ export default function RootLayout({
         />
       </head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${inter.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable} font-sans antialiased`}
       >
         <SessionProvider>
           {children}
           <Toaster />
-          <ChatBubble />
+          <FeedbackWidget />
         </SessionProvider>
       </body>
     </html>

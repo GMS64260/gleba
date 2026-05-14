@@ -1,0 +1,103 @@
+# generated: 2026-03-30
+# project: gleba
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: docs/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog -> in-progress: Automatically when first story is created (via create-story)
+#   - in-progress -> done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - SM typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+
+generated: 2026-03-30
+project: gleba
+project_key: NOKEY
+tracking_system: file-system
+story_location: docs/implementation-artifacts
+
+development_status:
+  # Epic 1: Organisation spatiale de la ferme
+  epic-1: in-progress
+  1-1-modele-parcelle-api-crud: done
+  1-2-page-gestion-parcelles: done
+  1-3-rattachement-planches-parcelles: in-progress
+  1-4-rattachement-arbres-parcelles: ready-for-dev
+  1-5-rattachement-lots-animaux-parcelles: ready-for-dev
+  1-6-deplacement-lots-entre-parcelles: ready-for-dev
+  epic-1-retrospective: optional
+
+  # Epic 2: Comptabilite transversale automatisee
+  epic-2: in-progress
+  2-1-modele-transaction-unifie-migration: ready-for-dev
+  2-2-auto-generation-ecritures-ventes: backlog
+  2-3-vue-unifiee-revenus-depenses: backlog
+  2-4-auto-consommation-mouvement-interne: backlog
+  2-5-cout-revient-culture-production: backlog
+  epic-2-retrospective: optional
+
+  # Epic 3: Carte globale multi-couches
+  epic-3: backlog
+  3-1-page-carte-affichage-parcelles: backlog
+  3-2-couches-activite-activables: backlog
+  3-3-navigation-parcelle-entites: backlog
+  3-4-dessin-nouvelles-parcelles: backlog
+  3-5-lien-plan-2d-jardin: backlog
+  3-6-synchronisation-temps-reel: backlog
+  epic-3-retrospective: optional
+
+  # Epic 4: Facturation & Conformite reglementaire
+  epic-4: backlog
+  4-1-generation-factures-ventes: backlog
+  4-2-export-parcelles-telepac: backlog
+  4-3-registre-tracabilite-phytosanitaire: backlog
+  4-4-declarations-tva-3-taux: backlog
+  epic-4-retrospective: optional
+
+  # Epic 5: Calendrier unifie & Pilotage quotidien
+  epic-5: backlog
+  5-1-calendrier-unifie-multi-modules: backlog
+  5-2-filtres-type-activite: backlog
+  5-3-dashboard-ma-journee: backlog
+  5-4-generation-automatique-taches: backlog
+  epic-5-retrospective: optional
+
+  # Epic 6: Integrations externes & IA transversale
+  epic-6: backlog
+  6-1-outils-mcp-parcelles-transactions: backlog
+  6-2-validation-non-regression-mcp: backlog
+  6-3-requetes-ia-transversales: backlog
+  6-4-synchronisation-cagette: backlog
+  epic-6-retrospective: optional
+
+  # Epic 7: Administration, Multi-tenancy & PWA
+  epic-7: backlog
+  7-1-gestion-referentiels-globaux: backlog
+  7-2-audit-multi-tenancy: backlog
+  7-3-logs-connexion-metriques: backlog
+  7-4-separation-agpl-proprietary: backlog
+  7-5-pwa-installable-responsive: backlog
+  epic-7-retrospective: optional

@@ -373,20 +373,3 @@ export function DataTable<TData, TValue>({
     </div>
   )
 }
-
-// Helper pour créer une colonne avec header triable
-export function createSortableColumn<TData>(
-  accessorKey: string,
-  header: string,
-  options?: {
-    cell?: (value: unknown) => React.ReactNode
-  }
-): ColumnDef<TData> {
-  return {
-    accessorKey,
-    header,
-    cell: options?.cell
-      ? ({ getValue }) => options.cell!(getValue())
-      : ({ getValue }) => getValue() as React.ReactNode,
-  }
-}

@@ -4,8 +4,37 @@
 
 import { z } from 'zod'
 
-// Types d'espèces valides
-export const ESPECE_TYPES = ['legume', 'arbre_fruitier', 'petit_fruit', 'aromatique', 'engrais_vert'] as const
+// Types d'especes valides. Convention DB = snake_case ; label FR mappé via
+// ESPECE_TYPE_LABELS pour l'affichage (cf. docs/conventions.md).
+export const ESPECE_TYPES = [
+  'legume',
+  'aromatique',
+  'engrais_vert',
+  'arbre_fruitier',
+  'petit_fruit',
+  'ornement',
+] as const
+
+export const ESPECE_TYPE_LABELS: Record<typeof ESPECE_TYPES[number], string> = {
+  legume: 'Maraîchage',
+  aromatique: 'Aromatique',
+  engrais_vert: 'Engrais vert',
+  arbre_fruitier: 'Arbre fruitier',
+  petit_fruit: 'Petit fruit',
+  ornement: 'Ornement',
+}
+
+// Unités de rendement métier — dépendent du type.
+//   kg_m2          : maraîchage, aromatique, petit fruit, ornement
+//   kg_arbre       : arbre fruitier
+//   biomasse_t_ha  : engrais vert
+export const UNITE_RENDEMENT = ['kg_m2', 'kg_arbre', 'biomasse_t_ha'] as const
+
+export const UNITE_RENDEMENT_LABELS: Record<typeof UNITE_RENDEMENT[number], string> = {
+  kg_m2: 'kg/m²',
+  kg_arbre: 'kg/arbre',
+  biomasse_t_ha: 't/ha',
+}
 
 // Catégories visuelles
 export const ESPECE_CATEGORIES = [
@@ -19,10 +48,11 @@ export const ESPECE_NIVEAUX = ['Facile', 'Moyen', 'Difficile'] as const
 // Niveaux d'irrigation
 export const ESPECE_IRRIGATION = ['Faible', 'Moyen', 'Eleve'] as const
 
-// Schéma de base pour une espèce (correspond au modèle Prisma)
+// Schéma de base pour une espece (correspond au modèle Prisma)
 export const baseEspeceSchema = z.object({
   id: z.string().min(1, "Le nom de l'espèce est requis").max(100),
   type: z.enum(ESPECE_TYPES),
+  uniteRendement: z.enum(UNITE_RENDEMENT).optional(),
   familleId: z.string().nullable().optional(),
   nomLatin: z.string().max(200).nullable().optional(),
   rendement: z.number().min(0).max(100).nullable().optional(),

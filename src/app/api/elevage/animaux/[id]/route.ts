@@ -26,17 +26,25 @@ export async function GET(
       include: {
         especeAnimale: true,
         lot: true,
-        mere: true,
+        mere: {
+          select: { id: true, nom: true, identifiant: true, sexe: true, especeAnimaleId: true,
+            mere: { select: { id: true, nom: true, identifiant: true, sexe: true } },
+          },
+        },
         enfants: {
-          select: { id: true, nom: true, identifiant: true, sexe: true, dateNaissance: true },
+          select: { id: true, nom: true, identifiant: true, sexe: true, dateNaissance: true, statut: true },
+        },
+        naissancesMere: {
+          orderBy: { date: 'desc' },
+          take: 10,
         },
         productionsOeufs: {
           orderBy: { date: 'desc' },
-          take: 10,
+          take: 20,
         },
         soins: {
           orderBy: { date: 'desc' },
-          take: 10,
+          take: 20,
         },
         abattages: true,
       },
@@ -51,6 +59,46 @@ export async function GET(
     console.error('GET /api/elevage/animaux/[id] error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la récupération', details: "Erreur interne du serveur" },
+      { status: 500 }
+    )
+  }
+}
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { session, error } = await requireAuthApi()
+  if (error) return error
+
+  try {
+    const { id } = await params
+    const body = await request.json()
+
+    const existing = await prisma.animal.findFirst({
+      where: { id: parseInt(id), userId: session.user.id },
+    })
+    if (!existing) {
+      return NextResponse.json({ error: 'Animal non trouvé' }, { status: 404 })
+    }
+
+    const data: Record<string, unknown> = {}
+    if (body.statut !== undefined) data.statut = body.statut
+    if (body.dateSortie !== undefined) data.dateSortie = new Date(body.dateSortie)
+    if (body.causeSortie !== undefined) data.causeSortie = body.causeSortie
+    if (body.poidsActuel !== undefined) data.poidsActuel = body.poidsActuel
+
+    const animal = await prisma.animal.update({
+      where: { id: parseInt(id) },
+      data,
+      include: { especeAnimale: true, lot: true },
+    })
+
+    return NextResponse.json({ data: animal })
+  } catch (error) {
+    console.error('PATCH /api/elevage/animaux/[id] error:', error)
+    return NextResponse.json(
+      { error: 'Erreur lors de la mise à jour', details: "Erreur interne du serveur" },
       { status: 500 }
     )
   }

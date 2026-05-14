@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const year = searchParams.get('year') ? parseInt(searchParams.get('year')!) : new Date().getFullYear()
-    const trimestre = searchParams.get('trimestre') // 1, 2, 3, 4 ou null pour année complète
+    const trimestre = searchParams.get('trimestre') // 1, 2, 3, 4 ou null pour annee complète
 
     const userId = session.user.id
 
@@ -31,10 +31,12 @@ export async function GET(request: NextRequest) {
 
     // TVA Collectée (sur les ventes)
     const [ventesManuelles, factures, ventesElevage, recoltesPotager, recoltesArbres, venteBois, venteAbattage] = await Promise.all([
+      // Exclure auto=true pour eviter double comptage avec sources brutes ci-dessous
       prisma.venteManuelle.findMany({
         where: {
           userId,
           date: { gte: startDate, lte: endDate },
+          auto: { not: true },
         },
       }),
 
@@ -46,7 +48,7 @@ export async function GET(request: NextRequest) {
         },
       }),
 
-      // VenteProduit (élevage) - pas de champ TVA, on applique 5.5% par défaut
+      // VenteProduit (elevage) - pas de champ TVA, on applique 5.5% par défaut
       prisma.venteProduit.findMany({
         where: {
           userId,
@@ -100,10 +102,12 @@ export async function GET(request: NextRequest) {
 
     // TVA Déductible (sur les achats)
     const [depensesManuelles, consommationsAliments, fertilisations] = await Promise.all([
+      // Exclure auto=true pour eviter double comptage avec sources brutes ci-dessous
       prisma.depenseManuelle.findMany({
         where: {
           userId,
           date: { gte: startDate, lte: endDate },
+          auto: { not: true },
         },
       }),
 
@@ -189,7 +193,7 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    // Ventes élevage (VenteProduit) - TVA 5.5% produits agricoles
+    // Ventes elevage (VenteProduit) - TVA 5.5% produits agricoles
     ventesElevage.forEach(v => {
       const ttc = v.prixTotal
       const ht = ttc / (1 + 5.5 / 100)

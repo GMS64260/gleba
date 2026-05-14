@@ -5,12 +5,19 @@
  */
 
 import * as React from "react"
+import Link from "next/link"
 import {
   Bird,
   Plus,
   RefreshCw,
   Search,
   Filter,
+  Stethoscope,
+  Scissors,
+  ShoppingCart,
+  Skull,
+  Trash2,
+  Map as MapIcon,
 } from "lucide-react"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -29,6 +36,11 @@ import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog"
+import {
+  Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { useToast } from "@/hooks/use-toast"
 
 // ============================================================
@@ -68,8 +80,14 @@ interface Lot {
   provenance: string | null
   prixAchatTotal: number | null
   statut: string
+  parcelleGeo: { id: string; nom: string } | null
   especeAnimale: { id: string; nom: string; type: string; couleur: string | null }
   _count: { animaux: number; productionsOeufs: number; soins: number }
+}
+
+interface Parcelle {
+  id: string
+  nom: string
 }
 
 interface EspeceAnimale {
@@ -82,9 +100,9 @@ const STATUT_COLORS: Record<string, string> = {
   actif: "bg-green-100 text-green-800",
   vendu: "bg-blue-100 text-blue-800",
   abattu: "bg-red-100 text-red-800",
-  mort: "bg-gray-100 text-gray-800",
+  mort: "bg-slate-100 text-slate-800",
   reforme: "bg-orange-100 text-orange-800",
-  termine: "bg-gray-100 text-gray-800",
+  termine: "bg-slate-100 text-slate-800",
 }
 
 // ============================================================
@@ -176,15 +194,128 @@ function AnimauxSubTab() {
       })
       fetchData()
     } catch {
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible de creer l'animal" })
+      toast({ variant: "destructive", title: "Erreur", description: "Impossible de créer l'animal" })
     }
   }
 
-  const handleDelete = async (id: number, nom: string) => {
-    if (!confirm(`Supprimer ${nom || `animal #${id}`} ?`)) return
+  const [animalToDelete, setAnimalToDelete] = React.useState<Animal | null>(null)
+
+  const handleDelete = (animal: Animal) => {
+    setAnimalToDelete(animal)
+  }
+
+  const confirmDelete = async () => {
+    if (!animalToDelete) return
     try {
-      await fetch(`/api/elevage/animaux/${id}`, { method: 'DELETE' })
-      toast({ title: "Animal supprime" })
+      await fetch(`/api/elevage/animaux/${animalToDelete.id}`, { method: 'DELETE' })
+      toast({ title: "Animal supprimé" })
+      fetchData()
+    } catch {
+      toast({ variant: "destructive", title: "Erreur" })
+    }
+  }
+
+  // --- Dialogs abattage / vente / mort ---
+  const [abattageDialog, setAbattageDialog] = React.useState<Animal | null>(null)
+  const [abattageForm, setAbattageForm] = React.useState({
+    date: new Date().toISOString().split('T')[0],
+    poidsVif: "", poidsCarcasse: "", destination: "auto_consommation", prixVente: "", lieu: "", notes: "",
+  })
+
+  const [venteDialog, setVenteDialog] = React.useState<Animal | null>(null)
+  const [venteForm, setVenteForm] = React.useState({
+    date: new Date().toISOString().split('T')[0],
+    prixUnitaire: "", client: "", description: "", notes: "",
+  })
+
+  const [mortDialog, setMortDialog] = React.useState<Animal | null>(null)
+  const [mortForm, setMortForm] = React.useState({
+    date: new Date().toISOString().split('T')[0],
+    cause: "", notes: "",
+  })
+
+  const handleAbattageSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!abattageDialog) return
+    try {
+      const res = await fetch('/api/elevage/abattages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          animalId: abattageDialog.id,
+          date: abattageForm.date,
+          quantite: 1,
+          poidsVif: abattageForm.poidsVif ? parseFloat(abattageForm.poidsVif) : null,
+          poidsCarcasse: abattageForm.poidsCarcasse ? parseFloat(abattageForm.poidsCarcasse) : null,
+          destination: abattageForm.destination,
+          prixVente: abattageForm.prixVente ? parseFloat(abattageForm.prixVente) : null,
+          lieu: abattageForm.lieu || null,
+          notes: abattageForm.notes || null,
+        }),
+      })
+      if (!res.ok) throw new Error('Erreur')
+      toast({ title: "Abattage enregistre", description: `${abattageDialog.nom || abattageDialog.identifiant || ''} marque comme abattu` })
+      setAbattageDialog(null)
+      setAbattageForm({ date: new Date().toISOString().split('T')[0], poidsVif: "", poidsCarcasse: "", destination: "auto_consommation", prixVente: "", lieu: "", notes: "" })
+      fetchData()
+    } catch {
+      toast({ variant: "destructive", title: "Erreur", description: "Impossible d'enregistrer l'abattage" })
+    }
+  }
+
+  const handleVenteSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!venteDialog) return
+    try {
+      // Créer la vente
+      const venteRes = await fetch('/api/elevage/ventes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: venteForm.date,
+          type: "animal_vivant",
+          description: venteForm.description || `${venteDialog.nom || venteDialog.identifiant || ''} (${venteDialog.especeAnimale.nom})`,
+          quantite: 1,
+          unite: "unite",
+          prixUnitaire: venteForm.prixUnitaire ? parseFloat(venteForm.prixUnitaire) : 0,
+          client: venteForm.client || null,
+          paye: true,
+          notes: venteForm.notes || null,
+        }),
+      })
+      if (!venteRes.ok) throw new Error('Erreur vente')
+      // Marquer l'animal comme vendu
+      await fetch(`/api/elevage/animaux/${venteDialog.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ statut: 'vendu', dateSortie: venteForm.date }),
+      })
+      toast({ title: "Vente enregistrée", description: `${venteDialog.nom || venteDialog.identifiant || ''} marque comme vendu` })
+      setVenteDialog(null)
+      setVenteForm({ date: new Date().toISOString().split('T')[0], prixUnitaire: "", client: "", description: "", notes: "" })
+      fetchData()
+    } catch {
+      toast({ variant: "destructive", title: "Erreur", description: "Impossible d'enregistrer la vente" })
+    }
+  }
+
+  const handleMortSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!mortDialog) return
+    try {
+      const res = await fetch(`/api/elevage/animaux/${mortDialog.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          statut: 'mort',
+          dateSortie: mortForm.date,
+          causeSortie: mortForm.cause || 'Mort',
+        }),
+      })
+      if (!res.ok) throw new Error('Erreur')
+      toast({ title: "Deces enregistre", description: `${mortDialog.nom || mortDialog.identifiant || ''} marque comme mort` })
+      setMortDialog(null)
+      setMortForm({ date: new Date().toISOString().split('T')[0], cause: "", notes: "" })
       fetchData()
     } catch {
       toast({ variant: "destructive", title: "Erreur" })
@@ -217,10 +348,10 @@ function AnimauxSubTab() {
         </div>
         <Select value={filterEspece} onValueChange={setFilterEspece}>
           <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Espece" />
+            <SelectValue placeholder="Espèce" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Toutes les especes</SelectItem>
+            <SelectItem value="all">Toutes les espèces</SelectItem>
             {especes.map(e => (
               <SelectItem key={e.id} value={e.id}>{e.nom}</SelectItem>
             ))}
@@ -258,9 +389,9 @@ function AnimauxSubTab() {
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label>Espece *</Label>
+                <Label>Espèce *</Label>
                 <Select value={formData.especeAnimaleId} onValueChange={(v) => setFormData(f => ({ ...f, especeAnimaleId: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Selectionner..." /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Sélectionner..." /></SelectTrigger>
                   <SelectContent>
                     {especes.map(e => <SelectItem key={e.id} value={e.id}>{e.nom}</SelectItem>)}
                   </SelectContent>
@@ -315,7 +446,7 @@ function AnimauxSubTab() {
               </div>
               <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
-                <Button type="submit" disabled={!formData.especeAnimaleId}>Creer</Button>
+                <Button type="submit" disabled={!formData.especeAnimaleId}>Créer</Button>
               </div>
             </form>
           </DialogContent>
@@ -335,7 +466,7 @@ function AnimauxSubTab() {
                 <TableRow>
                   <TableHead>Identifiant</TableHead>
                   <TableHead>Nom</TableHead>
-                  <TableHead>Espece</TableHead>
+                  <TableHead>Espèce</TableHead>
                   <TableHead>Race</TableHead>
                   <TableHead>Sexe</TableHead>
                   <TableHead>Statut</TableHead>
@@ -369,14 +500,66 @@ function AnimauxSubTab() {
                       {animal.poidsActuel ? `${animal.poidsActuel} kg` : '-'}
                     </TableCell>
                     <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDelete(animal.id, animal.nom || animal.identifiant || '')}
-                        className="text-red-600 hover:text-red-700"
-                      >
-                        &times;
-                      </Button>
+                      {animal.statut === 'actif' && (
+                        <TooltipProvider delayDuration={100}>
+                          <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Link
+                                  href={`/elevage/animaux/${animal.id}`}
+                                  className="p-1.5 rounded-md transition-colors bg-slate-100 text-slate-500 hover:bg-blue-100 hover:text-blue-600 inline-flex"
+                                >
+                                  <Stethoscope className="h-3.5 w-3.5" />
+                                </Link>
+                              </TooltipTrigger>
+                              <TooltipContent>Fiche animal</TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  onClick={() => { setVenteForm(f => ({ ...f, date: new Date().toISOString().split('T')[0] })); setVenteDialog(animal) }}
+                                  className="p-1.5 rounded-md transition-colors bg-slate-100 text-slate-400 hover:bg-blue-100 hover:text-blue-600"
+                                >
+                                  <ShoppingCart className="h-3.5 w-3.5" />
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent>Vendre</TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  onClick={() => { setAbattageForm(f => ({ ...f, date: new Date().toISOString().split('T')[0], poidsVif: animal.poidsActuel?.toString() || "" })); setAbattageDialog(animal) }}
+                                  className="p-1.5 rounded-md transition-colors bg-slate-100 text-slate-400 hover:bg-red-100 hover:text-red-600"
+                                >
+                                  <Scissors className="h-3.5 w-3.5" />
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent>Abattage</TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  onClick={() => { setMortForm(f => ({ ...f, date: new Date().toISOString().split('T')[0] })); setMortDialog(animal) }}
+                                  className="p-1.5 rounded-md transition-colors bg-slate-100 text-slate-400 hover:bg-slate-200 hover:text-slate-600"
+                                >
+                                  <Skull className="h-3.5 w-3.5" />
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent>Deces</TooltipContent>
+                            </Tooltip>
+                          </div>
+                        </TooltipProvider>
+                      )}
+                      {animal.statut !== 'actif' && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDelete(animal)}
+                          className="text-red-600 hover:text-red-700"
+                        >
+                          &times;
+                        </Button>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -392,6 +575,183 @@ function AnimauxSubTab() {
           )}
         </CardContent>
       </Card>
+
+      {/* Dialog Abattage */}
+      <Dialog open={!!abattageDialog} onOpenChange={(open) => { if (!open) setAbattageDialog(null) }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Scissors className="h-5 w-5 text-red-500" />
+              Enregistrer un abattage
+            </DialogTitle>
+            <DialogDescription>
+              {abattageDialog?.nom || abattageDialog?.identifiant || ''} — {abattageDialog?.especeAnimale.nom} {abattageDialog?.race ? `(${abattageDialog.race})` : ''}
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleAbattageSubmit} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Date</Label>
+                <Input type="date" value={abattageForm.date} onChange={(e) => setAbattageForm(f => ({ ...f, date: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>Destination *</Label>
+                <Select value={abattageForm.destination} onValueChange={(v) => setAbattageForm(f => ({ ...f, destination: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="auto_consommation">Auto-consommation</SelectItem>
+                    <SelectItem value="vente">Vente</SelectItem>
+                    <SelectItem value="don">Don</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Poids vif (kg)</Label>
+                <Input type="number" step="0.1" value={abattageForm.poidsVif} onChange={(e) => setAbattageForm(f => ({ ...f, poidsVif: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>Poids carcasse (kg)</Label>
+                <Input type="number" step="0.1" value={abattageForm.poidsCarcasse} onChange={(e) => setAbattageForm(f => ({ ...f, poidsCarcasse: e.target.value }))} />
+              </div>
+            </div>
+            {abattageForm.poidsVif && abattageForm.poidsCarcasse && (
+              <div className="text-center py-1 bg-slate-50 rounded text-sm text-muted-foreground">
+                Rendement : {((parseFloat(abattageForm.poidsCarcasse) / parseFloat(abattageForm.poidsVif)) * 100).toFixed(1)}%
+              </div>
+            )}
+            {abattageForm.destination === 'vente' && (
+              <div className="space-y-2">
+                <Label>Prix de vente (€)</Label>
+                <Input type="number" step="0.01" value={abattageForm.prixVente} onChange={(e) => setAbattageForm(f => ({ ...f, prixVente: e.target.value }))} placeholder="Prix total" />
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label>Lieu</Label>
+              <Input value={abattageForm.lieu} onChange={(e) => setAbattageForm(f => ({ ...f, lieu: e.target.value }))} placeholder="Lieu d'abattage" />
+            </div>
+            <div className="space-y-2">
+              <Label>Notes</Label>
+              <Textarea value={abattageForm.notes} onChange={(e) => setAbattageForm(f => ({ ...f, notes: e.target.value }))} rows={2} />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="outline" onClick={() => setAbattageDialog(null)}>Annuler</Button>
+              <Button type="submit" className="bg-red-600 hover:bg-red-700">Enregistrer l'abattage</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Vente */}
+      <Dialog open={!!venteDialog} onOpenChange={(open) => { if (!open) setVenteDialog(null) }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShoppingCart className="h-5 w-5 text-blue-500" />
+              Enregistrer une vente
+            </DialogTitle>
+            <DialogDescription>
+              {venteDialog?.nom || venteDialog?.identifiant || ''} — {venteDialog?.especeAnimale.nom} {venteDialog?.race ? `(${venteDialog.race})` : ''}
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleVenteSubmit} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Date</Label>
+                <Input type="date" value={venteForm.date} onChange={(e) => setVenteForm(f => ({ ...f, date: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>Prix de vente (€) *</Label>
+                <Input type="number" step="0.01" value={venteForm.prixUnitaire} onChange={(e) => setVenteForm(f => ({ ...f, prixUnitaire: e.target.value }))} placeholder="0.00" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Client</Label>
+              <Input value={venteForm.client} onChange={(e) => setVenteForm(f => ({ ...f, client: e.target.value }))} placeholder="Nom du client" />
+            </div>
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Input value={venteForm.description} onChange={(e) => setVenteForm(f => ({ ...f, description: e.target.value }))} placeholder="Ex: Poulet fermier plein air" />
+            </div>
+            <div className="space-y-2">
+              <Label>Notes</Label>
+              <Textarea value={venteForm.notes} onChange={(e) => setVenteForm(f => ({ ...f, notes: e.target.value }))} rows={2} />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="outline" onClick={() => setVenteDialog(null)}>Annuler</Button>
+              <Button type="submit" disabled={!venteForm.prixUnitaire}>Enregistrer la vente</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Mort */}
+      <Dialog open={!!mortDialog} onOpenChange={(open) => { if (!open) setMortDialog(null) }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Skull className="h-5 w-5 text-slate-500" />
+              Enregistrer un deces
+            </DialogTitle>
+            <DialogDescription>
+              {mortDialog?.nom || mortDialog?.identifiant || ''} — {mortDialog?.especeAnimale.nom}
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleMortSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label>Date</Label>
+              <Input type="date" value={mortForm.date} onChange={(e) => setMortForm(f => ({ ...f, date: e.target.value }))} />
+            </div>
+            <div className="space-y-2">
+              <Label>Cause du deces</Label>
+              <Select value={mortForm.cause} onValueChange={(v) => setMortForm(f => ({ ...f, cause: v }))}>
+                <SelectTrigger><SelectValue placeholder="Sélectionner..." /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Maladie">Maladie</SelectItem>
+                  <SelectItem value="Predateur">Predateur</SelectItem>
+                  <SelectItem value="Accident">Accident</SelectItem>
+                  <SelectItem value="Vieillesse">Vieillesse</SelectItem>
+                  <SelectItem value="Cause inconnue">Cause inconnue</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Notes</Label>
+              <Textarea value={mortForm.notes} onChange={(e) => setMortForm(f => ({ ...f, notes: e.target.value }))} rows={2} placeholder="Détails supplementaires..." />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="outline" onClick={() => setMortDialog(null)}>Annuler</Button>
+              <Button type="submit" variant="destructive">Confirmer le deces</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <DeleteConfirmDialog
+        open={animalToDelete !== null}
+        onOpenChange={(open) => !open && setAnimalToDelete(null)}
+        entityLabel={
+          animalToDelete
+            ? `l'animal ${animalToDelete.nom || animalToDelete.identifiant || `#${animalToDelete.id}`}`
+            : ""
+        }
+        dependencies={
+          animalToDelete?._count
+            ? [
+                { label: "soins / traitements", count: animalToDelete._count.soins },
+                { label: "productions d'œufs", count: animalToDelete._count.productionsOeufs },
+                { label: "enregistrements de naissances (descendants)", count: animalToDelete._count.enfants },
+              ]
+            : []
+        }
+        warning={
+          animalToDelete?._count?.enfants
+            ? "Les liens de parenté seront rompus mais les descendants resteront enregistrés."
+            : undefined
+        }
+        onConfirm={confirmDelete}
+      />
     </div>
   )
 }
@@ -405,23 +765,64 @@ function LotsSubTab() {
   const [isLoading, setIsLoading] = React.useState(true)
   const [lots, setLots] = React.useState<Lot[]>([])
   const [especes, setEspeces] = React.useState<EspeceAnimale[]>([])
+  const [parcelles, setParcelles] = React.useState<Parcelle[]>([])
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
 
   const [formData, setFormData] = React.useState({
     especeAnimaleId: "", nom: "",
     dateArrivee: new Date().toISOString().split('T')[0],
     quantiteInitiale: "", provenance: "", prixAchatTotal: "", notes: "",
+    parcelleGeoId: "",
   })
+
+  // Dialog abattage lot
+  const [abatLotDialog, setAbatLotDialog] = React.useState<Lot | null>(null)
+  const [abatLotForm, setAbatLotForm] = React.useState({
+    date: new Date().toISOString().split('T')[0],
+    quantite: "1", poidsVif: "", poidsCarcasse: "",
+    destination: "auto_consommation", prixVente: "", lieu: "", notes: "",
+  })
+
+  const handleAbatLotSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!abatLotDialog) return
+    try {
+      const res = await fetch('/api/elevage/abattages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lotId: abatLotDialog.id,
+          date: abatLotForm.date,
+          quantite: parseInt(abatLotForm.quantite) || 1,
+          poidsVif: abatLotForm.poidsVif ? parseFloat(abatLotForm.poidsVif) : null,
+          poidsCarcasse: abatLotForm.poidsCarcasse ? parseFloat(abatLotForm.poidsCarcasse) : null,
+          destination: abatLotForm.destination,
+          prixVente: abatLotForm.prixVente ? parseFloat(abatLotForm.prixVente) : null,
+          lieu: abatLotForm.lieu || null,
+          notes: abatLotForm.notes || null,
+        }),
+      })
+      if (!res.ok) throw new Error('Erreur')
+      toast({ title: "Abattage enregistre", description: `${abatLotForm.quantite} animal(aux) du lot ${abatLotDialog.nom || `#${abatLotDialog.id}`}` })
+      setAbatLotDialog(null)
+      setAbatLotForm({ date: new Date().toISOString().split('T')[0], quantite: "1", poidsVif: "", poidsCarcasse: "", destination: "auto_consommation", prixVente: "", lieu: "", notes: "" })
+      fetchData()
+    } catch {
+      toast({ variant: "destructive", title: "Erreur", description: "Impossible d'enregistrer l'abattage" })
+    }
+  }
 
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
     try {
-      const [lotsRes, especesRes] = await Promise.all([
+      const [lotsRes, especesRes, parcellesRes] = await Promise.all([
         fetch('/api/elevage/lots'),
         fetch('/api/elevage/especes-animales'),
+        fetch('/api/carte'),
       ])
       if (lotsRes.ok) setLots((await lotsRes.json()).data)
       if (especesRes.ok) setEspeces((await especesRes.json()).data)
+      if (parcellesRes.ok) setParcelles(await parcellesRes.json())
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les donnees" })
     } finally {
@@ -446,10 +847,11 @@ function LotsSubTab() {
         especeAnimaleId: "", nom: "",
         dateArrivee: new Date().toISOString().split('T')[0],
         quantiteInitiale: "", provenance: "", prixAchatTotal: "", notes: "",
+        parcelleGeoId: "",
       })
       fetchData()
     } catch {
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible de creer le lot" })
+      toast({ variant: "destructive", title: "Erreur", description: "Impossible de créer le lot" })
     }
   }
 
@@ -469,14 +871,14 @@ function LotsSubTab() {
             </DialogTrigger>
             <DialogContent className="max-w-md">
               <DialogHeader>
-                <DialogTitle>Creer un lot</DialogTitle>
+                <DialogTitle>Créer un lot</DialogTitle>
                 <DialogDescription>Groupe d'animaux (volailles, etc.)</DialogDescription>
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-2">
-                  <Label>Espece *</Label>
+                  <Label>Espèce *</Label>
                   <Select value={formData.especeAnimaleId} onValueChange={(v) => setFormData(f => ({ ...f, especeAnimaleId: v }))}>
-                    <SelectTrigger><SelectValue placeholder="Selectionner..." /></SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder="Sélectionner..." /></SelectTrigger>
                     <SelectContent>
                       {especes.map(e => <SelectItem key={e.id} value={e.id}>{e.nom}</SelectItem>)}
                     </SelectContent>
@@ -502,13 +904,25 @@ function LotsSubTab() {
                     <Input type="number" step="0.01" value={formData.prixAchatTotal} onChange={(e) => setFormData(f => ({ ...f, prixAchatTotal: e.target.value }))} />
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Provenance</Label>
-                  <Input value={formData.provenance} onChange={(e) => setFormData(f => ({ ...f, provenance: e.target.value }))} placeholder="Couvoir, eleveur..." />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Provenance</Label>
+                    <Input value={formData.provenance} onChange={(e) => setFormData(f => ({ ...f, provenance: e.target.value }))} placeholder="Couvoir, eleveur..." />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Parcelle</Label>
+                    <Select value={formData.parcelleGeoId} onValueChange={(v) => setFormData(f => ({ ...f, parcelleGeoId: v === "__none__" ? "" : v }))}>
+                      <SelectTrigger><SelectValue placeholder="Aucune" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">Aucune</SelectItem>
+                        {parcelles.map(p => <SelectItem key={p.id} value={p.id}>{p.nom}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
                 <div className="flex justify-end gap-2 pt-4">
                   <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
-                  <Button type="submit" disabled={!formData.especeAnimaleId || !formData.quantiteInitiale}>Creer</Button>
+                  <Button type="submit" disabled={!formData.especeAnimaleId || !formData.quantiteInitiale}>Créer</Button>
                 </div>
               </form>
             </DialogContent>
@@ -525,13 +939,14 @@ function LotsSubTab() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Nom</TableHead>
-                  <TableHead>Espece</TableHead>
+                  <TableHead>Espèce</TableHead>
                   <TableHead className="text-right">Initial</TableHead>
                   <TableHead className="text-right">Actuel</TableHead>
                   <TableHead>Arrivee</TableHead>
-                  <TableHead>Provenance</TableHead>
+                  <TableHead>Parcelle</TableHead>
                   <TableHead className="text-right">Prix</TableHead>
                   <TableHead>Statut</TableHead>
+                  <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -547,19 +962,141 @@ function LotsSubTab() {
                     <TableCell className="text-right">{lot.quantiteInitiale}</TableCell>
                     <TableCell className="text-right font-bold">{lot.quantiteActuelle}</TableCell>
                     <TableCell>{lot.dateArrivee ? new Date(lot.dateArrivee).toLocaleDateString('fr-FR') : '-'}</TableCell>
-                    <TableCell>{lot.provenance || '-'}</TableCell>
+                    <TableCell>
+                      {lot.parcelleGeo ? (
+                        <Link href={`/jardin/carte?parcelle=${lot.parcelleGeo.id}`} className="inline-flex items-center gap-1 text-amber-700 hover:text-amber-900 hover:underline">
+                          <MapIcon className="h-3 w-3" />
+                          {lot.parcelleGeo.nom}
+                        </Link>
+                      ) : (
+                        <ParcelleAssignButton lotId={lot.id} parcelles={parcelles} onAssigned={fetchData} />
+                      )}
+                    </TableCell>
                     <TableCell className="text-right">{lot.prixAchatTotal ? `${lot.prixAchatTotal.toFixed(2)} \u20ac` : '-'}</TableCell>
                     <TableCell><Badge className={STATUT_COLORS[lot.statut] || ''}>{lot.statut}</Badge></TableCell>
+                    <TableCell>
+                      {lot.statut === 'actif' && lot.quantiteActuelle > 0 && (
+                        <TooltipProvider delayDuration={100}>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <button
+                                onClick={() => { setAbatLotForm(f => ({ ...f, date: new Date().toISOString().split('T')[0], quantite: "1" })); setAbatLotDialog(lot) }}
+                                className="p-1.5 rounded-md transition-colors bg-slate-100 text-slate-400 hover:bg-red-100 hover:text-red-600"
+                              >
+                                <Scissors className="h-3.5 w-3.5" />
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent>Abattage</TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))}
                 {lots.length === 0 && (
-                  <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Aucun lot enregistre</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Aucun lot enregistre</TableCell></TableRow>
                 )}
               </TableBody>
             </Table>
           )}
         </CardContent>
       </Card>
+
+      {/* Dialog abattage lot */}
+      <Dialog open={!!abatLotDialog} onOpenChange={(open) => { if (!open) setAbatLotDialog(null) }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Scissors className="h-5 w-5 text-red-500" />
+              Abattage depuis un lot
+            </DialogTitle>
+            <DialogDescription>
+              {abatLotDialog?.nom || `Lot #${abatLotDialog?.id}`} — {abatLotDialog?.especeAnimale.nom} ({abatLotDialog?.quantiteActuelle} restants)
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleAbatLotSubmit} className="space-y-4">
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label>Date</Label>
+                <Input type="date" value={abatLotForm.date} onChange={(e) => setAbatLotForm(f => ({ ...f, date: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>Quantite *</Label>
+                <Input type="number" min="1" max={abatLotDialog?.quantiteActuelle || 999} value={abatLotForm.quantite} onChange={(e) => setAbatLotForm(f => ({ ...f, quantite: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>Destination *</Label>
+                <Select value={abatLotForm.destination} onValueChange={(v) => setAbatLotForm(f => ({ ...f, destination: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="auto_consommation">Auto-conso</SelectItem>
+                    <SelectItem value="vente">Vente</SelectItem>
+                    <SelectItem value="don">Don</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Poids vif total (kg)</Label>
+                <Input type="number" step="0.1" value={abatLotForm.poidsVif} onChange={(e) => setAbatLotForm(f => ({ ...f, poidsVif: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>Poids carcasse total (kg)</Label>
+                <Input type="number" step="0.1" value={abatLotForm.poidsCarcasse} onChange={(e) => setAbatLotForm(f => ({ ...f, poidsCarcasse: e.target.value }))} />
+              </div>
+            </div>
+            {abatLotForm.destination === 'vente' && (
+              <div className="space-y-2">
+                <Label>Prix de vente total (€)</Label>
+                <Input type="number" step="0.01" value={abatLotForm.prixVente} onChange={(e) => setAbatLotForm(f => ({ ...f, prixVente: e.target.value }))} />
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label>Notes</Label>
+              <Textarea value={abatLotForm.notes} onChange={(e) => setAbatLotForm(f => ({ ...f, notes: e.target.value }))} rows={2} />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="outline" onClick={() => setAbatLotDialog(null)}>Annuler</Button>
+              <Button type="submit" className="bg-red-600 hover:bg-red-700">Enregistrer l'abattage</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
+  )
+}
+
+function ParcelleAssignButton({ lotId, parcelles, onAssigned }: { lotId: number; parcelles: Parcelle[]; onAssigned: () => void }) {
+  const { toast } = useToast()
+  const [open, setOpen] = React.useState(false)
+
+  if (parcelles.length === 0) return <span className="text-muted-foreground text-xs">-</span>
+
+  const handleAssign = async (parcelleGeoId: string) => {
+    try {
+      const res = await fetch('/api/elevage/lots', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: lotId, parcelleGeoId }),
+      })
+      if (!res.ok) throw new Error()
+      toast({ title: "Parcelle assignee" })
+      setOpen(false)
+      onAssigned()
+    } catch {
+      toast({ variant: "destructive", title: "Erreur" })
+    }
+  }
+
+  return (
+    <Select open={open} onOpenChange={setOpen} onValueChange={handleAssign}>
+      <SelectTrigger className="h-7 w-[130px] text-xs border-dashed">
+        <SelectValue placeholder="Assigner..." />
+      </SelectTrigger>
+      <SelectContent>
+        {parcelles.map(p => <SelectItem key={p.id} value={p.id}>{p.nom}</SelectItem>)}
+      </SelectContent>
+    </Select>
   )
 }

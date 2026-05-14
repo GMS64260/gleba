@@ -8,6 +8,7 @@ import * as React from "react"
 import { Suspense } from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
+import { formatSemaine } from "@/lib/assistant-helpers"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ColumnDef } from "@tanstack/react-table"
 import { ArrowLeft, Leaf, Calendar, CheckCircle2, XCircle } from "lucide-react"
@@ -38,14 +39,11 @@ interface CulturePrevue {
   existante: boolean
 }
 
-function formatSemaine(s: number | null): string {
-  return s ? `S${s}` : "-"
-}
 
 const columns: ColumnDef<CulturePrevue>[] = [
   {
     accessorKey: "especeId",
-    header: "Espece",
+    header: "Espèce",
     cell: ({ row }) => {
       const culture = row.original
       return (
@@ -71,7 +69,7 @@ const columns: ColumnDef<CulturePrevue>[] = [
     header: "Planche",
     cell: ({ row }) => (
       <Link href={`/planches/${encodeURIComponent(row.original.plancheId)}`}>
-        <Badge variant="outline" className="cursor-pointer hover:bg-gray-100">
+        <Badge variant="outline" className="cursor-pointer hover:bg-slate-100">
           {row.original.plancheId}
         </Badge>
       </Link>
@@ -102,7 +100,7 @@ const columns: ColumnDef<CulturePrevue>[] = [
   },
   {
     accessorKey: "semaineRecolte",
-    header: "Recolte",
+    header: "Récolte",
     cell: ({ getValue }) => (
       <Badge variant="secondary" className="text-xs">
         {formatSemaine(getValue() as number | null)}
@@ -122,12 +120,12 @@ const columns: ColumnDef<CulturePrevue>[] = [
       return existante ? (
         <Badge variant="default" className="bg-green-600">
           <CheckCircle2 className="h-3 w-3 mr-1" />
-          Creee
+          Créée
         </Badge>
       ) : (
         <Badge variant="secondary">
           <XCircle className="h-3 w-3 mr-1" />
-          A creer
+          A créer
         </Badge>
       )
     },
@@ -166,7 +164,7 @@ function CulturesPrevuesContent() {
       toast({
         variant: "destructive",
         title: "Erreur",
-        description: "Impossible de charger les cultures prevues",
+        description: "Impossible de charger les cultures prévues",
       })
     } finally {
       setIsLoading(false)
@@ -178,7 +176,7 @@ function CulturesPrevuesContent() {
   }, [fetchData])
 
   const handleExport = () => {
-    const headers = ["Espece", "ITP", "Planche", "Ilot", "S.Semis", "S.Plantation", "S.Recolte", "Surface (m2)", "Statut"]
+    const headers = ["Espèce", "ITP", "Planche", "Ilot", "S.Semis", "S.Plantation", "S.Récolte", "Surface (m2)", "Statut"]
     const rows = data.map(c => [
       c.especeId || "",
       c.itpId || "",
@@ -188,7 +186,7 @@ function CulturesPrevuesContent() {
       c.semainePlantation?.toString() || "",
       c.semaineRecolte?.toString() || "",
       c.surface.toFixed(1),
-      c.existante ? "Creee" : "A creer",
+      c.existante ? "Créée" : "A créer",
     ])
 
     const csv = [headers, ...rows].map(r => r.join(";")).join("\n")
@@ -202,8 +200,9 @@ function CulturesPrevuesContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="border-b bg-white sticky top-0 z-50">
+    <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
+      <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
+      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link href="/?tab=planification">
@@ -214,7 +213,7 @@ function CulturesPrevuesContent() {
             </Link>
             <div className="flex items-center gap-2">
               <Leaf className="h-6 w-6 text-green-600" />
-              <h1 className="text-xl font-bold">Cultures prevues par espece</h1>
+              <h1 className="text-xl font-bold">Cultures prévues par espèce</h1>
             </div>
           </div>
 
@@ -248,7 +247,7 @@ function CulturesPrevuesContent() {
         <div className="flex gap-2 mb-4">
           <Link href={`/planification/cultures-prevues?annee=${annee}`}>
             <Button variant="default" size="sm">
-              Par espece
+              Par espèce
             </Button>
           </Link>
           <Link href={`/planification/cultures-prevues/par-ilots?annee=${annee}`}>
@@ -274,7 +273,7 @@ function CulturesPrevuesContent() {
           onRefresh={fetchData}
           onExport={handleExport}
           searchPlaceholder="Rechercher..."
-          emptyMessage="Aucune culture prevue. Assignez des rotations a vos planches."
+          emptyMessage="Aucune culture prévue. Assignez des rotations a vos planches."
         />
       </main>
     </div>

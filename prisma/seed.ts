@@ -108,12 +108,14 @@ async function main() {
   console.log(`✓ Espèces: ${especes.length}`)
 
   // Variétés
+  const { normalizeVarieteName } = await import("../src/lib/normalize")
   for (const v of varietes) {
     await prisma.variete.upsert({
       where: { id: v.id },
       update: {},
       create: {
         id: v.id,
+        nomNormalise: normalizeVarieteName(v.id),
         especeId: v.especeId,
         fournisseurId: v.fournisseurId || null,
         nbGrainesG: v.nbGrainesG || null,
@@ -191,7 +193,7 @@ async function main() {
       largeur: 1.2,
       longueur: 10,
       surface: 12,
-      ilot: "Potager",
+      ilot: "Maraîchage",
       type: "Plein champ",
       irrigation: "Goutte-à-goutte",
       typeSol: "Limoneux",
@@ -204,7 +206,7 @@ async function main() {
       largeur: 0.8,
       longueur: 8,
       surface: 6.4,
-      ilot: "Potager",
+      ilot: "Maraîchage",
       type: "Plein champ",
       irrigation: "Manuel",
       typeSol: "Sableux",

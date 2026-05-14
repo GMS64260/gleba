@@ -1,5 +1,5 @@
 /**
- * API Routes pour les Familles botaniques (référentiel global)
+ * API Routes pour les Familles botaniques (referentiel global)
  * GET /api/familles - Liste des familles
  * POST /api/familles - Créer une famille
  */
@@ -41,7 +41,7 @@ export async function GET() {
   }
 }
 
-// POST /api/familles (admin only - données de référence globales)
+// POST /api/familles (admin only - données de reference globales)
 export async function POST(request: NextRequest) {
   const { error } = await requireAdminApi()
   if (error) return error

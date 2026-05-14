@@ -21,17 +21,29 @@ enum Role {
   USER
 }
 
+enum CoucheActivite {
+  MARAICHAGE
+  VERGER
+  ELEVAGE
+  PATURAGE
+}
+
 /// Utilisateurs de l'application
 model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
-  password      String    // bcrypt hash
-  name          String?
-  role          Role      @default(USER)
-  active        Boolean   @default(true)
-  apiToken      String?   @unique @map("api_token")
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
+  id                String    @id @default(cuid())
+  email             String    @unique
+  password          String    // bcrypt hash
+  name              String?
+  role              Role      @default(USER)
+  active            Boolean   @default(true)
+  emailVerified     Boolean   @default(false) @map("email_verified")
+  emailVerifyToken  String?   @unique @map("email_verify_token")
+  emailVerifyExpires DateTime? @map("email_verify_expires")
+  resetPasswordToken String?  @unique @map("reset_password_token")
+  resetPasswordExpires DateTime? @map("reset_password_expires")
+  apiToken          String?   @unique @map("api_token")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
 
   // NextAuth sessions
   sessions      Session[]
@@ -44,6 +56,7 @@ model User {
   irrigationsPlanifiees IrrigationPlanifiee[]
   fertilisations Fertilisation[]
   objetsJardin  ObjetJardin[]
+  parcellesGeo  ParcelleGeo[]
   analysesSol   AnalyseSol[]
   notes         Note[]
   arbres        Arbre[]
@@ -75,10 +88,92 @@ model User {
   userStockAliments     UserStockAliment[]
   userStockEspeces      UserStockEspece[]
 
+  // Relations interventions & traçabilité
+  interventions         Intervention[]
+
   // Relations chat IA
   conversations         Conversation[]
 
+  // Relations module verger enrichi
+  zonesVerger           ZoneVerger[]
+  observationsSante     ObservationSante[]
+  campagnesPlantation   CampagnePlantation[]
+  etapesCampagne        EtapeCampagne[]
+  observationsCampagne  ObservationCampagne[]
+
+  // Relations module météo
+  stationsMeteo         StationMeteo[]
+
+  // Logs de connexion
+  loginLogs             LoginLog[]
+
+  // Feedback
+  feedbackTokens        FeedbackToken[]
+  feedbackResponses     FeedbackResponse[]
+
+  // Préférences (modules visibles, etc.)
+  preferences           UserPreference[]
+
+  // Boutique en ligne (1 par utilisateur)
+  boutique              Boutique?
+  produitsBoutique      ProduitBoutique[]
+  commandesBoutique     CommandeBoutique[]
+
   @@map("users")
+}
+
+/// Logs de connexion
+model LoginLog {
+  id        Int      @id @default(autoincrement())
+  userId    String?  @map("user_id")
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  email     String
+  success   Boolean
+  reason    String?  // "ok", "bad_password", "inactive", "not_found"
+  ip        String?
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([email])
+  @@map("login_logs")
+}
+
+/// Lien unique de feedback envoyé à un utilisateur ciblé
+model FeedbackToken {
+  id        String    @id @default(cuid())
+  token     String    @unique
+  userId    String    @map("user_id")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  response  FeedbackResponse?
+
+  @@index([userId])
+  @@map("feedback_tokens")
+}
+
+/// Réponse au formulaire de feedback
+model FeedbackResponse {
+  id          String        @id @default(cuid())
+  tokenId     String        @unique @map("token_id")
+  token       FeedbackToken @relation(fields: [tokenId], references: [id], onDelete: Cascade)
+  userId      String        @map("user_id")
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lang        String        // "fr" | "en"
+  rating      Int           // 1..10
+  blockers    String[]      // codes des points bloquants cochés
+  whatBlocked String?       @map("what_blocked")     // freins première visite (texte libre)
+  missing     String?       // fonctionnalités manquantes (texte libre)
+  modules     String[]      // modules utilisés (jardin, verger, elevage, ...)
+  willReturn  String?       @map("will_return")     // yes / maybe / no
+  comment     String?
+  createdAt   DateTime      @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@map("feedback_responses")
 }
 
 /// Sessions NextAuth
@@ -178,11 +273,12 @@ model Fertilisant {
 /// Espèces de plantes cultivables
 model Espece {
   id              String   @id @map("espece")
-  type            String   @default("legume") @map("type") // legume, arbre_fruitier, petit_fruit, aromatique, engrais_vert
+  type            String   @default("legume") @map("type") // legume, aromatique, engrais_vert, arbre_fruitier, petit_fruit, ornement
+  uniteRendement  String   @default("kg_m2") @map("unite_rendement") // kg_m2 | kg_arbre | biomasse_t_ha — voir docs/conventions.md
   familleId       String?  @map("famille")
   famille         Famille? @relation(fields: [familleId], references: [id], onDelete: SetNull)
   nomLatin        String?  @map("nom_latin")
-  rendement       Float?   @map("rendement") // kg/m² ou kg/arbre
+  rendement       Float?   @map("rendement") // unité dépend de uniteRendement
   vivace          Boolean  @default(false) @map("vivace")
   besoinN         Float?   @map("besoin_n") // Besoin azote (1-5)
   besoinP         Float?   @map("besoin_p") // Besoin phosphore (1-5)
@@ -198,8 +294,14 @@ model Espece {
   categorie       String?  @map("categorie")       // Catégorie visuelle (emoji)
   niveau          String?  @map("niveau")          // Facile, Moyen, Difficile
   densite         Float?   @map("densite")         // Plants/m²
-  doseSemis       Float?   @map("dose_semis")      // g/m²
+  doseSemis       Float?   @map("dose_semis")      // g/m² — alimente le mode graine_directe
   tauxGermination Float?   @map("taux_germination") // % germination
+
+  // PROMPT 06 — Calcul Semences fiabilisé : on ne calcule plus la même chose
+  // pour une carotte (semis direct), une tomate (plant repiqué) et un ail
+  // (caieu). Chaque espèce déclare son mode de propagation et ses paramètres.
+  modeSemis        String?  @map("mode_semis")          // graine_directe | plant_repique | bulbe_caieu | bouture
+  margeSecuritePct Int      @default(15) @map("marge_securite_pct")
   temperatureGerm String?  @map("temp_germination") // Ex: "15-25°C"
   joursLevee      Int?     @map("jours_levee")     // Nombre de jours
   irrigation      String?  @map("irrigation")      // Faible/Moyen/Élevé
@@ -219,13 +321,100 @@ model Espece {
   arbres             Arbre[]
   associationDetails AssociationDetail[]
   userStocks         UserStockEspece[]
+  campagnesPlantation CampagnePlantation[]
+  portesGreffe       PorteGreffeEspece[]
+  bioagresseurs      BioagresseurEspece[]
 
   @@map("especes")
+}
+
+/// Porte-greffes (Pommier M9/MM106, Pêcher GF677, Cerisier Gisela5…)
+model PorteGreffe {
+  id              String   @id @default(cuid())
+  nom             String   @unique @map("nom")
+  vigueur         Int      @map("vigueur") // 1-5
+  precocite       Int      @map("precocite") // 1-5
+  sensibilites    String[] @map("sensibilites") // ['asphyxie','calcaire','secheresse']
+  drageonnement   Boolean  @default(false) @map("drageonnement")
+  notes           String?  @map("notes")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  especes         PorteGreffeEspece[]
+  campagnes       CampagnePlantation[]
+  arbres          Arbre[]              @relation("ArbrePorteGreffe")
+
+  @@map("porte_greffes")
+}
+
+/// Jointure many-to-many porte_greffes ↔ especes (espèces fruitières portées)
+model PorteGreffeEspece {
+  porteGreffeId String      @map("porte_greffe_id")
+  porteGreffe   PorteGreffe @relation(fields: [porteGreffeId], references: [id], onDelete: Cascade)
+  especeId      String      @map("espece_id")
+  espece        Espece      @relation(fields: [especeId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([porteGreffeId, especeId])
+  @@index([especeId])
+  @@map("porte_greffe_especes")
+}
+
+/// Bioagresseurs (maladies, ravageurs, adventices). PBI = Production Bio Intégrée.
+model Bioagresseur {
+  id               String   @id @default(cuid())
+  nomCommun        String   @map("nom_commun")
+  nomLatin         String   @map("nom_latin")
+  type             String   @map("type") // 'Maladie' | 'Ravageur' | 'Adventice'
+  organeCible      String   @map("organe_cible") // 'Feuille' | 'Fruit' | 'Bois' | 'Racine' | 'Tige'
+  periodePression  String[] @map("periode_pression") // ['S10-S20']
+  methodesPbi      String[] @map("methodes_pbi") // ['piège','filet','biocontrôle','traitement_AB']
+  seuilNuisibilite String?  @map("seuil_nuisibilite")
+  notes            String?  @map("notes")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  especes          BioagresseurEspece[]
+
+  @@index([type])
+  @@map("bioagresseurs")
+}
+
+/// Jointure many-to-many bioagresseurs ↔ especes (espèces cibles).
+model BioagresseurEspece {
+  bioagresseurId String       @map("bioagresseur_id")
+  bioagresseur   Bioagresseur @relation(fields: [bioagresseurId], references: [id], onDelete: Cascade)
+  especeId       String       @map("espece_id")
+  espece         Espece       @relation(fields: [especeId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([bioagresseurId, especeId])
+  @@index([especeId])
+  @@map("bioagresseur_especes")
+}
+
+/// Essences bocagères (Aubépine, Charme, Cornouiller…) — Assistant Plantation
+/// type "Haie / Bocage".
+model EssenceBocagere {
+  id          String   @id @default(cuid())
+  nomCommun   String   @map("nom_commun")
+  nomLatin    String   @map("nom_latin")
+  hauteurM    Float    @map("hauteur_m")
+  croissance  String   @map("croissance") // 'Lente' | 'Moyenne' | 'Rapide'
+  roles       String[] @map("roles") // ['brise-vent','refuge auxiliaires','mellifère','bois énergie']
+  persistant  Boolean  @default(false) @map("persistant")
+  epineux     Boolean  @default(false) @map("epineux")
+  notes       String?  @map("notes")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([nomLatin])
+  @@map("essences_bocageres")
 }
 
 /// Variétés (cultivars d'espèces)
 model Variete {
   id             String       @id @map("variete")
+  nomNormalise   String       @map("nom_normalise") // Clé déduplication, peuplée via normalizeVarieteName
+  isPlaceholder  Boolean      @default(false) @map("is_placeholder") // "Non spécifiée" — affiche bandeau "À renseigner"
   especeId       String       @map("espece")
   espece         Espece       @relation(fields: [especeId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   fournisseurId  String?      @map("fournisseur")
@@ -240,10 +429,17 @@ model Variete {
   bio            Boolean      @default(false) @map("bio")
   description    String?      @map("description")
 
+  // PROMPT 05 — Audit Verger : différenciation unifère/bifère pour les figuiers.
+  // Valeurs : 'unifere' (1 récolte par an) | 'bifere' (2 récoltes : figues-fleurs
+  // en juin-juillet, figues d'automne en août-octobre).
+  unifereBifere  String?      @map("unifere_bifere")
+
   // Relations
   cultures         Culture[]
   userStocks       UserStockVariete[]
 
+  @@unique([especeId, nomNormalise], name: "espece_nom_normalise")
+  @@index([isPlaceholder])
   @@map("varietes")
 }
 
@@ -263,11 +459,20 @@ model ITP {
   notes             String? @map("notes")
 
   // Nouveaux champs (parité Potaleger)
-  typePlanche     String?  @map("type_planche")     // Serre, Plein champ, Tunnel
+  typePlanche     String?  @map("type_planche")     // Plein champ | Sous abri (Serre/Tunnel)
   decalageMax     Int?     @map("decal_max")        // Semaines de flexibilité (0-52)
   espacementRangs Int?     @map("esp_rangs")        // cm entre rangs
   nbGrainesPlant  Float?   @map("nb_graines_plant") // Graines par plant
   doseSemis       Float?   @map("dose_semis")       // g/m² ou g/ml
+
+  // PROMPT 05 — Audit agronomique : décorrélation du mode de démarrage et du
+  // type de planche, traçabilité des révisions.
+  // - typePlanche  → où la culture grandit (Plein champ / Sous abri).
+  // - modeDemarrage → comment elle est semée (Plein champ / Sous abri / Pépinière).
+  modeDemarrage       String?   @map("mode_demarrage")
+  commentaireAgronome String?   @map("commentaire_agronome")
+  sourceReference     String?   @map("source_reference")
+  derniereRevision    DateTime? @map("derniere_revision")
 
   // Relations
   cultures         Culture[]
@@ -323,6 +528,8 @@ model Planche {
   rotation2D          Float?    @default(0) @map("rotation_2d") // Rotation en degrés
   planchesInfluencees String?   @map("planches_influencees") // CSV des planches proches (associations)
   ilot                String?   @map("ilot") // Groupement de planches
+  parcelleGeoId       String?   @map("parcelle_geo_id")
+  parcelleGeo         ParcelleGeo? @relation(fields: [parcelleGeoId], references: [id], onDelete: SetNull)
   notes               String?   @map("notes")
 
   // Nouveaux champs (parité Potaleger)
@@ -340,6 +547,12 @@ model Planche {
   carboneOrg          Float?    @map("carbone_org")      // % carbone organique
   derniereAnalyseSol  DateTime? @map("derniere_analyse") // Date dernière maj données sol
 
+  // PROMPT 12 — Statut Bio (Conventionnel | C1 | C2 | C3 | AB)
+  statutBio            String    @default("Conventionnel") @map("statut_bio")
+  dateDebutConversion  DateTime? @map("date_debut_conversion")
+  certificateur        String?   @map("certificateur")
+  nCertificat          String?   @map("n_certificat")
+
   // Relations
   cultures       Culture[]
   fertilisations Fertilisation[]
@@ -349,6 +562,55 @@ model Planche {
   @@index([userId])
   @@index([userId, ilot])
   @@map("planches")
+}
+
+/// Parcelle géoréférencée (cartographie)
+model ParcelleGeo {
+  id              String    @id @default(cuid())
+  nom             String    @map("nom")
+  userId          String    @map("user_id")
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // GeoJSON geometry stocké en texte (pas de PostGIS natif dans Prisma)
+  geometry        String    @map("geometry") // GeoJSON Polygon/MultiPolygon
+  centroidLat     Float?    @map("centroid_lat")
+  centroidLng     Float?    @map("centroid_lng")
+  surface         Float?    @map("surface_ha") // Surface en hectares
+
+  // Données cadastrales
+  commune         String?   @map("commune")
+  section         String?   @map("section_cadastrale")
+  numero          String?   @map("numero_parcelle")
+  prefixe         String?   @map("prefixe")
+  contenance      Float?    @map("contenance") // Surface cadastrale m²
+
+  // Couches d'activité
+  couches         CoucheActivite[] @default([])
+
+  // Données agronomiques
+  typeSol         String?   @map("type_sol")
+  usage           String?   @map("usage") // culture, prairie, verger, friche...
+  couleur         String?   @map("couleur") // Couleur d'affichage #RRGGBB
+  notes           String?   @map("notes")
+
+  // Planches, objets et arbres rattachés à cette parcelle
+  planches        Planche[]
+  objetsJardin    ObjetJardin[]
+  arbres          Arbre[]
+  lotsAnimaux     LotAnimaux[]
+  campagnesPlantation CampagnePlantation[]
+
+  // PROMPT 12 — Statut Bio (Conventionnel | C1 | C2 | C3 | AB)
+  statutBio            String    @default("Conventionnel") @map("statut_bio")
+  dateDebutConversion  DateTime? @map("date_debut_conversion")
+  certificateur        String?   @map("certificateur")
+  nCertificat          String?   @map("n_certificat")
+
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@map("parcelles_geo")
 }
 
 /// Analyses de sol
@@ -433,6 +695,10 @@ model Culture {
   aIrriguer           Boolean?  @map("a_irriguer")  // Besoin d'irrigation
   derniereIrrigation  DateTime? @map("derniere_irrigation") // Dernière date d'arrosage
 
+  // PROMPT 12 — Traçabilité rotation : true si l'utilisateur a validé la
+  // création malgré le warning de violation de plan de rotation.
+  rotationViolee  Boolean   @default(false) @map("rotation_violee")
+
   notes           String?   @map("notes")
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
@@ -473,6 +739,8 @@ model Recolte {
   factureId      Int?      @map("facture_id")
   // Péremption (pour sortie auto du stock)
   datePeremption DateTime? @map("date_peremption") // Date limite avant que le produit soit périmé
+  // PROMPT 12 — Snapshot du statut Bio AU MOMENT de la récolte (n'évolue plus).
+  statutBioSnapshot String? @map("statut_bio_snapshot") // Conventionnel | C1 | C2 | C3 | AB
   notes          String?   @map("notes")
   createdAt      DateTime  @default(now()) @map("created_at")
 
@@ -482,6 +750,7 @@ model Recolte {
   @@index([cultureId, date])
   @@index([date])
   @@index([statut])
+  @@index([statutBioSnapshot])
   @@map("recoltes")
 }
 
@@ -582,6 +851,8 @@ model ObjetJardin {
   posX        Float    @map("pos_x") // Position X en mètres
   posY        Float    @map("pos_y") // Position Y en mètres
   rotation2D  Float    @default(0) @map("rotation_2d") // Rotation en degrés
+  parcelleGeoId  String?      @map("parcelle_geo_id")
+  parcelleGeo    ParcelleGeo? @relation(fields: [parcelleGeoId], references: [id], onDelete: SetNull)
   couleur     String?  @map("couleur") // Code couleur (#RRGGBB)
   notes       String?  @map("notes")
   createdAt   DateTime @default(now()) @map("created_at")
@@ -601,7 +872,12 @@ model Arbre {
   especeRef       Espece?   @relation(fields: [especeId], references: [id], onDelete: SetNull)
   espece          String?   @map("espece") // Espèce texte libre (ex: "Pommier", "Framboisier")
   variete         String?   @map("variete") // Variété (ex: "Golden", "Malling Promise")
-  portGreffe      String?   @map("port_greffe") // Porte-greffe si applicable
+  portGreffe      String?   @map("port_greffe") // Porte-greffe (texte libre, rétro-compat)
+  porteGreffeId   String?   @map("porte_greffe_id") // FK référentiel PorteGreffe (PROMPT 10)
+  porteGreffeRef  PorteGreffe? @relation("ArbrePorteGreffe", fields: [porteGreffeId], references: [id], onDelete: SetNull)
+  circonferenceCm Float?    @map("circonference_cm") // Mesure standard tronc — utile PCAE/HVE
+  gpsLat          Float?    @map("gps_lat") // Latitude WGS84
+  gpsLng          Float?    @map("gps_lng") // Longitude WGS84
   fournisseur     String?   @map("fournisseur") // Lieu d'achat / pépinière
   dateAchat       DateTime? @map("date_achat")
   prixAchat       Float?    @map("prix_achat") // Prix d'achat en €
@@ -616,22 +892,53 @@ model Arbre {
   etat            String?   @map("etat") // "excellent", "bon", "moyen", "mauvais", "mort"
   pollinisateur   String?   @map("pollinisateur") // Variété pollinisatrice associée
   couleur         String?   @map("couleur") // Couleur d'affichage sur le plan
+  parcelleGeoId   String?   @map("parcelle_geo_id")
+  parcelleGeo     ParcelleGeo? @relation(fields: [parcelleGeoId], references: [id], onDelete: SetNull)
   notes           String?   @map("notes")
   // Gestion production
   productif       Boolean   @default(true) @map("productif") // Est-ce que l'arbre produit ?
   anneeProduction Int?      @map("annee_production") // Première année de production
   rendementMoyen  Float?    @map("rendement_moyen") // kg/an estimé
+  // Forme & structure
+  formeTaille       String?   @map("forme_taille") // "gobelet", "fuseau", "palmette_u", "palmette_verrier", "cordon", "espalier", "plein_vent", "quenouille", "axe"
+  vigueur           String?   @map("vigueur") // "faible", "moyenne", "forte"
+  distancePlantation Float?  @map("distance_plantation") // mètres entre arbres
+  distanceRang      Float?   @map("distance_rang") // mètres entre rangs
+  orientationRang   String?  @map("orientation_rang") // "N-S", "E-O", "NE-SO", "NO-SE"
+  surfaceCanopee    Float?   @map("surface_canopee") // m² calculé
+  // Greffe
+  dateGreffe        DateTime? @map("date_greffe")
+  typeGreffe        String?   @map("type_greffe") // "fente", "couronne", "ecussonnage", "anglaise"
+  // Suppression / fin de vie
+  dateSuppression   DateTime? @map("date_suppression")
+  causeSuppression  String?   @map("cause_suppression") // "mort", "arrachage", "maladie", "improductif"
+  // Pollinisation & floraison
+  heuresFroidRequis Int?      @map("heures_froid_requis") // Heures < 7°C nécessaires
+  floraison         String?   @map("floraison") // "tres_precoce", "precoce", "moyenne", "tardive", "tres_tardive"
+  groupePollinisation String? @map("groupe_pollinisation") // "A", "B", "C", "D"
+  autofertile       Boolean   @default(false) @map("autofertile")
+  periodeRecolte    String?   @map("periode_recolte") // "juin", "juillet", etc.
+  conservation      String?   @map("conservation") // "courte", "moyenne", "longue"
+  // Zone verger
+  zoneId            Int?      @map("zone_id")
+  zone              ZoneVerger? @relation(fields: [zoneId], references: [id], onDelete: SetNull)
+
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
   // Relations module arbres
-  recoltesArbres    RecolteArbre[]
-  productionsBois   ProductionBois[]
-  operationsArbres  OperationArbre[]
+  recoltesArbres       RecolteArbre[]
+  productionsBois      ProductionBois[]
+  operationsArbres     OperationArbre[]
+  pollinisateursCompat PollinisationArbre[] @relation("ArbrePollinise")
+  pollinisateurDe      PollinisationArbre[] @relation("ArbrePollinisateur")
+  observationsSante    ObservationSante[]
 
   @@index([userId])
   @@index([type])
   @@index([especeId])
+  @@index([zoneId])
+  @@index([porteGreffeId])
   @@map("arbres")
 }
 
@@ -659,6 +966,8 @@ model RecolteArbre {
   factureId      Int?      @map("facture_id")
   facture        Facture?  @relation("RecolteArbreFacture", fields: [factureId], references: [id])
   datePeremption DateTime? @map("date_peremption")
+  // PROMPT 12 — Snapshot du statut Bio AU MOMENT de la récolte (n'évolue plus).
+  statutBioSnapshot String? @map("statut_bio_snapshot") // Conventionnel | C1 | C2 | C3 | AB
   notes          String?   @map("notes")
   createdAt      DateTime  @default(now()) @map("created_at")
 
@@ -667,6 +976,7 @@ model RecolteArbre {
   @@index([date])
   @@index([statut])
   @@index([factureId])
+  @@index([statutBioSnapshot])
   @@map("recoltes_arbres")
 }
 
@@ -694,6 +1004,9 @@ model ProductionBois {
   notes       String?   @map("notes")
   createdAt   DateTime  @default(now()) @map("created_at")
 
+  // Replantation : campagnes générées suite à cette coupe
+  campagnesReplantation CampagnePlantation[]
+
   @@index([userId])
   @@index([arbreId])
   @@index([date])
@@ -718,6 +1031,10 @@ model OperationArbre {
   cout        Float?    @map("cout") // Coût en €
   datePrevue  DateTime? @map("date_prevue") // Date planifiée (si tâche future)
   fait        Boolean   @default(true) @map("fait")
+  dureeMinutes    Int?      @map("duree_minutes")
+  nbPersonnes     Int?      @default(1) @map("nb_personnes")
+  recurrence      String?   @map("recurrence") // "annuelle", "semestrielle", "mensuelle"
+  saisonRecommandee String? @map("saison_recommandee") // "hiver", "printemps", "ete", "automne"
   notes       String?   @map("notes")
   createdAt   DateTime  @default(now()) @map("created_at")
 
@@ -725,7 +1042,226 @@ model OperationArbre {
   @@index([arbreId])
   @@index([type])
   @@index([fait])
+  @@index([datePrevue])
   @@map("operations_arbres")
+}
+
+// ============================================================
+// MODULE VERGER - ZONES, POLLINISATION, SANTÉ
+// ============================================================
+
+/// Zones de verger (regroupement spatial d'arbres)
+model ZoneVerger {
+  id              Int       @id @default(autoincrement())
+  userId          String    @map("user_id")
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  nom             String    @map("nom")
+  type            String    @default("verger") @map("type") // "verger", "haie", "bosquet", "agroforesterie"
+  surface         Float?    @map("surface") // m²
+  exposition      String?   @map("exposition") // "nord", "sud", "est", "ouest", "plat"
+  altitude        Int?      @map("altitude") // mètres
+  protectionVent  String?   @map("protection_vent") // "aucune", "haie", "mur", "filet"
+  typeSol         String?   @map("type_sol")
+  irrigation      String?   @map("irrigation") // "goutte_a_goutte", "aspersion", "micro_aspersion", "aucune"
+  notes           String?   @map("notes")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  // PROMPT 12 — Statut Bio
+  statutBio            String    @default("Conventionnel") @map("statut_bio")
+  dateDebutConversion  DateTime? @map("date_debut_conversion")
+  certificateur        String?   @map("certificateur")
+  nCertificat          String?   @map("n_certificat")
+
+  arbres          Arbre[]
+  campagnesPlantation CampagnePlantation[]
+
+  @@index([userId])
+  @@map("zones_verger")
+}
+
+/// Compatibilités de pollinisation entre arbres
+model PollinisationArbre {
+  id                   Int    @id @default(autoincrement())
+  arbrePolliniseId     Int    @map("arbre_pollinise_id")
+  arbrePollinise       Arbre  @relation("ArbrePollinise", fields: [arbrePolliniseId], references: [id], onDelete: Cascade)
+  arbrePollinisateurId Int    @map("arbre_pollinisateur_id")
+  arbrePollinisateur   Arbre  @relation("ArbrePollinisateur", fields: [arbrePollinisateurId], references: [id], onDelete: Cascade)
+  compatibilite        String @default("bonne") @map("compatibilite") // "excellente", "bonne", "partielle", "incompatible"
+  notes                String? @map("notes")
+
+  @@unique([arbrePolliniseId, arbrePollinisateurId])
+  @@index([arbrePolliniseId])
+  @@index([arbrePollinisateurId])
+  @@map("pollinisation_arbres")
+}
+
+/// Observations de santé des arbres (fiche santé longitudinale)
+model ObservationSante {
+  id             Int       @id @default(autoincrement())
+  userId         String    @map("user_id")
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  arbreId        Int       @map("arbre_id")
+  arbre          Arbre     @relation(fields: [arbreId], references: [id], onDelete: Cascade)
+  date           DateTime  @default(now()) @map("date")
+  type           String    @map("type") // "maladie", "ravageur", "carence", "degat_climatique", "observation_generale", "vigueur"
+  symptome       String?   @map("symptome")
+  diagnostic     String?   @map("diagnostic") // Nom de la maladie/ravageur
+  gravite        String    @default("faible") @map("gravite") // "faible", "moyenne", "grave", "critique"
+  organe         String?   @map("organe") // "feuilles", "fruits", "branches", "tronc", "racines", "fleurs"
+  traitement     String?   @map("traitement") // Traitement appliqué (description de l'action)
+  methodeTraitement String? @map("methode_traitement") // "chimique", "biologique", "mecanique" — null = non renseigné
+  produit        String?   @map("produit") // Produit utilisé
+  doseAppliquee  Float?    @map("dose_appliquee")
+  uniteDose      String?   @map("unite_dose")
+  dar            Int?      @map("dar") // Délai Avant Récolte (jours)
+  numAMM         String?   @map("num_amm") // N° AMM du produit phyto
+  resolu         Boolean   @default(false) @map("resolu")
+  dateResolution DateTime? @map("date_resolution")
+  notes          String?   @map("notes")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([arbreId])
+  @@index([date])
+  @@index([type])
+  @@index([resolu])
+  @@map("observations_sante")
+}
+
+// ============================================================
+// MODULE REPLANTATION - CAMPAGNES DE PLANTATION
+// ============================================================
+
+/// Campagne de plantation (replantation forestière, verger, haie, agroforesterie)
+/// Permet de gérer en lot des plantations de plusieurs dizaines à milliers de plants
+/// sans créer un Arbre individuel par plant.
+model CampagnePlantation {
+  id              Int       @id @default(autoincrement())
+  userId          String    @map("user_id")
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  nom             String    @map("nom") // ex: "Replantation parcelle Nord 2026"
+  // Type de formation forestière / vergère
+  typeFormation   String    @map("type_formation") // "verger", "haie", "agroforesterie", "forestier_futaie", "forestier_taillis", "bosquet", "miscanthus"
+  // Nature de l'opération
+  nature          String    @default("boisement") @map("nature") // "boisement" (terrain nu), "replantation_apres_coupe" (anc. reboisement), "regarnissage", "replantation_apres_mortalite" (anc. remplacement), "renouvellement"
+  // Cause de la replantation (si applicable) - critique en sylviculture
+  cause           String?   @map("cause") // "coupe_programmee", "scolytes", "tempete", "secheresse", "incendie", "echec_plantation", "maladie", "renouvellement_normal", "autre"
+  // Peuplement précédent (avant la replantation)
+  peuplementPrecedent String? @map("peuplement_precedent") // Description libre du peuplement
+  essencePrecedente   String? @map("essence_precedente") // Essence dominante précédente
+  // Champs Assistant Plantation (PROMPT 09) — pertinents surtout pour verger / agroforesterie fruitière.
+  porteGreffeId       String?       @map("porte_greffe_id")
+  porteGreffe         PorteGreffe?  @relation(fields: [porteGreffeId], references: [id], onDelete: SetNull)
+  typePlant           String?       @map("type_plant") // Scion | Fléché | Baliveau | Haute-tige | Demi-tige | Basse-tige
+  conduite            String?       @map("conduite") // Gobelet | Axe central | Palmette | Espalier | Libre
+  labelProvenance     String?       @map("label_provenance") // MFR contrôlé | Végétal Local | Plante Bleue | Pépinière certifiée Bio | Aucun
+  ageAvantCoupe       Int?    @map("age_avant_coupe") // Age du peuplement au moment de la coupe
+  surfacePrecedenteHa Float?  @map("surface_precedente_ha") // Surface du peuplement initial (avant replantation partielle)
+  // Lien optionnel à la coupe d'origine
+  productionBoisId Int?     @map("production_bois_id")
+  productionBois   ProductionBois? @relation(fields: [productionBoisId], references: [id], onDelete: SetNull)
+  // Localisation
+  parcelleGeoId   String?   @map("parcelle_geo_id")
+  parcelleGeo     ParcelleGeo? @relation(fields: [parcelleGeoId], references: [id], onDelete: SetNull)
+  zoneVergerId    Int?      @map("zone_verger_id")
+  zoneVerger      ZoneVerger? @relation(fields: [zoneVergerId], references: [id], onDelete: SetNull)
+  surfaceHa       Float?    @map("surface_ha") // hectares
+  // Essence principale (mélange possible décrit dans notes)
+  especeId        String?   @map("espece_id")
+  espece          Espece?   @relation(fields: [especeId], references: [id], onDelete: SetNull)
+  essenceLibre    String?   @map("essence_libre") // texte libre si pas dans Espece
+  varieteOuProvenance String? @map("variete_ou_provenance") // "Chêne sessile RPV-Nord", "Douglas Washington"
+  // Densité et volumes
+  nombrePlants    Int?      @map("nombre_plants") // total commandé / planté
+  densitePlantsParHa Float? @map("densite_plants_par_ha")
+  ecartementRang  Float?    @map("ecartement_rang") // mètres entre rangs
+  ecartementPlant Float?    @map("ecartement_plant") // mètres entre plants
+  // Fournisseur & coût
+  pepiniere       String?   @map("pepiniere")
+  prixUnitaire    Float?    @map("prix_unitaire") // € par plant
+  budgetPrevu     Float?    @map("budget_prevu") // € total estimé
+  coutReel        Float?    @map("cout_reel") // € total réel
+  aidesObtenues   String?   @map("aides_obtenues") // texte libre : "DEFI Forêt 60%, Région 20%"
+  montantAides    Float?    @map("montant_aides") // € total des aides perçues
+  // Cycle de vie de la campagne
+  statut          String    @default("planifiee") @map("statut") // "planifiee", "prep_sol", "plantation", "suivi", "terminee", "echec"
+  datePlantationPrevue DateTime? @map("date_plantation_prevue")
+  datePlantationReelle DateTime? @map("date_plantation_reelle")
+  // Suivi de reprise (calculé / dernière obs)
+  tauxReprise     Float?    @map("taux_reprise") // % vivants (0-100)
+  dateDernObservation DateTime? @map("date_derniere_observation")
+  // Protection
+  protectionType  String?   @map("protection_type") // "manchon", "filet", "cloture", "aucune"
+  // Notes & objectifs
+  objectifs       String?   @map("objectifs") // "bois oeuvre", "BRF", "biomasse", "biodiversité", "fruits"
+  notes           String?   @map("notes")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  etapes          EtapeCampagne[]
+  observations    ObservationCampagne[]
+
+  @@index([userId])
+  @@index([typeFormation])
+  @@index([statut])
+  @@index([parcelleGeoId])
+  @@index([zoneVergerId])
+  @@index([productionBoisId])
+  @@map("campagnes_plantation")
+}
+
+/// Etapes du cycle d'une campagne de plantation (préparation, plantation, suivi)
+model EtapeCampagne {
+  id          Int       @id @default(autoincrement())
+  userId      String    @map("user_id")
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campagneId  Int       @map("campagne_id")
+  campagne    CampagnePlantation @relation(fields: [campagneId], references: [id], onDelete: Cascade)
+  type        String    @map("type") // "preparation_sol", "plantation", "regarnissage", "degagement", "elagage_formation", "protection_gibier", "fertilisation", "arrosage", "evaluation"
+  ordre       Int       @default(0) @map("ordre") // ordre dans le calendrier
+  datePrevue  DateTime? @map("date_prevue")
+  dateRealisation DateTime? @map("date_realisation")
+  fait        Boolean   @default(false) @map("fait")
+  description String?   @map("description")
+  cout        Float?    @map("cout") // €
+  dureeMinutes Int?     @map("duree_minutes")
+  nbPersonnes Int?      @default(1) @map("nb_personnes")
+  produit     String?   @map("produit") // produit utilisé (engrais, traitement)
+  quantite    Float?    @map("quantite")
+  unite       String?   @map("unite")
+  notes       String?   @map("notes")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([campagneId])
+  @@index([type])
+  @@index([fait])
+  @@index([datePrevue])
+  @@map("etapes_campagne")
+}
+
+/// Observations de suivi d'une campagne (taux de reprise, croissance)
+model ObservationCampagne {
+  id              Int       @id @default(autoincrement())
+  userId          String    @map("user_id")
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campagneId      Int       @map("campagne_id")
+  campagne        CampagnePlantation @relation(fields: [campagneId], references: [id], onDelete: Cascade)
+  date            DateTime  @default(now()) @map("date")
+  nbVivants       Int?      @map("nb_vivants")
+  nbMorts         Int?      @map("nb_morts")
+  nbManquants     Int?      @map("nb_manquants") // disparus / volés / mangés
+  tauxReprise     Float?    @map("taux_reprise") // % calculé à la date
+  hauteurMoyenneCm Float?   @map("hauteur_moyenne_cm")
+  vigueur         String?   @map("vigueur") // "excellente", "bonne", "moyenne", "faible"
+  problemes       String?   @map("problemes") // "gibier", "secheresse", "concurrence_herbeuse", "maladie"
+  notes           String?   @map("notes")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([campagneId])
+  @@index([date])
+  @@map("observations_campagne")
 }
 
 // ============================================================
@@ -878,6 +1414,8 @@ model LotAnimaux {
   statut            String        @default("actif") @map("statut") // "actif", "reforme", "termine"
   dateReforme       DateTime?     @map("date_reforme")
   notes             String?       @map("notes")
+  parcelleGeoId     String?       @map("parcelle_geo_id")
+  parcelleGeo       ParcelleGeo?  @relation(fields: [parcelleGeoId], references: [id], onDelete: SetNull)
   createdAt         DateTime      @default(now()) @map("created_at")
   updatedAt         DateTime      @updatedAt @map("updated_at")
 
@@ -936,6 +1474,9 @@ model VenteProduit {
   factureId     Int?         @map("facture_id")
   facture       Facture?     @relation("VenteProduitFacture", fields: [factureId], references: [id])
   paye          Boolean      @default(true) @map("paye")
+  annule        Boolean      @default(false) @map("annule")
+  dateAnnulation DateTime?   @map("date_annulation")
+  tauxTVA       Float        @default(5.5) @map("taux_tva")
   notes         String?      @map("notes")
   createdAt     DateTime     @default(now()) @map("created_at")
 
@@ -964,6 +1505,8 @@ model Abattage {
   factureId    Int?        @map("facture_id")
   facture      Facture?    @relation("AbattageFacture", fields: [factureId], references: [id])
   lieu         String?     @map("lieu") // "ferme", "abattoir"
+  annule       Boolean     @default(false) @map("annule")
+  dateAnnulation DateTime? @map("date_annulation")
   notes        String?     @map("notes")
   createdAt    DateTime    @default(now()) @map("created_at")
 
@@ -1175,6 +1718,10 @@ model VenteManuelle {
   clientNom    String?  @map("client_nom") // Nom client (si pas de fiche client)
   module       String?  @map("module") // "potager", "verger", "elevage", "general"
   paye         Boolean  @default(true) @map("paye")
+  // Traçabilité auto-compta
+  sourceType   String?  @map("source_type") // "recolte", "recolte_arbre", "vente_produit", "abattage", "intervention"
+  sourceId     Int?     @map("source_id")
+  auto         Boolean  @default(false) @map("auto") // true = généré automatiquement
   notes        String?  @map("notes")
   createdAt    DateTime @default(now()) @map("created_at")
 
@@ -1182,6 +1729,7 @@ model VenteManuelle {
   @@index([clientId])
   @@index([date])
   @@index([categorie])
+  @@index([sourceType, sourceId])
   @@map("ventes_manuelles")
 }
 
@@ -1205,6 +1753,10 @@ model DepenseManuelle {
   refFacture     String?  @map("ref_facture") // Référence facture fournisseur
   paye           Boolean  @default(true) @map("paye")
   dateEcheance   DateTime? @map("date_echeance")
+  // Traçabilité auto-compta
+  sourceType     String?  @map("source_type") // "intervention", "consommation_aliment", "achat_animal"
+  sourceId       Int?     @map("source_id")
+  auto           Boolean  @default(false) @map("auto") // true = généré automatiquement
   notes          String?  @map("notes")
   createdAt      DateTime @default(now()) @map("created_at")
 
@@ -1212,6 +1764,7 @@ model DepenseManuelle {
   @@index([fournisseurId])
   @@index([date])
   @@index([categorie])
+  @@index([sourceType, sourceId])
   @@map("depenses_manuelles")
 }
 
@@ -1290,6 +1843,60 @@ model UserStockEspece {
 }
 
 // ============================================================
+// MODULE INTERVENTIONS & TRAÇABILITÉ
+// ============================================================
+
+/// Interventions terrain (opérations culturales)
+model Intervention {
+  id              Int       @id @default(autoincrement())
+  userId          String    @map("user_id")
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date            DateTime  @default(now()) @map("date")
+  type            String    @map("type") // "semis", "plantation", "desherbage", "binage", "paillage", "traitement_phyto", "fertilisation", "recolte", "taille", "arrosage", "tuteurage", "autre"
+  // Liens vers les objets concernés
+  cultureId       Int?      @map("culture_id")
+  plancheId       String?   @map("planche_id")
+  arbreId         Int?      @map("arbre_id")
+  // Détails de l'intervention
+  description     String?   @map("description")
+  dureeMinutes    Int?      @map("duree_minutes") // Temps passé
+  nbPersonnes     Int?      @default(1) @map("nb_personnes")
+  coutMainOeuvre  Float?    @map("cout_main_oeuvre") // € main d'œuvre
+  coutTotal       Float?    @map("cout_total") // € total (main d'œuvre + intrants)
+  // Planification
+  datePrevue      DateTime? @map("date_prevue")
+  fait            Boolean   @default(true) @map("fait")
+  // Traitement phytosanitaire (réglementaire)
+  produitPhyto    String?   @map("produit_phyto") // Nom commercial
+  numAMM          String?   @map("num_amm") // Numéro AMM (Autorisation de Mise sur le Marché)
+  cibleTraitement String?   @map("cible_traitement") // Ravageur/maladie ciblé
+  doseAppliquee   Float?    @map("dose_appliquee") // Dose utilisée
+  uniteDose       String?   @map("unite_dose") // "L/ha", "kg/ha", "g/L"
+  surfaceTraitee  Float?    @map("surface_traitee") // m² ou ha
+  dar             Int?      @map("dar") // Délai Avant Récolte (jours)
+  delaiReentree   Int?      @map("delai_reentree") // Heures avant réentrée
+  conditionsMeteo String?   @map("conditions_meteo") // Conditions météo lors du traitement
+  // Intrants consommés
+  intrantNom      String?   @map("intrant_nom") // Nom de l'intrant utilisé
+  intrantQuantite Float?    @map("intrant_quantite")
+  intrantUnite    String?   @map("intrant_unite") // kg, L, g, unités
+  intrantCout     Float?    @map("intrant_cout") // Coût de l'intrant
+  intrantNumLot   String?   @map("intrant_num_lot") // Numéro de lot (traçabilité)
+  notes           String?   @map("notes")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@index([userId, date])
+  @@index([cultureId])
+  @@index([plancheId])
+  @@index([arbreId])
+  @@index([type])
+  @@index([fait])
+  @@map("interventions")
+}
+
+// ============================================================
 // CHAT IA (Assistant Ollama)
 // ============================================================
 
@@ -1321,4 +1928,205 @@ model ChatMessage {
 
   @@index([conversationId])
   @@map("chat_messages")
+}
+
+// ============================================================
+// MODULE MÉTÉO
+// ============================================================
+
+/// Cache des données météo par coordonnées et date
+model MeteoCache {
+  id              Int      @id @default(autoincrement())
+  lat             Float    @map("lat")
+  lng             Float    @map("lng")
+  date            DateTime @map("date") @db.Date
+  source          String   @default("open-meteo") @map("source") // "open-meteo", "station_perso"
+  // Températures (°C)
+  tempMin         Float?   @map("temp_min")
+  tempMax         Float?   @map("temp_max")
+  tempMoy         Float?   @map("temp_moy")
+  // Précipitations (mm)
+  precipitation   Float?   @map("precipitation")
+  // Évapotranspiration de référence (mm)
+  et0             Float?   @map("et0")
+  // Rayonnement solaire (MJ/m²)
+  radiation       Float?   @map("radiation")
+  // Ensoleillement (heures)
+  sunshine        Float?   @map("sunshine_hours")
+  // Humidité (%)
+  humidityMin     Float?   @map("humidity_min")
+  humidityMax     Float?   @map("humidity_max")
+  // Vent (km/h)
+  windSpeedMax    Float?   @map("wind_speed_max")
+  // Données brutes JSON (pour extensions futures)
+  rawData         Json?    @map("raw_data")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@unique([lat, lng, date, source])
+  @@index([lat, lng])
+  @@index([date])
+  @@map("meteo_cache")
+}
+
+/// Stations météo personnelles des utilisateurs
+model StationMeteo {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  nom         String   @map("nom")
+  provider    String   @map("provider") // "ecowitt", "wunderground", "netatmo"
+  stationId   String   @map("station_id")
+  apiKey      String?  @map("api_key")
+  appKey      String?  @map("app_key") // Ecowitt app key
+  lat         Float?   @map("lat")
+  lng         Float?   @map("lng")
+  active      Boolean  @default(true) @map("active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@map("stations_meteo")
+}
+
+// ============================================================
+// MODULE BOUTIQUE EN LIGNE - VITRINE PUBLIQUE
+// ============================================================
+
+/// Boutique en ligne d'un utilisateur (vitrine publique personnalisée)
+/// Accessible à /boutique/[slug]
+model Boutique {
+  id              String    @id @default(cuid())
+  userId          String    @unique @map("user_id")
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  slug            String    @unique // ex: "ferme-du-bois"
+  nom             String    @map("nom") // Nom commercial affiché
+  description     String?   @map("description") // Description longue
+  descCourte      String?   @map("desc_courte") // Pour SEO / meta
+  // Personnalisation visuelle
+  logoUrl         String?   @map("logo_url")
+  banniereUrl     String?   @map("banniere_url")
+  couleurPrimaire String    @default("#0d9488") @map("couleur_primaire") // teal-600
+  couleurSecondaire String  @default("#f59e0b") @map("couleur_secondaire") // amber-500
+  // Contact
+  email           String?   @map("email")
+  telephone       String?   @map("telephone")
+  adresse         String?   @map("adresse")
+  ville           String?   @map("ville")
+  codePostal      String?   @map("code_postal")
+  // Infos vente
+  horairesOuverture String? @map("horaires_ouverture") // texte libre multi-lignes
+  modesPaiement   String?   @map("modes_paiement") // ex: "Espèces, chèque, CB"
+  modesLivraison  String?   @map("modes_livraison") // ex: "Retrait à la ferme, marché du samedi"
+  conditionsVente String?   @map("conditions_vente") // texte libre
+  // Réseaux sociaux
+  facebookUrl     String?   @map("facebook_url")
+  instagramUrl    String?   @map("instagram_url")
+  siteWebUrl      String?   @map("site_web_url")
+  // Statut
+  active          Boolean   @default(false) @map("active") // Visible publiquement ?
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  produits        ProduitBoutique[]
+  commandes       CommandeBoutique[]
+
+  @@index([slug])
+  @@index([active])
+  @@map("boutiques")
+}
+
+/// Produit présenté dans la boutique
+model ProduitBoutique {
+  id              Int       @id @default(autoincrement())
+  userId          String    @map("user_id")
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  boutiqueId      String    @map("boutique_id")
+  boutique        Boutique  @relation(fields: [boutiqueId], references: [id], onDelete: Cascade)
+  nom             String    @map("nom")
+  description     String?   @map("description")
+  photoUrl        String?   @map("photo_url")
+  prix            Float     @map("prix") // prix TTC
+  unite           String    @default("pièce") @map("unite") // "kg", "pièce", "botte", "panier"
+  stockDispo      Float?    @map("stock_dispo") // null = illimité, sinon décrémenté à chaque commande
+  categorie       String?   @map("categorie") // "legumes", "fruits", "transformations", "viande", "oeufs", "miel", "autre"
+  ordre           Int       @default(0) @map("ordre") // tri d'affichage
+  actif           Boolean   @default(true) @map("actif")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  lignesCommande  LigneCommandeBoutique[]
+
+  @@index([userId])
+  @@index([boutiqueId])
+  @@index([actif])
+  @@index([categorie])
+  @@map("produits_boutique")
+}
+
+/// Commande passée par un client via la boutique en ligne
+model CommandeBoutique {
+  id              Int       @id @default(autoincrement())
+  userId          String    @map("user_id") // producteur
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  boutiqueId      String    @map("boutique_id")
+  boutique        Boutique  @relation(fields: [boutiqueId], references: [id], onDelete: Cascade)
+  // Numéro lisible (ex: CMD-2026-0001)
+  numero          String    @unique @map("numero")
+  // Client
+  clientNom       String    @map("client_nom")
+  clientEmail     String    @map("client_email")
+  clientTelephone String?   @map("client_telephone")
+  clientAdresse   String?   @map("client_adresse")
+  // Détails commande
+  total           Float     @map("total")
+  modeLivraison   String?   @map("mode_livraison") // libellé libre
+  dateRetraitSouhaitee DateTime? @map("date_retrait_souhaitee")
+  notesClient     String?   @map("notes_client")
+  notesPrivees    String?   @map("notes_privees")
+  // Workflow
+  statut          String    @default("nouveau") @map("statut") // "nouveau", "confirmee", "prete", "livree", "annulee"
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  lignes          LigneCommandeBoutique[]
+
+  @@index([userId])
+  @@index([boutiqueId])
+  @@index([statut])
+  @@index([createdAt])
+  @@map("commandes_boutique")
+}
+
+/// Ligne d'une commande boutique
+model LigneCommandeBoutique {
+  id              Int       @id @default(autoincrement())
+  commandeId      Int       @map("commande_id")
+  commande        CommandeBoutique @relation(fields: [commandeId], references: [id], onDelete: Cascade)
+  produitId       Int?      @map("produit_id")
+  produit         ProduitBoutique? @relation(fields: [produitId], references: [id], onDelete: SetNull)
+  nom             String    @map("nom") // snapshot du nom au moment de la commande
+  prixUnitaire    Float     @map("prix_unitaire")
+  unite           String    @map("unite")
+  quantite        Float     @map("quantite")
+  total           Float     @map("total")
+
+  @@index([commandeId])
+  @@index([produitId])
+  @@map("lignes_commande_boutique")
+}
+
+/// Préférences utilisateur (clé/valeur, extensible)
+/// Utilisé notamment pour : modulesActifs (JSON array des modules visibles)
+model UserPreference {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  key       String   @map("key") // ex: "modulesActifs", "theme", "langue"
+  value     String   @map("value") // valeur (JSON sérialisé si complexe)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([userId, key])
+  @@index([userId])
+  @@map("user_preferences")
 }

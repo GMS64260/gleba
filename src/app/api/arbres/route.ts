@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
+import { findTreeCareProfile, generateCareOperations } from "@/lib/tree-care-calendar"
 
 // Types d'arbres disponibles
 export const TYPES_ARBRES = [
@@ -16,14 +17,49 @@ export const TYPES_ARBRES = [
   { value: "haie", label: "Haie", color: "#84cc16" },
 ]
 
-// GET /api/arbres
-export async function GET() {
+// GET /api/arbres?parcelle=ID|all|none
+export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
   if (error) return error
 
   try {
+    // Filtre par parcelle (optionnel)
+    const parcelle = request.nextUrl.searchParams.get('parcelle')
+    const where: Record<string, unknown> = { userId: session!.user.id }
+    if (parcelle && parcelle !== 'all') {
+      if (parcelle === 'none') {
+        where.parcelleGeoId = null
+      } else {
+        where.parcelleGeoId = parcelle
+      }
+    }
+
+    // Filtres enrichis
+    const type = request.nextUrl.searchParams.get('type')
+    const zone = request.nextUrl.searchParams.get('zone')
+    const etat = request.nextUrl.searchParams.get('etat')
+    const productif = request.nextUrl.searchParams.get('productif')
+    if (type && type !== 'all') where.type = type
+    if (zone && zone !== 'all') {
+      if (zone === 'none') where.zoneId = null
+      else where.zoneId = parseInt(zone)
+    }
+    if (etat && etat !== 'all') where.etat = etat
+    if (productif === 'true') where.productif = true
+    if (productif === 'false') where.productif = false
+
     const arbres = await prisma.arbre.findMany({
-      where: { userId: session!.user.id },
+      where,
+      include: {
+        zone: { select: { id: true, nom: true } },
+        _count: {
+          select: {
+            recoltesArbres: true,
+            operationsArbres: true,
+            observationsSante: true,
+          },
+        },
+      },
       orderBy: { nom: "asc" },
     })
 
@@ -84,10 +120,53 @@ export async function POST(request: NextRequest) {
         productif: body.productif !== undefined ? body.productif : true,
         anneeProduction: body.anneeProduction ? parseInt(body.anneeProduction) : null,
         rendementMoyen: body.rendementMoyen ? parseFloat(body.rendementMoyen) : null,
+        // Nouveaux champs verger enrichi
+        formeTaille: body.formeTaille || null,
+        vigueur: body.vigueur || null,
+        distancePlantation: body.distancePlantation ? parseFloat(body.distancePlantation) : null,
+        distanceRang: body.distanceRang ? parseFloat(body.distanceRang) : null,
+        orientationRang: body.orientationRang || null,
+        dateGreffe: body.dateGreffe ? new Date(body.dateGreffe) : null,
+        typeGreffe: body.typeGreffe || null,
+        heuresFroidRequis: body.heuresFroidRequis ? parseInt(body.heuresFroidRequis) : null,
+        floraison: body.floraison || null,
+        groupePollinisation: body.groupePollinisation || null,
+        autofertile: body.autofertile || false,
+        periodeRecolte: body.periodeRecolte || null,
+        conservation: body.conservation || null,
+        zoneId: body.zoneId ? parseInt(body.zoneId) : null,
+        parcelleGeoId: body.parcelleGeoId || null,
+        // PROMPT 10 — porte-greffe FK + circonférence + GPS
+        porteGreffeId: body.porteGreffeId || null,
+        circonferenceCm: body.circonferenceCm != null ? parseFloat(body.circonferenceCm) : null,
+        gpsLat: body.gpsLat != null ? parseFloat(body.gpsLat) : null,
+        gpsLng: body.gpsLng != null ? parseFloat(body.gpsLng) : null,
+      },
+      include: {
+        zone: { select: { id: true, nom: true } },
+        _count: {
+          select: {
+            recoltesArbres: true,
+            operationsArbres: true,
+            observationsSante: true,
+          },
+        },
       },
     })
 
-    return NextResponse.json(arbre, { status: 201 })
+    // Auto-génération du calendrier d'entretien si espece connue
+    let calendrierGenere = false
+    if (arbre.espece) {
+      const profile = findTreeCareProfile(arbre.espece)
+      if (profile) {
+        const currentYear = new Date().getFullYear()
+        const operations = generateCareOperations(profile, currentYear, arbre.id, session!.user.id)
+        await prisma.operationArbre.createMany({ data: operations })
+        calendrierGenere = true
+      }
+    }
+
+    return NextResponse.json({ ...arbre, calendrierGenere }, { status: 201 })
   } catch (err) {
     console.error("POST /api/arbres error:", err)
     return NextResponse.json(

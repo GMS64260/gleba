@@ -10,17 +10,23 @@ export default auth((req) => {
   const isLoggedIn = !!req.auth
 
   // Routes publiques
-  const publicRoutes = ["/login", "/robots.txt", "/sitemap.xml", "/manifest.json"]
+  const publicRoutes = ["/login", "/register", "/mot-de-passe-oublie", "/reset-password", "/roadmap", "/robots.txt", "/sitemap.xml", "/manifest.json", "/feedback"]
   const isPublicRoute = publicRoutes.some((route) => pathname === route || pathname.startsWith(route + "/"))
 
-  // Routes API publiques (auth NextAuth + MCP avec bearer token)
+  // Routes API publiques (auth NextAuth + MCP avec bearer token + feedback par token)
   const isAuthApi = pathname.startsWith("/api/auth")
   const isMcpApi = pathname.startsWith("/api/mcp")
+  const isFeedbackTokenApi = /^\/api\/feedback\/[^/]+$/.test(pathname)
 
-  // Si route publique ou API auth/MCP, laisser passer
-  if (isPublicRoute || isAuthApi || isMcpApi) {
+  // Boutiques publiques : /boutique/[slug] (pas /boutique seul qui est admin)
+  // et /api/boutique/public/*
+  const isPublicBoutiquePage = /^\/boutique\/[^/]+/.test(pathname) && pathname !== "/boutique"
+  const isPublicBoutiqueApi = pathname.startsWith("/api/boutique/public/")
+
+  // Si route publique ou API auth/MCP/feedback, laisser passer
+  if (isPublicRoute || isAuthApi || isMcpApi || isFeedbackTokenApi || isPublicBoutiquePage || isPublicBoutiqueApi) {
     // Si connecté et sur login, rediriger vers home
-    if (isLoggedIn && pathname === "/login") {
+    if (isLoggedIn && (pathname === "/login" || pathname === "/register")) {
       return NextResponse.redirect(new URL("/", req.nextUrl))
     }
     return NextResponse.next()

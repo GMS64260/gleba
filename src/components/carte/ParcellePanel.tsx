@@ -1,0 +1,421 @@
+"use client"
+
+import { useState, useEffect } from 'react'
+import Link from 'next/link'
+import { X, Save, Trash2, Camera, Loader2, ExternalLink } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+
+interface ParcelleGeoData {
+  id: string
+  nom: string
+  geometry: string
+  surface?: number | null
+  commune?: string | null
+  section?: string | null
+  numero?: string | null
+  usage?: string | null
+  couleur?: string | null
+  notes?: string | null
+  typeSol?: string | null
+}
+
+interface ParcellePanelProps {
+  parcelle: ParcelleGeoData | null
+  isCreating: boolean
+  newGeometry: string | null
+  onSave: (data: Partial<ParcelleGeoData>) => void
+  onDelete: (id: string) => void
+  onClose: () => void
+}
+
+// Options pour le champ usage
+const USAGE_OPTIONS = [
+  { value: 'culture', label: 'Culture' },
+  { value: 'prairie', label: 'Prairie' },
+  { value: 'verger', label: 'Verger' },
+  { value: 'friche', label: 'Friche' },
+  { value: 'jardin', label: 'Jardin' },
+  { value: 'autre', label: 'Autre' },
+]
+
+// Options pour le type de sol
+const TYPE_SOL_OPTIONS = [
+  { value: 'argileux', label: 'Argileux' },
+  { value: 'limoneux', label: 'Limoneux' },
+  { value: 'sableux', label: 'Sableux' },
+  { value: 'calcaire', label: 'Calcaire' },
+  { value: 'mixte', label: 'Mixte' },
+]
+
+/**
+ * Panneau lateral droit pour afficher et editer les proprietes d'une parcelle.
+ * Gere deux modes : edition (parcelle existante) et creation (nouvelle geometrie).
+ */
+export default function ParcellePanel({
+  parcelle,
+  isCreating,
+  newGeometry,
+  onSave,
+  onDelete,
+  onClose,
+}: ParcellePanelProps) {
+  const [nom, setNom] = useState('')
+  const [usages, setUsages] = useState<string[]>([])
+  const [typeSol, setTypeSol] = useState<string | undefined>(undefined)
+  const [couleur, setCouleur] = useState('#16a34a')
+  const [notes, setNotes] = useState('')
+
+  // Reinitialiser les champs quand la parcelle change
+  useEffect(() => {
+    if (parcelle) {
+      setNom(parcelle.nom)
+      setUsages(parcelle.usage ? parcelle.usage.split(',').map(u => u.trim()) : [])
+      setTypeSol(parcelle.typeSol ?? undefined)
+      setCouleur(parcelle.couleur ?? '#16a34a')
+      setNotes(parcelle.notes ?? '')
+    } else if (isCreating) {
+      setNom('')
+      setUsages([])
+      setTypeSol(undefined)
+      setCouleur('#16a34a')
+      setNotes('')
+    }
+  }, [parcelle, isCreating])
+
+  // Determiner si le panneau est visible
+  const isVisible = parcelle !== null || (isCreating && newGeometry !== null)
+  if (!isVisible) return null
+
+  const isEditMode = parcelle !== null
+  const titre = isEditMode ? 'Modifier la parcelle' : 'Nouvelle parcelle'
+
+  // Formater la surface en hectares
+  const formatSurface = (surface: number | null | undefined): string => {
+    if (surface == null) return '--'
+    return `${surface.toFixed(2)} ha`
+  }
+
+  const handleSave = () => {
+    if (!nom.trim()) return
+
+    const data: Partial<ParcelleGeoData> = {
+      nom: nom.trim(),
+      usage: usages.length > 0 ? usages.join(', ') : null,
+      typeSol: typeSol ?? null,
+      couleur,
+      notes: notes.trim() || null,
+    }
+
+    // En mode creation, inclure la geometrie
+    if (isCreating && newGeometry) {
+      data.geometry = newGeometry
+    }
+
+    // En mode edition, inclure l'id
+    if (isEditMode && parcelle) {
+      data.id = parcelle.id
+    }
+
+    onSave(data)
+  }
+
+  const handleDelete = () => {
+    if (parcelle) {
+      onDelete(parcelle.id)
+    }
+  }
+
+  return (
+    <div className="w-80 bg-white shadow-lg h-full overflow-y-auto border-l flex flex-col">
+      {/* En-tete */}
+      <div className="flex items-center justify-between p-4 border-b">
+        <h2 className="text-lg font-semibold text-slate-900">{titre}</h2>
+        <Button variant="ghost" size="icon" onClick={onClose}>
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+
+      {/* Contenu du formulaire */}
+      <div className="flex-1 p-4 space-y-4">
+        {/* Nom (obligatoire) */}
+        <div className="space-y-2">
+          <Label htmlFor="parcelle-nom">Nom *</Label>
+          <Input
+            id="parcelle-nom"
+            value={nom}
+            onChange={(e) => setNom(e.target.value)}
+            placeholder="Nom de la parcelle"
+            required
+          />
+        </div>
+
+        {/* Usage (multi-selection) */}
+        <div className="space-y-2">
+          <Label>Usage</Label>
+          <div className="flex flex-wrap gap-2">
+            {USAGE_OPTIONS.map((opt) => {
+              const checked = usages.includes(opt.value)
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setUsages(prev =>
+                    prev.includes(opt.value)
+                      ? prev.filter(u => u !== opt.value)
+                      : [...prev, opt.value]
+                  )}
+                  className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${
+                    checked
+                      ? 'bg-emerald-100 border-emerald-400 text-emerald-800 font-medium'
+                      : 'bg-white border-slate-200 text-slate-600 hover:border-slate-400'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Type de sol */}
+        <div className="space-y-2">
+          <Label htmlFor="parcelle-sol">Type de sol</Label>
+          <Select value={typeSol} onValueChange={setTypeSol}>
+            <SelectTrigger id="parcelle-sol">
+              <SelectValue placeholder="Sélectionner un type de sol" />
+            </SelectTrigger>
+            <SelectContent>
+              {TYPE_SOL_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Couleur */}
+        <div className="space-y-2">
+          <Label htmlFor="parcelle-couleur">Couleur</Label>
+          <div className="flex items-center gap-2">
+            <input
+              id="parcelle-couleur"
+              type="color"
+              value={couleur}
+              onChange={(e) => setCouleur(e.target.value)}
+              className="h-9 w-12 rounded border border-input cursor-pointer"
+            />
+            <span className="text-sm text-muted-foreground">{couleur}</span>
+          </div>
+        </div>
+
+        {/* Notes */}
+        <div className="space-y-2">
+          <Label htmlFor="parcelle-notes">Notes</Label>
+          <Textarea
+            id="parcelle-notes"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Notes libres..."
+            rows={3}
+          />
+        </div>
+
+        {/* Informations en lecture seule (mode edition uniquement) */}
+        {isEditMode && parcelle && (
+          <div className="space-y-3 pt-2 border-t">
+            <h3 className="text-sm font-medium text-slate-500 uppercase tracking-wide">
+              Informations
+            </h3>
+
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Surface</span>
+                <span className="font-medium">{formatSurface(parcelle.surface)}</span>
+              </div>
+
+              {parcelle.commune && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Commune</span>
+                  <span className="font-medium">{parcelle.commune}</span>
+                </div>
+              )}
+
+              {parcelle.section && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Section</span>
+                  <span className="font-medium">{parcelle.section}</span>
+                </div>
+              )}
+
+              {parcelle.numero && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Numero</span>
+                  <span className="font-medium">{parcelle.numero}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Boutons d'action */}
+      <div className="p-4 border-t space-y-2">
+        <Button
+          onClick={handleSave}
+          disabled={!nom.trim()}
+          className="w-full bg-green-600 hover:bg-green-700 text-white"
+        >
+          <Save className="h-4 w-4 mr-2" />
+          Enregistrer
+        </Button>
+
+        {isEditMode && (
+          <Button
+            variant="destructive"
+            onClick={handleDelete}
+            className="w-full"
+          >
+            <Trash2 className="h-4 w-4 mr-2" />
+            Supprimer
+          </Button>
+        )}
+      </div>
+
+      {/* Export satellite vers plan 2D */}
+      {isEditMode && parcelle && <SatelliteExport geometry={parcelle.geometry} parcelleId={parcelle.id} />}
+    </div>
+  )
+}
+
+import { settingsKey } from '@/hooks/use-settings'
+
+/**
+ * Calcule le bounding box d'un polygone GeoJSON
+ */
+function getBoundingBox(geojsonStr: string) {
+  try {
+    const geo = JSON.parse(geojsonStr)
+    const coords: [number, number][] =
+      geo.type === 'MultiPolygon'
+        ? geo.coordinates.flat(2)
+        : geo.coordinates[0]
+    let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity
+    for (const [lng, lat] of coords) {
+      if (lng < minLng) minLng = lng
+      if (lat < minLat) minLat = lat
+      if (lng > maxLng) maxLng = lng
+      if (lat > maxLat) maxLat = lat
+    }
+    // Marge de 5% pour ne pas coller aux bords
+    const dLng = (maxLng - minLng) * 0.05
+    const dLat = (maxLat - minLat) * 0.05
+    return {
+      lng1: minLng - dLng,
+      lat1: minLat - dLat,
+      lng2: maxLng + dLng,
+      lat2: maxLat + dLat,
+    }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Bloc d'export de l'image satellite vers le plan 2D
+ */
+function SatelliteExport({ geometry, parcelleId }: { geometry: string; parcelleId: string }) {
+  const [capturing, setCapturing] = useState(false)
+  const [captured, setCaptured] = useState(false)
+
+  const handleCapture = async () => {
+    const bbox = getBoundingBox(geometry)
+    if (!bbox) return
+
+    setCapturing(true)
+    setCaptured(false)
+
+    try {
+      const res = await fetch(
+        `/api/carte/satellite?bbox=${bbox.lng1},${bbox.lat1},${bbox.lng2},${bbox.lat2}&width=1280&height=1024`
+      )
+      if (!res.ok) throw new Error('Erreur satellite')
+
+      const data = await res.json()
+
+      // Sauvegarder dans les settings spécifiques à cette parcelle
+      const key = settingsKey(parcelleId)
+      const stored = localStorage.getItem(key)
+      const settings = stored ? JSON.parse(stored) : {}
+      settings.backgroundImage = data.image
+      settings.backgroundOpacity = 0.5
+      settings.backgroundScale = (data.dimensions.scaleX + data.dimensions.scaleY) / 2
+      settings.backgroundOffsetX = 0
+      settings.backgroundOffsetY = 0
+      settings.backgroundRotation = 0
+      settings.planWidth = Math.ceil(data.dimensions.widthMeters)
+      settings.planHeight = Math.ceil(data.dimensions.heightMeters)
+      localStorage.setItem(key, JSON.stringify(settings))
+
+      setCaptured(true)
+    } catch (err) {
+      console.error('Capture satellite:', err)
+    } finally {
+      setCapturing(false)
+    }
+  }
+
+  return (
+    <div className="p-4 border-t space-y-3">
+      <h3 className="text-sm font-medium text-slate-500 uppercase tracking-wide">
+        Plan 2D
+      </h3>
+      <p className="text-xs text-muted-foreground">
+        Utiliser la photo satellite de cette parcelle comme fond du plan 2D.
+      </p>
+
+      {!captured ? (
+        <Button
+          variant="outline"
+          onClick={handleCapture}
+          disabled={capturing}
+          className="w-full"
+        >
+          {capturing ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              Capture en cours...
+            </>
+          ) : (
+            <>
+              <Camera className="h-4 w-4 mr-2" />
+              Capturer le fond satellite
+            </>
+          )}
+        </Button>
+      ) : (
+        <div className="space-y-2">
+          <p className="text-sm text-green-700 font-medium">
+            Fond satellite applique au plan 2D.
+          </p>
+          <Link href={`/jardin?parcelle=${parcelleId}`}>
+            <Button variant="outline" className="w-full">
+              <ExternalLink className="h-4 w-4 mr-2" />
+              Ouvrir le plan 2D
+            </Button>
+          </Link>
+        </div>
+      )}
+    </div>
+  )
+}

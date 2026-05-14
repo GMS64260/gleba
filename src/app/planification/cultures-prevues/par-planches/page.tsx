@@ -8,6 +8,7 @@ import * as React from "react"
 import { Suspense } from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
+import { formatSemaine } from "@/lib/assistant-helpers"
 import { ColumnDef } from "@tanstack/react-table"
 import { ArrowLeft, LayoutGrid, CheckCircle2, XCircle } from "lucide-react"
 
@@ -40,9 +41,6 @@ interface CulturePrevue {
   existante: boolean
 }
 
-function formatSemaine(s: number | null): string {
-  return s ? `S${s}` : "-"
-}
 
 const columns: ColumnDef<CulturePrevue>[] = [
   {
@@ -78,7 +76,7 @@ const columns: ColumnDef<CulturePrevue>[] = [
   },
   {
     accessorKey: "especeId",
-    header: "Espece",
+    header: "Espèce",
     cell: ({ row }) => {
       const culture = row.original
       return (
@@ -106,7 +104,7 @@ const columns: ColumnDef<CulturePrevue>[] = [
   },
   {
     accessorKey: "semaineRecolte",
-    header: "Recolte",
+    header: "Récolte",
     cell: ({ getValue }) => formatSemaine(getValue() as number | null),
   },
   {
@@ -122,7 +120,7 @@ const columns: ColumnDef<CulturePrevue>[] = [
       return existante ? (
         <CheckCircle2 className="h-4 w-4 text-green-600" />
       ) : (
-        <XCircle className="h-4 w-4 text-gray-400" />
+        <XCircle className="h-4 w-4 text-slate-400" />
       )
     },
   },
@@ -156,7 +154,7 @@ function CulturesPrevuesParPlanchesContent() {
       toast({
         variant: "destructive",
         title: "Erreur",
-        description: "Impossible de charger les cultures prevues",
+        description: "Impossible de charger les cultures prévues",
       })
     } finally {
       setIsLoading(false)
@@ -168,7 +166,7 @@ function CulturesPrevuesParPlanchesContent() {
   }, [fetchData])
 
   const handleExport = () => {
-    const headers = ["Planche", "Ilot", "Rotation", "Annee Rot.", "Espece", "S.Semis", "S.Plantation", "S.Recolte", "Surface (m2)", "Statut"]
+    const headers = ["Planche", "Ilot", "Rotation", "Année Rot.", "Espèce", "S.Semis", "S.Plantation", "S.Récolte", "Surface (m2)", "Statut"]
     const rows = data.map(c => [
       c.plancheId,
       c.ilot || "",
@@ -179,7 +177,7 @@ function CulturesPrevuesParPlanchesContent() {
       c.semainePlantation?.toString() || "",
       c.semaineRecolte?.toString() || "",
       c.surface.toFixed(1),
-      c.existante ? "Creee" : "A creer",
+      c.existante ? "Créée" : "A créer",
     ])
 
     const csv = [headers, ...rows].map(r => r.join(";")).join("\n")
@@ -193,8 +191,9 @@ function CulturesPrevuesParPlanchesContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="border-b bg-white sticky top-0 z-50">
+    <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
+      <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
+      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link href="/?tab=planification">
@@ -205,7 +204,7 @@ function CulturesPrevuesParPlanchesContent() {
             </Link>
             <div className="flex items-center gap-2">
               <LayoutGrid className="h-6 w-6 text-blue-600" />
-              <h1 className="text-xl font-bold">Cultures prevues par planche</h1>
+              <h1 className="text-xl font-bold">Cultures prévues par planche</h1>
             </div>
           </div>
 
@@ -235,7 +234,7 @@ function CulturesPrevuesParPlanchesContent() {
         <div className="flex gap-2 mb-4">
           <Link href={`/planification/cultures-prevues?annee=${annee}`}>
             <Button variant="outline" size="sm">
-              Par espece
+              Par espèce
             </Button>
           </Link>
           <Link href={`/planification/cultures-prevues/par-ilots?annee=${annee}`}>
@@ -261,7 +260,7 @@ function CulturesPrevuesParPlanchesContent() {
           onRefresh={fetchData}
           onExport={handleExport}
           searchPlaceholder="Rechercher..."
-          emptyMessage="Aucune culture prevue."
+          emptyMessage="Aucune culture prévue."
         />
       </main>
     </div>

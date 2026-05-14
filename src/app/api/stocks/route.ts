@@ -102,7 +102,7 @@ export async function GET(request: NextRequest) {
       especeTypeFilter = { in: ['legume', 'aromatique', 'engrais_vert'] }
     }
 
-    // Helper: récupérer les stocks variétés per-user jointés avec la variété de référence
+    // Helper: récupérer les stocks varietes per-user jointés avec la variete de reference
     const getVarieteStocks = async () => {
       const userStocks = await prisma.userStockVariete.findMany({
         where: {
@@ -135,7 +135,7 @@ export async function GET(request: NextRequest) {
       }))
     }
 
-    // Aussi inclure les variétés sans stock per-user (pour l'affichage complet)
+    // Aussi inclure les varietes sans stock per-user (pour l'affichage complet)
     const getAllVarietes = async () => {
       const varietes = await prisma.variete.findMany({
         where: especeTypeFilter ? { espece: { type: especeTypeFilter } } : undefined,

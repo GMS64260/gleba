@@ -1,5 +1,5 @@
 /**
- * API Routes pour un ITP spécifique (référentiel global)
+ * API Routes pour un ITP spécifique (referentiel global)
  * GET /api/itps/[id] - Détail d'un ITP
  * PUT /api/itps/[id] - Modifier un ITP
  * DELETE /api/itps/[id] - Supprimer un ITP
@@ -92,7 +92,7 @@ export async function PUT(
 
     const data = validationResult.data
 
-    // Vérifier que l'espèce existe si fournie
+    // Vérifier que l'espece existe si fournie
     if (data.especeId) {
       const espece = await prisma.espece.findUnique({
         where: { id: data.especeId },

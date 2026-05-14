@@ -40,6 +40,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 import { ConsommationsTab } from "@/components/stocks/ConsommationsTab"
+import { formatStockSemantic } from "@/lib/format-utils"
+import { AlertTriangle } from "lucide-react"
 
 interface VarieteStock {
   id: string
@@ -133,13 +135,24 @@ function StockInput({
     )
   }
 
+  const isNegative = value !== null && value < 0
+
   return (
     <button
       onClick={() => setEditing(true)}
-      className="px-2 py-1 rounded hover:bg-green-50 hover:ring-1 hover:ring-green-300 min-w-[60px] text-left transition-all group relative"
-      title="Cliquer pour éditer"
+      className={`px-2 py-1 rounded hover:bg-green-50 hover:ring-1 hover:ring-green-300 min-w-[60px] text-left transition-all group relative ${isNegative ? "bg-red-50 ring-1 ring-red-300" : ""}`}
+      title={isNegative ? "Stock négatif — vérifier les consommations" : "Cliquer pour éditer"}
     >
-      <span className={value !== null ? "" : "text-muted-foreground"}>
+      <span
+        className={
+          value === null
+            ? "text-muted-foreground"
+            : isNegative
+            ? "text-red-600 font-bold"
+            : ""
+        }
+      >
+        {isNegative && "⚠️ "}
         {value !== null ? `${value} ${unit}` : "Cliquer pour ajouter"}
       </span>
       <span className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -254,6 +267,24 @@ function StocksPageContent() {
     })
   }
 
+  // Compter les stocks négatifs (impossible métier-ment)
+  const stocksNegatifs = React.useMemo(() => {
+    let count = 0
+    for (const v of data.graines) {
+      if (v.stockGraines !== null && v.stockGraines < 0) count++
+    }
+    for (const v of data.plants) {
+      if (v.stockPlants !== null && v.stockPlants < 0) count++
+    }
+    for (const f of data.fertilisants) {
+      if (f.stock !== null && f.stock < 0) count++
+    }
+    for (const e of data.recoltes) {
+      if (e.inventaire !== null && e.inventaire < 0) count++
+    }
+    return count
+  }, [data])
+
   // Filtrer par recherche
   const filterBySearch = <T extends { id: string; especeId?: string }>(items: T[]) => {
     if (!search) return items
@@ -284,8 +315,8 @@ function StocksPageContent() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <header className="border-b bg-white sticky top-0 z-50">
+      <div className="min-h-screen bg-slate-50">
+        <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
           <div className="container mx-auto px-4 py-4">
             <Skeleton className="h-8 w-64" />
           </div>
@@ -298,9 +329,10 @@ function StocksPageContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
+      <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
       {/* Header */}
-      <header className="border-b bg-white sticky top-0 z-50">
+      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link href={isArbresMode ? "/arbres" : "/"}>
@@ -341,6 +373,22 @@ function StocksPageContent() {
 
       {/* Content */}
       <main className="container mx-auto px-4 py-6 max-w-[1600px]">
+        {/* Alerte stocks négatifs */}
+        {stocksNegatifs > 0 && (
+          <div className="mb-4 p-4 bg-red-50 rounded-lg border border-red-300 flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-red-800">
+                {stocksNegatifs} stock{stocksNegatifs > 1 ? "s sont" : " est"} en valeur négative
+              </p>
+              <p className="text-sm text-red-700 mt-1">
+                Un stock ne peut pas être négatif dans la réalité. Vérifiez les consommations
+                saisies, les recoltes enregistrées ou la valeur d&apos;inventaire initiale.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Info édition */}
         <div className="mb-4 p-4 bg-green-50 rounded-lg border border-green-200">
           <p className="text-sm text-green-800 flex items-center gap-2">
@@ -364,7 +412,7 @@ function StocksPageContent() {
               </CardHeader>
               <CardContent>
                 <p className="text-2xl font-bold">{data.plants.length}</p>
-                <p className="text-sm text-muted-foreground">varietes disponibles</p>
+                <p className="text-sm text-muted-foreground">variétés disponibles</p>
               </CardContent>
             </Card>
             <Card>
@@ -378,7 +426,7 @@ function StocksPageContent() {
                 <p className="text-2xl font-bold">
                   {data.plants.filter(p => p.stockPlants && p.stockPlants > 0).length}
                 </p>
-                <p className="text-sm text-muted-foreground">varietes avec stock</p>
+                <p className="text-sm text-muted-foreground">variétés avec stock</p>
               </CardContent>
             </Card>
           </div>
@@ -393,7 +441,7 @@ function StocksPageContent() {
               </CardHeader>
               <CardContent>
                 <p className="text-2xl font-bold">{data.graines.length}</p>
-                <p className="text-sm text-muted-foreground">varietes en stock</p>
+                <p className="text-sm text-muted-foreground">variétés en stock</p>
               </CardContent>
             </Card>
             <Card>
@@ -405,7 +453,7 @@ function StocksPageContent() {
               </CardHeader>
               <CardContent>
                 <p className="text-2xl font-bold">{data.plants.length}</p>
-                <p className="text-sm text-muted-foreground">varietes en stock</p>
+                <p className="text-sm text-muted-foreground">variétés en stock</p>
               </CardContent>
             </Card>
             <Card>
@@ -424,12 +472,12 @@ function StocksPageContent() {
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
                   <Apple className="h-4 w-4 text-red-600" />
-                  Recoltes
+                  Récoltes
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-2xl font-bold">{data.recoltes.length}</p>
-                <p className="text-sm text-muted-foreground">especes en stock</p>
+                <p className="text-sm text-muted-foreground">espèces en stock</p>
               </CardContent>
             </Card>
           </div>
@@ -479,8 +527,8 @@ function StocksPageContent() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Variete</TableHead>
-                      <TableHead>Espece</TableHead>
+                      <TableHead>Variété</TableHead>
+                      <TableHead>Espèce</TableHead>
                       <TableHead>Graines/g</TableHead>
                       <TableHead>Stock (g)</TableHead>
                       <TableHead>Fournisseur</TableHead>
@@ -536,8 +584,8 @@ function StocksPageContent() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Variete</TableHead>
-                      <TableHead>Espece</TableHead>
+                      <TableHead>Variété</TableHead>
+                      <TableHead>Espèce</TableHead>
                       <TableHead>Stock (plants)</TableHead>
                       <TableHead>Fournisseur</TableHead>
                       <TableHead>Date MAJ</TableHead>
@@ -637,16 +685,16 @@ function StocksPageContent() {
           <TabsContent value="recoltes">
             <Card>
               <CardHeader>
-                <CardTitle>Inventaire des recoltes</CardTitle>
+                <CardTitle>Inventaire des récoltes</CardTitle>
                 <CardDescription>
-                  Stock de recoltes en conservation. Cliquez sur une valeur pour la modifier.
+                  Stock de récoltes en conservation. Cliquez sur une valeur pour la modifier.
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Espece</TableHead>
+                      <TableHead>Espèce</TableHead>
                       <TableHead>Famille</TableHead>
                       <TableHead>Stock (kg)</TableHead>
                       <TableHead>Date inventaire</TableHead>
@@ -686,7 +734,7 @@ function StocksPageContent() {
                     {filterRecoltes(data.recoltes).length === 0 && (
                       <TableRow>
                         <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
-                          Aucune recolte en stock
+                          Aucune récolte en stock
                         </TableCell>
                       </TableRow>
                     )}
@@ -709,8 +757,8 @@ function StocksPageContent() {
 // Loading fallback for Suspense
 function StocksLoadingFallback() {
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="border-b bg-white sticky top-0 z-50">
+    <div className="min-h-screen bg-slate-50">
+      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4">
           <Skeleton className="h-8 w-64" />
         </div>

@@ -1,9 +1,9 @@
 /**
  * API Espèces Animales - Référentiel
- * GET /api/elevage/especes-animales - Liste des espèces
- * POST /api/elevage/especes-animales - Créer une espèce
- * PATCH /api/elevage/especes-animales?id=xxx - Modifier une espèce
- * DELETE /api/elevage/especes-animales?id=xxx - Supprimer une espèce
+ * GET /api/elevage/especes-animales - Liste des especes
+ * POST /api/elevage/especes-animales - Créer une espece
+ * PATCH /api/elevage/especes-animales?id=xxx - Modifier une espece
+ * DELETE /api/elevage/especes-animales?id=xxx - Supprimer une espece
  */
 
 import { NextRequest, NextResponse } from 'next/server'

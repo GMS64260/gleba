@@ -188,7 +188,7 @@ export function ConsommationsTab() {
     return <Skeleton className="h-96 w-full" />
   }
 
-  // Top 5 espèces par stock net
+  // Top 5 especes par stock net
   const topStocks = Object.entries(stocksNet)
     .sort(([, a], [, b]) => b.stockNet - a.stockNet)
     .slice(0, 5)

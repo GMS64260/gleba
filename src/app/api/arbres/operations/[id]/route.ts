@@ -91,10 +91,14 @@ export async function PUT(request: NextRequest, { params }: Params) {
         produit: body.produit,
         quantite: body.quantite,
         unite: body.unite,
-        cout: body.cout,
-        datePrevue: body.datePrevue ? new Date(body.datePrevue) : null,
+        cout: body.cout != null ? parseFloat(body.cout) : undefined,
+        datePrevue: body.datePrevue !== undefined ? (body.datePrevue ? new Date(body.datePrevue) : null) : undefined,
         fait: body.fait,
         notes: body.notes,
+        dureeMinutes: body.dureeMinutes !== undefined ? (body.dureeMinutes ? parseInt(body.dureeMinutes) : null) : undefined,
+        nbPersonnes: body.nbPersonnes !== undefined ? (body.nbPersonnes ? parseInt(body.nbPersonnes) : null) : undefined,
+        recurrence: body.recurrence !== undefined ? (body.recurrence || null) : undefined,
+        saisonRecommandee: body.saisonRecommandee !== undefined ? (body.saisonRecommandee || null) : undefined,
       },
       include: {
         arbre: {

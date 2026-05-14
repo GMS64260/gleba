@@ -38,7 +38,7 @@ export function PlancheHistory({ plancheId }: PlancheHistoryProps) {
   }, [plancheId])
 
   if (loading) {
-    return <div className="p-4 text-center text-gray-500">Chargement...</div>
+    return <div className="p-4 text-center text-slate-500">Chargement...</div>
   }
 
   if (error) {
@@ -46,7 +46,7 @@ export function PlancheHistory({ plancheId }: PlancheHistoryProps) {
   }
 
   if (!history) {
-    return <div className="p-4 text-center text-gray-500">Aucune donnée</div>
+    return <div className="p-4 text-center text-slate-500">Aucune donnée</div>
   }
 
   const filteredCultures =
@@ -59,7 +59,7 @@ export function PlancheHistory({ plancheId }: PlancheHistoryProps) {
       ? history.fertilisations
       : history.fertilisations.filter((f) => new Date(f.date).getFullYear() === selectedYear)
 
-  // Grouper les cultures par année
+  // Grouper les cultures par annee
   const culturesByYear = filteredCultures.reduce(
     (acc, culture) => {
       const year = culture.annee
@@ -76,13 +76,13 @@ export function PlancheHistory({ plancheId }: PlancheHistoryProps) {
 
   return (
     <div className="space-y-6">
-      {/* Filtre par année */}
+      {/* Filtre par annee */}
       <div className="flex items-center gap-2">
-        <label className="text-sm font-medium text-gray-700">Année :</label>
+        <label className="text-sm font-medium text-slate-700">Année :</label>
         <select
           value={selectedYear}
           onChange={(e) => setSelectedYear(e.target.value === 'all' ? 'all' : Number(e.target.value))}
-          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+          className="rounded-md border border-slate-300 px-3 py-1.5 text-sm"
         >
           <option value="all">Toutes</option>
           {history.yearsAvailable.map((year) => (
@@ -95,14 +95,14 @@ export function PlancheHistory({ plancheId }: PlancheHistoryProps) {
 
       {/* Cultures */}
       <div>
-        <h3 className="mb-3 text-lg font-semibold text-gray-900">Cultures</h3>
+        <h3 className="mb-3 text-lg font-semibold text-slate-900">Cultures</h3>
         {years.length === 0 ? (
-          <p className="text-sm text-gray-500">Aucune culture enregistrée</p>
+          <p className="text-sm text-slate-500">Aucune culture enregistrée</p>
         ) : (
           <div className="space-y-6">
             {years.map((year) => (
-              <div key={year} className="rounded-lg border border-gray-200 bg-white p-4">
-                <h4 className="mb-3 text-base font-medium text-gray-800">{year}</h4>
+              <div key={year} className="rounded-lg border border-slate-200 bg-white p-4">
+                <h4 className="mb-3 text-base font-medium text-slate-800">{year}</h4>
                 <div className="space-y-3">
                   {culturesByYear[year].map((culture) => (
                     <CultureCard key={culture.id} culture={culture} />
@@ -117,34 +117,34 @@ export function PlancheHistory({ plancheId }: PlancheHistoryProps) {
       {/* Fertilisations */}
       {filteredFertilisations.length > 0 && (
         <div>
-          <h3 className="mb-3 text-lg font-semibold text-gray-900">Fertilisations</h3>
-          <div className="rounded-lg border border-gray-200 bg-white">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+          <h3 className="mb-3 text-lg font-semibold text-slate-900">Fertilisations</h3>
+          <div className="rounded-lg border border-slate-200 bg-white">
+            <table className="min-w-full divide-y divide-slate-200">
+              <thead className="bg-slate-50">
                 <tr>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase text-gray-500">
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase text-slate-500">
                     Date
                   </th>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase text-gray-500">
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase text-slate-500">
                     Fertilisant
                   </th>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase text-gray-500">
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase text-slate-500">
                     Quantité
                   </th>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase text-gray-500">
+                  <th className="px-4 py-2 text-left text-xs font-medium uppercase text-slate-500">
                     N-P-K
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-slate-100">
                 {filteredFertilisations.map((f) => (
                   <tr key={f.id}>
-                    <td className="whitespace-nowrap px-4 py-2 text-sm text-gray-900">
+                    <td className="whitespace-nowrap px-4 py-2 text-sm text-slate-900">
                       {formatDate(f.date)}
                     </td>
-                    <td className="px-4 py-2 text-sm text-gray-900">{f.fertilisantNom}</td>
-                    <td className="px-4 py-2 text-sm text-gray-900">{f.quantite} kg</td>
-                    <td className="px-4 py-2 text-sm text-gray-500">
+                    <td className="px-4 py-2 text-sm text-slate-900">{f.fertilisantNom}</td>
+                    <td className="px-4 py-2 text-sm text-slate-900">{f.quantite} kg</td>
+                    <td className="px-4 py-2 text-sm text-slate-500">
                       {f.n ?? '-'}-{f.p ?? '-'}-{f.k ?? '-'}
                     </td>
                   </tr>
@@ -160,20 +160,20 @@ export function PlancheHistory({ plancheId }: PlancheHistoryProps) {
 
 function CultureCard({ culture }: { culture: CultureHistory }) {
   const stateColors: Record<string, string> = {
-    Planifiée: 'text-gray-500',
+    Planifiée: 'text-slate-500',
     Semée: 'text-blue-600',
     Plantée: 'text-green-600',
     'En récolte': 'text-orange-600',
-    Terminée: 'text-gray-400',
+    Terminée: 'text-slate-400',
     Vivace: 'text-purple-600',
-    'Non significative': 'text-gray-400',
+    'Non significative': 'text-slate-400',
   }
 
   return (
-    <div className="flex items-start justify-between rounded-md bg-gray-50 p-3">
+    <div className="flex items-start justify-between rounded-md bg-slate-50 p-3">
       <div className="space-y-1">
         <div className="flex items-center gap-2">
-          <span className="font-medium text-gray-900">{culture.especeNom}</span>
+          <span className="font-medium text-slate-900">{culture.especeNom}</span>
           {culture.familleId && (
             <FamilyBadge
               familleId={culture.familleId}
@@ -182,8 +182,8 @@ function CultureCard({ culture }: { culture: CultureHistory }) {
             />
           )}
         </div>
-        <div className="flex items-center gap-4 text-sm text-gray-500">
-          <span className={stateColors[culture.etat] || 'text-gray-500'}>{culture.etat}</span>
+        <div className="flex items-center gap-4 text-sm text-slate-500">
+          <span className={stateColors[culture.etat] || 'text-slate-500'}>{culture.etat}</span>
           {culture.dateSemis && <span>Semis: {formatDate(culture.dateSemis)}</span>}
           {culture.datePlantation && <span>Plantation: {formatDate(culture.datePlantation)}</span>}
           {culture.dateRecolte && <span>Récolte: {formatDate(culture.dateRecolte)}</span>}
@@ -192,8 +192,8 @@ function CultureCard({ culture }: { culture: CultureHistory }) {
       {culture.totalRecolte > 0 && (
         <div className="text-right">
           <div className="text-lg font-semibold text-green-600">{culture.totalRecolte} kg</div>
-          <div className="text-xs text-gray-500">
-            {culture.recoltes.length} récolte{culture.recoltes.length > 1 ? 's' : ''}
+          <div className="text-xs text-slate-500">
+            {culture.recoltes.length} recolte{culture.recoltes.length > 1 ? 's' : ''}
           </div>
         </div>
       )}

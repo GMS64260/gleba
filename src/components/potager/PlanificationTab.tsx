@@ -7,6 +7,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { formatSemaine } from "@/lib/assistant-helpers"
 import { ColumnDef } from "@tanstack/react-table"
 import {
   Leaf,
@@ -37,7 +38,10 @@ interface Stats {
   totalCultures: number
   culturesExistantes: number
   culturesACreer: number
+  // surfaceTotale = surface planifiée (alimentée par getKpiMaraichage SSOT).
   surfaceTotale: number
+  surfaceCultivee?: number
+  surfacePlanifiee?: number
   recoltesTotales: number
   nbEspeces: number
   annee: number
@@ -68,7 +72,7 @@ interface ITPWithRelations {
 
 const planifLinks = [
   {
-    title: "Cultures prevues par espece",
+    title: "Cultures prévues par espèce",
     href: "/planification/cultures-prevues",
     icon: Leaf,
     color: "text-green-600",
@@ -89,14 +93,14 @@ const planifLinks = [
     bgColor: "bg-blue-50",
   },
   {
-    title: "Recoltes par mois",
+    title: "Récoltes par mois",
     href: "/planification/recoltes-prevues",
     icon: BarChart3,
     color: "text-purple-600",
     bgColor: "bg-purple-50",
   },
   {
-    title: "Recoltes par semaines",
+    title: "Récoltes par semaines",
     href: "/planification/recoltes-prevues/par-semaines",
     icon: CalendarRange,
     color: "text-indigo-600",
@@ -110,21 +114,21 @@ const planifLinks = [
     bgColor: "bg-pink-50",
   },
   {
-    title: "Creer cultures",
+    title: "Créer cultures",
     href: "/planification/creer-cultures",
     icon: FileStack,
     color: "text-teal-600",
     bgColor: "bg-teal-50",
   },
   {
-    title: "Semences necessaires",
+    title: "Semences nécessaires",
     href: "/planification/semences",
     icon: Sprout,
     color: "text-orange-600",
     bgColor: "bg-orange-50",
   },
   {
-    title: "Plants necessaires",
+    title: "Plants nécessaires",
     href: "/planification/plants",
     icon: Package,
     color: "text-cyan-600",
@@ -199,7 +203,7 @@ function PlanificationSubTab({ year }: { year: number }) {
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
         <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white">
           <CardHeader className="pb-1 pt-3 px-4">
-            <CardDescription className="text-green-100 text-xs">Cultures prevues</CardDescription>
+            <CardDescription className="text-green-100 text-xs">Cultures prévues</CardDescription>
             <CardTitle className="text-2xl">
               {isLoading ? <Skeleton className="h-8 w-12 bg-green-400" /> : stats?.totalCultures || 0}
             </CardTitle>
@@ -211,19 +215,25 @@ function PlanificationSubTab({ year }: { year: number }) {
 
         <Card className="bg-gradient-to-br from-amber-500 to-orange-500 text-white">
           <CardHeader className="pb-1 pt-3 px-4">
-            <CardDescription className="text-amber-100 text-xs">Surface totale</CardDescription>
+            <CardDescription className="text-amber-100 text-xs">Surface planifiée</CardDescription>
             <CardTitle className="text-2xl">
-              {isLoading ? <Skeleton className="h-8 w-16 bg-amber-400" /> : `${stats?.surfaceTotale || 0} m2`}
+              {isLoading ? <Skeleton className="h-8 w-16 bg-amber-400" /> : `${stats?.surfacePlanifiee ?? stats?.surfaceTotale ?? 0} m²`}
             </CardTitle>
           </CardHeader>
           <CardContent className="pb-3 px-4">
-            <p className="text-xs text-amber-100">Planifiee pour {year}</p>
+            {stats && stats.surfaceCultivee !== undefined && stats.surfaceCultivee !== stats.surfacePlanifiee ? (
+              <p className="text-xs text-amber-100">
+                Dont cultivée {stats.surfaceCultivee} m²
+              </p>
+            ) : (
+              <p className="text-xs text-amber-100">Planifiée pour {year}</p>
+            )}
           </CardContent>
         </Card>
 
         <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white">
           <CardHeader className="pb-1 pt-3 px-4">
-            <CardDescription className="text-blue-100 text-xs">Recoltes prevues</CardDescription>
+            <CardDescription className="text-blue-100 text-xs">Récoltes prévues</CardDescription>
             <CardTitle className="text-2xl">
               {isLoading ? <Skeleton className="h-8 w-16 bg-blue-400" /> : `${stats?.recoltesTotales || 0} kg`}
             </CardTitle>
@@ -235,13 +245,13 @@ function PlanificationSubTab({ year }: { year: number }) {
 
         <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white">
           <CardHeader className="pb-1 pt-3 px-4">
-            <CardDescription className="text-purple-100 text-xs">Especes</CardDescription>
+            <CardDescription className="text-purple-100 text-xs">Espèces</CardDescription>
             <CardTitle className="text-2xl">
               {isLoading ? <Skeleton className="h-8 w-10 bg-purple-400" /> : stats?.nbEspeces || 0}
             </CardTitle>
           </CardHeader>
           <CardContent className="pb-3 px-4">
-            <p className="text-xs text-purple-100">Varietes planifiees</p>
+            <p className="text-xs text-purple-100">Variétés planifiees</p>
           </CardContent>
         </Card>
       </div>
@@ -276,10 +286,6 @@ function PlanificationSubTab({ year }: { year: number }) {
 // ITPs
 // ============================================================
 
-function formatSemaine(semaine: number | null): string {
-  if (!semaine) return "-"
-  return `S${semaine}`
-}
 
 const itpColumns: ColumnDef<ITPWithRelations>[] = [
   {
@@ -298,7 +304,7 @@ const itpColumns: ColumnDef<ITPWithRelations>[] = [
   },
   {
     accessorKey: "espece.id",
-    header: "Espece",
+    header: "Espèce",
     cell: ({ row }) => row.original.espece?.id || "-",
   },
   {
@@ -321,7 +327,7 @@ const itpColumns: ColumnDef<ITPWithRelations>[] = [
   },
   {
     accessorKey: "semaineRecolte",
-    header: "Recolte",
+    header: "Récolte",
     cell: ({ getValue }) => (
       <Badge variant="outline" className="text-xs">
         {formatSemaine(getValue() as number | null)}
@@ -372,7 +378,7 @@ function ItpsSubTab() {
   return (
     <div className="space-y-3">
       <div className="p-3 bg-indigo-50 rounded-lg border border-indigo-200 text-sm text-indigo-800">
-        <p className="font-medium">Itineraires Techniques</p>
+        <p className="font-medium">Itinéraires Techniques</p>
         <p className="mt-1 text-indigo-700">
           Les ITPs definissent les parametres de culture pour chaque espece : espacement, dates de
           semis/plantation/recolte, nombre de rangs.
@@ -404,7 +410,7 @@ function StocksSubTab() {
       <div className="p-3 bg-violet-50 rounded-lg border border-violet-200 text-sm text-violet-800">
         <p className="font-medium">Gestion des stocks</p>
         <p className="mt-1 text-violet-700">
-          Gerez vos inventaires de semences, plants et fertilisants.
+          Gérez vos inventaires de semences, plants et fertilisants.
         </p>
       </div>
       <div className="grid gap-4 md:grid-cols-3">
@@ -431,7 +437,7 @@ function StocksSubTab() {
                   <BarChart3 className="h-5 w-5 text-blue-600" />
                 </div>
                 <div>
-                  <CardTitle className="text-sm">Suivi recoltes</CardTitle>
+                  <CardTitle className="text-sm">Suivi récoltes</CardTitle>
                   <CardDescription className="text-xs">Production, ventes, pertes</CardDescription>
                 </div>
               </div>

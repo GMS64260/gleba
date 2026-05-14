@@ -130,7 +130,7 @@ export function ItpCalendarView() {
           <div className="w-4 h-3 bg-purple-500 rounded"></div>
           <span>Récolte</span>
         </div>
-        <span className="ml-auto text-muted-foreground">{itpsFiltres.length} itinéraires</span>
+        <span className="ml-auto text-muted-foreground">{itpsFiltres.length} itineraires</span>
       </div>
 
       {/* Tableau Gantt */}

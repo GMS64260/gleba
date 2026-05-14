@@ -62,7 +62,7 @@ const etatColors: Record<string, string> = {
   'Semée': 'bg-green-100 text-green-800',
   'Plantée': 'bg-lime-100 text-lime-800',
   'En récolte': 'bg-amber-100 text-amber-800',
-  'Terminée': 'bg-gray-100 text-gray-800',
+  'Terminée': 'bg-slate-100 text-slate-800',
 }
 
 // Fonction pour creer les colonnes avec les callbacks
@@ -129,7 +129,7 @@ function createColumns(
                     className={`p-1.5 rounded-md transition-colors ${
                       culture.semisFait
                         ? 'bg-orange-100 text-orange-600 hover:bg-orange-200'
-                        : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                        : 'bg-slate-100 text-slate-400 hover:bg-slate-200'
                     }`}
                   >
                     <Sprout className="h-4 w-4" />
@@ -151,7 +151,7 @@ function createColumns(
                     className={`p-1.5 rounded-md transition-colors ${
                       culture.plantationFaite
                         ? 'bg-green-100 text-green-600 hover:bg-green-200'
-                        : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                        : 'bg-slate-100 text-slate-400 hover:bg-slate-200'
                     }`}
                   >
                     <TreeDeciduous className="h-4 w-4" />
@@ -173,7 +173,7 @@ function createColumns(
                     className={`p-1.5 rounded-md transition-colors ${
                       culture.recolteFaite
                         ? 'bg-amber-100 text-amber-600 hover:bg-amber-200'
-                        : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                        : 'bg-slate-100 text-slate-400 hover:bg-slate-200'
                     }`}
                   >
                     <Apple className="h-4 w-4" />
@@ -359,12 +359,13 @@ export default function CulturesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
+      <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
       {/* Assistant Maraîcher */}
       <AssistantDialog open={showAssistant} onOpenChange={setShowAssistant} />
 
       {/* Header */}
-      <header className="border-b bg-white sticky top-0 z-50">
+      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link href="/">

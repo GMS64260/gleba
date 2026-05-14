@@ -3,11 +3,15 @@
  * GET /api/elevage/abattages - Liste des abattages
  * POST /api/elevage/abattages - Enregistrer un abattage
  * PATCH /api/elevage/abattages - Modifier un abattage
+ * DELETE /api/elevage/abattages - Annuler un abattage (soft-delete)
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { createVenteFromAbattage, deleteAutoEntry } from '@/lib/auto-compta'
+import { creerFacture } from '@/lib/facture-utils'
+import { abattageSchema } from '@/lib/validations/elevage-abattage'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -19,11 +23,13 @@ export async function GET(request: NextRequest) {
     const dateFin = searchParams.get('dateFin')
     const destination = searchParams.get('destination')
     const limit = parseInt(searchParams.get('limit') || '100')
+    const annee = parseInt(searchParams.get('annee') || String(new Date().getFullYear()))
+    const yearStart = new Date(annee, 0, 1)
+    const yearEnd = new Date(annee, 11, 31, 23, 59, 59)
 
-    const where: any = { userId: session.user.id }
+    const where: any = { userId: session.user.id, annule: { not: true }, date: { gte: yearStart, lte: yearEnd } }
     if (destination) where.destination = destination
     if (dateDebut || dateFin) {
-      where.date = {}
       if (dateDebut) where.date.gte = new Date(dateDebut)
       if (dateFin) where.date.lte = new Date(dateFin)
     }
@@ -34,10 +40,10 @@ export async function GET(request: NextRequest) {
       take: limit,
       include: {
         animal: {
-          select: { id: true, nom: true, identifiant: true, race: true },
+          select: { id: true, nom: true, identifiant: true, race: true, especeAnimale: { select: { id: true, nom: true, couleur: true } } },
         },
         lot: {
-          select: { id: true, nom: true },
+          select: { id: true, nom: true, especeAnimale: { select: { id: true, nom: true, couleur: true } } },
         },
       },
     })
@@ -58,6 +64,7 @@ export async function GET(request: NextRequest) {
         revenusVente: stats._sum.prixVente || 0,
         nbAbattages: stats._count,
       },
+      meta: { year: annee, total: abattages.length },
     })
   } catch (error) {
     console.error('GET /api/elevage/abattages error:', error)
@@ -74,25 +81,15 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const {
-      animalId,
-      lotId,
-      date,
-      quantite,
-      poidsVif,
-      poidsCarcasse,
-      destination,
-      prixVente,
-      lieu,
-      notes,
-    } = body
-
-    if (!destination || (!animalId && !lotId)) {
+    const parsed = abattageSchema.safeParse(body)
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Destination et animal ou lot requis' },
+        { error: 'Données invalides', details: parsed.error.flatten() },
         { status: 400 }
       )
     }
+
+    const { animalId, lotId, date, quantite, poidsVif, poidsCarcasse, destination, prixVente, lieu, notes } = parsed.data
 
     // Transaction pour mettre à jour l'animal/lot
     const abattage = await prisma.$transaction(async (tx) => {
@@ -100,14 +97,14 @@ export async function POST(request: NextRequest) {
       const newAbattage = await tx.abattage.create({
         data: {
           userId: session.user.id,
-          animalId: animalId ? parseInt(animalId) : null,
-          lotId: lotId ? parseInt(lotId) : null,
-          date: date ? new Date(date) : new Date(),
-          quantite: quantite ? parseInt(quantite) : 1,
-          poidsVif: poidsVif ? parseFloat(poidsVif) : null,
-          poidsCarcasse: poidsCarcasse ? parseFloat(poidsCarcasse) : null,
+          animalId: animalId || null,
+          lotId: lotId || null,
+          date: date || new Date(),
+          quantite,
+          poidsVif: poidsVif || null,
+          poidsCarcasse: poidsCarcasse || null,
           destination,
-          prixVente: prixVente ? parseFloat(prixVente) : null,
+          prixVente: prixVente || null,
           lieu,
           notes,
         },
@@ -120,14 +117,14 @@ export async function POST(request: NextRequest) {
       // Mettre à jour le statut de l'animal si individuel
       if (animalId) {
         const animal = await tx.animal.findFirst({
-          where: { id: parseInt(animalId), userId: session.user.id },
+          where: { id: animalId, userId: session.user.id },
         })
         if (animal) {
           await tx.animal.update({
             where: { id: animal.id },
             data: {
               statut: 'abattu',
-              dateSortie: new Date(date || Date.now()),
+              dateSortie: date || new Date(),
               causeSortie: 'Abattage',
             },
           })
@@ -137,10 +134,10 @@ export async function POST(request: NextRequest) {
       // Mettre à jour la quantité du lot si lot
       if (lotId && quantite) {
         const lot = await tx.lotAnimaux.findFirst({
-          where: { id: parseInt(lotId), userId: session.user.id },
+          where: { id: lotId, userId: session.user.id },
         })
         if (lot) {
-          const nouvelleQuantite = Math.max(0, lot.quantiteActuelle - parseInt(quantite))
+          const nouvelleQuantite = Math.max(0, lot.quantiteActuelle - quantite)
           await tx.lotAnimaux.update({
             where: { id: lot.id },
             data: {
@@ -153,6 +150,24 @@ export async function POST(request: NextRequest) {
 
       return newAbattage
     })
+
+    // Auto-comptabilite : creer une vente si destination = "vente"
+    try {
+      if (abattage.destination === 'vente' && abattage.prixVente) {
+        await createVenteFromAbattage(session.user.id, {
+          id: abattage.id,
+          prixVente: abattage.prixVente,
+          date: abattage.date,
+          destination: abattage.destination,
+          quantite: abattage.quantite,
+          poidsCarcasse: abattage.poidsCarcasse,
+          animal: abattage.animal ? { nom: abattage.animal.nom } : null,
+          lot: abattage.lot ? { nom: abattage.lot.nom } : null,
+        })
+      }
+    } catch (autoComptaError) {
+      console.error('Auto-compta error (abattage):', autoComptaError)
+    }
 
     return NextResponse.json({ data: abattage }, { status: 201 })
   } catch (error) {
@@ -202,57 +217,36 @@ export async function PATCH(request: NextRequest) {
     const abattage = await prisma.$transaction(async (tx) => {
       // Créer une facture si demandé et si prixVente existe
       if (body.creerFacture && (updateData.prixVente || existing.prixVente)) {
-        const year = new Date().getFullYear()
-        const lastFacture = await tx.facture.findFirst({
-          where: {
-            userId,
-            numero: { startsWith: `F-${year}-` },
-          },
-          orderBy: { numero: 'desc' },
-        })
-
-        let nextNum = 1
-        if (lastFacture) {
-          const parts = lastFacture.numero.split('-')
-          nextNum = parseInt(parts[2]) + 1
-        }
-        const numero = `F-${year}-${String(nextNum).padStart(4, '0')}`
-
         const prixTotalTTC = updateData.prixVente || existing.prixVente
-        const totalHT = prixTotalTTC / 1.055
+        const tva = body.tauxTVA ? parseFloat(body.tauxTVA) : 5.5
+        const totalHT = prixTotalTTC / (1 + tva / 100)
         const totalTVA = prixTotalTTC - totalHT
 
         const animalInfo = existing.animal?.nom || existing.lot?.nom || 'Abattage'
         const quantiteAbattue = updateData.quantite !== undefined ? updateData.quantite : existing.quantite
 
-        const facture = await tx.facture.create({
-          data: {
-            userId,
-            numero,
-            type: 'abattage',
-            clientNom: 'Client vente abattage',
-            date: new Date(),
-            objet: `Vente abattage - ${animalInfo}`,
-            totalHT,
-            totalTVA,
-            totalTTC: prixTotalTTC,
-            statut: 'payee',
-            datePaiement: new Date(),
-            modePaiement: 'especes',
-            lignes: {
-              create: [{
-                ordre: 0,
-                description: animalInfo,
-                quantite: quantiteAbattue,
-                unite: 'animal',
-                prixUnitaire: totalHT / quantiteAbattue,
-                tauxTVA: 5.5,
-                montantHT: totalHT,
-                montantTVA: totalTVA,
-                montantTTC: prixTotalTTC,
-              }],
-            },
-          },
+        const facture = await creerFacture(tx, {
+          userId,
+          type: 'abattage',
+          clientNom: 'Client vente abattage',
+          date: existing.date,
+          objet: `Vente abattage - ${animalInfo}`,
+          totalHT,
+          totalTVA,
+          totalTTC: prixTotalTTC,
+          statut: 'payee',
+          datePaiement: new Date(),
+          modePaiement: body.modePaiement || 'especes',
+          lignes: [{
+            description: animalInfo,
+            quantite: quantiteAbattue,
+            unite: 'animal',
+            prixUnitaire: totalHT / quantiteAbattue,
+            tauxTVA: tva,
+            montantHT: totalHT,
+            montantTVA: totalTVA,
+            montantTTC: prixTotalTTC,
+          }],
         })
 
         updateData.factureId = facture.id
@@ -293,11 +287,78 @@ export async function PATCH(request: NextRequest) {
       })
     })
 
+    // Auto-comptabilite : mettre a jour l'ecriture auto
+    try {
+      const finalDestination = updateData.destination || existing.destination
+      const finalPrixVente = updateData.prixVente !== undefined ? updateData.prixVente : existing.prixVente
+
+      if (finalDestination === 'vente' && finalPrixVente && finalPrixVente > 0) {
+        await createVenteFromAbattage(userId, {
+          id: parseInt(id),
+          prixVente: finalPrixVente,
+          date: abattage.date,
+          destination: finalDestination,
+          quantite: abattage.quantite,
+          poidsCarcasse: abattage.poidsCarcasse,
+          animal: abattage.animal ? { nom: abattage.animal.nom } : null,
+          lot: abattage.lot ? { nom: abattage.lot.nom } : null,
+        })
+      } else {
+        // Destination n'est plus "vente" ou pas de prix -> supprimer l'auto entry
+        await deleteAutoEntry('abattage', parseInt(id), 'vente')
+      }
+    } catch (autoComptaError) {
+      console.error('Auto-compta error (abattage PATCH):', autoComptaError)
+    }
+
     return NextResponse.json({ data: abattage })
   } catch (error) {
     console.error('PATCH /api/elevage/abattages error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la mise à jour', details: "Erreur interne du serveur" },
+      { status: 500 }
+    )
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  const { session, error } = await requireAuthApi()
+  if (error) return error
+
+  try {
+    const { searchParams } = new URL(request.url)
+    const id = searchParams.get('id')
+
+    if (!id) {
+      return NextResponse.json({ error: 'ID requis' }, { status: 400 })
+    }
+
+    const existing = await prisma.abattage.findFirst({
+      where: { id: parseInt(id), userId: session.user.id },
+    })
+
+    if (!existing) {
+      return NextResponse.json({ error: 'Abattage non trouvé' }, { status: 404 })
+    }
+
+    // Supprimer les ecritures auto-compta liees
+    try {
+      await deleteAutoEntry('abattage', parseInt(id), 'vente')
+    } catch (autoComptaError) {
+      console.error('Auto-compta cleanup error (abattage):', autoComptaError)
+    }
+
+    // Soft-delete : marquer comme annule
+    await prisma.abattage.update({
+      where: { id: parseInt(id) },
+      data: { annule: true, dateAnnulation: new Date() },
+    })
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error('DELETE /api/elevage/abattages error:', error)
+    return NextResponse.json(
+      { error: 'Erreur lors de la suppression', details: "Erreur interne du serveur" },
       { status: 500 }
     )
   }

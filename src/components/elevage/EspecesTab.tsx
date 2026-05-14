@@ -11,6 +11,10 @@ import {
   RefreshCw,
   Pencil,
   Trash2,
+  Bird,
+  ArrowRight,
+  Calculator,
+  BarChart3,
 } from "lucide-react"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -68,7 +72,7 @@ const TYPE_COLORS: Record<string, string> = {
   volaille: "bg-yellow-100 text-yellow-800",
   mammifere_petit: "bg-purple-100 text-purple-800",
   mammifere_grand: "bg-blue-100 text-blue-800",
-  autre: "bg-gray-100 text-gray-800",
+  autre: "bg-slate-100 text-slate-800",
 }
 
 const ESPECE_TYPES = [
@@ -105,7 +109,7 @@ export function EspecesTab() {
         setEspeces(result.data)
       }
     } catch {
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les especes" })
+      toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les espèces" })
     } finally {
       setIsLoading(false)
     }
@@ -172,7 +176,7 @@ export function EspecesTab() {
         throw new Error(err.error || 'Erreur')
       }
 
-      toast({ title: isEdit ? "Espece modifiee" : "Espece creee", description: formData.nom })
+      toast({ title: isEdit ? "Espèce modifiée" : "Espèce créée", description: formData.nom })
       setIsDialogOpen(false)
       setFormData(emptyForm)
       setEditingId(null)
@@ -191,15 +195,70 @@ export function EspecesTab() {
     try {
       const res = await fetch(`/api/elevage/especes-animales?id=${id}`, { method: 'DELETE' })
       if (!res.ok) throw new Error()
-      toast({ title: "Espece supprimee" })
+      toast({ title: "Espèce supprimée" })
       fetchData()
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible de supprimer" })
     }
   }
 
+  const NAV_CARDS = [
+    {
+      title: "Animaux par espèce",
+      description: `${especes.reduce((s, e) => s + e._count.animaux, 0)} animaux, ${especes.reduce((s, e) => s + e._count.lots, 0)} lots`,
+      icon: Bird,
+      color: "text-amber-600",
+      bgColor: "bg-amber-100",
+      onClick: () => setSelectedType("all"),
+    },
+    {
+      title: "Paramètres zootechniques",
+      description: "Poids, ponte, gestation, conso/jour",
+      icon: BarChart3,
+      color: "text-blue-600",
+      bgColor: "bg-blue-100",
+      onClick: () => {},
+    },
+    {
+      title: "Ajouter une espèce",
+      description: "Volaille, mammifere, autre",
+      icon: Plus,
+      color: "text-green-600",
+      bgColor: "bg-green-100",
+      onClick: openCreate,
+    },
+  ]
+
   return (
     <div className="space-y-4">
+      {/* Cartes de navigation */}
+      <div className="grid gap-3 grid-cols-1 md:grid-cols-3">
+        {NAV_CARDS.map((item) => (
+          <button
+            key={item.title}
+            onClick={item.onClick}
+            className="text-left"
+          >
+            <Card className="h-full hover:shadow-md transition-all hover:scale-[1.01] cursor-pointer group">
+              <CardHeader className="pb-2">
+                <div className="flex items-center gap-3">
+                  <div className={`w-9 h-9 rounded-lg ${item.bgColor} flex items-center justify-center`}>
+                    <item.icon className={`h-4 w-4 ${item.color}`} />
+                  </div>
+                  <div className="flex-1">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      {item.title}
+                      <ArrowRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </CardTitle>
+                    <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
+                  </div>
+                </div>
+              </CardHeader>
+            </Card>
+          </button>
+        ))}
+      </div>
+
       {/* Filtres par type */}
       <div className="flex items-center justify-between">
         <Tabs value={selectedType} onValueChange={setSelectedType}>
@@ -215,7 +274,7 @@ export function EspecesTab() {
           </Button>
           <Button size="sm" onClick={openCreate}>
             <Plus className="h-4 w-4 mr-1" />
-            Nouvelle espece
+            Nouvelle espèce
           </Button>
         </div>
       </div>
@@ -249,7 +308,7 @@ export function EspecesTab() {
                     </TableCell>
                     <TableCell className="font-medium">{esp.nom}</TableCell>
                     <TableCell>
-                      <Badge className={TYPE_COLORS[esp.type] || "bg-gray-100"} variant="secondary">
+                      <Badge className={TYPE_COLORS[esp.type] || "bg-slate-100"} variant="secondary">
                         {TYPE_LABELS[esp.type] || esp.type}
                       </Badge>
                     </TableCell>
@@ -278,7 +337,7 @@ export function EspecesTab() {
                   </TableRow>
                 ))}
                 {filteredEspeces.length === 0 && (
-                  <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">Aucune espece configuree</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">Aucune espèce configuree</TableCell></TableRow>
                 )}
               </TableBody>
             </Table>
@@ -290,9 +349,9 @@ export function EspecesTab() {
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingId ? "Modifier l'espece" : "Nouvelle espece"}</DialogTitle>
+            <DialogTitle>{editingId ? "Modifier l'espèce" : "Nouvelle espèce"}</DialogTitle>
             <DialogDescription>
-              {editingId ? "Modifier les parametres de cette espece" : "Ajouter une espece au referentiel"}
+              {editingId ? "Modifier les paramètres de cette espèce" : "Ajouter une espèce au referentiel"}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -350,7 +409,7 @@ export function EspecesTab() {
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2"><Label>Gestation (j)</Label><Input type="number" min="0" value={formData.dureeGestation} onChange={(e) => setFormData(f => ({ ...f, dureeGestation: e.target.value }))} placeholder="31" /></div>
               <div className="space-y-2"><Label>Couvaison (j)</Label><Input type="number" min="0" value={formData.dureeCouvaison} onChange={(e) => setFormData(f => ({ ...f, dureeCouvaison: e.target.value }))} placeholder="21" /></div>
-              <div className="space-y-2"><Label>Elevage (j)</Label><Input type="number" min="0" value={formData.dureeElevage} onChange={(e) => setFormData(f => ({ ...f, dureeElevage: e.target.value }))} placeholder="90" /></div>
+              <div className="space-y-2"><Label>Élevage (j)</Label><Input type="number" min="0" value={formData.dureeElevage} onChange={(e) => setFormData(f => ({ ...f, dureeElevage: e.target.value }))} placeholder="90" /></div>
             </div>
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2"><Label>Poids adulte (kg)</Label><Input type="number" min="0" step="0.1" value={formData.poidsAdulte} onChange={(e) => setFormData(f => ({ ...f, poidsAdulte: e.target.value }))} placeholder="3.5" /></div>
@@ -364,7 +423,7 @@ export function EspecesTab() {
             <div className="flex justify-end gap-2 pt-4">
               <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
               <Button type="submit" disabled={!formData.nom || !formData.id}>
-                {editingId ? "Enregistrer" : "Creer"}
+                {editingId ? "Enregistrer" : "Créer"}
               </Button>
             </div>
           </form>

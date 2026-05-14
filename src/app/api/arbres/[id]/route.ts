@@ -97,6 +97,28 @@ export async function PUT(request: NextRequest, { params }: Params) {
         anneeProduction: body.anneeProduction ? parseInt(body.anneeProduction) : undefined,
         rendementMoyen: body.rendementMoyen ? parseFloat(body.rendementMoyen) : undefined,
         especeId: body.especeId || undefined,
+        // Champs verger enrichis
+        formeTaille: body.formeTaille !== undefined ? (body.formeTaille || null) : undefined,
+        vigueur: body.vigueur !== undefined ? (body.vigueur || null) : undefined,
+        distancePlantation: body.distancePlantation !== undefined ? (body.distancePlantation ? parseFloat(body.distancePlantation) : null) : undefined,
+        distanceRang: body.distanceRang !== undefined ? (body.distanceRang ? parseFloat(body.distanceRang) : null) : undefined,
+        orientationRang: body.orientationRang !== undefined ? (body.orientationRang || null) : undefined,
+        dateGreffe: body.dateGreffe !== undefined ? (body.dateGreffe ? new Date(body.dateGreffe) : null) : undefined,
+        typeGreffe: body.typeGreffe !== undefined ? (body.typeGreffe || null) : undefined,
+        heuresFroidRequis: body.heuresFroidRequis !== undefined ? (body.heuresFroidRequis ? parseInt(body.heuresFroidRequis) : null) : undefined,
+        floraison: body.floraison !== undefined ? (body.floraison || null) : undefined,
+        groupePollinisation: body.groupePollinisation !== undefined ? (body.groupePollinisation || null) : undefined,
+        autofertile: body.autofertile !== undefined ? body.autofertile : undefined,
+        periodeRecolte: body.periodeRecolte !== undefined ? (body.periodeRecolte || null) : undefined,
+        conservation: body.conservation !== undefined ? (body.conservation || null) : undefined,
+        surfaceCanopee: body.surfaceCanopee !== undefined ? (body.surfaceCanopee ? parseFloat(body.surfaceCanopee) : null) : undefined,
+        zoneId: body.zoneId !== undefined ? (body.zoneId ? parseInt(body.zoneId) : null) : undefined,
+        parcelleGeoId: body.parcelleGeoId !== undefined ? (body.parcelleGeoId || null) : undefined,
+        dateSuppression: body.dateSuppression !== undefined ? (body.dateSuppression ? new Date(body.dateSuppression) : null) : undefined,
+        causeSuppression: body.causeSuppression !== undefined ? (body.causeSuppression || null) : undefined,
+      },
+      include: {
+        zone: { select: { id: true, nom: true } },
       },
     })
 
@@ -104,7 +126,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
   } catch (err) {
     console.error("PUT /api/arbres/[id] error:", err)
     return NextResponse.json(
-      { error: "Erreur lors de la mise a jour" },
+      { error: "Erreur lors de la mise à jour" },
       { status: 500 }
     )
   }

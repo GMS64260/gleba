@@ -248,7 +248,7 @@ export function OperationsTab() {
       if (res.ok) {
         setShowDialog(false)
         resetForm()
-        toast({ title: "Operation enregistree" })
+        toast({ title: "Operation enregistrée" })
         fetchData()
       }
     } catch {
@@ -292,14 +292,14 @@ export function OperationsTab() {
           if (!confirm("Supprimer cette operation ?")) return
           try {
             await fetch(`/api/arbres/operations/${row.id}`, { method: "DELETE" })
-            toast({ title: "Operation supprimee" })
+            toast({ title: "Operation supprimée" })
             fetchData()
           } catch {
             toast({ variant: "destructive", title: "Erreur" })
           }
         }}
         searchPlaceholder="Rechercher une operation..."
-        emptyMessage="Aucune operation trouvee."
+        emptyMessage="Aucune operation trouvée."
       />
 
       {/* Dialog nouvelle operation */}
@@ -317,7 +317,7 @@ export function OperationsTab() {
                   onValueChange={(v) => setNewOperation({ ...newOperation, arbreId: v })}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Selectionner" />
+                    <SelectValue placeholder="Sélectionner" />
                   </SelectTrigger>
                   <SelectContent>
                     {arbres.map((a) => (
@@ -357,7 +357,7 @@ export function OperationsTab() {
                 />
               </div>
               <div>
-                <Label>Date prevue</Label>
+                <Label>Date prévue</Label>
                 <Input
                   type="date"
                   value={newOperation.datePrevue}

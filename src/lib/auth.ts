@@ -8,6 +8,13 @@ import { PrismaAdapter } from "@auth/prisma-adapter"
 import bcrypt from "bcryptjs"
 import prisma from "./prisma"
 
+/** Log une tentative de connexion (fire-and-forget) */
+function logLogin(email: string, success: boolean, reason: string, userId?: string) {
+  prisma.loginLog.create({
+    data: { email, success, reason, userId: userId ?? null },
+  }).catch((err) => console.error("loginLog error:", err))
+}
+
 export const { handlers, signIn, signOut, auth } = NextAuth({
   adapter: PrismaAdapter(prisma),
   session: {
@@ -28,16 +35,25 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           throw new Error("Email et mot de passe requis")
         }
 
+        const email = credentials.email as string
+
         const user = await prisma.user.findUnique({
-          where: { email: credentials.email as string },
+          where: { email },
         })
 
         if (!user) {
+          logLogin(email, false, "not_found")
           throw new Error("Identifiants invalides")
         }
 
         if (!user.active) {
+          logLogin(email, false, "inactive", user.id)
           throw new Error("Compte désactivé")
+        }
+
+        if (!user.emailVerified) {
+          logLogin(email, false, "email_not_verified", user.id)
+          throw new Error("Email non vérifié. Consultez votre boîte mail.")
         }
 
         const passwordMatch = await bcrypt.compare(
@@ -46,8 +62,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         )
 
         if (!passwordMatch) {
+          logLogin(email, false, "bad_password", user.id)
           throw new Error("Identifiants invalides")
         }
+
+        logLogin(email, true, "ok", user.id)
 
         return {
           id: user.id,

@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
 
     let data: any = {}
 
-    // Fonction helper pour récupérer un référentiel
+    // Fonction helper pour récupérer un referentiel
     const getRef = async (refType: string) => {
       switch (refType) {
         case 'familles':

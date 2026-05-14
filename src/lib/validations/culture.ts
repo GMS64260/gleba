@@ -6,6 +6,10 @@ import { z } from 'zod'
 
 export const cultureSchema = z.object({
   especeId: z.string().min(1, "L'espèce est requise"),
+  // varieteId reste nullable côté validation : si absent à la création,
+  // le backend assigne automatiquement le placeholder "Non spécifiée" de l'espèce
+  // (Variete.isPlaceholder=true) — l'UI affiche un bandeau "À renseigner".
+  // Aucune Culture ne reste sans variete en BDD.
   varieteId: z.string().nullable().optional(),
   itpId: z.string().nullable().optional(),
   plancheId: z.string().nullable().optional(),

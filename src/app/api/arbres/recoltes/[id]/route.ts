@@ -1,6 +1,6 @@
 /**
  * API Récolte Arbre individuelle (avec gestion stock/vente)
- * GET - Détail d'une récolte
+ * GET - Détail d'une recolte
  * PUT - Mise à jour complète
  * PATCH - Transition de statut (vente, perte, etc.)
  * DELETE - Suppression
@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
+import { createVenteFromRecolteArbre, deleteAutoEntry } from "@/lib/auto-compta"
 
 interface Params {
   params: Promise<{ id: string }>
@@ -148,7 +149,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if (body.datePeremption !== undefined) updateData.datePeremption = body.datePeremption ? new Date(body.datePeremption) : null
     if (body.notes !== undefined) updateData.notes = body.notes
 
-    // Transaction atomique : facture + update récolte arbre
+    // Transaction atomique : facture + update recolte arbre
     const recolte = await prisma.$transaction(async (tx) => {
       if (body.statut === "vendu" && body.creerFacture && body.prixTotal) {
         const year = new Date().getFullYear()
@@ -236,6 +237,26 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       })
     })
 
+    // Auto-comptabilite : gerer les ecritures automatiques
+    try {
+      if (body.statut === 'vendu' && (body.prixTotal || body.prixKg)) {
+        await createVenteFromRecolteArbre(userId, {
+          id: recolteId,
+          quantite: existing.quantite,
+          prixKg: body.prixKg ?? existing.prixKg,
+          prixTotal: body.prixTotal ?? existing.prixTotal,
+          clientNom: body.clientNom ?? existing.clientNom,
+          clientId: body.clientId ?? existing.clientId,
+          dateVente: body.dateVente ?? existing.dateVente,
+          arbre: existing.arbre ? { nom: existing.arbre.nom, espece: existing.arbre.espece } : null,
+        })
+      } else if (existing.statut === 'vendu' && body.statut && body.statut !== 'vendu') {
+        await deleteAutoEntry('recolte_arbre', recolteId, 'vente')
+      }
+    } catch (autoComptaError) {
+      console.error('Auto-compta error (recolte_arbre):', autoComptaError)
+    }
+
     return NextResponse.json(recolte)
   } catch (err) {
     console.error("PATCH /api/arbres/recoltes/[id] error:", err)
@@ -264,6 +285,15 @@ export async function DELETE(request: NextRequest, { params }: Params) {
 
     if (!existing) {
       return NextResponse.json({ error: "Récolte non trouvée" }, { status: 404 })
+    }
+
+    // Supprimer les ecritures auto-compta liees
+    if (existing.statut === 'vendu') {
+      try {
+        await deleteAutoEntry('recolte_arbre', recolteId, 'vente')
+      } catch (autoComptaError) {
+        console.error('Auto-compta cleanup error (recolte_arbre):', autoComptaError)
+      }
     }
 
     await prisma.recolteArbre.delete({

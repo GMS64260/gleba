@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    // Fusionner les données de stock per-user avec les données de référence
+    // Fusionner les données de stock per-user avec les données de reference
     const alimentsWithUserStock = aliments.map(a => ({
       id: a.id,
       nom: a.nom,
@@ -113,7 +113,7 @@ export async function POST(request: NextRequest) {
     const parsedPrix = prix ? parseFloat(prix) : null
     const parsedStockMin = stockMin ? parseFloat(stockMin) : null
 
-    // Créer l'aliment (référence globale) + stock per-user en transaction
+    // Créer l'aliment (reference globale) + stock per-user en transaction
     const [aliment] = await prisma.$transaction([
       prisma.aliment.create({
         data: {

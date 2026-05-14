@@ -53,7 +53,7 @@ function calculateSoilStatus(
   cultures: CultureData[],
   targetYear: number
 ): SoilAnalysis {
-  // Cultures des 3 dernières années
+  // Cultures des 3 dernières annees
   const recentCultures = cultures.filter(
     (c) => c.annee >= targetYear - 3 && c.annee < targetYear
   )
@@ -127,7 +127,7 @@ function calculateBlockedFamilies(
   allFamilies: FamilleData[],
   targetYear: number
 ): BlockedFamily[] {
-  // Créer une map des dernières années par famille
+  // Créer une map des dernières annees par famille
   const familyLastYears = new Map<string, { year: number; intervalle: number }>()
 
   for (const culture of cultures) {
@@ -243,7 +243,7 @@ function calculateRecommendedFamilies(
 }
 
 /**
- * Calcule le conseil pour une espèce spécifique
+ * Calcule le conseil pour une espece spécifique
  */
 function calculateEspeceAdvice(
   espece: { id: string; familleId: string | null; besoinN: number | null },
@@ -329,7 +329,7 @@ export function calculateRotationAdvice(ctx: RotationContext): RotationAdvice {
     targetYear
   )
 
-  // Cultures récentes pour référence
+  // Cultures récentes pour reference
   const recentCultures = cultures
     .filter((c) => c.annee >= targetYear - 5)
     .map((c) => ({
@@ -340,7 +340,7 @@ export function calculateRotationAdvice(ctx: RotationContext): RotationAdvice {
     }))
     .sort((a, b) => b.annee - a.annee)
 
-  // Conseil pour une espèce spécifique si demandé
+  // Conseil pour une espece spécifique si demandé
   let especeAdvice: EspeceAdvice | undefined
   if (especeToCheck) {
     especeAdvice = calculateEspeceAdvice(

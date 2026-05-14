@@ -120,7 +120,7 @@ export async function POST(request: NextRequest) {
           })
           stats.associations++
 
-          // Import des détails imbriqués
+          // Import des details imbriqués
           if (item.details && Array.isArray(item.details)) {
             for (const detail of item.details) {
               // Vérifier si existe déjà pour éviter doublons
@@ -168,7 +168,7 @@ export async function POST(request: NextRequest) {
           })
           stats.rotations++
 
-          // Import des détails
+          // Import des details
           if (item.details) {
             for (const detail of item.details) {
               await prisma.rotationDetail.upsert({

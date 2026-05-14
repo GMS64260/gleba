@@ -70,7 +70,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       )
     }
 
-    // Mettre à jour l'association et ses détails
+    // Mettre à jour l'association et ses details
     const association = await prisma.$transaction(async (tx) => {
       // Mettre à jour les données de base
       await tx.association.update({
@@ -78,14 +78,14 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         data: associationData,
       })
 
-      // Si des détails sont fournis, les remplacer
+      // Si des details sont fournis, les remplacer
       if (details !== undefined) {
-        // Supprimer les anciens détails
+        // Supprimer les anciens details
         await tx.associationDetail.deleteMany({
           where: { associationId: id },
         })
 
-        // Créer les nouveaux détails
+        // Créer les nouveaux details
         if (details.length > 0) {
           await tx.associationDetail.createMany({
             data: details.map((d) => ({
@@ -155,7 +155,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       )
     }
 
-    // Supprimer l'association (les détails sont supprimés en cascade)
+    // Supprimer l'association (les details sont supprimés en cascade)
     await prisma.association.delete({ where: { id } })
 
     return NextResponse.json({ success: true })

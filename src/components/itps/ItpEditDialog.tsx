@@ -200,7 +200,7 @@ export function ItpEditDialog({ itp, open, onOpenChange, onSaved }: ItpEditDialo
             </div>
           </div>
 
-          {/* Durée récolte + Type planche */}
+          {/* Durée recolte + Type planche */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Durée récolte (sem.)</Label>
@@ -315,7 +315,7 @@ function GanttPreview({
       {/* Grilles mois */}
       <div className="absolute inset-0 flex">
         {months.map((m, i) => (
-          <div key={i} className="flex-1 border-r border-gray-200 flex items-end justify-center pb-0.5">
+          <div key={i} className="flex-1 border-r border-slate-200 flex items-end justify-center pb-0.5">
             <span className="text-[9px] text-muted-foreground">{m}</span>
           </div>
         ))}

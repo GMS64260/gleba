@@ -83,7 +83,7 @@ function RecoltesPrevuesContent() {
       toast({
         variant: "destructive",
         title: "Erreur",
-        description: "Impossible de charger les recoltes prevues",
+        description: "Impossible de charger les récoltes prévues",
       })
     } finally {
       setIsLoading(false)
@@ -101,8 +101,9 @@ function RecoltesPrevuesContent() {
   }))
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="border-b bg-white sticky top-0 z-50">
+    <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
+      <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
+      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link href="/?tab=planification">
@@ -113,7 +114,7 @@ function RecoltesPrevuesContent() {
             </Link>
             <div className="flex items-center gap-2">
               <BarChart3 className="h-6 w-6 text-purple-600" />
-              <h1 className="text-xl font-bold">Recoltes prevues par mois</h1>
+              <h1 className="text-xl font-bold">Récoltes prévues par mois</h1>
             </div>
           </div>
 
@@ -160,7 +161,7 @@ function RecoltesPrevuesContent() {
         {/* Graphique */}
         <Card className="mb-6">
           <CardHeader>
-            <CardTitle>Recoltes mensuelles prevues</CardTitle>
+            <CardTitle>Récoltes mensuelles prévues</CardTitle>
             <CardDescription>
               Quantite en kg par mois pour {annee}
             </CardDescription>
@@ -175,7 +176,7 @@ function RecoltesPrevuesContent() {
                   <XAxis dataKey="mois" />
                   <YAxis unit=" kg" />
                   <Tooltip
-                    formatter={(value) => [`${value} kg`, "Recolte"]}
+                    formatter={(value) => [`${value} kg`, "Récolte"]}
                     contentStyle={{ borderRadius: 8, border: "1px solid #e5e7eb" }}
                   />
                   <Bar dataKey="quantite" fill="#9333ea" radius={[4, 4, 0, 0]} />
@@ -188,7 +189,7 @@ function RecoltesPrevuesContent() {
         {/* Tableau */}
         <Card>
           <CardHeader>
-            <CardTitle>Detail par mois</CardTitle>
+            <CardTitle>Détail par mois</CardTitle>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -198,7 +199,7 @@ function RecoltesPrevuesContent() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Mois</TableHead>
-                    <TableHead>Especes</TableHead>
+                    <TableHead>Espèces</TableHead>
                     <TableHead className="text-right">Quantite (kg)</TableHead>
                     <TableHead className="text-right">Surface (m2)</TableHead>
                   </TableRow>

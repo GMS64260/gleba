@@ -42,6 +42,8 @@ export const plancheSchema = z.object({
   phSol: z.number().min(0).max(14).nullable().optional(),
   carboneOrg: z.number().min(0).max(100).nullable().optional(),
   derniereAnalyseSol: z.string().datetime().nullable().optional(),
+  // Parcelle
+  parcelleGeoId: z.string().nullable().optional(),
 })
 
 export const createPlancheSchema = plancheSchema

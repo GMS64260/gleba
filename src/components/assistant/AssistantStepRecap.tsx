@@ -159,7 +159,7 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
           const newPlanche = await plancheRes.json()
           plancheId = newPlanche.id // cuid for FK
           toast({
-            title: "Planche creee",
+            title: "Planche créée",
             description: `La planche "${plancheName}" a ete creee`,
           })
         } else if (plancheRes.status === 409) {
@@ -223,7 +223,7 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
       const newCulture = await cultureRes.json()
 
       toast({
-        title: "Culture creee",
+        title: "Culture créée",
         description: `La culture de ${espece?.id || culture.especeId} a ete creee`,
       })
 
@@ -300,7 +300,7 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
         <CardContent className="py-2 space-y-3">
           <div className="grid grid-cols-2 gap-2 text-sm">
             <div>
-              <span className="text-muted-foreground">Espece:</span>{' '}
+              <span className="text-muted-foreground">Espèce:</span>{' '}
               <span className="font-medium">{especeId}</span>
             </div>
             <div>
@@ -308,11 +308,11 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
               <span className="font-medium">{itpId}</span>
             </div>
             <div>
-              <span className="text-muted-foreground">Variete:</span>{' '}
+              <span className="text-muted-foreground">Variété:</span>{' '}
               <span className="font-medium">{varieteId}</span>
             </div>
             <div>
-              <span className="text-muted-foreground">Annee:</span>{' '}
+              <span className="text-muted-foreground">Année:</span>{' '}
               <span className="font-medium">{culture.annee}</span>
             </div>
           </div>
@@ -392,7 +392,7 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
           <Leaf className="h-4 w-4" />
           <AlertTitle>Irrigation automatique</AlertTitle>
           <AlertDescription>
-            Cette espece a un besoin en eau eleve. La culture sera marquee "a irriguer".
+            Cette espèce a un besoin en eau eleve. La culture sera marquee "a irriguer".
           </AlertDescription>
         </Alert>
       )}
@@ -413,7 +413,7 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
           ) : (
             <>
               <Check className="h-4 w-4 mr-2" />
-              Creer la culture
+              Créer la culture
             </>
           )}
         </Button>

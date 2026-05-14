@@ -48,7 +48,7 @@ interface Stats {
 const columns: ColumnDef<BesoinPlant>[] = [
   {
     accessorKey: "especeId",
-    header: "Espece",
+    header: "Espèce",
     cell: ({ row }) => {
       const b = row.original
       return (
@@ -66,7 +66,7 @@ const columns: ColumnDef<BesoinPlant>[] = [
   },
   {
     accessorKey: "varieteId",
-    header: "Variete",
+    header: "Variété",
     cell: ({ getValue }) => getValue() || "-",
   },
   {
@@ -119,7 +119,7 @@ const columns: ColumnDef<BesoinPlant>[] = [
         <div className="flex flex-wrap gap-1">
           {cultures.slice(0, 4).map((c) => (
             <Link key={c.plancheId} href={`/planches/${encodeURIComponent(c.plancheId)}`}>
-              <Badge variant="secondary" className="text-xs cursor-pointer hover:bg-gray-200">
+              <Badge variant="secondary" className="text-xs cursor-pointer hover:bg-slate-200">
                 {c.plancheId} ({c.nbPlants})
               </Badge>
             </Link>
@@ -175,7 +175,7 @@ function PlantsContent() {
   }, [fetchData])
 
   const handleExport = () => {
-    const headers = ["Espece", "Variete", "Semaine plantation", "Nb plants", "Stock", "A commander", "Planches"]
+    const headers = ["Espèce", "Variété", "Semaine plantation", "Nb plants", "Stock", "A commander", "Planches"]
     const rows = data.map(b => [
       b.especeId,
       b.varieteId || "",
@@ -197,8 +197,9 @@ function PlantsContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="border-b bg-white sticky top-0 z-50">
+    <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
+      <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
+      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link href="/?tab=planification">
@@ -209,7 +210,7 @@ function PlantsContent() {
             </Link>
             <div className="flex items-center gap-2">
               <Leaf className="h-6 w-6 text-cyan-600" />
-              <h1 className="text-xl font-bold">Plants necessaires</h1>
+              <h1 className="text-xl font-bold">Plants nécessaires</h1>
             </div>
           </div>
 
@@ -245,7 +246,7 @@ function PlantsContent() {
           <div className="grid gap-4 md:grid-cols-4 mb-6">
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm text-muted-foreground">Especes</CardTitle>
+                <CardTitle className="text-sm text-muted-foreground">Espèces</CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-2xl font-bold">{stats.nbEspeces}</p>

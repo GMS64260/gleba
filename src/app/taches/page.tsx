@@ -116,7 +116,7 @@ function TachesContent() {
 
   // Marquer une tache comme faite
   const toggleTache = async (cultureId: number, type: "semis" | "plantation" | "recolte", currentValue: boolean, especeId: string) => {
-    // Pour les récoltes, demander la quantité
+    // Pour les recoltes, demander la quantité
     if (type === "recolte" && !currentValue) {
       const quantiteStr = prompt("Quantité récoltée (kg) :")
       if (!quantiteStr) return
@@ -128,7 +128,7 @@ function TachesContent() {
       }
 
       try {
-        // Créer la récolte
+        // Créer la recolte
         await fetch("/api/recoltes", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -155,7 +155,7 @@ function TachesContent() {
       return
     }
 
-    // Pour les autres (semis, plantation, annuler récolte)
+    // Pour les autres (semis, plantation, annuler recolte)
     try {
       const fieldMap = {
         semis: "semisFait",
@@ -281,13 +281,13 @@ function TachesContent() {
                 className={`w-full flex items-center gap-3 p-3 rounded-lg border transition-all ${
                   item.fait
                     ? "bg-green-50 border-green-200 opacity-60"
-                    : "bg-white border-gray-200 hover:border-gray-300 hover:shadow-sm"
+                    : "bg-white border-slate-200 hover:border-slate-300 hover:shadow-sm"
                 }`}
               >
                 {item.fait ? (
                   <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0" />
                 ) : (
-                  <Circle className="h-5 w-5 text-gray-300 flex-shrink-0" />
+                  <Circle className="h-5 w-5 text-slate-300 flex-shrink-0" />
                 )}
                 <div className="flex items-center gap-2 flex-1 min-w-0">
                   {item.couleur && (
@@ -320,7 +320,7 @@ function TachesContent() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 p-4">
+      <div className="min-h-screen bg-slate-50 p-4">
         <Skeleton className="h-12 w-full mb-4" />
         <Skeleton className="h-64 w-full mb-4" />
         <Skeleton className="h-64 w-full" />
@@ -329,9 +329,10 @@ function TachesContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
+      <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
       {/* Header compact pour mobile */}
-      <header className="border-b bg-white sticky top-0 z-50">
+      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="px-4 py-3">
           <div className="flex items-center justify-between mb-2">
             <Link href="/">
@@ -407,7 +408,7 @@ function TachesContent() {
               <p className="text-lg font-bold text-purple-700">
                 {data.stats.recoltesPrevues - data.stats.recoltesFaites}
               </p>
-              <p className="text-xs text-purple-600">Recoltes</p>
+              <p className="text-xs text-purple-600">Récoltes</p>
             </div>
             <div className="bg-cyan-50 rounded-lg p-2 text-center">
               <Droplets className="h-4 w-4 mx-auto text-cyan-600 mb-1" />
@@ -426,7 +427,7 @@ function TachesContent() {
               iconColor="text-orange-600"
               items={data.semis}
               type="semis"
-              emptyText="Aucun semis prevu cette semaine"
+              emptyText="Aucun semis prévu cette semaine"
             />
 
             <TaskCard
@@ -435,16 +436,16 @@ function TachesContent() {
               iconColor="text-green-600"
               items={data.plantations}
               type="plantation"
-              emptyText="Aucune plantation prevue cette semaine"
+              emptyText="Aucune plantation prévue cette semaine"
             />
 
             <TaskCard
-              title="Recoltes"
+              title="Récoltes"
               icon={Package}
               iconColor="text-purple-600"
               items={data.recoltes}
               type="recolte"
-              emptyText="Aucune recolte prevue cette semaine"
+              emptyText="Aucune récolte prévue cette semaine"
             />
 
             {/* Irrigation */}
@@ -477,7 +478,7 @@ function TachesContent() {
                           key={item.id}
                           onClick={() => marquerIrrigation(item.id)}
                           className={`w-full flex items-center gap-3 p-3 rounded-lg border bg-white transition-all ${
-                            isPast ? 'border-red-300 bg-red-50' : 'border-gray-200 hover:border-cyan-300 hover:shadow-sm'
+                            isPast ? 'border-red-300 bg-red-50' : 'border-slate-200 hover:border-cyan-300 hover:shadow-sm'
                           }`}
                         >
                           <Droplets className={`h-5 w-5 flex-shrink-0 ${

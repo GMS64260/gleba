@@ -200,7 +200,7 @@ function PlanchesSubTab() {
             field="typeSol"
             value={row.original.typeSol}
             options={TYPES_SOL}
-            placeholder="Definir"
+            placeholder="Définir"
             onUpdate={fetchData}
           />
         ),
@@ -214,7 +214,7 @@ function PlanchesSubTab() {
             field="retentionEau"
             value={row.original.retentionEau}
             options={RETENTION_EAU}
-            placeholder="Definir"
+            placeholder="Définir"
             onUpdate={fetchData}
           />
         ),
@@ -256,14 +256,14 @@ function PlanchesSubTab() {
           if (!confirm(`Supprimer "${row.nom}" ?`)) return
           try {
             await fetch(`/api/planches/${encodeURIComponent(row.nom)}`, { method: "DELETE" })
-            toast({ title: "Planche supprimee" })
+            toast({ title: "Planche supprimée" })
             fetchData()
           } catch {
             toast({ variant: "destructive", title: "Erreur" })
           }
         }}
         searchPlaceholder="Rechercher une planche..."
-        emptyMessage="Aucune planche trouvee."
+        emptyMessage="Aucune planche trouvée."
       />
     </div>
   )
@@ -376,7 +376,7 @@ function RotationsSubTab() {
       <div className="p-3 bg-orange-50 rounded-lg border border-orange-200 text-sm text-orange-800">
         <p className="font-medium">Rotations des cultures</p>
         <p className="mt-1 text-orange-700">
-          Definissez la succession des cultures sur plusieurs annees. Assignez une rotation a vos
+          Définissez la succession des cultures sur plusieurs annees. Assignez une rotation a vos
           planches pour planifier automatiquement.
         </p>
       </div>
@@ -401,14 +401,14 @@ function RotationsSubTab() {
           if (!confirm(`Supprimer "${row.id}" ?`)) return
           try {
             await fetch(`/api/rotations/${encodeURIComponent(row.id)}`, { method: "DELETE" })
-            toast({ title: "Rotation supprimee" })
+            toast({ title: "Rotation supprimée" })
             fetchData()
           } catch {
             toast({ variant: "destructive", title: "Erreur" })
           }
         }}
         searchPlaceholder="Rechercher une rotation..."
-        emptyMessage="Aucune rotation trouvee."
+        emptyMessage="Aucune rotation trouvée."
       />
     </div>
   )
@@ -528,7 +528,7 @@ function AssociationsSubTab() {
           <div>
             <p className="font-medium">Compagnonnage</p>
             <p className="mt-1 text-pink-700">
-              Les associations definissent quelles especes se beneficient mutuellement. Une
+              Les associations définissent quelles especes se beneficient mutuellement. Une
               association <strong>requise</strong> (*) indique une dependance forte.
             </p>
           </div>
@@ -548,14 +548,14 @@ function AssociationsSubTab() {
           if (!confirm(`Supprimer "${row.nom}" ?`)) return
           try {
             await fetch(`/api/associations/${row.id}`, { method: "DELETE" })
-            toast({ title: "Association supprimee" })
+            toast({ title: "Association supprimée" })
             fetchData()
           } catch {
             toast({ variant: "destructive", title: "Erreur" })
           }
         }}
         searchPlaceholder="Rechercher une association..."
-        emptyMessage="Aucune association trouvee."
+        emptyMessage="Aucune association trouvée."
       />
     </div>
   )

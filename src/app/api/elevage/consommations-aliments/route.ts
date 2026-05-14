@@ -1,5 +1,5 @@
 /**
- * API Consommations d'aliments (élevage)
+ * API Consommations d'aliments (elevage)
  * GET /api/elevage/consommations-aliments - Liste avec filtres
  * POST /api/elevage/consommations-aliments - Créer + décrémenter stock
  * DELETE /api/elevage/consommations-aliments - Supprimer + ré-incrémenter stock
@@ -22,12 +22,14 @@ export async function GET(request: NextRequest) {
     const dateDebut = searchParams.get('dateDebut')
     const dateFin = searchParams.get('dateFin')
     const limit = parseInt(searchParams.get('limit') || '100')
+    const annee = parseInt(searchParams.get('annee') || String(new Date().getFullYear()))
+    const yearStart = new Date(annee, 0, 1)
+    const yearEnd = new Date(annee, 11, 31, 23, 59, 59)
 
-    const where: any = { userId }
+    const where: any = { userId, date: { gte: yearStart, lte: yearEnd } }
     if (alimentId) where.alimentId = alimentId
     if (lotId) where.lotId = parseInt(lotId)
     if (dateDebut || dateFin) {
-      where.date = {}
       if (dateDebut) where.date.gte = new Date(dateDebut)
       if (dateFin) where.date.lte = new Date(dateFin)
     }
@@ -81,6 +83,7 @@ export async function GET(request: NextRequest) {
           count: a._count,
         })),
       },
+      meta: { year: annee, total: consommations.length },
     })
   } catch (error) {
     console.error('GET /api/elevage/consommations-aliments error:', error)

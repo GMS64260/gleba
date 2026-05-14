@@ -208,7 +208,7 @@ export function UserForm({ user }: UserFormProps) {
               {isEdit ? "Modification..." : "Creation..."}
             </>
           ) : (
-            isEdit ? "Enregistrer" : "Creer l'utilisateur"
+            isEdit ? "Enregistrer" : "Créer l'utilisateur"
           )}
         </Button>
       </div>

@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { updatePlancheSchema } from '@/lib/validations'
 import { requireAuthApi } from '@/lib/auth-utils'
+import { invalidateKpi } from '@/lib/kpi'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -57,6 +58,9 @@ export async function GET(
         analyses: {
           orderBy: { dateAnalyse: 'desc' },
           take: 5,
+        },
+        parcelleGeo: {
+          select: { id: true, nom: true, surface: true, centroidLat: true, centroidLng: true },
         },
       },
     })
@@ -120,7 +124,7 @@ export async function PUT(
 
     const data = validationResult.data
 
-    // Recalculer la surface si nécessaire
+    // Recalculer la surface si necessaire
     const largeur = data.largeur ?? existing.largeur
     const longueur = data.longueur ?? existing.longueur
     const surface = largeur && longueur ? largeur * longueur : data.surface
@@ -134,9 +138,13 @@ export async function PUT(
       },
       include: {
         rotation: true,
+        parcelleGeo: {
+          select: { id: true, nom: true, surface: true, centroidLat: true, centroidLng: true },
+        },
       },
     })
 
+    invalidateKpi(session!.user.id)
     return NextResponse.json(planche)
   } catch (error) {
     console.error('PUT /api/planches/[id] error:', error)
@@ -200,6 +208,7 @@ export async function DELETE(
       where: { id: planche.id },
     })
 
+    invalidateKpi(session!.user.id)
     return NextResponse.json({ success: true, deleted: nom })
   } catch (error) {
     console.error('DELETE /api/planches/[id] error:', error)

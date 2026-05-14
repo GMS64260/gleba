@@ -331,7 +331,7 @@ export function AssistantStepDates({
   }
 
   const getUsageColor = () => {
-    if (!plancheValidation) return "bg-gray-200"
+    if (!plancheValidation) return "bg-slate-200"
     if (!plancheValidation.possible) return "bg-red-500"
     const pct = getUsagePercent()
     if (pct > 80) return "bg-orange-500"
@@ -413,8 +413,8 @@ export function AssistantStepDates({
                       </TooltipTrigger>
                       <TooltipContent>
                         <p className="max-w-xs text-xs">
-                          Décalez les dates de quelques semaines si nécessaire
-                          (étalement des récoltes, conditions météo...)
+                          Décalez les dates de quelques semaines si necessaire
+                          (étalement des recoltes, conditions météo...)
                         </p>
                       </TooltipContent>
                     </Tooltip>
@@ -824,10 +824,10 @@ function PlancheValidationIndicator({
       </div>
 
       {/* Progress bar */}
-      <div className="h-2 bg-gray-200 rounded-full overflow-hidden flex">
+      <div className="h-2 bg-slate-200 rounded-full overflow-hidden flex">
         {usedByExisting > 0 && (
           <div
-            className="h-full bg-gray-400 transition-all duration-300"
+            className="h-full bg-slate-400 transition-all duration-300"
             style={{ width: `${existingPct}%` }}
             title={`Cultures existantes: ${usedByExisting.toFixed(2)}m`}
           />
@@ -843,7 +843,7 @@ function PlancheValidationIndicator({
       <div className="flex gap-3 text-xs text-muted-foreground">
         {usedByExisting > 0 && (
           <div className="flex items-center gap-1">
-            <div className="w-2.5 h-2.5 rounded-sm bg-gray-400" />
+            <div className="w-2.5 h-2.5 rounded-sm bg-slate-400" />
             Existant ({usedByExisting.toFixed(2)}m)
           </div>
         )}

@@ -142,11 +142,13 @@ export async function GET(request: NextRequest) {
         orderBy: { dateAchat: 'desc' },
       }),
 
-      // DepenseManuelle
+      // DepenseManuelle (exclure auto=true pour eviter le double comptage
+      // avec les sources brutes SoinAnimal, ConsommationAliment, Intervention, etc.)
       prisma.depenseManuelle.findMany({
         where: {
           userId,
           date: { gte: startOfYear, lte: endOfYear },
+          auto: { not: true },
         },
         orderBy: { date: 'desc' },
       }),

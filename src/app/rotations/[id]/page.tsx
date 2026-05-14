@@ -148,7 +148,7 @@ export default function EditRotationPage() {
       }
 
       toast({
-        title: "Rotation mise a jour",
+        title: "Rotation mise à jour",
         description: `La rotation "${id}" a ete modifiee`,
       })
       router.push("/rotations")
@@ -156,7 +156,7 @@ export default function EditRotationPage() {
       toast({
         variant: "destructive",
         title: "Erreur",
-        description: error instanceof Error ? error.message : "Erreur lors de la mise a jour",
+        description: error instanceof Error ? error.message : "Erreur lors de la mise à jour",
       })
     } finally {
       setIsSubmitting(false)
@@ -187,7 +187,7 @@ export default function EditRotationPage() {
       }
 
       toast({
-        title: "Rotation supprimee",
+        title: "Rotation supprimée",
         description: `La rotation "${id}" a ete supprimee`,
       })
       router.push("/rotations")
@@ -207,7 +207,7 @@ export default function EditRotationPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-slate-50">
         <header className="border-b bg-white sticky top-0 z-50">
           <div className="container mx-auto px-4 py-4">
             <Skeleton className="h-8 w-48" />
@@ -222,9 +222,10 @@ export default function EditRotationPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
+      <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
       {/* Header */}
-      <header className="border-b bg-white sticky top-0 z-50">
+      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link href="/rotations">
@@ -255,11 +256,11 @@ export default function EditRotationPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Identification</CardTitle>
-                <CardDescription>Etat de la rotation</CardDescription>
+                <CardDescription>État de la rotation</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="p-3 bg-gray-100 rounded-md">
-                  <span className="text-sm text-gray-500">Identifiant: </span>
+                <div className="p-3 bg-slate-100 rounded-md">
+                  <span className="text-sm text-slate-500">Identifiant: </span>
                   <span className="font-medium">{id}</span>
                 </div>
 
@@ -296,7 +297,7 @@ export default function EditRotationPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 {fields.map((field, index) => (
-                  <div key={field.id} className="flex items-center gap-4 p-3 bg-gray-50 rounded-lg">
+                  <div key={field.id} className="flex items-center gap-4 p-3 bg-slate-50 rounded-lg">
                     <Badge variant="outline" className="shrink-0">
                       Annee {index + 1}
                     </Badge>
@@ -311,7 +312,7 @@ export default function EditRotationPage() {
                           >
                             <FormControl>
                               <SelectTrigger>
-                                <SelectValue placeholder="Selectionner un ITP" />
+                                <SelectValue placeholder="Sélectionner un ITP" />
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
@@ -372,7 +373,7 @@ export default function EditRotationPage() {
             {rotationData && rotationData.planches.length > 0 && (
               <Card>
                 <CardHeader>
-                  <CardTitle>Planches associees</CardTitle>
+                  <CardTitle>Planches associées</CardTitle>
                   <CardDescription>
                     {rotationData.planches.length} planche(s) utilisent cette rotation
                   </CardDescription>
@@ -381,7 +382,7 @@ export default function EditRotationPage() {
                   <div className="flex flex-wrap gap-2">
                     {rotationData.planches.map((p) => (
                       <Link key={p.id} href={`/planches/${encodeURIComponent(p.id)}`}>
-                        <Badge variant="secondary" className="cursor-pointer hover:bg-gray-200">
+                        <Badge variant="secondary" className="cursor-pointer hover:bg-slate-200">
                           {p.id}
                           {p.ilot && <span className="text-muted-foreground ml-1">({p.ilot})</span>}
                         </Badge>

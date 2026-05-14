@@ -1,7 +1,7 @@
 /**
  * API Récoltes Arbres (avec gestion statut stock/vente)
- * GET /api/arbres/recoltes - Liste des récoltes avec filtre statut
- * POST /api/arbres/recoltes - Créer une récolte (statut en_stock par défaut)
+ * GET /api/arbres/recoltes - Liste des recoltes avec filtre statut
+ * POST /api/arbres/recoltes - Créer une recolte (statut en_stock par défaut)
  */
 
 import { NextRequest, NextResponse } from "next/server"

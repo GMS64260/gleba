@@ -4,7 +4,7 @@
 
 import { z } from "zod"
 
-// Schéma pour un détail d'association
+// Schéma pour un detail d'association
 export const associationDetailSchema = z.object({
   id: z.number().optional(),
   especeId: z.string().nullable().optional(),

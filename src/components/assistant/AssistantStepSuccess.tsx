@@ -44,10 +44,10 @@ export function AssistantStepSuccess({
       {/* Message */}
       <div>
         <h3 className="text-lg font-semibold text-green-700 mb-2">
-          Culture creee avec succes !
+          Culture créée avec succes !
         </h3>
         <p className="text-sm text-muted-foreground">
-          Votre culture a ete enregistree et apparait maintenant dans votre liste.
+          Votre culture a été enregistrée et apparait maintenant dans votre liste.
         </p>
       </div>
 
@@ -113,7 +113,7 @@ export function AssistantStepSuccess({
       {/* Conseil actionnable */}
       <div className="p-3 bg-green-50 rounded-lg border border-green-200 mt-6">
         <p className="text-xs text-green-700">
-          <strong>Prochaine etape :</strong> Rendez-vous sur la fiche de la culture
+          <strong>Prochaine étape :</strong> Rendez-vous sur la fiche de la culture
           pour marquer le semis comme effectue. L'application calculera automatiquement
           les dates de plantation et de recolte a partir de ce moment.
           Vous pouvez aussi suivre l'avancement depuis le tableau de bord.

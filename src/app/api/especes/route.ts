@@ -1,7 +1,7 @@
 /**
  * API Routes pour les Espèces
- * GET /api/especes - Liste des espèces (référentiel global, lecture pour tous les users)
- * POST /api/especes - Créer une espèce
+ * GET /api/especes - Liste des especes (referentiel global, lecture pour tous les users)
+ * POST /api/especes - Créer une espece
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -9,6 +9,7 @@ import prisma from '@/lib/prisma'
 import { createEspeceSchema } from '@/lib/validations'
 import { Prisma } from '@prisma/client'
 import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
+import { cleanReferentielName, normalizeReferentielKey } from '@/lib/normalize'
 
 // GET /api/especes - Référentiel global (lecture)
 export async function GET(request: NextRequest) {
@@ -102,7 +103,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST /api/especes (admin only - données de référence globales)
+// POST /api/especes (admin only - données de reference globales)
 export async function POST(request: NextRequest) {
   const { error } = await requireAdminApi()
   if (error) return error
@@ -121,14 +122,34 @@ export async function POST(request: NextRequest) {
 
     const data = validationResult.data
 
-    // Vérifier si l'espèce existe déjà
+    // Normalisation du nom pour éviter "Carotte Nantaise" vs "Carotte-Nantaise"
+    const cleanedId = cleanReferentielName(data.id)
+    if (cleanedId !== data.id) {
+      data.id = cleanedId
+    }
+
+    // Vérifier si l'espece existe déjà (exact)
     const existing = await prisma.espece.findUnique({
       where: { id: data.id },
     })
 
     if (existing) {
       return NextResponse.json(
-        { error: `L'espèce "${data.id}" existe déjà` },
+        { error: `L'espece "${data.id}" existe déjà` },
+        { status: 409 }
+      )
+    }
+
+    // Détection de doublon "mou" (différence d'accent / tiret / espace / casse)
+    const normalizedKey = normalizeReferentielKey(data.id)
+    const allEspeces = await prisma.espece.findMany({ select: { id: true } })
+    const conflit = allEspeces.find((e) => normalizeReferentielKey(e.id) === normalizedKey)
+    if (conflit) {
+      return NextResponse.json(
+        {
+          error: `Une espece similaire existe déjà : "${conflit.id}". Si c'est la même espece, utilisez-la ; sinon, choisissez un nom plus distinctif.`,
+          conflit: conflit.id,
+        },
         { status: 409 }
       )
     }
@@ -145,7 +166,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('POST /api/especes error:', error)
     return NextResponse.json(
-      { error: 'Erreur lors de la création de l\'espèce' },
+      { error: 'Erreur lors de la création de l\'espece' },
       { status: 500 }
     )
   }
