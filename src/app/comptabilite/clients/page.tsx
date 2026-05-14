@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
+import { fetchWithRetry } from "@/lib/fetch-retry"
 
 interface Client {
   id: number
@@ -86,14 +87,32 @@ export default function ClientsPage() {
       if (search) params.set('search', search)
       if (!showInactifs) params.set('actif', 'true')
 
-      const response = await fetch(`/api/comptabilite/clients?${params}`)
+      // DEV1 T2 — Retry exponentiel sur cold start (503/504) : 3 tentatives,
+      // backoff 200ms → 400ms → 800ms (jitter ±25 %).
+      const response = await fetchWithRetry(`/api/comptabilite/clients?${params}`, {
+        onRetry: (attempt, _err, status) => {
+          // Silent retry — pas de toast pour ne pas alarmer si juste 1 cold start.
+          // Log console pour observabilité dev.
+          console.info(`[clients] retry ${attempt}/3 (status=${status ?? "network"})`)
+        },
+      })
       if (response.ok) {
         const result = await response.json()
         setClients(result.data)
         setStats(result.stats)
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Erreur",
+          description: `Chargement clients impossible (HTTP ${response.status}). Réessayez dans quelques secondes.`,
+        })
       }
     } catch (error) {
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les clients" })
+      toast({
+        variant: "destructive",
+        title: "Erreur réseau",
+        description: error instanceof Error ? error.message : "Impossible de charger les clients",
+      })
     } finally {
       setIsLoading(false)
     }
