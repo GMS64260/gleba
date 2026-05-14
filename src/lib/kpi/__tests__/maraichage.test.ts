@@ -14,7 +14,8 @@ vi.mock('@/lib/prisma', () => {
         aggregate: vi.fn(),
       },
       planche: {
-        aggregate: vi.fn(),
+        // Ticket #4 — passé de aggregate à findMany pour fallback surface
+        findMany: vi.fn(),
       },
     },
   }
@@ -28,17 +29,14 @@ type AnyMock = ReturnType<typeof vi.fn>
 const mocked = prisma as unknown as {
   culture: { findMany: AnyMock; count: AnyMock }
   recolte: { aggregate: AnyMock }
-  planche: { aggregate: AnyMock }
+  planche: { findMany: AnyMock }
 }
 
 function setupDefaults() {
   mocked.culture.findMany.mockResolvedValue([])
   mocked.culture.count.mockResolvedValue(0)
   mocked.recolte.aggregate.mockResolvedValue({ _sum: { quantite: 0 } })
-  mocked.planche.aggregate.mockResolvedValue({
-    _sum: { surface: 0 },
-    _count: { _all: 0 },
-  })
+  mocked.planche.findMany.mockResolvedValue([])
 }
 
 describe('getKpiMaraichage', () => {

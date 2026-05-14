@@ -60,6 +60,10 @@ async function computeKpiMaraichage(
     planchesTotalAgg,
   ] = await Promise.all([
     // Toutes les cultures planifiées pour l'année (toutes statuts confondus).
+    // Ticket #4 — On fetch aussi largeur/longueur pour fallback si la
+    // colonne `surface` est null en base (état historique avant la
+    // visite /jardin qui déclenche le recalcul). Évite "0 m²" au premier
+    // affichage tant que l'utilisateur n'a pas ouvert le module jardin.
     prisma.culture.findMany({
       where: { userId, annee: year },
       select: {
@@ -69,7 +73,7 @@ async function computeKpiMaraichage(
         plantationFaite: true,
         recolteFaite: true,
         terminee: true,
-        planche: { select: { surface: true } },
+        planche: { select: { surface: true, largeur: true, longueur: true } },
       },
     }),
 
@@ -102,10 +106,11 @@ async function computeKpiMaraichage(
       _sum: { quantite: true },
     }),
 
-    prisma.planche.aggregate({
+    // Ticket #4 — on lit largeur+longueur en plus de surface pour
+    // pouvoir calculer le total robuste même quand surface=null en base.
+    prisma.planche.findMany({
       where: { userId },
-      _sum: { surface: true },
-      _count: { _all: true },
+      select: { surface: true, largeur: true, longueur: true },
     }),
   ])
 
@@ -115,7 +120,10 @@ async function computeKpiMaraichage(
   const surfaceCultiveePlanches = new Map<string, number>()
   for (const c of culturesAnnee) {
     if (!c.plancheId) continue
-    const surface = c.planche?.surface ?? 0
+    // Ticket #4 — fallback dérivé si la colonne surface est null
+    const p = c.planche
+    const surface = p?.surface
+      ?? (p?.largeur && p?.longueur ? p.largeur * p.longueur : 0)
     surfacePlanifieePlanches.set(c.plancheId, surface)
     const active =
       c.terminee === null &&
@@ -137,8 +145,13 @@ async function computeKpiMaraichage(
     recoltesKgN1Total: round2(recoltesN1TotalAgg._sum.quantite ?? 0),
     culturesActives: culturesActivesCount,
     culturesPlanifiees: culturesAnnee.length,
-    planchesCount: planchesTotalAgg._count._all,
-    planchesSurfaceM2: round1(planchesTotalAgg._sum.surface ?? 0),
+    planchesCount: planchesTotalAgg.length,
+    planchesSurfaceM2: round1(
+      planchesTotalAgg.reduce((sum, p) => {
+        const s = p.surface ?? (p.largeur && p.longueur ? p.largeur * p.longueur : 0)
+        return sum + s
+      }, 0)
+    ),
   }
 }
 
