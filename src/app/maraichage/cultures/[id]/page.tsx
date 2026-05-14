@@ -35,6 +35,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 import { updateCultureSchema, type UpdateCultureInput } from "@/lib/validations"
+import { estimerNombrePlantsStrict } from "@/lib/assistant-helpers"
 
 // Convertir un numéro de semaine (1-52) en date pour une annee donnée
 function weekToDate(year: number, week: number): Date {
@@ -238,13 +239,17 @@ export default function EditCulturePage() {
     }
   }, [selectedPlanche, planches, form])
 
-  // Auto-calculer la quantité de plants
+  // Auto-calculer la quantité de plants (BUG-10 : null si inputs incomplets,
+  // pour ne pas garder une ancienne valeur fantôme — la liste reflète alors
+  // l'absence de calcul plutôt qu'une valeur stale).
   React.useEffect(() => {
     if (!initialLoadDone.current) return
-    if (watchedNbRangs && watchedLongueur && watchedEspacement && watchedEspacement > 0) {
-      const quantite = watchedNbRangs * Math.floor((watchedLongueur * 100) / watchedEspacement)
-      form.setValue("quantite", quantite)
-    }
+    const quantite = estimerNombrePlantsStrict(
+      watchedLongueur ?? null,
+      watchedNbRangs ?? null,
+      watchedEspacement ?? null
+    )
+    form.setValue("quantite", quantite)
   }, [watchedNbRangs, watchedLongueur, watchedEspacement, form])
 
   const onSubmit = async (data: UpdateCultureInput) => {

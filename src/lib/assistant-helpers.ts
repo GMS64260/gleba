@@ -63,7 +63,8 @@ export function calculerDatesCulture(
 }
 
 /**
- * Estime le nombre de plants en fonction de la surface et de l'espacement
+ * Estime le nombre de plants en fonction de la surface et de l'espacement.
+ * Compat : retourne 0 si un input manque (utilisé par l'assistant).
  */
 export function estimerNombrePlants(
   longueur: number, // mètres
@@ -74,6 +75,24 @@ export function estimerNombrePlants(
   if (!longueur || !nbRangs || !espacement) return 0
   const espacementM = espacement / 100
   const plantsParRang = Math.floor(longueur / espacementM)
+  return plantsParRang * nbRangs
+}
+
+/**
+ * BUG-10 — Variante stricte : retourne `null` quand une donnée d'entrée
+ * manque, au lieu de 0. Utilisé par les formulaires de création/édition
+ * de culture pour distinguer « vraiment 0 plant » (impossible en pratique)
+ * de « calcul impossible — inputs incomplets ». Sans ça, le formulaire
+ * gardait l'ancienne valeur de `quantite` quand l'utilisateur vidait un
+ * champ, ce qui rendait la liste et le détail incohérents (cf. BUG-11).
+ */
+export function estimerNombrePlantsStrict(
+  longueur: number | null | undefined,
+  nbRangs: number | null | undefined,
+  espacement: number | null | undefined
+): number | null {
+  if (!longueur || !nbRangs || !espacement || espacement <= 0) return null
+  const plantsParRang = Math.floor((longueur * 100) / espacement)
   return plantsParRang * nbRangs
 }
 
