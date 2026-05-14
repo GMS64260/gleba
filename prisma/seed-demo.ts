@@ -233,9 +233,10 @@ async function seedArbres(userId: string, parcelles: Record<string, string>) {
     { nom: "Prunier Mirabelle 3", espece: "Prunier", variete: "Mirabelle de Nancy", portGreffe: "Saint-Julien A", plantation: "2023-03-10", posX: 13, posY: 20 },
     { nom: "Cerisier Burlat 1", espece: "Prunier", variete: "Burlat", portGreffe: "Sainte-Lucie", plantation: "2024-03-05", posX: 17, posY: 15 },
     { nom: "Cerisier Burlat 2", espece: "Prunier", variete: "Burlat", portGreffe: "Sainte-Lucie", plantation: "2024-03-05", posX: 17, posY: 20 },
-    { nom: "Figuier Brown Turkey", espece: "Pommier", variete: "Brown Turkey", plantation: "2022-04-01", posX: 21, posY: 10 },
-    { nom: "Noyer Franquette 1", espece: "Pommier", variete: "Franquette", plantation: "2022-04-01", posX: 21, posY: 15 },
-    { nom: "Noyer Franquette 2", espece: "Pommier", variete: "Franquette", plantation: "2022-04-01", posX: 21, posY: 20 },
+    // Bug #2 audit 2026-05-14 — Espèces incorrectes "Pommier" pour Figuier/Noyer.
+    { nom: "Figuier Brown Turkey", espece: "Figuier", variete: "Brown Turkey", plantation: "2022-04-01", posX: 21, posY: 10 },
+    { nom: "Noyer Franquette 1", espece: "Noyer", variete: "Franquette", plantation: "2020-11-15", posX: 21, posY: 15 },
+    { nom: "Noyer Franquette 2", espece: "Noyer", variete: "Franquette", plantation: "2020-11-15", posX: 21, posY: 20 },
   ]
   const created: number[] = []
   for (const a of arbres) {
