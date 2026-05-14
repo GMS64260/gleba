@@ -74,7 +74,7 @@ export function AssistantStepSuccess({
       {/* Actions */}
       <div className="space-y-3">
         {cultureId && (
-          <Link href={`/cultures/${cultureId}`} className="block">
+          <Link href={`/maraichage/cultures/${cultureId}`} className="block">
             <Button variant="default" className="w-full">
               <ExternalLink className="h-4 w-4 mr-2" />
               Voir la culture
@@ -83,7 +83,7 @@ export function AssistantStepSuccess({
         )}
 
         {cultureId && (
-          <Link href={`/cultures/${cultureId}`} className="block">
+          <Link href={`/maraichage/cultures/${cultureId}`} className="block">
             <Button variant="outline" className="w-full border-green-300 text-green-700 hover:bg-green-50">
               <Sprout className="h-4 w-4 mr-2" />
               Marquer comme semee

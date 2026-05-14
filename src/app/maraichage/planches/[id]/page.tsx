@@ -123,7 +123,7 @@ export default function PlancheDetailPage({ params }: PageProps) {
         </div>
         <div className="flex gap-2">
           <Link
-            href={`/cultures/new?plancheId=${encodeURIComponent(planche.id)}`}
+            href={`/maraichage/cultures/new?plancheId=${encodeURIComponent(planche.id)}`}
             className="rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
           >
             + Nouvelle culture

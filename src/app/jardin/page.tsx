@@ -1059,7 +1059,7 @@ function JardinContent() {
                           return (
                             <Link
                               key={culture.id}
-                              href={`/cultures/${culture.id}`}
+                              href={`/maraichage/cultures/${culture.id}`}
                               className="block"
                             >
                               <div className="flex items-center gap-2 p-2 rounded hover:bg-slate-100 transition-colors">

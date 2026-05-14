@@ -64,7 +64,7 @@ export function PremiersPasBanner() {
   const remaining = steps.filter((s) => !s.done).length
 
   return (
-    <Card className="bg-gradient-to-r from-blue-50 to-emerald-50 border-blue-200">
+    <Card data-tour="premiers-pas" className="bg-gradient-to-r from-blue-50 to-emerald-50 border-blue-200">
       <CardContent className="py-4">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-2">

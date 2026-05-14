@@ -746,7 +746,7 @@ function CulturesIrriguerContent() {
                               </div>
 
                               {culture.planche && (
-                                <Link href={`/planches/${encodeURIComponent(culture.planche.nom || culture.planche.id)}`}>
+                                <Link href={`/maraichage/planches/${encodeURIComponent(culture.planche.nom || culture.planche.id)}`}>
                                   <Badge variant="secondary" className="cursor-pointer hover:bg-slate-200 whitespace-nowrap">
                                     {culture.planche.nom || culture.planche.id}
                                   </Badge>

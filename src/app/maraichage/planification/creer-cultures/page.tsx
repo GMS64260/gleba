@@ -310,7 +310,7 @@ function CreerCulturesContent() {
                           />
                         </TableCell>
                         <TableCell>
-                          <Link href={`/planches/${encodeURIComponent(c.plancheId)}`}>
+                          <Link href={`/maraichage/planches/${encodeURIComponent(c.plancheId)}`}>
                             <Badge variant="outline" className="cursor-pointer hover:bg-slate-100">
                               {c.plancheId}
                             </Badge>

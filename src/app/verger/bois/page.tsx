@@ -4,6 +4,6 @@ import { useRouter } from "next/navigation"
 
 export default function BoisRedirect() {
   const router = useRouter()
-  useEffect(() => { router.replace("/arbres?tab=productions") }, [router])
+  useEffect(() => { router.replace("/verger?tab=productions") }, [router])
   return null
 }

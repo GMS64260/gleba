@@ -32,6 +32,7 @@ import { ChatPanel } from "@/components/chat/ChatPanel"
 import { HeaderMeteoWidget } from "@/components/meteo/HeaderMeteoWidget"
 import { CalendrierTab } from "@/components/potager/CalendrierTab"
 import { PremiersPasBanner } from "@/components/premiers-pas-banner"
+import { TourMaraichage } from "@/components/tours/tour-maraichage"
 import { CulturesTab } from "@/components/potager/CulturesTab"
 import { TerrainTab } from "@/components/potager/TerrainTab"
 import { PlanificationTab } from "@/components/potager/PlanificationTab"
@@ -282,6 +283,8 @@ function HomeContent() {
 
       {/* Contenu de l'onglet actif */}
       <main className="container mx-auto px-4 py-6 max-w-[1600px] space-y-6">
+        {/* POSTREVIEW Sprint 6 — Tour Shepherd.js Maraîchage */}
+        {activeTab === "calendrier" && <TourMaraichage />}
         {/* PROMPT 22 — Bandeau "Premiers pas" sur l'onglet d'accueil */}
         {activeTab === "calendrier" && <PremiersPasBanner />}
         {activeTab === "calendrier" && <CalendrierTab year={selectedYear} />}

@@ -9,6 +9,7 @@ import Link from "next/link"
 import { ArrowLeft, BookOpen, HelpCircle, Keyboard, MessageSquare, Map, BookCopy } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { RelancerTours } from "@/components/relancer-tours"
 
 export const metadata = {
   title: "Centre d'aide — Gleba",
@@ -23,8 +24,12 @@ const FAQ = [
         a: "Rendez-vous dans Paramètres > Exploitation pour modifier raison sociale, SIRET, régime fiscal/TVA, coordonnées bancaires et mentions de pied de facture.",
       },
       {
-        q: "Comment relancer le tour guidé ?",
-        a: "Le tour guidé peut être redéclenché depuis cette page (bouton ci-dessous) ou en cliquant sur l'icône ? dans le coin inférieur droit.",
+        q: "Comment relancer le tour guidé d'un module ?",
+        a: "Chaque module a son propre tour Shepherd.js. Utilisez les boutons « Relancer le tour » au bas de cette page (Maraîchage, Verger, Élevage, Comptabilité).",
+      },
+      {
+        q: "Comment naviguer rapidement ?",
+        a: "Cmd/Ctrl + K ouvre la recherche globale. Le préfixe `g` puis `m/v/e/c` bascule entre modules. La touche `?` ouvre la page raccourcis. Voir /raccourcis pour la liste complète.",
       },
     ],
   },
@@ -163,6 +168,18 @@ export default function AidePage() {
                 </div>
               </div>
             ))}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Tour guidé</CardTitle>
+            <CardDescription>
+              Chaque module propose un tour Shepherd.js qui présente les fonctionnalités clés. Cliquez sur un bouton pour le relancer (5 étapes par tour).
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <RelancerTours />
           </CardContent>
         </Card>
 

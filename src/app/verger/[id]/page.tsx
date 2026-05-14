@@ -136,7 +136,7 @@ export default function DetailArbrePage() {
         if (res.ok) {
           setArbre(await res.json())
         } else {
-          router.push("/arbres?tab=arbres")
+          router.push("/verger?tab=arbres")
         }
       } catch (err) {
         console.error("Erreur chargement:", err)
@@ -179,7 +179,7 @@ export default function DetailArbrePage() {
       const res = await fetch(`/api/arbres/${id}`, { method: "DELETE" })
       if (res.ok) {
         toast({ title: "Arbre supprimé" })
-        router.push("/arbres?tab=arbres")
+        router.push("/verger?tab=arbres")
       }
     } catch (err) {
       console.error("Erreur suppression:", err)

@@ -4,6 +4,6 @@ import { useRouter } from "next/navigation"
 
 export default function OperationsRedirect() {
   const router = useRouter()
-  useEffect(() => { router.replace("/arbres?tab=operations") }, [router])
+  useEffect(() => { router.replace("/verger?tab=operations") }, [router])
   return null
 }

@@ -36,6 +36,7 @@ import { ProductionTab } from "@/components/elevage/ProductionTab"
 import { AlimentationTab } from "@/components/elevage/AlimentationTab"
 import { EspecesTab } from "@/components/elevage/EspecesTab"
 import { ReproductionTab } from "@/components/elevage/ReproductionTab"
+import { TourElevage } from "@/components/tours/tour-elevage"
 
 const TABS = [
   { id: "calendrier", label: "Calendrier", icon: Calendar, shortLabel: "Calendrier" },
@@ -192,6 +193,8 @@ export default function ElevageDashboard() {
         </div>
       </nav>
 
+      {/* POSTREVIEW Sprint 6 — Tour Shepherd.js Élevage */}
+      <TourElevage />
       {/* Contenu de l'onglet actif */}
       <main className="container mx-auto px-4 py-6 max-w-[1600px]">
         {activeTab === "calendrier" && <CalendrierTab />}

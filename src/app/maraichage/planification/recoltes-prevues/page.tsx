@@ -146,12 +146,12 @@ function RecoltesPrevuesContent() {
       <main className="container mx-auto px-4 py-6">
         {/* Onglets */}
         <div className="flex gap-2 mb-4">
-          <Link href={`/planification/recoltes-prevues?annee=${annee}`}>
+          <Link href={`/maraichage/planification/recoltes-prevues?annee=${annee}`}>
             <Button variant="default" size="sm">
               Par mois
             </Button>
           </Link>
-          <Link href={`/planification/recoltes-prevues/par-semaines?annee=${annee}`}>
+          <Link href={`/maraichage/planification/recoltes-prevues/par-semaines?annee=${annee}`}>
             <Button variant="outline" size="sm">
               Par semaines
             </Button>
