@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { SessionProvider } from "@/components/auth/SessionProvider";
 import { FeedbackWidget } from "@/components/feedback/FeedbackWidget";
 import { GlobalSearch } from "@/components/global-search";
+import { OnboardingRedirect } from "@/components/onboarding-redirect";
 
 
 const spaceGrotesk = Space_Grotesk({
@@ -135,6 +136,7 @@ export default function RootLayout({
         className={`${inter.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable} font-sans antialiased`}
       >
         <SessionProvider>
+          <OnboardingRedirect />
           {children}
           <GlobalSearch />
           <Toaster />
