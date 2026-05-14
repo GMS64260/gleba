@@ -1335,6 +1335,10 @@ model EspeceAnimale {
   nom               String    @map("nom") // Nom d'affichage
   type              String    @map("type") // "volaille", "mammifere_petit", "mammifere_grand"
   production        String    @map("production") // "oeufs", "viande", "lait", "laine", "mixte"
+  // PROMPT 19C — Catégorie réglementaire (utilisée pour identification BDNI/IPG/SIRE)
+  categorieReglementaire String? @map("categorie_reglementaire") // 'Ovin','Caprin','Bovin','Porcin','Équin','Volaille de chair','Volaille de ponte','Cuniculture','Apiculture','Aquaculture','Autre'
+  // PROMPT 19C — Productions multivaluées (au-delà de `production` mono pour compat)
+  productions       String[]  @default([]) @map("productions") // ['Viande','Lait','Œufs','Laine','Cuir','Fumier','Saillie']
   dureeGestation    Int?      @map("duree_gestation") // Jours (mammifères)
   dureeCouvaison    Int?      @map("duree_couvaison") // Jours (volailles)
   dureeElevage      Int?      @map("duree_elevage") // Jours jusqu'à maturité/abattage

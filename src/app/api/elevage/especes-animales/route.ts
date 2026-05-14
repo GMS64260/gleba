@@ -57,6 +57,8 @@ export async function POST(request: NextRequest) {
       nom,
       type,
       production,
+      categorieReglementaire,
+      productions,
       dureeGestation,
       dureeCouvaison,
       dureeElevage,
@@ -82,6 +84,8 @@ export async function POST(request: NextRequest) {
         nom,
         type,
         production,
+        categorieReglementaire: categorieReglementaire ?? null,
+        productions: Array.isArray(productions) ? productions : [],
         dureeGestation,
         dureeCouvaison,
         dureeElevage,
@@ -124,7 +128,7 @@ export async function PATCH(request: NextRequest) {
 
     const body = await request.json()
     const {
-      nom, type, production,
+      nom, type, production, categorieReglementaire, productions,
       dureeGestation, dureeCouvaison, dureeElevage,
       poidsAdulte, rendementCarcasse, ponteAnnuelle,
       consommationJour, prixAchat, couleur, description,
@@ -134,6 +138,8 @@ export async function PATCH(request: NextRequest) {
     if (nom !== undefined) data.nom = nom
     if (type !== undefined) data.type = type
     if (production !== undefined) data.production = production
+    if (categorieReglementaire !== undefined) data.categorieReglementaire = categorieReglementaire ?? null
+    if (productions !== undefined) data.productions = Array.isArray(productions) ? productions : []
     if (dureeGestation !== undefined) data.dureeGestation = dureeGestation
     if (dureeCouvaison !== undefined) data.dureeCouvaison = dureeCouvaison
     if (dureeElevage !== undefined) data.dureeElevage = dureeElevage
