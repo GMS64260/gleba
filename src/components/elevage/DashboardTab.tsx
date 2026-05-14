@@ -24,6 +24,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { BulkActions } from "@/components/calendrier/BulkActions"
 import { useToast } from "@/hooks/use-toast"
 import {
   ChartContainer,
@@ -143,6 +144,60 @@ export function DashboardTab({ year }: DashboardTabProps) {
   React.useEffect(() => {
     fetchSoins()
   }, [fetchSoins])
+
+  // PROMPT 20a — Bulk actions sur les soins
+  const bulkSoinsDone = async () => {
+    const ids = soins.map((s) => s.id)
+    if (ids.length === 0) return
+    setSoins([]) // optimistic
+    try {
+      await Promise.all(
+        ids.map((id) =>
+          fetch('/api/elevage/soins', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id, fait: true, date: new Date().toISOString() }),
+          })
+        )
+      )
+      toast({ title: `${ids.length} soin(s) marqué(s) comme fait(s)` })
+    } catch {
+      toast({ variant: 'destructive', title: 'Erreur, recharge en cours' })
+      fetchSoins()
+    }
+  }
+  const bulkSoinsReport = async (days: number) => {
+    const ids = soins.filter((s) => s.datePrevue).map((s) => s.id)
+    if (ids.length === 0) return
+    try {
+      const res = await fetch('/api/soins/bulk-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids, days }),
+      })
+      if (!res.ok) throw new Error('Échec')
+      toast({ title: `${ids.length} soin(s) reporté(s) de ${days} jour(s)` })
+      fetchSoins()
+    } catch {
+      toast({ variant: 'destructive', title: 'Erreur' })
+    }
+  }
+  const bulkSoinsReportTo = async (date: string) => {
+    const ids = soins.map((s) => s.id)
+    if (ids.length === 0) return
+    try {
+      const res = await fetch('/api/soins/bulk-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids, date }),
+      })
+      if (!res.ok) throw new Error('Échec')
+      toast({ title: `${ids.length} soin(s) reporté(s) au ${new Date(date).toLocaleDateString('fr-FR')}` })
+      fetchSoins()
+    } catch {
+      toast({ variant: 'destructive', title: 'Erreur' })
+    }
+  }
 
   // Toggle soin fait
   const toggleSoin = async (id: number, fait: boolean) => {
@@ -462,13 +517,25 @@ export function DashboardTab({ year }: DashboardTabProps) {
 
       {/* Soins a faire */}
       <div>
-        <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
-          <Stethoscope className="h-5 w-5 text-blue-600" />
-          Soins a faire
-          {soins.length > 0 && (
-            <Badge variant="secondary">{soins.length}</Badge>
+        <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <Stethoscope className="h-5 w-5 text-blue-600" />
+            Soins a faire
+            {soins.length > 0 && (
+              <Badge variant="secondary">{soins.length}</Badge>
+            )}
+          </h2>
+          {/* PROMPT 20a — Actions en masse sur les soins */}
+          {soins.length >= 2 && (
+            <BulkActions
+              count={soins.length}
+              markAllLabel={`Tout fait (${soins.length})`}
+              onMarkAllDone={bulkSoinsDone}
+              onReport={bulkSoinsReport}
+              onReportTo={bulkSoinsReportTo}
+            />
           )}
-        </h2>
+        </div>
 
         {loadingSoins ? (
           <div className="grid gap-4 md:grid-cols-2">
