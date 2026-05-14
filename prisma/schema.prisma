@@ -451,6 +451,17 @@ model Variete {
   // en juin-juillet, figues d'automne en août-octobre).
   unifereBifere  String?      @map("unifere_bifere")
 
+  // PROMPT 23 — Pollinisation arbres fruitiers
+  // Ploïdie : diploïde (2n) / triploïde (3n) / tétraploïde (4n). Les triploïdes
+  // (ex: Belle de Boskoop, Reinette du Canada, Jonagold, Bramley, Mutsu) ne
+  // pollinisent PAS les autres variétés et requièrent 2 pollinisateurs diploïdes
+  // compatibles à proximité (~ 20-30 m).
+  ploidie        String?      @map("ploidie") // 'Diploïde' | 'Triploïde' | 'Tétraploïde' | 'Inconnu'
+  // Groupe de floraison officiel (A/B/C/D pour pommiers, similaire chez les
+  // autres rosacées). Deux variétés du même groupe se pollinisent au mieux ;
+  // les groupes adjacents (A↔B, B↔C, C↔D) restent compatibles.
+  groupePollinisation String? @map("groupe_pollinisation") // 'A' | 'B' | 'C' | 'D'
+
   // Relations
   cultures         Culture[]
   userStocks       UserStockVariete[]

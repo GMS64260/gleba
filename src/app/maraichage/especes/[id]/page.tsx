@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/form"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { AssociationsEspeceTab, BioagresseursEspeceTab } from "@/components/especes/EspeceTabs"
 import {
   Dialog,
   DialogContent,
@@ -401,12 +402,14 @@ export default function EditEspecePage() {
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             <Tabs defaultValue="general" className="w-full">
-              <TabsList className="grid w-full grid-cols-5">
-                <TabsTrigger value="general">General</TabsTrigger>
+              <TabsList className="grid w-full grid-cols-7">
+                <TabsTrigger value="general">Général</TabsTrigger>
                 <TabsTrigger value="culture">Culture</TabsTrigger>
                 <TabsTrigger value="recolte">Récolte</TabsTrigger>
+                <TabsTrigger value="varietes">Variétés ({varietes.length})</TabsTrigger>
+                <TabsTrigger value="associations">Associations</TabsTrigger>
+                <TabsTrigger value="bioagresseurs">Bioagresseurs</TabsTrigger>
                 <TabsTrigger value="notes">Notes</TabsTrigger>
-                <TabsTrigger value="varietes">Varietes ({varietes.length})</TabsTrigger>
               </TabsList>
 
               {/* Onglet General */}
@@ -1122,6 +1125,16 @@ export default function EditEspecePage() {
                     )}
                   </CardContent>
                 </Card>
+              </TabsContent>
+
+              {/* PROMPT 23 — Onglet Associations */}
+              <TabsContent value="associations">
+                <AssociationsEspeceTab especeId={especeId} />
+              </TabsContent>
+
+              {/* PROMPT 23 — Onglet Bioagresseurs */}
+              <TabsContent value="bioagresseurs">
+                <BioagresseursEspeceTab especeId={especeId} />
               </TabsContent>
             </Tabs>
 
