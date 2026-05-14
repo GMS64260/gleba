@@ -53,6 +53,7 @@ interface CultureWithRelations {
   }
   variete: { id: string } | null
   planche: { id: string } | null
+  quantite: number | null
   _count: { recoltes: number }
 }
 
@@ -225,8 +226,19 @@ function createColumns(
       },
     },
     {
+      accessorKey: "quantite",
+      header: "Plants",
+      cell: ({ getValue }) => {
+        // BUG-11 : la liste affiche la valeur stored (synchro avec le
+        // formulaire, qui met null désormais si inputs incomplets). « — »
+        // signale explicitement « calcul impossible » plutôt que faux zéro.
+        const v = getValue() as number | null
+        return v != null ? v.toLocaleString() : "—"
+      },
+    },
+    {
       accessorKey: "_count.recoltes",
-      header: "Nb",
+      header: "Récoltes",
       cell: ({ getValue }) => getValue() || 0,
     },
   ]
@@ -243,8 +255,20 @@ export default function CulturesPage() {
   const [showAssistant, setShowAssistant] = React.useState(false)
   const pageSize = 50
 
-  // Mise a jour rapide d'une culture
+  // Audit Marc 2026-05-14 — Bug 08 : un clic accidentel sur l'icône Sprout
+  // changeait l'état de la culture sans confirmation. On confirme désormais
+  // chaque changement (libellé contextualisé selon le sens : marquer/annuler).
+  const FIELD_LABELS: Record<string, string> = {
+    semisFait: 'le semis',
+    plantationFaite: 'la plantation',
+    recolteFaite: 'la récolte',
+  }
+
   const handleQuickUpdate = React.useCallback(async (id: number, field: string, value: boolean) => {
+    const action = value ? 'Marquer' : 'Annuler'
+    const sujet = FIELD_LABELS[field] ?? field
+    if (!window.confirm(`${action} ${sujet} de la culture #${id} ?`)) return
+
     try {
       const response = await fetch(`/api/cultures/${id}`, {
         method: 'PATCH',

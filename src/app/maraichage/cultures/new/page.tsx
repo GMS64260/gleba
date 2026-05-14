@@ -42,6 +42,7 @@ import {
 } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
 import { createCultureSchema, type CreateCultureInput } from "@/lib/validations"
+import { estimerNombrePlantsStrict } from "@/lib/assistant-helpers"
 import { RotationAdviceCompact } from "@/components/planche"
 import { EspeceCombobox, type EspeceOption } from "@/components/especes/EspeceCombobox"
 import { AdjacenceAdvisor } from "@/components/cultures/AdjacenceAdvisor"
@@ -229,12 +230,14 @@ export default function NewCulturePage() {
     }
   }, [selectedPlanche, planches, form])
 
-  // Auto-calculer la quantité de plants
+  // Auto-calculer la quantité de plants (BUG-10 : null si inputs incomplets).
   React.useEffect(() => {
-    if (watchedNbRangs && watchedLongueur && watchedEspacement && watchedEspacement > 0) {
-      const quantite = watchedNbRangs * Math.floor((watchedLongueur * 100) / watchedEspacement)
-      form.setValue("quantite", quantite)
-    }
+    const quantite = estimerNombrePlantsStrict(
+      watchedLongueur ?? null,
+      watchedNbRangs ?? null,
+      watchedEspacement ?? null
+    )
+    form.setValue("quantite", quantite)
   }, [watchedNbRangs, watchedLongueur, watchedEspacement, form])
 
   /**
@@ -269,6 +272,17 @@ export default function NewCulturePage() {
         title: "Culture créée",
         description: `La culture #${culture.id} a été créée avec succès`,
       })
+      // Audit Marc 2026-05-14 — Bug 04 : afficher les warnings ITP non
+      // bloquants ("Semis le 01/06 hors fenêtre ITP recommandée mars–avril")
+      if (Array.isArray(culture.warnings) && culture.warnings.length > 0) {
+        for (const w of culture.warnings) {
+          toast({
+            variant: "default",
+            title: "Avertissement agronomique",
+            description: w,
+          })
+        }
+      }
       router.push("/maraichage/cultures")
     } catch (error) {
       toast({
