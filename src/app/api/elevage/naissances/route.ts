@@ -108,22 +108,33 @@ export async function POST(request: NextRequest) {
     }
     const userId = session.user.id
 
-    const naissance = await prisma.naissanceAnimale.create({
-      data: {
-        userId,
-        mereId: parsed.data.mereId ?? null,
-        pereIdentifiant: parsed.data.pereIdentifiant ?? null,
-        date: parsed.data.date ?? new Date(),
-        nombreNes: parsed.data.nombreNes,
-        nombreVivants: parsed.data.nombreVivants,
-        nombreMales: parsed.data.nombreMales ?? null,
-        nombreFemelles: parsed.data.nombreFemelles ?? null,
-        poidsTotal: parsed.data.poidsTotal ?? null,
-        notes: parsed.data.notes ?? null,
-      },
-      include: {
-        mere: { select: { id: true, nom: true, identifiant: true } },
-      },
+    // PROMPT 18 — si saillieId fourni, on lie la mise-bas à la saillie et on
+    // bascule la saillie en statut "Mise-bas réalisée" dans la même transaction.
+    const naissance = await prisma.$transaction(async (tx) => {
+      const created = await tx.naissanceAnimale.create({
+        data: {
+          userId,
+          mereId: parsed.data.mereId ?? null,
+          pereIdentifiant: parsed.data.pereIdentifiant ?? null,
+          date: parsed.data.date ?? new Date(),
+          nombreNes: parsed.data.nombreNes,
+          nombreVivants: parsed.data.nombreVivants,
+          nombreMales: parsed.data.nombreMales ?? null,
+          nombreFemelles: parsed.data.nombreFemelles ?? null,
+          poidsTotal: parsed.data.poidsTotal ?? null,
+          notes: parsed.data.notes ?? null,
+          saillieId: parsed.data.saillieId ?? null,
+        },
+        include: { mere: { select: { id: true, nom: true, identifiant: true } } },
+      })
+
+      if (parsed.data.saillieId) {
+        await tx.saillie.update({
+          where: { id: parsed.data.saillieId },
+          data: { statut: 'Mise-bas réalisée' },
+        })
+      }
+      return created
     })
 
     return NextResponse.json({ data: naissance }, { status: 201 })

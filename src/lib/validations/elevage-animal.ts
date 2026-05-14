@@ -15,6 +15,8 @@ export const animalSchema = z.object({
   posX: z.number().nullable().optional(),
   posY: z.number().nullable().optional(),
   mereId: z.number().int().nullable().optional(),
+  // PROMPT 18 — Père relié au cheptel (FK) + fallback texte si père externe
+  pereId: z.number().int().nullable().optional(),
   pereIdentifiant: z.string().max(100).nullable().optional(),
   poidsActuel: z.number().min(0).nullable().optional(),
   couleur: z.string().max(50).nullable().optional(),

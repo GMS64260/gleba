@@ -99,8 +99,12 @@ const MOIS_LABELS = ['Jan', 'Fev', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aou', 'Se
 
 export function ReproductionTab() {
   return (
-    <Tabs defaultValue="naissances" className="space-y-4">
+    <Tabs defaultValue="saillies" className="space-y-4">
       <TabsList>
+        <TabsTrigger value="saillies" className="flex items-center gap-1.5">
+          <Heart className="h-4 w-4" />
+          Saillies
+        </TabsTrigger>
         <TabsTrigger value="naissances" className="flex items-center gap-1.5">
           <Baby className="h-4 w-4" />
           Naissances
@@ -111,6 +115,9 @@ export function ReproductionTab() {
         </TabsTrigger>
       </TabsList>
 
+      <TabsContent value="saillies">
+        <SailliesSubTab />
+      </TabsContent>
       <TabsContent value="naissances">
         <NaissancesSubTab />
       </TabsContent>
@@ -521,5 +528,370 @@ function CalculateurSubTab() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+// ============================================================
+// PROMPT 18 — Saillies / IA / Transferts d'embryon
+// ============================================================
+
+interface SaillieRow {
+  id: string
+  date: string
+  type: string
+  femelle: { id: number; nom: string | null; identifiant: string | null; race: string | null; especeAnimale: { id: string; nom: string } }
+  male: { id: number; nom: string | null; identifiant: string | null; race: string | null } | null
+  agentInseminateur: string | null
+  semenceLot: string | null
+  pereExterneRef: string | null
+  confirmationGestation: string | null
+  dateMiseBasAttendue: string
+  dateTarissementPrevue: string | null
+  statut: string
+  notes: string | null
+  miseBas: { id: number; date: string; nombreNes: number; nombreVivants: number } | null
+}
+
+function SailliesSubTab() {
+  const { toast } = useToast()
+  const [saillies, setSaillies] = React.useState<SaillieRow[]>([])
+  const [animaux, setAnimaux] = React.useState<{ id: number; nom: string | null; identifiant: string | null; sexe: string | null; race: string | null }[]>([])
+  const [loading, setLoading] = React.useState(true)
+  const [open, setOpen] = React.useState(false)
+  const [filtreStatut, setFiltreStatut] = React.useState<string>("")
+
+  const reload = React.useCallback(() => {
+    setLoading(true)
+    const params = new URLSearchParams()
+    if (filtreStatut) params.set("statut", filtreStatut)
+    Promise.all([
+      fetch(`/api/elevage/saillies?${params.toString()}`).then((r) => r.json()),
+      fetch("/api/elevage/animaux?statut=actif").then((r) => r.json()),
+    ])
+      .then(([s, a]) => {
+        setSaillies(s.data || [])
+        setAnimaux(a.data || [])
+      })
+      .finally(() => setLoading(false))
+  }, [filtreStatut])
+
+  React.useEffect(() => {
+    reload()
+  }, [reload])
+
+  // Alertes : mises-bas dans les 7 prochains jours, tarissements à programmer (≤14j)
+  const now = new Date()
+  const dans7j = new Date(now.getTime() + 7 * 86_400_000)
+  const dans14j = new Date(now.getTime() + 14 * 86_400_000)
+  const misesBasImminentes = saillies.filter(
+    (s) => s.statut === "Gestante" && new Date(s.dateMiseBasAttendue) <= dans7j && new Date(s.dateMiseBasAttendue) >= now
+  )
+  const tarissementsAProgrammer = saillies.filter(
+    (s) =>
+      s.statut === "Gestante" &&
+      s.dateTarissementPrevue &&
+      new Date(s.dateTarissementPrevue) <= dans14j &&
+      new Date(s.dateTarissementPrevue) >= now
+  )
+
+  return (
+    <div className="space-y-4">
+      {(misesBasImminentes.length > 0 || tarissementsAProgrammer.length > 0) && (
+        <Card className="border-amber-200 bg-amber-50">
+          <CardContent className="py-3 text-sm space-y-1">
+            {misesBasImminentes.length > 0 && (
+              <div>
+                <strong>⚠ Mises-bas attendues dans les 7 jours :</strong>{" "}
+                {misesBasImminentes.map((s) => `${s.femelle.nom || s.femelle.identifiant || `#${s.femelle.id}`} (${new Date(s.dateMiseBasAttendue).toLocaleDateString("fr-FR")})`).join(", ")}
+              </div>
+            )}
+            {tarissementsAProgrammer.length > 0 && (
+              <div>
+                <strong>🥛 Tarissements à programmer (≤14 j) :</strong>{" "}
+                {tarissementsAProgrammer.map((s) => `${s.femelle.nom || s.femelle.identifiant || `#${s.femelle.id}`} (${new Date(s.dateTarissementPrevue!).toLocaleDateString("fr-FR")})`).join(", ")}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Heart className="h-5 w-5 text-pink-600" />
+                Saillies
+              </CardTitle>
+              <CardDescription>
+                Date de mise-bas attendue calculée automatiquement selon la durée de gestation de l'espèce.
+                Alerte consanguinité au moment de la création.
+              </CardDescription>
+            </div>
+            <div className="flex items-end gap-2">
+              <select
+                className="h-9 rounded-md border border-slate-300 px-2 bg-white text-sm"
+                value={filtreStatut}
+                onChange={(e) => setFiltreStatut(e.target.value)}
+              >
+                <option value="">Tous statuts</option>
+                <option value="En attente">En attente</option>
+                <option value="Gestante">Gestante</option>
+                <option value="Non gestante">Non gestante</option>
+                <option value="Mise-bas réalisée">Mise-bas réalisée</option>
+                <option value="Avortement">Avortement</option>
+              </select>
+              <a
+                href={`/api/elevage/carnet-saillies?year=${new Date().getFullYear()}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <Button variant="outline" size="sm" title="Carnet de saillies PDF">
+                  <Calendar className="h-4 w-4 mr-1" />
+                  Carnet PDF
+                </Button>
+              </a>
+              <Button size="sm" onClick={() => setOpen(true)}>
+                <Plus className="h-4 w-4 mr-1" />
+                Nouvelle saillie
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <Skeleton className="h-40 w-full" />
+          ) : saillies.length === 0 ? (
+            <div className="text-sm text-slate-500 bg-slate-50 p-4 rounded">Aucune saillie enregistrée.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="border-b">
+                  <tr>
+                    <th className="p-2 text-left">Date</th>
+                    <th className="p-2 text-left">Type</th>
+                    <th className="p-2 text-left">Femelle</th>
+                    <th className="p-2 text-left">Mâle / IA</th>
+                    <th className="p-2 text-left">Mise-bas att.</th>
+                    <th className="p-2 text-left">Tariss.</th>
+                    <th className="p-2 text-left">Statut</th>
+                    <th className="p-2"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {saillies.map((s) => (
+                    <tr key={s.id} className="border-b hover:bg-slate-50">
+                      <td className="p-2">{new Date(s.date).toLocaleDateString("fr-FR")}</td>
+                      <td className="p-2">{s.type}</td>
+                      <td className="p-2">{s.femelle.nom || s.femelle.identifiant || `#${s.femelle.id}`}</td>
+                      <td className="p-2">
+                        {s.male
+                          ? s.male.nom || s.male.identifiant || `#${s.male.id}`
+                          : s.pereExterneRef || (s.agentInseminateur ? `IA ${s.agentInseminateur}` : "—")}
+                      </td>
+                      <td className="p-2">{new Date(s.dateMiseBasAttendue).toLocaleDateString("fr-FR")}</td>
+                      <td className="p-2 text-xs">
+                        {s.dateTarissementPrevue ? new Date(s.dateTarissementPrevue).toLocaleDateString("fr-FR") : "—"}
+                      </td>
+                      <td className="p-2">
+                        <Badge
+                          variant="outline"
+                          className={
+                            s.statut === "Gestante" ? "bg-blue-50" :
+                            s.statut === "Mise-bas réalisée" ? "bg-green-50" :
+                            s.statut === "Avortement" ? "bg-red-50" : ""
+                          }
+                        >
+                          {s.statut}
+                        </Badge>
+                      </td>
+                      <td className="p-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={async () => {
+                            if (!confirm("Supprimer cette saillie ?")) return
+                            const res = await fetch(`/api/elevage/saillies?id=${s.id}`, { method: "DELETE" })
+                            if (res.ok) reload()
+                            else {
+                              const j = await res.json()
+                              toast({ variant: "destructive", title: "Refusé", description: j.error })
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <DialogSaillie open={open} onOpenChange={setOpen} animaux={animaux} onCreated={reload} />
+    </div>
+  )
+}
+
+function DialogSaillie(props: {
+  open: boolean
+  onOpenChange: (b: boolean) => void
+  animaux: { id: number; nom: string | null; identifiant: string | null; sexe: string | null; race: string | null }[]
+  onCreated: () => void
+}) {
+  const { toast } = useToast()
+  const [form, setForm] = React.useState({
+    date: new Date().toISOString().split("T")[0],
+    femelleId: 0,
+    maleId: 0,
+    type: "Monte naturelle",
+    agentInseminateur: "",
+    semenceLot: "",
+    pereExterneRef: "",
+    notes: "",
+  })
+  const [warning, setWarning] = React.useState<string | null>(null)
+  const [saving, setSaving] = React.useState(false)
+
+  const femelles = props.animaux.filter((a) => a.sexe === "femelle")
+  const males = props.animaux.filter((a) => a.sexe === "male")
+
+  // Détection consanguinité à la volée
+  React.useEffect(() => {
+    if (!form.femelleId || !form.maleId) {
+      setWarning(null)
+      return
+    }
+    fetch(`/api/elevage/consanguinite?femelleId=${form.femelleId}&maleId=${form.maleId}`)
+      .then((r) => r.json())
+      .then((j) => {
+        setWarning(j.consanguinite ? `⚠ Ancêtre(s) commun(s) sur 3 générations (animaux #${j.ancetresCommuns.join(", #")})` : null)
+      })
+  }, [form.femelleId, form.maleId])
+
+  const submit = async () => {
+    if (!form.femelleId) {
+      toast({ variant: "destructive", title: "Femelle requise" })
+      return
+    }
+    setSaving(true)
+    try {
+      const res = await fetch("/api/elevage/saillies", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date: form.date,
+          femelleId: form.femelleId,
+          maleId: form.type === "Monte naturelle" && form.maleId ? form.maleId : null,
+          type: form.type,
+          agentInseminateur: form.type === "IA" ? form.agentInseminateur || null : null,
+          semenceLot: form.type === "IA" ? form.semenceLot || null : null,
+          pereExterneRef: form.pereExterneRef || null,
+          notes: form.notes || null,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        toast({ variant: "destructive", title: "Erreur", description: json.error || "Échec" })
+      } else {
+        if (json.warnings?.length > 0) {
+          toast({ title: "Saillie enregistrée", description: json.warnings[0].message })
+        } else {
+          toast({ title: "Saillie enregistrée" })
+        }
+        props.onOpenChange(false)
+        props.onCreated()
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open={props.open} onOpenChange={props.onOpenChange}>
+      <DialogContent className="max-w-xl">
+        <DialogHeader>
+          <DialogTitle>Nouvelle saillie</DialogTitle>
+          <DialogDescription>
+            La date de mise-bas attendue sera calculée automatiquement selon l'espèce de la femelle.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label>Date saillie</Label>
+            <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+          </div>
+          <div>
+            <Label>Type</Label>
+            <select className="block h-10 w-full rounded-md border border-slate-300 px-2 bg-white" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
+              <option value="Monte naturelle">Monte naturelle</option>
+              <option value="IA">Insémination artificielle</option>
+              <option value="Transfert embryon">Transfert d'embryon</option>
+            </select>
+          </div>
+          <div className="col-span-2">
+            <Label>Femelle *</Label>
+            <select className="block h-10 w-full rounded-md border border-slate-300 px-2 bg-white" value={form.femelleId} onChange={(e) => setForm({ ...form, femelleId: parseInt(e.target.value) || 0 })}>
+              <option value="0">— Sélectionner —</option>
+              {femelles.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.nom || a.identifiant || `#${a.id}`} {a.race ? `(${a.race})` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+          {form.type === "Monte naturelle" && (
+            <div className="col-span-2">
+              <Label>Mâle (cheptel)</Label>
+              <select className="block h-10 w-full rounded-md border border-slate-300 px-2 bg-white" value={form.maleId} onChange={(e) => setForm({ ...form, maleId: parseInt(e.target.value) || 0 })}>
+                <option value="0">— Aucun (saillie externe) —</option>
+                {males.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.nom || a.identifiant || `#${a.id}`} {a.race ? `(${a.race})` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          {form.type === "IA" && (
+            <>
+              <div>
+                <Label>Agent inséminateur</Label>
+                <Input value={form.agentInseminateur} onChange={(e) => setForm({ ...form, agentInseminateur: e.target.value })} placeholder="n° agrément" />
+              </div>
+              <div>
+                <Label>Lot semence</Label>
+                <Input value={form.semenceLot} onChange={(e) => setForm({ ...form, semenceLot: e.target.value })} />
+              </div>
+            </>
+          )}
+          {form.type !== "Monte naturelle" && (
+            <div className="col-span-2">
+              <Label>Référence père externe (optionnel)</Label>
+              <Input value={form.pereExterneRef} onChange={(e) => setForm({ ...form, pereExterneRef: e.target.value })} placeholder="Nom, n° taureau, ..." />
+            </div>
+          )}
+          <div className="col-span-2">
+            <Label>Notes</Label>
+            <Input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+          </div>
+        </div>
+
+        {warning && (
+          <div className="bg-amber-50 border border-amber-200 text-amber-800 p-2 rounded text-sm mt-2">{warning}</div>
+        )}
+
+        <div className="flex justify-end gap-2 mt-4">
+          <Button variant="outline" onClick={() => props.onOpenChange(false)}>Annuler</Button>
+          <Button onClick={submit} disabled={saving}>
+            <Plus className="h-4 w-4 mr-1" />
+            Enregistrer
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
