@@ -82,6 +82,10 @@ export async function POST(request: NextRequest) {
     const userId = session.user.id
     const d = parsed.data
 
+    // DEV2 #4 — Auto-dérivation SIREN depuis SIRET si non fourni.
+    // Le SIREN = 9 premiers chiffres du SIRET (cf src/lib/siret.ts).
+    const sirenDerived = !d.siren && d.siret ? d.siret.replace(/\s+/g, '').substring(0, 9) : d.siren
+
     const client = await prisma.client.create({
       data: {
         userId,
@@ -94,6 +98,7 @@ export async function POST(request: NextRequest) {
         codePostal: d.codePostal ?? null,
         pays: d.pays,
         siret: d.siret ?? null,
+        siren: sirenDerived ?? null,
         tvaIntra: d.tvaIntra ?? null,
         conditionsPaiement: d.conditionsPaiement,
         exonererTVA: d.exonererTVA,
@@ -145,7 +150,14 @@ export async function PATCH(request: NextRequest) {
     if (updates.ville !== undefined) updateData.ville = updates.ville
     if (updates.codePostal !== undefined) updateData.codePostal = updates.codePostal
     if (updates.pays !== undefined) updateData.pays = updates.pays
-    if (updates.siret !== undefined) updateData.siret = updates.siret
+    if (updates.siret !== undefined) {
+      updateData.siret = updates.siret
+      // DEV2 #4 — auto-dériver SIREN si seulement SIRET fourni
+      if (updates.siret && updates.siren === undefined) {
+        updateData.siren = updates.siret.replace(/\s+/g, "").substring(0, 9)
+      }
+    }
+    if (updates.siren !== undefined) updateData.siren = updates.siren
     if (updates.tvaIntra !== undefined) updateData.tvaIntra = updates.tvaIntra
     if (updates.conditionsPaiement !== undefined) updateData.conditionsPaiement = updates.conditionsPaiement
     if (updates.exonererTVA !== undefined) updateData.exonererTVA = updates.exonererTVA
