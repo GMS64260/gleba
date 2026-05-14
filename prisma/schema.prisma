@@ -2190,6 +2190,8 @@ model UserStockVariete {
   // Audit Marc — l'ail se compte en caïeux pas en graines. Cette unité
   // sert à afficher la bonne unité dans l'UI (graines/caieux/bulbes/...)
   uniteStock   String?   @map("unite_stock") // graines | caieux | bulbes | tubercules | plants | pieces
+  // DEV2 #6 — coût unitaire d'entrée pour PMP/FIFO/dernier prix
+  coutUnitaire Float?    @map("cout_unitaire")
   dateStock    DateTime? @map("date_stock")
 
   @@unique([userId, varieteId])
@@ -2207,7 +2209,9 @@ model UserStockFertilisant {
   fertilisant   Fertilisant @relation(fields: [fertilisantId], references: [id], onDelete: Cascade)
   stock         Float?    @map("stock") // kg ou L
   dateStock     DateTime? @map("date_stock")
-  prix          Float?    @map("prix") // €/kg (prix per-user)
+  prix          Float?    @map("prix") // €/kg (prix per-user, déprécié, voir coutUnitaire)
+  // DEV2 #6
+  coutUnitaire  Float?    @map("cout_unitaire")
 
   @@unique([userId, fertilisantId])
   @@index([userId])
@@ -2225,7 +2229,9 @@ model UserStockAliment {
   stock     Float?    @map("stock") // kg
   dateStock DateTime? @map("date_stock")
   stockMin  Float?    @map("stock_min") // seuil alerte
-  prix      Float?    @map("prix") // €/kg
+  prix      Float?    @map("prix") // €/kg (déprécié, voir coutUnitaire)
+  // DEV2 #6
+  coutUnitaire Float?  @map("cout_unitaire")
 
   @@unique([userId, alimentId])
   @@index([userId])
@@ -2245,6 +2251,10 @@ model UserStockEspece {
   prixKg         Float?    @map("prix_kg") // €/kg
   objectifAnnuel Float?    @map("obj_annuel") // kg ou unités visées/an
   uniteStock     String?   @map("unite_stock") // graines | caieux | bulbes | tubercules | plants | pieces
+  // DEV2 #6 — coût unitaire pour valorisation (PMP/FIFO/dernier prix).
+  // Pour les récoltes maraîchage où il n'y a pas d'achat, dériver du
+  // prix de vente moyen × (1 - marge) via coutStandardDepuisPrixVente.
+  coutUnitaire   Float?    @map("cout_unitaire")
 
   @@unique([userId, especeId])
   @@index([userId])
