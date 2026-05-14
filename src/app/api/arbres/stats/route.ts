@@ -37,6 +37,52 @@ export async function GET(request: NextRequest) {
       prisma.arbre.count({ where: { userId, productif: true, type: { in: ["fruitier", "petit_fruit"] } } }),
     ])
 
+    // Bug #6 — Surface verger (ha) : somme des parcelles ayant au moins
+    // un arbre, exprimée en hectares. Marc 14/05/2026 : KPI manquant en tête
+    // du calendrier.
+    const parcellesAvecArbres = await prisma.parcelleGeo.findMany({
+      where: { userId, arbres: { some: {} } },
+      select: { surface: true },
+    })
+    const surfaceVergerM2 = parcellesAvecArbres.reduce(
+      (s, p) => s + (p.surface || 0),
+      0
+    )
+    const surfaceVergerHa = Math.round((surfaceVergerM2 / 10000) * 100) / 100
+
+    // Bug #6 — Pyramide d'âge : count d'arbres par tranche, basée sur
+    // datePlantation.
+    const arbresAvecDates = await prisma.arbre.findMany({
+      where: { userId, type: { in: ["fruitier", "petit_fruit"] }, datePlantation: { not: null } },
+      select: { datePlantation: true },
+    })
+    const now = new Date()
+    const pyramideAge = { age_0_5: 0, age_5_15: 0, age_15_30: 0, age_30_plus: 0, sansDate: 0 }
+    const arbresFruitsTotal = arbresFruitiers + arbresPetitsFruits
+    for (const a of arbresAvecDates) {
+      if (!a.datePlantation) continue
+      const ageMs = now.getTime() - new Date(a.datePlantation).getTime()
+      const ageYears = ageMs / (1000 * 60 * 60 * 24 * 365.25)
+      if (ageYears < 5) pyramideAge.age_0_5++
+      else if (ageYears < 15) pyramideAge.age_5_15++
+      else if (ageYears < 30) pyramideAge.age_15_30++
+      else pyramideAge.age_30_plus++
+    }
+    pyramideAge.sansDate = Math.max(0, arbresFruitsTotal - arbresAvecDates.length)
+
+    // Bug #6 — Top 5 espèces par nombre d'arbres.
+    const topEspecesRaw = await prisma.arbre.groupBy({
+      by: ["espece"],
+      where: { userId, type: { in: ["fruitier", "petit_fruit"] }, espece: { not: null } },
+      _count: { _all: true },
+      orderBy: { _count: { espece: "desc" } },
+      take: 5,
+    })
+    const topEspeces = topEspecesRaw.map((r) => ({
+      espece: r.espece ?? "—",
+      count: r._count._all,
+    }))
+
     // Récoltes de fruits de l'annee
     const recoltesFruitsYear = await prisma.recolteArbre.aggregate({
       where: {
@@ -238,6 +284,10 @@ export async function GET(request: NextRequest) {
         productionBoisKg: Math.round((productionBoisYear._sum.poidsKg || 0) * 100) / 100,
         venteBoisAnnee: Math.round((productionBoisYear._sum.prixVente || 0) * 100) / 100,
         operationsEnAttente,
+        // Bug #6 — Nouveaux KPI Verger (audit Marc 2026-05-14).
+        surfaceVergerHa,
+        pyramideAge,
+        topEspeces,
       },
 
       // Graphiques
