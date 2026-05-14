@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { isValidSiret, isValidSiren, isValidTvaIntracomFr } from '@/lib/siret'
+import { caseInsensitiveEnum } from './case-insensitive-enum'
 
 const optionalSiret = z
   .string()
@@ -27,7 +28,11 @@ const optionalTvaIntra = z
 
 export const createClientSchema = z.object({
   nom: z.string().min(1, 'Nom requis').max(200),
-  type: z.enum(['particulier', 'professionnel', 'association', 'amap']).optional().default('particulier'),
+  // DEV1 T1 — Résilient à la casse : accepte 'particulier', 'Particulier',
+  // 'PARTICULIER' et normalise vers 'particulier' (canonique).
+  type: caseInsensitiveEnum(['particulier', 'professionnel', 'association', 'amap'] as const)
+    .optional()
+    .default('particulier'),
   email: z.string().email('Email invalide').max(200).nullable().optional(),
   telephone: z.string().max(30).nullable().optional(),
   adresse: z.string().max(500).nullable().optional(),

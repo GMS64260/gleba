@@ -1,8 +1,10 @@
 import { z } from 'zod'
+import { caseInsensitiveEnum } from './case-insensitive-enum'
 
 export const venteProduitSchema = z.object({
   date: z.coerce.date().optional(),
-  type: z.enum(['oeufs', 'viande', 'animal_vivant', 'lait', 'autre']),
+  // DEV1 T1 — Résilient à la casse.
+  type: caseInsensitiveEnum(['oeufs', 'viande', 'animal_vivant', 'lait', 'autre'] as const),
   description: z.string().max(500).nullable().optional(),
   quantite: z.number().positive('La quantité doit être positive'),
   unite: z.string().min(1, 'Unité requise'),

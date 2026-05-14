@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { caseInsensitiveEnum } from './case-insensitive-enum'
 
 export const abattageSchema = z.object({
   animalId: z.number().int().nullable().optional(),
@@ -7,7 +8,8 @@ export const abattageSchema = z.object({
   quantite: z.number().int().min(1).default(1),
   poidsVif: z.number().min(0).nullable().optional(),
   poidsCarcasse: z.number().min(0).nullable().optional(),
-  destination: z.enum(['auto_consommation', 'vente', 'don']),
+  // DEV1 T1 — Résilient à la casse.
+  destination: caseInsensitiveEnum(['auto_consommation', 'vente', 'don'] as const),
   prixVente: z.number().min(0).nullable().optional(),
   lieu: z.string().max(200).nullable().optional(),
   notes: z.string().max(5000).nullable().optional(),
