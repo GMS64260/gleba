@@ -1228,6 +1228,20 @@ model CampagnePlantation {
   // Suivi de reprise (calculé / dernière obs)
   tauxReprise     Float?    @map("taux_reprise") // % vivants (0-100)
   dateDernObservation DateTime? @map("date_derniere_observation")
+  // PROMPT 24 — Cohorte annuelle : suivi de reprise N+1 / N+2 / N+3
+  nbPlantsRepriseAn1  Int?    @map("nb_plants_reprise_an1")
+  nbPlantsRepriseAn2  Int?    @map("nb_plants_reprise_an2")
+  nbPlantsRepriseAn3  Int?    @map("nb_plants_reprise_an3")
+  tauxRepriseAn1      Float?  @map("taux_reprise_an1") // calculé : (an1 / initial) × 100
+  tauxRepriseAn2      Float?  @map("taux_reprise_an2")
+  tauxRepriseAn3      Float?  @map("taux_reprise_an3")
+  mortaliteCauses     String[] @default([]) @map("mortalite_causes") // ['sécheresse','gibier','maladie','vandalisme','autre']
+  regarnissagePlanifie Boolean @default(false) @map("regarnissage_planifie")
+  regarnissageRealiseDate DateTime? @map("regarnissage_realise_date")
+  // Lien optionnel vers la campagne mère (chaînage regarnissage → campagne d'origine)
+  campagneMereId  Int?      @map("campagne_mere_id")
+  campagneMere    CampagnePlantation? @relation("CampagneRegarnissage", fields: [campagneMereId], references: [id], onDelete: SetNull)
+  regarnissages   CampagnePlantation[] @relation("CampagneRegarnissage")
   // Protection
   protectionType  String?   @map("protection_type") // "manchon", "filet", "cloture", "aucune"
   // Notes & objectifs
