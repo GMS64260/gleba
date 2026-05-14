@@ -36,8 +36,24 @@ interface LigneFacture {
   description: string
   quantite: number
   unite: string
-  prixUnitaire: number
-  montant: number
+  prixUnitaire: number // HT
+  tauxTVA: number      // 0 | 2.1 | 5.5 | 10 | 20
+  montantHT: number
+  montantTVA: number
+  montantTTC: number
+}
+
+// Taux TVA présélectionné par catégorie (PROMPT 14C §10)
+const TAUX_TVA_PAR_CATEGORIE: Record<string, number> = {
+  legumes: 5.5,
+  fruits: 5.5,
+  oeufs: 5.5,
+  produits_transformes: 5.5,
+  animaux_vivants: 10,
+  aliments_animaux: 10,
+  bois: 20,
+  service: 20,
+  main_oeuvre: 0,
 }
 
 interface FactureEmise {
@@ -73,8 +89,17 @@ export default function FacturesPage() {
     notes: "",
   })
   const [lignes, setLignes] = React.useState<LigneFacture[]>([
-    { id: "1", description: "", quantite: 1, unite: "unité", prixUnitaire: 0, montant: 0 }
+    { id: "1", description: "", quantite: 1, unite: "unité", prixUnitaire: 0, tauxTVA: 5.5, montantHT: 0, montantTVA: 0, montantTTC: 0 }
   ])
+  const [savingFacture, setSavingFacture] = React.useState(false)
+  const [exploitationOk, setExploitationOk] = React.useState<boolean | null>(null)
+
+  React.useEffect(() => {
+    fetch('/api/exploitation')
+      .then((r) => r.json())
+      .then(({ data }) => setExploitationOk(!!data))
+      .catch(() => setExploitationOk(false))
+  }, [])
 
   // État formulaire avoir
   const [avoirData, setAvoirData] = React.useState({
@@ -198,16 +223,23 @@ export default function FacturesPage() {
   const addLigne = () => {
     setLignes([
       ...lignes,
-      { id: String(Date.now()), description: "", quantite: 1, unite: "unité", prixUnitaire: 0, montant: 0 }
+      { id: String(Date.now()), description: "", quantite: 1, unite: "unité", prixUnitaire: 0, tauxTVA: 5.5, montantHT: 0, montantTVA: 0, montantTTC: 0 }
     ])
+  }
+
+  const recalcLigne = (l: LigneFacture): LigneFacture => {
+    const ht = Math.round(l.quantite * l.prixUnitaire * 100) / 100
+    const tva = Math.round(ht * (l.tauxTVA / 100) * 100) / 100
+    const ttc = Math.round((ht + tva) * 100) / 100
+    return { ...l, montantHT: ht, montantTVA: tva, montantTTC: ttc }
   }
 
   const updateLigne = (id: string, field: keyof LigneFacture, value: any) => {
     setLignes(lignes.map(l => {
       if (l.id !== id) return l
       const updated = { ...l, [field]: value }
-      if (field === 'quantite' || field === 'prixUnitaire') {
-        updated.montant = updated.quantite * updated.prixUnitaire
+      if (field === 'quantite' || field === 'prixUnitaire' || field === 'tauxTVA') {
+        return recalcLigne(updated)
       }
       return updated
     }))
@@ -219,74 +251,69 @@ export default function FacturesPage() {
     }
   }
 
-  const totalFacture = lignes.reduce((sum, l) => sum + l.montant, 0)
+  const totalHT = lignes.reduce((s, l) => s + l.montantHT, 0)
+  const totalTVA = lignes.reduce((s, l) => s + l.montantTVA, 0)
+  const totalFacture = lignes.reduce((s, l) => s + l.montantTTC, 0)
+  // Ventilation par taux pour affichage
+  const totauxParTaux: Record<number, { ht: number; tva: number }> = {}
+  for (const l of lignes) {
+    if (!totauxParTaux[l.tauxTVA]) totauxParTaux[l.tauxTVA] = { ht: 0, tva: 0 }
+    totauxParTaux[l.tauxTVA].ht += l.montantHT
+    totauxParTaux[l.tauxTVA].tva += l.montantTVA
+  }
 
-  const generateFacturePDF = () => {
-    // Génération simple en ouvrant une nouvelle fenêtre avec le contenu
-    const content = `
-      <html>
-        <head>
-          <title>Facture ${factureData.numero}</title>
-          <style>
-            body { font-family: Arial, sans-serif; padding: 40px; }
-            h1 { color: #2563eb; }
-            table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-            th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
-            th { background: #f3f4f6; }
-            .total { font-size: 1.2em; font-weight: bold; text-align: right; margin-top: 20px; }
-            .header { display: flex; justify-content: space-between; margin-bottom: 40px; }
-            .client { margin: 20px 0; padding: 15px; background: #f9fafb; border-radius: 8px; }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <div>
-              <h1>FACTURE</h1>
-              <p><strong>N°:</strong> ${factureData.numero}</p>
-              <p><strong>Date:</strong> ${new Date(factureData.date).toLocaleDateString('fr-FR')}</p>
-              <p><strong>Échéance:</strong> ${new Date(factureData.echeance).toLocaleDateString('fr-FR')}</p>
-            </div>
-          </div>
-          <div class="client">
-            <strong>Client:</strong> ${factureData.client}<br/>
-            ${factureData.adresse ? `<strong>Adresse:</strong> ${factureData.adresse}<br/>` : ''}
-            ${factureData.email ? `<strong>Email:</strong> ${factureData.email}` : ''}
-          </div>
-          ${factureData.objet ? `<p><strong>Objet:</strong> ${factureData.objet}</p>` : ''}
-          <table>
-            <thead>
-              <tr>
-                <th>Description</th>
-                <th>Quantité</th>
-                <th>Unité</th>
-                <th>Prix unitaire</th>
-                <th>Montant</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${lignes.map(l => `
-                <tr>
-                  <td>${l.description}</td>
-                  <td>${l.quantite}</td>
-                  <td>${l.unite}</td>
-                  <td>${l.prixUnitaire.toFixed(2)} €</td>
-                  <td>${l.montant.toFixed(2)} €</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-          <p class="total">TOTAL: ${totalFacture.toFixed(2)} €</p>
-          ${factureData.notes ? `<p style="margin-top: 40px; color: #666;"><em>${factureData.notes}</em></p>` : ''}
-        </body>
-      </html>
-    `
-    const win = window.open('', '_blank')
-    if (win) {
-      win.document.write(content)
-      win.document.close()
-      win.print()
+  const enregistrerFacture = async () => {
+    if (savingFacture) return
+    setSavingFacture(true)
+    try {
+      const res = await fetch('/api/comptabilite/factures', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'facture',
+          clientNom: factureData.client,
+          clientAdresse: factureData.adresse || null,
+          date: factureData.date,
+          dateEcheance: factureData.echeance,
+          objet: factureData.objet,
+          totalHT,
+          totalTVA,
+          totalTTC: totalFacture,
+          statut: 'emise',
+          notes: factureData.notes,
+          lignes: lignes.map(l => ({
+            description: l.description,
+            quantite: l.quantite,
+            unite: l.unite,
+            prixUnitaire: l.prixUnitaire,
+            tauxTVA: l.tauxTVA,
+            montantHT: l.montantHT,
+            montantTVA: l.montantTVA,
+            montantTTC: l.montantTTC,
+          })),
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        toast({ variant: 'destructive', title: 'Erreur', description: json.error || 'Échec de la création' })
+        return
+      }
+      toast({ title: 'Facture enregistrée', description: `Numéro ${json.data.numero}` })
+      // Réinitialise le formulaire
+      setLignes([{ id: '1', description: '', quantite: 1, unite: 'unité', prixUnitaire: 0, tauxTVA: 5.5, montantHT: 0, montantTVA: 0, montantTTC: 0 }])
+      setFactureData({
+        ...factureData,
+        client: '', adresse: '', email: '', objet: '', notes: '',
+      })
+      // Recharge la liste & ouvre le PDF
+      fetchFacturesEmises()
+      window.open(`/api/comptabilite/factures/${json.data.id}/pdf`, '_blank')
+      setActiveTab('emises')
+    } catch (err) {
+      toast({ variant: 'destructive', title: 'Erreur réseau', description: String(err) })
+    } finally {
+      setSavingFacture(false)
     }
-    toast({ title: "Facture générée", description: `Facture ${factureData.numero}` })
   }
 
   const generateAvoirPDF = () => {
@@ -607,14 +634,17 @@ export default function FacturesPage() {
                       Ajouter ligne
                     </Button>
                   </div>
+                  <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="w-[40%]">Description</TableHead>
+                        <TableHead className="min-w-[200px]">Désignation</TableHead>
                         <TableHead>Qté</TableHead>
                         <TableHead>Unité</TableHead>
-                        <TableHead>Prix unit.</TableHead>
-                        <TableHead>Montant</TableHead>
+                        <TableHead>PU HT</TableHead>
+                        <TableHead>TVA</TableHead>
+                        <TableHead>Total HT</TableHead>
+                        <TableHead>Total TTC</TableHead>
                         <TableHead></TableHead>
                       </TableRow>
                     </TableHeader>
@@ -631,22 +661,26 @@ export default function FacturesPage() {
                           <TableCell>
                             <Input
                               type="number"
+                              step="0.001"
                               value={ligne.quantite}
                               onChange={(e) => updateLigne(ligne.id, 'quantite', parseFloat(e.target.value) || 0)}
                               className="w-20"
                             />
                           </TableCell>
                           <TableCell>
-                            <Select value={ligne.unite} onValueChange={(v) => updateLigne(ligne.id, 'unite', v)}>
-                              <SelectTrigger className="w-24"><SelectValue /></SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="unité">unité</SelectItem>
-                                <SelectItem value="kg">kg</SelectItem>
-                                <SelectItem value="pièce">pièce</SelectItem>
-                                <SelectItem value="heure">heure</SelectItem>
-                                <SelectItem value="forfait">forfait</SelectItem>
-                              </SelectContent>
-                            </Select>
+                            <select
+                              className="h-9 rounded-md border border-slate-300 px-2 bg-white"
+                              value={ligne.unite}
+                              onChange={(e) => updateLigne(ligne.id, 'unite', e.target.value)}
+                            >
+                              <option value="unité">unité</option>
+                              <option value="kg">kg</option>
+                              <option value="pièce">pièce</option>
+                              <option value="L">L</option>
+                              <option value="heure">heure</option>
+                              <option value="forfait">forfait</option>
+                              <option value="m³">m³</option>
+                            </select>
                           </TableCell>
                           <TableCell>
                             <Input
@@ -657,7 +691,21 @@ export default function FacturesPage() {
                               className="w-24"
                             />
                           </TableCell>
-                          <TableCell className="font-bold">{formatEuro(ligne.montant)}</TableCell>
+                          <TableCell>
+                            <select
+                              className="h-9 rounded-md border border-slate-300 px-2 bg-white"
+                              value={ligne.tauxTVA}
+                              onChange={(e) => updateLigne(ligne.id, 'tauxTVA', parseFloat(e.target.value))}
+                            >
+                              <option value="0">0%</option>
+                              <option value="2.1">2.1%</option>
+                              <option value="5.5">5.5%</option>
+                              <option value="10">10%</option>
+                              <option value="20">20%</option>
+                            </select>
+                          </TableCell>
+                          <TableCell className="text-sm">{formatEuro(ligne.montantHT)}</TableCell>
+                          <TableCell className="font-bold text-sm">{formatEuro(ligne.montantTTC)}</TableCell>
                           <TableCell>
                             <Button variant="ghost" size="sm" onClick={() => removeLigne(ligne.id)} disabled={lignes.length === 1}>
                               ×
@@ -667,8 +715,23 @@ export default function FacturesPage() {
                       ))}
                     </TableBody>
                   </Table>
-                  <div className="text-right mt-4">
-                    <p className="text-2xl font-bold">Total: {formatEuro(totalFacture)}</p>
+                  </div>
+
+                  <div className="grid md:grid-cols-2 gap-6 mt-4">
+                    <div className="text-sm space-y-1">
+                      <p className="font-semibold text-slate-700 mb-2">Récapitulatif TVA</p>
+                      {Object.entries(totauxParTaux).sort((a,b) => Number(a[0]) - Number(b[0])).map(([taux, t]) => (
+                        <div key={taux} className="flex justify-between text-slate-600 max-w-xs">
+                          <span>Base {taux}%</span>
+                          <span>{formatEuro(t.ht)} → TVA {formatEuro(t.tva)}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="text-right space-y-1">
+                      <p className="text-sm text-slate-600">Total HT : <span className="font-semibold">{formatEuro(totalHT)}</span></p>
+                      <p className="text-sm text-slate-600">Total TVA : <span className="font-semibold">{formatEuro(totalTVA)}</span></p>
+                      <p className="text-2xl font-bold text-teal-700">Net à payer TTC : {formatEuro(totalFacture)}</p>
+                    </div>
                   </div>
                 </div>
 
@@ -677,15 +740,25 @@ export default function FacturesPage() {
                   <Textarea
                     value={factureData.notes}
                     onChange={(e) => setFactureData({ ...factureData, notes: e.target.value })}
-                    placeholder="Conditions de paiement, mentions légales..."
+                    placeholder="Conditions de paiement, mentions complémentaires..."
                     rows={3}
                   />
                 </div>
 
+                {exploitationOk === false && (
+                  <div className="bg-amber-50 border border-amber-200 text-amber-800 p-3 rounded text-sm">
+                    ⚠ Identité légale non configurée. Les mentions obligatoires
+                    (SIRET, raison sociale, TVA) seront absentes du PDF. {" "}
+                    <Link href="/parametres/exploitation" className="underline font-medium">
+                      Configurer maintenant →
+                    </Link>
+                  </div>
+                )}
+
                 <div className="flex gap-2">
-                  <Button onClick={generateFacturePDF} disabled={!factureData.client || totalFacture === 0}>
-                    <Printer className="h-4 w-4 mr-2" />
-                    Générer et imprimer
+                  <Button onClick={enregistrerFacture} disabled={!factureData.client || totalFacture === 0 || savingFacture}>
+                    <FileText className="h-4 w-4 mr-2" />
+                    {savingFacture ? 'Enregistrement…' : 'Enregistrer et générer le PDF'}
                   </Button>
                 </div>
               </CardContent>

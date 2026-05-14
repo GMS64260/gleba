@@ -1665,12 +1665,19 @@ model Facture {
   totalHT         Float     @map("total_ht")
   totalTVA        Float     @default(0) @map("total_tva")
   totalTTC        Float     @map("total_ttc")
+  // PROMPT 14C — totaux par taux de TVA (JSON: { "5.5": {ht: 100, tva: 5.5}, "20": {...} })
+  totauxParTauxTva Json?    @map("totaux_par_taux_tva")
   // Statut
   statut          String    @default("emise") @map("statut") // "brouillon", "emise", "payee", "annulee"
   datePaiement    DateTime? @map("date_paiement")
   modePaiement    String?   @map("mode_paiement") // "especes", "cheque", "cb", "virement"
   // Référence avoir
   factureOrigineId Int?     @map("facture_origine_id") // Pour les avoirs
+  // PROMPT 14C — Conditions, mentions spécifiques (cases cochables)
+  conditionsPaiement   String?  @map("conditions_paiement") // texte libre
+  mentionsSpecifiques  String[] @default([]) @map("mentions_specifiques") // ['293b', 'escompte', 'penalites', 'indemnite-40', 'ab']
+  // PROMPT 14C — Snapshot émetteur figé à l'émission (immuable pour archivage légal)
+  emetteurSnapshot     Json?    @map("emetteur_snapshot")
   notes           String?   @map("notes")
   mentionsLegales String?   @map("mentions_legales")
   createdAt       DateTime  @default(now()) @map("created_at")
