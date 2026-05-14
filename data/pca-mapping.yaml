@@ -1,0 +1,110 @@
+# Plan Comptable Agricole — Matrice catégorie → compte général
+# Référence : CRC 99-03 + adaptations agricoles arrêté du 11/12/1986
+# Source de vérité Git : ce fichier est synchronisé avec
+# src/lib/comptabilite/plan-comptable-agricole.ts
+#
+# Modification : passer par une PR Git (audit-trail réglementaire).
+# Validation : tout changement doit être validé par un expert-comptable agricole
+# avant merge.
+#
+# DEV 1 PROMPT #8 (Sophie Larcher 2026-05-14)
+
+version: 1
+date_revision: 2026-05-14
+
+# ============================================================================
+# Journaux comptables (codes courts)
+# ============================================================================
+journaux:
+  VE: Journal des ventes
+  AC: Journal des achats
+  BQ: Journal de banque
+  CA: Journal de caisse
+  OD: Journal des opérations diverses
+
+# ============================================================================
+# Comptes de bilan (classes 1-5)
+# ============================================================================
+bilan:
+  tresorerie:
+    banque: { num: '512100', libelle: 'Banque (compte courant)' }
+    caisse: { num: '530100', libelle: 'Caisse en espèces' }
+  tiers:
+    clients: { num: '411000', libelle: 'Créances clients' }
+    fournisseurs: { num: '401000', libelle: 'Dettes fournisseurs' }
+  tva:
+    collectee: { num: '445700', libelle: 'TVA collectée sur ventes' }
+    deductible_biens: { num: '445660', libelle: 'TVA déductible sur autres biens et services' }
+    deductible_immo: { num: '445620', libelle: 'TVA déductible sur immobilisations' }
+    a_payer: { num: '445510', libelle: 'TVA à décaisser' }
+  capitaux:
+    capital: { num: '101000', libelle: 'Capital social' }
+    resultat_exercice: { num: '120000', libelle: 'Résultat de l''exercice' }
+
+# ============================================================================
+# Comptes de produits (classe 7) — ventes
+# ============================================================================
+# Catégorie métier → compte 70x
+ventes:
+  legumes: { num: '701100', libelle: 'Ventes de légumes' }
+  fruits: { num: '701200', libelle: 'Ventes de fruits' }
+  oeufs: { num: '701300', libelle: 'Ventes d''œufs' }
+  viande: { num: '701400', libelle: 'Ventes de viande / volailles' }
+  produits_transformes: { num: '701500', libelle: 'Ventes de produits transformés' }
+  transformation: { num: '701500', libelle: 'Ventes de produits transformés' }
+  animaux_vivants: { num: '702100', libelle: 'Ventes d''animaux vivants' }
+  # PCG agri art. 711-1 — bois et produits forestiers
+  bois: { num: '701820', libelle: 'Ventes de bois et produits forestiers' }
+  bois_oeuvre: { num: '701821', libelle: 'Ventes de bois d''œuvre' }
+  bois_chauffage: { num: '701822', libelle: 'Ventes de bois de chauffage' }
+  bois_brf: { num: '701822', libelle: 'Ventes de plaquettes / BRF' }
+  service: { num: '706000', libelle: 'Prestations de services agricoles' }
+  prestation: { num: '706000', libelle: 'Prestations de services agricoles' }
+  autre: { num: '708000', libelle: 'Autres produits d''activité annexe' }
+
+# ============================================================================
+# Comptes de charges (classe 6) — achats
+# ============================================================================
+# Catégorie métier → compte 60x / 61x / 62x / 64x
+achats:
+  # Intrants culture (601)
+  semences: { num: '601100', libelle: 'Achats de semences et plants' }
+  plants: { num: '601100', libelle: 'Achats de semences et plants' }
+  # Intrants élevage (601)
+  aliments: { num: '601200', libelle: 'Achats d''aliments pour animaux' }
+  aliments_animaux: { num: '601200', libelle: 'Achats d''aliments pour animaux' }
+  animaux: { num: '601300', libelle: 'Achats d''animaux' }
+  # Phyto, fertilisants (601)
+  fertilisants: { num: '601400', libelle: 'Achats d''engrais et amendements' }
+  # Audit Larcher : « Bouillie bordelaise » ne doit JAMAIS être 215400 (immo).
+  # → catégorie 'phyto' = 601500 (produits phytosanitaires consommables).
+  phyto: { num: '601500', libelle: 'Achats de produits phytosanitaires' }
+  # Énergie / carburant (606)
+  carburant: { num: '606400', libelle: 'Carburants' }
+  energie: { num: '606100', libelle: 'Eau, électricité, gaz' }
+  # Matériel (215 immo si > seuil, sinon 606)
+  materiel: { num: '215400', libelle: 'Achats de matériel agricole' }
+  petit_outillage: { num: '606300', libelle: 'Petit outillage' }
+  # Travaux & prestations reçus (611, 622)
+  prestation: { num: '611000', libelle: 'Sous-traitance, prestations' }
+  travaux_agricoles: { num: '611000', libelle: 'Travaux agricoles par tiers' }
+  veterinaire: { num: '622500', libelle: 'Honoraires vétérinaires' }
+  # Charges sociales (645, 641)
+  msa: { num: '645100', libelle: 'Cotisations MSA' }
+  cotisations: { num: '645100', libelle: 'Cotisations sociales' }
+  main_oeuvre: { num: '641000', libelle: 'Rémunérations du personnel' }
+  # Abonnements (628)
+  abonnement: { num: '628000', libelle: 'Abonnements, divers services' }
+  # Catch-all
+  autre: { num: '658000', libelle: 'Charges diverses de gestion courante' }
+
+# ============================================================================
+# Mapping mode de règlement → compte de trésorerie
+# ============================================================================
+modes_reglement:
+  Espèces: 530100      # caisse
+  Chèque: 512100       # banque
+  Virement: 512100     # banque
+  CB: 512100           # banque
+  Prélèvement: 512100  # banque
+  À crédit: null       # pas de mouvement de trésorerie

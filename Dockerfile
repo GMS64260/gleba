@@ -71,6 +71,9 @@ COPY --from=builder --chown=nextjs:nodejs /app/node_modules/whatwg-fetch ./node_
 COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
 COPY --from=builder --chown=nextjs:nodejs /app/especes_enriched.csv /app/itps_enriched.csv /app/varietes_enriched.csv ./
 
+# DEV1 #8 — Données YAML versionnées (matrice PCA, audit-trail).
+COPY --from=builder --chown=nextjs:nodejs /app/data ./data
+
 # Script d'entrypoint
 COPY --chown=nextjs:nodejs docker-entrypoint.sh ./
 RUN chmod +x docker-entrypoint.sh

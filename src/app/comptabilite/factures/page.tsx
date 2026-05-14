@@ -101,15 +101,18 @@ export default function FacturesPage() {
       .catch(() => setExploitationOk(false))
   }, [])
 
-  // État formulaire avoir
+  // DEV1 #7 — État formulaire avoir refondu : sélecteur facture origine,
+  // recopie auto client + montant, persistance via /api/comptabilite/factures
+  // (numéro AV-AAAA-XXXX généré séquentiellement côté serveur via
+  // SequenceFacture FOR UPDATE).
   const [avoirData, setAvoirData] = React.useState({
-    numero: `AV-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 1000)).padStart(4, '0')}`,
-    date: new Date().toISOString().split('T')[0],
-    factureRef: "",
-    client: "",
+    factureOrigineId: "",
+    date: new Date().toISOString().split("T")[0],
     motif: "",
     montant: "",
+    tauxTVA: "5.5",
   })
+  const [savingAvoir, setSavingAvoir] = React.useState(false)
 
   const fetchImpayees = React.useCallback(async () => {
     setIsLoading(true)
@@ -316,38 +319,96 @@ export default function FacturesPage() {
     }
   }
 
-  const generateAvoirPDF = () => {
-    const content = `
-      <html>
-        <head>
-          <title>Avoir ${avoirData.numero}</title>
-          <style>
-            body { font-family: Arial, sans-serif; padding: 40px; }
-            h1 { color: #dc2626; }
-            .info { margin: 20px 0; padding: 15px; background: #fef2f2; border-radius: 8px; border: 1px solid #fecaca; }
-            .total { font-size: 1.5em; font-weight: bold; color: #dc2626; margin-top: 30px; }
-          </style>
-        </head>
-        <body>
-          <h1>AVOIR</h1>
-          <p><strong>N°:</strong> ${avoirData.numero}</p>
-          <p><strong>Date:</strong> ${new Date(avoirData.date).toLocaleDateString('fr-FR')}</p>
-          ${avoirData.factureRef ? `<p><strong>Réf. facture:</strong> ${avoirData.factureRef}</p>` : ''}
-          <div class="info">
-            <strong>Client:</strong> ${avoirData.client}<br/>
-            <strong>Motif:</strong> ${avoirData.motif}
-          </div>
-          <p class="total">Montant de l'avoir: ${parseFloat(avoirData.montant || '0').toFixed(2)} €</p>
-        </body>
-      </html>
-    `
-    const win = window.open('', '_blank')
-    if (win) {
-      win.document.write(content)
-      win.document.close()
-      win.print()
+  // DEV1 #7 — Création d'un avoir persistant (Art. 289 CGI).
+  // L'avoir devient une Facture type='avoir' avec factureOrigineId pointant
+  // vers la facture mère. Numéro AV-AAAA-XXXX généré côté serveur.
+  // Le PDF est ensuite ouvert via la route /api/comptabilite/factures/[id]/pdf.
+  const createAvoir = async () => {
+    if (!avoirData.factureOrigineId) {
+      toast({ variant: "destructive", title: "Facture d'origine requise" })
+      return
     }
-    toast({ title: "Avoir généré", description: `Avoir ${avoirData.numero}` })
+    if (!avoirData.motif || !avoirData.montant) {
+      toast({ variant: "destructive", title: "Motif et montant requis" })
+      return
+    }
+    const origine = facturesEmises.find(
+      (f: { id: number | string }) => String(f.id) === avoirData.factureOrigineId
+    ) as Record<string, unknown> | undefined
+    if (!origine) {
+      toast({ variant: "destructive", title: "Facture d'origine introuvable" })
+      return
+    }
+
+    setSavingAvoir(true)
+    try {
+      const montantTTC = parseFloat(avoirData.montant)
+      const tauxTVA = parseFloat(avoirData.tauxTVA)
+      const montantHT = Math.round((montantTTC / (1 + tauxTVA / 100)) * 100) / 100
+      const montantTVA = Math.round((montantTTC - montantHT) * 100) / 100
+
+      const res = await fetch("/api/comptabilite/factures", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "avoir",
+          factureOrigineId: parseInt(avoirData.factureOrigineId, 10),
+          date: avoirData.date,
+          // Le numéro est généré par le serveur via SequenceFacture FOR UPDATE
+          // (séquence AVOIR distincte de FACTURE, cf commit 36b8af5).
+          clientId: origine.clientId ?? null,
+          clientNom: origine.clientNom ?? "Client",
+          clientAdresse: origine.clientAdresse ?? null,
+          objet: `Avoir sur facture ${origine.numero} — ${avoirData.motif}`,
+          notes: avoirData.motif,
+          totalHT: montantHT,
+          totalTVA: montantTVA,
+          totalTTC: montantTTC,
+          totauxParTauxTva: { [String(tauxTVA)]: { ht: montantHT, tva: montantTVA, ttc: montantTTC } },
+          lignes: [
+            {
+              description: avoirData.motif,
+              quantite: 1,
+              unite: "lot",
+              prixUnitaire: montantHT,
+              tauxTVA,
+              montantHT,
+              montantTVA,
+              montantTTC,
+            },
+          ],
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || "Échec de la création")
+      }
+      const json = await res.json()
+      const created = json.data ?? json
+      toast({
+        title: "Avoir créé",
+        description: `${created.numero} — ${montantTTC.toFixed(2)} €`,
+      })
+      // Reset form
+      setAvoirData({
+        factureOrigineId: "",
+        date: new Date().toISOString().split("T")[0],
+        motif: "",
+        montant: "",
+        tauxTVA: "5.5",
+      })
+      fetchFacturesEmises()
+      // Ouvre le PDF généré côté serveur (mentions légales + snapshot émetteur).
+      window.open(`/api/comptabilite/factures/${created.id}/pdf`, "_blank")
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Erreur",
+        description: err instanceof Error ? err.message : "Inconnue",
+      })
+    } finally {
+      setSavingAvoir(false)
+    }
   }
 
   return (
@@ -773,14 +834,41 @@ export default function FacturesPage() {
                 <CardDescription>Créez un avoir (note de crédit) pour un remboursement</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                {/* DEV1 #7 — Sélecteur facture d'origine + recopie client */}
+                <div>
+                  <Label>Facture d'origine *</Label>
+                  <Select
+                    value={avoirData.factureOrigineId}
+                    onValueChange={(v) => setAvoirData({ ...avoirData, factureOrigineId: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Sélectionner une facture émise…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {facturesEmises
+                        .filter((f: { type?: string }) => f.type !== "avoir")
+                        .map((f: { id: number; numero: string; clientNom?: string; totalTTC?: number; date?: string }) => (
+                          <SelectItem key={f.id} value={String(f.id)}>
+                            {f.numero} · {f.clientNom || "—"} · {(f.totalTTC ?? 0).toFixed(2)} €
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                  {avoirData.factureOrigineId && (() => {
+                    const origine = facturesEmises.find(
+                      (f: { id: number | string }) => String(f.id) === avoirData.factureOrigineId
+                    ) as Record<string, unknown> | undefined
+                    if (!origine) return null
+                    return (
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        Client recopié : <span className="font-medium">{String(origine.clientNom ?? "—")}</span> ·
+                        Montant origine TTC : <span className="font-medium">{Number(origine.totalTTC ?? 0).toFixed(2)} €</span>
+                      </p>
+                    )
+                  })()}
+                </div>
+
                 <div className="grid gap-4 md:grid-cols-3">
-                  <div>
-                    <Label>N° Avoir</Label>
-                    <Input
-                      value={avoirData.numero}
-                      onChange={(e) => setAvoirData({ ...avoirData, numero: e.target.value })}
-                    />
-                  </div>
                   <div>
                     <Label>Date</Label>
                     <Input
@@ -790,23 +878,30 @@ export default function FacturesPage() {
                     />
                   </div>
                   <div>
-                    <Label>Réf. facture d'origine</Label>
+                    <Label>Montant TTC (€) *</Label>
                     <Input
-                      value={avoirData.factureRef}
-                      onChange={(e) => setAvoirData({ ...avoirData, factureRef: e.target.value })}
-                      placeholder="F-2026-0001"
+                      type="number"
+                      step="0.01"
+                      value={avoirData.montant}
+                      onChange={(e) => setAvoirData({ ...avoirData, montant: e.target.value })}
+                      placeholder="0.00"
+                      required
                     />
                   </div>
-                </div>
-
-                <div>
-                  <Label>Client *</Label>
-                  <Input
-                    value={avoirData.client}
-                    onChange={(e) => setAvoirData({ ...avoirData, client: e.target.value })}
-                    placeholder="Nom du client"
-                    required
-                  />
+                  <div>
+                    <Label>Taux TVA (%)</Label>
+                    <Select
+                      value={avoirData.tauxTVA}
+                      onValueChange={(v) => setAvoirData({ ...avoirData, tauxTVA: v })}
+                    >
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {["0", "2.1", "5.5", "10", "20"].map((t) => (
+                          <SelectItem key={t} value={t}>{t} %</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
 
                 <div>
@@ -814,30 +909,24 @@ export default function FacturesPage() {
                   <Textarea
                     value={avoirData.motif}
                     onChange={(e) => setAvoirData({ ...avoirData, motif: e.target.value })}
-                    placeholder="Ex: Marchandise retournée, erreur de facturation..."
+                    placeholder="Ex: Marchandise retournée, erreur de facturation…"
                     required
                   />
                 </div>
 
-                <div>
-                  <Label>Montant de l'avoir (EUR) *</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={avoirData.montant}
-                    onChange={(e) => setAvoirData({ ...avoirData, montant: e.target.value })}
-                    placeholder="0.00"
-                    required
-                  />
-                </div>
+                <p className="text-xs text-muted-foreground">
+                  Le numéro AV-{new Date().getFullYear()}-XXXX est généré automatiquement par le serveur
+                  (séquence comptable continue). La facture d'origine ne pourra plus être supprimée
+                  tant que cet avoir existe (Art. 289 CGI).
+                </p>
 
                 <Button
-                  onClick={generateAvoirPDF}
-                  disabled={!avoirData.client || !avoirData.motif || !avoirData.montant}
+                  onClick={createAvoir}
+                  disabled={savingAvoir || !avoirData.factureOrigineId || !avoirData.motif || !avoirData.montant}
                   className="bg-red-600 hover:bg-red-700"
                 >
                   <Printer className="h-4 w-4 mr-2" />
-                  Générer l'avoir
+                  {savingAvoir ? "Création…" : "Créer l'avoir"}
                 </Button>
               </CardContent>
             </Card>
