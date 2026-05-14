@@ -38,6 +38,7 @@ import { METHODES_TRAITEMENT, labelMethode, methodeExigeCertiphyto } from "@/lib
 import { WeatherFieldset, EMPTY_WEATHER, type WeatherData } from "@/components/phyto/WeatherFieldset"
 import { EpiFieldset } from "@/components/phyto/EpiFieldset"
 import { ZntFieldset } from "@/components/phyto/ZntFieldset"
+import { ExportPhytoButton } from "@/components/phyto/ExportPhytoButton"
 
 interface Arbre {
   id: number
@@ -900,13 +901,22 @@ function RegistrePhytoSubTab() {
     <div className="space-y-4">
       <Card className="border-amber-200 bg-amber-50">
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm flex items-center gap-2 text-amber-700">
-            <Shield className="h-4 w-4" />
-            Registre phytosanitaire
-          </CardTitle>
-          <CardDescription className="text-amber-600">
-            Conformité Bio / HVE - Tous les traitements avec n° AMM, dose et DAR
-          </CardDescription>
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <CardTitle className="text-sm flex items-center gap-2 text-amber-700">
+                <Shield className="h-4 w-4" />
+                Registre phytosanitaire
+              </CardTitle>
+              <CardDescription className="text-amber-600">
+                Conformité Bio / HVE - Tous les traitements avec n° AMM, dose et DAR
+              </CardDescription>
+            </div>
+            {/* DEV3 #2 — Boutons export */}
+            <div className="flex items-center gap-1">
+              <ExportPhytoButton format="pdf" />
+              <ExportPhytoButton format="csv" />
+            </div>
+          </div>
         </CardHeader>
       </Card>
 
