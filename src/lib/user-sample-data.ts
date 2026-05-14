@@ -1,14 +1,31 @@
 /**
  * Génération de données d'exemple pour les nouveaux utilisateurs
- * Crée : 2 planches, 2 cultures récoltées (année précédente),
- *        2 cultures en cours avec récoltes (année en cours), 2 arbres
+ * Crée : 2 planches, 2 cultures récoltées (annee précédente),
+ *        2 cultures en cours avec recoltes (annee en cours), 2 arbres,
+ *        irrigations planifiées pour les cultures actives
  */
 
 import prisma from "@/lib/prisma"
+import { genererIrrigationsPlanifiees } from "@/lib/irrigation-scheduler"
 
 export async function createSampleDataForUser(userId: string): Promise<void> {
   const currentYear = new Date().getFullYear()
   const lastYear = currentYear - 1
+
+  // Créer une parcelle par défaut pour le maraîchage
+  const parcellePotager = await prisma.parcelleGeo.create({
+    data: {
+      nom: "Potager",
+      userId,
+      geometry: '{"type":"Polygon","coordinates":[[[2.3510,48.8560],[2.3530,48.8560],[2.3530,48.8575],[2.3510,48.8575],[2.3510,48.8560]]]}',
+      centroidLat: 48.85675,
+      centroidLng: 2.3520,
+      surface: 0.05,
+      usage: "culture, verger",
+      couleur: "#4ade80",
+      notes: "Parcelle maraîchage",
+    },
+  })
 
   // Créer 2 planches
   const planche1 = await prisma.planche.create({
@@ -21,8 +38,9 @@ export async function createSampleDataForUser(userId: string): Promise<void> {
       posX: 2,
       posY: 2,
       rotation2D: 0,
-      ilot: "Potager",
+      ilot: "Maraîchage",
       notes: "Planche principale pour les légumes d'été",
+      parcelleGeoId: parcellePotager.id,
     },
   })
 
@@ -36,13 +54,14 @@ export async function createSampleDataForUser(userId: string): Promise<void> {
       posX: 5,
       posY: 2,
       rotation2D: 0,
-      ilot: "Potager",
+      ilot: "Maraîchage",
       notes: "Planche pour les légumes racines",
+      parcelleGeoId: parcellePotager.id,
     },
   })
 
   // Créer 2 cultures récoltées (terminées)
-  // Culture 1 : Tomates de l'année dernière
+  // Culture 1 : Tomates de l'annee dernière
   const culture1 = await prisma.culture.create({
     data: {
       userId,
@@ -63,7 +82,7 @@ export async function createSampleDataForUser(userId: string): Promise<void> {
     },
   })
 
-  // Ajouter une récolte pour la culture 1
+  // Ajouter une recolte pour la culture 1
   await prisma.recolte.create({
     data: {
       userId,
@@ -75,7 +94,7 @@ export async function createSampleDataForUser(userId: string): Promise<void> {
     },
   })
 
-  // Culture 2 : Carottes de l'année dernière
+  // Culture 2 : Carottes de l'annee dernière
   const culture2 = await prisma.culture.create({
     data: {
       userId,
@@ -95,7 +114,7 @@ export async function createSampleDataForUser(userId: string): Promise<void> {
     },
   })
 
-  // Ajouter une récolte pour la culture 2
+  // Ajouter une recolte pour la culture 2
   await prisma.recolte.create({
     data: {
       userId,
@@ -107,7 +126,7 @@ export async function createSampleDataForUser(userId: string): Promise<void> {
     },
   })
 
-  // Créer 2 cultures en cours (année actuelle)
+  // Créer 2 cultures en cours (annee actuelle)
   // Culture 3 : Tomates en cours
   const culture3 = await prisma.culture.create({
     data: {
@@ -148,7 +167,7 @@ export async function createSampleDataForUser(userId: string): Promise<void> {
     },
   })
 
-  // Ajouter des récoltes pour l'année en cours (pour que le dashboard ait des données)
+  // Ajouter des recoltes pour l'annee en cours (pour que le dashboard ait des données)
   await prisma.recolte.create({
     data: {
       userId,
@@ -191,7 +210,7 @@ export async function createSampleDataForUser(userId: string): Promise<void> {
       especeId: "Pommier",
       espece: "Pommier",
       variete: "Golden Delicious",
-      datePlantation: new Date(lastYear, 10, 15), // 15 novembre année dernière
+      datePlantation: new Date(lastYear, 10, 15), // 15 novembre annee dernière
       posX: 15,
       posY: 8,
       envergure: 3,
@@ -208,7 +227,7 @@ export async function createSampleDataForUser(userId: string): Promise<void> {
       especeId: "Cerisier",
       espece: "Cerisier",
       variete: "Burlat",
-      datePlantation: new Date(lastYear, 10, 15), // 15 novembre année dernière
+      datePlantation: new Date(lastYear, 10, 15), // 15 novembre annee dernière
       posX: 20,
       posY: 8,
       envergure: 4,
@@ -216,4 +235,7 @@ export async function createSampleDataForUser(userId: string): Promise<void> {
       notes: "Variété précoce, fruits sucrés",
     },
   })
+
+  // Générer les irrigations planifiées pour les cultures actives
+  await genererIrrigationsPlanifiees(userId)
 }

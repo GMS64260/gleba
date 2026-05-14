@@ -7,7 +7,8 @@ import prisma from "@/lib/prisma"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
-import { Users, UserPlus, Shield, Activity, Database } from "lucide-react"
+import { Users, UserPlus, Shield, Activity, Database, MessageSquare } from "lucide-react"
+import { AdminTabs } from "@/components/admin/AdminTabs"
 
 export default async function AdminPage() {
   await requireAdmin()
@@ -141,6 +142,26 @@ export default async function AdminPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
+                <MessageSquare className="h-5 w-5 text-amber-600" />
+                Feedback utilisateurs
+              </CardTitle>
+              <CardDescription>
+                Voir les retours et relancer les non-répondants
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link href="/admin/feedback">
+                <Button variant="outline" className="w-full">
+                  <MessageSquare className="mr-2 h-4 w-4" />
+                  Tableau de bord feedback
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
                 <Activity className="h-5 w-5" />
                 Activite recente
               </CardTitle>
@@ -153,7 +174,7 @@ export default async function AdminPage() {
                 {recentUsers.map((user) => (
                   <li key={user.id} className="flex items-center justify-between text-sm">
                     <span className="flex items-center gap-2">
-                      <span className={`w-2 h-2 rounded-full ${user.active ? "bg-green-500" : "bg-gray-300"}`} />
+                      <span className={`w-2 h-2 rounded-full ${user.active ? "bg-green-500" : "bg-slate-300"}`} />
                       {user.name || user.email}
                     </span>
                     <span className="text-muted-foreground text-xs">
@@ -168,6 +189,9 @@ export default async function AdminPage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Logs & Métriques */}
+        <AdminTabs />
       </main>
     </div>
   )

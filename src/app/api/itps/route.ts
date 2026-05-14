@@ -1,6 +1,6 @@
 /**
  * API Routes pour les ITPs (Itinéraires Techniques de Plantes)
- * GET /api/itps - Liste des ITPs (référentiel global)
+ * GET /api/itps - Liste des ITPs (referentiel global)
  * POST /api/itps - Créer un ITP
  */
 
@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Vérifier que l'espèce existe si fournie
+    // Vérifier que l'espece existe si fournie
     if (data.especeId) {
       const espece = await prisma.espece.findUnique({
         where: { id: data.especeId },

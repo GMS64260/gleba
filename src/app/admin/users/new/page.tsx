@@ -34,10 +34,10 @@ export default async function NewUserPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <UserPlus className="h-5 w-5" />
-              Creer un compte
+              Créer un compte
             </CardTitle>
             <CardDescription>
-              Creer un nouveau compte utilisateur
+              Créer un nouveau compte utilisateur
             </CardDescription>
           </CardHeader>
           <CardContent>

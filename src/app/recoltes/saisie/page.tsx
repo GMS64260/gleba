@@ -1,7 +1,7 @@
 "use client"
 
 /**
- * Page de saisie rapide des récoltes
+ * Page de saisie rapide des recoltes
  */
 
 import * as React from "react"
@@ -51,7 +51,7 @@ function estPreteARecolter(culture: Culture): boolean {
   return diff >= -14 && diff <= 14
 }
 
-/** Formate une date de récolte pour l'affichage dans le sélecteur */
+/** Formate une date de recolte pour l'affichage dans le sélecteur */
 function formaterDateRecolte(dateStr: string | null): string {
   if (!dateStr) return ""
   const date = new Date(dateStr)
@@ -70,7 +70,7 @@ export default function SaisieRecoltePage() {
   const [isSubmitting, setIsSubmitting] = React.useState(false)
   const [recentRecoltes, setRecentRecoltes] = React.useState<{especeId: string; cultureId: number; quantite: number}[]>([])
 
-  // Charger les cultures actives (en cours de récolte ou plantées)
+  // Charger les cultures actives (en cours de recolte ou plantées)
   React.useEffect(() => {
     fetch("/api/cultures?pageSize=200")
       .then((r) => r.json())
@@ -79,13 +79,13 @@ export default function SaisieRecoltePage() {
         const actives = (data.data || []).filter(
           (c: Culture) => !c.terminee
         )
-        // Trier : prêtes à récolter en premier, puis par date de récolte
+        // Trier : prêtes à récolter en premier, puis par date de recolte
         actives.sort((a: Culture, b: Culture) => {
           const aPretes = estPreteARecolter(a)
           const bPretes = estPreteARecolter(b)
           if (aPretes && !bPretes) return -1
           if (!aPretes && bPretes) return 1
-          // Au sein du même groupe, trier par date de récolte (les plus proches d'abord)
+          // Au sein du même groupe, trier par date de recolte (les plus proches d'abord)
           if (a.dateRecolte && b.dateRecolte) {
             return new Date(a.dateRecolte).getTime() - new Date(b.dateRecolte).getTime()
           }
@@ -116,7 +116,7 @@ export default function SaisieRecoltePage() {
     const rendementTotal = estimerRendement(rendementM2, surface)
     if (rendementTotal <= 0) return null
 
-    // Soustraire les récoltes déjà effectuées (de la session en cours + de la DB)
+    // Soustraire les recoltes déjà effectuées (de la session en cours + de la DB)
     const dejaRecolteSessions = recentRecoltes
       .filter((r) => r.cultureId === selectedCultureData.id)
       .reduce((sum, r) => sum + r.quantite, 0)
@@ -180,7 +180,7 @@ export default function SaisieRecoltePage() {
         throw new Error(error.error || "Erreur lors de l'enregistrement")
       }
 
-      // Ajouter aux récoltes récentes
+      // Ajouter aux recoltes récentes
       setRecentRecoltes((prev) => [
         { especeId: cultureData.especeId, cultureId: cultureData.id, quantite: parseFloat(quantite) },
         ...prev.slice(0, 4),
@@ -210,9 +210,10 @@ export default function SaisieRecoltePage() {
   const quickQuantities = [0.5, 1, 2, 5, 10]
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
+      <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
       {/* Header */}
-      <header className="border-b bg-white sticky top-0 z-50">
+      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center gap-4">
           <Link href="/recoltes">
             <Button variant="ghost" size="sm">
@@ -307,7 +308,7 @@ export default function SaisieRecoltePage() {
                               {autres.map((c) => (
                                 <SelectItem key={c.id} value={c.id.toString()}>
                                   <span className="flex items-center gap-2">
-                                    <span className="inline-block h-2 w-2 rounded-full bg-gray-300 shrink-0" />
+                                    <span className="inline-block h-2 w-2 rounded-full bg-slate-300 shrink-0" />
                                     <span>
                                       {c.espece.id}
                                       {c.variete && ` - ${c.variete.id}`}

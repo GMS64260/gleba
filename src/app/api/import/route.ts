@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireAuthApi } from '@/lib/auth-utils'
+import { normalizeVarieteName } from '@/lib/normalize'
 
 interface ImportData {
   version?: string
@@ -442,6 +443,7 @@ export async function POST(request: NextRequest) {
           },
           create: {
             id: item.id,
+            nomNormalise: normalizeVarieteName(item.id),
             especeId: item.especeId,
             fournisseurId: item.fournisseurId,
             semaineRecolte: item.semaineRecolte,
@@ -480,7 +482,7 @@ export async function POST(request: NextRequest) {
     // 5. ITPs
     if (data.itps?.length) {
       for (const item of data.itps) {
-        // Vérifier que l'espèce existe si fournie
+        // Vérifier que l'espece existe si fournie
         if (item.especeId) {
           const especeExists = await tx.espece.findUnique({ where: { id: item.especeId } })
           if (!especeExists) continue
@@ -561,7 +563,7 @@ export async function POST(request: NextRequest) {
           if (!itpExists) continue
         }
 
-        // Vérifier si un détail existe déjà pour cette rotation et cette année
+        // Vérifier si un detail existe déjà pour cette rotation et cette annee
         const existing = await tx.rotationDetail.findFirst({
           where: { rotationId: item.rotationId, annee: item.annee },
         })
@@ -659,7 +661,7 @@ export async function POST(request: NextRequest) {
         }
         stats.associations++
 
-        // 9b. Importer les détails imbriqués si présents
+        // 9b. Importer les details imbriqués si présents
         if (item.details && Array.isArray(item.details)) {
           for (const detail of item.details) {
             const existing = await tx.associationDetail.findFirst({
@@ -695,7 +697,7 @@ export async function POST(request: NextRequest) {
         const associationExists = await tx.association.findUnique({ where: { id: item.associationId } })
         if (!associationExists) continue
 
-        // Vérifier si un détail similaire existe
+        // Vérifier si un detail similaire existe
         const existing = await tx.associationDetail.findFirst({
           where: {
             associationId: item.associationId,
@@ -851,7 +853,7 @@ export async function POST(request: NextRequest) {
             notes: item.notes,
           },
         })
-        // Garder le mapping ancien ID -> nouveau ID pour les récoltes
+        // Garder le mapping ancien ID -> nouveau ID pour les recoltes
         cultureIdMap.set(item.id, created.id)
         stats.cultures++
       }
@@ -978,7 +980,7 @@ export async function POST(request: NextRequest) {
     let irrigationsCreated = 0
     const currentYear = new Date().getFullYear()
 
-    // Récupérer les cultures avec irrigation de l'année en cours et suivante
+    // Récupérer les cultures avec irrigation de l'annee en cours et suivante
     const culturesAIrriguer = await tx.culture.findMany({
       where: {
         userId,

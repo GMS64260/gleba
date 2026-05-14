@@ -1,7 +1,7 @@
 /**
  * API Routes pour les Récoltes
- * GET /api/recoltes - Liste des récoltes
- * POST /api/recoltes - Créer une récolte
+ * GET /api/recoltes - Liste des recoltes
+ * POST /api/recoltes - Créer une recolte
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -9,6 +9,7 @@ import prisma from '@/lib/prisma'
 import { createRecolteSchema } from '@/lib/validations'
 import { Prisma } from '@prisma/client'
 import { requireAuthApi } from '@/lib/auth-utils'
+import { invalidateKpi } from '@/lib/kpi'
 
 // GET /api/recoltes
 export async function GET(request: NextRequest) {
@@ -97,7 +98,7 @@ export async function GET(request: NextRequest) {
         _sum: { quantite: true },
         _count: { _all: true },
       }),
-      // Espèces distinctes présentes dans les récoltes de l'utilisateur
+      // Espèces distinctes présentes dans les recoltes de l'utilisateur
       prisma.recolte.findMany({
         where: { userId: session!.user.id },
         select: { especeId: true },
@@ -162,15 +163,15 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Vérifier cohérence espèce
+    // Vérifier cohérence espece
     if (culture.especeId !== data.especeId) {
       return NextResponse.json(
-        { error: `L'espèce de la récolte doit correspondre à l'espèce de la culture` },
+        { error: `L'espèce de la récolte doit correspondre à l'espece de la culture` },
         { status: 400 }
       )
     }
 
-    // Création de la récolte + mise à jour culture en transaction
+    // Création de la recolte + mise à jour culture en transaction
     const recolte = await prisma.$transaction(async (tx) => {
       const newRecolte = await tx.recolte.create({
         data: {
@@ -193,6 +194,7 @@ export async function POST(request: NextRequest) {
       return newRecolte
     })
 
+    invalidateKpi(session!.user.id)
     return NextResponse.json(recolte, { status: 201 })
   } catch (error) {
     console.error('POST /api/recoltes error:', error)

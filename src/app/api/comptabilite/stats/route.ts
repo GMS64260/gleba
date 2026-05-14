@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { getKpiCompta } from '@/lib/kpi'
 
 const MOIS_LABELS = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc']
 
@@ -41,12 +42,20 @@ export async function GET(request: NextRequest) {
     const endOfYear = new Date(year, 11, 31, 23, 59, 59)
     const startOfPrevYear = new Date(year - 1, 0, 1)
     const endOfPrevYear = new Date(year - 1, 11, 31, 23, 59, 59)
+    const asOf = new Date()
+
+    // Source unique de vérité : revenus, dépenses, bénéfice, N-1 YTD.
+    // Les ventilations détaillées (par catégorie, par mois, par module)
+    // restent ci-dessous, mais TOUS les totaux exposés en haut de la réponse
+    // proviennent désormais de `getKpiCompta`, alignant la page d'accueil
+    // Compta, le module Rapports et le module Coûts de production.
+    const kpiCompta = await getKpiCompta(userId, year, asOf)
 
     // ========================================
     // REVENUS
     // ========================================
     const [
-      // Ventes élevage (VenteProduit)
+      // Ventes elevage (VenteProduit)
       ventesElevage,
       ventesElevageParType,
       ventesElevagePrevYear,
@@ -115,21 +124,21 @@ export async function GET(request: NextRequest) {
     ] = await Promise.all([
       // === REVENUS ===
 
-      // Ventes élevage
+      // Ventes elevage
       prisma.venteProduit.aggregate({
         where: { userId, date: { gte: startOfYear, lte: endOfYear } },
         _sum: { prixTotal: true },
         _count: true,
       }),
 
-      // Ventes élevage par type
+      // Ventes elevage par type
       prisma.venteProduit.groupBy({
         by: ['type'],
         where: { userId, date: { gte: startOfYear, lte: endOfYear } },
         _sum: { prixTotal: true },
       }),
 
-      // Ventes élevage année précédente
+      // Ventes elevage annee précédente
       prisma.venteProduit.aggregate({
         where: { userId, date: { gte: startOfPrevYear, lte: endOfPrevYear } },
         _sum: { prixTotal: true },
@@ -179,17 +188,17 @@ export async function GET(request: NextRequest) {
         select: { quantite: true, prixKg: true, prixTotal: true, dateVente: true },
       }),
 
-      // Ventes manuelles
+      // Ventes manuelles (exclure auto=true pour eviter double comptage)
       prisma.venteManuelle.aggregate({
-        where: { userId, date: { gte: startOfYear, lte: endOfYear } },
+        where: { userId, date: { gte: startOfYear, lte: endOfYear }, auto: { not: true } },
         _sum: { montant: true },
         _count: true,
       }),
 
-      // Ventes manuelles par catégorie
+      // Ventes manuelles par categorie (exclure auto=true)
       prisma.venteManuelle.groupBy({
         by: ['categorie'],
-        where: { userId, date: { gte: startOfYear, lte: endOfYear } },
+        where: { userId, date: { gte: startOfYear, lte: endOfYear }, auto: { not: true } },
         _sum: { montant: true },
       }),
 
@@ -260,32 +269,32 @@ export async function GET(request: NextRequest) {
         _sum: { prixAchat: true },
       }),
 
-      // Dépenses manuelles
+      // Dépenses manuelles (exclure auto=true pour eviter double comptage)
       prisma.depenseManuelle.aggregate({
-        where: { userId, date: { gte: startOfYear, lte: endOfYear } },
+        where: { userId, date: { gte: startOfYear, lte: endOfYear }, auto: { not: true } },
         _sum: { montant: true },
         _count: true,
       }),
 
-      // Dépenses manuelles par catégorie
+      // Dépenses manuelles par categorie (exclure auto=true)
       prisma.depenseManuelle.groupBy({
         by: ['categorie'],
-        where: { userId, date: { gte: startOfYear, lte: endOfYear } },
+        where: { userId, date: { gte: startOfYear, lte: endOfYear }, auto: { not: true } },
         _sum: { montant: true },
       }),
 
       // === ALERTES ===
 
-      // Factures impayées élevage
+      // Factures impayées elevage
       prisma.venteProduit.aggregate({
         where: { userId, paye: false },
         _sum: { prixTotal: true },
         _count: true,
       }),
 
-      // Factures impayées manuelles
+      // Factures impayées manuelles (exclure auto)
       prisma.venteManuelle.aggregate({
-        where: { userId, paye: false },
+        where: { userId, paye: false, auto: { not: true } },
         _sum: { montant: true },
         _count: true,
       }),
@@ -319,7 +328,7 @@ export async function GET(request: NextRequest) {
       0
     )
 
-    // Revenus récoltes potager (calculé)
+    // Revenus recoltes potager (calculé)
     const revenusPotager = recoltesPotagerVendues.reduce(
       (sum, r) => sum + (r.prixTotal || (r.quantite * (r.prixKg || 0))),
       0
@@ -337,7 +346,7 @@ export async function GET(request: NextRequest) {
       0
     )
 
-    // Ventes manuelles attribuées au potager (catégorie legumes OU module potager)
+    // Ventes manuelles attribuées au potager (categorie legumes OU module potager)
     const ventesManuellesPotager = ventesManuellesParCategorie
       .filter(v => v.categorie === 'legumes')
       .reduce((sum, v) => sum + (v._sum.montant || 0), 0)
@@ -390,6 +399,7 @@ export async function GET(request: NextRequest) {
       WHERE user_id = ${userId}
         AND date >= ${startOfYear}
         AND date <= ${endOfYear}
+        AND (auto IS NULL OR auto = false)
       GROUP BY EXTRACT(MONTH FROM date)
     ` as { mois: number; total: number }[]
 
@@ -401,6 +411,7 @@ export async function GET(request: NextRequest) {
       WHERE user_id = ${userId}
         AND date >= ${startOfYear}
         AND date <= ${endOfYear}
+        AND (auto IS NULL OR auto = false)
       GROUP BY EXTRACT(MONTH FROM date)
     ` as { mois: number; total: number }[]
 
@@ -536,7 +547,7 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    // Revenus par catégorie
+    // Revenus par categorie
     const revenusParCategorie = [
       ...ventesElevageParType.map(v => ({
         categorie: v.type === 'oeufs' ? 'Oeufs' :
@@ -557,7 +568,7 @@ export async function GET(request: NextRequest) {
       })),
     ].filter(r => r.montant > 0)
 
-    // Dépenses par catégorie
+    // Dépenses par categorie
     const depensesParCategorie = [
       { categorie: 'Soins animaux', montant: depensesSoins._sum.cout || 0, couleur: COLORS.soins },
       { categorie: 'Aliments', montant: depensesAliments, couleur: COLORS.aliments },
@@ -577,7 +588,7 @@ export async function GET(request: NextRequest) {
 
     // Par module
     const parModule = [
-      { module: 'Potager', revenus: revenus.potager, depenses: depenses.potager, benefice: revenus.potager - depenses.potager },
+      { module: 'Maraîchage', revenus: revenus.potager, depenses: depenses.potager, benefice: revenus.potager - depenses.potager },
       { module: 'Verger', revenus: revenus.verger, depenses: depenses.verger, benefice: revenus.verger - depenses.verger },
       { module: 'Élevage', revenus: revenus.elevage, depenses: depenses.elevage, benefice: revenus.elevage - depenses.elevage },
       { module: 'Autre', revenus: revenus.autre, depenses: depenses.autre, benefice: revenus.autre - depenses.autre },
@@ -596,7 +607,7 @@ export async function GET(request: NextRequest) {
         select: { id: true, date: true, type: true, prixTotal: true, paye: true },
       }),
       prisma.depenseManuelle.findMany({
-        where: { userId },
+        where: { userId, auto: { not: true } },
         orderBy: { date: 'desc' },
         take: 5,
         select: { id: true, date: true, categorie: true, description: true, montant: true },
@@ -642,7 +653,7 @@ export async function GET(request: NextRequest) {
       })),
     ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 10)
 
-    // Factures impayées détail
+    // Factures impayées detail
     const facturesImpayeesDetail = await prisma.venteProduit.findMany({
       where: { userId, paye: false },
       orderBy: { date: 'asc' },
@@ -685,13 +696,25 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       stats: {
-        revenus: totalRevenus,
-        depenses: totalDepenses,
-        benefice,
-        margePercent: Math.round(margePercent * 10) / 10,
+        // Totaux issus de la SSOT (cf. src/lib/kpi/compta.ts) — alignés sur
+        // /comptabilite, /comptabilite/rapports et /comptabilite/couts-production.
+        revenus: kpiCompta.revenusYtd,
+        depenses: kpiCompta.depensesYtd,
+        benefice: kpiCompta.beneficeYtd,
+        margePercent: Math.round(kpiCompta.margePercentYtd * 10) / 10,
+        // Ventilations par module : conservées pour les graphiques. Leur somme
+        // peut, transitoirement, ne pas correspondre exactement au total
+        // ci-dessus si une vente est saisie hors VenteManuelle/Facture — c'est
+        // la SSOT (revenus, depenses) qui fait foi.
         revenusParModule: revenus,
         depensesParModule: depenses,
-        revenusAnneePrecedente: revenusPrevYear,
+        // YTD vs YTD année dernière (et non plus année N-1 complète qui
+        // faussait les variations mid-year).
+        revenusAnneePrecedente: kpiCompta.revenusN1Ytd,
+        revenusAnneePrecedenteTotal: kpiCompta.revenusN1Total,
+        depensesAnneePrecedente: kpiCompta.depensesN1Ytd,
+        depensesAnneePrecedenteTotal: kpiCompta.depensesN1Total,
+        comparisonMode: "ytd-vs-ytd-n-1",
         facturesImpayees: (facturesImpayeesElevage._count || 0) + (facturesImpayeesManuelles._count || 0),
         facturesImpayeesTotal: (facturesImpayeesElevage._sum.prixTotal || 0) + (facturesImpayeesManuelles._sum.montant || 0),
         stocksBas: Number(stocksBasAliments[0]?.count || 0) + stocksBasGraines,

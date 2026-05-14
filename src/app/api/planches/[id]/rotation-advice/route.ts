@@ -38,7 +38,7 @@ export async function GET(request: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Planche non trouvée' }, { status: 404 })
     }
 
-    // Récupérer les cultures des 10 dernières années (use real PK id)
+    // Récupérer les cultures des 10 dernières annees (use real PK id)
     const minYear = targetYear - 10
     const cultures = await prisma.culture.findMany({
       where: {
@@ -84,7 +84,7 @@ export async function GET(request: NextRequest, { params }: Params) {
       couleur: f.couleur,
     }))
 
-    // Préparer l'espèce à vérifier si demandée
+    // Préparer l'espece à vérifier si demandée
     let especeToCheck = undefined
     if (especeId) {
       const espece = await prisma.espece.findUnique({

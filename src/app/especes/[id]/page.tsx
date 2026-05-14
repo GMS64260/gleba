@@ -139,7 +139,7 @@ export default function EditEspecePage() {
     Promise.all([
       fetch("/api/familles").then((res) => res.json()),
       fetch(`/api/especes/${encodeURIComponent(especeId)}`).then((res) => {
-        if (!res.ok) throw new Error("Espece non trouvee")
+        if (!res.ok) throw new Error("Espèce non trouvée")
         return res.json()
       }),
       fetch("/api/comptabilite/fournisseurs?pageSize=500").then((res) => res.json()).catch(() => ({ data: [] })),
@@ -202,7 +202,7 @@ export default function EditEspecePage() {
       }
 
       toast({
-        title: "Espece modifiee",
+        title: "Espèce modifiée",
         description: `L'espece "${especeId}" a ete mise a jour`,
       })
       router.push("/especes")
@@ -231,7 +231,7 @@ export default function EditEspecePage() {
       }
 
       toast({
-        title: "Espece supprimee",
+        title: "Espèce supprimée",
         description: `L'espece "${especeId}" a ete supprimee`,
       })
       router.push("/especes")
@@ -294,7 +294,7 @@ export default function EditEspecePage() {
         }
         const updated = await res.json()
         setVarietes(varietes.map((v) => (v.id === updated.id ? updated : v)))
-        toast({ title: "Variete modifiee" })
+        toast({ title: "Variété modifiée" })
       } else {
         // POST
         if (!varieteForm.id.trim()) return
@@ -321,7 +321,7 @@ export default function EditEspecePage() {
         }
         const created = await res.json()
         setVarietes([...varietes, created])
-        toast({ title: "Variete ajoutee" })
+        toast({ title: "Variété ajoutée" })
       }
       setShowVarieteDialog(false)
       resetVarieteForm()
@@ -345,7 +345,7 @@ export default function EditEspecePage() {
         throw new Error(err.error || "Erreur")
       }
       setVarietes(varietes.filter((x) => x.id !== v.id))
-      toast({ title: "Variete supprimee" })
+      toast({ title: "Variété supprimée" })
     } catch (error) {
       toast({
         variant: "destructive",
@@ -357,7 +357,7 @@ export default function EditEspecePage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-slate-50">
         <header className="border-b bg-white sticky top-0 z-50">
           <div className="container mx-auto px-4 py-4 flex items-center gap-4">
             <Skeleton className="h-8 w-24" />
@@ -372,9 +372,10 @@ export default function EditEspecePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
+      <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
       {/* Header */}
-      <header className="border-b bg-white sticky top-0 z-50">
+      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link href="/especes">
@@ -403,7 +404,7 @@ export default function EditEspecePage() {
               <TabsList className="grid w-full grid-cols-5">
                 <TabsTrigger value="general">General</TabsTrigger>
                 <TabsTrigger value="culture">Culture</TabsTrigger>
-                <TabsTrigger value="recolte">Recolte</TabsTrigger>
+                <TabsTrigger value="recolte">Récolte</TabsTrigger>
                 <TabsTrigger value="notes">Notes</TabsTrigger>
                 <TabsTrigger value="varietes">Varietes ({varietes.length})</TabsTrigger>
               </TabsList>
@@ -416,7 +417,7 @@ export default function EditEspecePage() {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="p-3 bg-muted rounded-md">
-                      <p className="text-sm text-muted-foreground">Nom de l&apos;espece</p>
+                      <p className="text-sm text-muted-foreground">Nom de l&apos;espèce</p>
                       <p className="font-medium">{especeId}</p>
                     </div>
 
@@ -433,7 +434,7 @@ export default function EditEspecePage() {
                             >
                               <FormControl>
                                 <SelectTrigger>
-                                  <SelectValue placeholder="Selectionner..." />
+                                  <SelectValue placeholder="Sélectionner..." />
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
@@ -454,14 +455,14 @@ export default function EditEspecePage() {
                         name="categorie"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Categorie</FormLabel>
+                            <FormLabel>Catégorie</FormLabel>
                             <Select
                               onValueChange={field.onChange}
                               value={field.value || undefined}
                             >
                               <FormControl>
                                 <SelectTrigger>
-                                  <SelectValue placeholder="Selectionner..." />
+                                  <SelectValue placeholder="Sélectionner..." />
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
@@ -509,7 +510,7 @@ export default function EditEspecePage() {
                             >
                               <FormControl>
                                 <SelectTrigger>
-                                  <SelectValue placeholder="Selectionner..." />
+                                  <SelectValue placeholder="Sélectionner..." />
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
@@ -609,7 +610,7 @@ export default function EditEspecePage() {
               <TabsContent value="culture">
                 <Card>
                   <CardHeader>
-                    <CardTitle>Parametres de culture</CardTitle>
+                    <CardTitle>Paramètres de culture</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="grid grid-cols-3 gap-4">
@@ -671,7 +672,7 @@ export default function EditEspecePage() {
                             >
                               <FormControl>
                                 <SelectTrigger>
-                                  <SelectValue placeholder="Selectionner..." />
+                                  <SelectValue placeholder="Sélectionner..." />
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
@@ -881,7 +882,7 @@ export default function EditEspecePage() {
               <TabsContent value="recolte">
                 <Card>
                   <CardHeader>
-                    <CardTitle>Recolte et valorisation</CardTitle>
+                    <CardTitle>Récolte et valorisation</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="grid grid-cols-2 gap-4">
@@ -1069,7 +1070,7 @@ export default function EditEspecePage() {
                   </CardHeader>
                   <CardContent>
                     {varietes.length === 0 ? (
-                      <p className="text-muted-foreground text-sm">Aucune variete pour cette espece</p>
+                      <p className="text-muted-foreground text-sm">Aucune variété pour cette espèce</p>
                     ) : (
                       <Table>
                         <TableHeader>
@@ -1143,12 +1144,12 @@ export default function EditEspecePage() {
         }}>
           <DialogContent className="max-w-lg">
             <DialogHeader>
-              <DialogTitle>{editingVariete ? `Modifier : ${editingVariete.id}` : "Nouvelle variete"}</DialogTitle>
+              <DialogTitle>{editingVariete ? `Modifier : ${editingVariete.id}` : "Nouvelle variété"}</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleVarieteSubmit} className="space-y-4">
               {!editingVariete && (
                 <div>
-                  <Label>Nom de la variete *</Label>
+                  <Label>Nom de la variété *</Label>
                   <Input
                     value={varieteForm.id}
                     onChange={(e) => setVarieteForm({ ...varieteForm, id: e.target.value })}
@@ -1191,7 +1192,7 @@ export default function EditEspecePage() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Semaine recolte (1-52)</Label>
+                  <Label>Semaine récolte (1-52)</Label>
                   <Input
                     type="number"
                     min="1"
@@ -1201,7 +1202,7 @@ export default function EditEspecePage() {
                   />
                 </div>
                 <div>
-                  <Label>Duree recolte (sem.)</Label>
+                  <Label>Durée récolte (sem.)</Label>
                   <Input
                     type="number"
                     min="1"
@@ -1263,7 +1264,7 @@ export default function EditEspecePage() {
                   value={varieteForm.description}
                   onChange={(e) => setVarieteForm({ ...varieteForm, description: e.target.value })}
                   rows={2}
-                  placeholder="Notes sur cette variete..."
+                  placeholder="Notes sur cette variété..."
                 />
               </div>
 

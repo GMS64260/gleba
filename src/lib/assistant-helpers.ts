@@ -6,7 +6,7 @@
 import { startOfYear, addWeeks, startOfWeek, getWeek, getYear } from 'date-fns'
 
 /**
- * Calcule la date correspondant à une semaine donnée d'une année
+ * Calcule la date correspondant à une semaine donnée d'une annee
  * Utilise date-fns pour un calcul précis (ISO semaines)
  */
 export function calculerDateDepuisSemaine(annee: number, semaine: number): Date {
@@ -112,7 +112,7 @@ export function verifierStockSemences(
 }
 
 /**
- * Retourne les espèces recommandées pour la saison actuelle
+ * Retourne les especes recommandées pour la saison actuelle
  * Basé sur les ITPs dont la semaine de semis est proche
  */
 export function filtrerEspecesSaison<T extends {
@@ -167,7 +167,7 @@ export function necesiteIrrigation(espece: {
 }
 
 /**
- * Catégories d'espèces avec emojis
+ * Catégories d'especes avec emojis
  */
 export const CATEGORIES_ESPECES = {
   legume: { label: 'Légume', emoji: '🥬' },

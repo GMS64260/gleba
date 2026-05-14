@@ -1,8 +1,8 @@
 /**
- * API Routes pour une Espèce spécifique (référentiel global)
- * GET /api/especes/[id] - Détail d'une espèce
- * PUT /api/especes/[id] - Modifier une espèce
- * DELETE /api/especes/[id] - Supprimer une espèce
+ * API Routes pour une Espèce spécifique (referentiel global)
+ * GET /api/especes/[id] - Détail d'une espece
+ * PUT /api/especes/[id] - Modifier une espece
+ * DELETE /api/especes/[id] - Supprimer une espece
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -53,7 +53,7 @@ export async function GET(
   } catch (error) {
     console.error('GET /api/especes/[id] error:', error)
     return NextResponse.json(
-      { error: 'Erreur lors de la récupération de l\'espèce' },
+      { error: 'Erreur lors de la récupération de l\'espece' },
       { status: 500 }
     )
   }
@@ -105,7 +105,7 @@ export async function PUT(
   } catch (error) {
     console.error('PUT /api/especes/[id] error:', error)
     return NextResponse.json(
-      { error: 'Erreur lors de la mise à jour de l\'espèce' },
+      { error: 'Erreur lors de la mise à jour de l\'espece' },
       { status: 500 }
     )
   }
@@ -142,11 +142,11 @@ export async function DELETE(
       )
     }
 
-    // Vérifier si des cultures ou récoltes sont liées
+    // Vérifier si des cultures ou recoltes sont liées
     if (espece._count.cultures > 0 || espece._count.recoltes > 0) {
       return NextResponse.json(
         {
-          error: `Impossible de supprimer l'espèce "${id}" car elle est utilisée`,
+          error: `Impossible de supprimer l'espece "${id}" car elle est utilisée`,
           details: {
             cultures: espece._count.cultures,
             recoltes: espece._count.recoltes,
@@ -156,7 +156,7 @@ export async function DELETE(
       )
     }
 
-    // Suppression (les variétés seront supprimées en cascade)
+    // Suppression (les varietes seront supprimées en cascade)
     await prisma.espece.delete({
       where: { id },
     })
@@ -165,7 +165,7 @@ export async function DELETE(
   } catch (error) {
     console.error('DELETE /api/especes/[id] error:', error)
     return NextResponse.json(
-      { error: 'Erreur lors de la suppression de l\'espèce' },
+      { error: 'Erreur lors de la suppression de l\'espece' },
       { status: 500 }
     )
   }

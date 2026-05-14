@@ -155,12 +155,12 @@ export default function RapportsPage() {
         csv += `Bénéfice;${stats.benefice}\n`
         csv += `Marge;${stats.margePercent}%\n`
         csv += `\nRevenus par module;\n`
-        csv += `Potager;${stats.revenusParModule.potager}\n`
+        csv += `Maraîchage;${stats.revenusParModule.potager}\n`
         csv += `Verger;${stats.revenusParModule.verger}\n`
         csv += `Élevage;${stats.revenusParModule.elevage}\n`
         csv += `Autre;${stats.revenusParModule.autre}\n`
         csv += `\nDépenses par module;\n`
-        csv += `Potager;${stats.depensesParModule.potager}\n`
+        csv += `Maraîchage;${stats.depensesParModule.potager}\n`
         csv += `Verger;${stats.depensesParModule.verger}\n`
         csv += `Élevage;${stats.depensesParModule.elevage}\n`
         csv += `Autre;${stats.depensesParModule.autre}\n`
@@ -181,13 +181,14 @@ export default function RapportsPage() {
   const COLORS = ['#22c55e', '#84cc16', '#f59e0b', '#3b82f6', '#8b5cf6', '#ec4899']
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="border-b bg-white sticky top-0 z-50">
+    <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
+      <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
+      <header className="border-b border-b-2 border-b-blue-500 bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link href="/comptabilite"><Button variant="ghost" size="sm"><ArrowLeft className="h-4 w-4 mr-2" />Comptabilité</Button></Link>
             <div className="flex items-center gap-2">
-              <Download className="h-6 w-6 text-slate-600" />
+              <Download className="h-6 w-6 text-blue-600" />
               <h1 className="text-xl font-bold">Rapports</h1>
             </div>
           </div>
@@ -235,7 +236,7 @@ export default function RapportsPage() {
               <div className="space-y-6">
                 {/* Résumé */}
                 <div className="grid gap-4 md:grid-cols-4">
-                  <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white">
+                  <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white">
                     <CardHeader className="pb-2">
                       <CardTitle className="text-sm flex items-center gap-2">
                         <TrendingUp className="h-4 w-4" />
@@ -257,7 +258,7 @@ export default function RapportsPage() {
                       <p className="text-3xl font-bold">{formatEuro(stats.depenses)}</p>
                     </CardContent>
                   </Card>
-                  <Card className={`bg-gradient-to-br ${stats.benefice >= 0 ? 'from-purple-500 to-purple-600' : 'from-orange-500 to-orange-600'} text-white`}>
+                  <Card className={`bg-gradient-to-br ${stats.benefice >= 0 ? 'from-emerald-500 to-emerald-600' : 'from-orange-500 to-orange-600'} text-white`}>
                     <CardHeader className="pb-2">
                       <CardTitle className="text-sm flex items-center gap-2">
                         <Wallet className="h-4 w-4" />
@@ -268,7 +269,7 @@ export default function RapportsPage() {
                       <p className="text-3xl font-bold">{formatEuro(Math.abs(stats.benefice))}</p>
                     </CardContent>
                   </Card>
-                  <Card className="bg-gradient-to-br from-slate-500 to-slate-600 text-white">
+                  <Card className={`bg-gradient-to-br ${stats.margePercent >= 0 ? 'from-indigo-500 to-indigo-600' : 'from-red-500 to-red-600'} text-white`}>
                     <CardHeader className="pb-2">
                       <CardTitle className="text-sm">Marge</CardTitle>
                     </CardHeader>
@@ -303,7 +304,7 @@ export default function RapportsPage() {
                               <TableCell className="font-medium capitalize">{mod}</TableCell>
                               <TableCell className="text-right text-green-600">{formatEuro(rev)}</TableCell>
                               <TableCell className="text-right text-red-600">{formatEuro(dep)}</TableCell>
-                              <TableCell className={`text-right font-bold ${res >= 0 ? 'text-purple-600' : 'text-orange-600'}`}>
+                              <TableCell className={`text-right font-bold ${res >= 0 ? 'text-emerald-600' : 'text-orange-600'}`}>
                                 {formatEuro(res)}
                               </TableCell>
                             </TableRow>
@@ -313,7 +314,7 @@ export default function RapportsPage() {
                           <TableCell className="font-bold">TOTAL</TableCell>
                           <TableCell className="text-right font-bold text-green-600">{formatEuro(stats.revenus)}</TableCell>
                           <TableCell className="text-right font-bold text-red-600">{formatEuro(stats.depenses)}</TableCell>
-                          <TableCell className={`text-right font-bold ${stats.benefice >= 0 ? 'text-purple-600' : 'text-orange-600'}`}>
+                          <TableCell className={`text-right font-bold ${stats.benefice >= 0 ? 'text-emerald-600' : 'text-orange-600'}`}>
                             {formatEuro(stats.benefice)}
                           </TableCell>
                         </TableRow>
@@ -338,7 +339,7 @@ export default function RapportsPage() {
                           <Legend />
                           <Line type="monotone" dataKey="revenus" name="Revenus" stroke="#22c55e" strokeWidth={2} />
                           <Line type="monotone" dataKey="depenses" name="Dépenses" stroke="#ef4444" strokeWidth={2} />
-                          <Line type="monotone" dataKey="benefice" name="Bénéfice" stroke="#8b5cf6" strokeWidth={2} />
+                          <Line type="monotone" dataKey="benefice" name="Bénéfice" stroke="#3b82f6" strokeWidth={2} />
                         </LineChart>
                       </ResponsiveContainer>
                     </CardContent>
@@ -539,7 +540,7 @@ export default function RapportsPage() {
               <div className="grid gap-6 md:grid-cols-2">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-80" />)}</div>
             ) : charts ? (
               <div className="grid gap-6 md:grid-cols-2">
-                {/* Revenus par catégorie */}
+                {/* Revenus par categorie */}
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
@@ -576,7 +577,7 @@ export default function RapportsPage() {
                   </CardContent>
                 </Card>
 
-                {/* Dépenses par catégorie */}
+                {/* Dépenses par categorie */}
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
@@ -625,7 +626,7 @@ export default function RapportsPage() {
                     {stats ? (
                       <ResponsiveContainer width="100%" height={300}>
                         <BarChart data={[
-                          { module: 'Potager', revenus: stats.revenusParModule.potager, depenses: stats.depensesParModule.potager },
+                          { module: 'Maraîchage', revenus: stats.revenusParModule.potager, depenses: stats.depensesParModule.potager },
                           { module: 'Verger', revenus: stats.revenusParModule.verger, depenses: stats.depensesParModule.verger },
                           { module: 'Élevage', revenus: stats.revenusParModule.elevage, depenses: stats.depensesParModule.elevage },
                           { module: 'Autre', revenus: stats.revenusParModule.autre, depenses: stats.depensesParModule.autre },
@@ -657,8 +658,8 @@ export default function RapportsPage() {
             <div className="grid gap-4 md:grid-cols-3">
               <Card className="hover:shadow-lg transition-shadow">
                 <CardHeader>
-                  <div className="w-12 h-12 rounded-lg bg-purple-100 flex items-center justify-center mb-2">
-                    <Wallet className="h-6 w-6 text-purple-600" />
+                  <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center mb-2">
+                    <Wallet className="h-6 w-6 text-blue-600" />
                   </div>
                   <CardTitle>Bilan {selectedYear}</CardTitle>
                   <CardDescription>Synthèse revenus, dépenses, résultat par module</CardDescription>

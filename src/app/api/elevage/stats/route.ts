@@ -19,6 +19,8 @@ export async function GET(request: NextRequest) {
     const userId = session.user.id
     const startOfYear = new Date(annee, 0, 1)
     const endOfYear = new Date(annee, 11, 31, 23, 59, 59)
+    const startOfPrevYear = new Date(annee - 1, 0, 1)
+    const endOfPrevYear = new Date(annee - 1, 11, 31, 23, 59, 59)
 
     // Stats animaux
     const [
@@ -26,20 +28,25 @@ export async function GET(request: NextRequest) {
       animauxParType,
       lotsActifs,
       productionOeufsAnnee,
+      productionOeufsAnneePrecedente,
       productionOeufsMois,
       ventesAnnee,
+      ventesAnneePrecedente,
       ventesParType,
       abattagesAnnee,
       soinsAPlanifier,
       alimentsStockBas,
       stockOeufs,
+      mortaliteAnnee,
+      totalPondeuses,
+      totalConsommationAliments,
     ] = await Promise.all([
       // Animaux actifs
       prisma.animal.count({
         where: { userId, statut: 'actif' },
       }),
 
-      // Animaux par type d'espèce
+      // Animaux par type d'espece
       prisma.animal.groupBy({
         by: ['especeAnimaleId'],
         where: { userId, statut: 'actif' },
@@ -51,11 +58,20 @@ export async function GET(request: NextRequest) {
         where: { userId, statut: 'actif' },
       }),
 
-      // Production œufs année
+      // Production œufs annee
       prisma.productionOeuf.aggregate({
         where: {
           userId,
           date: { gte: startOfYear, lte: endOfYear },
+        },
+        _sum: { quantite: true },
+      }),
+
+      // Production œufs annee précédente (N-1)
+      prisma.productionOeuf.aggregate({
+        where: {
+          userId,
+          date: { gte: startOfPrevYear, lte: endOfPrevYear },
         },
         _sum: { quantite: true },
       }),
@@ -73,11 +89,21 @@ export async function GET(request: NextRequest) {
         ORDER BY mois
       ` as Promise<{ mois: number; total: bigint }[]>,
 
-      // Ventes année (montant total)
+      // Ventes annee (montant total)
       prisma.venteProduit.aggregate({
         where: {
           userId,
           date: { gte: startOfYear, lte: endOfYear },
+        },
+        _sum: { prixTotal: true },
+        _count: true,
+      }),
+
+      // Ventes annee précédente (N-1)
+      prisma.venteProduit.aggregate({
+        where: {
+          userId,
+          date: { gte: startOfPrevYear, lte: endOfPrevYear },
         },
         _sum: { prixTotal: true },
         _count: true,
@@ -94,7 +120,7 @@ export async function GET(request: NextRequest) {
         _count: true,
       }),
 
-      // Abattages année
+      // Abattages annee
       prisma.abattage.aggregate({
         where: {
           userId,
@@ -138,9 +164,37 @@ export async function GET(request: NextRequest) {
 
       // Stock oeufs calculé
       calculerStockOeufs(userId),
+
+      // Mortalité annee (animaux morts cette annee)
+      prisma.animal.count({
+        where: {
+          userId,
+          statut: 'mort',
+          dateSortie: { gte: startOfYear, lte: endOfYear },
+        },
+      }),
+
+      // Total pondeuses actives (lots volaille actifs, somme quantiteActuelle)
+      prisma.lotAnimaux.aggregate({
+        where: {
+          userId,
+          statut: 'actif',
+          especeAnimale: { production: { in: ['oeufs', 'mixte'] } },
+        },
+        _sum: { quantiteActuelle: true },
+      }),
+
+      // Total consommation aliments annee (kg)
+      prisma.consommationAliment.aggregate({
+        where: {
+          userId,
+          date: { gte: startOfYear, lte: endOfYear },
+        },
+        _sum: { quantite: true },
+      }),
     ])
 
-    // Récupérer les noms des espèces pour les stats
+    // Récupérer les noms des especes pour les stats
     const especeIds = animauxParType.map(a => a.especeAnimaleId)
     const especes = await prisma.especeAnimale.findMany({
       where: { id: { in: especeIds } },
@@ -149,19 +203,57 @@ export async function GET(request: NextRequest) {
 
     const especeMap = new Map(especes.map(e => [e.id, e]))
 
+    // Métriques calculées
+    const nbPondeuses = totalPondeuses._sum.quantiteActuelle || 0
+    const nbOeufsAnnee = productionOeufsAnnee._sum.quantite || 0
+    const nbOeufsAnneePrecedente = productionOeufsAnneePrecedente._sum.quantite || 0
+    const ventesTotal = ventesAnnee._sum.prixTotal || 0
+    const ventesTotalPrecedente = ventesAnneePrecedente._sum.prixTotal || 0
+    const consoAlimentsKg = totalConsommationAliments._sum.quantite || 0
+    const poidsCarcasseTotal = abattagesAnnee._sum.poidsCarcasse || 0
+
+    // Jours écoulés dans l'annee (pour taux de ponte pro-rata)
+    const now = new Date()
+    const joursEcoules = annee === now.getFullYear()
+      ? Math.ceil((now.getTime() - startOfYear.getTime()) / (1000 * 60 * 60 * 24))
+      : 365
+
+    // Taux de ponte (%) = oeufs / (pondeuses * jours) * 100
+    const tauxPonte = nbPondeuses > 0 && joursEcoules > 0
+      ? (nbOeufsAnnee / (nbPondeuses * joursEcoules)) * 100
+      : null
+
+    // FCR = kg aliment / kg carcasse
+    const fcr = poidsCarcasseTotal > 0 ? consoAlimentsKg / poidsCarcasseTotal : null
+
+    // Taux de mortalité
+    const totalAnimauxEver = animauxActifs + mortaliteAnnee
+    const tauxMortalite = totalAnimauxEver > 0
+      ? (mortaliteAnnee / totalAnimauxEver) * 100
+      : 0
+
     return NextResponse.json({
       stats: {
         animauxActifs,
         lotsActifs,
-        productionOeufsAnnee: productionOeufsAnnee._sum.quantite || 0,
-        ventesAnnee: ventesAnnee._sum.prixTotal || 0,
+        productionOeufsAnnee: nbOeufsAnnee,
+        productionOeufsAnneePrecedente: nbOeufsAnneePrecedente,
+        ventesAnnee: ventesTotal,
+        ventesAnneePrecedente: ventesTotalPrecedente,
         nbVentes: ventesAnnee._count,
         abattagesAnnee: abattagesAnnee._sum.quantite || 0,
-        poidsCarcasseAnnee: abattagesAnnee._sum.poidsCarcasse || 0,
+        poidsCarcasseAnnee: poidsCarcasseTotal,
         soinsAPlanifier,
         alimentsStockBas,
         stockOeufs: stockOeufs.stockNet,
         stockOeufsDetail: stockOeufs.detail,
+        // Nouvelles métriques
+        mortaliteAnnee,
+        tauxMortalite: Math.round(tauxMortalite * 10) / 10,
+        tauxPonte: tauxPonte !== null ? Math.round(tauxPonte * 10) / 10 : null,
+        nbPondeuses,
+        fcr: fcr !== null ? Math.round(fcr * 100) / 100 : null,
+        consoAlimentsKg: Math.round(consoAlimentsKg * 10) / 10,
       },
       animauxParType: animauxParType.map(a => ({
         especeAnimaleId: a.especeAnimaleId,

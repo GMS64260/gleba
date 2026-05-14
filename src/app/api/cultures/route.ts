@@ -10,6 +10,9 @@ import { createCultureSchema, validateCultureDates } from '@/lib/validations'
 import { Prisma } from '@prisma/client'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { peutAjouterCulture, suggererAjustements } from '@/lib/planche-validation'
+import { ensurePlaceholderVariete } from '@/lib/varietes'
+import { invalidateKpi } from '@/lib/kpi'
+import { checkRotationViolation } from '@/lib/rotation-check'
 
 // GET /api/cultures
 export async function GET(request: NextRequest) {
@@ -33,7 +36,7 @@ export async function GET(request: NextRequest) {
     const annee = searchParams.get('annee')
     const especeId = searchParams.get('especeId')
     const plancheId = searchParams.get('plancheId')
-    const etat = searchParams.get('etat') // Planifiée, Semée, Plantée, En récolte, Terminée
+    const etat = searchParams.get('etat') // Planifiée, Semée, Plantée, En recolte, Terminée
 
     // Construction du where - FILTRE PAR USER
     const where: Prisma.CultureWhereInput = {
@@ -176,7 +179,7 @@ export async function POST(request: NextRequest) {
 
     const data = validationResult.data
 
-    // Vérifier que l'espèce existe
+    // Vérifier que l'espece existe
     const espece = await prisma.espece.findUnique({
       where: { id: data.especeId },
     })
@@ -185,6 +188,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: `L'espèce "${data.especeId}" n'existe pas` },
         { status: 400 }
+      )
+    }
+
+    // PROMPT 12 — Détection de violation de rotation.
+    // Le client envoie `confirmRotation: true` pour ignorer le warning et créer
+    // quand même (la culture est alors flaggée rotation_violee=true).
+    const confirmRotation = body.confirmRotation === true
+    const rotationCheck = await checkRotationViolation(
+      data.plancheId ?? null,
+      data.especeId,
+      data.annee ?? new Date().getFullYear()
+    )
+    if (rotationCheck && !confirmRotation) {
+      return NextResponse.json(
+        {
+          warning: rotationCheck.message,
+          rotationViolation: rotationCheck,
+        },
+        { status: 409 }
       )
     }
 
@@ -303,7 +325,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Auto-remplir aIrriguer si non fourni et espèce a besoin eau élevé
+    // Auto-remplir aIrriguer si non fourni et espece a besoin eau élevé
     let aIrriguer = data.aIrriguer
     if (aIrriguer === undefined || aIrriguer === null) {
       // Besoin eau >= 3 ou irrigation explicitement "Eleve"/"Élevé"
@@ -349,12 +371,19 @@ export async function POST(request: NextRequest) {
 
     // Création + décrément stock dans une transaction atomique
     const culture = await prisma.$transaction(async (tx) => {
-      // Création avec userId
+      // Si pas de variété fournie : assigner le placeholder "Non spécifiée"
+      // de l'espèce (créé à la demande). Aucune Culture ne reste sans variete.
+      const varieteId = data.varieteId ?? (await ensurePlaceholderVariete(data.especeId, tx))
+
+      // Création avec userId. rotationViolee=true si l'utilisateur a confirmé
+      // malgré le warning (PROMPT 12).
       const newCulture = await tx.culture.create({
         data: {
           ...data,
+          varieteId,
           userId: session!.user.id,
           aIrriguer,
+          rotationViolee: rotationCheck !== null,
         },
         include: {
           espece: true,
@@ -416,6 +445,7 @@ export async function POST(request: NextRequest) {
       return newCulture
     })
 
+    invalidateKpi(session!.user.id)
     return NextResponse.json(culture, { status: 201 })
   } catch (error) {
     console.error('POST /api/cultures error:', error)

@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
 
     const data = validated.data
 
-    // Vérifier que l'espèce existe
+    // Vérifier que l'espece existe
     const espece = await prisma.espece.findUnique({
       where: { id: data.especeId }
     })

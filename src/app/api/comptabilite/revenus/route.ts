@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { getKpiCompta } from '@/lib/kpi'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -30,11 +31,13 @@ export async function GET(request: NextRequest) {
       venteAbattage,
       recoltesPotager,
       ventesManuelles,
+      commandesBoutique,
     ] = await Promise.all([
-      // VenteProduit (élevage)
+      // VenteProduit (elevage)
       prisma.venteProduit.findMany({
         where: {
           userId,
+          annule: { not: true },
           date: { gte: startOfYear, lte: endOfYear },
         },
         orderBy: { date: 'desc' },
@@ -72,6 +75,7 @@ export async function GET(request: NextRequest) {
       prisma.abattage.findMany({
         where: {
           userId,
+          annule: { not: true },
           date: { gte: startOfYear, lte: endOfYear },
           destination: 'vente',
           prixVente: { not: null },
@@ -94,13 +98,28 @@ export async function GET(request: NextRequest) {
         orderBy: { dateVente: 'desc' },
       }),
 
-      // VenteManuelle
+      // VenteManuelle (exclure auto=true pour eviter le double comptage
+      // avec les sources brutes VenteProduit, Abattage, Recolte, etc.)
       prisma.venteManuelle.findMany({
         where: {
           userId,
           date: { gte: startOfYear, lte: endOfYear },
+          auto: { not: true },
         },
         orderBy: { date: 'desc' },
+      }),
+
+      // CommandeBoutique livrées - revenus de la boutique en ligne
+      prisma.commandeBoutique.findMany({
+        where: {
+          userId,
+          statut: 'livree',
+          createdAt: { gte: startOfYear, lte: endOfYear },
+        },
+        orderBy: { createdAt: 'desc' },
+        include: {
+          lignes: { select: { nom: true, quantite: true, unite: true } },
+        },
       }),
     ])
 
@@ -245,6 +264,28 @@ export async function GET(request: NextRequest) {
       })
     })
 
+    // CommandeBoutique livrées -> revenus
+    commandesBoutique.forEach(c => {
+      const description = c.lignes.length > 0
+        ? `Commande boutique ${c.numero} : ${c.lignes.slice(0, 3).map(l => `${l.quantite} ${l.unite} ${l.nom}`).join(', ')}${c.lignes.length > 3 ? '...' : ''}`
+        : `Commande boutique ${c.numero}`
+      revenues.push({
+        id: `boutique-${c.id}`,
+        source: 'CommandeBoutique',
+        sourceId: c.id,
+        module: 'boutique',
+        date: c.createdAt.toISOString(),
+        description,
+        quantite: null,
+        unite: null,
+        prixUnitaire: null,
+        montant: c.total,
+        client: c.clientNom,
+        paye: true, // commande livrée = encaissée
+        categorie: 'Boutique en ligne',
+      })
+    })
+
     // Filtrer par module si spécifié
     let filtered = revenues
     if (module) {
@@ -257,14 +298,27 @@ export async function GET(request: NextRequest) {
     // Limiter
     const limited = filtered.slice(0, limit)
 
-    // Calculer les stats
+    // Total agrégé : on s'aligne sur la source unique de vérité (getKpiCompta).
+    // L'ancien `filtered.reduce(...)` agrégeait les "sources brutes" potager
+    // (recoltes vendues) + verger (recoltesArbres) + elevage (venteProduit) +
+    // autres (venteManuelle) ; selon la couverture des doublons auto-compta,
+    // le résultat divergeait du total exposé par /api/comptabilite/stats.
+    // Désormais le total = VenteManuelle + LigneFacture (factures non
+    // annulées), identique sur tous les écrans.
+    const asOf = new Date()
+    const kpiCompta = !module ? await getKpiCompta(userId, year, asOf) : null
+
     const stats = {
-      total: filtered.reduce((sum, r) => sum + r.montant, 0),
+      // Total SSOT — autoritaire si pas de filtre module. Avec un filtre
+      // module, on retombe sur le reduce local (le helper ne ventile pas
+      // encore par module).
+      total: kpiCompta ? kpiCompta.revenusYtd : filtered.reduce((sum, r) => sum + r.montant, 0),
       count: filtered.length,
       parModule: {
         potager: filtered.filter(r => r.module === 'potager').reduce((sum, r) => sum + r.montant, 0),
         verger: filtered.filter(r => r.module === 'verger').reduce((sum, r) => sum + r.montant, 0),
         elevage: filtered.filter(r => r.module === 'elevage').reduce((sum, r) => sum + r.montant, 0),
+        boutique: filtered.filter(r => r.module === 'boutique').reduce((sum, r) => sum + r.montant, 0),
         autre: filtered.filter(r => r.module === 'autre').reduce((sum, r) => sum + r.montant, 0),
       },
       parCategorie: Object.entries(

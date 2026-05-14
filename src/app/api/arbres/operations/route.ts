@@ -129,10 +129,14 @@ export async function POST(request: NextRequest) {
         produit: body.produit || null,
         quantite: body.quantite || null,
         unite: body.unite || null,
-        cout: body.cout || null,
+        cout: body.cout != null ? parseFloat(body.cout) : null,
         datePrevue: body.datePrevue ? new Date(body.datePrevue) : null,
         fait: body.fait !== undefined ? body.fait : true,
         notes: body.notes || null,
+        dureeMinutes: body.dureeMinutes ? parseInt(body.dureeMinutes) : null,
+        nbPersonnes: body.nbPersonnes ? parseInt(body.nbPersonnes) : undefined,
+        recurrence: body.recurrence || null,
+        saisonRecommandee: body.saisonRecommandee || null,
       },
       include: {
         arbre: {

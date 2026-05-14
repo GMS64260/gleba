@@ -15,6 +15,8 @@ import {
   TrendingUp,
   Calendar,
   Trash2,
+  Filter,
+  X,
 } from "lucide-react"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -161,10 +163,18 @@ function OeufsSubTab() {
       const response = await fetch('/api/elevage/production-oeufs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          lotId: formData.lotId ? parseInt(formData.lotId) : null,
+          date: formData.date,
+          quantite: formData.quantite ? parseInt(formData.quantite) : 0,
+          casses: formData.casses ? parseInt(formData.casses) : 0,
+          sales: formData.sales ? parseInt(formData.sales) : 0,
+          calibre: formData.calibre || null,
+          notes: formData.notes || null,
+        }),
       })
       if (!response.ok) throw new Error('Erreur')
-      toast({ title: "Production enregistree", description: `${formData.quantite} oeufs ajoutes` })
+      toast({ title: "Production enregistrée", description: `${formData.quantite} oeufs ajoutes` })
       setIsDialogOpen(false)
       setFormData({ lotId: formData.lotId, date: new Date().toISOString().split('T')[0], quantite: "", casses: "0", sales: "0", calibre: "", notes: "" })
       fetchData()
@@ -189,7 +199,7 @@ function OeufsSubTab() {
       {/* Stock disponible + Stats */}
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-5">
         {stockOeufs && (
-          <Card className={`bg-gradient-to-br ${stockOeufs.stockNet < 24 ? "from-orange-500 to-red-500" : "from-yellow-400 to-yellow-500"} text-white`}>
+          <Card className={`bg-gradient-to-br ${stockOeufs.stockNet < 24 ? "from-orange-500 to-orange-600" : "from-amber-500 to-amber-600"} text-white`}>
             <CardHeader className="pb-1 pt-3 px-4">
               <CardDescription className="text-white/80 text-xs">Stock disponible</CardDescription>
               <CardTitle className="text-2xl">{stockOeufs.stockNet}</CardTitle>
@@ -250,7 +260,7 @@ function OeufsSubTab() {
               <div className="space-y-2">
                 <Label>Lot de pondeuses *</Label>
                 <Select value={formData.lotId} onValueChange={(v) => setFormData(f => ({ ...f, lotId: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Selectionner le lot..." /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Sélectionner le lot..." /></SelectTrigger>
                   <SelectContent>
                     {lots.map(lot => (
                       <SelectItem key={lot.id} value={lot.id.toString()}>
@@ -340,7 +350,7 @@ function OeufsSubTab() {
                   </TableRow>
                 ))}
                 {productions.length === 0 && (
-                  <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Aucune production enregistree</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Aucune production enregistrée</TableCell></TableRow>
                 )}
               </TableBody>
             </Table>
@@ -414,11 +424,21 @@ function VentesSubTab() {
       const response = await fetch('/api/elevage/ventes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          date: formData.date,
+          type: formData.type,
+          description: formData.description || null,
+          quantite: formData.quantite ? parseFloat(formData.quantite) : 0,
+          unite: formData.unite,
+          prixUnitaire: formData.prixUnitaire ? parseFloat(formData.prixUnitaire) : 0,
+          client: formData.client || null,
+          paye: formData.paye,
+          notes: formData.notes || null,
+        }),
       })
       if (!response.ok) throw new Error('Erreur')
       const total = parseFloat(formData.quantite) * parseFloat(formData.prixUnitaire)
-      toast({ title: "Vente enregistree", description: `${total.toFixed(2)} \u20ac` })
+      toast({ title: "Vente enregistrée", description: `${total.toFixed(2)} \u20ac` })
       setIsDialogOpen(false)
       setFormData({ date: new Date().toISOString().split('T')[0], type: "oeufs", description: "", quantite: "", unite: "douzaine", prixUnitaire: "", client: "", paye: true, notes: "" })
       fetchData()
@@ -431,7 +451,7 @@ function VentesSubTab() {
     if (!confirm("Supprimer cette vente ?")) return
     try {
       await fetch(`/api/elevage/ventes?id=${id}`, { method: 'DELETE' })
-      toast({ title: "Vente supprimee" })
+      toast({ title: "Vente supprimée" })
       fetchData()
     } catch {
       toast({ variant: "destructive", title: "Erreur" })
@@ -443,9 +463,9 @@ function VentesSubTab() {
       {/* Stats */}
       {stats && (
         <div className="grid gap-3 grid-cols-3">
-          <Card className="bg-gradient-to-br from-green-500 to-emerald-600 text-white">
+          <Card className="bg-gradient-to-br from-emerald-500 to-emerald-600 text-white">
             <CardHeader className="pb-1 pt-3 px-4">
-              <CardDescription className="text-green-100 text-xs">Chiffre d'affaires</CardDescription>
+              <CardDescription className="text-emerald-100 text-xs">Chiffre d'affaires</CardDescription>
               <CardTitle className="text-2xl">{stats.totalVentes.toFixed(2)} &euro;</CardTitle>
             </CardHeader>
           </Card>
@@ -585,7 +605,7 @@ function VentesSubTab() {
                   </TableRow>
                 ))}
                 {ventes.length === 0 && (
-                  <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Aucune vente enregistree</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Aucune vente enregistrée</TableCell></TableRow>
                 )}
               </TableBody>
             </Table>
@@ -610,8 +630,8 @@ interface Abattage {
   prixVente: number | null
   lieu: string | null
   notes: string | null
-  animal: { id: number; nom: string; identifiant: string; race: string } | null
-  lot: { id: number; nom: string } | null
+  animal: { id: number; nom: string; identifiant: string; race: string; especeAnimale: { id: string; nom: string; couleur: string | null } } | null
+  lot: { id: number; nom: string; especeAnimale: { id: string; nom: string; couleur: string | null } } | null
 }
 
 interface LotActif { id: number; nom: string | null; quantiteActuelle: number; especeAnimale: { nom: string } }
@@ -622,6 +642,10 @@ const DEST_LABELS: Record<string, string> = {
   don: "Don",
 }
 
+function getEspeceFromAbattage(a: Abattage): { id: string; nom: string; couleur: string | null } | null {
+  return a.lot?.especeAnimale || a.animal?.especeAnimale || null
+}
+
 function AbattagesSubTab() {
   const { toast } = useToast()
   const [isLoading, setIsLoading] = React.useState(true)
@@ -629,6 +653,7 @@ function AbattagesSubTab() {
   const [lots, setLots] = React.useState<LotActif[]>([])
   const [stats, setStats] = React.useState<any>(null)
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
+  const [especeFilter, setEspeceFilter] = React.useState<Set<string>>(new Set())
 
   const [formData, setFormData] = React.useState({
     lotId: "", date: new Date().toISOString().split('T')[0], quantite: "1",
@@ -653,13 +678,51 @@ function AbattagesSubTab() {
 
   React.useEffect(() => { fetchData() }, [fetchData])
 
+  // Espèces uniques extraites des abattages
+  const especesUniques = React.useMemo(() => {
+    const map = new Map<string, { id: string; nom: string; couleur: string | null }>()
+    abattages.forEach(a => {
+      const e = getEspeceFromAbattage(a)
+      if (e && !map.has(e.id)) map.set(e.id, e)
+    })
+    return Array.from(map.values()).sort((a, b) => a.nom.localeCompare(b.nom))
+  }, [abattages])
+
+  // Abattages filtrés
+  const filteredAbattages = React.useMemo(() => {
+    if (especeFilter.size === 0) return abattages
+    return abattages.filter(a => {
+      const e = getEspeceFromAbattage(a)
+      return e ? especeFilter.has(e.id) : false
+    })
+  }, [abattages, especeFilter])
+
+  const toggleEspece = (id: string) => {
+    setEspeceFilter(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
       const response = await fetch('/api/elevage/abattages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          lotId: formData.lotId ? parseInt(formData.lotId) : null,
+          date: formData.date,
+          quantite: formData.quantite ? parseInt(formData.quantite) : 1,
+          poidsVif: formData.poidsVif ? parseFloat(formData.poidsVif) : null,
+          poidsCarcasse: formData.poidsCarcasse ? parseFloat(formData.poidsCarcasse) : null,
+          destination: formData.destination,
+          prixVente: formData.prixVente ? parseFloat(formData.prixVente) : null,
+          lieu: formData.lieu || null,
+          notes: formData.notes || null,
+        }),
       })
       if (!response.ok) throw new Error('Erreur')
       toast({ title: "Abattage enregistre" })
@@ -673,45 +736,81 @@ function AbattagesSubTab() {
 
   return (
     <div className="space-y-4">
-      {/* Stats */}
-      {stats && (
+      {/* Stats — recalculées selon le filtre espece */}
+      {(() => {
+        const src = especeFilter.size > 0 ? filteredAbattages : abattages
+        const totalAnimaux = src.reduce((s, a) => s + a.quantite, 0)
+        const poidsVifTotal = src.reduce((s, a) => s + (a.poidsVif || 0), 0)
+        const poidsCarcasseTotal = src.reduce((s, a) => s + (a.poidsCarcasse || 0), 0)
+        const revenusVente = src.reduce((s, a) => s + (a.prixVente || 0), 0)
+        return (
         <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
           <Card>
             <CardHeader className="pb-1 pt-3 px-4">
               <CardDescription className="text-xs">Total animaux</CardDescription>
-              <CardTitle className="text-2xl">{stats.totalAnimaux}</CardTitle>
+              <CardTitle className="text-2xl">{totalAnimaux}</CardTitle>
             </CardHeader>
           </Card>
           <Card>
             <CardHeader className="pb-1 pt-3 px-4">
               <CardDescription className="text-xs">Poids vif total</CardDescription>
-              <CardTitle className="text-2xl">{stats.poidsVifTotal.toFixed(1)} kg</CardTitle>
+              <CardTitle className="text-2xl">{poidsVifTotal.toFixed(1)} kg</CardTitle>
             </CardHeader>
           </Card>
           <Card>
             <CardHeader className="pb-1 pt-3 px-4">
               <CardDescription className="text-xs">Poids carcasse</CardDescription>
-              <CardTitle className="text-2xl">{stats.poidsCarcasseTotal.toFixed(1)} kg</CardTitle>
+              <CardTitle className="text-2xl">{poidsCarcasseTotal.toFixed(1)} kg</CardTitle>
             </CardHeader>
           </Card>
-          <Card className="bg-gradient-to-br from-green-500 to-emerald-600 text-white">
+          <Card className="bg-gradient-to-br from-emerald-500 to-emerald-600 text-white">
             <CardHeader className="pb-1 pt-3 px-4">
-              <CardDescription className="text-green-100 text-xs">Revenus vente</CardDescription>
-              <CardTitle className="text-2xl">{stats.revenusVente.toFixed(2)} &euro;</CardTitle>
+              <CardDescription className="text-emerald-100 text-xs">Revenus vente</CardDescription>
+              <CardTitle className="text-2xl">{revenusVente.toFixed(2)} &euro;</CardTitle>
             </CardHeader>
           </Card>
         </div>
-      )}
+        )
+      })()}
 
-      {/* Actions */}
-      <div className="flex items-center justify-end gap-2">
-        <Button variant="outline" size="sm" onClick={fetchData}>
-          <RefreshCw className="h-4 w-4" />
-        </Button>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm"><Plus className="h-4 w-4 mr-1" />Nouvel abattage</Button>
-          </DialogTrigger>
+      {/* Actions + filtre */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {especesUniques.length > 1 && (
+            <>
+              <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+              {especesUniques.map(e => (
+                <button
+                  key={e.id}
+                  onClick={() => toggleEspece(e.id)}
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border transition-colors ${
+                    especeFilter.has(e.id)
+                      ? 'bg-amber-100 border-amber-400 text-amber-800'
+                      : especeFilter.size === 0
+                        ? 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                        : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
+                  }`}
+                >
+                  {e.couleur && <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: e.couleur }} />}
+                  {e.nom}
+                </button>
+              ))}
+              {especeFilter.size > 0 && (
+                <button onClick={() => setEspeceFilter(new Set())} className="text-xs text-muted-foreground hover:text-foreground ml-1">
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={fetchData}>
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button size="sm"><Plus className="h-4 w-4 mr-1" />Nouvel abattage</Button>
+            </DialogTrigger>
           <DialogContent className="max-w-md">
             <DialogHeader><DialogTitle>Enregistrer un abattage</DialogTitle></DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -751,6 +850,7 @@ function AbattagesSubTab() {
             </form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       {/* Table */}
@@ -763,6 +863,7 @@ function AbattagesSubTab() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Date</TableHead>
+                  <TableHead>Espèce</TableHead>
                   <TableHead>Lot/Animal</TableHead>
                   <TableHead className="text-right">Qte</TableHead>
                   <TableHead className="text-right">P. vif</TableHead>
@@ -772,9 +873,19 @@ function AbattagesSubTab() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {abattages.map((a) => (
+                {filteredAbattages.map((a) => {
+                  const espece = getEspeceFromAbattage(a)
+                  return (
                   <TableRow key={a.id}>
                     <TableCell>{new Date(a.date).toLocaleDateString('fr-FR')}</TableCell>
+                    <TableCell>
+                      {espece ? (
+                        <div className="flex items-center gap-1.5">
+                          {espece.couleur && <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: espece.couleur }} />}
+                          <span className="text-sm">{espece.nom}</span>
+                        </div>
+                      ) : '-'}
+                    </TableCell>
                     <TableCell>{a.lot?.nom || a.animal?.nom || '-'}</TableCell>
                     <TableCell className="text-right font-bold">{a.quantite}</TableCell>
                     <TableCell className="text-right">{a.poidsVif ? `${a.poidsVif} kg` : '-'}</TableCell>
@@ -782,9 +893,10 @@ function AbattagesSubTab() {
                     <TableCell><Badge variant="outline">{DEST_LABELS[a.destination] || a.destination}</Badge></TableCell>
                     <TableCell className="text-right text-green-600">{a.prixVente ? `${a.prixVente.toFixed(2)} \u20ac` : '-'}</TableCell>
                   </TableRow>
-                ))}
-                {abattages.length === 0 && (
-                  <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Aucun abattage enregistre</TableCell></TableRow>
+                  )
+                })}
+                {filteredAbattages.length === 0 && (
+                  <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">{especeFilter.size > 0 ? 'Aucun abattage pour cette sélection' : 'Aucun abattage enregistre'}</TableCell></TableRow>
                 )}
               </TableBody>
             </Table>

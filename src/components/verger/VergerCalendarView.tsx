@@ -73,7 +73,7 @@ const TYPE_CONFIG: Record<string, { icon: React.ElementType; color: string; bg: 
   greffe: { icon: GitMerge, color: "text-emerald-600", bg: "bg-emerald-100", label: "Greffe" },
   traitement: { icon: SprayCan, color: "text-red-500", bg: "bg-red-100", label: "Traitement" },
   fertilisation: { icon: Flower2, color: "text-amber-600", bg: "bg-amber-100", label: "Fertilisation" },
-  autre: { icon: Wrench, color: "text-gray-600", bg: "bg-gray-100", label: "Autre" },
+  autre: { icon: Wrench, color: "text-slate-600", bg: "bg-slate-100", label: "Autre" },
 }
 
 const WEEK_DAYS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]
@@ -342,7 +342,7 @@ export function VergerCalendarView({ year }: VergerCalendarViewProps) {
                                         {op.fait ? (
                                           <Check className="h-4 w-4 text-green-600" />
                                         ) : (
-                                          <div className="h-4 w-4 rounded border border-gray-300" />
+                                          <div className="h-4 w-4 rounded border border-slate-300" />
                                         )}
                                       </button>
                                       <Icon
@@ -401,7 +401,7 @@ export function VergerCalendarView({ year }: VergerCalendarViewProps) {
                                   }`}
                                 />
                                 {ops.length > 1 && (
-                                  <span className="absolute -top-0.5 -right-0.5 bg-gray-600 text-white text-[7px] w-2.5 h-2.5 rounded-full flex items-center justify-center">
+                                  <span className="absolute -top-0.5 -right-0.5 bg-slate-600 text-white text-[7px] w-2.5 h-2.5 rounded-full flex items-center justify-center">
                                     {ops.length}
                                   </span>
                                 )}

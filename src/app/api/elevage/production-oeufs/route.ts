@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { productionOeufsSchema } from '@/lib/validations/elevage-production-oeufs'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -20,12 +21,14 @@ export async function GET(request: NextRequest) {
     const dateDebut = searchParams.get('dateDebut')
     const dateFin = searchParams.get('dateFin')
     const limit = parseInt(searchParams.get('limit') || '100')
+    const annee = parseInt(searchParams.get('annee') || String(new Date().getFullYear()))
+    const yearStart = new Date(annee, 0, 1)
+    const yearEnd = new Date(annee, 11, 31, 23, 59, 59)
 
-    const where: any = { userId: session.user.id }
+    const where: any = { userId: session.user.id, date: { gte: yearStart, lte: yearEnd } }
     if (lotId) where.lotId = parseInt(lotId)
     if (animalId) where.animalId = parseInt(animalId)
     if (dateDebut || dateFin) {
-      where.date = {}
       if (dateDebut) where.date.gte = new Date(dateDebut)
       if (dateFin) where.date.lte = new Date(dateFin)
     }
@@ -63,6 +66,7 @@ export async function GET(request: NextRequest) {
         sales: stats._sum.sales || 0,
         nbEnregistrements: stats._count,
       },
+      meta: { year: annee, total: productions.length },
     })
   } catch (error) {
     console.error('GET /api/elevage/production-oeufs error:', error)
@@ -79,24 +83,25 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { lotId, animalId, date, quantite, casses, sales, calibre, notes } = body
-
-    if (!quantite || (!lotId && !animalId)) {
+    const parsed = productionOeufsSchema.safeParse(body)
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Quantité et lot ou animal requis' },
+        { error: 'Données invalides', details: parsed.error.flatten() },
         { status: 400 }
       )
     }
 
+    const { lotId, animalId, date, quantite, casses, sales, calibre, notes } = parsed.data
+
     const production = await prisma.productionOeuf.create({
       data: {
         userId: session.user.id,
-        lotId: lotId ? parseInt(lotId) : null,
-        animalId: animalId ? parseInt(animalId) : null,
-        date: date ? new Date(date) : new Date(),
-        quantite: parseInt(quantite),
-        casses: casses ? parseInt(casses) : 0,
-        sales: sales ? parseInt(sales) : 0,
+        lotId: lotId || null,
+        animalId: animalId || null,
+        date: date || new Date(),
+        quantite,
+        casses,
+        sales,
         calibre,
         notes,
       },

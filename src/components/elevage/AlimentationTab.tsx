@@ -135,7 +135,7 @@ function StocksSubTab() {
       setFormData({ id: "", nom: "", type: "granules", especesCibles: "", prix: "", stock: "", stockMin: "", description: "" })
       fetchData()
     } catch {
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible de creer l'aliment" })
+      toast({ variant: "destructive", title: "Erreur", description: "Impossible de créer l'aliment" })
     }
   }
 
@@ -197,7 +197,7 @@ function StocksSubTab() {
               <div className="space-y-2"><Label>Stock minimum (alerte)</Label><Input type="number" step="0.1" value={formData.stockMin} onChange={(e) => setFormData(f => ({ ...f, stockMin: e.target.value }))} /></div>
               <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
-                <Button type="submit" disabled={!formData.id || !formData.nom}>Creer</Button>
+                <Button type="submit" disabled={!formData.id || !formData.nom}>Créer</Button>
               </div>
             </form>
           </DialogContent>
@@ -223,9 +223,10 @@ function StocksSubTab() {
               </TableHeader>
               <TableBody>
                 {aliments.map((a) => {
-                  const stockBas = a.stock !== null && a.stockMin !== null && a.stock <= a.stockMin
+                  const stockNegatif = a.stock !== null && a.stock <= 0
+                  const stockBas = !stockNegatif && a.stock !== null && a.stockMin !== null && a.stock <= a.stockMin
                   return (
-                    <TableRow key={a.id} className={stockBas ? "bg-orange-50" : ""}>
+                    <TableRow key={a.id} className={stockNegatif ? "bg-red-50" : stockBas ? "bg-orange-50" : ""}>
                       <TableCell className="font-medium">{a.nom}</TableCell>
                       <TableCell><Badge variant="outline">{a.type || '-'}</Badge></TableCell>
                       <TableCell className="text-right">{a.prix ? `${a.prix.toFixed(2)} \u20ac` : '-'}</TableCell>
@@ -237,14 +238,25 @@ function StocksSubTab() {
                             <Button size="sm" variant="ghost" onClick={() => { setEditingStock(null); setNewStock("") }}>&times;</Button>
                           </div>
                         ) : (
-                          <button onClick={() => { setEditingStock(a.id); setNewStock(a.stock?.toString() || "") }} className={`font-bold hover:underline ${stockBas ? 'text-orange-600' : ''}`}>
+                          <button
+                            onClick={() => { setEditingStock(a.id); setNewStock(a.stock?.toString() || "") }}
+                            className={`font-bold hover:underline ${stockNegatif ? 'text-red-600' : stockBas ? 'text-orange-600' : ''}`}
+                            title={stockNegatif ? "Stock n\u00e9gatif \u2014 v\u00e9rifier les consommations" : undefined}
+                          >
+                            {stockNegatif && "\u26a0\ufe0f "}
                             {a.stock !== null ? `${a.stock} kg` : '-'}
                           </button>
                         )}
                       </TableCell>
                       <TableCell className="text-right text-muted-foreground">{a.stockMin !== null ? `${a.stockMin} kg` : '-'}</TableCell>
                       <TableCell className="text-muted-foreground text-sm">{a.dateStock ? new Date(a.dateStock).toLocaleDateString('fr-FR') : '-'}</TableCell>
-                      <TableCell>{stockBas && <AlertTriangle className="h-4 w-4 text-orange-500" />}</TableCell>
+                      <TableCell>
+                        {stockNegatif ? (
+                          <AlertTriangle className="h-4 w-4 text-red-600" />
+                        ) : stockBas ? (
+                          <AlertTriangle className="h-4 w-4 text-orange-500" />
+                        ) : null}
+                      </TableCell>
                     </TableRow>
                   )
                 })}
@@ -335,7 +347,7 @@ function ConsommationsSubTab() {
         }),
       })
       if (!response.ok) throw new Error("Erreur")
-      toast({ title: "Consommation enregistree", description: `${formData.quantite} kg ajoutes` })
+      toast({ title: "Consommation enregistrée", description: `${formData.quantite} kg ajoutes` })
       setIsDialogOpen(false)
       setFormData({ alimentId: formData.alimentId, lotId: formData.lotId, date: new Date().toISOString().split("T")[0], quantite: "", notes: "" })
       fetchData()
@@ -348,7 +360,7 @@ function ConsommationsSubTab() {
     if (!confirm("Supprimer cette consommation ? Le stock sera restaure.")) return
     try {
       await fetch(`/api/elevage/consommations-aliments?id=${id}`, { method: "DELETE" })
-      toast({ title: "Consommation supprimee, stock restaure" })
+      toast({ title: "Consommation supprimée, stock restaure" })
       fetchData()
     } catch {
       toast({ variant: "destructive", title: "Erreur" })
@@ -411,7 +423,7 @@ function ConsommationsSubTab() {
                 <div className="space-y-2">
                   <Label>Aliment *</Label>
                   <Select value={formData.alimentId} onValueChange={(v) => setFormData(f => ({ ...f, alimentId: v }))}>
-                    <SelectTrigger><SelectValue placeholder="Selectionner l'aliment..." /></SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder="Sélectionner l'aliment..." /></SelectTrigger>
                     <SelectContent>{aliments.map(a => <SelectItem key={a.id} value={a.id}>{a.nom}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
@@ -472,7 +484,7 @@ function ConsommationsSubTab() {
                   </TableRow>
                 ))}
                 {consommations.length === 0 && (
-                  <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Aucune consommation enregistree</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Aucune consommation enregistrée</TableCell></TableRow>
                 )}
               </TableBody>
             </Table>
@@ -661,7 +673,7 @@ function SoinsSubTab() {
                 {soins.map((soin) => (
                   <TableRow key={soin.id} className={!soin.fait ? "bg-blue-50" : ""}>
                     <TableCell>
-                      <Button variant="ghost" size="sm" onClick={() => toggleFait(soin.id, soin.fait)} className={soin.fait ? "text-green-600" : "text-gray-400"}>
+                      <Button variant="ghost" size="sm" onClick={() => toggleFait(soin.id, soin.fait)} className={soin.fait ? "text-green-600" : "text-slate-400"}>
                         <Check className="h-4 w-4" />
                       </Button>
                     </TableCell>

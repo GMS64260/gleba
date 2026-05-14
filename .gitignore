@@ -49,11 +49,24 @@ dl/
 PROMPT_AI_ENRICHMENT.md
 
 # AI / MCP (proprietary)
+# Le dossier /src/components/chat/ est ignoré SAUF les stubs publics
+# (ChatPanel.tsx, ChatBubble.tsx). Le vrai code de ces 2 composants
+# reste sur le VPS via `git update-index --skip-worktree` — cf.
+# docs/private-stubs.md.
+/src/components/chat/*
+!/src/components/chat/ChatPanel.tsx
+!/src/components/chat/ChatBubble.tsx
 /src/lib/chat/
 /src/lib/ollama.ts
 /src/app/api/chat/
 /src/app/api/mcp/
 /src/app/api/user/api-token/
-/src/components/chat/
 /src/hooks/use-chat.ts
 /mcp-server/
+
+# Boutique en ligne (proprietary)
+# Modèles Prisma laissés publics (la compta y fait référence), mais
+# l'UI / l'API / les composants UI restent privés.
+/src/app/boutique/
+/src/components/boutique/
+/src/app/api/boutique/

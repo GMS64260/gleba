@@ -6,6 +6,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { createVenteManuelleSchema, updateVenteManuelleSchema } from '@/lib/validations/vente-manuelle'
+import { invalidateKpi } from '@/lib/kpi'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -66,41 +68,42 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const userId = session.user.id
+    const parsed = createVenteManuelleSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: 'Données invalides', details: parsed.error.flatten() },
+        { status: 400 }
+      )
+    }
 
-    // Calcul TVA avec validation
-    const montantTTC = parseFloat(body.montant)
-    if (isNaN(montantTTC) || montantTTC < 0) {
-      return NextResponse.json({ error: 'Montant invalide' }, { status: 400 })
-    }
-    const tauxTVA = parseFloat(body.tauxTVA) || 5.5
-    if (tauxTVA < 0 || tauxTVA > 100) {
-      return NextResponse.json({ error: 'Taux de TVA invalide (0-100)' }, { status: 400 })
-    }
-    const montantHT = body.montantHT ? parseFloat(body.montantHT) : montantTTC / (1 + tauxTVA / 100)
-    const montantTVA = body.montantTVA ? parseFloat(body.montantTVA) : montantTTC - montantHT
+    const userId = session.user.id
+    const { montant, tauxTVA, ...rest } = parsed.data
+
+    const montantHT = rest.montantHT ?? montant / (1 + tauxTVA / 100)
+    const montantTVA = rest.montantTVA ?? montant - montantHT
 
     const vente = await prisma.venteManuelle.create({
       data: {
         userId,
-        date: body.date ? new Date(body.date) : new Date(),
-        categorie: body.categorie,
-        description: body.description,
-        quantite: body.quantite ? parseFloat(body.quantite) : null,
-        unite: body.unite || null,
-        prixUnitaire: body.prixUnitaire ? parseFloat(body.prixUnitaire) : null,
+        date: rest.date ?? new Date(),
+        categorie: rest.categorie,
+        description: rest.description,
+        quantite: rest.quantite ?? null,
+        unite: rest.unite ?? null,
+        prixUnitaire: rest.prixUnitaire ?? null,
         tauxTVA,
         montantHT,
         montantTVA,
-        montant: montantTTC,
-        clientId: body.clientId ? parseInt(body.clientId) : null,
-        clientNom: body.clientNom || body.client || null,
-        module: body.module || null,
-        paye: body.paye !== false,
-        notes: body.notes || null,
+        montant,
+        clientId: rest.clientId ?? null,
+        clientNom: rest.clientNom ?? null,
+        module: rest.module ?? null,
+        paye: rest.paye,
+        notes: rest.notes ?? null,
       },
     })
 
+    invalidateKpi(userId)
     return NextResponse.json(vente, { status: 201 })
   } catch (error) {
     console.error('POST /api/comptabilite/ventes-manuelles error:', error)
@@ -117,14 +120,18 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { id, paye, client, clientNom, clientId, notes, description, montant, tauxTVA, montantHT, montantTVA } = body
-
-    if (!id) {
-      return NextResponse.json({ error: 'ID requis' }, { status: 400 })
+    const parsed = updateVenteManuelleSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: 'Données invalides', details: parsed.error.flatten() },
+        { status: 400 }
+      )
     }
 
+    const { id, ...updates } = parsed.data
+
     const existing = await prisma.venteManuelle.findFirst({
-      where: { id: parseInt(id), userId: session.user.id },
+      where: { id, userId: session.user.id },
     })
 
     if (!existing) {
@@ -132,34 +139,22 @@ export async function PATCH(request: NextRequest) {
     }
 
     const updateData: any = {}
-    if (paye !== undefined) updateData.paye = paye
-    if (clientNom !== undefined) updateData.clientNom = clientNom
-    if (client !== undefined) updateData.clientNom = client // backwards compatibility
-    if (clientId !== undefined) updateData.clientId = clientId ? parseInt(clientId) : null
-    if (notes !== undefined) updateData.notes = notes
-    if (description !== undefined) updateData.description = description
-    if (montant !== undefined) {
-      const parsedMontant = parseFloat(montant)
-      if (isNaN(parsedMontant) || parsedMontant < 0) {
-        return NextResponse.json({ error: 'Montant invalide' }, { status: 400 })
-      }
-      updateData.montant = parsedMontant
-    }
-    if (tauxTVA !== undefined) {
-      const parsedTVA = parseFloat(tauxTVA)
-      if (isNaN(parsedTVA) || parsedTVA < 0 || parsedTVA > 100) {
-        return NextResponse.json({ error: 'Taux de TVA invalide (0-100)' }, { status: 400 })
-      }
-      updateData.tauxTVA = parsedTVA
-    }
-    if (montantHT !== undefined) updateData.montantHT = parseFloat(montantHT)
-    if (montantTVA !== undefined) updateData.montantTVA = parseFloat(montantTVA)
+    if (updates.paye !== undefined) updateData.paye = updates.paye
+    if (updates.clientNom !== undefined) updateData.clientNom = updates.clientNom
+    if (updates.clientId !== undefined) updateData.clientId = updates.clientId ?? null
+    if (updates.notes !== undefined) updateData.notes = updates.notes
+    if (updates.description !== undefined) updateData.description = updates.description
+    if (updates.montant !== undefined) updateData.montant = updates.montant
+    if (updates.tauxTVA !== undefined) updateData.tauxTVA = updates.tauxTVA
+    if (updates.montantHT !== undefined) updateData.montantHT = updates.montantHT
+    if (updates.montantTVA !== undefined) updateData.montantTVA = updates.montantTVA
 
     const vente = await prisma.venteManuelle.update({
-      where: { id: parseInt(id) },
+      where: { id },
       data: updateData,
     })
 
+    invalidateKpi(session.user.id)
     return NextResponse.json({ data: vente })
   } catch (error) {
     console.error('PATCH /api/comptabilite/ventes-manuelles error:', error)
@@ -182,10 +177,26 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'ID requis' }, { status: 400 })
     }
 
+    const existing = await prisma.venteManuelle.findFirst({
+      where: { id: parseInt(id), userId: session.user.id },
+    })
+
+    if (!existing) {
+      return NextResponse.json({ error: 'Vente non trouvée' }, { status: 404 })
+    }
+
+    if (existing.auto) {
+      return NextResponse.json(
+        { error: 'Cette vente est générée automatiquement. Modifiez ou supprimez la source (récolte, vente produit, abattage) pour la supprimer.' },
+        { status: 400 }
+      )
+    }
+
     await prisma.venteManuelle.delete({
       where: { id: parseInt(id), userId: session.user.id },
     })
 
+    invalidateKpi(session.user.id)
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('DELETE /api/comptabilite/ventes-manuelles error:', error)

@@ -40,12 +40,26 @@ interface LigneFacture {
   montant: number
 }
 
+interface FactureEmise {
+  id: number
+  numero: string
+  type: string
+  date: string
+  dateEcheance: string | null
+  clientNom: string
+  objet: string | null
+  totalHT: number
+  totalTTC: number
+  statut: string
+}
+
 export default function FacturesPage() {
   const { toast } = useToast()
   const [activeTab, setActiveTab] = React.useState("impayees")
   const [isLoading, setIsLoading] = React.useState(true)
   const [impayees, setImpayees] = React.useState<Impayee[]>([])
   const [total, setTotal] = React.useState(0)
+  const [facturesEmises, setFacturesEmises] = React.useState<FactureEmise[]>([])
 
   // État formulaire facture
   const [factureData, setFactureData] = React.useState({
@@ -124,7 +138,31 @@ export default function FacturesPage() {
     }
   }, [toast])
 
-  React.useEffect(() => { fetchImpayees() }, [fetchImpayees])
+  const fetchFacturesEmises = React.useCallback(async () => {
+    try {
+      const res = await fetch(`/api/comptabilite/factures?year=${new Date().getFullYear()}`)
+      if (res.ok) {
+        const data = await res.json()
+        setFacturesEmises(Array.isArray(data) ? data : (data.data || data.factures || []))
+      }
+    } catch {
+      // silent
+    }
+  }, [])
+
+  React.useEffect(() => {
+    fetchImpayees()
+    fetchFacturesEmises()
+  }, [fetchImpayees, fetchFacturesEmises])
+
+  const downloadFacturePDF = (factureId: number, numero: string) => {
+    const link = document.createElement("a")
+    link.href = `/api/comptabilite/factures/${factureId}/pdf`
+    link.download = `${numero}.pdf`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
 
   const formatEuro = (value: number) => {
     return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(value)
@@ -286,13 +324,14 @@ export default function FacturesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="border-b bg-white sticky top-0 z-50">
+    <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
+      <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
+      <header className="border-b border-b-2 border-b-blue-500 bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link href="/comptabilite"><Button variant="ghost" size="sm"><ArrowLeft className="h-4 w-4 mr-2" />Comptabilité</Button></Link>
             <div className="flex items-center gap-2">
-              <FileText className="h-6 w-6 text-amber-600" />
+              <FileText className="h-6 w-6 text-blue-600" />
               <h1 className="text-xl font-bold">Factures</h1>
             </div>
           </div>
@@ -308,6 +347,13 @@ export default function FacturesPage() {
               Impayées
               {impayees.length > 0 && (
                 <Badge className="ml-1 bg-amber-500">{impayees.length}</Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="emises" className="flex items-center gap-2">
+              <FileText className="h-4 w-4" />
+              Factures émises
+              {facturesEmises.length > 0 && (
+                <Badge className="ml-1 bg-blue-500">{facturesEmises.length}</Badge>
               )}
             </TabsTrigger>
             <TabsTrigger value="generer" className="flex items-center gap-2">
@@ -403,6 +449,77 @@ export default function FacturesPage() {
                           </TableRow>
                         )
                       })}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Onglet Factures émises */}
+          <TabsContent value="emises">
+            <Card>
+              <CardHeader>
+                <CardTitle>Factures émises {new Date().getFullYear()}</CardTitle>
+                <CardDescription>
+                  Téléchargez vos factures au format PDF
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {facturesEmises.length === 0 ? (
+                  <p className="text-center text-muted-foreground py-8">
+                    Aucune facture émise cette annee.
+                  </p>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>N°</TableHead>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Client</TableHead>
+                        <TableHead>Objet</TableHead>
+                        <TableHead className="text-right">Total TTC</TableHead>
+                        <TableHead>Statut</TableHead>
+                        <TableHead className="text-right">Action</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {facturesEmises.map((f) => (
+                        <TableRow key={f.id}>
+                          <TableCell className="font-medium">{f.numero}</TableCell>
+                          <TableCell>{new Date(f.date).toLocaleDateString("fr-FR")}</TableCell>
+                          <TableCell className="capitalize">{f.type}</TableCell>
+                          <TableCell className="max-w-[180px] truncate">{f.clientNom}</TableCell>
+                          <TableCell className="max-w-[200px] truncate text-muted-foreground">
+                            {f.objet || "—"}
+                          </TableCell>
+                          <TableCell className="text-right font-medium">{formatEuro(f.totalTTC)}</TableCell>
+                          <TableCell>
+                            <Badge
+                              className={
+                                f.statut === "payee"
+                                  ? "bg-green-100 text-green-800"
+                                  : f.statut === "annulee"
+                                    ? "bg-red-100 text-red-800"
+                                    : "bg-blue-100 text-blue-800"
+                              }
+                            >
+                              {f.statut}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => downloadFacturePDF(f.id, f.numero)}
+                            >
+                              <Download className="h-4 w-4 mr-1" />
+                              PDF
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
                     </TableBody>
                   </Table>
                 )}

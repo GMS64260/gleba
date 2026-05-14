@@ -77,7 +77,7 @@ export function GanttRow({ itp, onEdit }: GanttRowProps) {
       })
     }
 
-    // Barre récolte (violet) : semaineRecolte → semaineRecolte + dureeRecolte
+    // Barre recolte (violet) : semaineRecolte → semaineRecolte + dureeRecolte
     if (itp.semaineRecolte && itp.dureeRecolte) {
       bars.push({
         start: (itp.semaineRecolte / 52) * 100,
@@ -145,7 +145,7 @@ export function GanttRow({ itp, onEdit }: GanttRowProps) {
           {Array.from({ length: 12 }).map((_, i) => (
             <div
               key={i}
-              className="flex-1 border-r border-gray-200"
+              className="flex-1 border-r border-slate-200"
               style={{ minWidth: '60px' }}
             />
           ))}

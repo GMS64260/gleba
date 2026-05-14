@@ -9,21 +9,23 @@ import { useRouter } from "next/navigation"
 import { ColumnDef } from "@tanstack/react-table"
 import { format } from "date-fns"
 import { fr } from "date-fns/locale"
-import { Leaf, ListTodo, Sprout, TreeDeciduous, Apple, CheckCircle } from "lucide-react"
+import { CloudRain, Droplets, House, Leaf, ListTodo, Sprout, TreeDeciduous, Apple, CheckCircle } from "lucide-react"
 
 import { DataTable } from "@/components/tables/DataTable"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
+import type { PluviometrieBulkItem } from "@/app/api/meteo/pluviometrie-bulk/route"
 
 const CULTURE_ETATS = [
   { value: "all", label: "Toutes", icon: Leaf },
   { value: "Planifiée", label: "Planifiees", icon: ListTodo },
-  { value: "Semée", label: "Semees", icon: Sprout },
-  { value: "Plantée", label: "Plantees", icon: TreeDeciduous },
-  { value: "En récolte", label: "En recolte", icon: Apple },
-  { value: "Terminée", label: "Terminees", icon: CheckCircle },
+  { value: "Semée", label: "Semées", icon: Sprout },
+  { value: "Plantée", label: "Plantées", icon: TreeDeciduous },
+  { value: "En récolte", label: "En récolte", icon: Apple },
+  { value: "Terminée", label: "Terminées", icon: CheckCircle },
 ] as const
 
 interface CultureWithRelations {
@@ -46,9 +48,58 @@ interface CultureWithRelations {
     id: string
     famille: { id: string; couleur: string | null } | null
   }
-  variete: { id: string } | null
-  planche: { id: string } | null
+  variete: { id: string; isPlaceholder?: boolean } | null
+  planche: { id: string; nom?: string } | null
   _count: { recoltes: number }
+}
+
+// Indicateur de pluie pour une planche dans le tableau
+function PluieIndicateur({ pluie }: { pluie: PluviometrieBulkItem | undefined }) {
+  if (!pluie) return <span className="text-muted-foreground text-xs">—</span>
+
+  if (pluie.sousAbri) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex items-center gap-1 text-slate-400 text-xs">
+            <House className="h-3 w-3" />
+            Abri
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>Planche sous abri — pas de précipitations directes</TooltipContent>
+      </Tooltip>
+    )
+  }
+
+  if (pluie.total7j === null) {
+    return <span className="text-muted-foreground text-xs">—</span>
+  }
+
+  const dry = (pluie.joursSansPluie ?? 0) >= 3
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className={`inline-flex items-center gap-1 text-xs font-medium ${
+          pluie.total7j >= 10 ? "text-blue-600"
+          : pluie.total7j >= 3 ? "text-blue-400"
+          : dry ? "text-amber-600"
+          : "text-slate-400"
+        }`}>
+          {dry && pluie.total7j < 3
+            ? <Droplets className="h-3 w-3" />
+            : <CloudRain className="h-3 w-3" />
+          }
+          {pluie.total7j} mm
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>
+        {pluie.total7j} mm sur 7 jours
+        {pluie.joursSansPluie !== null && pluie.joursSansPluie > 0
+          ? ` — ${pluie.joursSansPluie}j sans pluie`
+          : ""}
+      </TooltipContent>
+    </Tooltip>
+  )
 }
 
 const etatColors: Record<string, string> = {
@@ -56,11 +107,12 @@ const etatColors: Record<string, string> = {
   Semée: "bg-green-100 text-green-800",
   Plantée: "bg-lime-100 text-lime-800",
   "En récolte": "bg-amber-100 text-amber-800",
-  Terminée: "bg-gray-100 text-gray-800",
+  Terminée: "bg-slate-100 text-slate-800",
 }
 
 function createColumns(
-  onQuickUpdate: (id: number, field: string, value: boolean) => void
+  onQuickUpdate: (id: number, field: string, value: boolean) => void,
+  pluieMap: Map<string, PluviometrieBulkItem>
 ): ColumnDef<CultureWithRelations>[] {
   return [
     {
@@ -72,7 +124,7 @@ function createColumns(
     },
     {
       accessorKey: "espece.id",
-      header: "Espece",
+      header: "Espèce",
       cell: ({ row }) => {
         const espece = row.original.espece
         const couleur = espece?.famille?.couleur || "#888888"
@@ -86,8 +138,18 @@ function createColumns(
     },
     {
       accessorKey: "variete.id",
-      header: "Variete",
-      cell: ({ getValue }) => getValue() || "-",
+      header: "Variété",
+      cell: ({ row }) => {
+        const v = row.original.variete
+        if (!v || v.isPlaceholder) {
+          return (
+            <span className="inline-flex items-center gap-1 rounded-md bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+              À renseigner
+            </span>
+          )
+        }
+        return <span>{v.id}</span>
+      },
     },
     {
       accessorKey: "planche.nom",
@@ -95,8 +157,21 @@ function createColumns(
       cell: ({ getValue }) => getValue() || "-",
     },
     {
+      id: "pluie_7j",
+      header: "Pluie 7j",
+      cell: ({ row }) => {
+        const plancheId = row.original.planche?.id
+        const pluie = plancheId ? pluieMap.get(plancheId) : undefined
+        return (
+          <TooltipProvider delayDuration={100}>
+            <PluieIndicateur pluie={pluie} />
+          </TooltipProvider>
+        )
+      },
+    },
+    {
       accessorKey: "annee",
-      header: "Annee",
+      header: "Année",
     },
     {
       id: "actions_rapides",
@@ -116,7 +191,7 @@ function createColumns(
                     className={`p-1.5 rounded-md transition-colors ${
                       culture.semisFait
                         ? "bg-orange-100 text-orange-600 hover:bg-orange-200"
-                        : "bg-gray-100 text-gray-400 hover:bg-gray-200"
+                        : "bg-slate-100 text-slate-400 hover:bg-slate-200"
                     }`}
                   >
                     <Sprout className="h-4 w-4" />
@@ -136,7 +211,7 @@ function createColumns(
                     className={`p-1.5 rounded-md transition-colors ${
                       culture.plantationFaite
                         ? "bg-green-100 text-green-600 hover:bg-green-200"
-                        : "bg-gray-100 text-gray-400 hover:bg-gray-200"
+                        : "bg-slate-100 text-slate-400 hover:bg-slate-200"
                     }`}
                   >
                     <TreeDeciduous className="h-4 w-4" />
@@ -156,14 +231,14 @@ function createColumns(
                     className={`p-1.5 rounded-md transition-colors ${
                       culture.recolteFaite
                         ? "bg-amber-100 text-amber-600 hover:bg-amber-200"
-                        : "bg-gray-100 text-gray-400 hover:bg-gray-200"
+                        : "bg-slate-100 text-slate-400 hover:bg-slate-200"
                     }`}
                   >
                     <Apple className="h-4 w-4" />
                   </button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  {culture.recolteFaite ? "Recolte faite" : "Marquer recolte faite"}
+                  {culture.recolteFaite ? "Récolte faite" : "Marquer récolte faite"}
                 </TooltipContent>
               </Tooltip>
             </div>
@@ -197,7 +272,7 @@ function createColumns(
     },
     {
       accessorKey: "etat",
-      header: "Etat",
+      header: "État",
       cell: ({ getValue }) => {
         const etat = getValue() as string
         return (
@@ -223,6 +298,8 @@ export function CulturesTab() {
   const [pageIndex, setPageIndex] = React.useState(0)
   const [pageCount, setPageCount] = React.useState(0)
   const [selectedEtat, setSelectedEtat] = React.useState("all")
+  const [pluieMap, setPluieMap] = React.useState<Map<string, PluviometrieBulkItem>>(new Map())
+  const [cultureToDelete, setCultureToDelete] = React.useState<CultureWithRelations | null>(null)
   const pageSize = 50
 
   const handleQuickUpdate = React.useCallback(
@@ -258,7 +335,7 @@ export function CulturesTab() {
     [toast]
   )
 
-  const columns = React.useMemo(() => createColumns(handleQuickUpdate), [handleQuickUpdate])
+  const columns = React.useMemo(() => createColumns(handleQuickUpdate, pluieMap), [handleQuickUpdate, pluieMap])
 
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
@@ -270,8 +347,24 @@ export function CulturesTab() {
       const response = await fetch(url)
       if (!response.ok) throw new Error("Erreur")
       const result = await response.json()
-      setData(result.data)
+      const cultures: CultureWithRelations[] = result.data
+      setData(cultures)
       setPageCount(result.totalPages)
+
+      // Fetch pluviométrie pour les planches uniques (en arrière-plan)
+      const plancheIds = [...new Set(
+        cultures.map(c => c.planche?.id).filter(Boolean) as string[]
+      )]
+      if (plancheIds.length > 0) {
+        fetch(`/api/meteo/pluviometrie-bulk?ids=${plancheIds.join(',')}`)
+          .then(r => r.json())
+          .then((items: PluviometrieBulkItem[]) => {
+            const map = new Map<string, PluviometrieBulkItem>()
+            items.forEach(item => map.set(item.plancheId, item))
+            setPluieMap(map)
+          })
+          .catch(() => { /* silencieux */ })
+      }
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les cultures" })
     } finally {
@@ -314,18 +407,30 @@ export function CulturesTab() {
         onRefresh={fetchData}
         onRowClick={(row) => router.push(`/cultures/${row.id}`)}
         onRowEdit={(row) => router.push(`/cultures/${row.id}`)}
-        onRowDelete={async (row) => {
-          if (!confirm(`Supprimer la culture #${row.id} ?`)) return
+        onRowDelete={(row) => setCultureToDelete(row)}
+        searchPlaceholder="Rechercher une culture..."
+        emptyMessage="Aucune culture trouvée."
+      />
+
+      <DeleteConfirmDialog
+        open={cultureToDelete !== null}
+        onOpenChange={(open) => !open && setCultureToDelete(null)}
+        entityLabel={cultureToDelete ? `la culture #${cultureToDelete.id}` : ""}
+        dependencies={
+          cultureToDelete
+            ? [{ label: "récoltes liées", count: cultureToDelete._count?.recoltes ?? 0 }]
+            : []
+        }
+        onConfirm={async () => {
+          if (!cultureToDelete) return
           try {
-            await fetch(`/api/cultures/${row.id}`, { method: "DELETE" })
-            toast({ title: "Culture supprimee" })
+            await fetch(`/api/cultures/${cultureToDelete.id}`, { method: "DELETE" })
+            toast({ title: "Culture supprimée" })
             fetchData()
           } catch {
             toast({ variant: "destructive", title: "Erreur" })
           }
         }}
-        searchPlaceholder="Rechercher une culture..."
-        emptyMessage="Aucune culture trouvee."
       />
     </div>
   )

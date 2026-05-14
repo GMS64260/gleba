@@ -2,7 +2,7 @@
 
 /**
  * Vue Calendrier pour le Dashboard
- * Affiche les semis, plantations et récoltes du mois
+ * Affiche les semis, plantations et recoltes du mois
  */
 
 import * as React from "react"
@@ -21,7 +21,7 @@ import {
   subMonths,
 } from "date-fns"
 import { fr } from "date-fns/locale"
-import { ChevronLeft, ChevronRight, Sprout, Leaf, Package, Droplets, Calendar, CalendarDays } from "lucide-react"
+import { ChevronLeft, ChevronRight, Sprout, Leaf, Package, Droplets, Calendar, CalendarDays, CloudRain } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -54,6 +54,8 @@ interface CalendarEvent {
   fait: boolean
   couleur: string | null
   cultureId?: number // Pour les irrigations, ID de la culture liée
+  pluiePrevue?: number | null
+  probablementInutile?: boolean
 }
 
 interface CalendarViewProps {
@@ -79,12 +81,12 @@ export function CalendarView({ year }: CalendarViewProps) {
   const [selectedDayForMobile, setSelectedDayForMobile] = React.useState<{ date: Date; events: CalendarEvent[] } | null>(null)
   const [daySheetOpen, setDaySheetOpen] = React.useState(false)
 
-  // Mettre à jour le mois quand l'année change
+  // Mettre à jour le mois quand l'annee change
   React.useEffect(() => {
     setCurrentMonth(prev => new Date(year, prev.getMonth(), 1))
   }, [year])
 
-  // Charger les événements (mois ou année)
+  // Charger les événements (mois ou annee)
   React.useEffect(() => {
     async function fetchEvents() {
       setIsLoading(true)
@@ -102,7 +104,7 @@ export function CalendarView({ year }: CalendarViewProps) {
             setEvents(data.events || [])
           }
         } else {
-          // Charger événements de l'année
+          // Charger événements de l'annee
           const start = new Date(year, 0, 1)
           const end = new Date(year, 11, 31, 23, 59, 59)
 
@@ -358,6 +360,7 @@ export function CalendarView({ year }: CalendarViewProps) {
                 const plantationEvents = dayEvents.filter(e => e.type === "plantation")
                 const recolteEvents = dayEvents.filter(e => e.type === "recolte")
                 const irrigationEvents = dayEvents.filter(e => e.type === "irrigation")
+                const allIrrigationsInutiles = irrigationEvents.length > 0 && irrigationEvents.every(e => e.probablementInutile)
 
                 const counts = {
                   semis: semisEvents.length,
@@ -446,9 +449,15 @@ export function CalendarView({ year }: CalendarViewProps) {
                                 )}
                                 {counts.irrigation > 0 && (
                                   <div className={`relative flex items-center justify-center w-8 h-8 rounded ${
-                                    allDone.irrigation ? 'bg-green-200 ring-1 ring-green-500' : typeIcons.irrigation.bg
+                                    allDone.irrigation ? 'bg-green-200 ring-1 ring-green-500'
+                                    : allIrrigationsInutiles ? 'bg-blue-100/60 opacity-60'
+                                    : typeIcons.irrigation.bg
                                   }`}>
-                                    <Droplets className={`h-5 w-5 ${allDone.irrigation ? 'text-green-700' : typeIcons.irrigation.color}`} />
+                                    {allIrrigationsInutiles && !allDone.irrigation ? (
+                                      <CloudRain className="h-5 w-5 text-blue-400" />
+                                    ) : (
+                                      <Droplets className={`h-5 w-5 ${allDone.irrigation ? 'text-green-700' : typeIcons.irrigation.color}`} />
+                                    )}
                                     {allDone.irrigation && (
                                       <span className="absolute -top-1 -right-1 text-green-600 text-xs">✓</span>
                                     )}
@@ -465,7 +474,10 @@ export function CalendarView({ year }: CalendarViewProps) {
                                   {format(dayDate, "EEEE d MMMM", { locale: fr })}
                                 </p>
                                 {dayEvents.map(event => {
+                                  const inutile = event.type === "irrigation" && event.probablementInutile && !event.fait
                                   const { icon: Icon, color } = typeIcons[event.type]
+                                  const EventIcon = inutile ? CloudRain : Icon
+                                  const iconColor = inutile ? "text-blue-400" : color
                                   return (
                                     <div
                                       key={`${event.id}-${event.type}`}
@@ -477,16 +489,19 @@ export function CalendarView({ year }: CalendarViewProps) {
                                         setSelectedEvent(event)
                                         setEventDialogOpen(true)
                                       }}
-                                      className="flex items-center gap-1.5 text-xs hover:bg-accent rounded px-1.5 py-1 w-full cursor-grab active:cursor-grabbing transition-colors"
-                                      title="Glisser pour déplacer, cliquer pour détails"
+                                      className={`flex items-center gap-1.5 text-xs hover:bg-accent rounded px-1.5 py-1 w-full cursor-grab active:cursor-grabbing transition-colors ${inutile ? "opacity-60" : ""}`}
+                                      title={inutile ? `${Math.round(event.pluiePrevue!)}mm de pluie prevue — irrigation probablement inutile` : "Glisser pour deplacer, cliquer pour details"}
                                     >
-                                      <Icon className={`h-4 w-4 ${color} flex-shrink-0`} />
-                                      <span className={`truncate ${event.fait ? "line-through opacity-60" : ""}`}>
+                                      <EventIcon className={`h-4 w-4 ${iconColor} flex-shrink-0`} />
+                                      <span className={`truncate ${event.fait ? "line-through opacity-60" : ""} ${inutile ? "line-through text-muted-foreground" : ""}`}>
                                         {event.especeId}
                                         {event.varieteId && <span className="text-muted-foreground"> ({event.varieteId})</span>}
                                       </span>
                                       {event.plancheName && (
                                         <span className="text-muted-foreground flex-shrink-0">→ {event.plancheName}</span>
+                                      )}
+                                      {inutile && (
+                                        <span className="text-blue-500 ml-auto flex-shrink-0 text-[10px]">{Math.round(event.pluiePrevue!)}mm</span>
                                       )}
                                       {event.fait && <span className="text-green-600 ml-auto flex-shrink-0">✓</span>}
                                     </div>
@@ -537,11 +552,17 @@ export function CalendarView({ year }: CalendarViewProps) {
                           )}
                           {counts.irrigation > 0 && (
                             <div className={`relative flex items-center justify-center w-6 h-6 rounded ${
-                              allDone.irrigation ? 'bg-green-200' : typeIcons.irrigation.bg
+                              allDone.irrigation ? 'bg-green-200'
+                              : allIrrigationsInutiles ? 'bg-blue-100/60 opacity-60'
+                              : typeIcons.irrigation.bg
                             }`}>
-                              <Droplets className={`h-4 w-4 ${allDone.irrigation ? 'text-green-700' : typeIcons.irrigation.color}`} />
+                              {allIrrigationsInutiles && !allDone.irrigation ? (
+                                <CloudRain className="h-4 w-4 text-blue-400" />
+                              ) : (
+                                <Droplets className={`h-4 w-4 ${allDone.irrigation ? 'text-green-700' : typeIcons.irrigation.color}`} />
+                              )}
                               {counts.irrigation > 1 && (
-                                <span className="absolute -top-0.5 -right-0.5 bg-cyan-500 text-white text-[8px] w-3 h-3 rounded-full flex items-center justify-center">{counts.irrigation}</span>
+                                <span className={`absolute -top-0.5 -right-0.5 ${allIrrigationsInutiles ? 'bg-blue-400' : 'bg-cyan-500'} text-white text-[8px] w-3 h-3 rounded-full flex items-center justify-center`}>{counts.irrigation}</span>
                               )}
                             </div>
                           )}
@@ -617,7 +638,11 @@ export function CalendarView({ year }: CalendarViewProps) {
                 </SheetHeader>
                 <div className="py-4 space-y-2 overflow-y-auto">
                   {selectedDayForMobile?.events.map(event => {
+                    const inutile = event.type === "irrigation" && event.probablementInutile && !event.fait
                     const { icon: Icon, color, bg } = typeIcons[event.type]
+                    const EventIcon = inutile ? CloudRain : Icon
+                    const iconColor = inutile ? "text-blue-400" : color
+                    const bgColor = inutile ? "bg-blue-50/60" : bg
                     const typeLabel = {
                       semis: "Semis",
                       plantation: "Plantation",
@@ -632,13 +657,13 @@ export function CalendarView({ year }: CalendarViewProps) {
                           setDaySheetOpen(false)
                           setEventDialogOpen(true)
                         }}
-                        className={`flex items-center gap-3 p-3 rounded-lg ${bg} cursor-pointer active:opacity-70 transition-opacity`}
+                        className={`flex items-center gap-3 p-3 rounded-lg ${bgColor} cursor-pointer active:opacity-70 transition-opacity ${inutile ? "opacity-70" : ""}`}
                       >
                         <div className={`w-10 h-10 rounded-full bg-white/80 flex items-center justify-center`}>
-                          <Icon className={`h-5 w-5 ${color}`} />
+                          <EventIcon className={`h-5 w-5 ${iconColor}`} />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className={`font-medium ${event.fait ? "line-through opacity-60" : ""}`}>
+                          <p className={`font-medium ${event.fait ? "line-through opacity-60" : ""} ${inutile ? "line-through text-muted-foreground" : ""}`}>
                             {event.especeId}
                             {event.varieteId && <span className="font-normal text-muted-foreground"> ({event.varieteId})</span>}
                           </p>
@@ -646,9 +671,16 @@ export function CalendarView({ year }: CalendarViewProps) {
                             {typeLabel[event.type]}
                             {event.plancheName && <span> · {event.plancheName}</span>}
                           </p>
+                          {inutile && event.pluiePrevue != null && (
+                            <p className="text-xs text-blue-500 mt-0.5">
+                              {Math.round(event.pluiePrevue)}mm de pluie prevue — probablement inutile
+                            </p>
+                          )}
                         </div>
                         {event.fait ? (
                           <Badge className="bg-green-100 text-green-800">Fait</Badge>
+                        ) : inutile ? (
+                          <Badge className="bg-blue-100 text-blue-600">Pluie</Badge>
                         ) : (
                           <Badge variant="outline">À faire</Badge>
                         )}

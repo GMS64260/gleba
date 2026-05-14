@@ -1,7 +1,7 @@
 /**
  * Service de qualité du sol
  * Calcul scores, influence irrigation/fertilisation
- * Intégration SoilGrids API (préparée pour future activation)
+ * Enrichi avec données météo réelles (Open-Meteo)
  */
 
 export interface SoilQuality {
@@ -88,32 +88,6 @@ export function getIrrigationFactors(retentionEau: string): {
 }
 
 /**
- * Calcule l'urgence d'irrigation ajustée selon le sol
- */
-export function calculerUrgenceAvecSol(
-  joursSansEau: number | null,
-  besoinEauEspece: number,
-  retentionEauSol: string | null
-): 'critique' | 'haute' | 'moyenne' | 'faible' {
-  if (joursSansEau === null) return 'critique' // Jamais arrosé
-
-  const factors = getIrrigationFactors(retentionEauSol || 'Moyenne')
-
-  // Jours ajustés selon la rétention du sol
-  const joursAjustes = joursSansEau * factors.urgenceFactor
-
-  // Seuils ajustés selon besoin eau espèce
-  const seuilCritique = besoinEauEspece >= 4 ? 3 : 4
-  const seuilHaute = besoinEauEspece >= 4 ? 2 : 3
-  const seuilMoyenne = besoinEauEspece >= 4 ? 1 : 2
-
-  if (joursAjustes >= seuilCritique) return 'critique'
-  if (joursAjustes >= seuilHaute) return 'haute'
-  if (joursAjustes >= seuilMoyenne) return 'moyenne'
-  return 'faible'
-}
-
-/**
  * Calcule la consommation d'eau ajustée selon le sol
  */
 export function calculerConsommationEauAvecSol(
@@ -121,7 +95,7 @@ export function calculerConsommationEauAvecSol(
   besoinEauEspece: number,
   retentionEauSol: string | null
 ): number {
-  // Consommation de base selon besoin espèce (L/m²/semaine)
+  // Consommation de base selon besoin espece (L/m²/semaine)
   const consommationBase = besoinEauEspece >= 4 ? 15 : besoinEauEspece >= 3 ? 10 : 5
 
   const factors = getIrrigationFactors(retentionEauSol || 'Moyenne')
@@ -131,7 +105,7 @@ export function calculerConsommationEauAvecSol(
 }
 
 /**
- * Évaluer si alerte sécheresse nécessaire
+ * Évaluer si alerte sécheresse necessaire
  * Combinaison: sol faible rétention + pas pluie + culture exigeante
  */
 export function alerteSecheresse(
@@ -146,5 +120,52 @@ export function alerteSecheresse(
 
   // Sol sableux + culture exigeante + 7j sans pluie + 2j sans arrosage
   return joursSansPluie >= 7 && joursSansEau >= 2
+}
+
+/**
+ * Calcule la consommation d'eau recommandée en intégrant les données météo
+ * Retourne des L/m²/semaine ajustés
+ */
+export function calculerConsommationEauAvecMeteo(
+  surface: number,
+  besoinEauEspece: number,
+  retentionEauSol: string | null,
+  meteo: {
+    et0Journalier: number     // mm/jour (évapotranspiration du jour)
+    precipitations7j: number  // mm de pluie sur 7 jours
+  }
+): { litres: number; message: string } {
+  const factors = getIrrigationFactors(retentionEauSol || 'Moyenne')
+
+  // Calcul basé sur l'ET0 réelle au lieu de valeurs forfaitaires
+  // ETc = ET0 × Kc (coefficient cultural simplifié basé sur besoinEau)
+  const kc = 0.4 + (besoinEauEspece / 5) * 0.8 // Kc entre 0.4 et 1.2
+  const etcJournalier = meteo.et0Journalier * kc
+
+  // Besoin hebdomadaire en L/m² = ETc × 7 jours
+  let besoinHebdo = etcJournalier * 7
+
+  // Déduire les précipitations effectives (80% des précipitations sont utiles)
+  const precipEfficace = meteo.precipitations7j * 0.8
+  besoinHebdo = Math.max(0, besoinHebdo - precipEfficace)
+
+  // Ajuster selon le sol
+  besoinHebdo *= factors.quantiteFactor
+
+  const litres = Math.round(surface * besoinHebdo * 10) / 10
+
+  // Message explicatif
+  let message: string
+  if (besoinHebdo <= 0) {
+    message = 'Les précipitations couvrent les besoins en eau cette semaine.'
+  } else if (besoinHebdo < 5) {
+    message = `Arrosage léger recommandé : ${Math.round(besoinHebdo)} L/m²/semaine.`
+  } else if (besoinHebdo < 15) {
+    message = `Arrosage régulier necessaire : ${Math.round(besoinHebdo)} L/m²/semaine.`
+  } else {
+    message = `Arrosage intensif requis : ${Math.round(besoinHebdo)} L/m²/semaine. Privilégier le goutte-à-goutte.`
+  }
+
+  return { litres, message }
 }
 

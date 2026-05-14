@@ -49,12 +49,21 @@ const config: Config = {
   				'3': 'hsl(var(--chart-3))',
   				'4': 'hsl(var(--chart-4))',
   				'5': 'hsl(var(--chart-5))'
-  			}
+  			},
+  			'tech-green': '#10B981',
+  			'carbone': '#1E293B',
+  			'terre-cuite': '#B45309',
+  			'gris-nuage': '#F8FAFC',
   		},
   		borderRadius: {
   			lg: 'var(--radius)',
   			md: 'calc(var(--radius) - 2px)',
   			sm: 'calc(var(--radius) - 4px)'
+  		},
+  		fontFamily: {
+  			sans: ['var(--font-inter)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+  			heading: ['var(--font-space-grotesk)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+  			mono: ['var(--font-jetbrains-mono)', 'ui-monospace', 'monospace'],
   		}
   	}
   },

@@ -1,17 +1,28 @@
 "use client"
 
 /**
- * Page des cultures a irriguer
+ * Page des cultures à irriguer — intégration météo complète
+ * Affiche l'urgence d'irrigation basée sur le bilan hydrique réel,
+ * les précipitations passées/prevues, et l'auto-validation par la pluie.
  */
 
 import * as React from "react"
 import { Suspense } from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
-import { ArrowLeft, Droplets, Check, RefreshCw, Droplet } from "lucide-react"
+import {
+  ArrowLeft,
+  Droplets,
+  RefreshCw,
+  Droplet,
+  CloudRain,
+  CloudSun,
+  CheckCircle2,
+  Info,
+} from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -23,6 +34,15 @@ import {
 } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
+
+interface MeteoResume {
+  pluie48h: number
+  pluie7j: number
+  pluiePrevue48h: number
+  pluiePrevue5j: number
+  joursSansPluie: number | null
+  joursAvantPluie: number | null
+}
 
 interface CultureIrriguer {
   id: number
@@ -36,9 +56,13 @@ interface CultureIrriguer {
   joursSansEau: number | null
   ageJours: number | null
   isJeune: boolean
-  urgence: 'critique' | 'haute' | 'moyenne' | 'faible'
+  sousAbri: boolean
+  urgence: 'critique' | 'haute' | 'moyenne' | 'faible' | 'aucune'
+  raisonUrgence: string
   consommationEauSemaine: number
   prochainesIrrigations: number
+  irrigationsAutoValidees: number
+  meteo: MeteoResume | null
   espece: {
     id: string
     couleur: string | null
@@ -65,8 +89,10 @@ interface Stats {
   nbIlots: number
   critique: number
   haute: number
+  aucune: number
   jamaisArrose: number
   prochainesIrrigations7j: number
+  irrigationsAutoValidees: number
   consommationTotaleEstimee: number
   parTypeIrrigation: { type: string; count: number }[]
 }
@@ -79,12 +105,13 @@ function CulturesIrriguerContent() {
   const [parIlot, setParIlot] = React.useState<Record<string, CultureIrriguer[]>>({})
   const [parTypeIrrigation, setParTypeIrrigation] = React.useState<Record<string, CultureIrriguer[]>>({})
   const [stats, setStats] = React.useState<Stats | null>(null)
+  const [meteoGlobal, setMeteoGlobal] = React.useState<MeteoResume | null>(null)
   const [isLoading, setIsLoading] = React.useState(true)
   const [annee, setAnnee] = React.useState(
     parseInt(searchParams.get("annee") || new Date().getFullYear().toString())
   )
   const [groupBy, setGroupBy] = React.useState<'ilot' | 'type-irrigation' | 'urgence'>('ilot')
-  const [filtreUrgence, setFiltreUrgence] = React.useState<'all' | 'critique' | 'haute' | 'jamais'>('all')
+  const [filtreUrgence, setFiltreUrgence] = React.useState<'all' | 'critique' | 'haute' | 'aucune' | 'jamais'>('all')
   const [filtreTypeIrrigation, setFiltreTypeIrrigation] = React.useState<string>('all')
   const [filtreBesoinEau, setFiltreBesoinEau] = React.useState<'all' | '3' | '4'>('all')
 
@@ -103,7 +130,8 @@ function CulturesIrriguerContent() {
       setParIlot(result.parIlot)
       setParTypeIrrigation(result.parTypeIrrigation || {})
       setStats(result.stats)
-    } catch (error) {
+      setMeteoGlobal(result.meteo || null)
+    } catch {
       toast({
         variant: "destructive",
         title: "Erreur",
@@ -127,25 +155,24 @@ function CulturesIrriguerContent() {
       })
       if (!response.ok) throw new Error("Erreur")
 
-      // Mettre a jour localement
       setData(prev => prev.map(c =>
         c.id === cultureId ? { ...c, aIrriguer: !currentValue } : c
       ))
       setParIlot(prev => {
-        const newParIlot: Record<string, CultureIrriguer[]> = {}
+        const n: Record<string, CultureIrriguer[]> = {}
         for (const [ilot, cultures] of Object.entries(prev)) {
-          newParIlot[ilot] = cultures.map(c =>
+          n[ilot] = cultures.map(c =>
             c.id === cultureId ? { ...c, aIrriguer: !currentValue } : c
           )
         }
-        return newParIlot
+        return n
       })
 
       toast({
         title: "Mis a jour",
         description: currentValue ? "Irrigation desactivee" : "Irrigation activee",
       })
-    } catch (error) {
+    } catch {
       toast({
         variant: "destructive",
         title: "Erreur",
@@ -154,7 +181,6 @@ function CulturesIrriguerContent() {
     }
   }
 
-  // Marquer une culture comme arrosee
   const marquerArrosee = async (cultureId: number) => {
     try {
       const response = await fetch("/api/cultures/irriguer", {
@@ -166,25 +192,24 @@ function CulturesIrriguerContent() {
       const result = await response.json()
       const now = result.date
 
-      // Mettre a jour localement
       setData(prev => prev.map(c =>
         c.id === cultureId ? { ...c, derniereIrrigation: now } : c
       ))
       setParIlot(prev => {
-        const newParIlot: Record<string, CultureIrriguer[]> = {}
+        const n: Record<string, CultureIrriguer[]> = {}
         for (const [ilot, cultures] of Object.entries(prev)) {
-          newParIlot[ilot] = cultures.map(c =>
+          n[ilot] = cultures.map(c =>
             c.id === cultureId ? { ...c, derniereIrrigation: now } : c
           )
         }
-        return newParIlot
+        return n
       })
 
       toast({
         title: "Arrosage note",
-        description: "Derniere irrigation mise a jour",
+        description: "Derniere irrigation mise à jour",
       })
-    } catch (error) {
+    } catch {
       toast({
         variant: "destructive",
         title: "Erreur",
@@ -193,7 +218,6 @@ function CulturesIrriguerContent() {
     }
   }
 
-  // Marquer tout un ilot comme arrose
   const marquerIlotArrose = async (ilot: string) => {
     const culturesIlot = parIlot[ilot]
     if (!culturesIlot || culturesIlot.length === 0) return
@@ -209,25 +233,24 @@ function CulturesIrriguerContent() {
       const result = await response.json()
       const now = result.date
 
-      // Mettre a jour localement
       setData(prev => prev.map(c =>
         cultureIds.includes(c.id) ? { ...c, derniereIrrigation: now } : c
       ))
       setParIlot(prev => {
-        const newParIlot: Record<string, CultureIrriguer[]> = {}
+        const n: Record<string, CultureIrriguer[]> = {}
         for (const [i, cultures] of Object.entries(prev)) {
-          newParIlot[i] = cultures.map(c =>
+          n[i] = cultures.map(c =>
             cultureIds.includes(c.id) ? { ...c, derniereIrrigation: now } : c
           )
         }
-        return newParIlot
+        return n
       })
 
       toast({
         title: "Ilot arrose",
         description: `${culturesIlot.length} culture(s) marquee(s)`,
       })
-    } catch (error) {
+    } catch {
       toast({
         variant: "destructive",
         title: "Erreur",
@@ -236,26 +259,26 @@ function CulturesIrriguerContent() {
     }
   }
 
-  // Couleur selon urgence
-  const getUrgenceColor = (urgence: string, jamais: boolean): string => {
-    if (jamais) return "text-gray-500"
+  const getUrgenceColor = (urgence: string): string => {
     if (urgence === 'critique') return "text-red-600"
     if (urgence === 'haute') return "text-orange-500"
     if (urgence === 'moyenne') return "text-yellow-600"
-    return "text-green-600"
+    if (urgence === 'aucune') return "text-green-600"
+    return "text-blue-600"
   }
 
   const getUrgenceBadge = (urgence: string, jamais: boolean) => {
-    if (jamais) return <Badge variant="secondary" className="bg-gray-100 text-gray-600">Jamais arrosé</Badge>
+    if (urgence === 'aucune') return <Badge variant="secondary" className="bg-green-100 text-green-700">OK</Badge>
+    if (jamais && urgence !== 'critique') return <Badge variant="secondary" className="bg-slate-100 text-slate-600">Jamais</Badge>
     if (urgence === 'critique') return <Badge variant="destructive">Urgent</Badge>
-    if (urgence === 'haute') return <Badge className="bg-orange-500">Priorité</Badge>
+    if (urgence === 'haute') return <Badge className="bg-orange-500">Priorite</Badge>
     if (urgence === 'moyenne') return <Badge className="bg-yellow-500">Moyen</Badge>
-    return <Badge variant="secondary" className="bg-green-100 text-green-700">OK</Badge>
+    return <Badge variant="secondary" className="bg-blue-100 text-blue-700">Faible</Badge>
   }
 
   const getBesoinEauBadge = (besoinEau: number | null, irrigation: string | null) => {
     if (irrigation === 'Eleve' || (besoinEau && besoinEau >= 4)) {
-      return <Badge variant="destructive">Élevé</Badge>
+      return <Badge variant="destructive">Eleve</Badge>
     }
     if (besoinEau && besoinEau >= 3) {
       return <Badge variant="default" className="bg-orange-500">Moyen</Badge>
@@ -263,11 +286,9 @@ function CulturesIrriguerContent() {
     return <Badge variant="secondary">Faible</Badge>
   }
 
-  // Appliquer les filtres
   const filteredData = React.useMemo(() => {
     let filtered = data
 
-    // Filtre urgence
     if (filtreUrgence !== 'all') {
       if (filtreUrgence === 'jamais') {
         filtered = filtered.filter(c => c.joursSansEau === null)
@@ -276,12 +297,10 @@ function CulturesIrriguerContent() {
       }
     }
 
-    // Filtre type irrigation
     if (filtreTypeIrrigation !== 'all') {
       filtered = filtered.filter(c => c.planche?.irrigation === filtreTypeIrrigation)
     }
 
-    // Filtre besoin eau
     if (filtreBesoinEau !== 'all') {
       const seuil = parseInt(filtreBesoinEau)
       filtered = filtered.filter(c => (c.espece?.besoinEau || 0) >= seuil)
@@ -290,7 +309,6 @@ function CulturesIrriguerContent() {
     return filtered
   }, [data, filtreUrgence, filtreTypeIrrigation, filtreBesoinEau])
 
-  // Regrouper selon le choix
   const groupedData = React.useMemo(() => {
     if (groupBy === 'ilot') {
       const groups: Record<string, typeof filteredData> = {}
@@ -303,21 +321,19 @@ function CulturesIrriguerContent() {
     } else if (groupBy === 'type-irrigation') {
       const groups: Record<string, typeof filteredData> = {}
       filteredData.forEach(c => {
-        const key = c.planche?.irrigation || 'Non défini'
+        const key = c.planche?.irrigation || 'Non defini'
         if (!groups[key]) groups[key] = []
         groups[key].push(c)
       })
       return groups
     } else {
-      // Grouper par urgence
       const groups: Record<string, typeof filteredData> = {
-        'Critique (>3j)': filteredData.filter(c => c.urgence === 'critique'),
-        'Haute (3j)': filteredData.filter(c => c.urgence === 'haute'),
-        'Jamais arrosé': filteredData.filter(c => c.joursSansEau === null),
-        'Moyenne (2j)': filteredData.filter(c => c.urgence === 'moyenne'),
-        'OK (<2j)': filteredData.filter(c => c.urgence === 'faible'),
+        'Critique': filteredData.filter(c => c.urgence === 'critique'),
+        'Haute': filteredData.filter(c => c.urgence === 'haute'),
+        'Moyenne': filteredData.filter(c => c.urgence === 'moyenne'),
+        'Faible': filteredData.filter(c => c.urgence === 'faible'),
+        'OK (pas besoin)': filteredData.filter(c => c.urgence === 'aucune'),
       }
-      // Retirer les groupes vides
       Object.keys(groups).forEach(key => {
         if (groups[key].length === 0) delete groups[key]
       })
@@ -327,7 +343,7 @@ function CulturesIrriguerContent() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-slate-50">
         <header className="border-b bg-white sticky top-0 z-50">
           <div className="container mx-auto px-4 py-4">
             <Skeleton className="h-8 w-64" />
@@ -341,9 +357,10 @@ function CulturesIrriguerContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
+      <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
       {/* Header */}
-      <header className="border-b bg-white sticky top-0 z-50">
+      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link href="/cultures">
@@ -354,7 +371,7 @@ function CulturesIrriguerContent() {
             </Link>
             <div className="flex items-center gap-2">
               <Droplets className="h-6 w-6 text-cyan-600" />
-              <h1 className="text-xl font-bold">Cultures a irriguer</h1>
+              <h1 className="text-xl font-bold">Irrigation</h1>
             </div>
           </div>
 
@@ -384,6 +401,63 @@ function CulturesIrriguerContent() {
 
       {/* Content */}
       <main className="container mx-auto px-4 py-6">
+        {/* Bandeau meteo */}
+        {meteoGlobal && (
+          <div className={`mb-4 p-4 rounded-lg border ${
+            meteoGlobal.pluie48h >= 8
+              ? 'bg-blue-50 border-blue-200'
+              : meteoGlobal.joursSansPluie !== null && meteoGlobal.joursSansPluie >= 5
+              ? 'bg-orange-50 border-orange-200'
+              : 'bg-slate-50 border-slate-200'
+          }`}>
+            <div className="flex items-start gap-3">
+              {meteoGlobal.pluie48h >= 8 ? (
+                <CloudRain className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+              ) : meteoGlobal.pluiePrevue48h >= 5 ? (
+                <CloudRain className="h-5 w-5 text-cyan-600 flex-shrink-0 mt-0.5" />
+              ) : (
+                <CloudSun className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                  <span className="text-sm font-medium">
+                    {meteoGlobal.pluie48h >= 8
+                      ? `Il a plu ${Math.round(meteoGlobal.pluie48h)}mm ces 2 derniers jours`
+                      : meteoGlobal.pluie7j >= 10
+                      ? `${Math.round(meteoGlobal.pluie7j)}mm de pluie cette semaine`
+                      : meteoGlobal.joursSansPluie !== null && meteoGlobal.joursSansPluie >= 3
+                      ? `${meteoGlobal.joursSansPluie} jours sans pluie`
+                      : 'Conditions normales'}
+                  </span>
+                  {stats && stats.irrigationsAutoValidees > 0 && (
+                    <Badge className="bg-blue-500 text-white">
+                      <CheckCircle2 className="h-3 w-3 mr-1" />
+                      {stats.irrigationsAutoValidees} irrigation{stats.irrigationsAutoValidees > 1 ? 's' : ''} auto-validee{stats.irrigationsAutoValidees > 1 ? 's' : ''}
+                    </Badge>
+                  )}
+                </div>
+                <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
+                  <span>7j: {Math.round(meteoGlobal.pluie7j)}mm</span>
+                  <span>48h: {Math.round(meteoGlobal.pluie48h)}mm</span>
+                  {meteoGlobal.pluiePrevue48h > 0 && (
+                    <span className="text-blue-600">
+                      +{Math.round(meteoGlobal.pluiePrevue48h)}mm prevus (48h)
+                    </span>
+                  )}
+                  {meteoGlobal.pluiePrevue5j > 0 && (
+                    <span className="text-blue-600">
+                      +{Math.round(meteoGlobal.pluiePrevue5j)}mm prevus (5j)
+                    </span>
+                  )}
+                  {meteoGlobal.joursAvantPluie !== null && meteoGlobal.joursAvantPluie > 0 && (
+                    <span>Prochaine pluie dans {meteoGlobal.joursAvantPluie}j</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Filtres */}
         <div className="mb-4 flex flex-wrap gap-2">
           <Select value={groupBy} onValueChange={(v: any) => setGroupBy(v)}>
@@ -391,7 +465,7 @@ function CulturesIrriguerContent() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="ilot">Grouper par îlot</SelectItem>
+              <SelectItem value="ilot">Grouper par ilot</SelectItem>
               <SelectItem value="type-irrigation">Par type irrigation</SelectItem>
               <SelectItem value="urgence">Par urgence</SelectItem>
             </SelectContent>
@@ -403,9 +477,10 @@ function CulturesIrriguerContent() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Toutes urgences</SelectItem>
-              <SelectItem value="critique">🔴 Critique</SelectItem>
-              <SelectItem value="haute">🟠 Haute</SelectItem>
-              <SelectItem value="jamais">⚪ Jamais arrosé</SelectItem>
+              <SelectItem value="critique">Critique</SelectItem>
+              <SelectItem value="haute">Haute</SelectItem>
+              <SelectItem value="aucune">OK (pas besoin)</SelectItem>
+              <SelectItem value="jamais">Jamais arrose</SelectItem>
             </SelectContent>
           </Select>
 
@@ -431,44 +506,65 @@ function CulturesIrriguerContent() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Tous besoins</SelectItem>
-              <SelectItem value="4">Élevé (≥4)</SelectItem>
+              <SelectItem value="4">Eleve (4+)</SelectItem>
               <SelectItem value="3">Moyen (3)</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
-        {/* Stats enrichies */}
+        {/* Stats */}
         {stats && (
           <div className="grid gap-4 md:grid-cols-4 mb-6">
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
                   <Droplets className="h-4 w-4 text-cyan-600" />
-                  Cultures a irriguer
+                  Cultures suivies
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-2xl font-bold">{stats.total}</p>
+                {stats.aucune > 0 && (
+                  <p className="text-xs text-green-600 mt-1">
+                    {stats.aucune} n&apos;ont pas besoin d&apos;arrosage
+                  </p>
+                )}
               </CardContent>
             </Card>
-            <Card className={stats.critique > 0 ? "border-red-300 bg-red-50" : ""}>
+            <Card className={stats.critique > 0 ? "border-red-300 bg-red-50" : stats.critique + stats.haute === 0 ? "border-green-300 bg-green-50" : ""}>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm text-muted-foreground">Urgences</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold text-red-600">{stats.critique + stats.haute}</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {stats.critique} critique · {stats.haute} haute · {stats.jamaisArrose} jamais
-                </p>
+                {stats.critique + stats.haute > 0 ? (
+                  <>
+                    <p className="text-2xl font-bold text-red-600">{stats.critique + stats.haute}</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {stats.critique} critique · {stats.haute} haute
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-2xl font-bold text-green-600">0</p>
+                    <p className="text-xs text-green-600 mt-1">Aucune urgence</p>
+                  </>
+                )}
               </CardContent>
             </Card>
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm text-muted-foreground">7 prochains jours</CardTitle>
+                <CardTitle className="text-sm text-muted-foreground">Irrigations planifiees</CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-2xl font-bold text-blue-600">{stats.prochainesIrrigations7j}</p>
-                <p className="text-xs text-muted-foreground mt-1">irrigations planifiées</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  restantes (7j)
+                  {stats.irrigationsAutoValidees > 0 && (
+                    <span className="text-green-600 ml-1">
+                      · {stats.irrigationsAutoValidees} auto-validee{stats.irrigationsAutoValidees > 1 ? 's' : ''} par la pluie
+                    </span>
+                  )}
+                </p>
               </CardContent>
             </Card>
             <Card>
@@ -477,19 +573,11 @@ function CulturesIrriguerContent() {
               </CardHeader>
               <CardContent>
                 <p className="text-2xl font-bold text-cyan-600">{stats.consommationTotaleEstimee}L</p>
-                <p className="text-xs text-muted-foreground mt-1">par semaine (estimé)</p>
+                <p className="text-xs text-muted-foreground mt-1">par semaine (estime)</p>
               </CardContent>
             </Card>
           </div>
         )}
-
-        {/* Info */}
-        <div className="mb-4 p-4 bg-cyan-50 rounded-lg border border-cyan-200">
-          <p className="text-sm text-cyan-800">
-            Cette page liste les cultures en place qui necessitent une irrigation reguliere
-            (besoin en eau eleve ou marque manuellement). Cochez/decochez pour gerer le statut.
-          </p>
-        </div>
 
         {/* Groupes */}
         {Object.keys(groupedData).length === 0 ? (
@@ -503,9 +591,9 @@ function CulturesIrriguerContent() {
         ) : (
           <div className="space-y-6">
             {Object.entries(groupedData).map(([groupe, cultures]) => {
-              // Calculer la consommation totale du groupe
               const consommationGroupe = cultures.reduce((sum, c) => sum + c.consommationEauSemaine, 0)
               const prochainesGroupe = cultures.reduce((sum, c) => sum + c.prochainesIrrigations, 0)
+              const okCount = cultures.filter(c => c.urgence === 'aucune').length
 
               return (
               <Card key={groupe}>
@@ -516,16 +604,23 @@ function CulturesIrriguerContent() {
                       <span className="text-sm text-muted-foreground whitespace-nowrap">
                         {cultures.length} culture(s)
                       </span>
-                      {groupBy === 'ilot' && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => marquerIlotArrose(groupe)}
-                          className="text-cyan-600 border-cyan-300 hover:bg-cyan-50 whitespace-nowrap"
-                        >
-                          <Droplet className="h-4 w-4 mr-1" />
-                          Tout arroser
-                        </Button>
+                      {okCount === cultures.length ? (
+                        <Badge className="bg-green-100 text-green-700 border-green-200">
+                          <CheckCircle2 className="h-3 w-3 mr-1" />
+                          Tout OK
+                        </Badge>
+                      ) : (
+                        groupBy === 'ilot' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => marquerIlotArrose(groupe)}
+                            className="text-cyan-600 border-cyan-300 hover:bg-cyan-50 whitespace-nowrap"
+                          >
+                            <Droplet className="h-4 w-4 mr-1" />
+                            Tout arroser
+                          </Button>
+                        )
                       )}
                     </div>
                     <div className="flex items-center gap-2 sm:gap-3 text-xs text-muted-foreground flex-wrap">
@@ -534,9 +629,9 @@ function CulturesIrriguerContent() {
                         <span>{Math.round(consommationGroupe)}L/sem</span>
                       </div>
                       {prochainesGroupe > 0 && (
-                        <div className="flex items-center gap-1 whitespace-nowrap">
-                          <span className="text-blue-600">+{prochainesGroupe} à venir</span>
-                        </div>
+                        <span className="text-blue-600 whitespace-nowrap">
+                          +{prochainesGroupe} a venir
+                        </span>
                       )}
                     </div>
                   </CardTitle>
@@ -545,123 +640,142 @@ function CulturesIrriguerContent() {
                   <div className="space-y-2">
                     {cultures.map((culture) => {
                       const jamais = culture.joursSansEau === null
-                      const urgenceColor = getUrgenceColor(culture.urgence, jamais)
+                      const urgenceColor = getUrgenceColor(culture.urgence)
 
                       return (
                         <div
                           key={culture.id}
-                          className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 rounded-lg transition-colors ${
+                          className={`flex flex-col gap-2 p-3 rounded-lg transition-colors ${
                             culture.urgence === 'critique' ? 'bg-red-50 border border-red-200' :
                             culture.urgence === 'haute' ? 'bg-orange-50 border border-orange-200' :
-                            jamais ? 'bg-gray-100 border border-gray-300' :
-                            'bg-gray-50'
+                            culture.urgence === 'aucune' ? 'bg-green-50/50 border border-green-100' :
+                            'bg-slate-50'
                           }`}
                         >
-                          <div className="flex items-start sm:items-center gap-3 flex-1 min-w-0">
-                            <Checkbox
-                              checked={culture.aIrriguer || false}
-                              onCheckedChange={() => toggleIrrigation(culture.id, culture.aIrriguer)}
-                              className="mt-1 sm:mt-0"
-                            />
+                          {/* Ligne principale */}
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                            <div className="flex items-start sm:items-center gap-3 flex-1 min-w-0">
+                              <Checkbox
+                                checked={culture.aIrriguer || false}
+                                onCheckedChange={() => toggleIrrigation(culture.id, culture.aIrriguer)}
+                                className="mt-1 sm:mt-0"
+                              />
 
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1 flex-wrap">
-                                {culture.espece?.couleur && (
-                                  <div
-                                    className="w-3 h-3 rounded-full flex-shrink-0"
-                                    style={{ backgroundColor: culture.espece.couleur }}
-                                  />
-                                )}
-                                <span className="font-medium break-words">{culture.especeId}</span>
-                                {culture.variete && (
-                                  <span className="text-sm text-muted-foreground break-words">
-                                    ({culture.variete.id})
-                                  </span>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                  {culture.espece?.couleur && (
+                                    <div
+                                      className="w-3 h-3 rounded-full flex-shrink-0"
+                                      style={{ backgroundColor: culture.espece.couleur }}
+                                    />
+                                  )}
+                                  <span className="font-medium break-words">{culture.especeId}</span>
+                                  {culture.variete && (
+                                    <span className="text-sm text-muted-foreground break-words">
+                                      ({culture.variete.id})
+                                    </span>
+                                  )}
+                                  {culture.sousAbri && (
+                                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Abri</Badge>
+                                  )}
+                                </div>
+
+                                {/* Info culture */}
+                                <div className="flex items-center gap-2 sm:gap-3 text-xs text-muted-foreground flex-wrap">
+                                  {culture.ageJours !== null && (
+                                    <span className={culture.isJeune ? "text-green-600 font-medium" : ""}>
+                                      {culture.ageJours < 7
+                                        ? `${culture.ageJours}j`
+                                        : `${Math.floor(culture.ageJours / 7)}sem`}
+                                      {culture.isJeune && " (jeune)"}
+                                    </span>
+                                  )}
+                                  {culture.planche?.irrigation && (
+                                    <span className="flex items-center gap-1">
+                                      <Droplets className="h-3 w-3" />
+                                      {culture.planche.irrigation}
+                                    </span>
+                                  )}
+                                  {culture.consommationEauSemaine > 0 && (
+                                    <span>~{Math.round(culture.consommationEauSemaine)}L/sem</span>
+                                  )}
+                                  {culture.prochainesIrrigations > 0 && (
+                                    <span className="text-blue-600">
+                                      +{culture.prochainesIrrigations} planifiee{culture.prochainesIrrigations > 1 ? 's' : ''} (7j)
+                                    </span>
+                                  )}
+                                  {culture.irrigationsAutoValidees > 0 && (
+                                    <span className="text-green-600">
+                                      <CheckCircle2 className="h-3 w-3 inline mr-0.5" />
+                                      {culture.irrigationsAutoValidees} auto-validee{culture.irrigationsAutoValidees > 1 ? 's' : ''}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                              {getUrgenceBadge(culture.urgence, jamais)}
+
+                              <div className={`text-xs sm:text-sm flex items-center gap-1 whitespace-nowrap ${urgenceColor}`}>
+                                {!jamais ? (
+                                  <>
+                                    <Droplets className="h-3 w-3 flex-shrink-0" />
+                                    <span>
+                                      {culture.joursSansEau === 0 ? "Auj." : `${culture.joursSansEau}j`}
+                                    </span>
+                                  </>
+                                ) : (
+                                  <span className="text-slate-400 text-xs">Jamais</span>
                                 )}
                               </div>
 
-                              {/* Info complémentaire */}
-                              <div className="flex items-center gap-2 sm:gap-3 text-xs text-muted-foreground flex-wrap">
-                                {/* Âge de la culture */}
-                                {culture.ageJours !== null && (
-                                  <span className={culture.isJeune ? "text-green-600 font-medium" : ""}>
-                                    {culture.isJeune && "🌱 "}
-                                    {culture.ageJours < 7
-                                      ? `${culture.ageJours}j`
-                                      : `${Math.floor(culture.ageJours / 7)}sem`}
-                                    {culture.isJeune && " (jeune)"}
-                                  </span>
-                                )}
+                              {/* Meteo culture */}
+                              {culture.meteo && culture.meteo.pluie48h > 0 && (
+                                <span className="text-xs text-blue-500 flex items-center gap-0.5">
+                                  <CloudRain className="h-3 w-3" />
+                                  {Math.round(culture.meteo.pluie48h)}mm
+                                </span>
+                              )}
 
-                                {/* Type irrigation planche */}
-                                {culture.planche?.irrigation && (
-                                  <span className="flex items-center gap-1">
-                                    <Droplets className="h-3 w-3" />
-                                    {culture.planche.irrigation}
-                                  </span>
-                                )}
-
-                                {/* Consommation */}
-                                {culture.consommationEauSemaine > 0 && (
-                                  <span>~{Math.round(culture.consommationEauSemaine)}L/sem</span>
-                                )}
-
-                                {/* Prochaines irrigations */}
-                                {culture.prochainesIrrigations > 0 && (
-                                  <span className="text-blue-600">
-                                    +{culture.prochainesIrrigations} planifiée{culture.prochainesIrrigations > 1 ? 's' : ''} (7j)
-                                  </span>
+                              <div className="text-sm">
+                                {getBesoinEauBadge(
+                                  culture.espece?.besoinEau || null,
+                                  culture.espece?.irrigation || null
                                 )}
                               </div>
+
+                              {culture.planche && (
+                                <Link href={`/planches/${encodeURIComponent(culture.planche.nom || culture.planche.id)}`}>
+                                  <Badge variant="secondary" className="cursor-pointer hover:bg-slate-200 whitespace-nowrap">
+                                    {culture.planche.nom || culture.planche.id}
+                                  </Badge>
+                                </Link>
+                              )}
+
+                              {culture.urgence !== 'aucune' && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => marquerArrosee(culture.id)}
+                                  className="h-8 w-8 p-0 text-cyan-600 hover:text-cyan-700 hover:bg-cyan-50"
+                                  title="Marquer comme arrose"
+                                >
+                                  <Droplet className="h-4 w-4" />
+                                </Button>
+                              )}
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-                            {/* Urgence badge */}
-                            {getUrgenceBadge(culture.urgence, jamais)}
-
-                            {/* Derniere irrigation */}
-                            <div className={`text-xs sm:text-sm flex items-center gap-1 whitespace-nowrap ${urgenceColor}`}>
-                              {!jamais ? (
-                                <>
-                                  <Droplets className="h-3 w-3 flex-shrink-0" />
-                                  <span>
-                                    {culture.joursSansEau === 0 ? "Auj." : `${culture.joursSansEau}j`}
-                                  </span>
-                                </>
-                              ) : (
-                                <span className="text-gray-400 text-xs">Jamais</span>
-                              )}
+                          {/* Raison urgence */}
+                          {culture.raisonUrgence && (
+                            <div className="flex items-start gap-1.5 pl-9 sm:pl-10">
+                              <Info className={`h-3 w-3 flex-shrink-0 mt-0.5 ${urgenceColor}`} />
+                              <p className={`text-xs ${urgenceColor}`}>
+                                {culture.raisonUrgence}
+                              </p>
                             </div>
-
-                            {/* Besoin eau */}
-                            <div className="text-sm">
-                              {getBesoinEauBadge(
-                                culture.espece?.besoinEau || null,
-                                culture.espece?.irrigation || null
-                              )}
-                            </div>
-
-                            {/* Planche */}
-                            {culture.planche && (
-                              <Link href={`/planches/${encodeURIComponent(culture.planche.nom || culture.planche.id)}`}>
-                                <Badge variant="secondary" className="cursor-pointer hover:bg-gray-200 whitespace-nowrap">
-                                  {culture.planche.nom || culture.planche.id}
-                                </Badge>
-                              </Link>
-                            )}
-
-                            {/* Bouton arroser */}
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => marquerArrosee(culture.id)}
-                              className="h-8 w-8 p-0 text-cyan-600 hover:text-cyan-700 hover:bg-cyan-50"
-                              title="Marquer comme arrose"
-                            >
-                              <Droplet className="h-4 w-4" />
-                            </Button>
-                          </div>
+                          )}
                         </div>
                       )
                     })}
@@ -673,11 +787,11 @@ function CulturesIrriguerContent() {
           </div>
         )}
 
-        {/* Historique récent (10 derniers arrosages) */}
+        {/* Historique recent */}
         {filteredData.length > 0 && (
           <Card className="mt-6">
             <CardHeader>
-              <CardTitle className="text-sm">Historique récent</CardTitle>
+              <CardTitle className="text-sm">Historique recent</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-1">
@@ -710,7 +824,7 @@ function CulturesIrriguerContent() {
                     </div>
                   ))}
                 {filteredData.filter(c => c.derniereIrrigation).length === 0 && (
-                  <p className="text-sm text-muted-foreground italic">Aucun arrosage enregistré</p>
+                  <p className="text-sm text-muted-foreground italic">Aucun arrosage enregistre</p>
                 )}
               </div>
             </CardContent>

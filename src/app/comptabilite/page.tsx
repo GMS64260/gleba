@@ -14,6 +14,8 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { UserMenu } from "@/components/auth/UserMenu"
+import { ModulesNav } from "@/components/auth/ModulesNav"
+import { BoutiqueHeaderButton } from "@/components/auth/BoutiqueHeaderButton"
 import {
   BarChart,
   Bar,
@@ -50,9 +52,14 @@ import {
   Users,
   Truck,
   Percent,
+  BarChart3,
+  Hammer,
+  Shield,
+  Bot,
+  MapPin,
 } from "lucide-react"
-import { AssistantDialog, AssistantButton } from "@/components/assistant"
-
+import { ChatPanel } from "@/components/chat/ChatPanel"
+import { formatEuroSemantic, formatPercentSemantic } from "@/lib/format-utils"
 // Modules du dashboard comptabilité (rationalisé)
 const modulesCompta = [
   {
@@ -103,6 +110,30 @@ const modulesCompta = [
     color: "text-slate-600",
     bgColor: "bg-slate-50",
   },
+  {
+    title: "Couts de production",
+    description: "Rentabilite par culture",
+    href: "/comptabilite/couts-production",
+    icon: BarChart3,
+    color: "text-teal-600",
+    bgColor: "bg-teal-50",
+  },
+  {
+    title: "Interventions",
+    description: "Operations terrain, temps, couts",
+    href: "/interventions",
+    icon: Hammer,
+    color: "text-orange-600",
+    bgColor: "bg-orange-50",
+  },
+  {
+    title: "Tracabilite",
+    description: "Registres reglementaires",
+    href: "/tracabilite",
+    icon: Shield,
+    color: "text-indigo-600",
+    bgColor: "bg-indigo-50",
+  },
 ]
 
 interface ComptaStats {
@@ -113,7 +144,12 @@ interface ComptaStats {
     margePercent: number
     revenusParModule: { potager: number; verger: number; elevage: number; autre: number }
     depensesParModule: { potager: number; verger: number; elevage: number; autre: number }
+    // YTD vs YTD année dernière (cf. src/lib/kpi/compta.ts).
     revenusAnneePrecedente: number
+    revenusAnneePrecedenteTotal?: number
+    depensesAnneePrecedente?: number
+    depensesAnneePrecedenteTotal?: number
+    comparisonMode?: string
     facturesImpayees: number
     facturesImpayeesTotal: number
     stocksBas: number
@@ -157,8 +193,8 @@ interface ComptaStats {
 
 export default function DashboardComptabilite() {
   const { data: session } = useSession()
-  const [showAssistant, setShowAssistant] = React.useState(false)
   const [selectedYear, setSelectedYear] = React.useState(new Date().getFullYear())
+  const [showChat, setShowChat] = React.useState(false)
   const [data, setData] = React.useState<ComptaStats | null>(null)
   const [loading, setLoading] = React.useState(true)
 
@@ -188,7 +224,7 @@ export default function DashboardComptabilite() {
     }
   }, [selectedYear, session?.user])
 
-  // Calcul différence année précédente
+  // Calcul différence annee précédente
   const yearDiff = React.useMemo(() => {
     if (!data?.stats) return { diff: 0, percent: "0" }
     const current = data.stats.revenus
@@ -203,50 +239,32 @@ export default function DashboardComptabilite() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-slate-50 to-gray-50">
-      {/* Assistant */}
-      <AssistantDialog open={showAssistant} onOpenChange={setShowAssistant} />
+    <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
+      <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
+      {/* Assistant IA */}
+      {showChat && (
+        <div className="fixed bottom-2 left-4 right-4 z-50 h-[45vh] max-w-sm mx-auto rounded-xl border bg-background shadow-2xl flex flex-col overflow-hidden sm:mx-0 sm:left-auto sm:bottom-4 sm:right-4 sm:h-[540px] sm:w-[400px] sm:max-w-none sm:rounded-lg sm:border sm:shadow-xl">
+          <ChatPanel onClose={() => setShowChat(false)} section="compta" sectionLabel="Compta" />
+        </div>
+      )}
 
       {/* Header */}
-      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-3 flex items-center justify-between max-w-[1600px]">
+      <header className="border-b border-b-2 border-b-blue-500 bg-white/80 backdrop-blur-sm sticky top-0 z-50">
+        <div className="container mx-auto px-4 py-3 flex items-center justify-between gap-2 max-w-[1600px]">
           <Link href="/" className="flex items-center hover:opacity-90 transition-opacity">
             <Image
-              src="/gleba.png"
+              src="/gleba-logo.png"
               alt="Gleba"
               width={150}
               height={100}
-              className="rounded-lg"
+              className="h-10 w-auto rounded-lg"
               priority
             />
           </Link>
           <div className="flex items-center gap-2">
-            {/* Boutons Potager / Verger / Élevage / Compta */}
-            <div className="flex items-center border rounded-lg overflow-hidden">
-              <Link href="/">
-                <Button variant="ghost" size="sm" className="rounded-none text-green-700 hover:text-green-800 hover:bg-green-50 border-r">
-                  <Sprout className="h-4 w-4 mr-1" />
-                  <span className="hidden sm:inline">Potager</span>
-                </Button>
-              </Link>
-              <Link href="/arbres">
-                <Button variant="ghost" size="sm" className="rounded-none text-lime-700 hover:text-lime-800 hover:bg-lime-50 border-r">
-                  <TreeDeciduous className="h-4 w-4 mr-1" />
-                  <span className="hidden sm:inline">Verger</span>
-                </Button>
-              </Link>
-              <Link href="/elevage">
-                <Button variant="ghost" size="sm" className="rounded-none text-amber-700 hover:text-amber-800 hover:bg-amber-50 border-r">
-                  <Bird className="h-4 w-4 mr-1" />
-                  <span className="hidden sm:inline">Élevage</span>
-                </Button>
-              </Link>
-              <Button variant="ghost" size="sm" className="rounded-none bg-blue-50 text-blue-700">
-                <Wallet className="h-4 w-4 mr-1" />
-                <span className="hidden sm:inline">Compta</span>
-              </Button>
-            </div>
-            <AssistantButton onClick={() => setShowAssistant(true)} />
+            {/* Boutons Maraîchage / Verger & Forêt / Élevage / Compta */}
+            <ModulesNav current="comptabilite" />
+            {session?.user && <BoutiqueHeaderButton />}
             <Link href="/parametres">
               <Button variant="ghost" size="sm">
                 <Settings className="h-4 w-4" />
@@ -258,19 +276,36 @@ export default function DashboardComptabilite() {
       </header>
 
       <main className="container mx-auto px-4 py-8 max-w-[1600px]">
-        {/* Titre + Sélecteur d'année */}
+        {/* Titre + Sélecteur d'annee */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
               <Euro className="h-5 w-5 text-blue-700" />
             </div>
-            <h1 className="text-xl font-semibold text-gray-800">Gestion Comptable</h1>
+            <h1 className="text-xl font-semibold text-slate-800">Gestion Comptable</h1>
           </div>
-          <Select
-            value={selectedYear.toString()}
-            onValueChange={(value) => setSelectedYear(parseInt(value))}
-          >
-            <SelectTrigger className="w-[120px]">
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowChat((v) => !v)}
+              className={showChat ? "text-white bg-blue-600 hover:bg-blue-700 border-blue-600" : "text-blue-700 border-blue-300 hover:bg-blue-50"}
+              title="Assistant IA"
+            >
+              <Bot className="h-4 w-4 mr-1" />
+              <span className="hidden sm:inline">IA</span>
+            </Button>
+            <Link href="/parcelles">
+              <Button variant="outline" size="sm" className="text-purple-700 border-purple-300 hover:bg-purple-50">
+                <MapPin className="h-4 w-4 mr-1" />
+                <span className="hidden sm:inline">Parcelles</span>
+              </Button>
+            </Link>
+            <Select
+              value={selectedYear.toString()}
+              onValueChange={(value) => setSelectedYear(parseInt(value))}
+            >
+              <SelectTrigger className="w-[120px]">
               <Calendar className="h-4 w-4 mr-2 text-muted-foreground" />
               <SelectValue />
             </SelectTrigger>
@@ -281,14 +316,15 @@ export default function DashboardComptabilite() {
                 </SelectItem>
               ))}
             </SelectContent>
-          </Select>
+            </Select>
+          </div>
         </div>
 
         {/* Stats Cards */}
         <div className="grid gap-4 lg:grid-cols-4 mb-6">
           {loading ? (
             [...Array(4)].map((_, i) => (
-              <Card key={i} className="bg-gradient-to-br from-gray-100 to-gray-200">
+              <Card key={i} className="bg-gradient-to-br from-slate-100 to-slate-200">
                 <CardHeader className="pb-2">
                   <Skeleton className="h-4 w-24" />
                 </CardHeader>
@@ -299,9 +335,9 @@ export default function DashboardComptabilite() {
             ))
           ) : data?.stats ? (
             <>
-              <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white">
+              <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-green-100 flex items-center gap-2">
+                  <CardTitle className="text-sm font-medium text-blue-100 flex items-center gap-2">
                     <TrendingUp className="h-4 w-4" />
                     Revenus {selectedYear}
                   </CardTitle>
@@ -309,9 +345,14 @@ export default function DashboardComptabilite() {
                 <CardContent>
                   <p className="text-3xl font-bold">{formatEuro(data.stats.revenus)}</p>
                   {parseInt(yearDiff.percent) !== 0 && (
-                    <p className="text-sm text-green-100 mt-1">
-                      {parseInt(yearDiff.percent) > 0 ? "+" : ""}{yearDiff.percent}% vs {selectedYear - 1}
-                    </p>
+                    <>
+                      <p className="text-sm text-blue-100 mt-1">
+                        {parseInt(yearDiff.percent) > 0 ? "+" : ""}{yearDiff.percent}% vs {selectedYear - 1}
+                      </p>
+                      <p className="text-[10px] text-blue-100 opacity-90">
+                        (YTD vs YTD année dernière)
+                      </p>
+                    </>
                   )}
                 </CardContent>
               </Card>
@@ -328,7 +369,7 @@ export default function DashboardComptabilite() {
                 </CardContent>
               </Card>
 
-              <Card className={`bg-gradient-to-br ${data.stats.benefice >= 0 ? 'from-purple-500 to-purple-600' : 'from-orange-500 to-orange-600'} text-white`}>
+              <Card className={`bg-gradient-to-br ${data.stats.benefice >= 0 ? 'from-emerald-500 to-emerald-600' : 'from-orange-500 to-orange-600'} text-white`}>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium text-white/80 flex items-center gap-2">
                     <Wallet className="h-4 w-4" />
@@ -340,14 +381,16 @@ export default function DashboardComptabilite() {
                 </CardContent>
               </Card>
 
-              <Card className="bg-gradient-to-br from-slate-500 to-slate-600 text-white">
+              <Card className={`bg-gradient-to-br ${data.stats.margePercent >= 0 ? 'from-indigo-500 to-indigo-600' : 'from-red-500 to-red-600'} text-white`}>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-slate-100 flex items-center gap-2">
+                  <CardTitle className={`text-sm font-medium ${data.stats.margePercent >= 0 ? 'text-indigo-100' : 'text-red-100'} flex items-center gap-2`}>
                     Marge
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-3xl font-bold">{data.stats.margePercent}%</p>
+                  <p className="text-3xl font-bold" title="Marge nette en %">
+                    {data.stats.margePercent}%
+                  </p>
                 </CardContent>
               </Card>
             </>
@@ -389,7 +432,7 @@ export default function DashboardComptabilite() {
         )}
 
         {/* Modules Grid */}
-        <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 mb-8">
+        <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 mb-8">
           {modulesCompta.map((module) => (
             <Link key={module.href} href={module.href}>
               <Card className="h-full hover:shadow-lg transition-all hover:scale-[1.02] cursor-pointer group">
@@ -398,7 +441,7 @@ export default function DashboardComptabilite() {
                     <div className={`w-10 h-10 rounded-lg ${module.bgColor} flex items-center justify-center`}>
                       <module.icon className={`h-5 w-5 ${module.color}`} />
                     </div>
-                    <ArrowRight className="h-4 w-4 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <ArrowRight className="h-4 w-4 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity" />
                   </div>
                   <CardTitle className="text-base">{module.title}</CardTitle>
                   <CardDescription className="text-xs">{module.description}</CardDescription>
@@ -443,7 +486,7 @@ export default function DashboardComptabilite() {
               </CardContent>
             </Card>
 
-            {/* Revenus par catégorie */}
+            {/* Revenus par categorie */}
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Revenus par catégorie</CardTitle>
@@ -477,7 +520,7 @@ export default function DashboardComptabilite() {
               </CardContent>
             </Card>
 
-            {/* Dépenses par catégorie */}
+            {/* Dépenses par categorie */}
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Dépenses par catégorie</CardTitle>

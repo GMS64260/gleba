@@ -1,5 +1,5 @@
 /**
- * Page détail d'une planche
+ * Page detail d'une planche
  */
 
 'use client'
@@ -27,6 +27,8 @@ interface Planche {
   annee: number | null
   typeSol: string | null
   retentionEau: string | null
+  parcelleGeoId: string | null
+  parcelleGeo: { id: string; nom: string; surface: number | null; centroidLat: number | null; centroidLng: number | null } | null
 }
 
 const PLANCHE_TYPES = ['Serre', 'Plein champ', 'Tunnel', 'Chassis']
@@ -76,7 +78,7 @@ export default function PlancheDetailPage({ params }: PageProps) {
   if (loading) {
     return (
       <div className="container mx-auto p-6">
-        <div className="text-center text-gray-500">Chargement...</div>
+        <div className="text-center text-slate-500">Chargement...</div>
       </div>
     )
   }
@@ -108,14 +110,14 @@ export default function PlancheDetailPage({ params }: PageProps) {
           <div className="flex items-center gap-2">
             <Link
               href="/planches"
-              className="text-gray-500 hover:text-gray-700"
+              className="text-slate-500 hover:text-slate-700"
             >
               Planches
             </Link>
-            <span className="text-gray-400">/</span>
-            <span className="font-medium text-gray-900">{planche.nom || planche.id}</span>
+            <span className="text-slate-400">/</span>
+            <span className="font-medium text-slate-900">{planche.nom || planche.id}</span>
           </div>
-          <h1 className="mt-2 text-2xl font-bold text-gray-900">
+          <h1 className="mt-2 text-2xl font-bold text-slate-900">
             {planche.nom || `Planche ${planche.id}`}
           </h1>
         </div>
@@ -128,7 +130,7 @@ export default function PlancheDetailPage({ params }: PageProps) {
           </Link>
           <button
             onClick={() => router.push('/planches')}
-            className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
             Retour
           </button>
@@ -136,7 +138,7 @@ export default function PlancheDetailPage({ params }: PageProps) {
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-gray-200">
+      <div className="border-b border-slate-200">
         <nav className="-mb-px flex space-x-8">
           {tabs.map((tab) => (
             <button
@@ -145,7 +147,7 @@ export default function PlancheDetailPage({ params }: PageProps) {
               className={`border-b-2 px-1 py-4 text-sm font-medium ${
                 activeTab === tab.id
                   ? 'border-green-500 text-green-600'
-                  : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                  : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700'
               }`}
             >
               {tab.label}
@@ -258,14 +260,14 @@ export default function PlancheDetailPage({ params }: PageProps) {
 
   if (isEditing) {
     return (
-      <div className="rounded-lg border border-gray-200 bg-white p-6">
+      <div className="rounded-lg border border-slate-200 bg-white p-6">
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-gray-900">Modifier les informations</h3>
+          <h3 className="text-lg font-semibold text-slate-900">Modifier les informations</h3>
           <div className="flex gap-2">
             <button
               onClick={handleCancel}
               disabled={saving}
-              className="flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className="flex items-center gap-1 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
             >
               <X className="h-4 w-4" />
               Annuler
@@ -283,44 +285,44 @@ export default function PlancheDetailPage({ params }: PageProps) {
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700">Identifiant</label>
+            <label className="block text-sm font-medium text-slate-700">Identifiant</label>
             <input
               type="text"
               value={planche.id}
               disabled
-              className="mt-1 block w-full rounded-md border border-gray-300 bg-gray-100 px-3 py-2 text-sm text-gray-500"
+              className="mt-1 block w-full rounded-md border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-slate-500"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700">Nom</label>
+            <label className="block text-sm font-medium text-slate-700">Nom</label>
             <input
               type="text"
               name="nom"
               value={formData.nom}
               onChange={handleChange}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-green-500"
+              className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-green-500"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700">Ilot</label>
+            <label className="block text-sm font-medium text-slate-700">Ilot</label>
             <input
               type="text"
               name="ilot"
               value={formData.ilot}
               onChange={handleChange}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-green-500"
+              className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-green-500"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700">Type</label>
+            <label className="block text-sm font-medium text-slate-700">Type</label>
             <select
               name="type"
               value={formData.type}
               onChange={handleChange}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-green-500"
+              className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-green-500"
             >
               <option value="">-</option>
               {PLANCHE_TYPES.map((t) => (
@@ -330,12 +332,12 @@ export default function PlancheDetailPage({ params }: PageProps) {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700">Irrigation</label>
+            <label className="block text-sm font-medium text-slate-700">Irrigation</label>
             <select
               name="irrigation"
               value={formData.irrigation}
               onChange={handleChange}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-green-500"
+              className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-green-500"
             >
               <option value="">-</option>
               {PLANCHE_IRRIGATION.map((i) => (
@@ -345,12 +347,12 @@ export default function PlancheDetailPage({ params }: PageProps) {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700">Type de sol</label>
+            <label className="block text-sm font-medium text-slate-700">Type de sol</label>
             <select
               name="typeSol"
               value={formData.typeSol}
               onChange={handleChange}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-green-500"
+              className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-green-500"
             >
               <option value="">Non renseigné</option>
               {TYPES_SOL.map((t) => (
@@ -360,12 +362,12 @@ export default function PlancheDetailPage({ params }: PageProps) {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700">Rétention eau</label>
+            <label className="block text-sm font-medium text-slate-700">Rétention eau</label>
             <select
               name="retentionEau"
               value={formData.retentionEau}
               onChange={handleChange}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-green-500"
+              className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-green-500"
             >
               <option value="">Non renseigné</option>
               {RETENTION_EAU.map((r) => (
@@ -375,7 +377,7 @@ export default function PlancheDetailPage({ params }: PageProps) {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700">Annee rotation</label>
+            <label className="block text-sm font-medium text-slate-700">Année rotation</label>
             <input
               type="number"
               name="annee"
@@ -383,17 +385,17 @@ export default function PlancheDetailPage({ params }: PageProps) {
               max="2100"
               value={formData.annee}
               onChange={handleChange}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-green-500"
+              className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-green-500"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700">Orientation</label>
+            <label className="block text-sm font-medium text-slate-700">Orientation</label>
             <select
               name="orientation"
               value={formData.orientation}
               onChange={handleChange}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-green-500"
+              className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-green-500"
             >
               <option value="">-</option>
               <option value="N-S">Nord-Sud</option>
@@ -404,84 +406,84 @@ export default function PlancheDetailPage({ params }: PageProps) {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700">Largeur (m)</label>
+            <label className="block text-sm font-medium text-slate-700">Largeur (m)</label>
             <input
               type="number"
               name="largeur"
               step="0.01"
               value={formData.largeur}
               onChange={handleChange}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-green-500"
+              className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-green-500"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700">Longueur (m)</label>
+            <label className="block text-sm font-medium text-slate-700">Longueur (m)</label>
             <input
               type="number"
               name="longueur"
               step="0.1"
               value={formData.longueur}
               onChange={handleChange}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-green-500"
+              className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-green-500"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700">Surface calculée (m²)</label>
+            <label className="block text-sm font-medium text-slate-700">Surface calculée (m²)</label>
             <input
               type="text"
               value={calculatedSurface}
               disabled
-              className="mt-1 block w-full rounded-md border border-gray-300 bg-gray-100 px-3 py-2 text-sm text-gray-500"
+              className="mt-1 block w-full rounded-md border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-slate-500"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700">Rotation 2D (°)</label>
+            <label className="block text-sm font-medium text-slate-700">Rotation 2D (°)</label>
             <input
               type="number"
               name="rotation2D"
               step="1"
               value={formData.rotation2D}
               onChange={handleChange}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-green-500"
+              className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-green-500"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700">Position X</label>
+            <label className="block text-sm font-medium text-slate-700">Position X</label>
             <input
               type="number"
               name="posX"
               step="0.1"
               value={formData.posX}
               onChange={handleChange}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-green-500"
+              className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-green-500"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700">Position Y</label>
+            <label className="block text-sm font-medium text-slate-700">Position Y</label>
             <input
               type="number"
               name="posY"
               step="0.1"
               value={formData.posY}
               onChange={handleChange}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-green-500"
+              className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-green-500"
             />
           </div>
         </div>
 
         <div className="mt-4">
-          <label className="block text-sm font-medium text-gray-700">Notes</label>
+          <label className="block text-sm font-medium text-slate-700">Notes</label>
           <textarea
             name="notes"
             rows={3}
             value={formData.notes}
             onChange={handleChange}
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-green-500"
+            className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-green-500"
           />
         </div>
       </div>
@@ -489,12 +491,12 @@ export default function PlancheDetailPage({ params }: PageProps) {
   }
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-6">
+    <div className="rounded-lg border border-slate-200 bg-white p-6">
       <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-gray-900">Informations générales</h3>
+        <h3 className="text-lg font-semibold text-slate-900">Informations générales</h3>
         <button
           onClick={() => setIsEditing(true)}
-          className="flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          className="flex items-center gap-1 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
         >
           <Pencil className="h-4 w-4" />
           Modifier
@@ -502,74 +504,74 @@ export default function PlancheDetailPage({ params }: PageProps) {
       </div>
       <dl className="grid grid-cols-2 gap-4">
         <div>
-          <dt className="text-sm font-medium text-gray-500">Identifiant</dt>
-          <dd className="mt-1 text-sm text-gray-900">{planche.id}</dd>
+          <dt className="text-sm font-medium text-slate-500">Identifiant</dt>
+          <dd className="mt-1 text-sm text-slate-900">{planche.id}</dd>
         </div>
         <div>
-          <dt className="text-sm font-medium text-gray-500">Nom</dt>
-          <dd className="mt-1 text-sm text-gray-900">{planche.nom || '-'}</dd>
+          <dt className="text-sm font-medium text-slate-500">Nom</dt>
+          <dd className="mt-1 text-sm text-slate-900">{planche.nom || '-'}</dd>
         </div>
         <div>
-          <dt className="text-sm font-medium text-gray-500">Ilot</dt>
-          <dd className="mt-1 text-sm text-gray-900">{planche.ilot || '-'}</dd>
+          <dt className="text-sm font-medium text-slate-500">Ilot</dt>
+          <dd className="mt-1 text-sm text-slate-900">{planche.ilot || '-'}</dd>
         </div>
         <div>
-          <dt className="text-sm font-medium text-gray-500">Type</dt>
-          <dd className="mt-1 text-sm text-gray-900">{planche.type || '-'}</dd>
+          <dt className="text-sm font-medium text-slate-500">Type</dt>
+          <dd className="mt-1 text-sm text-slate-900">{planche.type || '-'}</dd>
         </div>
         <div>
-          <dt className="text-sm font-medium text-gray-500">Irrigation</dt>
-          <dd className="mt-1 text-sm text-gray-900">{planche.irrigation || '-'}</dd>
+          <dt className="text-sm font-medium text-slate-500">Irrigation</dt>
+          <dd className="mt-1 text-sm text-slate-900">{planche.irrigation || '-'}</dd>
         </div>
         <div>
-          <dt className="text-sm font-medium text-gray-500">Annee rotation</dt>
-          <dd className="mt-1 text-sm text-gray-900">{planche.annee || '-'}</dd>
+          <dt className="text-sm font-medium text-slate-500">Année rotation</dt>
+          <dd className="mt-1 text-sm text-slate-900">{planche.annee || '-'}</dd>
         </div>
         <div>
-          <dt className="text-sm font-medium text-gray-500">Orientation</dt>
-          <dd className="mt-1 text-sm text-gray-900">{planche.orientation || '-'}</dd>
+          <dt className="text-sm font-medium text-slate-500">Orientation</dt>
+          <dd className="mt-1 text-sm text-slate-900">{planche.orientation || '-'}</dd>
         </div>
         <div>
-          <dt className="text-sm font-medium text-gray-500">Largeur</dt>
-          <dd className="mt-1 text-sm text-gray-900">
+          <dt className="text-sm font-medium text-slate-500">Largeur</dt>
+          <dd className="mt-1 text-sm text-slate-900">
             {planche.largeur !== null ? `${planche.largeur} m` : '-'}
           </dd>
         </div>
         <div>
-          <dt className="text-sm font-medium text-gray-500">Longueur</dt>
-          <dd className="mt-1 text-sm text-gray-900">
+          <dt className="text-sm font-medium text-slate-500">Longueur</dt>
+          <dd className="mt-1 text-sm text-slate-900">
             {planche.longueur !== null ? `${planche.longueur} m` : '-'}
           </dd>
         </div>
         <div>
-          <dt className="text-sm font-medium text-gray-500">Surface</dt>
-          <dd className="mt-1 text-sm text-gray-900">
+          <dt className="text-sm font-medium text-slate-500">Surface</dt>
+          <dd className="mt-1 text-sm text-slate-900">
             {planche.surface !== null ? `${planche.surface} m²` : '-'}
           </dd>
         </div>
         <div>
-          <dt className="text-sm font-medium text-gray-500">Rotation 2D</dt>
-          <dd className="mt-1 text-sm text-gray-900">
+          <dt className="text-sm font-medium text-slate-500">Rotation 2D</dt>
+          <dd className="mt-1 text-sm text-slate-900">
             {planche.rotation2D !== null ? `${planche.rotation2D}°` : '0°'}
           </dd>
         </div>
         <div>
-          <dt className="text-sm font-medium text-gray-500">Position X</dt>
-          <dd className="mt-1 text-sm text-gray-900">
+          <dt className="text-sm font-medium text-slate-500">Position X</dt>
+          <dd className="mt-1 text-sm text-slate-900">
             {planche.posX !== null ? planche.posX : '-'}
           </dd>
         </div>
         <div>
-          <dt className="text-sm font-medium text-gray-500">Position Y</dt>
-          <dd className="mt-1 text-sm text-gray-900">
+          <dt className="text-sm font-medium text-slate-500">Position Y</dt>
+          <dd className="mt-1 text-sm text-slate-900">
             {planche.posY !== null ? planche.posY : '-'}
           </dd>
         </div>
       </dl>
       {planche.notes && (
         <div className="mt-4">
-          <dt className="text-sm font-medium text-gray-500">Notes</dt>
-          <dd className="mt-1 whitespace-pre-wrap text-sm text-gray-900">{planche.notes}</dd>
+          <dt className="text-sm font-medium text-slate-500">Notes</dt>
+          <dd className="mt-1 whitespace-pre-wrap text-sm text-slate-900">{planche.notes}</dd>
         </div>
       )}
     </div>

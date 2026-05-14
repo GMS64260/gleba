@@ -37,6 +37,7 @@ import {
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { VergerCalendarView } from "./VergerCalendarView"
+import { TreeCareGantt } from "./TreeCareGantt"
 
 interface DashboardArbresData {
   stats: {
@@ -95,6 +96,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
   const [operationsEnRetard, setOperationsEnRetard] = React.useState<OperationArbre[]>([])
   const [operationsAVenir, setOperationsAVenir] = React.useState<OperationArbre[]>([])
   const [arbresAttention, setArbresAttention] = React.useState<{ id: number; nom: string; type: string; etat: string }[]>([])
+  const [especesUtilisateur, setEspecesUtilisateur] = React.useState<string[]>([])
 
   React.useEffect(() => {
     async function fetchData() {
@@ -126,6 +128,9 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
           setArbresAttention(
             arbres.filter((a: { etat: string }) => ["mauvais", "moyen"].includes(a.etat))
           )
+          // Espèces uniques pour le Gantt d'entretien
+          const especes = [...new Set(arbres.map((a: { espece: string | null }) => a.espece).filter(Boolean))] as string[]
+          setEspecesUtilisateur(especes)
         }
       } catch {
         toast({ variant: "destructive", title: "Erreur" })
@@ -178,23 +183,23 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white">
+        <Card className="bg-gradient-to-br from-slate-700 to-slate-800 text-white">
           <CardHeader className="pb-1 pt-3 px-4">
-            <CardDescription className="text-green-100 text-xs">Fruitiers</CardDescription>
+            <CardDescription className="text-slate-300 text-xs">Fruitiers</CardDescription>
             <CardTitle className="text-2xl">
-              {loading ? <Skeleton className="h-8 w-12 bg-green-400" /> : data?.stats.arbresFruitiers || 0}
+              {loading ? <Skeleton className="h-8 w-12 bg-slate-500" /> : data?.stats.arbresFruitiers || 0}
             </CardTitle>
           </CardHeader>
           <CardContent className="pb-3 px-4">
-            <p className="text-xs text-green-100">+ {data?.stats.arbresPetitsFruits || 0} petits fruits</p>
+            <p className="text-xs text-slate-300">+ {data?.stats.arbresPetitsFruits || 0} petits fruits</p>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-orange-500 to-orange-600 text-white">
+        <Card className="bg-gradient-to-br from-amber-600 to-amber-700 text-white">
           <CardHeader className="pb-1 pt-3 px-4">
-            <CardDescription className="text-orange-100 text-xs">Recoltes fruits {year}</CardDescription>
+            <CardDescription className="text-amber-100 text-xs">Recoltes fruits {year}</CardDescription>
             <CardTitle className="text-2xl">
-              {loading ? <Skeleton className="h-8 w-16 bg-orange-400" /> : `${data?.stats.recoltesFruitsAnnee || 0} kg`}
+              {loading ? <Skeleton className="h-8 w-16 bg-amber-400" /> : `${data?.stats.recoltesFruitsAnnee || 0} kg`}
             </CardTitle>
           </CardHeader>
           <CardContent className="pb-3 px-4">
@@ -211,15 +216,15 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-amber-600 to-amber-700 text-white">
+        <Card className="bg-gradient-to-br from-teal-500 to-teal-600 text-white">
           <CardHeader className="pb-1 pt-3 px-4">
-            <CardDescription className="text-amber-100 text-xs">Production bois</CardDescription>
+            <CardDescription className="text-teal-100 text-xs">Production bois</CardDescription>
             <CardTitle className="text-2xl">
-              {loading ? <Skeleton className="h-8 w-16 bg-amber-400" /> : `${data?.stats.productionBoisAnnee || 0} m3`}
+              {loading ? <Skeleton className="h-8 w-16 bg-teal-400" /> : `${data?.stats.productionBoisAnnee || 0} m3`}
             </CardTitle>
           </CardHeader>
           <CardContent className="pb-3 px-4">
-            <p className="text-xs text-amber-100">
+            <p className="text-xs text-teal-100">
               {data?.stats.venteBoisAnnee ? `${data.stats.venteBoisAnnee} EUR vendus` : "Aucune vente"}
             </p>
           </CardContent>
@@ -229,13 +234,31 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
       {/* Calendrier des operations */}
       <VergerCalendarView year={year} />
 
+      {/* Calendrier d'entretien par espece */}
+      {especesUtilisateur.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Wrench className="h-4 w-4 text-purple-600" />
+              Calendrier d'entretien par espèce
+            </CardTitle>
+            <CardDescription>
+              Périodes recommandées de taille, traitement, fertilisation et récolte
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <TreeCareGantt especes={especesUtilisateur} />
+          </CardContent>
+        </Card>
+      )}
+
       {/* Graphiques */}
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
               <Apple className="h-4 w-4 text-orange-500" />
-              Recoltes fruits par mois
+              Récoltes fruits par mois
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -247,7 +270,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                     <XAxis dataKey="mois" tick={{ fontSize: 12 }} />
                     <YAxis tick={{ fontSize: 12 }} />
                     <Tooltip
-                      formatter={(value) => [`${value} kg`, "Recolte"]}
+                      formatter={(value) => [`${value} kg`, "Récolte"]}
                       labelStyle={{ fontWeight: "bold" }}
                     />
                     <Area
@@ -330,7 +353,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
               <TrendingUp className="h-4 w-4 text-green-600" />
-              Top recoltes par arbre
+              Top récoltes par arbre
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -347,14 +370,14 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                       width={100}
                     />
                     <Tooltip
-                      formatter={(value) => [`${value} kg`, "Recolte"]}
+                      formatter={(value) => [`${value} kg`, "Récolte"]}
                     />
                     <Bar dataKey="quantite" fill="#22c55e" radius={[0, 4, 4, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
                 <div className="h-full flex items-center justify-center text-muted-foreground">
-                  Aucune recolte enregistree
+                  Aucune récolte enregistrée
                 </div>
               )}
             </div>
@@ -411,7 +434,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
-              <ClipboardCheck className="h-4 w-4 text-blue-600" />
+              <ClipboardCheck className="h-4 w-4 text-lime-600" />
               A faire ({operationsAVenir.length})
             </CardTitle>
           </CardHeader>
@@ -423,7 +446,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                 {operationsAVenir.map((op) => (
                   <div
                     key={op.id}
-                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                    className="flex items-center justify-between p-3 bg-slate-50 rounded-lg"
                   >
                     <div>
                       <p className="font-medium">{op.arbre.nom}</p>

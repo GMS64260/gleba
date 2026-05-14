@@ -39,7 +39,7 @@ export function RotationAdvice({ plancheId, year }: RotationAdviceProps) {
   }, [plancheId, targetYear])
 
   if (loading) {
-    return <div className="p-4 text-center text-gray-500">Chargement...</div>
+    return <div className="p-4 text-center text-slate-500">Chargement...</div>
   }
 
   if (error) {
@@ -47,24 +47,24 @@ export function RotationAdvice({ plancheId, year }: RotationAdviceProps) {
   }
 
   if (!advice) {
-    return <div className="p-4 text-center text-gray-500">Aucune donnée</div>
+    return <div className="p-4 text-center text-slate-500">Aucune donnée</div>
   }
 
   return (
     <div className="space-y-6">
       {/* État du sol */}
-      <div className="rounded-lg border border-gray-200 bg-white p-4">
-        <h3 className="mb-3 text-lg font-semibold text-gray-900">État estimé du sol</h3>
+      <div className="rounded-lg border border-slate-200 bg-white p-4">
+        <h3 className="mb-3 text-lg font-semibold text-slate-900">État estimé du sol</h3>
         <div className="grid grid-cols-3 gap-4">
           <SoilIndicator label="Azote (N)" status={advice.soilStatus.estimatedN} />
           <SoilIndicator label="Phosphore (P)" status={advice.soilStatus.estimatedP} />
           <SoilIndicator label="Potassium (K)" status={advice.soilStatus.estimatedK} />
         </div>
         {advice.soilStatus.suggestion && (
-          <p className="mt-3 text-sm text-gray-600">{advice.soilStatus.suggestion}</p>
+          <p className="mt-3 text-sm text-slate-600">{advice.soilStatus.suggestion}</p>
         )}
         {advice.soilStatus.lastHeavyFeeder && (
-          <p className="mt-2 text-sm text-gray-500">
+          <p className="mt-2 text-sm text-slate-500">
             Dernière culture gourmande : {advice.soilStatus.lastHeavyFeeder.especeId} en{' '}
             {advice.soilStatus.lastHeavyFeeder.year}
           </p>
@@ -80,7 +80,7 @@ export function RotationAdvice({ plancheId, year }: RotationAdviceProps) {
           </span>
         </h3>
         {advice.blockedFamilies.length === 0 ? (
-          <p className="text-sm text-gray-600">Aucune famille bloquée - toutes sont disponibles !</p>
+          <p className="text-sm text-slate-600">Aucune famille bloquée - toutes sont disponibles !</p>
         ) : (
           <div className="space-y-2">
             {advice.blockedFamilies.map((blocked) => (
@@ -94,7 +94,7 @@ export function RotationAdvice({ plancheId, year }: RotationAdviceProps) {
                     familleNom={blocked.familleNom}
                     familleCouleur={blocked.familleCouleur}
                   />
-                  <span className="text-sm text-gray-600">{blocked.reason}</span>
+                  <span className="text-sm text-slate-600">{blocked.reason}</span>
                 </div>
                 <span className="rounded bg-red-100 px-2 py-1 text-sm font-medium text-red-800">
                   +{blocked.yearsRemaining} an{blocked.yearsRemaining > 1 ? 's' : ''}
@@ -109,7 +109,7 @@ export function RotationAdvice({ plancheId, year }: RotationAdviceProps) {
       <div className="rounded-lg border border-green-200 bg-green-50 p-4">
         <h3 className="mb-3 text-lg font-semibold text-green-900">Familles recommandées</h3>
         {advice.recommendedFamilies.length === 0 ? (
-          <p className="text-sm text-gray-600">Aucune recommandation spécifique</p>
+          <p className="text-sm text-slate-600">Aucune recommandation spécifique</p>
         ) : (
           <div className="space-y-2">
             {advice.recommendedFamilies.slice(0, 8).map((rec) => (
@@ -123,7 +123,7 @@ export function RotationAdvice({ plancheId, year }: RotationAdviceProps) {
                     familleNom={rec.familleNom}
                     familleCouleur={rec.familleCouleur}
                   />
-                  <span className="text-sm text-gray-600">{rec.reason}</span>
+                  <span className="text-sm text-slate-600">{rec.reason}</span>
                 </div>
                 <ScoreBar score={rec.score} />
               </div>
@@ -134,13 +134,13 @@ export function RotationAdvice({ plancheId, year }: RotationAdviceProps) {
 
       {/* Cultures récentes */}
       {advice.recentCultures.length > 0 && (
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
-          <h3 className="mb-3 text-lg font-semibold text-gray-900">Cultures récentes (5 ans)</h3>
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <h3 className="mb-3 text-lg font-semibold text-slate-900">Cultures récentes (5 ans)</h3>
           <div className="flex flex-wrap gap-2">
             {advice.recentCultures.map((culture, idx) => (
               <span
                 key={idx}
-                className="rounded-full bg-gray-100 px-3 py-1 text-sm text-gray-700"
+                className="rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-700"
               >
                 {culture.annee} - {culture.especeId}
                 {culture.besoinN !== null && culture.besoinN >= 4 && (
@@ -166,7 +166,7 @@ function SoilIndicator({
 }) {
   const colors = {
     depleted: 'bg-red-100 text-red-800 border-red-300',
-    normal: 'bg-gray-100 text-gray-800 border-gray-300',
+    normal: 'bg-slate-100 text-slate-800 border-slate-300',
     enriched: 'bg-green-100 text-green-800 border-green-300',
   }
 
@@ -178,7 +178,7 @@ function SoilIndicator({
 
   return (
     <div className="text-center">
-      <div className="text-xs font-medium text-gray-500">{label}</div>
+      <div className="text-xs font-medium text-slate-500">{label}</div>
       <div
         className={`mt-1 rounded-full border px-3 py-1 text-sm font-medium ${colors[status]}`}
       >
@@ -190,14 +190,14 @@ function SoilIndicator({
 
 function ScoreBar({ score }: { score: number }) {
   const color =
-    score >= 80 ? 'bg-green-500' : score >= 50 ? 'bg-yellow-500' : 'bg-gray-400'
+    score >= 80 ? 'bg-green-500' : score >= 50 ? 'bg-yellow-500' : 'bg-slate-400'
 
   return (
     <div className="flex items-center gap-2">
-      <div className="h-2 w-16 overflow-hidden rounded-full bg-gray-200">
+      <div className="h-2 w-16 overflow-hidden rounded-full bg-slate-200">
         <div className={`h-full ${color}`} style={{ width: `${score}%` }} />
       </div>
-      <span className="text-xs text-gray-500">{score}</span>
+      <span className="text-xs text-slate-500">{score}</span>
     </div>
   )
 }
@@ -249,7 +249,7 @@ export function RotationAdviceCompact({
 
   if (loading || !advice) return null
 
-  // Si une espèce est sélectionnée, afficher le conseil spécifique
+  // Si une espece est sélectionnée, afficher le conseil spécifique
   if (advice.especeAdvice) {
     return (
       <div
@@ -266,7 +266,7 @@ export function RotationAdviceCompact({
           <span className="text-sm font-medium">{advice.especeAdvice.message}</span>
         </div>
         {advice.especeAdvice.details.length > 0 && (
-          <ul className="mt-2 space-y-1 text-xs text-gray-600">
+          <ul className="mt-2 space-y-1 text-xs text-slate-600">
             {advice.especeAdvice.details.map((detail, idx) => (
               <li key={idx}>• {detail}</li>
             ))}
@@ -278,8 +278,8 @@ export function RotationAdviceCompact({
 
   // Sinon, afficher un résumé
   return (
-    <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-      <div className="text-sm font-medium text-gray-700">Conseils rotation pour {targetYear}</div>
+    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+      <div className="text-sm font-medium text-slate-700">Conseils rotation pour {targetYear}</div>
       <div className="mt-2 flex flex-wrap gap-1">
         {advice.blockedFamilies.length > 0 && (
           <span className="rounded bg-red-100 px-2 py-0.5 text-xs text-red-700">

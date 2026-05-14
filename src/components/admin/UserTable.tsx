@@ -137,7 +137,7 @@ export function UserTable({ users }: UserTableProps) {
             <TableHead>Role</TableHead>
             <TableHead>Statut</TableHead>
             <TableHead className="text-center">Donnees</TableHead>
-            <TableHead>Cree le</TableHead>
+            <TableHead>Créé le</TableHead>
             <TableHead className="w-[50px]"></TableHead>
           </TableRow>
         </TableHeader>
@@ -166,7 +166,7 @@ export function UserTable({ users }: UserTableProps) {
                     Actif
                   </Badge>
                 ) : (
-                  <Badge variant="outline" className="border-gray-300 text-gray-500">
+                  <Badge variant="outline" className="border-slate-300 text-slate-500">
                     Inactif
                   </Badge>
                 )}

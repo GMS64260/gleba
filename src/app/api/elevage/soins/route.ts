@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { soinSchema } from '@/lib/validations/elevage-soin'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -19,8 +20,11 @@ export async function GET(request: NextRequest) {
     const type = searchParams.get('type')
     const fait = searchParams.get('fait')
     const limit = parseInt(searchParams.get('limit') || '100')
+    const annee = parseInt(searchParams.get('annee') || String(new Date().getFullYear()))
+    const yearStart = new Date(annee, 0, 1)
+    const yearEnd = new Date(annee, 11, 31, 23, 59, 59)
 
-    const where: any = { userId: session.user.id }
+    const where: any = { userId: session.user.id, date: { gte: yearStart, lte: yearEnd } }
     if (animalId) where.animalId = parseInt(animalId)
     if (lotId) where.lotId = parseInt(lotId)
     if (type) where.type = type
@@ -53,6 +57,7 @@ export async function GET(request: NextRequest) {
       stats: {
         soinsAVenir,
       },
+      meta: { year: annee, total: soins.length },
     })
   } catch (error) {
     console.error('GET /api/elevage/soins error:', error)
@@ -69,44 +74,31 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const {
-      animalId,
-      lotId,
-      date,
-      type,
-      description,
-      produit,
-      quantite,
-      unite,
-      cout,
-      veterinaire,
-      datePrevue,
-      fait,
-      notes,
-    } = body
-
-    if (!type || (!animalId && !lotId)) {
+    const parsed = soinSchema.safeParse(body)
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Type et animal ou lot requis' },
+        { error: 'Données invalides', details: parsed.error.flatten() },
         { status: 400 }
       )
     }
 
+    const { animalId, lotId, date, type, description, produit, quantite, unite, cout, veterinaire, datePrevue, fait, notes } = parsed.data
+
     const soin = await prisma.soinAnimal.create({
       data: {
         userId: session.user.id,
-        animalId: animalId ? parseInt(animalId) : null,
-        lotId: lotId ? parseInt(lotId) : null,
-        date: date ? new Date(date) : new Date(),
+        animalId: animalId || null,
+        lotId: lotId || null,
+        date: date || new Date(),
         type,
         description,
         produit,
-        quantite: quantite ? parseFloat(quantite) : null,
+        quantite: quantite || null,
         unite,
-        cout: cout ? parseFloat(cout) : null,
+        cout: cout || null,
         veterinaire,
-        datePrevue: datePrevue ? new Date(datePrevue) : null,
-        fait: fait !== false,
+        datePrevue: datePrevue || null,
+        fait,
         notes,
       },
       include: {

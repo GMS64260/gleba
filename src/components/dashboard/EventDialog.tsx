@@ -2,7 +2,7 @@
 
 /**
  * Dialog pour gérer un événement du calendrier
- * Permet de marquer comme fait, voir détails, modifier
+ * Permet de marquer comme fait, voir details, modifier
  */
 
 import * as React from "react"
@@ -87,7 +87,7 @@ export function EventDialog({ event, open, onOpenChange, onUpdate }: EventDialog
   const Icon = config.icon
 
   const handleToggle = async () => {
-    // Pour les récoltes, demander la quantité si on marque comme fait
+    // Pour les recoltes, demander la quantité si on marque comme fait
     if (event.type === "recolte" && !event.fait) {
       const quantiteStr = prompt("Quantité récoltée (kg) :")
       if (!quantiteStr) return // Annulé
@@ -104,7 +104,7 @@ export function EventDialog({ event, open, onOpenChange, onUpdate }: EventDialog
 
       setLoading(true)
       try {
-        // Créer la récolte
+        // Créer la recolte
         const responseRecolte = await fetch("/api/recoltes", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -168,7 +168,7 @@ export function EventDialog({ event, open, onOpenChange, onUpdate }: EventDialog
         })
         if (!response.ok) throw new Error("Erreur")
       } else {
-        // Marquer semis/plantation/récolte
+        // Marquer semis/plantation/recolte
         const response = await fetch(`/api/cultures/${event.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -218,7 +218,7 @@ export function EventDialog({ event, open, onOpenChange, onUpdate }: EventDialog
 
         <div className="space-y-4">
           {/* Culture */}
-          <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+          <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
             <div className="flex items-center gap-2">
               {event.couleur && (
                 <div

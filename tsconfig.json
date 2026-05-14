@@ -37,6 +37,8 @@
   ],
   "exclude": [
     "node_modules",
-    "prisma/import-potaleger.ts"
+    "prisma/import-potaleger.ts",
+    "src/**/__tests__/**",
+    "vitest.config.ts"
   ]
 }

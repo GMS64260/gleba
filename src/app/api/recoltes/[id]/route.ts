@@ -1,14 +1,16 @@
 /**
  * API Routes pour une Récolte spécifique
- * GET /api/recoltes/[id] - Détail d'une récolte
- * PUT /api/recoltes/[id] - Modifier une récolte
- * DELETE /api/recoltes/[id] - Supprimer une récolte
+ * GET /api/recoltes/[id] - Détail d'une recolte
+ * PUT /api/recoltes/[id] - Modifier une recolte
+ * DELETE /api/recoltes/[id] - Supprimer une recolte
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { updateRecolteSchema } from '@/lib/validations'
 import { requireAuthApi } from '@/lib/auth-utils'
+import { createVenteFromRecolte, deleteAutoEntry } from '@/lib/auto-compta'
+import { invalidateKpi } from '@/lib/kpi'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -121,6 +123,7 @@ export async function PUT(
       },
     })
 
+    invalidateKpi(session!.user.id)
     return NextResponse.json(recolte)
   } catch (error) {
     console.error('PUT /api/recoltes/[id] error:', error)
@@ -183,7 +186,7 @@ export async function PATCH(
     if (body.datePeremption !== undefined) updateData.datePeremption = body.datePeremption ? new Date(body.datePeremption) : null
     if (body.notes !== undefined) updateData.notes = body.notes
 
-    // Transaction atomique : facture + update récolte
+    // Transaction atomique : facture + update recolte
     const recolte = await prisma.$transaction(async (tx) => {
       if (body.statut === "vendu" && body.creerFacture && body.prixTotal) {
         const year = new Date().getFullYear()
@@ -273,6 +276,30 @@ export async function PATCH(
       })
     })
 
+    // Auto-comptabilite : gerer les ecritures automatiques
+    try {
+      if (body.statut === 'vendu' && (body.prixTotal || body.prixKg)) {
+        // Recolte marquee comme vendue -> creer une vente auto
+        await createVenteFromRecolte(userId, {
+          id: recolteId,
+          especeId: existing.especeId,
+          quantite: existing.quantite,
+          prixKg: body.prixKg ?? existing.prixKg,
+          prixTotal: body.prixTotal ?? existing.prixTotal,
+          clientNom: body.clientNom ?? existing.clientNom,
+          clientId: body.clientId ?? existing.clientId,
+          dateVente: body.dateVente ?? existing.dateVente,
+        })
+      } else if (existing.statut === 'vendu' && body.statut && body.statut !== 'vendu') {
+        // Recolte qui n'est plus vendue -> supprimer la vente auto
+        await deleteAutoEntry('recolte', recolteId, 'vente')
+      }
+    } catch (autoComptaError) {
+      // Ne pas bloquer la requete si l'auto-compta echoue
+      console.error('Auto-compta error (recolte):', autoComptaError)
+    }
+
+    invalidateKpi(userId)
     return NextResponse.json(recolte)
   } catch (error) {
     console.error('PATCH /api/recoltes/[id] error:', error)
@@ -317,11 +344,19 @@ export async function DELETE(
       )
     }
 
+    // Toujours nettoyer les ecritures auto-compta liees avant de supprimer
+    try {
+      await deleteAutoEntry('recolte', recolteId, 'vente')
+    } catch (autoComptaError) {
+      console.error('Auto-compta cleanup error (recolte):', autoComptaError)
+    }
+
     // Suppression
     await prisma.recolte.delete({
       where: { id: recolteId },
     })
 
+    invalidateKpi(session!.user.id)
     return NextResponse.json({ success: true, deleted: recolteId })
   } catch (error) {
     console.error('DELETE /api/recoltes/[id] error:', error)

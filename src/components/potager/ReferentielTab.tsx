@@ -1,7 +1,7 @@
 "use client"
 
 /**
- * Onglet Référentiel - Base de données des espèces
+ * Onglet Référentiel - Base de données des especes
  */
 
 import * as React from "react"
@@ -54,7 +54,7 @@ function BesoinsEau({ val }: { val: number | null }) {
       {Array.from({ length: 5 }, (_, i) => (
         <div
           key={i}
-          className={`w-1.5 h-4 rounded-sm ${i < bars ? "bg-blue-500" : "bg-gray-200"}`}
+          className={`w-1.5 h-4 rounded-sm ${i < bars ? "bg-blue-500" : "bg-slate-200"}`}
         />
       ))}
     </div>
@@ -64,7 +64,7 @@ function BesoinsEau({ val }: { val: number | null }) {
 const columns: ColumnDef<EspeceWithRelations>[] = [
   {
     accessorKey: "id",
-    header: "Espece",
+    header: "Espèce",
     cell: ({ row }) => {
       const espece = row.original
       const couleur = espece.couleur || espece.famille?.couleur || "#888888"
@@ -127,7 +127,7 @@ const columns: ColumnDef<EspeceWithRelations>[] = [
   },
   {
     accessorKey: "_count.varietes",
-    header: "Varietes",
+    header: "Variétés",
     cell: ({ getValue }) => getValue() || 0,
   },
   {
@@ -155,7 +155,7 @@ export function ReferentielTab() {
       setData(items)
       setFilteredData(items)
     } catch {
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les especes" })
+      toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les espèces" })
     } finally {
       setIsLoading(false)
     }
@@ -196,8 +196,8 @@ export function ReferentielTab() {
         onRefresh={fetchData}
         onRowClick={(row) => router.push(`/especes/${encodeURIComponent(row.id)}`)}
         onRowEdit={(row) => router.push(`/especes/${encodeURIComponent(row.id)}`)}
-        searchPlaceholder="Rechercher une espece..."
-        emptyMessage="Aucune espece trouvee."
+        searchPlaceholder="Rechercher une espèce..."
+        emptyMessage="Aucune espèce trouvée."
       />
     </div>
   )

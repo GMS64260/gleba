@@ -99,7 +99,7 @@ export default function NewRotationPage() {
       }
 
       toast({
-        title: "Rotation creee",
+        title: "Rotation créée",
         description: `La rotation "${data.id}" a ete creee avec succes`,
       })
       router.push("/rotations")
@@ -120,9 +120,10 @@ export default function NewRotationPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
+      <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
       {/* Header */}
-      <header className="border-b bg-white sticky top-0 z-50">
+      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center gap-4">
           <Link href="/rotations">
             <Button variant="ghost" size="sm">
@@ -193,12 +194,12 @@ export default function NewRotationPage() {
               <CardHeader>
                 <CardTitle>Plan de rotation</CardTitle>
                 <CardDescription>
-                  Definissez l'ITP pour chaque annee du cycle
+                  Définissez l'ITP pour chaque annee du cycle
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 {fields.map((field, index) => (
-                  <div key={field.id} className="flex items-center gap-4 p-3 bg-gray-50 rounded-lg">
+                  <div key={field.id} className="flex items-center gap-4 p-3 bg-slate-50 rounded-lg">
                     <Badge variant="outline" className="shrink-0">
                       Annee {index + 1}
                     </Badge>
@@ -213,7 +214,7 @@ export default function NewRotationPage() {
                           >
                             <FormControl>
                               <SelectTrigger>
-                                <SelectValue placeholder="Selectionner un ITP" />
+                                <SelectValue placeholder="Sélectionner un ITP" />
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
@@ -305,7 +306,7 @@ export default function NewRotationPage() {
               </Link>
               <Button type="submit" disabled={isSubmitting}>
                 <Save className="h-4 w-4 mr-2" />
-                {isSubmitting ? "Creation..." : "Creer la rotation"}
+                {isSubmitting ? "Creation..." : "Créer la rotation"}
               </Button>
             </div>
           </form>

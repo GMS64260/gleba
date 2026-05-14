@@ -7,7 +7,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { ArrowLeft, Receipt, RefreshCw, Filter, Plus, Sprout, TreeDeciduous, Bird, TrendingUp, TrendingDown } from "lucide-react"
+import { ArrowLeft, Receipt, RefreshCw, Filter, Plus, Sprout, TreeDeciduous, Bird, TrendingUp, TrendingDown, Store, Info, ChevronDown, ChevronUp } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -20,6 +20,14 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
+
+interface SourceBreakdown {
+  module: string
+  source: string
+  label: string
+  count: number
+  montant: number
+}
 
 interface Transaction {
   id: string
@@ -42,6 +50,7 @@ const MODULE_ICONS: Record<string, React.ReactNode> = {
   potager: <Sprout className="h-4 w-4 text-green-600" />,
   verger: <TreeDeciduous className="h-4 w-4 text-lime-600" />,
   elevage: <Bird className="h-4 w-4 text-amber-600" />,
+  boutique: <Store className="h-4 w-4 text-teal-600" />,
   autre: <Receipt className="h-4 w-4 text-blue-600" />,
 }
 
@@ -53,6 +62,8 @@ export default function TransactionsPage() {
   const [depenses, setDepenses] = React.useState<Transaction[]>([])
   const [statsRevenus, setStatsRevenus] = React.useState<any>(null)
   const [statsDepenses, setStatsDepenses] = React.useState<any>(null)
+  const [sourcesBreakdown, setSourcesBreakdown] = React.useState<SourceBreakdown[]>([])
+  const [sourcesOpen, setSourcesOpen] = React.useState(false)
   const [selectedYear, setSelectedYear] = React.useState(new Date().getFullYear())
   const [selectedModule, setSelectedModule] = React.useState<string>("all")
 
@@ -81,9 +92,10 @@ export default function TransactionsPage() {
       const params = new URLSearchParams({ year: selectedYear.toString() })
       if (selectedModule && selectedModule !== 'all') params.set('module', selectedModule)
 
-      const [revRes, depRes] = await Promise.all([
+      const [revRes, depRes, srcRes] = await Promise.all([
         fetch(`/api/comptabilite/revenus?${params}`),
         fetch(`/api/comptabilite/depenses?${params}`),
+        fetch(`/api/comptabilite/sources?year=${selectedYear}`),
       ])
 
       if (revRes.ok) {
@@ -95,6 +107,10 @@ export default function TransactionsPage() {
         const result = await depRes.json()
         setDepenses(result.data)
         setStatsDepenses(result.stats)
+      }
+      if (srcRes.ok) {
+        const result = await srcRes.json()
+        setSourcesBreakdown(result.sources || [])
       }
     } catch (error) {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les données" })
@@ -169,8 +185,9 @@ export default function TransactionsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="border-b bg-white sticky top-0 z-50">
+    <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
+      <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
+      <header className="border-b border-b-2 border-b-blue-500 bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link href="/comptabilite"><Button variant="ghost" size="sm"><ArrowLeft className="h-4 w-4 mr-2" />Comptabilité</Button></Link>
@@ -193,9 +210,10 @@ export default function TransactionsPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Tous</SelectItem>
-                <SelectItem value="potager">Potager</SelectItem>
+                <SelectItem value="potager">Maraîchage</SelectItem>
                 <SelectItem value="verger">Verger</SelectItem>
                 <SelectItem value="elevage">Élevage</SelectItem>
+                <SelectItem value="boutique">Boutique</SelectItem>
                 <SelectItem value="autre">Autre</SelectItem>
               </SelectContent>
             </Select>
@@ -223,14 +241,134 @@ export default function TransactionsPage() {
 
           {/* Onglet Revenus */}
           <TabsContent value="revenus">
+            {/* Card "Source de vérité" - explique d'où viennent les chiffres */}
+            <Card className="mb-6 border-blue-200 bg-blue-50/40">
+              <CardHeader
+                className="cursor-pointer select-none py-4"
+                onClick={() => setSourcesOpen(o => !o)}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Info className="h-5 w-5 text-blue-600" />
+                    <CardTitle className="text-base">D'où viennent ces chiffres ?</CardTitle>
+                  </div>
+                  {sourcesOpen ? (
+                    <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </div>
+              </CardHeader>
+              {sourcesOpen && (
+                <CardContent className="space-y-4 text-sm">
+                  <p className="text-muted-foreground">
+                    Ce total agrège toutes vos ventes, qu'elles proviennent du potager,
+                    du verger, de l'elevage, de la boutique en ligne ou de saisies manuelles.
+                  </p>
+
+                  <div className="grid gap-2 md:grid-cols-2">
+                    <div className="flex items-start gap-2">
+                      <Sprout className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
+                      <span><strong>Potager</strong> — récoltes au statut « vendu » (avec prix renseigné).</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <TreeDeciduous className="h-4 w-4 text-lime-600 mt-0.5 flex-shrink-0" />
+                      <span><strong>Verger (fruits)</strong> — récoltes d'arbres au statut « vendu ».</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <TreeDeciduous className="h-4 w-4 text-amber-800 mt-0.5 flex-shrink-0" />
+                      <span><strong>Verger (bois)</strong> — productions de bois avec destination « vente ».</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <Bird className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                      <span><strong>Élevage (produits)</strong> — œufs, lait, animaux vivants…</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <Bird className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
+                      <span><strong>Élevage (viande)</strong> — abattages avec destination « vente ».</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <Store className="h-4 w-4 text-teal-600 mt-0.5 flex-shrink-0" />
+                      <span><strong>Boutique en ligne</strong> — commandes au statut « livrée ».</span>
+                    </div>
+                    <div className="flex items-start gap-2 md:col-span-2">
+                      <Receipt className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                      <span><strong>Saisies manuelles</strong> — ventes ajoutées via l'onglet Saisie (hors automatiques).</span>
+                    </div>
+                  </div>
+
+                  <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-amber-900 text-xs">
+                    Une commande boutique apparaît ici <strong>uniquement quand son statut
+                    est « livrée »</strong>. Avant ce statut, elle est visible dans{' '}
+                    <Link href="/boutique" className="underline font-medium">
+                      /boutique → Commandes
+                    </Link>
+                    .
+                  </div>
+
+                  {/* Mini tableau de réconciliation */}
+                  <div>
+                    <p className="font-medium mb-2">Détail par source ({selectedYear})</p>
+                    <div className="overflow-x-auto border rounded-md bg-white">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Module</TableHead>
+                            <TableHead>Source</TableHead>
+                            <TableHead className="text-right">Nb</TableHead>
+                            <TableHead className="text-right">Montant</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {sourcesBreakdown.map((s) => (
+                            <TableRow key={`${s.module}-${s.source}`}>
+                              <TableCell>
+                                <div className="flex items-center gap-1.5">
+                                  {MODULE_ICONS[s.module] || MODULE_ICONS.autre}
+                                  <span className="capitalize text-xs">{s.module}</span>
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-xs">{s.label}</TableCell>
+                              <TableCell className="text-right text-xs">{s.count}</TableCell>
+                              <TableCell className="text-right font-semibold">
+                                {formatEuro(s.montant)}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                          {sourcesBreakdown.length === 0 && (
+                            <TableRow>
+                              <TableCell colSpan={4} className="text-center py-4 text-muted-foreground text-xs">
+                                Aucune donnée pour cette annee
+                              </TableCell>
+                            </TableRow>
+                          )}
+                          {sourcesBreakdown.length > 0 && (
+                            <TableRow className="bg-slate-50 font-semibold">
+                              <TableCell colSpan={2}>Total</TableCell>
+                              <TableCell className="text-right">
+                                {sourcesBreakdown.reduce((s, x) => s + x.count, 0)}
+                              </TableCell>
+                              <TableCell className="text-right text-blue-700">
+                                {formatEuro(sourcesBreakdown.reduce((s, x) => s + x.montant, 0))}
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+                </CardContent>
+              )}
+            </Card>
+
             {statsRevenus && (
               <div className="grid gap-4 md:grid-cols-4 mb-6">
-                <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white">
-                  <CardHeader className="pb-2"><CardTitle className="text-sm text-green-100">Total</CardTitle></CardHeader>
+                <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white">
+                  <CardHeader className="pb-2"><CardTitle className="text-sm text-blue-100">Total</CardTitle></CardHeader>
                   <CardContent><p className="text-2xl font-bold">{formatEuro(statsRevenus.total)}</p></CardContent>
                 </Card>
                 <Card>
-                  <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Potager</CardTitle></CardHeader>
+                  <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Maraîchage</CardTitle></CardHeader>
                   <CardContent><p className="text-xl font-bold text-green-600">{formatEuro(statsRevenus.parModule?.potager || 0)}</p></CardContent>
                 </Card>
                 <Card>
@@ -305,7 +443,7 @@ export default function TransactionsPage() {
                   <CardContent><p className="text-2xl font-bold">{formatEuro(statsDepenses.total)}</p></CardContent>
                 </Card>
                 <Card>
-                  <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Potager</CardTitle></CardHeader>
+                  <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Maraîchage</CardTitle></CardHeader>
                   <CardContent><p className="text-xl font-bold text-red-600">{formatEuro(statsDepenses.parModule?.potager || 0)}</p></CardContent>
                 </Card>
                 <Card>
@@ -416,7 +554,7 @@ export default function TransactionsPage() {
                       <Select value={formData.module} onValueChange={(v) => setFormData({ ...formData, module: v })}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="potager">Potager</SelectItem>
+                          <SelectItem value="potager">Maraîchage</SelectItem>
                           <SelectItem value="verger">Verger</SelectItem>
                           <SelectItem value="elevage">Élevage</SelectItem>
                           <SelectItem value="autre">Autre</SelectItem>

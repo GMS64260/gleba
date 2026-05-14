@@ -6,13 +6,18 @@
 
 import * as React from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Settings, Save, Download, Upload, Loader2, ImageIcon, Trash2, Key, Copy, Check, RefreshCw, Bot } from 'lucide-react'
+import { ArrowLeft, Settings, Save, Download, Upload, Loader2, ImageIcon, Trash2, Key, Copy, Check, RefreshCw, Bot, CloudSun, Layers } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Switch } from '@/components/ui/switch'
+import { Label } from '@/components/ui/label'
+import { StationMeteoConfig } from '@/components/meteo'
 import { useToast } from '@/hooks/use-toast'
 import { Slider } from '@/components/ui/slider'
+import { useModules } from '@/hooks/use-modules'
+import { MODULES, MODULE_IDS, type ModuleId } from '@/lib/modules'
 
-// Clé localStorage pour les paramètres
+// Clé localStorage pour les parametres
 const SETTINGS_KEY = 'gleba_settings'
 
 interface GardenSettings {
@@ -69,7 +74,7 @@ export default function ParametresPage() {
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const imageInputRef = React.useRef<HTMLInputElement>(null)
 
-  // Charger les paramètres au montage
+  // Charger les parametres au montage
   React.useEffect(() => {
     const stored = localStorage.getItem(SETTINGS_KEY)
     if (stored) {
@@ -375,9 +380,10 @@ export default function ParametresPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
+      <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
       {/* Header */}
-      <header className="border-b bg-white sticky top-0 z-50">
+      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link href="/">
@@ -387,7 +393,7 @@ export default function ParametresPage() {
               </Button>
             </Link>
             <div className="flex items-center gap-2">
-              <Settings className="h-6 w-6 text-gray-600" />
+              <Settings className="h-6 w-6 text-slate-600" />
               <h1 className="text-xl font-bold">Paramètres</h1>
             </div>
           </div>
@@ -395,6 +401,9 @@ export default function ParametresPage() {
       </header>
 
       <main className="container mx-auto px-4 py-6 max-w-4xl space-y-6">
+        {/* Modules actifs */}
+        <ModulesSection />
+
         {/* Paramètres du jardin */}
         <Card>
           <CardHeader>
@@ -406,10 +415,10 @@ export default function ParametresPage() {
           <CardContent className="space-y-6">
             {/* Dimensions du plan */}
             <div>
-              <h4 className="text-sm font-medium text-gray-900 mb-3">Dimensions du plan</h4>
+              <h4 className="text-sm font-medium text-slate-900 mb-3">Dimensions du plan</h4>
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1">Largeur (m)</label>
+                  <label className="block text-sm text-slate-600 mb-1">Largeur (m)</label>
                   <input
                     type="number"
                     name="planWidth"
@@ -417,11 +426,11 @@ export default function ParametresPage() {
                     onChange={handleChange}
                     min="10"
                     max="200"
-                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1">Hauteur (m)</label>
+                  <label className="block text-sm text-slate-600 mb-1">Hauteur (m)</label>
                   <input
                     type="number"
                     name="planHeight"
@@ -429,11 +438,11 @@ export default function ParametresPage() {
                     onChange={handleChange}
                     min="10"
                     max="200"
-                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1">Grille (m)</label>
+                  <label className="block text-sm text-slate-600 mb-1">Grille (m)</label>
                   <input
                     type="number"
                     name="gridSize"
@@ -442,7 +451,7 @@ export default function ParametresPage() {
                     min="0.5"
                     max="5"
                     step="0.5"
-                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
                   />
                 </div>
               </div>
@@ -450,12 +459,12 @@ export default function ParametresPage() {
 
             {/* Dimensions par défaut des planches */}
             <div>
-              <h4 className="text-sm font-medium text-gray-900 mb-3">
+              <h4 className="text-sm font-medium text-slate-900 mb-3">
                 Dimensions par défaut des planches
               </h4>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1">Largeur (m)</label>
+                  <label className="block text-sm text-slate-600 mb-1">Largeur (m)</label>
                   <input
                     type="number"
                     name="defaultPlancheLargeur"
@@ -464,11 +473,11 @@ export default function ParametresPage() {
                     min="0.3"
                     max="2"
                     step="0.1"
-                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1">Longueur (m)</label>
+                  <label className="block text-sm text-slate-600 mb-1">Longueur (m)</label>
                   <input
                     type="number"
                     name="defaultPlancheLongueur"
@@ -477,7 +486,7 @@ export default function ParametresPage() {
                     min="1"
                     max="50"
                     step="0.5"
-                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
                   />
                 </div>
               </div>
@@ -485,17 +494,17 @@ export default function ParametresPage() {
 
             {/* Couleurs */}
             <div>
-              <h4 className="text-sm font-medium text-gray-900 mb-3">Couleurs</h4>
+              <h4 className="text-sm font-medium text-slate-900 mb-3">Couleurs</h4>
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1">Planches</label>
+                  <label className="block text-sm text-slate-600 mb-1">Planches</label>
                   <div className="flex gap-2">
                     <input
                       type="color"
                       name="plancheColor"
                       value={settings.plancheColor}
                       onChange={handleChange}
-                      className="h-10 w-14 rounded border border-gray-300 cursor-pointer"
+                      className="h-10 w-14 rounded border border-slate-300 cursor-pointer"
                     />
                     <input
                       type="text"
@@ -503,19 +512,19 @@ export default function ParametresPage() {
                       onChange={(e) =>
                         setSettings((prev) => ({ ...prev, plancheColor: e.target.value }))
                       }
-                      className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm"
+                      className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
                     />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1">Sélection</label>
+                  <label className="block text-sm text-slate-600 mb-1">Sélection</label>
                   <div className="flex gap-2">
                     <input
                       type="color"
                       name="plancheSelectedColor"
                       value={settings.plancheSelectedColor}
                       onChange={handleChange}
-                      className="h-10 w-14 rounded border border-gray-300 cursor-pointer"
+                      className="h-10 w-14 rounded border border-slate-300 cursor-pointer"
                     />
                     <input
                       type="text"
@@ -523,19 +532,19 @@ export default function ParametresPage() {
                       onChange={(e) =>
                         setSettings((prev) => ({ ...prev, plancheSelectedColor: e.target.value }))
                       }
-                      className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm"
+                      className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
                     />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1">Grille</label>
+                  <label className="block text-sm text-slate-600 mb-1">Grille</label>
                   <div className="flex gap-2">
                     <input
                       type="color"
                       name="gridColor"
                       value={settings.gridColor}
                       onChange={handleChange}
-                      className="h-10 w-14 rounded border border-gray-300 cursor-pointer"
+                      className="h-10 w-14 rounded border border-slate-300 cursor-pointer"
                     />
                     <input
                       type="text"
@@ -543,7 +552,7 @@ export default function ParametresPage() {
                       onChange={(e) =>
                         setSettings((prev) => ({ ...prev, gridColor: e.target.value }))
                       }
-                      className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm"
+                      className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
                     />
                   </div>
                 </div>
@@ -587,7 +596,7 @@ export default function ParametresPage() {
 
               {settings.backgroundImage ? (
                 <div className="space-y-4">
-                  <div className="relative border rounded-lg overflow-hidden bg-gray-100">
+                  <div className="relative border rounded-lg overflow-hidden bg-slate-100">
                     <img
                       src={settings.backgroundImage}
                       alt="Fond du jardin"
@@ -615,13 +624,13 @@ export default function ParametresPage() {
               ) : (
                 <div
                   onClick={() => imageInputRef.current?.click()}
-                  className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-green-500 hover:bg-green-50 transition-colors"
+                  className="border-2 border-dashed border-slate-300 rounded-lg p-8 text-center cursor-pointer hover:border-green-500 hover:bg-green-50 transition-colors"
                 >
-                  <ImageIcon className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-                  <p className="text-sm text-gray-600">
+                  <ImageIcon className="h-12 w-12 text-slate-400 mx-auto mb-3" />
+                  <p className="text-sm text-slate-600">
                     Cliquez pour ajouter une image satellite
                   </p>
-                  <p className="text-xs text-gray-400 mt-1">
+                  <p className="text-xs text-slate-400 mt-1">
                     JPG, PNG (max 10 MB)
                   </p>
                 </div>
@@ -631,11 +640,11 @@ export default function ParametresPage() {
             {/* Parametres de l'image */}
             {settings.backgroundImage && (
               <div className="space-y-4 pt-4 border-t">
-                <h4 className="text-sm font-medium text-gray-900">Ajustements</h4>
+                <h4 className="text-sm font-medium text-slate-900">Ajustements</h4>
 
                 {/* Opacite */}
                 <div>
-                  <label className="flex justify-between text-sm text-gray-600 mb-2">
+                  <label className="flex justify-between text-sm text-slate-600 mb-2">
                     <span>Opacite</span>
                     <span>{Math.round(settings.backgroundOpacity * 100)}%</span>
                   </label>
@@ -651,7 +660,7 @@ export default function ParametresPage() {
 
                 {/* Echelle */}
                 <div>
-                  <label className="flex justify-between text-sm text-gray-600 mb-2">
+                  <label className="flex justify-between text-sm text-slate-600 mb-2">
                     <span>Echelle (metres par pixel)</span>
                     <span>{settings.backgroundScale.toFixed(3)} m/px</span>
                   </label>
@@ -663,7 +672,7 @@ export default function ParametresPage() {
                     step={0.005}
                     className="w-full"
                   />
-                  <p className="text-xs text-gray-400 mt-1">
+                  <p className="text-xs text-slate-400 mt-1">
                     Ajustez pour que l'image corresponde a l'echelle reelle de votre jardin
                   </p>
                 </div>
@@ -671,30 +680,30 @@ export default function ParametresPage() {
                 {/* Position X/Y */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm text-gray-600 mb-1">Decalage X (m)</label>
+                    <label className="block text-sm text-slate-600 mb-1">Decalage X (m)</label>
                     <input
                       type="number"
                       value={settings.backgroundOffsetX}
                       onChange={(e) => setSettings((prev) => ({ ...prev, backgroundOffsetX: parseFloat(e.target.value) || 0 }))}
                       step="0.5"
-                      className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                      className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-gray-600 mb-1">Decalage Y (m)</label>
+                    <label className="block text-sm text-slate-600 mb-1">Decalage Y (m)</label>
                     <input
                       type="number"
                       value={settings.backgroundOffsetY}
                       onChange={(e) => setSettings((prev) => ({ ...prev, backgroundOffsetY: parseFloat(e.target.value) || 0 }))}
                       step="0.5"
-                      className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                      className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
                     />
                   </div>
                 </div>
 
                 {/* Rotation */}
                 <div>
-                  <label className="flex justify-between text-sm text-gray-600 mb-2">
+                  <label className="flex justify-between text-sm text-slate-600 mb-2">
                     <span>Rotation</span>
                     <span>{settings.backgroundRotation}°</span>
                   </label>
@@ -732,8 +741,8 @@ export default function ParametresPage() {
             <div className="grid grid-cols-2 gap-6">
               {/* Export */}
               <div className="space-y-3">
-                <h4 className="text-sm font-medium text-gray-900">Exporter</h4>
-                <p className="text-sm text-gray-500">
+                <h4 className="text-sm font-medium text-slate-900">Exporter</h4>
+                <p className="text-sm text-slate-500">
                   Téléchargez une sauvegarde de toutes vos données
                 </p>
                 <div className="flex gap-2">
@@ -766,8 +775,8 @@ export default function ParametresPage() {
 
               {/* Import */}
               <div className="space-y-3">
-                <h4 className="text-sm font-medium text-gray-900">Importer</h4>
-                <p className="text-sm text-gray-500">
+                <h4 className="text-sm font-medium text-slate-900">Importer</h4>
+                <p className="text-sm text-slate-500">
                   Restaurez vos données depuis un fichier JSON
                 </p>
                 <input
@@ -797,6 +806,22 @@ export default function ParametresPage() {
           </CardContent>
         </Card>
 
+        {/* Stations météo */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CloudSun className="h-5 w-5" />
+              Stations meteo
+            </CardTitle>
+            <CardDescription>
+              Connectez votre station meteo personnelle pour des donnees ultra-locales sur vos parcelles
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <StationMeteoConfig />
+          </CardContent>
+        </Card>
+
         {/* Connexion MCP / IA */}
         <Card>
           <CardHeader>
@@ -811,7 +836,7 @@ export default function ParametresPage() {
           <CardContent className="space-y-6">
             {/* Statut du token */}
             <div className="space-y-3">
-              <h4 className="text-sm font-medium text-gray-900 flex items-center gap-2">
+              <h4 className="text-sm font-medium text-slate-900 flex items-center gap-2">
                 <Key className="h-4 w-4" />
                 Token API
               </h4>
@@ -879,28 +904,28 @@ export default function ParametresPage() {
             {/* Configuration Claude Desktop */}
             {mcpToken && (
               <div className="space-y-3 pt-4 border-t">
-                <h4 className="text-sm font-medium text-gray-900">
+                <h4 className="text-sm font-medium text-slate-900">
                   Configuration Claude Desktop
                 </h4>
-                <p className="text-sm text-gray-500">
-                  Ajoutez cette configuration dans le fichier <code className="bg-gray-100 px-1 rounded text-xs">claude_desktop_config.json</code> de Claude Desktop :
+                <p className="text-sm text-slate-500">
+                  Ajoutez cette configuration dans le fichier <code className="bg-slate-100 px-1 rounded text-xs">claude_desktop_config.json</code> de Claude Desktop :
                 </p>
                 <div className="relative">
-                  <pre className="text-xs bg-gray-900 text-green-400 p-4 rounded-lg overflow-x-auto font-mono">
+                  <pre className="text-xs bg-slate-900 text-green-400 p-4 rounded-lg overflow-x-auto font-mono">
                     {claudeDesktopConfig}
                   </pre>
                   <Button
                     variant="outline"
                     size="sm"
-                    className="absolute top-2 right-2 bg-gray-800 text-white hover:bg-gray-700 border-gray-600"
+                    className="absolute top-2 right-2 bg-slate-800 text-white hover:bg-slate-700 border-slate-600"
                     onClick={() => handleCopyMcp(claudeDesktopConfig!, 'config')}
                   >
                     {mcpCopied === 'config' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                   </Button>
                 </div>
 
-                <div className="space-y-2 text-sm text-gray-600">
-                  <p className="font-medium text-gray-900">Installation :</p>
+                <div className="space-y-2 text-sm text-slate-600">
+                  <p className="font-medium text-slate-900">Installation :</p>
                   <ol className="list-decimal list-inside space-y-1 text-xs">
                     <li>Ouvrez Claude Desktop &rarr; Settings &rarr; Developer &rarr; Edit Config</li>
                     <li>Collez la configuration ci-dessus</li>
@@ -919,7 +944,7 @@ export default function ParametresPage() {
                   avec vos données Gleba. Vous pourrez par exemple dire :
                 </p>
                 <ul className="mt-2 text-sm text-blue-700 space-y-1">
-                  <li>&laquo; Qu'est-ce que je dois faire au potager cette semaine ? &raquo;</li>
+                  <li>&laquo; Qu'est-ce que je dois faire en maraîchage cette semaine ? &raquo;</li>
                   <li>&laquo; Enregistre 3kg de tomates récoltées sur la planche S4 &raquo;</li>
                   <li>&laquo; Combien d'oeufs mes poules ont pondu ce mois-ci ? &raquo;</li>
                 </ul>
@@ -940,12 +965,12 @@ export default function ParametresPage() {
             <div className="space-y-3">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1">
-                  <h4 className="text-sm font-medium text-gray-900 mb-1">
+                  <h4 className="text-sm font-medium text-slate-900 mb-1">
                     Supprimer toutes mes données
                   </h4>
-                  <p className="text-sm text-gray-600">
-                    Supprime toutes vos cultures, planches, récoltes, arbres et objets.
-                    Les référentiels (espèces, ITPs, etc.) sont conservés.
+                  <p className="text-sm text-slate-600">
+                    Supprimé toutes vos cultures, planches, recoltes, arbres et objets.
+                    Les référentiels (especes, ITPs, etc.) sont conservés.
                   </p>
                 </div>
                 <Button
@@ -976,5 +1001,72 @@ export default function ParametresPage() {
         </Card>
       </main>
     </div>
+  )
+}
+
+// ============================================================
+// Section : Modules actifs (personnalisation de la nav)
+// ============================================================
+
+function ModulesSection() {
+  const { toast } = useToast()
+  const { modules, loading, save } = useModules()
+  const [saving, setSaving] = React.useState(false)
+
+  const toggle = async (id: ModuleId, active: boolean) => {
+    const next = active ? [...modules, id] : modules.filter((m) => m !== id)
+    // Empêcher de tout désactiver : au moins un module doit rester
+    if (next.length === 0) {
+      toast({ title: "Au moins un module doit rester actif", variant: "destructive" })
+      return
+    }
+    setSaving(true)
+    try {
+      await save(next)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Layers className="h-5 w-5 text-emerald-600" />
+          Modules actifs
+        </CardTitle>
+        <CardDescription>
+          Choisissez les modules à afficher dans votre navigation. Les modules désactivés restent accessibles par URL directe mais ne s'affichent plus dans la barre de navigation.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {MODULE_IDS.map((id) => {
+          const def = MODULES[id]
+          const active = modules.includes(id)
+          return (
+            <div
+              key={id}
+              className="flex items-center justify-between gap-4 p-3 border rounded-lg hover:bg-slate-50/50 transition-colors"
+            >
+              <div className="flex-1 min-w-0">
+                <Label htmlFor={`module-${id}`} className="font-medium text-sm cursor-pointer">
+                  {def.label}
+                </Label>
+                <p className="text-xs text-muted-foreground mt-0.5">{def.description}</p>
+              </div>
+              <Switch
+                id={`module-${id}`}
+                checked={active}
+                disabled={loading || saving}
+                onCheckedChange={(checked) => toggle(id, checked)}
+              />
+            </div>
+          )
+        })}
+        <p className="text-xs text-muted-foreground italic pt-2">
+          💡 Astuce : un changement est visible immédiatement après rechargement de la page.
+        </p>
+      </CardContent>
+    </Card>
   )
 }

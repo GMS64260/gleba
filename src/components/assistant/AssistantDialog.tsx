@@ -2,7 +2,7 @@
 
 /**
  * Assistant Maraîcher - Dialog principal
- * Guide pas-à-pas en 5 étapes pour créer une planche et/ou une culture
+ * Guide pas-à-pas en 5 etapes pour créer une planche et/ou une culture
  *
  * Flow: Emplacement -> Plante -> Planning -> Récapitulatif -> Terminé
  */
@@ -396,7 +396,7 @@ export function AssistantDialog({ open, onOpenChange }: AssistantDialogProps) {
       case 2: return "Choisir une plante"
       case 3: return "Planning"
       case 4: return "Recapitulatif"
-      case 5: return "Culture creee !"
+      case 5: return "Culture créée !"
       default: return "Assistant"
     }
   }
@@ -410,7 +410,7 @@ export function AssistantDialog({ open, onOpenChange }: AssistantDialogProps) {
             <DialogTitle>{getTitle()}</DialogTitle>
           </div>
           <DialogDescription className="sr-only">
-            Assistant pas-a-pas pour creer une culture
+            Assistant pas-a-pas pour créer une culture
           </DialogDescription>
 
           {/* Restored session banner */}
@@ -432,7 +432,7 @@ export function AssistantDialog({ open, onOpenChange }: AssistantDialogProps) {
           {/* Progress bar - 5 steps */}
           <div className="space-y-2">
             {/* Step indicator bar */}
-            <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+            <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
               <div
                 className="bg-green-500 h-full rounded-full transition-all duration-300 ease-in-out"
                 style={{ width: `${progressPercent}%` }}
@@ -469,7 +469,7 @@ export function AssistantDialog({ open, onOpenChange }: AssistantDialogProps) {
                           ? 'border-green-500 bg-green-500 text-white'
                           : isCompleted
                             ? 'border-green-500 bg-green-50 text-green-600'
-                            : 'border-gray-300 bg-white text-gray-400'
+                            : 'border-slate-300 bg-white text-slate-400'
                       }`}
                     >
                       {isCompleted ? (

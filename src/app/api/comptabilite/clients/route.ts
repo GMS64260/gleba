@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { createClientSchema, updateClientSchema } from '@/lib/validations/client'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -70,29 +71,34 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const userId = session.user.id
-
-    if (!body.nom) {
-      return NextResponse.json({ error: 'Nom requis' }, { status: 400 })
+    const parsed = createClientSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: 'Données invalides', details: parsed.error.flatten() },
+        { status: 400 }
+      )
     }
+
+    const userId = session.user.id
+    const d = parsed.data
 
     const client = await prisma.client.create({
       data: {
         userId,
-        nom: body.nom,
-        type: body.type || 'particulier',
-        email: body.email || null,
-        telephone: body.telephone || null,
-        adresse: body.adresse || null,
-        ville: body.ville || null,
-        codePostal: body.codePostal || null,
-        pays: body.pays || 'France',
-        siret: body.siret || null,
-        tvaIntra: body.tvaIntra || null,
-        conditionsPaiement: body.conditionsPaiement ? parseInt(body.conditionsPaiement) : 0,
-        exonererTVA: body.exonererTVA || false,
-        notes: body.notes || null,
-        actif: body.actif !== false,
+        nom: d.nom,
+        type: d.type,
+        email: d.email ?? null,
+        telephone: d.telephone ?? null,
+        adresse: d.adresse ?? null,
+        ville: d.ville ?? null,
+        codePostal: d.codePostal ?? null,
+        pays: d.pays,
+        siret: d.siret ?? null,
+        tvaIntra: d.tvaIntra ?? null,
+        conditionsPaiement: d.conditionsPaiement,
+        exonererTVA: d.exonererTVA,
+        notes: d.notes ?? null,
+        actif: d.actif,
       },
     })
 
@@ -112,38 +118,43 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { id, ...updateData } = body
-
-    if (!id) {
-      return NextResponse.json({ error: 'ID requis' }, { status: 400 })
+    const parsed = updateClientSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: 'Données invalides', details: parsed.error.flatten() },
+        { status: 400 }
+      )
     }
 
+    const { id, ...updates } = parsed.data
+
     const existing = await prisma.client.findFirst({
-      where: { id: parseInt(id), userId: session.user.id },
+      where: { id, userId: session.user.id },
     })
 
     if (!existing) {
       return NextResponse.json({ error: 'Client non trouvé' }, { status: 404 })
     }
 
+    const updateData: any = {}
+    if (updates.nom !== undefined) updateData.nom = updates.nom
+    if (updates.type !== undefined) updateData.type = updates.type
+    if (updates.email !== undefined) updateData.email = updates.email
+    if (updates.telephone !== undefined) updateData.telephone = updates.telephone
+    if (updates.adresse !== undefined) updateData.adresse = updates.adresse
+    if (updates.ville !== undefined) updateData.ville = updates.ville
+    if (updates.codePostal !== undefined) updateData.codePostal = updates.codePostal
+    if (updates.pays !== undefined) updateData.pays = updates.pays
+    if (updates.siret !== undefined) updateData.siret = updates.siret
+    if (updates.tvaIntra !== undefined) updateData.tvaIntra = updates.tvaIntra
+    if (updates.conditionsPaiement !== undefined) updateData.conditionsPaiement = updates.conditionsPaiement
+    if (updates.exonererTVA !== undefined) updateData.exonererTVA = updates.exonererTVA
+    if (updates.notes !== undefined) updateData.notes = updates.notes
+    if (updates.actif !== undefined) updateData.actif = updates.actif
+
     const client = await prisma.client.update({
-      where: { id: parseInt(id) },
-      data: {
-        ...(updateData.nom !== undefined && { nom: updateData.nom }),
-        ...(updateData.type !== undefined && { type: updateData.type }),
-        ...(updateData.email !== undefined && { email: updateData.email }),
-        ...(updateData.telephone !== undefined && { telephone: updateData.telephone }),
-        ...(updateData.adresse !== undefined && { adresse: updateData.adresse }),
-        ...(updateData.ville !== undefined && { ville: updateData.ville }),
-        ...(updateData.codePostal !== undefined && { codePostal: updateData.codePostal }),
-        ...(updateData.pays !== undefined && { pays: updateData.pays }),
-        ...(updateData.siret !== undefined && { siret: updateData.siret }),
-        ...(updateData.tvaIntra !== undefined && { tvaIntra: updateData.tvaIntra }),
-        ...(updateData.conditionsPaiement !== undefined && { conditionsPaiement: parseInt(updateData.conditionsPaiement) }),
-        ...(updateData.exonererTVA !== undefined && { exonererTVA: updateData.exonererTVA }),
-        ...(updateData.notes !== undefined && { notes: updateData.notes }),
-        ...(updateData.actif !== undefined && { actif: updateData.actif }),
-      },
+      where: { id },
+      data: updateData,
     })
 
     return NextResponse.json({ data: client })

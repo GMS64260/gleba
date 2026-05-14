@@ -2,10 +2,10 @@
 
 /**
  * Étape Plante fusionnée : Espèce + ITP + Variété
- * Combine les anciennes étapes 3, 4 et 5 en une seule page déroulante.
- * - Section 1 : Sélection de l'espèce (toujours visible)
- * - Section 2 : Sélection de l'ITP (apparaît après sélection espèce)
- * - Section 3 : Sélection de la variété (apparaît après sélection ITP)
+ * Combine les anciennes etapes 3, 4 et 5 en une seule page déroulante.
+ * - Section 1 : Sélection de l'espece (toujours visible)
+ * - Section 2 : Sélection de l'ITP (apparaît après selection espece)
+ * - Section 3 : Sélection de la variete (apparaît après selection ITP)
  */
 
 import * as React from "react"
@@ -602,7 +602,7 @@ export function AssistantStepPlante({
 
         {/* Summary */}
         <div className="text-xs text-muted-foreground text-center">
-          {filteredEspeces.length} espèce(s){" "}
+          {filteredEspeces.length} espece(s){" "}
           {search || typeFilter !== "all" ? "filtrée(s)" : ""}
         </div>
       </section>
@@ -657,7 +657,7 @@ export function AssistantStepPlante({
                 <p className="text-sm text-muted-foreground">
                   {itps.length === 1
                     ? "Un seul itinéraire disponible pour cette espèce :"
-                    : `${itps.length} itinéraires disponibles. Choisissez celui qui correspond à votre situation :`}
+                    : `${itps.length} itineraires disponibles. Choisissez celui qui correspond à votre situation :`}
                 </p>
 
                 <ScrollArea className="h-[300px]">
@@ -853,7 +853,7 @@ export function AssistantStepPlante({
                     )}
 
                     <p className="text-sm text-muted-foreground">
-                      {varietes.length} variété(s) disponible(s).
+                      {varietes.length} variete(s) disponible(s).
                     </p>
 
                     <ScrollArea className="h-[240px] pr-4">
@@ -881,14 +881,14 @@ export function AssistantStepPlante({
                                   <div className="flex items-center gap-3">
                                     <div
                                       className={`p-2 rounded-lg ${
-                                        v.bio ? "bg-green-100" : "bg-gray-100"
+                                        v.bio ? "bg-green-100" : "bg-slate-100"
                                       }`}
                                     >
                                       <Leaf
                                         className={`h-4 w-4 ${
                                           v.bio
                                             ? "text-green-600"
-                                            : "text-gray-500"
+                                            : "text-slate-500"
                                         }`}
                                       />
                                     </div>
@@ -913,7 +913,7 @@ export function AssistantStepPlante({
                                         ) : (
                                           <Badge
                                             variant="outline"
-                                            className="text-xs text-gray-500 border-gray-300 bg-gray-50"
+                                            className="text-xs text-slate-500 border-slate-300 bg-slate-50"
                                           >
                                             Rupture
                                           </Badge>
@@ -969,7 +969,7 @@ export function AssistantStepPlante({
             {/* Advice */}
             <div className="p-3 bg-muted/50 rounded-lg">
               <p className="text-xs text-muted-foreground">
-                <strong>Conseil :</strong> Choisir une variété permet de suivre
+                <strong>Conseil :</strong> Choisir une variete permet de suivre
                 votre stock de semences. Si vous n'avez pas encore décidé, vous
                 pourrez modifier ce choix plus tard.
               </p>

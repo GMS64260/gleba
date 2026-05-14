@@ -7,6 +7,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi, getUserId } from '@/lib/auth-utils'
 import { getBesoinsSemences } from '@/lib/planification'
 
+const STOCK_STALE_DAYS = 30
+
 export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
   if (error) return error
@@ -19,20 +21,48 @@ export async function GET(request: NextRequest) {
 
     const besoins = await getBesoinsSemences(userId, annee)
 
-    // Calculer les totaux
-    const totalPlants = besoins.reduce((sum, b) => sum + b.nbPlants, 0)
-    const totalGraines = besoins.reduce((sum, b) => sum + b.grainesNecessaires, 0)
-    const totalACommander = besoins.reduce((sum, b) => sum + b.aCommander, 0)
-    const besoinsSansStock = besoins.filter(b => b.aCommander > 0)
+    // Filtres dérivés (modes/totaux pour l'UI à 3 onglets).
+    const graineDirecte = besoins.filter(b => b.mode === 'graine_directe' && b.statut !== 'IGNORE')
+    const plantRepique = besoins.filter(b => b.mode === 'plant_repique' && b.statut !== 'IGNORE')
+    const bulbeCaieu   = besoins.filter(b => b.mode === 'bulbe_caieu' && b.statut !== 'IGNORE')
+
+    const totalGraines = besoins
+      .filter(b => b.mode === 'graine_directe' || b.mode === 'plant_repique')
+      .reduce((sum, b) => sum + b.grainesNecessaires, 0)
+    const totalACommanderG = besoins.reduce((sum, b) => sum + b.aCommander, 0)
+    const totalCaieux = bulbeCaieu.reduce((sum, b) => sum + b.besoinCaieux, 0)
+    const totalCaieuxACommander = bulbeCaieu.reduce((sum, b) => sum + b.caieuxACommander, 0)
+
+    const nbMissing = besoins.filter(b => b.statut === 'MISSING').length
+    const nbLow     = besoins.filter(b => b.statut === 'LOW').length
+
+    // Alerte stock obsolète : la dernière `dateStock` la plus récente parmi
+    // les variétés portant un besoin. Si > 30 jours, on prévient l'UI.
+    const maxDateMaj = besoins
+      .map(b => (b.stockDateMaj ? new Date(b.stockDateMaj).getTime() : 0))
+      .reduce((m, v) => Math.max(m, v), 0)
+    const stockObsolete =
+      maxDateMaj > 0 &&
+      Date.now() - maxDateMaj > STOCK_STALE_DAYS * 24 * 3600 * 1000
 
     return NextResponse.json({
       data: besoins,
       stats: {
-        nbEspeces: besoins.length,
-        totalPlants,
+        nbEspeces: new Set(besoins.map(b => b.especeId)).size,
+        totalPlants: besoins.reduce((sum, b) => sum + b.nbPlants, 0),
         totalGraines,
-        totalACommander,
-        especesSansStock: besoinsSansStock.length,
+        totalACommander: totalACommanderG,
+        totalCaieux,
+        totalCaieuxACommander,
+        especesSansStock: nbMissing + nbLow,
+        nbMissing,
+        nbLow,
+        nbGraineDirecte: graineDirecte.length,
+        nbPlantRepique: plantRepique.length,
+        nbBulbeCaieu: bulbeCaieu.length,
+        stockObsolete,
+        stockObsoleteSeuilJours: STOCK_STALE_DAYS,
+        derniereMajStockISO: maxDateMaj > 0 ? new Date(maxDateMaj).toISOString() : null,
       },
       annee,
     })

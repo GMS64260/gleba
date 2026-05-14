@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
       // Potager (per-user)
       userVarietes,
       userFertilisants,
-      // Potager récoltes en stock
+      // Potager recoltes en stock
       recoltesEnStock,
       // Élevage (per-user)
       userAliments,
@@ -108,7 +108,7 @@ export async function GET(request: NextRequest) {
         _count: true,
       }),
 
-      // Fruits en stock (récoltes arbres)
+      // Fruits en stock (recoltes arbres)
       prisma.recolteArbre.findMany({
         where: { userId, statut: 'en_stock' },
         include: {
@@ -125,7 +125,7 @@ export async function GET(request: NextRequest) {
       }),
     ])
 
-    // Récupérer les noms des espèces animales
+    // Récupérer les noms des especes animales
     const especeAnimaleIds = animauxActifs.map(a => a.especeAnimaleId)
     const especesAnimales = await prisma.especeAnimale.findMany({
       where: { id: { in: especeAnimaleIds } },
@@ -195,7 +195,7 @@ export async function GET(request: NextRequest) {
       })
     })
 
-    // Récoltes potager en stock (agrégées par espèce)
+    // Récoltes potager en stock (agrégées par espece)
     const recoltesParEspece = new Map<string, { nom: string; totalKg: number; valeur: number }>()
     recoltesEnStock.forEach(r => {
       const key = r.especeId
@@ -244,7 +244,7 @@ export async function GET(request: NextRequest) {
       })
     })
 
-    // Animaux individuels par espèce
+    // Animaux individuels par espece
     animauxActifs.forEach(a => {
       stocks.push({
         id: `animaux-${a.especeAnimaleId}`,
@@ -313,7 +313,7 @@ export async function GET(request: NextRequest) {
       })
     })
 
-    // Fruits en stock (récoltes arbres agrégées par arbre)
+    // Fruits en stock (recoltes arbres agrégées par arbre)
     const fruitsParArbre = new Map<number, { nom: string; totalKg: number; valeur: number }>()
     fruitsEnStock.forEach(r => {
       const key = r.arbreId

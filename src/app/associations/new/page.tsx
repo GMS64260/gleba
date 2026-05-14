@@ -109,7 +109,7 @@ export default function NewAssociationPage() {
       }
 
       toast({
-        title: "Association creee",
+        title: "Association créée",
         description: `L'association "${data.nom}" a ete creee avec succes`,
       })
       router.push("/associations")
@@ -125,9 +125,10 @@ export default function NewAssociationPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
+      <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
       {/* Header */}
-      <header className="border-b bg-white sticky top-0 z-50">
+      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center gap-4">
           <Link href="/associations">
             <Button variant="ghost" size="sm">
@@ -195,22 +196,22 @@ export default function NewAssociationPage() {
             {/* Details - Especes/Familles */}
             <Card>
               <CardHeader>
-                <CardTitle>Plantes associees</CardTitle>
+                <CardTitle>Plantes associées</CardTitle>
                 <CardDescription>
-                  Ajoutez les especes ou familles qui font partie de cette association.
-                  Cochez "Requise" si c'est une association necessaire.
+                  Ajoutez les espèces ou familles qui font partie de cette association.
+                  Cochez "Requise" si c'est une association nécessaire.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 {fields.map((field, index) => (
-                  <div key={field.id} className="flex gap-2 items-start p-3 bg-gray-50 rounded-lg">
+                  <div key={field.id} className="flex gap-2 items-start p-3 bg-slate-50 rounded-lg">
                     <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-2">
                       <FormField
                         control={form.control}
                         name={`details.${index}.especeId`}
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel className="text-xs">Espece</FormLabel>
+                            <FormLabel className="text-xs">Espèce</FormLabel>
                             <Select
                               onValueChange={(v) => field.onChange(v === "_none_" ? null : v)}
                               value={field.value || "_none_"}

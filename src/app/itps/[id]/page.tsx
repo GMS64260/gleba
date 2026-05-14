@@ -154,7 +154,7 @@ export default function EditITPPage() {
       toast({
         variant: "destructive",
         title: "Erreur",
-        description: error instanceof Error ? error.message : "Erreur lors de la mise a jour",
+        description: error instanceof Error ? error.message : "Erreur lors de la mise à jour",
       })
     } finally {
       setIsSubmitting(false)
@@ -200,7 +200,7 @@ export default function EditITPPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-slate-50">
         <header className="border-b bg-white sticky top-0 z-50">
           <div className="container mx-auto px-4 py-4">
             <Skeleton className="h-8 w-48" />
@@ -216,9 +216,10 @@ export default function EditITPPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
+      <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
       {/* Header */}
-      <header className="border-b bg-white sticky top-0 z-50">
+      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link href="/itps">
@@ -253,11 +254,11 @@ export default function EditITPPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Identification</CardTitle>
-                <CardDescription>Espece associee</CardDescription>
+                <CardDescription>Espèce associée</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="p-3 bg-gray-100 rounded-md">
-                  <span className="text-sm text-gray-500">Identifiant: </span>
+                <div className="p-3 bg-slate-100 rounded-md">
+                  <span className="text-sm text-slate-500">Identifiant: </span>
                   <span className="font-medium">{id}</span>
                 </div>
 
@@ -266,14 +267,14 @@ export default function EditITPPage() {
                   name="especeId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Espece</FormLabel>
+                      <FormLabel>Espèce</FormLabel>
                       <Select
                         onValueChange={(value) => field.onChange(value === "_none" ? null : value)}
                         value={field.value || "_none"}
                       >
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="Selectionner une espece" />
+                            <SelectValue placeholder="Sélectionner une espèce" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
@@ -296,7 +297,7 @@ export default function EditITPPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Calendrier</CardTitle>
-                <CardDescription>Semaines de semis, plantation et recolte (1-52)</CardDescription>
+                <CardDescription>Semaines de semis, plantation et récolte (1-52)</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-3 gap-4">
@@ -349,7 +350,7 @@ export default function EditITPPage() {
                     name="semaineRecolte"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Semaine recolte</FormLabel>
+                        <FormLabel>Semaine récolte</FormLabel>
                         <FormControl>
                           <Input
                             type="number"
@@ -373,7 +374,7 @@ export default function EditITPPage() {
                     name="dureeRecolte"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Duree recolte (semaines)</FormLabel>
+                        <FormLabel>Durée récolte (semaines)</FormLabel>
                         <FormControl>
                           <Input
                             type="number"
@@ -419,8 +420,8 @@ export default function EditITPPage() {
             {/* Durees */}
             <Card>
               <CardHeader>
-                <CardTitle>Durees</CardTitle>
-                <CardDescription>Durees en jours</CardDescription>
+                <CardTitle>Durées</CardTitle>
+                <CardDescription>Durées en jours</CardDescription>
               </CardHeader>
               <CardContent className="grid grid-cols-2 gap-4">
                 <FormField
@@ -428,7 +429,7 @@ export default function EditITPPage() {
                   name="dureePepiniere"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Duree pepiniere (jours)</FormLabel>
+                      <FormLabel>Durée pepiniere (jours)</FormLabel>
                       <FormControl>
                         <Input
                           type="number"
@@ -451,7 +452,7 @@ export default function EditITPPage() {
                   name="dureeCulture"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Duree culture (jours)</FormLabel>
+                      <FormLabel>Durée culture (jours)</FormLabel>
                       <FormControl>
                         <Input
                           type="number"
@@ -474,7 +475,7 @@ export default function EditITPPage() {
             {/* Parametres de plantation */}
             <Card>
               <CardHeader>
-                <CardTitle>Parametres de plantation</CardTitle>
+                <CardTitle>Paramètres de plantation</CardTitle>
                 <CardDescription>Configuration des rangs et espacements</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -490,7 +491,7 @@ export default function EditITPPage() {
                       >
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="Selectionner..." />
+                            <SelectValue placeholder="Sélectionner..." />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>

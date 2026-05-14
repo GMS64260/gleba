@@ -109,9 +109,10 @@ export default function NewITPPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
+      <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
       {/* Header */}
-      <header className="border-b bg-white sticky top-0 z-50">
+      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center gap-4">
           <Link href="/itps">
             <Button variant="ghost" size="sm">
@@ -134,7 +135,7 @@ export default function NewITPPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Identification</CardTitle>
-                <CardDescription>Nom et espece associee</CardDescription>
+                <CardDescription>Nom et espèce associée</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <FormField
@@ -147,7 +148,7 @@ export default function NewITPPage() {
                         <Input placeholder="Ex: Tomate-precoce" {...field} />
                       </FormControl>
                       <FormDescription>
-                        Identifiant unique (ex: Espece-variante)
+                        Identifiant unique (ex: Espèce-variante)
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
@@ -159,14 +160,14 @@ export default function NewITPPage() {
                   name="especeId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Espece</FormLabel>
+                      <FormLabel>Espèce</FormLabel>
                       <Select
                         onValueChange={(value) => field.onChange(value === "_none" ? null : value)}
                         value={field.value || "_none"}
                       >
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="Selectionner une espece" />
+                            <SelectValue placeholder="Sélectionner une espèce" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
@@ -189,7 +190,7 @@ export default function NewITPPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Calendrier</CardTitle>
-                <CardDescription>Semaines de semis, plantation et recolte (1-52)</CardDescription>
+                <CardDescription>Semaines de semis, plantation et récolte (1-52)</CardDescription>
               </CardHeader>
               <CardContent className="grid grid-cols-3 gap-4">
                 <FormField
@@ -241,7 +242,7 @@ export default function NewITPPage() {
                   name="semaineRecolte"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Semaine recolte</FormLabel>
+                      <FormLabel>Semaine récolte</FormLabel>
                       <FormControl>
                         <Input
                           type="number"
@@ -263,8 +264,8 @@ export default function NewITPPage() {
             {/* Durees */}
             <Card>
               <CardHeader>
-                <CardTitle>Durees</CardTitle>
-                <CardDescription>Durees en jours</CardDescription>
+                <CardTitle>Durées</CardTitle>
+                <CardDescription>Durées en jours</CardDescription>
               </CardHeader>
               <CardContent className="grid grid-cols-2 gap-4">
                 <FormField
@@ -272,7 +273,7 @@ export default function NewITPPage() {
                   name="dureePepiniere"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Duree pepiniere (jours)</FormLabel>
+                      <FormLabel>Durée pepiniere (jours)</FormLabel>
                       <FormControl>
                         <Input
                           type="number"
@@ -295,7 +296,7 @@ export default function NewITPPage() {
                   name="dureeCulture"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Duree culture (jours)</FormLabel>
+                      <FormLabel>Durée culture (jours)</FormLabel>
                       <FormControl>
                         <Input
                           type="number"
@@ -318,7 +319,7 @@ export default function NewITPPage() {
             {/* Parametres de plantation */}
             <Card>
               <CardHeader>
-                <CardTitle>Parametres de plantation</CardTitle>
+                <CardTitle>Paramètres de plantation</CardTitle>
                 <CardDescription>Configuration des rangs et espacements</CardDescription>
               </CardHeader>
               <CardContent className="grid grid-cols-2 gap-4">
@@ -405,7 +406,7 @@ export default function NewITPPage() {
               </Link>
               <Button type="submit" disabled={isSubmitting}>
                 <Save className="h-4 w-4 mr-2" />
-                {isSubmitting ? "Creation..." : "Creer l'ITP"}
+                {isSubmitting ? "Creation..." : "Créer l'ITP"}
               </Button>
             </div>
           </form>

@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
   try {
     const userId = session!.user.id
 
-    // Récupérer l'année depuis les paramètres de requête
+    // Récupérer l'annee depuis les parametres de requête
     const searchParams = request.nextUrl.searchParams
     const yearParam = searchParams.get("year")
     const currentYear = yearParam ? parseInt(yearParam) : new Date().getFullYear()
@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
       prisma.arbre.count({ where: { userId, productif: true, type: { in: ["fruitier", "petit_fruit"] } } }),
     ])
 
-    // Récoltes de fruits de l'année
+    // Récoltes de fruits de l'annee
     const recoltesFruitsYear = await prisma.recolteArbre.aggregate({
       where: {
         userId,
@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
       quantite: Math.round(monthlyFruits[i] * 100) / 100,
     }))
 
-    // Production de bois de l'année
+    // Production de bois de l'annee
     const productionBoisYear = await prisma.productionBois.aggregate({
       where: {
         userId,
@@ -159,7 +159,7 @@ export async function GET(request: NextRequest) {
       take: 5,
     })
 
-    // Top 10 récoltes par arbre
+    // Top 10 recoltes par arbre
     const recoltesParArbre = await prisma.recolteArbre.groupBy({
       by: ["arbreId"],
       where: {
@@ -189,7 +189,7 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    // Récoltes année précédente (comparaison)
+    // Récoltes annee précédente (comparaison)
     const lastYearStart = new Date(currentYear - 1, 0, 1)
     const lastYearEnd = new Date(currentYear - 1, 11, 31)
 

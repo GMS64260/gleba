@@ -1,5 +1,5 @@
 /**
- * Schémas de validation Zod pour les Rotations et leurs détails
+ * Schémas de validation Zod pour les Rotations et leurs details
  */
 
 import { z } from 'zod'
@@ -12,13 +12,13 @@ export const baseRotationSchema = z.object({
   notes: z.string().max(5000).nullable().optional(),
 })
 
-// Schéma pour un détail de rotation (une année)
+// Schéma pour un detail de rotation (une annee)
 export const rotationDetailSchema = z.object({
   annee: z.number().int().min(1).max(10),
   itpId: z.string().nullable().optional(),
 })
 
-// Schéma pour la création avec détails
+// Schéma pour la création avec details
 export const createRotationSchema = baseRotationSchema.extend({
   details: z.array(rotationDetailSchema).optional(),
 })

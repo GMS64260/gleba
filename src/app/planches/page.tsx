@@ -211,12 +211,13 @@ export default function PlanchesPage() {
   const totalSurface = data.reduce((sum, p) => sum + (p.surface || 0), 0)
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
+      <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
       {/* Assistant Maraîcher */}
       <AssistantDialog open={showAssistant} onOpenChange={setShowAssistant} />
 
       {/* Header */}
-      <header className="border-b bg-white sticky top-0 z-50">
+      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link href="/">

@@ -69,7 +69,7 @@ const MODES = [
   {
     value: "new-planche" as const,
     label: "Nouvelle planche",
-    description: "Creer une planche et y ajouter une culture",
+    description: "Créer une planche et y ajouter une culture",
     icon: Plus,
     color: "bg-green-50 border-green-200 hover:border-green-400",
     iconColor: "text-green-600",
@@ -319,7 +319,7 @@ export function AssistantStepEmplacement({
             ) : (
               <>
                 <strong>Conseil :</strong> Si vous debutez, commencez par
-                creer une nouvelle planche. Vous pourrez ensuite y ajouter des
+                créer une nouvelle planche. Vous pourrez ensuite y ajouter des
                 cultures selon vos besoins.
               </>
             )}
@@ -369,7 +369,7 @@ function NewPlancheForm({
             <TooltipContent>
               <p className="max-w-xs text-xs">
                 Un identifiant unique pour cette planche. Ex: &quot;P1&quot;,
-                &quot;Potager-Nord&quot;, &quot;Serre-1&quot;
+                &quot;Parcelle-Nord&quot;, &quot;Serre-1&quot;
               </p>
             </TooltipContent>
           </Tooltip>
@@ -378,7 +378,7 @@ function NewPlancheForm({
           id="planche-nom"
           value={planche.nom || ""}
           onChange={(e) => onPlancheChange({ nom: e.target.value })}
-          placeholder="Ex: P1, Potager-Nord..."
+          placeholder="Ex: P1, Parcelle-Nord..."
           className={!planche.nom ? "border-red-300 focus:border-red-500" : ""}
         />
       </div>
@@ -481,7 +481,7 @@ function NewPlancheForm({
 
       {/* Surface auto-calculee */}
       {calculatedSurface !== null && (
-        <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-gray-100 border border-gray-200">
+        <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-slate-100 border border-slate-200">
           <Ruler className="h-5 w-5 text-green-600 flex-shrink-0" />
           <div>
             <span className="font-medium">
@@ -504,7 +504,7 @@ function NewPlancheForm({
             </TooltipTrigger>
             <TooltipContent>
               <p className="max-w-xs text-xs">
-                Regroupement de planches. Ex: &quot;Potager&quot;, &quot;Serre
+                Regroupement de planches. Ex: &quot;Maraîchage&quot;, &quot;Serre
                 principale&quot;, &quot;Verger&quot;
               </p>
             </TooltipContent>
@@ -514,7 +514,7 @@ function NewPlancheForm({
           id="planche-ilot"
           value={planche.ilot || ""}
           onChange={(e) => onPlancheChange({ ilot: e.target.value })}
-          placeholder="Ex: Potager, Serre..."
+          placeholder="Ex: Maraîchage, Serre..."
           list="ilots-list"
         />
         {ilots.length > 0 && (
@@ -548,7 +548,7 @@ function NewPlancheForm({
             onValueChange={(value) => onPlancheChange({ type: value })}
           >
             <SelectTrigger id="planche-type">
-              <SelectValue placeholder="Selectionner..." />
+              <SelectValue placeholder="Sélectionner..." />
             </SelectTrigger>
             <SelectContent>
               {TYPES_PLANCHE.map((t) => (
@@ -579,7 +579,7 @@ function NewPlancheForm({
             onValueChange={(value) => onPlancheChange({ irrigation: value })}
           >
             <SelectTrigger id="planche-irrigation">
-              <SelectValue placeholder="Selectionner..." />
+              <SelectValue placeholder="Sélectionner..." />
             </SelectTrigger>
             <SelectContent>
               {TYPES_IRRIGATION.map((t) => (
@@ -722,7 +722,7 @@ function ExistingPlancheSelector({
   if (loading) {
     return (
       <div className="space-y-3">
-        <Label>Selectionner une planche</Label>
+        <Label>Sélectionner une planche</Label>
         <Skeleton className="h-10 w-full" />
         <Skeleton className="h-24 w-full" />
       </div>
@@ -737,10 +737,10 @@ function ExistingPlancheSelector({
           <Info className="h-8 w-8 text-amber-500" />
           <div>
             <p className="text-sm font-medium text-amber-800">
-              Aucune planche creee
+              Aucune planche créée
             </p>
             <p className="text-xs text-amber-600 mt-1">
-              Vous devez d&apos;abord creer une planche avant de pouvoir y
+              Vous devez d&apos;abord créer une planche avant de pouvoir y
               ajouter une culture.
             </p>
           </div>
@@ -751,7 +751,7 @@ function ExistingPlancheSelector({
             className="mt-1"
           >
             <Plus className="h-4 w-4 mr-1" />
-            Creer une nouvelle planche
+            Créer une nouvelle planche
           </Button>
         </div>
       </div>
@@ -764,7 +764,7 @@ function ExistingPlancheSelector({
       {/* Search + Select */}
       <div className="space-y-2">
         <Label htmlFor="planche-select" className="flex items-center gap-1">
-          Selectionner une planche
+          Sélectionner une planche
           <span className="text-red-500">*</span>
         </Label>
 
@@ -822,7 +822,7 @@ function ExistingPlancheSelector({
         {!selectedPlancheId && (
           <p className="text-sm text-red-600 flex items-center gap-1">
             <span className="font-medium">-&gt;</span>
-            Veuillez selectionner une planche pour continuer
+            Veuillez sélectionner une planche pour continuer
           </p>
         )}
       </div>

@@ -11,6 +11,8 @@ import { useSession } from "next-auth/react"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { UserMenu } from "@/components/auth/UserMenu"
+import { ModulesNav } from "@/components/auth/ModulesNav"
+import { BoutiqueHeaderButton } from "@/components/auth/BoutiqueHeaderButton"
 import {
   Bird,
   Sprout,
@@ -22,20 +24,27 @@ import {
   Egg,
   Package,
   Leaf,
+  Map as MapIcon,
+  Bot,
 } from "lucide-react"
-import { AssistantDialog, AssistantButton } from "@/components/assistant"
+import { ChatPanel } from "@/components/chat/ChatPanel"
+import { HeaderMeteoWidget } from "@/components/meteo"
+import { CalendrierTab } from "@/components/elevage/CalendrierTab"
 import { DashboardTab } from "@/components/elevage/DashboardTab"
 import { AnimauxTab } from "@/components/elevage/AnimauxTab"
 import { ProductionTab } from "@/components/elevage/ProductionTab"
 import { AlimentationTab } from "@/components/elevage/AlimentationTab"
 import { EspecesTab } from "@/components/elevage/EspecesTab"
+import { ReproductionTab } from "@/components/elevage/ReproductionTab"
 
 const TABS = [
+  { id: "calendrier", label: "Calendrier", icon: Calendar, shortLabel: "Calendrier" },
   { id: "dashboard", label: "Dashboard & Soins", icon: BarChart3, shortLabel: "Dashboard" },
   { id: "animaux", label: "Animaux & Lots", icon: Bird, shortLabel: "Animaux" },
   { id: "production", label: "Production", icon: Egg, shortLabel: "Production" },
+  { id: "reproduction", label: "Reproduction", icon: Bird, shortLabel: "Repro." },
   { id: "alimentation", label: "Alimentation", icon: Package, shortLabel: "Aliment." },
-  { id: "especes", label: "Especes", icon: Leaf, shortLabel: "Especes" },
+  { id: "especes", label: "Espèces", icon: Leaf, shortLabel: "Espèces" },
 ] as const
 
 type TabId = (typeof TABS)[number]["id"]
@@ -46,8 +55,23 @@ const availableYears = Array.from({ length: 6 }, (_, i) => currentYearNow - 5 + 
 export default function ElevageDashboard() {
   const { data: session } = useSession()
   const [selectedYear, setSelectedYear] = React.useState(currentYearNow)
-  const [showAssistant, setShowAssistant] = React.useState(false)
-  const [activeTab, setActiveTab] = React.useState<TabId>("dashboard")
+  const [showChat, setShowChat] = React.useState(false)
+  const [activeTab, setActiveTab] = React.useState<TabId>("calendrier")
+
+  // Lire l'onglet depuis l'URL après le montage côté client
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const tab = params.get("tab")
+    const valid: string[] = TABS.map(t => t.id)
+    if (tab && valid.includes(tab)) {
+      setActiveTab(tab as TabId)
+    }
+  }, [])
+
+  const handleTabChange = React.useCallback((tab: TabId) => {
+    setActiveTab(tab)
+    window.history.replaceState(null, "", `/elevage?tab=${tab}`)
+  }, [])
 
   if (!session) {
     return (
@@ -58,66 +82,35 @@ export default function ElevageDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Assistant */}
-      <AssistantDialog open={showAssistant} onOpenChange={setShowAssistant} />
+    <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
+      <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
+      {/* Assistant IA */}
+      {showChat && (
+        <div className="fixed bottom-2 left-4 right-4 z-50 h-[45vh] max-w-sm mx-auto rounded-xl border bg-background shadow-2xl flex flex-col overflow-hidden sm:mx-0 sm:left-auto sm:bottom-4 sm:right-4 sm:h-[540px] sm:w-[400px] sm:max-w-none sm:rounded-lg sm:border sm:shadow-xl">
+          <ChatPanel onClose={() => setShowChat(false)} section="elevage" sectionLabel="Élevage" />
+        </div>
+      )}
 
       {/* Header global */}
       <header className="border-b bg-white/95 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-2.5 flex items-center justify-between max-w-[1600px]">
-          <Link href="/" className="flex items-center hover:opacity-90 transition-opacity">
-            <Image
-              src="/gleba.png"
-              alt="Gleba"
-              width={120}
-              height={80}
-              className="rounded-lg"
-              priority
-            />
-          </Link>
+        <div className="container mx-auto px-4 py-2.5 flex items-center justify-between gap-2 max-w-[1600px]">
+          <div className="flex items-center gap-3">
+            <Link href="/" className="flex items-center hover:opacity-90 transition-opacity">
+              <Image
+                src="/gleba-logo.png"
+                alt="Gleba"
+                width={120}
+                height={80}
+                className="h-10 w-auto rounded-lg"
+                priority
+              />
+            </Link>
+            {session?.user && <HeaderMeteoWidget />}
+          </div>
           <div className="flex items-center gap-2">
             {/* Sections globales */}
-            <div className="flex items-center border rounded-lg overflow-hidden">
-              <Link href="/">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="rounded-none text-green-700 hover:text-green-800 hover:bg-green-50 border-r"
-                >
-                  <Sprout className="h-4 w-4 mr-1" />
-                  <span className="hidden sm:inline">Potager</span>
-                </Button>
-              </Link>
-              <Link href="/arbres">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="rounded-none text-lime-700 hover:text-lime-800 hover:bg-lime-50 border-r"
-                >
-                  <TreeDeciduous className="h-4 w-4 mr-1" />
-                  <span className="hidden sm:inline">Verger</span>
-                </Button>
-              </Link>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="rounded-none bg-amber-50 text-amber-700 border-r"
-              >
-                <Bird className="h-4 w-4 mr-1" />
-                <span className="hidden sm:inline">Elevage</span>
-              </Button>
-              <Link href="/comptabilite">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="rounded-none text-blue-700 hover:text-blue-800 hover:bg-blue-50"
-                >
-                  <Wallet className="h-4 w-4 mr-1" />
-                  <span className="hidden sm:inline">Compta</span>
-                </Button>
-              </Link>
-            </div>
-            <AssistantButton onClick={() => setShowAssistant(true)} />
+            <ModulesNav current="elevage" />
+            {session?.user && <BoutiqueHeaderButton />}
             <Link href="/parametres">
               <Button variant="ghost" size="sm">
                 <Settings className="h-4 w-4" />
@@ -129,33 +122,55 @@ export default function ElevageDashboard() {
       </header>
 
       {/* Navigation par onglets + selecteur d'annee */}
-      <nav className="border-b bg-white sticky top-[57px] z-40">
+      <nav className="border-b border-t-2 border-t-amber-500 bg-white/80 backdrop-blur-sm sticky top-[61px] z-40">
         <div className="container mx-auto px-4 max-w-[1600px]">
           <div className="flex items-center justify-between">
             {/* Onglets */}
-            <div className="flex items-center -mb-px overflow-x-auto">
+            <div className="flex items-center -mb-px">
               {TABS.map((tab) => {
                 const isActive = activeTab === tab.id
                 return (
                   <button
                     key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                    onClick={() => handleTabChange(tab.id)}
+                    className={`flex items-center gap-1.5 px-3 lg:px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                       isActive
                         ? "border-amber-600 text-amber-700"
-                        : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                        : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
                     }`}
+                    title={tab.label}
                   >
                     <tab.icon className={`h-4 w-4 ${isActive ? "text-amber-600" : ""}`} />
-                    <span className="hidden md:inline">{tab.label}</span>
-                    <span className="md:hidden">{tab.shortLabel}</span>
+                    <span className="hidden lg:inline">{tab.label}</span>
                   </button>
                 )
               })}
             </div>
 
-            {/* Annee */}
+            {/* Carte + Annee */}
             <div className="flex items-center gap-2 py-2">
+              <Link href="/jardin/carte?usage=elevage">
+                <Button variant="outline" size="sm" className="text-amber-700 border-amber-300 hover:bg-amber-50">
+                  <MapIcon className="h-4 w-4 mr-1" />
+                  <span className="hidden sm:inline">Carte</span>
+                </Button>
+              </Link>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowChat((v) => !v)}
+                className={showChat ? "text-white bg-amber-600 hover:bg-amber-700 border-amber-600" : "text-amber-700 border-amber-300 hover:bg-amber-50"}
+                title="Assistant IA"
+              >
+                <Bot className="h-4 w-4 mr-1" />
+                <span className="hidden sm:inline">IA</span>
+              </Button>
+              <Link href="/parcelles">
+                <Button variant="outline" size="sm" className="text-purple-700 border-purple-300 hover:bg-purple-50">
+                  <MapIcon className="h-4 w-4 mr-1" />
+                  <span className="hidden sm:inline">Parcelles</span>
+                </Button>
+              </Link>
               <Select
                 value={selectedYear.toString()}
                 onValueChange={(value) => setSelectedYear(parseInt(value))}
@@ -179,15 +194,17 @@ export default function ElevageDashboard() {
 
       {/* Contenu de l'onglet actif */}
       <main className="container mx-auto px-4 py-6 max-w-[1600px]">
+        {activeTab === "calendrier" && <CalendrierTab />}
         {activeTab === "dashboard" && <DashboardTab year={selectedYear} />}
         {activeTab === "animaux" && <AnimauxTab />}
         {activeTab === "production" && <ProductionTab />}
+        {activeTab === "reproduction" && <ReproductionTab />}
         {activeTab === "alimentation" && <AlimentationTab />}
         {activeTab === "especes" && <EspecesTab />}
       </main>
 
       {/* Footer */}
-      <footer className="border-t mt-8 py-4 text-center text-sm text-gray-500">
+      <footer className="border-t mt-8 py-4 text-center text-sm text-slate-500">
         <p>Gleba v1.0.0</p>
       </footer>
     </div>

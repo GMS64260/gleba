@@ -1,10 +1,21 @@
 /**
- * Hook pour accéder aux paramètres de l'application
+ * Hook pour accéder aux parametres de l'application
+ * Supporte des settings par parcelle (parcelleId) ou des settings globaux
  */
 
 import { useState, useEffect } from 'react'
 
-const SETTINGS_KEY = 'gleba_settings'
+export const SETTINGS_KEY = 'gleba_settings'
+
+/**
+ * Retourne la clé localStorage pour une parcelle donnée
+ * Sans parcelleId -> settings globaux (rétro-compatible)
+ * Avec parcelleId -> settings spécifiques à la parcelle
+ */
+export function settingsKey(parcelleId?: string | null): string {
+  if (parcelleId) return `${SETTINGS_KEY}_parcelle_${parcelleId}`
+  return SETTINGS_KEY
+}
 
 export interface GardenSettings {
   // Dimensions du plan
@@ -44,11 +55,12 @@ export const defaultSettings: GardenSettings = {
   backgroundRotation: 0,
 }
 
-export function useSettings(): GardenSettings {
+export function useSettings(parcelleId?: string | null): GardenSettings {
   const [settings, setSettings] = useState<GardenSettings>(defaultSettings)
 
   useEffect(() => {
-    const stored = localStorage.getItem(SETTINGS_KEY)
+    const key = settingsKey(parcelleId)
+    const stored = localStorage.getItem(key)
     if (stored) {
       try {
         const parsed = JSON.parse(stored)
@@ -56,16 +68,19 @@ export function useSettings(): GardenSettings {
       } catch {
         // Ignorer les erreurs de parsing
       }
+    } else {
+      setSettings(defaultSettings)
     }
-  }, [])
+  }, [parcelleId])
 
   return settings
 }
 
-export function getSettings(): GardenSettings {
+export function getSettings(parcelleId?: string | null): GardenSettings {
   if (typeof window === 'undefined') return defaultSettings
 
-  const stored = localStorage.getItem(SETTINGS_KEY)
+  const key = settingsKey(parcelleId)
+  const stored = localStorage.getItem(key)
   if (stored) {
     try {
       const parsed = JSON.parse(stored)
@@ -75,4 +90,16 @@ export function getSettings(): GardenSettings {
     }
   }
   return defaultSettings
+}
+
+/**
+ * Sauvegarde les settings pour une parcelle donnée (ou les settings globaux)
+ */
+export function saveSettings(settings: Partial<GardenSettings>, parcelleId?: string | null): void {
+  if (typeof window === 'undefined') return
+
+  const key = settingsKey(parcelleId)
+  const current = getSettings(parcelleId)
+  const merged = { ...current, ...settings }
+  localStorage.setItem(key, JSON.stringify(merged))
 }

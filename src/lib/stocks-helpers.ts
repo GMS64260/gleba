@@ -15,7 +15,7 @@ export interface StockNet {
 }
 
 /**
- * Calcule le stock net pour une ou plusieurs espèces (per-user)
+ * Calcule le stock net pour une ou plusieurs especes (per-user)
  * Stock net = Inventaire (à date inventaire) + Σ Récoltes - Σ Consommations
  */
 export async function calculerStocksNet(
@@ -23,7 +23,7 @@ export async function calculerStocksNet(
   especeId?: string
 ): Promise<Record<string, StockNet>> {
 
-  // Récupérer les stocks per-user pour les espèces concernées
+  // Récupérer les stocks per-user pour les especes concernées
   const userStocks = await prisma.userStockEspece.findMany({
     where: {
       userId,
@@ -36,7 +36,7 @@ export async function calculerStocksNet(
     },
   })
 
-  // Si aucun stock per-user, chercher les espèces avec des récoltes/consommations
+  // Si aucun stock per-user, chercher les especes avec des recoltes/consommations
   const especeIds = userStocks.map(us => us.especeId)
   const additionalEspeces = await prisma.espece.findMany({
     where: {

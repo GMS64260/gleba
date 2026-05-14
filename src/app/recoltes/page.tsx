@@ -96,7 +96,7 @@ export default function RecoltesPage() {
     creerFacture: false,
   })
 
-  // Générer les années disponibles (5 dernières années)
+  // Générer les annees disponibles (5 dernières annees)
   const currentYear = new Date().getFullYear()
   const years = Array.from({ length: 5 }, (_, i) => currentYear - i)
 
@@ -252,9 +252,10 @@ export default function RecoltesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
+      <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
       {/* Header */}
-      <header className="border-b bg-white sticky top-0 z-50">
+      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link href="/">
@@ -445,12 +446,12 @@ export default function RecoltesPage() {
                                   ) : isBientotPerime ? (
                                     <Timer className="h-4 w-4 text-amber-500" />
                                   ) : (
-                                    <Clock className="h-4 w-4 text-gray-400" />
+                                    <Clock className="h-4 w-4 text-slate-400" />
                                   )}
                                   <span className={
                                     isPerime ? "text-red-600 font-medium" :
                                     isBientotPerime ? "text-amber-600" :
-                                    "text-gray-600"
+                                    "text-slate-600"
                                   }>
                                     {format(new Date(r.datePeremption), "dd/MM", { locale: fr })}
                                     {daysLeft !== null && daysLeft >= 0 && (

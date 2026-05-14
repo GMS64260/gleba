@@ -48,7 +48,8 @@ export async function PUT(request: NextRequest, { params }: Params) {
         posY: body.posY,
         rotation2D: body.rotation2D,
         couleur: body.couleur,
-        notes: body.notes
+        notes: body.notes,
+        parcelleGeoId: body.parcelleGeoId !== undefined ? (body.parcelleGeoId || null) : undefined,
       }
     })
 

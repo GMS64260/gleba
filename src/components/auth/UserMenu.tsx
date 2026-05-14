@@ -57,7 +57,7 @@ export function UserMenu({ user }: UserMenuProps) {
         <Link href="/parametres">
           <DropdownMenuItem className="cursor-pointer">
             <Settings className="mr-2 h-4 w-4" />
-            Parametres
+            Paramètres
           </DropdownMenuItem>
         </Link>
 

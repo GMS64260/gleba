@@ -634,7 +634,7 @@ export function GardenView({
                   rx={0.05}
                 />
               )}
-              {/* Halo de sélection */}
+              {/* Halo de selection */}
               {isSelected && (
                 <rect
                   x={-0.05}
@@ -706,7 +706,7 @@ export function GardenView({
                 fill="#78350f"
                 style={{ pointerEvents: "none" }}
               />
-              {/* Halo de sélection */}
+              {/* Halo de selection */}
               {isSelected && (
                 <circle
                   cx={0}
@@ -771,7 +771,7 @@ export function GardenView({
                 strokeWidth={isSelected ? 0.1 : isDraggingThis ? 0.08 : 0.03}
                 rx={0.05}
               />
-              {/* Halo de sélection */}
+              {/* Halo de selection */}
               {isSelected && (
                 <rect
                   x={-0.05}
@@ -921,7 +921,7 @@ export function GardenView({
           )
         })}
 
-        {/* Rectangle de sélection (marquee) */}
+        {/* Rectangle de selection (marquee) */}
         {marquee && hasMoved && (
           <rect
             x={Math.min(marquee.startX, marquee.currentX)}

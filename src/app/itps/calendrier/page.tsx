@@ -100,9 +100,10 @@ export default function ITCalendrierPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
+      <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
       {/* Header */}
-      <header className="border-b bg-white sticky top-0 z-50">
+      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link href="/itps">
@@ -170,7 +171,7 @@ export default function ITCalendrierPage() {
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle>{itpsFiltres.length} itinéraires</CardTitle>
+              <CardTitle>{itpsFiltres.length} itineraires</CardTitle>
               <Button variant="outline" size="sm" disabled>
                 <Download className="h-4 w-4 mr-2" />
                 Export PDF
@@ -216,7 +217,7 @@ export default function ITCalendrierPage() {
           <CardContent className="py-3">
             <p className="text-sm text-blue-800">
               <strong>Comment lire ce calendrier :</strong>
-              {' '}Les barres colorées montrent les périodes de semis (orange), croissance (vert) et récolte (violet) pour chaque ITP.
+              {' '}Les barres colorées montrent les périodes de semis (orange), croissance (vert) et recolte (violet) pour chaque ITP.
               Cliquez sur une ligne pour modifier les semaines directement.
             </p>
           </CardContent>

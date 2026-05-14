@@ -31,7 +31,7 @@ export function validateCultureDates(data: {
   const warnings: string[] = []
   const TOLERANCE_DAYS = 28 // ±4 semaines
 
-  // Convertir en Date si nécessaire
+  // Convertir en Date si necessaire
   const dateSemis = data.dateSemis ? new Date(data.dateSemis) : null
   const datePlantation = data.datePlantation ? new Date(data.datePlantation) : null
   const dateRecolte = data.dateRecolte ? new Date(data.dateRecolte) : null
@@ -86,7 +86,7 @@ export function validateCultureDates(data: {
         const diff = Math.abs(differenceInDays(dateRecolte, dateTheorique))
         if (diff > TOLERANCE_DAYS) {
           warnings.push(
-            `Date de récolte éloignée de la période ITP recommandée (±${TOLERANCE_DAYS} jours)`
+            `Date de recolte éloignée de la période ITP recommandée (±${TOLERANCE_DAYS} jours)`
           )
         }
       }

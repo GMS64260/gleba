@@ -65,8 +65,12 @@ export default function DetailArbrePage() {
   const [loading, setLoading] = React.useState(true)
   const [saving, setSaving] = React.useState(false)
   const [suggestions, setSuggestions] = React.useState<{especes: string[], varietes: string[], fournisseurs: string[], portGreffes: string[]}>({especes: [], varietes: [], fournisseurs: [], portGreffes: []})
+  const [especesRef, setEspecesRef] = React.useState<{id: string, type: string}[]>([])
+  const [varietesRef, setVarietesRef] = React.useState<{id: string, especeId: string}[]>([])
+  const [fournisseursRef, setFournisseursRef] = React.useState<string[]>([])
 
   React.useEffect(() => {
+    // Suggestions issues des arbres déjà saisis
     fetch("/api/arbres").then(r => r.json()).then(data => {
       if (Array.isArray(data)) {
         setSuggestions({
@@ -77,7 +81,53 @@ export default function DetailArbrePage() {
         })
       }
     })
+
+    // Référentiel global des especes arbres + varietes + fournisseurs
+    Promise.all([
+      fetch("/api/especes?type=all_arbres&pageSize=500").then(r => r.json()).catch(() => null),
+      fetch("/api/varietes?pageSize=1000").then(r => r.json()).catch(() => null),
+      fetch("/api/comptabilite/fournisseurs?actif=true").then(r => r.json()).catch(() => null),
+    ]).then(([especesRes, varietesRes, fournisseursRes]) => {
+      const especes = especesRes?.data || []
+      setEspecesRef(especes.map((e: any) => ({ id: e.id, type: e.type })))
+      const especesIds = new Set(especes.map((e: any) => e.id))
+      const varietes = (varietesRes?.data || [])
+        .filter((v: any) => especesIds.has(v.especeId))
+        .map((v: any) => ({ id: v.id, especeId: v.especeId }))
+      setVarietesRef(varietes)
+      const fournisseurs = (fournisseursRes?.data || [])
+        .map((f: any) => f.id)
+        .filter(Boolean)
+      setFournisseursRef(fournisseurs)
+    })
   }, [])
+
+  const TYPE_TO_REF: Record<string, string> = { fruitier: "arbre_fruitier", petit_fruit: "petit_fruit" }
+
+  const especeOptions = React.useMemo(() => {
+    const refType = arbre ? TYPE_TO_REF[arbre.type] : null
+    const refEspeces = refType
+      ? especesRef.filter(e => e.type === refType).map(e => e.id)
+      : especesRef.map(e => e.id)
+    return [...new Set([...refEspeces, ...suggestions.especes])]
+      .sort()
+      .map(v => ({ value: v, label: v }))
+  }, [especesRef, suggestions.especes, arbre?.type])
+
+  const varieteOptions = React.useMemo(() => {
+    const refVarietes = arbre?.espece
+      ? varietesRef.filter(v => v.especeId === arbre.espece).map(v => v.id)
+      : varietesRef.map(v => v.id)
+    return [...new Set([...refVarietes, ...suggestions.varietes])]
+      .sort()
+      .map(v => ({ value: v, label: v }))
+  }, [varietesRef, suggestions.varietes, arbre?.espece])
+
+  const fournisseurOptions = React.useMemo(() => {
+    return [...new Set([...fournisseursRef, ...suggestions.fournisseurs])]
+      .sort()
+      .map(v => ({ value: v, label: v }))
+  }, [fournisseursRef, suggestions.fournisseurs])
 
   React.useEffect(() => {
     const fetchArbre = async () => {
@@ -234,7 +284,7 @@ export default function DetailArbrePage() {
                     <Combobox
                       value={arbre.espece || ""}
                       onValueChange={(v) => setArbre({ ...arbre, espece: v })}
-                      options={suggestions.especes.map(v => ({ value: v, label: v }))}
+                      options={especeOptions}
                       placeholder="Ex: Pommier"
                     />
                   </div>
@@ -243,7 +293,7 @@ export default function DetailArbrePage() {
                     <Combobox
                       value={arbre.variete || ""}
                       onValueChange={(v) => setArbre({ ...arbre, variete: v })}
-                      options={suggestions.varietes.map(v => ({ value: v, label: v }))}
+                      options={varieteOptions}
                       placeholder="Ex: Golden"
                     />
                   </div>
@@ -286,7 +336,7 @@ export default function DetailArbrePage() {
                     <Combobox
                       value={arbre.fournisseur || ""}
                       onValueChange={(v) => setArbre({ ...arbre, fournisseur: v })}
-                      options={suggestions.fournisseurs.map(v => ({ value: v, label: v }))}
+                      options={fournisseurOptions}
                       placeholder="Ex: Pépinière du Morvan"
                     />
                   </div>

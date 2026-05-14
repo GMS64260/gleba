@@ -2,6 +2,14 @@
 
 /**
  * Page Semences necessaires
+ *
+ * PROMPT 06 — affichage en 3 onglets selon le mode de propagation :
+ *   - Graines nécessaires (g) — semis direct
+ *   - Plants à produire en pépinière (nb) — plants repiqués
+ *   - Caieux/bulbes à commander (nb) — ail, oignon, échalote
+ *
+ * Statut métier OK / LOW / MISSING ; les lignes IGNORE (besoin = 0) ne sont
+ * pas envoyées par l'API.
  */
 
 import * as React from "react"
@@ -9,7 +17,7 @@ import { Suspense } from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { ColumnDef } from "@tanstack/react-table"
-import { ArrowLeft, Sprout, AlertTriangle, Package } from "lucide-react"
+import { ArrowLeft, Sprout, AlertTriangle, Package, Clock } from "lucide-react"
 
 import { DataTable } from "@/components/tables/DataTable"
 import { Button } from "@/components/ui/button"
@@ -22,6 +30,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 
@@ -31,10 +40,18 @@ interface BesoinSemence {
   varieteId: string | null
   surfaceTotale: number
   nbPlants: number
+  mode: "graine_directe" | "plant_repique" | "bulbe_caieu" | "bouture"
   grainesNecessaires: number
+  besoinCaieux: number
+  margeSecuritePct: number
   stockActuel: number
+  stockUnites: number
   nbGrainesG: number | null
+  doseSemis: number | null
   aCommander: number
+  caieuxACommander: number
+  statut: "OK" | "LOW" | "MISSING" | "IGNORE"
+  stockDateMaj: string | null
 }
 
 interface Stats {
@@ -42,13 +59,46 @@ interface Stats {
   totalPlants: number
   totalGraines: number
   totalACommander: number
+  totalCaieux: number
+  totalCaieuxACommander: number
   especesSansStock: number
+  nbMissing: number
+  nbLow: number
+  nbGraineDirecte: number
+  nbPlantRepique: number
+  nbBulbeCaieu: number
+  stockObsolete: boolean
+  stockObsoleteSeuilJours: number
+  derniereMajStockISO: string | null
 }
 
-const columns: ColumnDef<BesoinSemence>[] = [
+function StatutBadge({ statut }: { statut: BesoinSemence["statut"] }) {
+  switch (statut) {
+    case "OK":
+      return <Badge className="bg-green-600 hover:bg-green-700">OK</Badge>
+    case "LOW":
+      return (
+        <Badge className="bg-amber-500 hover:bg-amber-600 flex items-center gap-1">
+          <AlertTriangle className="h-3 w-3" />
+          Insuffisant
+        </Badge>
+      )
+    case "MISSING":
+      return (
+        <Badge variant="destructive" className="flex items-center gap-1">
+          <AlertTriangle className="h-3 w-3" />
+          Manquant
+        </Badge>
+      )
+    default:
+      return <Badge variant="outline">—</Badge>
+  }
+}
+
+const baseColumns: ColumnDef<BesoinSemence>[] = [
   {
     accessorKey: "especeId",
-    header: "Espece",
+    header: "Espèce",
     cell: ({ row }) => {
       const b = row.original
       return (
@@ -66,25 +116,29 @@ const columns: ColumnDef<BesoinSemence>[] = [
   },
   {
     accessorKey: "varieteId",
-    header: "Variete",
+    header: "Variété",
     cell: ({ getValue }) => getValue() || "-",
   },
   {
     accessorKey: "surfaceTotale",
     header: "Surface",
-    cell: ({ getValue }) => `${(getValue() as number).toFixed(1)} m2`,
+    cell: ({ getValue }) => `${(getValue() as number).toFixed(1)} m²`,
   },
   {
     accessorKey: "nbPlants",
     header: "Nb plants",
     cell: ({ getValue }) => (getValue() as number).toLocaleString(),
   },
+]
+
+const grainesColumns: ColumnDef<BesoinSemence>[] = [
+  ...baseColumns,
   {
-    accessorKey: "nbGrainesG",
-    header: "Graines/g",
+    accessorKey: "doseSemis",
+    header: "Dose (g/m²)",
     cell: ({ getValue }) => {
-      const val = getValue() as number | null
-      return val ? val.toLocaleString() : "-"
+      const v = getValue() as number | null
+      return v ? v.toFixed(2) : "-"
     },
   },
   {
@@ -99,19 +153,78 @@ const columns: ColumnDef<BesoinSemence>[] = [
   },
   {
     accessorKey: "aCommander",
-    header: "A commander",
+    header: "À commander",
     cell: ({ row }) => {
-      const val = row.original.aCommander
-      if (val <= 0) {
-        return <Badge variant="default" className="bg-green-600">OK</Badge>
-      }
-      return (
-        <Badge variant="destructive" className="flex items-center gap-1">
-          <AlertTriangle className="h-3 w-3" />
-          {val.toFixed(1)} g
-        </Badge>
-      )
+      const v = row.original.aCommander
+      return v > 0 ? `${v.toFixed(1)} g` : "—"
     },
+  },
+  {
+    accessorKey: "statut",
+    header: "Statut",
+    cell: ({ row }) => <StatutBadge statut={row.original.statut} />,
+  },
+]
+
+const plantsColumns: ColumnDef<BesoinSemence>[] = [
+  ...baseColumns,
+  {
+    accessorKey: "nbGrainesG",
+    header: "Graines/g",
+    cell: ({ getValue }) => {
+      const v = getValue() as number | null
+      return v ? v.toLocaleString() : "-"
+    },
+  },
+  {
+    accessorKey: "grainesNecessaires",
+    header: "Graines (g)",
+    cell: ({ getValue }) => `${(getValue() as number).toFixed(1)} g`,
+  },
+  {
+    accessorKey: "stockActuel",
+    header: "Stock (g)",
+    cell: ({ getValue }) => `${(getValue() as number).toFixed(1)} g`,
+  },
+  {
+    accessorKey: "aCommander",
+    header: "À commander",
+    cell: ({ row }) => {
+      const v = row.original.aCommander
+      return v > 0 ? `${v.toFixed(1)} g` : "—"
+    },
+  },
+  {
+    accessorKey: "statut",
+    header: "Statut",
+    cell: ({ row }) => <StatutBadge statut={row.original.statut} />,
+  },
+]
+
+const caieuxColumns: ColumnDef<BesoinSemence>[] = [
+  ...baseColumns,
+  {
+    accessorKey: "besoinCaieux",
+    header: "Caieux nécessaires",
+    cell: ({ getValue }) => (getValue() as number).toLocaleString(),
+  },
+  {
+    accessorKey: "stockUnites",
+    header: "Stock (unités)",
+    cell: ({ getValue }) => (getValue() as number).toLocaleString(),
+  },
+  {
+    accessorKey: "caieuxACommander",
+    header: "À commander",
+    cell: ({ row }) => {
+      const v = row.original.caieuxACommander
+      return v > 0 ? `${v.toLocaleString()} unités` : "—"
+    },
+  },
+  {
+    accessorKey: "statut",
+    header: "Statut",
+    cell: ({ row }) => <StatutBadge statut={row.original.statut} />,
   },
 ]
 
@@ -155,16 +268,33 @@ function SemencesContent() {
   }, [fetchData])
 
   const handleExport = () => {
-    const headers = ["Espece", "Variete", "Surface (m2)", "Nb plants", "Graines/g", "Graines nec. (g)", "Stock (g)", "A commander (g)"]
+    const headers = [
+      "Espèce",
+      "Variété",
+      "Mode",
+      "Surface (m²)",
+      "Nb plants",
+      "Graines nec. (g)",
+      "Caieux nec.",
+      "Stock (g)",
+      "Stock (unités)",
+      "À commander (g)",
+      "À commander (caieux)",
+      "Statut",
+    ]
     const rows = data.map(b => [
       b.especeId,
       b.varieteId || "",
+      b.mode,
       b.surfaceTotale.toFixed(1),
       b.nbPlants.toString(),
-      b.nbGrainesG?.toString() || "",
       b.grainesNecessaires.toFixed(1),
+      b.besoinCaieux.toString(),
       b.stockActuel.toFixed(1),
+      b.stockUnites.toString(),
       b.aCommander.toFixed(1),
+      b.caieuxACommander.toString(),
+      b.statut,
     ])
 
     const csv = [headers, ...rows].map(r => r.join(";")).join("\n")
@@ -177,9 +307,14 @@ function SemencesContent() {
     URL.revokeObjectURL(url)
   }
 
+  const graineDirecte = data.filter(b => b.mode === "graine_directe")
+  const plantRepique = data.filter(b => b.mode === "plant_repique")
+  const bulbeCaieu = data.filter(b => b.mode === "bulbe_caieu")
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="border-b bg-white sticky top-0 z-50">
+    <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
+      <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
+      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link href="/?tab=planification">
@@ -190,7 +325,7 @@ function SemencesContent() {
             </Link>
             <div className="flex items-center gap-2">
               <Sprout className="h-6 w-6 text-orange-600" />
-              <h1 className="text-xl font-bold">Semences necessaires</h1>
+              <h1 className="text-xl font-bold">Semences nécessaires</h1>
             </div>
           </div>
 
@@ -198,7 +333,7 @@ function SemencesContent() {
             <Link href="/stocks">
               <Button variant="outline" size="sm">
                 <Package className="h-4 w-4 mr-2" />
-                Gerer stocks
+                Gérer stocks
               </Button>
             </Link>
             <Select
@@ -221,12 +356,33 @@ function SemencesContent() {
       </header>
 
       <main className="container mx-auto px-4 py-6">
+        {/* Alerte stock obsolète */}
+        {stats?.stockObsolete && (
+          <Card className="mb-4 border-amber-300 bg-amber-50">
+            <CardContent className="py-3 flex items-center gap-3">
+              <Clock className="h-5 w-5 text-amber-600 flex-shrink-0" />
+              <div className="text-sm text-amber-800">
+                Inventaire stock semences non mis à jour depuis plus de{" "}
+                <strong>{stats.stockObsoleteSeuilJours} jours</strong>. Les
+                statuts ci-dessous peuvent être inexacts.{" "}
+                <Link
+                  href="/stocks"
+                  className="underline underline-offset-2 hover:text-amber-900"
+                >
+                  Mettre à jour
+                </Link>
+                .
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Stats */}
         {stats && (
           <div className="grid gap-4 md:grid-cols-4 mb-6">
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm text-muted-foreground">Especes</CardTitle>
+                <CardTitle className="text-sm text-muted-foreground">Espèces</CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-2xl font-bold">{stats.nbEspeces}</p>
@@ -234,47 +390,130 @@ function SemencesContent() {
             </Card>
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm text-muted-foreground">Plants total</CardTitle>
+                <CardTitle className="text-sm text-muted-foreground">
+                  Graines nécessaires
+                </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold">{stats.totalPlants.toLocaleString()}</p>
+                <p className="text-2xl font-bold">{stats.totalGraines.toFixed(0)} g</p>
+                <p className="text-xs text-muted-foreground">
+                  {stats.nbGraineDirecte + stats.nbPlantRepique} besoins
+                </p>
               </CardContent>
             </Card>
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm text-muted-foreground">Graines necessaires</CardTitle>
+                <CardTitle className="text-sm text-muted-foreground">
+                  Caieux nécessaires
+                </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold">{stats.totalGraines.toFixed(0)} g</p>
+                <p className="text-2xl font-bold">{stats.totalCaieux.toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground">{stats.nbBulbeCaieu} espèce(s)</p>
               </CardContent>
             </Card>
-            <Card className={stats.especesSansStock > 0 ? "border-red-200 bg-red-50" : ""}>
+            <Card
+              className={stats.nbMissing + stats.nbLow > 0 ? "border-red-200 bg-red-50" : ""}
+            >
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm text-muted-foreground">A commander</CardTitle>
+                <CardTitle className="text-sm text-muted-foreground">À commander</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold">{stats.totalACommander.toFixed(0)} g</p>
-                {stats.especesSansStock > 0 && (
-                  <p className="text-sm text-red-600">{stats.especesSansStock} espece(s) sans stock</p>
+                <p className="text-2xl font-bold">
+                  {stats.totalACommander.toFixed(0)} g
+                  {stats.totalCaieuxACommander > 0 && (
+                    <span className="text-base font-normal">
+                      {" "}
+                      + {stats.totalCaieuxACommander} caieux
+                    </span>
+                  )}
+                </p>
+                {stats.nbMissing + stats.nbLow > 0 && (
+                  <p className="text-sm text-red-600">
+                    {stats.nbMissing} manquant · {stats.nbLow} insuffisant
+                  </p>
                 )}
               </CardContent>
             </Card>
           </div>
         )}
 
-        <DataTable
-          columns={columns}
-          data={data}
-          isLoading={isLoading}
-          pageCount={1}
-          pageIndex={0}
-          pageSize={data.length || 50}
-          onPaginationChange={() => {}}
-          onRefresh={fetchData}
-          onExport={handleExport}
-          searchPlaceholder="Rechercher..."
-          emptyMessage="Aucun besoin en semences calcule."
-        />
+        <Tabs defaultValue="graines">
+          <TabsList>
+            <TabsTrigger value="graines">
+              Graines nécessaires
+              {stats && (
+                <span className="ml-2 text-xs text-muted-foreground">
+                  ({stats.nbGraineDirecte})
+                </span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="plants">
+              Plants à produire
+              {stats && (
+                <span className="ml-2 text-xs text-muted-foreground">
+                  ({stats.nbPlantRepique})
+                </span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="caieux">
+              Caieux / bulbes
+              {stats && (
+                <span className="ml-2 text-xs text-muted-foreground">
+                  ({stats.nbBulbeCaieu})
+                </span>
+              )}
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="graines">
+            <DataTable
+              columns={grainesColumns}
+              data={graineDirecte}
+              isLoading={isLoading}
+              pageCount={1}
+              pageIndex={0}
+              pageSize={graineDirecte.length || 50}
+              onPaginationChange={() => {}}
+              onRefresh={fetchData}
+              onExport={handleExport}
+              searchPlaceholder="Rechercher..."
+              emptyMessage="Aucune culture en semis direct planifiée."
+            />
+          </TabsContent>
+
+          <TabsContent value="plants">
+            <DataTable
+              columns={plantsColumns}
+              data={plantRepique}
+              isLoading={isLoading}
+              pageCount={1}
+              pageIndex={0}
+              pageSize={plantRepique.length || 50}
+              onPaginationChange={() => {}}
+              onRefresh={fetchData}
+              onExport={handleExport}
+              searchPlaceholder="Rechercher..."
+              emptyMessage="Aucune culture à repiquer planifiée."
+            />
+          </TabsContent>
+
+          <TabsContent value="caieux">
+            <DataTable
+              columns={caieuxColumns}
+              data={bulbeCaieu}
+              isLoading={isLoading}
+              pageCount={1}
+              pageIndex={0}
+              pageSize={bulbeCaieu.length || 50}
+              onPaginationChange={() => {}}
+              onRefresh={fetchData}
+              onExport={handleExport}
+              searchPlaceholder="Rechercher..."
+              emptyMessage="Aucune culture en caieux/bulbes planifiée."
+            />
+          </TabsContent>
+        </Tabs>
       </main>
     </div>
   )

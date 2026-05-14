@@ -27,9 +27,11 @@ import {
   Euro,
   FileText,
   Plus,
+  Sprout,
 } from "lucide-react"
 import { Combobox } from "@/components/ui/combobox"
 import { useToast } from "@/hooks/use-toast"
+import { AssistantPlantationDialog } from "./AssistantPlantationDialog"
 
 // ============================================================
 // Types
@@ -104,7 +106,7 @@ export function ProductionsTab() {
       <TabsList>
         <TabsTrigger value="recoltes" className="flex items-center gap-1.5">
           <Apple className="h-4 w-4" />
-          Recoltes Fruits
+          Récoltes Fruits
         </TabsTrigger>
         <TabsTrigger value="bois" className="flex items-center gap-1.5">
           <Axe className="h-4 w-4" />
@@ -244,7 +246,7 @@ function RecoltesFruitsSubTab() {
           datePeremption: "",
           notes: "",
         })
-        toast({ title: "Recolte enregistree" })
+        toast({ title: "Récolte enregistrée" })
         fetchData()
       }
     } catch {
@@ -253,12 +255,12 @@ function RecoltesFruitsSubTab() {
   }
 
   const handleDelete = async (id: number) => {
-    if (!confirm("Supprimer cette recolte ?")) return
+    if (!confirm("Supprimer cette récolte ?")) return
     try {
       const res = await fetch(`/api/arbres/recoltes/${id}`, { method: "DELETE" })
       if (res.ok) {
         setRecoltes(recoltes.filter((r) => r.id !== id))
-        toast({ title: "Recolte supprimee" })
+        toast({ title: "Récolte supprimée" })
       }
     } catch {
       toast({ title: "Erreur", variant: "destructive" })
@@ -296,7 +298,7 @@ function RecoltesFruitsSubTab() {
       })
       if (res.ok) {
         setShowVenteDialog(false)
-        toast({ title: "Vente enregistree" })
+        toast({ title: "Vente enregistrée" })
         fetchData()
       }
     } catch {
@@ -305,7 +307,7 @@ function RecoltesFruitsSubTab() {
   }
 
   const handlePerte = async (id: number) => {
-    if (!confirm("Marquer cette recolte comme perte ?")) return
+    if (!confirm("Marquer cette récolte comme perte ?")) return
     try {
       const res = await fetch(`/api/arbres/recoltes/${id}`, {
         method: "PATCH",
@@ -313,7 +315,7 @@ function RecoltesFruitsSubTab() {
         body: JSON.stringify({ statut: "perte" }),
       })
       if (res.ok) {
-        toast({ title: "Perte enregistree" })
+        toast({ title: "Perte enregistrée" })
         fetchData()
       }
     } catch {
@@ -366,7 +368,7 @@ function RecoltesFruitsSubTab() {
           <CardHeader className="pb-1 pt-3 px-4">
             <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
               <Apple className="h-4 w-4 text-orange-600" />
-              Total recoltes
+              Total récoltes
             </CardTitle>
           </CardHeader>
           <CardContent className="pb-3 px-4">
@@ -415,7 +417,7 @@ function RecoltesFruitsSubTab() {
         </Tabs>
         <Button onClick={() => setShowDialog(true)} size="sm" className="bg-orange-600 hover:bg-orange-700 ml-2">
           <Plus className="h-4 w-4 mr-1" />
-          Nouvelle recolte
+          Nouvelle récolte
         </Button>
       </div>
 
@@ -426,7 +428,7 @@ function RecoltesFruitsSubTab() {
             {loading ? (
               <p className="p-8 text-muted-foreground">Chargement...</p>
             ) : stockRecoltes.length === 0 ? (
-              <p className="p-8 text-muted-foreground text-center">Aucune recolte en stock</p>
+              <p className="p-8 text-muted-foreground text-center">Aucune récolte en stock</p>
             ) : (
               <Table>
                 <TableHeader>
@@ -488,7 +490,7 @@ function RecoltesFruitsSubTab() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Date recolte</TableHead>
+                    <TableHead>Date récolte</TableHead>
                     <TableHead>Arbre</TableHead>
                     <TableHead className="text-right">Quantite</TableHead>
                     <TableHead className="text-right">Prix/kg</TableHead>
@@ -521,7 +523,7 @@ function RecoltesFruitsSubTab() {
         <Card>
           <CardContent className="p-0">
             {perteRecoltes.length === 0 ? (
-              <p className="p-8 text-muted-foreground text-center">Aucune perte enregistree</p>
+              <p className="p-8 text-muted-foreground text-center">Aucune perte enregistrée</p>
             ) : (
               <Table>
                 <TableHeader>
@@ -560,7 +562,7 @@ function RecoltesFruitsSubTab() {
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Enregistrer une recolte</DialogTitle>
+            <DialogTitle>Enregistrer une récolte</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
@@ -570,7 +572,7 @@ function RecoltesFruitsSubTab() {
                 onValueChange={(v) => setNewRecolte({ ...newRecolte, arbreId: v })}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Selectionner un arbre" />
+                  <SelectValue placeholder="Sélectionner un arbre" />
                 </SelectTrigger>
                 <SelectContent>
                   {arbresFruitiers.map((a) => (
@@ -610,7 +612,7 @@ function RecoltesFruitsSubTab() {
                   onValueChange={(v) => setNewRecolte({ ...newRecolte, qualite: v })}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Selectionner" />
+                    <SelectValue placeholder="Sélectionner" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="excellent">Excellent</SelectItem>
@@ -657,7 +659,7 @@ function RecoltesFruitsSubTab() {
       <Dialog open={showVenteDialog} onOpenChange={setShowVenteDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Vendre la recolte</DialogTitle>
+            <DialogTitle>Vendre la récolte</DialogTitle>
           </DialogHeader>
           {selectedRecolte && (
             <div className="space-y-4">
@@ -702,7 +704,7 @@ function RecoltesFruitsSubTab() {
                     setVenteData({ ...venteData, creerFacture: checked === true })
                   }
                 />
-                <Label htmlFor="creerFactureRecolte">Creer une facture (TVA 5.5%)</Label>
+                <Label htmlFor="creerFactureRecolte">Créer une facture (TVA 5.5%)</Label>
               </div>
               <div className="flex justify-end gap-2">
                 <Button variant="outline" onClick={() => setShowVenteDialog(false)}>
@@ -755,6 +757,22 @@ function ProductionBoisSubTab() {
   const [utiliseData, setUtiliseData] = React.useState({
     destination: "chauffage",
   })
+
+  // Workflow "Replanter après coupe"
+  const [showReplanter, setShowReplanter] = React.useState(false)
+  const [replanterPrefill, setReplanterPrefill] = React.useState<Record<string, string> | null>(null)
+
+  const openReplanter = (p: ProductionBois) => {
+    const arbreNom = p.arbre?.nom || ""
+    setReplanterPrefill({
+      nom: arbreNom ? `Replantation suite à coupe ${arbreNom}` : `Replantation suite à coupe du ${new Date(p.date).toLocaleDateString("fr-FR")}`,
+      nature: "replantation_apres_coupe",
+      cause: "coupe_programmee",
+      essencePrecedente: arbreNom,
+      productionBoisId: String(p.id),
+    })
+    setShowReplanter(true)
+  }
 
   const fetchData = React.useCallback(async () => {
     setLoading(true)
@@ -818,7 +836,7 @@ function ProductionBoisSubTab() {
           poidsKg: "",
           notes: "",
         })
-        toast({ title: "Production enregistree en stock" })
+        toast({ title: "Production enregistrée en stock" })
         fetchData()
       }
     } catch {
@@ -846,7 +864,7 @@ function ProductionBoisSubTab() {
         setShowVenteDialog(false)
         setSelectedProduction(null)
         setVenteData({ clientId: "", clientNom: "", prixVente: "", creerFacture: false })
-        toast({ title: "Vente enregistree" })
+        toast({ title: "Vente enregistrée" })
         fetchData()
       }
     } catch {
@@ -883,7 +901,7 @@ function ProductionBoisSubTab() {
       const res = await fetch(`/api/arbres/bois/${id}`, { method: "DELETE" })
       if (res.ok) {
         setProductions(productions.filter((p) => p.id !== id))
-        toast({ title: "Production supprimee" })
+        toast({ title: "Production supprimée" })
       }
     } catch {
       toast({ title: "Erreur", variant: "destructive" })
@@ -991,6 +1009,18 @@ function ProductionBoisSubTab() {
                       <TableCell className="text-right">{p.poidsKg ? `${p.poidsKg} kg` : "-"}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
+                          {p.type === "abattage" && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openReplanter(p)}
+                              className="text-green-700 border-green-300 hover:bg-green-50"
+                              title="Créer une campagne de replantation à partir de cette coupe"
+                            >
+                              <Sprout className="h-4 w-4 mr-1" />
+                              Replanter
+                            </Button>
+                          )}
                           <Button variant="outline" size="sm" onClick={() => openVenteDialog(p)}>
                             <Euro className="h-4 w-4 mr-1" />
                             Vendre
@@ -1017,7 +1047,7 @@ function ProductionBoisSubTab() {
         <Card>
           <CardContent className="p-0">
             {venduProductions.length === 0 ? (
-              <p className="p-8 text-muted-foreground text-center">Aucune vente enregistree</p>
+              <p className="p-8 text-muted-foreground text-center">Aucune vente enregistrée</p>
             ) : (
               <Table>
                 <TableHeader>
@@ -1063,7 +1093,7 @@ function ProductionBoisSubTab() {
         <Card>
           <CardContent className="p-0">
             {utiliseProductions.length === 0 ? (
-              <p className="p-8 text-muted-foreground text-center">Aucune utilisation enregistree</p>
+              <p className="p-8 text-muted-foreground text-center">Aucune utilisation enregistrée</p>
             ) : (
               <Table>
                 <TableHeader>
@@ -1207,7 +1237,7 @@ function ProductionBoisSubTab() {
                   }}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Selectionner un client" />
+                    <SelectValue placeholder="Sélectionner un client" />
                   </SelectTrigger>
                   <SelectContent>
                     {clients.map((c) => (
@@ -1244,7 +1274,7 @@ function ProductionBoisSubTab() {
                   onCheckedChange={(checked) => setVenteData({ ...venteData, creerFacture: checked === true })}
                 />
                 <label htmlFor="creerFactureBois" className="text-sm">
-                  Creer une facture automatiquement
+                  Créer une facture automatiquement
                 </label>
               </div>
               <Button
@@ -1297,6 +1327,19 @@ function ProductionBoisSubTab() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Wizard "Replanter après coupe" */}
+      <AssistantPlantationDialog
+        open={showReplanter}
+        onOpenChange={(open) => {
+          setShowReplanter(open)
+          if (!open) setReplanterPrefill(null)
+        }}
+        prefill={replanterPrefill || undefined}
+        onSuccess={() => {
+          toast({ title: "Campagne de replantation créée" })
+        }}
+      />
     </div>
   )
 }

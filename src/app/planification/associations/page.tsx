@@ -79,7 +79,7 @@ const columns: ColumnDef<AssociationCulture>[] = [
         <div className="flex flex-wrap gap-1">
           {voisines.map((p) => (
             <Link key={p} href={`/planches/${encodeURIComponent(p)}`}>
-              <Badge variant="secondary" className="text-xs cursor-pointer hover:bg-gray-200">
+              <Badge variant="secondary" className="text-xs cursor-pointer hover:bg-slate-200">
                 {p}
               </Badge>
             </Link>
@@ -175,8 +175,9 @@ function AssociationsContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="border-b bg-white sticky top-0 z-50">
+    <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
+      <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
+      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link href="/?tab=planification">
@@ -219,7 +220,7 @@ function AssociationsContent() {
         <div className="mb-4 p-4 bg-pink-50 rounded-lg border border-pink-200">
           <p className="text-sm text-pink-800">
             Cette page affiche les cultures prevues et leurs voisines.
-            Les planches voisines sont definies dans le champ "Planches influencees" de chaque planche (liste CSV).
+            Les planches voisines sont definies dans le champ "Planches influencées" de chaque planche (liste CSV).
             Cela permet de verifier les associations benefiques ou nefastes entre cultures.
           </p>
         </div>
@@ -235,7 +236,7 @@ function AssociationsContent() {
           onRefresh={fetchData}
           onExport={handleExport}
           searchPlaceholder="Rechercher..."
-          emptyMessage="Aucune association trouvee. Definissez les planches influencees dans les parametres des planches."
+          emptyMessage="Aucune association trouvée. Définissez les planches influencées dans les paramètres des planches."
         />
       </main>
     </div>

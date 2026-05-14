@@ -8,13 +8,24 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
   if (error) return error
 
   try {
+    // Filtre par parcelle (optionnel)
+    const parcelle = request.nextUrl.searchParams.get('parcelle')
+    const where: Record<string, unknown> = { userId: session!.user.id }
+    if (parcelle && parcelle !== 'all') {
+      if (parcelle === 'none') {
+        where.parcelleGeoId = null
+      } else {
+        where.parcelleGeoId = parcelle
+      }
+    }
+
     const objets = await prisma.objetJardin.findMany({
-      where: { userId: session!.user.id },
+      where,
       orderBy: { id: 'asc' }
     })
     return NextResponse.json(objets)
@@ -45,7 +56,8 @@ export async function POST(request: NextRequest) {
         posY: body.posY,
         rotation2D: body.rotation2D || 0,
         couleur: body.couleur || null,
-        notes: body.notes || null
+        notes: body.notes || null,
+        parcelleGeoId: body.parcelleGeoId || null,
       }
     })
 

@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
+import { getKpiMaraichage } from "@/lib/kpi"
 
 export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
@@ -14,46 +15,29 @@ export async function GET(request: NextRequest) {
   try {
     const userId = session!.user.id
 
-    // Récupérer l'année depuis les paramètres de requête
+    // Récupérer l'annee depuis les parametres de requête
     const searchParams = request.nextUrl.searchParams
     const yearParam = searchParams.get("year")
     const currentYear = yearParam ? parseInt(yearParam) : new Date().getFullYear()
 
     const startOfYear = new Date(currentYear, 0, 1)
     const endOfYear = new Date(currentYear, 11, 31)
+    const asOf = new Date()
 
-    // Statistiques générales
-    const [
-      culturesCount,
-      culturesActives,
-      planchesCount,
-      especesCount,
-      arbresCount,
-    ] = await Promise.all([
-      prisma.culture.count({ where: { userId } }),
-      prisma.culture.count({ where: { userId, annee: currentYear, terminee: null } }),
-      prisma.planche.count({ where: { userId } }),
+    // Source unique de vérité pour les KPI agrégés (surface cultivée vs
+    // planifiée, récoltes YTD, comparaison N-1 YTD à date égale).
+    const kpiMaraichage = await getKpiMaraichage(userId, currentYear, asOf)
+
+    // Compteurs purement référentiels (catalogue, pas année-dépendants)
+    const [especesCount, arbresCount, recoltesCountYear] = await Promise.all([
       prisma.espece.count(),
       prisma.arbre.count({ where: { userId } }),
+      prisma.recolte.count({
+        where: { userId, date: { gte: startOfYear, lte: asOf } },
+      }),
     ])
 
-    // Surface totale des planches
-    const planchesSurface = await prisma.planche.aggregate({
-      where: { userId },
-      _sum: { surface: true },
-    })
-
-    // Récoltes totales de l'année
-    const recoltesYear = await prisma.recolte.aggregate({
-      where: {
-        userId,
-        date: { gte: startOfYear, lte: endOfYear },
-      },
-      _sum: { quantite: true },
-      _count: { id: true },
-    })
-
-    // Récoltes par mois (année en cours)
+    // Récoltes par mois (annee en cours)
     const recoltesParMois = await prisma.recolte.groupBy({
       by: ["date"],
       where: {
@@ -93,7 +77,7 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    // Agréger par mois (récoltes réelles)
+    // Agréger par mois (recoltes réelles)
     const monthlyHarvest: { mois: string; quantite: number; previsionnel: number }[] = []
     const moisNoms = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Août", "Sep", "Oct", "Nov", "Déc"]
     const monthData: number[] = new Array(12).fill(0)
@@ -104,7 +88,7 @@ export async function GET(request: NextRequest) {
       monthData[month] += r._sum.quantite || 0
     })
 
-    // Ajouter les récoltes prévisionnelles
+    // Ajouter les recoltes prévisionnelles
     recoltesPrevisionnelles.forEach((c) => {
       if (!c.dateRecolte) return
       const month = new Date(c.dateRecolte).getMonth()
@@ -131,7 +115,7 @@ export async function GET(request: NextRequest) {
       })
     })
 
-    // Récoltes par espèce (top 10)
+    // Récoltes par espece (top 10)
     const recoltesParEspece = await prisma.recolte.groupBy({
       by: ["especeId"],
       where: {
@@ -143,14 +127,14 @@ export async function GET(request: NextRequest) {
       take: 10,
     })
 
-    // Cultures par famille (année en cours)
+    // Cultures par famille (annee en cours)
     const culturesByFamily = await prisma.culture.groupBy({
       by: ["especeId"],
       where: { userId, annee: currentYear },
       _count: { _all: true },
     })
 
-    // Récupérer toutes les espèces utilisées (pour récoltes ET cultures) en UNE SEULE requête
+    // Récupérer toutes les especes utilisées (pour recoltes ET cultures) en UNE SEULE requête
     const allEspeceIds = [
       ...new Set([
         ...recoltesParEspece.map((r) => r.especeId),
@@ -201,17 +185,9 @@ export async function GET(request: NextRequest) {
       }))
       .sort((a, b) => b.count - a.count)
 
-    // Comparaison année précédente
-    const lastYearStart = new Date(currentYear - 1, 0, 1)
-    const lastYearEnd = new Date(currentYear - 1, 11, 31)
-
-    const recoltesLastYear = await prisma.recolte.aggregate({
-      where: {
-        userId,
-        date: { gte: lastYearStart, lte: lastYearEnd },
-      },
-      _sum: { quantite: true },
-    })
+    // Comparaison année précédente : YTD vs YTD N-1 (cf. getKpiMaraichage).
+    // L'ancien calcul utilisait l'année N-1 COMPLÈTE, ce qui faussait toute
+    // variation tant que l'année N était en cours.
 
     // Prochains semis/plantations (ITP basés)
     const upcomingCultures = await prisma.culture.findMany({
@@ -236,7 +212,7 @@ export async function GET(request: NextRequest) {
       take: 5,
     })
 
-    // État des cultures (année en cours)
+    // État des cultures (annee en cours)
     const culturesStatus = await prisma.culture.groupBy({
       by: ["terminee"],
       where: { userId, annee: currentYear },
@@ -309,17 +285,27 @@ export async function GET(request: NextRequest) {
       .slice(0, 10)
 
     return NextResponse.json({
-      // Stats générales
+      // Stats générales (alimentées par getKpiMaraichage — source unique).
       stats: {
-        culturesTotal: culturesCount,
-        culturesActives,
-        planches: planchesCount,
-        surfaceTotale: Math.round((planchesSurface._sum.surface || 0) * 100) / 100,
+        culturesTotal: kpiMaraichage.culturesPlanifiees,
+        culturesActives: kpiMaraichage.culturesActives,
+        planches: kpiMaraichage.planchesCount,
+        // Surface "Cultivée" : seules les planches portant une culture active.
+        // Différente de la surface totale des planches enregistrées.
+        surfaceCultivee: kpiMaraichage.surfaceCultiveeM2,
+        surfacePlanifiee: kpiMaraichage.surfacePlanifieeM2,
+        surfacePlanches: kpiMaraichage.planchesSurfaceM2,
+        // Alias de compatibilité (anciens écrans) — = surface cultivée.
+        surfaceTotale: kpiMaraichage.surfaceCultiveeM2,
         especes: especesCount,
         arbres: arbresCount,
-        recoltesAnnee: Math.round((recoltesYear._sum.quantite || 0) * 100) / 100,
-        recoltesCount: recoltesYear._count?.id || 0,
-        recoltesAnneePrecedente: Math.round((recoltesLastYear._sum.quantite || 0) * 100) / 100,
+        recoltesAnnee: kpiMaraichage.recoltesKgYtd,
+        recoltesCount: recoltesCountYear,
+        // YTD vs YTD année précédente à date égale (et non plus année N-1
+        // complète, qui faussait toutes les variations mid-year).
+        recoltesAnneePrecedente: kpiMaraichage.recoltesKgN1Ytd,
+        recoltesAnneePrecedenteTotal: kpiMaraichage.recoltesKgN1Total,
+        recoltesComparisonMode: "ytd-vs-ytd-n-1",
       },
 
       // Graphiques

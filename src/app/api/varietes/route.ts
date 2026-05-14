@@ -1,7 +1,7 @@
 /**
  * API Routes pour les Variétés
- * GET /api/varietes - Liste des variétés (référentiel global)
- * POST /api/varietes - Créer une variété
+ * GET /api/varietes - Liste des varietes (referentiel global)
+ * POST /api/varietes - Créer une variete
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -9,6 +9,7 @@ import prisma from '@/lib/prisma'
 import { createVarieteSchema } from '@/lib/validations'
 import { Prisma } from '@prisma/client'
 import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
+import { cleanReferentielName, normalizeVarieteName } from '@/lib/normalize'
 
 // GET /api/varietes - Référentiel global (lecture)
 export async function GET(request: NextRequest) {
@@ -91,7 +92,7 @@ export async function GET(request: NextRequest) {
       prisma.variete.count({ where }),
     ])
 
-    // Enrichir les variétés avec le stock per-user
+    // Enrichir les varietes avec le stock per-user
     const enriched = varietes.map(v => {
       const userStock = v.userStocks[0]
       const { userStocks: _us, ...rest } = v
@@ -119,7 +120,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST /api/varietes (admin only - données de référence globales)
+// POST /api/varietes (admin only - données de reference globales)
 export async function POST(request: NextRequest) {
   const { error } = await requireAdminApi()
   if (error) return error
@@ -138,19 +139,31 @@ export async function POST(request: NextRequest) {
 
     const data = validationResult.data
 
-    // Vérifier si la variété existe déjà
-    const existing = await prisma.variete.findUnique({
-      where: { id: data.id },
-    })
+    // Normalisation du nom (display) : trim, collapse whitespace, etc.
+    const cleanedId = cleanReferentielName(data.id)
+    if (cleanedId !== data.id) {
+      data.id = cleanedId
+    }
 
-    if (existing) {
+    // Clé normalisée pour la déduplication (même formule que la migration SQL
+    // et l'index unique composite (espece, nom_normalise)).
+    const nomNormalise = normalizeVarieteName(data.id)
+
+    const conflit = await prisma.variete.findFirst({
+      where: { especeId: data.especeId, nomNormalise },
+      select: { id: true },
+    })
+    if (conflit) {
       return NextResponse.json(
-        { error: `La variété "${data.id}" existe déjà` },
+        {
+          error: `Une variété similaire existe déjà pour cette espèce : "${conflit.id}". Si c'est la même, utilisez-la ; sinon, choisissez un nom plus distinctif.`,
+          canonique: conflit.id,
+        },
         { status: 409 }
       )
     }
 
-    // Vérifier que l'espèce existe
+    // Vérifier que l'espece existe
     const espece = await prisma.espece.findUnique({
       where: { id: data.especeId },
     })
@@ -176,7 +189,7 @@ export async function POST(request: NextRequest) {
 
     // Création
     const variete = await prisma.variete.create({
-      data,
+      data: { ...data, nomNormalise },
       include: {
         espece: true,
         fournisseur: true,

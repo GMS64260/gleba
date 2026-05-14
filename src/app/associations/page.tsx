@@ -2,7 +2,7 @@
 
 /**
  * Page Associations de plantes (compagnonnage)
- * Liste des associations avec leurs détails
+ * Liste des associations avec leurs details
  */
 
 import * as React from "react"
@@ -168,7 +168,7 @@ export default function AssociationsPage() {
       })
       if (!response.ok) throw new Error("Erreur lors de la suppression")
       toast({
-        title: "Association supprimee",
+        title: "Association supprimée",
         description: `L'association "${row.nom}" a ete supprimee`,
       })
       fetchData()
@@ -183,7 +183,7 @@ export default function AssociationsPage() {
 
   // Export CSV
   const handleExport = () => {
-    const headers = ["Nom", "Description", "Especes", "Familles", "Nb Requises", "Nb Total"]
+    const headers = ["Nom", "Description", "Espèces", "Familles", "Nb Requises", "Nb Total"]
     const rows = data.map((a) => [
       a.nom,
       a.description || "",
@@ -204,9 +204,10 @@ export default function AssociationsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
+      <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
       {/* Header */}
-      <header className="border-b bg-white sticky top-0 z-50">
+      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center gap-4">
           <Link href="/">
             <Button variant="ghost" size="sm">
@@ -230,9 +231,9 @@ export default function AssociationsPage() {
             <div className="text-sm text-pink-800">
               <p className="font-medium">Compagnonnage</p>
               <p className="mt-1 text-pink-700">
-                Les associations de plantes (compagnonnage) definissent quelles especes ou familles
-                se beneficient mutuellement lorsqu'elles sont cultivees a proximite.
-                Une association <strong>requise</strong> (★) indique une dependance forte.
+                Les associations de plantes (compagnonnage) définissent quelles espèces ou familles
+                se bénéficient mutuellement lorsqu'elles sont cultivées à proximité.
+                Une association <strong>requise</strong> (★) indique une dépendance forte.
               </p>
             </div>
           </div>
@@ -251,7 +252,7 @@ export default function AssociationsPage() {
           onRowEdit={handleEdit}
           onRowDelete={handleDelete}
           searchPlaceholder="Rechercher une association..."
-          emptyMessage="Aucune association trouvee. Cliquez sur + pour en creer une."
+          emptyMessage="Aucune association trouvée. Cliquez sur + pour en créer une."
         />
       </main>
     </div>

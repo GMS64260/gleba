@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
+import { createVenteFromProductionBois, deleteAutoEntry } from "@/lib/auto-compta"
 
 interface Params {
   params: Promise<{ id: string }>
@@ -204,7 +205,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           data: {
             userId,
             numero,
-            type: 'vente_bois',
+            type: 'facture',
             clientId: body.clientId || null,
             clientNom,
             clientAdresse,
@@ -261,6 +262,27 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       })
     })
 
+    // Auto-comptabilite : gerer les ecritures automatiques
+    try {
+      if (body.statut === 'vendu' && body.prixVente) {
+        await createVenteFromProductionBois(userId, {
+          id: productionId,
+          type: existing.type,
+          volumeM3: existing.volumeM3,
+          poidsKg: existing.poidsKg,
+          prixVente: body.prixVente,
+          clientNom: body.clientNom ?? existing.clientNom,
+          clientId: body.clientId ?? existing.clientId,
+          dateVente: body.dateVente ?? existing.dateVente,
+          arbre: existing.arbre ? { nom: existing.arbre.nom, espece: existing.arbre.espece } : null,
+        })
+      } else if (existing.statut === 'vendu' && body.statut && body.statut !== 'vendu') {
+        await deleteAutoEntry('production_bois', productionId, 'vente')
+      }
+    } catch (autoComptaError) {
+      console.error('Auto-compta error (production_bois):', autoComptaError)
+    }
+
     return NextResponse.json(production)
   } catch (err) {
     console.error("PATCH /api/arbres/bois/[id] error:", err)
@@ -293,6 +315,15 @@ export async function DELETE(request: NextRequest, { params }: Params) {
 
     if (!existing) {
       return NextResponse.json({ error: "Production non trouvée" }, { status: 404 })
+    }
+
+    // Supprimer les ecritures auto-compta liees
+    if (existing.statut === 'vendu') {
+      try {
+        await deleteAutoEntry('production_bois', productionId, 'vente')
+      } catch (autoComptaError) {
+        console.error('Auto-compta cleanup error (production_bois):', autoComptaError)
+      }
     }
 
     await prisma.productionBois.delete({
