@@ -111,6 +111,14 @@ const modulesCompta = [
     bgColor: "bg-slate-50",
   },
   {
+    title: "Export FEC",
+    description: "Fichier des Écritures Comptables",
+    href: "/comptabilite/export",
+    icon: FileText,
+    color: "text-indigo-600",
+    bgColor: "bg-indigo-50",
+  },
+  {
     title: "Couts de production",
     description: "Rentabilite par culture",
     href: "/comptabilite/couts-production",
