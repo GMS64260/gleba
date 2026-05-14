@@ -41,6 +41,14 @@ export function isTriploide(variete: { nomNormalise?: string | null; ploidie?: s
 /** Distance max recommandée pour pollinisation efficace (mètres). */
 export const DISTANCE_MAX_POLLINISATION_M = 30
 
+/**
+ * DEV3 #8 — Audit Marc 2026-05-14.
+ * Seuil d'alerte distance arbres pollinisateurs : au-delà, on signale
+ * que l'efficacité va chuter même si les variétés sont compatibles.
+ * Source : INRAE — abeilles butinent efficacement sur ~50 m de rayon.
+ */
+export const DISTANCE_ALERTE_POLLINISATION_M = 50
+
 /** Compatibilité de pollinisation entre deux variétés via leurs groupes. */
 export function groupesCompatibles(g1: string | null | undefined, g2: string | null | undefined): boolean {
   if (!g1 || !g2) return true // inconnu → on ne bloque pas
@@ -66,14 +74,27 @@ export function groupesCompatibles(g1: string | null | undefined, g2: string | n
 export function analyserPollinisationTriploide(
   arbreTriploide: { groupePollinisation?: string | null },
   arbresVoisins: Array<{ ploidie?: string | null; groupePollinisation?: string | null; nom?: string | null }>
-): { ok: boolean; raison: string; pollinisateursOK: number; manquant: number } {
+): {
+  ok: boolean
+  raison: string
+  pollinisateursOK: number
+  manquant: number
+  /** DEV3 #8 — statut gradué demandé par l'audit. */
+  statut: "suffisant" | "insuffisant" | "aucun"
+} {
   const compatibles = arbresVoisins.filter((v) => {
     const isDiploide = !v.ploidie || v.ploidie === "Diploïde"
     return isDiploide && groupesCompatibles(arbreTriploide.groupePollinisation, v.groupePollinisation)
   })
   const nb = compatibles.length
   if (nb >= 2) {
-    return { ok: true, raison: `${nb} pollinisateurs diploïdes compatibles à proximité`, pollinisateursOK: nb, manquant: 0 }
+    return {
+      ok: true,
+      raison: `${nb} pollinisateurs diploïdes compatibles à proximité`,
+      pollinisateursOK: nb,
+      manquant: 0,
+      statut: "suffisant",
+    }
   }
   return {
     ok: false,
@@ -82,6 +103,98 @@ export function analyserPollinisationTriploide(
       : `1 pollinisateur diploïde — il en faut 2 pour une variété triploïde`,
     pollinisateursOK: nb,
     manquant: 2 - nb,
+    statut: nb === 0 ? "aucun" : "insuffisant",
+  }
+}
+
+/**
+ * DEV3 #8 — Audit Marc 2026-05-14.
+ *
+ * Analyse complète de la pollinisation pour un arbre cible : tient compte
+ * de la ploïdie, de la compatibilité de groupe et de la distance GPS aux
+ * arbres pollinisateurs.
+ *
+ * Règle métier :
+ *   - Diploïde   → 1 pollinisateur diploïde compatible suffit
+ *   - Triploïde  → 2 pollinisateurs diploïdes compatibles requis
+ *   - Bonus distance : si tous les pollinisateurs trouvés sont > 50 m,
+ *     le statut est rétrogradé à "insuffisant" (efficacité dégradée)
+ */
+export interface ArbreGps {
+  id: number | string
+  nom?: string | null
+  ploidie?: string | null
+  groupePollinisation?: string | null
+  /** Coordonnées GPS au format Arbre.gpsLat / Arbre.gpsLng. */
+  gpsLat?: number | null
+  gpsLng?: number | null
+}
+
+export interface AnalysePollinisationResult {
+  statut: "suffisant" | "insuffisant" | "aucun"
+  estTriploide: boolean
+  pollinisateursCompatibles: Array<ArbreGps & { distanceM: number | null }>
+  pollinisateursOK: number
+  minRequis: number
+  alerteDistance: boolean
+  raison: string
+}
+
+export function analyserPollinisationArbre(
+  cible: ArbreGps,
+  voisins: ArbreGps[],
+  options?: { seuilDistanceM?: number }
+): AnalysePollinisationResult {
+  const seuil = options?.seuilDistanceM ?? DISTANCE_ALERTE_POLLINISATION_M
+  const estTriploide = cible.ploidie === "Triploïde"
+  const minRequis = estTriploide ? 2 : 1
+
+  const candidats = voisins
+    .filter((v) => v.id !== cible.id)
+    .filter((v) => {
+      const isDiploide = !v.ploidie || v.ploidie === "Diploïde"
+      return isDiploide && groupesCompatibles(cible.groupePollinisation, v.groupePollinisation)
+    })
+    .map((v) => {
+      const distanceM =
+        cible.gpsLat != null && cible.gpsLng != null && v.gpsLat != null && v.gpsLng != null
+          ? distanceMetres(
+              { latitude: cible.gpsLat, longitude: cible.gpsLng },
+              { latitude: v.gpsLat, longitude: v.gpsLng }
+            )
+          : null
+      return { ...v, distanceM }
+    })
+    .sort((a, b) => (a.distanceM ?? Infinity) - (b.distanceM ?? Infinity))
+
+  const dansSeuil = candidats.filter((c) => c.distanceM == null || c.distanceM <= seuil)
+  const horsSeuil = candidats.length - dansSeuil.length
+  const alerteDistance = dansSeuil.length < minRequis && horsSeuil > 0
+
+  // Statut basé sur le nb de pollinisateurs DANS le seuil de distance
+  const nbEffectif = dansSeuil.length
+  let statut: AnalysePollinisationResult["statut"]
+  if (nbEffectif >= minRequis) statut = "suffisant"
+  else if (nbEffectif === 0) statut = "aucun"
+  else statut = "insuffisant"
+
+  let raison: string
+  if (statut === "suffisant") {
+    raison = `${nbEffectif} pollinisateur${nbEffectif > 1 ? "s" : ""} compatible${nbEffectif > 1 ? "s" : ""} à moins de ${seuil} m`
+  } else if (statut === "aucun") {
+    raison = `Aucun pollinisateur compatible${horsSeuil > 0 ? ` à moins de ${seuil} m (mais ${horsSeuil} hors seuil)` : ""}`
+  } else {
+    raison = `${nbEffectif}/${minRequis} pollinisateurs compatibles à moins de ${seuil} m`
+  }
+
+  return {
+    statut,
+    estTriploide,
+    pollinisateursCompatibles: candidats,
+    pollinisateursOK: nbEffectif,
+    minRequis,
+    alerteDistance,
+    raison,
   }
 }
 
