@@ -84,12 +84,17 @@ export async function POST(request: NextRequest) {
       especeAnimaleId,
       lotId,
       identifiant,
+      typeIdentifiant,
       nom,
       race,
       sexe,
       dateNaissance,
       dateArrivee,
       provenance,
+      nExploitationOrigine,
+      nExploitationDestination,
+      motifSortie,
+      statutSanitaire,
       prixAchat,
       statut,
       posX,
@@ -132,12 +137,17 @@ export async function POST(request: NextRequest) {
         especeAnimaleId,
         lotId: lotId ?? null,
         identifiant,
+        typeIdentifiant: typeIdentifiant ?? null,
         nom,
         race,
         sexe,
         dateNaissance: dateNaissance ?? null,
         dateArrivee: dateArrivee ?? new Date(),
         provenance,
+        nExploitationOrigine: nExploitationOrigine ?? null,
+        nExploitationDestination: nExploitationDestination ?? null,
+        motifSortie: motifSortie ?? null,
+        statutSanitaire: statutSanitaire ?? [],
         prixAchat,
         statut,
         posX,
@@ -171,7 +181,7 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { id, nom, race, sexe, statut, lotId, posX, posY, poidsActuel, couleur, notes, dateSortie, causeSortie, mereId, pereId, pereIdentifiant } = body
+    const { id, nom, race, sexe, statut, lotId, posX, posY, poidsActuel, couleur, notes, dateSortie, causeSortie, mereId, pereId, pereIdentifiant, identifiant, typeIdentifiant, nExploitationOrigine, nExploitationDestination, motifSortie, statutSanitaire } = body
 
     if (!id) {
       return NextResponse.json({ error: 'ID requis' }, { status: 400 })
@@ -201,6 +211,12 @@ export async function PATCH(request: NextRequest) {
     if (mereId !== undefined) updateData.mereId = mereId ? parseInt(mereId) : null
     if (pereId !== undefined) updateData.pereId = pereId ? parseInt(pereId) : null
     if (pereIdentifiant !== undefined) updateData.pereIdentifiant = pereIdentifiant ?? null
+    if (identifiant !== undefined) updateData.identifiant = identifiant ?? null
+    if (typeIdentifiant !== undefined) updateData.typeIdentifiant = typeIdentifiant ?? null
+    if (nExploitationOrigine !== undefined) updateData.nExploitationOrigine = nExploitationOrigine ?? null
+    if (nExploitationDestination !== undefined) updateData.nExploitationDestination = nExploitationDestination ?? null
+    if (motifSortie !== undefined) updateData.motifSortie = motifSortie ?? null
+    if (statutSanitaire !== undefined) updateData.statutSanitaire = Array.isArray(statutSanitaire) ? statutSanitaire : []
 
     const animal = await prisma.animal.update({
       where: { id: parseInt(id) },

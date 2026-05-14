@@ -18,6 +18,7 @@ import {
   Skull,
   Trash2,
   Map as MapIcon,
+  FileText,
 } from "lucide-react"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -148,9 +149,11 @@ function AnimauxSubTab() {
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
 
   const [formData, setFormData] = React.useState({
-    especeAnimaleId: "", identifiant: "", nom: "", race: "", sexe: "",
+    especeAnimaleId: "", identifiant: "", typeIdentifiant: "",
+    nom: "", race: "", sexe: "",
     dateNaissance: "", dateArrivee: new Date().toISOString().split('T')[0],
-    provenance: "", prixAchat: "", poidsActuel: "", notes: "",
+    provenance: "", nExploitationOrigine: "",
+    prixAchat: "", poidsActuel: "", notes: "",
   })
 
   const fetchData = React.useCallback(async () => {
@@ -188,9 +191,11 @@ function AnimauxSubTab() {
       toast({ title: "Animal cree" })
       setIsDialogOpen(false)
       setFormData({
-        especeAnimaleId: "", identifiant: "", nom: "", race: "", sexe: "",
+        especeAnimaleId: "", identifiant: "", typeIdentifiant: "",
+        nom: "", race: "", sexe: "",
         dateNaissance: "", dateArrivee: new Date().toISOString().split('T')[0],
-        provenance: "", prixAchat: "", poidsActuel: "", notes: "",
+        provenance: "", nExploitationOrigine: "",
+        prixAchat: "", poidsActuel: "", notes: "",
       })
       fetchData()
     } catch {
@@ -372,6 +377,16 @@ function AnimauxSubTab() {
         <div className="text-sm text-muted-foreground ml-auto">
           {filteredAnimaux.length} animal(aux)
         </div>
+        <a
+          href={`/api/elevage/registre-elevage?year=${new Date().getFullYear()}`}
+          target="_blank"
+          rel="noreferrer"
+        >
+          <Button variant="outline" size="sm" title="Registre d'élevage PDF (arrêté 5 juin 2000)">
+            <FileText className="h-4 w-4 mr-1" />
+            Registre
+          </Button>
+        </a>
         <Button variant="outline" size="sm" onClick={fetchData}>
           <RefreshCw className="h-4 w-4" />
         </Button>
@@ -397,14 +412,35 @@ function AnimauxSubTab() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Identifiant</Label>
-                  <Input value={formData.identifiant} onChange={(e) => setFormData(f => ({ ...f, identifiant: e.target.value }))} placeholder="Bague, puce..." />
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-2 col-span-2">
+                  <Label>Identifiant principal</Label>
+                  <Input value={formData.identifiant} onChange={(e) => setFormData(f => ({ ...f, identifiant: e.target.value }))} placeholder="BDNI/IPG/SIRE..." />
                 </div>
                 <div className="space-y-2">
-                  <Label>Nom</Label>
+                  <Label>Type</Label>
+                  <select className="w-full h-10 rounded-md border border-slate-300 px-2 bg-white text-sm" value={formData.typeIdentifiant} onChange={(e) => setFormData(f => ({ ...f, typeIdentifiant: e.target.value }))}>
+                    <option value="">— Non typé —</option>
+                    <option value="BDNI bovin">BDNI bovin</option>
+                    <option value="IPG ovin">IPG ovin</option>
+                    <option value="IPG caprin">IPG caprin</option>
+                    <option value="IPG porcin">IPG porcin</option>
+                    <option value="SIRE équin">SIRE équin</option>
+                    <option value="Bague volière">Bague volière</option>
+                    <option value="Boucle aux.">Boucle aux.</option>
+                    <option value="Puce RFID">Puce RFID</option>
+                    <option value="Auxiliaire éleveur">Auxiliaire éleveur</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Nom (usuel)</Label>
                   <Input value={formData.nom} onChange={(e) => setFormData(f => ({ ...f, nom: e.target.value }))} />
+                </div>
+                <div className="space-y-2">
+                  <Label>N° exploitation origine</Label>
+                  <Input value={formData.nExploitationOrigine} onChange={(e) => setFormData(f => ({ ...f, nExploitationOrigine: e.target.value }))} placeholder="(optionnel)" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">

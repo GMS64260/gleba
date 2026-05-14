@@ -80,6 +80,8 @@ model User {
   lotsFromage           LotFromage[]
   // PROMPT 18 — saillies / reproduction
   saillies              Saillie[]
+  // PROMPT 19A — mouvements de cheptel
+  mouvementsCheptel     MouvementCheptel[]
 
   // Relations module comptabilité
   ventesManuelles       VenteManuelle[]
@@ -614,6 +616,9 @@ model ParcelleGeo {
   arbres          Arbre[]
   lotsAnimaux     LotAnimaux[]
   campagnesPlantation CampagnePlantation[]
+  // PROMPT 19A — mouvements entrants / sortants pour cette parcelle
+  mouvementsAvant MouvementCheptel[] @relation("MouvementParcelleAvant")
+  mouvementsApres MouvementCheptel[] @relation("MouvementParcelleApres")
 
   // PROMPT 12 — Statut Bio (Conventionnel | C1 | C2 | C3 | AB)
   statutBio            String    @default("Conventionnel") @map("statut_bio")
@@ -1380,17 +1385,26 @@ model Animal {
   especeAnimale   EspeceAnimale  @relation(fields: [especeAnimaleId], references: [id], onDelete: Restrict)
   lotId           Int?           @map("lot_id") // Appartenance à un lot (optionnel)
   lot             LotAnimaux?    @relation(fields: [lotId], references: [id], onDelete: SetNull)
-  identifiant     String?        @map("identifiant") // Bague, boucle, puce
+  identifiant     String?        @map("identifiant") // Identifiant principal (BDNI/IPG/SIRE/...)
+  // PROMPT 19A — typage de l'identifiant pour validation regex et registre
+  typeIdentifiant String?        @map("type_identifiant") // 'BDNI bovin'|'IPG ovin'|'IPG caprin'|'IPG porcin'|'SIRE équin'|'Bague volière'|'Boucle aux.'|'Puce RFID'|'Auxiliaire éleveur'
   nom             String?        @map("nom")
   race            String?        @map("race") // Race/variété
   sexe            String?        @map("sexe") // "male", "femelle", "inconnu"
   dateNaissance   DateTime?      @map("date_naissance")
   dateArrivee     DateTime?      @map("date_arrivee")
   provenance      String?        @map("provenance") // Éleveur, couvoir, etc.
+  // PROMPT 19A — Traçabilité réglementaire entrées/sorties (registre élevage)
+  nExploitationOrigine     String? @map("n_exploitation_origine")
+  nExploitationDestination String? @map("n_exploitation_destination")
   prixAchat       Float?         @map("prix_achat")
   statut          String         @default("actif") @map("statut") // "actif", "vendu", "abattu", "mort"
   dateSortie      DateTime?      @map("date_sortie") // Date vente/abattage/mort
   causeSortie     String?        @map("cause_sortie") // Raison de sortie
+  // PROMPT 19A — Motif réglementaire de sortie (registre élevage)
+  motifSortie     String?        @map("motif_sortie") // 'Vente','Mort','Abattage','Réforme','Don'
+  // PROMPT 19A — Statut sanitaire de l'animal (multivalué)
+  statutSanitaire String[]       @default([]) @map("statut_sanitaire") // ['Qualifié scrapie','Cheptel indemne brucellose',...]
   // Position sur le plan (optionnel)
   posX            Float?         @map("pos_x")
   posY            Float?         @map("pos_y")
@@ -1420,6 +1434,8 @@ model Animal {
   // PROMPT 18 — saillies en tant que femelle ou mâle
   sailliesFemelle  Saillie[] @relation("SaillieFemelle")
   sailliesMale     Saillie[] @relation("SaillieMale")
+  // PROMPT 19A — mouvements de cheptel
+  mouvements       MouvementCheptel[]
 
   @@index([userId])
   @@index([especeAnimaleId])
@@ -1459,6 +1475,8 @@ model LotAnimaux {
   consommations    ConsommationAliment[]
   // PROMPT 17 — collectes par lot (volaille de chair vs caprin individuel)
   collectesLait    CollecteLait[]
+  // PROMPT 19A — mouvements de cheptel
+  mouvements       MouvementCheptel[]
 
   @@index([userId])
   @@index([especeAnimaleId])
@@ -1629,6 +1647,40 @@ model NaissanceAnimale {
   @@index([mereId])
   @@index([date])
   @@map("naissances_animales")
+}
+
+// ============================================================
+// PROMPT 19A — MOUVEMENTS DE CHEPTEL
+// ============================================================
+
+/// Mouvement d'un animal ou d'un lot entre parcelles / bâtiments.
+/// Permet de reconstituer le pâturage tournant (rotation, durée d'occupation,
+/// retour minimal sur une parcelle pour gestion parasitaire).
+model MouvementCheptel {
+  id              String   @id @default(cuid())
+  userId          String   @map("user_id")
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Cible : un animal OU un lot
+  animalId        Int?     @map("animal_id")
+  animal          Animal?  @relation(fields: [animalId], references: [id], onDelete: Cascade)
+  lotId           Int?     @map("lot_id")
+  lot             LotAnimaux? @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  // Origine et destination (peuvent être NULL si arrivée/départ d'exploit.)
+  parcelleAvantId String?  @map("parcelle_avant_id")
+  parcelleAvant   ParcelleGeo? @relation("MouvementParcelleAvant", fields: [parcelleAvantId], references: [id], onDelete: SetNull)
+  parcelleApresId String?  @map("parcelle_apres_id")
+  parcelleApres   ParcelleGeo? @relation("MouvementParcelleApres", fields: [parcelleApresId], references: [id], onDelete: SetNull)
+  date            DateTime @map("date")
+  motif           String?  @map("motif") // 'Rotation pâturage','Tri sanitaire','Sevrage','Mise au sec','Autre'
+  notes           String?  @map("notes")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([userId, date])
+  @@index([animalId])
+  @@index([lotId])
+  @@index([parcelleAvantId])
+  @@index([parcelleApresId])
+  @@map("mouvements_cheptel")
 }
 
 // ============================================================
