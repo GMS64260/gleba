@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 import PDFDocument from "pdfkit"
+import { mentionABFacture, labelMentionAB } from "@/lib/statut-bio"
 
 interface Params {
   params: Promise<{ id: string }>
@@ -219,6 +220,33 @@ export async function GET(_request: NextRequest, { params }: Params) {
       .text(formatMontant(facture.totalTTC) + " €", valuesX, y + 4, { width: 65, align: "right" })
 
     y += 50
+
+    // === MENTION AB (PROMPT 12 LOT B) ===
+    const mention = mentionABFacture(facture.lignes.map((l) => l.statutBio))
+    const mentionLabel = labelMentionAB(mention)
+    if (mentionLabel) {
+      const isBio = mention.mode === "ab"
+      const couleur = isBio ? "#16a34a" : mention.mode === "conversion" ? "#65a30d" : "#475569"
+      doc
+        .fontSize(10)
+        .fillColor(couleur)
+        .font(isBio ? "Helvetica-Bold" : "Helvetica")
+        .text(`${isBio ? "🌱 " : ""}${mentionLabel}`, 50, y, { width: 495 })
+      // Si lot mixte, détail par ligne sous forme compacte
+      if (mention.mode === "mixte") {
+        const lignesAvecStatut = facture.lignes.filter((l) => l.statutBio)
+        if (lignesAvecStatut.length > 0) {
+          y += 14
+          doc.fontSize(8).fillColor("#64748b").font("Helvetica")
+          for (const l of lignesAvecStatut) {
+            const txt = `• ${l.description.slice(0, 60)}${l.description.length > 60 ? "…" : ""} — ${l.statutBio}`
+            doc.text(txt, 60, y, { width: 485 })
+            y += 11
+          }
+        }
+      }
+      y += 22
+    }
 
     // === STATUT ===
     if (facture.statut === "payee") {

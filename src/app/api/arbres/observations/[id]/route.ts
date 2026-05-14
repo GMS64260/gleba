@@ -37,6 +37,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (body.dar !== undefined) data.dar = body.dar ? parseInt(body.dar) : null
     if (body.numAMM !== undefined) data.numAMM = body.numAMM
     if (body.notes !== undefined) data.notes = body.notes
+    // PROMPT 11 LOT D — PBI
+    if (body.stadeBBCH !== undefined) data.stadeBBCH = body.stadeBBCH || null
+    if (body.pctOrganesTouches !== undefined) data.pctOrganesTouches = body.pctOrganesTouches == null ? null : parseInt(body.pctOrganesTouches)
+    if (body.photoUrl !== undefined) data.photoUrl = body.photoUrl || null
     if (body.resolu !== undefined) {
       data.resolu = body.resolu
       if (body.resolu && !existing.dateResolution) {

@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
+import { snapshotStatutBio } from "@/lib/statut-bio"
 
 // GET /api/arbres/recoltes
 export async function GET(request: NextRequest) {
@@ -89,9 +90,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Vérifier que l'arbre appartient à l'utilisateur
+    // Vérifier que l'arbre appartient à l'utilisateur.
+    // PROMPT 12 — on charge la zone et la parcelle pour snapshoter le statut Bio.
     const arbre = await prisma.arbre.findFirst({
       where: { id: body.arbreId, userId },
+      include: {
+        zone: { select: { statutBio: true, dateDebutConversion: true } },
+        parcelleGeo: { select: { statutBio: true, dateDebutConversion: true } },
+      },
     })
 
     if (!arbre) {
@@ -101,17 +107,25 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Statut Bio : priorité à la zone verger, sinon parcelle géo.
+    const sourceBio = arbre.zone ?? arbre.parcelleGeo
+    const dateRecolte = body.date ? new Date(body.date) : new Date()
+    const statutBioSnapshot = sourceBio
+      ? snapshotStatutBio(sourceBio.statutBio, sourceBio.dateDebutConversion, dateRecolte)
+      : null
+
     const recolte = await prisma.recolteArbre.create({
       data: {
         userId,
         arbreId: body.arbreId,
-        date: body.date ? new Date(body.date) : new Date(),
+        date: dateRecolte,
         quantite: body.quantite,
         qualite: body.qualite || null,
         prixKg: body.prixKg || null,
         statut: "en_stock",
         datePeremption: body.datePeremption ? new Date(body.datePeremption) : null,
         notes: body.notes || null,
+        statutBioSnapshot,
       },
       include: {
         arbre: {

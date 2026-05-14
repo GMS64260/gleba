@@ -30,6 +30,17 @@ export const createInterventionSchema = z.object({
   intrantCout: z.number().min(0).nullable().optional(),
   intrantNumLot: z.string().max(100).nullable().optional(),
   notes: z.string().max(5000).nullable().optional(),
+  // PROMPT 11 LOT B/D — Réglementaire phyto + traçabilité PBI
+  produitPhytoId: z.string().nullable().optional(),
+  volumeBouillieLHa: z.number().min(0).nullable().optional(),
+  temperatureC: z.number().nullable().optional(),
+  ventKmh: z.number().min(0).nullable().optional(),
+  hygrometriePct: z.number().int().min(0).max(100).nullable().optional(),
+  operateurId: z.string().nullable().optional(),
+  certiphytoNum: z.string().max(50).nullable().optional(),
+  certiphytoValidite: z.coerce.date().nullable().optional(),
+  justification: z.string().max(2000).nullable().optional(),
+  observationLieeId: z.number().int().nullable().optional(),
 })
 
 export const updateInterventionSchema = createInterventionSchema.partial().extend({

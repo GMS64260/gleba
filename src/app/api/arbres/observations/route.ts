@@ -87,6 +87,10 @@ export async function POST(request: NextRequest) {
         resolu: body.resolu || false,
         dateResolution: body.dateResolution ? new Date(body.dateResolution) : null,
         notes: body.notes || null,
+        // PROMPT 11 LOT D — PBI
+        stadeBBCH: body.stadeBBCH || null,
+        pctOrganesTouches: body.pctOrganesTouches != null ? parseInt(body.pctOrganesTouches) : null,
+        photoUrl: body.photoUrl || null,
       },
       include: {
         arbre: {

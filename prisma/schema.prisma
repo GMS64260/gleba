@@ -90,6 +90,11 @@ model User {
 
   // Relations interventions & traçabilité
   interventions         Intervention[]
+  // PROMPT 11 — Interventions où ce user est l'opérateur (≠ propriétaire de la fiche).
+  interventionsOperateur Intervention[] @relation("InterventionOperateur")
+  // PROMPT 11 — Certiphyto (snapshot copié dans chaque Intervention pour traçabilité).
+  certiphytoNum         String?       @map("certiphyto_num")
+  certiphytoValidite    DateTime?     @map("certiphyto_validite")
 
   // Relations chat IA
   conversations         Conversation[]
@@ -1119,6 +1124,13 @@ model ObservationSante {
   dateResolution DateTime? @map("date_resolution")
   notes          String?   @map("notes")
   createdAt      DateTime  @default(now()) @map("created_at")
+  // PROMPT 11 LOT D — Enrichissement PBI
+  stadeBBCH         String? @map("stade_bbch")          // ex: "BBCH 65 - pleine floraison"
+  pctOrganesTouches Int?    @map("pct_organes_touches") // 0-100
+  photoUrl          String? @map("photo_url")
+
+  // PROMPT 11 LOT D — Interventions phyto déclenchées par cette observation.
+  interventionsLiees Intervention[] @relation("InterventionObservation")
 
   @@index([userId])
   @@index([arbreId])
@@ -1688,8 +1700,11 @@ model LigneFacture {
   montantHT    Float   @map("montant_ht")
   montantTVA   Float   @map("montant_tva")
   montantTTC   Float   @map("montant_ttc")
+  // PROMPT 12 — Statut Bio de la ligne (NULL = non renseigné).
+  statutBio    String? @map("statut_bio") // Conventionnel | C1 | C2 | C3 | AB
 
   @@index([factureId])
+  @@index([statutBio])
   @@map("lignes_factures")
 }
 
@@ -1875,7 +1890,25 @@ model Intervention {
   surfaceTraitee  Float?    @map("surface_traitee") // m² ou ha
   dar             Int?      @map("dar") // Délai Avant Récolte (jours)
   delaiReentree   Int?      @map("delai_reentree") // Heures avant réentrée
-  conditionsMeteo String?   @map("conditions_meteo") // Conditions météo lors du traitement
+  conditionsMeteo String?   @map("conditions_meteo") // Conditions météo lors du traitement (texte libre, déprécié)
+  // PROMPT 11 LOT A — FK vers le référentiel ProduitPhyto. Le champ TEXT
+  // `produitPhyto` ci-dessus est conservé pour les saisies historiques.
+  produitPhytoId  String?         @map("produit_phyto_id")
+  produitPhytoRef ProduitPhyto?   @relation(fields: [produitPhytoId], references: [id], onDelete: SetNull)
+  // PROMPT 11 LOT A — Action sans produit (taille sanitaire, désherbage manuel, etc.)
+  geste           String?         @map("geste")
+  // PROMPT 11 LOT B — Champs réglementaires détaillés (Arrêté 16 juin 2009).
+  volumeBouillieLHa  Float?       @map("volume_bouillie_l_ha")
+  temperatureC       Float?       @map("temperature_c")
+  ventKmh            Float?       @map("vent_kmh")
+  hygrometriePct     Int?         @map("hygrometrie_pct")
+  operateurId        String?      @map("operateur_id")
+  operateur          User?        @relation("InterventionOperateur", fields: [operateurId], references: [id], onDelete: SetNull)
+  certiphytoNum      String?      @map("certiphyto_num")       // snapshot
+  certiphytoValidite DateTime?    @map("certiphyto_validite")  // snapshot
+  justification      String?      @map("justification")
+  observationLieeId  Int?         @map("observation_liee_id")
+  observationLiee    ObservationSante? @relation("InterventionObservation", fields: [observationLieeId], references: [id], onDelete: SetNull)
   // Intrants consommés
   intrantNom      String?   @map("intrant_nom") // Nom de l'intrant utilisé
   intrantQuantite Float?    @map("intrant_quantite")
@@ -1893,7 +1926,35 @@ model Intervention {
   @@index([arbreId])
   @@index([type])
   @@index([fait])
+  @@index([produitPhytoId])
+  @@index([operateurId])
+  @@index([observationLieeId])
   @@map("interventions")
+}
+
+/// PROMPT 11 LOT A — Référentiel des produits phytosanitaires.
+/// Classification réglementaire (E-Phy + AB / PNPP / biocontrôle) pour produire
+/// un registre phyto recevable par certificateur (Agence Bio, HVE, DRAAF).
+model ProduitPhyto {
+  id               String   @id @default(cuid())
+  nomCommercial    String   @unique @map("nom_commercial")
+  substanceActive  String   @map("substance_active")
+  amm              String?  @map("amm")             // numéro E-Phy
+  classification   String   @map("classification")  // cf CHECK SQL
+  autoriseAB       Boolean  @default(false) @map("autorise_ab")
+  zntAquatiqueM    Int?     @map("znt_aquatique_m") // 5 / 20 / 50
+  darJours         Int?     @map("dar_jours")
+  doseHomologuee   String?  @map("dose_homologuee")
+  plafondAB        String?  @map("plafond_ab")      // ex: "Cu: 28 kg/ha/7 ans"
+  notes            String?  @map("notes")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  interventions    Intervention[]
+
+  @@index([classification])
+  @@index([autoriseAB])
+  @@map("produits_phyto")
 }
 
 // ============================================================
@@ -2051,6 +2112,8 @@ model ProduitBoutique {
   categorie       String?   @map("categorie") // "legumes", "fruits", "transformations", "viande", "oeufs", "miel", "autre"
   ordre           Int       @default(0) @map("ordre") // tri d'affichage
   actif           Boolean   @default(true) @map("actif")
+  // PROMPT 12 — Statut Bio du produit (propagé depuis le lot de récolte source).
+  statutBio       String?   @map("statut_bio") // Conventionnel | C1 | C2 | C3 | AB
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
@@ -2060,6 +2123,7 @@ model ProduitBoutique {
   @@index([boutiqueId])
   @@index([actif])
   @@index([categorie])
+  @@index([statutBio])
   @@map("produits_boutique")
 }
 

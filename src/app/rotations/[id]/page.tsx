@@ -79,6 +79,10 @@ export default function EditRotationPage() {
   const [isSubmitting, setIsSubmitting] = React.useState(false)
   const [itps, setItps] = React.useState<ITP[]>([])
   const [rotationData, setRotationData] = React.useState<RotationData | null>(null)
+  // PROMPT 12 — gestion du rattachement multi-planches
+  const [allPlanches, setAllPlanches] = React.useState<Array<{ id: string; nom: string; ilot: string | null; rotationId: string | null }>>([])
+  const [selectedPlancheIds, setSelectedPlancheIds] = React.useState<Set<string>>(new Set())
+  const [isSavingPlanches, setIsSavingPlanches] = React.useState(false)
 
   const form = useForm<UpdateRotationInput>({
     resolver: zodResolver(updateRotationSchema),
@@ -93,10 +97,17 @@ export default function EditRotationPage() {
   React.useEffect(() => {
     async function loadData() {
       try {
-        const [itpsRes, rotationRes] = await Promise.all([
+        const [itpsRes, rotationRes, planchesRes] = await Promise.all([
           fetch("/api/itps?pageSize=500"),
           fetch(`/api/rotations/${encodeURIComponent(id)}`),
+          fetch("/api/planches?pageSize=500"),
         ])
+
+        if (planchesRes.ok) {
+          const planchesData = await planchesRes.json()
+          const planchesList = (planchesData?.data || []) as typeof allPlanches
+          setAllPlanches(planchesList)
+        }
 
         if (itpsRes.ok) {
           const itpsData = await itpsRes.json()
@@ -109,6 +120,8 @@ export default function EditRotationPage() {
 
         const rotation: RotationData = await rotationRes.json()
         setRotationData(rotation)
+        // PROMPT 12 — pré-cocher les planches déjà rattachées.
+        setSelectedPlancheIds(new Set(rotation.planches.map((p) => p.id)))
 
         // Remplir le formulaire
         form.reset({
@@ -132,6 +145,35 @@ export default function EditRotationPage() {
     }
     loadData()
   }, [id, form, toast, router])
+
+  const handleSavePlanches = async () => {
+    setIsSavingPlanches(true)
+    try {
+      const res = await fetch(`/api/rotations/${encodeURIComponent(id)}/planches`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plancheIds: [...selectedPlancheIds] }),
+      })
+      if (!res.ok) throw new Error()
+      const data = await res.json()
+      toast({ title: `${data.count} planche(s) rattachée(s) à la rotation` })
+      // Refresh rotationData planches
+      if (rotationData) setRotationData({ ...rotationData, planches: data.planches, _count: { planches: data.count } })
+    } catch {
+      toast({ variant: "destructive", title: "Erreur lors du rattachement" })
+    } finally {
+      setIsSavingPlanches(false)
+    }
+  }
+
+  const togglePlanche = (plancheId: string) => {
+    setSelectedPlancheIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(plancheId)) next.delete(plancheId)
+      else next.add(plancheId)
+      return next
+    })
+  }
 
   const onSubmit = async (data: UpdateRotationInput) => {
     setIsSubmitting(true)
@@ -369,29 +411,77 @@ export default function EditRotationPage() {
               </CardContent>
             </Card>
 
-            {/* Planches utilisant cette rotation */}
-            {rotationData && rotationData.planches.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Planches associées</CardTitle>
-                  <CardDescription>
-                    {rotationData.planches.length} planche(s) utilisent cette rotation
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex flex-wrap gap-2">
-                    {rotationData.planches.map((p) => (
-                      <Link key={p.id} href={`/planches/${encodeURIComponent(p.id)}`}>
-                        <Badge variant="secondary" className="cursor-pointer hover:bg-slate-200">
-                          {p.id}
-                          {p.ilot && <span className="text-muted-foreground ml-1">({p.ilot})</span>}
-                        </Badge>
-                      </Link>
-                    ))}
+            {/* Planches utilisant cette rotation (PROMPT 12 — gestion multi-planches) */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Planches associées</CardTitle>
+                <CardDescription>
+                  {selectedPlancheIds.size} planche(s) cochée(s) · cochez les planches sur lesquelles appliquer cette rotation
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {(() => {
+                  const cycle = form.watch("nbAnnees") ?? rotationData?.nbAnnees ?? null
+                  const nbEtapes = form.watch("details")?.length ?? rotationData?.details.length ?? 0
+                  if (cycle && nbEtapes > 0 && cycle !== nbEtapes) {
+                    return (
+                      <div className="mb-3 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800">
+                        ⚠ Le cycle déclaré ({cycle} ans) ne correspond pas au nombre d'étapes saisies ({nbEtapes}).
+                        Ajoutez une étape manquante ou ajustez le cycle.
+                      </div>
+                    )
+                  }
+                  return null
+                })()}
+                {allPlanches.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Aucune planche disponible.</p>
+                ) : (
+                  <div className="space-y-2 max-h-72 overflow-y-auto rounded border p-2">
+                    {allPlanches.map((p) => {
+                      const checked = selectedPlancheIds.has(p.id)
+                      const usedElsewhere = !checked && p.rotationId && p.rotationId !== id
+                      return (
+                        <label
+                          key={p.id}
+                          className="flex items-center gap-2 text-sm cursor-pointer hover:bg-slate-50 px-2 py-1 rounded"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => togglePlanche(p.id)}
+                            className="h-4 w-4"
+                          />
+                          <span className="font-medium">{p.nom}</span>
+                          {p.ilot && <span className="text-muted-foreground text-xs">({p.ilot})</span>}
+                          {usedElsewhere && (
+                            <Badge variant="outline" className="text-[10px] text-amber-700 border-amber-300">
+                              déjà sur {p.rotationId}
+                            </Badge>
+                          )}
+                          <Link
+                            href={`/planches/${encodeURIComponent(p.id)}`}
+                            className="ml-auto text-xs text-blue-600 hover:underline"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            voir
+                          </Link>
+                        </label>
+                      )
+                    })}
                   </div>
-                </CardContent>
-              </Card>
-            )}
+                )}
+                <div className="mt-3 flex justify-end">
+                  <Button
+                    type="button"
+                    onClick={handleSavePlanches}
+                    disabled={isSavingPlanches}
+                    size="sm"
+                  >
+                    {isSavingPlanches ? "Sauvegarde…" : "Enregistrer les planches"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
 
             {/* Notes */}
             <Card>

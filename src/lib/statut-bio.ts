@@ -93,3 +93,57 @@ export function snapshotStatutBio(
 ): StatutBio {
   return statutBioCourant(statutNominal, dateDebutConversion, dateRecolte)
 }
+
+export type MentionABFacture =
+  | { mode: "absente" }                       // aucun statut renseigné
+  | { mode: "ab" }                            // toutes les lignes en AB
+  | { mode: "conversion"; niveau: "C1" | "C2" | "C3" } // toutes en conversion homogène
+  | { mode: "mixte"; nbAb: number; nbConv: number; nbConv2: number; nbConv3: number; nbAutre: number; total: number }
+
+/**
+ * Calcule la mention à afficher sur une facture / un bordereau à partir des
+ * statuts Bio des lignes.
+ *
+ * Règles d'affichage suggérées :
+ *   - "ab"          → "Issu de l'agriculture biologique" (mention complète)
+ *   - "conversion"  → "En conversion biologique — année C2 (par exemple)"
+ *   - "mixte"       → Détail par ligne, pas de mention globale
+ *   - "absente"     → Rien
+ */
+export function mentionABFacture(statuts: Array<StatutBio | string | null | undefined>): MentionABFacture {
+  const valides = statuts.filter((s): s is StatutBio => !!s && STATUTS_BIO.includes(s as StatutBio))
+  if (valides.length === 0) return { mode: "absente" }
+
+  const counts: Record<StatutBio, number> = { Conventionnel: 0, C1: 0, C2: 0, C3: 0, AB: 0 }
+  for (const s of valides) counts[s] += 1
+
+  // Tout AB ?
+  if (counts.AB === valides.length) return { mode: "ab" }
+  // Tout en conversion homogène ?
+  for (const niveau of ["C1", "C2", "C3"] as const) {
+    if (counts[niveau] === valides.length) return { mode: "conversion", niveau }
+  }
+  // Mixte (au moins 2 catégories différentes ou présence de Conventionnel)
+  return {
+    mode: "mixte",
+    nbAb: counts.AB,
+    nbConv: counts.C1,
+    nbConv2: counts.C2,
+    nbConv3: counts.C3,
+    nbAutre: counts.Conventionnel,
+    total: valides.length,
+  }
+}
+
+export function labelMentionAB(mention: MentionABFacture): string | null {
+  switch (mention.mode) {
+    case "ab":
+      return "Produit issu de l'agriculture biologique"
+    case "conversion":
+      return `Produit en conversion vers l'agriculture biologique — année ${mention.niveau}`
+    case "mixte":
+      return "Lot mixte : voir statut Bio par ligne ci-dessus"
+    case "absente":
+      return null
+  }
+}
