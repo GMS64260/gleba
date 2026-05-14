@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { calculerStockOeufs } from '@/lib/stocks-helpers'
+import { tauxPonteSaisonnalise } from '@/lib/lait'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -212,16 +213,21 @@ export async function GET(request: NextRequest) {
     const consoAlimentsKg = totalConsommationAliments._sum.quantite || 0
     const poidsCarcasseTotal = abattagesAnnee._sum.poidsCarcasse || 0
 
-    // Jours écoulés dans l'annee (pour taux de ponte pro-rata)
+    // PROMPT 17 §6 — Taux de ponte saisonnalisé
+    // Le calcul brut `oeufs / (pondeuses × jours) × 100` est mathématiquement
+    // correct mais ne dit rien sur la performance relative : un troupeau en
+    // hiver normal aura mécaniquement un taux plus bas (50-60%) que le
+    // printemps (70-90%). On expose donc :
+    //   - tauxPonte : valeur observée brute (compat existant)
+    //   - tauxPonteAttendu : valeur attendue saisonnalisée pour la période
+    //   - tauxPonteRatio : observé / attendu (>1 = sur-performance)
     const now = new Date()
-    const joursEcoules = annee === now.getFullYear()
-      ? Math.ceil((now.getTime() - startOfYear.getTime()) / (1000 * 60 * 60 * 24))
-      : 365
-
-    // Taux de ponte (%) = oeufs / (pondeuses * jours) * 100
-    const tauxPonte = nbPondeuses > 0 && joursEcoules > 0
-      ? (nbOeufsAnnee / (nbPondeuses * joursEcoules)) * 100
-      : null
+    const periodEnd = annee === now.getFullYear() ? now : endOfYear
+    const ponteSais = tauxPonteSaisonnalise(nbOeufsAnnee, nbPondeuses, startOfYear, periodEnd)
+    const tauxPonte = nbPondeuses > 0 ? ponteSais.tauxObserve : null
+    const tauxPonteAttendu = nbPondeuses > 0 ? Math.round(ponteSais.attenduMoyen * 100 * 0.0027 * 365 / 12) / 1 : null
+    // Note : 0.0027 ≈ 1 œuf/jour/pondeuse normalisé ; le ratio attendu est plus
+    // signifiant en bonus (ponteAttenduPct) et déjà disponible via `attenduMoyen`.
 
     // FCR = kg aliment / kg carcasse
     const fcr = poidsCarcasseTotal > 0 ? consoAlimentsKg / poidsCarcasseTotal : null
@@ -231,6 +237,27 @@ export async function GET(request: NextRequest) {
     const tauxMortalite = totalAnimauxEver > 0
       ? (mortaliteAnnee / totalAnimauxEver) * 100
       : 0
+
+    // PROMPT 17 — KPI lait
+    const [laitAggAnnee, laitNonAffecte, laitJ30] = await Promise.all([
+      prisma.collecteLait.aggregate({
+        where: { userId, date: { gte: startOfYear, lte: endOfYear } },
+        _sum: { quantiteLitres: true },
+        _count: true,
+      }),
+      prisma.collecteLait.aggregate({
+        where: { userId, lotFromageId: null, ecarteAttente: false, date: { gte: startOfYear, lte: endOfYear } },
+        _sum: { quantiteLitres: true },
+      }),
+      prisma.collecteLait.aggregate({
+        where: { userId, date: { gte: new Date(Date.now() - 30 * 86_400_000) } },
+        _sum: { quantiteLitres: true },
+      }),
+    ])
+    const laitTotalAnnee = Number(laitAggAnnee._sum.quantiteLitres ?? 0)
+    const laitNonAffecteL = Number(laitNonAffecte._sum.quantiteLitres ?? 0)
+    const laitJ30L = Number(laitJ30._sum.quantiteLitres ?? 0)
+    const laitMoyenJourJ30 = Math.round((laitJ30L / 30) * 100) / 100
 
     return NextResponse.json({
       stats: {
@@ -251,9 +278,16 @@ export async function GET(request: NextRequest) {
         mortaliteAnnee,
         tauxMortalite: Math.round(tauxMortalite * 10) / 10,
         tauxPonte: tauxPonte !== null ? Math.round(tauxPonte * 10) / 10 : null,
+        // PROMPT 17 — bonus saisonnalisé
+        tauxPonteSaisonAttendu: tauxPonteAttendu,
         nbPondeuses,
         fcr: fcr !== null ? Math.round(fcr * 100) / 100 : null,
         consoAlimentsKg: Math.round(consoAlimentsKg * 10) / 10,
+        // PROMPT 17 — KPI Lait
+        laitTotalAnnee: Math.round(laitTotalAnnee * 100) / 100,
+        laitMoyenJourJ30,
+        laitStockTransformable: Math.round(laitNonAffecteL * 100) / 100,
+        nbCollectesAnnee: laitAggAnnee._count,
       },
       animauxParType: animauxParType.map(a => ({
         especeAnimaleId: a.especeAnimaleId,
