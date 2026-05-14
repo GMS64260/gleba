@@ -47,6 +47,26 @@ interface ChartData {
   depensesParCategorie: { categorie: string; montant: number; couleur: string }[]
 }
 
+// DEV1 #5 — Bilan PCG distinct du compte de résultat.
+interface BilanData {
+  year: number
+  actif: {
+    immobilisations: number
+    stocks: number
+    creances: number
+    disponibilites: number
+  }
+  passif: {
+    capital: number
+    resultatExercice: number
+    dettesFournisseurs: number
+    tvaAPayer: number
+    ecartEquilibrage: number
+  }
+  totalActif: number
+  totalPassif: number
+}
+
 interface TVAData {
   periode: {
     annee: number
@@ -79,7 +99,10 @@ interface TVAData {
 
 export default function RapportsPage() {
   const { toast } = useToast()
-  const [activeTab, setActiveTab] = React.useState("bilan")
+  // DEV1 #5 — Onglet par défaut renommé : ce qui s'appelait "bilan" est en
+  // réalité un compte de résultat. Le vrai bilan est dans un onglet séparé.
+  const [activeTab, setActiveTab] = React.useState("compte-de-resultat")
+  const [bilanData, setBilanData] = React.useState<BilanData | null>(null)
   const [isLoading, setIsLoading] = React.useState(true)
   const [selectedYear, setSelectedYear] = React.useState(new Date().getFullYear())
   const [stats, setStats] = React.useState<Stats | null>(null)
@@ -96,11 +119,13 @@ export default function RapportsPage() {
     setIsLoading(true)
     try {
       const tvaParam = selectedTrimestre !== 'all' ? `&trimestre=${selectedTrimestre}` : ''
-      const [statsRes, revRes, depRes, tvaRes] = await Promise.all([
+      const [statsRes, revRes, depRes, tvaRes, bilanRes] = await Promise.all([
         fetch(`/api/comptabilite/stats?year=${selectedYear}`),
         fetch(`/api/comptabilite/revenus?year=${selectedYear}&limit=500`),
         fetch(`/api/comptabilite/depenses?year=${selectedYear}&limit=500`),
         fetch(`/api/comptabilite/tva?year=${selectedYear}${tvaParam}`),
+        // DEV1 #5 — Bilan ACTIF/PASSIF
+        fetch(`/api/comptabilite/bilan?year=${selectedYear}`),
       ])
 
       if (statsRes.ok) {
@@ -115,6 +140,9 @@ export default function RapportsPage() {
       if (depRes.ok) {
         const data = await depRes.json()
         setDepenses(data.data || [])
+      }
+      if (bilanRes.ok) {
+        setBilanData(await bilanRes.json())
       }
       if (tvaRes.ok) {
         const data = await tvaRes.json()
@@ -133,6 +161,10 @@ export default function RapportsPage() {
     return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(value)
   }
 
+  // DEV1 #5 — Le type 'bilan' historique exporte en réalité un compte de
+  // résultat synthétique. Le bouton est conservé sous son ancien nom de
+  // type pour compatibilité, mais le filename émis devient
+  // `compte-de-resultat_AAAA.csv` (plus exact réglementairement).
   const exportCSV = (type: 'revenus' | 'depenses' | 'bilan') => {
     let csv = ''
     let filename = ''
@@ -167,7 +199,7 @@ export default function RapportsPage() {
         csv += `Élevage;${stats.depensesParModule.elevage}\n`
         csv += `Autre;${stats.depensesParModule.autre}\n`
       }
-      filename = `bilan_${selectedYear}.csv`
+      filename = `compte-de-resultat_${selectedYear}.csv`
     }
 
     // Créer et télécharger le fichier
@@ -212,6 +244,11 @@ export default function RapportsPage() {
       <div className="container mx-auto px-4 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="mb-6">
+            <TabsTrigger value="compte-de-resultat" className="flex items-center gap-2">
+              <TrendingUp className="h-4 w-4" />
+              Compte de résultat
+            </TabsTrigger>
+            {/* DEV1 #5 — Vrai bilan PCG (ACTIF / PASSIF), séparé du compte de résultat. */}
             <TabsTrigger value="bilan" className="flex items-center gap-2">
               <Wallet className="h-4 w-4" />
               Bilan
@@ -230,8 +267,8 @@ export default function RapportsPage() {
             </TabsTrigger>
           </TabsList>
 
-          {/* Onglet Bilan */}
-          <TabsContent value="bilan">
+          {/* Onglet Compte de résultat (anciennement labellisé "Bilan") */}
+          <TabsContent value="compte-de-resultat">
             {isLoading ? (
               <div className="space-y-4">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-32 w-full" />)}</div>
             ) : stats ? (
@@ -347,6 +384,177 @@ export default function RapportsPage() {
                     </CardContent>
                   </Card>
                 )}
+              </div>
+            ) : (
+              <Card>
+                <CardContent className="py-8 text-center text-muted-foreground">
+                  Aucune donnée disponible
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+
+          {/* DEV1 #5 — Bilan ACTIF / PASSIF */}
+          <TabsContent value="bilan">
+            {isLoading ? (
+              <div className="space-y-4">{[...Array(2)].map((_, i) => <Skeleton key={i} className="h-64 w-full" />)}</div>
+            ) : bilanData ? (
+              <div className="space-y-6">
+                <div className="grid gap-4 md:grid-cols-2">
+                  {/* ACTIF */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center justify-between">
+                        <span>ACTIF</span>
+                        <span className="text-base text-muted-foreground">
+                          {formatEuro(bilanData.totalActif)}
+                        </span>
+                      </CardTitle>
+                      <CardDescription>Ce que possède l'exploitation</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Poste</TableHead>
+                            <TableHead className="text-right">Montant</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          <TableRow>
+                            <TableCell>
+                              <div className="font-medium">Immobilisations corporelles</div>
+                              <div className="text-xs text-muted-foreground">215x · matériel agricole</div>
+                            </TableCell>
+                            <TableCell className="text-right font-mono">
+                              {formatEuro(bilanData.actif.immobilisations)}
+                            </TableCell>
+                          </TableRow>
+                          <TableRow>
+                            <TableCell>
+                              <div className="font-medium">Stocks</div>
+                              <div className="text-xs text-muted-foreground">31x · semences, intrants <span className="italic">(à valoriser)</span></div>
+                            </TableCell>
+                            <TableCell className="text-right font-mono text-muted-foreground">
+                              {formatEuro(bilanData.actif.stocks)}
+                            </TableCell>
+                          </TableRow>
+                          <TableRow>
+                            <TableCell>
+                              <div className="font-medium">Créances clients</div>
+                              <div className="text-xs text-muted-foreground">411 · factures et ventes non payées</div>
+                            </TableCell>
+                            <TableCell className="text-right font-mono">
+                              {formatEuro(bilanData.actif.creances)}
+                            </TableCell>
+                          </TableRow>
+                          <TableRow>
+                            <TableCell>
+                              <div className="font-medium">Disponibilités</div>
+                              <div className="text-xs text-muted-foreground">512 · banque <span className="italic">(à saisir manuellement)</span></div>
+                            </TableCell>
+                            <TableCell className="text-right font-mono text-muted-foreground">
+                              {formatEuro(bilanData.actif.disponibilites)}
+                            </TableCell>
+                          </TableRow>
+                          <TableRow className="border-t-2 font-bold">
+                            <TableCell>Total ACTIF</TableCell>
+                            <TableCell className="text-right font-mono">{formatEuro(bilanData.totalActif)}</TableCell>
+                          </TableRow>
+                        </TableBody>
+                      </Table>
+                    </CardContent>
+                  </Card>
+
+                  {/* PASSIF */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center justify-between">
+                        <span>PASSIF</span>
+                        <span className="text-base text-muted-foreground">
+                          {formatEuro(bilanData.totalPassif)}
+                        </span>
+                      </CardTitle>
+                      <CardDescription>Comment l'actif est financé</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Poste</TableHead>
+                            <TableHead className="text-right">Montant</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          <TableRow>
+                            <TableCell>
+                              <div className="font-medium">Capital</div>
+                              <div className="text-xs text-muted-foreground">101 · capital social</div>
+                            </TableCell>
+                            <TableCell className="text-right font-mono">
+                              {formatEuro(bilanData.passif.capital)}
+                            </TableCell>
+                          </TableRow>
+                          <TableRow>
+                            <TableCell>
+                              <div className="font-medium">Résultat de l'exercice</div>
+                              <div className="text-xs text-muted-foreground">12 · pivot Actif/Passif</div>
+                            </TableCell>
+                            <TableCell className={`text-right font-mono font-bold ${bilanData.passif.resultatExercice >= 0 ? 'text-emerald-600' : 'text-orange-600'}`}>
+                              {formatEuro(bilanData.passif.resultatExercice)}
+                            </TableCell>
+                          </TableRow>
+                          <TableRow>
+                            <TableCell>
+                              <div className="font-medium">Dettes fournisseurs</div>
+                              <div className="text-xs text-muted-foreground">401 · dépenses non payées</div>
+                            </TableCell>
+                            <TableCell className="text-right font-mono">
+                              {formatEuro(bilanData.passif.dettesFournisseurs)}
+                            </TableCell>
+                          </TableRow>
+                          <TableRow>
+                            <TableCell>
+                              <div className="font-medium">TVA à payer</div>
+                              <div className="text-xs text-muted-foreground">4457 − 4456 (solde net)</div>
+                            </TableCell>
+                            <TableCell className="text-right font-mono">
+                              {formatEuro(bilanData.passif.tvaAPayer)}
+                            </TableCell>
+                          </TableRow>
+                          {bilanData.passif.ecartEquilibrage !== 0 && (
+                            <TableRow>
+                              <TableCell>
+                                <div className="font-medium text-amber-700">Écart d'équilibrage</div>
+                                <div className="text-xs text-muted-foreground">47x · à reclasser (disponibilités banque, capital…)</div>
+                              </TableCell>
+                              <TableCell className="text-right font-mono text-amber-700">
+                                {formatEuro(bilanData.passif.ecartEquilibrage)}
+                              </TableCell>
+                            </TableRow>
+                          )}
+                          <TableRow className="border-t-2 font-bold">
+                            <TableCell>Total PASSIF</TableCell>
+                            <TableCell className="text-right font-mono">{formatEuro(bilanData.totalPassif)}</TableCell>
+                          </TableRow>
+                        </TableBody>
+                      </Table>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <Card className="bg-blue-50 border-blue-200">
+                  <CardContent className="py-4 text-sm text-blue-900">
+                    <p className="font-medium mb-1">ℹ Notes méthodologiques (MVP)</p>
+                    <ul className="list-disc ml-5 text-xs space-y-1">
+                      <li>Les <strong>stocks</strong> et <strong>disponibilités bancaires</strong> ne sont pas encore intégrés
+                        (à valoriser manuellement). L'écart apparaît au compte <strong>47x</strong>.</li>
+                      <li>Les <strong>amortissements linéaires</strong> ne sont pas appliqués sur les immobilisations
+                        (étape suivante : fiche Immobilisation + durée d'amortissement).</li>
+                      <li>Le <strong>capital</strong> provient de Paramètres &gt; Exploitation. Renseignez-le pour équilibrer.</li>
+                    </ul>
+                  </CardContent>
+                </Card>
               </div>
             ) : (
               <Card>
