@@ -58,7 +58,7 @@ const createColumns = (): ColumnDef<ParcelleWithRelations>[] => [
   },
   {
     id: "entites",
-    header: "Entites rattachees",
+    header: "Entités rattachées",
     cell: ({ row }) => {
       const text = formatEntites(row.original._count)
       return text

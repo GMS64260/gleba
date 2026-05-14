@@ -85,7 +85,7 @@ interface ProductionBois {
 }
 
 const TYPES_PRODUCTION = [
-  { value: "elagage", label: "Elagage" },
+  { value: "elagage", label: "Élagage" },
   { value: "abattage", label: "Abattage" },
   { value: "branchage", label: "Branchage" },
 ]
@@ -218,7 +218,7 @@ function RecoltesFruitsSubTab() {
     if (!datePeremption) return null
     const date = new Date(datePeremption)
     if (isPast(date)) {
-      return <Badge variant="destructive" className="text-xs">Perime</Badge>
+      return <Badge variant="destructive" className="text-xs">Périmé</Badge>
     }
     const days = differenceInDays(date, now)
     if (days <= 3) {
@@ -1047,7 +1047,7 @@ function ProductionBoisSubTab() {
               <Package className="h-4 w-4 text-amber-600" />
               <p className="text-sm text-amber-700">En stock</p>
             </div>
-            <p className="text-2xl font-bold text-amber-800">{stockVolume.toFixed(1)} m3</p>
+            <p className="text-2xl font-bold text-amber-800">{stockVolume.toFixed(1)} m³</p>
             <p className="text-xs text-amber-600">{stockProductions.length} lot(s)</p>
           </CardContent>
         </Card>
@@ -1057,7 +1057,7 @@ function ProductionBoisSubTab() {
               <ShoppingCart className="h-4 w-4 text-green-600" />
               <p className="text-sm text-green-700">Vendu</p>
             </div>
-            <p className="text-2xl font-bold text-green-800">{venduVolume.toFixed(1)} m3</p>
+            <p className="text-2xl font-bold text-green-800">{venduVolume.toFixed(1)} m³</p>
             <p className="text-xs text-green-600">{venduProductions.length} vente(s)</p>
           </CardContent>
         </Card>
@@ -1122,7 +1122,7 @@ function ProductionBoisSubTab() {
                       <TableCell>{new Date(p.date).toLocaleDateString("fr-FR")}</TableCell>
                       <TableCell className="capitalize">{p.type}</TableCell>
                       <TableCell>{p.arbre?.nom || "-"}</TableCell>
-                      <TableCell className="text-right">{p.volumeM3 ? `${p.volumeM3} m3` : "-"}</TableCell>
+                      <TableCell className="text-right">{p.volumeM3 ? `${p.volumeM3} m³` : "-"}</TableCell>
                       <TableCell className="text-right">{p.poidsKg ? `${p.poidsKg} kg` : "-"}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
@@ -1182,7 +1182,7 @@ function ProductionBoisSubTab() {
                     <TableRow key={p.id}>
                       <TableCell>{p.dateVente ? new Date(p.dateVente).toLocaleDateString("fr-FR") : "-"}</TableCell>
                       <TableCell className="capitalize">{p.type}</TableCell>
-                      <TableCell className="text-right">{p.volumeM3 ? `${p.volumeM3} m3` : "-"}</TableCell>
+                      <TableCell className="text-right">{p.volumeM3 ? `${p.volumeM3} m³` : "-"}</TableCell>
                       <TableCell>{p.clientNom || "-"}</TableCell>
                       <TableCell className="text-right font-medium text-green-600">
                         {p.prixVente ? `${p.prixVente} EUR` : "-"}
@@ -1226,7 +1226,7 @@ function ProductionBoisSubTab() {
                     <TableRow key={p.id}>
                       <TableCell>{new Date(p.date).toLocaleDateString("fr-FR")}</TableCell>
                       <TableCell className="capitalize">{p.type}</TableCell>
-                      <TableCell className="text-right">{p.volumeM3 ? `${p.volumeM3} m3` : "-"}</TableCell>
+                      <TableCell className="text-right">{p.volumeM3 ? `${p.volumeM3} m³` : "-"}</TableCell>
                       <TableCell className="capitalize">{p.destination || "-"}</TableCell>
                     </TableRow>
                   ))}
@@ -1279,7 +1279,7 @@ function ProductionBoisSubTab() {
                 onValueChange={(v) => setNewProduction({ ...newProduction, arbreId: v })}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Aucun arbre specifique" />
+                  <SelectValue placeholder="Aucun arbre spécifique" />
                 </SelectTrigger>
                 <SelectContent>
                   {arbres.map((a) => (
@@ -1292,7 +1292,7 @@ function ProductionBoisSubTab() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Volume (m3)</Label>
+                <Label>Volume (m³)</Label>
                 <Input
                   type="number"
                   step="0.1"
@@ -1336,7 +1336,7 @@ function ProductionBoisSubTab() {
             <div className="space-y-4">
               <div className="p-3 bg-amber-50 rounded-lg">
                 <p className="text-sm text-amber-700">
-                  {selectedProduction.type} - {selectedProduction.volumeM3} m3
+                  {selectedProduction.type} - {selectedProduction.volumeM3} m³
                   {selectedProduction.arbre && ` (${selectedProduction.arbre.nom})`}
                 </p>
               </div>
@@ -1416,7 +1416,7 @@ function ProductionBoisSubTab() {
             <div className="space-y-4">
               <div className="p-3 bg-amber-50 rounded-lg">
                 <p className="text-sm text-amber-700">
-                  {selectedProduction.type} - {selectedProduction.volumeM3} m3
+                  {selectedProduction.type} - {selectedProduction.volumeM3} m³
                 </p>
               </div>
               <div>

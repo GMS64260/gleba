@@ -98,7 +98,7 @@ export async function GET(request: NextRequest) {
         },
       }),
 
-      // Stock oeufs calculé
+      // Stock œufs calculé
       calculerStockOeufs(userId),
 
       // Arbres actifs
@@ -274,13 +274,13 @@ export async function GET(request: NextRequest) {
       })
     })
 
-    // Stock oeufs
+    // Stock œufs
     if (stockOeufs.stockNet > 0 || stockOeufs.detail.produits > 0) {
       stocks.push({
         id: 'oeufs-stock',
         module: 'elevage',
         categorie: 'Oeufs',
-        nom: 'Stock oeufs',
+        nom: 'Stock œufs',
         stock: stockOeufs.stockNet,
         unite: 'oeufs',
         stockMin: 24,

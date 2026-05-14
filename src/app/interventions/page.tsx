@@ -925,8 +925,8 @@ export default function InterventionsPage() {
                             <option value="kg">kg</option>
                             <option value="L">L</option>
                             <option value="g">g</option>
-                            <option value="unites">unites</option>
-                            <option value="m3">m3</option>
+                            <option value="unites">unités</option>
+                            <option value="m3">m³</option>
                             <option value="T">T</option>
                           </select>
                         </div>
@@ -947,7 +947,7 @@ export default function InterventionsPage() {
                           <Input
                             value={form.intrantNumLot}
                             onChange={(e) => setForm({ ...form, intrantNumLot: e.target.value })}
-                            placeholder="Tracabilite"
+                            placeholder="Traçabilité"
                           />
                         </div>
                       </div>

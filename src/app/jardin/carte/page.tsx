@@ -363,7 +363,7 @@ function CartePageContent() {
             <Link href={usageFilter === "elevage" || parcelleIdParam ? "/elevage?tab=animaux" : "/jardin"}>
               <Button variant="ghost" size="sm">
                 <ArrowLeft className="h-4 w-4 mr-2" />
-                {usageFilter === "elevage" || parcelleIdParam ? "Élevage" : "Plan schematique"}
+                {usageFilter === "elevage" || parcelleIdParam ? "Élevage" : "Plan schématique"}
               </Button>
             </Link>
             <div className="flex items-center gap-2">

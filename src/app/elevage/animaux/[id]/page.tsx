@@ -303,7 +303,7 @@ export default function AnimalDetailPage() {
                 </CardHeader>
                 <CardContent className="pb-3 px-4">
                   <p className="text-xs text-muted-foreground">
-                    {animal.dateNaissance ? `Ne(e) le ${new Date(animal.dateNaissance).toLocaleDateString('fr-FR')}` : 'Date inconnue'}
+                    {animal.dateNaissance ? `Né(e) le ${new Date(animal.dateNaissance).toLocaleDateString('fr-FR')}` : 'Date inconnue'}
                   </p>
                 </CardContent>
               </Card>
@@ -334,12 +334,12 @@ export default function AnimalDetailPage() {
 
               <Card>
                 <CardHeader className="pb-1 pt-3 px-4">
-                  <CardDescription className="text-xs flex items-center gap-1"><Heart className="h-3 w-3" />Genealogie</CardDescription>
+                  <CardDescription className="text-xs flex items-center gap-1"><Heart className="h-3 w-3" />Généalogie</CardDescription>
                   <CardTitle className="text-lg">{animal.enfants.length} enfant(s)</CardTitle>
                 </CardHeader>
                 <CardContent className="pb-3 px-4">
                   <p className="text-xs text-muted-foreground">
-                    {animal.mere ? `Mere : ${animal.mere.nom || animal.mere.identifiant || `#${animal.mere.id}`}` : 'Mere inconnue'}
+                    {animal.mere ? `Mere : ${animal.mere.nom || animal.mere.identifiant || `#${animal.mere.id}`}` : 'Mère inconnue'}
                   </p>
                 </CardContent>
               </Card>
@@ -351,7 +351,7 @@ export default function AnimalDetailPage() {
                 <CardHeader>
                   <CardTitle className="text-sm flex items-center gap-2">
                     <Heart className="h-4 w-4 text-pink-600" />
-                    Genealogie
+                    Généalogie
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -370,7 +370,7 @@ export default function AnimalDetailPage() {
                 {(() => {
                   const timeline = buildTimeline(animal)
                   if (timeline.length === 0) {
-                    return <p className="text-sm text-muted-foreground text-center py-4">Aucun evenement enregistre</p>
+                    return <p className="text-sm text-muted-foreground text-center py-4">Aucun événement enregistré</p>
                   }
                   return (
                     <div className="space-y-3 max-h-[500px] overflow-y-auto">

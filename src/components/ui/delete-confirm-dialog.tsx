@@ -18,10 +18,38 @@ import {
 import { Button } from "@/components/ui/button"
 
 export interface DeleteDependency {
-  /** Libellé affiché (ex: "récoltes", "soins", "opérations") */
+  /** Libellé affiché. Passer un pluriel ("récoltes liées") : il sera
+   *  automatiquement adapté au singulier si count === 1.
+   *  Conventions singularisation : 'es' -> 'e', 's' final -> ''. */
   label: string
   /** Nombre d'éléments liés */
   count: number
+}
+
+/**
+ * DEV2 #8 — Singularisation auto FR : "1 récoltes liées" → "1 récolte liée".
+ * Règles simples qui couvrent les cas courants côté FR :
+ *  - mot terminant par "ées"  → "ée"  (récoltées → récoltée)
+ *  - mot terminant par "ies"  → "ie"
+ *  - mot terminant par "es"   → "e"   (récoltes → récolte, opérations → opération)
+ *    Sauf "us", "ois" (variables) → on ne touche pas.
+ *  - mot terminant par "s"    → ""   (soins → soin)
+ */
+function singulariser(mot: string): string {
+  if (mot.endsWith("ées")) return mot.slice(0, -1)        // récoltées→récoltée
+  if (mot.endsWith("ies")) return mot.slice(0, -1)        // baies→baie
+  if (mot.endsWith("liées")) return mot.slice(0, -1)
+  if (mot.length > 3 && mot.endsWith("es")) return mot.slice(0, -1)
+  if (mot.length > 2 && mot.endsWith("s") && !/(us|ois|ais)$/.test(mot)) return mot.slice(0, -1)
+  return mot
+}
+
+function singularisePhrase(label: string, count: number): string {
+  if (count !== 1) return label
+  return label
+    .split(/\s+/)
+    .map(singulariser)
+    .join(" ")
 }
 
 interface Props {
@@ -91,7 +119,7 @@ export function DeleteConfirmDialog({
                   .map((dep) => (
                     <li key={dep.label} className="flex items-center gap-2">
                       <span className="font-semibold tabular-nums">{dep.count}</span>
-                      <span>{dep.label}</span>
+                      <span>{singularisePhrase(dep.label, dep.count)}</span>
                     </li>
                   ))}
               </ul>

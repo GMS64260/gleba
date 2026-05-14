@@ -163,7 +163,7 @@ export async function GET(request: NextRequest) {
         return lowStock.filter(a => a.stock !== null && a.stockMin !== null && a.stock <= a.stockMin).length
       }),
 
-      // Stock oeufs calculé
+      // Stock œufs calculé
       calculerStockOeufs(userId),
 
       // Mortalité annee (animaux morts cette annee)
