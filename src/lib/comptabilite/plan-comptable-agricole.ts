@@ -37,7 +37,14 @@ export const COMPTES_VENTES: Record<string, { num: string; lib: string }> = {
   produits_transformes: { num: '701500', lib: 'Ventes de produits transformés' },
   // Production animale (702)
   animaux_vivants: { num: '702100', lib: 'Ventes d\'animaux vivants' },
-  bois: { num: '702300', lib: 'Ventes de bois' },
+  // DEV3 #5 - Audit Marc 2026-05-14 : Ventes de bois et produits forestiers.
+  // Plan Comptable Agricole 701-82 (PCG agri art. 711-1 + adaptations CRC) :
+  //   70182 = Ventes de bois et produits forestiers
+  // Sous-comptes : 701821 (bois sur pied), 701822 (bois façonné).
+  bois: { num: '701820', lib: 'Ventes de bois et produits forestiers' },
+  bois_oeuvre: { num: '701821', lib: 'Ventes de bois d\'œuvre' },
+  bois_chauffage: { num: '701822', lib: 'Ventes de bois de chauffage' },
+  bois_brf: { num: '701822', lib: 'Ventes de plaquettes / BRF' },
   // Travaux & prestations agricoles (706)
   service: { num: '706000', lib: 'Prestations de services agricoles' },
   prestation: { num: '706000', lib: 'Prestations de services agricoles' },

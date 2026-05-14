@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
   const end = new Date(exercice, 11, 31, 23, 59, 59)
   const userId = session!.user.id
 
-  const [ventes, depenses, factures] = await Promise.all([
+  const [ventes, depenses, factures, ventesBois, ventesFruits] = await Promise.all([
     prisma.venteManuelle.findMany({
       where: { userId, date: { gte: start, lte: end }, auto: { not: true } },
       orderBy: { date: 'asc' },
@@ -53,6 +53,31 @@ export async function GET(request: NextRequest) {
       where: { userId, date: { gte: start, lte: end }, statut: { not: 'annulee' } },
       orderBy: { date: 'asc' },
       include: { lignes: true },
+    }),
+    // DEV3 #5 - Audit Marc : Ventes directes ProductionBois SANS facture
+    // (sinon double-comptage). Compte 701820 (Ventes de bois et produits forestiers).
+    prisma.productionBois.findMany({
+      where: {
+        userId,
+        date: { gte: start, lte: end },
+        statut: 'vendu',
+        prixVente: { not: null },
+        factureId: null,
+      },
+      include: { arbre: { select: { espece: true, nom: true } } },
+      orderBy: { dateVente: 'asc' },
+    }),
+    // DEV3 #5 - Ventes directes RecolteArbre SANS facture (compte 701200 fruits)
+    prisma.recolteArbre.findMany({
+      where: {
+        userId,
+        date: { gte: start, lte: end },
+        statut: 'vendu',
+        prixTotal: { not: null },
+        factureId: null,
+      },
+      include: { arbre: { select: { espece: true, nom: true } } },
+      orderBy: { dateVente: 'asc' },
     }),
   ])
 
@@ -70,6 +95,61 @@ export async function GET(request: NextRequest) {
     clientNom: v.clientNom,
     paye: v.paye,
   }))
+
+  // DEV3 #5 - Injection des ventes ProductionBois (sans facture) au FEC.
+  // Catégorie 'bois' → compte 701820. TVA 20% par défaut (bois énergie : 10%
+  // si applicable mais conservons 20% en standard, l'opérateur peut éditer).
+  // Numéro pièce = "BOIS-{id}" pour éviter collision avec les ventes manuelles.
+  function categorieBois(qualite: string | null): string {
+    if (!qualite) return 'bois'
+    if (qualite === "Bois d'œuvre") return 'bois_oeuvre'
+    if (qualite === 'Bois de chauffage') return 'bois_chauffage'
+    if (qualite === 'BRF' || qualite === 'Plaquette') return 'bois_brf'
+    return 'bois'
+  }
+  for (const b of ventesBois) {
+    const ttc = b.prixVente as number
+    const tauxTVA = 20
+    const ht = Math.round((ttc / (1 + tauxTVA / 100)) * 100) / 100
+    const tva = Math.round((ttc - ht) * 100) / 100
+    const desc = `Vente bois — ${b.arbre?.espece || b.arbre?.nom || b.qualiteBois || 'lot'} (${b.numLot ?? `#${b.id}`})`
+    ventesIn.push({
+      id: 1_000_000 + b.id,           // décalage pour éviter collision id
+      date: b.dateVente ?? b.date,
+      description: desc,
+      categorie: categorieBois(b.qualiteBois),
+      modeReglement: null,
+      numeroPiece: `BOIS-${b.id}`,
+      tauxTVA,
+      montant: ttc,
+      montantHT: ht,
+      montantTVA: tva,
+      clientNom: b.clientNom,
+      paye: true,
+    })
+  }
+  // DEV3 #5 - Injection ventes RecolteArbre directes (sans facture)
+  for (const r of ventesFruits) {
+    const ttc = r.prixTotal as number
+    const tauxTVA = 5.5  // Fruits frais : 5.5% TVA réduite
+    const ht = Math.round((ttc / (1 + tauxTVA / 100)) * 100) / 100
+    const tva = Math.round((ttc - ht) * 100) / 100
+    const desc = `Vente fruits — ${r.arbre?.espece || r.arbre?.nom || 'lot'} (${r.numLot ?? `#${r.id}`})`
+    ventesIn.push({
+      id: 2_000_000 + r.id,
+      date: r.dateVente ?? r.date,
+      description: desc,
+      categorie: 'fruits',
+      modeReglement: null,
+      numeroPiece: `FRUIT-${r.id}`,
+      tauxTVA,
+      montant: ttc,
+      montantHT: ht,
+      montantTVA: tva,
+      clientNom: r.clientNom,
+      paye: true,
+    })
+  }
 
   const depensesIn: FecInputDepense[] = depenses.map((d) => ({
     id: d.id,
