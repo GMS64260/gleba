@@ -19,9 +19,12 @@ import * as bcrypt from "bcryptjs"
 
 const prisma = new PrismaClient()
 
-const DEMO_EMAIL = "demo@gleba.fr"
-const DEMO_PASSWORD = "demo2026"
-const DEMO_NAME = "Ferme du Bois Joli"
+// DEMO_EMAIL_OVERRIDE permet de pointer le seed sur un autre compte (ex
+// admin@gleba.fr) via le script clone-demo-to-admin.ts. Sans override,
+// pointage par défaut sur demo@gleba.fr.
+const DEMO_EMAIL = process.env.DEMO_EMAIL_OVERRIDE || "demo@gleba.fr"
+const DEMO_PASSWORD = process.env.DEMO_PASSWORD_OVERRIDE || "demo2026"
+const DEMO_NAME = process.env.DEMO_NAME_OVERRIDE || "Ferme du Bois Joli"
 
 const ANNEE = 2026
 
@@ -312,8 +315,12 @@ async function seedElevage(userId: string, parcelles: Record<string, string>) {
 }
 
 async function seedBoutique(userId: string) {
+  // Le slug est unique global → on suffixe avec un fragment du userId
+  // pour permettre plusieurs clones du démo sur des comptes distincts.
+  const slugBase = "ferme-du-bois-joli"
+  const slug = slugBase + (process.env.DEMO_EMAIL_OVERRIDE ? `-${userId.slice(-6)}` : "")
   const boutique = await prisma.boutique.create({
-    data: { userId, slug: "ferme-du-bois-joli", nom: "Ferme du Bois Joli", description: "Légumes bio, œufs frais, miel & confitures — La Boissière-de-Montaigu (85).", descCourte: "AMAP, marché et boutique en ligne", couleurPrimaire: "#16a34a", couleurSecondaire: "#f59e0b", email: "contact@ferme-bois-joli.fr", telephone: "02 51 00 00 00", ville: "La Boissière-de-Montaigu", codePostal: "85600", modesPaiement: "Espèces, chèque, virement", modesLivraison: "Retrait à la ferme (mercredi 17h-19h), marché du samedi (Montaigu)", active: true },
+    data: { userId, slug, nom: "Ferme du Bois Joli", description: "Légumes bio, œufs frais, miel & confitures — La Boissière-de-Montaigu (85).", descCourte: "AMAP, marché et boutique en ligne", couleurPrimaire: "#16a34a", couleurSecondaire: "#f59e0b", email: "contact@ferme-bois-joli.fr", telephone: "02 51 00 00 00", ville: "La Boissière-de-Montaigu", codePostal: "85600", modesPaiement: "Espèces, chèque, virement", modesLivraison: "Retrait à la ferme (mercredi 17h-19h), marché du samedi (Montaigu)", active: true },
   })
 
   const produits = [
@@ -365,8 +372,10 @@ async function seedBoutique(userId: string) {
       }
     })
     total = lignesData.reduce((sum, l) => sum + l.total, 0)
+    // Numéro de commande unique global → suffixe si clone sur un autre compte
+    const numero = process.env.DEMO_EMAIL_OVERRIDE ? `${c.num}-${userId.slice(-4)}` : c.num
     const cmd = await prisma.commandeBoutique.create({
-      data: { userId, boutiqueId: boutique.id, numero: c.num, clientNom: c.client, clientEmail: `${c.client.toLowerCase().replace(/\s+/g, ".")}@example.fr`, total, statut: c.statut, createdAt: d(c.date), updatedAt: d(c.date), lignes: { create: lignesData } },
+      data: { userId, boutiqueId: boutique.id, numero, clientNom: c.client, clientEmail: `${c.client.toLowerCase().replace(/\s+/g, ".")}@example.fr`, total, statut: c.statut, createdAt: d(c.date), updatedAt: d(c.date), lignes: { create: lignesData } },
     })
     if (c.statut === "livree") {
       await prisma.venteManuelle.create({
