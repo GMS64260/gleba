@@ -1689,6 +1689,7 @@ model Facture {
   abattages        Abattage[]       @relation("AbattageFacture")
   recoltesArbres   RecolteArbre[]   @relation("RecolteArbreFacture")
   productionsBois  ProductionBois[] @relation("ProductionBoisFacture")
+  commandesBoutique CommandeBoutique[] @relation("CommandeFacture")
 
   @@unique([userId, numero])
   @@index([userId])
@@ -1757,6 +1758,8 @@ model VenteManuelle {
   auto         Boolean  @default(false) @map("auto") // true = généré automatiquement
   notes        String?  @map("notes")
   createdAt    DateTime @default(now()) @map("created_at")
+
+  commandesBoutique CommandeBoutique[] @relation("CommandeVente")
 
   @@index([userId])
   @@index([clientId])
@@ -2173,6 +2176,14 @@ model CommandeBoutique {
   notesPrivees    String?   @map("notes_privees")
   // Workflow
   statut          String    @default("nouveau") @map("statut") // "nouveau", "confirmee", "prete", "livree", "annulee"
+  // PROMPT 16 LOT B — Câblage paiement / compta.
+  paiementStatut    String    @default("En attente") @map("paiement_statut") // En attente | Confirmé | Annulé | Remboursé
+  paiementProvider  String?   @map("paiement_provider")                       // Stripe | SumUp | Manuel | Virement
+  paiementRef       String?   @map("paiement_ref")                            // ID transaction provider
+  venteManuelleId   Int?      @map("vente_manuelle_id")
+  venteManuelle     VenteManuelle? @relation("CommandeVente", fields: [venteManuelleId], references: [id], onDelete: SetNull)
+  factureId         Int?      @map("facture_id")
+  facture           Facture?  @relation("CommandeFacture", fields: [factureId], references: [id], onDelete: SetNull)
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
@@ -2181,6 +2192,9 @@ model CommandeBoutique {
   @@index([userId])
   @@index([boutiqueId])
   @@index([statut])
+  @@index([paiementStatut])
+  @@index([venteManuelleId])
+  @@index([factureId])
   @@index([createdAt])
   @@map("commandes_boutique")
 }
