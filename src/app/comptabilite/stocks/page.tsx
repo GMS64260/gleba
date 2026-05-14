@@ -85,6 +85,20 @@ export default function StocksPage() {
     return grouped
   }, [filteredStocks])
 
+  // DEV1 Ticket 5 (audit QA 2026-05-14) : "Total articles 7" ≠ somme des
+  // catégories listées quand un filtre `selectedModule` est actif. Les
+  // stats serveur sont globales — on recalcule à partir des stocks filtrés
+  // pour garder le compteur cohérent avec ce que l'utilisateur voit.
+  const filteredStats = React.useMemo(() => {
+    const valeurTotale = filteredStocks.reduce((s, item) => s + (item.valeur || 0), 0)
+    const alertesFiltered = filteredStocks.filter((s) => s.alerteBas)
+    return {
+      totalItems: filteredStocks.length,
+      alertes: alertesFiltered.length,
+      valeurTotale,
+    }
+  }, [filteredStocks])
+
   return (
     <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
       <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
@@ -120,21 +134,30 @@ export default function StocksPage() {
         {stats && (
           <div className="grid gap-4 md:grid-cols-4 mb-6">
             <Card>
-              <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Total articles</CardTitle></CardHeader>
-              <CardContent><p className="text-2xl font-bold">{stats.totalItems}</p></CardContent>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm text-muted-foreground">
+                  Total articles{selectedModule && selectedModule !== "all" ? ` (${selectedModule})` : ""}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold">{filteredStats.totalItems}</p>
+                {selectedModule && selectedModule !== "all" && (
+                  <p className="text-[10px] text-muted-foreground">sur {stats.totalItems} au total</p>
+                )}
+              </CardContent>
             </Card>
-            <Card className={alertes.length > 0 ? "border-orange-200 bg-orange-50" : ""}>
+            <Card className={filteredStats.alertes > 0 ? "border-orange-200 bg-orange-50" : ""}>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
-                  {alertes.length > 0 && <AlertTriangle className="h-4 w-4 text-orange-500" />}
+                  {filteredStats.alertes > 0 && <AlertTriangle className="h-4 w-4 text-orange-500" />}
                   Alertes stock bas
                 </CardTitle>
               </CardHeader>
-              <CardContent><p className={`text-2xl font-bold ${alertes.length > 0 ? 'text-orange-600' : ''}`}>{stats.alertes}</p></CardContent>
+              <CardContent><p className={`text-2xl font-bold ${filteredStats.alertes > 0 ? 'text-orange-600' : ''}`}>{filteredStats.alertes}</p></CardContent>
             </Card>
             <Card>
               <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Valeur estimée</CardTitle></CardHeader>
-              <CardContent><p className="text-2xl font-bold text-violet-600">{formatEuro(stats.valeurTotale)}</p></CardContent>
+              <CardContent><p className="text-2xl font-bold text-violet-600">{formatEuro(filteredStats.valeurTotale)}</p></CardContent>
             </Card>
             <Card>
               <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Répartition</CardTitle></CardHeader>
