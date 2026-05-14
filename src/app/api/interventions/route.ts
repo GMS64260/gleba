@@ -543,6 +543,25 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Intervention non trouvée' }, { status: 404 })
     }
 
+    // DEV2 #7 — Audit Larcher : la transition "Planifié → Fait" exige
+    // une durée renseignée (sinon les statistiques de coût MO restent
+    // à 0). On la bloque ici plutôt que de filtrer après coup.
+    if (updates.fait === true && existing.fait === false) {
+      const dureeFinale = updates.dureeMinutes !== undefined
+        ? parseInt(updates.dureeMinutes)
+        : existing.dureeMinutes
+      if (!dureeFinale || dureeFinale <= 0) {
+        return NextResponse.json(
+          {
+            error:
+              "Durée requise pour passer une intervention en \"Fait\". " +
+              "Saisissez le temps de travail (en minutes) pour alimenter les statistiques.",
+          },
+          { status: 400 }
+        )
+      }
+    }
+
     // Build update data
     const data: any = {}
     if (updates.date !== undefined) data.date = new Date(updates.date)
