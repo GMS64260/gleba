@@ -35,6 +35,9 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { ImageUploader } from "@/components/ui/image-uploader"
 import { METHODES_TRAITEMENT, labelMethode, methodeExigeCertiphyto } from "@/lib/phyto/methodes"
+import { WeatherFieldset, EMPTY_WEATHER, type WeatherData } from "@/components/phyto/WeatherFieldset"
+import { EpiFieldset } from "@/components/phyto/EpiFieldset"
+import { ZntFieldset } from "@/components/phyto/ZntFieldset"
 
 interface Arbre {
   id: number
@@ -680,6 +683,7 @@ function RegistrePhytoSubTab() {
     traitement: "",
     methodeTraitement: "",
   })
+  // DEV3 #1 — Champs réglementaires (Arrêté 16/06/2009)
   const [addForm, setAddForm] = React.useState({
     arbreId: "",
     date: new Date().toISOString().split("T")[0],
@@ -695,7 +699,33 @@ function RegistrePhytoSubTab() {
     traitement: "",
     gravite: "faible",
     notes: "",
+    // Bloquant #1 - registre phyto réglementaire
+    surfaceTraiteeHa: "",
+    volumeBouillieLHa: "",
+    volumeBouillieLTotal: "",
+    certiphytoNum: "",
+    parcelleId: "",
+    operateurId: "",
+    zntDistanceM: "",
+    zntRespectee: null as boolean | null,
   })
+  const [addWeather, setAddWeather] = React.useState<WeatherData>(EMPTY_WEATHER)
+  const [addEpi, setAddEpi] = React.useState<string[]>([])
+  const [parcelles, setParcelles] = React.useState<{ id: string; nom: string }[]>([])
+
+  // Charge la liste des parcelles pour le dropdown
+  React.useEffect(() => {
+    fetch("/api/parcelles")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setParcelles(data.map((p: { id: string; nom: string }) => ({ id: p.id, nom: p.nom })))
+        } else if (data?.data && Array.isArray(data.data)) {
+          setParcelles(data.data.map((p: { id: string; nom: string }) => ({ id: p.id, nom: p.nom })))
+        }
+      })
+      .catch(() => {})
+  }, [])
 
   const fetchData = React.useCallback(async () => {
     setLoading(true)
@@ -784,6 +814,21 @@ function RegistrePhytoSubTab() {
           ...addForm,
           doseAppliquee: addForm.doseAppliquee || null,
           dar: addForm.dar || null,
+          // DEV3 #1 — champs réglementaires
+          surfaceTraiteeHa: addForm.surfaceTraiteeHa || null,
+          volumeBouillieLHa: addForm.volumeBouillieLHa || null,
+          volumeBouillieLTotal: addForm.volumeBouillieLTotal || null,
+          certiphytoNum: addForm.certiphytoNum || null,
+          parcelleId: addForm.parcelleId || null,
+          operateurId: addForm.operateurId || null,
+          zntDistanceM: addForm.zntDistanceM || null,
+          zntRespectee: addForm.zntRespectee,
+          temperatureC: addWeather.temperatureC,
+          ventKmh: addWeather.ventKmh,
+          hygrometriePct: addWeather.hygrometriePct,
+          pluie24h: addWeather.pluie24h,
+          pluie24hMm: addWeather.pluie24hMm,
+          epiPortes: addEpi,
         }),
       })
       if (res.ok) {
@@ -803,9 +848,25 @@ function RegistrePhytoSubTab() {
           traitement: "",
           gravite: "faible",
           notes: "",
+          surfaceTraiteeHa: "",
+          volumeBouillieLHa: "",
+          volumeBouillieLTotal: "",
+          certiphytoNum: "",
+          parcelleId: "",
+          operateurId: "",
+          zntDistanceM: "",
+          zntRespectee: null,
         })
+        setAddWeather(EMPTY_WEATHER)
+        setAddEpi([])
         toast({ title: "Traitement enregistré" })
         fetchData()
+      } else {
+        const err = await res.json().catch(() => ({}))
+        toast({
+          title: err.error || "Erreur lors de l'enregistrement",
+          variant: "destructive",
+        })
       }
     } catch {
       toast({ title: "Erreur", variant: "destructive" })
@@ -1168,6 +1229,79 @@ function RegistrePhytoSubTab() {
                 )}
               </CardContent>
             </Card>
+
+            {/* DEV3 audit Marc — Bloc Conformité réglementaire (Bloquant #1)
+                Visible uniquement pour les méthodes chimiques (Certiphyto obligatoire). */}
+            {methodeExigeCertiphyto(addForm.methodeTraitement) && (
+              <Card className="border-amber-300 bg-amber-50/40">
+                <CardHeader className="pb-2 pt-3">
+                  <CardTitle className="text-sm flex items-center gap-2 text-amber-800">
+                    <Shield className="h-4 w-4" />
+                    Conformité réglementaire (Arrêté 16/06/2009)
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label>Surface traitée (ha) <span className="text-red-600">*</span></Label>
+                      <Input type="number" step="0.01" required value={addForm.surfaceTraiteeHa}
+                        onChange={(e) => setAddForm({ ...addForm, surfaceTraiteeHa: e.target.value })} placeholder="0.5" />
+                    </div>
+                    <div>
+                      <Label>Parcelle d'application</Label>
+                      <Select value={addForm.parcelleId} onValueChange={(v) => setAddForm({ ...addForm, parcelleId: v })}>
+                        <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+                        <SelectContent>
+                          {parcelles.map((p) => (
+                            <SelectItem key={p.id} value={p.id}>{p.nom}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label>Volume bouillie (L/ha) <span className="text-red-600">*</span></Label>
+                      <Input type="number" step="0.5" required value={addForm.volumeBouillieLHa}
+                        onChange={(e) => setAddForm({ ...addForm, volumeBouillieLHa: e.target.value })} placeholder="500" />
+                    </div>
+                    <div>
+                      <Label>Volume bouillie (L total)</Label>
+                      <Input type="number" step="0.5" value={addForm.volumeBouillieLTotal}
+                        onChange={(e) => setAddForm({ ...addForm, volumeBouillieLTotal: e.target.value })} placeholder="(auto si surface × L/ha)" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label>N° Certiphyto opérateur <span className="text-red-600">*</span></Label>
+                      <Input required value={addForm.certiphytoNum}
+                        onChange={(e) => setAddForm({ ...addForm, certiphytoNum: e.target.value })} placeholder="01-AB-12345" />
+                    </div>
+                    <div>
+                      <Label>Opérateur</Label>
+                      <Input value={addForm.operateurId}
+                        onChange={(e) => setAddForm({ ...addForm, operateurId: e.target.value })} placeholder="Nom de l'opérateur" />
+                    </div>
+                  </div>
+
+                  <WeatherFieldset value={addWeather} onChange={setAddWeather} required showLegalHint />
+                  <EpiFieldset value={addEpi} onChange={setAddEpi} required warnIfEmpty />
+                  <ZntFieldset
+                    distanceM={addForm.zntDistanceM === "" ? null : parseFloat(addForm.zntDistanceM)}
+                    respectee={addForm.zntRespectee}
+                    onChange={({ distanceM, respectee }) =>
+                      setAddForm({
+                        ...addForm,
+                        zntDistanceM: distanceM == null ? "" : String(distanceM),
+                        zntRespectee: respectee,
+                      })
+                    }
+                    required
+                  />
+                </CardContent>
+              </Card>
+            )}
+
             <div>
               <Label>Notes</Label>
               <Textarea value={addForm.notes} onChange={(e) => setAddForm({ ...addForm, notes: e.target.value })} rows={2} />

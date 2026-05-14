@@ -41,6 +41,21 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (body.stadeBBCH !== undefined) data.stadeBBCH = body.stadeBBCH || null
     if (body.pctOrganesTouches !== undefined) data.pctOrganesTouches = body.pctOrganesTouches == null ? null : parseInt(body.pctOrganesTouches)
     if (body.photoUrl !== undefined) data.photoUrl = body.photoUrl || null
+    // DEV3 #1 — Champs réglementaires (Arrêté 16/06/2009)
+    if (body.surfaceTraiteeHa !== undefined) data.surfaceTraiteeHa = body.surfaceTraiteeHa == null ? null : parseFloat(body.surfaceTraiteeHa)
+    if (body.volumeBouillieLHa !== undefined) data.volumeBouillieLHa = body.volumeBouillieLHa == null ? null : parseFloat(body.volumeBouillieLHa)
+    if (body.volumeBouillieLTotal !== undefined) data.volumeBouillieLTotal = body.volumeBouillieLTotal == null ? null : parseFloat(body.volumeBouillieLTotal)
+    if (body.temperatureC !== undefined) data.temperatureC = body.temperatureC == null ? null : parseFloat(body.temperatureC)
+    if (body.ventKmh !== undefined) data.ventKmh = body.ventKmh == null ? null : parseFloat(body.ventKmh)
+    if (body.hygrometriePct !== undefined) data.hygrometriePct = body.hygrometriePct == null ? null : parseInt(body.hygrometriePct)
+    if (body.pluie24h !== undefined) data.pluie24h = body.pluie24h == null ? null : Boolean(body.pluie24h)
+    if (body.pluie24hMm !== undefined) data.pluie24hMm = body.pluie24hMm == null ? null : parseFloat(body.pluie24hMm)
+    if (body.epiPortes !== undefined) data.epiPortes = Array.isArray(body.epiPortes) ? body.epiPortes : []
+    if (body.zntRespectee !== undefined) data.zntRespectee = body.zntRespectee == null ? null : Boolean(body.zntRespectee)
+    if (body.zntDistanceM !== undefined) data.zntDistanceM = body.zntDistanceM == null ? null : parseInt(body.zntDistanceM)
+    if (body.parcelleId !== undefined) data.parcelleId = body.parcelleId || null
+    if (body.operateurId !== undefined) data.operateurId = body.operateurId || null
+    if (body.certiphytoNum !== undefined) data.certiphytoNum = body.certiphytoNum || null
     if (body.resolu !== undefined) {
       data.resolu = body.resolu
       if (body.resolu && !existing.dateResolution) {
