@@ -534,18 +534,39 @@ function SoinsSubTab() {
   const [filterFait, setFilterFait] = React.useState<string>("all")
 
   const [formData, setFormData] = React.useState({
-    lotId: "", date: new Date().toISOString().split('T')[0], type: "vaccination",
-    description: "", produit: "", quantite: "", unite: "", cout: "", fait: true, notes: "",
+    cible: "lot" as "lot" | "animal",
+    lotId: "",
+    animalId: "",
+    date: new Date().toISOString().split('T')[0],
+    type: "Vaccination",
+    description: "",
+    produit: "",
+    // PROMPT 19B
+    produitId: "",
+    dose: "",
+    voie: "",
+    motif: "",
+    ordonnanceUrl: "",
+    quantite: "", unite: "", cout: "", fait: true, notes: "",
   })
+  const [animaux, setAnimaux] = React.useState<{ id: number; nom: string | null; identifiant: string | null; especeAnimale?: { nom?: string } }[]>([])
+  const [produits, setProduits] = React.useState<{ id: string; nom: string; substanceActive: string | null; tempsAttenteLaitJ: number; tempsAttenteViandeJ: number; autoriseAB: boolean }[]>([])
 
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
     try {
       let url = '/api/elevage/soins?limit=100'
       if (filterFait !== 'all') url += `&fait=${filterFait}`
-      const [soinsRes, lotsRes] = await Promise.all([fetch(url), fetch('/api/elevage/lots?statut=actif')])
+      const [soinsRes, lotsRes, animauxRes, produitsRes] = await Promise.all([
+        fetch(url),
+        fetch('/api/elevage/lots?statut=actif'),
+        fetch('/api/elevage/animaux?statut=actif'),
+        fetch('/api/elevage/produits-veterinaires'),
+      ])
       if (soinsRes.ok) setSoins((await soinsRes.json()).data)
       if (lotsRes.ok) setLots((await lotsRes.json()).data)
+      if (animauxRes.ok) setAnimaux((await animauxRes.json()).data)
+      if (produitsRes.ok) setProduits((await produitsRes.json()).data)
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les donnees" })
     } finally {
@@ -558,15 +579,44 @@ function SoinsSubTab() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
+      const payload: any = {
+        date: formData.date,
+        type: formData.type,
+        description: formData.description || null,
+        produit: formData.produit || null,
+        produitId: formData.produitId || null,
+        dose: formData.dose || null,
+        voie: formData.voie || null,
+        motif: formData.motif || null,
+        ordonnanceUrl: formData.ordonnanceUrl || null,
+        quantite: formData.quantite ? parseFloat(formData.quantite) : null,
+        unite: formData.unite || null,
+        cout: formData.cout ? parseFloat(formData.cout) : null,
+        fait: formData.fait,
+        notes: formData.notes || null,
+      }
+      if (formData.cible === "animal") payload.animalId = formData.animalId ? parseInt(formData.animalId) : null
+      else payload.lotId = formData.lotId ? parseInt(formData.lotId) : null
+
       const response = await fetch('/api/elevage/soins', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       })
-      if (!response.ok) throw new Error('Erreur')
-      toast({ title: "Soin enregistre" })
+      const json = await response.json()
+      if (!response.ok) {
+        toast({ variant: "destructive", title: "Erreur", description: json.error || "Échec" })
+        return
+      }
+      toast({ title: "Soin enregistré", description: json.info || undefined })
       setIsDialogOpen(false)
-      setFormData({ lotId: "", date: new Date().toISOString().split('T')[0], type: "vaccination", description: "", produit: "", quantite: "", unite: "", cout: "", fait: true, notes: "" })
+      setFormData({
+        cible: "lot", lotId: "", animalId: "",
+        date: new Date().toISOString().split('T')[0], type: "Vaccination",
+        description: "", produit: "",
+        produitId: "", dose: "", voie: "", motif: "", ordonnanceUrl: "",
+        quantite: "", unite: "", cout: "", fait: true, notes: "",
+      })
       fetchData()
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible d'enregistrer le soin" })
@@ -605,45 +655,121 @@ function SoinsSubTab() {
             <DialogTrigger asChild><Button size="sm"><Plus className="h-4 w-4 mr-1" />Nouveau soin</Button></DialogTrigger>
             <DialogContent className="max-w-md">
               <DialogHeader><DialogTitle>Enregistrer un soin</DialogTitle><DialogDescription>Vaccination, vermifuge, traitement...</DialogDescription></DialogHeader>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Lot *</Label>
-                    <Select value={formData.lotId} onValueChange={(v) => setFormData(f => ({ ...f, lotId: v }))}>
-                      <SelectTrigger><SelectValue placeholder="..." /></SelectTrigger>
-                      <SelectContent>{lots.map(l => <SelectItem key={l.id} value={l.id.toString()}>{l.nom || `Lot #${l.id}`}</SelectItem>)}</SelectContent>
-                    </Select>
+              <form onSubmit={handleSubmit} className="space-y-3 max-h-[70vh] overflow-y-auto pr-2">
+                {/* Cible : animal ou lot */}
+                <div className="space-y-2">
+                  <Label>Cible *</Label>
+                  <div className="flex gap-2">
+                    <Button type="button" size="sm" variant={formData.cible === "animal" ? "default" : "outline"} onClick={() => setFormData(f => ({ ...f, cible: "animal", lotId: "" }))}>
+                      Animal individuel
+                    </Button>
+                    <Button type="button" size="sm" variant={formData.cible === "lot" ? "default" : "outline"} onClick={() => setFormData(f => ({ ...f, cible: "lot", animalId: "" }))}>
+                      Lot
+                    </Button>
                   </div>
+                  {formData.cible === "animal" ? (
+                    <select className="w-full h-10 rounded-md border border-slate-300 px-2 bg-white text-sm" value={formData.animalId} onChange={(e) => setFormData(f => ({ ...f, animalId: e.target.value }))}>
+                      <option value="">— Sélectionner un animal —</option>
+                      {animaux.map(a => (
+                        <option key={a.id} value={a.id}>
+                          {a.nom || a.identifiant || `#${a.id}`}{a.especeAnimale?.nom ? ` (${a.especeAnimale.nom})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <select className="w-full h-10 rounded-md border border-slate-300 px-2 bg-white text-sm" value={formData.lotId} onChange={(e) => setFormData(f => ({ ...f, lotId: e.target.value }))}>
+                      <option value="">— Sélectionner un lot —</option>
+                      {lots.map(l => <option key={l.id} value={l.id}>{l.nom || `Lot #${l.id}`}</option>)}
+                    </select>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label>Type *</Label>
-                    <Select value={formData.type} onValueChange={(v) => setFormData(f => ({ ...f, type: v }))}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="vaccination">Vaccination</SelectItem>
-                        <SelectItem value="vermifuge">Vermifuge</SelectItem>
-                        <SelectItem value="traitement">Traitement</SelectItem>
-                        <SelectItem value="autre">Autre</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <select className="w-full h-10 rounded-md border border-slate-300 px-2 bg-white text-sm" value={formData.type} onChange={(e) => setFormData(f => ({ ...f, type: e.target.value }))}>
+                      <option value="Vaccination">Vaccination</option>
+                      <option value="Vermifuge">Vermifuge</option>
+                      <option value="Traitement vétérinaire">Traitement vétérinaire</option>
+                      <option value="Tonte">Tonte</option>
+                      <option value="Parage onglons">Parage onglons</option>
+                      <option value="Castration">Castration</option>
+                      <option value="Identification">Identification</option>
+                      <option value="Prophylaxie obligatoire">Prophylaxie obligatoire</option>
+                      <option value="Coproscopie">Coproscopie</option>
+                      <option value="Mise en lutte">Mise en lutte</option>
+                      <option value="Tarissement">Tarissement</option>
+                      <option value="Autre">Autre</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Date</Label>
+                    <Input type="date" value={formData.date} onChange={(e) => setFormData(f => ({ ...f, date: e.target.value }))} />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2"><Label>Date</Label><Input type="date" value={formData.date} onChange={(e) => setFormData(f => ({ ...f, date: e.target.value }))} /></div>
-                  <div className="space-y-2"><Label>Produit</Label><Input value={formData.produit} onChange={(e) => setFormData(f => ({ ...f, produit: e.target.value }))} /></div>
+
+                {/* Produit vétérinaire */}
+                <div className="space-y-2">
+                  <Label>Produit vétérinaire (référentiel)</Label>
+                  <select className="w-full h-10 rounded-md border border-slate-300 px-2 bg-white text-sm" value={formData.produitId} onChange={(e) => {
+                    const p = produits.find(x => x.id === e.target.value)
+                    setFormData(f => ({ ...f, produitId: e.target.value, produit: p?.nom || f.produit }))
+                  }}>
+                    <option value="">— Aucun (saisie libre) —</option>
+                    {produits.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.nom} {p.substanceActive ? `(${p.substanceActive})` : ""} — TA lait {p.tempsAttenteLaitJ}j / viande {p.tempsAttenteViandeJ}j{p.autoriseAB ? " ✓AB" : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <Input value={formData.produit} onChange={(e) => setFormData(f => ({ ...f, produit: e.target.value }))} placeholder="Libellé produit (si saisie libre)" />
                 </div>
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="space-y-2"><Label>Quantite</Label><Input type="number" step="0.01" value={formData.quantite} onChange={(e) => setFormData(f => ({ ...f, quantite: e.target.value }))} /></div>
-                  <div className="space-y-2"><Label>Unite</Label><Input value={formData.unite} onChange={(e) => setFormData(f => ({ ...f, unite: e.target.value }))} placeholder="mL, doses..." /></div>
-                  <div className="space-y-2"><Label>Cout (&euro;)</Label><Input type="number" step="0.01" value={formData.cout} onChange={(e) => setFormData(f => ({ ...f, cout: e.target.value }))} /></div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-2"><Label>Dose</Label><Input value={formData.dose} onChange={(e) => setFormData(f => ({ ...f, dose: e.target.value }))} placeholder="2 ml/10 kg" /></div>
+                  <div className="space-y-2">
+                    <Label>Voie</Label>
+                    <select className="w-full h-10 rounded-md border border-slate-300 px-2 bg-white text-sm" value={formData.voie} onChange={(e) => setFormData(f => ({ ...f, voie: e.target.value }))}>
+                      <option value="">—</option>
+                      <option value="IM">IM</option>
+                      <option value="SC">SC</option>
+                      <option value="IV">IV</option>
+                      <option value="PO">PO (orale)</option>
+                      <option value="Local">Local</option>
+                      <option value="IN">IN (nasale)</option>
+                      <option value="Vaginal">Vaginal</option>
+                      <option value="Intra-mamm.">Intra-mamm.</option>
+                      <option value="Pour-on">Pour-on</option>
+                      <option value="Autre">Autre</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2"><Label>Coût (€)</Label><Input type="number" step="0.01" value={formData.cout} onChange={(e) => setFormData(f => ({ ...f, cout: e.target.value }))} /></div>
                 </div>
+
+                <div className="space-y-2">
+                  <Label>Motif clinique</Label>
+                  <Input value={formData.motif} onChange={(e) => setFormData(f => ({ ...f, motif: e.target.value }))} placeholder="Indication, symptômes..." />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>URL ordonnance (PDF)</Label>
+                  <Input value={formData.ordonnanceUrl} onChange={(e) => setFormData(f => ({ ...f, ordonnanceUrl: e.target.value }))} placeholder="https://..." />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2"><Label>Quantité</Label><Input type="number" step="0.01" value={formData.quantite} onChange={(e) => setFormData(f => ({ ...f, quantite: e.target.value }))} /></div>
+                  <div className="space-y-2"><Label>Unité</Label><Input value={formData.unite} onChange={(e) => setFormData(f => ({ ...f, unite: e.target.value }))} placeholder="mL, doses..." /></div>
+                </div>
+
                 <div className="space-y-2"><Label>Notes</Label><Textarea value={formData.notes} onChange={(e) => setFormData(f => ({ ...f, notes: e.target.value }))} rows={2} /></div>
+
                 <div className="flex items-center gap-2">
                   <Checkbox id="fait" checked={formData.fait} onCheckedChange={(c) => setFormData(f => ({ ...f, fait: !!c }))} />
-                  <Label htmlFor="fait">Deja effectue</Label>
+                  <Label htmlFor="fait">Déjà effectué</Label>
                 </div>
-                <div className="flex justify-end gap-2 pt-4">
+                <div className="flex justify-end gap-2 pt-2">
                   <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
-                  <Button type="submit" disabled={!formData.lotId}>Enregistrer</Button>
+                  <Button type="submit" disabled={formData.cible === "lot" ? !formData.lotId : !formData.animalId}>Enregistrer</Button>
                 </div>
               </form>
             </DialogContent>

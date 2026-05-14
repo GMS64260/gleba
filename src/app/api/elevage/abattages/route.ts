@@ -90,6 +90,33 @@ export async function POST(request: NextRequest) {
     }
 
     const { animalId, lotId, date, quantite, poidsVif, poidsCarcasse, destination, prixVente, lieu, notes } = parsed.data
+    const dateAbattage = date || new Date()
+
+    // PROMPT 19B §8 — Blocage si soin en temps d'attente viande actif
+    const soinsAttenteViande = await prisma.soinAnimal.findMany({
+      where: {
+        userId: session.user.id,
+        OR: [
+          animalId ? { animalId } : { id: -1 },
+          lotId ? { lotId } : { id: -1 },
+        ],
+        finAttenteViande: { gte: dateAbattage },
+        date: { lte: dateAbattage },
+      },
+      include: { produitVeterinaire: { select: { nom: true } } },
+    })
+    if (soinsAttenteViande.length > 0) {
+      const details = soinsAttenteViande
+        .map((s) => `${s.produit || s.produitVeterinaire?.nom || s.type} (lève le ${s.finAttenteViande?.toLocaleDateString('fr-FR')})`)
+        .join(', ')
+      return NextResponse.json(
+        {
+          error: 'Abattage interdit : animal en temps d\'attente vétérinaire',
+          details: `Traitement(s) en cours : ${details}. Reportez l'abattage après la fin du temps d'attente viande.`,
+        },
+        { status: 409 }
+      )
+    }
 
     // Transaction pour mettre à jour l'animal/lot
     const abattage = await prisma.$transaction(async (tx) => {
