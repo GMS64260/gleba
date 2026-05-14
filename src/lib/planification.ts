@@ -455,6 +455,18 @@ export async function getBesoinsSemences(
   const varieteMap = new Map(varietes.map(v => [v.id, v]))
   const userStockMap = new Map(userStocks.map(us => [us.varieteId, us]))
 
+  // BUG-21 (audit Marc 2026-05-14) : double comptage de surface quand
+  // plusieurs cultures partagent une même planche dans l'année (rotation
+  // courte, ITPs multiples). Avant : Carotte 30 m² (B1) + Actinidia 30 m²
+  // (B1) ⇒ besoins calculés sur 60 m² alors que la planche fait 30 m².
+  // Fix prorata simple : la surface de chaque culture sur la planche est
+  // pondérée par 1/N où N = nombre d'entrées sur la même planche.
+  const culturesParPlanche = new Map<string, number>()
+  for (const c of culturesPrevues) {
+    if (!c.plancheId) continue
+    culturesParPlanche.set(c.plancheId, (culturesParPlanche.get(c.plancheId) ?? 0) + 1)
+  }
+
   // Accumulation par couple espèce + variété.
   type Acc = {
     especeId: string
@@ -473,6 +485,9 @@ export async function getBesoinsSemences(
       culture.nbRangs,
       culture.espacement
     )
+    const partageFactor = culture.plancheId
+      ? 1 / (culturesParPlanche.get(culture.plancheId) ?? 1)
+      : 1
     const cur = accMap.get(key) || {
       especeId: culture.especeId,
       especeCouleur: culture.especeCouleur,
@@ -480,8 +495,8 @@ export async function getBesoinsSemences(
       surfaceTotale: 0,
       nbPlants: 0,
     }
-    cur.surfaceTotale += culture.surface
-    cur.nbPlants += nbPlants
+    cur.surfaceTotale += culture.surface * partageFactor
+    cur.nbPlants += Math.round(nbPlants * partageFactor)
     accMap.set(key, cur)
   }
 
