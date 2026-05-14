@@ -241,29 +241,63 @@ export async function DELETE(request: NextRequest) {
     })
     if (!existing) return NextResponse.json({ error: 'Soin non trouvé' }, { status: 404 })
 
+    // POSTREVIEW Sprint 5 — Réintégration collectes en RECOUVREMENT par collecte
+    // (avant : `lotId: null` matchait TOUS les soins d'animaux individuels via
+    // Prisma, ramenait des collectes à tort dans la moitié des cas).
+    //
+    // Stratégie : pour chaque collecte concernée par le soin supprimé, on
+    // re-vérifie si un AUTRE soin actif (fait=true) couvre cette collecte ; si
+    // aucun, on la réintègre (ecarteAttente=false).
     await prisma.$transaction(async (tx) => {
-      // Réintégrer les collectes écartées si aucun autre soin actif ne les couvre
       if (existing.finAttenteLait) {
-        const autresSoinsActifs = await tx.soinAnimal.findFirst({
+        // Cibles strict : exactement le même animal OU le même lot (pas les deux à null)
+        const cibleWhere: any = {}
+        if (existing.animalId) cibleWhere.animalId = existing.animalId
+        else if (existing.lotId) cibleWhere.lotId = existing.lotId
+        else {
+          // Ni animal ni lot : pas de réintégration possible (cas anormal)
+          await tx.soinAnimal.delete({ where: { id: parseInt(id) } })
+          return
+        }
+
+        // Collectes potentiellement écartées par ce soin
+        const collectes = await tx.collecteLait.findMany({
+          where: {
+            userId: session.user.id,
+            ecarteAttente: true,
+            ...cibleWhere,
+            date: { gte: existing.date, lte: existing.finAttenteLait },
+          },
+          select: { id: true, date: true },
+        })
+
+        // Autres soins actifs sur la même cible (hors celui supprimé)
+        const autresSoins = await tx.soinAnimal.findMany({
           where: {
             userId: session.user.id,
             id: { not: existing.id },
-            animalId: existing.animalId,
-            lotId: existing.lotId,
-            finAttenteLait: { gte: existing.date },
-            date: { lte: existing.finAttenteLait },
+            fait: true,
+            ...cibleWhere,
+            finAttenteLait: { not: null },
           },
-          select: { id: true },
+          select: { date: true, finAttenteLait: true },
         })
-        if (!autresSoinsActifs) {
-          const where: any = {
-            userId: session.user.id,
-            ecarteAttente: true,
-            date: { gte: existing.date, lte: existing.finAttenteLait },
-          }
-          if (existing.animalId) where.animalId = existing.animalId
-          if (existing.lotId) where.lotId = existing.lotId
-          await tx.collecteLait.updateMany({ where, data: { ecarteAttente: false } })
+
+        // Pour chaque collecte, réintègre si non couverte par un autre soin
+        const idsAReintegrer = collectes
+          .filter((c) => {
+            const couverte = autresSoins.some(
+              (s) => s.finAttenteLait && s.date <= c.date && c.date <= s.finAttenteLait
+            )
+            return !couverte
+          })
+          .map((c) => c.id)
+
+        if (idsAReintegrer.length > 0) {
+          await tx.collecteLait.updateMany({
+            where: { id: { in: idsAReintegrer } },
+            data: { ecarteAttente: false },
+          })
         }
       }
       await tx.soinAnimal.delete({ where: { id: parseInt(id) } })

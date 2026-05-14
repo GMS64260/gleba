@@ -60,26 +60,42 @@ export function dateTarissementPrevue(
  * Remonte les ancêtres d'un animal sur N générations.
  * Retourne un set d'IDs (incluant l'animal lui-même).
  */
+/**
+ * POSTREVIEW Sprint 5 — Charge tous les ancêtres en une requête par génération
+ * (1 query par niveau au lieu de N queries séquentielles) ET scope au userId
+ * pour éviter de traverser dans un autre tenant suite à un FK SetNull / import
+ * malformé.
+ */
 export async function ancetres(
   tx: PrismaTx,
   animalId: number,
-  generations = 3
+  generations = 3,
+  userId?: string
 ): Promise<Set<number>> {
-  const visited = new Set<number>()
-  const queue: Array<{ id: number; depth: number }> = [{ id: animalId, depth: 0 }]
+  const visited = new Set<number>([animalId])
+  let frontier = new Set<number>([animalId])
 
-  while (queue.length > 0) {
-    const cur = queue.shift()!
-    if (visited.has(cur.id)) continue
-    visited.add(cur.id)
-    if (cur.depth >= generations) continue
-    const a = await tx.animal.findUnique({
-      where: { id: cur.id },
+  for (let depth = 0; depth < generations; depth++) {
+    if (frontier.size === 0) break
+    const animaux = await tx.animal.findMany({
+      where: {
+        id: { in: Array.from(frontier) },
+        ...(userId ? { userId } : {}),
+      },
       select: { mereId: true, pereId: true },
     })
-    if (!a) continue
-    if (a.mereId) queue.push({ id: a.mereId, depth: cur.depth + 1 })
-    if (a.pereId) queue.push({ id: a.pereId, depth: cur.depth + 1 })
+    const next = new Set<number>()
+    for (const a of animaux) {
+      if (a.mereId && !visited.has(a.mereId)) {
+        visited.add(a.mereId)
+        next.add(a.mereId)
+      }
+      if (a.pereId && !visited.has(a.pereId)) {
+        visited.add(a.pereId)
+        next.add(a.pereId)
+      }
+    }
+    frontier = next
   }
   return visited
 }
@@ -93,12 +109,13 @@ export async function detecterConsanguinite(
   tx: PrismaTx,
   femelleId: number,
   maleId: number,
-  generations = 3
+  generations = 3,
+  userId?: string
 ): Promise<number[]> {
   if (femelleId === maleId) return [femelleId]
   const [aF, aM] = await Promise.all([
-    ancetres(tx, femelleId, generations),
-    ancetres(tx, maleId, generations),
+    ancetres(tx, femelleId, generations, userId),
+    ancetres(tx, maleId, generations, userId),
   ])
   // On exclut les animaux eux-mêmes — on cherche les ancêtres COMMUNS strict
   aF.delete(femelleId)

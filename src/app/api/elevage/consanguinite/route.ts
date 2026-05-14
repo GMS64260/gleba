@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
   ])
   if (!f || !m) return NextResponse.json({ error: 'Animaux non trouvés' }, { status: 404 })
 
-  const ancetresCommuns = await detecterConsanguinite(prisma, femelleId, maleId, generations)
+  const ancetresCommuns = await detecterConsanguinite(prisma, femelleId, maleId, generations, session.user.id)
   return NextResponse.json({
     consanguinite: ancetresCommuns.length > 0,
     generations,
