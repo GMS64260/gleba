@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi, getUserId } from '@/lib/auth-utils'
 import { getBesoinsSemences } from '@/lib/planification'
+import { computeManquantsBreakdown } from '@/lib/semences/manquants'
 
 const STOCK_STALE_DAYS = 30
 
@@ -36,6 +37,12 @@ export async function GET(request: NextRequest) {
     const nbMissing = besoins.filter(b => b.statut === 'MISSING').length
     const nbLow     = besoins.filter(b => b.statut === 'LOW').length
 
+    // BUG-15 : breakdown par mode (graines/plants vs caïeux) — le header
+    // « 8 manquant » contredisait la liste « 6 graines » : les 2 caïeux
+    // n'étaient pas remontés au même endroit.
+    const breakdown = computeManquantsBreakdown(besoins)
+    const { nbMissingGraines, nbMissingCaieux, nbLowGraines, nbLowCaieux } = breakdown
+
     // Alerte stock obsolète : la dernière `dateStock` la plus récente parmi
     // les variétés portant un besoin. Si > 30 jours, on prévient l'UI.
     const maxDateMaj = besoins
@@ -57,6 +64,10 @@ export async function GET(request: NextRequest) {
         especesSansStock: nbMissing + nbLow,
         nbMissing,
         nbLow,
+        nbMissingGraines,
+        nbMissingCaieux,
+        nbLowGraines,
+        nbLowCaieux,
         nbGraineDirecte: graineDirecte.length,
         nbPlantRepique: plantRepique.length,
         nbBulbeCaieu: bulbeCaieu.length,
