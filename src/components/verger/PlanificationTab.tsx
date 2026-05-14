@@ -162,7 +162,7 @@ function PlanificationHubSubTab({ year }: { year: number }) {
       icon: Scissors,
       color: "text-amber-600",
       bg: "bg-amber-50 border-amber-200",
-      href: `/arbres?tab=operations`,
+      href: `/verger?tab=operations`,
     },
     {
       title: "Récoltes prévisionnelles",
@@ -170,7 +170,7 @@ function PlanificationHubSubTab({ year }: { year: number }) {
       icon: Apple,
       color: "text-lime-600",
       bg: "bg-lime-50 border-lime-200",
-      href: `/arbres?tab=productions`,
+      href: `/verger?tab=productions`,
     },
     {
       title: "Traitements planifiés",
@@ -178,7 +178,7 @@ function PlanificationHubSubTab({ year }: { year: number }) {
       icon: Bug,
       color: "text-red-600",
       bg: "bg-red-50 border-red-200",
-      href: `/arbres?tab=sante`,
+      href: `/verger?tab=sante`,
     },
     {
       title: "Besoins irrigation",
@@ -186,7 +186,7 @@ function PlanificationHubSubTab({ year }: { year: number }) {
       icon: Droplets,
       color: "text-blue-600",
       bg: "bg-blue-50 border-blue-200",
-      href: `/arbres?tab=planification`,
+      href: `/verger?tab=planification`,
     },
     {
       title: "Matrice pollinisation",
@@ -194,7 +194,7 @@ function PlanificationHubSubTab({ year }: { year: number }) {
       icon: Flower2,
       color: "text-pink-600",
       bg: "bg-pink-50 border-pink-200",
-      href: `/arbres?tab=sante`,
+      href: `/verger?tab=sante`,
     },
     {
       title: "Plan du verger",

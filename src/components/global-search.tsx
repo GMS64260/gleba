@@ -79,8 +79,9 @@ export function GlobalSearch() {
         const since = Date.now() - gPressedAtRef.current
         if (since < 1200) {
           let target: string | null = null
-          if (e.key === "m") target = "/"
-          else if (e.key === "v") target = "/arbres"
+          // POSTREVIEW Sprint 6 — g+m vers /maraichage (avant : "/" legacy)
+          if (e.key === "m") target = "/maraichage"
+          else if (e.key === "v") target = "/verger"
           else if (e.key === "e") target = "/elevage"
           else if (e.key === "c") target = "/comptabilite"
           if (target) {

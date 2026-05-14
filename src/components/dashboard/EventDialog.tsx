@@ -233,7 +233,7 @@ export function EventDialog({ event, open, onOpenChange, onUpdate }: EventDialog
                 )}
               </div>
             </div>
-            <Link href={`/cultures/${event.type === 'irrigation' ? event.cultureId : event.id}`}>
+            <Link href={`/maraichage/cultures/${event.type === 'irrigation' ? event.cultureId : event.id}`}>
               <Button variant="ghost" size="sm">
                 <ExternalLink className="h-4 w-4 mr-1" />
                 Ouvrir
@@ -288,7 +288,7 @@ export function EventDialog({ event, open, onOpenChange, onUpdate }: EventDialog
                 <>Marquer comme fait</>
               )}
             </Button>
-            <Link href={`/cultures/${event.type === 'irrigation' ? event.cultureId : event.id}`} className="flex-1">
+            <Link href={`/maraichage/cultures/${event.type === 'irrigation' ? event.cultureId : event.id}`} className="flex-1">
               <Button variant="outline" className="w-full">
                 Modifier
               </Button>

@@ -59,7 +59,7 @@ const columns: ColumnDef<CulturePrevue>[] = [
     accessorKey: "plancheId",
     header: "Planche",
     cell: ({ row }) => (
-      <Link href={`/planches/${encodeURIComponent(row.original.plancheId)}`}>
+      <Link href={`/maraichage/planches/${encodeURIComponent(row.original.plancheId)}`}>
         <Badge variant="secondary" className="cursor-pointer hover:bg-slate-200">
           {row.original.plancheId}
         </Badge>
@@ -228,17 +228,17 @@ function CulturesPrevuesParIlotsContent() {
       <main className="container mx-auto px-4 py-6">
         {/* Onglets */}
         <div className="flex gap-2 mb-4">
-          <Link href={`/planification/cultures-prevues?annee=${annee}`}>
+          <Link href={`/maraichage/planification/cultures-prevues?annee=${annee}`}>
             <Button variant="outline" size="sm">
               Par espèce
             </Button>
           </Link>
-          <Link href={`/planification/cultures-prevues/par-ilots?annee=${annee}`}>
+          <Link href={`/maraichage/planification/cultures-prevues/par-ilots?annee=${annee}`}>
             <Button variant="default" size="sm">
               Par ilots
             </Button>
           </Link>
-          <Link href={`/planification/cultures-prevues/par-planches?annee=${annee}`}>
+          <Link href={`/maraichage/planification/cultures-prevues/par-planches?annee=${annee}`}>
             <Button variant="outline" size="sm">
               Par planches
             </Button>

@@ -207,7 +207,7 @@ export default function ParcelleDetailPage({ params }: PageProps) {
                   <tr key={p.id}>
                     <td className="py-2">
                       <Link
-                        href={`/planches/${encodeURIComponent(p.nom || p.id)}`}
+                        href={`/maraichage/planches/${encodeURIComponent(p.nom || p.id)}`}
                         className="text-green-600 hover:underline font-medium"
                       >
                         {p.nom || p.id}

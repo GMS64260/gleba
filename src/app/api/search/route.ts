@@ -114,21 +114,21 @@ export async function GET(request: NextRequest) {
       label: `${c.especeId || '?'}${c.varieteId ? ` — ${c.varieteId}` : ''}`,
       sub: `Culture ${c.annee} · planche ${c.plancheId || '—'}`,
       type: 'Culture',
-      href: `/cultures/${c.id}`,
+      href: `/maraichage/cultures/${c.id}`,
     })),
     ...varietes.map((v): SearchItem => ({
       id: `variete-${v.id}`,
       label: v.id,
       sub: `Variété (${v.especeId || '?'})`,
       type: 'Variété',
-      href: `/cultures?variete=${encodeURIComponent(v.id)}`,
+      href: `/maraichage/cultures?variete=${encodeURIComponent(v.id)}`,
     })),
     ...arbres.map((a): SearchItem => ({
       id: `arbre-${a.id}`,
       label: a.nom || `Arbre #${a.id}`,
       sub: `${a.espece || ''}${a.variete ? ` — ${a.variete}` : ''}`.trim() || null,
       type: 'Arbre',
-      href: `/arbres/${a.id}`,
+      href: `/verger/${a.id}`,
     })),
     ...animaux.map((an): SearchItem => ({
       id: `animal-${an.id}`,
@@ -177,7 +177,7 @@ export async function GET(request: NextRequest) {
       label: `${r.especeId || ''} · ${r.quantite} kg`,
       sub: `${r.notes || ''} · ${new Date(r.date).toLocaleDateString('fr-FR')}`.trim(),
       type: 'Récolte',
-      href: `/recoltes`,
+      href: `/maraichage/recoltes`,
     })),
     ...produitsBout.map((p): SearchItem => ({
       id: `produit-bout-${p.id}`,

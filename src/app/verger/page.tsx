@@ -36,6 +36,7 @@ import { ReferentielTab } from "@/components/verger/ReferentielTab"
 import { SanteTab } from "@/components/verger/SanteTab"
 import { PlantationsTab } from "@/components/verger/PlantationsTab"
 import { AssistantPlantationDialog } from "@/components/verger/AssistantPlantationDialog"
+import { TourVerger } from "@/components/tours/tour-verger"
 
 const TABS = [
   { id: "calendrier", label: "Calendrier", icon: Calendar, shortLabel: "Calendrier" },
@@ -197,6 +198,8 @@ function VergerPageInner() {
         </div>
       </nav>
 
+      {/* POSTREVIEW Sprint 6 — Tour Shepherd.js Verger */}
+      <TourVerger />
       {/* Contenu de l'onglet actif */}
       <main className="container mx-auto px-4 py-6 max-w-[1600px]">
         {activeTab === "calendrier" && <CalendrierTab year={selectedYear} />}

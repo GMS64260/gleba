@@ -4,6 +4,6 @@ import { useRouter } from "next/navigation"
 
 export default function TachesRedirect() {
   const router = useRouter()
-  useEffect(() => { router.replace("/arbres?tab=calendrier") }, [router])
+  useEffect(() => { router.replace("/verger?tab=calendrier") }, [router])
   return null
 }

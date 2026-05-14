@@ -504,8 +504,8 @@ export function ArbresTab() {
         pageSize={50}
         onAdd={() => setShowDialog(true)}
         onRefresh={fetchData}
-        onRowClick={(row) => router.push(`/arbres/${row.id}`)}
-        onRowEdit={(row) => router.push(`/arbres/${row.id}`)}
+        onRowClick={(row) => router.push(`/verger/${row.id}`)}
+        onRowEdit={(row) => router.push(`/verger/${row.id}`)}
         onRowDelete={(row) => setArbreToDelete(row)}
         searchPlaceholder="Rechercher un arbre..."
         emptyMessage="Aucun arbre trouve."

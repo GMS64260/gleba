@@ -118,7 +118,7 @@ const columns: ColumnDef<BesoinPlant>[] = [
       return (
         <div className="flex flex-wrap gap-1">
           {cultures.slice(0, 4).map((c) => (
-            <Link key={c.plancheId} href={`/planches/${encodeURIComponent(c.plancheId)}`}>
+            <Link key={c.plancheId} href={`/maraichage/planches/${encodeURIComponent(c.plancheId)}`}>
               <Badge variant="secondary" className="text-xs cursor-pointer hover:bg-slate-200">
                 {c.plancheId} ({c.nbPlants})
               </Badge>

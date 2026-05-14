@@ -449,7 +449,7 @@ export default function OnboardingPage() {
                 C'est prêt !
               </CardTitle>
               <CardDescription>
-                Votre exploitation est configurée. Le tour guidé démarrera automatiquement sur la première page.
+                Votre exploitation est configurée. Retrouvez l'aide dans /aide et les raccourcis dans /raccourcis.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">

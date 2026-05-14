@@ -39,7 +39,7 @@ const columns: ColumnDef<AssociationCulture>[] = [
     accessorKey: "plancheId",
     header: "Planche",
     cell: ({ row }) => (
-      <Link href={`/planches/${encodeURIComponent(row.original.plancheId)}`}>
+      <Link href={`/maraichage/planches/${encodeURIComponent(row.original.plancheId)}`}>
         <Badge variant="default" className="cursor-pointer">
           {row.original.plancheId}
         </Badge>
@@ -78,7 +78,7 @@ const columns: ColumnDef<AssociationCulture>[] = [
       return (
         <div className="flex flex-wrap gap-1">
           {voisines.map((p) => (
-            <Link key={p} href={`/planches/${encodeURIComponent(p)}`}>
+            <Link key={p} href={`/maraichage/planches/${encodeURIComponent(p)}`}>
               <Badge variant="secondary" className="text-xs cursor-pointer hover:bg-slate-200">
                 {p}
               </Badge>

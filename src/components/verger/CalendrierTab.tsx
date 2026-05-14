@@ -485,7 +485,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
           <CardContent>
             <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
               {arbresAttention.map((arbre) => (
-                <Link key={arbre.id} href={`/arbres/${arbre.id}`}>
+                <Link key={arbre.id} href={`/verger/${arbre.id}`}>
                   <div className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg border border-yellow-100 hover:bg-yellow-100 transition-colors">
                     <div>
                       <p className="font-medium">{arbre.nom}</p>

@@ -16,6 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { UserMenu } from "@/components/auth/UserMenu"
 import { ModulesNav } from "@/components/auth/ModulesNav"
 import { BoutiqueHeaderButton } from "@/components/auth/BoutiqueHeaderButton"
+import { TourComptabilite } from "@/components/tours/tour-comptabilite"
 import {
   BarChart,
   Bar,
@@ -283,6 +284,8 @@ export default function DashboardComptabilite() {
         </div>
       </header>
 
+      {/* POSTREVIEW Sprint 6 — Tour Shepherd.js Comptabilité */}
+      <TourComptabilite />
       <main className="container mx-auto px-4 py-8 max-w-[1600px]">
         {/* Titre + Sélecteur d'annee */}
         <div className="flex items-center justify-between mb-6">

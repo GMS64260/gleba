@@ -340,7 +340,7 @@ export function ReferentielTab() {
 
                 {/* Lien vers fiche complète */}
                 <div className="pt-2 border-t">
-                  <Link href={`/especes/${encodeURIComponent(detail.id)}`}>
+                  <Link href={`/maraichage/especes/${encodeURIComponent(detail.id)}`}>
                     <Button variant="outline" size="sm" className="w-full gap-2">
                       <ExternalLink className="h-3.5 w-3.5" />
                       Ouvrir la fiche complète
