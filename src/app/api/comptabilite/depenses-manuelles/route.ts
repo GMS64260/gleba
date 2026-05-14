@@ -99,6 +99,11 @@ export async function POST(request: NextRequest) {
         paye: rest.paye,
         dateEcheance: rest.dateEcheance ?? null,
         notes: rest.notes ?? null,
+        journal: rest.journal ?? 'AC',
+        modeReglement: rest.modeReglement ?? null,
+        numeroPiece: rest.numeroPiece ?? null,
+        pjUrl: rest.pjUrl || null,
+        tvaInferee: false,
       },
     })
 
@@ -143,7 +148,10 @@ export async function PATCH(request: NextRequest) {
     if (updates.categorie !== undefined) updateData.categorie = updates.categorie
     if (updates.description !== undefined) updateData.description = updates.description
     if (updates.montant !== undefined) updateData.montant = updates.montant
-    if (updates.tauxTVA !== undefined) updateData.tauxTVA = updates.tauxTVA
+    if (updates.tauxTVA !== undefined) {
+      updateData.tauxTVA = updates.tauxTVA
+      updateData.tvaInferee = false
+    }
     if (updates.montantHT !== undefined) updateData.montantHT = updates.montantHT
     if (updates.montantTVA !== undefined) updateData.montantTVA = updates.montantTVA
     if (updates.fournisseurNom !== undefined) updateData.fournisseurNom = updates.fournisseurNom
@@ -151,6 +159,10 @@ export async function PATCH(request: NextRequest) {
     if (updates.refFacture !== undefined) updateData.refFacture = updates.refFacture
     if (updates.dateEcheance !== undefined) updateData.dateEcheance = updates.dateEcheance ?? null
     if (updates.notes !== undefined) updateData.notes = updates.notes
+    if (updates.journal !== undefined) updateData.journal = updates.journal
+    if (updates.modeReglement !== undefined) updateData.modeReglement = updates.modeReglement
+    if (updates.numeroPiece !== undefined) updateData.numeroPiece = updates.numeroPiece
+    if (updates.pjUrl !== undefined) updateData.pjUrl = updates.pjUrl || null
 
     const depense = await prisma.depenseManuelle.update({
       where: { id },

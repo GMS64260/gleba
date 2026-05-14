@@ -72,6 +72,8 @@ interface TVAData {
     nbVentes: number
     nbFactures: number
     nbDepenses: number
+    nbInfereesCollectees?: number
+    nbInfereesDeductibles?: number
   }
 }
 
@@ -385,6 +387,33 @@ export default function RapportsPage() {
                     </CardDescription>
                   )}
                 </CardHeader>
+                <CardContent className="flex flex-wrap gap-2">
+                  <a
+                    href={`/api/comptabilite/tva/ca3?year=${selectedYear}${selectedTrimestre !== 'all' ? `&trimestre=${selectedTrimestre}` : ''}&format=pdf`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <Button variant="outline" size="sm">
+                      <Download className="h-4 w-4 mr-2" />
+                      Aide CA3 (PDF)
+                    </Button>
+                  </a>
+                  <a
+                    href={`/api/comptabilite/tva/ca3?year=${selectedYear}${selectedTrimestre !== 'all' ? `&trimestre=${selectedTrimestre}` : ''}&format=csv`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <Button variant="outline" size="sm">
+                      <Download className="h-4 w-4 mr-2" />
+                      Aide CA3 (CSV)
+                    </Button>
+                  </a>
+                  {tvaData?.details && ((tvaData.details.nbInfereesCollectees ?? 0) > 0 || (tvaData.details.nbInfereesDeductibles ?? 0) > 0) && (
+                    <span className="text-xs text-amber-700 bg-amber-50 px-2 py-1 rounded inline-flex items-center ml-auto">
+                      ⚠ {(tvaData.details.nbInfereesCollectees ?? 0) + (tvaData.details.nbInfereesDeductibles ?? 0)} transaction(s) avec TVA inférée
+                    </span>
+                  )}
+                </CardContent>
               </Card>
 
               {isLoading ? (

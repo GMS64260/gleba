@@ -100,6 +100,11 @@ export async function POST(request: NextRequest) {
         module: rest.module ?? null,
         paye: rest.paye,
         notes: rest.notes ?? null,
+        journal: rest.journal ?? 'VE',
+        modeReglement: rest.modeReglement ?? null,
+        numeroPiece: rest.numeroPiece ?? null,
+        pjUrl: rest.pjUrl || null,
+        tvaInferee: false,
       },
     })
 
@@ -145,9 +150,17 @@ export async function PATCH(request: NextRequest) {
     if (updates.notes !== undefined) updateData.notes = updates.notes
     if (updates.description !== undefined) updateData.description = updates.description
     if (updates.montant !== undefined) updateData.montant = updates.montant
-    if (updates.tauxTVA !== undefined) updateData.tauxTVA = updates.tauxTVA
+    if (updates.tauxTVA !== undefined) {
+      updateData.tauxTVA = updates.tauxTVA
+      // Si on modifie le taux manuellement, on ne considère plus la TVA comme inférée.
+      updateData.tvaInferee = false
+    }
     if (updates.montantHT !== undefined) updateData.montantHT = updates.montantHT
     if (updates.montantTVA !== undefined) updateData.montantTVA = updates.montantTVA
+    if (updates.journal !== undefined) updateData.journal = updates.journal
+    if (updates.modeReglement !== undefined) updateData.modeReglement = updates.modeReglement
+    if (updates.numeroPiece !== undefined) updateData.numeroPiece = updates.numeroPiece
+    if (updates.pjUrl !== undefined) updateData.pjUrl = updates.pjUrl || null
 
     const vente = await prisma.venteManuelle.update({
       where: { id },
