@@ -56,9 +56,17 @@ function geoSquare(centerLat: number, centerLng: number, sideMetres: number): st
 
 async function ensureUser() {
   const hashed = await bcrypt.hash(DEMO_PASSWORD, 12)
+  // Quand on clone le seed sur un compte existant (DEMO_EMAIL_OVERRIDE),
+  // on ne touche PAS au mot de passe, nom et role du compte cible — sinon
+  // on écrase silencieusement les credentials de l'admin.
+  // Pour le seed démo normal (demo@gleba.fr), on garde le comportement
+  // d'origine qui réinitialise le mdp à "demo2026".
+  const isClone = Boolean(process.env.DEMO_EMAIL_OVERRIDE)
   return prisma.user.upsert({
     where: { email: DEMO_EMAIL },
-    update: { name: DEMO_NAME, password: hashed, active: true },
+    update: isClone
+      ? { active: true } // ne modifie que le flag actif
+      : { name: DEMO_NAME, password: hashed, active: true },
     create: {
       email: DEMO_EMAIL,
       password: hashed,
