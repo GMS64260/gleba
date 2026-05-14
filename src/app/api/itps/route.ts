@@ -117,14 +117,26 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Vérifier que l'espece existe si fournie
+    // Vérifier que l'espece existe si fournie + cohérence du type de culture
+    // (Audit Marc Bug F : un semis_direct ne doit pas avoir de plantation,
+    // sinon le trigger PG la met à NULL silencieusement — on rejette en
+    // 400 plutôt avec un message clair côté UI).
     if (data.especeId) {
       const espece = await prisma.espece.findUnique({
         where: { id: data.especeId },
+        select: { id: true, typeCultureSemis: true },
       })
       if (!espece) {
         return NextResponse.json(
           { error: `L'espèce "${data.especeId}" n'existe pas` },
+          { status: 400 }
+        )
+      }
+      if (espece.typeCultureSemis === 'semis_direct' && data.semainePlantation != null) {
+        return NextResponse.json(
+          {
+            error: `L'espèce "${data.especeId}" est en semis direct (racine pivot ou semis en place). Le champ Plantation doit être vide.`,
+          },
           { status: 400 }
         )
       }

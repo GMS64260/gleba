@@ -42,7 +42,7 @@ interface EspeceWithRelations {
   aPlanifier: boolean
   couleur: string | null
   categorie: string | null
-  famille: { id: string; couleur: string | null } | null
+  famille: { id: string; couleur: string | null; nomFr: string | null } | null
   _count: { varietes: number; cultures: number }
 }
 
@@ -99,7 +99,7 @@ const columns: ColumnDef<EspeceWithRelations>[] = [
           {famille.couleur && (
             <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: famille.couleur }} />
           )}
-          <span className="text-sm">{famille.id}</span>
+          <span className="text-sm" title={famille.id}>{famille.nomFr || famille.id}</span>
         </div>
       )
     },

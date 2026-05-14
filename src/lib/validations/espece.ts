@@ -71,6 +71,10 @@ export const baseEspeceSchema = z.object({
   niveau: z.string().max(20).nullable().optional(),
   densite: z.number().min(0).max(1000).nullable().optional(),
   doseSemis: z.number().min(0).max(1000).nullable().optional(),
+  // Audit Marc — unité explicite + type de culture pour empêcher les
+  // saisies aberrantes (carotte avec date plantation, etc.)
+  uniteDose: z.enum(['g_m2','pieces_m2','graines_plant','caieux_m2']).nullable().optional(),
+  typeCultureSemis: z.enum(['semis_direct','pepiniere_puis_repiquage','plantation_bulbes_caieux','bouture']).nullable().optional(),
   tauxGermination: z.number().min(0).max(100).nullable().optional(),
   temperatureGerm: z.string().max(50).nullable().optional(),
   joursLevee: z.number().int().min(0).max(365).nullable().optional(),

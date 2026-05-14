@@ -212,7 +212,8 @@ model Session {
 
 /// Familles botaniques (rotation des cultures)
 model Famille {
-  id          String   @id @map("famille")
+  id          String   @id @map("famille") // Nom botanique latin (APG IV) : Brassicaceae, Solanaceae, Fabaceae...
+  nomFr       String?  @map("nom_fr") // Nom français pour affichage UI (ex : "Brassicacées (Crucifères)")
   intervalle  Int      @default(4) @map("intervalle") // Années entre 2 cultures de même famille
   couleur     String?  @map("couleur") // Code couleur UI (#RRGGBB)
   description String?  @map("description")
@@ -313,8 +314,23 @@ model Espece {
   categorie       String?  @map("categorie")       // Catégorie visuelle (emoji)
   niveau          String?  @map("niveau")          // Facile, Moyen, Difficile
   densite         Float?   @map("densite")         // Plants/m²
-  doseSemis       Float?   @map("dose_semis")      // g/m² — alimente le mode graine_directe
-  tauxGermination Float?   @map("taux_germination") // % germination
+  doseSemis       Float?   @map("dose_semis")      // valeur conditionnée par uniteDose
+  tauxGermination Float?   @map("taux_germination") // % germination réaliste par espèce
+
+  // Audit Marc 2026-05-14 — Référentiel agronomique
+  // unite_dose : permet d'exprimer la dose dans l'unité correcte
+  //   g_m2          : grammes de graines par m² (semis dense direct)
+  //   pieces_m2     : nombre de plants par m² (repiquage en place)
+  //   graines_plant : graines par godet (semis en pépinière)
+  //   caieux_m2     : caieux/bulbilles/tubercules par m²
+  uniteDose       String?  @map("unite_dose")
+  // type_culture_semis : utilisé par l'UI pour désactiver le champ
+  // Plantation sur les semis directs (carotte, radis, etc.)
+  //   semis_direct                : semé en place, jamais repiqué
+  //   pepiniere_puis_repiquage    : semé en godet puis transplanté
+  //   plantation_bulbes_caieux    : caieux/bulbes/tubercules
+  //   bouture                     : multiplication végétative
+  typeCultureSemis String? @map("type_culture_semis")
 
   // PROMPT 06 — Calcul Semences fiabilisé : on ne calcule plus la même chose
   // pour une carotte (semis direct), une tomate (plant repiqué) et un ail
@@ -2103,6 +2119,9 @@ model UserStockVariete {
   variete      Variete   @relation(fields: [varieteId], references: [id], onDelete: Cascade)
   stockGraines Float?    @map("stock_graines") // g
   stockPlants  Int?      @map("stock_plants")
+  // Audit Marc — l'ail se compte en caïeux pas en graines. Cette unité
+  // sert à afficher la bonne unité dans l'UI (graines/caieux/bulbes/...)
+  uniteStock   String?   @map("unite_stock") // graines | caieux | bulbes | tubercules | plants | pieces
   dateStock    DateTime? @map("date_stock")
 
   @@unique([userId, varieteId])
@@ -2157,6 +2176,7 @@ model UserStockEspece {
   dateInventaire DateTime? @map("date_inventaire")
   prixKg         Float?    @map("prix_kg") // €/kg
   objectifAnnuel Float?    @map("obj_annuel") // kg ou unités visées/an
+  uniteStock     String?   @map("unite_stock") // graines | caieux | bulbes | tubercules | plants | pieces
 
   @@unique([userId, especeId])
   @@index([userId])

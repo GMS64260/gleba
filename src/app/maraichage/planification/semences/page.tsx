@@ -23,6 +23,8 @@ import { DataTable } from "@/components/tables/DataTable"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { Info } from "lucide-react"
 import {
   Select,
   SelectContent,
@@ -48,6 +50,8 @@ interface BesoinSemence {
   stockUnites: number
   nbGrainesG: number | null
   doseSemis: number | null
+  uniteDose: "g_m2" | "pieces_m2" | "graines_plant" | "caieux_m2" | null
+  tauxGerminationPct: number | null
   aCommander: number
   caieuxACommander: number
   statut: "OK" | "LOW" | "MISSING" | "IGNORE"
@@ -131,20 +135,65 @@ const baseColumns: ColumnDef<BesoinSemence>[] = [
   },
 ]
 
+// Audit Marc Bug #7 — Unité de dose explicite selon le référentiel (et plus
+// "g/m²" en dur partout).
+function uniteLabel(u: BesoinSemence["uniteDose"]): string {
+  switch (u) {
+    case "pieces_m2": return "plants/m²"
+    case "graines_plant": return "graines/godet"
+    case "caieux_m2": return "caieux/m²"
+    case "g_m2": return "g/m²"
+    default: return "g/m²"
+  }
+}
+
+// Audit Marc Bug #7 — Tooltip pédagogique sur la quantité finale.
+// formule = besoin brut × (1 + marge/100). Affiche aussi le taux de
+// germination de référence pour justifier la marge.
+function GrainesTooltip({ b }: { b: BesoinSemence }) {
+  const brut = b.margeSecuritePct > 0
+    ? b.grainesNecessaires / (1 + b.margeSecuritePct / 100)
+    : b.grainesNecessaires
+  return (
+    <TooltipProvider delayDuration={150}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex items-center gap-1 cursor-help underline decoration-dotted decoration-slate-400 underline-offset-4">
+            {b.grainesNecessaires.toFixed(1)} g
+            <Info className="h-3 w-3 text-slate-400" />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-xs text-xs">
+          <div className="font-semibold mb-1">Formule de besoin semences</div>
+          <div>Besoin brut : <strong>{brut.toFixed(1)} g</strong></div>
+          <div>+ marge sécurité <strong>{b.margeSecuritePct}%</strong></div>
+          <div>= total : <strong>{b.grainesNecessaires.toFixed(1)} g</strong></div>
+          {b.tauxGerminationPct !== null && (
+            <div className="mt-2 text-slate-300">
+              Marge dimensionnée sur le taux de germination réaliste de l'espèce&nbsp;: <strong>{b.tauxGerminationPct}%</strong>.
+            </div>
+          )}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
+}
+
 const grainesColumns: ColumnDef<BesoinSemence>[] = [
   ...baseColumns,
   {
     accessorKey: "doseSemis",
-    header: "Dose (g/m²)",
-    cell: ({ getValue }) => {
-      const v = getValue() as number | null
-      return v ? v.toFixed(2) : "-"
+    header: "Dose",
+    cell: ({ row }) => {
+      const v = row.original.doseSemis
+      if (v === null || v === undefined) return "-"
+      return `${v} ${uniteLabel(row.original.uniteDose)}`
     },
   },
   {
     accessorKey: "grainesNecessaires",
     header: "Graines (g)",
-    cell: ({ getValue }) => `${(getValue() as number).toFixed(1)} g`,
+    cell: ({ row }) => <GrainesTooltip b={row.original} />,
   },
   {
     accessorKey: "stockActuel",

@@ -64,9 +64,14 @@ async function main() {
   const demoUserId = demoUser.id
   console.log(`✓ Utilisateur demo créé (email: demo@gleba.fr, password: demo2026, id: ${demoUserId})`)
 
-  // Familles
+  // Familles — propage nomFr en cas de mise à jour pour rester aligné
+  // avec la migration agronomique (audit Marc 2026-05-14).
   for (const f of familles) {
-    await prisma.famille.upsert({ where: { id: f.id }, update: {}, create: f })
+    await prisma.famille.upsert({
+      where: { id: f.id },
+      update: { nomFr: (f as { nomFr?: string }).nomFr },
+      create: f,
+    })
   }
   console.log(`✓ Familles: ${familles.length}`)
 

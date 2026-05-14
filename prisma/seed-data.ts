@@ -7,16 +7,21 @@
 // RÉFÉRENTIELS (partagés entre tous les utilisateurs)
 // ============================================================
 
+// Familles botaniques : nomenclature latine APG IV depuis l'audit Marc
+// 2026-05-14. Le nom français est stocké séparément (`nomFr`) et utilisé
+// pour l'affichage. Les anciens noms FR ne sont plus acceptés en base
+// (trigger enforce_famille_latine).
 export const familles = [
-  { id: "Solanacées", intervalle: 4, couleur: "#e74c3c", description: "Tomates, poivrons, aubergines, pommes de terre" },
-  { id: "Cucurbitacées", intervalle: 3, couleur: "#f39c12", description: "Courgettes, courges, concombres, melons" },
-  { id: "Brassicacées", intervalle: 4, couleur: "#27ae60", description: "Choux, brocolis, radis, navets" },
-  { id: "Fabacées", intervalle: 2, couleur: "#9b59b6", description: "Haricots, pois, fèves - fixent l'azote" },
-  { id: "Apiacées", intervalle: 3, couleur: "#3498db", description: "Carottes, persil, céleri, fenouil" },
-  { id: "Alliacées", intervalle: 3, couleur: "#1abc9c", description: "Oignons, ail, poireaux, échalotes" },
-  { id: "Astéracées", intervalle: 2, couleur: "#e67e22", description: "Laitues, chicorées, artichauts" },
-  { id: "Chénopodiacées", intervalle: 3, couleur: "#c0392b", description: "Épinards, betteraves, blettes" },
-  { id: "Rosacées", intervalle: 5, couleur: "#d35400", description: "Fraises, framboises, pommiers, poiriers" },
+  { id: "Solanaceae",    nomFr: "Solanacées",                   intervalle: 4, couleur: "#e74c3c", description: "Tomates, poivrons, aubergines, pommes de terre" },
+  { id: "Cucurbitaceae", nomFr: "Cucurbitacées",                intervalle: 3, couleur: "#f39c12", description: "Courgettes, courges, concombres, melons" },
+  { id: "Brassicaceae",  nomFr: "Brassicacées (Crucifères)",    intervalle: 4, couleur: "#27ae60", description: "Choux, brocolis, radis, navets" },
+  { id: "Fabaceae",      nomFr: "Fabacées (Légumineuses)",      intervalle: 2, couleur: "#9b59b6", description: "Haricots, pois, fèves - fixent l'azote" },
+  { id: "Apiaceae",      nomFr: "Apiacées",                     intervalle: 3, couleur: "#3498db", description: "Carottes, persil, céleri, fenouil" },
+  { id: "Alliaceae",     nomFr: "Liliacées (Alliaceae)",        intervalle: 3, couleur: "#1abc9c", description: "Oignons, ail, poireaux, échalotes" },
+  { id: "Asteraceae",    nomFr: "Astéracées",                   intervalle: 2, couleur: "#e67e22", description: "Laitues, chicorées, artichauts" },
+  { id: "Amaranthaceae", nomFr: "Amaranthacées (incl. Chénopodiacées)", intervalle: 3, couleur: "#c0392b", description: "Épinards, betteraves, blettes" },
+  { id: "Rosaceae",      nomFr: "Rosacées",                     intervalle: 5, couleur: "#d35400", description: "Fraises, framboises, pommiers, poiriers" },
+  { id: "Lamiaceae",     nomFr: "Lamiacées",                    intervalle: 3, couleur: "#16a085", description: "Basilic, thym, romarin, menthe, lavande" },
 ]
 
 export const fournisseurs = [
@@ -51,60 +56,62 @@ export const fertilisants = [
 
 export const especes = [
   // Légumes fruits
-  { id: "Tomate", type: "legume", familleId: "Solanacées", rendement: 4.5, besoinN: 4, besoinEau: 4, couleur: "#e74c3c" },
-  { id: "Courgette", type: "legume", familleId: "Cucurbitacées", rendement: 5, besoinN: 4, besoinEau: 4, couleur: "#2ecc71" },
-  { id: "Concombre", type: "legume", familleId: "Cucurbitacées", rendement: 3, besoinN: 3, besoinEau: 5, couleur: "#27ae60" },
-  { id: "Poivron", type: "legume", familleId: "Solanacées", rendement: 2.5, besoinN: 3, besoinEau: 3, couleur: "#e67e22" },
-  { id: "Aubergine", type: "legume", familleId: "Solanacées", rendement: 3, besoinN: 4, besoinEau: 4, couleur: "#8e44ad" },
-  { id: "Courge butternut", type: "legume", familleId: "Cucurbitacées", rendement: 3, besoinN: 3, besoinEau: 3, couleur: "#d35400" },
-  { id: "Potimarron", type: "legume", familleId: "Cucurbitacées", rendement: 2.5, besoinN: 3, besoinEau: 3, couleur: "#e74c3c" },
+  { id: "Tomate", type: "legume", familleId: "Solanaceae", rendement: 4.5, besoinN: 4, besoinEau: 4, couleur: "#e74c3c" },
+  { id: "Courgette", type: "legume", familleId: "Cucurbitaceae", rendement: 5, besoinN: 4, besoinEau: 4, couleur: "#2ecc71" },
+  { id: "Concombre", type: "legume", familleId: "Cucurbitaceae", rendement: 3, besoinN: 3, besoinEau: 5, couleur: "#27ae60" },
+  { id: "Poivron", type: "legume", familleId: "Solanaceae", rendement: 2.5, besoinN: 3, besoinEau: 3, couleur: "#e67e22" },
+  { id: "Aubergine", type: "legume", familleId: "Solanaceae", rendement: 3, besoinN: 4, besoinEau: 4, couleur: "#8e44ad" },
+  { id: "Courge butternut", type: "legume", familleId: "Cucurbitaceae", rendement: 3, besoinN: 3, besoinEau: 3, couleur: "#d35400" },
+  { id: "Potimarron", type: "legume", familleId: "Cucurbitaceae", rendement: 2.5, besoinN: 3, besoinEau: 3, couleur: "#e74c3c" },
 
   // Légumes feuilles
-  { id: "Laitue", type: "legume", familleId: "Astéracées", rendement: 2, besoinN: 2, besoinEau: 4, couleur: "#27ae60" },
-  { id: "Épinard", type: "legume", familleId: "Chénopodiacées", rendement: 1.5, besoinN: 3, besoinEau: 3, couleur: "#1e8449" },
-  { id: "Blette", type: "legume", familleId: "Chénopodiacées", rendement: 3, besoinN: 3, besoinEau: 3, couleur: "#f1c40f" },
-  { id: "Chou kale", type: "legume", familleId: "Brassicacées", rendement: 2, besoinN: 3, besoinEau: 3, couleur: "#1e8449" },
+  { id: "Laitue", type: "legume", familleId: "Asteraceae", rendement: 2, besoinN: 2, besoinEau: 4, couleur: "#27ae60" },
+  { id: "Épinard", type: "legume", familleId: "Amaranthaceae", rendement: 1.5, besoinN: 3, besoinEau: 3, couleur: "#1e8449" },
+  { id: "Blette", type: "legume", familleId: "Amaranthaceae", rendement: 3, besoinN: 3, besoinEau: 3, couleur: "#f1c40f" },
+  { id: "Chou kale", type: "legume", familleId: "Brassicaceae", rendement: 2, besoinN: 3, besoinEau: 3, couleur: "#1e8449" },
 
   // Légumes racines
-  { id: "Carotte", type: "legume", familleId: "Apiacées", rendement: 4, besoinN: 2, besoinEau: 3, couleur: "#e67e22" },
-  { id: "Betterave", type: "legume", familleId: "Chénopodiacées", rendement: 3.5, besoinN: 2, besoinEau: 3, couleur: "#c0392b" },
-  { id: "Radis", type: "legume", familleId: "Brassicacées", rendement: 1.5, besoinN: 1, besoinEau: 3, couleur: "#e74c3c" },
-  { id: "Navet", type: "legume", familleId: "Brassicacées", rendement: 2.5, besoinN: 2, besoinEau: 3, couleur: "#ecf0f1" },
-  { id: "Pomme de terre", type: "legume", familleId: "Solanacées", rendement: 3, besoinN: 3, besoinEau: 3, couleur: "#d4ac0d" },
+  { id: "Carotte", type: "legume", familleId: "Apiaceae", rendement: 4, besoinN: 2, besoinEau: 3, couleur: "#e67e22" },
+  { id: "Betterave", type: "legume", familleId: "Amaranthaceae", rendement: 3.5, besoinN: 2, besoinEau: 3, couleur: "#c0392b" },
+  { id: "Radis", type: "legume", familleId: "Brassicaceae", rendement: 1.5, besoinN: 1, besoinEau: 3, couleur: "#e74c3c" },
+  { id: "Navet", type: "legume", familleId: "Brassicaceae", rendement: 2.5, besoinN: 2, besoinEau: 3, couleur: "#ecf0f1" },
+  { id: "Pomme de terre", type: "legume", familleId: "Solanaceae", rendement: 3, besoinN: 3, besoinEau: 3, couleur: "#d4ac0d" },
 
   // Légumineuses
-  { id: "Haricot vert", type: "legume", familleId: "Fabacées", rendement: 1.5, besoinN: 1, besoinEau: 3, couleur: "#27ae60" },
-  { id: "Haricot sec", type: "legume", familleId: "Fabacées", rendement: 0.3, besoinN: 1, besoinEau: 2, couleur: "#795548" },
-  { id: "Petit pois", type: "legume", familleId: "Fabacées", rendement: 0.8, besoinN: 1, besoinEau: 3, couleur: "#2ecc71" },
-  { id: "Fève", type: "legume", familleId: "Fabacées", rendement: 1, besoinN: 1, besoinEau: 3, couleur: "#27ae60" },
+  { id: "Haricot vert", type: "legume", familleId: "Fabaceae", rendement: 1.5, besoinN: 1, besoinEau: 3, couleur: "#27ae60" },
+  { id: "Haricot sec", type: "legume", familleId: "Fabaceae", rendement: 0.3, besoinN: 1, besoinEau: 2, couleur: "#795548" },
+  { id: "Petit pois", type: "legume", familleId: "Fabaceae", rendement: 0.8, besoinN: 1, besoinEau: 3, couleur: "#2ecc71" },
+  { id: "Fève", type: "legume", familleId: "Fabaceae", rendement: 1, besoinN: 1, besoinEau: 3, couleur: "#27ae60" },
 
   // Alliacées
-  { id: "Oignon", type: "legume", familleId: "Alliacées", rendement: 3, besoinN: 2, besoinEau: 2, couleur: "#d4ac0d" },
-  { id: "Ail", type: "legume", familleId: "Alliacées", rendement: 1, besoinN: 2, besoinEau: 2, couleur: "#ecf0f1" },
-  { id: "Poireau", type: "legume", familleId: "Alliacées", rendement: 3, besoinN: 3, besoinEau: 3, couleur: "#1e8449" },
-  { id: "Échalote", type: "legume", familleId: "Alliacées", rendement: 1.5, besoinN: 2, besoinEau: 2, couleur: "#c0392b" },
+  { id: "Oignon", type: "legume", familleId: "Alliaceae", rendement: 3, besoinN: 2, besoinEau: 2, couleur: "#d4ac0d" },
+  { id: "Ail", type: "legume", familleId: "Alliaceae", rendement: 1, besoinN: 2, besoinEau: 2, couleur: "#ecf0f1" },
+  { id: "Poireau", type: "legume", familleId: "Alliaceae", rendement: 3, besoinN: 3, besoinEau: 3, couleur: "#1e8449" },
+  { id: "Échalote", type: "legume", familleId: "Alliaceae", rendement: 1.5, besoinN: 2, besoinEau: 2, couleur: "#c0392b" },
 
   // Choux
-  { id: "Chou-fleur", type: "legume", familleId: "Brassicacées", rendement: 2, besoinN: 4, besoinEau: 4, couleur: "#ecf0f1" },
-  { id: "Brocoli", type: "legume", familleId: "Brassicacées", rendement: 1.5, besoinN: 4, besoinEau: 4, couleur: "#27ae60" },
-  { id: "Chou pommé", type: "legume", familleId: "Brassicacées", rendement: 4, besoinN: 4, besoinEau: 3, couleur: "#1e8449" },
+  { id: "Chou-fleur", type: "legume", familleId: "Brassicaceae", rendement: 2, besoinN: 4, besoinEau: 4, couleur: "#ecf0f1" },
+  // Audit Marc — Brocoli fusionné avec "Chou brocoli" (nom recommandé,
+  // Brassica oleracea var. italica). Voir migration 20260514240000.
+  { id: "Chou brocoli", type: "legume", familleId: "Brassicaceae", rendement: 1.5, besoinN: 4, besoinEau: 4, couleur: "#27ae60" },
+  { id: "Chou pommé", type: "legume", familleId: "Brassicaceae", rendement: 4, besoinN: 4, besoinEau: 3, couleur: "#1e8449" },
 
   // Aromatiques
-  { id: "Basilic", type: "aromatique", familleId: "Solanacées", rendement: 0.5, besoinN: 2, besoinEau: 3, couleur: "#27ae60" },
-  { id: "Persil", type: "aromatique", familleId: "Apiacées", rendement: 0.8, besoinN: 2, besoinEau: 3, couleur: "#1e8449" },
-  { id: "Coriandre", type: "aromatique", familleId: "Apiacées", rendement: 0.3, besoinN: 2, besoinEau: 3, couleur: "#27ae60" },
+  { id: "Basilic", type: "aromatique", familleId: "Lamiaceae", rendement: 0.5, besoinN: 2, besoinEau: 3, couleur: "#27ae60" },
+  { id: "Persil", type: "aromatique", familleId: "Apiaceae", rendement: 0.8, besoinN: 2, besoinEau: 3, couleur: "#1e8449" },
+  { id: "Coriandre", type: "aromatique", familleId: "Apiaceae", rendement: 0.3, besoinN: 2, besoinEau: 3, couleur: "#27ae60" },
 
   // Fruits
-  { id: "Fraise", type: "petit_fruit", familleId: "Rosacées", rendement: 0.8, vivace: true, besoinN: 2, besoinEau: 4, couleur: "#e74c3c" },
-  { id: "Framboise", type: "petit_fruit", familleId: "Rosacées", rendement: 0.5, vivace: true, besoinN: 2, besoinEau: 3, couleur: "#c0392b" },
-  { id: "Pommier", type: "arbre_fruitier", familleId: "Rosacées", rendement: 30, vivace: true, besoinN: 3, besoinEau: 3, couleur: "#c0392b" },
-  { id: "Poirier", type: "arbre_fruitier", familleId: "Rosacées", rendement: 25, vivace: true, besoinN: 3, besoinEau: 3, couleur: "#f1c40f" },
-  { id: "Prunier", type: "arbre_fruitier", familleId: "Rosacées", rendement: 20, vivace: true, besoinN: 2, besoinEau: 2, couleur: "#8e44ad" },
+  { id: "Fraise", type: "petit_fruit", familleId: "Rosaceae", rendement: 0.8, vivace: true, besoinN: 2, besoinEau: 4, couleur: "#e74c3c" },
+  { id: "Framboise", type: "petit_fruit", familleId: "Rosaceae", rendement: 0.5, vivace: true, besoinN: 2, besoinEau: 3, couleur: "#c0392b" },
+  { id: "Pommier", type: "arbre_fruitier", familleId: "Rosaceae", rendement: 30, vivace: true, besoinN: 3, besoinEau: 3, couleur: "#c0392b" },
+  { id: "Poirier", type: "arbre_fruitier", familleId: "Rosaceae", rendement: 25, vivace: true, besoinN: 3, besoinEau: 3, couleur: "#f1c40f" },
+  { id: "Prunier", type: "arbre_fruitier", familleId: "Rosaceae", rendement: 20, vivace: true, besoinN: 2, besoinEau: 2, couleur: "#8e44ad" },
 
   // Engrais verts
   { id: "Phacélie", type: "engrais_vert", rendement: 0, besoinN: 1, besoinEau: 2, couleur: "#9b59b6" },
-  { id: "Moutarde", type: "engrais_vert", familleId: "Brassicacées", rendement: 0, besoinN: 1, besoinEau: 2, couleur: "#f1c40f" },
-  { id: "Trèfle incarnat", type: "engrais_vert", familleId: "Fabacées", rendement: 0, besoinN: 0, besoinEau: 2, couleur: "#c0392b" },
+  { id: "Moutarde", type: "engrais_vert", familleId: "Brassicaceae", rendement: 0, besoinN: 1, besoinEau: 2, couleur: "#f1c40f" },
+  { id: "Trèfle incarnat", type: "engrais_vert", familleId: "Fabaceae", rendement: 0, besoinN: 0, besoinEau: 2, couleur: "#c0392b" },
 ]
 
 export const varietes = [
@@ -184,7 +191,8 @@ export const itps = [
 
   // Choux
   { id: "ITP-Chou-kale", especeId: "Chou kale", semaineSemis: 16, semainePlantation: 22, semaineRecolte: 36, dureePepiniere: 42, dureeCulture: 120, nbRangs: 3, espacement: 40 },
-  { id: "ITP-Brocoli", especeId: "Brocoli", semaineSemis: 14, semainePlantation: 20, semaineRecolte: 32, dureePepiniere: 42, dureeCulture: 100, nbRangs: 3, espacement: 45 },
+  // Audit Marc — itinéraire technique aligné sur le référentiel (cycle 90-120j)
+  { id: "ITP-Brocoli", especeId: "Chou brocoli", semaineSemis: 14, semainePlantation: 18, semaineRecolte: 26, dureePepiniere: 42, dureeCulture: 100, nbRangs: 3, espacement: 45 },
 
   // Autres
   { id: "ITP-Epinard", especeId: "Épinard", semaineSemis: 12, semaineRecolte: 20, dureeCulture: 55, nbRangs: 5, espacement: 10 },
@@ -324,7 +332,7 @@ export function generateCultures(userId: string) {
 
     // Choux 2024
     { especeId: "Chou kale", itpId: "ITP-Chou-kale", plancheId: "B1", annee: 2024, dateSemis: new Date("2024-04-15"), datePlantation: new Date("2024-06-01"), dateRecolte: new Date("2024-09-08"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 3, longueur: 4, userId },
-    { especeId: "Brocoli", itpId: "ITP-Brocoli", plancheId: "B1", annee: 2024, dateSemis: new Date("2024-04-01"), datePlantation: new Date("2024-05-18"), dateRecolte: new Date("2024-08-10"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 3, longueur: 4, userId },
+    { especeId: "Chou brocoli", itpId: "ITP-Brocoli", plancheId: "B1", annee: 2024, dateSemis: new Date("2024-04-01"), datePlantation: new Date("2024-05-18"), dateRecolte: new Date("2024-08-10"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 3, longueur: 4, userId },
 
     // Betteraves 2024
     { especeId: "Betterave", varieteId: "Betterave-Detroit", itpId: "ITP-Betterave", plancheId: "B1", annee: 2024, dateSemis: new Date("2024-04-05"), dateRecolte: new Date("2024-07-15"), semisFait: true, recolteFaite: true, terminee: "x", nbRangs: 4, longueur: 4, userId },
@@ -440,7 +448,7 @@ export function generateRecoltes(cultures: any[]) {
     "2024-Chou kale-B1": [
       { dates: ["2024-09-08", "2024-09-22", "2024-10-06", "2024-10-20"], quantites: [1.2, 1.5, 1.8, 1.2] }
     ],
-    "2024-Brocoli-B1": [
+    "2024-Chou brocoli-B1": [
       { dates: ["2024-08-10", "2024-08-24"], quantites: [2.5, 1.8] }
     ],
     "2024-Betterave-Detroit-B1": [
