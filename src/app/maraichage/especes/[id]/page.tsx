@@ -506,7 +506,7 @@ export default function EditEspecePage() {
                         name="niveau"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Niveau de difficulte</FormLabel>
+                            <FormLabel>Niveau de difficulté</FormLabel>
                             <Select
                               onValueChange={field.onChange}
                               value={field.value || undefined}
@@ -558,7 +558,7 @@ export default function EditEspecePage() {
                                 onCheckedChange={field.onChange}
                               />
                             </FormControl>
-                            <FormLabel className="!mt-0">A planifier</FormLabel>
+                            <FormLabel className="!mt-0">À planifier</FormLabel>
                           </FormItem>
                         )}
                       />
@@ -622,7 +622,7 @@ export default function EditEspecePage() {
                         name="densite"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Densite (plants/m2)</FormLabel>
+                            <FormLabel>Densité (plants/m²)</FormLabel>
                             <FormControl>
                               <Input
                                 type="number"
@@ -645,7 +645,7 @@ export default function EditEspecePage() {
                         name="doseSemis"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Dose semis (g/m2)</FormLabel>
+                            <FormLabel>Dose semis (g/m²)</FormLabel>
                             <FormControl>
                               <Input
                                 type="number"
@@ -722,10 +722,10 @@ export default function EditEspecePage() {
                         name="temperatureGerm"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Temperature germination</FormLabel>
+                            <FormLabel>Température germination</FormLabel>
                             <FormControl>
                               <Input
-                                placeholder="Ex: 15-25C"
+                                placeholder="Ex: 15-25°C"
                                 {...field}
                                 value={field.value || ""}
                               />
@@ -740,7 +740,7 @@ export default function EditEspecePage() {
                         name="joursLevee"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Jours de levee</FormLabel>
+                            <FormLabel>Jours de levée</FormLabel>
                             <FormControl>
                               <Input
                                 type="number"

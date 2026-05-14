@@ -12,8 +12,9 @@ import { requireAuthApi } from '@/lib/auth-utils'
 
 // GET /api/itps - Référentiel global (lecture)
 export async function GET(request: NextRequest) {
-  const { error } = await requireAuthApi()
+  const { error, session } = await requireAuthApi()
   if (error) return error
+  const userId = session!.user.id
 
   try {
     const { searchParams } = new URL(request.url)
@@ -46,7 +47,10 @@ export async function GET(request: NextRequest) {
       where.especeId = especeId
     }
 
-    // Requête avec comptage
+    // Audit Marc 2026-05-14 — Bug 13 : "ITP Tomate hâtive serre · 3
+    // cultures affichées (réel = 2)". Le `_count.cultures` était global,
+    // ce qui agrégeait les cultures des autres tenants (comptes démo).
+    // On filtre désormais sur l'utilisateur courant.
     const [itps, total] = await Promise.all([
       prisma.iTP.findMany({
         where,
@@ -58,7 +62,7 @@ export async function GET(request: NextRequest) {
           },
           _count: {
             select: {
-              cultures: true,
+              cultures: { where: { userId } },
               rotationsDetails: true,
             },
           },

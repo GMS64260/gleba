@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { updateCultureSchema } from '@/lib/validations'
+import { validateCultureDates } from '@/lib/validations/date-validation'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { irrigationCache } from '@/lib/irrigation-cache'
 import { invalidateKpi } from '@/lib/kpi'
@@ -131,6 +132,33 @@ export async function PUT(
       )
     }
 
+    // Audit Marc 2026-05-14 — Bug 04 : valider les dates contre l'ITP en
+    // modification également (warnings non bloquants remontés au client).
+    const dateWarnings: string[] = []
+    const data = validationResult.data
+    if (data.dateSemis || data.datePlantation || data.dateRecolte) {
+      try {
+        const itpId = data.itpId ?? existing.itpId
+        const itp = itpId
+          ? await prisma.iTP.findUnique({
+              where: { id: itpId },
+              select: { semaineSemis: true, semainePlantation: true, semaineRecolte: true },
+            })
+          : null
+        const annee = data.annee ?? existing.annee ?? new Date().getFullYear()
+        const v = validateCultureDates({
+          dateSemis: data.dateSemis ?? existing.dateSemis,
+          datePlantation: data.datePlantation ?? existing.datePlantation,
+          dateRecolte: data.dateRecolte ?? existing.dateRecolte,
+          itp,
+          annee,
+        })
+        dateWarnings.push(...v.warnings)
+      } catch (e) {
+        console.warn('Date validation PUT skipped:', e)
+      }
+    }
+
     // Mise à jour
     const culture = await prisma.culture.update({
       where: { id: cultureId },
@@ -144,7 +172,9 @@ export async function PUT(
     })
 
     invalidateKpi(session!.user.id)
-    return NextResponse.json(culture)
+    return NextResponse.json(
+      dateWarnings.length > 0 ? { ...culture, warnings: dateWarnings } : culture
+    )
   } catch (error) {
     console.error('PUT /api/cultures/[id] error:', error)
     return NextResponse.json(

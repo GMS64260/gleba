@@ -14,11 +14,17 @@ export const associationDetailSchema = z.object({
   notes: z.string().max(2000).nullable().optional(),
 })
 
+// Audit Marc 2026-05-14 — Bug 19 : champ type explicite pour
+// favorable / incompatible / neutre. Cf. migration 20260514370000.
+export const ASSOCIATION_TYPES = ['favorable', 'incompatible', 'neutre'] as const
+export type AssociationType = (typeof ASSOCIATION_TYPES)[number]
+
 // Schéma de base pour une association
 export const baseAssociationSchema = z.object({
   nom: z.string().min(1, "Le nom est requis").max(200),
   description: z.string().max(2000).nullable().optional(),
   notes: z.string().max(5000).nullable().optional(),
+  type: z.enum(ASSOCIATION_TYPES),
 })
 
 // Schéma pour créer une association

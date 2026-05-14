@@ -553,7 +553,7 @@ function CulturesIrriguerContent() {
             </Card>
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm text-muted-foreground">Irrigations planifiees</CardTitle>
+                <CardTitle className="text-sm text-muted-foreground">Irrigations planifiées</CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-2xl font-bold text-blue-600">{stats.prochainesIrrigations7j}</p>

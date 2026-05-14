@@ -82,6 +82,8 @@ export async function POST(request: NextRequest) {
     const { details, ...associationData } = validated
     const id = generateAssociationId(associationData.nom)
 
+    // Audit Marc 2026-05-14 — Bug 19 : `type` est validé par Zod (default
+    // "favorable") et passé tel quel à Prisma.
     const association = await prisma.association.create({
       data: {
         id,

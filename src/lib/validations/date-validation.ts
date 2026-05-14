@@ -55,6 +55,29 @@ export function validateCultureDates(data: {
     }
   }
 
+  // Audit Marc 2026-05-14 — Bug 04 : message contextualisé avec la
+  // fenêtre ITP recommandée (mois français), pour que l'utilisateur
+  // comprenne ce qu'il faut corriger. Exemple :
+  //   "Semis le 01/06 hors fenêtre ITP recommandée (mars–avril)"
+  const MOIS_FR = [
+    'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
+    'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre',
+  ]
+  function moisDepuisSemaine(semaine: number): string {
+    // Semaine 1 = janvier, semaine 5 ≈ février, … semaine 49 ≈ décembre
+    const moisIdx = Math.min(11, Math.max(0, Math.floor((semaine - 1) / 4.345)))
+    return MOIS_FR[moisIdx]
+  }
+  function fenetreLabel(semaineCentre: number): string {
+    // ±28 jours = ±4 semaines → fenêtre ITP couvre semaineCentre±4
+    const moisDebut = moisDepuisSemaine(Math.max(1, semaineCentre - 4))
+    const moisFin = moisDepuisSemaine(Math.min(52, semaineCentre + 4))
+    return moisDebut === moisFin ? moisDebut : `${moisDebut}–${moisFin}`
+  }
+  function dateLabel(d: Date): string {
+    return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`
+  }
+
   // 2. Vérification dans limites ITP (si ITP fourni)
   if (data.itp) {
     try {
@@ -64,7 +87,7 @@ export function validateCultureDates(data: {
         const diff = Math.abs(differenceInDays(dateSemis, dateTheorique))
         if (diff > TOLERANCE_DAYS) {
           warnings.push(
-            `Date de semis éloignée de la période ITP recommandée (±${TOLERANCE_DAYS} jours)`
+            `Semis le ${dateLabel(dateSemis)} hors fenêtre ITP recommandée (${fenetreLabel(data.itp.semaineSemis)})`
           )
         }
       }
@@ -75,7 +98,7 @@ export function validateCultureDates(data: {
         const diff = Math.abs(differenceInDays(datePlantation, dateTheorique))
         if (diff > TOLERANCE_DAYS) {
           warnings.push(
-            `Date de plantation éloignée de la période ITP recommandée (±${TOLERANCE_DAYS} jours)`
+            `Plantation le ${dateLabel(datePlantation)} hors fenêtre ITP recommandée (${fenetreLabel(data.itp.semainePlantation)})`
           )
         }
       }
@@ -86,7 +109,7 @@ export function validateCultureDates(data: {
         const diff = Math.abs(differenceInDays(dateRecolte, dateTheorique))
         if (diff > TOLERANCE_DAYS) {
           warnings.push(
-            `Date de recolte éloignée de la période ITP recommandée (±${TOLERANCE_DAYS} jours)`
+            `Récolte le ${dateLabel(dateRecolte)} hors fenêtre ITP recommandée (${fenetreLabel(data.itp.semaineRecolte)})`
           )
         }
       }

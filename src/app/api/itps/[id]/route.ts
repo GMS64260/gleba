@@ -17,12 +17,15 @@ export async function GET(
   request: NextRequest,
   { params }: RouteParams
 ) {
-  const { error } = await requireAuthApi()
+  const { error, session } = await requireAuthApi()
   if (error) return error
+  const userId = session!.user.id
 
   try {
     const { id } = await params
 
+    // Audit Marc 2026-05-14 — Bug 13 : compteur cultures par tenant
+    // (cf. /api/itps GET pour le détail du bug).
     const itp = await prisma.iTP.findUnique({
       where: { id },
       include: {
@@ -33,7 +36,7 @@ export async function GET(
         },
         _count: {
           select: {
-            cultures: true,
+            cultures: { where: { userId } },
             rotationsDetails: true,
           },
         },

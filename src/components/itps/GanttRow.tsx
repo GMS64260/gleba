@@ -46,10 +46,20 @@ export function GanttRow({ itp, onEdit }: GanttRowProps) {
   }
 
   // Calculer les barres (position en % sur 52 semaines)
+  //
+  // Audit Marc 2026-05-14 — Bug 20 : la bande verte « Croissance »
+  // n'apparaissait pas sur les ITPs en semis direct (ex: Petit pois,
+  // Carotte, Radis) parce que la condition exigeait `semainePlantation`.
+  // Pour ces cycles, on découpe désormais la phase semis→récolte en :
+  //   * 3 semaines de "Semis" (orange) en début → germination + jeune plant
+  //   * le reste en "Croissance" (vert) jusqu'à la récolte
+  // Sources : J.-M. Fortier, Le Jardinier-Maraîcher (phase germination).
+  const PHASE_SEMIS_SEMAINES_DIRECT = 3
+
   const calculateBars = () => {
     const bars: { start: number; width: number; color: string; label: string }[] = []
 
-    // Barre semis (orange) : semaineSemis → semainePlantation
+    // Cas pépinière : Semis (orange) puis Croissance (vert)
     if (itp.semaineSemis && itp.semainePlantation) {
       bars.push({
         start: (itp.semaineSemis / 52) * 100,
@@ -58,16 +68,24 @@ export function GanttRow({ itp, onEdit }: GanttRowProps) {
         label: 'Semis'
       })
     } else if (itp.semaineSemis && itp.semaineRecolte && !itp.semainePlantation) {
-      // Semis direct : semaineSemis → semaineRecolte (orange)
+      // Cas semis direct : on découpe en Semis (3 sem) + Croissance
+      const cycle = itp.semaineRecolte - itp.semaineSemis
+      const semisFin = itp.semaineSemis + Math.min(PHASE_SEMIS_SEMAINES_DIRECT, Math.max(1, Math.floor(cycle / 3)))
       bars.push({
         start: (itp.semaineSemis / 52) * 100,
-        width: ((itp.semaineRecolte - itp.semaineSemis) / 52) * 100,
+        width: ((semisFin - itp.semaineSemis) / 52) * 100,
         color: '#ff9800',
-        label: 'Semis'
+        label: 'Semis / germination'
+      })
+      bars.push({
+        start: (semisFin / 52) * 100,
+        width: ((itp.semaineRecolte - semisFin) / 52) * 100,
+        color: '#4caf50',
+        label: 'Croissance'
       })
     }
 
-    // Barre croissance (vert) : semainePlantation → semaineRecolte
+    // Cas pépinière (suite) : bande croissance
     if (itp.semainePlantation && itp.semaineRecolte) {
       bars.push({
         start: (itp.semainePlantation / 52) * 100,
@@ -77,7 +95,7 @@ export function GanttRow({ itp, onEdit }: GanttRowProps) {
       })
     }
 
-    // Barre recolte (violet) : semaineRecolte → semaineRecolte + dureeRecolte
+    // Barre récolte (violet) : semaineRecolte → semaineRecolte + dureeRecolte
     if (itp.semaineRecolte && itp.dureeRecolte) {
       bars.push({
         start: (itp.semaineRecolte / 52) * 100,

@@ -68,13 +68,32 @@ const SEGMENT_LABELS: Record<string, string> = {
   onboarding: "Onboarding",
 }
 
+// Détection CUID (cmXXXXXXX…) : ils n'ont aucune valeur d'affichage pour
+// l'utilisateur final. On les remplace par "…" plutôt que de tronquer.
+function isCuidLike(segment: string): boolean {
+  return /^cm[a-z0-9]{20,}$/i.test(segment) || /^cl[a-z0-9]{20,}$/i.test(segment)
+}
+
 function labelFor(segment: string): string {
-  if (SEGMENT_LABELS[segment]) return SEGMENT_LABELS[segment]
+  // Audit Marc 2026-05-14 — Bug 30 : "Petit%20pois" affiché tel quel.
+  // Next.js peut renvoyer un pathname encodé selon le contexte (URL tapée
+  // brute, redirect, etc.) — on décode systématiquement.
+  let decoded = segment
+  try {
+    decoded = decodeURIComponent(segment)
+  } catch {
+    // Si segment mal formé (% isolé), garder tel quel
+  }
+
+  if (SEGMENT_LABELS[decoded]) return SEGMENT_LABELS[decoded]
   // ID numérique : on le rend opaque "#42"
-  if (/^\d+$/.test(segment)) return `#${segment}`
-  // CUID / slug : on le tronque
-  if (segment.length > 16) return segment.slice(0, 14) + "…"
-  return segment[0].toUpperCase() + segment.slice(1)
+  if (/^\d+$/.test(decoded)) return `#${decoded}`
+  // Audit Marc 2026-05-14 — Bug 29 : afficher "cml1gbctw003d2…" n'a aucun
+  // sens. La page peut surcharger via `trailingLabel`. Sinon on affiche "…".
+  if (isCuidLike(decoded)) return "…"
+  // Autre slug long : tronqué façon ellipsis
+  if (decoded.length > 24) return decoded.slice(0, 22) + "…"
+  return decoded[0].toUpperCase() + decoded.slice(1)
 }
 
 export function Breadcrumb({ trailingLabel }: { trailingLabel?: string }) {

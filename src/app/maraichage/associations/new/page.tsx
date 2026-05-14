@@ -80,6 +80,7 @@ export default function NewAssociationPage() {
       nom: "",
       description: null,
       notes: null,
+      type: "favorable",
       details: [{ especeId: null, familleId: null, groupe: null, requise: false, notes: null }],
     },
   })
@@ -147,10 +148,10 @@ export default function NewAssociationPage() {
       <main className="container mx-auto px-4 py-6 max-w-3xl">
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            {/* Informations generales */}
+            {/* Informations générales */}
             <Card>
               <CardHeader>
-                <CardTitle>Informations generales</CardTitle>
+                <CardTitle>Informations générales</CardTitle>
                 <CardDescription>
                   Nom et description de l'association
                 </CardDescription>
@@ -167,6 +168,35 @@ export default function NewAssociationPage() {
                       </FormControl>
                       <FormDescription>
                         Nom unique pour identifier cette association
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="type"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Type *</FormLabel>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value || "favorable"}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Sélectionner..." />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="favorable">Favorable (compagnonnage)</SelectItem>
+                          <SelectItem value="incompatible">Incompatible (à éviter)</SelectItem>
+                          <SelectItem value="neutre">Neutre</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormDescription>
+                        Détermine si l'association est favorable ou à éviter
                       </FormDescription>
                       <FormMessage />
                     </FormItem>

@@ -54,6 +54,11 @@ export async function GET(request: NextRequest) {
 
     // ── Tâches de la semaine + tâches en retard (non faites, date passée) ──
 
+    // Audit Marc 2026-05-14 — Bug 06 : une culture "En récolte" affichait
+    // "Semis à faire 10 sem. en retard" parce que la query ne regardait que
+    // semisFait. Désormais on exclut les cultures dont l'état a déjà
+    // dépassé le semis (plantationFaite / recolteFaite / terminee).
+
     // Semis : cette semaine OU en retard
     const [semisSemaine, semisRetard] = await Promise.all([
       prisma.culture.findMany({
@@ -62,7 +67,14 @@ export async function GET(request: NextRequest) {
         orderBy: { dateSemis: 'asc' },
       }),
       prisma.culture.findMany({
-        where: { userId, annee, semisFait: false, dateSemis: { lt: start, not: null } },
+        where: {
+          userId, annee,
+          semisFait: false,
+          plantationFaite: false,
+          recolteFaite: false,
+          terminee: null,
+          dateSemis: { lt: start, not: null },
+        },
         select: CULTURE_SELECT,
         orderBy: { dateSemis: 'asc' },
       }),
@@ -76,7 +88,13 @@ export async function GET(request: NextRequest) {
         orderBy: { datePlantation: 'asc' },
       }),
       prisma.culture.findMany({
-        where: { userId, annee, plantationFaite: false, datePlantation: { lt: start, not: null } },
+        where: {
+          userId, annee,
+          plantationFaite: false,
+          recolteFaite: false,
+          terminee: null,
+          datePlantation: { lt: start, not: null },
+        },
         select: CULTURE_SELECT,
         orderBy: { datePlantation: 'asc' },
       }),
@@ -90,7 +108,12 @@ export async function GET(request: NextRequest) {
         orderBy: { dateRecolte: 'asc' },
       }),
       prisma.culture.findMany({
-        where: { userId, annee, recolteFaite: false, dateRecolte: { lt: start, not: null } },
+        where: {
+          userId, annee,
+          recolteFaite: false,
+          terminee: null,
+          dateRecolte: { lt: start, not: null },
+        },
         select: CULTURE_SELECT,
         orderBy: { dateRecolte: 'asc' },
       }),

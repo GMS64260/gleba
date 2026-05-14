@@ -16,7 +16,7 @@ import { useToast } from "@/hooks/use-toast"
 
 const ESPECE_TYPES = [
   { value: "all", label: "Tous", icon: Leaf },
-  { value: "legume", label: "Legumes", icon: Salad },
+  { value: "legume", label: "Légumes", icon: Salad },
   { value: "aromatique", label: "Aromatiques", icon: Flower2 },
   { value: "engrais_vert", label: "Engrais verts", icon: Sprout },
   { value: "arbre_fruitier", label: "Arbres fruitiers", icon: TreeDeciduous },
@@ -24,7 +24,7 @@ const ESPECE_TYPES = [
 ] as const
 
 const TYPE_LABELS: Record<string, string> = {
-  legume: "Legume",
+  legume: "Légume",
   arbre_fruitier: "Arbre fruitier",
   petit_fruit: "Petit fruit",
   aromatique: "Aromatique",
