@@ -202,7 +202,10 @@ export default function ElevageDashboard() {
         {activeTab === "calendrier" && <CalendrierTab />}
         {activeTab === "dashboard" && <DashboardTab year={selectedYear} />}
         {activeTab === "animaux" && <AnimauxTab />}
-        {activeTab === "production" && <ProductionTab />}
+        {/* DEV2 Ticket #3 — passer l'année pour que Dashboard et Production
+            voient la même fenêtre temporelle (1269 vs Aucune = filtres
+            désynchronisés) */}
+        {activeTab === "production" && <ProductionTab year={selectedYear} />}
         {activeTab === "reproduction" && <ReproductionTab />}
         {activeTab === "alimentation" && <AlimentationTab />}
         {activeTab === "especes" && <EspecesTab />}
