@@ -14,6 +14,7 @@
  */
 
 import { GuidedTour } from "@/components/guided-tour"
+import { useIsDemoAccount } from "@/hooks/use-is-demo"
 
 const HOME_TOUR_STEPS = [
   {
@@ -45,5 +46,6 @@ const HOME_TOUR_STEPS = [
 ]
 
 export function TourHome() {
-  return <GuidedTour storageKey="home" steps={HOME_TOUR_STEPS} autoStart />
+  const isDemo = useIsDemoAccount()
+  return <GuidedTour storageKey="home" steps={HOME_TOUR_STEPS} autoStart alwaysShow={isDemo} />
 }

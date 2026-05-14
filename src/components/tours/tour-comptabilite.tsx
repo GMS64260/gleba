@@ -5,6 +5,7 @@
  */
 
 import { GuidedTour } from "@/components/guided-tour"
+import { useIsDemoAccount } from "@/hooks/use-is-demo"
 
 const STEPS = [
   {
@@ -35,5 +36,6 @@ const STEPS = [
 ]
 
 export function TourComptabilite() {
-  return <GuidedTour storageKey="comptabilite" steps={STEPS} autoStart />
+  const isDemo = useIsDemoAccount()
+  return <GuidedTour storageKey="comptabilite" steps={STEPS} autoStart alwaysShow={isDemo} />
 }

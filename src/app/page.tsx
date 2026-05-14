@@ -285,8 +285,8 @@ function HomeContent() {
       <main className="container mx-auto px-4 py-6 max-w-[1600px] space-y-6">
         {/* POSTREVIEW Sprint 6 — Tour Shepherd.js Maraîchage */}
         {activeTab === "calendrier" && <TourMaraichage />}
-        {/* PROMPT 22 — Bandeau "Premiers pas" sur l'onglet d'accueil */}
-        {activeTab === "calendrier" && <PremiersPasBanner />}
+        {/* PROMPT 22 + POSTREVIEW Sprint 6 — Bandeau "Premiers pas" Maraîchage */}
+        {activeTab === "calendrier" && <PremiersPasBanner module="maraichage" />}
         {activeTab === "calendrier" && <CalendrierTab year={selectedYear} />}
         {activeTab === "cultures" && <CulturesTab />}
         {activeTab === "terrain" && <TerrainTab />}

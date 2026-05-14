@@ -33,6 +33,18 @@ export async function POST(_request: NextRequest, { params }: Params) {
   const dernier = mere.nbPlantsRepriseAn3 ?? mere.nbPlantsRepriseAn2 ?? mere.nbPlantsRepriseAn1 ?? mere.nombrePlants
   const manquants = Math.max(0, mere.nombrePlants - dernier)
 
+  // POSTREVIEW Sprint 7 — Refus si manquants = 0 (taux reprise ≥ 100 % ou pas
+  // d'observation). Avant : créait une campagne fantôme à 0 plants.
+  if (manquants === 0) {
+    return NextResponse.json(
+      {
+        error: "Aucun regarnissage nécessaire",
+        details: `Taux de reprise actuel : ${mere.tauxReprise ?? "—"} %. Aucun plant manquant.`,
+      },
+      { status: 400 }
+    )
+  }
+
   const nouvelle = await prisma.campagnePlantation.create({
     data: {
       userId: session.user.id,

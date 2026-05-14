@@ -29,6 +29,13 @@ interface GuidedTourProps {
   steps: TourStep[]
   /** Si true, démarre automatiquement au mount (sauf si déjà complété). */
   autoStart?: boolean
+  /**
+   * POSTREVIEW Sprint 6 — Si true (typiquement compte démo `demo@gleba.fr`),
+   * le tour est rejoué à chaque visite : on ignore le flag de complétion
+   * (ni lecture ni écriture). Le bouton "Terminer" ferme la session courante
+   * mais le tour réapparaîtra au prochain mount.
+   */
+  alwaysShow?: boolean
 }
 
 declare global {
@@ -36,14 +43,15 @@ declare global {
   var __glebaTourRunning__: boolean | undefined
 }
 
-export function GuidedTour({ storageKey, steps, autoStart = true }: GuidedTourProps) {
+export function GuidedTour({ storageKey, steps, autoStart = true, alwaysShow = false }: GuidedTourProps) {
   const pathname = usePathname()
 
   React.useEffect(() => {
     if (typeof window === "undefined") return
     if (globalThis.__glebaTourRunning__) return
     const flagKey = `gleba.tour.${storageKey}.done`
-    if (autoStart && localStorage.getItem(flagKey)) return
+    // POSTREVIEW — Compte démo : on ignore le flag pour réafficher à chaque visite
+    if (!alwaysShow && autoStart && localStorage.getItem(flagKey)) return
 
     let cancelled = false
     let tour: { complete: () => void; cancel: () => void } | null = null
@@ -97,7 +105,8 @@ export function GuidedTour({ storageKey, steps, autoStart = true }: GuidedTourPr
       }
 
       instance.on("complete", () => {
-        localStorage.setItem(flagKey, new Date().toISOString())
+        // POSTREVIEW — Compte démo : on ne mémorise pas la complétion
+        if (!alwaysShow) localStorage.setItem(flagKey, new Date().toISOString())
         globalThis.__glebaTourRunning__ = false
       })
       instance.on("cancel", () => {
@@ -118,7 +127,7 @@ export function GuidedTour({ storageKey, steps, autoStart = true }: GuidedTourPr
       globalThis.__glebaTourRunning__ = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname])
+  }, [pathname, alwaysShow])
 
   return null
 }
