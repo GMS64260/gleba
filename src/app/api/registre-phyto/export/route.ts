@@ -38,23 +38,61 @@ export async function GET(request: NextRequest) {
   }
 
   const userId = session!.user.id
+  // DEV3 #2 — filtres supplémentaires (méthode + recherche produit)
+  const methodeFilter = sp.get("methode")
+  const produitFilter = sp.get("produit")?.toLowerCase()
 
-  const [user, interventions] = await Promise.all([
+  const [user, exploitation, interventions, observations] = await Promise.all([
     prisma.user.findUnique({
       where: { id: userId },
       select: { name: true, email: true, certiphytoNum: true, certiphytoValidite: true },
+    }),
+    // DEV3 #2 — En-tête PDF avec raison sociale + SIRET + agrément Ecocert
+    prisma.exploitation.findUnique({
+      where: { userId },
+      select: {
+        raisonSociale: true,
+        siret: true,
+        adresseSiege: true,
+        codePostal: true,
+        ville: true,
+        certifBioOrganisme: true,
+      },
     }),
     prisma.intervention.findMany({
       where: {
         userId,
         type: "traitement_phyto",
         date: { gte: from, lte: to },
-        ...(parcelleId ? { plancheId: parcelleId } : {}),
+        ...(parcelleId ? { OR: [{ parcelleId }, { plancheId: parcelleId }] } : {}),
       },
       include: {
         produitPhytoRef: true,
         operateur: { select: { name: true, email: true } },
         user: { select: { name: true, email: true } },
+        parcelle: { select: { id: true, nom: true } },
+      },
+      orderBy: { date: "asc" },
+    }),
+    // DEV3 #2 — Inclure les observations Santé & Phyto du Verger qui
+    // contiennent désormais les mêmes champs réglementaires (cf migration
+    // 20260514260100). Filtre : observations avec produit/méthode chimique.
+    prisma.observationSante.findMany({
+      where: {
+        userId,
+        date: { gte: from, lte: to },
+        OR: [
+          { methodeTraitement: { in: ["chimique_conventionnel", "chimique_cuivre", "biocontrole", "biologique_purin", "chimique", "biologique"] } },
+          { produit: { not: null } },
+          { numAMM: { not: null } },
+        ],
+        ...(parcelleId ? { parcelleId } : {}),
+      },
+      include: {
+        arbre: { select: { id: true, nom: true, espece: true, variete: true } },
+        operateur: { select: { name: true, email: true } },
+        user: { select: { name: true, email: true } },
+        parcelle: { select: { id: true, nom: true } },
       },
       orderBy: { date: "asc" },
     }),
@@ -85,46 +123,99 @@ export async function GET(request: NextRequest) {
   const plancheById = new Map(planches.map((p) => [p.id, p]))
   const arbreById = new Map(arbres.map((a) => [a.id, a]))
 
-  // Modèle ligne d'export normalisé + filtrage post-fetch par especeId.
-  const lignes = interventions
-    .map((i) => {
-      const ref = i.produitPhytoRef
-      const culture = i.cultureId ? cultureById.get(i.cultureId) : null
-      const planche = culture?.planche ?? (i.plancheId ? plancheById.get(i.plancheId) : null)
-      const arbre = i.arbreId ? arbreById.get(i.arbreId) : null
-      const espece = culture?.espece.id ?? arbre?.espece ?? null
-      const variete = culture?.variete?.id ?? arbre?.variete ?? null
-      return {
-        date: i.date.toISOString().slice(0, 10),
-        parcelle: planche?.nom ?? null,
-        espece,
-        variete,
-        surfaceHa: i.surfaceTraitee ?? null,
-        cible: i.cibleTraitement ?? null,
-        produit: ref?.nomCommercial ?? i.produitPhyto ?? null,
-        amm: ref?.amm ?? i.numAMM ?? null,
-        substance: ref?.substanceActive ?? null,
-        classification: ref?.classification ?? null,
-        autoriseAB: ref?.autoriseAB ?? null,
-        dose: i.doseAppliquee != null ? `${i.doseAppliquee} ${i.uniteDose ?? ""}`.trim() : null,
-        volumeBouillie: i.volumeBouillieLHa ?? null,
-        dar: i.dar ?? ref?.darJours ?? null,
-        temperatureC: i.temperatureC ?? null,
-        ventKmh: i.ventKmh ?? null,
-        hygrometriePct: i.hygrometriePct ?? null,
-        operateur: i.operateur?.name || i.operateur?.email || i.user.name || i.user.email,
-        certiphytoNum: i.certiphytoNum ?? null,
-        certiphytoValidite: i.certiphytoValidite?.toISOString().slice(0, 10) ?? null,
-        justification: i.justification ?? null,
-      }
-    })
+  // Modèle ligne d'export normalisé + filtrage post-fetch par especeId/methode/produit.
+  const lignesIntervention = interventions.map((i) => {
+    const ref = i.produitPhytoRef
+    const culture = i.cultureId ? cultureById.get(i.cultureId) : null
+    const planche = culture?.planche ?? (i.plancheId ? plancheById.get(i.plancheId) : null)
+    const arbre = i.arbreId ? arbreById.get(i.arbreId) : null
+    const espece = culture?.espece.id ?? arbre?.espece ?? null
+    const variete = culture?.variete?.id ?? arbre?.variete ?? null
+    return {
+      source: "intervention",
+      date: i.date.toISOString().slice(0, 10),
+      parcelle: i.parcelle?.nom ?? planche?.nom ?? null,
+      espece,
+      variete,
+      surfaceHa: i.surfaceTraiteeHa ?? i.surfaceTraitee ?? null,
+      cible: i.cibleTraitement ?? null,
+      methode: ref?.classification ?? null,
+      produit: ref?.nomCommercial ?? i.produitPhyto ?? null,
+      amm: ref?.amm ?? i.numAMM ?? null,
+      substance: ref?.substanceActive ?? null,
+      classification: ref?.classification ?? null,
+      autoriseAB: ref?.autoriseAB ?? null,
+      dose: i.doseAppliquee != null ? `${i.doseAppliquee} ${i.uniteDose ?? ""}`.trim() : null,
+      volumeBouillie: i.volumeBouillieLHa ?? null,
+      volumeBouillieTotal: i.volumeBouillieLTotal ?? null,
+      dar: i.dar ?? ref?.darJours ?? null,
+      temperatureC: i.temperatureC ?? null,
+      ventKmh: i.ventKmh ?? null,
+      hygrometriePct: i.hygrometriePct ?? null,
+      pluie24h: i.pluie24h,
+      pluie24hMm: i.pluie24hMm ?? null,
+      epiPortes: i.epiPortes,
+      zntRespectee: i.zntRespectee,
+      zntDistanceM: i.zntDistanceM ?? null,
+      operateur: i.operateur?.name || i.operateur?.email || i.user.name || i.user.email,
+      certiphytoNum: i.certiphytoNum ?? null,
+      certiphytoValidite: i.certiphytoValidite?.toISOString().slice(0, 10) ?? null,
+      justification: i.justification ?? null,
+    }
+  })
+
+  const lignesObservation = observations.map((o) => ({
+    source: "observation_sante",
+    date: o.date.toISOString().slice(0, 10),
+    parcelle: o.parcelle?.nom ?? null,
+    espece: o.arbre?.espece ?? null,
+    variete: o.arbre?.variete ?? null,
+    surfaceHa: o.surfaceTraiteeHa ?? null,
+    cible: o.diagnostic ?? o.symptome ?? null,
+    methode: o.methodeTraitement ?? null,
+    produit: o.produit ?? null,
+    amm: o.numAMM ?? null,
+    substance: null as string | null,
+    classification: o.methodeTraitement ?? null,
+    autoriseAB: null as boolean | null,
+    dose: o.doseAppliquee != null ? `${o.doseAppliquee} ${o.uniteDose ?? ""}`.trim() : null,
+    volumeBouillie: o.volumeBouillieLHa ?? null,
+    volumeBouillieTotal: o.volumeBouillieLTotal ?? null,
+    dar: o.dar ?? null,
+    temperatureC: o.temperatureC ?? null,
+    ventKmh: o.ventKmh ?? null,
+    hygrometriePct: o.hygrometriePct ?? null,
+    pluie24h: o.pluie24h,
+    pluie24hMm: o.pluie24hMm ?? null,
+    epiPortes: o.epiPortes,
+    zntRespectee: o.zntRespectee,
+    zntDistanceM: o.zntDistanceM ?? null,
+    operateur: o.operateur?.name || o.operateur?.email || o.user.name || o.user.email,
+    certiphytoNum: o.certiphytoNum ?? null,
+    certiphytoValidite: null as string | null,
+    justification: o.traitement ?? null,
+  }))
+
+  const lignes = [...lignesIntervention, ...lignesObservation]
     .filter((l) => !especeId || l.espece === especeId)
+    .filter((l) => !methodeFilter || l.methode === methodeFilter)
+    .filter((l) => !produitFilter || (l.produit?.toLowerCase().includes(produitFilter)))
+    .sort((a, b) => a.date.localeCompare(b.date))
 
   if (format === "csv") {
-    return buildCsv(lignes, user, from, to)
+    return buildCsv(lignes, user, exploitation, from, to)
   }
-  return buildPdf(lignes, user, from, to)
+  return buildPdf(lignes, user, exploitation, from, to)
 }
+
+type Exploitation = {
+  raisonSociale: string
+  siret: string
+  adresseSiege: string
+  codePostal: string
+  ville: string
+  certifBioOrganisme: string | null
+} | null
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CSV — UTF-8 avec BOM, séparateur `;` (Excel FR)
@@ -147,6 +238,7 @@ function escapeCsv(value: unknown): string {
 function buildCsv(
   lignes: Array<Record<string, unknown>>,
   user: { name: string | null; email: string; certiphytoNum: string | null; certiphytoValidite: Date | null } | null,
+  exploitation: Exploitation,
   from: Date,
   to: Date
 ): NextResponse {
@@ -155,7 +247,7 @@ function buildCsv(
     "Parcelle",
     "Espèce",
     "Variété",
-    "Surface (ha)",
+    "Surface traitée (ha)",
     "Cible",
     "Produit",
     "N° AMM",
@@ -164,14 +256,20 @@ function buildCsv(
     "Autorisé AB",
     "Dose appliquée",
     "Volume bouillie (L/ha)",
+    "Volume bouillie (L total)",
     "DAR (j)",
     "Température (°C)",
     "Vent (km/h)",
     "Hygrométrie (%)",
+    "Pluie ±24h",
+    "Pluie (mm)",
+    "EPI portés",
+    "ZNT respectée",
+    "ZNT distance (m)",
     "Opérateur",
-    "Certiphyto",
+    "N° Certiphyto",
     "Validité Certiphyto",
-    "Justification",
+    "Justification / Action",
   ]
 
   const rows: string[] = []
@@ -192,10 +290,16 @@ function buildCsv(
         l.autoriseAB === null ? null : l.autoriseAB ? "Oui" : "Non",
         l.dose,
         l.volumeBouillie,
+        l.volumeBouillieTotal,
         l.dar,
         l.temperatureC,
         l.ventKmh,
         l.hygrometriePct,
+        l.pluie24h === null || l.pluie24h === undefined ? null : l.pluie24h ? "Oui" : "Non",
+        l.pluie24hMm,
+        Array.isArray(l.epiPortes) ? (l.epiPortes as string[]).join("|") : null,
+        l.zntRespectee === null || l.zntRespectee === undefined ? null : l.zntRespectee ? "Oui" : "Non",
+        l.zntDistanceM,
         l.operateur,
         l.certiphytoNum,
         l.certiphytoValidite,
@@ -206,11 +310,13 @@ function buildCsv(
     )
   }
 
-  // En-tête en haut du CSV : raison sociale + période + mention
-  const emetteur = user?.name || user?.email || ""
+  // En-tête en haut du CSV : exploitation + SIRET + agrément + période
+  const emetteur = exploitation?.raisonSociale || user?.name || user?.email || ""
+  const siret = exploitation?.siret ? ` (SIRET ${exploitation.siret})` : ""
+  const agrement = exploitation?.certifBioOrganisme ? ` — Certification : ${exploitation.certifBioOrganisme}` : ""
   const periode = `${from.toISOString().slice(0, 10)} → ${to.toISOString().slice(0, 10)}`
   const header = [
-    `Registre phytosanitaire — ${emetteur}`,
+    `Registre phytosanitaire — ${emetteur}${siret}${agrement}`,
     `Période : ${periode}`,
     MENTION_LEGALE,
     "",
@@ -235,18 +341,38 @@ function buildCsv(
 async function buildPdf(
   lignes: Array<Record<string, unknown>>,
   user: { name: string | null; email: string; certiphytoNum: string | null; certiphytoValidite: Date | null } | null,
+  exploitation: Exploitation,
   from: Date,
   to: Date
 ): Promise<NextResponse> {
   const buffer = await new Promise<Buffer>((resolve, reject) => {
-    const doc = new PDFDocument({ size: "A4", layout: "landscape", margin: 30 })
+    const doc = new PDFDocument({
+      size: "A4",
+      layout: "landscape",
+      margin: 30,
+      // bufferPages permet d'utiliser switchToPage() après tout le rendu
+      // pour redessiner les footers avec la pagination "Page X / Y".
+      bufferPages: true,
+      info: {
+        Title: `Registre phyto ${from.toISOString().slice(0, 10)}_${to.toISOString().slice(0, 10)}`,
+        Author: exploitation?.raisonSociale || user?.name || user?.email || "Gleba",
+        Subject: "Registre des produits phytosanitaires - Arrêté 16/06/2009",
+        Keywords: "registre,phytosanitaire,bio,traçabilité",
+      },
+    })
     const chunks: Buffer[] = []
     doc.on("data", (c) => chunks.push(c))
     doc.on("end", () => resolve(Buffer.concat(chunks)))
     doc.on("error", reject)
 
-    const drawFooter = () => {
-      const pageBottom = doc.page.height - 25
+    // DEV3 #2 — Numérotation de pages : on incrémente à chaque addPage et
+    // on dessine le footer en fin pour tracer "Page X / Y". pdfkit ne supporte
+    // pas la pagination dynamique en un seul pass : on garde une stratégie
+    // par accumulation puis post-traitement via switchToPage.
+    let totalPages = 1
+
+    const drawFooter = (pageNum: number) => {
+      const pageBottom = doc.page.height - 38
       doc
         .fontSize(7)
         .fillColor("#64748b")
@@ -255,23 +381,47 @@ async function buildPdf(
           width: doc.page.width - 60,
           align: "center",
         })
-      doc.text(`Exporté le ${new Date().toLocaleDateString("fr-FR")} via Gleba — gleba.fr`, 30, pageBottom + 8, {
-        width: doc.page.width - 60,
-        align: "center",
-      })
+      doc.text(
+        `Exporté le ${new Date().toLocaleDateString("fr-FR")} via Gleba — gleba.fr  ·  Page ${pageNum} / ${totalPages}`,
+        30,
+        pageBottom + 10,
+        { width: doc.page.width - 60, align: "center" }
+      )
     }
 
     // ── EN-TÊTE ──
-    doc.fontSize(14).fillColor("#0f172a").font("Helvetica-Bold")
+    // Bloc émetteur enrichi : raison sociale, SIRET, agrément Ecocert/BV
+    const expName = exploitation?.raisonSociale || user?.name || user?.email || "Émetteur"
+    doc.fontSize(15).fillColor("#0f172a").font("Helvetica-Bold")
       .text("Registre phytosanitaire", 30, 30)
-    doc.fontSize(9).fillColor("#334155").font("Helvetica")
-      .text(user?.name || user?.email || "Émetteur", 30, 52)
-    doc.text(`Email : ${user?.email ?? "—"}`, 30, 65)
+    doc.fontSize(10).fillColor("#0f172a").font("Helvetica-Bold")
+      .text(expName, 30, 52)
+    doc.fontSize(8.5).fillColor("#334155").font("Helvetica")
+    if (exploitation) {
+      doc.text(
+        `${exploitation.adresseSiege} — ${exploitation.codePostal} ${exploitation.ville}`,
+        30,
+        67
+      )
+      doc.text(`SIRET ${exploitation.siret}`, 30, 79)
+      if (exploitation.certifBioOrganisme) {
+        doc.fillColor("#047857").font("Helvetica-Bold")
+        doc.text(`Agrément AB : ${exploitation.certifBioOrganisme}`, 30, 91)
+        doc.fillColor("#334155").font("Helvetica")
+      }
+    } else {
+      doc.text(user?.email || "", 30, 67)
+    }
+
     if (user?.certiphytoNum) {
       doc.text(
-        `Certiphyto : ${user.certiphytoNum}${user.certiphytoValidite ? ` (valide jusqu'au ${user.certiphytoValidite.toLocaleDateString("fr-FR")})` : ""}`,
+        `Certiphyto opérateur : ${user.certiphytoNum}${
+          user.certiphytoValidite
+            ? ` (valide jusqu'au ${user.certiphytoValidite.toLocaleDateString("fr-FR")})`
+            : ""
+        }`,
         30,
-        78
+        exploitation?.certifBioOrganisme ? 104 : 91
       )
     }
     doc.text(
@@ -283,7 +433,7 @@ async function buildPdf(
     doc.text(`Lignes : ${lignes.length}`, doc.page.width - 250, 65, { width: 220, align: "right" })
 
     // ── TABLEAU ──
-    const tableTop = 110
+    const tableTop = exploitation ? 130 : 110
     const cols: Array<{ key: string; label: string; w: number }> = [
       { key: "date", label: "Date", w: 55 },
       { key: "parcelle", label: "Parcelle", w: 70 },
@@ -349,9 +499,9 @@ async function buildPdf(
         const h = doc.heightOfString(txt, { width: c.w - 4 }) + 4
         if (h > rowHeight) rowHeight = h
       }
-      // Page break
-      if (y + rowHeight > doc.page.height - 50) {
-        drawFooter()
+      // Page break (laisse de l'espace pour la zone signature en dernière page)
+      if (y + rowHeight > doc.page.height - 55) {
+        totalPages++
         doc.addPage({ size: "A4", layout: "landscape", margin: 30 })
         y = drawHeader(30)
         doc.fontSize(7).font("Helvetica").fillColor("#1e293b")
@@ -373,7 +523,33 @@ async function buildPdf(
         .text("Aucun traitement sur la période.", 30, y + 12)
     }
 
-    drawFooter()
+    // DEV3 #2 — Zone signature en bas de la dernière page (pour signature
+    // manuscrite après impression, lors d'un contrôle DRAAF / Agence Bio).
+    const signatureY = Math.max(y + 20, doc.page.height - 110)
+    if (signatureY + 60 < doc.page.height - 30) {
+      doc.fontSize(8.5).fillColor("#1e293b").font("Helvetica-Bold")
+        .text("Certification du registre", 30, signatureY)
+      doc.fontSize(7.5).fillColor("#334155").font("Helvetica")
+        .text(
+          "Je soussigné(e), responsable de l'exploitation, certifie que les informations consignées ci-dessus sont exactes et conformes à la réglementation en vigueur.",
+          30,
+          signatureY + 14,
+          { width: doc.page.width - 60 }
+        )
+      // Cadres signature
+      doc.fontSize(7).fillColor("#64748b")
+      doc.text("Fait à : ____________________________", 30, signatureY + 40)
+      doc.text("Le : ____________________________", 30, signatureY + 52)
+      doc.text("Signature et cachet :", doc.page.width - 250, signatureY + 40)
+      doc.rect(doc.page.width - 250, signatureY + 50, 220, 40).strokeColor("#94a3b8").lineWidth(0.5).stroke()
+    }
+
+    // DEV3 #2 — Pagination finale avec switchToPage : on (re-)dessine les
+    // footers sur chaque page maintenant qu'on connaît `totalPages`.
+    for (let p = 0; p < totalPages; p++) {
+      doc.switchToPage(p)
+      drawFooter(p + 1)
+    }
     doc.end()
   })
 
