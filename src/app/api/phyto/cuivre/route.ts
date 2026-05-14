@@ -27,16 +27,16 @@ export async function GET() {
       where: { userId },
       select: { id: true, nom: true, surface: true },
     }),
+    // Audit fix : on ne capte QUE les interventions avec parcelleId
+    // (parcelles_geo). `plancheId` est un id de Planche (maraîchage), pas
+    // de ParcelleGeo — l'inclure faisait silencieusement perdre la surface
+    // côté agrégation (parcelleSurfaces.get(plancheId) = undefined → 0).
     prisma.intervention.findMany({
       where: {
         userId,
         type: "traitement_phyto",
         date: { gte: dateMin7ans },
-        OR: [
-          { parcelleId: { not: null } },
-          // Si plancheId est utilisé (compat), on accepte aussi
-          { plancheId: { not: null } },
-        ],
+        parcelleId: { not: null },
       },
       include: { produitPhytoRef: true },
     }),
@@ -60,10 +60,9 @@ export async function GET() {
   const traitements: TraitementCuivreInput[] = []
 
   for (const i of interventions) {
-    const parcelleId = i.parcelleId ?? i.plancheId ?? null // plancheId rétro-compat
     traitements.push({
       date: i.date,
-      parcelleId,
+      parcelleId: i.parcelleId,
       surfaceHa: i.surfaceTraiteeHa ?? i.surfaceTraitee ?? null,
       doseAppliquee: i.doseAppliquee,
       uniteDose: i.uniteDose,

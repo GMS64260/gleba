@@ -72,6 +72,62 @@ describe('doseCuivreMetalKg', () => {
     expect(cu).toBe(0)
   })
 
+  // DEV3 audit fix — uniteDose pris en compte
+  it("g/L (concentration bouillie) × volumeBouillieLHa convertit en kg produit", () => {
+    // 50 g/L de Bouillie 20% Cu dans 500 L/ha de bouillie sur 1 ha :
+    // 50 × 500 / 1000 = 25 kg produit × 1 ha = 25 kg produit × 20% = 5 kg Cu
+    const cu = doseCuivreMetalKg({
+      date: new Date('2026-04-08'),
+      parcelleId: 'P1',
+      surfaceHa: 1,
+      doseAppliquee: 50,
+      uniteDose: 'g/L',
+      volumeBouillieLHa: 500,
+      produit: { contientCuivre: true, cuivreMetalPct: 20 },
+    })
+    expect(cu).toBeCloseTo(5, 1)
+  })
+
+  it("g/L sans volume bouillie → 0 (donnée incomplète)", () => {
+    const cu = doseCuivreMetalKg({
+      date: new Date('2026-04-08'),
+      parcelleId: 'P1',
+      surfaceHa: 1,
+      doseAppliquee: 50,
+      uniteDose: 'g/L',
+      volumeBouillieLHa: null,
+      produit: { contientCuivre: true, cuivreMetalPct: 20 },
+    })
+    expect(cu).toBe(0)
+  })
+
+  it("L/ha équivaut à kg/ha (densité ~1)", () => {
+    const cu = doseCuivreMetalKg({
+      date: new Date('2026-04-08'),
+      parcelleId: 'P1',
+      surfaceHa: 2,
+      doseAppliquee: 5,
+      uniteDose: 'L/ha',
+      volumeBouillieLHa: null,
+      produit: { contientCuivre: true, cuivreMetalPct: 20 },
+    })
+    expect(cu).toBeCloseTo(2, 1)
+  })
+
+  it("g/ha divise par 1000 pour obtenir kg produit", () => {
+    const cu = doseCuivreMetalKg({
+      date: new Date('2026-04-08'),
+      parcelleId: 'P1',
+      surfaceHa: 1,
+      doseAppliquee: 5000,
+      uniteDose: 'g/ha',
+      volumeBouillieLHa: null,
+      produit: { contientCuivre: true, cuivreMetalPct: 20 },
+    })
+    // 5000 g/ha × 1 ha / 1000 = 5 kg × 20% = 1 kg Cu
+    expect(cu).toBeCloseTo(1, 2)
+  })
+
   it('retourne 0 si surface ou dose manquantes', () => {
     expect(
       doseCuivreMetalKg({

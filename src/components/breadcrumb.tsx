@@ -83,6 +83,11 @@ export function Breadcrumb({ trailingLabel }: { trailingLabel?: string }) {
 
   const segments = pathname.split("/").filter(Boolean)
   if (segments.length === 0) return null
+  // Audit Marc 2026-05-14 — Sur les pages racine d'un module
+  // (/verger, /elevage, /comptabilite, /maraichage), le breadcrumb fait
+  // doublon avec le header sticky de la page (logo + ModulesNav + titre).
+  // On le masque pour éviter le "sur-header" visuel.
+  if (segments.length === 1) return null
 
   return (
     <nav aria-label="Breadcrumb" className="px-4 py-2 text-xs text-slate-500 bg-slate-50 border-b border-slate-200">

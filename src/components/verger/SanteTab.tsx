@@ -1087,16 +1087,19 @@ function RegistrePhytoSubTab() {
                 <Input value={editForm.traitement} onChange={(e) => setEditForm({ ...editForm, traitement: e.target.value })} placeholder="Ex: Pulvérisation, taille sanitaire, piège..." />
               </div>
             </div>
-            {(editForm.methodeTraitement === "chimique" || editForm.methodeTraitement === "biologique") && (
+            {editForm.methodeTraitement &&
+              editForm.methodeTraitement !== "mecanique_manuel" &&
+              editForm.methodeTraitement !== "prophylaxie" &&
+              editForm.methodeTraitement !== "mecanique" && (
               <>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label>Produit</Label>
                     <Input value={editForm.produit} onChange={(e) => setEditForm({ ...editForm, produit: e.target.value })} placeholder="Nom commercial" />
                   </div>
-                  {editForm.methodeTraitement === "chimique" && (
+                  {methodeExigeCertiphyto(editForm.methodeTraitement) && (
                     <div>
-                      <Label>N° AMM</Label>
+                      <Label>N° AMM <span className="text-red-600">*</span></Label>
                       <Input value={editForm.numAMM} onChange={(e) => setEditForm({ ...editForm, numAMM: e.target.value })} placeholder="Ex: 2210548" />
                     </div>
                   )}

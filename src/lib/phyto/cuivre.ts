@@ -52,19 +52,60 @@ export interface TraitementCuivreInput {
 }
 
 /**
+ * Convertit la dose appliquée en quantité de produit total (kg ou L) selon
+ * l'unité de saisie. Permet de gérer "kg/ha", "L/ha" (≈ kg/ha pour bouillies),
+ * "g/L" (concentration en bouillie : nécessite volume bouillie L/ha) et "mL/L".
+ *
+ * Hypothèse : 1 L de bouillie ≈ 1 kg (densité eau ~1, négligeable variation).
+ * Pour des produits concentrés > 1.2 kg/L, l'opérateur saisit en kg/ha
+ * directement et le calcul reste correct.
+ *
+ * Retourne le total en kg de PRODUIT (pas Cu) appliqué sur la parcelle entière.
+ */
+function quantiteProduitTotalKg(t: TraitementCuivreInput): number {
+  const dose = t.doseAppliquee ?? 0
+  const surfaceHa = t.surfaceHa ?? 0
+  if (dose <= 0 || surfaceHa <= 0) return 0
+
+  const unite = (t.uniteDose ?? '').toLowerCase()
+
+  // kg/ha ou L/ha : dose × surface = kg total
+  if (unite === '' || unite === 'kg/ha' || unite === 'l/ha') {
+    return dose * surfaceHa
+  }
+  // g/ha → /1000 = kg
+  if (unite === 'g/ha') {
+    return (dose * surfaceHa) / 1000
+  }
+  // g/L : concentration dans la bouillie. Nécessite volume_bouillie_l_ha.
+  // (dose g/L × volumeBouillieLHa L/ha) / 1000 = kg produit / ha → × surface
+  if (unite === 'g/l') {
+    const vol = t.volumeBouillieLHa ?? 0
+    if (vol <= 0) return 0
+    return ((dose * vol) / 1000) * surfaceHa
+  }
+  // mL/L : ml de produit liquide par L de bouillie. Densité 1 supposée.
+  if (unite === 'ml/l') {
+    const vol = t.volumeBouillieLHa ?? 0
+    if (vol <= 0) return 0
+    // dose mL/L × volume L/ha = mL/ha de produit ; ÷1000 → L/ha ≈ kg/ha
+    return ((dose * vol) / 1000) * surfaceHa
+  }
+  // Inconnu : on suppose kg/ha pour ne pas perdre la donnée (sera surcouvert)
+  return dose * surfaceHa
+}
+
+/**
  * Calcule la dose de cuivre métal appliquée (en kg) sur la parcelle.
  * Retourne 0 si l'input n'est pas un cuivre, ou si la dose/surface manquent.
+ *
+ * Audit Marc 2026-05-14 — gère désormais toutes les unités courantes
+ * (kg/ha, L/ha, g/ha, g/L, mL/L) via `quantiteProduitTotalKg`.
  */
 export function doseCuivreMetalKg(t: TraitementCuivreInput): number {
   if (!isProduitCuivre(t.produit)) return 0
-  if (!t.surfaceHa || t.surfaceHa <= 0) return 0
-  // Dose de produit appliquée par ha : on accepte plusieurs conventions.
-  // Cas A : `doseAppliquee` est exprimée en kg/ha ou L/ha du produit.
-  // Cas B : `volumeBouillieLHa` × concentration → on prend doseAppliquee comme la quantité totale.
-  const doseProduitParHa = t.doseAppliquee ?? 0
-  if (doseProduitParHa <= 0) return 0
-
-  const totalProduitKg = doseProduitParHa * t.surfaceHa // kg ou L de produit total
+  const totalProduitKg = quantiteProduitTotalKg(t)
+  if (totalProduitKg <= 0) return 0
 
   // Conversion en cuivre métal
   if (t.produit?.cuivreMetalGParUnite != null && t.produit.cuivreMetalGParUnite > 0) {
