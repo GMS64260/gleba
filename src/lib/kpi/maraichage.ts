@@ -41,9 +41,15 @@ async function computeKpiMaraichage(
   asOf: Date
 ): Promise<KPIMaraichage> {
   const startOfYear = new Date(year, 0, 1, 0, 0, 0, 0)
+  const endOfYear = new Date(year, 11, 31, 23, 59, 59, 999)
   const endOfYearN1 = new Date(year - 1, 11, 31, 23, 59, 59, 999)
   const startOfYearN1 = new Date(year - 1, 0, 1, 0, 0, 0, 0)
-  const asOfN1 = shiftToPrevYear(asOf)
+  // Ticket DEV2 #1 — Borne haute YTD : pour l'année en cours c'est `asOf`,
+  // pour une année passée c'est la fin de cette année. Sinon, sélectionner
+  // 2024 alors qu'on est en 2026 retournait toutes les récoltes 2024+2025+2026.
+  const isCurrentYear = asOf.getFullYear() === year
+  const upperBound = isCurrentYear ? asOf : endOfYear
+  const asOfN1 = isCurrentYear ? shiftToPrevYear(asOf) : endOfYearN1
 
   const [
     culturesAnnee,
@@ -82,7 +88,7 @@ async function computeKpiMaraichage(
     }),
 
     prisma.recolte.aggregate({
-      where: { userId, date: { gte: startOfYear, lte: asOf } },
+      where: { userId, date: { gte: startOfYear, lte: upperBound } },
       _sum: { quantite: true },
     }),
 

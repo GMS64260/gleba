@@ -64,7 +64,7 @@ interface RecolteWithRelations {
   culture: {
     id: number
     variete: { id: string } | null
-    planche: { id: string } | null
+    planche: { id: string; nom: string } | null
   }
 }
 
@@ -434,7 +434,7 @@ export default function RecoltesPage() {
                               </div>
                             </TableCell>
                             <TableCell>{r.culture?.variete?.id || "-"}</TableCell>
-                            <TableCell>{r.culture?.planche?.id || "-"}</TableCell>
+                            <TableCell>{r.culture?.planche?.nom || "-"}</TableCell>
                             <TableCell className="text-right font-medium text-green-600">
                               {r.quantite.toFixed(2)} kg
                             </TableCell>
