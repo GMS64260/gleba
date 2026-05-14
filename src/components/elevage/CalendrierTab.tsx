@@ -231,7 +231,7 @@ export function CalendrierTab() {
             <div className="bg-blue-50 rounded-lg p-3 text-center">
               <Stethoscope className="h-5 w-5 mx-auto text-blue-600 mb-1" />
               <p className="text-2xl font-bold text-blue-700">{data.stats.soinsRestants}</p>
-              <p className="text-xs text-blue-600">Soins a faire</p>
+              <p className="text-xs text-blue-600">Soins à faire</p>
               {data.stats.soinsFaits > 0 && (
                 <p className="text-xs text-blue-400 mt-0.5">{data.stats.soinsFaits} fait(s)</p>
               )}
@@ -352,7 +352,7 @@ export function CalendrierTab() {
               <CardHeader>
                 <CardTitle className="text-sm flex items-center gap-2">
                   <Stethoscope className="h-4 w-4 text-blue-600" />
-                  Soins a faire cette semaine
+                  Soins à faire cette semaine
                   <Badge variant="secondary" className="ml-auto">
                     {data.soins.filter(s => !s.fait).length}
                   </Badge>

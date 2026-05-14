@@ -172,7 +172,7 @@ export function IrrigationAdvisor({ parcelleId, lat, lng }: IrrigationAdvisorPro
               <p className="text-[10px] text-slate-400 leading-none mt-0.5">
                 {data.cached
                   ? `Calcule il y a ${data.cacheAgeMinutes} min`
-                  : "Calcule a l'instant"}
+                  : "Calculé à l'instant"}
               </p>
             )}
           </div>
@@ -218,7 +218,7 @@ export function IrrigationAdvisor({ parcelleId, lat, lng }: IrrigationAdvisorPro
                 </p>
                 {nappeData.nappe.dateReleve && (
                   <p className="text-[10px] text-cyan-500">
-                    Releve du {new Date(nappeData.nappe.dateReleve).toLocaleDateString("fr-FR")}
+                    Relevé du {new Date(nappeData.nappe.dateReleve).toLocaleDateString("fr-FR")}
                   </p>
                 )}
               </div>

@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
         _sum: { prixVente: true, poidsCarcasse: true, quantite: true },
       })
 
-      // Production oeufs du lot
+      // Production œufs du lot
       const productionOeufs = await prisma.productionOeuf.aggregate({
         where: {
           userId,

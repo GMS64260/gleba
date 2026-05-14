@@ -85,7 +85,9 @@ export const metadata: Metadata = {
 export const viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
+  // DEV2 #7 — maximumScale retiré (anti-pattern accessibilité : empêche
+  // le pinch-zoom mobile, problématique pour les utilisateurs ayant des
+  // difficultés visuelles)
 };
 
 // JSON-LD Structured Data

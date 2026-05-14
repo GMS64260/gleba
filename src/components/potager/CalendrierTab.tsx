@@ -444,7 +444,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                   dont {taches.stats.enRetard} en retard
                 </p>
               ) : (
-                <p className="text-xs text-teal-100">taches a faire</p>
+                <p className="text-xs text-teal-100">tâches à faire</p>
               )}
             </CardContent>
           </Card>

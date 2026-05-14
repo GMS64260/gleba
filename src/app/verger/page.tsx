@@ -44,8 +44,8 @@ const TABS = [
   { id: "plantations", label: "Plantations", icon: Trees, shortLabel: "Plant." },
   { id: "arbres", label: "Arbres", icon: TreeDeciduous, shortLabel: "Arbres" },
   { id: "productions", label: "Productions", icon: Apple, shortLabel: "Prod." },
-  { id: "operations", label: "Operations", icon: Wrench, shortLabel: "Oper." },
-  { id: "sante", label: "Sante & Phyto", icon: HeartPulse, shortLabel: "Sante" },
+  { id: "operations", label: "Opérations", icon: Wrench, shortLabel: "Oper." },
+  { id: "sante", label: "Santé & Phyto", icon: HeartPulse, shortLabel: "Sante" },
   { id: "referentiel", label: "Référentiel", icon: Leaf, shortLabel: "Ref." },
 ] as const
 
@@ -130,9 +130,9 @@ function VergerPageInner() {
       {/* Navigation par onglets + selecteur d'annee + bouton Plan verger */}
       <nav className="border-b border-t-2 border-t-lime-500 bg-white/80 backdrop-blur-sm sticky top-[61px] z-40">
         <div className="container mx-auto px-4 max-w-[1600px]">
-          <div className="flex items-center justify-between">
-            {/* Onglets */}
-            <div className="flex items-center -mb-px">
+          <div className="flex items-center justify-between gap-2 flex-wrap lg:flex-nowrap">
+            {/* DEV2 #7 — Tabs scrollables horizontalement sous lg (1366) */}
+            <div className="flex items-center -mb-px overflow-x-auto scrollbar-thin flex-shrink min-w-0 max-w-full">
               {TABS.map((tab) => {
                 const isActive = activeTab === tab.id
                 return (

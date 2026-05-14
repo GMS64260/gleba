@@ -251,7 +251,7 @@ export function DashboardTab({ year }: DashboardTabProps) {
             <Card className="bg-gradient-to-br from-slate-700 to-slate-800 text-white">
               <CardHeader className="pb-1 pt-3 px-4">
                 <CardDescription className="text-slate-300 text-xs flex items-center gap-1">
-                  Production oeufs
+                  Production œufs
                   {(() => {
                     const diff = data.stats.productionOeufsAnnee - data.stats.productionOeufsAnneePrecedente
                     if (data.stats.productionOeufsAnneePrecedente === 0) return null
@@ -274,7 +274,7 @@ export function DashboardTab({ year }: DashboardTabProps) {
 
             <Card className={`bg-gradient-to-br ${data.stats.stockOeufs < 24 ? "from-orange-500 to-orange-600" : "from-emerald-500 to-emerald-600"} text-white`}>
               <CardHeader className="pb-1 pt-3 px-4">
-                <CardDescription className={`text-xs ${data.stats.stockOeufs < 24 ? "text-orange-100" : "text-emerald-100"}`}>Stock oeufs</CardDescription>
+                <CardDescription className={`text-xs ${data.stats.stockOeufs < 24 ? "text-orange-100" : "text-emerald-100"}`}>Stock œufs</CardDescription>
                 <CardTitle className="text-2xl">{data.stats.stockOeufs}</CardTitle>
               </CardHeader>
               <CardContent className="pb-3 px-4">
@@ -453,7 +453,7 @@ export function DashboardTab({ year }: DashboardTabProps) {
 
           {/* Graphiques */}
           <div className="grid gap-4 md:grid-cols-2">
-            {/* Production oeufs par mois */}
+            {/* Production œufs par mois */}
             <Card>
               <CardHeader>
                 <CardTitle className="text-sm">Production d'oeufs par mois</CardTitle>
@@ -515,12 +515,12 @@ export function DashboardTab({ year }: DashboardTabProps) {
         </>
       )}
 
-      {/* Soins a faire */}
+      {/* Soins à faire */}
       <div>
         <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
           <h2 className="text-lg font-semibold flex items-center gap-2">
             <Stethoscope className="h-5 w-5 text-blue-600" />
-            Soins a faire
+            Soins à faire
             {soins.length > 0 && (
               <Badge variant="secondary">{soins.length}</Badge>
             )}
@@ -546,7 +546,7 @@ export function DashboardTab({ year }: DashboardTabProps) {
         ) : soins.length === 0 ? (
           <Card className="bg-green-50 border-green-200">
             <CardContent className="py-4">
-              <p className="text-sm text-green-700">Tous les soins sont a jour !</p>
+              <p className="text-sm text-green-700">Tous les soins sont à jour !</p>
             </CardContent>
           </Card>
         ) : (

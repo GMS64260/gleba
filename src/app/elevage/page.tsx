@@ -126,9 +126,9 @@ export default function ElevageDashboard() {
       {/* Navigation par onglets + selecteur d'annee */}
       <nav className="border-b border-t-2 border-t-amber-500 bg-white/80 backdrop-blur-sm sticky top-[61px] z-40">
         <div className="container mx-auto px-4 max-w-[1600px]">
-          <div className="flex items-center justify-between">
-            {/* Onglets */}
-            <div className="flex items-center -mb-px">
+          <div className="flex items-center justify-between gap-2 flex-wrap lg:flex-nowrap">
+            {/* DEV2 #7 — Tabs scrollables horizontalement sous lg */}
+            <div className="flex items-center -mb-px overflow-x-auto scrollbar-thin flex-shrink min-w-0 max-w-full">
               {TABS.map((tab) => {
                 const isActive = activeTab === tab.id
                 return (

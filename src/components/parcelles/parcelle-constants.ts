@@ -20,7 +20,7 @@ export const COUCHE_LABELS: Record<string, string> = {
   MARAICHAGE: "Maraîchage",
   VERGER: "Verger",
   ELEVAGE: "Élevage",
-  PATURAGE: "Paturage",
+  PATURAGE: "Pâturage",
 }
 
 export function formatSurface(ha: number | null): string {

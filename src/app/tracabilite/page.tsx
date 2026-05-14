@@ -1,7 +1,7 @@
 "use client"
 
 /**
- * Page Tracabilite reglementaire
+ * Page Traçabilité reglementaire
  * Registre phytosanitaire, Registre de culture, Carnet sanitaire
  */
 
@@ -286,15 +286,15 @@ const TYPE_LABELS: Record<string, string> = {
 // MAIN PAGE
 // ============================================================
 
-export default function TracabilitePage() {
+export default function TraçabilitéPage() {
   return (
     <React.Suspense fallback={null}>
-      <TracabiliteContent />
+      <TraçabilitéContent />
     </React.Suspense>
   )
 }
 
-function TracabiliteContent() {
+function TraçabilitéContent() {
   const { data: session } = useSession()
   const [activeTab, setActiveTab] = React.useState<TabId>("phyto")
   const [selectedYear, setSelectedYear] = React.useState(currentYearNow)
@@ -415,7 +415,7 @@ function TracabiliteContent() {
                 </Link>
                 <Button variant="ghost" size="sm" className="rounded-none bg-indigo-50 text-indigo-700">
                   <FileText className="h-4 w-4 mr-1" />
-                  <span className="hidden sm:inline">Tracabilite</span>
+                  <span className="hidden sm:inline">Traçabilité</span>
                 </Button>
               </div>
             )}
@@ -941,7 +941,7 @@ function CultureTab({
                             </div>
                           </div>
                         ) : (
-                          <p className="text-sm text-muted-foreground">Aucun evenement enregistre</p>
+                          <p className="text-sm text-muted-foreground">Aucun événement enregistré</p>
                         )}
 
                         {/* Notes */}

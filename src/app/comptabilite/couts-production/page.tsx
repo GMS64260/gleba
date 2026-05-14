@@ -351,7 +351,7 @@ export default function CoutsProductionPage() {
             <div className="w-10 h-10 rounded-lg bg-teal-100 flex items-center justify-center">
               <BarChart3 className="h-5 w-5 text-teal-700" />
             </div>
-            <h1 className="text-xl font-semibold text-slate-800">Couts de production</h1>
+            <h1 className="text-xl font-semibold text-slate-800">Coûts de production</h1>
           </div>
           <Select
             value={selectedYear.toString()}
@@ -441,8 +441,8 @@ export default function CoutsProductionPage() {
                   <p className="text-3xl font-bold">{formatNumber(data.totaux.margePercent)}%</p>
                   <p className="text-sm text-white/80 mt-1">
                     {data.totaux.margePercent > 30 ? "Bonne rentabilite" :
-                     data.totaux.margePercent >= 10 ? "Rentabilite moyenne" :
-                     "Rentabilite faible"}
+                     data.totaux.margePercent >= 10 ? "Rentabilité moyenne" :
+                     "Rentabilité faible"}
                   </p>
                 </CardContent>
               </Card>
@@ -501,7 +501,7 @@ export default function CoutsProductionPage() {
           </div>
         )}
 
-        {/* Main table: Rentabilite par espece */}
+        {/* Main table: Rentabilité par espece */}
         {loading ? (
           <Card className="mb-8">
             <CardHeader><Skeleton className="h-6 w-48" /></CardHeader>
@@ -512,7 +512,7 @@ export default function CoutsProductionPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Leaf className="h-5 w-5 text-teal-600" />
-                Rentabilite par espèce
+                Rentabilité par espèce
               </CardTitle>
               <CardDescription>
                 Cliquez sur une espèce pour voir le detail par culture
