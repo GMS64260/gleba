@@ -40,9 +40,14 @@ interface TreeCareGanttProps {
 
 export function TreeCareGantt({ especes }: TreeCareGanttProps) {
   const [expandedEspece, setExpandedEspece] = React.useState<string | null>(null)
+  // Bug #3 — Toggle "Mes arbres / Tous les profils" pour explorer le
+  // référentiel complet (Marc 2026-05-14 : la frise ne montrait que les
+  // 3 espèces de l'user, alors que 26 profils existent).
+  const [scope, setScope] = React.useState<"mine" | "all">("mine")
 
-  // Trouver les profils correspondants aux especes de l'utilisateur
+  // Profils filtrés selon le scope.
   const profiles = React.useMemo(() => {
+    if (scope === "all") return TREE_CARE_PROFILES
     const found: TreeCareProfile[] = []
     const seen = new Set<string>()
     for (const espece of especes) {
@@ -53,18 +58,51 @@ export function TreeCareGantt({ especes }: TreeCareGanttProps) {
       }
     }
     return found
-  }, [especes])
+  }, [especes, scope])
 
-  if (profiles.length === 0) {
+  if (profiles.length === 0 && scope === "mine") {
     return (
-      <p className="text-sm text-muted-foreground py-4">
-        Aucun calendrier d'entretien disponible pour vos espèces d'arbres.
-      </p>
+      <div className="space-y-3">
+        <p className="text-sm text-muted-foreground py-4">
+          Aucune espèce d'arbre saisie pour l'instant.
+        </p>
+        <button
+          onClick={() => setScope("all")}
+          className="text-xs px-3 py-1.5 rounded-md bg-lime-100 text-lime-800 hover:bg-lime-200"
+        >
+          Voir les {TREE_CARE_PROFILES.length} profils du référentiel
+        </button>
+      </div>
     )
   }
 
   return (
     <div className="space-y-3">
+      {/* Bug #3 — Toggle scope mes arbres / référentiel complet */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="inline-flex items-center rounded-md border bg-white text-xs">
+          <button
+            onClick={() => setScope("mine")}
+            className={`px-3 py-1 rounded-l-md ${scope === "mine" ? "bg-lime-600 text-white" : "text-slate-600 hover:bg-slate-100"}`}
+          >
+            Mes espèces ({Math.min(especes.length, profiles.length)})
+          </button>
+          <button
+            onClick={() => setScope("all")}
+            className={`px-3 py-1 rounded-r-md border-l ${scope === "all" ? "bg-lime-600 text-white" : "text-slate-600 hover:bg-slate-100"}`}
+          >
+            Tout le référentiel ({TREE_CARE_PROFILES.length})
+          </button>
+        </div>
+        <a
+          href="/api/verger/calendrier/export"
+          className="text-xs px-3 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700"
+          title="Télécharger le calendrier en PDF"
+        >
+          📥 Export PDF
+        </a>
+      </div>
+
       {/* Espèces détectées */}
       <div className="flex flex-wrap gap-1.5 text-xs">
         {profiles.map((p) => (
@@ -75,7 +113,7 @@ export function TreeCareGantt({ especes }: TreeCareGanttProps) {
             {p.espece}
           </span>
         ))}
-        {especes.filter((e) => !profiles.some((p) =>
+        {scope === "mine" && especes.filter((e) => !profiles.some((p) =>
           p.espece.toLowerCase() === e.toLowerCase() ||
           p.aliases.some((a) => a.toLowerCase() === e.toLowerCase())
         )).map((e) => (
