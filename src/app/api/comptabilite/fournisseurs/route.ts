@@ -86,6 +86,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Ce fournisseur existe déjà' }, { status: 400 })
     }
 
+    // DEV2 #5 — Auto-dérivation SIREN depuis SIRET
+    const sirenDerived =
+      !data.siren && data.siret ? data.siret.replace(/\s+/g, '').substring(0, 9) : data.siren
+
     const fournisseur = await prisma.fournisseur.create({
       data: {
         id: data.id,
@@ -98,8 +102,14 @@ export async function POST(request: NextRequest) {
         telephone: data.telephone ?? null,
         siteWeb: data.siteWeb ?? null,
         siret: data.siret || null,
+        siren: sirenDerived || null,
         tvaIntra: data.tvaIntra || null,
-        type: data.type || 'mixte',
+        type: data.type || 'Mixte',
+        // Bloc bancaire (DEV2 #5)
+        iban: data.iban || null,
+        bic: data.bic || null,
+        ribCle: data.ribCle || null,
+        banqueNom: data.banqueNom ?? null,
         conditionsPaiement: data.conditionsPaiement,
         notes: data.notes ?? null,
         actif: data.actif,
@@ -150,9 +160,20 @@ export async function PATCH(request: NextRequest) {
         ...(updateData.email !== undefined && { email: updateData.email }),
         ...(updateData.telephone !== undefined && { telephone: updateData.telephone }),
         ...(updateData.siteWeb !== undefined && { siteWeb: updateData.siteWeb }),
-        ...(updateData.siret !== undefined && { siret: updateData.siret || null }),
+        ...(updateData.siret !== undefined && {
+          siret: updateData.siret || null,
+          // DEV2 #5 — auto-dérive SIREN si nouvelle valeur SIRET
+          ...(updateData.siren === undefined && updateData.siret
+            ? { siren: updateData.siret.replace(/\s+/g, '').substring(0, 9) }
+            : {}),
+        }),
+        ...(updateData.siren !== undefined && { siren: updateData.siren || null }),
         ...(updateData.tvaIntra !== undefined && { tvaIntra: updateData.tvaIntra || null }),
         ...(updateData.type !== undefined && { type: updateData.type }),
+        ...(updateData.iban !== undefined && { iban: updateData.iban || null }),
+        ...(updateData.bic !== undefined && { bic: updateData.bic || null }),
+        ...(updateData.ribCle !== undefined && { ribCle: updateData.ribCle || null }),
+        ...(updateData.banqueNom !== undefined && { banqueNom: updateData.banqueNom }),
         ...(updateData.conditionsPaiement !== undefined && { conditionsPaiement: updateData.conditionsPaiement }),
         ...(updateData.notes !== undefined && { notes: updateData.notes }),
         ...(updateData.actif !== undefined && { actif: updateData.actif }),
