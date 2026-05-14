@@ -100,7 +100,9 @@ model User {
   // Relations interventions & traçabilité
   interventions         Intervention[]
   // PROMPT 11 — Interventions où ce user est l'opérateur (≠ propriétaire de la fiche).
-  interventionsOperateur Intervention[] @relation("InterventionOperateur")
+  interventionsOperateur Intervention[]     @relation("InterventionOperateur")
+  // DEV3 #1 — Observations phyto où ce user est l'opérateur.
+  observationsOperateur  ObservationSante[] @relation("ObservationOperateur")
   // PROMPT 11 — Certiphyto (snapshot copié dans chaque Intervention pour traçabilité).
   certiphytoNum         String?       @map("certiphyto_num")
   certiphytoValidite    DateTime?     @map("certiphyto_validite")
@@ -648,6 +650,9 @@ model ParcelleGeo {
   // PROMPT 19A — mouvements entrants / sortants pour cette parcelle
   mouvementsAvant MouvementCheptel[] @relation("MouvementParcelleAvant")
   mouvementsApres MouvementCheptel[] @relation("MouvementParcelleApres")
+  // DEV3 #1 — Traitements appliqués sur la parcelle (registre phyto)
+  interventionsPhyto Intervention[]   @relation("InterventionParcelle")
+  observationsPhyto  ObservationSante[] @relation("ObservationParcelle")
 
   // PROMPT 12 — Statut Bio (Conventionnel | C1 | C2 | C3 | AB)
   statutBio            String    @default("Conventionnel") @map("statut_bio")
@@ -1172,6 +1177,27 @@ model ObservationSante {
   stadeBBCH         String? @map("stade_bbch")          // ex: "BBCH 65 - pleine floraison"
   pctOrganesTouches Int?    @map("pct_organes_touches") // 0-100
   photoUrl          String? @map("photo_url")
+
+  // DEV3 audit Marc 2026-05-14 - Bloquant #1
+  // Champs réglementaires (Arrêté 16/06/2009) pour le formulaire phyto
+  // du module Verger (Santé & Phyto). Mêmes sémantiques que sur
+  // Intervention (à terme un modèle RegistrePhytoEntry unifié sera créé).
+  surfaceTraiteeHa     Float?   @map("surface_traitee_ha")
+  volumeBouillieLTotal Float?   @map("volume_bouillie_l_total")
+  volumeBouillieLHa    Float?   @map("volume_bouillie_l_ha")
+  temperatureC         Float?   @map("temperature_c")
+  ventKmh              Float?   @map("vent_kmh")
+  hygrometriePct       Int?     @map("hygrometrie_pct")
+  pluie24h             Boolean? @map("pluie_24h")
+  pluie24hMm           Float?   @map("pluie_24h_mm")
+  epiPortes            String[] @default([]) @map("epi_portes")
+  zntRespectee         Boolean? @map("znt_respectee")
+  zntDistanceM         Int?     @map("znt_distance_m")
+  parcelleId           String?  @map("parcelle_id")
+  parcelle             ParcelleGeo? @relation("ObservationParcelle", fields: [parcelleId], references: [id], onDelete: SetNull)
+  operateurId          String?  @map("operateur_id")
+  operateur            User?    @relation("ObservationOperateur", fields: [operateurId], references: [id], onDelete: SetNull)
+  certiphytoNum        String?  @map("certiphyto_num")
 
   // PROMPT 11 LOT D — Interventions phyto déclenchées par cette observation.
   interventionsLiees Intervention[] @relation("InterventionObservation")
@@ -2236,6 +2262,16 @@ model Intervention {
   justification      String?      @map("justification")
   observationLieeId  Int?         @map("observation_liee_id")
   observationLiee    ObservationSante? @relation("InterventionObservation", fields: [observationLieeId], references: [id], onDelete: SetNull)
+  // DEV3 audit Marc 2026-05-14 — Bloquant #1 : compléments réglementaires
+  surfaceTraiteeHa     Float?       @map("surface_traitee_ha")
+  volumeBouillieLTotal Float?       @map("volume_bouillie_l_total")
+  pluie24h             Boolean?     @map("pluie_24h")
+  pluie24hMm           Float?       @map("pluie_24h_mm")
+  epiPortes            String[]     @default([]) @map("epi_portes")
+  zntRespectee         Boolean?     @map("znt_respectee")
+  zntDistanceM         Int?         @map("znt_distance_m")
+  parcelleId           String?      @map("parcelle_id")
+  parcelle             ParcelleGeo? @relation("InterventionParcelle", fields: [parcelleId], references: [id], onDelete: SetNull)
   // Intrants consommés
   intrantNom      String?   @map("intrant_nom") // Nom de l'intrant utilisé
   intrantQuantite Float?    @map("intrant_quantite")

@@ -67,6 +67,38 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Arbre non trouvé" }, { status: 404 })
     }
 
+    // DEV3 audit Marc — Bloquant #1
+    // Validation des champs réglementaires obligatoires pour méthodes
+    // chimiques (chimique_conventionnel, chimique_cuivre).
+    const isChimique =
+      body.methodeTraitement === "chimique_conventionnel" ||
+      body.methodeTraitement === "chimique_cuivre" ||
+      body.methodeTraitement === "chimique"
+    if (isChimique) {
+      const manquants: string[] = []
+      if (!body.numAMM) manquants.push("N° AMM")
+      if (body.surfaceTraiteeHa == null) manquants.push("Surface traitée (ha)")
+      if (body.volumeBouillieLHa == null && body.volumeBouillieLTotal == null)
+        manquants.push("Volume de bouillie")
+      if (body.temperatureC == null) manquants.push("Température (°C)")
+      if (body.ventKmh == null) manquants.push("Vent (km/h)")
+      if (body.hygrometriePct == null) manquants.push("Hygrométrie (%)")
+      if (body.pluie24h == null) manquants.push("Pluie ±24h")
+      if (!body.certiphytoNum) manquants.push("N° Certiphyto opérateur")
+      if (body.zntRespectee == null) manquants.push("ZNT cours d'eau")
+      if (manquants.length > 0) {
+        return NextResponse.json(
+          {
+            error:
+              "Champs réglementaires manquants (Arrêté 16/06/2009) : " +
+              manquants.join(", "),
+            manquants,
+          },
+          { status: 400 }
+        )
+      }
+    }
+
     const observation = await prisma.observationSante.create({
       data: {
         userId: session!.user.id,
@@ -91,6 +123,21 @@ export async function POST(request: NextRequest) {
         stadeBBCH: body.stadeBBCH || null,
         pctOrganesTouches: body.pctOrganesTouches != null ? parseInt(body.pctOrganesTouches) : null,
         photoUrl: body.photoUrl || null,
+        // DEV3 #1 — Champs réglementaires (Arrêté 16/06/2009)
+        surfaceTraiteeHa: body.surfaceTraiteeHa != null ? parseFloat(body.surfaceTraiteeHa) : null,
+        volumeBouillieLHa: body.volumeBouillieLHa != null ? parseFloat(body.volumeBouillieLHa) : null,
+        volumeBouillieLTotal: body.volumeBouillieLTotal != null ? parseFloat(body.volumeBouillieLTotal) : null,
+        temperatureC: body.temperatureC != null ? parseFloat(body.temperatureC) : null,
+        ventKmh: body.ventKmh != null ? parseFloat(body.ventKmh) : null,
+        hygrometriePct: body.hygrometriePct != null ? parseInt(body.hygrometriePct) : null,
+        pluie24h: body.pluie24h != null ? Boolean(body.pluie24h) : null,
+        pluie24hMm: body.pluie24hMm != null ? parseFloat(body.pluie24hMm) : null,
+        epiPortes: Array.isArray(body.epiPortes) ? body.epiPortes : [],
+        zntRespectee: body.zntRespectee != null ? Boolean(body.zntRespectee) : null,
+        zntDistanceM: body.zntDistanceM != null ? parseInt(body.zntDistanceM) : null,
+        parcelleId: body.parcelleId || null,
+        operateurId: body.operateurId || null,
+        certiphytoNum: body.certiphytoNum || null,
       },
       include: {
         arbre: {
