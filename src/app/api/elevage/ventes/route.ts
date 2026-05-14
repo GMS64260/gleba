@@ -251,7 +251,8 @@ export async function PATCH(request: NextRequest) {
 
         const facture = await creerFacture(tx, {
           userId,
-          type: 'vente_elevage',
+          // POSTREVIEW — Toujours 'facture' (la sémantique métier est dans objet/sourceType)
+          type: 'facture',
           clientId: body.clientId || null,
           clientNom: existing.client || undefined,
           date: existing.date,

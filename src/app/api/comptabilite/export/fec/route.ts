@@ -52,6 +52,7 @@ export async function GET(request: NextRequest) {
     prisma.facture.findMany({
       where: { userId, date: { gte: start, lte: end }, statut: { not: 'annulee' } },
       orderBy: { date: 'asc' },
+      include: { lignes: true },
     }),
   ])
 
@@ -85,18 +86,41 @@ export async function GET(request: NextRequest) {
     paye: d.paye,
   }))
 
+  // POSTREVIEW — Heuristique de catégorisation des lignes de facture pour
+  // ventilation comptable. Le modèle LigneFacture n'a pas de champ `categorie`
+  // explicite : on déduit depuis la description.
+  function categoriseLigne(description: string): string {
+    const d = (description || "").toLowerCase()
+    if (/légume|legume|carotte|tomate|courge|salade|poireau|chou|haricot|épinard/.test(d)) return "legumes"
+    if (/fruit|pomme|poire|abricot|cerise|prune|fraise|raisin|figue/.test(d)) return "fruits"
+    if (/œuf|oeuf/.test(d)) return "oeufs"
+    if (/viande|poulet|porc|agneau|veau|bœuf|boeuf|lapin/.test(d)) return "viande"
+    if (/bois|stère|stere/.test(d)) return "bois"
+    if (/lait|fromage|tomme|crottin|brique/.test(d)) return "produits_transformes"
+    if (/service|prestation|main-d'?œuvre|main d'?oeuvre|formation|conseil/.test(d)) return "service"
+    return "autre"
+  }
+
   const facturesIn = factures.map((f) => ({
     id: f.id,
     numero: f.numero,
     type: f.type,
     date: f.date,
     statut: f.statut,
+    clientId: f.clientId,
     clientNom: f.clientNom,
     totalHT: f.totalHT,
     totalTVA: f.totalTVA,
     totalTTC: f.totalTTC,
     totauxParTauxTva: f.totauxParTauxTva as Record<string, { ht: number; tva: number }> | null,
     modePaiement: f.modePaiement,
+    lignes: f.lignes.map((l) => ({
+      description: l.description,
+      categorie: categoriseLigne(l.description),
+      montantHT: l.montantHT,
+      montantTVA: l.montantTVA,
+      tauxTVA: l.tauxTVA,
+    })),
   }))
 
   const lignes = genererFec({ ventes: ventesIn, depenses: depensesIn, factures: facturesIn })
