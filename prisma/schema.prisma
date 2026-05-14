@@ -2281,6 +2281,9 @@ model Intervention {
   description     String?   @map("description")
   dureeMinutes    Int?      @map("duree_minutes") // Temps passé
   nbPersonnes     Int?      @default(1) @map("nb_personnes")
+  // DEV2 #7 — Type de main d'œuvre (familial vs salarié) pour pondérer
+  // le coût avec le bon taux horaire de l'exploitation.
+  moType          String?   @map("mo_type") // 'familial' | 'salarie'
   coutMainOeuvre  Float?    @map("cout_main_oeuvre") // € main d'œuvre
   coutTotal       Float?    @map("cout_total") // € total (main d'œuvre + intrants)
   // Planification
@@ -2679,6 +2682,10 @@ model Exploitation {
   tauxPenalitesRetard String?  @map("taux_penalites_retard") // ex "3 × taux légal"
   indemniteRecouvrement Decimal @default(40) @map("indemnite_recouvrement") @db.Decimal(10, 2) // €
   tauxEscompte        String?  @map("taux_escompte") // ex "néant" ou "1%"
+  // DEV2 #7 — Taux horaires main d'œuvre (€/heure, charges sociales incluses)
+  // Sert à valoriser les interventions en € à partir du temps saisi.
+  tauxHoraireFamilial Float?   @map("taux_horaire_familial")
+  tauxHoraireSalarie  Float?   @map("taux_horaire_salarie")
 
   createdAt           DateTime @default(now()) @map("created_at")
   updatedAt           DateTime @updatedAt @map("updated_at")
