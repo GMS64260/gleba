@@ -1,11 +1,19 @@
 import { z } from 'zod'
-import { isValidSiret, isValidTvaIntracomFr } from '@/lib/siret'
+import { isValidSiret, isValidSiren, isValidTvaIntracomFr } from '@/lib/siret'
 
 const optionalSiret = z
   .string()
   .max(20)
   .transform((v) => v.replace(/\s+/g, ''))
   .refine((v) => v === '' || isValidSiret(v), 'SIRET invalide (clé de Luhn)')
+  .nullable()
+  .optional()
+
+const optionalSiren = z
+  .string()
+  .max(11)
+  .transform((v) => v.replace(/\s+/g, ''))
+  .refine((v) => v === '' || isValidSiren(v), 'SIREN invalide (clé de Luhn)')
   .nullable()
   .optional()
 
@@ -27,6 +35,7 @@ export const createClientSchema = z.object({
   codePostal: z.string().max(10).nullable().optional(),
   pays: z.string().max(100).optional().default('France'),
   siret: optionalSiret,
+  siren: optionalSiren,
   tvaIntra: optionalTvaIntra,
   conditionsPaiement: z.coerce.number().int().min(0).max(365).optional().default(0),
   exonererTVA: z.boolean().optional().default(false),

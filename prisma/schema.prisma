@@ -1986,8 +1986,9 @@ model Client {
   ville              String?  @map("ville")
   codePostal         String?  @map("code_postal")
   pays               String?  @default("France") @map("pays")
-  siret              String?  @map("siret") // Pour professionnels
-  tvaIntra           String?  @map("tva_intra") // Numéro TVA intracommunautaire
+  siret              String?  @map("siret") // 14 chiffres - validation Luhn (cf src/lib/siret.ts)
+  siren              String?  @map("siren") // 9 chiffres - dérivés du SIRET (auto)
+  tvaIntra           String?  @map("tva_intra") // FR + clé 2 chiffres + SIREN
   conditionsPaiement Int?     @default(0) @map("conditions_paiement") // Délai paiement en jours (0 = comptant)
   exonererTVA        Boolean  @default(false) @map("exonerer_tva") // Client exonéré de TVA
   notes              String?  @map("notes")

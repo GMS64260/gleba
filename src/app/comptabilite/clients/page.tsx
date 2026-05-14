@@ -30,6 +30,8 @@ interface Client {
   ville: string | null
   codePostal: string | null
   siret: string | null
+  siren: string | null
+  tvaIntra: string | null
   conditionsPaiement: number | null
   exonererTVA: boolean
   notes: string | null
@@ -70,6 +72,8 @@ export default function ClientsPage() {
     ville: "",
     codePostal: "",
     siret: "",
+    siren: "",
+    tvaIntra: "",
     conditionsPaiement: "0",
     exonererTVA: false,
     notes: "",
@@ -107,6 +111,8 @@ export default function ClientsPage() {
       ville: "",
       codePostal: "",
       siret: "",
+      siren: "",
+      tvaIntra: "",
       conditionsPaiement: "0",
       exonererTVA: false,
       notes: "",
@@ -125,6 +131,8 @@ export default function ClientsPage() {
       ville: client.ville || "",
       codePostal: client.codePostal || "",
       siret: client.siret || "",
+      siren: client.siren || "",
+      tvaIntra: client.tvaIntra || "",
       conditionsPaiement: String(client.conditionsPaiement || 0),
       exonererTVA: client.exonererTVA,
       notes: client.notes || "",
@@ -136,8 +144,13 @@ export default function ClientsPage() {
     e.preventDefault()
 
     try {
+      // DEV2 #4 — Empty strings → null pour permettre la validation Zod
+      // (Luhn refuse empty mais le transform "" passe ; on nettoie ici).
       const body = {
         ...formData,
+        siret: formData.siret || null,
+        siren: formData.siren || null,
+        tvaIntra: formData.tvaIntra || null,
         conditionsPaiement: parseInt(formData.conditionsPaiement),
         ...(editingClient && { id: editingClient.id }),
       }
@@ -154,7 +167,13 @@ export default function ClientsPage() {
         resetForm()
         fetchData()
       } else {
-        throw new Error()
+        const err = await response.json().catch(() => ({}))
+        const msg = err?.details?.fieldErrors
+          ? Object.entries(err.details.fieldErrors)
+              .map(([k, v]) => `${k}: ${(v as string[]).join(', ')}`)
+              .join(' · ')
+          : err?.error || "Impossible d'enregistrer"
+        toast({ variant: "destructive", title: "Erreur de validation", description: msg })
       }
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible d'enregistrer" })
@@ -272,14 +291,43 @@ export default function ClientsPage() {
                     </div>
                   </div>
 
-                  {formData.type === 'professionnel' && (
-                    <div>
-                      <Label>SIRET</Label>
-                      <Input
-                        value={formData.siret}
-                        onChange={(e) => setFormData({ ...formData, siret: e.target.value })}
-                        placeholder="123 456 789 00012"
-                      />
+                  {/* DEV2 #4 — SIRET/SIREN/TVA conditionnels selon le type
+                      Professionnel, Association et AMAP ont un SIRET ; particulier non */}
+                  {(formData.type === 'professionnel' || formData.type === 'association' || formData.type === 'amap') && (
+                    <div className="grid gap-4 md:grid-cols-3">
+                      <div>
+                        <Label>SIRET</Label>
+                        <Input
+                          value={formData.siret}
+                          onChange={(e) => {
+                            const v = e.target.value
+                            const cleaned = v.replace(/\s+/g, "")
+                            // Auto-déduit SIREN (9 premiers chiffres) tant que SIREN n'a pas été édité manuellement
+                            const derivedSiren = cleaned.length >= 9 ? cleaned.substring(0, 9) : formData.siren
+                            setFormData({ ...formData, siret: v, siren: derivedSiren })
+                          }}
+                          placeholder="123 456 789 00012"
+                          maxLength={20}
+                        />
+                      </div>
+                      <div>
+                        <Label>SIREN</Label>
+                        <Input
+                          value={formData.siren}
+                          onChange={(e) => setFormData({ ...formData, siren: e.target.value })}
+                          placeholder="123 456 789"
+                          maxLength={11}
+                        />
+                      </div>
+                      <div>
+                        <Label>N° TVA intracom.</Label>
+                        <Input
+                          value={formData.tvaIntra}
+                          onChange={(e) => setFormData({ ...formData, tvaIntra: e.target.value.toUpperCase() })}
+                          placeholder="FR12 345678901"
+                          maxLength={20}
+                        />
+                      </div>
                     </div>
                   )}
 
