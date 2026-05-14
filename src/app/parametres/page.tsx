@@ -6,7 +6,7 @@
 
 import * as React from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Settings, Save, Download, Upload, Loader2, ImageIcon, Trash2, Key, Copy, Check, RefreshCw, Bot, CloudSun, Layers } from 'lucide-react'
+import { ArrowLeft, Settings, Save, Download, Upload, Loader2, ImageIcon, Trash2, Key, Copy, Check, RefreshCw, Bot, CloudSun, Layers, Building2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
@@ -401,6 +401,27 @@ export default function ParametresPage() {
       </header>
 
       <main className="container mx-auto px-4 py-6 max-w-4xl space-y-6">
+        {/* Identité légale de l'exploitation (PROMPT 14) */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Building2 className="h-5 w-5 text-slate-600" />
+              Identité de l'exploitation
+            </CardTitle>
+            <CardDescription>
+              Raison sociale, SIRET, régime fiscal, coordonnées bancaires. Apparaissent sur factures, devis et exports comptables.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link href="/parametres/exploitation">
+              <Button variant="outline">
+                <Building2 className="h-4 w-4 mr-2" />
+                Configurer l'exploitation
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+
         {/* Modules actifs */}
         <ModulesSection />
 

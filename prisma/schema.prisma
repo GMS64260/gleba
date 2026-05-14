@@ -124,6 +124,11 @@ model User {
   produitsBoutique      ProduitBoutique[]
   commandesBoutique     CommandeBoutique[]
 
+  // PROMPT 14 — Identité légale de l'exploitation (SIRET, TVA, régime, etc.)
+  exploitation          Exploitation?
+  // PROMPT 14 — Séquences de numérotation factures/avoirs/devis par exercice
+  sequencesFacture      SequenceFacture[]
+
   @@map("users")
 }
 
@@ -2193,4 +2198,69 @@ model UserPreference {
   @@unique([userId, key])
   @@index([userId])
   @@map("user_preferences")
+}
+
+// ============================================================
+// PROMPT 14 — IDENTITÉ LÉGALE & NUMÉROTATION FACTURES
+// ============================================================
+
+/// Identité légale de l'exploitation (1 par utilisateur).
+/// Sert d'émetteur sur factures, FEC, déclarations TVA, etc.
+model Exploitation {
+  id                  String   @id @default(cuid())
+  userId              String   @unique @map("user_id")
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Identité
+  raisonSociale       String   @map("raison_sociale")
+  formeJuridique      String   @map("forme_juridique") // 'EI','GAEC','SARL','EARL','SCEA','SCIC','autre'
+  siret               String   @map("siret") // 14 chiffres, validation Luhn
+  siren               String   @map("siren") // 9 chiffres, dérivé du SIRET
+  numeroTvaIntracom   String?  @map("numero_tva_intracom") // FR + clé + SIREN
+  // Fiscalité
+  regimeFiscal        String   @map("regime_fiscal") // 'micro-BA','reel-simplifie','reel-normal'
+  regimeTva           String   @map("regime_tva") // 'franchise-293b','reel-simplifie','reel-normal'
+  // Adresse siège
+  adresseSiege        String   @map("adresse_siege")
+  codePostal          String   @map("code_postal")
+  ville               String   @map("ville")
+  pays                String   @default("France") @map("pays")
+  // Contact
+  emailContact        String   @map("email_contact")
+  telContact          String?  @map("tel_contact")
+  // Optionnels
+  capitalSocial       Decimal? @map("capital_social") @db.Decimal(12, 2)
+  rib                 String?  @map("rib") // IBAN affiché sur facture
+  bic                 String?  @map("bic")
+  banqueNom           String?  @map("banque_nom")
+  logoUrl             String?  @map("logo_url")
+  // Certification AB (optionnelle)
+  certifBioOrganisme  String?  @map("certif_bio_organisme") // ex "Ecocert FR-BIO-01"
+  // Mentions facture (par défaut, peuvent être surchargées)
+  tauxPenalitesRetard String?  @map("taux_penalites_retard") // ex "3 × taux légal"
+  indemniteRecouvrement Decimal @default(40) @map("indemnite_recouvrement") @db.Decimal(10, 2) // €
+  tauxEscompte        String?  @map("taux_escompte") // ex "néant" ou "1%"
+
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@map("exploitations")
+}
+
+/// Séquence de numérotation continue par exercice et par type de pièce.
+/// Garantit l'absence de saut (obligation art. 242 nonies A CGI).
+model SequenceFacture {
+  id            String   @id @default(cuid())
+  userId        String   @map("user_id")
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exercice      Int      @map("exercice") // ex 2026
+  type          String   @map("type") // 'FACTURE' | 'AVOIR' | 'DEVIS'
+  prochainNum   Int      @default(1) @map("prochain_num")
+  prefixe       String   @map("prefixe") // 'F-2026-' | 'AV-2026-' | 'D-2026-'
+  format        String   @default("%04d") @map("format") // padding
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@unique([userId, exercice, type])
+  @@index([userId])
+  @@map("sequences_facture")
 }
