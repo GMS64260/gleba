@@ -196,4 +196,95 @@ describe("fec", () => {
     expect(header[11]).toBe("Debit")
     expect(header[12]).toBe("Credit")
   })
+
+  // DEV3 #5 - Audit Marc 2026-05-14 : ventes bois remontent au compte 701820
+  it("ventile une vente de bois sur le compte 701820", () => {
+    const lignes = genererFec({
+      ventes: [
+        {
+          id: 1_000_001,
+          date: new Date("2026-04-10"),
+          description: "Vente bois — Chêne (BOIS-1)",
+          categorie: "bois",
+          modeReglement: null,
+          numeroPiece: "BOIS-1",
+          tauxTVA: 20,
+          montant: 240,
+          montantHT: 200,
+          montantTVA: 40,
+          clientNom: "Marie Dupont",
+          paye: true,
+        },
+      ],
+      depenses: [],
+      factures: [],
+    })
+    // Au moins une ligne sur le compte 701820 (vente de bois)
+    const boisLignes = lignes.filter((l) => l.CompteNum === "701820")
+    expect(boisLignes.length).toBeGreaterThanOrEqual(1)
+    expect(boisLignes[0].Credit).toBe("200,00")
+    // Pas de duplication : une seule écriture (1 EcritureNum)
+    const ecrituresUniques = new Set(lignes.map((l) => l.EcritureNum))
+    expect(ecrituresUniques.size).toBe(1)
+    // Équilibre
+    expect(validerEquilibre(lignes).equilibre).toBe(true)
+  })
+
+  it("ventile une vente de bois d'œuvre sur 701821 (sous-compte)", () => {
+    const lignes = genererFec({
+      ventes: [
+        {
+          id: 1_000_002,
+          date: new Date("2026-05-14"),
+          description: "Vente bois d'œuvre",
+          categorie: "bois_oeuvre",
+          modeReglement: null,
+          numeroPiece: "BOIS-2",
+          tauxTVA: 20,
+          montant: 1200,
+          montantHT: 1000,
+          montantTVA: 200,
+          clientNom: "Scierie X",
+          paye: true,
+        },
+      ],
+      depenses: [],
+      factures: [],
+    })
+    expect(lignes.some((l) => l.CompteNum === "701821")).toBe(true)
+  })
+
+  it("ne duplique pas une vente bois facturée et saisie en vente directe", () => {
+    // Cas réel : une vente bois facturée doit être exclue du FEC en source
+    // ProductionBois (filtre factureId IS NULL côté route). On simule en
+    // n'incluant pas la vente bois dans le tableau ventes : seul la facture
+    // produit des écritures.
+    const lignes = genererFec({
+      ventes: [], // pas de duplication
+      depenses: [],
+      factures: [
+        {
+          id: 10,
+          numero: "F-2026-0001",
+          type: "facture",
+          date: new Date("2026-04-10"),
+          statut: "envoyee",
+          clientId: 5,
+          clientNom: "Marie Dupont",
+          totalHT: 200,
+          totalTVA: 40,
+          totalTTC: 240,
+          totauxParTauxTva: null,
+          modePaiement: null,
+          lignes: [
+            { description: "Bois fendu hêtre 1 stère", categorie: "bois", montantHT: 200, montantTVA: 40, tauxTVA: 20 },
+          ],
+        },
+      ],
+    })
+    // Une seule écriture (la facture), compte bois présent
+    const ecrituresUniques = new Set(lignes.map((l) => l.EcritureNum))
+    expect(ecrituresUniques.size).toBe(1)
+    expect(lignes.some((l) => l.CompteNum === "701820")).toBe(true)
+  })
 })

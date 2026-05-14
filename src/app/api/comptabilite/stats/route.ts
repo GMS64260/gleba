@@ -155,13 +155,20 @@ export async function GET(request: NextRequest) {
         select: { quantite: true, prixKg: true, date: true },
       }),
 
-      // Vente bois
+      // DEV3 #5 - Audit Marc : on filtre sur statut='vendu' (canonique)
+      // au lieu de destination='vente'. La nouvelle nomenclature destination
+      // distingue 'Vente'/'Stock interne'/'Auto-consommation'/'Don' alors
+      // que statut reste binaire (en_stock|vendu|utilise). Toute ligne avec
+      // prixVente renseigné est aussi captée (rétro-compat).
       prisma.productionBois.aggregate({
         where: {
           userId,
           date: { gte: startOfYear, lte: endOfYear },
-          destination: 'vente',
           prixVente: { not: null },
+          OR: [
+            { statut: 'vendu' },
+            { destination: { in: ['vente', 'Vente'] } },
+          ],
         },
         _sum: { prixVente: true },
       }),
