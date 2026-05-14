@@ -44,6 +44,8 @@ interface Stats {
   surfacePlanifiee?: number
   recoltesTotales: number
   nbEspeces: number
+  nbVarietes?: number
+  nbEspecesAvecVariete?: number
   annee: number
 }
 
@@ -79,7 +81,7 @@ const planifLinks = [
     bgColor: "bg-green-50",
   },
   {
-    title: "Par ilots",
+    title: "Par îlots",
     href: "/planification/cultures-prevues/par-ilots",
     icon: Map,
     color: "text-amber-600",
@@ -209,7 +211,7 @@ function PlanificationSubTab({ year }: { year: number }) {
             </CardTitle>
           </CardHeader>
           <CardContent className="pb-3 px-4">
-            <p className="text-xs text-green-100">{stats?.culturesACreer || 0} a creer</p>
+            <p className="text-xs text-green-100">{stats?.culturesACreer || 0} à créer</p>
           </CardContent>
         </Card>
 
@@ -245,13 +247,19 @@ function PlanificationSubTab({ year }: { year: number }) {
 
         <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white">
           <CardHeader className="pb-1 pt-3 px-4">
-            <CardDescription className="text-purple-100 text-xs">Espèces</CardDescription>
+            <CardDescription className="text-purple-100 text-xs">Variétés planifiées</CardDescription>
             <CardTitle className="text-2xl">
-              {isLoading ? <Skeleton className="h-8 w-10 bg-purple-400" /> : stats?.nbEspeces || 0}
+              {isLoading ? (
+                <Skeleton className="h-8 w-10 bg-purple-400" />
+              ) : (
+                stats?.nbVarietes ?? 0
+              )}
             </CardTitle>
           </CardHeader>
           <CardContent className="pb-3 px-4">
-            <p className="text-xs text-purple-100">Variétés planifiees</p>
+            <p className="text-xs text-purple-100">
+              {stats?.nbEspeces ? `${stats.nbEspeces} espèce(s) couverte(s)` : "—"}
+            </p>
           </CardContent>
         </Card>
       </div>

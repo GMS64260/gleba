@@ -815,8 +815,21 @@ export async function getStatsPlanification(userId: string, annee: number) {
   const surfaceTotale = culturesPrevues.reduce((sum, c) => sum + c.surface, 0)
   const recoltesTotales = recoltesPrevues.reduce((sum, r) => sum + r.totalKg, 0)
 
-  // Especes uniques
+  // Especes uniques (projection rotation/ITP)
   const especesUniques = new Set(culturesPrevues.map(c => c.especeId).filter(Boolean))
+
+  // BUG-14 — Variétés réellement planifiées : on compte les variétés
+  // distinctes des `Culture` créées en base pour l'année (pas les
+  // détails de rotation, qui multiplient × N le compteur). On filtre
+  // aussi les variétés null (cultures pour lesquelles le maraîcher n'a
+  // pas encore choisi une variété précise).
+  const cultureRows = await prisma.culture.findMany({
+    where: { userId, annee, varieteId: { not: null } },
+    select: { varieteId: true, especeId: true },
+    distinct: ['varieteId'],
+  })
+  const nbVarietes = cultureRows.length
+  const especesAvecVariete = new Set(cultureRows.map(c => c.especeId).filter(Boolean))
 
   return {
     totalCultures,
@@ -825,5 +838,7 @@ export async function getStatsPlanification(userId: string, annee: number) {
     surfaceTotale: Math.round(surfaceTotale * 100) / 100,
     recoltesTotales: Math.round(recoltesTotales * 100) / 100,
     nbEspeces: especesUniques.size,
+    nbVarietes,
+    nbEspecesAvecVariete: especesAvecVariete.size,
   }
 }
