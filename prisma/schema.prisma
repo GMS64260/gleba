@@ -2274,6 +2274,10 @@ model ProduitPhyto {
   doseHomologuee   String?  @map("dose_homologuee")
   plafondAB        String?  @map("plafond_ab")      // ex: "Cu: 28 kg/ha/7 ans"
   notes            String?  @map("notes")
+  // DEV3 audit Marc — flags pour le compteur cuivre Bio (4 kg/ha/an plafond)
+  contientCuivre        Boolean  @default(false) @map("contient_cuivre")
+  cuivreMetalPct        Float?   @map("cuivre_metal_pct")        // % Cu métal (ex: 20)
+  cuivreMetalGParUnite  Float?   @map("cuivre_metal_g_par_unite") // g Cu / kg ou L
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
@@ -2281,6 +2285,7 @@ model ProduitPhyto {
 
   @@index([classification])
   @@index([autoriseAB])
+  @@index([contientCuivre])
   @@map("produits_phyto")
 }
 

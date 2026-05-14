@@ -34,6 +34,7 @@ import {
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { ImageUploader } from "@/components/ui/image-uploader"
+import { METHODES_TRAITEMENT, labelMethode, methodeExigeCertiphyto } from "@/lib/phyto/methodes"
 
 interface Arbre {
   id: number
@@ -586,9 +587,9 @@ function ObservationsSubTab() {
                       <Select value={formData.methodeTraitement} onValueChange={(v) => setFormData({ ...formData, methodeTraitement: v })}>
                         <SelectTrigger><SelectValue placeholder="Choisir la méthode" /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="chimique">Chimique (produit phyto)</SelectItem>
-                          <SelectItem value="biologique">Biologique (purin, décoction...)</SelectItem>
-                          <SelectItem value="mecanique">Mécanique / manuel</SelectItem>
+                          {METHODES_TRAITEMENT.map((m) => (
+                            <SelectItem key={m.slug} value={m.slug}>{m.label}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
@@ -597,17 +598,22 @@ function ObservationsSubTab() {
                       <Input value={formData.traitement} onChange={(e) => setFormData({ ...formData, traitement: e.target.value })} placeholder="Ex: Pulvérisation, taille sanitaire, piège..." />
                     </div>
                   </div>
-                  {(formData.methodeTraitement === "chimique" || formData.methodeTraitement === "biologique") && (
+                  {/* Champs produit/dose visibles pour toute méthode impliquant un
+                      produit (chimique conventionnel/cuivré, biocontrôle, purin).
+                      Pas pour mécanique/manuel ni prophylaxie. */}
+                  {formData.methodeTraitement &&
+                    formData.methodeTraitement !== "mecanique_manuel" &&
+                    formData.methodeTraitement !== "prophylaxie" && (
                     <>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <Label>Produit</Label>
                           <Input value={formData.produit} onChange={(e) => setFormData({ ...formData, produit: e.target.value })} placeholder="Nom commercial" />
                         </div>
-                        {formData.methodeTraitement === "chimique" && (
+                        {methodeExigeCertiphyto(formData.methodeTraitement) && (
                           <div>
-                            <Label>N° AMM</Label>
-                            <Input value={formData.numAMM} onChange={(e) => setFormData({ ...formData, numAMM: e.target.value })} placeholder="Ex: 2210548" />
+                            <Label>N° AMM <span className="text-red-600">*</span></Label>
+                            <Input value={formData.numAMM} onChange={(e) => setFormData({ ...formData, numAMM: e.target.value })} placeholder="Ex: 2210548" required />
                           </div>
                         )}
                       </div>
@@ -680,7 +686,7 @@ function RegistrePhytoSubTab() {
     type: "maladie" as string,
     diagnostic: "",
     symptome: "",
-    methodeTraitement: "chimique" as string,
+    methodeTraitement: "chimique_conventionnel" as string,
     produit: "",
     numAMM: "",
     doseAppliquee: "",
@@ -735,7 +741,7 @@ function RegistrePhytoSubTab() {
       uniteDose: obs.uniteDose || "",
       dar: obs.dar?.toString() || "",
       traitement: obs.traitement || "",
-      methodeTraitement: obs.methodeTraitement || (obs.produit ? "chimique" : "mecanique"),
+      methodeTraitement: obs.methodeTraitement || (obs.produit ? "chimique_conventionnel" : "mecanique_manuel"),
     })
     setShowEditDialog(true)
   }
@@ -788,7 +794,7 @@ function RegistrePhytoSubTab() {
           type: "maladie",
           diagnostic: "",
           symptome: "",
-          methodeTraitement: "chimique",
+          methodeTraitement: "chimique_conventionnel",
           produit: "",
           numAMM: "",
           doseAppliquee: "",
@@ -806,11 +812,24 @@ function RegistrePhytoSubTab() {
     }
   }
 
-  // Distinguer traitements par methodeTraitement (fallback: produit rempli = chimique)
-  const getMethode = (o: Observation) => o.methodeTraitement || (o.produit ? "chimique" : "mecanique")
-  const chimiques = observations.filter((o) => getMethode(o) === "chimique")
-  const biologiques = observations.filter((o) => getMethode(o) === "biologique")
-  const mecaniques = observations.filter((o) => getMethode(o) === "mecanique")
+  // Distinguer traitements par methodeTraitement.
+  // Compat valeurs historiques : 'chimique' -> chimique_conventionnel, etc.
+  // DEV3 audit Marc — 6 méthodes canoniques + fallback heuristique.
+  const getMethode = (o: Observation): string => {
+    const m = o.methodeTraitement
+    if (!m) return o.produit ? "chimique_conventionnel" : "mecanique_manuel"
+    if (m === "chimique") return "chimique_conventionnel"
+    if (m === "biologique") return "biologique_purin"
+    if (m === "mecanique") return "mecanique_manuel"
+    return m
+  }
+  const isChimique = (s: string) => s === "chimique_conventionnel" || s === "chimique_cuivre"
+  const isBiologique = (s: string) => s === "biocontrole" || s === "biologique_purin"
+  const isMecanique = (s: string) => s === "mecanique_manuel" || s === "prophylaxie"
+
+  const chimiques = observations.filter((o) => isChimique(getMethode(o)))
+  const biologiques = observations.filter((o) => isBiologique(getMethode(o)))
+  const mecaniques = observations.filter((o) => isMecanique(getMethode(o)))
   const complets = chimiques.filter((o) => o.numAMM && o.doseAppliquee && o.dar).length
   const incomplets = chimiques.length - complets
   const bioComplets = biologiques.filter((o) => o.produit && o.doseAppliquee).length
@@ -909,14 +928,15 @@ function RegistrePhytoSubTab() {
               <TableBody>
                 {observations.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map((obs) => {
                   const methode = getMethode(obs)
-                  const needsAmm = methode === "chimique"
-                  const needsDose = methode === "chimique" || methode === "biologique"
+                  const needsAmm = isChimique(methode)
+                  const needsDose = isChimique(methode) || isBiologique(methode)
                   const isComplete = needsAmm ? (obs.numAMM && obs.doseAppliquee && obs.dar) : needsDose ? (obs.produit && obs.doseAppliquee) : true
-                  const methodeBadge = methode === "chimique"
-                    ? <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200">Chimique</Badge>
-                    : methode === "biologique"
-                    ? <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-700 border-emerald-200">Biologique</Badge>
-                    : <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">Mécanique</Badge>
+                  const def = METHODES_TRAITEMENT.find((m) => m.slug === methode)
+                  const methodeBadge = def ? (
+                    <Badge variant="outline" className={`text-xs ${def.badge.bg} ${def.badge.text} ${def.badge.border}`}>{def.label}</Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-xs">{labelMethode(methode)}</Badge>
+                  )
                   return (
                     <TableRow key={obs.id} className={!isComplete ? "bg-red-50/50" : ""}>
                       <TableCell className="text-sm">{new Date(obs.date).toLocaleDateString("fr-FR")}</TableCell>
@@ -981,9 +1001,9 @@ function RegistrePhytoSubTab() {
                 <Select value={editForm.methodeTraitement} onValueChange={(v) => setEditForm({ ...editForm, methodeTraitement: v })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="chimique">Chimique (produit phyto)</SelectItem>
-                    <SelectItem value="biologique">Biologique (purin, décoction...)</SelectItem>
-                    <SelectItem value="mecanique">Mécanique / manuel</SelectItem>
+                    {METHODES_TRAITEMENT.map((m) => (
+                      <SelectItem key={m.slug} value={m.slug}>{m.label}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -1095,9 +1115,9 @@ function RegistrePhytoSubTab() {
                     <Select value={addForm.methodeTraitement} onValueChange={(v) => setAddForm({ ...addForm, methodeTraitement: v })}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="chimique">Chimique (produit phyto)</SelectItem>
-                        <SelectItem value="biologique">Biologique (purin, décoction...)</SelectItem>
-                        <SelectItem value="mecanique">Mécanique / manuel</SelectItem>
+                        {METHODES_TRAITEMENT.map((m) => (
+                          <SelectItem key={m.slug} value={m.slug}>{m.label}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -1106,17 +1126,19 @@ function RegistrePhytoSubTab() {
                     <Input value={addForm.traitement} onChange={(e) => setAddForm({ ...addForm, traitement: e.target.value })} placeholder="Ex: Pulvérisation, taille sanitaire, piège..." />
                   </div>
                 </div>
-                {(addForm.methodeTraitement === "chimique" || addForm.methodeTraitement === "biologique") && (
+                {addForm.methodeTraitement &&
+                  addForm.methodeTraitement !== "mecanique_manuel" &&
+                  addForm.methodeTraitement !== "prophylaxie" && (
                   <>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <Label>Produit</Label>
                         <Input value={addForm.produit} onChange={(e) => setAddForm({ ...addForm, produit: e.target.value })} placeholder="Nom commercial" />
                       </div>
-                      {addForm.methodeTraitement === "chimique" && (
+                      {methodeExigeCertiphyto(addForm.methodeTraitement) && (
                         <div>
-                          <Label>N° AMM</Label>
-                          <Input value={addForm.numAMM} onChange={(e) => setAddForm({ ...addForm, numAMM: e.target.value })} placeholder="Ex: 2210548" />
+                          <Label>N° AMM <span className="text-red-600">*</span></Label>
+                          <Input value={addForm.numAMM} onChange={(e) => setAddForm({ ...addForm, numAMM: e.target.value })} placeholder="Ex: 2210548" required />
                         </div>
                       )}
                     </div>
