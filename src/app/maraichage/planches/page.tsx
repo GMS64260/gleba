@@ -8,13 +8,14 @@ import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ColumnDef } from "@tanstack/react-table"
-import { ArrowLeft, LayoutGrid, Wand2 } from "lucide-react"
+import { ArrowLeft, LayoutGrid, Wand2, AlertTriangle, ListChecks } from "lucide-react"
 import { AssistantDialog, AssistantButton } from "@/components/assistant"
 
 import { DataTable } from "@/components/tables/DataTable"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
 import { EditableSelectCell } from "@/components/planches/EditableSelectCell"
+import { CompleterTerrainDialog } from "@/components/planches/CompleterTerrainDialog"
 
 // Type pour les planches
 interface PlancheWithRelations {
@@ -136,6 +137,9 @@ export default function PlanchesPage() {
   const [data, setData] = React.useState<PlancheWithRelations[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [showAssistant, setShowAssistant] = React.useState(false)
+  // Bug #11 — modale de complétion en masse + chargement des rotations actives.
+  const [showCompleter, setShowCompleter] = React.useState(false)
+  const [rotations, setRotations] = React.useState<{ id: string; active: boolean }[]>([])
 
   // Charger les données
   const fetchData = React.useCallback(async () => {
@@ -162,6 +166,18 @@ export default function PlanchesPage() {
   React.useEffect(() => {
     fetchData()
   }, [fetchData])
+
+  // Bug #11 — Charger la liste des rotations pour les proposer dans la modale.
+  React.useEffect(() => {
+    fetch("/api/rotations?pageSize=200")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((res) => {
+        if (res?.data) {
+          setRotations(res.data.map((r: { id: string; active: boolean }) => ({ id: r.id, active: r.active })))
+        }
+      })
+      .catch(() => {})
+  }, [])
 
   // Handlers
   const handleAdd = () => {
@@ -210,6 +226,14 @@ export default function PlanchesPage() {
   // Calcul des stats
   const totalSurface = data.reduce((sum, p) => sum + (p.surface || 0), 0)
 
+  // Bug #11 — Taux de complétion : champs critiques pour les modules dépendants
+  // (Rotations / Irrigation / ITPs sol-spécifique). On considère une planche
+  // "complète" si elle a type + typeSol + retentionEau renseignés.
+  const totalPlanches = data.length
+  const planchesCompletes = data.filter((p) => p.type && p.typeSol && p.retentionEau).length
+  const tauxCompletion = totalPlanches > 0 ? (planchesCompletes / totalPlanches) * 100 : 100
+  const showOnboardingBanner = totalPlanches > 0 && tauxCompletion < 50
+
   return (
     <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
       <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
@@ -232,6 +256,12 @@ export default function PlanchesPage() {
             </div>
           </div>
           <div className="flex items-center gap-4">
+            {totalPlanches > 0 && (
+              <Button variant="outline" size="sm" onClick={() => setShowCompleter(true)}>
+                <ListChecks className="h-4 w-4 mr-2" />
+                Compléter en masse
+              </Button>
+            )}
             <AssistantButton onClick={() => setShowAssistant(true)} />
             <div className="text-sm text-muted-foreground">
               {data.length} planches • {totalSurface.toFixed(0)} m² total
@@ -242,6 +272,30 @@ export default function PlanchesPage() {
 
       {/* Content */}
       <main className="container mx-auto px-4 py-6">
+        {/* Bug #11 — Banner onboarding terrain incomplet */}
+        {showOnboardingBanner && (
+          <div className="mb-4 p-4 bg-amber-50 rounded-lg border border-amber-300 flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
+            <div className="flex-1 text-sm text-amber-900">
+              <p className="font-medium">
+                Votre terrain est incomplet ({planchesCompletes}/{totalPlanches} planches renseignées)
+              </p>
+              <p className="mt-1 text-amber-800">
+                Sans Type / Sol / Rétention, les rotations, les recommandations d'irrigation et
+                les ITPs sol-spécifiques ne peuvent pas fonctionner correctement.
+              </p>
+              <Button
+                size="sm"
+                className="mt-2"
+                onClick={() => setShowCompleter(true)}
+              >
+                <Wand2 className="h-4 w-4 mr-2" />
+                Compléter toutes les planches en une fois
+              </Button>
+            </div>
+          </div>
+        )}
+
         <DataTable
           columns={columns}
           data={data}
@@ -256,6 +310,23 @@ export default function PlanchesPage() {
           emptyMessage="Aucune planche trouvée. Cliquez sur Ajouter pour créer la première."
         />
       </main>
+
+      {/* Bug #11 — Modale de complétion en masse */}
+      <CompleterTerrainDialog
+        open={showCompleter}
+        onOpenChange={setShowCompleter}
+        planches={data.map((p) => ({
+          id: p.id,
+          nom: p.nom,
+          ilot: p.ilot,
+          type: p.type,
+          typeSol: p.typeSol,
+          retentionEau: p.retentionEau,
+          rotationId: p.rotationId,
+        }))}
+        rotations={rotations}
+        onComplete={fetchData}
+      />
     </div>
   )
 }

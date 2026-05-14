@@ -24,6 +24,7 @@ import {
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
 import { RotationAdviceCompact } from "@/components/planche"
+import { EspeceCombobox, type EspeceOption } from "@/components/especes/EspeceCombobox"
 
 function weekToDate(year: number, week: number): Date {
   const jan4 = new Date(year, 0, 4)
@@ -54,7 +55,7 @@ interface NewCultureDialogProps {
 
 export function NewCultureDialog({ open, onOpenChange, plancheId, plancheNom, plancheLongueur, onCreated }: NewCultureDialogProps) {
   const { toast } = useToast()
-  const [especes, setEspeces] = React.useState<{ id: string }[]>([])
+  const [especes, setEspeces] = React.useState<EspeceOption[]>([])
   const [varietes, setVarietes] = React.useState<{ id: string }[]>([])
   const [itps, setItps] = React.useState<ITPData[]>([])
   const [isSubmitting, setIsSubmitting] = React.useState(false)
@@ -226,19 +227,19 @@ export function NewCultureDialog({ open, onOpenChange, plancheId, plancheNom, pl
           <DialogTitle>Nouvelle culture sur {plancheNom}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Espece */}
+          {/* Espece — Bug #12 + #31 combobox searchable + filtre maraîchage */}
           <div>
             <Label className="text-sm">Espèce *</Label>
-            <Select value={especeId} onValueChange={setEspeceId}>
-              <SelectTrigger className="mt-1">
-                <SelectValue placeholder="Sélectionner une espèce" />
-              </SelectTrigger>
-              <SelectContent>
-                {especes.map(e => (
-                  <SelectItem key={e.id} value={e.id}>{e.id}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="mt-1">
+              <EspeceCombobox
+                options={especes}
+                value={especeId || null}
+                onChange={(id) => setEspeceId(id || "")}
+                defaultTypes={["legume", "aromatique", "engrais_vert"]}
+                recentStorageKey="espece-recents-garden"
+                placeholder="Rechercher une espèce…"
+              />
+            </div>
           </div>
 
           {/* Conseils de rotation */}

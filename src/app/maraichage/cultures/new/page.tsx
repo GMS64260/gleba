@@ -43,6 +43,8 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { createCultureSchema, type CreateCultureInput } from "@/lib/validations"
 import { RotationAdviceCompact } from "@/components/planche"
+import { EspeceCombobox, type EspeceOption } from "@/components/especes/EspeceCombobox"
+import { AdjacenceAdvisor } from "@/components/cultures/AdjacenceAdvisor"
 
 // Bug #1 — payload de violation renvoyé par POST /api/cultures (status 409).
 type RotationViolation = {
@@ -77,7 +79,8 @@ interface ITPData {
 export default function NewCulturePage() {
   const router = useRouter()
   const { toast } = useToast()
-  const [especes, setEspeces] = React.useState<{ id: string }[]>([])
+  // Bug #12 — charger aussi le type d'espèce pour le combobox filtrable.
+  const [especes, setEspeces] = React.useState<EspeceOption[]>([])
   const [varietes, setVarietes] = React.useState<{ id: string; especeId: string }[]>([])
   const [itps, setItps] = React.useState<ITPData[]>([])
   const [planches, setPlanches] = React.useState<{ id: string; nom?: string; longueur: number | null }[]>([])
@@ -289,20 +292,18 @@ export default function NewCulturePage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Espèce *</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Sélectionner une espèce" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {especes.map((e) => (
-                            <SelectItem key={e.id} value={e.id}>
-                              {e.id}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <FormControl>
+                        {/* Bug #12 + Bug #31 — Combobox searchable, défaut = types
+                            potager (le verger reste accessible via l'onglet). */}
+                        <EspeceCombobox
+                          options={especes}
+                          value={field.value || null}
+                          onChange={(id) => field.onChange(id || "")}
+                          defaultTypes={["legume", "aromatique", "engrais_vert"]}
+                          recentStorageKey="espece-recents-maraichage"
+                          placeholder="Rechercher une espèce…"
+                        />
+                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -401,6 +402,11 @@ export default function NewCulturePage() {
                     especeId={selectedEspece || undefined}
                     year={selectedAnnee || undefined}
                   />
+                )}
+
+                {/* Bug #10 — Compatibilités voisinage (planches du même îlot). */}
+                {selectedEspece && selectedPlanche && (
+                  <AdjacenceAdvisor especeId={selectedEspece} plancheId={selectedPlanche} />
                 )}
 
                 <FormField
