@@ -56,9 +56,11 @@ export async function GET(request: NextRequest) {
         _count: true,
       }),
 
-      // Lots actifs
-      prisma.lotAnimaux.count({
+      // Lots actifs (count + somme effectifs pour BUG #8)
+      prisma.lotAnimaux.aggregate({
         where: { userId, statut: 'actif' },
+        _count: true,
+        _sum: { quantiteActuelle: true },
       }),
 
       // Production œufs annee
@@ -309,10 +311,23 @@ export async function GET(request: NextRequest) {
     const laitJ30L = Number(laitJ30._sum.quantiteLitres ?? 0)
     const laitMoyenJourJ30 = Math.round((laitJ30L / 30) * 100) / 100
 
+    // BUG #8 (audit Julien 15/05/2026) — Avant : la carte « Animaux actifs »
+    // affichait juste le COUNT(Animal statut='actif'), avec un sous-titre
+    // « + N lots » qui faisait croire à l'éleveur qu'il avait perdu son
+    // troupeau en lot (6 individus + 3 lots = panique alors que les lots
+    // contenaient 63 bêtes). Désormais on expose les deux compteurs et le
+    // total cheptel pour que l'UI puisse afficher « 69 animaux · 6 individus
+    // · 63 en lots (3 lots) ».
+    const animauxEnLots = lotsActifs._sum.quantiteActuelle ?? 0
+    const lotsActifsCount = lotsActifs._count
+    const animauxTotal = animauxActifs + animauxEnLots
+
     return NextResponse.json({
       stats: {
         animauxActifs,
-        lotsActifs,
+        lotsActifs: lotsActifsCount,
+        animauxEnLots,
+        animauxTotal,
         productionOeufsAnnee: nbOeufsAnnee,
         productionOeufsAnneePrecedente: nbOeufsAnneePrecedente,
         ventesAnnee: ventesTotal,

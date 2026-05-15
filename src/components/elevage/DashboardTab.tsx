@@ -6,6 +6,7 @@
  */
 
 import * as React from "react"
+import Link from "next/link"
 import {
   Bird,
   Egg,
@@ -41,6 +42,8 @@ interface DashboardData {
   stats: {
     animauxActifs: number
     lotsActifs: number
+    animauxEnLots?: number
+    animauxTotal?: number
     productionOeufsAnnee: number
     productionOeufsAnneePrecedente: number
     ventesAnnee: number
@@ -238,15 +241,41 @@ export function DashboardTab({ year }: DashboardTabProps) {
         <>
           {/* Ligne 1 : Stats principales avec tendances N-1 */}
           <div className="grid gap-3 grid-cols-2 lg:grid-cols-5">
-            <Card className="bg-gradient-to-br from-amber-500 to-amber-600 text-white">
-              <CardHeader className="pb-1 pt-3 px-4">
-                <CardDescription className="text-amber-100 text-xs">Animaux actifs</CardDescription>
-                <CardTitle className="text-2xl">{data.stats.animauxActifs}</CardTitle>
-              </CardHeader>
-              <CardContent className="pb-3 px-4">
-                <p className="text-xs text-amber-100">+ {data.stats.lotsActifs} lots</p>
-              </CardContent>
-            </Card>
+            {/* BUG #8 (audit Julien 15/05/2026) — Avant : « 6 + 3 lots » faisait
+                lire « 6 animaux » et paniquer l'éleveur. On affiche désormais
+                le total cheptel en gros (individus + animaux en lots) + le
+                détail en sous-titre. Click = navigation vers Animaux & Lots. */}
+            {(() => {
+              const total = data.stats.animauxTotal ?? data.stats.animauxActifs
+              const individus = data.stats.animauxActifs
+              const enLots = data.stats.animauxEnLots ?? 0
+              const nbLots = data.stats.lotsActifs
+              const sousTitre =
+                total === 0
+                  ? null
+                  : enLots > 0
+                  ? `${individus} individu${individus > 1 ? 's' : ''} · ${enLots} en lot${enLots > 1 ? 's' : ''} (${nbLots} lot${nbLots > 1 ? 's' : ''})`
+                  : `${individus} individu${individus > 1 ? 's' : ''}`
+              return (
+                <Link href="/elevage/animaux" className="block">
+                  <Card className="bg-gradient-to-br from-amber-500 to-amber-600 text-white hover:from-amber-600 hover:to-amber-700 transition-colors cursor-pointer">
+                    <CardHeader className="pb-1 pt-3 px-4">
+                      <CardDescription className="text-amber-100 text-xs">Animaux actifs</CardDescription>
+                      <CardTitle className="text-2xl">
+                        {total === 0 ? 'Aucun animal' : `${total} animau${total > 1 ? 'x' : ''}`}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="pb-3 px-4">
+                      {sousTitre ? (
+                        <p className="text-xs text-amber-100">{sousTitre}</p>
+                      ) : (
+                        <p className="text-xs text-amber-100">Ajoutez votre premier animal</p>
+                      )}
+                    </CardContent>
+                  </Card>
+                </Link>
+              )
+            })()}
 
             <Card className="bg-gradient-to-br from-slate-700 to-slate-800 text-white">
               <CardHeader className="pb-1 pt-3 px-4">
