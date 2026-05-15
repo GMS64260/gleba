@@ -35,7 +35,9 @@ import {
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
+import { verifierPrixAliment, type CategorieAliment } from "@/lib/elevage/prix-aliment-seuils"
 
 // ============================================================
 // Composant principal
@@ -102,6 +104,9 @@ function StocksSubTab() {
   const [formData, setFormData] = React.useState({
     id: "", nom: "", type: "granules", especesCibles: "", prix: "", stock: "", stockMin: "", description: "",
   })
+  // QA Julien 2026-05-15 — Bug #12 : payload en attente quand prix
+  // hors-norme, en attente de confirmation utilisateur via ConfirmDialog.
+  const [prixWarning, setPrixWarning] = React.useState<{ message: string } | null>(null)
 
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
@@ -121,8 +126,11 @@ function StocksSubTab() {
 
   React.useEffect(() => { fetchData() }, [fetchData])
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  // QA Julien 2026-05-15 — Bug #12 : garde-fou sur le prix d'un
+  // aliment. La saisie est non bloquante mais demande confirmation
+  // explicite si la valeur dépasse l'ordre de grandeur usuel pour la
+  // catégorie (Granulés ≤ 2 €/kg, Foin ≤ 0,5, etc.).
+  const submitAliment = React.useCallback(async () => {
     try {
       const response = await fetch('/api/elevage/aliments', {
         method: 'POST',
@@ -130,13 +138,30 @@ function StocksSubTab() {
         body: JSON.stringify(formData),
       })
       if (!response.ok) throw new Error('Erreur')
-      toast({ title: "Aliment cree" })
+      toast({ title: "Aliment créé" })
       setIsDialogOpen(false)
       setFormData({ id: "", nom: "", type: "granules", especesCibles: "", prix: "", stock: "", stockMin: "", description: "" })
       fetchData()
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible de créer l'aliment" })
     }
+  }, [formData, toast, fetchData])
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const prixNum = formData.prix ? parseFloat(formData.prix) : null
+    const check = verifierPrixAliment(prixNum, (formData.type as CategorieAliment) || "autre")
+    // Cas prix=0 : erreur dure (le check renvoie ok=false sans seuil)
+    if (!check.ok && check.seuil === null) {
+      toast({ variant: "destructive", title: "Prix invalide", description: check.message })
+      return
+    }
+    // Cas hors-norme : confirmation
+    if (!check.ok) {
+      setPrixWarning({ message: check.message })
+      return
+    }
+    await submitAliment()
   }
 
   const updateStock = async (id: string) => {
@@ -225,11 +250,24 @@ function StocksSubTab() {
                 {aliments.map((a) => {
                   const stockNegatif = a.stock !== null && a.stock <= 0
                   const stockBas = !stockNegatif && a.stock !== null && a.stockMin !== null && a.stock <= a.stockMin
+                  // QA Julien 2026-05-15 \u2014 Bug #12 : badge "\u00c0 v\u00e9rifier"
+                  // sur les lignes au prix hors-norme pour la cat\u00e9gorie.
+                  const prixCheck = verifierPrixAliment(a.prix ?? null, (a.type as CategorieAliment) ?? null)
+                  const prixHorsNorme = !prixCheck.ok && prixCheck.seuil !== null
                   return (
                     <TableRow key={a.id} className={stockNegatif ? "bg-red-50" : stockBas ? "bg-orange-50" : ""}>
                       <TableCell className="font-medium">{a.nom}</TableCell>
                       <TableCell><Badge variant="outline">{a.type || '-'}</Badge></TableCell>
-                      <TableCell className="text-right">{a.prix ? `${a.prix.toFixed(2)} \u20ac` : '-'}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {a.prix ? `${a.prix.toFixed(2)} \u20ac` : '-'}
+                          {prixHorsNorme && (
+                            <Badge variant="outline" className="border-amber-400 text-amber-700 text-[10px]" title={prixCheck.message}>
+                              \u00c0 v\u00e9rifier
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
                       <TableCell className="text-right">
                         {editingStock === a.id ? (
                           <div className="flex items-center gap-1 justify-end">
@@ -266,6 +304,22 @@ function StocksSubTab() {
           )}
         </CardContent>
       </Card>
+
+      {/* QA Julien 2026-05-15 — Bug #12 : confirmation prix hors-norme.
+          Pas bloquant : l'éleveur valide explicitement les cas légitimes
+          (alimentation thérapeutique, complément technique cher…). */}
+      <ConfirmDialog
+        open={prixWarning !== null}
+        onOpenChange={(o) => !o && setPrixWarning(null)}
+        title="Prix inhabituel"
+        description={prixWarning?.message}
+        confirmLabel="Confirmer ce prix"
+        variant="warning"
+        onConfirm={async () => {
+          setPrixWarning(null)
+          await submitAliment()
+        }}
+      />
     </div>
   )
 }

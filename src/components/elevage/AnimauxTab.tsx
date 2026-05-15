@@ -39,6 +39,7 @@ import {
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog"
+import { especeBaseId, especeBaseLabel, listEspecesBasePresentes } from "@/lib/elevage/espece-base"
 import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from "@/components/ui/tooltip"
@@ -156,11 +157,15 @@ function AnimauxSubTab() {
     prixAchat: "", poidsActuel: "", notes: "",
   })
 
+  // QA Julien 2026-05-15 — Bug #9 : on ne filtre plus serveur sur
+  // l'espece+race exacte (Lacaune, Sussex…) mais sur l'espèce de base
+  // (Poule, Brebis…), donc on charge la liste sans ce filtre et on
+  // filtre côté client dans `filteredAnimaux`. Le filtre statut reste
+  // serveur (volume potentiellement gros).
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
     try {
       let url = '/api/elevage/animaux?'
-      if (filterEspece !== 'all') url += `especeAnimaleId=${filterEspece}&`
       if (filterStatut !== 'all') url += `statut=${filterStatut}&`
 
       const [animauxRes, especesRes] = await Promise.all([
@@ -175,7 +180,7 @@ function AnimauxSubTab() {
     } finally {
       setIsLoading(false)
     }
-  }, [filterEspece, filterStatut, toast])
+  }, [filterStatut, toast])
 
   React.useEffect(() => { fetchData() }, [fetchData])
 
@@ -327,7 +332,19 @@ function AnimauxSubTab() {
     }
   }
 
+  // QA Julien 2026-05-15 — Bug #9 : on dérive l'espèce de base
+  // (Poule, Brebis…) depuis l'id de l'espèce animale et on filtre
+  // côté client. Liste des espèces présentes calculée sur l'ensemble
+  // chargé (avant filtre espèce) → dropdown stable.
+  const especesPresentes = React.useMemo(
+    () => listEspecesBasePresentes(animaux.map((a) => ({ especeAnimaleId: a.especeAnimale.id }))),
+    [animaux]
+  )
+
   const filteredAnimaux = animaux.filter(a => {
+    if (filterEspece !== 'all' && especeBaseId(a.especeAnimale.id) !== filterEspece) {
+      return false
+    }
     if (!search) return true
     const s = search.toLowerCase()
     return (
@@ -351,14 +368,17 @@ function AnimauxSubTab() {
             className="pl-8 w-[200px]"
           />
         </div>
+        {/* QA Julien 2026-05-15 — Bug #9 : on liste les espèces de
+            base réellement présentes (Poule/Brebis/Chèvre/Cochon/Vache)
+            au lieu de tout le référentiel races. */}
         <Select value={filterEspece} onValueChange={setFilterEspece}>
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder="Espèce" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Toutes les espèces</SelectItem>
-            {especes.map(e => (
-              <SelectItem key={e.id} value={e.id}>{e.nom}</SelectItem>
+            {especesPresentes.map(e => (
+              <SelectItem key={e.id} value={e.id}>{e.label}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -516,12 +536,17 @@ function AnimauxSubTab() {
                   <TableRow key={animal.id} className="cursor-pointer hover:bg-muted/50">
                     <TableCell className="font-medium">{animal.identifiant || '-'}</TableCell>
                     <TableCell>{animal.nom || '-'}</TableCell>
+                    {/* QA Julien 2026-05-15 — Bug #10 : colonne Espèce
+                        toujours visible et stable, affichage du libellé
+                        de base (Poule / Brebis…) — la race est dans la
+                        colonne suivante, plus de duplication "Poule
+                        Marans · Marans". */}
                     <TableCell>
                       <div className="flex items-center gap-2">
                         {animal.especeAnimale.couleur && (
                           <div className="w-3 h-3 rounded-full" style={{ backgroundColor: animal.especeAnimale.couleur }} />
                         )}
-                        {animal.especeAnimale.nom}
+                        {especeBaseLabel(animal.especeAnimale.id)}
                       </div>
                     </TableCell>
                     <TableCell>{animal.race || '-'}</TableCell>
@@ -986,13 +1011,28 @@ function LotsSubTab() {
                 </TableRow>
               </TableHeader>
               <TableBody>
+                {/* QA Julien 2026-05-15 — Bug #11 : ligne lot cliquable
+                    vers la fiche dédiée /elevage/lots/[id]. */}
                 {lots.map((lot) => (
-                  <TableRow key={lot.id}>
-                    <TableCell className="font-medium">{lot.nom || `Lot #${lot.id}`}</TableCell>
+                  <TableRow
+                    key={lot.id}
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={(e) => {
+                      // Ne pas naviguer si l'utilisateur clique sur un
+                      // lien interne ou un bouton (ex: parcelle, sortir)
+                      if ((e.target as HTMLElement).closest('a, button')) return
+                      window.location.href = `/elevage/lots/${lot.id}`
+                    }}
+                  >
+                    <TableCell className="font-medium">
+                      <Link href={`/elevage/lots/${lot.id}`} className="hover:underline">
+                        {lot.nom || `Lot #${lot.id}`}
+                      </Link>
+                    </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
                         {lot.especeAnimale.couleur && <div className="w-3 h-3 rounded-full" style={{ backgroundColor: lot.especeAnimale.couleur }} />}
-                        {lot.especeAnimale.nom}
+                        {especeBaseLabel(lot.especeAnimale.id)}
                       </div>
                     </TableCell>
                     <TableCell className="text-right">{lot.quantiteInitiale}</TableCell>
