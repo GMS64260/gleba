@@ -261,6 +261,11 @@ export async function POST(request: NextRequest) {
           cultures: {
             where: { terminee: null },
             select: {
+              id: true,
+              espece: { select: { id: true } },
+              dateSemis: true,
+              datePlantation: true,
+              dateRecolte: true,
               nbRangs: true,
               itp: {
                 select: { espacementRangs: true },
@@ -269,6 +274,32 @@ export async function POST(request: NextRequest) {
           },
         },
       })
+
+      // BUG #12 (audit Marc 2026-05-15) : détection chevauchement de
+      // dates sur la même planche. Avant : Tomate (01/03–10/07) et
+      // Concombre (25/05–25/07) pouvaient cohabiter sur A1 sans aucune
+      // alerte. Désormais on remonte un warning non-bloquant qui
+      // s'affiche en toast comme les warnings ITP.
+      if (planche && data.plancheId) {
+        const newStart =
+          data.dateSemis ? new Date(data.dateSemis) :
+          data.datePlantation ? new Date(data.datePlantation) : null
+        const newEnd = data.dateRecolte ? new Date(data.dateRecolte) : null
+        if (newStart && newEnd) {
+          for (const c of planche.cultures) {
+            const cStart = c.dateSemis ?? c.datePlantation
+            const cEnd = c.dateRecolte
+            if (!cStart || !cEnd) continue
+            const overlap = newStart < new Date(cEnd) && new Date(cStart) < newEnd
+            if (overlap) {
+              const fmt = (d: Date | string) => new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })
+              dateWarnings.push(
+                `Chevauchement détecté sur la planche : ${c.espece?.id || 'culture'} #${c.id} (${fmt(cStart)}–${fmt(cEnd)}) recouvre la période demandée.`
+              )
+            }
+          }
+        }
+      }
 
       if (planche) {
         // Récupérer l'ITP pour avoir l'espacementRangs
