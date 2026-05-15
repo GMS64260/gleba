@@ -347,7 +347,7 @@ export default function CoutsProductionPage() {
             <Link href="/comptabilite">
               <Button variant="ghost" size="sm">
                 <ArrowLeft className="h-4 w-4 mr-2" />
-                Comptabilite
+                Comptabilité
               </Button>
             </Link>
             <div className="w-10 h-10 rounded-lg bg-teal-100 flex items-center justify-center">
@@ -394,7 +394,7 @@ export default function CoutsProductionPage() {
                 <CardContent>
                   <p className="text-3xl font-bold">{formatEuro(data.totaux.revenus)}</p>
                   <p className="text-sm text-blue-100 mt-1">
-                    {data.totaux.nbEspeces} espece(s) - {data.totaux.nbCultures} culture(s)
+                    {data.totaux.nbEspeces} espèce(s) — {data.totaux.nbCultures} culture(s)
                   </p>
                 </CardContent>
               </Card>
@@ -403,13 +403,13 @@ export default function CoutsProductionPage() {
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium text-red-100 flex items-center gap-2">
                     <TrendingDown className="h-4 w-4" />
-                    Couts totaux
+                    Coûts totaux
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <p className="text-3xl font-bold">{formatEuro(data.totaux.coutTotal)}</p>
                   <p className="text-sm text-red-100 mt-1">
-                    {formatNumber(data.totaux.surface)} m2 - {formatNumber(data.totaux.production)} kg
+                    {formatNumber(data.totaux.surface)} m² — {formatNumber(data.totaux.production)} kg
                   </p>
                 </CardContent>
               </Card>
@@ -424,7 +424,7 @@ export default function CoutsProductionPage() {
                 <CardContent>
                   <p className="text-3xl font-bold">{formatEuro(data.totaux.margeBrute)}</p>
                   <p className="text-sm text-white/80 mt-1">
-                    {formatNumber(data.totaux.heuresTravaillees)} heures travaillees
+                    {formatNumber(data.totaux.heuresTravaillees)} heures travaillées
                   </p>
                 </CardContent>
               </Card>
@@ -442,7 +442,7 @@ export default function CoutsProductionPage() {
                 <CardContent>
                   <p className="text-3xl font-bold">{formatNumber(data.totaux.margePercent)}%</p>
                   <p className="text-sm text-white/80 mt-1">
-                    {data.totaux.margePercent > 30 ? "Bonne rentabilite" :
+                    {data.totaux.margePercent > 30 ? "Bonne rentabilité" :
                      data.totaux.margePercent >= 10 ? "Rentabilité moyenne" :
                      "Rentabilité faible"}
                   </p>
@@ -463,7 +463,7 @@ export default function CoutsProductionPage() {
               </CardHeader>
               <CardContent className="text-sm space-y-1">
                 <div className="flex justify-between"><span className="text-muted-foreground">Revenus</span><span className="font-medium text-green-700">{formatEuro(data.parModule.potager.revenus)}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Couts</span><span className="font-medium text-red-600">{formatEuro(data.parModule.potager.couts)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Coûts</span><span className="font-medium text-red-600">{formatEuro(data.parModule.potager.couts)}</span></div>
                 <div className="flex justify-between border-t pt-1"><span className="font-medium">Marge</span><span className={`font-bold ${data.parModule.potager.marge >= 0 ? 'text-green-700' : 'text-red-600'}`}>{formatEuro(data.parModule.potager.marge)}</span></div>
                 {data.parModule.potager.production ? <div className="flex justify-between text-muted-foreground"><span>Production</span><span>{formatNumber(data.parModule.potager.production)} kg</span></div> : null}
               </CardContent>
@@ -476,7 +476,7 @@ export default function CoutsProductionPage() {
               </CardHeader>
               <CardContent className="text-sm space-y-1">
                 <div className="flex justify-between"><span className="text-muted-foreground">Revenus</span><span className="font-medium text-green-700">{formatEuro(data.parModule.verger.revenus)}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Couts</span><span className="font-medium text-red-600">{formatEuro(data.parModule.verger.couts)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Coûts</span><span className="font-medium text-red-600">{formatEuro(data.parModule.verger.couts)}</span></div>
                 <div className="flex justify-between border-t pt-1"><span className="font-medium">Marge</span><span className={`font-bold ${data.parModule.verger.marge >= 0 ? 'text-green-700' : 'text-red-600'}`}>{formatEuro(data.parModule.verger.marge)}</span></div>
                 {data.parModule.verger.production ? <div className="flex justify-between text-muted-foreground"><span>Production</span><span>{formatNumber(data.parModule.verger.production)} kg</span></div> : null}
               </CardContent>
@@ -489,7 +489,7 @@ export default function CoutsProductionPage() {
               </CardHeader>
               <CardContent className="text-sm space-y-1">
                 <div className="flex justify-between"><span className="text-muted-foreground">Revenus</span><span className="font-medium text-green-700">{formatEuro(data.parModule.elevage.revenus)}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Couts</span><span className="font-medium text-red-600">{formatEuro(data.parModule.elevage.couts)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Coûts</span><span className="font-medium text-red-600">{formatEuro(data.parModule.elevage.couts)}</span></div>
                 <div className="flex justify-between border-t pt-1"><span className="font-medium">Marge</span><span className={`font-bold ${data.parModule.elevage.marge >= 0 ? 'text-green-700' : 'text-red-600'}`}>{formatEuro(data.parModule.elevage.marge)}</span></div>
                 {data.parModule.elevage.detailCouts && (
                   <div className="text-xs text-muted-foreground pt-1 border-t space-y-0.5">
@@ -526,14 +526,14 @@ export default function CoutsProductionPage() {
                   <TableRow>
                     <TableHead className="w-8" />
                     <SortHeader label="Espèce" field="especeId" />
-                    <SortHeader label="Surface (m2)" field="surface" className="text-right" />
+                    <SortHeader label="Surface (m²)" field="surface" className="text-right" />
                     <SortHeader label="Production (kg)" field="production" className="text-right" />
-                    <SortHeader label="Rdt (kg/m2)" field="rendement" className="text-right" />
+                    <SortHeader label="Rdt (kg/m²)" field="rendement" className="text-right" />
                     <SortHeader label="Revenus" field="revenus" className="text-right" />
                     <SortHeader label="Couts" field="coutTotal" className="text-right" />
                     <SortHeader label="Marge" field="margeBrute" className="text-right" />
                     <SortHeader label="Marge %" field="margePercent" className="text-right" />
-                    <SortHeader label="Cout/kg" field="coutKg" className="text-right" />
+                    <SortHeader label="Coût/kg" field="coutKg" className="text-right" />
                     <SortHeader label="Prix/kg" field="prixMoyenKg" className="text-right" />
                     <SortHeader label="Heures" field="heuresTravaillees" className="text-right" />
                   </TableRow>
@@ -628,7 +628,7 @@ export default function CoutsProductionPage() {
                                       <TableHead className="text-right">Surface</TableHead>
                                       <TableHead className="text-right">Prod. (kg)</TableHead>
                                       <TableHead className="text-right">Revenus</TableHead>
-                                      <TableHead className="text-right">Couts</TableHead>
+                                      <TableHead className="text-right">Coûts</TableHead>
                                       <TableHead className="text-right">Marge</TableHead>
                                       <TableHead className="text-right">Marge %</TableHead>
                                     </TableRow>
@@ -639,7 +639,7 @@ export default function CoutsProductionPage() {
                                         <TableCell className="text-sm">#{culture.cultureId}</TableCell>
                                         <TableCell className="text-sm">{culture.variete || "-"}</TableCell>
                                         <TableCell className="text-sm">{culture.plancheNom || "-"}</TableCell>
-                                        <TableCell className="text-right text-sm">{formatNumber(culture.surface)} m2</TableCell>
+                                        <TableCell className="text-right text-sm">{formatNumber(culture.surface)} m²</TableCell>
                                         <TableCell className="text-right text-sm">{formatNumber(culture.production)}</TableCell>
                                         <TableCell className="text-right text-sm text-green-600">{formatEuro(culture.revenus)}</TableCell>
                                         <TableCell className="text-right text-sm text-red-600">{formatEuro(culture.coutTotal)}</TableCell>
@@ -757,7 +757,7 @@ export default function CoutsProductionPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2">
-                  Repartition des couts
+                  Répartition des coûts
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -795,7 +795,7 @@ export default function CoutsProductionPage() {
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2">
                   <BarChart3 className="h-4 w-4 text-blue-600" />
-                  Cout/kg vs Prix de vente/kg par espèce
+                  Coût/kg vs Prix de vente/kg par espèce
                 </CardTitle>
                 <CardDescription>
                   Compare le cout de production au prix de vente moyen par kilogramme
@@ -811,13 +811,13 @@ export default function CoutsProductionPage() {
                       <Tooltip
                         formatter={(value, name) => [
                           formatEuro(Number(value || 0)),
-                          name === "coutKg" ? "Cout/kg" : name === "prixKg" ? "Prix/kg" : "Marge/kg",
+                          name === "coutKg" ? "Coût/kg" : name === "prixKg" ? "Prix/kg" : "Marge/kg",
                         ]}
                         contentStyle={{ borderRadius: 8, border: "1px solid #e5e7eb" }}
                       />
                       <Legend
                         formatter={(value: string) =>
-                          value === "coutKg" ? "Cout/kg" : value === "prixKg" ? "Prix/kg" : "Marge/kg"
+                          value === "coutKg" ? "Coût/kg" : value === "prixKg" ? "Prix/kg" : "Marge/kg"
                         }
                       />
                       <Bar dataKey="coutKg" name="coutKg" fill="#ef4444" radius={[2, 2, 0, 0]} />
