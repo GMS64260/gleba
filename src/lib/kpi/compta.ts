@@ -76,10 +76,27 @@ async function computeKpiCompta(
   // ============================================================
   // DÉPENSES : DepenseManuelle
   // ============================================================
-  const [depenseYtd, depenseN1Ytd, depenseN1Total] = await Promise.all([
+  const [
+    depenseYtd,
+    depenseN1Ytd,
+    depenseN1Total,
+    depensesNonPayees,
+    revenusNonPayes,
+  ] = await Promise.all([
     sumDepenseManuelle(userId, startOfYear, upperBound),
     sumDepenseManuelle(userId, startOfYearN1, asOfN1),
     sumDepenseManuelle(userId, startOfYearN1, endOfYearN1),
+    // BUG #2 — sous-totaux non payés (info, pas un filtre)
+    prisma.depenseManuelle.aggregate({
+      where: { userId, date: { gte: startOfYear, lte: upperBound }, paye: false },
+      _sum: { montant: true },
+      _count: true,
+    }),
+    prisma.venteManuelle.aggregate({
+      where: { userId, date: { gte: startOfYear, lte: upperBound }, paye: false },
+      _sum: { montant: true },
+      _count: true,
+    }),
   ])
 
   const beneficeYtd = revenusYtd - depenseYtd
@@ -96,6 +113,10 @@ async function computeKpiCompta(
     depensesN1Total: round2(depenseN1Total),
     beneficeYtd: round2(beneficeYtd),
     margePercentYtd: round2(margePercentYtd),
+    depensesNonPayeesYtd: round2(depensesNonPayees._sum.montant ?? 0),
+    nbDepensesNonPayees: depensesNonPayees._count,
+    revenusNonPayesYtd: round2(revenusNonPayes._sum.montant ?? 0),
+    nbRevenusNonPayes: revenusNonPayes._count,
   }
 }
 

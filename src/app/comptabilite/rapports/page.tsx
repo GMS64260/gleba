@@ -40,6 +40,19 @@ interface Stats {
   margePercent: number
   revenusParModule: { potager: number; verger: number; elevage: number; autre: number }
   depensesParModule: { potager: number; verger: number; elevage: number; autre: number }
+  // BUG #2 — sous-totaux non payés (info, charges engagées non décaissées)
+  depensesNonPayees?: number
+  nbDepensesNonPayees?: number
+  revenusNonPayes?: number
+  nbRevenusNonPayes?: number
+  coherenceCheck?: {
+    revenusSsot: number
+    revenusSommeModules: number
+    revenusEcart: number
+    depensesSsot: number
+    depensesSommeModules: number
+    depensesEcart: number
+  }
 }
 
 interface ChartData {
@@ -306,6 +319,38 @@ export default function RapportsPage() {
               <div className="space-y-4">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-32 w-full" />)}</div>
             ) : stats ? (
               <div className="space-y-6">
+                {/* BUG #2 (audit compta 2026-05-15) — Bannière explicite si
+                    une charge engagée non payée fait partie du total. Plus
+                    aucune exclusion silencieuse. */}
+                {(stats.depensesNonPayees ?? 0) > 0 && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex items-start gap-2">
+                    <Info className="h-4 w-4 mt-0.5 text-amber-700 flex-shrink-0" />
+                    <div>
+                      <p className="font-semibold">{stats.nbDepensesNonPayees} dépense(s) engagée(s) non encore payée(s)</p>
+                      <p className="text-xs mt-0.5">
+                        Le total dépenses ci-dessous inclut {formatEuro(stats.depensesNonPayees ?? 0)} de
+                        charges constatées (compta. d'engagement) dont le règlement reste à effectuer.
+                        Voir l'onglet Transactions pour le détail.
+                      </p>
+                    </div>
+                  </div>
+                )}
+                {/* BUG #2 — Alerte si la somme des modules ne matche pas la
+                    SSOT (signe d'une vente ou dépense saisie hors VenteManuelle
+                    / DepenseManuelle / Facture). Bug que Dev B traite côté flux. */}
+                {stats.coherenceCheck && (Math.abs(stats.coherenceCheck.revenusEcart) > 0.5 || Math.abs(stats.coherenceCheck.depensesEcart) > 0.5) && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900 flex items-start gap-2">
+                    <Info className="h-4 w-4 mt-0.5 text-red-700 flex-shrink-0" />
+                    <div>
+                      <p className="font-semibold">Incohérence détectée entre la SSOT et la ventilation par module</p>
+                      <p className="text-xs mt-0.5">
+                        Revenus : SSOT {formatEuro(stats.coherenceCheck.revenusSsot)} vs somme modules {formatEuro(stats.coherenceCheck.revenusSommeModules)} (écart {formatEuro(stats.coherenceCheck.revenusEcart)}).
+                        Dépenses : SSOT {formatEuro(stats.coherenceCheck.depensesSsot)} vs somme modules {formatEuro(stats.coherenceCheck.depensesSommeModules)} (écart {formatEuro(stats.coherenceCheck.depensesEcart)}).
+                        La ligne TOTAL ci-dessous reflète la somme des cellules visibles.
+                      </p>
+                    </div>
+                  </div>
+                )}
                 {/* Résumé */}
                 <div className="grid gap-4 md:grid-cols-4">
                   <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white">
