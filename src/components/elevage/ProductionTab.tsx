@@ -317,7 +317,7 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
             </Card>
             <Card>
               <CardHeader className="pb-1 pt-3 px-4">
-                <CardDescription className="text-xs">Sales</CardDescription>
+                <CardDescription className="text-xs">Souillés</CardDescription>
                 <CardTitle className="text-2xl text-orange-600">{stats.sales}</CardTitle>
               </CardHeader>
               <CardContent className="pb-3 px-4">
@@ -372,7 +372,7 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
                   <Input type="number" min="0" value={formData.casses} onChange={(e) => setFormData(f => ({ ...f, casses: e.target.value }))} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Sales</Label>
+                  <Label>Œufs souillés</Label>
                   <Input type="number" min="0" value={formData.sales} onChange={(e) => setFormData(f => ({ ...f, sales: e.target.value }))} />
                 </div>
                 <div className="space-y-2">
@@ -414,7 +414,7 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
                   <TableHead>Lot</TableHead>
                   <TableHead className="text-right">Oeufs</TableHead>
                   <TableHead className="text-right">Casses</TableHead>
-                  <TableHead className="text-right">Sales</TableHead>
+                  <TableHead className="text-right">Souillés</TableHead>
                   <TableHead>Calibre</TableHead>
                   <TableHead>Notes</TableHead>
                   <TableHead></TableHead>
