@@ -1035,10 +1035,14 @@ export default function ParametresPage() {
 
 function ModulesSection() {
   const { toast } = useToast()
-  const { modules, loading, save } = useModules()
+  const { modules, save } = useModules()
   const [saving, setSaving] = React.useState(false)
 
   const toggle = async (id: ModuleId, active: boolean) => {
+    // BUG #1 (QA Camille 2026-05-15) : on lit `modules` au moment du clic et
+    // on garde la liste passée à `save()` cohérente — le hook fait
+    // l'optimistic update immédiatement (le Switch se reflète à l'écran)
+    // puis appelle l'API.
     const next = active ? [...modules, id] : modules.filter((m) => m !== id)
     // Empêcher de tout désactiver : au moins un module doit rester
     if (next.length === 0) {
@@ -1047,7 +1051,14 @@ function ModulesSection() {
     }
     setSaving(true)
     try {
-      await save(next)
+      const result = await save(next)
+      if (!result.ok) {
+        toast({
+          variant: "destructive",
+          title: "Échec de la sauvegarde des préférences",
+          description: result.error || "Le changement a été annulé. Vérifiez votre connexion.",
+        })
+      }
     } finally {
       setSaving(false)
     }
@@ -1082,8 +1093,9 @@ function ModulesSection() {
               <Switch
                 id={`module-${id}`}
                 checked={active}
-                disabled={loading || saving}
+                disabled={saving}
                 onCheckedChange={(checked) => toggle(id, checked)}
+                data-testid={`module-toggle-${id}`}
               />
             </div>
           )
