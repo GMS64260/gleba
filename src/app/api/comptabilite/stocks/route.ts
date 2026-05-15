@@ -24,6 +24,8 @@ export async function GET(request: NextRequest) {
       userFertilisants,
       // Potager recoltes en stock
       recoltesEnStock,
+      // BUG #8 — Potager cultures en cours (stock vivant en germination)
+      culturesActives,
       // Élevage (per-user)
       userAliments,
       animauxActifs,
@@ -69,6 +71,33 @@ export async function GET(request: NextRequest) {
         where: { userId, statut: 'en_stock' },
         include: {
           espece: { select: { id: true } },
+        },
+      }),
+
+      // BUG #8 (QA Camille 2026-05-15) — Cultures Maraîchage actives non
+      // encore récoltées : on les remonte comme « stock en cours » pour
+      // que la card Maraîchage ne soit pas vide tant qu'aucune Recolte
+      // n'a été saisie. La QA attend que 12 planches / 19 cultures soient
+      // visibles côté Stocks ; sinon le compteur M = 0 alors qu'il y a
+      // de l'activité.
+      // Définition partagée avec Dev 2 (#2 Dashboard Maraîchage) :
+      // « culture active » = terminee=null + (semisFait OR plantationFaite)
+      // + recolteFaite=false. Avec ce filtre on évite les cultures
+      // déjà clôturées et celles qui n'ont pas démarré.
+      prisma.culture.findMany({
+        where: {
+          userId,
+          terminee: null,
+          recolteFaite: false,
+          OR: [{ semisFait: true }, { plantationFaite: true }],
+        },
+        select: {
+          id: true,
+          plancheId: true,
+          quantite: true,
+          espece: { select: { id: true, rendement: true } },
+          variete: { select: { id: true } },
+          planche: { select: { surface: true, largeur: true, longueur: true, nom: true } },
         },
       }),
 
@@ -272,6 +301,64 @@ export async function GET(request: NextRequest) {
         stockMin: null,
         alerteBas: false,
         valeur: data.hasPrix ? data.valeur : null,
+      })
+    })
+
+    // BUG #8 — Cultures Maraîchage en cours, agrégées par espèce.
+    // Estimation théorique du stock à venir = surface × rendement (kg/m²).
+    // Le tooltip côté UI dit « X cultures actives sur Y planches » pour
+    // que l'utilisateur ne confonde pas avec du stock réellement en main.
+    interface CultureAcc {
+      nom: string
+      nbCultures: number
+      planches: Set<string>
+      stockEstime: number
+      valeurEstimee: number
+      hasPrix: boolean
+    }
+    const culturesParEspece = new Map<string, CultureAcc>()
+    for (const c of culturesActives) {
+      if (!c.espece?.id) continue
+      const key = c.espece.id
+      const surface =
+        c.planche?.surface ??
+        (c.planche?.largeur && c.planche?.longueur
+          ? c.planche.largeur * c.planche.longueur
+          : 0)
+      const rendement = c.espece.rendement ?? 0
+      const estimeKg = surface * rendement
+      const prixMoyen = moyennePrix(prixParEspece.get(key) ?? []) ?? 0
+      const valeur = estimeKg * prixMoyen
+      const existing = culturesParEspece.get(key)
+      if (existing) {
+        existing.nbCultures += 1
+        if (c.plancheId) existing.planches.add(c.plancheId)
+        existing.stockEstime += estimeKg
+        existing.valeurEstimee += valeur
+        existing.hasPrix = existing.hasPrix || prixMoyen > 0
+      } else {
+        culturesParEspece.set(key, {
+          nom: c.espece.id,
+          nbCultures: 1,
+          planches: new Set(c.plancheId ? [c.plancheId] : []),
+          stockEstime: estimeKg,
+          valeurEstimee: valeur,
+          hasPrix: prixMoyen > 0,
+        })
+      }
+    }
+    culturesParEspece.forEach((acc, especeId) => {
+      const stockArrondi = Math.round(acc.stockEstime * 10) / 10
+      stocks.push({
+        id: `culture-active-${especeId}`,
+        module: 'potager',
+        categorie: 'Cultures en cours',
+        nom: `${acc.nom} (${acc.nbCultures} culture${acc.nbCultures > 1 ? 's' : ''} · ${acc.planches.size} planche${acc.planches.size > 1 ? 's' : ''})`,
+        stock: stockArrondi > 0 ? stockArrondi : acc.nbCultures,
+        unite: stockArrondi > 0 ? 'kg estimés' : 'cultures',
+        stockMin: null,
+        alerteBas: false,
+        valeur: acc.hasPrix ? Math.round(acc.valeurEstimee * 100) / 100 : null,
       })
     })
 
