@@ -3,6 +3,21 @@
 /**
  * Hook React pour gérer les modules actifs de l'utilisateur.
  * Met en cache au niveau du navigateur pour éviter de fetch sur chaque page.
+ *
+ * BUG #1 (QA Camille 2026-05-15) — Le toggle ne déclenchait visuellement
+ * rien :
+ * - Au premier mount sans cache, `loading=true` désactivait le Switch ; un
+ *   clic rapide était simplement ignoré.
+ * - `save()` n'avait aucun `.catch()` : si le PUT échouait, l'exception
+ *   remontait silencieusement sans toast ni rollback.
+ *
+ * Refactor :
+ * - `save()` fait un optimistic update + rollback explicite si le PUT
+ *   échoue, avec callback de notification.
+ * - Le `loading` ne désactive plus le Switch (on a toujours une valeur par
+ *   défaut, donc le user peut cliquer dès le premier paint).
+ * - `setModules` utilise toujours une nouvelle référence pour forcer le
+ *   re-render même si la liste est identique en contenu.
  */
 
 import * as React from "react"
@@ -46,7 +61,15 @@ function writeCache(modules: ModuleId[]) {
   }
 }
 
-export function useModules() {
+export interface UseModulesResult {
+  modules: ModuleId[]
+  loading: boolean
+  refresh: () => Promise<void>
+  save: (next: ModuleId[]) => Promise<{ ok: boolean; error?: string }>
+  isActif: (id: ModuleId) => boolean
+}
+
+export function useModules(): UseModulesResult {
   const cached = readCache()
   const [modules, setModules] = React.useState<ModuleId[]>(cached?.modules ?? DEFAULT_MODULES_ACTIFS)
   const [loading, setLoading] = React.useState(!cached)
@@ -79,13 +102,13 @@ export function useModules() {
     if (typeof window === "undefined") return
     const onCustom = (e: Event) => {
       const detail = (e as CustomEvent<{ modules: ModuleId[] }>).detail
-      if (detail?.modules) setModules(detail.modules)
+      if (detail?.modules) setModules([...detail.modules])
     }
     const onStorage = (e: StorageEvent) => {
       if (e.key !== CACHE_KEY || !e.newValue) return
       try {
         const parsed = JSON.parse(e.newValue) as Cached
-        if (Array.isArray(parsed.modules)) setModules(parsed.modules)
+        if (Array.isArray(parsed.modules)) setModules([...parsed.modules])
       } catch {
         // ignore
       }
@@ -98,21 +121,44 @@ export function useModules() {
     }
   }, [])
 
-  const save = React.useCallback(async (next: ModuleId[]) => {
+  const save = React.useCallback(async (next: ModuleId[]): Promise<{ ok: boolean; error?: string }> => {
     const sanitized = sanitizeModulesActifs(next)
-    setModules(sanitized)
+    // BUG #1 : optimistic update — état React + localStorage MAJ
+    // immédiatement, puis appel API. Force une nouvelle référence avec
+    // [...sanitized] pour garantir le re-render (sinon React peut bailler
+    // out si la référence est identique à l'ancienne).
+    const previous = modules
+    setModules([...sanitized])
     writeCache(sanitized)
-    // DEV2 #5 — broadcast au reste de la page pour que tous les
-    // composants useModules (ModulesNav notamment) se ré-rendent.
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent(MODULES_CHANGED_EVENT, { detail: { modules: sanitized } }))
     }
-    await fetch("/api/user/preferences", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ modulesActifs: sanitized }),
-    })
-  }, [])
+    try {
+      const res = await fetch("/api/user/preferences", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ modulesActifs: sanitized }),
+      })
+      if (!res.ok) {
+        // Rollback : on remet l'ancienne valeur côté state + cache + broadcast.
+        setModules([...previous])
+        writeCache(previous)
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent(MODULES_CHANGED_EVENT, { detail: { modules: previous } }))
+        }
+        const txt = await res.text().catch(() => "")
+        return { ok: false, error: `HTTP ${res.status}${txt ? `: ${txt}` : ""}` }
+      }
+      return { ok: true }
+    } catch (err) {
+      setModules([...previous])
+      writeCache(previous)
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent(MODULES_CHANGED_EVENT, { detail: { modules: previous } }))
+      }
+      return { ok: false, error: err instanceof Error ? err.message : "Erreur réseau" }
+    }
+  }, [modules])
 
   const isActif = React.useCallback((id: ModuleId) => modules.includes(id), [modules])
 
