@@ -21,6 +21,7 @@
 
 import type { Prisma, PrismaClient } from "@prisma/client"
 import prisma from "@/lib/prisma"
+import { ensureClientForUser } from "@/lib/comptabilite/ensure-client"
 
 type Tx = Prisma.TransactionClient | PrismaClient
 
@@ -155,6 +156,20 @@ export async function confirmCommandeBoutique(
     }
   })()
 
+  // QA 2026-05-15 — Bug #6 : auto-création du client à partir des
+  // informations saisies lors de la commande (nom/email/téléphone).
+  // Idempotent — pas de doublon si le client existe déjà (match par
+  // email puis par nom normalisé).
+  const clientId = await ensureClientForUser(
+    commande.userId,
+    {
+      nom: commande.clientNom,
+      email: commande.clientEmail,
+      telephone: commande.clientTelephone,
+    },
+    tx
+  )
+
   const venteManuelle = await tx.venteManuelle.create({
     data: {
       userId: commande.userId,
@@ -176,6 +191,8 @@ export async function confirmCommandeBoutique(
       sourceType: "commande_boutique",
       sourceId: commande.id,
       auto: true,
+      clientId,
+      clientNom: commande.clientNom,
     },
   })
 

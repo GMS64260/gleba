@@ -8,6 +8,7 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { createDepenseManuelleSchema, updateDepenseManuelleSchema } from '@/lib/validations/depense-manuelle'
 import { invalidateKpi } from '@/lib/kpi'
+import { ensureFournisseurForUser } from '@/lib/comptabilite/ensure-fournisseur'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -82,29 +83,42 @@ export async function POST(request: NextRequest) {
     const montantHT = rest.montantHT ?? montant / (1 + tauxTVA / 100)
     const montantTVA = rest.montantTVA ?? montant - montantHT
 
-    const depense = await prisma.depenseManuelle.create({
-      data: {
-        userId,
-        date: rest.date ?? new Date(),
-        categorie: rest.categorie,
-        description: rest.description,
-        tauxTVA,
-        montantHT,
-        montantTVA,
-        montant,
-        module: rest.module ?? null,
-        fournisseurId: rest.fournisseurId ?? null,
-        fournisseurNom: rest.fournisseurNom ?? null,
-        refFacture: rest.refFacture ?? null,
-        paye: rest.paye,
-        dateEcheance: rest.dateEcheance ?? null,
-        notes: rest.notes ?? null,
-        journal: rest.journal ?? 'AC',
-        modeReglement: rest.modeReglement ?? null,
-        numeroPiece: rest.numeroPiece ?? null,
-        pjUrl: rest.pjUrl || null,
-        tvaInferee: false,
-      },
+    // QA 2026-05-15 — Bug #11 : auto-création du fournisseur si seul
+    // un `fournisseurNom` est fourni (saisie rapide). Le find-or-create
+    // est idempotent, donc pas de doublon si le fournisseur existait.
+    const depense = await prisma.$transaction(async (tx) => {
+      let resolvedFournisseurId: string | null = rest.fournisseurId ?? null
+      if (!resolvedFournisseurId && rest.fournisseurNom) {
+        resolvedFournisseurId = await ensureFournisseurForUser(
+          userId,
+          { nom: rest.fournisseurNom },
+          tx
+        )
+      }
+      return tx.depenseManuelle.create({
+        data: {
+          userId,
+          date: rest.date ?? new Date(),
+          categorie: rest.categorie,
+          description: rest.description,
+          tauxTVA,
+          montantHT,
+          montantTVA,
+          montant,
+          module: rest.module ?? null,
+          fournisseurId: resolvedFournisseurId,
+          fournisseurNom: rest.fournisseurNom ?? null,
+          refFacture: rest.refFacture ?? null,
+          paye: rest.paye,
+          dateEcheance: rest.dateEcheance ?? null,
+          notes: rest.notes ?? null,
+          journal: rest.journal ?? 'AC',
+          modeReglement: rest.modeReglement ?? null,
+          numeroPiece: rest.numeroPiece ?? null,
+          pjUrl: rest.pjUrl || null,
+          tvaInferee: false,
+        },
+      })
     })
 
     invalidateKpi(userId)

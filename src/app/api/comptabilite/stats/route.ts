@@ -121,6 +121,9 @@ export async function GET(request: NextRequest) {
       // Stocks bas (Variete graines)
       stocksBasGraines,
 
+      // QA 2026-05-15 — Bug #5 : commandes boutique en attente (non livrées)
+      commandesEnAttenteAgg,
+
     ] = await Promise.all([
       // === REVENUS ===
 
@@ -322,6 +325,20 @@ export async function GET(request: NextRequest) {
           userId,
           stockGraines: { lt: 100, not: null },
         },
+      }),
+
+      // QA 2026-05-15 — Bug #5 : commandes boutique non livrées de
+      // l'année (nouveau/confirmee/prete). Non comptées dans les
+      // revenus tant que pas matérialisées, mais reportées en
+      // compteur pour expliquer l'écart "Boutique = 14, Compta = 11".
+      prisma.commandeBoutique.aggregate({
+        where: {
+          userId,
+          createdAt: { gte: startOfYear, lte: endOfYear },
+          statut: { in: ['nouveau', 'confirmee', 'prete'] },
+        },
+        _sum: { total: true },
+        _count: true,
       }),
     ])
 
@@ -750,6 +767,14 @@ export async function GET(request: NextRequest) {
         facturesImpayees: (facturesImpayeesElevage._count || 0) + (facturesImpayeesManuelles._count || 0),
         facturesImpayeesTotal: (facturesImpayeesElevage._sum.prixTotal || 0) + (facturesImpayeesManuelles._sum.montant || 0),
         stocksBas: Number(stocksBasAliments[0]?.count || 0) + stocksBasGraines,
+        // QA 2026-05-15 — Bug #5 : commandes boutique en attente de
+        // livraison (statuts nouveau/confirmée/prête). Elles n'ont pas
+        // de VenteManuelle tant que pas livrées (règle métier : on ne
+        // remonte pas en compta tant que c'est pas matérialisé), mais
+        // on les rend visibles via un compteur pour éviter "Boutique
+        // 14 commandes / Compta 11 commandes" sans explication.
+        commandesEnAttente: commandesEnAttenteAgg._count,
+        commandesEnAttenteTotal: commandesEnAttenteAgg._sum.total || 0,
       },
       charts: {
         mensuel,

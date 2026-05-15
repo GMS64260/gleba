@@ -183,13 +183,42 @@ export default function FacturesPage() {
     fetchFacturesEmises()
   }, [fetchImpayees, fetchFacturesEmises])
 
-  const downloadFacturePDF = (factureId: number, numero: string) => {
-    const link = document.createElement("a")
-    link.href = `/api/comptabilite/factures/${factureId}/pdf`
-    link.download = `${numero}.pdf`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+  // QA 2026-05-15 — Bug #13 : "Télécharger PDF" sans effet sur certains
+  // navigateurs. L'ancienne implémentation créait un `<a download>` qui
+  // déclenchait une navigation silencieuse (pas de download) si la
+  // réponse 500ait côté backend, ou bloquait si la réponse 307ait vers
+  // /login. On passe par fetch + Blob pour :
+  //   * remonter les erreurs serveur (toast + console)
+  //   * forcer le download via Blob URL
+  //   * ne pas naviguer hors page si l'auth échoue
+  const downloadFacturePDF = async (factureId: number, numero: string) => {
+    try {
+      const res = await fetch(`/api/comptabilite/factures/${factureId}/pdf`, {
+        credentials: "include",
+      })
+      if (!res.ok) {
+        const msg = res.status === 401
+          ? "Session expirée — reconnectez-vous."
+          : res.status === 404
+          ? "Facture introuvable."
+          : `Erreur ${res.status} lors de la génération du PDF`
+        toast({ variant: "destructive", title: "Téléchargement impossible", description: msg })
+        return
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `${numero}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      // Libère l'URL après un tick pour laisser le browser télécharger
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch (err) {
+      console.error("PDF download error:", err)
+      toast({ variant: "destructive", title: "Téléchargement impossible", description: "Erreur réseau" })
+    }
   }
 
   const formatEuro = (value: number) => {

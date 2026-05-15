@@ -178,6 +178,9 @@ interface ComptaStats {
     facturesImpayees: number
     facturesImpayeesTotal: number
     stocksBas: number
+    // QA 2026-05-15 — Bug #5
+    commandesEnAttente?: number
+    commandesEnAttenteTotal?: number
   }
   charts: {
     mensuel: { mois: string; revenus: number; depenses: number; benefice: number }[]
@@ -446,8 +449,8 @@ export default function DashboardComptabilite() {
         </div>
 
         {/* Alertes */}
-        {data?.stats && (data.stats.facturesImpayees > 0 || data.stats.stocksBas > 0) && (
-          <div className="grid gap-4 md:grid-cols-2 mb-6">
+        {data?.stats && (data.stats.facturesImpayees > 0 || data.stats.stocksBas > 0 || (data.stats.commandesEnAttente ?? 0) > 0) && (
+          <div className="grid gap-4 md:grid-cols-3 mb-6">
             {data.stats.facturesImpayees > 0 && (
               <Card className="border-amber-200 bg-amber-50">
                 <CardHeader className="pb-2">
@@ -459,6 +462,28 @@ export default function DashboardComptabilite() {
                 <CardContent>
                   <p className="text-amber-800">
                     {data.stats.facturesImpayees} facture(s) en attente ({formatEuro(data.stats.facturesImpayeesTotal)})
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+            {(data.stats.commandesEnAttente ?? 0) > 0 && (
+              // QA 2026-05-15 — Bug #5 : compteur des commandes boutique
+              // pas encore livrées (donc pas encore en compta). Permet
+              // de réconcilier "Boutique 14 cmds = Compta 11 cmds + 3
+              // en attente".
+              <Card className="border-blue-200 bg-blue-50">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm text-blue-700 flex items-center gap-2">
+                    <ShoppingCart className="h-4 w-4" />
+                    Commandes boutique en attente
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-blue-800">
+                    {data.stats.commandesEnAttente} commande(s) ({formatEuro(data.stats.commandesEnAttenteTotal ?? 0)})
+                  </p>
+                  <p className="text-xs text-blue-700 mt-1">
+                    Statut Nouveau / Confirmée / Prête — sera comptabilisé à la livraison.
                   </p>
                 </CardContent>
               </Card>

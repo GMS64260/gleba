@@ -376,7 +376,31 @@ export async function GET(request: NextRequest) {
     // ============================================================
     // TOTAUX GLOBAUX (tous modules)
     // ============================================================
-    const potagerRevenus = parEspece.reduce((s, e) => s + e.revenus, 0)
+
+    // QA 2026-05-15 — Bug #4 : auparavant `potagerRevenus` = somme des
+    // recoltes vendues (avec prixKg saisi). Les ventes AMAP/marché
+    // saisies en VenteManuelle (module=potager) étaient ignorées →
+    // l'écran affichait 17,50 € alors que Transactions montrait
+    // 6 342,50 €. On agrège désormais les VenteManuelle module="potager"
+    // sur l'année comme source de vérité pour le revenu maraîchage.
+    // `parEspece` reste calculé sur les récoltes (pour la rentabilité
+    // fine par culture), mais le TOTAL module utilise la SSOT compta.
+    const ventesPotagerAgg = await prisma.venteManuelle.aggregate({
+      where: {
+        userId,
+        module: 'potager',
+        date: { gte: new Date(year, 0, 1), lt: new Date(year + 1, 0, 1) },
+      },
+      _sum: { montant: true },
+    })
+    const potagerRevenusVentes = ventesPotagerAgg._sum.montant ?? 0
+    const potagerRevenusRecoltes = parEspece.reduce((s, e) => s + e.revenus, 0)
+    // Le maximum couvre les deux cas : ventes saisies au niveau Recolte
+    // (prixKg) OU au niveau VenteManuelle (AMAP/marché). Si les deux
+    // sources existent en parallèle, on évite de doubler en gardant le
+    // max — pas idéal en cas de mix mais correct pour le 90/10 des
+    // exploitations qui saisissent par un seul canal.
+    const potagerRevenus = Math.max(potagerRevenusVentes, potagerRevenusRecoltes)
     const potagerCouts = parEspece.reduce((s, e) => s + e.coutTotal, 0)
 
     // Coûts : la formule reste locale (cf. consigne PROMPT 04 — les coûts de
