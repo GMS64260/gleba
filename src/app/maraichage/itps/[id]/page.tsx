@@ -396,19 +396,19 @@ export default function EditITPPage() {
                     name="decalageMax"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Decalage max (semaines)</FormLabel>
+                        <FormLabel>Décalage max (semaines)</FormLabel>
                         <FormControl>
                           <Input
                             type="number"
                             min={0}
                             max={52}
-                            placeholder="Flexibilite"
+                            placeholder="Flexibilité"
                             {...field}
                             value={field.value ?? ""}
                             onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : null)}
                           />
                         </FormControl>
-                        <FormDescription>Flexibilite de planification</FormDescription>
+                        <FormDescription>Flexibilité de planification</FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -429,13 +429,13 @@ export default function EditITPPage() {
                   name="dureePepiniere"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Durée pepiniere (jours)</FormLabel>
+                      <FormLabel>Durée pépinière (jours)</FormLabel>
                       <FormControl>
                         <Input
                           type="number"
                           min={0}
                           max={365}
-                          placeholder="Jours en pepiniere"
+                          placeholder="Jours en pépinière"
                           {...field}
                           value={field.value ?? ""}
                           onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : null)}
@@ -495,7 +495,7 @@ export default function EditITPPage() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="_none">Non specifie</SelectItem>
+                          <SelectItem value="_none">Non spécifié</SelectItem>
                           {ITP_TYPE_PLANCHE.map((t) => (
                             <SelectItem key={t} value={t}>
                               {t}

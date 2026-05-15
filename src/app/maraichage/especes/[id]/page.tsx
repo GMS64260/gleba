@@ -416,7 +416,7 @@ export default function EditEspecePage() {
               <TabsContent value="general">
                 <Card>
                   <CardHeader>
-                    <CardTitle>Informations generales</CardTitle>
+                    <CardTitle>Informations générales</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="p-3 bg-muted rounded-md">
@@ -1037,7 +1037,7 @@ export default function EditEspecePage() {
                       name="description"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Notes generales</FormLabel>
+                          <FormLabel>Notes générales</FormLabel>
                           <FormControl>
                             <Textarea
                               placeholder="Conseils de culture, particularites..."

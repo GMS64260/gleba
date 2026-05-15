@@ -606,7 +606,7 @@ function PhytoTab({
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">Produits utilises</CardTitle>
+            <CardTitle className="text-sm text-muted-foreground">Produits utilisés</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold">{data.stats.nbProduitsDistincts}</p>

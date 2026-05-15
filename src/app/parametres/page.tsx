@@ -782,7 +782,7 @@ export default function ParametresPage() {
                 {/* Position X/Y */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm text-slate-600 mb-1">Decalage X (m)</label>
+                    <label className="block text-sm text-slate-600 mb-1">Décalage X (m)</label>
                     <input
                       type="number"
                       value={settings.backgroundOffsetX}
@@ -792,7 +792,7 @@ export default function ParametresPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-slate-600 mb-1">Decalage Y (m)</label>
+                    <label className="block text-sm text-slate-600 mb-1">Décalage Y (m)</label>
                     <input
                       type="number"
                       value={settings.backgroundOffsetY}

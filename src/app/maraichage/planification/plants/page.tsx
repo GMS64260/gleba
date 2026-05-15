@@ -275,7 +275,7 @@ function PlantsContent() {
               <CardContent>
                 <p className="text-2xl font-bold">{stats.totalACommander.toLocaleString()}</p>
                 {stats.especesSansStock > 0 && (
-                  <p className="text-sm text-red-600">{stats.especesSansStock} espece(s) sans stock</p>
+                  <p className="text-sm text-red-600">{stats.especesSansStock} espèce(s) sans stock</p>
                 )}
               </CardContent>
             </Card>
