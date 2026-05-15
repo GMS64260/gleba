@@ -269,7 +269,7 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
               {planche.surface && (
                 <div>
                   <span className="text-muted-foreground">Surface:</span>{' '}
-                  <span className="font-medium">{planche.surface.toFixed(1)} m2</span>
+                  <span className="font-medium">{planche.surface.toFixed(1)} m²</span>
                 </div>
               )}
               {planche.ilot && (
