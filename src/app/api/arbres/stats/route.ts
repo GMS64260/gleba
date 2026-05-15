@@ -34,7 +34,18 @@ export async function GET(request: NextRequest) {
       prisma.arbre.count({ where: { userId, type: "fruitier" } }),
       prisma.arbre.count({ where: { userId, type: "petit_fruit" } }),
       prisma.arbre.count({ where: { userId, type: "forestier" } }),
-      prisma.arbre.count({ where: { userId, productif: true, type: { in: ["fruitier", "petit_fruit"] } } }),
+      // QA Hélène 2026-05-15 — Bug #8 : un arbre sans datePlantation
+      // ne peut pas être considéré comme productif (pas encore planté
+      // ou date inconnue). On exige désormais une date de plantation
+      // non nulle pour rentrer dans le compteur.
+      prisma.arbre.count({
+        where: {
+          userId,
+          productif: true,
+          type: { in: ["fruitier", "petit_fruit"] },
+          datePlantation: { not: null },
+        },
+      }),
     ])
 
     // Bug #6 — Surface verger (ha) : somme des parcelles ayant au moins

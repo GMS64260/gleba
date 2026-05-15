@@ -185,7 +185,12 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
           <CardHeader className="pb-1 pt-3 px-4">
             <CardDescription className="text-lime-100 text-xs">Total arbres</CardDescription>
             <CardTitle className="text-2xl">
-              {loading ? <Skeleton className="h-8 w-12 bg-lime-400" /> : data?.stats.arbresTotal || 0}
+              {/* QA Hélène 2026-05-15 — Bug #9 : on garde l'ancienne
+                  valeur visible pendant le refetch (stale-while-revalidate)
+                  pour éviter le big number absent ~2s pendant qu'on
+                  recharge après un ajout. Skeleton seulement au premier
+                  chargement (data = null). */}
+              {data == null ? <Skeleton className="h-8 w-12 bg-lime-400" /> : data.stats.arbresTotal || 0}
             </CardTitle>
           </CardHeader>
           <CardContent className="pb-3 px-4">
@@ -319,8 +324,12 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
               </CardHeader>
               <CardContent>
                 <div className="h-[200px]">
+                  {/* QA Hélène 2026-05-15 — Bug #4 : `key` basé sur la
+                      signature des données force un remount complet
+                      quand on ajoute/supprime un arbre, sinon Recharts
+                      gardait l'ancien tracé en cache. */}
                   <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
+                    <PieChart key={data.stats.topEspeces.map((e) => `${e.espece}:${e.count}`).join("|")}>
                       <Pie
                         data={data.stats.topEspeces}
                         cx="50%"
@@ -330,6 +339,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                         dataKey="count"
                         nameKey="espece"
                         label={({ name, value }) => `${name}: ${value}`}
+                        isAnimationActive={false}
                       >
                         {data.stats.topEspeces.map((_, i) => (
                           <Cell
@@ -435,22 +445,30 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
               <TreeDeciduous className="h-4 w-4 text-lime-600" />
-              Repartition par type
+              Répartition par type
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="h-[250px]">
+              {/* QA Hélène 2026-05-15 — Bug #5 : avec un seul type
+                  d'arbres (ex. 21 fruitiers, 0 autre), Recharts dessinait
+                  un mini-arc 5 % au lieu d'un disque plein. On affiche
+                  désormais un disque plein quand il n'y a qu'une seule
+                  catégorie + le re-render forcé par `key` (cf #4). */}
               {data?.charts.arbresParType && data.charts.arbresParType.length > 0 && (
                 <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
+                  <PieChart key={data.charts.arbresParType.map((e) => `${e.type}:${e.count}`).join("|")}>
                     <Pie
                       data={data.charts.arbresParType}
                       cx="50%"
                       cy="50%"
-                      innerRadius={50}
+                      innerRadius={data.charts.arbresParType.length === 1 ? 0 : 50}
                       outerRadius={80}
+                      startAngle={90}
+                      endAngle={data.charts.arbresParType.length === 1 ? -270 : 450}
                       dataKey="count"
                       nameKey="type"
+                      isAnimationActive={false}
                       label={({ name, value }) => `${name}: ${value}`}
                     >
                       {data.charts.arbresParType.map((entry, index) => (
@@ -514,7 +532,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
           </CardHeader>
           <CardContent>
             {operationsEnRetard.length === 0 ? (
-              <p className="text-muted-foreground text-sm">Aucune operation en retard</p>
+              <p className="text-muted-foreground text-sm">Aucune opération en retard</p>
             ) : (
               <div className="space-y-3">
                 {operationsEnRetard.map((op) => (
@@ -525,10 +543,10 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                     <div>
                       <p className="font-medium">{op.arbre.nom}</p>
                       <p className="text-sm text-muted-foreground capitalize">
-                        {op.type} - prevu le{" "}
+                        {op.type} — prévu le{" "}
                         {op.datePrevue
                           ? new Date(op.datePrevue).toLocaleDateString("fr-FR")
-                          : "non defini"}
+                          : "non défini"}
                       </p>
                     </div>
                     <Button
@@ -552,12 +570,12 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
               <ClipboardCheck className="h-4 w-4 text-lime-600" />
-              A faire ({operationsAVenir.length})
+              À faire ({operationsAVenir.length})
             </CardTitle>
           </CardHeader>
           <CardContent>
             {operationsAVenir.length === 0 ? (
-              <p className="text-muted-foreground text-sm">Aucune operation planifiee</p>
+              <p className="text-muted-foreground text-sm">Aucune opération planifiée</p>
             ) : (
               <div className="space-y-3">
                 {operationsAVenir.map((op) => (
@@ -570,7 +588,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                       <p className="text-sm text-muted-foreground capitalize">
                         {op.type}
                         {op.datePrevue && (
-                          <> - prevu le {new Date(op.datePrevue).toLocaleDateString("fr-FR")}</>
+                          <> — prévu le {new Date(op.datePrevue).toLocaleDateString("fr-FR")}</>
                         )}
                       </p>
                     </div>
@@ -596,7 +614,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2 text-yellow-700">
               <TreeDeciduous className="h-4 w-4" />
-              Arbres a surveiller ({arbresAttention.length})
+              Arbres à surveiller ({arbresAttention.length})
             </CardTitle>
           </CardHeader>
           <CardContent>

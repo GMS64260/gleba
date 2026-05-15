@@ -374,6 +374,41 @@ export function findTreeCareProfile(espece: string): TreeCareProfile | null {
 }
 
 /**
+ * QA Hélène 2026-05-15 — Bug #10 : "Reinette grise du Canada" (variété
+ * tardive) sortait récolte 15/08, en réalité octobre-novembre. On
+ * accepte désormais la variété en argument et on override le mois de
+ * récolte pour les variétés tardives connues. Pour les opérations
+ * non-récolte, on garde le 15 du mois de début (pas d'enjeu).
+ */
+const VARIETES_RECOLTE_TARDIVE: Record<string, number> = {
+  // Pommiers tardifs (récolte oct-nov)
+  "reinette grise du canada": 10,
+  "reinette du canada": 10,
+  "granny smith": 10,
+  "belle de boskoop": 10,
+  "idared": 10,
+  "jonagold": 10,
+  "goldrush": 11,
+  "pink lady": 11,
+  "calville blanc d'hiver": 10,
+  "court-pendu": 11,
+  // Poiriers tardifs
+  "conference": 10,
+  "passe-crassane": 10,
+  "comice": 10,
+  // Variétés mi-tardives
+  "reine des reinettes": 9,
+}
+
+function normaliseVarieteForMatch(v: string | null | undefined): string {
+  return (v ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .trim()
+}
+
+/**
  * Génère les opérations d'entretien pour une annee donnée
  * Retourne les données prêtes pour prisma.operationArbre.createMany()
  */
@@ -381,19 +416,34 @@ export function generateCareOperations(
   profile: TreeCareProfile,
   year: number,
   arbreId: number,
-  userId: string
+  userId: string,
+  variete?: string | null
 ) {
-  return profile.operations.map((op) => ({
-    userId,
-    arbreId,
-    type: op.type,
-    description: `${op.label} — ${op.description}`,
-    datePrevue: new Date(year, op.moisDebut - 1, 15), // 15 du mois de début
-    fait: false,
-    recurrence: op.recurrence,
-    saisonRecommandee: op.saisonRecommandee,
-    notes: "auto:calendrier",
-  }))
+  const varieteKey = normaliseVarieteForMatch(variete)
+  const tardiveMois = VARIETES_RECOLTE_TARDIVE[varieteKey]
+
+  return profile.operations.map((op) => {
+    let moisCible = op.moisDebut
+    if (op.type === "recolte") {
+      if (tardiveMois && tardiveMois >= op.moisDebut && tardiveMois <= op.moisFin + 1) {
+        moisCible = tardiveMois
+      } else {
+        // Milieu de la fenêtre de récolte plutôt que le tout début
+        moisCible = Math.floor((op.moisDebut + op.moisFin) / 2)
+      }
+    }
+    return {
+      userId,
+      arbreId,
+      type: op.type,
+      description: `${op.label} — ${op.description}`,
+      datePrevue: new Date(year, moisCible - 1, 15),
+      fait: false,
+      recurrence: op.recurrence,
+      saisonRecommandee: op.saisonRecommandee,
+      notes: "auto:calendrier",
+    }
+  })
 }
 
 const MOIS_LABELS = ["Jan", "Fév", "Mar", "Avr", "Mai", "Jun", "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc"]

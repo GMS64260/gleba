@@ -237,14 +237,21 @@ export function DataTable<TData, TValue>({
                   .getAllColumns()
                   .filter((column) => column.getCanHide())
                   .map((column) => {
+                    // QA Hélène 2026-05-15 — Bug #14 : le menu affichait
+                    // `column.id` (accessorKey, ex: "espece") sans
+                    // accents au lieu du libellé du header ("Espèce").
+                    const header = column.columnDef.header
+                    const label =
+                      typeof header === "string" && header.length > 0
+                        ? header
+                        : column.id
                     return (
                       <DropdownMenuCheckboxItem
                         key={column.id}
-                        className="capitalize"
                         checked={column.getIsVisible()}
                         onCheckedChange={(value) => column.toggleVisibility(!!value)}
                       >
-                        {column.id}
+                        {label}
                       </DropdownMenuCheckboxItem>
                     )
                   })}
@@ -356,8 +363,14 @@ export function DataTable<TData, TValue>({
               Précédent
             </Button>
             <span className="text-sm">
-              Page {table.getState().pagination.pageIndex + 1} sur{" "}
-              {table.getPageCount()}
+              {/* QA Hélène 2026-05-15 — Bug #19 : sur un tableau vide
+                  Recharts pageCount=0 → "Page 1 sur 0". Désormais on
+                  affiche "Aucun résultat" dans ce cas. */}
+              {table.getPageCount() === 0 ? (
+                "Aucun résultat"
+              ) : (
+                <>Page {table.getState().pagination.pageIndex + 1} sur {table.getPageCount()}</>
+              )}
             </span>
             <Button
               variant="outline"

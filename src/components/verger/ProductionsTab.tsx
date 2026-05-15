@@ -409,10 +409,10 @@ function RecoltesFruitsSubTab() {
           </CardHeader>
           <CardContent>
             {perimesCount > 0 && (
-              <p className="text-red-700">{perimesCount} recolte(s) perimee(s)</p>
+              <p className="text-red-700">{perimesCount} récolte(s) périmée(s)</p>
             )}
             {bientotPerimesCount > 0 && (
-              <p className="text-orange-700">{bientotPerimesCount} recolte(s) proche(s) de la peremption</p>
+              <p className="text-orange-700">{bientotPerimesCount} récolte(s) proche(s) de la péremption</p>
             )}
           </CardContent>
         </Card>
@@ -456,10 +456,10 @@ function RecoltesFruitsSubTab() {
                   <TableRow>
                     <TableHead>Date</TableHead>
                     <TableHead>Arbre</TableHead>
-                    <TableHead className="text-right">Quantite</TableHead>
-                    <TableHead>Qualite</TableHead>
+                    <TableHead className="text-right">Quantité</TableHead>
+                    <TableHead>Qualité</TableHead>
                     <TableHead className="text-right">Prix/kg</TableHead>
-                    <TableHead>Peremption</TableHead>
+                    <TableHead>Péremption</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
