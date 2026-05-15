@@ -266,7 +266,7 @@ export default function ParcellesPage() {
               Supprimer la parcelle &laquo;{deletingParcelle?.nom}&raquo; ?
               {deletingParcelle && (deletingParcelle._count.planches + deletingParcelle._count.arbres + deletingParcelle._count.lotsAnimaux) > 0 && (
                 <span className="block mt-2 text-amber-600 font-medium">
-                  Attention : {deletingParcelle._count.planches + deletingParcelle._count.arbres + deletingParcelle._count.lotsAnimaux} entite(s) rattachee(s) seront detachees.
+                  Attention : {deletingParcelle._count.planches + deletingParcelle._count.arbres + deletingParcelle._count.lotsAnimaux} entité(s) rattachée(s) seront détachées.
                 </span>
               )}
             </DialogDescription>

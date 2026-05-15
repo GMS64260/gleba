@@ -137,7 +137,7 @@ function RecoltesPrevuesParSemainesContent() {
 
         {/* Stats */}
         <div className="mb-4 text-sm text-muted-foreground">
-          {semainesAvecRecoltes.length} semaines avec des recoltes prevues
+          {semainesAvecRecoltes.length} semaines avec des récoltes prévues
         </div>
 
         {/* Tableau */}

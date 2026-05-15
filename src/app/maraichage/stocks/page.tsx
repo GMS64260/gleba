@@ -504,7 +504,7 @@ function StocksPageContent() {
                 </TabsTrigger>
                 <TabsTrigger value="recoltes" className="flex items-center gap-2">
                   <Apple className="h-4 w-4" />
-                  Recoltes ({data.recoltes.length})
+                  Récoltes ({data.recoltes.length})
                 </TabsTrigger>
                 <TabsTrigger value="consommations" className="flex items-center gap-2">
                   <TrendingDown className="h-4 w-4" />
