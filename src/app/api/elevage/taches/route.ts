@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { oeufsAttendusJour } from '@/lib/elevage/taux-ponte'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -85,11 +86,16 @@ export async function GET(request: NextRequest) {
     const totalOeufs = productions.reduce((s, p) => s + p.quantite, 0)
     const totalConsoKg = consommations.reduce((s, c) => s + c.quantite, 0)
 
-    // Estimation production quotidienne attendue (basee sur ponteAnnuelle)
+    // Estimation production quotidienne attendue — BUG #3 (audit Julien
+    // 15/05/2026) : avant on faisait simplement `ponteAnnuelle / 365 ×
+    // effectif` ce qui donnait « ~14/jour » figé en hiver comme en été
+    // pour 29 Marans. On utilise désormais le référentiel saisonnier
+    // (lib/elevage/taux-ponte.ts) qui ajuste au mois courant et à la race
+    // (Marans, Sussex, etc.).
+    const refDate = end < now ? end : now
     const estimationOeufsJour = lotsActifs.reduce((sum, lot) => {
       if (lot.especeAnimale.production === 'oeufs' || lot.especeAnimale.production === 'mixte') {
-        const ponteJour = (lot.especeAnimale.ponteAnnuelle || 0) / 365
-        return sum + ponteJour * lot.quantiteActuelle
+        return sum + oeufsAttendusJour(lot.quantiteActuelle, lot.especeAnimale.nom, refDate)
       }
       return sum
     }, 0)
