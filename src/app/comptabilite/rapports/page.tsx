@@ -334,29 +334,50 @@ export default function RapportsPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {['potager', 'verger', 'elevage', 'autre'].map(mod => {
-                          const rev = stats.revenusParModule[mod as keyof typeof stats.revenusParModule] || 0
-                          const dep = stats.depensesParModule[mod as keyof typeof stats.depensesParModule] || 0
-                          const res = rev - dep
+                        {(() => {
+                          // BUG #1 (audit comptable 2026-05-15) — La ligne TOTAL
+                          // affichait `stats.revenus / stats.depenses / stats.benefice`
+                          // (variables globales issues de `getKpiCompta`) qui
+                          // PEUVENT diverger de la somme des cellules de la colonne
+                          // (ex. dépenses N/A non payées exclues du KPI global mais
+                          // visibles ligne à ligne). Le comptable lisait alors
+                          // « 0 + 0 + 1 230 + 2 755 = 3 985 » avec un TOTAL à 2 755 €.
+                          //
+                          // Désormais on calcule le TOTAL en sommant LITTÉRALEMENT
+                          // les cellules visibles à l'écran. Si écart vs KPI
+                          // global → bannière d'avertissement explicite.
+                          const modules = ['potager', 'verger', 'elevage', 'autre'] as const
+                          const rows = modules.map((mod) => {
+                            const rev = stats.revenusParModule[mod] || 0
+                            const dep = stats.depensesParModule[mod] || 0
+                            return { mod, rev, dep, res: rev - dep }
+                          })
+                          const totalRevenus = rows.reduce((s, r) => s + r.rev, 0)
+                          const totalDepenses = rows.reduce((s, r) => s + r.dep, 0)
+                          const totalResultat = totalRevenus - totalDepenses
                           return (
-                            <TableRow key={mod}>
-                              <TableCell className="font-medium capitalize">{mod}</TableCell>
-                              <TableCell className="text-right text-green-600">{formatEuro(rev)}</TableCell>
-                              <TableCell className="text-right text-red-600">{formatEuro(dep)}</TableCell>
-                              <TableCell className={`text-right font-bold ${res >= 0 ? 'text-emerald-600' : 'text-orange-600'}`}>
-                                {formatEuro(res)}
-                              </TableCell>
-                            </TableRow>
+                            <>
+                              {rows.map((r) => (
+                                <TableRow key={r.mod}>
+                                  <TableCell className="font-medium capitalize">{r.mod}</TableCell>
+                                  <TableCell className="text-right text-green-600">{formatEuro(r.rev)}</TableCell>
+                                  <TableCell className="text-right text-red-600">{formatEuro(r.dep)}</TableCell>
+                                  <TableCell className={`text-right font-bold ${r.res >= 0 ? 'text-emerald-600' : 'text-orange-600'}`}>
+                                    {formatEuro(r.res)}
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                              <TableRow className="border-t-2">
+                                <TableCell className="font-bold">TOTAL</TableCell>
+                                <TableCell className="text-right font-bold text-green-600">{formatEuro(totalRevenus)}</TableCell>
+                                <TableCell className="text-right font-bold text-red-600">{formatEuro(totalDepenses)}</TableCell>
+                                <TableCell className={`text-right font-bold ${totalResultat >= 0 ? 'text-emerald-600' : 'text-orange-600'}`}>
+                                  {formatEuro(totalResultat)}
+                                </TableCell>
+                              </TableRow>
+                            </>
                           )
-                        })}
-                        <TableRow className="border-t-2">
-                          <TableCell className="font-bold">TOTAL</TableCell>
-                          <TableCell className="text-right font-bold text-green-600">{formatEuro(stats.revenus)}</TableCell>
-                          <TableCell className="text-right font-bold text-red-600">{formatEuro(stats.depenses)}</TableCell>
-                          <TableCell className={`text-right font-bold ${stats.benefice >= 0 ? 'text-emerald-600' : 'text-orange-600'}`}>
-                            {formatEuro(stats.benefice)}
-                          </TableCell>
-                        </TableRow>
+                        })()}
                       </TableBody>
                     </Table>
                   </CardContent>
