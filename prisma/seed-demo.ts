@@ -382,14 +382,20 @@ async function seedBoutique(userId: string) {
       }
     })
     total = lignesData.reduce((sum, l) => sum + l.total, 0)
-    // Numéro de commande unique global → suffixe si clone sur un autre compte
-    const numero = process.env.DEMO_EMAIL_OVERRIDE ? `${c.num}-${userId.slice(-4)}` : c.num
+    // QA 2026-05-15 — Bug #17 : ancien suffixe `-${year}-like` produisait
+    // "CMD-2026-0014-2026". On utilise désormais un préfixe "ADM-" en
+    // tête (admin) pour le clone, qui ne ressemble pas à une année.
+    const numero = process.env.DEMO_EMAIL_OVERRIDE ? `ADM-${userId.slice(-4)}-${c.num}` : c.num
     const cmd = await prisma.commandeBoutique.create({
       data: { userId, boutiqueId: boutique.id, numero, clientNom: c.client, clientEmail: `${c.client.toLowerCase().replace(/\s+/g, ".")}@example.fr`, total, statut: c.statut, createdAt: d(c.date), updatedAt: d(c.date), lignes: { create: lignesData } },
     })
     if (c.statut === "livree") {
       await prisma.venteManuelle.create({
-        data: { userId, date: d(c.date), categorie: "legumes", description: `Commande boutique ${c.num} — ${c.client}`, montant: total, montantHT: total, montantTVA: 0, tauxTVA: 0, module: "general", paye: true, sourceType: "commande_boutique", sourceId: cmd.id },
+        // QA 2026-05-15 — Bug #19 : `module: "general"` faisait que les
+        // commandes boutique remontaient sous "General" côté compta,
+        // créant un écart entre total revenus et somme par module
+        // (Bug #3). On rattache désormais au module "boutique".
+        data: { userId, date: d(c.date), categorie: "legumes", description: `Commande boutique ${c.num} — ${c.client}`, montant: total, montantHT: total, montantTVA: 0, tauxTVA: 0, module: "boutique", paye: true, sourceType: "commande_boutique", sourceId: cmd.id },
       })
     }
   }

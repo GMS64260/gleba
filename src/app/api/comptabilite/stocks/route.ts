@@ -9,6 +9,7 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { calculerStockOeufs } from '@/lib/stocks-helpers'
 import { computeStocksTotaux, moyennePrix } from '@/lib/stocks/agregation'
+import { prixReferenceKg, PRIX_REF_OEUF_UNITAIRE } from '@/lib/stocks/prix-reference'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -191,12 +192,15 @@ export async function GET(request: NextRequest) {
       list.push(v.prixKg)
       prixParArbre.set(v.arbreId, list)
     }
-    // Prix moyen œuf à l'unité (douzaine → /12)
-    const prixOeufUnit = moyennePrix(
-      ventesOeufs.map((v) =>
-        v.unite === 'douzaine' ? v.prixUnitaire / 12 : v.prixUnitaire
-      )
-    )
+    // QA 2026-05-15 — Bug #12 : fallback barème de référence si pas
+    // de vente observée (cf lib/stocks/prix-reference.ts). Sans ça,
+    // la démo affichait "2 268 œufs · 0 €".
+    const prixOeufUnit =
+      moyennePrix(
+        ventesOeufs.map((v) =>
+          v.unite === 'douzaine' ? v.prixUnitaire / 12 : v.prixUnitaire
+        )
+      ) ?? PRIX_REF_OEUF_UNITAIRE
 
     // Récupérer les noms des especes animales
     const especeAnimaleIds = animauxActifs.map(a => a.especeAnimaleId)
@@ -269,12 +273,19 @@ export async function GET(request: NextRequest) {
     })
 
     // Récoltes potager en stock (agrégées par espece)
-    // BUG #7 : fallback sur prix moyen des ventes récentes si pas de prixKg.
+    // BUG #7 : fallback prix moyen des ventes récentes si pas de prixKg.
+    // QA 2026-05-15 — Bug #12 : ajout d'un 3e niveau de fallback sur
+    // le barème de référence (lib prix-reference.ts) pour ne plus
+    // afficher 0 € sur les stocks d'espèces sans historique de vente.
     const recoltesParEspece = new Map<string, { nom: string; totalKg: number; valeur: number; hasPrix: boolean }>()
     recoltesEnStock.forEach(r => {
       const key = r.especeId
       const existing = recoltesParEspece.get(key)
-      const prixFallback = r.prixKg ?? moyennePrix(prixParEspece.get(r.especeId) ?? []) ?? 0
+      const prixFallback =
+        r.prixKg
+        ?? moyennePrix(prixParEspece.get(r.especeId) ?? [])
+        ?? prixReferenceKg(r.especeId)
+        ?? 0
       const val = r.quantite * prixFallback
       const hasPrix = prixFallback > 0
       if (existing) {
@@ -327,7 +338,12 @@ export async function GET(request: NextRequest) {
           : 0)
       const rendement = c.espece.rendement ?? 0
       const estimeKg = surface * rendement
-      const prixMoyen = moyennePrix(prixParEspece.get(key) ?? []) ?? 0
+      // QA 2026-05-15 — Bug #12 : 3 niveaux de fallback (ventes
+      // observées → barème de référence) pour éviter "0 €" parasite.
+      const prixMoyen =
+        moyennePrix(prixParEspece.get(key) ?? [])
+        ?? prixReferenceKg(key)
+        ?? 0
       const valeur = estimeKg * prixMoyen
       const existing = culturesParEspece.get(key)
       if (existing) {
@@ -457,7 +473,13 @@ export async function GET(request: NextRequest) {
     fruitsEnStock.forEach(r => {
       const key = r.arbreId
       const existing = fruitsParArbre.get(key)
-      const prixFallback = r.prixKg ?? moyennePrix(prixParArbre.get(r.arbreId) ?? []) ?? 0
+      // QA 2026-05-15 — Bug #12 : fallback barème par espèce d'arbre
+      // (Pommier, Poirier…) si pas de vente observée pour cet arbre.
+      const prixFallback =
+        r.prixKg
+        ?? moyennePrix(prixParArbre.get(r.arbreId) ?? [])
+        ?? prixReferenceKg(r.arbre?.espece ?? null)
+        ?? 0
       const val = r.quantite * prixFallback
       const hasPrix = prixFallback > 0
       if (existing) {

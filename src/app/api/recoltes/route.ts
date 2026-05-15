@@ -187,7 +187,15 @@ export async function POST(request: NextRequest) {
         )
       : null
 
-    // Création de la recolte + mise à jour culture en transaction
+    // Création de la recolte + mise à jour culture + INCRÉMENT STOCK
+    // en transaction atomique.
+    //
+    // QA 2026-05-15 — Bug #7 : la création d'une `Recolte` ne touchait
+    // pas `UserStockEspece`, donc l'écran Stocks Maraîchage restait à
+    // 0 article alors qu'on avait 90 kg récoltés. On incrémente
+    // désormais l'inventaire de l'espèce à chaque récolte en_stock.
+    // Statut "vendu" / "consomme" / "perte" → pas d'incrément (la
+    // récolte sort directement, pas en stock).
     const recolte = await prisma.$transaction(async (tx) => {
       const newRecolte = await tx.recolte.create({
         data: {
@@ -205,6 +213,28 @@ export async function POST(request: NextRequest) {
         await tx.culture.update({
           where: { id: data.cultureId },
           data: { recolteFaite: true },
+        })
+      }
+
+      if (newRecolte.statut === 'en_stock' && newRecolte.quantite > 0) {
+        const userId = session!.user.id
+        const existing = await tx.userStockEspece.findUnique({
+          where: { userId_especeId: { userId, especeId: data.especeId } },
+          select: { inventaire: true },
+        })
+        const nouvelInventaire = (existing?.inventaire ?? 0) + newRecolte.quantite
+        await tx.userStockEspece.upsert({
+          where: { userId_especeId: { userId, especeId: data.especeId } },
+          create: {
+            userId,
+            especeId: data.especeId,
+            inventaire: nouvelInventaire,
+            dateInventaire: dateRecolte,
+          },
+          update: {
+            inventaire: nouvelInventaire,
+            dateInventaire: dateRecolte,
+          },
         })
       }
 

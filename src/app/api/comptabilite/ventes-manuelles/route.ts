@@ -8,6 +8,7 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { createVenteManuelleSchema, updateVenteManuelleSchema } from '@/lib/validations/vente-manuelle'
 import { invalidateKpi } from '@/lib/kpi'
+import { ensureClientForUser } from '@/lib/comptabilite/ensure-client'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -99,6 +100,18 @@ export async function POST(request: NextRequest) {
           throw new Error(`Client ${rest.clientId} introuvable pour ce compte`)
         }
       }
+      // QA 2026-05-15 — Bug #6 : auto-création du client si on a juste
+      // un clientNom (typiquement saisie rapide marché/AMAP). Le find-
+      // or-create est idempotent, donc pas de doublon si le client
+      // existait déjà.
+      let resolvedClientId: number | null = rest.clientId ?? null
+      if (!resolvedClientId && rest.clientNom) {
+        resolvedClientId = await ensureClientForUser(
+          userId,
+          { nom: rest.clientNom },
+          tx
+        )
+      }
       return tx.venteManuelle.create({
         data: {
           userId,
@@ -112,7 +125,7 @@ export async function POST(request: NextRequest) {
           montantHT,
           montantTVA,
           montant,
-          clientId: rest.clientId ?? null,
+          clientId: resolvedClientId,
           clientNom: rest.clientNom ?? null,
           module: rest.module ?? null,
           paye: rest.paye,
