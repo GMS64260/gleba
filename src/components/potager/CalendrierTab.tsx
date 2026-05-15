@@ -141,11 +141,14 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
   }, [year])
 
   // Charger tâches
+  // QA Camille 2026-05-15 — Bug #2 : on inclut `year` pour que l'API
+  // filtre les cultures concernées sur l'année sélectionnée
+  // (sinon les tâches restent figées sur l'année courante).
   const fetchTaches = React.useCallback(async () => {
     setLoadingTaches(true)
     try {
       const res = await fetch(
-        `/api/taches?start=${weekStart.toISOString()}&end=${weekEnd.toISOString()}`
+        `/api/taches?year=${year}&start=${weekStart.toISOString()}&end=${weekEnd.toISOString()}`
       )
       if (res.ok) {
         const result = await res.json()
@@ -156,7 +159,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
     } finally {
       setLoadingTaches(false)
     }
-  }, [weekStart, weekEnd])
+  }, [year, weekStart, weekEnd])
 
   React.useEffect(() => {
     fetchTaches()
@@ -364,7 +367,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <CardDescription className="text-amber-100 text-xs flex items-center gap-1 cursor-help">
-                    Recoltes {year}
+                    Récoltes {year}
                     <Info className="h-3 w-3 opacity-80" />
                   </CardDescription>
                 </TooltipTrigger>

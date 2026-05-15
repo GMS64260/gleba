@@ -205,7 +205,7 @@ function RecoltesPrevuesContent() {
           <CardHeader>
             <CardTitle>Récoltes mensuelles prévues</CardTitle>
             <CardDescription>
-              Quantite en kg par mois pour {annee}
+              Quantité en kg par mois pour {annee}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -242,8 +242,8 @@ function RecoltesPrevuesContent() {
                   <TableRow>
                     <TableHead>Mois</TableHead>
                     <TableHead>Espèces</TableHead>
-                    <TableHead className="text-right">Quantite (kg)</TableHead>
-                    <TableHead className="text-right">Surface (m2)</TableHead>
+                    <TableHead className="text-right">Quantité (kg)</TableHead>
+                    <TableHead className="text-right">Surface (m²)</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
