@@ -26,14 +26,10 @@ export async function GET(
 
     // Audit Marc 2026-05-14 — Bug 13 : compteur cultures par tenant
     // (cf. /api/itps GET pour le détail du bug).
-    const itp = await prisma.iTP.findUnique({
+    let itp = await prisma.iTP.findUnique({
       where: { id },
       include: {
-        espece: {
-          include: {
-            famille: true,
-          },
-        },
+        espece: { include: { famille: true } },
         _count: {
           select: {
             cultures: { where: { userId } },
@@ -43,9 +39,30 @@ export async function GET(
       },
     })
 
+    // BUG #9 (audit Marc 2026-05-15) : si l'URL utilise le NOM d'espèce
+    // (ex. /maraichage/itps/Tomate) plutôt qu'un ID exact d'ITP, on
+    // tente un fallback : premier ITP référencé pour cette espèce
+    // (le plus long en durée de culture = le plus représentatif).
+    // Évite un toast d'erreur frustrant quand le user devine l'URL.
+    if (!itp) {
+      itp = await prisma.iTP.findFirst({
+        where: { especeId: id },
+        include: {
+          espece: { include: { famille: true } },
+          _count: {
+            select: {
+              cultures: { where: { userId } },
+              rotationsDetails: true,
+            },
+          },
+        },
+        orderBy: { dureeCulture: 'desc' },
+      })
+    }
+
     if (!itp) {
       return NextResponse.json(
-        { error: `ITP "${id}" non trouvé` },
+        { error: `ITP "${id}" non trouvé. Essayez la liste /maraichage/itps pour un identifiant exact.` },
         { status: 404 }
       )
     }

@@ -262,11 +262,22 @@ function TachesContent() {
         <CardTitle className="flex items-center gap-2 text-base">
           <Icon className={`h-5 w-5 ${iconColor}`} />
           {title}
-          {items.length > 0 && (
-            <Badge variant="secondary" className="ml-auto">
-              {items.filter(i => !i.fait).length}/{items.length}
-            </Badge>
-          )}
+          {items.length > 0 && (() => {
+            // BUG #17 (audit Marc 2026-05-15) : « Semis à faire 0/1 Haricot
+            // vert barré » — ambigu. L'éleveur lit « 0 sur 1 » comme s'il
+            // restait des choses à faire alors qu'avec 0/1 + barré, tout est
+            // fait. On bascule en « N restant(s) / total » (plus universel),
+            // et on affiche « Tout fait ✓ » quand 0 restant.
+            const restants = items.filter(i => !i.fait).length
+            return (
+              <Badge
+                variant={restants === 0 ? 'default' : 'secondary'}
+                className={`ml-auto ${restants === 0 ? 'bg-green-100 text-green-800 hover:bg-green-100' : ''}`}
+              >
+                {restants === 0 ? `Tout fait ✓ (${items.length})` : `${restants} restant${restants > 1 ? 's' : ''} / ${items.length}`}
+              </Badge>
+            )
+          })()}
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -422,7 +433,7 @@ function TachesContent() {
         {data && (
           <>
             <TaskCard
-              title="Semis a faire"
+              title="Semis à faire"
               icon={Sprout}
               iconColor="text-orange-600"
               items={data.semis}
@@ -453,7 +464,7 @@ function TachesContent() {
               <CardHeader className="pb-2">
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Droplets className="h-5 w-5 text-cyan-600" />
-                  A irriguer
+                  À irriguer
                   {data.irrigation.length > 0 && (
                     <Badge variant="secondary" className="ml-auto">
                       {data.irrigation.length}
