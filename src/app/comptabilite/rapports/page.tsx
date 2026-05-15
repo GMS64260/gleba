@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { useToast } from "@/hooks/use-toast"
 import {
   BarChart,
@@ -92,9 +93,41 @@ interface TVAData {
     nbVentes: number
     nbFactures: number
     nbDepenses: number
+    nbVentesElevage?: number
+    nbRecoltesPotager?: number
+    nbRecoltesArbres?: number
+    nbVenteBois?: number
+    nbAbattages?: number
+    nbConsommationsAliments?: number
+    nbFertilisations?: number
     nbInfereesCollectees?: number
     nbInfereesDeductibles?: number
+    inferencesBreakdown?: {
+      ventesManuelles: number
+      facturesAnciennes: number
+      ventesElevage: number
+      recoltesPotager: number
+      recoltesArbres: number
+      venteBois: number
+      venteAbattage: number
+      depensesManuelles: number
+      consommationsAliments: number
+      fertilisations: number
+    }
   }
+}
+
+const INFERENCE_LABELS: Record<string, string> = {
+  ventesManuelles: 'Ventes manuelles sans taux saisi',
+  facturesAnciennes: 'Factures pré-PROMPT 14C (TVA 5,5 % par défaut)',
+  ventesElevage: 'Ventes élevage (5,5 %)',
+  recoltesPotager: 'Récoltes potager (5,5 %)',
+  recoltesArbres: 'Récoltes verger (5,5 %)',
+  venteBois: 'Ventes bois (10 %)',
+  venteAbattage: 'Abattages (5,5 %)',
+  depensesManuelles: 'Dépenses manuelles sans taux saisi',
+  consommationsAliments: 'Consommations d’aliments (10 %)',
+  fertilisations: 'Fertilisations (20 %)',
 }
 
 export default function RapportsPage() {
@@ -638,9 +671,45 @@ export default function RapportsPage() {
                     </Button>
                   </a>
                   {tvaData?.details && ((tvaData.details.nbInfereesCollectees ?? 0) > 0 || (tvaData.details.nbInfereesDeductibles ?? 0) > 0) && (
-                    <span className="text-xs text-amber-700 bg-amber-50 px-2 py-1 rounded inline-flex items-center ml-auto">
-                      ⚠ {(tvaData.details.nbInfereesCollectees ?? 0) + (tvaData.details.nbInfereesDeductibles ?? 0)} transaction(s) avec TVA inférée
-                    </span>
+                    // BUG #20 (audit compta 2026-05-15) — Avant : badge
+                    // « X transactions avec TVA inférée » sans action possible,
+                    // le comptable ne savait pas quoi vérifier. Maintenant
+                    // c'est un tooltip qui détaille la provenance des
+                    // inférences (élevage / récoltes / bois / aliments / etc.)
+                    // pour qu'il puisse remonter à la source.
+                    <TooltipProvider delayDuration={100}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            className="text-xs text-amber-700 bg-amber-50 hover:bg-amber-100 px-2 py-1 rounded inline-flex items-center ml-auto cursor-help underline decoration-dotted decoration-amber-600 underline-offset-2"
+                          >
+                            ⚠ {(tvaData.details.nbInfereesCollectees ?? 0) + (tvaData.details.nbInfereesDeductibles ?? 0)} transaction(s) avec TVA inférée
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom" align="end" className="max-w-md text-left">
+                          <p className="font-semibold mb-2">TVA inférée — détail par source</p>
+                          {tvaData.details.inferencesBreakdown ? (
+                            <ul className="space-y-1 text-xs">
+                              {Object.entries(tvaData.details.inferencesBreakdown)
+                                .filter(([, n]) => n > 0)
+                                .map(([source, n]) => (
+                                  <li key={source} className="flex items-baseline gap-2">
+                                    <span className="font-bold w-7 text-right">{n}</span>
+                                    <span className="text-slate-100">{INFERENCE_LABELS[source] ?? source}</span>
+                                  </li>
+                                ))}
+                            </ul>
+                          ) : (
+                            <p className="text-xs text-slate-300">Détail indisponible</p>
+                          )}
+                          <p className="mt-2 text-[10px] text-slate-300">
+                            L’inférence applique un taux par défaut faute de taux saisi à la source.
+                            Saisir le taux dans le formulaire d’origine pour éviter cette approximation.
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   )}
                 </CardContent>
               </Card>

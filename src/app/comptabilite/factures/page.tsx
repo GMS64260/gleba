@@ -593,7 +593,21 @@ export default function FacturesPage() {
                                     : "bg-blue-100 text-blue-800"
                               }
                             >
-                              {f.statut}
+                              {/* BUG #15 : libellé FR accentué pour l'affichage,
+                                  le statut canonique reste « payee » côté data. */}
+                              {f.statut === "payee"
+                                ? "Payée"
+                                : f.statut === "annulee"
+                                  ? "Annulée"
+                                  : f.statut === "emise"
+                                    ? "Émise"
+                                    : f.statut === "envoyee"
+                                      ? "Envoyée"
+                                      : f.statut === "partielle"
+                                        ? "Partielle"
+                                        : f.statut === "brouillon"
+                                          ? "Brouillon"
+                                          : f.statut}
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right">

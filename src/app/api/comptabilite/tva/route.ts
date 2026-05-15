@@ -176,6 +176,21 @@ export async function GET(request: NextRequest) {
     // Compteurs d'audit pour signaler à l'UI le périmètre des inférences.
     let nbInfereesCollectees = 0
     let nbInfereesDeductibles = 0
+    // BUG #20 (audit compta 2026-05-15) — breakdown par source pour
+    // rendre le badge « X transactions avec TVA inférée » exploitable
+    // (tooltip détaillé sur quelle source = combien d'inférences).
+    const inferencesBreakdown: Record<string, number> = {
+      ventesManuelles: 0,
+      facturesAnciennes: 0,
+      ventesElevage: 0,
+      recoltesPotager: 0,
+      recoltesArbres: 0,
+      venteBois: 0,
+      venteAbattage: 0,
+      depensesManuelles: 0,
+      consommationsAliments: 0,
+      fertilisations: 0,
+    }
 
     function addCollectee(taux: string, ht: number, tva: number) {
       if (!tvaCollectee[taux]) tvaCollectee[taux] = { base: 0, tva: 0 }
@@ -194,7 +209,10 @@ export async function GET(request: NextRequest) {
       const ht = v.montantHT ?? (v.montant / (1 + (v.tauxTVA ?? 5.5) / 100))
       const tva = v.montantTVA ?? (v.montant - ht)
       addCollectee(taux, ht, tva)
-      if (v.tvaInferee) nbInfereesCollectees++
+      if (v.tvaInferee) {
+        nbInfereesCollectees++
+        inferencesBreakdown.ventesManuelles++
+      }
     })
 
     // Factures : utilise totauxParTauxTva si présent (PROMPT 14C),
@@ -210,6 +228,7 @@ export async function GET(request: NextRequest) {
         // Fallback pour factures antérieures à 14C
         addCollectee('5.5', sign * f.totalHT, sign * f.totalTVA)
         nbInfereesCollectees++
+        inferencesBreakdown.facturesAnciennes++
       }
     })
 
@@ -223,6 +242,7 @@ export async function GET(request: NextRequest) {
       const ht = ttc / (1 + 5.5 / 100)
       addCollectee('5.5', ht, ttc - ht)
       nbInfereesCollectees++
+      inferencesBreakdown.ventesElevage++
     })
     recoltesPotager.forEach(r => {
       const ttc = r.prixTotal || 0
@@ -230,6 +250,7 @@ export async function GET(request: NextRequest) {
         const ht = ttc / (1 + 5.5 / 100)
         addCollectee('5.5', ht, ttc - ht)
         nbInfereesCollectees++
+        inferencesBreakdown.recoltesPotager++
       }
     })
     recoltesArbres.forEach(r => {
@@ -238,6 +259,7 @@ export async function GET(request: NextRequest) {
         const ht = ttc / (1 + 5.5 / 100)
         addCollectee('5.5', ht, ttc - ht)
         nbInfereesCollectees++
+        inferencesBreakdown.recoltesArbres++
       }
     })
     venteBois.forEach(b => {
@@ -246,6 +268,7 @@ export async function GET(request: NextRequest) {
         const ht = ttc / (1 + 10 / 100)
         addCollectee('10', ht, ttc - ht)
         nbInfereesCollectees++
+        inferencesBreakdown.venteBois++
       }
     })
     venteAbattage.forEach(a => {
@@ -254,6 +277,7 @@ export async function GET(request: NextRequest) {
         const ht = ttc / (1 + 5.5 / 100)
         addCollectee('5.5', ht, ttc - ht)
         nbInfereesCollectees++
+        inferencesBreakdown.venteAbattage++
       }
     })
 
@@ -263,7 +287,10 @@ export async function GET(request: NextRequest) {
       const ht = d.montantHT ?? (d.montant / (1 + (d.tauxTVA ?? 20) / 100))
       const tva = d.montantTVA ?? (d.montant - ht)
       addDeductible(taux, ht, tva)
-      if (d.tvaInferee) nbInfereesDeductibles++
+      if (d.tvaInferee) {
+        nbInfereesDeductibles++
+        inferencesBreakdown.depensesManuelles++
+      }
     })
 
     // Consommation aliments (déductible 10%) — inférence en attendant taux à la source
@@ -274,6 +301,7 @@ export async function GET(request: NextRequest) {
         const ht = ttc / (1 + 10 / 100)
         addDeductible('10', ht, ttc - ht)
         nbInfereesDeductibles++
+        inferencesBreakdown.consommationsAliments++
       }
     })
 
@@ -285,6 +313,7 @@ export async function GET(request: NextRequest) {
         const ht = ttc / (1 + 20 / 100)
         addDeductible('20', ht, ttc - ht)
         nbInfereesDeductibles++
+        inferencesBreakdown.fertilisations++
       }
     })
 
@@ -327,6 +356,7 @@ export async function GET(request: NextRequest) {
         nbFertilisations: fertilisations.length,
         nbInfereesCollectees,
         nbInfereesDeductibles,
+        inferencesBreakdown,
       },
     })
   } catch (error) {
