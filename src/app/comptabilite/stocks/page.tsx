@@ -157,7 +157,18 @@ export default function StocksPage() {
             </Card>
             <Card>
               <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Valeur estimée</CardTitle></CardHeader>
-              <CardContent><p className="text-2xl font-bold text-violet-600">{formatEuro(filteredStats.valeurTotale)}</p></CardContent>
+              <CardContent>
+                <p className="text-2xl font-bold text-violet-600">{formatEuro(filteredStats.valeurTotale)}</p>
+                {/* BUG #7 : breakdown par module en sous-titre (toujours visible
+                    plutôt qu'un tooltip qui demande un hover). */}
+                {stats.valeurParModule && (
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    M {formatEuro(stats.valeurParModule.potager || 0)} ·
+                    V {formatEuro(stats.valeurParModule.verger || 0)} ·
+                    E {formatEuro(stats.valeurParModule.elevage || 0)}
+                  </p>
+                )}
+              </CardContent>
             </Card>
             <Card>
               <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Répartition</CardTitle></CardHeader>
