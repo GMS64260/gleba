@@ -800,7 +800,11 @@ function ExistingPlancheSelector({
                   )}
                   {p.surface != null && (
                     <span className="text-muted-foreground text-xs">
-                      - {p.surface.toFixed(0)} m²
+                      {/* BUG #5 (audit Marc 2026-05-15) : avant `toFixed(0)`
+                          arrondissait 9,6 m² à « 10 m² », ce qui faisait
+                          paraître la liste fausse. On conserve 1 décimale
+                          pour matcher l'écran Terrain et le Dashboard. */}
+                      — {p.surface.toFixed(1)} m²
                     </span>
                   )}
                   {p._count && p._count.cultures > 0 && (

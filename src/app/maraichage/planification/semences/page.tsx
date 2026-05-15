@@ -557,21 +557,29 @@ function SemencesContent() {
                 </p>
                 {stats.nbMissing + stats.nbLow > 0 && (
                   <p className="text-sm text-red-600">
-                    {/* BUG-15 : breakdown explicite graines / caïeux, plutôt
-                        qu'un total ambigu qui ne colle pas à la liste */}
+                    {/* BUG-15 + BUG #26 (audit Marc 2026-05-15) : breakdown
+                        explicite graines / caïeux. Accord en nombre :
+                        « manquant » au singulier si total = 1, « manquants »
+                        sinon. */}
                     {stats.nbMissingGraines !== undefined && stats.nbMissingCaieux !== undefined
-                      ? (
-                        <>
-                          {stats.nbMissingGraines} graine(s)
-                          {stats.nbMissingCaieux > 0 && ` + ${stats.nbMissingCaieux} caïeux`} manquant
-                          {(stats.nbLowGraines ?? 0) + (stats.nbLowCaieux ?? 0) > 0 && (
-                            <> · {(stats.nbLowGraines ?? 0)} graine(s)
-                              {(stats.nbLowCaieux ?? 0) > 0 && ` + ${stats.nbLowCaieux} caïeux`} insuffisant
-                            </>
-                          )}
-                        </>
-                      )
-                      : `${stats.nbMissing} manquant · ${stats.nbLow} insuffisant`}
+                      ? (() => {
+                        const totalMiss = stats.nbMissingGraines + stats.nbMissingCaieux
+                        const totalLow = (stats.nbLowGraines ?? 0) + (stats.nbLowCaieux ?? 0)
+                        const manquantWord = totalMiss <= 1 ? 'manquant' : 'manquants'
+                        const insuffisantWord = totalLow <= 1 ? 'insuffisant' : 'insuffisants'
+                        return (
+                          <>
+                            {stats.nbMissingGraines} graine(s)
+                            {stats.nbMissingCaieux > 0 && ` + ${stats.nbMissingCaieux} caïeux`} {manquantWord}
+                            {totalLow > 0 && (
+                              <> · {(stats.nbLowGraines ?? 0)} graine(s)
+                                {(stats.nbLowCaieux ?? 0) > 0 && ` + ${stats.nbLowCaieux} caïeux`} {insuffisantWord}
+                              </>
+                            )}
+                          </>
+                        )
+                      })()
+                      : `${stats.nbMissing} ${stats.nbMissing <= 1 ? 'manquant' : 'manquants'} · ${stats.nbLow} ${stats.nbLow <= 1 ? 'insuffisant' : 'insuffisants'}`}
                   </p>
                 )}
               </CardContent>

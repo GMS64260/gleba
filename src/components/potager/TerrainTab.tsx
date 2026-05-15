@@ -233,7 +233,10 @@ function PlanchesSubTab() {
   return (
     <div className="space-y-3">
       <div className="text-sm text-muted-foreground">
-        {data.length} planches &bull; {totalSurface.toFixed(0)} m2 total
+        {/* BUG #20 (audit Marc 2026-05-15) : header arrondissait à
+            `245 m2` avec « m2 » alors que le Dashboard affichait
+            `244,8 m²`. On garde 1 décimale + m² typographique. */}
+        {data.length} planches &bull; {totalSurface.toFixed(1)} m² total
       </div>
       <DataTable
         columns={columns}
