@@ -40,7 +40,16 @@ export async function GET(request: NextRequest) {
   const end = new Date(exercice, 11, 31, 23, 59, 59)
   const userId = session!.user.id
 
-  const [ventes, depenses, factures, ventesBois, ventesFruits] = await Promise.all([
+  const [
+    ventes,
+    depenses,
+    factures,
+    ventesBois,
+    ventesFruits,
+    ventesElevage,
+    ventesPotager,
+    abattagesVendus,
+  ] = await Promise.all([
     prisma.venteManuelle.findMany({
       where: { userId, date: { gte: start, lte: end }, auto: { not: true } },
       orderBy: { date: 'asc' },
@@ -78,6 +87,38 @@ export async function GET(request: NextRequest) {
       },
       include: { arbre: { select: { espece: true, nom: true } } },
       orderBy: { dateVente: 'asc' },
+    }),
+    // BUG #14 (audit compta 2026-05-15) — Ventes élevage directes
+    // (VenteProduit, type=oeufs/viande/lait/…) SANS facture. Avant elles
+    // étaient comptées via VenteManuelle.auto=true puis FILTRÉES au FEC
+    // (auto != true) → 1 vente perdue.
+    prisma.venteProduit.findMany({
+      where: { userId, date: { gte: start, lte: end }, factureId: null, annule: false },
+      orderBy: { date: 'asc' },
+    }),
+    // BUG #14 — Récoltes potager vendues SANS facture.
+    prisma.recolte.findMany({
+      where: {
+        userId,
+        statut: 'vendu',
+        dateVente: { gte: start, lte: end },
+        prixTotal: { not: null },
+        factureId: null,
+      },
+      include: { espece: { select: { id: true } } },
+      orderBy: { dateVente: 'asc' },
+    }),
+    // BUG #14 — Abattages vendus SANS facture liée.
+    prisma.abattage.findMany({
+      where: {
+        userId,
+        date: { gte: start, lte: end },
+        prixVente: { not: null },
+        factureId: null,
+        annule: false,
+        destination: 'vente',
+      },
+      orderBy: { date: 'asc' },
     }),
   ])
 
@@ -147,6 +188,81 @@ export async function GET(request: NextRequest) {
       montantHT: ht,
       montantTVA: tva,
       clientNom: r.clientNom,
+      paye: true,
+    })
+  }
+
+  // BUG #14 (audit compta 2026-05-15) — Injection des sources élevage,
+  // potager et abattage SANS facture. Avant : ces sources généraient une
+  // VenteManuelle auto qui était ensuite filtrée du FEC → vente perdue.
+  // Maintenant chacune apparaît avec son compte 701 dédié.
+  function categorieElevage(type: string | null): string {
+    switch (type) {
+      case 'oeufs': return 'oeufs'
+      case 'viande': return 'viande'
+      case 'animal_vivant': return 'animaux_vivants'
+      case 'lait': return 'produits_transformes'
+      case 'autre':
+      default: return 'autre'
+    }
+  }
+  for (const v of ventesElevage) {
+    const ttc = v.prixTotal
+    const tauxTVA = 5.5
+    const ht = Math.round((ttc / (1 + tauxTVA / 100)) * 100) / 100
+    const tva = Math.round((ttc - ht) * 100) / 100
+    ventesIn.push({
+      id: 3_000_000 + v.id,
+      date: v.date,
+      description: v.description || `Vente ${v.type} (${v.quantite} ${v.unite})`,
+      categorie: categorieElevage(v.type),
+      modeReglement: null,
+      numeroPiece: `ELEV-${v.id}`,
+      tauxTVA,
+      montant: ttc,
+      montantHT: ht,
+      montantTVA: tva,
+      clientNom: v.client,
+      paye: v.paye,
+    })
+  }
+  for (const r of ventesPotager) {
+    const ttc = r.prixTotal as number
+    const tauxTVA = 5.5
+    const ht = Math.round((ttc / (1 + tauxTVA / 100)) * 100) / 100
+    const tva = Math.round((ttc - ht) * 100) / 100
+    ventesIn.push({
+      id: 4_000_000 + r.id,
+      date: r.dateVente ?? r.date,
+      description: `Vente récolte — ${r.espece?.id || r.especeId || 'lot'} (#${r.id})`,
+      categorie: 'legumes',
+      modeReglement: null,
+      numeroPiece: `RECOLTE-${r.id}`,
+      tauxTVA,
+      montant: ttc,
+      montantHT: ht,
+      montantTVA: tva,
+      clientNom: r.clientNom,
+      paye: true,
+    })
+  }
+  for (const a of abattagesVendus) {
+    const ttc = a.prixVente as number
+    const tauxTVA = 5.5
+    const ht = Math.round((ttc / (1 + tauxTVA / 100)) * 100) / 100
+    const tva = Math.round((ttc - ht) * 100) / 100
+    ventesIn.push({
+      id: 5_000_000 + a.id,
+      date: a.date,
+      description: `Vente viande abattage #${a.id}${a.poidsCarcasse ? ` (${a.poidsCarcasse} kg)` : ''}`,
+      categorie: 'viande',
+      modeReglement: null,
+      numeroPiece: `ABATT-${a.id}`,
+      tauxTVA,
+      montant: ttc,
+      montantHT: ht,
+      montantTVA: tva,
+      clientNom: null, // Abattage n'a pas de clientNom au modèle
       paye: true,
     })
   }
