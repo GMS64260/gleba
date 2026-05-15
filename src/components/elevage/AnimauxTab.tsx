@@ -9,6 +9,7 @@ import Link from "next/link"
 import {
   Bird,
   Plus,
+  Pencil,
   RefreshCw,
   Search,
   Filter,
@@ -52,6 +53,7 @@ import { useToast } from "@/hooks/use-toast"
 interface Animal {
   id: number
   identifiant: string | null
+  typeIdentifiant: string | null
   nom: string | null
   race: string | null
   sexe: string | null
@@ -59,6 +61,10 @@ interface Animal {
   dateArrivee: string | null
   statut: string
   poidsActuel: number | null
+  provenance: string | null
+  nExploitationOrigine: string | null
+  prixAchat: number | null
+  notes: string | null
   especeAnimale: {
     id: string
     nom: string
@@ -81,6 +87,7 @@ interface Lot {
   quantiteActuelle: number
   provenance: string | null
   prixAchatTotal: number | null
+  notes: string | null
   statut: string
   parcelleGeo: { id: string; nom: string } | null
   especeAnimale: { id: string; nom: string; type: string; couleur: string | null }
@@ -148,14 +155,42 @@ function AnimauxSubTab() {
   const [filterEspece, setFilterEspece] = React.useState<string>("all")
   const [filterStatut, setFilterStatut] = React.useState<string>("actif")
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
+  // QA 2026-05-15 — édition par ligne pour les animaux
+  const [editingAnimalId, setEditingAnimalId] = React.useState<number | null>(null)
 
-  const [formData, setFormData] = React.useState({
+  const EMPTY_ANIMAL_FORM = {
     especeAnimaleId: "", identifiant: "", typeIdentifiant: "",
     nom: "", race: "", sexe: "",
     dateNaissance: "", dateArrivee: new Date().toISOString().split('T')[0],
     provenance: "", nExploitationOrigine: "",
     prixAchat: "", poidsActuel: "", notes: "",
-  })
+  }
+  const [formData, setFormData] = React.useState(EMPTY_ANIMAL_FORM)
+
+  const resetAnimalForm = () => {
+    setEditingAnimalId(null)
+    setFormData(EMPTY_ANIMAL_FORM)
+  }
+
+  const handleEditAnimal = (a: Animal) => {
+    setEditingAnimalId(a.id)
+    setFormData({
+      especeAnimaleId: a.especeAnimale.id,
+      identifiant: a.identifiant ?? "",
+      typeIdentifiant: a.typeIdentifiant ?? "",
+      nom: a.nom ?? "",
+      race: a.race ?? "",
+      sexe: a.sexe ?? "",
+      dateNaissance: a.dateNaissance ? a.dateNaissance.split('T')[0] : "",
+      dateArrivee: a.dateArrivee ? a.dateArrivee.split('T')[0] : new Date().toISOString().split('T')[0],
+      provenance: a.provenance ?? "",
+      nExploitationOrigine: a.nExploitationOrigine ?? "",
+      prixAchat: a.prixAchat ? a.prixAchat.toString() : "",
+      poidsActuel: a.poidsActuel ? a.poidsActuel.toString() : "",
+      notes: a.notes ?? "",
+    })
+    setIsDialogOpen(true)
+  }
 
   // QA Julien 2026-05-15 — Bug #9 : on ne filtre plus serveur sur
   // l'espece+race exacte (Lacaune, Sussex…) mais sur l'espèce de base
@@ -187,24 +222,22 @@ function AnimauxSubTab() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
+      const isEdit = editingAnimalId !== null
+      const body = isEdit
+        ? { id: editingAnimalId, ...formData }
+        : formData
       const response = await fetch('/api/elevage/animaux', {
-        method: 'POST',
+        method: isEdit ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(body),
       })
       if (!response.ok) throw new Error('Erreur')
-      toast({ title: "Animal cree" })
+      toast({ title: isEdit ? "Animal mis à jour" : "Animal créé" })
       setIsDialogOpen(false)
-      setFormData({
-        especeAnimaleId: "", identifiant: "", typeIdentifiant: "",
-        nom: "", race: "", sexe: "",
-        dateNaissance: "", dateArrivee: new Date().toISOString().split('T')[0],
-        provenance: "", nExploitationOrigine: "",
-        prixAchat: "", poidsActuel: "", notes: "",
-      })
+      resetAnimalForm()
       fetchData()
     } catch {
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible de créer l'animal" })
+      toast({ variant: "destructive", title: "Erreur", description: "Impossible d'enregistrer" })
     }
   }
 
@@ -410,17 +443,17 @@ function AnimauxSubTab() {
         <Button variant="outline" size="sm" onClick={fetchData}>
           <RefreshCw className="h-4 w-4" />
         </Button>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) resetAnimalForm() }}>
           <DialogTrigger asChild>
-            <Button size="sm">
+            <Button size="sm" onClick={() => setEditingAnimalId(null)}>
               <Plus className="h-4 w-4 mr-1" />
               Ajouter
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-md">
             <DialogHeader>
-              <DialogTitle>Nouvel animal</DialogTitle>
-              <DialogDescription>Ajouter un animal individuel</DialogDescription>
+              <DialogTitle>{editingAnimalId ? "Modifier l'animal" : "Nouvel animal"}</DialogTitle>
+              <DialogDescription>{editingAnimalId ? `Édition de l'animal #${editingAnimalId}` : "Ajouter un animal individuel"}</DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
@@ -502,7 +535,9 @@ function AnimauxSubTab() {
               </div>
               <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
-                <Button type="submit" disabled={!formData.especeAnimaleId}>Créer</Button>
+                <Button type="submit" disabled={!formData.especeAnimaleId}>
+                  {editingAnimalId ? "Mettre à jour" : "Créer"}
+                </Button>
               </div>
             </form>
           </DialogContent>
@@ -574,6 +609,17 @@ function AnimauxSubTab() {
                                 </Link>
                               </TooltipTrigger>
                               <TooltipContent>Fiche animal</TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  onClick={() => handleEditAnimal(animal)}
+                                  className="p-1.5 rounded-md transition-colors bg-slate-100 text-slate-400 hover:bg-amber-100 hover:text-amber-700"
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent>Modifier la saisie</TooltipContent>
                             </Tooltip>
                             <Tooltip>
                               <TooltipTrigger asChild>
@@ -828,13 +874,36 @@ function LotsSubTab() {
   const [especes, setEspeces] = React.useState<EspeceAnimale[]>([])
   const [parcelles, setParcelles] = React.useState<Parcelle[]>([])
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
+  // QA 2026-05-15 — édition par ligne
+  const [editingLotId, setEditingLotId] = React.useState<number | null>(null)
 
-  const [formData, setFormData] = React.useState({
+  const EMPTY_LOT_FORM = {
     especeAnimaleId: "", nom: "",
     dateArrivee: new Date().toISOString().split('T')[0],
     quantiteInitiale: "", provenance: "", prixAchatTotal: "", notes: "",
     parcelleGeoId: "",
-  })
+  }
+  const [formData, setFormData] = React.useState(EMPTY_LOT_FORM)
+
+  const resetLotForm = () => {
+    setEditingLotId(null)
+    setFormData(EMPTY_LOT_FORM)
+  }
+
+  const handleEditLot = (lot: Lot) => {
+    setEditingLotId(lot.id)
+    setFormData({
+      especeAnimaleId: lot.especeAnimale.id,
+      nom: lot.nom ?? "",
+      dateArrivee: lot.dateArrivee ? lot.dateArrivee.split('T')[0] : new Date().toISOString().split('T')[0],
+      quantiteInitiale: lot.quantiteInitiale.toString(),
+      provenance: lot.provenance ?? "",
+      prixAchatTotal: lot.prixAchatTotal ? lot.prixAchatTotal.toString() : "",
+      notes: lot.notes ?? "",
+      parcelleGeoId: lot.parcelleGeo?.id ?? "",
+    })
+    setIsDialogOpen(true)
+  }
 
   // Dialog abattage lot
   const [abatLotDialog, setAbatLotDialog] = React.useState<Lot | null>(null)
@@ -896,23 +965,23 @@ function LotsSubTab() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
+      const isEdit = editingLotId !== null
+      const body = isEdit ? { id: editingLotId, ...formData } : formData
       const response = await fetch('/api/elevage/lots', {
-        method: 'POST',
+        method: isEdit ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(body),
       })
       if (!response.ok) throw new Error('Erreur')
-      toast({ title: "Lot cree", description: `${formData.quantiteInitiale} animaux ajoutes` })
-      setIsDialogOpen(false)
-      setFormData({
-        especeAnimaleId: "", nom: "",
-        dateArrivee: new Date().toISOString().split('T')[0],
-        quantiteInitiale: "", provenance: "", prixAchatTotal: "", notes: "",
-        parcelleGeoId: "",
+      toast({
+        title: isEdit ? "Lot mis à jour" : "Lot créé",
+        description: isEdit ? undefined : `${formData.quantiteInitiale} animaux ajoutés`,
       })
+      setIsDialogOpen(false)
+      resetLotForm()
       fetchData()
     } catch {
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible de créer le lot" })
+      toast({ variant: "destructive", title: "Erreur", description: "Impossible d'enregistrer" })
     }
   }
 
@@ -926,14 +995,14 @@ function LotsSubTab() {
           <Button variant="outline" size="sm" onClick={fetchData}>
             <RefreshCw className="h-4 w-4" />
           </Button>
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) resetLotForm() }}>
             <DialogTrigger asChild>
-              <Button size="sm"><Plus className="h-4 w-4 mr-1" />Nouveau lot</Button>
+              <Button size="sm" onClick={() => setEditingLotId(null)}><Plus className="h-4 w-4 mr-1" />Nouveau lot</Button>
             </DialogTrigger>
             <DialogContent className="max-w-md">
               <DialogHeader>
-                <DialogTitle>Créer un lot</DialogTitle>
-                <DialogDescription>Groupe d'animaux (volailles, etc.)</DialogDescription>
+                <DialogTitle>{editingLotId ? "Modifier le lot" : "Créer un lot"}</DialogTitle>
+                <DialogDescription>{editingLotId ? `Édition du lot #${editingLotId}` : "Groupe d'animaux (volailles, etc.)"}</DialogDescription>
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-2">
@@ -983,7 +1052,9 @@ function LotsSubTab() {
                 </div>
                 <div className="flex justify-end gap-2 pt-4">
                   <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
-                  <Button type="submit" disabled={!formData.especeAnimaleId || !formData.quantiteInitiale}>Créer</Button>
+                  <Button type="submit" disabled={!formData.especeAnimaleId || !formData.quantiteInitiale}>
+                    {editingLotId ? "Mettre à jour" : "Créer"}
+                  </Button>
                 </div>
               </form>
             </DialogContent>
@@ -1051,21 +1122,34 @@ function LotsSubTab() {
                     <TableCell className="text-right">{lot.prixAchatTotal ? `${lot.prixAchatTotal.toFixed(2)} \u20ac` : '-'}</TableCell>
                     <TableCell><Badge className={STATUT_COLORS[lot.statut] || ''}>{lot.statut}</Badge></TableCell>
                     <TableCell>
-                      {lot.statut === 'actif' && lot.quantiteActuelle > 0 && (
+                      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                         <TooltipProvider delayDuration={100}>
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <button
-                                onClick={() => { setAbatLotForm(f => ({ ...f, date: new Date().toISOString().split('T')[0], quantite: "1" })); setAbatLotDialog(lot) }}
-                                className="p-1.5 rounded-md transition-colors bg-slate-100 text-slate-400 hover:bg-red-100 hover:text-red-600"
+                                onClick={() => handleEditLot(lot)}
+                                className="p-1.5 rounded-md transition-colors bg-slate-100 text-slate-400 hover:bg-amber-100 hover:text-amber-700"
                               >
-                                <Scissors className="h-3.5 w-3.5" />
+                                <Pencil className="h-3.5 w-3.5" />
                               </button>
                             </TooltipTrigger>
-                            <TooltipContent>Abattage</TooltipContent>
+                            <TooltipContent>Modifier le lot</TooltipContent>
                           </Tooltip>
+                          {lot.statut === 'actif' && lot.quantiteActuelle > 0 && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  onClick={() => { setAbatLotForm(f => ({ ...f, date: new Date().toISOString().split('T')[0], quantite: "1" })); setAbatLotDialog(lot) }}
+                                  className="p-1.5 rounded-md transition-colors bg-slate-100 text-slate-400 hover:bg-red-100 hover:text-red-600"
+                                >
+                                  <Scissors className="h-3.5 w-3.5" />
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent>Abattage</TooltipContent>
+                            </Tooltip>
+                          )}
                         </TooltipProvider>
-                      )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

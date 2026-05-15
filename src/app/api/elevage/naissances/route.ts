@@ -147,6 +147,56 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// QA 2026-05-15 — édition par ligne depuis l'onglet Naissances.
+export async function PATCH(request: NextRequest) {
+  const { session, error } = await requireAuthApi()
+  if (error) return error
+
+  try {
+    const body = await request.json()
+    const id = parseInt(body.id, 10)
+    if (Number.isNaN(id)) {
+      return NextResponse.json({ error: 'ID invalide' }, { status: 400 })
+    }
+    const userId = session.user.id
+    const existing = await prisma.naissanceAnimale.findFirst({
+      where: { id, userId },
+    })
+    if (!existing) {
+      return NextResponse.json({ error: 'Naissance introuvable' }, { status: 404 })
+    }
+    const parsed = naissanceSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: 'Données invalides', details: parsed.error.flatten() },
+        { status: 400 }
+      )
+    }
+    const updated = await prisma.naissanceAnimale.update({
+      where: { id },
+      data: {
+        mereId: parsed.data.mereId ?? null,
+        pereIdentifiant: parsed.data.pereIdentifiant ?? null,
+        date: parsed.data.date ?? existing.date,
+        nombreNes: parsed.data.nombreNes,
+        nombreVivants: parsed.data.nombreVivants,
+        nombreMales: parsed.data.nombreMales ?? null,
+        nombreFemelles: parsed.data.nombreFemelles ?? null,
+        poidsTotal: parsed.data.poidsTotal ?? null,
+        notes: parsed.data.notes ?? null,
+      },
+      include: { mere: { select: { id: true, nom: true, identifiant: true } } },
+    })
+    return NextResponse.json({ data: updated })
+  } catch (error) {
+    console.error('PATCH /api/elevage/naissances error:', error)
+    return NextResponse.json(
+      { error: 'Erreur lors de la mise à jour', details: "Erreur interne du serveur" },
+      { status: 500 }
+    )
+  }
+}
+
 export async function DELETE(request: NextRequest) {
   const { session, error } = await requireAuthApi()
   if (error) return error
