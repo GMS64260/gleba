@@ -13,7 +13,7 @@ import { cleanReferentielName, normalizeReferentielKey } from '@/lib/normalize'
 
 // GET /api/especes - Référentiel global (lecture)
 export async function GET(request: NextRequest) {
-  const { error } = await requireAuthApi()
+  const { error, session } = await requireAuthApi()
   if (error) return error
 
   try {
@@ -73,12 +73,16 @@ export async function GET(request: NextRequest) {
       where.aPlanifier = aPlanifier === 'true'
     }
 
-    // Audit Marc Bug #6 — _count.cultures filtré sur année + non-terminée
-    // pour le mode "saison". Sinon cumul historique.
+    // Audit Marc Bug #6 + BUG #18 (audit 2026-05-15) — _count.cultures
+    // filtré sur année + non-terminée pour le mode "saison". Sinon
+    // cumul historique. CRUCIAL : on filtre TOUJOURS par `userId` du
+    // tenant courant — sans ça, Marc voyait « Tomate 31 cultures »
+    // car le compteur agrégeait toutes les cultures de tous les
+    // utilisateurs (admin + démo + autres) pour cette espèce.
     const cultureCountWhere =
       cultureCount === 'saison'
-        ? { annee: saisonAnnee, terminee: null }
-        : undefined
+        ? { userId: session!.user.id, annee: saisonAnnee, terminee: null }
+        : { userId: session!.user.id }
 
     // Requête avec comptage
     const [especes, total] = await Promise.all([
@@ -89,7 +93,7 @@ export async function GET(request: NextRequest) {
           _count: {
             select: {
               varietes: true,
-              cultures: cultureCountWhere ? { where: cultureCountWhere } : true,
+              cultures: { where: cultureCountWhere },
             },
           },
         },
