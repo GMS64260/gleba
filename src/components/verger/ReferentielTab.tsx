@@ -171,7 +171,8 @@ const columns: ColumnDef<EspeceWithRelations>[] = [
           {famille.couleur && (
             <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: famille.couleur }} />
           )}
-          <span className="text-sm" title={famille.id}>{famille.nomFr || famille.id}</span>
+          {/* BUG #19+#23 — latin partout (id) + tooltip français */}
+          <span className="text-sm" title={famille.nomFr || undefined}>{famille.id}</span>
         </div>
       )
     },

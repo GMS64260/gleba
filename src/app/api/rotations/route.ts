@@ -12,8 +12,9 @@ import { requireAuthApi } from '@/lib/auth-utils'
 
 // GET /api/rotations
 export async function GET(request: NextRequest) {
-  const { error } = await requireAuthApi()
+  const { error, session } = await requireAuthApi()
   if (error) return error
+  const userId = session!.user.id
 
   try {
     const { searchParams } = new URL(request.url)
@@ -75,7 +76,12 @@ export async function GET(request: NextRequest) {
           },
           _count: {
             select: {
-              planches: true,
+              // BUG #16 (audit Marc 2026-05-15) : avant on comptait toutes
+              // les planches reliées à la rotation (tous users) → on tombait
+              // souvent à 0 pour le tenant courant et Marc voyait
+              // « 0 planches » sur ses 5 rotations actives. On filtre
+              // désormais sur `userId` du tenant.
+              planches: { where: { userId } },
             },
           },
         },

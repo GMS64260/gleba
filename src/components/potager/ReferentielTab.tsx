@@ -99,7 +99,8 @@ const columns: ColumnDef<EspeceWithRelations>[] = [
           {famille.couleur && (
             <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: famille.couleur }} />
           )}
-          <span className="text-sm" title={famille.id}>{famille.nomFr || famille.id}</span>
+          {/* BUG #19+#23 — latin partout (id) + tooltip français */}
+          <span className="text-sm" title={famille.nomFr || undefined}>{famille.id}</span>
         </div>
       )
     },
@@ -132,7 +133,15 @@ const columns: ColumnDef<EspeceWithRelations>[] = [
   },
   {
     accessorKey: "_count.cultures",
-    header: "Cultures",
+    // BUG #18 (audit Marc 2026-05-15) : « Cultures 31 » sans contexte
+    // pouvait laisser croire à un cumul historique trompeur. Le mode
+    // par défaut est désormais « saison » (année en cours, cultures
+    // non terminées) ET filtré par user — le header le dit explicitement.
+    header: () => (
+      <span title="Cultures de l'année en cours, non terminées (votre tenant)">
+        Cultures saison
+      </span>
+    ),
     cell: ({ getValue }) => getValue() || 0,
   },
 ]

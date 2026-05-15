@@ -132,15 +132,15 @@ const columns: ColumnDef<EspeceWithRelations>[] = [
   {
     accessorKey: "famille.id",
     header: "Famille",
-    // Préfère le nom français (Brassicacées) avec le latin en tooltip.
-    // L'ID en BDD reste latin (APG IV) depuis l'audit Marc.
+    // BUG #19+#23 (audit Marc 2026-05-15) — Avant : liste affichait
+    // « Solanacées » (français), édition affichait « Solanaceae » (latin)
+    // → incohérence reportée par Marc. Désormais : latin partout
+    // (APG IV, convention agronomique standard), français en tooltip.
     cell: ({ row }) => {
       const f = row.original.famille
       if (!f) return "-"
       if (f.nomFr) {
-        return (
-          <span title={f.id}>{f.nomFr}</span>
-        )
+        return <span title={f.nomFr}>{f.id}</span>
       }
       return f.id
     },

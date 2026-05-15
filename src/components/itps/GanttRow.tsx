@@ -16,11 +16,14 @@ interface ITPWithEspece {
   espece?: {
     id: string
     couleur: string | null
+    /** BUG #15 — mode_semis pour différencier pépinière vs caïeux/bulbe direct */
+    modeSemis?: string | null
   } | null
   semaineSemis: number | null
   semainePlantation: number | null
   semaineRecolte: number | null
   dureeRecolte: number | null
+  dureePepiniere?: number | null
   typePlanche: string | null
   notes: string | null
 }
@@ -31,9 +34,26 @@ interface GanttRowProps {
 }
 
 export function GanttRow({ itp, onEdit }: GanttRowProps) {
-  // Calculer le type de culture
+  // BUG #15 (audit Marc 2026-05-15) : l'ail (mode bulbe_caieu) avait
+  // s_semis (= préparation) + s_plantation (= mise en terre des caïeux)
+  // tous deux renseignés, ce qui faisait afficher « Pépinière » alors
+  // que l'ail se plante en caïeux direct au sol — pas de phase pépinière.
+  // On désambiguïse via `espece.modeSemis` et `itp.dureePepiniere`.
   const getTypeCulture = () => {
-    if (itp.semaineSemis && itp.semainePlantation && itp.semaineRecolte) {
+    const mode = itp.espece?.modeSemis
+    // Plantation directe pour les modes bulbe / bouture (ail, oignon caïeu,
+    // pomme de terre, patate douce, kiwi, vigne…)
+    if (mode === 'bulbe_caieu') return 'Plantation directe'
+    if (mode === 'bouture') return 'Bouture'
+    // Pépinière SEULEMENT si la durée pépinière est explicitement > 0
+    // (on a une vraie phase de germination en pépinière). Sinon le couple
+    // semis/plantation représente juste préparation → mise en terre.
+    if (
+      itp.semaineSemis &&
+      itp.semainePlantation &&
+      itp.semaineRecolte &&
+      (itp.dureePepiniere ?? 0) > 0
+    ) {
       return 'Pépinière'
     }
     if (itp.semaineSemis && !itp.semainePlantation && itp.semaineRecolte) {
@@ -41,6 +61,12 @@ export function GanttRow({ itp, onEdit }: GanttRowProps) {
     }
     if (!itp.semaineSemis && itp.semainePlantation && itp.semaineRecolte) {
       return 'Plant'
+    }
+    // Fallback : si semis + plantation + récolte mais pas de pépinière
+    // explicite, c'est une plantation directe (caïeux/bulbe le plus
+    // probable, à confirmer côté Espèce).
+    if (itp.semaineSemis && itp.semainePlantation && itp.semaineRecolte) {
+      return 'Plantation directe'
     }
     return '?'
   }
