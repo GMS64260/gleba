@@ -61,8 +61,9 @@ export async function POST(
       },
     })
 
-    // Créer les nouvelles opérations
-    const operations = generateCareOperations(profile, year, arbreId, session!.user.id)
+    // QA Hélène 2026-05-15 — Bug #10 : passer la variété pour caler la
+    // date de récolte sur les cultivars tardifs connus.
+    const operations = generateCareOperations(profile, year, arbreId, session!.user.id, arbre.variete)
     await prisma.operationArbre.createMany({ data: operations })
 
     return NextResponse.json({

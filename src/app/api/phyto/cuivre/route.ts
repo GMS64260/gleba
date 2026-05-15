@@ -27,16 +27,18 @@ export async function GET() {
       where: { userId },
       select: { id: true, nom: true, surface: true },
     }),
-    // Audit fix : on ne capte QUE les interventions avec parcelleId
-    // (parcelles_geo). `plancheId` est un id de Planche (maraîchage), pas
-    // de ParcelleGeo — l'inclure faisait silencieusement perdre la surface
-    // côté agrégation (parcelleSurfaces.get(plancheId) = undefined → 0).
+    // QA Hélène 2026-05-15 — Bug #2 : on retire le filtre
+    // `parcelleId: not null`. Une intervention "Bouillie bordelaise"
+    // saisie sans rattachement parcellaire était silencieusement
+    // ignorée → compteur cuivre annonçait "Conformité maximale" alors
+    // qu'un traitement cuivré existait en base. On capte désormais
+    // toute intervention de type traitement_phyto et on dérive la
+    // parcelle via l'arbre (arbre_id → parcelle_geo_id) en fallback.
     prisma.intervention.findMany({
       where: {
         userId,
         type: "traitement_phyto",
         date: { gte: dateMin7ans },
-        parcelleId: { not: null },
       },
       include: { produitPhytoRef: true },
     }),
@@ -57,12 +59,30 @@ export async function GET() {
     parcelleNoms.set(p.id, p.nom)
   }
 
+  // QA Hélène 2026-05-15 — Bug #2 : pré-charger la table arbres pour
+  // dériver parcelle_geo_id quand l'intervention est rattachée à un
+  // arbre mais pas directement à une parcelle.
+  const arbreIds = interventions
+    .map((i) => i.arbreId)
+    .filter((id): id is number => id != null)
+  const arbresMap = new Map<number, string | null>()
+  if (arbreIds.length > 0) {
+    const arbres = await prisma.arbre.findMany({
+      where: { id: { in: arbreIds } },
+      select: { id: true, parcelleGeoId: true },
+    })
+    for (const a of arbres) arbresMap.set(a.id, a.parcelleGeoId)
+  }
+
   const traitements: TraitementCuivreInput[] = []
 
   for (const i of interventions) {
+    const parcelleIdFromArbre = i.arbreId ? arbresMap.get(i.arbreId) ?? null : null
+    const parcelleId =
+      i.parcelleId ?? parcelleIdFromArbre ?? "__sans_parcelle__"
     traitements.push({
       date: i.date,
-      parcelleId: i.parcelleId,
+      parcelleId,
       surfaceHa: i.surfaceTraiteeHa ?? i.surfaceTraitee ?? null,
       doseAppliquee: i.doseAppliquee,
       uniteDose: i.uniteDose,
@@ -86,7 +106,7 @@ export async function GET() {
   for (const o of observations) {
     traitements.push({
       date: o.date,
-      parcelleId: o.parcelleId,
+      parcelleId: o.parcelleId ?? "__sans_parcelle__",
       surfaceHa: o.surfaceTraiteeHa,
       doseAppliquee: o.doseAppliquee,
       uniteDose: o.uniteDose,
@@ -97,6 +117,8 @@ export async function GET() {
       },
     })
   }
+  // Bucket "Sans parcelle" : libellé explicite pour l'UI
+  parcelleNoms.set("__sans_parcelle__", "Sans rattachement parcellaire")
 
   const cumuls = cumuleParParcelle(traitements, parcelleSurfaces, asOf)
   const enriched = cumuls.map((c) => ({

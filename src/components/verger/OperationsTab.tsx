@@ -28,8 +28,8 @@ import { MaterielFieldset } from "@/components/phyto/MaterielFieldset"
 
 const FILTER_STATES = [
   { value: "all", label: "Toutes", icon: Wrench },
-  { value: "afaire", label: "A faire", icon: ListTodo },
-  { value: "fait", label: "Realisees", icon: CheckCircle },
+  { value: "afaire", label: "À faire", icon: ListTodo },
+  { value: "fait", label: "Réalisées", icon: CheckCircle },
 ] as const
 
 const TYPES_OPERATIONS = [
@@ -129,10 +129,10 @@ function createColumns(
     },
     {
       accessorKey: "cout",
-      header: "Cout",
+      header: "Coût",
       cell: ({ getValue }) => {
         const val = getValue() as number | null
-        return val ? `${val} EUR` : "-"
+        return val ? `${val} €` : "-"
       },
     },
   ]

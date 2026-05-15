@@ -152,7 +152,13 @@ function ObservationsSubTab() {
   const [loading, setLoading] = React.useState(true)
   const [filterType, setFilterType] = React.useState("all")
   const [filterGravite, setFilterGravite] = React.useState("all")
-  const [filterResolu, setFilterResolu] = React.useState("false")
+  // QA Hélène 2026-05-15 — Bug #6 : le défaut "false" cachait les
+  // observations résolues, créant l'incohérence "modale dit 1
+  // observation liée / onglet affiche Aucune observation" (le _count
+  // sur l'arbre prend tout, le filtre par défaut excluait les
+  // résolues). On affiche "all" par défaut, l'utilisateur peut
+  // toujours filtrer manuellement.
+  const [filterResolu, setFilterResolu] = React.useState("all")
   const [showDialog, setShowDialog] = React.useState(false)
   const [editingObs, setEditingObs] = React.useState<Observation | null>(null)
   const defaultFormData = {

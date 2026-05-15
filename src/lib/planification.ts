@@ -570,6 +570,34 @@ export async function getBesoinsPlants(
     c => c.semainePlantation !== null && c.especeId
   )
 
+  // BUG #3 (audit Marc 2026-05-15) — Prorata identique à
+  // `getBesoinsSemences` pour que les surfaces affichées dans
+  // « Graines » et « Plants à produire » soient cohérentes
+  // (sinon Plants montrait 4,8/9,6/12/30 m² brut, Graines montrait
+  // 15 m² uniforme à cause du 1/N appliqué sur les planches partagées).
+  const culturesParPlanche = new Map<string, number>()
+  for (const c of culturesPrevues) {
+    if (!c.plancheId) continue
+    culturesParPlanche.set(c.plancheId, (culturesParPlanche.get(c.plancheId) ?? 0) + 1)
+  }
+
+  // BUG #4 — fallback nbRangs/espacement sur ITP référentiel par espèce
+  // pour les cultures où les valeurs ne sont pas saisies (l'Aubergine
+  // tombait à 0 plants alors qu'elle a 9,6 m² × densité 2/m² = 19).
+  const especeIds = [...new Set(culturesAvecPlantation.map(c => c.especeId!).filter(Boolean))]
+  const itpsParEspece = await prisma.iTP.findMany({
+    where: { especeId: { in: especeIds }, nbRangs: { not: null }, espacement: { not: null } },
+    select: { especeId: true, nbRangs: true, espacement: true },
+    orderBy: { dureeCulture: 'desc' }, // ITP le plus long = plus représentatif
+  })
+  const itpFallback = new Map<string, { nbRangs: number; espacement: number }>()
+  for (const itp of itpsParEspece) {
+    if (!itp.especeId || itpFallback.has(itp.especeId)) continue
+    if (itp.nbRangs && itp.espacement) {
+      itpFallback.set(itp.especeId, { nbRangs: itp.nbRangs, espacement: itp.espacement })
+    }
+  }
+
   // Recuperer les stocks par utilisateur
   const userStocks = await prisma.userStockVariete.findMany({
     where: { userId },
@@ -584,12 +612,21 @@ export async function getBesoinsPlants(
     if (!culture.especeId) continue
 
     const key = `${culture.especeId}|${culture.varieteId || ''}`
-    const nbPlants = calculerNbPlants(
+    const partageFactor = culture.plancheId
+      ? 1 / (culturesParPlanche.get(culture.plancheId) ?? 1)
+      : 1
+    const surfaceEffective = culture.surface * partageFactor
+    // BUG #4 — fallback ITP référentiel si nbRangs/espacement manquants
+    const fb = itpFallback.get(culture.especeId)
+    const nbRangs = culture.nbRangs ?? fb?.nbRangs ?? null
+    const espacement = culture.espacement ?? fb?.espacement ?? null
+    const nbPlantsBrut = calculerNbPlants(
       culture.plancheLongueur,
       culture.plancheLargeur,
-      culture.nbRangs,
-      culture.espacement
+      nbRangs,
+      espacement
     )
+    const nbPlants = Math.round(nbPlantsBrut * partageFactor)
 
     if (!besoinsMap.has(key)) {
       besoinsMap.set(key, {
@@ -608,7 +645,7 @@ export async function getBesoinsPlants(
     besoin.nbPlants += nbPlants
     besoin.cultures.push({
       plancheId: culture.plancheId,
-      surface: culture.surface,
+      surface: Math.round(surfaceEffective * 10) / 10,
       nbPlants,
     })
   }

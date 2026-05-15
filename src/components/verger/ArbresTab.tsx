@@ -134,6 +134,14 @@ function makeColumns(onGenererCalendrier: (arbre: Arbre) => void): ColumnDef<Arb
       cell: ({ getValue }) => getValue() || "-",
     },
     {
+      // QA Hélène 2026-05-15 — Bug #7 : colonne Porte-greffe ajoutée
+      // au menu Colonnes. Le filtre "Sans porte-greffe" existait déjà
+      // mais la donnée n'était pas affichable depuis la liste.
+      accessorKey: "portGreffe",
+      header: "Porte-greffe",
+      cell: ({ getValue }) => (getValue() as string) || "-",
+    },
+    {
       accessorKey: "datePlantation",
       header: "Plantation",
       cell: ({ getValue }) => {

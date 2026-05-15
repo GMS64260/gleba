@@ -34,6 +34,53 @@ const TYPE_LABELS: Record<string, string> = {
   petit_fruit: "Petit fruit",
 }
 
+// QA Hélène 2026-05-15 — Bug #15 + #16 : les sensibilités porte-greffes
+// et méthodes PBI bioagresseurs sortaient en snake_case du seed
+// (`secheresse`, `feu_bacterien`, `BT_tenebrionis`). On humanise ici.
+const SLUG_LABELS: Record<string, string> = {
+  // Sensibilités porte-greffes
+  secheresse: "Sécheresse",
+  feu_bacterien: "Feu bactérien",
+  phytophthora: "Phytophthora",
+  asphyxie: "Asphyxie racinaire",
+  pucerons: "Pucerons",
+  carence_fer: "Carence en fer",
+  calcaire: "Calcaire actif",
+  gel: "Gel printanier",
+  excess_eau: "Excès d'eau",
+  // Méthodes PBI bioagresseurs
+  variete_resistante: "Variété résistante",
+  confusion_sexuelle: "Confusion sexuelle",
+  piegeage_chromo: "Piégeage chromatique",
+  piegeage_pheromone: "Piégeage à phéromone",
+  pheromone: "Phéromone",
+  filet_anti_insecte: "Filet anti-insecte",
+  badigeon: "Badigeon",
+  BT_tenebrionis: "Bt tenebrionis",
+  BT_kurstaki: "Bt kurstaki",
+  spinosad: "Spinosad",
+  pyrethre_naturel: "Pyrèthre naturel",
+  savon_noir: "Savon noir",
+  prophylaxie: "Prophylaxie",
+  taille_sanitaire: "Taille sanitaire",
+  rotation_culturale: "Rotation culturale",
+  enherbement: "Enherbement",
+  bandes_fleuries: "Bandes fleuries",
+  auxiliaires: "Lâchers d'auxiliaires",
+  decoction_prele: "Décoction de prêle",
+  purin_ortie: "Purin d'ortie",
+  cuivre: "Cuivre",
+  soufre: "Soufre",
+}
+
+function humaniseSlug(s: string): string {
+  if (SLUG_LABELS[s]) return SLUG_LABELS[s]
+  // Fallback : snake_case → "Snake case"
+  return s
+    .replace(/_/g, " ")
+    .replace(/^\w/, (c) => c.toUpperCase())
+}
+
 interface EspeceWithRelations {
   id: string
   type: string
@@ -318,7 +365,10 @@ function EspecesReferentiel() {
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div>
                     <p className="text-muted-foreground text-xs">Famille</p>
-                    <p className="font-medium">{detail.familleId || "-"}</p>
+                    {/* QA Hélène 2026-05-15 — Bug #17 : afficher le nom
+                        FR de la famille (Rosacées) plutôt que le binom
+                        latin (Rosaceae) — cohérent avec la table. */}
+                    <p className="font-medium">{detail.famille?.nomFr || detail.familleId || "-"}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground text-xs">Catégorie</p>
@@ -449,7 +499,7 @@ function PorteGreffesReferentiel() {
       cell: ({ getValue }) => {
         const arr = (getValue() as string[]) ?? []
         if (arr.length === 0) return <span className="text-muted-foreground">—</span>
-        return <span className="text-xs">{arr.join(", ")}</span>
+        return <span className="text-xs">{arr.map(humaniseSlug).join(", ")}</span>
       },
     },
     { accessorKey: "drageonnement", header: "Drageonne", cell: ({ getValue }) => (getValue() ? "Oui" : "Non") },
@@ -522,7 +572,10 @@ function BioagresseursReferentiel() {
     {
       accessorKey: "methodesPbi",
       header: "Méthodes biocontrôle",
-      cell: ({ getValue }) => (((getValue() as string[]) ?? []).slice(0, 3).join(", ") || "—"),
+      cell: ({ getValue }) => {
+        const arr = ((getValue() as string[]) ?? []).slice(0, 3)
+        return arr.length > 0 ? arr.map(humaniseSlug).join(", ") : "—"
+      },
     },
     {
       accessorKey: "especesCibles",
