@@ -21,6 +21,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { useToast } from "@/hooks/use-toast"
 
 // ============================================================
@@ -249,16 +250,57 @@ export function CalendrierTab() {
               <p className="text-2xl font-bold text-orange-700">{data.stats.totalConsoKg} kg</p>
               <p className="text-xs text-orange-600">Aliments distribues</p>
             </div>
-            <div className="bg-green-50 rounded-lg p-3 text-center">
-              <TrendingUp className="h-5 w-5 mx-auto text-green-600 mb-1" />
-              <p className="text-2xl font-bold text-green-700">
-                {data.stats.totalOeufs > 0 && data.stats.estimationOeufsJour > 0
-                  ? `${Math.round((data.stats.totalOeufs / (data.stats.estimationOeufsJour * 7)) * 100)}%`
-                  : '-'
-                }
-              </p>
-              <p className="text-xs text-green-600">Taux collecte sem.</p>
-            </div>
+            {(() => {
+              // BUG #4 (audit Julien 15/05/2026) — Taux collecte semaine.
+              // Avant : 999 œufs / (14 × 7) × 100 ≈ 1019 % affiché en vert.
+              // Désormais on défend en profondeur :
+              //   - div par 0 → « — » (pas Infinity %)
+              //   - taux > 110 % → rouge + tooltip « anomalie de saisie »
+              //   - 95-110 % → vert (saison de pic)
+              //   - 0-95 %    → bleu/vert standard
+              const total = data.stats.totalOeufs
+              const attenduJour = data.stats.estimationOeufsJour
+              const attenduSem = attenduJour * 7
+              const ratio = total > 0 && attenduSem > 0 ? (total / attenduSem) * 100 : null
+              const anomalie = ratio !== null && ratio > 110
+              const labelColor = anomalie ? 'text-red-700' : 'text-green-700'
+              const bgColor = anomalie ? 'bg-red-50' : 'bg-green-50'
+              const subColor = anomalie ? 'text-red-600' : 'text-green-600'
+              const display =
+                ratio === null
+                  ? '—'
+                  : anomalie
+                  ? `${Math.round(ratio)} %` // pas de cap, on assume l'overflow visuel
+                  : `${Math.round(ratio)} %`
+              return (
+                <div className={`${bgColor} rounded-lg p-3 text-center`}>
+                  <TrendingUp className={`h-5 w-5 mx-auto ${subColor} mb-1`} />
+                  {anomalie ? (
+                    <TooltipProvider delayDuration={100}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <p className={`text-2xl font-bold ${labelColor} flex items-center justify-center gap-1 cursor-help`}>
+                            {display}
+                            <AlertTriangle className="h-4 w-4" />
+                          </p>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom" className="max-w-xs text-left text-xs">
+                          <p className="font-semibold mb-1">Saisie anormale détectée</p>
+                          <p>
+                            La collecte de la semaine dépasse l'attendu théorique
+                            ({Math.round(attenduSem)} œufs pour cet effectif × saison).
+                            Vérifiez les dernières saisies ou l'effectif du lot.
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  ) : (
+                    <p className={`text-2xl font-bold ${labelColor}`}>{display}</p>
+                  )}
+                  <p className={`text-xs ${subColor}`}>Taux collecte sem.</p>
+                </div>
+              )
+            })()}
           </div>
 
           {/* Vue par jour */}
