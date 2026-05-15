@@ -875,24 +875,78 @@ export default function RapportsPage() {
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="grid grid-cols-3 gap-4 text-sm">
-                        <div>
-                          <span className="text-muted-foreground">Ventes manuelles :</span>{' '}
-                          <span className="font-medium">{tvaData.details.nbVentes}</span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">Factures :</span>{' '}
-                          <span className="font-medium">{tvaData.details.nbFactures}</span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">Dépenses :</span>{' '}
-                          <span className="font-medium">{tvaData.details.nbDepenses}</span>
-                        </div>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-3">
-                        Les montants affichés sont calculés automatiquement à partir des ventes, factures et dépenses enregistrées.
-                        Vérifiez ces données avant toute déclaration officielle.
-                      </p>
+                      {/* BUG #9 (audit compta 2026-05-15) — Avant : « Ventes
+                          manuelles 47, Factures 1, Dépenses 12 » sans préciser
+                          que les sources brutes (élevage, récoltes, bois) sont
+                          comptées séparément. Le comptable comptait 48 ventes
+                          dans Transactions et trouvait l'écart inexplicable.
+                          Désormais on détaille l'agrégation poste par poste. */}
+                      {(() => {
+                        const d = tvaData.details
+                        const totalVentesCollectees =
+                          (d.nbVentes || 0) +
+                          (d.nbFactures || 0) +
+                          (d.nbVentesElevage || 0) +
+                          (d.nbRecoltesPotager || 0) +
+                          (d.nbRecoltesArbres || 0) +
+                          (d.nbVenteBois || 0) +
+                          (d.nbAbattages || 0)
+                        const totalDepensesDeductibles =
+                          (d.nbDepenses || 0) +
+                          (d.nbConsommationsAliments || 0) +
+                          (d.nbFertilisations || 0)
+                        return (
+                          <>
+                            <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                              <div>
+                                <p className="font-semibold mb-1 text-emerald-700">
+                                  Côté TVA collectée — {totalVentesCollectees} ligne(s)
+                                </p>
+                                <ul className="space-y-0.5 text-xs text-muted-foreground">
+                                  <li><span className="font-medium text-slate-700">{d.nbVentes}</span> · ventes manuelles</li>
+                                  <li><span className="font-medium text-slate-700">{d.nbFactures}</span> · factures (hors brouillon/annulée)</li>
+                                  {(d.nbVentesElevage ?? 0) > 0 && (
+                                    <li><span className="font-medium text-slate-700">{d.nbVentesElevage}</span> · ventes élevage</li>
+                                  )}
+                                  {(d.nbRecoltesPotager ?? 0) > 0 && (
+                                    <li><span className="font-medium text-slate-700">{d.nbRecoltesPotager}</span> · récoltes potager vendues</li>
+                                  )}
+                                  {(d.nbRecoltesArbres ?? 0) > 0 && (
+                                    <li><span className="font-medium text-slate-700">{d.nbRecoltesArbres}</span> · récoltes verger vendues</li>
+                                  )}
+                                  {(d.nbVenteBois ?? 0) > 0 && (
+                                    <li><span className="font-medium text-slate-700">{d.nbVenteBois}</span> · ventes bois</li>
+                                  )}
+                                  {(d.nbAbattages ?? 0) > 0 && (
+                                    <li><span className="font-medium text-slate-700">{d.nbAbattages}</span> · abattages vendus</li>
+                                  )}
+                                </ul>
+                              </div>
+                              <div>
+                                <p className="font-semibold mb-1 text-red-700">
+                                  Côté TVA déductible — {totalDepensesDeductibles} ligne(s)
+                                </p>
+                                <ul className="space-y-0.5 text-xs text-muted-foreground">
+                                  <li><span className="font-medium text-slate-700">{d.nbDepenses}</span> · dépenses manuelles</li>
+                                  {(d.nbConsommationsAliments ?? 0) > 0 && (
+                                    <li><span className="font-medium text-slate-700">{d.nbConsommationsAliments}</span> · consommations d'aliments</li>
+                                  )}
+                                  {(d.nbFertilisations ?? 0) > 0 && (
+                                    <li><span className="font-medium text-slate-700">{d.nbFertilisations}</span> · fertilisations</li>
+                                  )}
+                                </ul>
+                              </div>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-3">
+                              Périmètre TVA aligné sur l'onglet Transactions : les sources brutes
+                              (élevage, récoltes, bois, abattages) sont comptées séparément des
+                              ventes manuelles pour éviter le double comptage avec les
+                              VenteManuelle « auto » que ces sources génèrent.
+                              Vérifiez ces données avant toute déclaration officielle.
+                            </p>
+                          </>
+                        )
+                      })()}
                     </CardContent>
                   </Card>
                 </>
