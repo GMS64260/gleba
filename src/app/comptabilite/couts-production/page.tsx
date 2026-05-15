@@ -8,6 +8,7 @@
 import * as React from "react"
 import Link from "next/link"
 import Image from "next/image"
+import { getAvailableYears } from "@/components/year-selector"
 import { useSession } from "next-auth/react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -181,8 +182,9 @@ export default function CoutsProductionPage() {
   const [sortKey, setSortKey] = React.useState<SortKey>("revenus")
   const [sortDir, setSortDir] = React.useState<SortDir>("desc")
 
+  // QA Camille 2026-05-15 — bonus : plage factorisée [N+1 … N-4]
   const currentYear = new Date().getFullYear()
-  const availableYears = Array.from({ length: 5 }, (_, i) => currentYear - i)
+  const availableYears = getAvailableYears()
 
   // Fetch data
   React.useEffect(() => {

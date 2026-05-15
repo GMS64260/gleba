@@ -9,6 +9,7 @@ import * as React from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { useSession } from "next-auth/react"
+import { getAvailableYears } from "@/components/year-selector"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -159,8 +160,9 @@ const TYPE_LABELS: Record<string, string> = {
   autre: "Autre",
 }
 
+// QA Camille 2026-05-15 — bonus : plage factorisée [N+1 … N-4]
 const currentYearNow = new Date().getFullYear()
-const availableYears = Array.from({ length: 6 }, (_, i) => currentYearNow - 5 + i).reverse()
+const availableYears = getAvailableYears()
 
 // ============================================================
 // Helper functions

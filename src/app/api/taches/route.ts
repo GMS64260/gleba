@@ -50,7 +50,12 @@ export async function GET(request: NextRequest) {
 
     const start = new Date(startStr)
     const end = new Date(endStr)
-    const annee = new Date().getFullYear()
+    // QA Camille 2026-05-15 — Bug #2 : la query hardcodait l'année
+    // courante, donc passer 2026 → 2024 dans le sélecteur n'avait
+    // aucun effet sur les tâches. On lit désormais `?year=` ; fallback
+    // sur année courante si absent.
+    const yearParam = searchParams.get('year')
+    const annee = yearParam ? parseInt(yearParam) : new Date().getFullYear()
 
     // ── Tâches de la semaine + tâches en retard (non faites, date passée) ──
 

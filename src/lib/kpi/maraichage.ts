@@ -108,8 +108,17 @@ async function computeKpiMaraichage(
 
     // Ticket #4 — on lit largeur+longueur en plus de surface pour
     // pouvoir calculer le total robuste même quand surface=null en base.
+    //
+    // QA Camille 2026-05-15 — Bug #2 : "12 planches" persistait au
+    // changement d'année. La query d'origine listait toutes les planches
+    // du user sans filtrer — on ne compte désormais que les planches
+    // qui portent au moins une culture sur `year`. La surface totale
+    // suit la même logique pour rester cohérente avec planchesCount.
     prisma.planche.findMany({
-      where: { userId },
+      where: {
+        userId,
+        cultures: { some: { annee: year } },
+      },
       select: { surface: true, largeur: true, longueur: true },
     }),
   ])

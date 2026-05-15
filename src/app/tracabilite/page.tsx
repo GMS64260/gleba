@@ -8,6 +8,7 @@
 import * as React from "react"
 import Link from "next/link"
 import Image from "next/image"
+import { getAvailableYears } from "@/components/year-selector"
 import { useSession } from "next-auth/react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -222,8 +223,9 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]["id"]
 
+// QA Camille 2026-05-15 — bonus : plage factorisée [N+1 … N-4]
 const currentYearNow = new Date().getFullYear()
-const availableYears = Array.from({ length: 6 }, (_, i) => currentYearNow - 5 + i).reverse()
+const availableYears = getAvailableYears()
 
 // ============================================================
 // HELPERS

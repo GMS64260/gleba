@@ -18,6 +18,8 @@ import { ModulesNav } from "@/components/auth/ModulesNav"
 import { BoutiqueHeaderButton } from "@/components/auth/BoutiqueHeaderButton"
 import { TourComptabilite } from "@/components/tours/tour-comptabilite"
 import { PremiersPasBanner } from "@/components/premiers-pas-banner"
+import { computeYearDiff } from "@/lib/comptabilite/year-diff"
+import { getAvailableYears } from "@/components/year-selector"
 import {
   BarChart,
   Bar,
@@ -210,7 +212,9 @@ export default function DashboardComptabilite() {
 
   // Années disponibles
   const currentYear = new Date().getFullYear()
-  const availableYears = Array.from({ length: 5 }, (_, i) => currentYear - i)
+  // QA Camille 2026-05-15 — bonus : plage factorisée [N+1 … N-4] (inclut
+  // l'année à venir pour planification anticipée — était 2022-2026)
+  const availableYears = getAvailableYears()
 
   // Charger les données
   React.useEffect(() => {
@@ -234,17 +238,14 @@ export default function DashboardComptabilite() {
     }
   }, [selectedYear, session?.user])
 
-  // Calcul différence annee précédente
-  // Bug #26 — `hasComparatif` true uniquement si N-1 ≥ 100 € (seuil non
-  // significatif en dessous : peu de transactions).
-  const yearDiff = React.useMemo(() => {
-    if (!data?.stats) return { diff: 0, percent: "0", hasComparatif: false }
-    const current = data.stats.revenus
-    const previous = data.stats.revenusAnneePrecedente
-    const diff = current - previous
-    const percent = previous > 0 ? Math.round((diff / previous) * 100) : 0
-    return { diff, percent: percent.toString(), hasComparatif: previous >= 100 }
-  }, [data?.stats])
+  // QA Camille 2026-05-15 — Bug #6 : le seuil "N-1 ≥ 100 €" cachait les
+  // comparatifs légitimes (N-1 = 0 € et N > 0 → la carte disait
+  // "indisponible" alors qu'il aurait fallu "Nouveau"). On expose 3
+  // états :
+  //   * "compare"  : N-1 > 0 → pourcentage classique
+  //   * "nouveau"  : N-1 = 0 et N > 0  → première année avec activité
+  //   * "vide"     : N-1 = 0 et N = 0  → aucune activité ni en N ni N-1
+  const yearDiff = React.useMemo(() => computeYearDiff(data?.stats), [data?.stats])
 
   const formatEuro = (value: number) => {
     return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(value)
@@ -361,18 +362,22 @@ export default function DashboardComptabilite() {
                 </CardHeader>
                 <CardContent>
                   <p className="text-3xl font-bold">{formatEuro(data.stats.revenus)}</p>
-                  {yearDiff.hasComparatif ? (
+                  {yearDiff.state === "compare" ? (
                     <>
                       <p className="text-sm text-blue-100 mt-1">
-                        {parseInt(yearDiff.percent) > 0 ? "+" : ""}{yearDiff.percent}% vs {selectedYear - 1}
+                        {yearDiff.percent > 0 ? "+" : ""}{yearDiff.percent}% vs {selectedYear - 1}
                       </p>
                       <p className="text-[10px] text-blue-100 opacity-90">
                         (YTD vs YTD année dernière)
                       </p>
                     </>
+                  ) : yearDiff.state === "nouveau" ? (
+                    <p className="text-sm text-blue-100 mt-1">
+                      Nouveau · pas d'activité en {selectedYear - 1}
+                    </p>
                   ) : (
                     <p className="text-[10px] text-blue-100 italic mt-1">
-                      Pas de comparatif N-1 disponible
+                      Aucune activité en {selectedYear} ni en {selectedYear - 1}
                     </p>
                   )}
                 </CardContent>

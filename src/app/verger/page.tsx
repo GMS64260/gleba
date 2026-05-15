@@ -38,6 +38,7 @@ import { PlantationsTab } from "@/components/verger/PlantationsTab"
 import { AssistantPlantationDialog } from "@/components/verger/AssistantPlantationDialog"
 import { TourVerger } from "@/components/tours/tour-verger"
 import { PremiersPasBanner } from "@/components/premiers-pas-banner"
+import { getAvailableYears } from "@/components/year-selector"
 
 const TABS = [
   { id: "calendrier", label: "Calendrier", icon: Calendar, shortLabel: "Calendrier" },
@@ -51,8 +52,9 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]["id"]
 
+// QA Camille 2026-05-15 — bonus : plage factorisée [N+1 … N-4]
 const currentYearNow = new Date().getFullYear()
-const availableYears = Array.from({ length: 6 }, (_, i) => currentYearNow - 5 + i).reverse()
+const availableYears = getAvailableYears()
 
 export default function VergerPage() {
   return (
