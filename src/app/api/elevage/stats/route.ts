@@ -42,6 +42,7 @@ export async function GET(request: NextRequest) {
       mortaliteAnnee,
       totalPondeuses,
       lotsPondeusesDetail,
+      lotsParType,
       totalConsommationAliments,
     ] = await Promise.all([
       // Animaux actifs
@@ -49,7 +50,8 @@ export async function GET(request: NextRequest) {
         where: { userId, statut: 'actif' },
       }),
 
-      // Animaux par type d'espece
+      // Animaux par type d'espece — individuels uniquement à ce stade,
+      // les lots sont mergés plus bas (BUG #7).
       prisma.animal.groupBy({
         by: ['especeAnimaleId'],
         where: { userId, statut: 'actif' },
@@ -205,6 +207,17 @@ export async function GET(request: NextRequest) {
         },
       }),
 
+      // BUG #7 — Lots actifs groupés par espèce pour merger dans
+      // `animauxParType` (PieChart « Répartition par espèce »). Avant,
+      // seuls les animaux individuels étaient comptés, donc l'éleveur
+      // qui gérait son troupeau exclusivement en LotAnimaux voyait un
+      // PieChart vide.
+      prisma.lotAnimaux.groupBy({
+        by: ['especeAnimaleId'],
+        where: { userId, statut: 'actif' },
+        _sum: { quantiteActuelle: true },
+      }),
+
       // Total consommation aliments annee (kg)
       prisma.consommationAliment.aggregate({
         where: {
@@ -215,14 +228,33 @@ export async function GET(request: NextRequest) {
       }),
     ])
 
-    // Récupérer les noms des especes pour les stats
-    const especeIds = animauxParType.map(a => a.especeAnimaleId)
+    // Récupérer les noms des especes pour les stats — on inclut les ids
+    // venant des LOTS aussi (BUG #7) pour ne pas perdre l'étiquette des
+    // espèces présentes uniquement en lot.
+    const especeIds = Array.from(
+      new Set([
+        ...animauxParType.map(a => a.especeAnimaleId),
+        ...lotsParType.map(l => l.especeAnimaleId),
+      ])
+    )
     const especes = await prisma.especeAnimale.findMany({
       where: { id: { in: especeIds } },
       select: { id: true, nom: true, couleur: true },
     })
 
     const especeMap = new Map(especes.map(e => [e.id, e]))
+
+    // BUG #7 — Fusion individuels + lots par espèce pour le PieChart.
+    const animauxParTypeMerged = new Map<string, number>()
+    for (const a of animauxParType) {
+      animauxParTypeMerged.set(a.especeAnimaleId, (animauxParTypeMerged.get(a.especeAnimaleId) ?? 0) + a._count)
+    }
+    for (const l of lotsParType) {
+      const n = l._sum.quantiteActuelle ?? 0
+      if (n > 0) {
+        animauxParTypeMerged.set(l.especeAnimaleId, (animauxParTypeMerged.get(l.especeAnimaleId) ?? 0) + n)
+      }
+    }
 
     // Métriques calculées
     const nbPondeuses = totalPondeuses._sum.quantiteActuelle || 0
@@ -358,11 +390,13 @@ export async function GET(request: NextRequest) {
         laitStockTransformable: Math.round(laitNonAffecteL * 100) / 100,
         nbCollectesAnnee: laitAggAnnee._count,
       },
-      animauxParType: animauxParType.map(a => ({
-        especeAnimaleId: a.especeAnimaleId,
-        nom: especeMap.get(a.especeAnimaleId)?.nom || a.especeAnimaleId,
-        couleur: especeMap.get(a.especeAnimaleId)?.couleur,
-        count: a._count,
+      // BUG #7 : la répartition par espèce additionne désormais les
+      // animaux individuels + ceux comptés en LotAnimaux.quantiteActuelle.
+      animauxParType: Array.from(animauxParTypeMerged.entries()).map(([especeAnimaleId, count]) => ({
+        especeAnimaleId,
+        nom: especeMap.get(especeAnimaleId)?.nom || especeAnimaleId,
+        couleur: especeMap.get(especeAnimaleId)?.couleur,
+        count,
       })),
       ventesParType: ventesParType.map(v => ({
         type: v.type,

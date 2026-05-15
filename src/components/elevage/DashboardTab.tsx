@@ -482,23 +482,40 @@ export function DashboardTab({ year }: DashboardTabProps) {
 
           {/* Graphiques */}
           <div className="grid gap-4 md:grid-cols-2">
-            {/* Production œufs par mois */}
+            {/* Production œufs par mois — BUG #7 : axe Y dynamique sur
+                max(données) × 1.2 (jamais hardcodé), placeholder « Pas
+                encore de données » si l'année est vide plutôt qu'un
+                graphe blanc déconcertant. */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm">Production d'oeufs par mois</CardTitle>
-                <CardDescription>Annee {year}</CardDescription>
+                <CardTitle className="text-sm">Production d&apos;œufs par mois</CardTitle>
+                <CardDescription>Année {year}</CardDescription>
               </CardHeader>
               <CardContent>
-                <ChartContainer config={{}} className="h-[250px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={productionMoisData}>
-                      <XAxis dataKey="mois" tick={{ fontSize: 12 }} />
-                      <YAxis tick={{ fontSize: 12 }} />
-                      <ChartTooltip content={<ChartTooltipContent />} />
-                      <Bar dataKey="oeufs" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </ChartContainer>
+                {(() => {
+                  const maxOeufs = Math.max(0, ...productionMoisData.map((d) => d.oeufs))
+                  if (maxOeufs <= 0) {
+                    return (
+                      <div className="h-[250px] flex flex-col items-center justify-center text-muted-foreground gap-1">
+                        <Egg className="h-8 w-8 opacity-30" />
+                        <p className="text-sm">Pas encore de collecte sur {year}.</p>
+                      </div>
+                    )
+                  }
+                  const yMax = Math.ceil(maxOeufs * 1.2)
+                  return (
+                    <ChartContainer config={{}} className="h-[250px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={productionMoisData}>
+                          <XAxis dataKey="mois" tick={{ fontSize: 12 }} />
+                          <YAxis tick={{ fontSize: 12 }} domain={[0, yMax]} />
+                          <ChartTooltip content={<ChartTooltipContent />} />
+                          <Bar dataKey="oeufs" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </ChartContainer>
+                  )
+                })()}
               </CardContent>
             </Card>
 
@@ -534,8 +551,9 @@ export function DashboardTab({ year }: DashboardTabProps) {
                     </ResponsiveContainer>
                   </ChartContainer>
                 ) : (
-                  <div className="h-[250px] flex items-center justify-center text-muted-foreground">
-                    Aucun animal enregistre
+                  <div className="h-[250px] flex flex-col items-center justify-center text-muted-foreground gap-1">
+                    <Bird className="h-8 w-8 opacity-30" />
+                    <p className="text-sm">Pas encore d&apos;animal enregistré.</p>
                   </div>
                 )}
               </CardContent>
