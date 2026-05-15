@@ -20,6 +20,9 @@ import { MODULES, MODULE_IDS, type ModuleId } from '@/lib/modules'
 
 // Clé localStorage pour les parametres
 const SETTINGS_KEY = 'gleba_settings'
+// BUG #10 (QA Camille 2026-05-15) — la clé serveur où on persiste les
+// settings du plan jardin via /api/user/preferences (UserPreference).
+const SETTINGS_PREF_KEY = 'gardenSettings'
 
 interface GardenSettings {
   // Dimensions du plan
@@ -63,6 +66,11 @@ export default function ParametresPage() {
   const { toast } = useToast()
   const [settings, setSettings] = React.useState<GardenSettings>(defaultSettings)
   const [saving, setSaving] = React.useState(false)
+  // BUG #10 : indicateur de synchronisation serveur. `null` = pas encore
+  // tenté, `true` = dernière save serveur OK, `false` = échec serveur
+  // (localStorage seul). `lastSyncedAt` = horodatage dernier OK.
+  const [serverSynced, setServerSynced] = React.useState<boolean | null>(null)
+  const [lastSyncedAt, setLastSyncedAt] = React.useState<Date | null>(null)
   const [exporting, setExporting] = React.useState(false)
   const [importing, setImporting] = React.useState(false)
   const [deleting, setDeleting] = React.useState(false)
@@ -75,17 +83,44 @@ export default function ParametresPage() {
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const imageInputRef = React.useRef<HTMLInputElement>(null)
 
-  // Charger les parametres au montage
+  // Charger les paramètres au montage.
+  // BUG #10 : on essaie d'abord le serveur (`/api/user/preferences`) ; si
+  // une préférence `gardenSettings` y est présente, on l'utilise et on
+  // synchronise localStorage. Sinon fallback sur localStorage (offline /
+  // user qui n'a jamais sauvegardé).
   React.useEffect(() => {
-    const stored = localStorage.getItem(SETTINGS_KEY)
-    if (stored) {
+    let cancelled = false
+    const hydrate = async () => {
+      // 1. fallback immédiat localStorage pour ne pas afficher les defaults
+      const stored = localStorage.getItem(SETTINGS_KEY)
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored)
+          setSettings({ ...defaultSettings, ...parsed })
+        } catch {
+          // ignore
+        }
+      }
+      // 2. tentative serveur
       try {
-        const parsed = JSON.parse(stored)
-        setSettings({ ...defaultSettings, ...parsed })
+        const res = await fetch('/api/user/preferences')
+        if (!res.ok) return
+        const prefs = await res.json()
+        const remote = prefs?.[SETTINGS_PREF_KEY]
+        if (remote && typeof remote === 'object' && !cancelled) {
+          const merged = { ...defaultSettings, ...remote }
+          setSettings(merged)
+          localStorage.setItem(SETTINGS_KEY, JSON.stringify(merged))
+          setServerSynced(true)
+          setLastSyncedAt(new Date())
+        }
       } catch {
-        // Ignorer les erreurs de parsing
+        // offline : on garde localStorage
+        if (!cancelled) setServerSynced(false)
       }
     }
+    hydrate()
+    return () => { cancelled = true }
   }, [])
 
   // Charger le statut du token MCP
@@ -166,19 +201,51 @@ export default function ParametresPage() {
     }))
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setSaving(true)
+    // BUG #10 : on écrit localStorage SYNCHRONIQUEMENT (UX immédiate) puis
+    // on POST au serveur. Si le POST échoue, on prévient l'utilisateur que
+    // la valeur n'est que locale (perdue au changement de navigateur).
+    let localOk = false
     try {
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings))
-      toast({
-        title: 'Paramètres enregistrés',
-        description: 'Vos préférences ont été sauvegardées',
-      })
+      localOk = true
     } catch {
       toast({
         variant: 'destructive',
-        title: 'Erreur',
-        description: "Impossible d'enregistrer les paramètres",
+        title: 'Erreur localStorage',
+        description: "Impossible d'écrire dans le stockage local (mode privé ?)",
+      })
+    }
+    try {
+      const res = await fetch('/api/user/preferences', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [SETTINGS_PREF_KEY]: settings }),
+      })
+      if (res.ok) {
+        setServerSynced(true)
+        setLastSyncedAt(new Date())
+        toast({
+          title: 'Paramètres enregistrés',
+          description: 'Vos préférences ont été sauvegardées sur le serveur.',
+        })
+      } else {
+        setServerSynced(false)
+        toast({
+          variant: 'destructive',
+          title: localOk ? 'Sauvegarde locale seule' : 'Erreur',
+          description: `Le serveur a refusé (HTTP ${res.status}). ${localOk ? 'Les préférences restent dans ce navigateur uniquement.' : ''}`,
+        })
+      }
+    } catch (err) {
+      setServerSynced(false)
+      toast({
+        variant: 'destructive',
+        title: localOk ? 'Sauvegarde locale seule' : 'Erreur',
+        description: localOk
+          ? 'Sauvegarde serveur indisponible (offline ?). Préférences locales uniquement.'
+          : err instanceof Error ? err.message : 'Erreur réseau',
       })
     } finally {
       setSaving(false)
@@ -582,14 +649,27 @@ export default function ParametresPage() {
             </div>
 
             {/* Boutons */}
-            <div className="flex justify-between pt-4 border-t">
-              <Button variant="outline" onClick={handleReset}>
-                Réinitialiser
-              </Button>
-              <Button onClick={handleSave} disabled={saving}>
-                <Save className="h-4 w-4 mr-2" />
-                {saving ? 'Enregistrement...' : 'Enregistrer'}
-              </Button>
+            <div className="flex flex-col gap-2 pt-4 border-t">
+              <div className="flex justify-between">
+                <Button variant="outline" onClick={handleReset}>
+                  Réinitialiser
+                </Button>
+                <Button onClick={handleSave} disabled={saving}>
+                  <Save className="h-4 w-4 mr-2" />
+                  {saving ? 'Enregistrement...' : 'Enregistrer'}
+                </Button>
+              </div>
+              {/* BUG #10 : indicateur de synchronisation serveur */}
+              {serverSynced === true && lastSyncedAt && (
+                <p className="text-xs text-emerald-600 text-right">
+                  ✓ Synchronisé sur le serveur ({lastSyncedAt.toLocaleTimeString('fr-FR')})
+                </p>
+              )}
+              {serverSynced === false && (
+                <p className="text-xs text-amber-600 text-right">
+                  ⚠️ Préférences locales uniquement (perdues si vous changez de navigateur)
+                </p>
+              )}
             </div>
           </CardContent>
         </Card>
