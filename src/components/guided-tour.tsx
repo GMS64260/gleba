@@ -50,8 +50,14 @@ export function GuidedTour({ storageKey, steps, autoStart = true, alwaysShow = f
     if (typeof window === "undefined") return
     if (globalThis.__glebaTourRunning__) return
     const flagKey = `gleba.tour.${storageKey}.done`
-    // POSTREVIEW — Compte démo : on ignore le flag pour réafficher à chaque visite
+    // Compte démo : on ignore le flag localStorage pour qu'un visiteur
+    // anonyme voie le tour une fois par session. Mais on utilise un flag
+    // `sessionStorage` (lié à l'onglet) pour ne pas le réafficher au
+    // refresh / changement de page dans la même session — sinon c'est
+    // invasif. La session se ferme à la fermeture de l'onglet.
+    const sessionFlagKey = `gleba.tour.${storageKey}.dismissed`
     if (!alwaysShow && autoStart && localStorage.getItem(flagKey)) return
+    if (alwaysShow && autoStart && sessionStorage.getItem(sessionFlagKey)) return
 
     let cancelled = false
     let tour: { complete: () => void; cancel: () => void } | null = null
@@ -105,12 +111,22 @@ export function GuidedTour({ storageKey, steps, autoStart = true, alwaysShow = f
       }
 
       instance.on("complete", () => {
-        // POSTREVIEW — Compte démo : on ne mémorise pas la complétion
-        if (!alwaysShow) localStorage.setItem(flagKey, new Date().toISOString())
+        // Compte normal → flag permanent localStorage.
+        // Compte démo → flag de session uniquement (réapparaît au prochain
+        // visiteur anonyme qui ouvre un nouvel onglet, mais pas au refresh).
+        if (!alwaysShow) {
+          localStorage.setItem(flagKey, new Date().toISOString())
+        } else {
+          sessionStorage.setItem(sessionFlagKey, new Date().toISOString())
+        }
         globalThis.__glebaTourRunning__ = false
       })
       instance.on("cancel", () => {
-        // Pas de flag : l'utilisateur a fermé sans terminer ; il peut le rouvrir
+        // Fermer la croix doit aussi masquer le tour pour la session courante,
+        // sinon le moindre refresh sur le compte démo le relance.
+        if (alwaysShow) {
+          sessionStorage.setItem(sessionFlagKey, new Date().toISOString())
+        }
         globalThis.__glebaTourRunning__ = false
       })
 
@@ -136,4 +152,7 @@ export function GuidedTour({ storageKey, steps, autoStart = true, alwaysShow = f
 export function resetTour(storageKey: string) {
   if (typeof window === "undefined") return
   localStorage.removeItem(`gleba.tour.${storageKey}.done`)
+  // Le flag de session du compte démo doit aussi disparaître sinon le
+  // bouton « Voir le tour » de /aide reste sans effet sur la démo.
+  sessionStorage.removeItem(`gleba.tour.${storageKey}.dismissed`)
 }
