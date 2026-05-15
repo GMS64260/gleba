@@ -48,8 +48,10 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]["id"]
 
+// QA Camille 2026-05-15 — bonus : plage factorisée [N+1 … N-4]
+import { getAvailableYears } from "@/components/year-selector"
 const currentYearNow = new Date().getFullYear()
-const availableYears = Array.from({ length: 6 }, (_, i) => currentYearNow - 5 + i).reverse()
+const availableYears = getAvailableYears()
 
 export default function Home() {
   return (
@@ -288,7 +290,7 @@ function HomeContent() {
         {/* PROMPT 22 + POSTREVIEW Sprint 6 — Bandeau "Premiers pas" Maraîchage */}
         {activeTab === "calendrier" && <PremiersPasBanner module="maraichage" />}
         {activeTab === "calendrier" && <CalendrierTab year={selectedYear} />}
-        {activeTab === "cultures" && <CulturesTab />}
+        {activeTab === "cultures" && <CulturesTab year={selectedYear} />}
         {activeTab === "terrain" && <TerrainTab />}
         {activeTab === "planification" && <PlanificationTab year={selectedYear} />}
         {activeTab === "referentiel" && <ReferentielTab />}

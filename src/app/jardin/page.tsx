@@ -210,7 +210,13 @@ function JardinContent() {
       }
 
       setPlanches(data)
-      if (needsPositioning) setHasChanges(true)
+      // QA Camille 2026-05-15 — bonus : ne plus marquer `hasChanges`
+      // sur un simple repositionnement auto au chargement. Avant,
+      // ouvrir /jardin déclenchait un PUT cascade sur toutes les
+      // planches sans qu'aucune action utilisateur ait été faite.
+      // Désormais, le positionnement auto est idempotent et n'est
+      // persisté qu'au prochain mouvement réel (handleSave).
+      // if (needsPositioning) setHasChanges(true)
     } catch (error) {
       toastRef.current({
         variant: "destructive",

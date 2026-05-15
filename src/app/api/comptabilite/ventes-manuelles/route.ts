@@ -82,36 +82,59 @@ export async function POST(request: NextRequest) {
     const montantHT = rest.montantHT ?? montant / (1 + tauxTVA / 100)
     const montantTVA = rest.montantTVA ?? montant - montantHT
 
-    const vente = await prisma.venteManuelle.create({
-      data: {
-        userId,
-        date: rest.date ?? new Date(),
-        categorie: rest.categorie,
-        description: rest.description,
-        quantite: rest.quantite ?? null,
-        unite: rest.unite ?? null,
-        prixUnitaire: rest.prixUnitaire ?? null,
-        tauxTVA,
-        montantHT,
-        montantTVA,
-        montant,
-        clientId: rest.clientId ?? null,
-        clientNom: rest.clientNom ?? null,
-        module: rest.module ?? null,
-        paye: rest.paye,
-        notes: rest.notes ?? null,
-        journal: rest.journal ?? 'VE',
-        modeReglement: rest.modeReglement ?? null,
-        numeroPiece: rest.numeroPiece ?? null,
-        pjUrl: rest.pjUrl || null,
-        tvaInferee: false,
-      },
+    // QA Camille 2026-05-15 — Bug #3 : la création était un simple
+    // `create` sans transaction, donc une vente avec clientId pointant
+    // vers un client inexistant pouvait être persistée et casser la
+    // cohérence (ventes liées orphelines). On enveloppe désormais
+    // dans une `$transaction` qui valide le clientId au préalable —
+    // rollback automatique si le client n'existe pas / n'appartient
+    // pas au tenant.
+    const vente = await prisma.$transaction(async (tx) => {
+      if (rest.clientId) {
+        const client = await tx.client.findFirst({
+          where: { id: rest.clientId, userId },
+          select: { id: true },
+        })
+        if (!client) {
+          throw new Error(`Client ${rest.clientId} introuvable pour ce compte`)
+        }
+      }
+      return tx.venteManuelle.create({
+        data: {
+          userId,
+          date: rest.date ?? new Date(),
+          categorie: rest.categorie,
+          description: rest.description,
+          quantite: rest.quantite ?? null,
+          unite: rest.unite ?? null,
+          prixUnitaire: rest.prixUnitaire ?? null,
+          tauxTVA,
+          montantHT,
+          montantTVA,
+          montant,
+          clientId: rest.clientId ?? null,
+          clientNom: rest.clientNom ?? null,
+          module: rest.module ?? null,
+          paye: rest.paye,
+          notes: rest.notes ?? null,
+          journal: rest.journal ?? 'VE',
+          modeReglement: rest.modeReglement ?? null,
+          numeroPiece: rest.numeroPiece ?? null,
+          pjUrl: rest.pjUrl || null,
+          tvaInferee: false,
+        },
+      })
     })
 
     invalidateKpi(userId)
     return NextResponse.json(vente, { status: 201 })
   } catch (error) {
     console.error('POST /api/comptabilite/ventes-manuelles error:', error)
+    // QA Camille 2026-05-15 — Bug #3 : client introuvable = 400 explicite
+    const msg = error instanceof Error ? error.message : ''
+    if (msg.includes('introuvable')) {
+      return NextResponse.json({ error: msg }, { status: 400 })
+    }
     return NextResponse.json(
       { error: 'Erreur lors de la création', details: "Erreur interne du serveur" },
       { status: 500 }

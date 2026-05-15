@@ -73,6 +73,16 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const parsed = createClientSchema.safeParse(body)
     if (!parsed.success) {
+      // QA Camille 2026-05-15 — bonus : tracer les POST 400 répétés au
+      // refresh pour repérer l'origine (referer / payload). Log
+      // structuré pour grep côté ops.
+      const referer = request.headers.get('referer') ?? '(direct)'
+      console.warn('[clients/POST 400]', JSON.stringify({
+        referer,
+        userAgent: request.headers.get('user-agent')?.slice(0, 80),
+        keys: Object.keys(body ?? {}),
+        firstError: parsed.error.issues[0]?.message,
+      }))
       return NextResponse.json(
         { error: 'Données invalides', details: parsed.error.flatten() },
         { status: 400 }

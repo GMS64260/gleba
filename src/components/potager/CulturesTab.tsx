@@ -232,7 +232,15 @@ function createColumns(
   ]
 }
 
-export function CulturesTab() {
+// QA Camille 2026-05-15 — Bug #2 : le tableau cultures ne se mettait
+// pas à jour au changement d'année (le composant n'avait aucune prop
+// year et `/api/cultures` n'était pas filtré). On accepte désormais
+// `year` et on le pousse en query string vers l'API.
+interface CulturesTabProps {
+  year?: number
+}
+
+export function CulturesTab({ year }: CulturesTabProps = {}) {
   const router = useRouter()
   const { toast } = useToast()
   const [data, setData] = React.useState<CultureWithRelations[]>([])
@@ -294,6 +302,9 @@ export function CulturesTab() {
     setIsLoading(true)
     try {
       let url = `/api/cultures?page=${pageIndex + 1}&pageSize=${pageSize}`
+      if (year) {
+        url += `&annee=${year}`
+      }
       if (selectedEtat && selectedEtat !== "all") {
         url += `&etat=${encodeURIComponent(selectedEtat)}`
       }
@@ -323,7 +334,7 @@ export function CulturesTab() {
     } finally {
       setIsLoading(false)
     }
-  }, [pageIndex, selectedEtat, toast])
+  }, [pageIndex, selectedEtat, year, toast])
 
   React.useEffect(() => {
     fetchData()

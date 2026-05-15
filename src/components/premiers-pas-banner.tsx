@@ -265,9 +265,16 @@ const CONFIGS: Record<ModuleKey, ModuleConfig> = {
         hint: "Pour la TVA déductible sur achats",
       },
       {
+        // QA Camille 2026-05-15 — Bug #3 : la checklist se cochait dès
+        // qu'une vente existait, même si aucun client n'était saisi.
+        // Conséquence : "0 clients · 0 revenus" tout en affichant
+        // l'étape barrée. On exige donc *vente + au moins un client*
+        // (les ventes orphelines de la démo restent visibles, mais
+        // l'étape ne se coche que quand l'utilisateur a réellement
+        // structuré sa première vente avec un client).
         key: "vente",
         label: "Saisir une vente (marché, AMAP, particulier)",
-        done: hasData(r.vente),
+        done: hasData(r.vente) && hasData(r.cli),
         href: "/comptabilite/ventes-manuelles",
       },
       {
