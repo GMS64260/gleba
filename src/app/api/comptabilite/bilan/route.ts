@@ -125,6 +125,42 @@ export async function GET(request: NextRequest) {
   // non saisies, ou capital non renseigné).
   const ecartEquilibrage = Math.round((totalActif - totalPassifSansEcart) * 100) / 100
 
+  // BUG #10 (audit compta 2026-05-15) — Avant : le compte 47x servait
+  // de variable d'ajustement silencieuse. Un éleveur ne saisissait pas
+  // son capital → écart = −2 580,82 € absorbé sans alerte → faux bilan.
+  //
+  // Désormais on classifie l'écart pour que l'UI puisse afficher une
+  // bannière différenciée :
+  //  - OK            : |écart| < 1 € → tolérance d'arrondi
+  //  - INFO          : 1 € ≤ |écart| < 100 €, capital saisi → arrondi
+  //  - WARNING       : capital non saisi (1ère cause connue)
+  //  - WARNING       : disponibilités à 0 (placeholder MVP)
+  //  - ERROR         : |écart| ≥ 100 € malgré capital + dispos renseignées
+  const seuilTolerance = 1
+  const seuilError = 100
+  const capitalSaisi = capital > 0
+  const dispoSaisies = actif.disponibilites > 0
+  let ecartSeverity: 'ok' | 'info' | 'warning' | 'error' = 'ok'
+  const ecartReasons: string[] = []
+  const ecartAbs = Math.abs(ecartEquilibrage)
+  if (ecartAbs < seuilTolerance) {
+    ecartSeverity = 'ok'
+  } else if (!capitalSaisi || !dispoSaisies) {
+    ecartSeverity = 'warning'
+    if (!capitalSaisi) {
+      ecartReasons.push('Capital social non renseigné — à saisir dans /parametres/exploitation.')
+    }
+    if (!dispoSaisies) {
+      ecartReasons.push('Disponibilités banque à 0 — réconciliation bancaire manuelle requise (MVP).')
+    }
+  } else if (ecartAbs >= seuilError) {
+    ecartSeverity = 'error'
+    ecartReasons.push('Écart anormal : passif et actif divergent malgré une saisie complète. Vérifier les factures impayées et les dettes fournisseurs.')
+  } else {
+    ecartSeverity = 'info'
+    ecartReasons.push('Écart d\'arrondi tolérable.')
+  }
+
   return NextResponse.json({
     year,
     actif,
@@ -134,5 +170,14 @@ export async function GET(request: NextRequest) {
     },
     totalActif: Math.round(totalActif * 100) / 100,
     totalPassif: Math.round((totalPassifSansEcart + ecartEquilibrage) * 100) / 100,
+    // BUG #10 : diagnostic d'équilibrage exposé à l'UI
+    diagnostic: {
+      ecart: ecartEquilibrage,
+      ecartAbs: Math.round(ecartAbs * 100) / 100,
+      severity: ecartSeverity,
+      reasons: ecartReasons,
+      capitalSaisi,
+      dispoSaisies,
+    },
   })
 }
