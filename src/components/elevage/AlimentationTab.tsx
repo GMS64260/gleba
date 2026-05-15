@@ -10,6 +10,7 @@ import {
   TrendingDown,
   Stethoscope,
   Plus,
+  Pencil,
   RefreshCw,
   AlertTriangle,
   Calendar,
@@ -356,10 +357,29 @@ function ConsommationsSubTab() {
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
   const [filterDateDebut, setFilterDateDebut] = React.useState("")
   const [filterDateFin, setFilterDateFin] = React.useState("")
+  // QA 2026-05-15 — édition par ligne
+  const [editingConsoId, setEditingConsoId] = React.useState<number | null>(null)
 
   const [formData, setFormData] = React.useState({
     alimentId: "", lotId: "", date: new Date().toISOString().split("T")[0], quantite: "", notes: "",
   })
+
+  const resetConsoForm = () => {
+    setEditingConsoId(null)
+    setFormData({ alimentId: "", lotId: "", date: new Date().toISOString().split("T")[0], quantite: "", notes: "" })
+  }
+
+  const handleEditConso = (c: Consommation) => {
+    setEditingConsoId(c.id)
+    setFormData({
+      alimentId: c.aliment.id,
+      lotId: c.lot?.id ? c.lot.id.toString() : "",
+      date: c.date.split('T')[0],
+      quantite: c.quantite.toString(),
+      notes: c.notes ?? "",
+    })
+    setIsDialogOpen(true)
+  }
 
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
@@ -389,21 +409,27 @@ function ConsommationsSubTab() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
+      const isEdit = editingConsoId !== null
+      const body = {
+        ...(isEdit ? { id: editingConsoId } : {}),
+        alimentId: formData.alimentId,
+        lotId: formData.lotId ? parseInt(formData.lotId) : null,
+        date: formData.date,
+        quantite: parseFloat(formData.quantite),
+        notes: formData.notes || null,
+      }
       const response = await fetch("/api/elevage/consommations-aliments", {
-        method: "POST",
+        method: isEdit ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          alimentId: formData.alimentId,
-          lotId: formData.lotId ? parseInt(formData.lotId) : null,
-          date: formData.date,
-          quantite: parseFloat(formData.quantite),
-          notes: formData.notes || null,
-        }),
+        body: JSON.stringify(body),
       })
       if (!response.ok) throw new Error("Erreur")
-      toast({ title: "Consommation enregistrée", description: `${formData.quantite} kg ajoutes` })
+      toast({
+        title: isEdit ? "Consommation mise à jour" : "Consommation enregistrée",
+        description: `${formData.quantite} kg`,
+      })
       setIsDialogOpen(false)
-      setFormData({ alimentId: formData.alimentId, lotId: formData.lotId, date: new Date().toISOString().split("T")[0], quantite: "", notes: "" })
+      resetConsoForm()
       fetchData()
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible d'enregistrer" })
@@ -464,14 +490,14 @@ function ConsommationsSubTab() {
           <Button variant="outline" size="sm" onClick={fetchData}>
             <RefreshCw className="h-4 w-4" />
           </Button>
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) resetConsoForm() }}>
             <DialogTrigger asChild>
-              <Button size="sm"><Plus className="h-4 w-4 mr-1" />Saisie rapide</Button>
+              <Button size="sm" onClick={() => setEditingConsoId(null)}><Plus className="h-4 w-4 mr-1" />Saisie rapide</Button>
             </DialogTrigger>
             <DialogContent className="max-w-md">
               <DialogHeader>
-                <DialogTitle>Nouvelle consommation</DialogTitle>
-                <DialogDescription>Enregistrer une distribution d'aliment</DialogDescription>
+                <DialogTitle>{editingConsoId ? "Modifier la consommation" : "Nouvelle consommation"}</DialogTitle>
+                <DialogDescription>{editingConsoId ? `Édition de la consommation #${editingConsoId}` : "Enregistrer une distribution d'aliment"}</DialogDescription>
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-2">
@@ -505,7 +531,9 @@ function ConsommationsSubTab() {
                 </div>
                 <div className="flex justify-end gap-2 pt-4">
                   <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
-                  <Button type="submit" disabled={!formData.alimentId || !formData.quantite}>Enregistrer</Button>
+                  <Button type="submit" disabled={!formData.alimentId || !formData.quantite}>
+                    {editingConsoId ? "Mettre à jour" : "Enregistrer"}
+                  </Button>
                 </div>
               </form>
             </DialogContent>
@@ -539,9 +567,14 @@ function ConsommationsSubTab() {
                     <TableCell className="text-right font-bold">{c.quantite} kg</TableCell>
                     <TableCell className="text-muted-foreground text-sm max-w-[200px] truncate">{c.notes || "-"}</TableCell>
                     <TableCell>
-                      <Button variant="ghost" size="sm" onClick={() => handleDelete(c.id)} className="text-red-600 hover:text-red-700">
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button variant="ghost" size="sm" onClick={() => handleEditConso(c)} title="Modifier" className="text-slate-600 hover:text-slate-900">
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => handleDelete(c.id)} className="text-red-600 hover:text-red-700" title="Supprimer">
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -567,6 +600,11 @@ interface Soin {
   type: string
   description: string | null
   produit: string | null
+  produitId: string | null
+  dose: string | null
+  voie: string | null
+  motif: string | null
+  ordonnanceUrl: string | null
   quantite: number | null
   unite: string | null
   cout: number | null
@@ -574,6 +612,7 @@ interface Soin {
   datePrevue: string | null
   fait: boolean
   notes: string | null
+  animalId: number | null
   animal: { id: number; nom: string; identifiant: string } | null
   lot: { id: number; nom: string } | null
 }
@@ -594,8 +633,10 @@ function SoinsSubTab() {
   const [lots, setLots] = React.useState<LotSoin[]>([])
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
   const [filterFait, setFilterFait] = React.useState<string>("all")
+  // QA 2026-05-15 — édition par ligne
+  const [editingSoinId, setEditingSoinId] = React.useState<number | null>(null)
 
-  const [formData, setFormData] = React.useState({
+  const EMPTY_SOIN_FORM = {
     cible: "lot" as "lot" | "animal",
     lotId: "",
     animalId: "",
@@ -603,14 +644,43 @@ function SoinsSubTab() {
     type: "Vaccination",
     description: "",
     produit: "",
-    // PROMPT 19B
     produitId: "",
     dose: "",
     voie: "",
     motif: "",
     ordonnanceUrl: "",
     quantite: "", unite: "", cout: "", fait: true, notes: "",
-  })
+  }
+  const [formData, setFormData] = React.useState(EMPTY_SOIN_FORM)
+
+  const resetSoinForm = () => {
+    setEditingSoinId(null)
+    setFormData(EMPTY_SOIN_FORM)
+  }
+
+  const handleEditSoin = (s: Soin) => {
+    setEditingSoinId(s.id)
+    setFormData({
+      cible: s.animalId ? "animal" : "lot",
+      lotId: s.lot?.id ? s.lot.id.toString() : "",
+      animalId: s.animal?.id ? s.animal.id.toString() : "",
+      date: s.date.split('T')[0],
+      type: s.type ?? "Vaccination",
+      description: s.description ?? "",
+      produit: s.produit ?? "",
+      produitId: s.produitId ?? "",
+      dose: s.dose ?? "",
+      voie: s.voie ?? "",
+      motif: s.motif ?? "",
+      ordonnanceUrl: s.ordonnanceUrl ?? "",
+      quantite: s.quantite ? s.quantite.toString() : "",
+      unite: s.unite ?? "",
+      cout: s.cout ? s.cout.toString() : "",
+      fait: s.fait,
+      notes: s.notes ?? "",
+    })
+    setIsDialogOpen(true)
+  }
   const [animaux, setAnimaux] = React.useState<{ id: number; nom: string | null; identifiant: string | null; especeAnimale?: { nom?: string } }[]>([])
   const [produits, setProduits] = React.useState<{ id: string; nom: string; substanceActive: string | null; tempsAttenteLaitJ: number; tempsAttenteViandeJ: number; autoriseAB: boolean }[]>([])
 
@@ -660,8 +730,10 @@ function SoinsSubTab() {
       if (formData.cible === "animal") payload.animalId = formData.animalId ? parseInt(formData.animalId) : null
       else payload.lotId = formData.lotId ? parseInt(formData.lotId) : null
 
+      const isEdit = editingSoinId !== null
+      if (isEdit) payload.id = editingSoinId
       const response = await fetch('/api/elevage/soins', {
-        method: 'POST',
+        method: isEdit ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
@@ -670,15 +742,12 @@ function SoinsSubTab() {
         toast({ variant: "destructive", title: "Erreur", description: json.error || "Échec" })
         return
       }
-      toast({ title: "Soin enregistré", description: json.info || undefined })
-      setIsDialogOpen(false)
-      setFormData({
-        cible: "lot", lotId: "", animalId: "",
-        date: new Date().toISOString().split('T')[0], type: "Vaccination",
-        description: "", produit: "",
-        produitId: "", dose: "", voie: "", motif: "", ordonnanceUrl: "",
-        quantite: "", unite: "", cout: "", fait: true, notes: "",
+      toast({
+        title: isEdit ? "Soin mis à jour" : "Soin enregistré",
+        description: json.info || undefined,
       })
+      setIsDialogOpen(false)
+      resetSoinForm()
       fetchData()
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible d'enregistrer le soin" })
@@ -713,10 +782,10 @@ function SoinsSubTab() {
         </Select>
         <div className="flex items-center gap-2 ml-auto">
           <Button variant="outline" size="sm" onClick={fetchData}><RefreshCw className="h-4 w-4" /></Button>
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild><Button size="sm"><Plus className="h-4 w-4 mr-1" />Nouveau soin</Button></DialogTrigger>
+          <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) resetSoinForm() }}>
+            <DialogTrigger asChild><Button size="sm" onClick={() => setEditingSoinId(null)}><Plus className="h-4 w-4 mr-1" />Nouveau soin</Button></DialogTrigger>
             <DialogContent className="max-w-md">
-              <DialogHeader><DialogTitle>Enregistrer un soin</DialogTitle><DialogDescription>Vaccination, vermifuge, traitement...</DialogDescription></DialogHeader>
+              <DialogHeader><DialogTitle>{editingSoinId ? "Modifier le soin" : "Enregistrer un soin"}</DialogTitle><DialogDescription>{editingSoinId ? `Édition du soin #${editingSoinId}` : "Vaccination, vermifuge, traitement..."}</DialogDescription></DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-3 max-h-[70vh] overflow-y-auto pr-2">
                 {/* Cible : animal ou lot */}
                 <div className="space-y-2">
@@ -861,9 +930,14 @@ function SoinsSubTab() {
                 {soins.map((soin) => (
                   <TableRow key={soin.id} className={!soin.fait ? "bg-blue-50" : ""}>
                     <TableCell>
-                      <Button variant="ghost" size="sm" onClick={() => toggleFait(soin.id, soin.fait)} className={soin.fait ? "text-green-600" : "text-slate-400"}>
-                        <Check className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center gap-0.5">
+                        <Button variant="ghost" size="sm" onClick={() => toggleFait(soin.id, soin.fait)} title={soin.fait ? "Marquer non fait" : "Marquer fait"} className={soin.fait ? "text-green-600" : "text-slate-400"}>
+                          <Check className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => handleEditSoin(soin)} title="Modifier" className="text-slate-600 hover:text-slate-900">
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     </TableCell>
                     <TableCell>{new Date(soin.date).toLocaleDateString('fr-FR')}</TableCell>
                     <TableCell><Badge variant="outline">{SOIN_TYPE_LABELS[soin.type] || soin.type}</Badge></TableCell>

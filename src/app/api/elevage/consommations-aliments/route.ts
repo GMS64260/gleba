@@ -155,6 +155,85 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// QA 2026-05-15 — édition par bouton ✏️ depuis l'onglet Consommations.
+// On recalcule l'impact stock : delta = nouvelle quantité - ancienne ;
+// puis on applique le delta sur UserStockAliment.
+export async function PATCH(request: NextRequest) {
+  const { session, error } = await requireAuthApi()
+  if (error) return error
+
+  try {
+    const userId = session.user.id
+    const body = await request.json()
+    const id = parseInt(body.id, 10)
+    if (Number.isNaN(id)) {
+      return NextResponse.json({ error: 'ID invalide' }, { status: 400 })
+    }
+    const existing = await prisma.consommationAliment.findFirst({
+      where: { id, userId },
+    })
+    if (!existing) {
+      return NextResponse.json({ error: 'Consommation introuvable' }, { status: 404 })
+    }
+
+    const result = consommationAlimentSchema.safeParse(body)
+    if (!result.success) {
+      return NextResponse.json(
+        { error: 'Données invalides', details: result.error.flatten() },
+        { status: 400 }
+      )
+    }
+    const { alimentId, lotId, date, quantite, notes } = result.data
+
+    // Transaction interactive : on rend l'impact stock à l'ancien aliment
+    // si changement, puis on applique le delta sur le nouvel.
+    const updated = await prisma.$transaction(async (tx) => {
+      if (existing.alimentId !== alimentId) {
+        await tx.userStockAliment.upsert({
+          where: { userId_alimentId: { userId, alimentId: existing.alimentId } },
+          create: { userId, alimentId: existing.alimentId, stock: existing.quantite, dateStock: new Date() },
+          update: { stock: { increment: existing.quantite }, dateStock: new Date() },
+        })
+        await tx.userStockAliment.upsert({
+          where: { userId_alimentId: { userId, alimentId } },
+          create: { userId, alimentId, stock: -quantite, dateStock: new Date() },
+          update: { stock: { decrement: quantite }, dateStock: new Date() },
+        })
+      } else {
+        const delta = quantite - existing.quantite
+        if (delta !== 0) {
+          await tx.userStockAliment.upsert({
+            where: { userId_alimentId: { userId, alimentId } },
+            create: { userId, alimentId, stock: -delta, dateStock: new Date() },
+            update: { stock: { decrement: delta }, dateStock: new Date() },
+          })
+        }
+      }
+      return tx.consommationAliment.update({
+        where: { id },
+        data: {
+          alimentId,
+          lotId: lotId ?? null,
+          date,
+          quantite,
+          notes: notes ?? null,
+        },
+        include: {
+          aliment: { select: { id: true, nom: true, type: true } },
+          lot: { select: { id: true, nom: true } },
+        },
+      })
+    })
+    return NextResponse.json({ data: updated })
+  } catch (error) {
+    console.error('PATCH /api/elevage/consommations-aliments error:', error)
+    return NextResponse.json(
+      { error: 'Erreur lors de la mise à jour', details: "Erreur interne du serveur" },
+      { status: 500 }
+    )
+  }
+}
+
 export async function DELETE(request: NextRequest) {
   const { session, error } = await requireAuthApi()
   if (error) return error

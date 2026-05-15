@@ -8,6 +8,7 @@ import * as React from "react"
 import {
   Baby,
   Plus,
+  Pencil,
   RefreshCw,
   Calendar,
   Calculator,
@@ -54,6 +55,7 @@ interface Naissance {
   poidsTotal: number | null
   pereIdentifiant: string | null
   notes: string | null
+  mereId: number | null
   mere: {
     id: number
     nom: string | null
@@ -139,14 +141,38 @@ function NaissancesSubTab() {
   const [stats, setStats] = React.useState<NaissanceStats | null>(null)
   const [femelles, setFemelles] = React.useState<AnimalFemelle[]>([])
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
+  // QA 2026-05-15 — édition par ligne
+  const [editingNaissId, setEditingNaissId] = React.useState<number | null>(null)
 
-  const [formData, setFormData] = React.useState({
+  const EMPTY_NAISS_FORM = {
     mereId: "", pereIdentifiant: "",
     date: new Date().toISOString().split('T')[0],
     nombreNes: "", nombreVivants: "",
     nombreMales: "", nombreFemelles: "",
     poidsTotal: "", notes: "",
-  })
+  }
+  const [formData, setFormData] = React.useState(EMPTY_NAISS_FORM)
+
+  const resetNaissForm = () => {
+    setEditingNaissId(null)
+    setFormData(EMPTY_NAISS_FORM)
+  }
+
+  const handleEditNaiss = (n: Naissance) => {
+    setEditingNaissId(n.id)
+    setFormData({
+      mereId: n.mereId ? n.mereId.toString() : "",
+      pereIdentifiant: n.pereIdentifiant ?? "",
+      date: n.date.split('T')[0],
+      nombreNes: n.nombreNes.toString(),
+      nombreVivants: n.nombreVivants.toString(),
+      nombreMales: n.nombreMales != null ? n.nombreMales.toString() : "",
+      nombreFemelles: n.nombreFemelles != null ? n.nombreFemelles.toString() : "",
+      poidsTotal: n.poidsTotal != null ? n.poidsTotal.toString() : "",
+      notes: n.notes ?? "",
+    })
+    setIsDialogOpen(true)
+  }
 
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
@@ -177,21 +203,20 @@ function NaissancesSubTab() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
+      const isEdit = editingNaissId !== null
+      const body = isEdit ? { id: editingNaissId, ...formData } : formData
       const response = await fetch('/api/elevage/naissances', {
-        method: 'POST',
+        method: isEdit ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(body),
       })
       if (!response.ok) throw new Error('Erreur')
-      toast({ title: "Naissance enregistrée", description: `${formData.nombreNes} ne(s), ${formData.nombreVivants} vivant(s)` })
-      setIsDialogOpen(false)
-      setFormData({
-        mereId: "", pereIdentifiant: "",
-        date: new Date().toISOString().split('T')[0],
-        nombreNes: "", nombreVivants: "",
-        nombreMales: "", nombreFemelles: "",
-        poidsTotal: "", notes: "",
+      toast({
+        title: isEdit ? "Naissance mise à jour" : "Naissance enregistrée",
+        description: `${formData.nombreNes} né(s), ${formData.nombreVivants} vivant(s)`,
       })
+      setIsDialogOpen(false)
+      resetNaissForm()
       fetchData()
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible d'enregistrer" })
@@ -294,14 +319,14 @@ function NaissancesSubTab() {
         <Button variant="outline" size="sm" onClick={fetchData}>
           <RefreshCw className="h-4 w-4" />
         </Button>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) resetNaissForm() }}>
           <DialogTrigger asChild>
-            <Button size="sm"><Plus className="h-4 w-4 mr-1" />Nouvelle naissance</Button>
+            <Button size="sm" onClick={() => setEditingNaissId(null)}><Plus className="h-4 w-4 mr-1" />Nouvelle naissance</Button>
           </DialogTrigger>
           <DialogContent className="max-w-md">
             <DialogHeader>
-              <DialogTitle>Enregistrer une naissance</DialogTitle>
-              <DialogDescription>Mise bas ou eclosion</DialogDescription>
+              <DialogTitle>{editingNaissId ? "Modifier la naissance" : "Enregistrer une naissance"}</DialogTitle>
+              <DialogDescription>{editingNaissId ? `Édition de la naissance #${editingNaissId}` : "Mise bas ou éclosion"}</DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
@@ -357,7 +382,9 @@ function NaissancesSubTab() {
               </div>
               <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
-                <Button type="submit" disabled={!formData.nombreNes || !formData.nombreVivants}>Enregistrer</Button>
+                <Button type="submit" disabled={!formData.nombreNes || !formData.nombreVivants}>
+                  {editingNaissId ? "Mettre à jour" : "Enregistrer"}
+                </Button>
               </div>
             </form>
           </DialogContent>
@@ -406,9 +433,14 @@ function NaissancesSubTab() {
                     <TableCell className="text-right">{n.poidsTotal ? `${n.poidsTotal} kg` : '-'}</TableCell>
                     <TableCell className="text-muted-foreground text-sm max-w-[150px] truncate">{n.notes || '-'}</TableCell>
                     <TableCell>
-                      <Button variant="ghost" size="sm" onClick={() => handleDelete(n.id)} className="text-red-600 hover:text-red-700">
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button variant="ghost" size="sm" onClick={() => handleEditNaiss(n)} title="Modifier" className="text-slate-600 hover:text-slate-900">
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => handleDelete(n.id)} className="text-red-600 hover:text-red-700" title="Supprimer">
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -559,6 +591,8 @@ function SailliesSubTab() {
   const [loading, setLoading] = React.useState(true)
   const [open, setOpen] = React.useState(false)
   const [filtreStatut, setFiltreStatut] = React.useState<string>("")
+  // QA 2026-05-15 — saillie en cours d'édition (null = mode création)
+  const [editingSaillie, setEditingSaillie] = React.useState<SaillieRow | null>(null)
 
   const reload = React.useCallback(() => {
     setLoading(true)
@@ -651,7 +685,7 @@ function SailliesSubTab() {
                   Carnet PDF
                 </Button>
               </a>
-              <Button size="sm" onClick={() => setOpen(true)}>
+              <Button size="sm" onClick={() => { setEditingSaillie(null); setOpen(true) }}>
                 <Plus className="h-4 w-4 mr-1" />
                 Nouvelle saillie
               </Button>
@@ -706,21 +740,32 @@ function SailliesSubTab() {
                         </Badge>
                       </td>
                       <td className="p-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={async () => {
-                            if (!confirm("Supprimer cette saillie ?")) return
-                            const res = await fetch(`/api/elevage/saillies?id=${s.id}`, { method: "DELETE" })
-                            if (res.ok) reload()
-                            else {
-                              const j = await res.json()
-                              toast({ variant: "destructive", title: "Refusé", description: j.error })
-                            }
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            title="Modifier"
+                            className="text-slate-600 hover:text-slate-900"
+                            onClick={() => { setEditingSaillie(s); setOpen(true) }}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={async () => {
+                              if (!confirm("Supprimer cette saillie ?")) return
+                              const res = await fetch(`/api/elevage/saillies?id=${s.id}`, { method: "DELETE" })
+                              if (res.ok) reload()
+                              else {
+                                const j = await res.json()
+                                toast({ variant: "destructive", title: "Refusé", description: j.error })
+                              }
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -731,18 +776,27 @@ function SailliesSubTab() {
         </CardContent>
       </Card>
 
-      <DialogSaillie open={open} onOpenChange={setOpen} animaux={animaux} onCreated={reload} />
+      <DialogSaillie
+        open={open}
+        onOpenChange={(b) => { setOpen(b); if (!b) setEditingSaillie(null) }}
+        animaux={animaux}
+        onCreated={reload}
+        editingSaillie={editingSaillie}
+      />
     </div>
   )
 }
 
+// QA 2026-05-15 — édition par ligne pour SailliesSubTab
 function DialogSaillie(props: {
   open: boolean
   onOpenChange: (b: boolean) => void
   animaux: { id: number; nom: string | null; identifiant: string | null; sexe: string | null; race: string | null }[]
   onCreated: () => void
+  editingSaillie?: SaillieRow | null
 }) {
   const { toast } = useToast()
+  const isEdit = !!props.editingSaillie
   const [form, setForm] = React.useState({
     date: new Date().toISOString().split("T")[0],
     femelleId: 0,
@@ -753,6 +807,29 @@ function DialogSaillie(props: {
     pereExterneRef: "",
     notes: "",
   })
+
+  // Pré-remplir depuis editingSaillie quand on ouvre en mode édition
+  React.useEffect(() => {
+    if (props.open && props.editingSaillie) {
+      const s = props.editingSaillie
+      setForm({
+        date: s.date.split("T")[0],
+        femelleId: s.femelle.id,
+        maleId: s.male?.id ?? 0,
+        type: s.type ?? "Monte naturelle",
+        agentInseminateur: s.agentInseminateur ?? "",
+        semenceLot: s.semenceLot ?? "",
+        pereExterneRef: s.pereExterneRef ?? "",
+        notes: s.notes ?? "",
+      })
+    } else if (props.open && !props.editingSaillie) {
+      setForm({
+        date: new Date().toISOString().split("T")[0],
+        femelleId: 0, maleId: 0, type: "Monte naturelle",
+        agentInseminateur: "", semenceLot: "", pereExterneRef: "", notes: "",
+      })
+    }
+  }, [props.open, props.editingSaillie])
   const [warning, setWarning] = React.useState<string | null>(null)
   const [saving, setSaving] = React.useState(false)
 
@@ -779,28 +856,30 @@ function DialogSaillie(props: {
     }
     setSaving(true)
     try {
+      const body = {
+        ...(isEdit ? { id: props.editingSaillie!.id } : {}),
+        date: form.date,
+        femelleId: form.femelleId,
+        maleId: form.type === "Monte naturelle" && form.maleId ? form.maleId : null,
+        type: form.type,
+        agentInseminateur: form.type === "IA" ? form.agentInseminateur || null : null,
+        semenceLot: form.type === "IA" ? form.semenceLot || null : null,
+        pereExterneRef: form.pereExterneRef || null,
+        notes: form.notes || null,
+      }
       const res = await fetch("/api/elevage/saillies", {
-        method: "POST",
+        method: isEdit ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          date: form.date,
-          femelleId: form.femelleId,
-          maleId: form.type === "Monte naturelle" && form.maleId ? form.maleId : null,
-          type: form.type,
-          agentInseminateur: form.type === "IA" ? form.agentInseminateur || null : null,
-          semenceLot: form.type === "IA" ? form.semenceLot || null : null,
-          pereExterneRef: form.pereExterneRef || null,
-          notes: form.notes || null,
-        }),
+        body: JSON.stringify(body),
       })
       const json = await res.json()
       if (!res.ok) {
         toast({ variant: "destructive", title: "Erreur", description: json.error || "Échec" })
       } else {
         if (json.warnings?.length > 0) {
-          toast({ title: "Saillie enregistrée", description: json.warnings[0].message })
+          toast({ title: isEdit ? "Saillie mise à jour" : "Saillie enregistrée", description: json.warnings[0].message })
         } else {
-          toast({ title: "Saillie enregistrée" })
+          toast({ title: isEdit ? "Saillie mise à jour" : "Saillie enregistrée" })
         }
         props.onOpenChange(false)
         props.onCreated()
@@ -814,9 +893,9 @@ function DialogSaillie(props: {
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
       <DialogContent className="max-w-xl">
         <DialogHeader>
-          <DialogTitle>Nouvelle saillie</DialogTitle>
+          <DialogTitle>{isEdit ? `Modifier la saillie #${props.editingSaillie!.id}` : "Nouvelle saillie"}</DialogTitle>
           <DialogDescription>
-            La date de mise-bas attendue sera calculée automatiquement selon l'espèce de la femelle.
+            La date de mise-bas attendue sera recalculée automatiquement selon l'espèce de la femelle.
           </DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-2 gap-3">
@@ -887,8 +966,8 @@ function DialogSaillie(props: {
         <div className="flex justify-end gap-2 mt-4">
           <Button variant="outline" onClick={() => props.onOpenChange(false)}>Annuler</Button>
           <Button onClick={submit} disabled={saving}>
-            <Plus className="h-4 w-4 mr-1" />
-            Enregistrer
+            {!isEdit && <Plus className="h-4 w-4 mr-1" />}
+            {isEdit ? "Mettre à jour" : "Enregistrer"}
           </Button>
         </div>
       </DialogContent>
