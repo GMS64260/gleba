@@ -273,13 +273,13 @@ export default function NewITPPage() {
                   name="dureePepiniere"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Durée pepiniere (jours)</FormLabel>
+                      <FormLabel>Durée pépinière (jours)</FormLabel>
                       <FormControl>
                         <Input
                           type="number"
                           min={0}
                           max={365}
-                          placeholder="Jours en pepiniere"
+                          placeholder="Jours en pépinière"
                           {...field}
                           value={field.value ?? ""}
                           onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : null)}

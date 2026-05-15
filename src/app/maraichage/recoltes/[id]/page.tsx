@@ -170,7 +170,7 @@ export default function EditRecoltePage() {
             </Link>
             <div className="flex items-center gap-2">
               <BarChart3 className="h-6 w-6 text-blue-600" />
-              <h1 className="text-xl font-bold">Modifier recolte #{recolteId}</h1>
+              <h1 className="text-xl font-bold">Modifier récolte #{recolteId}</h1>
             </div>
           </div>
           <Button variant="destructive" size="sm" onClick={handleDelete}>

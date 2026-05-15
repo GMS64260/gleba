@@ -277,8 +277,8 @@ function CulturesIrriguerContent() {
   }
 
   const getBesoinEauBadge = (besoinEau: number | null, irrigation: string | null) => {
-    if (irrigation === 'Eleve' || (besoinEau && besoinEau >= 4)) {
-      return <Badge variant="destructive">Eleve</Badge>
+    if (irrigation === 'Eleve' || irrigation === 'Élevé' || (besoinEau && besoinEau >= 4)) {
+      return <Badge variant="destructive">Élevé</Badge>
     }
     if (besoinEau && besoinEau >= 3) {
       return <Badge variant="default" className="bg-orange-500">Moyen</Badge>
@@ -480,7 +480,7 @@ function CulturesIrriguerContent() {
               <SelectItem value="critique">Critique</SelectItem>
               <SelectItem value="haute">Haute</SelectItem>
               <SelectItem value="aucune">OK (pas besoin)</SelectItem>
-              <SelectItem value="jamais">Jamais arrose</SelectItem>
+              <SelectItem value="jamais">Jamais arrosé</SelectItem>
             </SelectContent>
           </Select>
 
@@ -506,7 +506,7 @@ function CulturesIrriguerContent() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Tous besoins</SelectItem>
-              <SelectItem value="4">Eleve (4+)</SelectItem>
+              <SelectItem value="4">Élevé (4+)</SelectItem>
               <SelectItem value="3">Moyen (3)</SelectItem>
             </SelectContent>
           </Select>
