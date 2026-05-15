@@ -10,6 +10,7 @@ import {
   ShoppingCart,
   Scissors,
   Plus,
+  Pencil,
   RefreshCw,
   Package,
   TrendingUp,
@@ -131,6 +132,9 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
   // QA Julien 2026-05-15 — Bug #6 : id en cours de suppression (null = pas de modale)
   const [deletingId, setDeletingId] = React.useState<number | null>(null)
+  // QA 2026-05-15 — édition par bouton ✏️ : id de la production en
+  // cours d'édition (null = mode création).
+  const [editingId, setEditingId] = React.useState<number | null>(null)
   // BUG #2 : payload en attente quand le backend a renvoyé 422
   // COLLECTE_OVER_SEUIL — l'éleveur doit confirmer pour forcer la saisie.
   const [overrideState, setOverrideState] = React.useState<{
@@ -187,18 +191,45 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
   // BUG #2 — encapsule l'appel POST pour pouvoir le rejouer avec
   // `overrideCoherence: true` quand l'éleveur confirme la saisie après
   // un 422 COLLECTE_OVER_SEUIL.
+  // QA 2026-05-15 — étendu pour supporter le mode édition (PATCH) :
+  // si `editingId` est passé, on appelle PATCH au lieu de POST.
   const postProduction = async (
     payload: Record<string, unknown>,
-    options: { override?: boolean } = {}
+    options: { override?: boolean; editingId?: number | null } = {}
   ): Promise<{ ok: true } | { ok: false; status: number; body: any }> => {
+    const isEdit = options.editingId != null
+    const finalPayload = options.override
+      ? { ...payload, overrideCoherence: true }
+      : payload
     const response = await fetch('/api/elevage/production-oeufs', {
-      method: 'POST',
+      method: isEdit ? 'PATCH' : 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(options.override ? { ...payload, overrideCoherence: true } : payload),
+      body: JSON.stringify(isEdit ? { id: options.editingId, ...finalPayload } : finalPayload),
     })
     if (response.ok) return { ok: true }
     const body = await response.json().catch(() => ({}))
     return { ok: false, status: response.status, body }
+  }
+
+  // QA 2026-05-15 — pré-remplit la modale + ouvre en mode édition.
+  const handleEdit = (prod: Production) => {
+    setEditingId(prod.id)
+    setFormData({
+      lotId: prod.lot?.id ? prod.lot.id.toString() : "",
+      date: prod.date.split('T')[0],
+      quantite: prod.quantite.toString(),
+      casses: (prod.casses ?? 0).toString(),
+      sales: (prod.sales ?? 0).toString(),
+      calibre: prod.calibre || "",
+      notes: prod.notes || "",
+    })
+    setIsDialogOpen(true)
+  }
+
+  // Reset complet quand on ferme le dialog
+  const resetForm = () => {
+    setEditingId(null)
+    setFormData({ lotId: formData.lotId, date: new Date().toISOString().split('T')[0], quantite: "", casses: "0", sales: "0", calibre: "", notes: "" })
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -213,7 +244,7 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
       notes: formData.notes || null,
     }
     try {
-      const result = await postProduction(payload)
+      const result = await postProduction(payload, { editingId })
       if (!result.ok) {
         // BUG #2 : saisie incohérente, on demande confirmation explicite.
         if (result.status === 422 && result.body?.code === 'COLLECTE_OVER_SEUIL' && result.body?.details) {
@@ -229,9 +260,12 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
         }
         throw new Error(result.body?.error || 'Erreur')
       }
-      toast({ title: "Production enregistrée", description: `${formData.quantite} oeufs ajoutes` })
+      toast({
+        title: editingId ? "Collecte mise à jour" : "Production enregistrée",
+        description: `${formData.quantite} œufs`,
+      })
       setIsDialogOpen(false)
-      setFormData({ lotId: formData.lotId, date: new Date().toISOString().split('T')[0], quantite: "", casses: "0", sales: "0", calibre: "", notes: "" })
+      resetForm()
       fetchData()
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible d'enregistrer" })
@@ -333,14 +367,14 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
         <Button variant="outline" size="sm" onClick={fetchData}>
           <RefreshCw className="h-4 w-4" />
         </Button>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) resetForm() }}>
           <DialogTrigger asChild>
-            <Button size="sm"><Plus className="h-4 w-4 mr-1" />Saisie rapide</Button>
+            <Button size="sm" onClick={() => setEditingId(null)}><Plus className="h-4 w-4 mr-1" />Saisie rapide</Button>
           </DialogTrigger>
           <DialogContent className="max-w-md">
             <DialogHeader>
-              <DialogTitle>Nouvelle production</DialogTitle>
-              <DialogDescription>Enregistrer la collecte du jour</DialogDescription>
+              <DialogTitle>{editingId ? "Modifier la collecte" : "Nouvelle production"}</DialogTitle>
+              <DialogDescription>{editingId ? `Édition de la collecte #${editingId}` : "Enregistrer la collecte du jour"}</DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
@@ -390,7 +424,9 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
               </div>
               <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
-                <Button type="submit" disabled={!formData.lotId || !formData.quantite}>Enregistrer</Button>
+                <Button type="submit" disabled={!formData.lotId || !formData.quantite}>
+                  {editingId ? "Mettre à jour" : "Enregistrer"}
+                </Button>
               </div>
             </form>
           </DialogContent>
@@ -431,7 +467,12 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
                     <TableCell>{prod.calibre || '-'}</TableCell>
                     <TableCell className="text-muted-foreground text-sm max-w-[200px] truncate">{prod.notes || '-'}</TableCell>
                     <TableCell>
-                      <Button variant="ghost" size="sm" onClick={() => setDeletingId(prod.id)} className="text-red-600 hover:text-red-700">&times;</Button>
+                      <div className="flex items-center gap-1 justify-end">
+                        <Button variant="ghost" size="sm" onClick={() => handleEdit(prod)} title="Modifier" className="text-slate-600 hover:text-slate-900">
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => setDeletingId(prod.id)} className="text-red-600 hover:text-red-700" title="Supprimer">&times;</Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -515,12 +556,35 @@ function VentesSubTab() {
   const [ventes, setVentes] = React.useState<Vente[]>([])
   const [stats, setStats] = React.useState<any>(null)
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
+  // QA 2026-05-15 — édition par ligne
+  const [editingId, setEditingId] = React.useState<number | null>(null)
 
   const [formData, setFormData] = React.useState({
     date: new Date().toISOString().split('T')[0],
     type: "oeufs", description: "", quantite: "", unite: "douzaine",
     prixUnitaire: "", client: "", paye: true, notes: "",
   })
+
+  const resetForm = () => {
+    setEditingId(null)
+    setFormData({ date: new Date().toISOString().split('T')[0], type: "oeufs", description: "", quantite: "", unite: "douzaine", prixUnitaire: "", client: "", paye: true, notes: "" })
+  }
+
+  const handleEdit = (v: Vente) => {
+    setEditingId(v.id)
+    setFormData({
+      date: v.date.split('T')[0],
+      type: v.type,
+      description: v.description ?? "",
+      quantite: v.quantite.toString(),
+      unite: v.unite,
+      prixUnitaire: v.prixUnitaire.toString(),
+      client: v.client ?? "",
+      paye: v.paye,
+      notes: v.notes ?? "",
+    })
+    setIsDialogOpen(true)
+  }
 
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
@@ -543,20 +607,23 @@ function VentesSubTab() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
+      const isEdit = editingId !== null
+      const body = {
+        ...(isEdit ? { id: editingId } : {}),
+        date: formData.date,
+        type: formData.type,
+        description: formData.description || null,
+        quantite: formData.quantite ? parseFloat(formData.quantite) : 0,
+        unite: formData.unite,
+        prixUnitaire: formData.prixUnitaire ? parseFloat(formData.prixUnitaire) : 0,
+        client: formData.client || null,
+        paye: formData.paye,
+        notes: formData.notes || null,
+      }
       const response = await fetch('/api/elevage/ventes', {
-        method: 'POST',
+        method: isEdit ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          date: formData.date,
-          type: formData.type,
-          description: formData.description || null,
-          quantite: formData.quantite ? parseFloat(formData.quantite) : 0,
-          unite: formData.unite,
-          prixUnitaire: formData.prixUnitaire ? parseFloat(formData.prixUnitaire) : 0,
-          client: formData.client || null,
-          paye: formData.paye,
-          notes: formData.notes || null,
-        }),
+        body: JSON.stringify(body),
       })
       if (!response.ok) throw new Error('Erreur')
       const total = parseFloat(formData.quantite) * parseFloat(formData.prixUnitaire)
@@ -611,14 +678,14 @@ function VentesSubTab() {
         <Button variant="outline" size="sm" onClick={fetchData}>
           <RefreshCw className="h-4 w-4" />
         </Button>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) resetForm() }}>
           <DialogTrigger asChild>
-            <Button size="sm"><Plus className="h-4 w-4 mr-1" />Nouvelle vente</Button>
+            <Button size="sm" onClick={() => setEditingId(null)}><Plus className="h-4 w-4 mr-1" />Nouvelle vente</Button>
           </DialogTrigger>
           <DialogContent className="max-w-md">
             <DialogHeader>
-              <DialogTitle>Enregistrer une vente</DialogTitle>
-              <DialogDescription>Oeufs, viande, animaux vivants...</DialogDescription>
+              <DialogTitle>{editingId ? "Modifier la vente" : "Enregistrer une vente"}</DialogTitle>
+              <DialogDescription>{editingId ? `Édition de la vente #${editingId}` : "Œufs, viande, animaux vivants…"}</DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
@@ -679,7 +746,9 @@ function VentesSubTab() {
               </div>
               <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
-                <Button type="submit" disabled={!formData.quantite || !formData.prixUnitaire}>Enregistrer</Button>
+                <Button type="submit" disabled={!formData.quantite || !formData.prixUnitaire}>
+                  {editingId ? "Mettre à jour" : "Enregistrer"}
+                </Button>
               </div>
             </form>
           </DialogContent>
@@ -722,7 +791,12 @@ function VentesSubTab() {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <Button variant="ghost" size="sm" onClick={() => handleDelete(vente.id)} className="text-red-600 hover:text-red-700">&times;</Button>
+                      <div className="flex items-center gap-1 justify-end">
+                        <Button variant="ghost" size="sm" onClick={() => handleEdit(vente)} title="Modifier" className="text-slate-600 hover:text-slate-900">
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => handleDelete(vente.id)} className="text-red-600 hover:text-red-700" title="Supprimer">&times;</Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -776,11 +850,34 @@ function AbattagesSubTab() {
   const [stats, setStats] = React.useState<any>(null)
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
   const [especeFilter, setEspeceFilter] = React.useState<Set<string>>(new Set())
+  // QA 2026-05-15 — édition par ligne
+  const [editingId, setEditingId] = React.useState<number | null>(null)
 
   const [formData, setFormData] = React.useState({
     lotId: "", date: new Date().toISOString().split('T')[0], quantite: "1",
     poidsVif: "", poidsCarcasse: "", destination: "auto_consommation", prixVente: "", lieu: "", notes: "",
   })
+
+  const resetForm = () => {
+    setEditingId(null)
+    setFormData({ lotId: "", date: new Date().toISOString().split('T')[0], quantite: "1", poidsVif: "", poidsCarcasse: "", destination: "auto_consommation", prixVente: "", lieu: "", notes: "" })
+  }
+
+  const handleEdit = (a: Abattage) => {
+    setEditingId(a.id)
+    setFormData({
+      lotId: a.lot?.id ? a.lot.id.toString() : "",
+      date: a.date.split('T')[0],
+      quantite: a.quantite.toString(),
+      poidsVif: a.poidsVif ? a.poidsVif.toString() : "",
+      poidsCarcasse: a.poidsCarcasse ? a.poidsCarcasse.toString() : "",
+      destination: a.destination ?? "auto_consommation",
+      prixVente: a.prixVente ? a.prixVente.toString() : "",
+      lieu: a.lieu ?? "",
+      notes: a.notes ?? "",
+    })
+    setIsDialogOpen(true)
+  }
 
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
@@ -831,25 +928,28 @@ function AbattagesSubTab() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
+      const isEdit = editingId !== null
+      const body = {
+        ...(isEdit ? { id: editingId } : {}),
+        lotId: formData.lotId ? parseInt(formData.lotId) : null,
+        date: formData.date,
+        quantite: formData.quantite ? parseInt(formData.quantite) : 1,
+        poidsVif: formData.poidsVif ? parseFloat(formData.poidsVif) : null,
+        poidsCarcasse: formData.poidsCarcasse ? parseFloat(formData.poidsCarcasse) : null,
+        destination: formData.destination,
+        prixVente: formData.prixVente ? parseFloat(formData.prixVente) : null,
+        lieu: formData.lieu || null,
+        notes: formData.notes || null,
+      }
       const response = await fetch('/api/elevage/abattages', {
-        method: 'POST',
+        method: isEdit ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          lotId: formData.lotId ? parseInt(formData.lotId) : null,
-          date: formData.date,
-          quantite: formData.quantite ? parseInt(formData.quantite) : 1,
-          poidsVif: formData.poidsVif ? parseFloat(formData.poidsVif) : null,
-          poidsCarcasse: formData.poidsCarcasse ? parseFloat(formData.poidsCarcasse) : null,
-          destination: formData.destination,
-          prixVente: formData.prixVente ? parseFloat(formData.prixVente) : null,
-          lieu: formData.lieu || null,
-          notes: formData.notes || null,
-        }),
+        body: JSON.stringify(body),
       })
       if (!response.ok) throw new Error('Erreur')
-      toast({ title: "Abattage enregistre" })
+      toast({ title: isEdit ? "Abattage mis à jour" : "Abattage enregistré" })
       setIsDialogOpen(false)
-      setFormData({ lotId: "", date: new Date().toISOString().split('T')[0], quantite: "1", poidsVif: "", poidsCarcasse: "", destination: "auto_consommation", prixVente: "", lieu: "", notes: "" })
+      resetForm()
       fetchData()
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible d'enregistrer" })
@@ -929,12 +1029,12 @@ function AbattagesSubTab() {
           <Button variant="outline" size="sm" onClick={fetchData}>
             <RefreshCw className="h-4 w-4" />
           </Button>
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) resetForm() }}>
             <DialogTrigger asChild>
-              <Button size="sm"><Plus className="h-4 w-4 mr-1" />Nouvel abattage</Button>
+              <Button size="sm" onClick={() => setEditingId(null)}><Plus className="h-4 w-4 mr-1" />Nouvel abattage</Button>
             </DialogTrigger>
           <DialogContent className="max-w-md">
-            <DialogHeader><DialogTitle>Enregistrer un abattage</DialogTitle></DialogHeader>
+            <DialogHeader><DialogTitle>{editingId ? "Modifier l'abattage" : "Enregistrer un abattage"}</DialogTitle></DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
                 <Label>Lot *</Label>
@@ -967,7 +1067,9 @@ function AbattagesSubTab() {
               </div>
               <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
-                <Button type="submit" disabled={!formData.lotId}>Enregistrer</Button>
+                <Button type="submit" disabled={!formData.lotId}>
+                  {editingId ? "Mettre à jour" : "Enregistrer"}
+                </Button>
               </div>
             </form>
           </DialogContent>
@@ -1014,11 +1116,16 @@ function AbattagesSubTab() {
                     <TableCell className="text-right">{a.poidsCarcasse ? `${a.poidsCarcasse} kg` : '-'}</TableCell>
                     <TableCell><Badge variant="outline">{DEST_LABELS[a.destination] || a.destination}</Badge></TableCell>
                     <TableCell className="text-right text-green-600">{a.prixVente ? `${a.prixVente.toFixed(2)} \u20ac` : '-'}</TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="ghost" size="sm" onClick={() => handleEdit(a)} title="Modifier" className="text-slate-600 hover:text-slate-900">
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                    </TableCell>
                   </TableRow>
                   )
                 })}
                 {filteredAbattages.length === 0 && (
-                  <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">{especeFilter.size > 0 ? 'Aucun abattage pour cette sélection' : 'Aucun abattage enregistre'}</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">{especeFilter.size > 0 ? 'Aucun abattage pour cette sélection' : 'Aucun abattage enregistre'}</TableCell></TableRow>
                 )}
               </TableBody>
             </Table>
