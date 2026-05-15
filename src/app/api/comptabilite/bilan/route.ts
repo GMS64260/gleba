@@ -26,6 +26,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireAuthApi } from "@/lib/auth-utils"
 import prisma from "@/lib/prisma"
 import { getKpiCompta } from "@/lib/kpi"
+import { computeTvaPeriode } from "@/lib/kpi/tva"
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -86,21 +87,16 @@ export async function GET(request: NextRequest) {
     _sum: { montant: true },
   })
 
-  // TVA à payer = TVA collectée − TVA déductible
-  const [tvaCollectee, tvaDeductible] = await Promise.all([
-    prisma.venteManuelle.aggregate({
-      where: { userId, date: { gte: startOfYear, lte: endOfYear } },
-      _sum: { montantTVA: true },
-    }),
-    prisma.depenseManuelle.aggregate({
-      where: { userId, date: { gte: startOfYear, lte: endOfYear } },
-      _sum: { montantTVA: true },
-    }),
-  ])
-  const tvaAPayer = Math.max(
-    0,
-    (tvaCollectee._sum.montantTVA ?? 0) - (tvaDeductible._sum.montantTVA ?? 0)
-  )
+  // BUG #8 (audit compta 2026-05-15) — Avant : `Σ VenteManuelle.montantTVA
+  // − Σ DepenseManuelle.montantTVA`. Bilan = 11,82 €, Rapports = 12,73 €,
+  // écart 0,91 €. Cause : Rapports incluait les sources brutes (élevage,
+  // récoltes, bois, abattages, aliments, fertilisations) avec TVA inférée,
+  // pas le bilan.
+  //
+  // Désormais Bilan et Rapports utilisent le même helper
+  // `computeTvaPeriode` → valeur identique sur les deux écrans.
+  const tvaPeriode = await computeTvaPeriode(userId, startOfYear, endOfYear)
+  const tvaAPayer = tvaPeriode.solde.tvaAPayer
 
   // Récupérer Exploitation pour le capital social.
   const exploitation = await prisma.exploitation.findUnique({
