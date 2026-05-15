@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { calculerStockOeufs } from '@/lib/stocks-helpers'
+import { computeStocksTotaux, moyennePrix } from '@/lib/stocks/agregation'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -125,6 +126,49 @@ export async function GET(request: NextRequest) {
       }),
     ])
 
+    // BUG #7 — Prix moyens récents (90 j) pour valoriser les stocks qui
+    // n'ont pas de prix saisi (récoltes vendues, œufs, fruits). Sans ça,
+    // la card « Valeur estimée » restait à 0 dès qu'un utilisateur n'avait
+    // pas pris la peine de remplir le prix unitaire sur chaque saisie.
+    const ilYAQuatreVingtDixJours = new Date(Date.now() - 90 * 24 * 3600 * 1000)
+    const [ventesRecoltes, ventesFruits, ventesOeufs] = await Promise.all([
+      prisma.recolte.findMany({
+        where: { userId, statut: 'vendu', dateVente: { gte: ilYAQuatreVingtDixJours }, prixKg: { not: null, gt: 0 } },
+        select: { especeId: true, prixKg: true },
+      }),
+      prisma.recolteArbre.findMany({
+        where: { userId, statut: 'vendu', dateVente: { gte: ilYAQuatreVingtDixJours }, prixKg: { not: null, gt: 0 } },
+        select: { arbreId: true, prixKg: true },
+      }),
+      prisma.venteProduit.findMany({
+        where: { userId, type: 'oeufs', date: { gte: ilYAQuatreVingtDixJours }, annule: false },
+        select: { quantite: true, unite: true, prixUnitaire: true },
+      }),
+    ])
+
+    // Map especeId → prix moyen €/kg (récoltes potager)
+    const prixParEspece = new Map<string, number[]>()
+    for (const v of ventesRecoltes) {
+      if (!v.prixKg) continue
+      const list = prixParEspece.get(v.especeId) ?? []
+      list.push(v.prixKg)
+      prixParEspece.set(v.especeId, list)
+    }
+    // Map arbreId → prix moyen €/kg (fruits arbres)
+    const prixParArbre = new Map<number, number[]>()
+    for (const v of ventesFruits) {
+      if (!v.prixKg) continue
+      const list = prixParArbre.get(v.arbreId) ?? []
+      list.push(v.prixKg)
+      prixParArbre.set(v.arbreId, list)
+    }
+    // Prix moyen œuf à l'unité (douzaine → /12)
+    const prixOeufUnit = moyennePrix(
+      ventesOeufs.map((v) =>
+        v.unite === 'douzaine' ? v.prixUnitaire / 12 : v.prixUnitaire
+      )
+    )
+
     // Récupérer les noms des especes animales
     const especeAnimaleIds = animauxActifs.map(a => a.especeAnimaleId)
     const especesAnimales = await prisma.especeAnimale.findMany({
@@ -196,19 +240,24 @@ export async function GET(request: NextRequest) {
     })
 
     // Récoltes potager en stock (agrégées par espece)
-    const recoltesParEspece = new Map<string, { nom: string; totalKg: number; valeur: number }>()
+    // BUG #7 : fallback sur prix moyen des ventes récentes si pas de prixKg.
+    const recoltesParEspece = new Map<string, { nom: string; totalKg: number; valeur: number; hasPrix: boolean }>()
     recoltesEnStock.forEach(r => {
       const key = r.especeId
       const existing = recoltesParEspece.get(key)
-      const val = r.prixKg ? r.quantite * r.prixKg : 0
+      const prixFallback = r.prixKg ?? moyennePrix(prixParEspece.get(r.especeId) ?? []) ?? 0
+      const val = r.quantite * prixFallback
+      const hasPrix = prixFallback > 0
       if (existing) {
         existing.totalKg += r.quantite
         existing.valeur += val
+        existing.hasPrix = existing.hasPrix || hasPrix
       } else {
         recoltesParEspece.set(key, {
           nom: r.espece?.id || key,
           totalKg: r.quantite,
           valeur: val,
+          hasPrix,
         })
       }
     })
@@ -222,7 +271,7 @@ export async function GET(request: NextRequest) {
         unite: 'kg',
         stockMin: null,
         alerteBas: false,
-        valeur: data.valeur || null,
+        valeur: data.hasPrix ? data.valeur : null,
       })
     })
 
@@ -275,7 +324,9 @@ export async function GET(request: NextRequest) {
     })
 
     // Stock œufs
+    // BUG #7 : valoriser avec prix moyen unitaire récent (ventes 90 j).
     if (stockOeufs.stockNet > 0 || stockOeufs.detail.produits > 0) {
+      const valeurOeufs = prixOeufUnit ? stockOeufs.stockNet * prixOeufUnit : null
       stocks.push({
         id: 'oeufs-stock',
         module: 'elevage',
@@ -285,7 +336,7 @@ export async function GET(request: NextRequest) {
         unite: 'oeufs',
         stockMin: 24,
         alerteBas: stockOeufs.stockNet < 24,
-        valeur: null,
+        valeur: valeurOeufs,
       })
     }
 
@@ -314,19 +365,24 @@ export async function GET(request: NextRequest) {
     })
 
     // Fruits en stock (recoltes arbres agrégées par arbre)
-    const fruitsParArbre = new Map<number, { nom: string; totalKg: number; valeur: number }>()
+    // BUG #7 : fallback sur prix moyen €/kg des ventes récentes par arbre.
+    const fruitsParArbre = new Map<number, { nom: string; totalKg: number; valeur: number; hasPrix: boolean }>()
     fruitsEnStock.forEach(r => {
       const key = r.arbreId
       const existing = fruitsParArbre.get(key)
-      const val = r.prixKg ? r.quantite * r.prixKg : 0
+      const prixFallback = r.prixKg ?? moyennePrix(prixParArbre.get(r.arbreId) ?? []) ?? 0
+      const val = r.quantite * prixFallback
+      const hasPrix = prixFallback > 0
       if (existing) {
         existing.totalKg += r.quantite
         existing.valeur += val
+        existing.hasPrix = existing.hasPrix || hasPrix
       } else {
         fruitsParArbre.set(key, {
           nom: r.arbre?.nom || `Arbre #${key}`,
           totalKg: r.quantite,
           valeur: val,
+          hasPrix,
         })
       }
     })
@@ -340,7 +396,7 @@ export async function GET(request: NextRequest) {
         unite: 'kg',
         stockMin: null,
         alerteBas: false,
-        valeur: data.valeur || null,
+        valeur: data.hasPrix ? data.valeur : null,
       })
     })
 
@@ -361,16 +417,17 @@ export async function GET(request: NextRequest) {
     })
 
     // Stats
+    // BUG #7 : on utilise le sélecteur testé `computeStocksTotaux` au lieu
+    // d'un reduce inline. Il calcule simultanément `valeurTotale`,
+    // `valeurParModule` (pour le tooltip de la card) et `itemsParModule`.
     const alertes = stocks.filter(s => s.alerteBas)
+    const totaux = computeStocksTotaux(stocks)
     const stats = {
       totalItems: stocks.length,
       alertes: alertes.length,
-      valeurTotale: stocks.reduce((sum, s) => sum + (s.valeur || 0), 0),
-      parModule: {
-        potager: stocks.filter(s => s.module === 'potager').length,
-        verger: stocks.filter(s => s.module === 'verger').length,
-        elevage: stocks.filter(s => s.module === 'elevage').length,
-      },
+      valeurTotale: totaux.valeurTotale,
+      valeurParModule: totaux.valeurParModule,
+      parModule: totaux.itemsParModule,
     }
 
     return NextResponse.json({
