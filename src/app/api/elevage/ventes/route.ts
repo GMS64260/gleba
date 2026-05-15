@@ -102,6 +102,20 @@ export async function POST(request: NextRequest) {
     const { date, type, description, quantite, unite, prixUnitaire, client, destinationId, paye, tauxTVA, notes } = parsed.data
     const prixTotal = quantite * prixUnitaire
 
+    // QA 2026-05-15 — garde-fou anti-saisie aberrante : Sophie a vu une
+    // ligne "999 999 douzaines d'œufs à 4€ = 4M€" remonter en compta.
+    // On bloque toute vente unitaire > 100 000 € à la saisie ; les
+    // ventes en gros au-dessus passent via un POST dédié confirmé.
+    const SEUIL_VENTE_PRODUIT = 100_000
+    if (prixTotal > SEUIL_VENTE_PRODUIT) {
+      return NextResponse.json(
+        {
+          error: `Saisie aberrante : ${quantite} ${unite ?? 'unités'} × ${prixUnitaire} € = ${prixTotal.toFixed(2)} €. Au-dessus de ${SEUIL_VENTE_PRODUIT} €, contactez l'administrateur ou découpez la saisie.`,
+        },
+        { status: 400 }
+      )
+    }
+
     const result = await prisma.$transaction(async (tx) => {
       const vente = await tx.venteProduit.create({
         data: {
