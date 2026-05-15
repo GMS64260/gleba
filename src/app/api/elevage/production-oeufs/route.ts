@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { productionOeufsSchema } from '@/lib/validations/elevage-production-oeufs'
+import { seuilCollecteMaxJour } from '@/lib/elevage/taux-ponte'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -91,7 +92,42 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { lotId, animalId, date, quantite, casses, sales, calibre, notes } = parsed.data
+    const { lotId, animalId, date, quantite, casses, sales, calibre, notes, overrideCoherence } = parsed.data
+
+    // BUG #2 (audit Julien 15/05/2026) — Validation de cohérence sur
+    // l'effectif. Avant : 999 œufs pour 29 pondeuses passait silencieusement.
+    // Désormais : refus 422 si quantite > effectif × marge_espèce, sauf
+    // si l'éleveur a explicitement coché `overrideCoherence`.
+    if (!overrideCoherence && lotId) {
+      const lot = await prisma.lotAnimaux.findFirst({
+        where: { id: lotId, userId: session.user.id },
+        select: {
+          quantiteActuelle: true,
+          nom: true,
+          especeAnimale: { select: { nom: true } },
+        },
+      })
+      if (lot && lot.quantiteActuelle > 0) {
+        const seuil = seuilCollecteMaxJour(lot.quantiteActuelle, lot.especeAnimale?.nom ?? null)
+        if (seuil != null && quantite > seuil) {
+          return NextResponse.json(
+            {
+              error: 'Saisie incohérente',
+              code: 'COLLECTE_OVER_SEUIL',
+              details: {
+                quantite,
+                seuilMax: seuil,
+                effectif: lot.quantiteActuelle,
+                espece: lot.especeAnimale?.nom ?? null,
+                lotNom: lot.nom,
+                message: `${lot.quantiteActuelle} ${lot.especeAnimale?.nom ?? 'pondeuse(s)'} ne peuvent pas pondre ${quantite} œufs en 1 jour (plafond plausible ≈ ${seuil}). Confirmer pour forcer la saisie.`,
+              },
+            },
+            { status: 422 }
+          )
+        }
+      }
+    }
 
     const production = await prisma.productionOeuf.create({
       data: {

@@ -9,6 +9,13 @@ export const productionOeufsSchema = z.object({
   sales: z.number().int().min(0).default(0),
   calibre: z.string().max(50).nullable().optional(),
   notes: z.string().max(5000).nullable().optional(),
+  /**
+   * BUG #2 (audit Julien 15/05/2026) — Override explicite quand l'éleveur
+   * saisit une quantité supérieure au plafond `effectif × marge_espèce`.
+   * Permet par exemple les jours de rattrapage (collecte 2 jours d'un
+   * coup) sans contourner silencieusement la validation.
+   */
+  overrideCoherence: z.boolean().optional(),
 }).refine(
   data => data.lotId != null || data.animalId != null,
   { message: 'Lot ou animal requis', path: ['lotId'] }

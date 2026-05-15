@@ -38,6 +38,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
 
 // ============================================================
@@ -128,6 +129,18 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
   const [stats, setStats] = React.useState<OeufsStats | null>(null)
   const [stockOeufs, setStockOeufs] = React.useState<StockOeufs | null>(null)
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
+  // QA Julien 2026-05-15 — Bug #6 : id en cours de suppression (null = pas de modale)
+  const [deletingId, setDeletingId] = React.useState<number | null>(null)
+  // BUG #2 : payload en attente quand le backend a renvoyé 422
+  // COLLECTE_OVER_SEUIL — l'éleveur doit confirmer pour forcer la saisie.
+  const [overrideState, setOverrideState] = React.useState<{
+    payload: Record<string, unknown>
+    seuilMax: number
+    effectif: number
+    espece: string | null
+    lotNom: string | null
+    quantite: number
+  } | null>(null)
 
   const [formData, setFormData] = React.useState({
     lotId: "", date: new Date().toISOString().split('T')[0],
@@ -171,23 +184,51 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
 
   React.useEffect(() => { fetchData() }, [fetchData])
 
+  // BUG #2 — encapsule l'appel POST pour pouvoir le rejouer avec
+  // `overrideCoherence: true` quand l'éleveur confirme la saisie après
+  // un 422 COLLECTE_OVER_SEUIL.
+  const postProduction = async (
+    payload: Record<string, unknown>,
+    options: { override?: boolean } = {}
+  ): Promise<{ ok: true } | { ok: false; status: number; body: any }> => {
+    const response = await fetch('/api/elevage/production-oeufs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(options.override ? { ...payload, overrideCoherence: true } : payload),
+    })
+    if (response.ok) return { ok: true }
+    const body = await response.json().catch(() => ({}))
+    return { ok: false, status: response.status, body }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    const payload = {
+      lotId: formData.lotId ? parseInt(formData.lotId) : null,
+      date: formData.date,
+      quantite: formData.quantite ? parseInt(formData.quantite) : 0,
+      casses: formData.casses ? parseInt(formData.casses) : 0,
+      sales: formData.sales ? parseInt(formData.sales) : 0,
+      calibre: formData.calibre || null,
+      notes: formData.notes || null,
+    }
     try {
-      const response = await fetch('/api/elevage/production-oeufs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          lotId: formData.lotId ? parseInt(formData.lotId) : null,
-          date: formData.date,
-          quantite: formData.quantite ? parseInt(formData.quantite) : 0,
-          casses: formData.casses ? parseInt(formData.casses) : 0,
-          sales: formData.sales ? parseInt(formData.sales) : 0,
-          calibre: formData.calibre || null,
-          notes: formData.notes || null,
-        }),
-      })
-      if (!response.ok) throw new Error('Erreur')
+      const result = await postProduction(payload)
+      if (!result.ok) {
+        // BUG #2 : saisie incohérente, on demande confirmation explicite.
+        if (result.status === 422 && result.body?.code === 'COLLECTE_OVER_SEUIL' && result.body?.details) {
+          setOverrideState({
+            payload,
+            seuilMax: result.body.details.seuilMax,
+            effectif: result.body.details.effectif,
+            espece: result.body.details.espece,
+            lotNom: result.body.details.lotNom,
+            quantite: result.body.details.quantite,
+          })
+          return
+        }
+        throw new Error(result.body?.error || 'Erreur')
+      }
       toast({ title: "Production enregistrée", description: `${formData.quantite} oeufs ajoutes` })
       setIsDialogOpen(false)
       setFormData({ lotId: formData.lotId, date: new Date().toISOString().split('T')[0], quantite: "", casses: "0", sales: "0", calibre: "", notes: "" })
@@ -197,14 +238,45 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
     }
   }
 
-  const handleDelete = async (id: number) => {
-    if (!confirm("Supprimer cet enregistrement ?")) return
+  const handleOverrideConfirm = async () => {
+    if (!overrideState) return
+    const result = await postProduction(overrideState.payload, { override: true })
+    if (result.ok) {
+      toast({
+        title: "Saisie forcée enregistrée",
+        description: `${overrideState.quantite} œufs — au-delà du plafond plausible (${overrideState.seuilMax}).`,
+      })
+      setIsDialogOpen(false)
+      setFormData({ lotId: formData.lotId, date: new Date().toISOString().split('T')[0], quantite: "", casses: "0", sales: "0", calibre: "", notes: "" })
+      fetchData()
+    } else {
+      toast({ variant: "destructive", title: "Erreur", description: "Impossible d'enregistrer (override refusé)" })
+    }
+    setOverrideState(null)
+  }
+
+  // QA Julien 2026-05-15 — Bug #6 : `confirm()` natif gelait le
+  // renderer >30s (probable conflit avec un dialog Radix déjà monté).
+  // Migration vers <ConfirmDialog> async-aware + optimistic UI :
+  //   * suppression immédiate dans le state (UI réactive)
+  //   * rollback complet sur erreur HTTP
+  //   * toast de succès/erreur explicite
+  const handleDeleteConfirm = async () => {
+    if (deletingId == null) return
+    const id = deletingId
+    const previous = productions
+    setProductions((prev) => prev.filter((p) => p.id !== id))
     try {
-      await fetch(`/api/elevage/production-oeufs?id=${id}`, { method: 'DELETE' })
-      toast({ title: "Enregistrement supprime" })
+      const res = await fetch(`/api/elevage/production-oeufs?id=${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('HTTP ' + res.status)
+      toast({ title: "Collecte supprimée" })
+      // Rafraîchit stats + stock en arrière-plan (sans bloquer l'UI)
       fetchData()
     } catch {
-      toast({ variant: "destructive", title: "Erreur" })
+      setProductions(previous)
+      toast({ variant: "destructive", title: "Erreur", description: "Suppression annulée" })
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -359,7 +431,7 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
                     <TableCell>{prod.calibre || '-'}</TableCell>
                     <TableCell className="text-muted-foreground text-sm max-w-[200px] truncate">{prod.notes || '-'}</TableCell>
                     <TableCell>
-                      <Button variant="ghost" size="sm" onClick={() => handleDelete(prod.id)} className="text-red-600 hover:text-red-700">&times;</Button>
+                      <Button variant="ghost" size="sm" onClick={() => setDeletingId(prod.id)} className="text-red-600 hover:text-red-700">&times;</Button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -371,6 +443,42 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
           )}
         </CardContent>
       </Card>
+
+      {/* QA Julien 2026-05-15 — Bug #6 : modale de confirmation
+          suppression collecte œufs (remplace confirm() natif gelé). */}
+      <ConfirmDialog
+        open={deletingId !== null}
+        onOpenChange={(o) => !o && setDeletingId(null)}
+        title="Supprimer cette collecte ?"
+        description="L'enregistrement et son impact sur le stock d'œufs disparaîtront. Cette action est irréversible."
+        confirmLabel="Supprimer"
+        variant="destructive"
+        onConfirm={handleDeleteConfirm}
+      />
+
+      {/* BUG #2 : confirmation override quand saisie dépasse effectif × marge_espèce.
+          Message pédagogique pour pousser à corriger la saisie plutôt qu'à forcer. */}
+      <ConfirmDialog
+        open={overrideState !== null}
+        onOpenChange={(o) => !o && setOverrideState(null)}
+        title="Saisie incohérente détectée"
+        description={
+          overrideState ? (
+            <span>
+              <strong>{overrideState.effectif} {overrideState.espece ?? 'pondeuse(s)'}</strong> ne
+              peuvent pas pondre <strong>{overrideState.quantite} œufs</strong> en 1 jour
+              (plafond plausible ≈ <strong>{overrideState.seuilMax}</strong>).
+              <br />
+              Si c'est une saisie de rattrapage (2 jours d'un coup), confirmez pour forcer.
+              Sinon, corrigez la quantité.
+            </span>
+          ) : null
+        }
+        confirmLabel="Forcer la saisie"
+        cancelLabel="Corriger"
+        variant="warning"
+        onConfirm={handleOverrideConfirm}
+      />
     </div>
   )
 }
