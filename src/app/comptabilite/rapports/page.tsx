@@ -79,6 +79,15 @@ interface BilanData {
   }
   totalActif: number
   totalPassif: number
+  // BUG #10 — diagnostic d'équilibrage exposé pour bannière UI
+  diagnostic?: {
+    ecart: number
+    ecartAbs: number
+    severity: 'ok' | 'info' | 'warning' | 'error'
+    reasons: string[]
+    capitalSaisi: boolean
+    dispoSaisies: boolean
+  }
 }
 
 interface TVAData {
@@ -499,6 +508,43 @@ export default function RapportsPage() {
               <div className="space-y-4">{[...Array(2)].map((_, i) => <Skeleton key={i} className="h-64 w-full" />)}</div>
             ) : bilanData ? (
               <div className="space-y-6">
+                {/* BUG #10 (audit compta 2026-05-15) — Bannière d'alerte si
+                    l'écart d'équilibrage 47x est anormal. Avant : le compte
+                    47x absorbait silencieusement n'importe quel écart, même
+                    −2 580 €. Maintenant le diagnostic est explicite. */}
+                {bilanData.diagnostic && bilanData.diagnostic.severity !== 'ok' && (
+                  <div className={`rounded-lg border px-4 py-3 text-sm flex items-start gap-2 ${
+                    bilanData.diagnostic.severity === 'error'
+                      ? 'border-red-200 bg-red-50 text-red-900'
+                      : bilanData.diagnostic.severity === 'warning'
+                      ? 'border-amber-200 bg-amber-50 text-amber-900'
+                      : 'border-blue-200 bg-blue-50 text-blue-900'
+                  }`}>
+                    <Info className={`h-4 w-4 mt-0.5 flex-shrink-0 ${
+                      bilanData.diagnostic.severity === 'error'
+                        ? 'text-red-700'
+                        : bilanData.diagnostic.severity === 'warning'
+                        ? 'text-amber-700'
+                        : 'text-blue-700'
+                    }`} />
+                    <div className="flex-1">
+                      <p className="font-semibold">
+                        {bilanData.diagnostic.severity === 'error'
+                          ? 'Bilan déséquilibré — anomalie comptable'
+                          : bilanData.diagnostic.severity === 'warning'
+                          ? `Bilan équilibré via le compte 47x (${formatEuro(bilanData.diagnostic.ecart)})`
+                          : 'Écart d\'arrondi'}
+                      </p>
+                      {bilanData.diagnostic.reasons.length > 0 && (
+                        <ul className="text-xs mt-1 list-disc list-inside space-y-0.5">
+                          {bilanData.diagnostic.reasons.map((r, i) => (
+                            <li key={i}>{r}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </div>
+                )}
                 <div className="grid gap-4 md:grid-cols-2">
                   {/* ACTIF */}
                   <Card>
