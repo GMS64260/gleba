@@ -701,6 +701,22 @@ export async function GET(request: NextRequest) {
         module: 'elevage',
       }))
 
+    // BUG #2 (audit compta 2026-05-15) — Audit de cohérence entre la SSOT
+    // `getKpiCompta` (qui inclut TOUTES les VenteManuelle/DepenseManuelle,
+    // payées ou non — comptabilité d'engagement) et la ventilation par
+    // module recalculée ci-dessus. Si écart > 0,01 €, l'UI affichera un
+    // bandeau d'alerte. Pas de masquage silencieux.
+    const sumRevenusModules = totalRevenus
+    const sumDepensesModules = totalDepenses
+    const coherenceCheck = {
+      revenusSsot: kpiCompta.revenusYtd,
+      revenusSommeModules: Math.round(sumRevenusModules * 100) / 100,
+      revenusEcart: Math.round((kpiCompta.revenusYtd - sumRevenusModules) * 100) / 100,
+      depensesSsot: kpiCompta.depensesYtd,
+      depensesSommeModules: Math.round(sumDepensesModules * 100) / 100,
+      depensesEcart: Math.round((kpiCompta.depensesYtd - sumDepensesModules) * 100) / 100,
+    }
+
     return NextResponse.json({
       stats: {
         // Totaux issus de la SSOT (cf. src/lib/kpi/compta.ts) — alignés sur
@@ -709,6 +725,15 @@ export async function GET(request: NextRequest) {
         depenses: kpiCompta.depensesYtd,
         benefice: kpiCompta.beneficeYtd,
         margePercent: Math.round(kpiCompta.margePercentYtd * 10) / 10,
+        // BUG #2 — sous-totaux non payés exposés pour l'UI (badge info).
+        // Ce sont des INFOS, pas des exclusions ; le total `depenses` les
+        // inclut (compta engagement).
+        depensesNonPayees: kpiCompta.depensesNonPayeesYtd,
+        nbDepensesNonPayees: kpiCompta.nbDepensesNonPayees,
+        revenusNonPayes: kpiCompta.revenusNonPayesYtd,
+        nbRevenusNonPayes: kpiCompta.nbRevenusNonPayes,
+        // BUG #2 — diagnostic de cohérence pour bannière UI éventuelle.
+        coherenceCheck,
         // Ventilations par module : conservées pour les graphiques. Leur somme
         // peut, transitoirement, ne pas correspondre exactement au total
         // ci-dessus si une vente est saisie hors VenteManuelle/Facture — c'est

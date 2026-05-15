@@ -156,6 +156,19 @@ interface ComptaStats {
     margePercent: number
     revenusParModule: { potager: number; verger: number; elevage: number; autre: number }
     depensesParModule: { potager: number; verger: number; elevage: number; autre: number }
+    // BUG #2 — sous-totaux non payés (info, pas exclusion)
+    depensesNonPayees?: number
+    nbDepensesNonPayees?: number
+    revenusNonPayes?: number
+    nbRevenusNonPayes?: number
+    coherenceCheck?: {
+      revenusSsot: number
+      revenusSommeModules: number
+      revenusEcart: number
+      depensesSsot: number
+      depensesSommeModules: number
+      depensesEcart: number
+    }
     // YTD vs YTD année dernière (cf. src/lib/kpi/compta.ts).
     revenusAnneePrecedente: number
     revenusAnneePrecedenteTotal?: number
@@ -392,6 +405,15 @@ export default function DashboardComptabilite() {
                 </CardHeader>
                 <CardContent>
                   <p className="text-3xl font-bold">{formatEuro(data.stats.depenses)}</p>
+                  {/* BUG #2 (audit compta 2026-05-15) — Charges engagées non
+                      encore payées : info au comptable sur la trésorerie qui
+                      sortira encore, sans masquer la charge (compta engagement). */}
+                  {(data.stats.depensesNonPayees ?? 0) > 0 && (
+                    <p className="text-[10px] text-red-100 mt-1">
+                      Dont {formatEuro(data.stats.depensesNonPayees ?? 0)} non encore payé(s)
+                      {data.stats.nbDepensesNonPayees ? ` · ${data.stats.nbDepensesNonPayees} ligne(s)` : ''}
+                    </p>
+                  )}
                 </CardContent>
               </Card>
 

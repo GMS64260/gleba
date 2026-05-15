@@ -64,6 +64,19 @@ export interface KPICompta extends KPIBase {
   beneficeYtd: number
   /** Marge en % (0 si revenusYtd == 0). */
   margePercentYtd: number
+
+  /**
+   * BUG #2 (audit compta 2026-05-15) — Sous-ensemble des dépenses YTD
+   * qui sont marquées `paye=false`. Le total `depensesYtd` les inclut
+   * (principe de la comptabilité d'engagement : la charge est constatée
+   * à l'événement, pas au paiement). On expose ce sous-total pour que
+   * l'UI puisse afficher un badge informatif et que le comptable sache
+   * combien de trésorerie sortira encore.
+   */
+  depensesNonPayeesYtd: number
+  nbDepensesNonPayees: number
+  revenusNonPayesYtd: number
+  nbRevenusNonPayes: number
 }
 
 export interface KPIVerger extends KPIBase {
