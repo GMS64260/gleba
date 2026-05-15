@@ -8,6 +8,7 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { calculerStockOeufs } from '@/lib/stocks-helpers'
 import { tauxPonteSaisonnalise } from '@/lib/lait'
+import { tauxPonteAttenduPeriode } from '@/lib/elevage/taux-ponte'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -40,6 +41,7 @@ export async function GET(request: NextRequest) {
       stockOeufs,
       mortaliteAnnee,
       totalPondeuses,
+      lotsPondeusesDetail,
       totalConsommationAliments,
     ] = await Promise.all([
       // Animaux actifs
@@ -185,6 +187,22 @@ export async function GET(request: NextRequest) {
         _sum: { quantiteActuelle: true },
       }),
 
+      // BUG #5 — Lots pondeuses détaillés (espèce + effectif) pour le
+      // calcul du taux attendu pondéré par race. Marans et Sussex ont
+      // des saisonnalités différentes ; on ne peut pas se contenter
+      // d'un coef global pour tout le cheptel.
+      prisma.lotAnimaux.findMany({
+        where: {
+          userId,
+          statut: 'actif',
+          especeAnimale: { production: { in: ['oeufs', 'mixte'] } },
+        },
+        select: {
+          quantiteActuelle: true,
+          especeAnimale: { select: { nom: true } },
+        },
+      }),
+
       // Total consommation aliments annee (kg)
       prisma.consommationAliment.aggregate({
         where: {
@@ -213,21 +231,53 @@ export async function GET(request: NextRequest) {
     const consoAlimentsKg = totalConsommationAliments._sum.quantite || 0
     const poidsCarcasseTotal = abattagesAnnee._sum.poidsCarcasse || 0
 
-    // PROMPT 17 §6 — Taux de ponte saisonnalisé
-    // Le calcul brut `oeufs / (pondeuses × jours) × 100` est mathématiquement
-    // correct mais ne dit rien sur la performance relative : un troupeau en
-    // hiver normal aura mécaniquement un taux plus bas (50-60%) que le
-    // printemps (70-90%). On expose donc :
-    //   - tauxPonte : valeur observée brute (compat existant)
-    //   - tauxPonteAttendu : valeur attendue saisonnalisée pour la période
-    //   - tauxPonteRatio : observé / attendu (>1 = sur-performance)
+    // BUG #5 (audit Julien 15/05/2026) — Avant : « attendu période = 8 % »
+    // en mai pour des Marans, à cause de la formule absurde
+    //   `attenduMoyen × 100 × 0.0027 × 365 / 12`
+    // qui multipliait un coefficient saisonnier (0.55–1.35) par des
+    // facteurs n'ayant aucune unité cohérente.
+    //
+    // Désormais on raisonne directement en % pondeuses qui pondent par
+    // jour. La fenêtre de référence est glissante 7 jours (DoD : « Période
+    // par défaut : 7 derniers jours glissants »). Le taux attendu est
+    // pondéré par espèce car Marans et Sussex n'ont pas la même
+    // saisonnalité.
     const now = new Date()
     const periodEnd = annee === now.getFullYear() ? now : endOfYear
+    const periodStart = new Date(periodEnd.getTime() - 6 * 86_400_000)
+
+    // Taux observé sur 7 j glissants : œufs collectés / (pondeuses × jours).
+    const productionOeufs7j = await prisma.productionOeuf.aggregate({
+      where: { userId, date: { gte: periodStart, lte: periodEnd } },
+      _sum: { quantite: true },
+    })
+    const nbOeufs7j = productionOeufs7j._sum.quantite || 0
+    const tauxObserve7j =
+      nbPondeuses > 0 ? (nbOeufs7j / (nbPondeuses * 7)) * 100 : 0
+
+    // Taux attendu pondéré par espèce (chaque lot tire son propre coef).
+    let sommeAttenduPondere = 0
+    let effectifPondeur = 0
+    for (const lot of lotsPondeusesDetail) {
+      const q = lot.quantiteActuelle ?? 0
+      if (q <= 0) continue
+      const tx = tauxPonteAttenduPeriode(lot.especeAnimale.nom, periodStart, periodEnd)
+      sommeAttenduPondere += q * tx
+      effectifPondeur += q
+    }
+    const tauxPonteAttendu =
+      effectifPondeur > 0 ? Math.round((sommeAttenduPondere / effectifPondeur) * 10) / 10 : null
+
+    const tauxPonte = nbPondeuses > 0 ? Math.round(tauxObserve7j * 10) / 10 : null
+
+    // Compat : `tauxPonteRatio` (observé / attendu) reste utile pour les
+    // anciens écrans qui comparent ratio plutôt qu'écart. On garde aussi
+    // `ponteSais` pour la rétro-compat des consommateurs API existants.
+    const tauxPonteRatio =
+      tauxPonte !== null && tauxPonteAttendu && tauxPonteAttendu > 0
+        ? Math.round((tauxPonte / tauxPonteAttendu) * 100) / 100
+        : null
     const ponteSais = tauxPonteSaisonnalise(nbOeufsAnnee, nbPondeuses, startOfYear, periodEnd)
-    const tauxPonte = nbPondeuses > 0 ? ponteSais.tauxObserve : null
-    const tauxPonteAttendu = nbPondeuses > 0 ? Math.round(ponteSais.attenduMoyen * 100 * 0.0027 * 365 / 12) / 1 : null
-    // Note : 0.0027 ≈ 1 œuf/jour/pondeuse normalisé ; le ratio attendu est plus
-    // signifiant en bonus (ponteAttenduPct) et déjà disponible via `attenduMoyen`.
 
     // FCR = kg aliment / kg carcasse
     const fcr = poidsCarcasseTotal > 0 ? consoAlimentsKg / poidsCarcasseTotal : null
@@ -278,9 +328,13 @@ export async function GET(request: NextRequest) {
         mortaliteAnnee,
         tauxMortalite: Math.round(tauxMortalite * 10) / 10,
         tauxPonte: tauxPonte !== null ? Math.round(tauxPonte * 10) / 10 : null,
-        // PROMPT 17 — bonus saisonnalisé
+        // BUG #5 — tauxPonteAttendu désormais en % de pondeuses qui pondent
+        // (cohérent avec tauxPonte), calculé sur fenêtre 7 j glissants
+        // et pondéré par espèce.
         tauxPonteSaisonAttendu: tauxPonteAttendu,
+        tauxPonteRatio,
         nbPondeuses,
+        nbOeufsPeriode7j: nbOeufs7j,
         fcr: fcr !== null ? Math.round(fcr * 100) / 100 : null,
         consoAlimentsKg: Math.round(consoAlimentsKg * 10) / 10,
         // PROMPT 17 — KPI Lait
