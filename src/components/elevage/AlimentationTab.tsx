@@ -429,10 +429,18 @@ function ConsommationsSubTab() {
                 </div>
                 <div className="space-y-2">
                   <Label>Lot (optionnel)</Label>
-                  <Select value={formData.lotId} onValueChange={(v) => setFormData(f => ({ ...f, lotId: v }))}>
+                  {/* QA Julien 2026-05-15 — Bug #1 BLOQUANT : Radix
+                      interdit <SelectItem value=""> depuis sa v1, ce qui
+                      crashait la modale entière à l'ouverture. On utilise
+                      désormais la sentinelle "__all__" pour "Tous les
+                      animaux" et on la convertit en null au submit. */}
+                  <Select
+                    value={formData.lotId || "__all__"}
+                    onValueChange={(v) => setFormData(f => ({ ...f, lotId: v === "__all__" ? "" : v }))}
+                  >
                     <SelectTrigger><SelectValue placeholder="Tous les animaux" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Tous</SelectItem>
+                      <SelectItem value="__all__">Tous les animaux</SelectItem>
                       {lots.map(l => <SelectItem key={l.id} value={l.id.toString()}>{l.nom || `Lot #${l.id}`} ({l.especeAnimale.nom})</SelectItem>)}
                     </SelectContent>
                   </Select>
