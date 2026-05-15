@@ -450,8 +450,11 @@ const associationColumns: ColumnDef<AssociationWithRelations>[] = [
                 variant={d.requise ? "default" : "outline"}
                 className="text-xs"
                 style={{ borderColor: color }}
+                title={d.requise ? 'Association requise' : 'Association favorable'}
               >
-                {d.requise && "* "}
+                {/* BUG #24 : « * » remplacée par « ★ » plus lisible et
+                    cohérente avec la légende. */}
+                {d.requise && "★ "}
                 {name}
               </Badge>
             )
@@ -531,9 +534,24 @@ function AssociationsSubTab() {
           <div>
             <p className="font-medium">Compagnonnage</p>
             <p className="mt-1 text-pink-700">
-              Les associations définissent quelles especes se beneficient mutuellement. Une
-              association <strong>requise</strong> (*) indique une dependance forte.
+              Les associations définissent quelles espèces se bénéficient mutuellement.
             </p>
+            {/* BUG #24 (audit Marc 2026-05-15) : la légende des pictos /
+                badges manquait. Désormais explicite. */}
+            <ul className="mt-2 text-xs text-pink-700 space-y-0.5">
+              <li>
+                <Badge variant="default" className="text-[10px] mr-1">★ requise</Badge>
+                association indispensable (à respecter pour avoir l'effet bénéfique)
+              </li>
+              <li>
+                <Badge variant="outline" className="text-[10px] mr-1">contour seul</Badge>
+                association favorable mais facultative
+              </li>
+              <li>
+                <Badge variant="secondary" className="text-[10px] mr-1">+N</Badge>
+                espèces supplémentaires non listées ici (ouvrir le détail)
+              </li>
+            </ul>
           </div>
         </div>
       </div>

@@ -130,7 +130,10 @@ const columns: ColumnDef<ITPWithRelations>[] = [
   },
   {
     accessorKey: "espacement",
-    header: "Esp. (cm)",
+    // BUG #27 (audit Marc 2026-05-15) : « Esp 10 » ambigu (sur le rang
+    // ou entre les rangs ?). On précise « plant » pour matcher le
+    // libellé du formulaire d'édition (« Espacement plants »).
+    header: () => <span title="Espacement entre plants sur le rang (cm)">Esp. plant (cm)</span>,
     cell: ({ getValue }) => getValue() || "-",
   },
   {
