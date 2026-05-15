@@ -506,6 +506,19 @@ function SemencesContent() {
               </CardHeader>
               <CardContent>
                 <p className="text-2xl font-bold">{stats.nbEspeces}</p>
+                {/* BUG #11 (audit Marc 2026-05-15) : le KPI Espèces (16)
+                    ne matchait pas la somme des lignes affichées
+                    (8 graines + 7 plants + 2 caïeux = 17). C'est
+                    attendu — certaines espèces apparaissent dans 2
+                    onglets (graines + plants à produire en pépinière).
+                    On expose le breakdown pour lever l'ambiguïté. */}
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  {stats.nbGraineDirecte} graine{stats.nbGraineDirecte > 1 ? 's' : ''}
+                  {' · '}
+                  {stats.nbPlantRepique} plant{stats.nbPlantRepique > 1 ? 's' : ''}
+                  {' · '}
+                  {stats.nbBulbeCaieu} caïeu{stats.nbBulbeCaieu > 1 ? 'x' : ''}
+                </p>
               </CardContent>
             </Card>
             <Card>
