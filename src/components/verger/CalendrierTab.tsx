@@ -194,7 +194,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
             </CardTitle>
           </CardHeader>
           <CardContent className="pb-3 px-4">
-            <p className="text-xs text-lime-100">{data?.stats.arbresProductifs || 0} productifs</p>
+            <p className="text-xs text-lime-100">{data?.stats.arbresProductifs || 0} fruitiers productifs</p>
           </CardContent>
         </Card>
 
