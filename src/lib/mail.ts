@@ -527,7 +527,7 @@ export function feedbackInviteEmail({
 
   return {
     subject: "🌱 3 minutes pour m'aider à améliorer Gleba ?",
-    replyTo: "guillaume.ossau64@gmail.com",
+    replyTo: process.env.FEEDBACK_EMAIL || undefined,
     html: `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"></head>
