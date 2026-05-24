@@ -13,7 +13,7 @@
 [![Prisma](https://img.shields.io/badge/Prisma-5-2D3748)](https://www.prisma.io/)
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED)](Dockerfile)
 
-[Démo](http://demo.gleba.fr) • [Documentation](#installation-rapide-docker) • [Contribuer](CONTRIBUTING.md)
+[Démo](http://demo.gleba.fr) • [Auto-hébergement](#-auto-hébergement-debianubuntu) • [Sauvegarde](#-sauvegarde-et-restauration) • [Mise à jour](#-mise-à-jour) • [Contribuer](CONTRIBUTING.md)
 
 </div>
 
@@ -85,6 +85,8 @@ Testez Gleba sans installation :
 
 ## 🐳 Installation rapide (Docker)
 
+> Vous êtes pressé et avez déjà Docker ? Cette section. Sinon, voir [Auto-hébergement Debian/Ubuntu](#-auto-hébergement-debianubuntu) plus bas.
+
 ```bash
 # 1. Cloner le projet
 git clone https://github.com/GMS64260/gleba.git
@@ -92,7 +94,8 @@ cd gleba
 
 # 2. Configurer
 cp .env.example .env
-# Éditer .env si nécessaire (DB, secrets)
+# Éditer .env (a minima : NEXTAUTH_SECRET, ADMIN_PASSWORD, et NEXTAUTH_URL
+# si vous accédez depuis une autre machine que le serveur)
 
 # 3. Lancer
 docker compose up -d
@@ -101,13 +104,182 @@ docker compose up -d
 ✅ L'application sera sur **http://localhost:3000**
 
 **Comptes créés automatiquement :**
-- **Admin** : Voir logs au premier démarrage
+- **Admin** : email `admin@gleba.local`, mot de passe `$ADMIN_PASSWORD` (défaut : `changeme` — **à changer dans `.env` avant le premier lancement**)
 - **Démo** : `demo@gleba.fr` / `demo2026`
 
-**Migration v1.0.0 automatique :**
-- Import des 444 lignes de données enrichies
-- Espèces avec rendements, NPK, prix circuit court bio
-- ITPs avec espacements validés
+**Référentiel agronomique chargé automatiquement :**
+- 135 espèces enrichies (rendements, besoins NPK, prix circuit court bio)
+- 154 ITPs (itinéraires techniques) avec espacements validés
+- Sources : FranceAgriMer 2026, ITAB, guides bio
+
+> Le chargement du référentiel est **idempotent** : il ne s'exécute qu'à la première installation et ne ré-écrase pas vos personnalisations lors des mises à jour.
+
+---
+
+## 🖥️ Auto-hébergement Debian/Ubuntu
+
+Installation complète sur une VM Debian 12 (ou Ubuntu 22.04+) fraîche, avec HTTPS via Caddy.
+
+### 1. Prérequis système
+
+```bash
+# Outils de base
+sudo apt update && sudo apt install -y curl git ca-certificates gnupg
+
+# Docker Engine + plugin Compose (procédure officielle)
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/debian/gpg \
+  | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+  https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+  | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+# Vérifier
+docker --version
+docker compose version
+```
+
+> Pour Ubuntu, remplacez `linux/debian` par `linux/ubuntu` dans les deux URLs ci-dessus.
+
+### 2. Cloner et configurer Gleba
+
+```bash
+sudo mkdir -p /var/www && cd /var/www
+sudo git clone https://github.com/GMS64260/gleba.git
+cd gleba
+sudo cp .env.example .env
+sudo nano .env
+```
+
+Variables **à modifier impérativement** dans `.env` :
+
+| Variable | Action | Pourquoi |
+|----------|--------|----------|
+| `POSTGRES_PASSWORD` | Mettre un mot de passe long | Sécuriser la base |
+| `NEXTAUTH_SECRET` | `openssl rand -base64 32` | Sessions NextAuth |
+| `ADMIN_PASSWORD` | Mettre un mot de passe fort | Login admin |
+| `NEXTAUTH_URL` | `https://gleba.example.com` | URL **publique** — sinon login impossible depuis l'extérieur |
+
+### 3. Premier démarrage
+
+```bash
+sudo docker compose up -d
+sudo docker compose logs -f app
+# Attendre "Ready in X ms" puis Ctrl-C
+```
+
+L'app écoute sur `http://localhost:3000` (sur le serveur lui-même). Pour exposer en HTTPS sur Internet, passez à l'étape 4.
+
+### 4. Reverse proxy HTTPS avec Caddy (recommandé)
+
+Caddy gère automatiquement les certificats Let's Encrypt.
+
+```bash
+sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
+  | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
+  | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+sudo apt update && sudo apt install -y caddy
+```
+
+Éditer `/etc/caddy/Caddyfile` :
+
+```caddyfile
+gleba.example.com {
+    reverse_proxy localhost:3000
+    encode gzip
+}
+```
+
+```bash
+sudo systemctl reload caddy
+```
+
+> Adaptez `gleba.example.com` à votre nom de domaine (DNS A/AAAA pointant vers la VM, ports 80 et 443 ouverts).
+> Pensez à mettre la même valeur dans `NEXTAUTH_URL` du `.env`, puis `sudo docker compose up -d` pour appliquer.
+
+### 5. Pare-feu (UFW)
+
+```bash
+sudo ufw allow ssh
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+sudo ufw enable
+```
+
+Le port 3000 **ne doit pas** être ouvert publiquement — Caddy lui parle en local.
+
+---
+
+## 💾 Sauvegarde et restauration
+
+Toutes les données utilisateur (cultures, récoltes, élevage, compta…) vivent dans le volume Docker `postgres_data`. Sans backup, un crash de VM = perte définitive.
+
+### Sauvegarde manuelle
+
+```bash
+cd /var/www/gleba
+./scripts/backup.sh
+# → dump créé dans /var/backups/gleba/gleba-YYYYMMDD-HHMMSS.dump
+```
+
+Variables disponibles :
+
+| Variable | Défaut | Rôle |
+|----------|--------|------|
+| `BACKUP_DIR` | `/var/backups/gleba` | Dossier de destination |
+| `RETENTION_DAYS` | `14` | Rotation (les dumps plus anciens sont effacés) |
+
+### Cron quotidien (recommandé)
+
+```bash
+sudo crontab -e
+```
+
+Ajouter :
+
+```cron
+0 3 * * * cd /var/www/gleba && ./scripts/backup.sh >> /var/log/gleba-backup.log 2>&1
+```
+
+→ backup chaque nuit à 3h, log dans `/var/log/gleba-backup.log`.
+
+### Restauration
+
+```bash
+cd /var/www/gleba
+./scripts/restore.sh /var/backups/gleba/gleba-20260524-030000.dump
+# Demande confirmation. Arrête le container app, restore, redémarre.
+```
+
+> **Avant un upgrade majeur**, faire un backup. C'est la procédure de rollback la plus fiable si quelque chose se passe mal.
+
+---
+
+## 🔄 Mise à jour
+
+```bash
+cd /var/www/gleba
+
+# 1. Sauvegarder (toujours, avant toute mise à jour)
+./scripts/backup.sh
+
+# 2. Récupérer les nouveautés
+sudo git pull
+
+# 3. Purger le cache Next.js (sinon l'ancien build est servi)
+sudo rm -rf .next
+
+# 4. Rebuild + restart
+sudo docker compose up -d --build app
+```
+
+Les migrations Prisma sont appliquées automatiquement au démarrage via `prisma migrate deploy` — aucune perte de données.
+
+> ⚠️ **Si vous avez personnalisé le référentiel agronomique** (espèces, ITPs, variétés) directement en base, relisez les logs de démarrage après l'update : un éventuel script de migration de référentiel pourrait écraser ces valeurs. Le comportement est idempotent dans le cas standard.
 
 ---
 
@@ -148,7 +320,7 @@ npx -y gleba-mcp-server
 - *« Combien d'oeufs mes poules ont pondu ce mois-ci ? »*
 - *« Quel est mon chiffre d'affaires ce mois-ci ? »*
 
-> Voir la [documentation MCP complète](mcp-server/README.md) et le [package npm](https://www.npmjs.com/package/gleba-mcp-server).
+> Le code du serveur MCP est distribué séparément. Voir le [package npm `gleba-mcp-server`](https://www.npmjs.com/package/gleba-mcp-server) pour la documentation complète.
 
 ---
 
