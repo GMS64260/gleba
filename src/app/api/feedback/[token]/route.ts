@@ -3,8 +3,7 @@ import prisma from "@/lib/prisma"
 import { checkRateLimit, getClientIP } from "@/lib/rate-limit"
 import { sendMail, feedbackSurveyEmail } from "@/lib/mail"
 
-const FEEDBACK_EMAIL =
-  process.env.FEEDBACK_EMAIL || "guillaume.gomes@ogfa.net"
+const FEEDBACK_EMAIL = process.env.FEEDBACK_EMAIL || ""
 
 const BLOCKER_CODES = [
   "ux_confusing",
@@ -147,27 +146,31 @@ export async function POST(
     )
   }
 
-  // Email asynchrone : on n'attend pas la fin pour répondre au client
-  const email = feedbackSurveyEmail({
-    userName: record.user.name,
-    userEmail: record.user.email,
-    lang,
-    rating,
-    blockers,
-    whatBlocked,
-    missing,
-    modules,
-    willReturn,
-    comment,
-  })
-  sendMail({
-    to: FEEDBACK_EMAIL,
-    subject: email.subject,
-    html: email.html,
-    replyTo: email.replyTo,
-  }).catch((err) =>
-    console.error("Feedback notification email failed:", err)
-  )
+  // Email asynchrone : on n'attend pas la fin pour répondre au client.
+  // Si FEEDBACK_EMAIL n'est pas configuré (cas auto-hébergement par défaut),
+  // on saute simplement la notification — le feedback est déjà persisté.
+  if (FEEDBACK_EMAIL) {
+    const email = feedbackSurveyEmail({
+      userName: record.user.name,
+      userEmail: record.user.email,
+      lang,
+      rating,
+      blockers,
+      whatBlocked,
+      missing,
+      modules,
+      willReturn,
+      comment,
+    })
+    sendMail({
+      to: FEEDBACK_EMAIL,
+      subject: email.subject,
+      html: email.html,
+      replyTo: email.replyTo,
+    }).catch((err) =>
+      console.error("Feedback notification email failed:", err)
+    )
+  }
 
   return NextResponse.json({ success: true })
 }

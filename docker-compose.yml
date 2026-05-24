@@ -38,7 +38,7 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASS: ${SMTP_PASS:-}
       SMTP_FROM: ${SMTP_FROM:-}
-      FEEDBACK_EMAIL: ${FEEDBACK_EMAIL:-guillaume.ossau64@gmail.com}
+      FEEDBACK_EMAIL: ${FEEDBACK_EMAIL:-}
     ports:
       - "${APP_PORT:-3000}:3000"
     depends_on:
