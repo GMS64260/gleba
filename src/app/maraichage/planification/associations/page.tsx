@@ -31,7 +31,13 @@ interface AssociationCulture {
   cultureEspeceId: string | null
   cultureSemaine: number | null
   planchesVoisines: string[]
-  culturesVoisines: { plancheId: string; especeId: string | null }[]
+  culturesVoisines: {
+    plancheId: string
+    especeId: string | null
+    eval: "favorable" | "defavorable" | "neutre"
+    evalMessage: string | null
+  }[]
+  scoreAssociation: "favorable" | "defavorable" | "mixte" | "neutre"
 }
 
 const columns: ColumnDef<AssociationCulture>[] = [
@@ -94,19 +100,43 @@ const columns: ColumnDef<AssociationCulture>[] = [
     cell: ({ row }) => {
       const voisines = row.original.culturesVoisines
       if (voisines.length === 0) return <span className="text-muted-foreground">Aucune</span>
+      // Bug #6 — Badge coloré + emoji selon l'évaluation pour donner
+      // immédiatement la lecture bénéfique/néfaste promise par le bandeau.
+      const colorByEval = {
+        favorable: "bg-green-50 border-green-300 text-green-800",
+        defavorable: "bg-red-50 border-red-300 text-red-800",
+        neutre: "",
+      } as const
+      const iconByEval = {
+        favorable: "🟢",
+        defavorable: "🔴",
+        neutre: "",
+      } as const
       return (
         <div className="flex flex-wrap gap-1">
           {voisines.map((cv) => (
             <Badge
               key={cv.plancheId}
               variant="outline"
-              className="text-xs"
+              className={`text-xs ${colorByEval[cv.eval]}`}
+              title={cv.evalMessage || undefined}
             >
-              {cv.plancheId}: {cv.especeId || "?"}
+              {iconByEval[cv.eval]} {cv.plancheId}: {cv.especeId || "?"}
             </Badge>
           ))}
         </div>
       )
+    },
+  },
+  {
+    id: "scoreAssociation",
+    header: "Bilan",
+    cell: ({ row }) => {
+      const s = row.original.scoreAssociation
+      if (s === "favorable") return <Badge className="bg-green-600 text-white">🟢 Favorable</Badge>
+      if (s === "defavorable") return <Badge className="bg-red-600 text-white">🔴 Défavorable</Badge>
+      if (s === "mixte") return <Badge className="bg-amber-500 text-white">🟠 Mixte</Badge>
+      return <Badge variant="outline" className="text-slate-500">Neutre</Badge>
     },
   },
 ]
@@ -154,14 +184,15 @@ function AssociationsContent() {
   }, [fetchData])
 
   const handleExport = () => {
-    const headers = ["Planche", "Ilot", "Culture", "Semaine", "Planches voisines", "Cultures voisines"]
+    const headers = ["Planche", "Îlot", "Culture", "Semaine", "Planches voisines", "Cultures voisines", "Bilan"]
     const rows = data.map(a => [
       a.plancheId,
       a.ilot || "",
       a.cultureEspeceId || "",
       a.cultureSemaine?.toString() || "",
       a.planchesVoisines.join(", "),
-      a.culturesVoisines.map(cv => `${cv.plancheId}:${cv.especeId || "?"}`).join(", "),
+      a.culturesVoisines.map(cv => `${cv.eval === "favorable" ? "+" : cv.eval === "defavorable" ? "-" : "="} ${cv.plancheId}:${cv.especeId || "?"}`).join(", "),
+      a.scoreAssociation,
     ])
 
     const csv = [headers, ...rows].map(r => r.join(";")).join("\n")

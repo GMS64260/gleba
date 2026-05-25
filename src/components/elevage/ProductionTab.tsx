@@ -560,7 +560,7 @@ interface Vente {
 }
 
 const TYPE_LABELS: Record<string, string> = {
-  oeufs: "Oeufs",
+  oeufs: "Œufs",
   viande: "Viande",
   animal_vivant: "Animal vivant",
   lait: "Lait",
@@ -715,7 +715,7 @@ function VentesSubTab() {
                   <Select value={formData.type} onValueChange={(v) => setFormData(f => ({ ...f, type: v }))}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="oeufs">Oeufs</SelectItem>
+                      <SelectItem value="oeufs">Œufs</SelectItem>
                       <SelectItem value="viande">Viande</SelectItem>
                       <SelectItem value="animal_vivant">Animal vivant</SelectItem>
                       <SelectItem value="autre">Autre</SelectItem>
@@ -725,19 +725,19 @@ function VentesSubTab() {
               </div>
               <div className="space-y-2">
                 <Label>Description</Label>
-                <Input value={formData.description} onChange={(e) => setFormData(f => ({ ...f, description: e.target.value }))} placeholder="Oeufs plein air, Poulet fermier..." />
+                <Input value={formData.description} onChange={(e) => setFormData(f => ({ ...f, description: e.target.value }))} placeholder="\u0152ufs plein air, Poulet fermier..." />
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-2">
-                  <Label>Quantite *</Label>
+                  <Label>Quantit\u00e9 *</Label>
                   <Input type="number" step="0.01" value={formData.quantite} onChange={(e) => setFormData(f => ({ ...f, quantite: e.target.value }))} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Unite *</Label>
+                  <Label>Unit\u00e9 *</Label>
                   <Select value={formData.unite} onValueChange={(v) => setFormData(f => ({ ...f, unite: v }))}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="unite">Unite</SelectItem>
+                      <SelectItem value="unite">Unit\u00e9</SelectItem>
                       <SelectItem value="douzaine">Douzaine</SelectItem>
                       <SelectItem value="kg">kg</SelectItem>
                       <SelectItem value="L">Litre</SelectItem>

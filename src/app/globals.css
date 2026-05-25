@@ -230,6 +230,11 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* Feedback testeur cmpkygqu8 — Bloc le scroll horizontal global qui
+       apparaissait à 375px à cause de tab-nav non wrappée + header dense.
+       Le contenu individuel reste scrollable horizontalement quand
+       explicitement marqué overflow-x-auto (tableaux, onglets). */
+    overflow-x: hidden;
   }
 }
 

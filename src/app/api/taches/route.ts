@@ -145,14 +145,28 @@ export async function GET(request: NextRequest) {
       },
     } as const
 
+    // Bug #18 — Les irrigations n'étaient pas scopées à l'année sélectionnée,
+    // donc le KPI "Cette semaine" affichait 23 même quand on basculait sur
+    // 2024 ou 2027 (sans aucune culture sur cette année). On filtre via la
+    // culture pour rester cohérent avec les sub-totaux Semis/Plantations/Récoltes.
     const [irrigationsSemaine, irrigationsRetard] = await Promise.all([
       prisma.irrigationPlanifiee.findMany({
-        where: { userId, fait: false, datePrevue: { gte: start, lte: end } },
+        where: {
+          userId,
+          fait: false,
+          datePrevue: { gte: start, lte: end },
+          culture: { annee },
+        },
         include: irrigationInclude,
         orderBy: { datePrevue: 'asc' },
       }),
       prisma.irrigationPlanifiee.findMany({
-        where: { userId, fait: false, datePrevue: { lt: start } },
+        where: {
+          userId,
+          fait: false,
+          datePrevue: { lt: start },
+          culture: { annee },
+        },
         include: irrigationInclude,
         orderBy: { datePrevue: 'asc' },
       }),

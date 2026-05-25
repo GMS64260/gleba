@@ -177,9 +177,13 @@ function HomeContent() {
       {/* Navigation par onglets + sélecteur d'annee + bouton Plan jardin */}
       <nav className="border-b border-t-2 border-t-emerald-500 bg-white/80 backdrop-blur-sm sticky top-[61px] z-40">
         <div className="container mx-auto px-4 max-w-[1600px]">
-          <div className="flex items-center justify-between">
-            {/* Onglets */}
-            <div className="flex items-center -mb-px">
+          {/* Bug responsive cmpkygqu8 — Sur viewport 375px, la rangée
+              onglets + actions débordait. On wrap désormais en colonne
+              sur mobile (onglets scrollables horizontalement séparément),
+              et on revient à la ligne unique à partir de sm: (>=640px). */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+            {/* Onglets — scrollables horizontalement sur mobile */}
+            <div className="flex items-center -mb-px overflow-x-auto">
               {TABS.map((tab) => {
                 const isActive = activeTab === tab.id
                 return (

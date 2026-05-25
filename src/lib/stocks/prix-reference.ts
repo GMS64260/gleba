@@ -35,9 +35,12 @@ const PRIX_REF_KG: Record<string, number> = {
   "Courgette": 3.0,
   "Concombre": 3.5,
   "Courge": 2.5,
+  "Courge butternut": 2.8,
+  "Courge spaghetti": 2.5,
   "Potimarron": 2.8,
   "Butternut": 2.8,
   "Melon": 4.5,
+  "Pastèque": 3.5,
   // Racines / Bulbes
   "Carotte": 2.5,
   "Radis": 4.0,

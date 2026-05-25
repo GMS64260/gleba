@@ -691,6 +691,15 @@ export default function NewCulturePage() {
                             }
                           />
                         </FormControl>
+                        {/* Bug #2 — formule active pour rendre transparent
+                            l'origine du chiffre et lever l'impression
+                            d'une valeur figée depuis l'ITP. */}
+                        {watchedLongueur && watchedNbRangs && watchedEspacement && watchedEspacement > 0 && (
+                          <p className="text-xs text-slate-500">
+                            = {watchedNbRangs} rang(s) × ⌊{watchedLongueur} m ÷ {watchedEspacement} cm⌋
+                            = {Math.floor((watchedLongueur * 100) / watchedEspacement) * watchedNbRangs}
+                          </p>
+                        )}
                         <FormMessage />
                       </FormItem>
                     )}

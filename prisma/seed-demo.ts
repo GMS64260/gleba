@@ -124,15 +124,37 @@ async function seedParcellesGeo(userId: string) {
 }
 
 async function seedPlanches(userId: string) {
+  // Feedback testeur cmpky9lie — Sans rotationId, les rotations existantes
+  // s'affichaient "Active (non appliquée)" sur tout le compte démo et la
+  // colonne Rotation restait vide partout (Planification, Terrain > Planches).
+  // On assigne ici des rotations cohérentes : A* (serre) → Rotation-4ans-A,
+  // B* (plein champ) → Rotation-4ans-B, C* (tunnel) → Rotation-3ans-Courges.
   const planches = [
-    { nom: "A1", longueur: 8, largeur: 1.2 }, { nom: "A2", longueur: 8, largeur: 1.2 }, { nom: "A3", longueur: 8, largeur: 1.2 },
-    { nom: "B1", longueur: 25, largeur: 1.2 }, { nom: "B2", longueur: 25, largeur: 1.2 }, { nom: "B3", longueur: 25, largeur: 1.2 },
-    { nom: "B4", longueur: 25, largeur: 1.2 }, { nom: "B5", longueur: 25, largeur: 1.2 }, { nom: "B6", longueur: 25, largeur: 1.2 },
-    { nom: "C1", longueur: 10, largeur: 1.2 }, { nom: "C2", longueur: 10, largeur: 1.2 }, { nom: "C3", longueur: 10, largeur: 1.2 },
+    { nom: "A1", longueur: 8, largeur: 1.2, rotationId: "Rotation-4ans-A" },
+    { nom: "A2", longueur: 8, largeur: 1.2, rotationId: "Rotation-4ans-A" },
+    { nom: "A3", longueur: 8, largeur: 1.2, rotationId: "Rotation-4ans-A" },
+    { nom: "B1", longueur: 25, largeur: 1.2, rotationId: "Rotation-4ans-B" },
+    { nom: "B2", longueur: 25, largeur: 1.2, rotationId: "Rotation-4ans-B" },
+    { nom: "B3", longueur: 25, largeur: 1.2, rotationId: "Rotation-4ans-B" },
+    { nom: "B4", longueur: 25, largeur: 1.2, rotationId: "Rotation-4ans-B" },
+    { nom: "B5", longueur: 25, largeur: 1.2, rotationId: "Rotation-4ans-B" },
+    { nom: "B6", longueur: 25, largeur: 1.2, rotationId: "Rotation-4ans-B" },
+    { nom: "C1", longueur: 10, largeur: 1.2, rotationId: "Rotation-3ans-Courges" },
+    { nom: "C2", longueur: 10, largeur: 1.2, rotationId: "Rotation-3ans-Courges" },
+    { nom: "C3", longueur: 10, largeur: 1.2, rotationId: "Rotation-3ans-Courges" },
   ]
   const created: Record<string, string> = {}
   for (const p of planches) {
-    const row = await prisma.planche.create({ data: { userId, nom: p.nom, longueur: p.longueur, largeur: p.largeur } })
+    const row = await prisma.planche.create({
+      data: {
+        userId,
+        nom: p.nom,
+        longueur: p.longueur,
+        largeur: p.largeur,
+        rotationId: p.rotationId,
+        ilot: p.nom.charAt(0),
+      },
+    })
     created[p.nom] = row.id
   }
   return created
@@ -317,6 +339,30 @@ async function seedElevage(userId: string, parcelles: Record<string, string>) {
   await prisma.lotAnimaux.create({
     data: { userId, especeAnimaleId: "lapin_geant", nom: "Lapins 2026", dateArrivee: d("2026-03-01"), quantiteInitiale: 7, quantiteActuelle: 19, provenance: "Élevage local", prixAchatTotal: 245, statut: "actif", notes: "6 femelles + 1 mâle, 4 mises-bas (12 lapereaux)" },
   })
+  // Feedback testeur cmpky6yqn — Trace des 4 mises-bas (12 lapereaux) qui
+  // expliquent le passage du lot de 7 → 19 actuels. Sans ces lignes, le
+  // registre d'élevage affiche "Aucune naissance enregistrée" malgré
+  // l'écart d'effectif observé sur Animaux & Lots > Lots.
+  const lapereauxNaissances = [
+    { date: "2026-03-15", nombre: 4, males: 2, femelles: 2, label: "1re mise-bas" },
+    { date: "2026-04-01", nombre: 3, males: 1, femelles: 2, label: "2e mise-bas" },
+    { date: "2026-04-20", nombre: 3, males: 2, femelles: 1, label: "3e mise-bas" },
+    { date: "2026-05-10", nombre: 2, males: 1, femelles: 1, label: "4e mise-bas" },
+  ]
+  for (const n of lapereauxNaissances) {
+    await prisma.naissanceAnimale.create({
+      data: {
+        userId,
+        pereIdentifiant: "M1 (mâle reproducteur)",
+        date: d(n.date),
+        nombreNes: n.nombre,
+        nombreVivants: n.nombre,
+        nombreMales: n.males,
+        nombreFemelles: n.femelles,
+        notes: `Lapereaux - ${n.label}`,
+      },
+    })
+  }
 
   const alpines = [
     { nom: "Bergère", naissance: "2022-03-15" }, { nom: "Clochette", naissance: "2022-04-02" },

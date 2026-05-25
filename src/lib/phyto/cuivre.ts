@@ -131,6 +131,10 @@ export interface CumulCuivreParcelle {
   /** Pour debug : nb de traitements pris en compte. */
   nbTraitementsAn: number
   nbTraitements7ans: number
+  /** Bug #12 — Traitements cuivrés détectés mais sans dose/surface
+   *  (donc cumul calculé = 0). On les signale pour ne plus afficher
+   *  "Aucun traitement cuivré" alors qu'une Bouillie bordelaise existe. */
+  nbTraitementsCuivreSansDose7ans: number
 }
 
 /**
@@ -146,13 +150,22 @@ export function cumuleParParcelle(
   const dateMin7ans = new Date(asOf)
   dateMin7ans.setFullYear(dateMin7ans.getFullYear() - 7)
 
-  const acc = new Map<string, { an: number; sept: number; nbAn: number; nb7: number }>()
+  const acc = new Map<string, { an: number; sept: number; nbAn: number; nb7: number; nbSansDose: number }>()
   for (const t of traitements) {
     if (!t.parcelleId) continue
+    const cuivreProduit = isProduitCuivre(t.produit)
     const cu = doseCuivreMetalKg(t)
-    if (cu <= 0) continue
-    const cur = acc.get(t.parcelleId) ?? { an: 0, sept: 0, nbAn: 0, nb7: 0 }
-    if (t.date >= dateMin7ans) {
+    const inWindow7 = t.date >= dateMin7ans
+    const cur = acc.get(t.parcelleId) ?? { an: 0, sept: 0, nbAn: 0, nb7: 0, nbSansDose: 0 }
+    if (cu <= 0) {
+      // Bug #12 — Traitement cuivre détecté mais dose/surface manquante :
+      // on ne peut pas le sommer mais on l'incrémente dans le compteur
+      // de saisies incomplètes pour le signaler à l'UI.
+      if (cuivreProduit && inWindow7) cur.nbSansDose += 1
+      acc.set(t.parcelleId, cur)
+      continue
+    }
+    if (inWindow7) {
       cur.sept += cu
       cur.nb7 += 1
     }
@@ -183,6 +196,7 @@ export function cumuleParParcelle(
       statut,
       nbTraitementsAn: sums.nbAn,
       nbTraitements7ans: sums.nb7,
+      nbTraitementsCuivreSansDose7ans: sums.nbSansDose,
     })
   }
   return result.sort((a, b) => b.cuivreKgParHaAn - a.cuivreKgParHaAn)

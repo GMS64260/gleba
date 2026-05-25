@@ -432,12 +432,17 @@ export function generateCareOperations(
         moisCible = Math.floor((op.moisDebut + op.moisFin) / 2)
       }
     }
+    const dateCible = new Date(year, moisCible - 1, 15)
     return {
       userId,
       arbreId,
       type: op.type,
       description: `${op.label} — ${op.description}`,
-      datePrevue: new Date(year, moisCible - 1, 15),
+      // Bug #8 — Aligner `date` sur `datePrevue` pour les ops non faites :
+      // sinon `date` prenait le default Prisma now() et toutes les opérations
+      // d'un arbre apparaissaient au jour du seed dans la liste.
+      date: dateCible,
+      datePrevue: dateCible,
       fait: false,
       recurrence: op.recurrence,
       saisonRecommandee: op.saisonRecommandee,

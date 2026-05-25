@@ -292,6 +292,23 @@ export default function AnimalDetailPage() {
                   {animal.identifiant && <span className="text-xs font-mono bg-slate-100 px-2 py-0.5 rounded">{animal.identifiant}</span>}
                 </div>
               </div>
+              {/* Bug #19 — Boutons d'action contextuels manquaient ;
+                  on les renvoie vers la liste Animaux pour les modaux
+                  existants (édition, soin via Alimentation > Soins). */}
+              <div className="flex flex-col gap-2 items-end">
+                <Link
+                  href={`/elevage?tab=alimentation&sub=soins&animalId=${animal.id}`}
+                  className="text-xs inline-flex items-center gap-1 px-3 py-1.5 rounded-md bg-blue-50 text-blue-700 hover:bg-blue-100"
+                >
+                  + Soin
+                </Link>
+                <Link
+                  href={`/elevage?tab=animaux&edit=${animal.id}`}
+                  className="text-xs inline-flex items-center gap-1 px-3 py-1.5 rounded-md bg-slate-100 text-slate-700 hover:bg-slate-200"
+                >
+                  Modifier
+                </Link>
+              </div>
             </div>
 
             {/* Cards info */}

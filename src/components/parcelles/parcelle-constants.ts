@@ -3,10 +3,44 @@ export interface ParcelleWithRelations {
   nom: string
   surface: number | null
   couches: string[]
+  usage: string | null
   geometry: string
   centroidLat: number | null
   centroidLng: number | null
   _count: { planches: number; arbres: number; lotsAnimaux: number }
+}
+
+/**
+ * Feedback testeur cmpkycncq — La liste /parcelles affichait "-" pour les
+ * parcelles qui n'avaient que l'ancien champ `usage` rempli (avant
+ * l'introduction des couches typées). La carte /jardin/carte affiche déjà
+ * `usage`. On unifie en lisant `usage` comme fallback quand `couches` est
+ * vide, et on mappe vers les libellés couches connus.
+ */
+const USAGE_TO_COUCHE: Record<string, string> = {
+  culture: "MARAICHAGE",
+  maraichage: "MARAICHAGE",
+  maraîchage: "MARAICHAGE",
+  potager: "MARAICHAGE",
+  jardin: "MARAICHAGE",
+  verger: "VERGER",
+  elevage: "ELEVAGE",
+  élevage: "ELEVAGE",
+  paturage: "PATURAGE",
+  pâturage: "PATURAGE",
+  prairie: "PATURAGE",
+}
+
+export function resoudreCouches(parcelle: { couches: string[]; usage: string | null }): string[] {
+  if (parcelle.couches?.length > 0) return parcelle.couches
+  if (!parcelle.usage) return []
+  return Array.from(new Set(
+    parcelle.usage
+      .split(',')
+      .map(u => u.trim().toLowerCase())
+      .map(u => USAGE_TO_COUCHE[u])
+      .filter(Boolean)
+  ))
 }
 
 export const COUCHE_COLORS: Record<string, string> = {

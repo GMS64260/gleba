@@ -68,6 +68,7 @@ interface TachesData {
     totalOeufs: number
     totalConsoKg: number
     estimationOeufsJour: number
+    estimationSource?: 'theorique' | 'historique' | 'mixte'
     nbLotsPondeuses: number
   }
 }
@@ -221,7 +222,7 @@ export function CalendrierTab() {
               : weekOffset === 1
                 ? "Semaine prochaine"
                 : weekOffset === -1
-                  ? "Semaine derniere"
+                  ? "Semaine dernière"
                   : formatDateRange(weekStart, weekEnd)
             }
           </button>
@@ -255,7 +256,20 @@ export function CalendrierTab() {
               <p className="text-2xl font-bold text-yellow-700">{data.stats.totalOeufs}</p>
               <p className="text-xs text-yellow-600">Œufs collectés</p>
               {data.stats.estimationOeufsJour > 0 && (
-                <p className="text-xs text-yellow-400 mt-0.5">~{data.stats.estimationOeufsJour}/jour attendu</p>
+                <p
+                  className="text-xs text-yellow-400 mt-0.5 cursor-help"
+                  title={
+                    data.stats.estimationSource === 'historique'
+                      ? "Estimation = moyenne observée sur les 60 derniers jours (pas de référentiel race)."
+                      : data.stats.estimationSource === 'mixte'
+                      ? "Estimation = moyenne entre le référentiel race × saison et l'historique observé (≥ 14 j de saisies)."
+                      : "Estimation théorique : effectif × taux de ponte mensuel de la race. Variabilité ± 25 % selon stress, lumière et alimentation."
+                  }
+                >
+                  ~{data.stats.estimationOeufsJour}/jour attendu
+                  {data.stats.estimationSource === 'historique' && " (historique)"}
+                  {data.stats.estimationSource === 'mixte' && " (théorique × observé)"}
+                </p>
               )}
             </div>
             <div className="bg-orange-50 rounded-lg p-3 text-center">
@@ -397,7 +411,7 @@ export function CalendrierTab() {
                       >
                         <div className="flex items-center gap-1">
                           <Egg className="h-3 w-3 text-yellow-500 flex-shrink-0" />
-                          <span>{prod.quantite} oeufs</span>
+                          <span>{prod.quantite} œufs</span>
                         </div>
                         {prod.lot && <p className="text-[10px] opacity-70 ml-4">{prod.lot.nom}</p>}
                       </div>

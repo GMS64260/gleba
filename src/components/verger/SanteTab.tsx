@@ -738,13 +738,19 @@ function RegistrePhytoSubTab() {
   const fetchData = React.useCallback(async () => {
     setLoading(true)
     try {
-      const [malRes, ravRes, arbresRes] = await Promise.all([
+      // Bug #16 — Le registre n'incluait que les Observations Santé&Phyto.
+      // Les opérations enregistrées via Verger > Opérations (huile blanche,
+      // bouillie bordelaise, etc.) étaient absentes alors qu'elles doivent
+      // figurer au registre phyto réglementaire (AB/HVE).
+      const [malRes, ravRes, arbresRes, opsRes] = await Promise.all([
         fetch("/api/arbres/observations?type=maladie&resolu=all"),
         fetch("/api/arbres/observations?type=ravageur&resolu=all"),
         fetch("/api/arbres"),
+        fetch("/api/arbres/operations?type=traitement"),
       ])
       const allObs: Observation[] = []
       const ids = new Set<number>()
+      const obsKey = (o: Observation) => `obs-${o.id}`
       if (malRes.ok) {
         const mal = await malRes.json()
         mal.filter((o: Observation) => o.produit || o.traitement).forEach((o: Observation) => {
@@ -756,6 +762,55 @@ function RegistrePhytoSubTab() {
         rav.filter((o: Observation) => o.produit || o.traitement).forEach((o: Observation) => {
           if (!ids.has(o.id)) { ids.add(o.id); allObs.push(o) }
         })
+      }
+      if (opsRes.ok) {
+        const ops = await opsRes.json()
+        // Convertir chaque OperationArbre traitement en pseudo-Observation
+        // pour réutiliser le rendu du tableau. ID négatif pour éviter le
+        // collision avec les vraies observations.
+        const opsList = Array.isArray(ops) ? ops : (ops.data ?? [])
+        for (const op of opsList as Array<{
+          id: number
+          arbreId: number
+          date: string
+          datePrevue?: string | null
+          fait: boolean
+          type: string
+          description?: string | null
+          produit?: string | null
+          quantite?: number | null
+          unite?: string | null
+          arbre?: { id: number; nom: string; type: string; espece: string | null }
+        }>) {
+          if (!op.fait) continue
+          if (!op.produit && !op.description) continue
+          const pseudoId = -op.id
+          if (ids.has(pseudoId)) continue
+          ids.add(pseudoId)
+          allObs.push({
+            id: pseudoId,
+            arbreId: op.arbreId,
+            date: op.date,
+            type: "traitement",
+            symptome: null,
+            diagnostic: null,
+            gravite: "faible",
+            organe: null,
+            traitement: op.description ?? null,
+            methodeTraitement: null,
+            produit: op.produit ?? null,
+            doseAppliquee: op.quantite ?? null,
+            uniteDose: op.unite ?? null,
+            dar: null,
+            numAMM: null,
+            resolu: true,
+            dateResolution: null,
+            notes: `Source: Opération arbre #${op.id}`,
+            arbre: op.arbre ?? { id: op.arbreId, nom: `Arbre #${op.arbreId}`, type: "fruitier", espece: null },
+          })
+        }
+        // suppress unused obsKey var lint
+        void obsKey
       }
       setObservations(allObs)
       if (arbresRes.ok) setArbres(await arbresRes.json())
@@ -1498,8 +1553,20 @@ function PollinisationSubTab() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.arbres.map((arbre) => (
-                  <TableRow key={arbre.id} className={!arbre.autofertile && arbre.pollinisateursCompat.length === 0 ? "bg-red-50" : ""}>
+                {data.arbres.map((arbre) => {
+                  // Bug #15 — utiliser les flags effectifs renvoyés par
+                  // l'API (autofertile incluant le fallback variétal, et
+                  // détection des pollinisateurs dérivés) pour aligner
+                  // le tableau avec les compteurs en haut.
+                  const a = arbre as typeof arbre & {
+                    autofertileEffectif?: boolean
+                    hasPollinisateurDerive?: boolean
+                  }
+                  const isAutofertile = a.autofertileEffectif ?? arbre.autofertile
+                  const hasDerive = a.hasPollinisateurDerive ?? false
+                  const sansPolli = !isAutofertile && arbre.pollinisateursCompat.length === 0 && !hasDerive
+                  return (
+                  <TableRow key={arbre.id} className={sansPolli ? "bg-red-50" : ""}>
                     <TableCell className="font-medium">{arbre.nom}</TableCell>
                     <TableCell className="text-sm">{arbre.espece || "-"}</TableCell>
                     <TableCell>
@@ -1513,8 +1580,10 @@ function PollinisationSubTab() {
                       ) : "-"}
                     </TableCell>
                     <TableCell>
-                      {arbre.autofertile ? (
-                        <Badge className="bg-lime-100 text-lime-700">Oui</Badge>
+                      {isAutofertile ? (
+                        <Badge className="bg-lime-100 text-lime-700" title={arbre.autofertile ? undefined : "Variété connue autofertile (référentiel)"}>
+                          Oui{!arbre.autofertile && " *"}
+                        </Badge>
                       ) : (
                         <Badge variant="outline">Non</Badge>
                       )}
@@ -1528,14 +1597,17 @@ function PollinisationSubTab() {
                             </Badge>
                           ))}
                         </div>
-                      ) : arbre.autofertile ? (
+                      ) : isAutofertile ? (
                         <span className="text-sm text-muted-foreground">-</span>
+                      ) : hasDerive ? (
+                        <span className="text-xs text-amber-600" title="Pollinisateur dérivé automatiquement (même espèce, groupes compatibles)">À associer (auto)</span>
                       ) : (
                         <span className="text-sm text-red-500">Aucun !</span>
                       )}
                     </TableCell>
                   </TableRow>
-                ))}
+                  )
+                })}
               </TableBody>
             </Table>
           )}

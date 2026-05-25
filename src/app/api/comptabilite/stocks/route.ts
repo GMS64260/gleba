@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
       prisma.recolte.findMany({
         where: { userId, statut: 'en_stock' },
         include: {
-          espece: { select: { id: true } },
+          espece: { select: { id: true, prixKg: true } },
         },
       }),
 
@@ -96,7 +96,7 @@ export async function GET(request: NextRequest) {
           id: true,
           plancheId: true,
           quantite: true,
-          espece: { select: { id: true, rendement: true } },
+          espece: { select: { id: true, rendement: true, prixKg: true } },
           variete: { select: { id: true } },
           planche: { select: { surface: true, largeur: true, longueur: true, nom: true } },
         },
@@ -284,6 +284,7 @@ export async function GET(request: NextRequest) {
       const prixFallback =
         r.prixKg
         ?? moyennePrix(prixParEspece.get(r.especeId) ?? [])
+        ?? r.espece?.prixKg
         ?? prixReferenceKg(r.especeId)
         ?? 0
       const val = r.quantite * prixFallback
@@ -340,8 +341,13 @@ export async function GET(request: NextRequest) {
       const estimeKg = surface * rendement
       // QA 2026-05-15 — Bug #12 : 3 niveaux de fallback (ventes
       // observées → barème de référence) pour éviter "0 €" parasite.
+      // Feedback cmpkyfjyx — Ajout du prix_kg saisi sur l'espèce comme
+      // 1er fallback (avant le barème générique) car des espèces composées
+      // comme "Courge butternut" ont leur prix en base mais ne matchent
+      // pas le barème ("Courge"/"Butternut" sont des entrées séparées).
       const prixMoyen =
         moyennePrix(prixParEspece.get(key) ?? [])
+        ?? c.espece.prixKg
         ?? prixReferenceKg(key)
         ?? 0
       const valeur = estimeKg * prixMoyen

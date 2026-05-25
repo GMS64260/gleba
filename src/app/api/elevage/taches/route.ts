@@ -105,6 +105,29 @@ export async function GET(request: NextRequest) {
       return sum
     }, 0)
 
+    // Bug #9 — Si on dispose d'un historique significatif (>= 14 jours
+    // avec ponte), on pondère 50/50 avec la moyenne observée pour ne pas
+    // afficher un attendu qui contredit la réalité du terrain. Empêche le
+    // ressenti "valeur figée à 23/jour alors que je collecte 10/jour".
+    const debutHistorique = new Date(now.getTime() - 60 * 86_400_000)
+    const historiqueOeufs = await prisma.productionOeuf.findMany({
+      where: { userId, date: { gte: debutHistorique, lte: now } },
+      select: { date: true, quantite: true },
+    })
+    let estimationSource: 'theorique' | 'historique' | 'mixte' = 'theorique'
+    if (historiqueOeufs.length > 0) {
+      const datesUniques = new Set(historiqueOeufs.map(o => o.date.toISOString().split('T')[0]))
+      const jours = datesUniques.size
+      const moyenneObservee = historiqueOeufs.reduce((s, p) => s + p.quantite, 0) / Math.max(1, jours)
+      if (jours >= 14 && estimationOeufsJour > 0) {
+        estimationOeufsJour = (estimationOeufsJour + moyenneObservee) / 2
+        estimationSource = 'mixte'
+      } else if (estimationOeufsJour === 0 && moyenneObservee > 0) {
+        estimationOeufsJour = moyenneObservee
+        estimationSource = 'historique'
+      }
+    }
+
     // Bug cmp8s0izb (Marc 2026-05-16) — Fallback : si on a des collectes
     // mais aucun lot productif (effectifs à 0), on retombe sur les lots
     // qui ont produit des œufs dans la période en utilisant quantiteInitiale
@@ -162,6 +185,8 @@ export async function GET(request: NextRequest) {
         totalOeufs,
         totalConsoKg: Math.round(totalConsoKg * 10) / 10,
         estimationOeufsJour: Math.round(estimationOeufsJour),
+        // Bug #9 — origine de l'estimation pour rendre la valeur lisible.
+        estimationSource,
         nbLotsPondeuses: lotsActifs.filter(l =>
           l.especeAnimale.production === 'oeufs' || l.especeAnimale.production === 'mixte'
         ).length,

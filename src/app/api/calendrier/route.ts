@@ -137,7 +137,17 @@ export async function GET(request: NextRequest) {
     // ── Prévisions météo pour les irrigations ──
     let fallbackCoords: { lat: number; lng: number } | null = null
 
-    if (irrigationsPlanifiees.length > 0) {
+    // Bug #11 — Open-Meteo Forecast ne couvre que les 16 jours à venir et
+    // Archive démarre 5 jours après aujourd'hui ; pour une fenêtre 2027 on
+    // appelait quand même 4 fois l'API, on collectait un timeout côté
+    // reverse-proxy (Caddy renvoie 503). On évite l'appel si la fenêtre
+    // est hors plage exploitable.
+    const FORECAST_HORIZON_DAYS = 16
+    const now = new Date()
+    const horizonForecast = new Date(now.getTime() + FORECAST_HORIZON_DAYS * 86_400_000)
+    const periodeExploitable = start <= horizonForecast
+
+    if (periodeExploitable && irrigationsPlanifiees.length > 0) {
       let hasDirectCoords = false
       for (const irr of irrigationsPlanifiees) {
         const lat = irr.culture.planche?.parcelleGeo?.centroidLat

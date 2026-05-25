@@ -451,7 +451,7 @@ export default function TransactionsPage() {
             </Card>
 
             {statsRevenus && (
-              <div className="grid gap-4 md:grid-cols-4 mb-6">
+              <div className="grid gap-4 md:grid-cols-5 mb-6">
                 <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white">
                   <CardHeader className="pb-2"><CardTitle className="text-sm text-blue-100">Total</CardTitle></CardHeader>
                   <CardContent><p className="text-2xl font-bold">{formatEuro(statsRevenus.total)}</p></CardContent>
@@ -467,6 +467,13 @@ export default function TransactionsPage() {
                 <Card>
                   <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Élevage</CardTitle></CardHeader>
                   <CardContent><p className="text-xl font-bold text-amber-600">{formatEuro(statsRevenus.parModule?.elevage || 0)}</p></CardContent>
+                </Card>
+                {/* Bug feedback cmpkyeynq — Card Boutique manquait : Total ≠ somme
+                    des modules visibles. Pour la démo Marie Dubois/Jean Bertin…,
+                    389 € de revenus boutique n'apparaissaient nulle part. */}
+                <Card>
+                  <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Boutique</CardTitle></CardHeader>
+                  <CardContent><p className="text-xl font-bold text-teal-600">{formatEuro(statsRevenus.parModule?.boutique || 0)}</p></CardContent>
                 </Card>
               </div>
             )}
