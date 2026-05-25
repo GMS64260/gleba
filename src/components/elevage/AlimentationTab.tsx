@@ -209,7 +209,7 @@ function StocksSubTab() {
           <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle>Ajouter un aliment</DialogTitle>
-              <DialogDescription>Granules, cereales, foin...</DialogDescription>
+              <DialogDescription>Granulés, céréales, foin...</DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
@@ -251,8 +251,10 @@ function StocksSubTab() {
                 {aliments.map((a) => {
                   const stockNegatif = a.stock !== null && a.stock <= 0
                   const stockBas = !stockNegatif && a.stock !== null && a.stockMin !== null && a.stock <= a.stockMin
-                  // QA Julien 2026-05-15 \u2014 Bug #12 : badge "\u00c0 v\u00e9rifier"
-                  // sur les lignes au prix hors-norme pour la cat\u00e9gorie.
+                  // Feedback Marc 2026-05-16 \u2014 V3 Bug 4 : les s\u00e9quences
+                  // d'\u00e9chappement \u00ab À vérifier \u00bb \u00e9taient rendues
+                  // telles quelles dans le JSX (non interpr\u00e9t\u00e9es). On
+                  // utilise les vraies lettres \u00ab À vérifier \u00bb.
                   const prixCheck = verifierPrixAliment(a.prix ?? null, (a.type as CategorieAliment) ?? null)
                   const prixHorsNorme = !prixCheck.ok && prixCheck.seuil !== null
                   return (
@@ -264,7 +266,7 @@ function StocksSubTab() {
                           {a.prix ? `${a.prix.toFixed(2)} \u20ac` : '-'}
                           {prixHorsNorme && (
                             <Badge variant="outline" className="border-amber-400 text-amber-700 text-[10px]" title={prixCheck.message}>
-                              \u00c0 v\u00e9rifier
+                              À vérifier
                             </Badge>
                           )}
                         </div>
@@ -280,7 +282,7 @@ function StocksSubTab() {
                           <button
                             onClick={() => { setEditingStock(a.id); setNewStock(a.stock?.toString() || "") }}
                             className={`font-bold hover:underline ${stockNegatif ? 'text-red-600' : stockBas ? 'text-orange-600' : ''}`}
-                            title={stockNegatif ? "Stock n\u00e9gatif \u2014 v\u00e9rifier les consommations" : undefined}
+                            title={stockNegatif ? "Stock négatif — vérifier les consommations" : undefined}
                           >
                             {stockNegatif && "\u26a0\ufe0f "}
                             {a.stock !== null ? `${a.stock} kg` : '-'}
@@ -299,7 +301,7 @@ function StocksSubTab() {
                     </TableRow>
                   )
                 })}
-                {aliments.length === 0 && <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Aucun aliment enregistre</TableCell></TableRow>}
+                {aliments.length === 0 && <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Aucun aliment enregistré</TableCell></TableRow>}
               </TableBody>
             </Table>
           )}
@@ -454,7 +456,7 @@ function ConsommationsSubTab() {
         <div className="grid gap-3 grid-cols-3">
           <Card>
             <CardHeader className="pb-1 pt-3 px-4">
-              <CardDescription className="text-xs">Total consomme</CardDescription>
+              <CardDescription className="text-xs">Total consommé</CardDescription>
               <CardTitle className="text-2xl">{stats.totalKg.toFixed(1)} kg</CardTitle>
             </CardHeader>
             <CardContent className="pb-3 px-4">
@@ -527,7 +529,7 @@ function ConsommationsSubTab() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2"><Label>Date</Label><Input type="date" value={formData.date} onChange={(e) => setFormData(f => ({ ...f, date: e.target.value }))} /></div>
-                  <div className="space-y-2"><Label>Quantite (kg) *</Label><Input type="number" min="0" step="0.1" value={formData.quantite} onChange={(e) => setFormData(f => ({ ...f, quantite: e.target.value }))} placeholder="0" /></div>
+                  <div className="space-y-2"><Label>Quantité (kg) *</Label><Input type="number" min="0" step="0.1" value={formData.quantite} onChange={(e) => setFormData(f => ({ ...f, quantite: e.target.value }))} placeholder="0" /></div>
                 </div>
                 <div className="flex justify-end gap-2 pt-4">
                   <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
@@ -553,7 +555,7 @@ function ConsommationsSubTab() {
                   <TableHead>Date</TableHead>
                   <TableHead>Aliment</TableHead>
                   <TableHead>Lot</TableHead>
-                  <TableHead className="text-right">Quantite</TableHead>
+                  <TableHead className="text-right">Quantité</TableHead>
                   <TableHead>Notes</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
@@ -776,7 +778,7 @@ function SoinsSubTab() {
           <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Tous</SelectItem>
-            <SelectItem value="false">A faire</SelectItem>
+            <SelectItem value="false">À faire</SelectItem>
             <SelectItem value="true">Faits</SelectItem>
           </SelectContent>
         </Select>
@@ -922,7 +924,7 @@ function SoinsSubTab() {
                   <TableHead>Type</TableHead>
                   <TableHead>Lot/Animal</TableHead>
                   <TableHead>Produit</TableHead>
-                  <TableHead className="text-right">Cout</TableHead>
+                  <TableHead className="text-right">Coût</TableHead>
                   <TableHead>Notes</TableHead>
                 </TableRow>
               </TableHeader>
@@ -947,7 +949,7 @@ function SoinsSubTab() {
                     <TableCell className="text-muted-foreground text-sm max-w-[200px] truncate">{soin.notes || '-'}</TableCell>
                   </TableRow>
                 ))}
-                {soins.length === 0 && <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Aucun soin enregistre</TableCell></TableRow>}
+                {soins.length === 0 && <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Aucun soin enregistré</TableCell></TableRow>}
               </TableBody>
             </Table>
           )}

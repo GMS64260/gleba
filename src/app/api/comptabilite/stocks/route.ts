@@ -539,10 +539,34 @@ export async function GET(request: NextRequest) {
       parModule: totaux.itemsParModule,
     }
 
+    // Bug cmp8sqkh2 (Marc 2026-05-16) — conciliation Récoltes potager
+    // (dashboard KPI ≠ Stocks). On expose les agrégats par statut pour que
+    // l'UI puisse afficher "X récolté = Y en stock + Z vendu/donné + perte".
+    const year = new Date().getFullYear()
+    const startOfYear = new Date(year, 0, 1)
+    const endOfYear = new Date(year, 11, 31, 23, 59, 59)
+    const recoltesParStatut = await prisma.recolte.groupBy({
+      by: ['statut'],
+      where: { userId, date: { gte: startOfYear, lte: endOfYear } },
+      _sum: { quantite: true },
+    })
+    const reconciliationPotager: Record<string, number> = {}
+    let totalRecoltesAnnee = 0
+    for (const r of recoltesParStatut) {
+      const q = r._sum.quantite ?? 0
+      reconciliationPotager[r.statut] = q
+      totalRecoltesAnnee += q
+    }
+
     return NextResponse.json({
       data: stocks,
       alertes,
       stats,
+      reconciliationPotager: {
+        annee: year,
+        totalRecoltesAnnee,
+        parStatut: reconciliationPotager,
+      },
     })
   } catch (error) {
     console.error('GET /api/comptabilite/stocks error:', error)

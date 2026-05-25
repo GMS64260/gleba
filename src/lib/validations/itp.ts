@@ -5,7 +5,11 @@
 import { z } from 'zod'
 
 // Types de planche
-export const ITP_TYPE_PLANCHE = ['Serre', 'Plein champ', 'Tunnel', 'Chassis'] as const
+// Feedback Marc 2026-05-16 — V2 Bug 7 : la base contient « Sous abri »
+// (alias générique serre/tunnel) saisi via d'autres modules. Sans
+// cette entrée, le Select du détail ITP retombait sur le placeholder
+// « Sélectionner… » alors que la liste affichait bien « Sous abri ».
+export const ITP_TYPE_PLANCHE = ['Plein champ', 'Sous abri', 'Serre', 'Tunnel', 'Chassis'] as const
 
 // Schema de base pour un ITP
 export const baseITPSchema = z.object({

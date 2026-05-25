@@ -2,11 +2,27 @@
  * Page d'inscription Gleba
  */
 
+import type { Metadata } from "next"
 import { Suspense } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { RegisterForm } from "@/components/auth/RegisterForm"
 import { Loader2, ArrowLeft } from "lucide-react"
+
+export const metadata: Metadata = {
+  title: {
+    absolute: "Créer un compte Gleba · Inscription gratuite",
+  },
+  description:
+    "Créez votre compte Gleba gratuit en 1 minute. Accédez immédiatement à la planification maraîchage, au verger, à l'élevage et à la comptabilité. Hébergé en France.",
+  alternates: {
+    canonical: "https://gleba.fr/register",
+  },
+  robots: {
+    index: false,
+    follow: true,
+  },
+}
 
 function RegisterFormFallback() {
   return (

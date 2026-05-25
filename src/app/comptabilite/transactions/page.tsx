@@ -499,7 +499,20 @@ export default function TransactionsPage() {
                               </div>
                             </TableCell>
                             <TableCell className="max-w-[250px] truncate">{r.description}</TableCell>
-                            <TableCell className="text-right font-bold text-green-600">{formatEuro(r.montant)}</TableCell>
+                            <TableCell className="text-right font-bold text-green-600">
+                              {formatEuro(r.montant)}
+                              {/* Bug cmp8skoaa (Marc 2026-05-16) — badge sur les
+                                  transactions à 0 € marquées Payé : héritées de
+                                  l'ancienne saisie permissive (bug 13). */}
+                              {r.montant === 0 && r.paye === true && (
+                                <span
+                                  className="ml-1 inline-block text-amber-600"
+                                  title="Transaction à 0 € marquée Payé — à vérifier (saisie probablement incomplète)"
+                                >
+                                  ⚠
+                                </span>
+                              )}
+                            </TableCell>
                             <TableCell>{r.client || '-'}</TableCell>
                             <TableCell>
                               {r.paye === null ? (

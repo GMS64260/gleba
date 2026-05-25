@@ -70,6 +70,7 @@ interface Animal {
     nom: string
     type: string
     couleur: string | null
+    poidsAdulte: number | null
   }
   lot: { id: number; nom: string } | null
   _count: {
@@ -221,6 +222,10 @@ function AnimauxSubTab() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    // Bug cmp8sagud (Marc 2026-05-16) — Toast générique "Impossible
+    // d'enregistrer" sans détail. On récupère désormais le message
+    // d'erreur retourné par l'API (zod flatten ou message custom) pour
+    // pointer le champ fautif.
     try {
       const isEdit = editingAnimalId !== null
       const body = isEdit
@@ -231,13 +236,25 @@ function AnimauxSubTab() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
-      if (!response.ok) throw new Error('Erreur')
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}))
+        const fieldErrors = payload?.details?.fieldErrors as Record<string, string[]> | undefined
+        const firstField = fieldErrors ? Object.entries(fieldErrors).find(([, v]) => v.length > 0) : null
+        const description = firstField
+          ? `${firstField[0]} : ${firstField[1][0]}`
+          : payload?.error || "Impossible d'enregistrer"
+        throw new Error(description)
+      }
       toast({ title: isEdit ? "Animal mis à jour" : "Animal créé" })
       setIsDialogOpen(false)
       resetAnimalForm()
       fetchData()
-    } catch {
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible d'enregistrer" })
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Erreur",
+        description: err instanceof Error ? err.message : "Impossible d'enregistrer",
+      })
     }
   }
 
@@ -297,7 +314,7 @@ function AnimauxSubTab() {
         }),
       })
       if (!res.ok) throw new Error('Erreur')
-      toast({ title: "Abattage enregistre", description: `${abattageDialog.nom || abattageDialog.identifiant || ''} marque comme abattu` })
+      toast({ title: "Abattage enregistré", description: `${abattageDialog.nom || abattageDialog.identifiant || ''} marqué comme abattu` })
       setAbattageDialog(null)
       setAbattageForm({ date: new Date().toISOString().split('T')[0], poidsVif: "", poidsCarcasse: "", destination: "auto_consommation", prixVente: "", lieu: "", notes: "" })
       fetchData()
@@ -356,7 +373,7 @@ function AnimauxSubTab() {
         }),
       })
       if (!res.ok) throw new Error('Erreur')
-      toast({ title: "Deces enregistre", description: `${mortDialog.nom || mortDialog.identifiant || ''} marque comme mort` })
+      toast({ title: "Décès enregistré", description: `${mortDialog.nom || mortDialog.identifiant || ''} marqué comme mort` })
       setMortDialog(null)
       setMortForm({ date: new Date().toISOString().split('T')[0], cause: "", notes: "" })
       fetchData()
@@ -593,7 +610,16 @@ function AnimauxSubTab() {
                     </TableCell>
                     <TableCell>{animal.lot?.nom || '-'}</TableCell>
                     <TableCell className="text-right">
-                      {animal.poidsActuel ? `${animal.poidsActuel} kg` : '-'}
+                      {/* Bug cmp8sf92p (Marc 2026-05-16) — la colonne Poids
+                          affichait "-" alors que la fiche montrait "Adulte:65kg".
+                          On affiche le poids actuel s'il existe, sinon le poids
+                          adulte de l'espèce comme référence avec une mise en
+                          forme atténuée. */}
+                      {animal.poidsActuel
+                        ? `${animal.poidsActuel} kg`
+                        : animal.especeAnimale.poidsAdulte
+                          ? <span className="text-muted-foreground italic">≈{animal.especeAnimale.poidsAdulte} kg</span>
+                          : '-'}
                     </TableCell>
                     <TableCell>
                       {animal.statut === 'actif' && (
@@ -933,7 +959,7 @@ function LotsSubTab() {
         }),
       })
       if (!res.ok) throw new Error('Erreur')
-      toast({ title: "Abattage enregistre", description: `${abatLotForm.quantite} animal(aux) du lot ${abatLotDialog.nom || `#${abatLotDialog.id}`}` })
+      toast({ title: "Abattage enregistré", description: `${abatLotForm.quantite} animal(aux) du lot ${abatLotDialog.nom || `#${abatLotDialog.id}`}` })
       setAbatLotDialog(null)
       setAbatLotForm({ date: new Date().toISOString().split('T')[0], quantite: "1", poidsVif: "", poidsCarcasse: "", destination: "auto_consommation", prixVente: "", lieu: "", notes: "" })
       fetchData()
@@ -1020,7 +1046,7 @@ function LotsSubTab() {
                     <Input value={formData.nom} onChange={(e) => setFormData(f => ({ ...f, nom: e.target.value }))} placeholder="Lot pondeuses 2024" />
                   </div>
                   <div className="space-y-2">
-                    <Label>Quantite *</Label>
+                    <Label>Quantité *</Label>
                     <Input type="number" value={formData.quantiteInitiale} onChange={(e) => setFormData(f => ({ ...f, quantiteInitiale: e.target.value }))} />
                   </div>
                 </div>
@@ -1074,7 +1100,7 @@ function LotsSubTab() {
                   <TableHead>Espèce</TableHead>
                   <TableHead className="text-right">Initial</TableHead>
                   <TableHead className="text-right">Actuel</TableHead>
-                  <TableHead>Arrivee</TableHead>
+                  <TableHead>Arrivée</TableHead>
                   <TableHead>Parcelle</TableHead>
                   <TableHead className="text-right">Prix</TableHead>
                   <TableHead>Statut</TableHead>
@@ -1154,7 +1180,7 @@ function LotsSubTab() {
                   </TableRow>
                 ))}
                 {lots.length === 0 && (
-                  <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Aucun lot enregistre</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Aucun lot enregistré</TableCell></TableRow>
                 )}
               </TableBody>
             </Table>
@@ -1181,7 +1207,7 @@ function LotsSubTab() {
                 <Input type="date" value={abatLotForm.date} onChange={(e) => setAbatLotForm(f => ({ ...f, date: e.target.value }))} />
               </div>
               <div className="space-y-2">
-                <Label>Quantite *</Label>
+                <Label>Quantité *</Label>
                 <Input type="number" min="1" max={abatLotDialog?.quantiteActuelle || 999} value={abatLotForm.quantite} onChange={(e) => setAbatLotForm(f => ({ ...f, quantite: e.target.value }))} />
               </div>
               <div className="space-y-2">

@@ -34,6 +34,25 @@ const TYPE_LABELS: Record<string, string> = {
   petit_fruit: "Petit fruit",
 }
 
+// Bug #cmp8e4qut : la catégorie historique du référentiel mélangeait des
+// libellés snake_case (`fruitier`, `petit_fruit`, `legume`...) et des
+// émojis. On humanise les valeurs textuelles, les émojis passent au travers.
+const CATEGORIE_LABELS: Record<string, string> = {
+  fruitier: "Fruitier",
+  arbre_fruitier: "Arbre fruitier",
+  petit_fruit: "Petit fruit",
+  fruit: "Fruit",
+  legume: "Légume",
+  aromatique: "Aromatique",
+  engrais_vert: "Engrais vert",
+  ornement: "Ornement",
+}
+
+function labelCategorie(v: string | null | undefined): string {
+  if (!v) return "-"
+  return CATEGORIE_LABELS[v] ?? v
+}
+
 // QA Hélène 2026-05-15 — Bug #15 + #16 : les sensibilités porte-greffes
 // et méthodes PBI bioagresseurs sortaient en snake_case du seed
 // (`secheresse`, `feu_bacterien`, `BT_tenebrionis`). On humanise ici.
@@ -87,6 +106,7 @@ interface EspeceWithRelations {
   familleId: string | null
   nomLatin: string | null
   rendement: number | null
+  uniteRendement: string | null
   vivace: boolean
   besoinEau: number | null
   aPlanifier: boolean
@@ -187,10 +207,21 @@ const columns: ColumnDef<EspeceWithRelations>[] = [
   },
   {
     accessorKey: "rendement",
-    header: "Rendement (kg/m2)",
-    cell: ({ getValue }) => {
-      const val = getValue() as number | null
-      return val ? val.toFixed(1) : "-"
+    // Feedback Marc 2026-05-16 — V2 Bug 5 : l'en-tête affichait
+    // « kg/m² » pour toutes les espèces alors que les arbres sont
+    // rangés en kg/arbre (uniteRendement = kg_arbre). On lit l'unité
+    // de chaque ligne pour afficher la bonne suffixe.
+    header: "Rendement",
+    cell: ({ row }) => {
+      const val = row.original.rendement
+      const unite = (row.original as { uniteRendement?: string }).uniteRendement ?? "kg_m2"
+      if (val == null) return "-"
+      const label = unite === "kg_arbre"
+        ? "kg/arbre"
+        : unite === "biomasse_t_ha"
+          ? "t/ha"
+          : "kg/m²"
+      return `${val.toFixed(1)} ${label}`
     },
   },
   {
@@ -261,6 +292,10 @@ function EspecesReferentiel() {
   const [sheetOpen, setSheetOpen] = React.useState(false)
   const [detail, setDetail] = React.useState<EspeceDetail | null>(null)
   const [detailLoading, setDetailLoading] = React.useState(false)
+  // Bug #cmp8dn92j (2026-05-16) : on garde l'id ciblé en ref pour
+  // ignorer les réponses retardées de fetchs antérieurs (race condition
+  // observée : clic Pommier → fiche Oranger quand deux fetchs s'inversent).
+  const lastRequestedIdRef = React.useRef<string | null>(null)
 
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
@@ -295,18 +330,50 @@ function EspecesReferentiel() {
   }, [selectedType, data])
 
   const openDetail = React.useCallback(async (row: EspeceWithRelations) => {
+    const requestedId = row.id
+    lastRequestedIdRef.current = requestedId
     setSheetOpen(true)
     setDetail(null)
     setDetailLoading(true)
     try {
-      const res = await fetch(`/api/especes/${encodeURIComponent(row.id)}`)
-      if (!res.ok) throw new Error("Erreur")
-      setDetail(await res.json())
-    } catch {
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger la fiche" })
-      setSheetOpen(false)
+      const res = await fetch(`/api/especes/${encodeURIComponent(requestedId)}`)
+      if (!res.ok) {
+        // Feedback Marc 2026-05-16 — Bug 04 : sur erreur, lire le
+        // message renvoyé par l'API plutôt qu'un texte générique pour
+        // que l'utilisateur sache si l'espèce est introuvable, si la
+        // session a expiré (401), ou si le serveur a planté (500).
+        let description = "Impossible de charger la fiche"
+        try {
+          const errJson = await res.json()
+          if (errJson?.error) description = String(errJson.error)
+        } catch {
+          /* ignore JSON parse errors */
+        }
+        throw new Error(description)
+      }
+      const json = (await res.json()) as EspeceDetail
+      // Bug #cmp8dn92j : si l'utilisateur a cliqué entre-temps sur une
+      // autre espèce, on jette la réponse (sinon on écrase la bonne fiche
+      // par une réponse antérieure).
+      if (
+        lastRequestedIdRef.current === requestedId &&
+        (!json.id || json.id === requestedId)
+      ) {
+        setDetail(json)
+      }
+    } catch (err) {
+      if (lastRequestedIdRef.current === requestedId) {
+        toast({
+          variant: "destructive",
+          title: "Erreur",
+          description: err instanceof Error ? err.message : "Impossible de charger la fiche",
+        })
+        setSheetOpen(false)
+      }
     } finally {
-      setDetailLoading(false)
+      if (lastRequestedIdRef.current === requestedId) {
+        setDetailLoading(false)
+      }
     }
   }, [toast])
 
@@ -373,7 +440,7 @@ function EspecesReferentiel() {
                   </div>
                   <div>
                     <p className="text-muted-foreground text-xs">Catégorie</p>
-                    <p className="font-medium">{detail.categorie || "-"}</p>
+                    <p className="font-medium">{labelCategorie(detail.categorie)}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground text-xs">Rendement</p>

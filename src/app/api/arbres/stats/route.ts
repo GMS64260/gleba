@@ -34,32 +34,38 @@ export async function GET(request: NextRequest) {
       prisma.arbre.count({ where: { userId, type: "fruitier" } }),
       prisma.arbre.count({ where: { userId, type: "petit_fruit" } }),
       prisma.arbre.count({ where: { userId, type: "forestier" } }),
-      // QA Hélène 2026-05-15 — Bug #8 : un arbre sans datePlantation
-      // ne peut pas être considéré comme productif (pas encore planté
-      // ou date inconnue). On exige désormais une date de plantation
-      // non nulle pour rentrer dans le compteur.
+      // Feedback Marc 2026-05-16 — Bug 07 : un arbre ne peut pas être
+      // « productif » s'il n'a pas de date de plantation valide (passé).
+      // Les 22 arbres seed étaient tous productif=true mais 20 sans
+      // date et 1 daté 2099 → KPI faussé. On compte désormais ceux
+      // qui sont productif=true ET datePlantation passée.
       prisma.arbre.count({
         where: {
           userId,
           productif: true,
+          datePlantation: { not: null, lte: new Date() },
           type: { in: ["fruitier", "petit_fruit"] },
-          datePlantation: { not: null },
         },
       }),
     ])
 
-    // Bug #6 — Surface verger (ha) : somme des parcelles ayant au moins
-    // un arbre, exprimée en hectares. Marc 14/05/2026 : KPI manquant en tête
-    // du calendrier.
+    // Bug #6 — Surface verger : somme des parcelles ayant au moins un
+    // arbre. Feedback Marc 2026-05-16 : la valeur affichée était 0 ha
+    // alors que la parcelle Demo-V Verger fait 0.08 ha. Cause : le
+    // champ Prisma `parcelleGeo.surface` est mappé sur la colonne
+    // `surface_ha` (hectares déjà), mais le code divisait par 10000
+    // (×0.0001) en croyant traiter des m². On lit donc directement en
+    // hectares et on dérive les m² (×10000).
     const parcellesAvecArbres = await prisma.parcelleGeo.findMany({
       where: { userId, arbres: { some: {} } },
       select: { surface: true },
     })
-    const surfaceVergerM2 = parcellesAvecArbres.reduce(
+    const surfaceVergerHaBrut = parcellesAvecArbres.reduce(
       (s, p) => s + (p.surface || 0),
       0
     )
-    const surfaceVergerHa = Math.round((surfaceVergerM2 / 10000) * 100) / 100
+    const surfaceVergerHa = Math.round(surfaceVergerHaBrut * 100) / 100
+    const surfaceVergerM2 = Math.round(surfaceVergerHaBrut * 10000)
 
     // Bug #6 — Pyramide d'âge : count d'arbres par tranche, basée sur
     // datePlantation.
@@ -82,17 +88,22 @@ export async function GET(request: NextRequest) {
     pyramideAge.sansDate = Math.max(0, arbresFruitsTotal - arbresAvecDates.length)
 
     // Bug #6 — Top 5 espèces par nombre d'arbres.
-    const topEspecesRaw = await prisma.arbre.groupBy({
+    // Bug cmp8sbgi1 (Marc 2026-05-16) — auparavant on tronquait à 5 sans
+    // regroupement, donc Figuier (1 arbre) disparaissait et la somme du
+    // donut ≠ total fruitiers. On regroupe l'éventuel reliquat en
+    // "Autres" pour conserver la cohérence visuelle.
+    const especesRaw = await prisma.arbre.groupBy({
       by: ["espece"],
       where: { userId, type: { in: ["fruitier", "petit_fruit"] }, espece: { not: null } },
       _count: { _all: true },
       orderBy: { _count: { espece: "desc" } },
-      take: 5,
     })
-    const topEspeces = topEspecesRaw.map((r) => ({
-      espece: r.espece ?? "—",
-      count: r._count._all,
-    }))
+    const especesSorted = especesRaw.map((r) => ({ espece: r.espece ?? "—", count: r._count._all }))
+    const topEspeces = especesSorted.slice(0, 5)
+    if (especesSorted.length > 5) {
+      const autresCount = especesSorted.slice(5).reduce((s, e) => s + e.count, 0)
+      if (autresCount > 0) topEspeces.push({ espece: "Autres", count: autresCount })
+    }
 
     // Récoltes de fruits de l'annee
     const recoltesFruitsYear = await prisma.recolteArbre.aggregate({
@@ -297,6 +308,7 @@ export async function GET(request: NextRequest) {
         operationsEnAttente,
         // Bug #6 — Nouveaux KPI Verger (audit Marc 2026-05-14).
         surfaceVergerHa,
+        surfaceVergerM2,
         pyramideAge,
         topEspeces,
       },

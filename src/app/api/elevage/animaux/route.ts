@@ -38,7 +38,9 @@ export async function GET(request: NextRequest) {
       orderBy: [{ statut: 'asc' }, { nom: 'asc' }],
       include: {
         especeAnimale: {
-          select: { id: true, nom: true, type: true, couleur: true },
+          // Bug cmp8sf92p — on remonte poidsAdulte pour permettre à la liste
+          // d'afficher un poids estimatif si poidsActuel n'est pas saisi.
+          select: { id: true, nom: true, type: true, couleur: true, poidsAdulte: true },
         },
         lot: {
           select: { id: true, nom: true },

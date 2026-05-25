@@ -55,6 +55,20 @@ export function validateCultureDates(data: {
     }
   }
 
+  // Bug Ail #509 — cycle agronomiquement impossible : récolte moins de 14 j
+  // après semis/plantation. Avant : Ail #509 acceptait semis=24/05 + récolte
+  // =25/05 sans broncher. Warning non-bloquant pour ne pas refuser des
+  // micro-pousses légitimes (radis ~21 j, micropousses ~10 j).
+  const debutCycle = dateSemis ?? datePlantation
+  if (debutCycle && dateRecolte) {
+    const cycleJours = differenceInDays(dateRecolte, debutCycle)
+    if (cycleJours >= 0 && cycleJours < 14) {
+      warnings.push(
+        `Cycle très court : ${cycleJours} j entre ${dateSemis ? "semis" : "plantation"} et récolte — vérifiez les dates.`
+      )
+    }
+  }
+
   // Audit Marc 2026-05-14 — Bug 04 : message contextualisé avec la
   // fenêtre ITP recommandée (mois français), pour que l'utilisateur
   // comprenne ce qu'il faut corriger. Exemple :

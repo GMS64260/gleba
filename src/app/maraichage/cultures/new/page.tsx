@@ -8,6 +8,7 @@ import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, Sprout, Save } from "lucide-react"
+import { formatSemaine } from "@/lib/assistant-helpers"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { format } from "date-fns"
@@ -182,32 +183,39 @@ export default function NewCulturePage() {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
 
-    // Bug #33 — Si la date ITP S<n> tombe dans le passé pour l'année courante,
-    // on propose aujourd'hui à la place et on affiche un message explicatif.
-    // Pour les années futures, l'ITP est laissé tel quel.
     setDateSemisInfo(null)
-    if (itp.semaineSemis) {
-      const itpDate = weekToDate(year, itp.semaineSemis)
-      if (year === today.getFullYear() && itpDate < today) {
-        form.setValue("dateSemis", today)
+
+    // Bug #33 + bug Ail #509 — Calculer les dates ITP brutes et, si la première
+    // jalon (semis ou plantation) est passée pour l'année courante, décaler
+    // l'ENSEMBLE du cycle uniformément. Sinon on cassait le cycle : ex. semis
+    // remplacé par today, plantation par today, récolte laissée à la date ITP
+    // qui tombait par hasard sur today → cycle d'1 jour.
+    let semisDate = itp.semaineSemis ? weekToDate(year, itp.semaineSemis) : null
+    let plantationDate = itp.semainePlantation ? weekToDate(year, itp.semainePlantation) : null
+    let recolteDate = itp.semaineRecolte ? weekToDate(year, itp.semaineRecolte) : null
+
+    if (year === today.getFullYear()) {
+      const firstAnchor = semisDate ?? plantationDate
+      if (firstAnchor && firstAnchor < today) {
+        const offsetMs = today.getTime() - firstAnchor.getTime()
+        if (semisDate) semisDate = new Date(semisDate.getTime() + offsetMs)
+        if (plantationDate) plantationDate = new Date(plantationDate.getTime() + offsetMs)
+        if (recolteDate) recolteDate = new Date(recolteDate.getTime() + offsetMs)
+        const decalageJours = Math.ceil(offsetMs / 86400000)
+        const semaineLabel = itp.semaineSemis
+          ? formatSemaine(itp.semaineSemis)
+          : itp.semainePlantation
+            ? formatSemaine(itp.semainePlantation)
+            : ""
         setDateSemisInfo(
-          `Date ITP S${itp.semaineSemis} dépassée — proposition : ${today.toLocaleDateString("fr-FR")}`
+          `Fenêtre ITP ${semaineLabel} dépassée — cycle décalé de ${decalageJours} j (semis/plantation/récolte alignés).`
         )
-      } else {
-        form.setValue("dateSemis", itpDate)
       }
     }
-    if (itp.semainePlantation) {
-      const itpDate = weekToDate(year, itp.semainePlantation)
-      if (year === today.getFullYear() && itpDate < today) {
-        form.setValue("datePlantation", today)
-      } else {
-        form.setValue("datePlantation", itpDate)
-      }
-    }
-    if (itp.semaineRecolte) {
-      form.setValue("dateRecolte", weekToDate(year, itp.semaineRecolte))
-    }
+
+    if (semisDate) form.setValue("dateSemis", semisDate)
+    if (plantationDate) form.setValue("datePlantation", plantationDate)
+    if (recolteDate) form.setValue("dateRecolte", recolteDate)
     if (itp.nbRangs) {
       form.setValue("nbRangs", itp.nbRangs)
     }
@@ -486,9 +494,9 @@ export default function NewCulturePage() {
                       <span>
                         💡 Dates pré-remplies depuis l'ITP <strong>{itp.id}</strong> (
                         {[
-                          itp.semaineSemis ? `S${itp.semaineSemis} semis` : null,
-                          itp.semainePlantation ? `S${itp.semainePlantation} plantation` : null,
-                          itp.semaineRecolte ? `S${itp.semaineRecolte} récolte` : null,
+                          itp.semaineSemis ? `${formatSemaine(itp.semaineSemis)} semis` : null,
+                          itp.semainePlantation ? `${formatSemaine(itp.semainePlantation)} plantation` : null,
+                          itp.semaineRecolte ? `${formatSemaine(itp.semaineRecolte)} récolte` : null,
                         ].filter(Boolean).join(" · ")}). Modifiable.
                       </span>
                       <button

@@ -10,6 +10,7 @@ import { Suspense } from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { ArrowLeft, FileStack, CheckCircle2, Plus, Loader2 } from "lucide-react"
+import { formatSemaine } from "@/lib/assistant-helpers"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -329,9 +330,9 @@ function CreerCulturesContent() {
                           </div>
                         </TableCell>
                         <TableCell>{c.itpId || "-"}</TableCell>
-                        <TableCell>{c.semaineSemis ? `S${c.semaineSemis}` : "-"}</TableCell>
-                        <TableCell>{c.semainePlantation ? `S${c.semainePlantation}` : "-"}</TableCell>
-                        <TableCell>{c.semaineRecolte ? `S${c.semaineRecolte}` : "-"}</TableCell>
+                        <TableCell>{formatSemaine(c.semaineSemis)}</TableCell>
+                        <TableCell>{formatSemaine(c.semainePlantation)}</TableCell>
+                        <TableCell>{formatSemaine(c.semaineRecolte)}</TableCell>
                         <TableCell>{c.surface.toFixed(1)} m2</TableCell>
                       </TableRow>
                     )

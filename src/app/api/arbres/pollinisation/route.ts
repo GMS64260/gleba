@@ -47,17 +47,91 @@ export async function GET(request: NextRequest) {
       orderBy: { nom: "asc" },
     })
 
+    // Feedback Marc 2026-05-16 — V2 Bug 6 : on dérive des suggestions
+    // de pollinisateurs intra-verger quand aucune association n'est
+    // saisie. Critères :
+    //   - même espèce (Pommier × Pommier)
+    //   - variété distincte (Golden ≠ Reinette grise)
+    //   - groupes de floraison adjacents (A↔B, B↔C, C↔D) ou égaux
+    //     (info Variete.groupePollinisation), tolérant si donnée absente
+    //   - on ne propose pas un arbre triploïde comme pollinisateur
+    const groupeAdjacent = (g1: string | null, g2: string | null): boolean => {
+      if (!g1 || !g2) return true // données partielles → on ne bloque pas
+      const order = ["A", "B", "C", "D", "E"]
+      const i1 = order.indexOf(g1.toUpperCase())
+      const i2 = order.indexOf(g2.toUpperCase())
+      if (i1 < 0 || i2 < 0) return g1 === g2
+      return Math.abs(i1 - i2) <= 1
+    }
+
+    // Récupérer ploïdie/groupe par variété (référentiel) pour qualifier.
+    const varieteIds = [
+      ...new Set(arbres.map((a) => a.variete).filter((v): v is string => !!v)),
+    ]
+    const varietes = varieteIds.length
+      ? await prisma.variete.findMany({
+          where: { id: { in: varieteIds } },
+          select: { id: true, ploidie: true, groupePollinisation: true },
+        })
+      : []
+    const varieteMap = new Map(varietes.map((v) => [v.id, v]))
+
+    const compatibilitesDerivees = new Map<number, Array<{
+      id: number
+      nom: string
+      espece: string | null
+      variete: string | null
+      raison: string
+    }>>()
+    // Bug cmp8sk552 (Marc 2026-05-16) — fallback variétés auto-fertiles
+    // (Mirabelle de Nancy, Reine-Claude d'Oullins, Framboisier…) qui
+    // restaient classées "Sans pollinisateur" car flag autofertile=false.
+    const { isAutofertileFallback } = await import('@/lib/pollinisation')
+    const estAutofertile = (a: typeof arbres[number]) =>
+      a.autofertile || isAutofertileFallback(a.variete)
+
+    for (const a of arbres) {
+      if (estAutofertile(a)) continue
+      if (!a.espece) continue
+      const va = a.variete ? varieteMap.get(a.variete) : null
+      const candidats: Array<{ id: number; nom: string; espece: string | null; variete: string | null; raison: string }> = []
+      for (const b of arbres) {
+        if (b.id === a.id) continue
+        if (b.espece !== a.espece) continue
+        if (b.variete && a.variete && b.variete === a.variete) continue // même clone
+        const vb = b.variete ? varieteMap.get(b.variete) : null
+        if (vb?.ploidie?.toLowerCase().startsWith("tripl")) continue // tripl. pollinise mal
+        const ga = a.groupePollinisation ?? va?.groupePollinisation ?? null
+        const gb = b.groupePollinisation ?? vb?.groupePollinisation ?? null
+        if (!groupeAdjacent(ga, gb)) continue
+        candidats.push({
+          id: b.id,
+          nom: b.nom,
+          espece: b.espece,
+          variete: b.variete,
+          raison: `Même espèce, ${ga && gb ? `groupes ${ga}/${gb}` : "floraison compatible"}`,
+        })
+      }
+      if (candidats.length) compatibilitesDerivees.set(a.id, candidats)
+    }
+
     // Alertes: arbres non autofertiles sans pollinisateur compatible
-    const alertes = arbres.filter(
-      (a) => !a.autofertile && a.pollinisateursCompat.length === 0
-    ).map((a) => ({
-      id: a.id,
-      nom: a.nom,
-      espece: a.espece,
-      variete: a.variete,
-      floraison: a.floraison,
-      groupePollinisation: a.groupePollinisation,
-    }))
+    // (ni explicite, ni dérivé).
+    const alertes = arbres
+      .filter(
+        (a) =>
+          !estAutofertile(a) &&
+          a.pollinisateursCompat.length === 0 &&
+          !compatibilitesDerivees.has(a.id)
+      )
+      .map((a) => ({
+        id: a.id,
+        nom: a.nom,
+        espece: a.espece,
+        variete: a.variete,
+        floraison: a.floraison,
+        groupePollinisation: a.groupePollinisation,
+      }))
 
     // Toutes les associations
     const associations = await prisma.pollinisationArbre.findMany({
@@ -78,10 +152,15 @@ export async function GET(request: NextRequest) {
       arbres,
       associations,
       alertes,
+      // Feedback Marc 2026-05-16 — V2 Bug 6 : on expose les paires
+      // détectées automatiquement pour que l'UI puisse proposer
+      // "Associer ces pollinisateurs en 1 clic".
+      compatibilitesDerivees: Object.fromEntries(compatibilitesDerivees.entries()),
       stats: {
         totalArbres: arbres.length,
-        autofertiles: arbres.filter((a) => a.autofertile).length,
+        autofertiles: arbres.filter(estAutofertile).length,
         sansPollinisateur: alertes.length,
+        avecCompatibiliteAuto: compatibilitesDerivees.size,
       },
     })
   } catch (err) {

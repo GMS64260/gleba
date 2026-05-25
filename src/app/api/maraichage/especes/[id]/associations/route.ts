@@ -29,7 +29,12 @@ export async function GET(_request: NextRequest, { params }: Params) {
     where: {
       details: { some: { especeId: { in: aliases } } },
     },
-    include: { details: { include: { espece: { select: { id: true } } } } },
+    include: {
+      details: {
+        orderBy: { id: "asc" },
+        include: { espece: { select: { id: true } } },
+      },
+    },
   })
 
   const data = associations.flatMap((a) => {
@@ -39,11 +44,29 @@ export async function GET(_request: NextRequest, { params }: Params) {
     // pour préserver le contrat UI (qui distingue favorable/defavorable).
     const type: "favorable" | "defavorable" =
       a.type === "incompatible" ? "defavorable" : "favorable"
-    // Un partenaire = tout détail qui n'est pas un alias de l'espèce
-    // demandée (sinon on afficherait "Petit pois × Pois").
-    const partenaires = a.details
-      .filter((d) => d.especeId && !aliases.includes(d.especeId))
-      .map((d) => d.especeId as string)
+    // Feedback Marc 2026-05-16 — Bug 03 : pour les règles "groupe"
+    // (ex: « Poireau + » = Poireau favorable avec Artichaut/Asperge/
+    // Moutarde/Tomate), le sujet est UN détail (le premier inséré) et
+    // les autres sont SES partenaires. Quand on consulte la fiche
+    // Tomate, on ne doit donc PAS afficher Artichaut/Asperge/Moutarde
+    // comme partenaires de Tomate — seul Poireau l'est.
+    //
+    // Règle générale :
+    //   - subject = premier détail (orderBy id asc)
+    //   - si subject ∈ aliases du queried espece ⇒ tous les autres
+    //     détails sont des partenaires de notre espèce.
+    //   - sinon ⇒ seul le subject est le partenaire de notre espèce
+    //     (notre espèce figure dans la liste mais n'est pas sujet).
+    const detailsEspece = a.details.filter((d) => d.especeId)
+    const subject = detailsEspece[0]?.especeId ?? null
+    const subjectIsOurs = subject != null && aliases.includes(subject)
+    const partenaires: string[] = subjectIsOurs
+      ? detailsEspece
+          .filter((d) => d.especeId && !aliases.includes(d.especeId))
+          .map((d) => d.especeId as string)
+      : subject
+        ? [subject]
+        : []
     const familles = a.details
       .filter((d) => d.familleId)
       .map((d) => d.familleId as string)

@@ -31,18 +31,36 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "GLEBA | Logiciel open source gestion micro-ferme & maraîchage",
-  description: "ERP open source pour micro-fermes : maraîchage, verger, élevage, ventes. Auto-hebergeable ou heberge pour vous. 135+ espèces.",
-  keywords: ["logiciel maraîchage", "gestion micro-ferme", "planification cultures", "ERP agricole", "open source", "verger", "élevage volailles", "maraîchage", "rotation cultures"],
+  title: {
+    default: "Gleba — Logiciel libre de gestion pour micro-ferme, maraîchage et élevage",
+    template: "%s | Gleba",
+  },
+  description: "Gleba est le logiciel libre tout-en-un pour gérer votre micro-ferme : planification maraîchage, verger, élevage, traçabilité phytosanitaire, comptabilité et IA. Open source, hébergé pour vous ou auto-hébergeable.",
+  keywords: [
+    "logiciel maraîchage",
+    "logiciel micro-ferme",
+    "logiciel permaculture",
+    "logiciel planification cultures",
+    "logiciel gestion ferme bio",
+    "logiciel traçabilité phytosanitaire",
+    "logiciel verger",
+    "logiciel élevage volailles",
+    "calendrier semis",
+    "rotation cultures",
+    "ERP agricole open source",
+    "alternative Brinjel",
+    "alternative Qrop",
+    "alternative Tolma",
+  ],
   authors: [{ name: "Guillaume Gomes" }],
   creator: "Guillaume Gomes",
-  publisher: "GLEBA",
+  publisher: "Gleba",
   metadataBase: new URL("https://gleba.fr"),
   openGraph: {
-    title: "GLEBA - Gérez votre micro-ferme efficacement",
-    description: "Maraîchage + Verger + Élevage + Ventes en un seul outil open source.",
+    title: "Gleba — Logiciel libre pour micro-fermes, maraîchage et élevage",
+    description: "Planification, verger, élevage, comptabilité, traçabilité et IA — un seul logiciel open source pour gérer votre exploitation.",
     url: "https://gleba.fr",
-    siteName: "GLEBA",
+    siteName: "Gleba",
     locale: "fr_FR",
     type: "website",
     images: [
@@ -50,14 +68,14 @@ export const metadata: Metadata = {
         url: "/og-image.png",
         width: 1200,
         height: 630,
-        alt: "GLEBA - Logiciel open source gestion micro-ferme",
+        alt: "Gleba — Logiciel libre de gestion pour micro-ferme",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "GLEBA | Logiciel open source gestion micro-ferme",
-    description: "ERP open source : maraîchage, verger, élevage, ventes. Hébergé pour vous ou auto-hebergeable.",
+    title: "Gleba — Logiciel libre pour micro-fermes",
+    description: "Planification maraîchage, verger, élevage, comptabilité, traçabilité et IA. Open source, hébergé pour vous ou auto-hébergeable.",
     images: ["/og-image.png"],
   },
   robots: {
@@ -90,36 +108,71 @@ export const viewport = {
   // difficultés visuelles)
 };
 
-// JSON-LD Structured Data
-const jsonLd = {
+// JSON-LD Structured Data — multiple schemas pour signaler Software + Organization + WebSite
+const jsonLdSoftware = {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
-  name: "GLEBA",
+  name: "Gleba",
   applicationCategory: "BusinessApplication",
   applicationSubCategory: "Farm Management Software",
-  operatingSystem: "Web, Self-hosted",
+  operatingSystem: "Web, Self-hosted (Docker)",
   offers: {
     "@type": "Offer",
     price: "0",
     priceCurrency: "EUR",
   },
-  description: "ERP open source pour micro-fermes diversifiees : maraîchage, verger, élevage, ventes.",
+  description: "Logiciel libre tout-en-un pour gérer une micro-ferme diversifiée : maraîchage, verger, élevage, comptabilité, traçabilité et IA.",
   url: "https://gleba.fr",
   author: {
     "@type": "Person",
     name: "Guillaume Gomes",
   },
   license: "https://www.gnu.org/licenses/agpl-3.0.html",
-  screenshot: "https://gleba.fr/screenshot.png",
+  image: "https://gleba.fr/og-image.png",
+  screenshot: "https://gleba.fr/og-image.png",
   softwareVersion: "1.0.0",
+  inLanguage: "fr-FR",
   featureList: [
-    "Planification maraîchère",
-    "Gestion de verger",
-    "Suivi d'élevage",
-    "Gestion des ventes",
-    "Plan 2D interactif",
-    "135+ espèces pre-configurees",
+    "Planification maraîchère et rotation des cultures",
+    "Calendrier de semis et calendrier lunaire",
+    "Gestion de verger (25 espèces, 40 variétés)",
+    "Suivi d'élevage (volailles, ruches, ovins)",
+    "Comptabilité et facturation",
+    "Traçabilité phytosanitaire (AMM, DAR)",
+    "Plan 2D interactif du jardin",
+    "Météo et pilotage de l'irrigation",
+    "Assistant IA en langage naturel",
+    "135 espèces végétales pré-configurées",
   ],
+  aggregateRating: undefined,
+};
+
+const jsonLdOrganization = {
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  name: "Gleba",
+  url: "https://gleba.fr",
+  logo: "https://gleba.fr/gleba-logo.png",
+  email: "contact@gleba.fr",
+  founder: {
+    "@type": "Person",
+    name: "Guillaume Gomes",
+  },
+  sameAs: [
+    "https://github.com/GMS64260/gleba",
+  ],
+};
+
+const jsonLdWebSite = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  name: "Gleba",
+  url: "https://gleba.fr",
+  inLanguage: "fr-FR",
+  publisher: {
+    "@type": "Organization",
+    name: "Gleba",
+  },
 };
 
 export default function RootLayout({
@@ -132,7 +185,15 @@ export default function RootLayout({
       <head>
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLdSoftware) }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLdOrganization) }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLdWebSite) }}
         />
       </head>
       <body

@@ -112,6 +112,35 @@ export async function POST(request: NextRequest) {
     }
 
     const { alimentId, lotId, date, quantite, notes } = result.data
+    const overrideStock = (body as { overrideStock?: boolean })?.overrideStock === true
+
+    // Feedback Marc 2026-05-16 — V3 Bug 4 : on refusait pas une saisie
+    // qui faisait basculer le stock en négatif, ce qui aboutissait à
+    // -10/-20 kg en base. On garde la possibilité de forcer (via
+    // `overrideStock`) pour les éleveurs qui consomment avant d'avoir
+    // saisi un approvisionnement.
+    if (!overrideStock) {
+      const existing = await prisma.userStockAliment.findUnique({
+        where: { userId_alimentId: { userId, alimentId } },
+        select: { stock: true },
+      })
+      const stockActuel = existing?.stock ?? 0
+      if (stockActuel - quantite < 0) {
+        return NextResponse.json(
+          {
+            error: 'Stock insuffisant',
+            code: 'STOCK_INSUFFISANT',
+            details: {
+              stockActuel,
+              quantiteDemandee: quantite,
+              manque: Math.round((quantite - stockActuel) * 100) / 100,
+              message: `Stock actuel : ${stockActuel} — ${quantite} consommé(s) ferait passer le stock à ${stockActuel - quantite}. Approvisionnez le stock ou cochez « forcer » pour confirmer.`,
+            },
+          },
+          { status: 422 }
+        )
+      }
+    }
 
     // Transaction : créer la consommation + décrémenter le stock
     const [consommation] = await prisma.$transaction([
@@ -135,7 +164,7 @@ export async function POST(request: NextRequest) {
         create: {
           userId,
           alimentId,
-          stock: -quantite, // Commence négatif si pas de stock initial
+          stock: overrideStock ? -quantite : 0,
           dateStock: new Date(),
         },
         update: {

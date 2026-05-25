@@ -1,7 +1,7 @@
 import type { Metadata } from "next"
 
 export const metadata: Metadata = {
-  title: "Roadmap — Gleba | Feuille de route du logiciel agricole open source",
+  title: "Roadmap — Feuille de route du logiciel agricole open source",
   description:
     "Découvrez les fonctionnalités en cours de développement et celles prévues pour Gleba, le logiciel libre de gestion de micro-fermes. Bugs, améliorations et nouvelles fonctionnalités.",
   openGraph: {

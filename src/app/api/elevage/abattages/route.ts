@@ -91,6 +91,37 @@ export async function POST(request: NextRequest) {
 
     const { animalId, lotId, date, quantite, poidsVif, poidsCarcasse, destination, prixVente, lieu, notes } = parsed.data
     const dateAbattage = date || new Date()
+    const overrideCoherence = (body as { overrideCoherence?: boolean })?.overrideCoherence === true
+
+    // Feedback Marc 2026-05-16 — V3 Bug 6 : on autorisait l'abattage
+    // de 500 poules sur un lot qui en comptait 30. On bloque désormais
+    // toute saisie dépassant l'effectif actuel (avec override possible).
+    if (lotId && quantite) {
+      const lot = await prisma.lotAnimaux.findFirst({
+        where: { id: lotId, userId: session.user.id },
+        select: { quantiteActuelle: true, quantiteInitiale: true, statut: true, nom: true },
+      })
+      if (!lot) {
+        return NextResponse.json({ error: 'Lot introuvable' }, { status: 404 })
+      }
+      if (!overrideCoherence && quantite > lot.quantiteActuelle) {
+        return NextResponse.json(
+          {
+            error: 'Abattage incohérent',
+            code: 'ABATTAGE_OVER_EFFECTIF',
+            details: {
+              quantite,
+              effectifActuel: lot.quantiteActuelle,
+              effectifInitial: lot.quantiteInitiale,
+              lotNom: lot.nom,
+              statut: lot.statut,
+              message: `Le lot « ${lot.nom} » compte ${lot.quantiteActuelle} animaux ${lot.statut === 'termine' ? '(statut terminé)' : ''} — impossible d'abattre ${quantite}. Cochez « forcer » pour corriger l'historique.`,
+            },
+          },
+          { status: 422 }
+        )
+      }
+    }
 
     // PROMPT 19B §8 — Blocage si soin en temps d'attente viande actif
     // POSTREVIEW Sprint 5 — Filtre `fait: true` ajouté : un soin prévu mais

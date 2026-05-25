@@ -213,7 +213,7 @@ export default function AnimalDetailPage() {
         icon: Baby,
         iconColor: "text-pink-600",
         bgColor: "bg-pink-100",
-        title: `${n.nombreNes} ne(s), ${n.nombreVivants} vivant(s)`,
+        title: `${n.nombreNes} né(s), ${n.nombreVivants} vivant(s)`,
         detail: [n.nombreMales ? `${n.nombreMales}M` : null, n.nombreFemelles ? `${n.nombreFemelles}F` : null].filter(Boolean).join(" / "),
       })
     })
@@ -308,14 +308,26 @@ export default function AnimalDetailPage() {
                 </CardContent>
               </Card>
 
+              {/* Bug cmp8sf92p (Marc 2026-05-16) — afficher "-" en gros et
+                  "Adulte : 65 kg" en petit était trompeur. On préfère le poids
+                  actuel si saisi, sinon le poids adulte de l'espèce comme valeur
+                  principale avec un préfixe ≈ pour signaler l'estimation. */}
               <Card>
                 <CardHeader className="pb-1 pt-3 px-4">
                   <CardDescription className="text-xs flex items-center gap-1"><Weight className="h-3 w-3" />Poids</CardDescription>
-                  <CardTitle className="text-lg">{animal.poidsActuel ? `${animal.poidsActuel} kg` : '-'}</CardTitle>
+                  <CardTitle className="text-lg">
+                    {animal.poidsActuel
+                      ? `${animal.poidsActuel} kg`
+                      : animal.especeAnimale.poidsAdulte
+                        ? `≈ ${animal.especeAnimale.poidsAdulte} kg`
+                        : '-'}
+                  </CardTitle>
                 </CardHeader>
                 <CardContent className="pb-3 px-4">
                   <p className="text-xs text-muted-foreground">
-                    {animal.especeAnimale.poidsAdulte ? `Adulte : ${animal.especeAnimale.poidsAdulte} kg` : ''}
+                    {animal.poidsActuel
+                      ? (animal.especeAnimale.poidsAdulte ? `Adulte : ${animal.especeAnimale.poidsAdulte} kg` : '')
+                      : (animal.especeAnimale.poidsAdulte ? "Estimation espèce (poids adulte)" : 'Aucun poids saisi')}
                   </p>
                 </CardContent>
               </Card>
@@ -332,17 +344,33 @@ export default function AnimalDetailPage() {
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader className="pb-1 pt-3 px-4">
-                  <CardDescription className="text-xs flex items-center gap-1"><Heart className="h-3 w-3" />Généalogie</CardDescription>
-                  <CardTitle className="text-lg">{animal.enfants.length} enfant(s)</CardTitle>
-                </CardHeader>
-                <CardContent className="pb-3 px-4">
-                  <p className="text-xs text-muted-foreground">
-                    {animal.mere ? `Mere : ${animal.mere.nom || animal.mere.identifiant || `#${animal.mere.id}`}` : 'Mère inconnue'}
-                  </p>
-                </CardContent>
-              </Card>
+              {(() => {
+                // Bug cmp8sdg9b (Marc 2026-05-16) — la carte Généalogie comptait
+                // uniquement les enfants référencés individuellement en table
+                // Animal, ignorant les naissances déclarées (table NaissanceAnimale).
+                // On somme les deux et on libelle "descendants" pour lever
+                // l'ambiguïté avec la mère.
+                const enfantsRef = animal.enfants.length
+                const totalNes = animal.naissancesMere.reduce((s, n) => s + n.nombreVivants, 0)
+                const totalDescendants = enfantsRef + Math.max(0, totalNes - enfantsRef)
+                return (
+                  <Card>
+                    <CardHeader className="pb-1 pt-3 px-4">
+                      <CardDescription className="text-xs flex items-center gap-1"><Heart className="h-3 w-3" />Descendance</CardDescription>
+                      <CardTitle className="text-lg">{totalDescendants} descendant{totalDescendants > 1 ? 's' : ''}</CardTitle>
+                    </CardHeader>
+                    <CardContent className="pb-3 px-4">
+                      <p className="text-xs text-muted-foreground">
+                        {enfantsRef > 0 && `${enfantsRef} fiche${enfantsRef > 1 ? 's' : ''} · `}
+                        {totalNes > 0 ? `${totalNes} né${totalNes > 1 ? 's' : ''}` : (enfantsRef > 0 ? '' : 'Aucune naissance enregistrée')}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {animal.mere ? `Mère : ${animal.mere.nom || animal.mere.identifiant || `#${animal.mere.id}`}` : 'Mère inconnue'}
+                      </p>
+                    </CardContent>
+                  </Card>
+                )
+              })()}
             </div>
 
             {/* Arbre genealogique */}

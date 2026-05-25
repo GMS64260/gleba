@@ -1,7 +1,7 @@
 "use client"
 
 /**
- * Onglet Operations - Liste des operations avec filtres et dialog d'ajout
+ * Onglet Opérations - Liste des opérations avec filtres et dialog d'ajout
  */
 
 import * as React from "react"
@@ -174,7 +174,7 @@ export function OperationsTab() {
       if (opsRes.ok) setData(await opsRes.json())
       if (arbresRes.ok) setArbres(await arbresRes.json())
     } catch {
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les operations" })
+      toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les opérations" })
     } finally {
       setIsLoading(false)
     }
@@ -194,18 +194,33 @@ export function OperationsTab() {
 
   const handleToggleFait = React.useCallback(
     async (op: OperationArbre) => {
+      // Feedback Marc 2026-05-16 — V2 Bug 2 : la précédente version
+      // utilisait `!op.fait` à la fois pour le corps PUT, pour le
+      // setData et pour le toast. Si plusieurs clics enchaînés ou un
+      // état désynchronisé survenaient, le `op.fait` capturé dans la
+      // closure ne reflétait plus l'état réel → "Fait !" affiché mais
+      // bouton restant orange. On verrouille désormais la nouvelle
+      // valeur (`nextFait`) en lecture d'état au moment du clic, on
+      // utilise la réponse serveur comme source de vérité et on
+      // corrige aussi l'accent ("Annule" → "Annulé").
+      const nextFait = !op.fait
       try {
         const res = await fetch(`/api/arbres/operations/${op.id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ fait: !op.fait }),
+          body: JSON.stringify({ fait: nextFait }),
         })
-        if (res.ok) {
-          setData((prev) =>
-            prev.map((o) => (o.id === op.id ? { ...o, fait: !op.fait } : o))
-          )
-          toast({ title: !op.fait ? "Fait !" : "Annule" })
+        if (!res.ok) {
+          toast({ variant: "destructive", title: "Erreur", description: "Mise à jour refusée" })
+          return
         }
+        const updated = (await res.json().catch(() => null)) as OperationArbre | null
+        setData((prev) =>
+          prev.map((o) =>
+            o.id === op.id ? { ...o, ...(updated ?? {}), fait: updated?.fait ?? nextFait } : o
+          )
+        )
+        toast({ title: nextFait ? "Fait !" : "Annulé" })
       } catch {
         toast({ variant: "destructive", title: "Erreur" })
       }
@@ -284,8 +299,8 @@ export function OperationsTab() {
       <Card>
         <CardContent className="pt-4 pb-3">
           <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">Cout total des operations</p>
-            <p className="text-xl font-bold">{totalCout.toFixed(2)} EUR</p>
+            <p className="text-sm text-muted-foreground">Coût total des opérations</p>
+            <p className="text-xl font-bold">{totalCout.toFixed(2)} €</p>
           </div>
         </CardContent>
       </Card>
@@ -328,7 +343,7 @@ export function OperationsTab() {
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Enregistrer une operation</DialogTitle>
+            <DialogTitle>Enregistrer une opération</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
@@ -371,7 +386,7 @@ export function OperationsTab() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Date realisation</Label>
+                <Label>Date réalisation</Label>
                 <Input
                   type="date"
                   value={newOperation.date}
@@ -396,7 +411,7 @@ export function OperationsTab() {
             </div>
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <Label>Produit utilise</Label>
+                <Label>Produit utilisé</Label>
                 <Input
                   value={newOperation.produit}
                   onChange={(e) => setNewOperation({ ...newOperation, produit: e.target.value })}
@@ -404,7 +419,7 @@ export function OperationsTab() {
                 />
               </div>
               <div>
-                <Label>Quantite</Label>
+                <Label>Quantité</Label>
                 <Input
                   type="number"
                   step="0.1"
@@ -413,7 +428,7 @@ export function OperationsTab() {
                 />
               </div>
               <div>
-                <Label>Unite</Label>
+                <Label>Unité</Label>
                 <Input
                   value={newOperation.unite}
                   onChange={(e) => setNewOperation({ ...newOperation, unite: e.target.value })}
@@ -423,7 +438,7 @@ export function OperationsTab() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Cout (EUR)</Label>
+                <Label>Coût (€)</Label>
                 <Input
                   type="number"
                   step="0.01"
@@ -440,7 +455,7 @@ export function OperationsTab() {
                       setNewOperation({ ...newOperation, fait: !!checked })
                     }
                   />
-                  <Label htmlFor="fait">Operation realisee</Label>
+                  <Label htmlFor="fait">Opération réalisée</Label>
                 </div>
               </div>
             </div>

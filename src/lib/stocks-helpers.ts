@@ -106,20 +106,25 @@ export async function calculerStocksNet(
 
 /**
  * Calcule le stock d'oeufs disponible pour un utilisateur
- * Stock = Produits - Cassés - Vendus
+ * Stock = Produits - Cassés - Souillés - Vendus
+ *
+ * Bug cmp8rw40u (Marc 2026-05-16) — les œufs souillés étaient saisis
+ * mais jamais sortis du stock, donc "stock œufs == production" même
+ * quand l'éleveur déclarait des sales. On les soustrait désormais comme
+ * les cassés (ils ne sont pas vendables).
  */
 export async function calculerStockOeufs(userId: string): Promise<{
   stockNet: number
-  detail: { produits: number; casses: number; vendus: number }
+  detail: { produits: number; casses: number; sales: number; vendus: number }
 }> {
-  // Total produits et cassés
   const production = await prisma.productionOeuf.aggregate({
     where: { userId },
-    _sum: { quantite: true, casses: true },
+    _sum: { quantite: true, casses: true, sales: true },
   })
 
   const produits = production._sum.quantite || 0
   const casses = production._sum.casses || 0
+  const sales = production._sum.sales || 0
 
   // Total vendus (normalisation d'unité : douzaine -> x12)
   const ventes = await prisma.venteProduit.findMany({
@@ -133,7 +138,7 @@ export async function calculerStockOeufs(userId: string): Promise<{
   }, 0)
 
   return {
-    stockNet: produits - casses - vendus,
-    detail: { produits, casses, vendus },
+    stockNet: produits - casses - sales - vendus,
+    detail: { produits, casses, sales, vendus },
   }
 }

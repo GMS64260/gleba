@@ -48,7 +48,7 @@ const columns: ColumnDef<AssociationCulture>[] = [
   },
   {
     accessorKey: "ilot",
-    header: "Ilot",
+    header: "Îlot",
     cell: ({ getValue }) => getValue() || "-",
   },
   {
@@ -216,12 +216,16 @@ function AssociationsContent() {
       </header>
 
       <main className="container mx-auto px-4 py-6">
-        {/* Info */}
+        {/* Info — Bug cmp8sbe6d (Marc 2026-05-16) : accents + clarification.
+            Les voisinages sont désormais dérivés automatiquement de la
+            proximité géographique (positions sur le Plan du jardin). */}
         <div className="mb-4 p-4 bg-pink-50 rounded-lg border border-pink-200">
           <p className="text-sm text-pink-800">
-            Cette page affiche les cultures prévues et leurs voisines.
-            Les planches voisines sont definies dans le champ "Planches influencées" de chaque planche (liste CSV).
-            Cela permet de verifier les associations benefiques ou nefastes entre cultures.
+            Cette page affiche les cultures prévues et leurs voisines, dérivées
+            de la <Link href="/jardin" className="underline">cartographie du jardin</Link> :
+            deux planches sont considérées voisines si elles partagent un côté ou
+            se trouvent à moins de 2 m l&apos;une de l&apos;autre. Cela permet
+            de vérifier les associations bénéfiques ou néfastes entre cultures.
           </p>
         </div>
 

@@ -138,6 +138,14 @@ async function seedPlanches(userId: string) {
   return created
 }
 
+// Espèces systématiquement irriguées en maraîchage (besoin eau élevé, irrigation
+// indispensable au rendement). Les autres (Carotte, Oignon, Pomme de terre,
+// Haricots, Fève, Petit pois, Radis, Ail) sont volontairement laissées hors plan.
+const ESPECES_IRRIGUEES = new Set([
+  "Tomate", "Aubergine", "Concombre", "Courge butternut", "Courgette",
+  "Poivron", "Laitue", "Basilic", "Épinard",
+])
+
 async function seedCultures(userId: string, planches: Record<string, string>) {
   type CSpec = { planche: string; espece: string; variete?: string; dateSemis?: string; datePlantation?: string; dateRecolte?: string; surface: number; semisFait?: boolean; plantationFaite?: boolean; nbPlants?: number }
   const specs: CSpec[] = [
@@ -186,6 +194,7 @@ async function seedCultures(userId: string, planches: Record<string, string>) {
         dateRecolte: s.dateRecolte ? d(s.dateRecolte) : null,
         semisFait: s.semisFait ?? false,
         plantationFaite: s.plantationFaite ?? false,
+        aIrriguer: ESPECES_IRRIGUEES.has(s.espece) ? true : null,
         // `quantite` représente la surface m² (ou le nb de plants si applicable)
         quantite: s.surface,
       },
@@ -229,11 +238,11 @@ async function seedArbres(userId: string, parcelles: Record<string, string>) {
   const parcelleId = parcelles["Demo-V · Verger"]
   type ASpec = { nom: string; espece: string; variete: string; portGreffe?: string; plantation: string; posX: number; posY: number }
   const arbres: ASpec[] = [
-    { nom: "Pommier Reine 1", espece: "Pommier", variete: "Reine des Reinettes", portGreffe: "M106", plantation: "2022-03-15", posX: 5, posY: 5 },
-    { nom: "Pommier Reine 2", espece: "Pommier", variete: "Reine des Reinettes", portGreffe: "M106", plantation: "2022-03-15", posX: 9, posY: 5 },
-    { nom: "Pommier Reine 3", espece: "Pommier", variete: "Reine des Reinettes", portGreffe: "M106", plantation: "2022-03-15", posX: 13, posY: 5 },
-    { nom: "Pommier Reine 4", espece: "Pommier", variete: "Reine des Reinettes", portGreffe: "M106", plantation: "2022-03-15", posX: 17, posY: 5 },
-    { nom: "Pommier Reine 5", espece: "Pommier", variete: "Reine des Reinettes", portGreffe: "M106", plantation: "2022-03-15", posX: 21, posY: 5 },
+    { nom: "Pommier Reine 1", espece: "Pommier", variete: "Reine des Reinettes", portGreffe: "MM106", plantation: "2022-03-15", posX: 5, posY: 5 },
+    { nom: "Pommier Reine 2", espece: "Pommier", variete: "Reine des Reinettes", portGreffe: "MM106", plantation: "2022-03-15", posX: 9, posY: 5 },
+    { nom: "Pommier Reine 3", espece: "Pommier", variete: "Reine des Reinettes", portGreffe: "MM106", plantation: "2022-03-15", posX: 13, posY: 5 },
+    { nom: "Pommier Reine 4", espece: "Pommier", variete: "Reine des Reinettes", portGreffe: "MM106", plantation: "2022-03-15", posX: 17, posY: 5 },
+    { nom: "Pommier Reine 5", espece: "Pommier", variete: "Reine des Reinettes", portGreffe: "MM106", plantation: "2022-03-15", posX: 21, posY: 5 },
     { nom: "Pommier Golden 1", espece: "Pommier", variete: "Golden", portGreffe: "MM106", plantation: "2022-03-15", posX: 5, posY: 10 },
     { nom: "Pommier Golden 2", espece: "Pommier", variete: "Golden", portGreffe: "MM106", plantation: "2022-03-15", posX: 9, posY: 10 },
     { nom: "Pommier Golden 3", espece: "Pommier", variete: "Golden", portGreffe: "MM106", plantation: "2022-03-15", posX: 13, posY: 10 },
@@ -267,10 +276,24 @@ async function seedArbres(userId: string, parcelles: Record<string, string>) {
     })
     created.push(row.id)
   }
-  // Observation santé : tavelure Pommier Golden 1
+  // Observation santé : tavelure Pommier Golden 1 (traitement bouillie bordelaise)
+  // Bug #cmp8dlpii : la saisie historique laissait le nom de la bouillie en
+  // texte libre dans `traitement` sans `produit` ni `methodeTraitement`, donc
+  // le registre phyto classait à tort "Mécanique / Manuel" et le compteur
+  // cuivre restait à 0. On saisit désormais la donnée canoniquement.
   if (created[5]) {
     await prisma.observationSante.create({
-      data: { userId, arbreId: created[5], date: d("2026-04-08"), type: "maladie", diagnostic: "Tavelure", gravite: "moyenne", traitement: "Bouillie bordelaise à venir" },
+      data: {
+        userId,
+        arbreId: created[5],
+        date: d("2026-04-08"),
+        type: "maladie",
+        diagnostic: "Tavelure",
+        gravite: "moyenne",
+        traitement: "Bouillie bordelaise à venir",
+        produit: "Bouillie bordelaise",
+        methodeTraitement: "chimique_cuivre",
+      },
     })
   }
   // Opérations de taille

@@ -74,6 +74,23 @@ export function PlancheHistory({ plancheId }: PlancheHistoryProps) {
     .map(Number)
     .sort((a, b) => b - a)
 
+  // Bug cmp8rtks0 (Marc 2026-05-16) — détection co-culture vivace + annuelle
+  // sur une même planche/année. Une vivace (Kiwi, Asperge, Artichaut…) occupe
+  // la planche en permanence et n'est pas compatible avec une rotation
+  // annuelle (Carotte, Salade…). On marque l'année litigieuse pour afficher
+  // un bandeau d'avertissement.
+  const isVivaceCulture = (c: CultureHistory): boolean => {
+    if (c.etat === 'Vivace') return true
+    const nom = (c.especeNom || '').toLowerCase()
+    return /^(kiwi|asperge|artichaut|rhubarbe|fraisier|framboisier|cassissier|groseillier|myrtille|menthe|oseille)$/i.test(nom)
+  }
+  const conflitsVivace = new Set<number>()
+  for (const [yr, cs] of Object.entries(culturesByYear)) {
+    const aVivace = cs.some(isVivaceCulture)
+    const aAnnuelle = cs.some((c) => !isVivaceCulture(c))
+    if (aVivace && aAnnuelle) conflitsVivace.add(Number(yr))
+  }
+
   return (
     <div className="space-y-6">
       {/* Filtre par annee */}
@@ -103,6 +120,11 @@ export function PlancheHistory({ plancheId }: PlancheHistoryProps) {
             {years.map((year) => (
               <div key={year} className="rounded-lg border border-slate-200 bg-white p-4">
                 <h4 className="mb-3 text-base font-medium text-slate-800">{year}</h4>
+                {conflitsVivace.has(year) && (
+                  <div className="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                    ⚠ Incohérence rotation : une culture pérenne (palissage permanent) cohabite avec une culture annuelle la même année. Vérifier le plan : un kiwi/asperge occupe la planche en permanence et exclut la rotation maraîchère.
+                  </div>
+                )}
                 <div className="space-y-3">
                   {culturesByYear[year].map((culture) => (
                     <CultureCard key={culture.id} culture={culture} />

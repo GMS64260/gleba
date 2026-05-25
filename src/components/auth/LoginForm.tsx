@@ -63,6 +63,16 @@ export function LoginForm() {
     setTimeout(() => formRef.current?.requestSubmit(), 0)
   }
 
+  // Auto-déclenchement de la démo si la home a renvoyé sur /login?demo=1
+  const demoRequested = searchParams.get("demo") === "1"
+  const demoFiredRef = React.useRef(false)
+  React.useEffect(() => {
+    if (demoRequested && !demoFiredRef.current) {
+      demoFiredRef.current = true
+      handleDemo()
+    }
+  }, [demoRequested])
+
   return (
     <form ref={formRef} onSubmit={handleSubmit} className="space-y-5">
       {verifyStatus && VERIFY_MESSAGES[verifyStatus] && (

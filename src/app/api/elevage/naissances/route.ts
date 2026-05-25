@@ -110,6 +110,12 @@ export async function POST(request: NextRequest) {
 
     // PROMPT 18 — si saillieId fourni, on lie la mise-bas à la saillie et on
     // bascule la saillie en statut "Mise-bas réalisée" dans la même transaction.
+    // Bug cmp8rub7p (Marc 2026-05-16) — les naissances n'étaient pas reportées
+    // sur l'effectif. Désormais : si la mère est rattachée à un lot, on
+    // incrémente le lot.quantiteActuelle du nombre de vivants ; sinon (et si
+    // l'espèce de la mère est connue), on crée un lot "Petits <Espèce>
+    // <année>" et on l'incrémente. Faute de fiche animale détaillée pour
+    // chaque petit (sexe/identifiant), on tient au moins le compteur d'effectif.
     const naissance = await prisma.$transaction(async (tx) => {
       const created = await tx.naissanceAnimale.create({
         data: {
@@ -125,7 +131,7 @@ export async function POST(request: NextRequest) {
           notes: parsed.data.notes ?? null,
           saillieId: parsed.data.saillieId ?? null,
         },
-        include: { mere: { select: { id: true, nom: true, identifiant: true } } },
+        include: { mere: { select: { id: true, nom: true, identifiant: true, lotId: true, especeAnimaleId: true } } },
       })
 
       if (parsed.data.saillieId) {
@@ -134,6 +140,40 @@ export async function POST(request: NextRequest) {
           data: { statut: 'Mise-bas réalisée' },
         })
       }
+
+      const vivants = parsed.data.nombreVivants
+      if (vivants > 0 && created.mere) {
+        if (created.mere.lotId) {
+          await tx.lotAnimaux.update({
+            where: { id: created.mere.lotId },
+            data: { quantiteActuelle: { increment: vivants } },
+          })
+        } else if (created.mere.especeAnimaleId) {
+          const annee = (parsed.data.date ?? new Date()).getFullYear()
+          const espece = await tx.especeAnimale.findUnique({
+            where: { id: created.mere.especeAnimaleId },
+            select: { nom: true },
+          })
+          const nomLot = `Petits ${espece?.nom ?? 'animaux'} ${annee}`
+          const lot = await tx.lotAnimaux.create({
+            data: {
+              userId,
+              especeAnimaleId: created.mere.especeAnimaleId,
+              nom: nomLot,
+              dateArrivee: parsed.data.date ?? new Date(),
+              quantiteInitiale: vivants,
+              quantiteActuelle: vivants,
+              provenance: 'Naissance interne',
+              statut: 'actif',
+            },
+          })
+          await tx.lotAnimaux.update({
+            where: { id: lot.id },
+            data: { quantiteActuelle: vivants, quantiteInitiale: vivants },
+          })
+        }
+      }
+
       return created
     })
 
@@ -208,10 +248,29 @@ export async function DELETE(request: NextRequest) {
 
     const existing = await prisma.naissanceAnimale.findFirst({
       where: { id: parseInt(id), userId: session.user.id },
+      include: { mere: { select: { lotId: true } } },
     })
     if (!existing) return NextResponse.json({ error: 'Naissance non trouvee' }, { status: 404 })
 
-    await prisma.naissanceAnimale.delete({ where: { id: parseInt(id) } })
+    // Bug cmp8rub7p — décrémenter l'effectif du lot maternel si on avait
+    // incrémenté à la création (POST). Le seuil min 0 évite les compteurs
+    // négatifs si l'utilisateur a ajusté manuellement entre temps.
+    await prisma.$transaction(async (tx) => {
+      if (existing.mere?.lotId && existing.nombreVivants > 0) {
+        const lot = await tx.lotAnimaux.findUnique({
+          where: { id: existing.mere.lotId },
+          select: { quantiteActuelle: true },
+        })
+        if (lot) {
+          const next = Math.max(0, lot.quantiteActuelle - existing.nombreVivants)
+          await tx.lotAnimaux.update({
+            where: { id: existing.mere.lotId },
+            data: { quantiteActuelle: next },
+          })
+        }
+      }
+      await tx.naissanceAnimale.delete({ where: { id: parseInt(id) } })
+    })
 
     return NextResponse.json({ success: true })
   } catch (error) {

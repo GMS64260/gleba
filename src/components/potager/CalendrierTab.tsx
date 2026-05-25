@@ -292,7 +292,13 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
     : 0
   // Bug #26 — Ne pas afficher "+0% vs N-1" si la donnée N-1 n'existe pas ou
   // est trop faible (< 5 kg → 1 cagette, statistiquement non significatif).
-  const hasComparatifN1 = (stats?.recoltesAnneePrecedente ?? 0) >= 5
+  // Bug cmp8sitxl (Marc 2026-05-16) — seuil 5kg trop strict (95% des
+  // micro-fermes en début de saison avaient "Pas de comparatif"). On bascule
+  // sur >0 kg N-1 (sinon la comparaison n'a aucun sens), et on supprime le
+  // "-100%" affolant quand l'année en cours n'a pas encore démarré : on
+  // affiche plutôt "Saison à venir" + référence absolue.
+  const hasComparatifN1 = (stats?.recoltesAnneePrecedente ?? 0) > 0
+  const aucuneRecolteN = (stats?.recoltesAnnee ?? 0) === 0 && hasComparatifN1
 
   return (
     <div className="space-y-6">
@@ -322,7 +328,23 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
               </CardTitle>
             </CardHeader>
             <CardContent className="pb-3 px-4">
-              <p className="text-xs text-emerald-100">sur {stats?.culturesTotal || 0} total</p>
+              {/* Bug cmp8skl7r (Marc 2026-05-16) — Cultures actives 15 sur
+                  19 total prêtait à confusion avec "19 cultures prévues" en
+                  Planification. On précise le statut des 4 inactives :
+                  planifiées non démarrées ou terminées. */}
+              {(() => {
+                const total = stats?.culturesTotal || 0
+                const actives = stats?.culturesActives || 0
+                const delta = Math.max(0, total - actives)
+                if (delta === 0) {
+                  return <p className="text-xs text-emerald-100">sur {total} planifiée{total > 1 ? 's' : ''}</p>
+                }
+                return (
+                  <p className="text-xs text-emerald-100">
+                    sur {total} planifiées · {delta} non démarrée{delta > 1 ? 's' : ''}/terminée{delta > 1 ? 's' : ''}
+                  </p>
+                )
+              })()}
             </CardContent>
           </Card>
 
@@ -385,7 +407,11 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
               </CardTitle>
             </CardHeader>
             <CardContent className="pb-3 px-4">
-              {hasComparatifN1 ? (
+              {aucuneRecolteN ? (
+                <p className="text-[10px] text-amber-100 italic">
+                  Saison à venir (N-1 : {stats?.recoltesAnneePrecedente?.toFixed(1)} kg)
+                </p>
+              ) : hasComparatifN1 ? (
                 <>
                   <div className="flex items-center gap-1 text-xs">
                     {yearDiff >= 0 ? (
@@ -565,7 +591,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
             {/* Listes de tâches en grille */}
             <div className="grid gap-4 md:grid-cols-2">
               <TaskSection
-                title="Semis a faire"
+                title="Semis à faire"
                 icon={Sprout}
                 iconColor="text-orange-600"
                 items={taches.semis}
@@ -620,7 +646,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                 </CardHeader>
                 <CardContent>
                   {taches.irrigation.length === 0 ? (
-                    <p className="text-sm text-muted-foreground py-2">Tout est arrose !</p>
+                    <p className="text-sm text-muted-foreground py-2">Tout est arrosé !</p>
                   ) : (
                     <div className="space-y-2 max-h-[300px] overflow-y-auto">
                       {taches.irrigation.map((item) => {
@@ -720,6 +746,10 @@ function TaskSection({
 }) {
   const enRetardCount = items.filter(i => i.retardJours > 0 && !i.fait).length
   const aFaireCount = items.filter(i => !i.fait).length
+  // Feedback Marc 2026-05-16 — V2 Bug 7 : afficher "fait/total" plutôt
+  // que "à faire/total" (Haricot vert coché donnait 0/1, l'utilisateur
+  // lisait "0 fait sur 1" alors qu'il était fait → maintenant 1/1).
+  const faitCount = items.length - aFaireCount
 
   return (
     <Card>
@@ -734,8 +764,8 @@ function TaskSection({
               </Badge>
             )}
             {items.length > 0 && (
-              <Badge variant="secondary">
-                {aFaireCount}/{items.length}
+              <Badge variant="secondary" title="Tâches faites / total">
+                {faitCount}/{items.length}
               </Badge>
             )}
             {/* PROMPT 20a — bouton "Tout fait" sur semis/plantation seulement

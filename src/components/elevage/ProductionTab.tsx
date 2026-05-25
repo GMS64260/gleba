@@ -106,6 +106,7 @@ interface LotVolaille {
   id: number
   nom: string | null
   quantiteActuelle: number
+  statut: string | null
   especeAnimale: { nom: string; type: string }
 }
 
@@ -118,7 +119,7 @@ interface OeufsStats {
 
 interface StockOeufs {
   stockNet: number
-  detail: { produits: number; casses: number; vendus: number }
+  detail: { produits: number; casses: number; sales?: number; vendus: number }
 }
 
 function OeufsSubTab({ year }: { year?: number } = {}) {
@@ -155,9 +156,14 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
     setIsLoading(true)
     try {
       // DEV2 #3 — `?annee={year}` cohérent avec le Dashboard
+      // Bug cmp8rvhna (Marc 2026-05-16) — on chargeait `?statut=actif` :
+      // tout lot terminé (mais encore en production réelle) disparaissait
+      // de la dropdown. Désormais on récupère TOUS les lots volaille de
+      // l'utilisateur ; le tri remonte les actifs en premier, puis les
+      // terminés/réformés avec un indicateur de statut visible.
       const [prodRes, lotsRes, statsRes] = await Promise.all([
         fetch(`/api/elevage/production-oeufs?limit=500&annee=${effectiveYear}`),
-        fetch('/api/elevage/lots?statut=actif'),
+        fetch('/api/elevage/lots'),
         fetch(`/api/elevage/stats?annee=${effectiveYear}`),
       ])
 
@@ -168,7 +174,17 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
       }
       if (lotsRes.ok) {
         const result = await lotsRes.json()
-        setLots(result.data.filter((l: any) => l.especeAnimale.type === 'volaille'))
+        const volailles = (result.data as LotVolaille[]).filter(
+          (l) => l.especeAnimale.type === 'volaille'
+        )
+        // Actifs d'abord, puis terminés/réformés. Tri secondaire par nom.
+        volailles.sort((a, b) => {
+          const rank = (s: string) => (s === 'actif' ? 0 : s === 'reforme' ? 1 : 2)
+          const dr = rank(a.statut ?? '') - rank(b.statut ?? '')
+          if (dr !== 0) return dr
+          return (a.nom ?? '').localeCompare(b.nom ?? '')
+        })
+        setLots(volailles)
       }
       if (statsRes.ok) {
         const result = await statsRes.json()
@@ -325,7 +341,7 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
               <CardTitle className="text-2xl">{stockOeufs.stockNet}</CardTitle>
             </CardHeader>
             <CardContent className="pb-3 px-4">
-              <p className="text-xs text-white/80">oeufs disponibles</p>
+              <p className="text-xs text-white/80">œufs disponibles</p>
             </CardContent>
           </Card>
         )}
@@ -333,7 +349,7 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
           <>
             <Card>
               <CardHeader className="pb-1 pt-3 px-4">
-                <CardDescription className="text-xs">Total oeufs</CardDescription>
+                <CardDescription className="text-xs">Total œufs</CardDescription>
                 <CardTitle className="text-2xl">{stats.total}</CardTitle>
               </CardHeader>
               <CardContent className="pb-3 px-4">
@@ -384,7 +400,8 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
                   <SelectContent>
                     {lots.map(lot => (
                       <SelectItem key={lot.id} value={lot.id.toString()}>
-                        {lot.nom || `Lot #${lot.id}`} ({lot.quantiteActuelle} {lot.especeAnimale.nom})
+                        {lot.nom || `Lot #${lot.id}`} ({lot.quantiteActuelle} {lot.especeAnimale.nom}
+                        {lot.statut && lot.statut !== 'actif' ? ` — ${lot.statut}` : ''})
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -396,7 +413,7 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
                   <Input type="date" value={formData.date} onChange={(e) => setFormData(f => ({ ...f, date: e.target.value }))} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Nombre d'oeufs *</Label>
+                  <Label>Nombre d'œufs *</Label>
                   <Input type="number" min="0" value={formData.quantite} onChange={(e) => setFormData(f => ({ ...f, quantite: e.target.value }))} placeholder="0" className="text-2xl font-bold text-center" />
                 </div>
               </div>
@@ -448,7 +465,7 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
                 <TableRow>
                   <TableHead>Date</TableHead>
                   <TableHead>Lot</TableHead>
-                  <TableHead className="text-right">Oeufs</TableHead>
+                  <TableHead className="text-right">Œufs</TableHead>
                   <TableHead className="text-right">Casses</TableHead>
                   <TableHead className="text-right">Souillés</TableHead>
                   <TableHead>Calibre</TableHead>

@@ -196,8 +196,19 @@ export async function PATCH(request: NextRequest) {
     if (!existing) return NextResponse.json({ error: 'Soin non trouvé' }, { status: 404 })
 
     const updateData: any = {}
+    // Bug cmp8rwths (Marc 2026-05-16) — valider un soin "en retard" écrasait
+    // sa date prévue par la date du jour, on perdait l'historique du retard
+    // d'application (critique en élevage AB). Désormais, à la validation
+    // (fait=true), si datePrevue n'est pas encore renseignée on copie
+    // l'ancienne date dans datePrevue, et `date` reçoit la date d'effet.
     if (fait !== undefined) updateData.fait = fait
-    if (date !== undefined) updateData.date = new Date(date)
+    if (date !== undefined) {
+      const newDate = new Date(date)
+      if (fait === true && existing.datePrevue == null) {
+        updateData.datePrevue = existing.date
+      }
+      updateData.date = newDate
+    }
     if (notes !== undefined) updateData.notes = notes
     if (type !== undefined) updateData.type = type
     if (description !== undefined) updateData.description = description

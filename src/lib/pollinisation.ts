@@ -38,6 +38,57 @@ export function isTriploide(variete: { nomNormalise?: string | null; ploidie?: s
   return false
 }
 
+/**
+ * Bug cmp8sk552 (Marc 2026-05-16) — Variétés connues comme auto-fertiles
+ * ou partiellement auto-fertiles. Référentiel utilisé en fallback quand
+ * le flag `Arbre.autofertile` n'est pas explicitement renseigné, pour
+ * éviter de classer Mirabelle de Nancy ou Reine-Claude d'Oullins parmi
+ * les "sans pollinisateur" alors qu'elles produisent en pollinisation
+ * propre. Sources : INRAE, CTIFL, fiches Pépinières.
+ */
+export const VARIETES_AUTOFERTILES_PATTERNS = [
+  // Pruniers
+  "mirabelle de nancy",
+  "mirabelle de metz",
+  "reine-claude d'oullins",
+  "reine-claude d'althan",
+  "quetsche d'alsace",
+  // Pêchers
+  "pêcher", // la plupart des pêchers sont auto-fertiles
+  "redhaven",
+  "reine des vergers",
+  // Abricotiers
+  "polonais",
+  "bergeron",
+  "luizet",
+  // Cerisiers
+  "stella",
+  "sunburst",
+  "lapins",
+  // Pommiers
+  "golden delicious", // partiellement
+  "reinette grise",
+  // Poiriers
+  "conférence", // partiellement
+  "williams", // partiellement
+  // Figuiers (presque tous)
+  "brown turkey",
+  "violette de bordeaux",
+  "ronde de bordeaux",
+  // Petits fruits / vivaces
+  "framboisier",
+  "myrtille",
+  "groseillier",
+  "cassissier",
+  "rhubarbe",
+]
+
+export function isAutofertileFallback(variete: string | null | undefined): boolean {
+  if (!variete) return false
+  const n = variete.toLowerCase().trim()
+  return VARIETES_AUTOFERTILES_PATTERNS.some((p) => n.includes(p))
+}
+
 /** Distance max recommandée pour pollinisation efficace (mètres). */
 export const DISTANCE_MAX_POLLINISATION_M = 30
 

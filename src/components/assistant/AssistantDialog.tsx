@@ -148,8 +148,8 @@ const STEPS = [
   { label: 'Emplacement', icon: MapPin },
   { label: 'Plante', icon: Leaf },
   { label: 'Planning', icon: Calendar },
-  { label: 'Recapitulatif', icon: CheckSquare },
-  { label: 'Termine', icon: PartyPopper },
+  { label: 'Récapitulatif', icon: CheckSquare },
+  { label: 'Terminé', icon: PartyPopper },
 ] as const
 
 // ---- Props ----
@@ -395,7 +395,7 @@ export function AssistantDialog({ open, onOpenChange }: AssistantDialogProps) {
       case 1: return "Emplacement"
       case 2: return "Choisir une plante"
       case 3: return "Planning"
-      case 4: return "Recapitulatif"
+      case 4: return "Récapitulatif"
       case 5: return "Culture créée !"
       default: return "Assistant"
     }
@@ -416,7 +416,7 @@ export function AssistantDialog({ open, onOpenChange }: AssistantDialogProps) {
           {/* Restored session banner */}
           {restored && state.step < 5 && (
             <div className="flex items-center justify-between gap-2 p-2 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
-              <span>Session precedente restauree.</span>
+              <span>Session précédente restaurée.</span>
               <Button
                 variant="ghost"
                 size="sm"

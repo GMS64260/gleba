@@ -108,6 +108,38 @@ const NATURE_LIBELLES: Record<string, string> = {
   remplacement: "Remplacement",
 }
 
+// Feedback Marc 2026-05-16 — Bug 09 : l'aperçu campagne affichait
+// `forestier_futaie` / `planifiee` (valeurs brutes DB) alors que la
+// liste utilise les libellés humains. On centralise les labels ici.
+const TYPE_FORMATION_LIBELLES: Record<string, string> = {
+  forestier_futaie: "Forestier — futaie",
+  forestier_taillis: "Forestier — taillis",
+  agroforesterie: "Agroforesterie",
+  haie_bocagere: "Haie bocagère",
+  verger_fruitier: "Verger fruitier",
+  verger_petits_fruits: "Verger petits fruits",
+  pre_verger: "Pré-verger",
+  ripisylve: "Ripisylve",
+  autre: "Autre",
+}
+
+const STATUT_LIBELLES: Record<string, string> = {
+  planifiee: "Planifiée",
+  prep_sol: "Préparation du sol",
+  plantation: "Plantation",
+  suivi: "Suivi",
+  terminee: "Terminée",
+  echec: "Échec",
+}
+
+function labelTypeFormation(v: string): string {
+  return TYPE_FORMATION_LIBELLES[v] ?? v.replace(/_/g, " ")
+}
+
+function labelStatut(v: string): string {
+  return STATUT_LIBELLES[v] ?? v.replace(/_/g, " ")
+}
+
 interface Etape {
   id: number
   type: string
@@ -272,7 +304,7 @@ export function CampagneDetailDialog({ campagneId, open, onOpenChange, onUpdate 
             <TabsContent value="apercu" className="space-y-3">
               <Card>
                 <CardContent className="p-4 grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-                  <Info label="Type" value={campagne.typeFormation.replace(/_/g, " ")} />
+                  <Info label="Type" value={labelTypeFormation(campagne.typeFormation)} />
                   <Info label="Nature" value={NATURE_LIBELLES[campagne.nature] || campagne.nature.replace(/_/g, " ")} />
                   <div>
                     <p className="text-xs text-muted-foreground">Statut</p>
@@ -295,7 +327,7 @@ export function CampagneDetailDialog({ campagneId, open, onOpenChange, onUpdate 
                       </div>
                     ) : (
                       <div className="flex items-center gap-1">
-                        <Badge>{campagne.statut.replace(/_/g, " ")}</Badge>
+                        <Badge>{labelStatut(campagne.statut)}</Badge>
                         <Button variant="ghost" size="sm" onClick={() => setEditingStatut(true)}><Edit2 className="h-3 w-3" /></Button>
                       </div>
                     )}

@@ -94,6 +94,8 @@ export async function POST(request: NextRequest) {
     // Vérifier que l'arbre appartient à l'utilisateur.
     // PROMPT 12 — on charge la zone et la parcelle pour snapshoter le statut Bio.
     // DEV3 #4 — on charge aussi parcelleGeo.nom pour le N° de lot.
+    // Feedback Marc 2026-05-16 — Bug 08 : on charge aussi variete +
+    // espece pour valider la cohérence saison de récolte.
     const arbre = await prisma.arbre.findFirst({
       where: { id: body.arbreId, userId },
       include: {
@@ -101,6 +103,36 @@ export async function POST(request: NextRequest) {
         parcelleGeo: { select: { id: true, nom: true, statutBio: true, dateDebutConversion: true } },
       },
     })
+
+    // Feedback Marc 2026-05-16 — Bug 08 : alerte si la date de récolte
+    // est hors saison agronomique de la variété (ex: Pommier Golden
+    // récolté en mai alors que la récolte standard est semaine 38-42).
+    const recolteWarnings: string[] = []
+    if (arbre) {
+      const dateRecolteForCheck = body.date ? new Date(body.date) : new Date()
+      const varieteAvecRecolte = arbre.variete
+        ? await prisma.variete.findFirst({
+            where: { id: arbre.variete, especeId: arbre.espece ?? undefined },
+            select: { id: true, semaineRecolte: true, dureeRecolte: true },
+          })
+        : null
+      if (varieteAvecRecolte?.semaineRecolte) {
+        const start = new Date(dateRecolteForCheck.getFullYear(), 0, 1)
+        const diffJours = (dateRecolteForCheck.getTime() - start.getTime()) / 86_400_000
+        const semaineSaisie = Math.min(53, Math.max(1, Math.ceil((diffJours + start.getDay() + 1) / 7)))
+        const semaineDebut = varieteAvecRecolte.semaineRecolte
+        const semaineFin = semaineDebut + (varieteAvecRecolte.dureeRecolte ?? 4)
+        const toleranceSemaines = 3
+        const horsSaison =
+          semaineSaisie < semaineDebut - toleranceSemaines ||
+          semaineSaisie > semaineFin + toleranceSemaines
+        if (horsSaison) {
+          recolteWarnings.push(
+            `Hors saison : ${arbre.espece ?? "espèce"} ${arbre.variete} se récolte normalement semaines ${semaineDebut}-${semaineFin} (saisie semaine ${semaineSaisie}).`
+          )
+        }
+      }
+    }
 
     if (!arbre) {
       return NextResponse.json(
@@ -181,7 +213,10 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    return NextResponse.json(recolte, { status: 201 })
+    return NextResponse.json(
+      recolteWarnings.length > 0 ? { ...recolte, warnings: recolteWarnings } : recolte,
+      { status: 201 }
+    )
   } catch (err) {
     console.error("POST /api/arbres/recoltes error:", err)
     return NextResponse.json(
