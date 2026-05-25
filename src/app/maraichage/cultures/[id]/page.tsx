@@ -161,7 +161,7 @@ export default function EditCulturePage() {
           title: "Erreur",
           description: error.message,
         })
-        router.push("/cultures")
+        router.push("/maraichage/cultures")
       })
   }, [cultureId, form, router, toast])
 
@@ -270,7 +270,7 @@ export default function EditCulturePage() {
         title: "Culture modifiée",
         description: `La culture #${cultureId} a été mise à jour`,
       })
-      router.push("/cultures")
+      router.push("/maraichage/cultures")
     } catch (error) {
       toast({
         variant: "destructive",
@@ -298,7 +298,7 @@ export default function EditCulturePage() {
       toast({
         title: "Culture supprimée",
       })
-      router.push("/cultures")
+      router.push("/maraichage/cultures")
     } catch (error) {
       toast({
         variant: "destructive",
@@ -353,7 +353,22 @@ export default function EditCulturePage() {
       {/* Form */}
       <main className="container mx-auto px-4 py-6 max-w-2xl">
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <form
+            onSubmit={form.handleSubmit(onSubmit, (errors) => {
+              // Feedback Marc 2026-05-16 — V2 Bug 1 : sans `onInvalid`,
+              // `react-hook-form` rejetait silencieusement les soumissions
+              // dont la validation échouait (espèce manquante, quantité
+              // hors plage…) → aucun toast, l'utilisateur croyait avoir
+              // sauvegardé. On affiche maintenant explicitement le 1er
+              // message d'erreur du formulaire.
+              const first = Object.entries(errors)[0]
+              const description = first
+                ? `${first[0]} : ${(first[1] as { message?: string })?.message ?? "valeur invalide"}`
+                : "Le formulaire contient des champs invalides"
+              toast({ variant: "destructive", title: "Validation", description })
+            })}
+            className="space-y-6"
+          >
             <Card>
               <CardHeader>
                 <CardTitle>Plante et emplacement</CardTitle>

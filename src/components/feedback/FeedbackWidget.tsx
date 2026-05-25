@@ -49,7 +49,17 @@ export function FeedbackWidget() {
       const res = await fetch("/api/feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type, message }),
+        body: JSON.stringify({
+          type,
+          message,
+          url: typeof window !== "undefined" ? window.location.href : undefined,
+          userAgent:
+            typeof navigator !== "undefined" ? navigator.userAgent : undefined,
+          viewport:
+            typeof window !== "undefined"
+              ? `${window.innerWidth}x${window.innerHeight}`
+              : undefined,
+        }),
       })
 
       const data = await res.json()
@@ -63,9 +73,13 @@ export function FeedbackWidget() {
         return
       }
 
+      // Bug cmp8sh147 (Marc 2026-05-16) — Toast bloquait le bouton pendant
+      // ~15s (duration par défaut). On force une durée courte (3s) pour
+      // permettre des feedbacks successifs sans attente.
       toast({
         title: "Merci !",
         description: "Votre feedback a été envoyé.",
+        duration: 3000,
       })
       setSent(true)
       setTimeout(() => {

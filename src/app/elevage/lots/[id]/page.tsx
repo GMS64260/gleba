@@ -243,9 +243,6 @@ export default function LotDetailPage() {
               </CardContent>
             </Card>
 
-            <p className="text-xs text-muted-foreground italic">
-              v1 minimale — onglets Production / Soins / KPI à venir (coord avec Dev 1).
-            </p>
           </>
         ) : null}
       </main>

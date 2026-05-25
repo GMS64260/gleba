@@ -165,7 +165,19 @@ function makeColumns(onGenererCalendrier: (arbre: Arbre) => void): ColumnDef<Arb
     {
       accessorKey: "productif",
       header: "Productif",
-      cell: ({ getValue }) => (getValue() ? "Oui" : "Non"),
+      // Feedback Marc 2026-05-16 — Bug 07 : par défaut tous les arbres
+      // sont productif=true en base, même sans date de plantation ou
+      // datée en 2099. On rend la colonne fidèle à l'état réel :
+      //   - "—" si pas de date de plantation (statut inconnu)
+      //   - "Non" si date de plantation dans le futur (pas encore planté)
+      //   - sinon valeur stockée
+      cell: ({ row }) => {
+        const a = row.original
+        if (!a.datePlantation) return <span className="text-muted-foreground">—</span>
+        const d = new Date(a.datePlantation)
+        if (d.getTime() > Date.now()) return "Non"
+        return a.productif ? "Oui" : "Non"
+      },
     },
     {
       id: "calendrier",

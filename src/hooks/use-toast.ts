@@ -164,6 +164,17 @@ function toast({ ...props }: Toast) {
     },
   })
 
+  // Bug cmp8sh147 (Marc 2026-05-16) — le hook ignorait la prop `duration`
+  // donc les toasts restaient affichés (TOAST_REMOVE_DELAY = 1 000 000 ms).
+  // On programme désormais un dismiss automatique après la durée demandée
+  // (par défaut 5 s, comme Radix Toast).
+  const duration = (props as Toast & { duration?: number }).duration ?? 5000
+  if (duration > 0 && Number.isFinite(duration)) {
+    setTimeout(() => {
+      dismiss()
+    }, duration)
+  }
+
   return {
     id: id,
     dismiss,

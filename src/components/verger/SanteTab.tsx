@@ -884,9 +884,19 @@ function RegistrePhytoSubTab() {
   // Distinguer traitements par methodeTraitement.
   // Compat valeurs historiques : 'chimique' -> chimique_conventionnel, etc.
   // DEV3 audit Marc — 6 méthodes canoniques + fallback heuristique.
+  // Bug #cmp8dlpii (2026-05-16) : quand ni `methodeTraitement` ni `produit`
+  // ne sont saisis mais que le champ texte `traitement` mentionne la bouillie
+  // bordelaise / cuivre, on doit classer en `chimique_cuivre` (et non en
+  // mécanique) pour ne pas envoyer un faux signal au registre phyto et au
+  // compteur cuivre Bio.
+  const CUIVRE_REGEX = /bouillie\s*bordelaise|sulfate\s*de\s*cu|hydroxyde\s*de\s*cu|oxychlorure|cuivr[ée]/i
   const getMethode = (o: Observation): string => {
     const m = o.methodeTraitement
-    if (!m) return o.produit ? "chimique_conventionnel" : "mecanique_manuel"
+    if (!m) {
+      const txt = `${o.produit ?? ""} ${o.traitement ?? ""}`
+      if (CUIVRE_REGEX.test(txt)) return "chimique_cuivre"
+      return o.produit ? "chimique_conventionnel" : "mecanique_manuel"
+    }
     if (m === "chimique") return "chimique_conventionnel"
     if (m === "biologique") return "biologique_purin"
     if (m === "mecanique") return "mecanique_manuel"

@@ -40,12 +40,19 @@ const MODULE_COLORS: Record<string, string> = {
   elevage: "bg-amber-100 text-amber-800",
 }
 
+interface Reconciliation {
+  annee: number
+  totalRecoltesAnnee: number
+  parStatut: Record<string, number>
+}
+
 export default function StocksPage() {
   const { toast } = useToast()
   const [isLoading, setIsLoading] = React.useState(true)
   const [stocks, setStocks] = React.useState<StockItem[]>([])
   const [alertes, setAlertes] = React.useState<StockItem[]>([])
   const [stats, setStats] = React.useState<any>(null)
+  const [reconciliation, setReconciliation] = React.useState<Reconciliation | null>(null)
   const [selectedModule, setSelectedModule] = React.useState<string>("all")
 
   const fetchData = React.useCallback(async () => {
@@ -57,6 +64,7 @@ export default function StocksPage() {
         setStocks(result.data)
         setAlertes(result.alertes)
         setStats(result.stats)
+        setReconciliation(result.reconciliationPotager ?? null)
       }
     } catch (error) {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les données" })
@@ -210,6 +218,38 @@ export default function StocksPage() {
                   </div>
                 ))}
               </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Bug cmp8sqkh2 (Marc 2026-05-16) — Conciliation Récoltes potager
+            pour expliquer l'écart entre dashboard et stocks (90 kg récoltés
+            ≠ 85 kg en stock = 5 kg vendus/donnés). */}
+        {reconciliation && reconciliation.totalRecoltesAnnee > 0 && (
+          <Card className="mb-6 border-violet-200 bg-violet-50/50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">
+                Conciliation récoltes potager {reconciliation.annee}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-3 grid-cols-2 md:grid-cols-4 text-sm">
+                <div>
+                  <p className="text-xs text-muted-foreground">Total récolté</p>
+                  <p className="font-semibold">{reconciliation.totalRecoltesAnnee.toFixed(1)} kg</p>
+                </div>
+                {Object.entries(reconciliation.parStatut).map(([statut, kg]) => (
+                  <div key={statut}>
+                    <p className="text-xs text-muted-foreground capitalize">{statut.replace(/_/g, ' ')}</p>
+                    <p className="font-medium">{kg.toFixed(1)} kg</p>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-violet-700 mt-2">
+                Le total récolté du tableau de bord inclut les récoltes en stock,
+                vendues, données ou perdues. La table « Récoltes en stock »
+                ci-dessous n&apos;affiche que celles avec statut <code className="bg-white px-1 rounded">en_stock</code>.
+              </p>
             </CardContent>
           </Card>
         )}

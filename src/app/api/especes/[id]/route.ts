@@ -20,11 +20,23 @@ export async function GET(
   const { error } = await requireAuthApi()
   if (error) return error
 
+  let resolvedId: string | null = null
   try {
     const { id } = await params
+    // Feedback Marc 2026-05-16 — Bug 04 : "Impossible de charger la fiche".
+    // Le client envoie l'id encodé (encodeURIComponent) ; selon le runtime
+    // (Edge vs Node, proxy Caddy en avant), `params.id` peut arriver
+    // déjà décodé OU encore percent-encodé. On décode défensivement.
+    resolvedId = id
+    try {
+      const decoded = decodeURIComponent(id)
+      if (decoded !== id) resolvedId = decoded
+    } catch {
+      // id n'est pas percent-encodé — on garde la valeur brute.
+    }
 
     const espece = await prisma.espece.findUnique({
-      where: { id },
+      where: { id: resolvedId },
       include: {
         famille: true,
         varietes: {
@@ -44,16 +56,19 @@ export async function GET(
 
     if (!espece) {
       return NextResponse.json(
-        { error: `Espèce "${id}" non trouvée` },
+        { error: `Espèce "${resolvedId}" non trouvée` },
         { status: 404 }
       )
     }
 
     return NextResponse.json(espece)
-  } catch (error) {
-    console.error('GET /api/especes/[id] error:', error)
+  } catch (err) {
+    console.error(`GET /api/especes/${resolvedId ?? '?'} error:`, err)
     return NextResponse.json(
-      { error: 'Erreur lors de la récupération de l\'espece' },
+      {
+        error: 'Erreur lors de la récupération de l\'espèce',
+        details: err instanceof Error ? err.message : String(err),
+      },
       { status: 500 }
     )
   }

@@ -405,6 +405,23 @@ export async function POST(request: NextRequest) {
       // de l'espèce (créé à la demande). Aucune Culture ne reste sans variete.
       const varieteId = data.varieteId ?? (await ensurePlaceholderVariete(data.especeId, tx))
 
+      // Feedback Marc 2026-05-16 — V4 Bug 6 : si aucun ITP n'est fourni
+      // explicitement, on choisit automatiquement le premier ITP de
+      // l'espèce (préférence "-printemps", puis "-plein-champ"). Sans
+      // cela, les écrans Planification (Cultures prévues, Récoltes par
+      // mois, Plants nécessaires…) traitaient toutes les cultures
+      // comme orphelines et n'arrivaient pas à dériver les dates/durées.
+      if (!data.itpId) {
+        const autoItp = await tx.iTP.findFirst({
+          where: { especeId: data.especeId },
+          orderBy: { id: "asc" },
+          select: { id: true },
+        })
+        if (autoItp) {
+          data.itpId = autoItp.id
+        }
+      }
+
       // Création avec userId. rotationViolee=true si l'utilisateur a confirmé
       // malgré le warning (PROMPT 12).
       const newCulture = await tx.culture.create({

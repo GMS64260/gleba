@@ -61,7 +61,7 @@ const TYPE_LABELS: Record<string, string> = {
 }
 
 const PRODUCTION_LABELS: Record<string, string> = {
-  oeufs: "Oeufs",
+  oeufs: "Œufs",
   viande: "Viande",
   lait: "Lait",
   laine: "Laine",
@@ -78,8 +78,8 @@ const TYPE_COLORS: Record<string, string> = {
 const ESPECE_TYPES = [
   { value: "all", label: "Tous" },
   { value: "volaille", label: "Volailles" },
-  { value: "mammifere_petit", label: "Petits mammiferes" },
-  { value: "mammifere_grand", label: "Grands mammiferes" },
+  { value: "mammifere_petit", label: "Petits mammifères" },
+  { value: "mammifere_grand", label: "Grands mammifères" },
   { value: "autre", label: "Autres" },
 ] as const
 
@@ -156,7 +156,10 @@ export function EspecesTab() {
         id: formData.id.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, ''),
         nom: formData.nom, type: formData.type, production: formData.production,
         couleur: formData.couleur || null, description: formData.description || null,
-        dureeGestation: formData.dureeGestation ? parseInt(formData.dureeGestation) : null,
+        // Bug cmp8sg697 — pas de gestation pour les volailles
+        dureeGestation: formData.type === 'volaille'
+          ? null
+          : (formData.dureeGestation ? parseInt(formData.dureeGestation) : null),
         dureeCouvaison: formData.dureeCouvaison ? parseInt(formData.dureeCouvaison) : null,
         dureeElevage: formData.dureeElevage ? parseInt(formData.dureeElevage) : null,
         poidsAdulte: formData.poidsAdulte ? parseFloat(formData.poidsAdulte) : null,
@@ -393,7 +396,7 @@ export function EspecesTab() {
                 <Select value={formData.production} onValueChange={(v) => setFormData(f => ({ ...f, production: v }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="oeufs">Oeufs</SelectItem>
+                    <SelectItem value="oeufs">Œufs</SelectItem>
                     <SelectItem value="viande">Viande</SelectItem>
                     <SelectItem value="lait">Lait</SelectItem>
                     <SelectItem value="laine">Laine</SelectItem>
@@ -406,10 +409,19 @@ export function EspecesTab() {
                 <Input type="color" value={formData.couleur} onChange={(e) => setFormData(f => ({ ...f, couleur: e.target.value }))} className="h-10 p-1" />
               </div>
             </div>
+            {/* Bug cmp8sg697 (Marc 2026-05-16) — Gestation est sans sens pour
+                une volaille (poule, oie...). On affiche selon le type :
+                volaille → Couvaison + Élevage ; mammifère → Gestation +
+                Élevage. Évite de stocker des valeurs absurdes (31j gestation
+                pour Poule Marans) qui faussent les calculs de mise-bas. */}
             <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-2"><Label>Gestation (j)</Label><Input type="number" min="0" value={formData.dureeGestation} onChange={(e) => setFormData(f => ({ ...f, dureeGestation: e.target.value }))} placeholder="31" /></div>
-              <div className="space-y-2"><Label>Couvaison (j)</Label><Input type="number" min="0" value={formData.dureeCouvaison} onChange={(e) => setFormData(f => ({ ...f, dureeCouvaison: e.target.value }))} placeholder="21" /></div>
+              {formData.type === 'volaille' ? (
+                <div className="space-y-2"><Label>Couvaison (j)</Label><Input type="number" min="0" value={formData.dureeCouvaison} onChange={(e) => setFormData(f => ({ ...f, dureeCouvaison: e.target.value }))} placeholder="21" /></div>
+              ) : (
+                <div className="space-y-2"><Label>Gestation (j)</Label><Input type="number" min="0" value={formData.dureeGestation} onChange={(e) => setFormData(f => ({ ...f, dureeGestation: e.target.value }))} placeholder="31" /></div>
+              )}
               <div className="space-y-2"><Label>Élevage (j)</Label><Input type="number" min="0" value={formData.dureeElevage} onChange={(e) => setFormData(f => ({ ...f, dureeElevage: e.target.value }))} placeholder="90" /></div>
+              <div /> {/* placeholder pour conserver la grille à 3 cols */}
             </div>
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2"><Label>Poids adulte (kg)</Label><Input type="number" min="0" step="0.1" value={formData.poidsAdulte} onChange={(e) => setFormData(f => ({ ...f, poidsAdulte: e.target.value }))} placeholder="3.5" /></div>

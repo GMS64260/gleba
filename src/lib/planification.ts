@@ -154,9 +154,19 @@ function semainVersMois(semaine: number): number {
   return Math.min(12, Math.max(1, Math.ceil(semaine / 4.33)))
 }
 
+/**
+ * Convertit une date en numero de semaine ISO (1-53) — sert de fallback
+ * quand Culture.semaineRecolte n'est pas fourni par un ITP rattache.
+ */
+function dateVersSemaine(d: Date): number {
+  const start = new Date(d.getFullYear(), 0, 1)
+  const diff = (d.getTime() - start.getTime()) / 86_400_000
+  return Math.min(53, Math.max(1, Math.ceil((diff + start.getDay() + 1) / 7)))
+}
+
 const MOIS_NOMS = [
-  'Janvier', 'Fevrier', 'Mars', 'Avril', 'Mai', 'Juin',
-  'Juillet', 'Aout', 'Septembre', 'Octobre', 'Novembre', 'Decembre'
+  'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+  'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'
 ]
 
 // ============================================================
@@ -317,9 +327,16 @@ export async function getCulturesPrevues(
         especeCouleur: culture.espece?.couleur || null,
         varieteId: culture.varieteId,
         annee: culture.annee || annee,
-        semaineSemis: culture.itp?.semaineSemis || null,
-        semainePlantation: culture.itp?.semainePlantation || null,
-        semaineRecolte: culture.itp?.semaineRecolte || null,
+        semaineSemis: culture.itp?.semaineSemis ?? (culture.dateSemis ? dateVersSemaine(culture.dateSemis) : null),
+        semainePlantation:
+          culture.itp?.semainePlantation
+          ?? (culture.datePlantation ? dateVersSemaine(culture.datePlantation) : null),
+        // BUG-feedback (Marc 2026-05-16) : sans ITP rattaché, la culture
+        // était ignorée par les KPI "Récoltes prévues" alors que la date
+        // de récolte est saisie. Fallback systématique sur dateRecolte.
+        semaineRecolte:
+          culture.itp?.semaineRecolte
+          ?? (culture.dateRecolte ? dateVersSemaine(culture.dateRecolte) : null),
         dureeCulture: culture.itp?.dureeCulture || null,
         nbRangs: culture.nbRangs || culture.itp?.nbRangs || null,
         espacement: culture.espacement || culture.itp?.espacement || null,
@@ -399,7 +416,9 @@ export async function getRecoltesPrevues(
     const especesArray = group ? Array.from(group.especes.values()) : []
 
     result.push({
-      periode: groupBy === 'mois' ? MOIS_NOMS[i - 1] : `S${i}`,
+      // Bug cmp8scj32 (Marc 2026-05-16) — uniformisation format semaine
+      // (padStart 2) pour cohérence avec formatSemaine() et tri texte stable.
+      periode: groupBy === 'mois' ? MOIS_NOMS[i - 1] : `S${i.toString().padStart(2, '0')}`,
       periodeNum: i,
       especes: especesArray,
       totalKg: especesArray.reduce((sum, e) => sum + e.quantite, 0),
@@ -425,6 +444,9 @@ export async function getBesoinsSemences(
   const culturesPrevues = await getCulturesPrevues(userId, annee)
 
   // Référentiel : modes/dose par espèce, graines/g par variété, stocks user.
+  // Feedback Marc 2026-05-16 — Bug 12 : on ajoute `densite` au select
+  // pour pouvoir calculer nbPlants à partir de surface × densite quand
+  // les ITPs/cultures n'ont pas nbRangs/espacement renseignés.
   const [especes, varietes, userStocks] = await Promise.all([
     prisma.espece.findMany({
       select: {
@@ -435,6 +457,7 @@ export async function getBesoinsSemences(
         uniteDose: true,
         tauxGermination: true,
         margeSecuritePct: true,
+        densite: true,
         famille: { select: { couleur: true } },
       },
     }),
@@ -454,6 +477,29 @@ export async function getBesoinsSemences(
   const especeMap = new Map(especes.map(e => [e.id, e]))
   const varieteMap = new Map(varietes.map(v => [v.id, v]))
   const userStockMap = new Map(userStocks.map(us => [us.varieteId, us]))
+
+  // Feedback Marc 2026-05-16 — Bug 12 : fallback ITP référentiel quand
+  // la culture n'a ni nbRangs ni espacement (cas le plus courant
+  // tant qu'aucun ITP n'est rattaché).
+  const especeIdsForFallback = [
+    ...new Set(culturesPrevues.map(c => c.especeId).filter(Boolean) as string[]),
+  ]
+  const itpsForFallback = await prisma.iTP.findMany({
+    where: {
+      especeId: { in: especeIdsForFallback },
+      nbRangs: { not: null },
+      espacement: { not: null },
+    },
+    select: { especeId: true, nbRangs: true, espacement: true },
+    orderBy: { dureeCulture: 'desc' },
+  })
+  const itpFallbackSemences = new Map<string, { nbRangs: number; espacement: number }>()
+  for (const itp of itpsForFallback) {
+    if (!itp.especeId || itpFallbackSemences.has(itp.especeId)) continue
+    if (itp.nbRangs && itp.espacement) {
+      itpFallbackSemences.set(itp.especeId, { nbRangs: itp.nbRangs, espacement: itp.espacement })
+    }
+  }
 
   // BUG-21 (audit Marc 2026-05-14) : double comptage de surface quand
   // plusieurs cultures partagent une même planche dans l'année (rotation
@@ -479,12 +525,25 @@ export async function getBesoinsSemences(
   for (const culture of culturesPrevues) {
     if (!culture.especeId) continue
     const key = `${culture.especeId}|${culture.varieteId || ''}`
-    const nbPlants = calculerNbPlants(
+    // Feedback Marc 2026-05-16 — Bug 12 : fallback nbRangs/espacement
+    // (ITP référentiel) + fallback final densite (plants/m²) pour ne
+    // pas retourner nbPlants=0 quand la culture est incomplètement
+    // saisie.
+    const fb = itpFallbackSemences.get(culture.especeId)
+    const nbRangs = culture.nbRangs ?? fb?.nbRangs ?? null
+    const espacement = culture.espacement ?? fb?.espacement ?? null
+    let nbPlants = calculerNbPlants(
       culture.plancheLongueur,
       culture.plancheLargeur,
-      culture.nbRangs,
-      culture.espacement
+      nbRangs,
+      espacement
     )
+    if (nbPlants === 0) {
+      const dens = especeMap.get(culture.especeId)?.densite
+      if (dens && culture.surface > 0) {
+        nbPlants = Math.ceil(culture.surface * dens)
+      }
+    }
     const partageFactor = culture.plancheId
       ? 1 / (culturesParPlanche.get(culture.plancheId) ?? 1)
       : 1
@@ -598,6 +657,17 @@ export async function getBesoinsPlants(
     }
   }
 
+  // Feedback Marc 2026-05-16 — Bug 12 : fallback densite (plants/m²)
+  // quand ni la culture ni l'ITP ne fournissent nbRangs/espacement.
+  const especesAvecDensite = await prisma.espece.findMany({
+    where: { id: { in: especeIds }, densite: { not: null } },
+    select: { id: true, densite: true },
+  })
+  const densiteFallback = new Map<string, number>()
+  for (const e of especesAvecDensite) {
+    if (e.densite) densiteFallback.set(e.id, e.densite)
+  }
+
   // Recuperer les stocks par utilisateur
   const userStocks = await prisma.userStockVariete.findMany({
     where: { userId },
@@ -620,12 +690,20 @@ export async function getBesoinsPlants(
     const fb = itpFallback.get(culture.especeId)
     const nbRangs = culture.nbRangs ?? fb?.nbRangs ?? null
     const espacement = culture.espacement ?? fb?.espacement ?? null
-    const nbPlantsBrut = calculerNbPlants(
+    let nbPlantsBrut = calculerNbPlants(
       culture.plancheLongueur,
       culture.plancheLargeur,
       nbRangs,
       espacement
     )
+    // Feedback Marc 2026-05-16 — Bug 12 : si ni la culture ni l'ITP ne
+    // fournissent nbRangs/espacement, dériver depuis surface × densite.
+    if (nbPlantsBrut === 0) {
+      const dens = densiteFallback.get(culture.especeId)
+      if (dens && culture.surface > 0) {
+        nbPlantsBrut = Math.ceil(culture.surface * dens)
+      }
+    }
     const nbPlants = Math.round(nbPlantsBrut * partageFactor)
 
     if (!besoinsMap.has(key)) {
@@ -669,13 +747,61 @@ export async function getAssociations(
 ): Promise<AssociationCulture[]> {
   const culturesPrevues = await getCulturesPrevues(userId, annee)
 
-  // Recuperer les planches avec leurs influences
+  // Bug cmp8sbe6d (Marc 2026-05-16) — Avant : on lisait uniquement le champ
+  // CSV `planchesInfluencees` qui n'est exposé nulle part dans l'UI, donc
+  // 0/19 cultures avaient des voisins en permanence. On dérive désormais les
+  // voisinages automatiquement à partir des positions géographiques :
+  // deux planches sont voisines si leurs bounding boxes se touchent
+  // (distance ≤ 2 m). Le champ CSV reste prioritaire s'il est renseigné.
   const planches = await prisma.planche.findMany({
     where: { userId },
-    select: { id: true, nom: true, ilot: true, planchesInfluencees: true },
+    select: {
+      id: true,
+      nom: true,
+      ilot: true,
+      planchesInfluencees: true,
+      posX: true,
+      posY: true,
+      largeur: true,
+      longueur: true,
+    },
   })
   const plancheMap = new Map(planches.map(p => [p.nom, p]))
   const cultureMap = new Map(culturesPrevues.map(c => [c.plancheId, c]))
+
+  const SEUIL_VOISINAGE_M = 2
+
+  function bbox(p: { posX: number | null; posY: number | null; largeur: number | null; longueur: number | null }) {
+    if (p.posX == null || p.posY == null || p.largeur == null || p.longueur == null) return null
+    return {
+      x1: p.posX,
+      y1: p.posY,
+      x2: p.posX + (p.largeur ?? 0),
+      y2: p.posY + (p.longueur ?? 0),
+    }
+  }
+  function distanceBox(a: ReturnType<typeof bbox>, b: ReturnType<typeof bbox>): number {
+    if (!a || !b) return Infinity
+    const dx = Math.max(0, Math.max(a.x1, b.x1) - Math.min(a.x2, b.x2))
+    const dy = Math.max(0, Math.max(a.y1, b.y1) - Math.min(a.y2, b.y2))
+    return Math.sqrt(dx * dx + dy * dy)
+  }
+
+  function voisinsGeographiques(planche: typeof planches[number]): string[] {
+    const a = bbox(planche)
+    if (!a) return []
+    const voisins: string[] = []
+    for (const autre of planches) {
+      if (autre.nom === planche.nom) continue
+      const b = bbox(autre)
+      if (!b) continue
+      if (distanceBox(a, b) <= SEUIL_VOISINAGE_M) {
+        const id = autre.nom ?? autre.id
+        if (id) voisins.push(id)
+      }
+    }
+    return voisins
+  }
 
   const associations: AssociationCulture[] = []
 
@@ -683,12 +809,11 @@ export async function getAssociations(
     const planche = plancheMap.get(culture.plancheId)
     if (!planche) continue
 
-    // Parser les planches influencees (CSV)
-    const planchesVoisines = planche.planchesInfluencees
+    const csv = planche.planchesInfluencees
       ? planche.planchesInfluencees.split(',').map(s => s.trim()).filter(Boolean)
       : []
+    const planchesVoisines = csv.length > 0 ? csv : voisinsGeographiques(planche)
 
-    // Trouver les cultures sur les planches voisines
     const culturesVoisines = planchesVoisines
       .map(pvId => {
         const cv = cultureMap.get(pvId)

@@ -254,17 +254,29 @@ function JardinContent() {
   }, [])
 
   // Charger les arbres
-  // Les arbres sont toujours affichés (superposition verger/potager)
+  // Feedback Marc 2026-05-16 — V3 Bug 1 : avant ce fix, on chargeait
+  // TOUS les arbres sans filtre, donc les 20 fruitiers du Verger
+  // apparaissaient aussi dans le Tunnel maraîcher et sur "Toutes les
+  // parcelles". On filtre désormais par `parcelle_geo_id` quand une
+  // parcelle est sélectionnée ; côté front, on garantit aussi un
+  // 2e filet en cas de réponse partielle.
   const fetchArbres = React.useCallback(async () => {
     try {
-      const response = await fetch(`/api/arbres`)
+      // La route /api/arbres filtre via `?parcelle=<id>` (et accepte
+      // `parcelle=none` pour les arbres sans rattachement parcellaire).
+      const params = selectedParcelleId ? `?parcelle=${selectedParcelleId}` : ''
+      const response = await fetch(`/api/arbres${params}`)
       if (!response.ok) return
       const data = await response.json()
-      setArbres(data || [])
+      const rows = Array.isArray(data) ? data : data.data || []
+      const filtered = selectedParcelleId
+        ? rows.filter((a: { parcelleGeoId?: string | null }) => a.parcelleGeoId === selectedParcelleId)
+        : rows
+      setArbres(filtered)
     } catch (error) {
       // Ignorer
     }
-  }, [])
+  }, [selectedParcelleId])
 
   // Charger les parcelles
   const fetchParcelles = React.useCallback(async () => {
@@ -862,17 +874,21 @@ function JardinContent() {
       <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
       {/* Header */}
       <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        <div className="container mx-auto px-4 py-3 flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-4 flex-wrap">
             <Link href="/">
               <Button variant="ghost" size="sm">
                 <ArrowLeft className="h-4 w-4 mr-2" />
                 Accueil
               </Button>
             </Link>
-            <div className="flex items-center gap-2">
-              <MapIcon className="h-6 w-6 text-green-600" />
-              <h1 className="text-xl font-bold">Plan du jardin</h1>
+            <div className="flex items-center gap-2 flex-wrap">
+              <MapIcon className="h-6 w-6 text-green-600 flex-shrink-0" />
+              {/* Bug cmp8rs6uh (Marc 2026-05-16) — titre cassé sur 3 lignes
+                  quand le sélecteur de parcelle pousse la ligne : on bloque
+                  le wrap du titre et on laisse le flex-wrap se faire entre
+                  bloc-titre et bloc-actions. */}
+              <h1 className="text-xl font-bold whitespace-nowrap">Plan du jardin</h1>
 
               {/* Selecteur de parcelle */}
               {parcelles.length > 0 && (
@@ -880,7 +896,7 @@ function JardinContent() {
                   value={selectedParcelleId ?? "all"}
                   onValueChange={(v) => setSelectedParcelleId(v === "all" ? null : v === "none" ? "none" : v)}
                 >
-                  <SelectTrigger className="w-[200px] ml-4">
+                  <SelectTrigger className="w-[200px] ml-2">
                     <SelectValue placeholder="Toutes les parcelles" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1549,16 +1565,28 @@ function JardinContent() {
                   <span className="font-medium">{planches.filter(p => p.cultures.length > 0).length}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Surface</span>
+                  <span className="text-muted-foreground">Surface planches</span>
                   <span className="font-medium">
                     {planches.reduce((sum, p) => sum + (p.largeur || 0) * (p.longueur || 0), 0).toFixed(1)} m²
                   </span>
                 </div>
                 {arbres.length > 0 && (
-                  <div className="flex justify-between pt-1 border-t">
-                    <span className="text-muted-foreground">Arbres</span>
-                    <span className="font-medium">{arbres.length}</span>
-                  </div>
+                  <>
+                    <div className="flex justify-between pt-1 border-t">
+                      <span className="text-muted-foreground">Arbres</span>
+                      <span className="font-medium">{arbres.length}</span>
+                    </div>
+                    {/* Feedback Marc 2026-05-16 — Bug 06 : la tuile Surface
+                        n'affichait que les planches et tombait à 0 quand le
+                        verger n'a pas de planches mais des arbres. On
+                        ajoute une estimation surface canopée (envergure²). */}
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Surface canopée</span>
+                      <span className="font-medium">
+                        {arbres.reduce((sum, a) => sum + (a.envergure || 0) ** 2, 0).toFixed(1)} m²
+                      </span>
+                    </div>
+                  </>
                 )}
               </CardContent>
             </Card>

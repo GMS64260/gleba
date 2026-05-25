@@ -204,22 +204,67 @@ function NaissancesSubTab() {
     e.preventDefault()
     try {
       const isEdit = editingNaissId !== null
-      const body = isEdit ? { id: editingNaissId, ...formData } : formData
+      // Feedback Marc 2026-05-16 — Naissance : le formulaire stocke
+      // tous ses champs en chaîne (Select & Input) mais l'API attend
+      // des nombres (Zod `z.number()`). Avant cette normalisation, le
+      // POST renvoyait systématiquement 400 « Données invalides » et
+      // l'utilisateur voyait juste « Impossible d'enregistrer ». On
+      // convertit explicitement chaque champ vers son type cible.
+      const toIntOrNull = (s: string) => {
+        if (!s || s.trim() === "") return null
+        const n = parseInt(s, 10)
+        return Number.isFinite(n) ? n : null
+      }
+      const toFloatOrNull = (s: string) => {
+        if (!s || s.trim() === "") return null
+        const n = parseFloat(s)
+        return Number.isFinite(n) ? n : null
+      }
+      const payload = {
+        ...(isEdit ? { id: editingNaissId } : {}),
+        mereId: toIntOrNull(formData.mereId),
+        pereIdentifiant: formData.pereIdentifiant?.trim() || null,
+        date: formData.date || undefined,
+        nombreNes: toIntOrNull(formData.nombreNes) ?? 0,
+        nombreVivants: toIntOrNull(formData.nombreVivants) ?? 0,
+        nombreMales: toIntOrNull(formData.nombreMales),
+        nombreFemelles: toIntOrNull(formData.nombreFemelles),
+        poidsTotal: toFloatOrNull(formData.poidsTotal),
+        notes: formData.notes?.trim() || null,
+      }
       const response = await fetch('/api/elevage/naissances', {
         method: isEdit ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify(payload),
       })
-      if (!response.ok) throw new Error('Erreur')
+      if (!response.ok) {
+        // Récupérer le détail d'erreur (Zod) pour informer précisément.
+        let description = "Impossible d'enregistrer"
+        try {
+          const err = await response.json()
+          if (err?.error) description = String(err.error)
+          if (err?.details?.fieldErrors) {
+            const firstField = Object.entries(err.details.fieldErrors)[0]
+            if (firstField && Array.isArray(firstField[1]) && firstField[1].length > 0) {
+              description = `${firstField[0]} : ${firstField[1][0]}`
+            }
+          }
+        } catch { /* ignore */ }
+        throw new Error(description)
+      }
       toast({
         title: isEdit ? "Naissance mise à jour" : "Naissance enregistrée",
-        description: `${formData.nombreNes} né(s), ${formData.nombreVivants} vivant(s)`,
+        description: `${payload.nombreNes} né(s), ${payload.nombreVivants} vivant(s)`,
       })
       setIsDialogOpen(false)
       resetNaissForm()
       fetchData()
-    } catch {
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible d'enregistrer" })
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Erreur",
+        description: err instanceof Error ? err.message : "Impossible d'enregistrer",
+      })
     }
   }
 
@@ -255,12 +300,12 @@ function NaissancesSubTab() {
               <CardTitle className="text-2xl">{stats.totalNaissances}</CardTitle>
             </CardHeader>
             <CardContent className="pb-3 px-4">
-              <p className="text-xs text-pink-100">mises bas / eclosions</p>
+              <p className="text-xs text-pink-100">mises bas / éclosions</p>
             </CardContent>
           </Card>
           <Card>
             <CardHeader className="pb-1 pt-3 px-4">
-              <CardDescription className="text-xs">Total nes</CardDescription>
+              <CardDescription className="text-xs">Total nés</CardDescription>
               <CardTitle className="text-2xl">{stats.totalNes}</CardTitle>
             </CardHeader>
           </Card>
@@ -305,7 +350,7 @@ function NaissancesSubTab() {
                   <XAxis dataKey="mois" tick={{ fontSize: 12 }} />
                   <YAxis tick={{ fontSize: 12 }} />
                   <ChartTooltip content={<ChartTooltipContent />} />
-                  <Bar dataKey="nes" fill="#f472b6" radius={[4, 4, 0, 0]} name="Nes" />
+                  <Bar dataKey="nes" fill="#f472b6" radius={[4, 4, 0, 0]} name="Nés" />
                   <Bar dataKey="vivants" fill="#34d399" radius={[4, 4, 0, 0]} name="Vivants" />
                 </BarChart>
               </ResponsiveContainer>
@@ -330,9 +375,9 @@ function NaissancesSubTab() {
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label>Mere</Label>
+                <Label>Mère</Label>
                 <Select value={formData.mereId} onValueChange={(v) => setFormData(f => ({ ...f, mereId: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Sélectionner la mere..." /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Sélectionner la mère..." /></SelectTrigger>
                   <SelectContent>
                     {femelles.map(a => (
                       <SelectItem key={a.id} value={a.id.toString()}>
@@ -348,13 +393,13 @@ function NaissancesSubTab() {
                   <Input type="date" value={formData.date} onChange={(e) => setFormData(f => ({ ...f, date: e.target.value }))} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Pere (identifiant)</Label>
+                  <Label>Père (identifiant)</Label>
                   <Input value={formData.pereIdentifiant} onChange={(e) => setFormData(f => ({ ...f, pereIdentifiant: e.target.value }))} placeholder="Optionnel" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Nombre nes *</Label>
+                  <Label>Nombre nés *</Label>
                   <Input type="number" min="0" value={formData.nombreNes} onChange={(e) => setFormData(f => ({ ...f, nombreNes: e.target.value }))} />
                 </div>
                 <div className="space-y-2">
@@ -364,7 +409,7 @@ function NaissancesSubTab() {
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-2">
-                  <Label>Males</Label>
+                  <Label>Mâles</Label>
                   <Input type="number" min="0" value={formData.nombreMales} onChange={(e) => setFormData(f => ({ ...f, nombreMales: e.target.value }))} />
                 </div>
                 <div className="space-y-2">
@@ -404,9 +449,9 @@ function NaissancesSubTab() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Date</TableHead>
-                  <TableHead>Mere</TableHead>
+                  <TableHead>Mère</TableHead>
                   <TableHead>Espèce</TableHead>
-                  <TableHead className="text-right">Nes</TableHead>
+                  <TableHead className="text-right">Nés</TableHead>
                   <TableHead className="text-right">Vivants</TableHead>
                   <TableHead className="text-right">M / F</TableHead>
                   <TableHead className="text-right">Poids</TableHead>

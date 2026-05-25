@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ArrowLeft, TreeDeciduous, Save, Trash2 } from "lucide-react"
 import { Combobox } from "@/components/ui/combobox"
+import { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
 
 interface Arbre {
@@ -44,6 +45,14 @@ interface Arbre {
   productif: boolean
   anneeProduction: number | null
   rendementMoyen: number | null
+  // Feedback Marc 2026-05-16 — V4 Bug 1 : on récupère le détail
+  // des dépendances pour afficher le warning « X récoltes seront
+  // supprimées en cascade » dans la confirmation de suppression.
+  _count?: {
+    recoltesArbres?: number
+    operationsArbres?: number
+    observationsSante?: number
+  }
 }
 
 // Mêmes valeurs que ArbresTab (création) pour cohérence.
@@ -196,17 +205,29 @@ export default function DetailArbrePage() {
     }
   }
 
-  const handleDelete = async () => {
-    if (!confirm("Supprimer cet arbre ? Cette action est irréversible.")) return
-
+  // Feedback Marc 2026-05-16 — V4 Bug 1 : avant ce fix, la
+  // suppression d'un arbre passait par un `confirm()` browser qui
+  // peut être supprimé par certaines extensions / contextes mobiles,
+  // ou simplement skippé par l'utilisateur fatigué. Or l'API DELETE
+  // cascade sur recoltes_arbres / operations_arbres / observations
+  // → 12,5 kg de récoltes disparaissaient sans avertissement. On
+  // utilise désormais `DeleteConfirmDialog` qui liste les dépendances.
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = React.useState(false)
+  const handleDelete = () => {
+    setConfirmDeleteOpen(true)
+  }
+  const performDelete = async () => {
     try {
       const res = await fetch(`/api/arbres/${id}`, { method: "DELETE" })
       if (res.ok) {
         toast({ title: "Arbre supprimé" })
         router.push("/verger?tab=arbres")
+      } else {
+        toast({ variant: "destructive", title: "Erreur", description: "Suppression refusée" })
       }
     } catch (err) {
       console.error("Erreur suppression:", err)
+      toast({ variant: "destructive", title: "Erreur" })
     }
   }
 
@@ -655,6 +676,25 @@ export default function DetailArbrePage() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Feedback Marc 2026-05-16 — V4 Bug 1 : confirmation explicite
+          avec liste des récoltes/opérations/observations qui seront
+          supprimées en cascade. */}
+      <DeleteConfirmDialog
+        open={confirmDeleteOpen}
+        onOpenChange={setConfirmDeleteOpen}
+        entityLabel={`l'arbre "${arbre.nom}"`}
+        dependencies={
+          arbre._count
+            ? [
+                { label: "récoltes", count: arbre._count.recoltesArbres ?? 0 },
+                { label: "opérations (taille, traitement, greffe…)", count: arbre._count.operationsArbres ?? 0 },
+                { label: "observations de santé", count: arbre._count.observationsSante ?? 0 },
+              ]
+            : []
+        }
+        onConfirm={performDelete}
+      />
     </div>
   )
 }

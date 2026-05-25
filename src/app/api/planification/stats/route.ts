@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi, getUserId } from '@/lib/auth-utils'
 import { getStatsPlanification } from '@/lib/planification'
 import { getKpiMaraichage } from '@/lib/kpi'
+import { getRecoltesAnneeAggregat } from '@/lib/kpi/recoltes-annee'
 
 export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
@@ -24,9 +25,10 @@ export async function GET(request: NextRequest) {
     // prévisionnelles). Pour la surface affichée à l'écran, on bascule sur la
     // source unique de vérité (`getKpiMaraichage`) afin que tous les onglets
     // (CalendrierTab, PlanificationTab, accueil) affichent la même valeur.
-    const [stats, kpi] = await Promise.all([
+    const [stats, kpi, aggregat] = await Promise.all([
       getStatsPlanification(userId, annee),
       getKpiMaraichage(userId, annee, asOf),
+      getRecoltesAnneeAggregat(userId, annee),
     ])
 
     return NextResponse.json({
@@ -34,6 +36,12 @@ export async function GET(request: NextRequest) {
       surfaceTotale: kpi.surfacePlanifieeM2,
       surfaceCultivee: kpi.surfaceCultiveeM2,
       surfacePlanifiee: kpi.surfacePlanifieeM2,
+      // BUG-feedback (Marc 2026-05-16) : valeurs unifiées avec
+      // /api/planification/recoltes-prevues et le Calendrier — réalisé +
+      // projection = total attendu, plus de divergence entre les écrans.
+      recoltesRealiseesKg: aggregat.realiseesKg,
+      recoltesProjectionKg: aggregat.projectionKg,
+      recoltesTotalAttenduKg: aggregat.totalAttenduKg,
       annee,
     })
   } catch (error) {

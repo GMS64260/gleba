@@ -256,7 +256,14 @@ export function genererRecommandationIrrigation(
   // Calcul de l'urgence — aligné avec /api/cultures/irriguer
   let urgence: RecommandationIrrigation['urgence']
   const deficit = Math.abs(Math.min(0, bilanHydrique7j)) * facteurSol
-  const besoinNormalise = culture.besoinEau / 5 // 0-1
+  // Feedback Marc 2026-05-16 — Bug 14 : la formule précédente
+  // `deficit > 20 * besoinNormalise` (avec besoinNormalise = besoinEau/5)
+  // était INVERSÉE : une tomate (besoinEau=5) tolerait un déficit
+  // de 20mm avant critique alors qu'une roquette (besoinEau=1) basculait
+  // à 4mm. Or les plantes gourmandes en eau doivent passer en critique
+  // PLUS VITE. On utilise donc l'inverse normalisé (1 pour les peu
+  // exigeantes, 0.2 pour les très exigeantes) pour piloter les seuils.
+  const facteurBesoin = Math.max(0.2, (6 - culture.besoinEau) / 5) // 1.0 → 0.2
 
   // Bilan prospectif : si on ajoute la pluie prévue 5j, est-ce que le déficit se comble ?
   const bilanProspectif = bilanHydrique7j + pluiePrevue5j
@@ -274,11 +281,11 @@ export function genererRecommandationIrrigation(
     urgence = bilanProspectif > -5 ? 'faible' : 'moyenne'
   } else if (pluiePrevue48h >= 10 && bilanHydrique7j > -10) {
     urgence = 'faible'
-  } else if (deficit > 20 * besoinNormalise && joursSansPluie >= 5 && pluiePrevue48h < 5 && pluiePrevue5j < 8) {
+  } else if (deficit > 20 * facteurBesoin && joursSansPluie >= 5 && pluiePrevue48h < 5 && pluiePrevue5j < 8) {
     urgence = 'critique'
-  } else if (deficit > 10 * besoinNormalise && joursSansPluie >= 3 && pluiePrevue48h < 8 && pluiePrevue5j < 10) {
+  } else if (deficit > 10 * facteurBesoin && joursSansPluie >= 3 && pluiePrevue48h < 8 && pluiePrevue5j < 10) {
     urgence = 'haute'
-  } else if (deficit > 5 && joursSansPluie > 2) {
+  } else if (deficit > 5 * facteurBesoin && joursSansPluie > 2) {
     urgence = 'moyenne'
   } else if (bilanHydrique7j < 0) {
     urgence = 'faible'
@@ -286,9 +293,13 @@ export function genererRecommandationIrrigation(
     urgence = 'aucune'
   }
 
-  // Quantité recommandée (L/m²)
+  // Quantité recommandée (L/m²). Feedback Marc 2026-05-16 — Bug 14 :
+  // on pondère par besoinEau (×0.4 à ×1.6) pour différencier les
+  // plantes peu exigeantes (engrais verts, laitue) des très exigeantes
+  // (tomate, courgette).
+  const ponderationBesoin = 0.4 + (culture.besoinEau - 1) * 0.3 // 0.4 → 1.6
   const conseilQuantite = urgence === 'aucune' ? 0
-    : Math.round(Math.max(deficit, etc7j / 7 * 2) * facteurSol * 10) / 10
+    : Math.round(Math.max(deficit, etc7j / 7 * 2) * facteurSol * ponderationBesoin * 10) / 10
 
   // Message de conseil
   const conseilMessage = genererConseilMessage(

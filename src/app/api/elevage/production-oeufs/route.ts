@@ -98,16 +98,42 @@ export async function POST(request: NextRequest) {
     // l'effectif. Avant : 999 œufs pour 29 pondeuses passait silencieusement.
     // Désormais : refus 422 si quantite > effectif × marge_espèce, sauf
     // si l'éleveur a explicitement coché `overrideCoherence`.
-    if (!overrideCoherence && lotId) {
+    if (lotId) {
       const lot = await prisma.lotAnimaux.findFirst({
         where: { id: lotId, userId: session.user.id },
         select: {
           quantiteActuelle: true,
+          statut: true,
           nom: true,
           especeAnimale: { select: { nom: true } },
         },
       })
-      if (lot && lot.quantiteActuelle > 0) {
+      if (!lot) {
+        return NextResponse.json(
+          { error: 'Lot introuvable' },
+          { status: 404 }
+        )
+      }
+      // Feedback Marc 2026-05-16 — V3 Bug 3 : un lot dont le statut
+      // est `termine` ou `reforme` ne doit plus accepter de saisies
+      // de production (pondeuses 2026 « termine » continuait à recevoir
+      // 75 œufs/jour). Bypass possible via `overrideCoherence` pour
+      // corriger un statut erroné.
+      if (!overrideCoherence && (lot.statut === 'termine' || lot.statut === 'reforme')) {
+        return NextResponse.json(
+          {
+            error: 'Lot clôturé',
+            code: 'LOT_TERMINE',
+            details: {
+              lotNom: lot.nom,
+              statut: lot.statut,
+              message: `Le lot « ${lot.nom} » est ${lot.statut}. Réactivez-le (statut « actif ») avant d'enregistrer une nouvelle collecte, ou cochez l'override pour forcer la saisie.`,
+            },
+          },
+          { status: 422 }
+        )
+      }
+      if (!overrideCoherence && lot.quantiteActuelle > 0) {
         const seuil = seuilCollecteMaxJour(lot.quantiteActuelle, lot.especeAnimale?.nom ?? null)
         if (seuil != null && quantite > seuil) {
           return NextResponse.json(

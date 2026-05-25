@@ -235,10 +235,10 @@ export function AssistantStepEmplacement({
   return (
     <TooltipProvider>
       <div className="space-y-6">
-        {/* ===== Section 1: Mode de creation ===== */}
+        {/* ===== Section 1: Mode de création ===== */}
         <div className="space-y-3">
           <div className="flex items-center gap-2">
-            <Label className="text-sm font-semibold">Mode de creation</Label>
+            <Label className="text-sm font-semibold">Mode de création</Label>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -312,13 +312,13 @@ export function AssistantStepEmplacement({
           <p className="text-xs text-muted-foreground">
             {mode === "new-planche" ? (
               <>
-                <strong>Conseil :</strong> Une largeur de 0.80m a 1.20m est
-                ideale pour travailler confortablement des deux cotes. Les
-                planches permanentes de 10m facilitent les rotations.
+                <strong>Conseil :</strong> Une largeur de 0,80 m à 1,20 m est
+                idéale pour travailler confortablement des deux côtés. Les
+                planches permanentes de 10 m facilitent les rotations.
               </>
             ) : (
               <>
-                <strong>Conseil :</strong> Si vous debutez, commencez par
+                <strong>Conseil :</strong> Si vous débutez, commencez par
                 créer une nouvelle planche. Vous pourrez ensuite y ajouter des
                 cultures selon vos besoins.
               </>
@@ -494,10 +494,10 @@ function NewPlancheForm({
         </div>
       )}
 
-      {/* Ilot / Zone */}
+      {/* Îlot / Zone */}
       <div className="space-y-2">
         <div className="flex items-center gap-2">
-          <Label htmlFor="planche-ilot">Ilot / Zone (optionnel)</Label>
+          <Label htmlFor="planche-ilot">Îlot / Zone (optionnel)</Label>
           <Tooltip>
             <TooltipTrigger>
               <HelpCircle className="h-4 w-4 text-muted-foreground" />
@@ -592,7 +592,7 @@ function NewPlancheForm({
         </div>
       </div>
 
-      {/* Collapsible: Qualite du sol */}
+      {/* Collapsible: Qualité du sol */}
       <div className="border rounded-lg">
         <button
           type="button"
@@ -601,7 +601,7 @@ function NewPlancheForm({
         >
           <div className="flex items-center gap-2">
             <Droplets className="h-4 w-4 text-muted-foreground" />
-            <span>Qualite du sol (optionnel)</span>
+            <span>Qualité du sol (optionnel)</span>
           </div>
           {solOpen ? (
             <ChevronUp className="h-4 w-4 text-muted-foreground" />

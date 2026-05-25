@@ -493,6 +493,45 @@ export default function ParametresPage() {
         {/* Modules actifs */}
         <ModulesSection />
 
+        {/* Bug cmp8snsxp (Marc 2026-05-16) — feature request multi-user/
+            devise/unités. En attendant l'implémentation complète, on
+            communique clairement que la roadmap est prévue, pour ne pas
+            laisser le chef d'exploitation deviner. */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Équipe, devise et unités</CardTitle>
+            <CardDescription>
+              Configuration multi-utilisateurs, devise et système d&apos;unités
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+              <p className="text-sm text-amber-900 font-medium mb-2">
+                À venir — feature sur la roadmap
+              </p>
+              <ul className="text-xs text-amber-800 space-y-1 list-disc pl-4">
+                <li>
+                  <strong>Multi-utilisateurs</strong> : invitez votre équipe
+                  (employé, saisonnier, comptable) avec rôles et droits par
+                  module — Q3 2026.
+                </li>
+                <li>
+                  <strong>Devise</strong> : EUR par défaut ; CHF, USD à la
+                  demande. Contactez-nous si besoin urgent.
+                </li>
+                <li>
+                  <strong>Unités</strong> : système métrique (kg, m) ; système
+                  impérial (lb, ft) à venir pour les utilisateurs hors-Europe.
+                </li>
+              </ul>
+              <p className="text-xs text-amber-700 mt-3">
+                Vous pouvez nous signaler vos besoins via le bouton « Feedback »
+                en bas à droite ; chaque demande remonte directement à l&apos;équipe.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Paramètres du jardin */}
         <Card>
           <CardHeader>

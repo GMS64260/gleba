@@ -105,6 +105,17 @@ function isSameDay(d1: Date, d2: Date): boolean {
   return d1.getFullYear() === d2.getFullYear() && d1.getMonth() === d2.getMonth() && d1.getDate() === d2.getDate()
 }
 
+// Bug cmp8rtr5m (Marc 2026-05-16) — Off-by-one calendrier élevage.
+// `toISOString()` retourne du UTC : un dimanche local 00:00 CEST devient
+// samedi 22:00 UTC, donc split('T')[0] décale la clé d'un jour. On clé
+// désormais sur le couple année-mois-jour local de la date.
+function localDateKey(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 // ============================================================
 // Composant principal
 // ============================================================
@@ -114,6 +125,8 @@ export function CalendrierTab() {
   const [weekOffset, setWeekOffset] = React.useState(0)
   const [isLoading, setIsLoading] = React.useState(true)
   const [data, setData] = React.useState<TachesData | null>(null)
+  // Bug cmp8smrwe — masquer les tâches déjà faites par défaut.
+  const [showFaits, setShowFaits] = React.useState(false)
 
   const weekStart = React.useMemo(() => getWeekStart(weekOffset), [weekOffset])
   const weekEnd = React.useMemo(() => {
@@ -128,7 +141,7 @@ export function CalendrierTab() {
     return JOURS.map((label, i) => {
       const date = new Date(weekStart)
       date.setDate(date.getDate() + i)
-      return { label, date, dateKey: date.toISOString().split('T')[0] }
+      return { label, date, dateKey: localDateKey(date) }
     })
   }, [weekStart])
 
@@ -174,22 +187,22 @@ export function CalendrierTab() {
     weekDays.forEach(d => map.set(d.dateKey, { soins: [], productions: [], consommations: [] }))
 
     data.soins.forEach(s => {
-      const key = new Date(s.date).toISOString().split('T')[0]
+      const key = localDateKey(new Date(s.date))
       if (map.has(key)) map.get(key)!.soins.push(s)
     })
     data.productions.forEach(p => {
-      const key = new Date(p.date).toISOString().split('T')[0]
+      const key = localDateKey(new Date(p.date))
       if (map.has(key)) map.get(key)!.productions.push(p)
     })
     data.consommations.forEach(c => {
-      const key = new Date(c.date).toISOString().split('T')[0]
+      const key = localDateKey(new Date(c.date))
       if (map.has(key)) map.get(key)!.consommations.push(c)
     })
 
     return map
   }, [data, weekDays])
 
-  const today = new Date().toISOString().split('T')[0]
+  const today = localDateKey(new Date())
 
   return (
     <div className="space-y-6">
@@ -240,7 +253,7 @@ export function CalendrierTab() {
             <div className="bg-yellow-50 rounded-lg p-3 text-center">
               <Egg className="h-5 w-5 mx-auto text-yellow-600 mb-1" />
               <p className="text-2xl font-bold text-yellow-700">{data.stats.totalOeufs}</p>
-              <p className="text-xs text-yellow-600">Oeufs collectes</p>
+              <p className="text-xs text-yellow-600">Œufs collectés</p>
               {data.stats.estimationOeufsJour > 0 && (
                 <p className="text-xs text-yellow-400 mt-0.5">~{data.stats.estimationOeufsJour}/jour attendu</p>
               )}
@@ -248,7 +261,7 @@ export function CalendrierTab() {
             <div className="bg-orange-50 rounded-lg p-3 text-center">
               <Package className="h-5 w-5 mx-auto text-orange-600 mb-1" />
               <p className="text-2xl font-bold text-orange-700">{data.stats.totalConsoKg} kg</p>
-              <p className="text-xs text-orange-600">Aliments distribues</p>
+              <p className="text-xs text-orange-600">Aliments distribués</p>
             </div>
             {(() => {
               // BUG #4 (audit Julien 15/05/2026) — Taux collecte semaine.
@@ -303,12 +316,31 @@ export function CalendrierTab() {
             })()}
           </div>
 
+          {/* Bug cmp8smrwe (Marc 2026-05-16) — Toggle pour masquer les
+              tâches faites dans la vue Cette semaine. Par défaut on les
+              cache (seules les tâches à faire sont visibles + un footer
+              de récap). */}
+          <div className="flex items-center justify-end gap-2 text-xs">
+            <label className="inline-flex items-center gap-1 cursor-pointer text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={showFaits}
+                onChange={(e) => setShowFaits(e.target.checked)}
+                className="accent-amber-500"
+              />
+              Afficher les tâches déjà faites
+            </label>
+          </div>
+
           {/* Vue par jour */}
           <div className="grid gap-3 grid-cols-1 md:grid-cols-7">
             {weekDays.map(({ label, date, dateKey }) => {
               const dayEvents = eventsByDay.get(dateKey)
               const isToday = dateKey === today
               const hasSoinsAFaire = dayEvents?.soins.some(s => !s.fait) || false
+              const soinsAffiches = dayEvents?.soins.filter(s => showFaits || !s.fait) ?? []
+              const soinsFaitsMasques = (dayEvents?.soins.filter(s => s.fait).length ?? 0)
+                - (showFaits ? (dayEvents?.soins.filter(s => s.fait).length ?? 0) : 0)
 
               return (
                 <Card
@@ -325,7 +357,7 @@ export function CalendrierTab() {
                   </CardHeader>
                   <CardContent className="px-3 pb-3 space-y-1.5">
                     {/* Soins du jour */}
-                    {dayEvents?.soins.map(soin => (
+                    {soinsAffiches.map(soin => (
                       <button
                         key={`soin-${soin.id}`}
                         onClick={() => toggleSoin(soin.id, soin.fait)}
@@ -349,6 +381,13 @@ export function CalendrierTab() {
                         </p>
                       </button>
                     ))}
+
+                    {/* Récap des soins masqués (faits) */}
+                    {soinsFaitsMasques > 0 && (
+                      <p className="text-[10px] text-green-600 italic pl-1">
+                        ✓ {soinsFaitsMasques} fait{soinsFaitsMasques > 1 ? 's' : ''}
+                      </p>
+                    )}
 
                     {/* Productions du jour */}
                     {dayEvents?.productions.map(prod => (

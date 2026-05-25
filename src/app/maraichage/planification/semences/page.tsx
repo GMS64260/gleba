@@ -285,12 +285,24 @@ function makePlantsColumns(appliquerMarge: boolean): ColumnDef<BesoinSemence>[] 
   ]
 }
 
+// Feedback Marc 2026-05-16 — V3 Bug 7 : « Caïeux » est trompeur pour
+// les tubercules (Pomme de terre, Topinambour). On adopte un libellé
+// générique « Bulbilles / tubercules » et on adapte la cellule selon
+// l'espèce pour ne plus rebuter l'agriculteur.
+const isTubercule = (especeId: string): boolean => {
+  return /pomme de terre|patate|topinambour|crosne/i.test(especeId)
+}
+
 const caieuxColumns: ColumnDef<BesoinSemence>[] = [
   ...baseColumns,
   {
     accessorKey: "besoinCaieux",
-    header: "Caïeux nécessaires",
-    cell: ({ getValue }) => (getValue() as number).toLocaleString(),
+    header: "Bulbilles / tubercules nécessaires",
+    cell: ({ row }) => {
+      const v = row.original.besoinCaieux
+      const unite = isTubercule(row.original.especeId) ? "tubercules" : "caïeux"
+      return `${v.toLocaleString()} ${unite}`
+    },
   },
   {
     accessorKey: "stockUnites",
@@ -302,7 +314,8 @@ const caieuxColumns: ColumnDef<BesoinSemence>[] = [
     header: "À commander",
     cell: ({ row }) => {
       const v = row.original.caieuxACommander
-      return v > 0 ? `${v.toLocaleString()} unités` : "—"
+      const unite = isTubercule(row.original.especeId) ? "tubercules" : "unités"
+      return v > 0 ? `${v.toLocaleString()} ${unite}` : "—"
     },
   },
   {
@@ -619,7 +632,7 @@ function SemencesContent() {
               )}
             </TabsTrigger>
             <TabsTrigger value="caieux">
-              Caïeux / bulbes
+              Bulbilles / tubercules
               {stats && (
                 <span className="ml-2 text-xs text-muted-foreground">
                   ({stats.nbBulbeCaieu})

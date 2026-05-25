@@ -28,6 +28,25 @@ enum CoucheActivite {
   PATURAGE
 }
 
+enum BugType {
+  BUG
+  EVOLUTION
+  AUTRE
+}
+
+enum BugStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+}
+
+enum BugPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
 /// Utilisateurs de l'application
 model User {
   id                String    @id @default(cuid())
@@ -129,6 +148,10 @@ model User {
   feedbackTokens        FeedbackToken[]
   feedbackResponses     FeedbackResponse[]
 
+  // Bug reports (widget de feedback intégré)
+  bugReports            BugReport[]
+  bugStatusLogs         BugStatusLog[]      @relation("BugStatusLogAuthor")
+
   // Préférences (modules visibles, etc.)
   preferences           UserPreference[]
 
@@ -223,6 +246,49 @@ model FeedbackResponse {
 
   @@index([userId])
   @@map("feedback_responses")
+}
+
+/// Retours envoyés depuis le widget de feedback (bug / évolution / autre)
+model BugReport {
+  id          String       @id @default(cuid())
+  userId      String       @map("user_id")
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        BugType
+  message     String
+  status      BugStatus    @default(OPEN)
+  priority    BugPriority  @default(MEDIUM)
+  url         String?      // page d'origine au moment du report
+  userAgent   String?      @map("user_agent")
+  viewport    String?      // ex "1920x1080"
+  adminNote   String?      @map("admin_note")
+  resolvedAt  DateTime?    @map("resolved_at")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt       @map("updated_at")
+
+  statusLogs  BugStatusLog[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([type])
+  @@index([createdAt])
+  @@map("bug_reports")
+}
+
+/// Historique de changement de statut d'un BugReport
+model BugStatusLog {
+  id           String     @id @default(cuid())
+  bugReportId  String     @map("bug_report_id")
+  bugReport    BugReport  @relation(fields: [bugReportId], references: [id], onDelete: Cascade)
+  fromStatus   BugStatus? @map("from_status")
+  toStatus     BugStatus  @map("to_status")
+  changedById  String?    @map("changed_by_id")
+  changedBy    User?      @relation("BugStatusLogAuthor", fields: [changedById], references: [id], onDelete: SetNull)
+  note         String?
+  changedAt    DateTime   @default(now()) @map("changed_at")
+
+  @@index([bugReportId])
+  @@index([changedAt])
+  @@map("bug_status_logs")
 }
 
 /// Sessions NextAuth

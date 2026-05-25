@@ -10,7 +10,7 @@ import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { formatSemaine } from "@/lib/assistant-helpers"
 import { ColumnDef } from "@tanstack/react-table"
-import { ArrowLeft, LayoutGrid, CheckCircle2, XCircle } from "lucide-react"
+import { ArrowLeft, LayoutGrid, CheckCircle2, XCircle, AlertTriangle } from "lucide-react"
 
 import { DataTable } from "@/components/tables/DataTable"
 import { Button } from "@/components/ui/button"
@@ -41,6 +41,37 @@ interface CulturePrevue {
   existante: boolean
 }
 
+// Bug cmp8sb0at (Marc 2026-05-16) — Le statut OK vert indiquait "ligne créée"
+// pas "plan agronomique valide". On évalue désormais des conflits réels :
+//  - empty : aucune date semis/plantation/récolte (kiwi sans planning)
+//  - overlap : chevauchement temporel avec une autre culture de la même planche
+//  - ok : sinon
+type StatutAgro = 'empty' | 'overlap' | 'ok' | 'todo'
+
+function periode(c: CulturePrevue): [number, number] | null {
+  const debut = c.semaineSemis ?? c.semainePlantation
+  const fin = c.semaineRecolte
+  if (debut == null || fin == null) return null
+  return [debut, Math.max(debut, fin)]
+}
+
+function evaluerStatut(c: CulturePrevue, toutes: CulturePrevue[]): StatutAgro {
+  if (c.semaineSemis == null && c.semainePlantation == null && c.semaineRecolte == null) {
+    return c.existante ? 'empty' : 'todo'
+  }
+  const p = periode(c)
+  if (p) {
+    const conflits = toutes.filter((o) => {
+      if (o === c) return false
+      if (o.plancheId !== c.plancheId) return false
+      const op = periode(o)
+      if (!op) return false
+      return op[0] <= p[1] && p[0] <= op[1]
+    })
+    if (conflits.length > 0) return 'overlap'
+  }
+  return c.existante ? 'ok' : 'todo'
+}
 
 const columns: ColumnDef<CulturePrevue>[] = [
   {
@@ -113,14 +144,40 @@ const columns: ColumnDef<CulturePrevue>[] = [
     cell: ({ getValue }) => `${(getValue() as number).toFixed(1)} m2`,
   },
   {
-    accessorKey: "existante",
+    id: "statut",
     header: "Statut",
-    cell: ({ getValue }) => {
-      const existante = getValue() as boolean
-      return existante ? (
-        <CheckCircle2 className="h-4 w-4 text-green-600" />
-      ) : (
-        <XCircle className="h-4 w-4 text-slate-400" />
+    cell: ({ row, table }) => {
+      const all = table.getCoreRowModel().rows.map((r) => r.original as CulturePrevue)
+      const statut = evaluerStatut(row.original, all)
+      if (statut === 'overlap') {
+        return (
+          <span className="inline-flex items-center gap-1 text-amber-700" title="Chevauchement avec une autre culture sur cette planche">
+            <AlertTriangle className="h-4 w-4" />
+            <span className="text-xs">Chevauchement</span>
+          </span>
+        )
+      }
+      if (statut === 'empty') {
+        return (
+          <span className="inline-flex items-center gap-1 text-orange-600" title="Aucune date de semis/plantation/récolte renseignée">
+            <AlertTriangle className="h-4 w-4" />
+            <span className="text-xs">Dates vides</span>
+          </span>
+        )
+      }
+      if (statut === 'todo') {
+        return (
+          <span className="inline-flex items-center gap-1 text-slate-400" title="Culture planifiée à créer">
+            <XCircle className="h-4 w-4" />
+            <span className="text-xs">À créer</span>
+          </span>
+        )
+      }
+      return (
+        <span className="inline-flex items-center gap-1 text-green-600" title="Plan agronomique cohérent">
+          <CheckCircle2 className="h-4 w-4" />
+          <span className="text-xs">OK</span>
+        </span>
       )
     },
   },

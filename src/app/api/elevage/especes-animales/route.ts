@@ -11,7 +11,7 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 
 export async function GET(request: NextRequest) {
-  const { error } = await requireAuthApi()
+  const { error, session } = await requireAuthApi()
   if (error) return error
 
   try {
@@ -26,17 +26,51 @@ export async function GET(request: NextRequest) {
     const especes = await prisma.especeAnimale.findMany({
       where,
       orderBy: { nom: 'asc' },
-      include: {
-        _count: {
-          select: {
-            animaux: true,
-            lots: true,
-          },
-        },
-      },
     })
 
-    return NextResponse.json({ data: especes })
+    // Bug cmp8seb49 (Marc 2026-05-16) — _count.animaux incluait TOUS les
+    // animaux (tous users + tous statuts), donnant 15 individuels et 6 lots
+    // alors que le Dashboard comptait 33 (4 individus actifs + 29 en lots).
+    // On scope par utilisateur connecté et on filtre sur statut actif.
+    // Pour les lots, on remonte effectifReel = somme(quantiteActuelle).
+    const userId = session?.user.id
+    const especeIds = especes.map((e) => e.id)
+
+    const [animauxParEspece, lotsParEspece] = await Promise.all([
+      prisma.animal.groupBy({
+        by: ['especeAnimaleId'],
+        where: { userId, statut: 'actif', especeAnimaleId: { in: especeIds } },
+        _count: true,
+      }),
+      prisma.lotAnimaux.groupBy({
+        by: ['especeAnimaleId'],
+        where: { userId, statut: 'actif', especeAnimaleId: { in: especeIds } },
+        _count: true,
+        _sum: { quantiteActuelle: true },
+      }),
+    ])
+    const animauxMap = new Map(animauxParEspece.map((a) => [a.especeAnimaleId, a._count]))
+    const lotsMap = new Map(
+      lotsParEspece.map((l) => [
+        l.especeAnimaleId,
+        { count: l._count, effectif: l._sum.quantiteActuelle ?? 0 },
+      ])
+    )
+
+    const data = especes.map((e) => {
+      const lots = lotsMap.get(e.id) ?? { count: 0, effectif: 0 }
+      return {
+        ...e,
+        _count: {
+          animaux: animauxMap.get(e.id) ?? 0,
+          lots: lots.count,
+        },
+        // Bonus pour les écrans qui veulent l'effectif réel (individus + lots)
+        effectifTotal: (animauxMap.get(e.id) ?? 0) + lots.effectif,
+      }
+    })
+
+    return NextResponse.json({ data })
   } catch (error) {
     console.error('GET /api/elevage/especes-animales error:', error)
     return NextResponse.json(

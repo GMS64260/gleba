@@ -251,6 +251,10 @@ function RecoltesFruitsSubTab() {
         }),
       })
       if (res.ok) {
+        // Feedback Marc 2026-05-16 — Bug 08 : si l'API a retourné un
+        // warning saisonnier, on l'affiche en plus du toast de succès
+        // (récolte hors saison agronomique de la variété).
+        const payload = (await res.json().catch(() => null)) as { warnings?: string[] } | null
         setShowDialog(false)
         setNewRecolte({
           arbreId: "",
@@ -268,6 +272,11 @@ function RecoltesFruitsSubTab() {
           conditionnement: "",
         })
         toast({ title: "Récolte enregistrée" })
+        if (payload?.warnings && payload.warnings.length > 0) {
+          for (const w of payload.warnings) {
+            toast({ title: "Attention saison", description: w, variant: "destructive" })
+          }
+        }
         fetchData()
       }
     } catch {

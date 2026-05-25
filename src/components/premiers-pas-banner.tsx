@@ -320,8 +320,17 @@ export function PremiersPasBanner({ module = "home" }: { module?: ModuleKey }) {
         const map: Record<string, any> = {}
         config.fetches.forEach((f, i) => (map[f.key] = results[i]))
         const arr = config.buildSteps(map)
+        // Bug cmp8stwug (Marc 2026-05-16) — Pour le module compta, masquer
+        // automatiquement le bandeau dès qu'il y a une vraie activité (≥1
+        // vente ET ≥1 dépense ET ≥1 client) même si une étape annexe (ex:
+        // dépose facture) reste à faire. Un éleveur qui a 49 transactions
+        // saisies n'a plus besoin du "Premiers pas".
+        const aRealActivity =
+          module === 'comptabilite'
+            ? hasData(map.vente) && hasData(map.dep) && hasData(map.cli)
+            : false
         // Auto-masquage uniquement pour les non-démo
-        if (!isDemo && arr.every((a) => a.done)) {
+        if (!isDemo && (arr.every((a) => a.done) || aRealActivity)) {
           localStorage.setItem(hideKey, "true")
           setHidden(true)
         } else {

@@ -12,6 +12,8 @@ import {
 import { ScreenshotPlaceholder } from "@/components/seo/ScreenshotPlaceholder";
 import { FAQSection, type FAQItem } from "@/components/seo/FAQSection";
 import { CTASection } from "@/components/seo/CTASection";
+import { Breadcrumb } from "@/components/seo/Breadcrumb";
+import { InternalLinks } from "@/components/seo/InternalLinks";
 
 export const metadata: Metadata = {
   title: "Logiciel pour micro-ferme — Gérer maraîchage, verger, élevage et ventes",
@@ -100,8 +102,10 @@ const ACTIVITIES = [
 export default function Page() {
   return (
     <>
+      <Breadcrumb items={[{ label: "Logiciel pour micro-ferme", href: "/logiciel-micro-ferme" }]} />
+
       {/* HERO */}
-      <section className="px-4 pt-12 pb-20 sm:pt-20 sm:pb-24">
+      <section className="px-4 pt-6 pb-20 sm:pt-12 sm:pb-24">
         <div className="max-w-4xl mx-auto text-center">
           <p className="text-xs tracking-[0.25em] uppercase text-emerald-600/70 font-medium mb-6">
             Micro-fermes · Écolieux · Permaculture · Vente directe
@@ -194,16 +198,10 @@ export default function Page() {
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {ACTIVITIES.map((activity) => {
-              const Wrapper = activity.href ? Link : "div";
-              const wrapperProps = activity.href ? { href: activity.href } : {};
-              return (
-                <Wrapper
-                  key={activity.title}
-                  {...(wrapperProps as { href: string })}
-                  className={`block bg-white/80 backdrop-blur-sm rounded-2xl border border-slate-100 p-7 hover:border-emerald-200 transition-colors ${
-                    activity.href ? "cursor-pointer" : ""
-                  }`}
-                >
+              const cardClass =
+                "block bg-white/80 backdrop-blur-sm rounded-2xl border border-slate-100 p-7 hover:border-emerald-200 transition-colors";
+              const inner = (
+                <>
                   <div className="inline-flex items-center justify-center w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 mb-5">
                     <activity.icon className="h-5 w-5" strokeWidth={1.5} />
                   </div>
@@ -216,7 +214,20 @@ export default function Page() {
                   <p className="text-sm text-slate-500 leading-relaxed">
                     {activity.description}
                   </p>
-                </Wrapper>
+                </>
+              );
+              return activity.href ? (
+                <Link
+                  key={activity.title}
+                  href={activity.href}
+                  className={`${cardClass} cursor-pointer`}
+                >
+                  {inner}
+                </Link>
+              ) : (
+                <div key={activity.title} className={cardClass}>
+                  {inner}
+                </div>
               );
             })}
           </div>
@@ -277,6 +288,8 @@ export default function Page() {
           </div>
         </div>
       </section>
+
+      <InternalLinks currentPath="/logiciel-micro-ferme" />
 
       <FAQSection
         title="Questions sur le logiciel de micro-ferme"

@@ -98,8 +98,10 @@ function RecoltesPrevuesParSemainesContent() {
           </div>
 
           <div className="flex items-center gap-4">
-            <Badge variant="outline" className="text-lg">
-              {totalAnnee.toFixed(1)} kg/an
+            {/* Bug cmp8sc1c6 (Marc 2026-05-16) — "kg/an" prêtait à confusion :
+                il s'agit en réalité du restant à récolter sur l'année. */}
+            <Badge variant="outline" className="text-lg" title="Total prévu sur les semaines à venir (hors récoltes déjà réalisées)">
+              {totalAnnee.toFixed(1)} kg restants
             </Badge>
             <Select
               value={annee.toString()}

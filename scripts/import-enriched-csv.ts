@@ -112,10 +112,16 @@ async function importEspeces(file: string) {
         updateData.densite = parseNumber(row.densite_AI)
         hasUpdates = true
       }
-      if (row.doseSemis_AI && row.doseSemis_AI !== row.doseSemis_actuel) {
-        updateData.doseSemis = parseNumber(row.doseSemis_AI)
-        hasUpdates = true
-      }
+      // Feedback Marc 2026-05-16 — V3 Bug 2 : le CSV `especes_enriched.csv`
+      // contient des `doseSemis_AI` exprimés en « g pour 100 m² » (100
+      // pour Carotte) qui réécrasaient à chaque démarrage les valeurs
+      // agronomiques posées par les migrations Prisma (Carotte = 0.8).
+      // On ne touche plus à `doseSemis` ici — la source de vérité reste
+      // les migrations SQL.
+      // if (row.doseSemis_AI && row.doseSemis_AI !== row.doseSemis_actuel) {
+      //   updateData.doseSemis = parseNumber(row.doseSemis_AI)
+      //   hasUpdates = true
+      // }
       if (row.tauxGermination_AI && row.tauxGermination_AI !== row.tauxGermination_actuel) {
         updateData.tauxGermination = parseInt(row.tauxGermination_AI)
         hasUpdates = true

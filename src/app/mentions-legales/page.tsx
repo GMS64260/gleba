@@ -12,6 +12,11 @@ import { Button } from "@/components/ui/button"
 
 export const metadata = {
   title: "Mentions légales",
+  description:
+    "Mentions légales de Gleba conformes à la LCEN (art. 6-III) : éditeur du site, hébergeur, responsable de publication et coordonnées de contact.",
+  alternates: {
+    canonical: "https://gleba.fr/mentions-legales",
+  },
 }
 
 export default function MentionsLegalesPage() {

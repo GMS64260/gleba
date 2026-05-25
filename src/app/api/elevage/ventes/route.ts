@@ -102,6 +102,36 @@ export async function POST(request: NextRequest) {
     const { date, type, description, quantite, unite, prixUnitaire, client, destinationId, paye, tauxTVA, notes } = parsed.data
     const prixTotal = quantite * prixUnitaire
 
+    // Bug cmp8rzcjc (Marc 2026-05-16) — pour une vente d'animal vivant,
+    // on exige que `animalId` référence un animal du cheptel de l'utilisateur
+    // (statut actif), sinon on crée des ventes fantômes (ex: "Clochette"
+    // alors qu'aucun animal ne s'appelle Clochette). On laisse les autres
+    // types (oeufs/viande/lait/autre) passer sans contrainte animal.
+    if (type === 'animal_vivant') {
+      if (!parsed.data.animalId) {
+        return NextResponse.json(
+          { error: 'Pour une vente d\'animal vivant, sélectionnez un animal du cheptel.' },
+          { status: 400 }
+        )
+      }
+      const animal = await prisma.animal.findFirst({
+        where: { id: parsed.data.animalId, userId: session.user.id },
+        select: { id: true, statut: true },
+      })
+      if (!animal) {
+        return NextResponse.json(
+          { error: 'Animal introuvable dans votre cheptel.' },
+          { status: 400 }
+        )
+      }
+      if (animal.statut !== 'actif') {
+        return NextResponse.json(
+          { error: `Cet animal n'est plus actif (statut: ${animal.statut}). Impossible de l'enregistrer en vente.` },
+          { status: 400 }
+        )
+      }
+    }
+
     // QA 2026-05-15 — garde-fou anti-saisie aberrante : Sophie a vu une
     // ligne "999 999 douzaines d'œufs à 4€ = 4M€" remonter en compta.
     // On bloque toute vente unitaire > 100 000 € à la saisie ; les

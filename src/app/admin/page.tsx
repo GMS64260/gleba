@@ -7,17 +7,18 @@ import prisma from "@/lib/prisma"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
-import { Users, UserPlus, Shield, Activity, Database, MessageSquare } from "lucide-react"
+import { Users, UserPlus, Shield, Activity, Database, MessageSquare, Bug } from "lucide-react"
 import { AdminTabs } from "@/components/admin/AdminTabs"
 
 export default async function AdminPage() {
   await requireAdmin()
 
   // Stats
-  const [totalUsers, activeUsers, adminCount] = await Promise.all([
+  const [totalUsers, activeUsers, adminCount, openBugsCount] = await Promise.all([
     prisma.user.count(),
     prisma.user.count({ where: { active: true } }),
     prisma.user.count({ where: { role: "ADMIN" } }),
+    prisma.bugReport.count({ where: { status: { in: ["OPEN", "IN_PROGRESS"] } } }),
   ])
 
   // Derniers utilisateurs crees
@@ -154,6 +155,31 @@ export default async function AdminPage() {
                 <Button variant="outline" className="w-full">
                   <MessageSquare className="mr-2 h-4 w-4" />
                   Tableau de bord feedback
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Bug className="h-5 w-5 text-red-600" />
+                Bugs & retours
+                {openBugsCount > 0 && (
+                  <span className="ml-auto text-sm font-semibold px-2 py-0.5 rounded-md bg-red-50 text-red-700 ring-1 ring-red-200">
+                    {openBugsCount}
+                  </span>
+                )}
+              </CardTitle>
+              <CardDescription>
+                Bugs / évolutions remontés depuis le widget
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link href="/admin/bugs">
+                <Button variant="outline" className="w-full">
+                  <Bug className="mr-2 h-4 w-4" />
+                  Dashboard bugs
                 </Button>
               </Link>
             </CardContent>

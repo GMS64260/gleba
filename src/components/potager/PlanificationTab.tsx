@@ -43,6 +43,11 @@ interface Stats {
   surfaceCultivee?: number
   surfacePlanifiee?: number
   recoltesTotales: number
+  // BUG-feedback (Marc 2026-05-16) : champs unifiés avec
+  // /api/planification/recoltes-prevues et le Calendrier.
+  recoltesRealiseesKg?: number
+  recoltesProjectionKg?: number
+  recoltesTotalAttenduKg?: number
   nbEspeces: number
   nbVarietes?: number
   nbEspecesAvecVariete?: number
@@ -235,13 +240,17 @@ function PlanificationSubTab({ year }: { year: number }) {
 
         <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white">
           <CardHeader className="pb-1 pt-3 px-4">
-            <CardDescription className="text-blue-100 text-xs">Récoltes prévues</CardDescription>
+            <CardDescription className="text-blue-100 text-xs">Récoltes {stats?.annee ?? year} attendues</CardDescription>
             <CardTitle className="text-2xl">
-              {isLoading ? <Skeleton className="h-8 w-16 bg-blue-400" /> : `${stats?.recoltesTotales || 0} kg`}
+              {isLoading
+                ? <Skeleton className="h-8 w-16 bg-blue-400" />
+                : `${(stats?.recoltesTotalAttenduKg ?? stats?.recoltesTotales ?? 0).toFixed(1)} kg`}
             </CardTitle>
           </CardHeader>
           <CardContent className="pb-3 px-4">
-            <p className="text-xs text-blue-100">Estimation annuelle</p>
+            <p className="text-xs text-blue-100">
+              {(stats?.recoltesRealiseesKg ?? 0).toFixed(1)} kg réalisé · {(stats?.recoltesProjectionKg ?? stats?.recoltesTotales ?? 0).toFixed(1)} kg à venir
+            </p>
           </CardContent>
         </Card>
 
@@ -365,15 +374,29 @@ function ItpsSubTab() {
   const [data, setData] = React.useState<ITPWithRelations[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
 
+  const [loadError, setLoadError] = React.useState<string | null>(null)
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
+    setLoadError(null)
     try {
       const response = await fetch("/api/itps?pageSize=200")
-      if (!response.ok) throw new Error("Erreur")
+      if (!response.ok) {
+        // Feedback Marc 2026-05-16 — Bug 13 : on récupère le détail
+        // d'erreur retourné par l'API pour ne pas afficher un toast
+        // générique qui contredit l'état "Aucun ITP trouvé." du DataTable.
+        let msg = `Erreur ${response.status}`
+        try {
+          const errJson = await response.json()
+          if (errJson?.error) msg = String(errJson.error)
+        } catch { /* ignore */ }
+        throw new Error(msg)
+      }
       const result = await response.json()
       setData(Array.isArray(result) ? result : result.data || [])
-    } catch {
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les ITPs" })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Impossible de charger les ITPs"
+      setLoadError(message)
+      toast({ variant: "destructive", title: "Erreur", description: message })
     } finally {
       setIsLoading(false)
     }
@@ -388,10 +411,22 @@ function ItpsSubTab() {
       <div className="p-3 bg-indigo-50 rounded-lg border border-indigo-200 text-sm text-indigo-800">
         <p className="font-medium">Itinéraires Techniques</p>
         <p className="mt-1 text-indigo-700">
-          Les ITPs definissent les parametres de culture pour chaque espece : espacement, dates de
-          semis/plantation/recolte, nombre de rangs.
+          Les ITPs définissent les paramètres de culture pour chaque espèce : espacement, dates de
+          semis/plantation/récolte, nombre de rangs.
         </p>
       </div>
+      {loadError && (
+        <div className="p-3 bg-red-50 rounded-lg border border-red-200 text-sm text-red-800 flex items-center justify-between">
+          <span>{loadError}</span>
+          <button
+            type="button"
+            onClick={fetchData}
+            className="text-xs underline hover:no-underline"
+          >
+            Réessayer
+          </button>
+        </div>
+      )}
       <DataTable
         columns={itpColumns}
         data={data}
@@ -402,7 +437,7 @@ function ItpsSubTab() {
         onRowClick={(row) => router.push(`/itps/${encodeURIComponent(row.id)}`)}
         onRowEdit={(row) => router.push(`/itps/${encodeURIComponent(row.id)}`)}
         searchPlaceholder="Rechercher un ITP..."
-        emptyMessage="Aucun ITP trouve."
+        emptyMessage={loadError ? "Erreur lors du chargement — cliquez sur Réessayer." : "Aucun ITP trouvé."}
       />
     </div>
   )

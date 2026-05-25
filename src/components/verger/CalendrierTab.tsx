@@ -151,13 +151,19 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
     fetchData()
   }, [year, toast])
 
+  // Feedback Marc 2026-05-16 — V4 Bug 5 : afficher "+0% vs 2025"
+  // quand 2025 = 0 kg est trompeur (Maraîchage affichait "Pas de
+  // comparatif" dans le même cas). On expose désormais un flag
+  // `hasComparatif` pour rendre "N/A" si N-1 < 5 kg (seuil de
+  // pertinence) comme dans potager/CalendrierTab.
   const yearDiff = React.useMemo(() => {
-    if (!data?.stats) return { diff: 0, percent: "0" }
+    if (!data?.stats) return { diff: 0, percent: "0", hasComparatif: false }
     const current = data.stats.recoltesFruitsAnnee
     const previous = data.stats.recoltesFruitsAnneePrecedente
+    const hasComparatif = previous >= 5
     const diff = current - previous
     const percent = previous > 0 ? Math.round((diff / previous) * 100) : 0
-    return { diff, percent: percent.toString() }
+    return { diff, percent: percent.toString(), hasComparatif }
   }, [data?.stats])
 
   const handleMarkDone = async (op: OperationArbre) => {
@@ -233,16 +239,22 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
             </CardTitle>
           </CardHeader>
           <CardContent className="pb-3 px-4">
-            <div className="flex items-center gap-1 text-xs">
-              {yearDiff.diff >= 0 ? (
-                <TrendingUp className="h-3 w-3 text-green-200" />
-              ) : (
-                <TrendingDown className="h-3 w-3 text-red-200" />
-              )}
-              <span className={yearDiff.diff >= 0 ? "text-green-200" : "text-red-200"}>
-                {yearDiff.diff >= 0 ? "+" : ""}{yearDiff.percent}% vs {year - 1}
-              </span>
-            </div>
+            {yearDiff.hasComparatif ? (
+              <div className="flex items-center gap-1 text-xs">
+                {yearDiff.diff >= 0 ? (
+                  <TrendingUp className="h-3 w-3 text-green-200" />
+                ) : (
+                  <TrendingDown className="h-3 w-3 text-red-200" />
+                )}
+                <span className={yearDiff.diff >= 0 ? "text-green-200" : "text-red-200"}>
+                  {yearDiff.diff >= 0 ? "+" : ""}{yearDiff.percent}% vs {year - 1}
+                </span>
+              </div>
+            ) : (
+              <p className="text-[10px] text-amber-100 italic">
+                Pas de comparatif N-1 disponible
+              </p>
+            )}
           </CardContent>
         </Card>
 

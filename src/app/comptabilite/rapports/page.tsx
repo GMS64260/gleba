@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { Tooltip as InfoTooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { useToast } from "@/hooks/use-toast"
 import {
   BarChart,
@@ -769,7 +769,7 @@ export default function RapportsPage() {
                     // inférences (élevage / récoltes / bois / aliments / etc.)
                     // pour qu'il puisse remonter à la source.
                     <TooltipProvider delayDuration={100}>
-                      <Tooltip>
+                      <InfoTooltip>
                         <TooltipTrigger asChild>
                           <button
                             type="button"
@@ -799,7 +799,7 @@ export default function RapportsPage() {
                             Saisir le taux dans le formulaire d’origine pour éviter cette approximation.
                           </p>
                         </TooltipContent>
-                      </Tooltip>
+                      </InfoTooltip>
                     </TooltipProvider>
                   )}
                 </CardContent>

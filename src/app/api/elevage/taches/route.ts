@@ -66,11 +66,16 @@ export async function GET(request: NextRequest) {
         orderBy: { date: 'asc' },
       }),
 
-      // Lots actifs (pour estimation collecte)
+      // Lots avec effectif réel > 0 (estimation collecte).
+      // Bug cmp8s0izb (Marc 2026-05-16) — on filtrait sur statut='actif'
+      // uniquement, donc un lot "Pondeuses 2026" mal réformé (statut=termine
+      // mais cheptel non transféré) sortait du calcul et le taux de ponte
+      // tombait à 0/jour → "Taux collecte sem. —". On inclut tout lot dont
+      // quantiteActuelle > 0 quel que soit le statut.
       prisma.lotAnimaux.findMany({
         where: {
           userId,
-          statut: 'actif',
+          quantiteActuelle: { gt: 0 },
         },
         include: {
           especeAnimale: {
@@ -93,12 +98,35 @@ export async function GET(request: NextRequest) {
     // (lib/elevage/taux-ponte.ts) qui ajuste au mois courant et à la race
     // (Marans, Sussex, etc.).
     const refDate = end < now ? end : now
-    const estimationOeufsJour = lotsActifs.reduce((sum, lot) => {
+    let estimationOeufsJour = lotsActifs.reduce((sum, lot) => {
       if (lot.especeAnimale.production === 'oeufs' || lot.especeAnimale.production === 'mixte') {
         return sum + oeufsAttendusJour(lot.quantiteActuelle, lot.especeAnimale.nom, refDate)
       }
       return sum
     }, 0)
+
+    // Bug cmp8s0izb (Marc 2026-05-16) — Fallback : si on a des collectes
+    // mais aucun lot productif (effectifs à 0), on retombe sur les lots
+    // qui ont produit des œufs dans la période en utilisant quantiteInitiale
+    // comme proxy. Évite "Taux collecte —" alors que 76 œufs collectés.
+    if (estimationOeufsJour === 0 && totalOeufs > 0) {
+      const lotIdsProductifs = Array.from(
+        new Set(productions.map((p) => p.lot?.id).filter((x): x is number => typeof x === 'number'))
+      )
+      if (lotIdsProductifs.length > 0) {
+        const lotsProductifs = await prisma.lotAnimaux.findMany({
+          where: { userId, id: { in: lotIdsProductifs } },
+          include: { especeAnimale: { select: { ponteAnnuelle: true, production: true, nom: true } } },
+        })
+        estimationOeufsJour = lotsProductifs.reduce((sum, lot) => {
+          if (lot.especeAnimale.production === 'oeufs' || lot.especeAnimale.production === 'mixte') {
+            const effectif = lot.quantiteActuelle > 0 ? lot.quantiteActuelle : lot.quantiteInitiale
+            return sum + oeufsAttendusJour(effectif, lot.especeAnimale.nom, refDate)
+          }
+          return sum
+        }, 0)
+      }
+    }
 
     return NextResponse.json({
       soins: soins.map(s => ({

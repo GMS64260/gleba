@@ -71,17 +71,42 @@ const columns: ColumnDef<RotationWithRelations>[] = [
   {
     accessorKey: "active",
     header: "Statut",
-    cell: ({ getValue }) => {
-      const active = getValue() as boolean
-      return active ? (
+    // Bug cmp8rvylm (Marc 2026-05-16) — un badge "Active" vert masquait des
+    // rotations sans aucune planche et sans détails. On distingue désormais :
+    //   - Active appliquée (>=1 planche, détails non vides) → vert plein
+    //   - Active orpheline (0 planche) → vert pâle + ⚠
+    //   - Active vide (0 détail) → orange "Incomplète"
+    //   - Inactive → secondaire
+    cell: ({ row }) => {
+      const r = row.original
+      if (!r.active) {
+        return (
+          <Badge variant="secondary">
+            <XCircle className="h-3 w-3 mr-1" />
+            Inactive
+          </Badge>
+        )
+      }
+      if (r.details.length === 0) {
+        return (
+          <Badge variant="outline" className="border-orange-400 text-orange-700 bg-orange-50">
+            <AlertTriangle className="h-3 w-3 mr-1" />
+            Incomplète
+          </Badge>
+        )
+      }
+      if (r._count.planches === 0) {
+        return (
+          <Badge variant="outline" className="border-amber-400 text-amber-800 bg-amber-50">
+            <AlertTriangle className="h-3 w-3 mr-1" />
+            Active (non appliquée)
+          </Badge>
+        )
+      }
+      return (
         <Badge variant="default" className="bg-green-600">
           <CheckCircle2 className="h-3 w-3 mr-1" />
           Active
-        </Badge>
-      ) : (
-        <Badge variant="secondary">
-          <XCircle className="h-3 w-3 mr-1" />
-          Inactive
         </Badge>
       )
     },

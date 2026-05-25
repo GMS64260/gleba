@@ -15,8 +15,15 @@ export default auth((req) => {
     "/roadmap", "/robots.txt", "/sitemap.xml", "/manifest.json", "/feedback",
     // RGPD / LCEN : doivent rester accessibles sans authentification
     "/cgv", "/mentions-legales", "/confidentialite",
+    // Pages cibles SEO (marketing)
+    "/logiciel-maraichage", "/logiciel-micro-ferme", "/logiciel-permaculture",
+    "/logiciel-verger", "/logiciel-elevage", "/calendrier-semis",
+    "/assistant-ia-agricole",
   ]
-  const isPublicRoute = publicRoutes.some((route) => pathname === route || pathname.startsWith(route + "/"))
+  // La home "/" est publique (Server Component qui sert la landing aux non connectés
+  // et l'app aux connectés). Cas dédié car `route + "/"` matche tout avec route = "/".
+  const isHomePage = pathname === "/"
+  const isPublicRoute = isHomePage || publicRoutes.some((route) => pathname === route || pathname.startsWith(route + "/"))
 
   // Routes API publiques (auth NextAuth + MCP avec bearer token + feedback par token)
   const isAuthApi = pathname.startsWith("/api/auth")

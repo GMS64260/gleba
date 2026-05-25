@@ -119,12 +119,20 @@ export function calculerBesoin(input: BesoinSemenceInput): BesoinSemenceResult {
     }
 
     case 'bulbe_caieu': {
-      // uniteDose=caieux_m2 : besoin = surface × caieux/m² × marge.
-      // Sinon (compat) : on prend nbPlants comme valeur agrégée.
-      if (uniteDose === 'caieux_m2' && surfaceM2 > 0 && (input.doseGParM2 ?? 0) > 0) {
+      // Feedback Marc 2026-05-16 — V3 Bug 7 : pour l'oignon, l'ail ou la
+      // pomme de terre planté(e)s en bulbille/tubercule, 1 caïeu = 1
+      // plant. La règle « surface × dose_caieux/m² » donnait 991
+      // caïeux pour 30 m² alors que `nbPlants` valait 414, ce qui
+      // confondait l'utilisateur (les deux KPIs sont censés représenter
+      // la même chose). On privilégie désormais `nbPlants × marge`
+      // quand `nbPlants > 0`, et on retombe sur `surface × dose` seulement
+      // si la culture n'a pas de nbRangs/espacement saisis.
+      if (nbPlants > 0) {
+        besoinCaieux = Math.ceil(nbPlants * margeFactor)
+      } else if (uniteDose === 'caieux_m2' && surfaceM2 > 0 && (input.doseGParM2 ?? 0) > 0) {
         besoinCaieux = Math.ceil(surfaceM2 * (input.doseGParM2 as number) * margeFactor)
       } else {
-        besoinCaieux = nbPlants > 0 ? Math.ceil(nbPlants * margeFactor) : 0
+        besoinCaieux = 0
       }
       break
     }

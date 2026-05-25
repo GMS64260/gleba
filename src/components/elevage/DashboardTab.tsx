@@ -54,7 +54,7 @@ interface DashboardData {
     soinsAPlanifier: number
     alimentsStockBas: number
     stockOeufs: number
-    stockOeufsDetail: { produits: number; casses: number; vendus: number }
+    stockOeufsDetail: { produits: number; casses: number; sales?: number; vendus: number }
     mortaliteAnnee: number
     tauxMortalite: number
     tauxPonte: number | null
@@ -219,12 +219,22 @@ export function DashboardTab({ year }: DashboardTabProps) {
   }
 
   // Preparer donnees graphique production oeufs par mois
+  // Feedback Marc 2026-05-16 — V4 Bug 3 : la requête $queryRaw renvoie
+  // `mois` typé `Prisma.Decimal` (sérialisé en string dans certains cas)
+  // et `total` en `bigint`. Le mapping côté API faisait déjà `Number()`,
+  // mais on blinde ici en cas de désynchronisation type (chart vide alors
+  // que les 1345 œufs/2026 existent en base).
   const productionMoisData = React.useMemo(() => {
     if (!data?.productionOeufsMois) return []
-    const map = new Map(data.productionOeufsMois.map(p => [p.mois, p.total]))
+    const map = new Map<number, number>()
+    for (const p of data.productionOeufsMois) {
+      const m = Number(p.mois)
+      const t = Number(p.total)
+      if (Number.isFinite(m) && Number.isFinite(t)) map.set(m, t)
+    }
     return MOIS_LABELS.map((label, i) => ({
       mois: label,
-      oeufs: map.get(i + 1) || 0,
+      oeufs: map.get(i + 1) ?? 0,
     }))
   }, [data])
 
@@ -250,11 +260,15 @@ export function DashboardTab({ year }: DashboardTabProps) {
               const individus = data.stats.animauxActifs
               const enLots = data.stats.animauxEnLots ?? 0
               const nbLots = data.stats.lotsActifs
+              // Bug cmp8rw40u (Marc 2026-05-16) — "2 lots" comptait les lots
+              // ACTIFS mais la page Lots affiche tous les lots (terminés inclus),
+              // d'où l'incohérence visuelle. On précise "actif" dans le label
+              // pour lever l'ambiguïté.
               const sousTitre =
                 total === 0
                   ? null
                   : enLots > 0
-                  ? `${individus} individu${individus > 1 ? 's' : ''} · ${enLots} en lot${enLots > 1 ? 's' : ''} (${nbLots} lot${nbLots > 1 ? 's' : ''})`
+                  ? `${individus} individu${individus > 1 ? 's' : ''} · ${enLots} en lot${enLots > 1 ? 's' : ''} (${nbLots} lot${nbLots > 1 ? 's' : ''} actif${nbLots > 1 ? 's' : ''})`
                   : `${individus} individu${individus > 1 ? 's' : ''}`
               return (
                 <Link href="/elevage/animaux" className="block">
@@ -326,10 +340,14 @@ export function DashboardTab({ year }: DashboardTabProps) {
                 <CardTitle className="text-2xl">{data.stats.ventesAnnee.toFixed(0)} &euro;</CardTitle>
               </CardHeader>
               <CardContent className="pb-3 px-4">
+                {/* Feedback Marc 2026-05-16 — V4 Bug 4 : on signale
+                    l'incohérence « X ventes / 0 € » (prix de vente non
+                    renseignés) pour éviter la lecture trompeuse
+                    « Ventes 0 € » alors qu'on en a une à 0 €. */}
                 <p className="text-xs text-emerald-100">
                   {data.stats.ventesAnneePrecedente > 0
                     ? `${data.stats.ventesAnnee >= data.stats.ventesAnneePrecedente ? '+' : ''}${Math.round(((data.stats.ventesAnnee - data.stats.ventesAnneePrecedente) / data.stats.ventesAnneePrecedente) * 100)}% vs ${year - 1}`
-                    : `${data.stats.nbVentes} ventes`
+                    : `${data.stats.nbVentes} vente${data.stats.nbVentes > 1 ? 's' : ''}${data.stats.nbVentes > 0 && data.stats.ventesAnnee === 0 ? ' (prix manquants)' : ''}`
                   }
                 </p>
               </CardContent>
@@ -341,7 +359,16 @@ export function DashboardTab({ year }: DashboardTabProps) {
                 <CardTitle className="text-2xl">{data.stats.abattagesAnnee}</CardTitle>
               </CardHeader>
               <CardContent className="pb-3 px-4">
-                <p className="text-xs text-orange-100">{data.stats.poidsCarcasseAnnee.toFixed(1)} kg carcasse</p>
+                {/* Feedback Marc 2026-05-16 — V4 Bug 4 : si poids vif > 0
+                    mais carcasse à 0, on signale l'incohérence agronomique
+                    (perte de rendement ~30% normale entre vif et carcasse). */}
+                <p className="text-xs text-orange-100">
+                  {data.stats.poidsCarcasseAnnee > 0
+                    ? `${data.stats.poidsCarcasseAnnee.toFixed(1)} kg carcasse`
+                    : data.stats.abattagesAnnee > 0
+                      ? "Poids carcasse à compléter"
+                      : "—"}
+                </p>
               </CardContent>
             </Card>
           </div>
@@ -625,11 +652,22 @@ export function DashboardTab({ year }: DashboardTabProps) {
                     )}
                   </div>
                 </div>
-                {soin.datePrevue && (
-                  <span className="text-xs text-muted-foreground flex-shrink-0">
-                    {new Date(soin.datePrevue).toLocaleDateString('fr-FR')}
-                  </span>
-                )}
+                {(() => {
+                  // Bug cmp8rwths — badge "En retard" si datePrevue (ou date)
+                  // est antérieure à aujourd'hui et soin pas encore fait.
+                  const ref = soin.datePrevue ?? (!soin.fait ? soin.date : null)
+                  if (!ref) return null
+                  const refDate = new Date(ref)
+                  const today = new Date(); today.setHours(0, 0, 0, 0)
+                  const isLate = !soin.fait && refDate < today
+                  return (
+                    <span className={`text-xs flex-shrink-0 flex items-center gap-1 ${isLate ? 'text-red-600 font-medium' : 'text-muted-foreground'}`}>
+                      {isLate && <AlertTriangle className="h-3 w-3" />}
+                      {refDate.toLocaleDateString('fr-FR')}
+                      {isLate && ' (en retard)'}
+                    </span>
+                  )
+                })()}
                 <Check className="h-4 w-4 text-slate-300 flex-shrink-0" />
               </button>
             ))}

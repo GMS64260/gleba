@@ -25,10 +25,23 @@ export async function GET(request: NextRequest, { params }: Params) {
       return NextResponse.json({ error: "ID invalide" }, { status: 400 })
     }
 
+    // Feedback Marc 2026-05-16 — V4 Bug 1 : on expose le _count des
+    // dépendances supprimées en cascade (récoltes, opérations,
+    // observations) pour que la fiche puisse alerter l'utilisateur
+    // avant de cliquer sur Supprimer.
     const arbre = await prisma.arbre.findUnique({
       where: {
         id: arbreId,
         userId: session!.user.id,
+      },
+      include: {
+        _count: {
+          select: {
+            recoltesArbres: true,
+            operationsArbres: true,
+            observationsSante: true,
+          },
+        },
       },
     })
 

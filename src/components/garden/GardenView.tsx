@@ -386,11 +386,36 @@ export function GardenView({
 
     // Single drag mode
     if (dragging) {
-      setHasMoved(true)
       const snapGrid = 10
       const newX = Math.round((svgP.x - offset.x) * snapGrid) / snapGrid
       const newY = Math.round((svgP.y - offset.y) * snapGrid) / snapGrid
 
+      // Feedback Marc 2026-05-16 — Bug 05 : un simple clic sur un arbre
+      // déclenchait une sauvegarde alors qu'aucun déplacement n'avait
+      // eu lieu. Cause : tout léger frémissement souris fait passer en
+      // mode drag, et `onArbreMove` est appelé avec une position
+      // identique (après snap) → setHasChanges(true) → toast "Plan
+      // sauvegardé". On ne propage le déplacement QUE si la nouvelle
+      // position (snap inclus) diffère de l'actuelle.
+      let currentX = 0
+      let currentY = 0
+      if (dragging.type === 'planche') {
+        const p = planches.find(p => p.id === dragging.id)
+        currentX = p?.posX ?? 0
+        currentY = p?.posY ?? 0
+      } else if (dragging.type === 'objet') {
+        const o = objets.find(o => o.id === dragging.id)
+        currentX = o?.posX ?? 0
+        currentY = o?.posY ?? 0
+      } else if (dragging.type === 'arbre') {
+        const a = arbres.find(a => a.id === dragging.id)
+        currentX = a?.posX ?? 0
+        currentY = a?.posY ?? 0
+      }
+
+      if (newX === currentX && newY === currentY) return
+
+      setHasMoved(true)
       if (dragging.type === 'planche') {
         onPlancheMove?.(dragging.id as string, newX, newY)
       } else if (dragging.type === 'objet') {
