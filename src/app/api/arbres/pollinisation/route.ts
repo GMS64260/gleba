@@ -148,8 +148,20 @@ export async function GET(request: NextRequest) {
       },
     })
 
+    // Bug #15 — Le tableau UI utilisait `arbre.autofertile` brut et
+    // ignorait les compatibilités dérivées : 1 ligne "Oui" alors que
+    // le compteur en montrait 7, et 17 "Aucun !" alors que l'encart
+    // n'en signalait que 4. On expose pour chaque arbre les flags
+    // effectifs (autofertile + dérivés) calculés ici, pour que la table
+    // s'aligne sur les compteurs.
+    const arbresEnrichis = arbres.map((a) => ({
+      ...a,
+      autofertileEffectif: estAutofertile(a),
+      hasPollinisateurDerive: compatibilitesDerivees.has(a.id),
+    }))
+
     return NextResponse.json({
-      arbres,
+      arbres: arbresEnrichis,
       associations,
       alertes,
       // Feedback Marc 2026-05-16 — V2 Bug 6 : on expose les paires

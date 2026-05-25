@@ -5,6 +5,20 @@
 
 import prisma from '@/lib/prisma'
 import { calculerDateDepuisSemaine } from './assistant-helpers'
+import { alertesAssociations } from './associations-alertes'
+
+/**
+ * Bug #4 — Si la planche n'a pas d'îlot explicite, dériver depuis le préfixe
+ * alpha du nom (A1 → A, B3 → B, Rang 01 → Rang). Évite que l'écran
+ * "Par planches" affiche "-" sur l'intégralité des lignes pour les utilisateurs
+ * qui n'ont pas formalisé leurs îlots.
+ */
+function deriveIlot(ilot: string | null, nom: string | null | undefined): string | null {
+  if (ilot && ilot.trim().length > 0) return ilot
+  if (!nom) return null
+  const match = nom.match(/^[A-Za-zÀ-ÿ]+/)
+  return match ? match[0] : null
+}
 
 // ============================================================
 // TYPES
@@ -105,7 +119,13 @@ export interface AssociationCulture {
   culturesVoisines: {
     plancheId: string
     especeId: string | null
+    // Bug #6 — Évaluation de l'association culture⟷voisin pour signaler
+    // les paires bénéfiques/néfastes (la promesse du bandeau d'info).
+    eval: "favorable" | "defavorable" | "neutre"
+    evalMessage: string | null
   }[]
+  // Synthèse au niveau de la planche pour pouvoir trier / colorer la ligne.
+  scoreAssociation: "favorable" | "defavorable" | "mixte" | "neutre"
 }
 
 // ============================================================
@@ -257,7 +277,7 @@ export async function getCulturesPrevues(
             plancheLongueur: planche.longueur,
             plancheLargeur: planche.largeur,
             plancheSurface: planche.surface,
-            ilot: planche.ilot,
+            ilot: deriveIlot(planche.ilot, planche.nom),
             rotationId: planche.rotationId,
             rotationAnnee: detail.annee,
             itpId: detail.itpId,
@@ -319,7 +339,7 @@ export async function getCulturesPrevues(
         plancheLongueur: culture.planche.longueur,
         plancheLargeur: culture.planche.largeur,
         plancheSurface: culture.planche.surface,
-        ilot: culture.planche.ilot,
+        ilot: deriveIlot(culture.planche.ilot, culture.planche.nom),
         rotationId: culture.planche.rotationId,
         rotationAnnee: 0, // Pas de rotation
         itpId: culture.itpId,
@@ -805,6 +825,33 @@ export async function getAssociations(
 
   const associations: AssociationCulture[] = []
 
+  // Bug #6 — Précharger toutes les paires d'espèces présentes pour évaluer
+  // les associations en un seul scan (vs lookup par paire qui multiplie les
+  // requêtes). On collecte toutes les espèces uniques, puis on calcule la
+  // table d'incompatibilité paire-à-paire.
+  const allEspeceIds = new Set<string>()
+  for (const c of culturesPrevues) {
+    if (c.especeId) allEspeceIds.add(c.especeId)
+  }
+  const alertesAll = allEspeceIds.size >= 2
+    ? await alertesAssociations(prisma, Array.from(allEspeceIds))
+    : []
+
+  // Map "especeA|especeB" → alerte la plus prioritaire (défavorable > favorable).
+  const pairKey = (a: string, b: string) => {
+    const [x, y] = [a.toLowerCase(), b.toLowerCase()].sort()
+    return `${x}|${y}`
+  }
+  const alerteParPaire = new Map<string, { type: "favorable" | "defavorable"; message: string }>()
+  for (const a of alertesAll) {
+    const key = pairKey(a.especes[0], a.especes[1])
+    const existing = alerteParPaire.get(key)
+    // Conserver la défavorable si on a une collision (priorité au risque).
+    if (!existing || (a.type === "defavorable" && existing.type !== "defavorable")) {
+      alerteParPaire.set(key, { type: a.type, message: a.message })
+    }
+  }
+
   for (const culture of culturesPrevues) {
     const planche = plancheMap.get(culture.plancheId)
     if (!planche) continue
@@ -817,9 +864,27 @@ export async function getAssociations(
     const culturesVoisines = planchesVoisines
       .map(pvId => {
         const cv = cultureMap.get(pvId)
-        return cv ? { plancheId: pvId, especeId: cv.especeId } : null
+        if (!cv) return null
+        let evalType: "favorable" | "defavorable" | "neutre" = "neutre"
+        let evalMessage: string | null = null
+        if (culture.especeId && cv.especeId) {
+          const found = alerteParPaire.get(pairKey(culture.especeId, cv.especeId))
+          if (found) {
+            evalType = found.type
+            evalMessage = found.message
+          }
+        }
+        return { plancheId: pvId, especeId: cv.especeId, eval: evalType, evalMessage }
       })
-      .filter((cv): cv is { plancheId: string; especeId: string | null } => cv !== null)
+      .filter((cv): cv is { plancheId: string; especeId: string | null; eval: "favorable" | "defavorable" | "neutre"; evalMessage: string | null } => cv !== null)
+
+    const aDefavorable = culturesVoisines.some(cv => cv.eval === "defavorable")
+    const aFavorable = culturesVoisines.some(cv => cv.eval === "favorable")
+    const scoreAssociation: AssociationCulture["scoreAssociation"] =
+      aDefavorable && aFavorable ? "mixte"
+      : aDefavorable ? "defavorable"
+      : aFavorable ? "favorable"
+      : "neutre"
 
     associations.push({
       plancheId: culture.plancheId,
@@ -828,6 +893,7 @@ export async function getAssociations(
       cultureSemaine: culture.semainePlantation || culture.semaineSemis,
       planchesVoisines,
       culturesVoisines,
+      scoreAssociation,
     })
   }
 

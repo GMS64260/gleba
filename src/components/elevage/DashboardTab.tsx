@@ -309,7 +309,7 @@ export function DashboardTab({ year }: DashboardTabProps) {
                 <p className="text-xs text-slate-300">
                   {data.stats.productionOeufsAnneePrecedente > 0
                     ? `${data.stats.productionOeufsAnnee >= data.stats.productionOeufsAnneePrecedente ? '+' : ''}${Math.round(((data.stats.productionOeufsAnnee - data.stats.productionOeufsAnneePrecedente) / data.stats.productionOeufsAnneePrecedente) * 100)}% vs ${year - 1}`
-                    : `oeufs en ${year}`
+                    : `œufs en ${year}`
                   }
                 </p>
               </CardContent>
@@ -466,7 +466,7 @@ export function DashboardTab({ year }: DashboardTabProps) {
                 <CardTitle className="text-2xl">{data.stats.consoAlimentsKg} kg</CardTitle>
               </CardHeader>
               <CardContent className="pb-3 px-4">
-                <p className="text-xs text-muted-foreground">total distribue</p>
+                <p className="text-xs text-muted-foreground">total distribué</p>
               </CardContent>
             </Card>
           </div>

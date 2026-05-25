@@ -93,6 +93,23 @@ interface Aliment {
   _count: { consommations: number }
 }
 
+// Bug #7 — Mapping code → label avec accents pour les types d'aliments
+// (le code reste sans accents pour rester compatible avec les seeds et les
+// filtres existants).
+const TYPE_LABELS: Record<string, string> = {
+  granules: "Granulés",
+  cereales: "Céréales",
+  complement: "Complément",
+  fourrage: "Fourrage",
+  foin: "Foin",
+  paille: "Paille",
+  autre: "Autre",
+}
+function labelType(code: string | null | undefined): string {
+  if (!code) return "-"
+  return TYPE_LABELS[code.toLowerCase()] ?? code
+}
+
 function StocksSubTab() {
   const { toast } = useToast()
   const [isLoading, setIsLoading] = React.useState(true)
@@ -260,7 +277,7 @@ function StocksSubTab() {
                   return (
                     <TableRow key={a.id} className={stockNegatif ? "bg-red-50" : stockBas ? "bg-orange-50" : ""}>
                       <TableCell className="font-medium">{a.nom}</TableCell>
-                      <TableCell><Badge variant="outline">{a.type || '-'}</Badge></TableCell>
+                      <TableCell><Badge variant="outline">{labelType(a.type)}</Badge></TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           {a.prix ? `${a.prix.toFixed(2)} \u20ac` : '-'}
@@ -285,12 +302,15 @@ function StocksSubTab() {
                             title={stockNegatif ? "Stock négatif — vérifier les consommations" : undefined}
                           >
                             {stockNegatif && "\u26a0\ufe0f "}
-                            {a.stock !== null ? `${a.stock} kg` : '-'}
+                            {/* Bug #7 \u2014 Indication explicite quand stock non
+                                initialis\u00e9 pour \u00e9viter la lecture "rien \u00e0
+                                manger" alors qu'il faut juste cliquer. */}
+                            {a.stock !== null ? `${a.stock} kg` : 'Initialiser'}
                           </button>
                         )}
                       </TableCell>
-                      <TableCell className="text-right text-muted-foreground">{a.stockMin !== null ? `${a.stockMin} kg` : '-'}</TableCell>
-                      <TableCell className="text-muted-foreground text-sm">{a.dateStock ? new Date(a.dateStock).toLocaleDateString('fr-FR') : '-'}</TableCell>
+                      <TableCell className="text-right text-muted-foreground">{a.stockMin !== null ? `${a.stockMin} kg` : '\u2014'}</TableCell>
+                      <TableCell className="text-muted-foreground text-sm">{a.dateStock ? new Date(a.dateStock).toLocaleDateString('fr-FR') : '\u2014'}</TableCell>
                       <TableCell>
                         {stockNegatif ? (
                           <AlertTriangle className="h-4 w-4 text-red-600" />
@@ -408,24 +428,23 @@ function ConsommationsSubTab() {
 
   React.useEffect(() => { fetchData() }, [fetchData])
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    try {
-      const isEdit = editingConsoId !== null
-      const body = {
-        ...(isEdit ? { id: editingConsoId } : {}),
-        alimentId: formData.alimentId,
-        lotId: formData.lotId ? parseInt(formData.lotId) : null,
-        date: formData.date,
-        quantite: parseFloat(formData.quantite),
-        notes: formData.notes || null,
-      }
-      const response = await fetch("/api/elevage/consommations-aliments", {
-        method: isEdit ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      })
-      if (!response.ok) throw new Error("Erreur")
+  const submitConsommation = async (overrideStock = false) => {
+    const isEdit = editingConsoId !== null
+    const body = {
+      ...(isEdit ? { id: editingConsoId } : {}),
+      alimentId: formData.alimentId,
+      lotId: formData.lotId ? parseInt(formData.lotId) : null,
+      date: formData.date,
+      quantite: parseFloat(formData.quantite),
+      notes: formData.notes || null,
+      ...(overrideStock ? { overrideStock: true } : {}),
+    }
+    const response = await fetch("/api/elevage/consommations-aliments", {
+      method: isEdit ? "PATCH" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+    if (response.ok) {
       toast({
         title: isEdit ? "Consommation mise à jour" : "Consommation enregistrée",
         description: `${formData.quantite} kg`,
@@ -433,8 +452,41 @@ function ConsommationsSubTab() {
       setIsDialogOpen(false)
       resetConsoForm()
       fetchData()
+      return
+    }
+
+    // Bug #5 — extraire le message détaillé du serveur. Le 422
+    // STOCK_INSUFFISANT explique exactement combien de stock manque.
+    let payload: { error?: string; code?: string; details?: { message?: string } } = {}
+    try {
+      payload = await response.json()
     } catch {
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible d'enregistrer" })
+      /* corps non-JSON */
+    }
+    if (response.status === 422 && payload.code === "STOCK_INSUFFISANT") {
+      const message = payload.details?.message ?? payload.error ?? "Stock insuffisant"
+      if (window.confirm(`${message}\n\nEnregistrer quand même (stock passera en négatif) ?`)) {
+        await submitConsommation(true)
+      }
+      return
+    }
+    toast({
+      variant: "destructive",
+      title: "Erreur",
+      description: payload.details?.message ?? payload.error ?? "Impossible d'enregistrer",
+    })
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    try {
+      await submitConsommation(false)
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Erreur",
+        description: err instanceof Error ? err.message : "Impossible d'enregistrer",
+      })
     }
   }
 

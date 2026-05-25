@@ -24,6 +24,7 @@ interface CuivreParcelle {
   cuivreKgParHaAn: number
   cuivreKgParHa7ans: number
   statut: "ok" | "warn" | "alert"
+  nbTraitementsCuivreSansDose7ans?: number
 }
 
 interface CuivreData {
@@ -165,6 +166,15 @@ export function CuivreCounterCard() {
             </div>
             <ProgressBar value={p.cuivreKgParHaAn} max={data.plafondAnnuel} label="Année courante" />
             <ProgressBar value={p.cuivreKgParHa7ans} max={data.plafond7ans} label="7 ans glissants" />
+            {/* Bug #12 — traitements cuivrés saisis mais incomplets
+                (dose ou surface manquante) : signaler pour ne pas faire
+                croire à une conformité maximale par défaut. */}
+            {p.nbTraitementsCuivreSansDose7ans && p.nbTraitementsCuivreSansDose7ans > 0 ? (
+              <p className="text-[11px] text-amber-700 flex items-center gap-1">
+                <AlertTriangle className="h-3 w-3" />
+                {p.nbTraitementsCuivreSansDose7ans} traitement{p.nbTraitementsCuivreSansDose7ans > 1 ? 's' : ''} cuivré{p.nbTraitementsCuivreSansDose7ans > 1 ? 's' : ''} sans dose ni surface — complétez pour le calcul de conformité.
+              </p>
+            ) : null}
           </div>
         ))}
       </CardContent>

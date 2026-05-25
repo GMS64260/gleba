@@ -323,7 +323,7 @@ export function PlantationsTab() {
 
                   <div className="flex items-center justify-between pt-2 border-t">
                     <p className="text-xs text-muted-foreground">
-                      {c._count.etapes} etapes · {c._count.observations} obs.
+                      {c._count.etapes} étapes · {c._count.observations} obs.
                     </p>
                     <div className="flex items-center gap-1">
                       <Button

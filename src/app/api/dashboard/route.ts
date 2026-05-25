@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { getKpiMaraichage } from "@/lib/kpi"
+import { getRecoltesAnneeAggregat } from "@/lib/kpi/recoltes-annee"
 
 export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
@@ -26,7 +27,13 @@ export async function GET(request: NextRequest) {
 
     // Source unique de vérité pour les KPI agrégés (surface cultivée vs
     // planifiée, récoltes YTD, comparaison N-1 YTD à date égale).
-    const kpiMaraichage = await getKpiMaraichage(userId, currentYear, asOf)
+    const [kpiMaraichage, recoltesAggregat] = await Promise.all([
+      getKpiMaraichage(userId, currentYear, asOf),
+      // Bug #3 — projection nécessaire au CalendrierTab pour afficher le
+      // contexte "X kg réalisés + Y kg attendus" (sinon le total apparaît
+      // comme un chiffre isolé qu'on confond avec la totalité de l'année).
+      getRecoltesAnneeAggregat(userId, currentYear),
+    ])
 
     // Compteurs purement référentiels (catalogue, pas année-dépendants)
     const [especesCount, arbresCount, recoltesCountYear] = await Promise.all([
@@ -306,6 +313,10 @@ export async function GET(request: NextRequest) {
         recoltesAnneePrecedente: kpiMaraichage.recoltesKgN1Ytd,
         recoltesAnneePrecedenteTotal: kpiMaraichage.recoltesKgN1Total,
         recoltesComparisonMode: "ytd-vs-ytd-n-1",
+        // Bug #3 — alignement avec PlanificationTab.
+        recoltesRealiseesKg: recoltesAggregat.realiseesKg,
+        recoltesProjectionKg: recoltesAggregat.projectionKg,
+        recoltesTotalAttenduKg: recoltesAggregat.totalAttenduKg,
       },
 
       // Graphiques

@@ -55,8 +55,8 @@ interface EspeceAnimale {
 
 const TYPE_LABELS: Record<string, string> = {
   volaille: "Volaille",
-  mammifere_petit: "Petit mammifere",
-  mammifere_grand: "Grand mammifere",
+  mammifere_petit: "Petit mammifère",
+  mammifere_grand: "Grand mammifère",
   autre: "Autre",
 }
 
@@ -224,7 +224,7 @@ export function EspecesTab() {
     },
     {
       title: "Ajouter une espèce",
-      description: "Volaille, mammifere, autre",
+      description: "Volaille, mammifère, autre",
       icon: Plus,
       color: "text-green-600",
       bgColor: "bg-green-100",
@@ -385,8 +385,8 @@ export function EspecesTab() {
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="volaille">Volaille</SelectItem>
-                    <SelectItem value="mammifere_petit">Petit mammifere</SelectItem>
-                    <SelectItem value="mammifere_grand">Grand mammifere</SelectItem>
+                    <SelectItem value="mammifere_petit">Petit mammifère</SelectItem>
+                    <SelectItem value="mammifere_grand">Grand mammifère</SelectItem>
                     <SelectItem value="autre">Autre</SelectItem>
                   </SelectContent>
                 </Select>

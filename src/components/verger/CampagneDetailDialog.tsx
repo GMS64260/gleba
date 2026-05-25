@@ -177,6 +177,13 @@ export function CampagneDetailDialog({ campagneId, open, onOpenChange, onUpdate 
   const [campagne, setCampagne] = React.useState<Campagne | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [editingStatut, setEditingStatut] = React.useState(false)
+  // Bug #ybnkt — Tabs en non-controlled re-démontaient sur chaque load(),
+  // ramenant l'utilisateur à l'Aperçu après un toggle d'étape. On contrôle
+  // l'onglet actif et on ne le reset que lorsque la modale s'ouvre.
+  const [activeTab, setActiveTab] = React.useState<string>("apercu")
+  React.useEffect(() => {
+    if (open) setActiveTab("apercu")
+  }, [open])
 
   // Nouvelle observation
   const [obsForm, setObsForm] = React.useState({
@@ -219,6 +226,9 @@ export function CampagneDetailDialog({ campagneId, open, onOpenChange, onUpdate 
     if (res.ok) {
       load()
       onUpdate?.()
+      toast({ title: newFait ? "Étape marquée comme faite" : "Étape rouverte" })
+    } else {
+      toast({ title: "Échec de la mise à jour de l'étape", variant: "destructive" })
     }
   }
 
@@ -289,10 +299,10 @@ export function CampagneDetailDialog({ campagneId, open, onOpenChange, onUpdate 
           </DialogDescription>
         </DialogHeader>
 
-        {loading ? (
+        {loading && !campagne ? (
           <div className="text-center py-8 text-muted-foreground">Chargement...</div>
         ) : campagne ? (
-          <Tabs defaultValue="apercu" className="space-y-4">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
             <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="apercu">Aperçu</TabsTrigger>
               <TabsTrigger value="etapes">Étapes ({campagne.etapes.length})</TabsTrigger>

@@ -229,8 +229,13 @@ export default function EditCulturePage() {
     initialItpId.current = selectedItp
   }, [selectedItp, itps, form])
 
-  // Mettre à jour la longueur quand la planche change
+  // Mettre à jour la longueur quand la planche change.
+  // Bug Ail #509 — En mode édition, on n'écrase la longueur qu'après que l'utilisateur
+  // ait changé la planche (initialLoadDone). Sans guard, l'ouverture d'une culture
+  // existante écrasait silencieusement la longueur saisie par celle de la planche,
+  // et la quantité restait figée car le useEffect quantite est bloqué pendant le chargement.
   React.useEffect(() => {
+    if (!initialLoadDone.current) return
     if (selectedPlanche) {
       const planche = planches.find((p) => p.id === selectedPlanche)
       if (planche?.longueur) {
@@ -748,7 +753,12 @@ export default function EditCulturePage() {
                     name="quantite"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Quantité / plants (auto)</FormLabel>
+                        <FormLabel
+                          title="Formule : nbRangs × ⌊longueur (cm) ÷ espacement⌋. Recalculé dès que vous modifiez longueur, nb rangs ou espacement. Vous pouvez aussi écrire la valeur manuellement."
+                          className="cursor-help"
+                        >
+                          Quantité / plants (auto) ⓘ
+                        </FormLabel>
                         <FormControl>
                           <Input
                             type="number"
@@ -762,6 +772,14 @@ export default function EditCulturePage() {
                             }
                           />
                         </FormControl>
+                        {/* Bug #2 — montrer la formule active pour éviter
+                            l'impression d'une valeur figée. */}
+                        {watchedLongueur && watchedNbRangs && watchedEspacement && watchedEspacement > 0 && (
+                          <p className="text-xs text-slate-500">
+                            = {watchedNbRangs} rang(s) × ⌊{watchedLongueur} m ÷ {watchedEspacement} cm⌋
+                            = {Math.floor((watchedLongueur * 100) / watchedEspacement) * watchedNbRangs}
+                          </p>
+                        )}
                         <FormMessage />
                       </FormItem>
                     )}

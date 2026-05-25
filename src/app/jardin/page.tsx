@@ -112,6 +112,7 @@ interface ParcelleOption {
   id: string
   nom: string
   usage: string | null
+  plancheCount: number
 }
 
 export default function JardinPage() {
@@ -137,16 +138,27 @@ function JardinContent() {
   const [hasChanges, setHasChanges] = React.useState(false)
 
   // Lire la parcelle depuis l'URL si presente (?parcelle=ID ou ?usage=culture|verger)
+  // Bug feedback cmpkyc0qy — Sur ?usage=culture, le `find` retournait la 1re parcelle
+  // marquée "culture" indépendamment de son contenu (Demo-C tunnel = 0 planche).
+  // L'utilisateur voyait un canvas vide alors que Demo-A avait 11 planches.
+  // On préfère désormais la parcelle qui a déjà des planches assignées.
+  const urlAutoSelectDone = React.useRef(false)
   React.useEffect(() => {
+    if (urlAutoSelectDone.current) return
     const p = searchParams.get('parcelle')
     if (p) {
       setSelectedParcelleId(p)
+      urlAutoSelectDone.current = true
       return
     }
     const usage = searchParams.get('usage')
     if (usage && parcelles.length > 0) {
-      const match = parcelles.find(pa => pa.usage?.split(',').map(u => u.trim()).includes(usage))
+      const matches = parcelles.filter(pa =>
+        pa.usage?.split(',').map(u => u.trim()).includes(usage)
+      )
+      const match = matches.find(pa => pa.plancheCount > 0) ?? matches[0]
       if (match) setSelectedParcelleId(match.id)
+      urlAutoSelectDone.current = true
     }
   }, [searchParams, parcelles])
   const [saving, setSaving] = React.useState(false)
@@ -284,7 +296,12 @@ function JardinContent() {
       const response = await fetch("/api/carte")
       if (!response.ok) return
       const data = await response.json()
-      setParcelles(data.map((p: any) => ({ id: p.id, nom: p.nom, usage: p.usage })))
+      setParcelles(data.map((p: any) => ({
+        id: p.id,
+        nom: p.nom,
+        usage: p.usage,
+        plancheCount: p._count?.planches ?? 0,
+      })))
     } catch {
       // Ignorer
     }

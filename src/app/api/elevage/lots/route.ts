@@ -45,7 +45,36 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    return NextResponse.json({ data: lots })
+    // Bug #18 — Pour chaque lot, comptabiliser les naissances rattachables
+    // (mère dans le lot) pour signaler les écarts non documentés entre
+    // `quantiteInitiale` et `quantiteActuelle`. Permet à l'UI d'afficher
+    // un badge "Écart non traçable" si quantité a gonflé sans naissance
+    // ni achat enregistrés.
+    const lotIds = lots.map(l => l.id)
+    const naissancesParLot = new Map<number, number>()
+    if (lotIds.length > 0) {
+      const meresInLots = await prisma.animal.findMany({
+        where: { userId: session.user.id, lotId: { in: lotIds } },
+        select: { id: true, lotId: true },
+      })
+      const lotByMereId = new Map(meresInLots.map(m => [m.id, m.lotId]))
+      const naissances = await prisma.naissanceAnimale.findMany({
+        where: { userId: session.user.id, mereId: { in: meresInLots.map(m => m.id) } },
+        select: { mereId: true, nombreVivants: true },
+      })
+      for (const n of naissances) {
+        const lotId = n.mereId != null ? lotByMereId.get(n.mereId) : null
+        if (!lotId) continue
+        naissancesParLot.set(lotId, (naissancesParLot.get(lotId) ?? 0) + n.nombreVivants)
+      }
+    }
+
+    const enriched = lots.map(l => ({
+      ...l,
+      naissancesVivantes: naissancesParLot.get(l.id) ?? 0,
+    }))
+
+    return NextResponse.json({ data: enriched })
   } catch (error) {
     console.error('GET /api/elevage/lots error:', error)
     return NextResponse.json(

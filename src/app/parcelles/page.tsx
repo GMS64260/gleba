@@ -23,6 +23,7 @@ import {
   COUCHE_LABELS,
   formatSurface,
   formatEntites,
+  resoudreCouches,
   type ParcelleWithRelations,
 } from "@/components/parcelles/parcelle-constants"
 
@@ -43,7 +44,7 @@ const createColumns = (): ColumnDef<ParcelleWithRelations>[] => [
     id: "couches",
     header: "Couches",
     cell: ({ row }) => {
-      const couches = row.original.couches
+      const couches = resoudreCouches(row.original)
       if (!couches?.length) return <span className="text-muted-foreground">-</span>
       return (
         <div className="flex flex-wrap gap-1">
@@ -95,15 +96,19 @@ function ParcelleCard({
         <span>{formatSurface(parcelle.surface)}</span>
         {entites && <span>{entites}</span>}
       </div>
-      {parcelle.couches?.length > 0 && (
-        <div className="flex flex-wrap gap-1">
-          {parcelle.couches.map((c) => (
-            <Badge key={c} variant="secondary" className={`text-xs ${COUCHE_COLORS[c] || ""}`}>
-              {COUCHE_LABELS[c] || c}
-            </Badge>
-          ))}
-        </div>
-      )}
+      {(() => {
+        const couches = resoudreCouches(parcelle)
+        if (couches.length === 0) return null
+        return (
+          <div className="flex flex-wrap gap-1">
+            {couches.map((c) => (
+              <Badge key={c} variant="secondary" className={`text-xs ${COUCHE_COLORS[c] || ""}`}>
+                {COUCHE_LABELS[c] || c}
+              </Badge>
+            ))}
+          </div>
+        )
+      })()}
     </div>
   )
 }

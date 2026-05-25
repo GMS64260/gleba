@@ -587,7 +587,16 @@ function AnimauxSubTab() {
                 {filteredAnimaux.map((animal) => (
                   <TableRow key={animal.id} className="cursor-pointer hover:bg-muted/50">
                     <TableCell className="font-medium">{animal.identifiant || '-'}</TableCell>
-                    <TableCell>{animal.nom || '-'}</TableCell>
+                    <TableCell>
+                      {/* Bug #19 — Le nom n'était pas cliquable malgré
+                          l'attente utilisateur (l'identifiant en fil
+                          d'ariane est déjà un lien). */}
+                      {animal.nom ? (
+                        <Link href={`/elevage/animaux/${animal.id}`} className="hover:underline text-blue-700">
+                          {animal.nom}
+                        </Link>
+                      ) : '-'}
+                    </TableCell>
                     {/* QA Julien 2026-05-15 — Bug #10 : colonne Espèce
                         toujours visible et stable, affichage du libellé
                         de base (Poule / Brebis…) — la race est dans la
@@ -627,14 +636,19 @@ function AnimauxSubTab() {
                           <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
                             <Tooltip>
                               <TooltipTrigger asChild>
+                                {/* Bug #19 — Le tooltip "Fiche animal"
+                                    sur un stéthoscope laissait croire à
+                                    une saisie de soin. On clarifie + on
+                                    ancre la fiche sur la section soins
+                                    pour limiter le détour. */}
                                 <Link
-                                  href={`/elevage/animaux/${animal.id}`}
+                                  href={`/elevage/animaux/${animal.id}#soins`}
                                   className="p-1.5 rounded-md transition-colors bg-slate-100 text-slate-500 hover:bg-blue-100 hover:text-blue-600 inline-flex"
                                 >
                                   <Stethoscope className="h-3.5 w-3.5" />
                                 </Link>
                               </TooltipTrigger>
-                              <TooltipContent>Fiche animal</TooltipContent>
+                              <TooltipContent>Fiche &amp; soins</TooltipContent>
                             </Tooltip>
                             <Tooltip>
                               <TooltipTrigger asChild>
@@ -825,7 +839,7 @@ function AnimauxSubTab() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Skull className="h-5 w-5 text-slate-500" />
-              Enregistrer un deces
+              Enregistrer un décès
             </DialogTitle>
             <DialogDescription>
               {mortDialog?.nom || mortDialog?.identifiant || ''} — {mortDialog?.especeAnimale.nom}
@@ -837,12 +851,12 @@ function AnimauxSubTab() {
               <Input type="date" value={mortForm.date} onChange={(e) => setMortForm(f => ({ ...f, date: e.target.value }))} />
             </div>
             <div className="space-y-2">
-              <Label>Cause du deces</Label>
+              <Label>Cause du décès</Label>
               <Select value={mortForm.cause} onValueChange={(v) => setMortForm(f => ({ ...f, cause: v }))}>
                 <SelectTrigger><SelectValue placeholder="Sélectionner..." /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Maladie">Maladie</SelectItem>
-                  <SelectItem value="Predateur">Predateur</SelectItem>
+                  <SelectItem value="Predateur">Prédateur</SelectItem>
                   <SelectItem value="Accident">Accident</SelectItem>
                   <SelectItem value="Vieillesse">Vieillesse</SelectItem>
                   <SelectItem value="Cause inconnue">Cause inconnue</SelectItem>
@@ -851,11 +865,11 @@ function AnimauxSubTab() {
             </div>
             <div className="space-y-2">
               <Label>Notes</Label>
-              <Textarea value={mortForm.notes} onChange={(e) => setMortForm(f => ({ ...f, notes: e.target.value }))} rows={2} placeholder="Détails supplementaires..." />
+              <Textarea value={mortForm.notes} onChange={(e) => setMortForm(f => ({ ...f, notes: e.target.value }))} rows={2} placeholder="Détails supplémentaires..." />
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="outline" onClick={() => setMortDialog(null)}>Annuler</Button>
-              <Button type="submit" variant="destructive">Confirmer le deces</Button>
+              <Button type="submit" variant="destructive">Confirmer le décès</Button>
             </div>
           </form>
         </DialogContent>
@@ -1133,7 +1147,25 @@ function LotsSubTab() {
                       </div>
                     </TableCell>
                     <TableCell className="text-right">{lot.quantiteInitiale}</TableCell>
-                    <TableCell className="text-right font-bold">{lot.quantiteActuelle}</TableCell>
+                    <TableCell className="text-right font-bold">
+                      {(() => {
+                        // Bug #18 — Signaler les écarts initial → actuel non
+                        // tracés (ni naissances dans le lot, ni transferts).
+                        const l = lot as typeof lot & { naissancesVivantes?: number }
+                        const naissances = l.naissancesVivantes ?? 0
+                        const ecart = lot.quantiteActuelle - lot.quantiteInitiale
+                        const ecartNonTrace = ecart - naissances
+                        if (ecartNonTrace > 0) {
+                          return (
+                            <span title={`+${ecart} animaux dont ${naissances} naissance(s) enregistrée(s). Écart non documenté : ${ecartNonTrace}.`} className="inline-flex items-center gap-1">
+                              {lot.quantiteActuelle}
+                              <span className="text-amber-600 text-xs">⚠️</span>
+                            </span>
+                          )
+                        }
+                        return lot.quantiteActuelle
+                      })()}
+                    </TableCell>
                     <TableCell>{lot.dateArrivee ? new Date(lot.dateArrivee).toLocaleDateString('fr-FR') : '-'}</TableCell>
                     <TableCell>
                       {lot.parcelleGeo ? (

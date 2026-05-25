@@ -92,7 +92,21 @@ function createColumns(
     {
       accessorKey: "date",
       header: "Date",
-      cell: ({ getValue }) => new Date(getValue() as string).toLocaleDateString("fr-FR"),
+      cell: ({ row }) => {
+        // Bug #8 — Pour une opération non faite, c'est la `datePrevue` qui
+        // porte la date métier (la `date` colonne est juste un default now()
+        // au moment du seed, raison pour laquelle 7 ops Boskoop étaient
+        // toutes affichées au 14/05).
+        const op = row.original
+        const effective = !op.fait && op.datePrevue ? op.datePrevue : op.date
+        const label = new Date(effective).toLocaleDateString("fr-FR")
+        return (
+          <span className={!op.fait ? "text-slate-600" : ""}>
+            {label}
+            {!op.fait && op.datePrevue ? <span className="ml-1 text-[10px] text-slate-400">(prévu)</span> : null}
+          </span>
+        )
+      },
     },
     {
       accessorKey: "arbre.nom",
@@ -102,11 +116,25 @@ function createColumns(
     {
       accessorKey: "type",
       header: "Type",
-      cell: ({ getValue }) => (
-        <Badge variant="outline" className="text-xs capitalize">
-          {getValue() as string}
-        </Badge>
-      ),
+      cell: ({ getValue }) => {
+        // Bug #17 — mapping code → label accentué (les codes en DB sont
+        // sans accents pour rester compatibles avec les seeds historiques).
+        const code = (getValue() as string) ?? ""
+        const labels: Record<string, string> = {
+          taille: "Taille",
+          traitement: "Traitement",
+          fertilisation: "Fertilisation",
+          recolte: "Récolte",
+          greffe: "Greffe",
+          autre: "Autre",
+        }
+        const label = labels[code.toLowerCase()] ?? code
+        return (
+          <Badge variant="outline" className="text-xs capitalize">
+            {label}
+          </Badge>
+        )
+      },
     },
     {
       accessorKey: "description",

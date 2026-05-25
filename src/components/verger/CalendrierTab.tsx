@@ -290,6 +290,30 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
               <CardContent>
                 {(() => {
                   const p = data.stats.pyramideAge!
+                  const totalAvecDate = p.age_0_5 + p.age_5_15 + p.age_15_30 + p.age_30_plus
+                  // Bug #20 — Barres figées à 0 sans contexte clair :
+                  // si TOUS les arbres sont sans date de plantation, on
+                  // remplace la pyramide vide par un message d'invitation
+                  // à compléter la donnée (utile pour les aides PCAE/HVE).
+                  if (totalAvecDate === 0) {
+                    return (
+                      <div className="text-center py-6 space-y-2">
+                        <p className="text-sm text-slate-700">
+                          {p.sansDate} arbre(s) sans date de plantation.
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Renseignez la date de plantation pour calculer la pyramide d'âge
+                          (utile aux dossiers PCAE / HVE).
+                        </p>
+                        <Link
+                          href="/verger?tab=arbres"
+                          className="inline-block text-xs px-3 py-1.5 rounded-md bg-emerald-600 text-white hover:bg-emerald-700"
+                        >
+                          Compléter les dates
+                        </Link>
+                      </div>
+                    )
+                  }
                   const max = Math.max(p.age_0_5, p.age_5_15, p.age_15_30, p.age_30_plus, 1)
                   const tranches: { label: string; n: number; color: string }[] = [
                     { label: "0 – 5 ans", n: p.age_0_5, color: "bg-emerald-400" },

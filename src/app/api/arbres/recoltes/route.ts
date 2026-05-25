@@ -182,6 +182,15 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    // Feedback testeur cmpky7zmy — Si récolte hors saison, on persiste
+    // l'avertissement dans le champ notes pour qu'il reste visible sur
+    // la fiche/liste, et pas seulement dans le toast éphémère lors de
+    // la création (le testeur n'avait aucun indice visuel a posteriori
+    // qu'une Belle de Boskoop avait été récoltée 5 mois trop tôt).
+    const notesAvecWarning = recolteWarnings.length > 0
+      ? `⚠️ ${recolteWarnings.join(' ')}${body.notes ? `\n${body.notes}` : ''}`
+      : body.notes || null
+
     const recolte = await prisma.recolteArbre.create({
       data: {
         userId,
@@ -192,7 +201,7 @@ export async function POST(request: NextRequest) {
         prixKg: body.prixKg || null,
         statut: "en_stock",
         datePeremption: body.datePeremption ? new Date(body.datePeremption) : null,
-        notes: body.notes || null,
+        notes: notesAvecWarning,
         statutBioSnapshot,
         // DEV3 #4
         parcelleId,

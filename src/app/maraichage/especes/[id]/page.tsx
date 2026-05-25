@@ -894,7 +894,7 @@ export default function EditEspecePage() {
                         name="rendement"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Rendement (kg/m2)</FormLabel>
+                            <FormLabel>Rendement ({form.watch("type") === "arbre_fruitier" ? "kg/arbre" : "kg/m²"})</FormLabel>
                             <FormControl>
                               <Input
                                 type="number"

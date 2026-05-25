@@ -132,9 +132,19 @@ export async function fetchOpenMeteoForecast(lat: number, lng: number): Promise<
     forecast_days: '7',
   })
 
-  const res = await fetch(`${OPEN_METEO_FORECAST_URL}?${params}`, {
-    next: { revalidate: 3600 }, // Cache Next.js 1h
-  })
+  // Bug #11 — timeout 8 s pour éviter qu'un Open-Meteo lent fasse
+  // timeouter Caddy (503 sur /api/calendrier).
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 8000)
+  let res: Response
+  try {
+    res = await fetch(`${OPEN_METEO_FORECAST_URL}?${params}`, {
+      next: { revalidate: 3600 }, // Cache Next.js 1h
+      signal: controller.signal,
+    })
+  } finally {
+    clearTimeout(timeoutId)
+  }
 
   if (!res.ok) {
     throw new Error(`Open-Meteo forecast error: ${res.status} ${res.statusText}`)

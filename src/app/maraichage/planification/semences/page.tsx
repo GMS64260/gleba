@@ -421,9 +421,12 @@ function SemencesContent() {
     URL.revokeObjectURL(url)
   }
 
-  const graineDirecte = data.filter(b => b.mode === "graine_directe")
-  const plantRepique = data.filter(b => b.mode === "plant_repique")
-  const bulbeCaieu = data.filter(b => b.mode === "bulbe_caieu")
+  // Bug #10 — Aligner le filtrage table avec le compteur d'onglet :
+  // les besoins IGNORE (statut neutre, hors plan) ne doivent pas gonfler
+  // l'affichage (« Graines nécessaires (5) » vs 7 lignes dans le tableau).
+  const graineDirecte = data.filter(b => b.mode === "graine_directe" && b.statut !== "IGNORE")
+  const plantRepique = data.filter(b => b.mode === "plant_repique" && b.statut !== "IGNORE")
+  const bulbeCaieu = data.filter(b => b.mode === "bulbe_caieu" && b.statut !== "IGNORE")
 
   // BUG-01 : total brut sommé ligne à ligne (chaque espèce peut avoir une
   // marge différente). Le serveur ne renvoie que le total majoré.

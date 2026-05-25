@@ -87,7 +87,7 @@ const columns: ColumnDef<CulturePrevue>[] = [
   },
   {
     accessorKey: "ilot",
-    header: "Ilot",
+    header: "Îlot",
     cell: ({ getValue }) => getValue() || "-",
   },
   {
@@ -141,7 +141,7 @@ const columns: ColumnDef<CulturePrevue>[] = [
   {
     accessorKey: "surface",
     header: "Surface",
-    cell: ({ getValue }) => `${(getValue() as number).toFixed(1)} m2`,
+    cell: ({ getValue }) => `${(getValue() as number).toFixed(1)} m²`,
   },
   {
     id: "statut",
@@ -223,7 +223,7 @@ function CulturesPrevuesParPlanchesContent() {
   }, [fetchData])
 
   const handleExport = () => {
-    const headers = ["Planche", "Ilot", "Rotation", "Année Rot.", "Espèce", "S.Semis", "S.Plantation", "S.Récolte", "Surface (m2)", "Statut"]
+    const headers = ["Planche", "Îlot", "Rotation", "Année Rot.", "Espèce", "S.Semis", "S.Plantation", "S.Récolte", "Surface (m²)", "Statut"]
     const rows = data.map(c => [
       c.plancheId,
       c.ilot || "",
@@ -296,7 +296,7 @@ function CulturesPrevuesParPlanchesContent() {
           </Link>
           <Link href={`/maraichage/planification/cultures-prevues/par-ilots?annee=${annee}`}>
             <Button variant="outline" size="sm">
-              Par ilots
+              Par îlots
             </Button>
           </Link>
           <Link href={`/maraichage/planification/cultures-prevues/par-planches?annee=${annee}`}>

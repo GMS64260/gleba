@@ -251,7 +251,19 @@ export async function GET(request: NextRequest) {
     })
 
     // VenteManuelle -> revenus
+    // Bug feedback cmpkyeynq — Quand une VenteManuelle a été créée depuis
+    // une CommandeBoutique livrée, son `clientNom` est souvent vide
+    // (l'écran "/comptabilite/transactions" affichait alors "-" pour le
+    // client alors que le nom était dans la commande source). On résout
+    // par jointure pour les sourceType='commande_boutique'.
+    const boutiqueClientById = new Map<number, string | null>(
+      commandesBoutique.map(c => [c.id, c.clientNom])
+    )
     ventesManuelles.forEach(v => {
+      const fallbackClient =
+        v.sourceType === 'commande_boutique' && v.sourceId != null
+          ? boutiqueClientById.get(v.sourceId) ?? null
+          : null
       revenues.push({
         id: `manuel-${v.id}`,
         source: 'VenteManuelle',
@@ -263,7 +275,7 @@ export async function GET(request: NextRequest) {
         unite: v.unite,
         prixUnitaire: v.prixUnitaire,
         montant: v.montant,
-        client: v.clientNom,
+        client: v.clientNom || fallbackClient,
         paye: v.paye,
         categorie: v.categorie === 'legumes' ? 'Légumes' :
                    v.categorie === 'fruits' ? 'Fruits' :

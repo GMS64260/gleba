@@ -55,6 +55,10 @@ interface DashboardStats {
   recoltesAnneePrecedente: number
   recoltesAnneePrecedenteTotal?: number
   comparisonMode?: string
+  // Bug #3 — projection unifiée avec PlanificationTab.
+  recoltesRealiseesKg?: number
+  recoltesProjectionKg?: number
+  recoltesTotalAttenduKg?: number
 }
 
 interface TacheItem {
@@ -407,6 +411,17 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
               </CardTitle>
             </CardHeader>
             <CardContent className="pb-3 px-4">
+              {/* Bug #3 — afficher le prévisionnel restant pour éviter
+                  l'impression que les 85 kg = total de l'année (le bloc
+                  Planification annonçait 1367 kg attendus). */}
+              {(stats?.recoltesProjectionKg ?? 0) > 0 && (
+                <p className="text-[11px] text-amber-100 mb-0.5">
+                  + {stats?.recoltesProjectionKg?.toFixed(1)} kg à venir
+                  {stats?.recoltesTotalAttenduKg
+                    ? ` (total attendu ${stats.recoltesTotalAttenduKg.toFixed(1)} kg)`
+                    : ""}
+                </p>
+              )}
               {aucuneRecolteN ? (
                 <p className="text-[10px] text-amber-100 italic">
                   Saison à venir (N-1 : {stats?.recoltesAnneePrecedente?.toFixed(1)} kg)
