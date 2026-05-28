@@ -13,6 +13,7 @@ import { useSession } from "next-auth/react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { UserMenu } from "@/components/auth/UserMenu"
 import {
   Sprout,
@@ -313,6 +314,23 @@ function TraçabilitéContent() {
 
   // Expanded cultures
   const [expandedCultures, setExpandedCultures] = React.useState<Set<number>>(new Set())
+  // Bug feedback testeur 2026-05-26 (cmpm732hg) — garde-fou export :
+  // si des fiches sont non conformes (N° AMM / dose / DAR manquants),
+  // on confirme explicitement avant l'export (registre incomplet =
+  // non opposable lors d'un contrôle HVE/AB/DDPP).
+  const [pendingExport, setPendingExport] = React.useState<string | null>(null)
+
+  const handlePhytoExport = React.useCallback(
+    (format: "pdf" | "csv") => {
+      const url = `/api/registre-phyto/export?from=${selectedYear}-01-01&to=${selectedYear}-12-31&format=${format}`
+      if ((phytoData?.stats.nbIncomplets ?? 0) > 0) {
+        setPendingExport(url)
+      } else {
+        window.open(url, "_blank", "noopener,noreferrer")
+      }
+    },
+    [selectedYear, phytoData]
+  )
 
   // Fetch data when tab or year changes
   React.useEffect(() => {
@@ -471,36 +489,26 @@ function TraçabilitéContent() {
               {/* PROMPT 11 LOT C — Export PDF / CSV du registre phyto (conforme arrêté 2009). */}
               {activeTab === "phyto" && (
                 <>
-                  <a
-                    href={`/api/registre-phyto/export?from=${selectedYear}-01-01&to=${selectedYear}-12-31&format=pdf`}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePhytoExport("pdf")}
+                    className="text-emerald-700 border-emerald-300 hover:bg-emerald-50"
                   >
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-emerald-700 border-emerald-300 hover:bg-emerald-50"
-                    >
-                      <FileText className="h-4 w-4 mr-1" />
-                      <span className="hidden sm:inline">Export PDF officiel</span>
-                      <span className="sm:hidden">PDF</span>
-                    </Button>
-                  </a>
-                  <a
-                    href={`/api/registre-phyto/export?from=${selectedYear}-01-01&to=${selectedYear}-12-31&format=csv`}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                    <FileText className="h-4 w-4 mr-1" />
+                    <span className="hidden sm:inline">Export PDF officiel</span>
+                    <span className="sm:hidden">PDF</span>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePhytoExport("csv")}
+                    className="text-emerald-700 border-emerald-300 hover:bg-emerald-50"
                   >
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-emerald-700 border-emerald-300 hover:bg-emerald-50"
-                    >
-                      <FileText className="h-4 w-4 mr-1" />
-                      <span className="hidden sm:inline">Export CSV (Excel)</span>
-                      <span className="sm:hidden">CSV</span>
-                    </Button>
-                  </a>
+                    <FileText className="h-4 w-4 mr-1" />
+                    <span className="hidden sm:inline">Export CSV (Excel)</span>
+                    <span className="sm:hidden">CSV</span>
+                  </Button>
                 </>
               )}
               <select
@@ -548,6 +556,29 @@ function TraçabilitéContent() {
           <ElevageRegistreTab data={elevageData} loading={loading} year={selectedYear} />
         )}
       </main>
+
+      {/* Garde-fou export registre phyto incomplet (cmpm732hg). */}
+      <ConfirmDialog
+        open={pendingExport !== null}
+        onOpenChange={(o) => !o && setPendingExport(null)}
+        title="Registre incomplet — export non conforme"
+        description={
+          <span>
+            {phytoData?.stats.nbIncomplets ?? 0} traitement(s) ont des champs obligatoires
+            manquants (N° AMM, dose ou DAR). Un registre incomplet n'est{" "}
+            <strong>pas opposable</strong> lors d'un contrôle (HVE, AB, DDPP). Complétez les
+            fiches signalées « Non conforme » avant l'export, ou exportez quand même pour un
+            usage interne.
+          </span>
+        }
+        confirmLabel="Exporter quand même"
+        cancelLabel="Compléter d'abord"
+        variant="warning"
+        onConfirm={() => {
+          if (pendingExport) window.open(pendingExport, "_blank", "noopener,noreferrer")
+          setPendingExport(null)
+        }}
+      />
     </div>
   )
 }
@@ -675,7 +706,18 @@ function PhytoTab({
                   key={entry.id}
                   className={`border-b hover:bg-slate-50 ${!entry.complet ? "bg-red-50/50" : ""}`}
                 >
-                  <td className="p-2 whitespace-nowrap">{formatDate(entry.date)}</td>
+                  <td className="p-2 whitespace-nowrap">
+                    {formatDate(entry.date)}
+                    {!entry.complet && (
+                      <span
+                        className="mt-0.5 flex items-center gap-0.5 text-[10px] font-bold uppercase tracking-wide text-red-600"
+                        title={`Non conforme — champs obligatoires manquants : ${entry.champsManquants.join(", ")}`}
+                      >
+                        <AlertCircle className="h-3 w-3" />
+                        Non conforme
+                      </span>
+                    )}
+                  </td>
                   <td className="p-2">
                     <span className="font-medium">{entry.culture}</span>
                     {!entry.culture || entry.culture === "Non renseigne" ? (
@@ -1110,8 +1152,8 @@ function SanitaireTab({
                 <th className="text-left p-2 font-semibold">Type</th>
                 <th className="text-left p-2 font-semibold">Description</th>
                 <th className="text-left p-2 font-semibold">Produit</th>
-                <th className="text-left p-2 font-semibold">Quantite</th>
-                <th className="text-left p-2 font-semibold">Veterinaire</th>
+                <th className="text-left p-2 font-semibold">Quantité</th>
+                <th className="text-left p-2 font-semibold">Vétérinaire</th>
                 <th className="text-left p-2 font-semibold">Notes</th>
               </tr>
             </thead>

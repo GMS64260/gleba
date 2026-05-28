@@ -552,10 +552,12 @@ export function ArbresTab() {
         onRowEdit={(row) => router.push(`/verger/${row.id}`)}
         onRowDelete={(row) => setArbreToDelete(row)}
         searchPlaceholder="Rechercher un arbre..."
-        emptyMessage="Aucun arbre trouve."
+        emptyMessage="Aucun arbre trouvé."
       />
 
-      {/* Confirmation suppression avec dépendances */}
+      {/* Confirmation suppression avec dépendances + alternative d'archivage
+          (bug feedback testeur 2026-05-25 cmplk9y7q — la suppression cascade
+          des récoltes/traitements casse la traçabilité Bio/HVE). */}
       <DeleteConfirmDialog
         open={arbreToDelete !== null}
         onOpenChange={(open) => !open && setArbreToDelete(null)}
@@ -569,6 +571,7 @@ export function ArbresTab() {
               ]
             : []
         }
+        warning="Bio/HVE : la suppression purge le registre phyto et l'historique. Préférez « Archiver » pour conserver la traçabilité."
         onConfirm={async () => {
           if (!arbreToDelete) return
           try {
@@ -577,6 +580,24 @@ export function ArbresTab() {
             fetchData()
           } catch {
             toast({ variant: "destructive", title: "Erreur" })
+          }
+        }}
+        onArchive={async () => {
+          if (!arbreToDelete) return
+          try {
+            const res = await fetch(`/api/arbres/${arbreToDelete.id}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ etat: "mort" }),
+            })
+            if (!res.ok) throw new Error("archive failed")
+            toast({
+              title: "Arbre archivé",
+              description: "Récoltes, opérations et observations conservées.",
+            })
+            fetchData()
+          } catch {
+            toast({ variant: "destructive", title: "Erreur d'archivage" })
           }
         }}
       />

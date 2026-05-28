@@ -97,13 +97,27 @@ function createColumns(
         // porte la date métier (la `date` colonne est juste un default now()
         // au moment du seed, raison pour laquelle 7 ops Boskoop étaient
         // toutes affichées au 14/05).
+        // Bug feedback testeur 2026-05-26 (cmplp0rb) — Ajout du badge "En
+        // retard" pour les opérations non faites dont datePrevue est
+        // dépassée.
         const op = row.original
         const effective = !op.fait && op.datePrevue ? op.datePrevue : op.date
         const label = new Date(effective).toLocaleDateString("fr-FR")
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+        const enRetard =
+          !op.fait && !!op.datePrevue && new Date(op.datePrevue) < today
         return (
           <span className={!op.fait ? "text-slate-600" : ""}>
             {label}
-            {!op.fait && op.datePrevue ? <span className="ml-1 text-[10px] text-slate-400">(prévu)</span> : null}
+            {!op.fait && op.datePrevue && !enRetard ? (
+              <span className="ml-1 text-[10px] text-slate-400">(prévu)</span>
+            ) : null}
+            {enRetard ? (
+              <Badge className="ml-1 bg-red-100 text-red-700 text-[10px] border border-red-300" variant="outline">
+                En retard
+              </Badge>
+            ) : null}
           </span>
         )
       },

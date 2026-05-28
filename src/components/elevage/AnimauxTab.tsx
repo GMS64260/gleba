@@ -198,19 +198,32 @@ function AnimauxSubTab() {
   // (Poule, Brebis…), donc on charge la liste sans ce filtre et on
   // filtre côté client dans `filteredAnimaux`. Le filtre statut reste
   // serveur (volume potentiellement gros).
+  // Bug feedback testeur 2026-05-26 (cmpm780qz) — Le filtre "espèces" ne
+  // listait que celles des animaux nominatifs : un user qui gère tout son
+  // troupeau en LOTS (poules, brebis, lapins) ne voyait que Chèvre et
+  // Cochon. On fetch aussi les lots actifs pour agréger leurs espèces.
+  const [lotsEspeceIds, setLotsEspeceIds] = React.useState<string[]>([])
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
     try {
       let url = '/api/elevage/animaux?'
       if (filterStatut !== 'all') url += `statut=${filterStatut}&`
 
-      const [animauxRes, especesRes] = await Promise.all([
+      const [animauxRes, especesRes, lotsRes] = await Promise.all([
         fetch(url),
         fetch('/api/elevage/especes-animales'),
+        fetch('/api/elevage/lots'),
       ])
 
       if (animauxRes.ok) setAnimaux((await animauxRes.json()).data)
       if (especesRes.ok) setEspeces((await especesRes.json()).data)
+      if (lotsRes.ok) {
+        const lotsJson = await lotsRes.json()
+        const lots: Array<{ especeAnimaleId: string; statut: string }> = lotsJson.data ?? []
+        setLotsEspeceIds(
+          lots.filter((l) => l.statut === "actif").map((l) => l.especeAnimaleId)
+        )
+      }
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les données" })
     } finally {
@@ -226,11 +239,29 @@ function AnimauxSubTab() {
     // d'enregistrer" sans détail. On récupère désormais le message
     // d'erreur retourné par l'API (zod flatten ou message custom) pour
     // pointer le champ fautif.
+    //
+    // Bug feedback testeur 2026-05-26 (cmplohpya) — Sérialisation : les
+    // champs numériques (prixAchat, poidsActuel) étaient envoyés en
+    // string et rejetés par Zod, et typeIdentifiant="" ne match aucun
+    // enum. On nettoie le payload avant envoi.
     try {
       const isEdit = editingAnimalId !== null
+      const toNum = (v: string): number | null => {
+        if (v === "" || v === null || v === undefined) return null
+        const n = parseFloat(v)
+        return Number.isNaN(n) ? null : n
+      }
+      const cleaned = {
+        ...formData,
+        typeIdentifiant: formData.typeIdentifiant || null,
+        identifiant: formData.identifiant || null,
+        prixAchat: toNum(formData.prixAchat as unknown as string),
+        poidsActuel: toNum(formData.poidsActuel as unknown as string),
+        dateNaissance: (formData as { dateNaissance?: string }).dateNaissance || null,
+      }
       const body = isEdit
-        ? { id: editingAnimalId, ...formData }
-        : formData
+        ? { id: editingAnimalId, ...cleaned }
+        : cleaned
       const response = await fetch('/api/elevage/animaux', {
         method: isEdit ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -387,21 +418,35 @@ function AnimauxSubTab() {
   // côté client. Liste des espèces présentes calculée sur l'ensemble
   // chargé (avant filtre espèce) → dropdown stable.
   const especesPresentes = React.useMemo(
-    () => listEspecesBasePresentes(animaux.map((a) => ({ especeAnimaleId: a.especeAnimale.id }))),
-    [animaux]
+    () =>
+      listEspecesBasePresentes([
+        ...animaux.map((a) => ({ especeAnimaleId: a.especeAnimale.id })),
+        ...lotsEspeceIds.map((especeAnimaleId) => ({ especeAnimaleId })),
+      ]),
+    [animaux, lotsEspeceIds]
   )
+
+  // Bug feedback testeur 2026-05-26 (cmplpajvb) — la recherche était
+  // sensible aux diacritiques : "bergere" sans accent → 0 résultat. On
+  // normalise désormais en NFD + retrait des marques diacritiques pour
+  // que "bergere"/"BERGÈRE"/"Bergère" matchent indifféremment.
+  const normaliseRecherche = (s: string | null | undefined): string =>
+    (s ?? "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
 
   const filteredAnimaux = animaux.filter(a => {
     if (filterEspece !== 'all' && especeBaseId(a.especeAnimale.id) !== filterEspece) {
       return false
     }
     if (!search) return true
-    const s = search.toLowerCase()
+    const s = normaliseRecherche(search)
     return (
-      a.nom?.toLowerCase().includes(s) ||
-      a.identifiant?.toLowerCase().includes(s) ||
-      a.race?.toLowerCase().includes(s) ||
-      a.especeAnimale.nom.toLowerCase().includes(s)
+      normaliseRecherche(a.nom).includes(s) ||
+      normaliseRecherche(a.identifiant).includes(s) ||
+      normaliseRecherche(a.race).includes(s) ||
+      normaliseRecherche(a.especeAnimale.nom).includes(s)
     )
   })
 
@@ -524,7 +569,7 @@ function AnimauxSubTab() {
                     <SelectTrigger><SelectValue placeholder="..." /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="femelle">Femelle</SelectItem>
-                      <SelectItem value="male">Male</SelectItem>
+                      <SelectItem value="male">Mâle</SelectItem>
                       <SelectItem value="inconnu">Inconnu</SelectItem>
                     </SelectContent>
                   </Select>
@@ -532,11 +577,11 @@ function AnimauxSubTab() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Date naissance</Label>
+                  <Label>Date de naissance</Label>
                   <Input type="date" value={formData.dateNaissance} onChange={(e) => setFormData(f => ({ ...f, dateNaissance: e.target.value }))} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Date arrivee</Label>
+                  <Label>Date d&apos;arrivée</Label>
                   <Input type="date" value={formData.dateArrivee} onChange={(e) => setFormData(f => ({ ...f, dateArrivee: e.target.value }))} />
                 </div>
               </div>
@@ -586,7 +631,15 @@ function AnimauxSubTab() {
               <TableBody>
                 {filteredAnimaux.map((animal) => (
                   <TableRow key={animal.id} className="cursor-pointer hover:bg-muted/50">
-                    <TableCell className="font-medium">{animal.identifiant || '-'}</TableCell>
+                    <TableCell className="font-medium">
+                      {/* Bug feedback testeur 2026-05-25 (cmplkdjtx/cmplk8k2h)
+                          — la colonne montrait "-" sans signaler que le
+                          champ pouvait être renseigné. On affiche "non
+                          renseigné" en italique pour clarifier. */}
+                      {animal.identifiant
+                        ? animal.identifiant
+                        : <span className="text-xs italic text-muted-foreground">non renseigné</span>}
+                    </TableCell>
                     <TableCell>
                       {/* Bug #19 — Le nom n'était pas cliquable malgré
                           l'attente utilisateur (l'identifiant en fil
@@ -713,7 +766,7 @@ function AnimauxSubTab() {
                 {filteredAnimaux.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
-                      Aucun animal trouve
+                      Aucun animal trouvé
                     </TableCell>
                   </TableRow>
                 )}
@@ -1066,7 +1119,7 @@ function LotsSubTab() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Date arrivee</Label>
+                    <Label>Date d&apos;arrivée</Label>
                     <Input type="date" value={formData.dateArrivee} onChange={(e) => setFormData(f => ({ ...f, dateArrivee: e.target.value }))} />
                   </div>
                   <div className="space-y-2">
@@ -1077,7 +1130,7 @@ function LotsSubTab() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Provenance</Label>
-                    <Input value={formData.provenance} onChange={(e) => setFormData(f => ({ ...f, provenance: e.target.value }))} placeholder="Couvoir, eleveur..." />
+                    <Input value={formData.provenance} onChange={(e) => setFormData(f => ({ ...f, provenance: e.target.value }))} placeholder="Couvoir, éleveur..." />
                   </div>
                   <div className="space-y-2">
                     <Label>Parcelle</Label>

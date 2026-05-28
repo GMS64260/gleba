@@ -126,7 +126,7 @@ export function BioagresseursEspeceTab({ especeId }: { especeId: string }) {
         </CardTitle>
         <CardDescription>
           Insectes, maladies cryptogamiques et adventices fréquents sur cette espèce.
-          Les méthodes PBI sont issues du référentiel Bioagresseur (PROMPT 08).
+          Les méthodes PBI sont issues du référentiel Bioagresseurs Gleba.
         </CardDescription>
       </CardHeader>
       <CardContent className="text-sm">

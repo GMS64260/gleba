@@ -62,13 +62,32 @@ export default function ElevageDashboard() {
   const [showChat, setShowChat] = React.useState(false)
   const [activeTab, setActiveTab] = React.useState<TabId>("calendrier")
 
-  // Lire l'onglet depuis l'URL après le montage côté client
+  // Lire l'onglet depuis l'URL après le montage côté client.
+  // Bug feedback testeur 2026-05-26 (cmpmr87qh) — alias d'URL courants :
+  // ?tab=aliments tombait sur le Calendrier (onglet par défaut) au lieu
+  // d'Alimentation. On mappe les alias usuels vers l'id canonique.
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    const tab = params.get("tab")
+    const raw = params.get("tab")
+    const ALIASES: Record<string, TabId> = {
+      aliments: "alimentation",
+      aliment: "alimentation",
+      animal: "animaux",
+      lots: "animaux",
+      oeufs: "production",
+      lait: "production",
+      ventes: "production",
+      espece: "especes",
+      especes_animales: "especes",
+      repro: "reproduction",
+    }
     const valid: string[] = TABS.map(t => t.id)
-    if (tab && valid.includes(tab)) {
-      setActiveTab(tab as TabId)
+    if (raw && valid.includes(raw)) {
+      setActiveTab(raw as TabId)
+    } else if (raw && ALIASES[raw]) {
+      const canonical = ALIASES[raw]
+      setActiveTab(canonical)
+      window.history.replaceState(null, "", `/elevage?tab=${canonical}`)
     }
   }, [])
 

@@ -41,6 +41,7 @@ import {
 import { Label } from "@/components/ui/label"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
+import { oeufsAttendusJour } from "@/lib/elevage/taux-ponte"
 
 // ============================================================
 // Composant principal
@@ -131,6 +132,9 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
   const [stats, setStats] = React.useState<OeufsStats | null>(null)
   const [stockOeufs, setStockOeufs] = React.useState<StockOeufs | null>(null)
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
+  // Bug feedback testeur 2026-05-26 (cmploo6ye) — anti double-submit pour
+  // empêcher la création d'une 2e ligne fantôme par clic accidentel.
+  const [isSubmittingProd, setIsSubmittingProd] = React.useState(false)
   // QA Julien 2026-05-15 — Bug #6 : id en cours de suppression (null = pas de modale)
   const [deletingId, setDeletingId] = React.useState<number | null>(null)
   // QA 2026-05-15 — édition par bouton ✏️ : id de la production en
@@ -145,6 +149,17 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
     espece: string | null
     lotNom: string | null
     quantite: number
+  } | null>(null)
+  // Bug feedback testeur 2026-05-26 (cmpm75c6r doublon, cmpmqlnrz lot
+  // terminé) — confirmation « forcer la saisie » in-app (remplace les
+  // window.confirm() natifs invisibles pour les agents de test et peu
+  // lisibles). On rejoue le POST avec overrideCoherence=true à la confirm.
+  const [forceConfirm, setForceConfirm] = React.useState<{
+    payload: Record<string, unknown>
+    title: string
+    description: React.ReactNode
+    confirmLabel: string
+    successMessage: string
   } | null>(null)
 
   const [formData, setFormData] = React.useState({
@@ -250,6 +265,8 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isSubmittingProd) return
+    setIsSubmittingProd(true)
     const payload = {
       lotId: formData.lotId ? parseInt(formData.lotId) : null,
       date: formData.date,
@@ -274,6 +291,37 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
           })
           return
         }
+        // Bug feedback testeur 2026-05-26 (cmpm75c6r) — doublon date+lot.
+        // Modale in-app (au lieu de window.confirm invisible des agents).
+        if (result.status === 422 && result.body?.code === 'DOUBLON_DATE_LOT' && result.body?.details) {
+          setForceConfirm({
+            payload,
+            title: 'Collecte déjà saisie ce jour',
+            description: <span>{result.body.details.message ?? 'Une collecte existe déjà pour ce lot à cette date.'}</span>,
+            confirmLabel: 'Ajouter une 2e ligne',
+            successMessage: `${formData.quantite} œufs (2e collecte du jour)`,
+          })
+          return
+        }
+        // Bug feedback testeur 2026-05-26 (cmpmqlnrz) — lot clôturé
+        // (terminé/réformé). Modale in-app proposant de forcer la saisie.
+        if (result.status === 422 && result.body?.code === 'LOT_TERMINE' && result.body?.details) {
+          setForceConfirm({
+            payload,
+            title: 'Lot clôturé',
+            description: (
+              <span>
+                Le lot <strong>« {result.body.details.lotNom} »</strong> est{' '}
+                <strong>{result.body.details.statut}</strong>. Réactivez-le (statut « actif »)
+                avant d'enregistrer une nouvelle collecte, ou forcez la saisie si le statut est
+                erroné.
+              </span>
+            ),
+            confirmLabel: 'Forcer la saisie',
+            successMessage: `${formData.quantite} œufs (lot clôturé, saisie forcée)`,
+          })
+          return
+        }
         throw new Error(result.body?.error || 'Erreur')
       }
       toast({
@@ -285,6 +333,8 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
       fetchData()
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible d'enregistrer" })
+    } finally {
+      setIsSubmittingProd(false)
     }
   }
 
@@ -303,6 +353,21 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible d'enregistrer (override refusé)" })
     }
     setOverrideState(null)
+  }
+
+  // Confirmation générique « forcer la saisie » (doublon, lot clôturé).
+  const handleForceConfirm = async () => {
+    if (!forceConfirm) return
+    const result = await postProduction(forceConfirm.payload, { editingId, override: true })
+    if (result.ok) {
+      toast({ title: 'Production enregistrée', description: forceConfirm.successMessage })
+      setIsDialogOpen(false)
+      resetForm()
+      fetchData()
+    } else {
+      toast({ variant: 'destructive', title: 'Erreur', description: result.body?.error || 'Échec' })
+    }
+    setForceConfirm(null)
   }
 
   // QA Julien 2026-05-15 — Bug #6 : `confirm()` natif gelait le
@@ -417,6 +482,25 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
                   <Input type="number" min="0" value={formData.quantite} onChange={(e) => setFormData(f => ({ ...f, quantite: e.target.value }))} placeholder="0" className="text-2xl font-bold text-center" />
                 </div>
               </div>
+              {/* Bug feedback testeur 2026-05-26 (cmpm7bxyu) — prévision
+                  d'aide à la saisie : œufs attendus/jour pour le lot
+                  sélectionné (effectif × taux de ponte saisonnier de
+                  l'espèce). Même source de vérité que le calendrier hebdo. */}
+              {(() => {
+                const lot = lots.find((l) => l.id.toString() === formData.lotId)
+                if (!lot || lot.quantiteActuelle <= 0) return null
+                const attendu = oeufsAttendusJour(
+                  lot.quantiteActuelle,
+                  lot.especeAnimale.nom,
+                  formData.date ? new Date(formData.date) : new Date()
+                )
+                return (
+                  <p className="text-xs text-muted-foreground -mt-2">
+                    ~{attendu} œuf{attendu > 1 ? 's' : ''}/jour attendu pour {lot.quantiteActuelle}{' '}
+                    {lot.especeAnimale.nom} à cette période
+                  </p>
+                )
+              })()}
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label>Casses</Label>
@@ -440,9 +524,16 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
                 </div>
               </div>
               <div className="flex justify-end gap-2 pt-4">
-                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
-                <Button type="submit" disabled={!formData.lotId || !formData.quantite}>
-                  {editingId ? "Mettre à jour" : "Enregistrer"}
+                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmittingProd}>Annuler</Button>
+                {/* Bug feedback testeur 2026-05-26 (cmploo6ye) — désactiver
+                    le bouton pendant l'envoi pour éviter un double POST qui
+                    crée une ligne fantôme. */}
+                <Button type="submit" disabled={!formData.lotId || !formData.quantite || isSubmittingProd}>
+                  {isSubmittingProd
+                    ? "Enregistrement..."
+                    : editingId
+                    ? "Mettre à jour"
+                    : "Enregistrer"}
                 </Button>
               </div>
             </form>
@@ -536,6 +627,19 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
         cancelLabel="Corriger"
         variant="warning"
         onConfirm={handleOverrideConfirm}
+      />
+
+      {/* Confirmation in-app « forcer » : doublon date+lot ou lot clôturé.
+          Remplace les window.confirm() natifs (invisibles des agents de test). */}
+      <ConfirmDialog
+        open={forceConfirm !== null}
+        onOpenChange={(o) => !o && setForceConfirm(null)}
+        title={forceConfirm?.title ?? ''}
+        description={forceConfirm?.description ?? null}
+        confirmLabel={forceConfirm?.confirmLabel ?? 'Forcer'}
+        cancelLabel="Annuler"
+        variant="warning"
+        onConfirm={handleForceConfirm}
       />
     </div>
   )
@@ -1062,7 +1166,7 @@ function AbattagesSubTab() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2"><Label>Date</Label><Input type="date" value={formData.date} onChange={(e) => setFormData(f => ({ ...f, date: e.target.value }))} /></div>
-                <div className="space-y-2"><Label>Quantite</Label><Input type="number" min="1" value={formData.quantite} onChange={(e) => setFormData(f => ({ ...f, quantite: e.target.value }))} /></div>
+                <div className="space-y-2"><Label>Quantité</Label><Input type="number" min="1" value={formData.quantite} onChange={(e) => setFormData(f => ({ ...f, quantite: e.target.value }))} /></div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2"><Label>Poids vif (kg)</Label><Input type="number" step="0.1" value={formData.poidsVif} onChange={(e) => setFormData(f => ({ ...f, poidsVif: e.target.value }))} /></div>

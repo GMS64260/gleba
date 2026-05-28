@@ -437,6 +437,16 @@ export function CampagneDetailDialog({ campagneId, open, onOpenChange, onUpdate 
                             )}
                             {etape.cout != null && <span>{etape.cout.toFixed(2)} €</span>}
                           </div>
+                          {/* Bug feedback testeur 2026-05-25 (cmplk4f5x) —
+                              alerte quand dateRealisation < datePrevue, signe
+                              probable d'erreur de saisie (ex. préparation
+                              trous prévue 31/10 mais réalisée 25/05). */}
+                          {etape.datePrevue && etape.dateRealisation &&
+                            new Date(etape.dateRealisation) < new Date(etape.datePrevue) && (
+                            <div className="text-xs text-amber-700 mt-1 flex items-center gap-1">
+                              ⚠ Date réalisée antérieure à la date prévue — vérifier la cohérence.
+                            </div>
+                          )}
                         </div>
                         <Button variant="ghost" size="sm" onClick={() => deleteEtape(etape)}>
                           <Trash2 className="h-3.5 w-3.5 text-red-500" />

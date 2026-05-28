@@ -262,7 +262,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
           <CardHeader className="pb-1 pt-3 px-4">
             <CardDescription className="text-teal-100 text-xs">Production bois</CardDescription>
             <CardTitle className="text-2xl">
-              {loading ? <Skeleton className="h-8 w-16 bg-teal-400" /> : `${data?.stats.productionBoisAnnee || 0} m3`}
+              {loading ? <Skeleton className="h-8 w-16 bg-teal-400" /> : `${data?.stats.productionBoisAnnee || 0} m³`}
             </CardTitle>
           </CardHeader>
           <CardContent className="pb-3 px-4">
@@ -352,14 +352,14 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
               <CardHeader className="pb-2">
                 <CardTitle className="text-base flex items-center gap-2">
                   <Apple className="h-4 w-4 text-orange-500" />
-                  Top 5 espèces du verger
+                  Top espèces du verger
                 </CardTitle>
                 <CardDescription className="text-xs">
-                  Répartition par nombre d'arbres
+                  Répartition par nombre d&apos;arbres
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="h-[200px]">
+                <div className="h-[240px]">
                   {/* QA Hélène 2026-05-15 — Bug #4 : `key` basé sur la
                       signature des données force un remount complet
                       quand on ajoute/supprime un arbre, sinon Recharts
@@ -369,22 +369,41 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                       <Pie
                         data={data.stats.topEspeces}
                         cx="50%"
-                        cy="50%"
-                        innerRadius={40}
-                        outerRadius={75}
+                        cy="45%"
+                        innerRadius={35}
+                        outerRadius={65}
                         dataKey="count"
                         nameKey="espece"
-                        label={({ name, value }) => `${name}: ${value}`}
+                        label={false}
                         isAnimationActive={false}
                       >
                         {data.stats.topEspeces.map((_, i) => (
                           <Cell
                             key={i}
-                            fill={["#84cc16", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"][i % 5]}
+                            fill={["#84cc16", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#6b7280"][i % 6]}
                           />
                         ))}
                       </Pie>
-                      <Tooltip />
+                      {/* Bug feedback testeur 2026-05-26 (cmpmqxcwf) — les
+                          valeurs n'étaient lisibles qu'au survol. On affiche
+                          désormais le nb d'arbres + % directement dans la
+                          légende et le tooltip (donut auto-explicatif). */}
+                      <Tooltip
+                        formatter={(value, name) => {
+                          const total = data.stats.topEspeces!.reduce((s, e) => s + e.count, 0)
+                          const pct = total > 0 ? Math.round((Number(value) / total) * 100) : 0
+                          return [`${value} arbre${Number(value) > 1 ? "s" : ""} (${pct}%)`, name as string]
+                        }}
+                      />
+                      <Legend
+                        verticalAlign="bottom"
+                        height={36}
+                        wrapperStyle={{ fontSize: 11 }}
+                        formatter={(value) => {
+                          const item = data.stats.topEspeces!.find((e) => e.espece === value)
+                          return `${value}${item ? ` (${item.count})` : ""}`
+                        }}
+                      />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
@@ -466,7 +485,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                     <XAxis dataKey="mois" tick={{ fontSize: 12 }} />
                     <YAxis tick={{ fontSize: 12 }} />
                     <Tooltip
-                      formatter={(value) => [`${value} m3`, "Volume"]}
+                      formatter={(value) => [`${value} m³`, "Volume"]}
                       labelStyle={{ fontWeight: "bold" }}
                     />
                     <Bar dataKey="volumeM3" fill="#d97706" radius={[4, 4, 0, 0]} />

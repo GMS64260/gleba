@@ -205,20 +205,31 @@ export function IrrigationAdvisor({ parcelleId, lat, lng }: IrrigationAdvisorPro
       </div>
 
       {!collapsed && <>
-      {/* Nappe phreatique — masquer si relevé trop ancien (> 2 ans) */}
-      {nappeData && nappeData.nappe.dateReleve && (Date.now() - new Date(nappeData.nappe.dateReleve).getTime()) < 2 * 365 * 86400000 && (
-        <div className="px-3 py-2 border-b bg-cyan-50/50">
+      {/* Nappe phreatique — masquer si relevé trop ancien (> 2 ans). Bug
+          feedback testeur 2026-05-26 (cmpm73mgd) — un relevé > 3 mois est
+          déjà périmé pour piloter l'irrigation : on affiche un bandeau
+          d'avertissement coloré (ambre) au lieu de l'info en cyan rassurant. */}
+      {nappeData && nappeData.nappe.dateReleve && (Date.now() - new Date(nappeData.nappe.dateReleve).getTime()) < 2 * 365 * 86400000 && (() => {
+        const ageMs = Date.now() - new Date(nappeData.nappe.dateReleve!).getTime()
+        const ageMois = Math.floor(ageMs / (30 * 86400000))
+        const isStale = ageMs > 90 * 86400000 // > 3 mois
+        return (
+        <div className={`px-3 py-2 border-b ${isStale ? 'bg-amber-50' : 'bg-cyan-50/50'}`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Waves className="h-4 w-4 text-cyan-600" />
+              <Waves className={`h-4 w-4 ${isStale ? 'text-amber-600' : 'text-cyan-600'}`} />
               <div>
-                <p className="text-xs font-medium text-cyan-800">
+                <p className={`text-xs font-medium ${isStale ? 'text-amber-800' : 'text-cyan-800'}`}>
                   Nappe : {nappeData.station.commune}
-                  <span className="text-cyan-500 font-normal ml-1">({nappeData.station.distance_km} km)</span>
+                  <span className={`font-normal ml-1 ${isStale ? 'text-amber-500' : 'text-cyan-500'}`}>({nappeData.station.distance_km} km)</span>
+                  {isStale && (
+                    <span className="ml-2 text-[10px] uppercase tracking-wide font-bold text-amber-700">⚠ Donnée périmée</span>
+                  )}
                 </p>
                 {nappeData.nappe.dateReleve && (
-                  <p className="text-[10px] text-cyan-500">
+                  <p className={`text-[10px] ${isStale ? 'text-amber-600' : 'text-cyan-500'}`}>
                     Relevé du {new Date(nappeData.nappe.dateReleve).toLocaleDateString("fr-FR")}
+                    {isStale && ` — ${ageMois} mois, ne pas utiliser pour piloter l'arrosage`}
                   </p>
                 )}
               </div>
@@ -249,7 +260,8 @@ export function IrrigationAdvisor({ parcelleId, lat, lng }: IrrigationAdvisorPro
             </div>
           </div>
         </div>
-      )}
+        )
+      })()}
 
       {/* Nappe trop ancienne — avertissement discret */}
       {nappeData && nappeData.nappe.dateReleve && (Date.now() - new Date(nappeData.nappe.dateReleve).getTime()) >= 2 * 365 * 86400000 && (

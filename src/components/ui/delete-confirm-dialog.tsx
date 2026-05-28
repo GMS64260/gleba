@@ -63,6 +63,14 @@ interface Props {
   warning?: string
   /** Callback appelé quand l'utilisateur confirme */
   onConfirm: () => Promise<void> | void
+  /**
+   * Optionnel : callback "Archiver" — quand fourni, un bouton "Archiver
+   * (conserver l'historique)" remplace la perte irréversible. Utile pour
+   * les entités à forte traçabilité (Bio/HVE) cf. cmplk9y7q sur les arbres.
+   */
+  onArchive?: () => Promise<void> | void
+  /** Libellé du bouton d'archivage (par défaut : "Archiver (conserver l'historique)") */
+  archiveLabel?: string
 }
 
 export function DeleteConfirmDialog({
@@ -72,8 +80,11 @@ export function DeleteConfirmDialog({
   dependencies = [],
   warning,
   onConfirm,
+  onArchive,
+  archiveLabel,
 }: Props) {
   const [loading, setLoading] = React.useState(false)
+  const [archiving, setArchiving] = React.useState(false)
   const totalDeps = dependencies.reduce((s, d) => s + d.count, 0)
 
   const handleConfirm = async () => {
@@ -83,6 +94,17 @@ export function DeleteConfirmDialog({
       onOpenChange(false)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleArchive = async () => {
+    if (!onArchive) return
+    setArchiving(true)
+    try {
+      await onArchive()
+      onOpenChange(false)
+    } finally {
+      setArchiving(false)
     }
   }
 
@@ -133,18 +155,35 @@ export function DeleteConfirmDialog({
           )}
         </div>
 
-        <DialogFooter className="gap-2">
+        <DialogFooter className="gap-2 flex-wrap">
           <Button
             variant="outline"
             onClick={() => onOpenChange(false)}
-            disabled={loading}
+            disabled={loading || archiving}
           >
             Annuler
           </Button>
+          {onArchive && (
+            <Button
+              variant="secondary"
+              onClick={handleArchive}
+              disabled={loading || archiving}
+              title="Marque l'entité comme inactive sans supprimer les données liées (récoltes, traitements, etc.)"
+            >
+              {archiving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                  Archivage...
+                </>
+              ) : (
+                archiveLabel ?? "Archiver (conserver l'historique)"
+              )}
+            </Button>
+          )}
           <Button
             variant="destructive"
             onClick={handleConfirm}
-            disabled={loading}
+            disabled={loading || archiving}
           >
             {loading ? (
               <>

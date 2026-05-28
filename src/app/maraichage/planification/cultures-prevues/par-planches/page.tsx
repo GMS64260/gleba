@@ -55,6 +55,15 @@ function periode(c: CulturePrevue): [number, number] | null {
   return [debut, Math.max(debut, fin)]
 }
 
+// Bug feedback testeur 2026-05-26 (cmpm6yi1d) — Avant, toute paire de
+// cultures se touchant d'une seule semaine sur la même planche déclenchait
+// "Chevauchement" (ex. fève S08-S20 + haricot vert S18-S30 : chevauchement
+// de 2 semaines minime). 33/33 cultures étaient marquées → l'alerte
+// perdait toute valeur. On exige désormais un chevauchement RÉEL > 2
+// semaines pour signaler le conflit (tolérance pour les passations de
+// culture en fin/début de saison).
+const SEUIL_CHEVAUCHEMENT_SEM = 2
+
 function evaluerStatut(c: CulturePrevue, toutes: CulturePrevue[]): StatutAgro {
   if (c.semaineSemis == null && c.semainePlantation == null && c.semaineRecolte == null) {
     return c.existante ? 'empty' : 'todo'
@@ -66,7 +75,10 @@ function evaluerStatut(c: CulturePrevue, toutes: CulturePrevue[]): StatutAgro {
       if (o.plancheId !== c.plancheId) return false
       const op = periode(o)
       if (!op) return false
-      return op[0] <= p[1] && p[0] <= op[1]
+      // Largeur du chevauchement en semaines
+      const overlapStart = Math.max(p[0], op[0])
+      const overlapEnd = Math.min(p[1], op[1])
+      return overlapEnd - overlapStart >= SEUIL_CHEVAUCHEMENT_SEM
     })
     if (conflits.length > 0) return 'overlap'
   }

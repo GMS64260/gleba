@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
 
 // Types d'états pour le filtre
@@ -264,11 +265,21 @@ export default function CulturesPage() {
     recolteFaite: 'la récolte',
   }
 
-  const handleQuickUpdate = React.useCallback(async (id: number, field: string, value: boolean) => {
+  // Confirmation in-app (remplace window.confirm() invisible des agents
+  // de test — feedback testeur 2026-05-26 : « alerte de semence à la
+  // validation » non perçue). On stocke l'action en attente puis on
+  // l'exécute à la confirmation via <ConfirmDialog>.
+  const [pendingUpdate, setPendingUpdate] = React.useState<{
+    id: number; field: string; value: boolean; message: string
+  } | null>(null)
+
+  const handleQuickUpdate = React.useCallback((id: number, field: string, value: boolean) => {
     const action = value ? 'Marquer' : 'Annuler'
     const sujet = FIELD_LABELS[field] ?? field
-    if (!window.confirm(`${action} ${sujet} de la culture #${id} ?`)) return
+    setPendingUpdate({ id, field, value, message: `${action} ${sujet} de la culture #${id} ?` })
+  }, [])
 
+  const executeQuickUpdate = React.useCallback(async (id: number, field: string, value: boolean) => {
     try {
       const response = await fetch(`/api/cultures/${id}`, {
         method: 'PATCH',
@@ -464,6 +475,22 @@ export default function CulturesPage() {
           emptyMessage="Aucune culture trouvée. Cliquez sur Ajouter pour créer la première."
         />
       </main>
+
+      {/* Confirmation in-app du changement d'état (semis/plantation/récolte). */}
+      <ConfirmDialog
+        open={pendingUpdate !== null}
+        onOpenChange={(o) => !o && setPendingUpdate(null)}
+        title="Confirmer le changement"
+        description={pendingUpdate?.message ?? ""}
+        confirmLabel="Confirmer"
+        cancelLabel="Annuler"
+        onConfirm={async () => {
+          if (pendingUpdate) {
+            await executeQuickUpdate(pendingUpdate.id, pendingUpdate.field, pendingUpdate.value)
+          }
+          setPendingUpdate(null)
+        }}
+      />
     </div>
   )
 }

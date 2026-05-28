@@ -159,6 +159,16 @@ function brutGraines(b: BesoinSemence): number {
   return b.grainesNecessaires / (1 + b.margeSecuritePct / 100)
 }
 
+// Bug feedback testeur 2026-05-25 (cmplkcdec) — Pour les très petites
+// quantités (ex. 3 plants tomate à 325 graines/g = 0.009 g), un toFixed(1)
+// affichait "0.0 g" et faisait croire à 0 graines. On affiche "<0.1 g"
+// quand v > 0 et v < 0.1 ; sinon arrondi à 1 décimale.
+function formatGrammes(v: number): string {
+  if (v <= 0) return "0 g"
+  if (v < 0.1) return "<0.1 g"
+  return `${v.toFixed(1)} g`
+}
+
 // Audit Marc BUG-01 — Tooltip explicite : dose × surface, puis marge,
 // puis total. Le toggle « appliquer la marge » dans le header bascule entre
 // affichage brut et total.
@@ -171,7 +181,7 @@ function GrainesTooltip({ b, appliquerMarge }: { b: BesoinSemence; appliquerMarg
       <Tooltip>
         <TooltipTrigger asChild>
           <span className="inline-flex items-center gap-1 cursor-help underline decoration-dotted decoration-slate-400 underline-offset-4">
-            {valeurAffichee.toFixed(1)} g
+            {formatGrammes(valeurAffichee)}
             <Info className="h-3 w-3 text-slate-400" />
           </span>
         </TooltipTrigger>
@@ -260,13 +270,13 @@ function makePlantsColumns(appliquerMarge: boolean): ColumnDef<BesoinSemence>[] 
       header: appliquerMarge ? "Graines (g) avec marge" : "Graines (g) sans marge",
       cell: ({ row }) => {
         const v = appliquerMarge ? row.original.grainesNecessaires : brutGraines(row.original)
-        return `${v.toFixed(1)} g`
+        return formatGrammes(v)
       },
     },
     {
       accessorKey: "stockActuel",
       header: "Stock (g)",
-      cell: ({ getValue }) => `${(getValue() as number).toFixed(1)} g`,
+      cell: ({ getValue }) => formatGrammes(getValue() as number),
     },
     {
       accessorKey: "aCommander",
@@ -274,7 +284,7 @@ function makePlantsColumns(appliquerMarge: boolean): ColumnDef<BesoinSemence>[] 
       cell: ({ row }) => {
         const cible = appliquerMarge ? row.original.grainesNecessaires : brutGraines(row.original)
         const v = Math.max(0, cible - row.original.stockActuel)
-        return v > 0 ? `${v.toFixed(1)} g` : "—"
+        return v > 0 ? formatGrammes(v) : "—"
       },
     },
     {
@@ -289,8 +299,30 @@ function makePlantsColumns(appliquerMarge: boolean): ColumnDef<BesoinSemence>[] 
 // les tubercules (Pomme de terre, Topinambour). On adopte un libellé
 // générique « Bulbilles / tubercules » et on adapte la cellule selon
 // l'espèce pour ne plus rebuter l'agriculteur.
+//
+// Bug feedback testeur 2026-05-25 (cmplk22cv) — terminologie agronomique
+// précise :
+//   - Ail            → caïeux       (gousses de la tête d'ail)
+//   - Oignon, Échalote → bulbilles   (mini-bulbes ou plants à repiquer)
+//   - Pomme de terre, Topinambour, Crosne → tubercules
+//   - Reste          → unité générique
 const isTubercule = (especeId: string): boolean => {
-  return /pomme de terre|patate|topinambour|crosne/i.test(especeId)
+  return /pomme de terre|patate|topinambour|crosne|oca |oxalis/i.test(especeId)
+}
+
+const isAil = (especeId: string): boolean => {
+  return /^ail|\bail\b/i.test(especeId)
+}
+
+const isOignonEchalote = (especeId: string): boolean => {
+  return /oignon|echalote|échalote|ciboule/i.test(especeId)
+}
+
+const uniteSemence = (especeId: string): string => {
+  if (isAil(especeId)) return "caïeux"
+  if (isOignonEchalote(especeId)) return "bulbilles"
+  if (isTubercule(especeId)) return "tubercules"
+  return "unités"
 }
 
 const caieuxColumns: ColumnDef<BesoinSemence>[] = [
@@ -300,8 +332,7 @@ const caieuxColumns: ColumnDef<BesoinSemence>[] = [
     header: "Bulbilles / tubercules nécessaires",
     cell: ({ row }) => {
       const v = row.original.besoinCaieux
-      const unite = isTubercule(row.original.especeId) ? "tubercules" : "caïeux"
-      return `${v.toLocaleString()} ${unite}`
+      return `${v.toLocaleString()} ${uniteSemence(row.original.especeId)}`
     },
   },
   {
@@ -314,8 +345,7 @@ const caieuxColumns: ColumnDef<BesoinSemence>[] = [
     header: "À commander",
     cell: ({ row }) => {
       const v = row.original.caieuxACommander
-      const unite = isTubercule(row.original.especeId) ? "tubercules" : "unités"
-      return v > 0 ? `${v.toLocaleString()} ${unite}` : "—"
+      return v > 0 ? `${v.toLocaleString()} ${uniteSemence(row.original.especeId)}` : "—"
     },
   },
   {
@@ -560,12 +590,14 @@ function SemencesContent() {
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm text-muted-foreground">
-                  Caïeux nécessaires
+                  Bulbilles / tubercules
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-2xl font-bold">{stats.totalCaieux.toLocaleString()}</p>
-                <p className="text-xs text-muted-foreground">{stats.nbBulbeCaieu} espèce(s)</p>
+                <p className="text-xs text-muted-foreground">
+                  {stats.nbBulbeCaieu} espèce(s) — caïeux (ail), bulbilles (oignon), tubercules (PdT)
+                </p>
               </CardContent>
             </Card>
             <Card

@@ -66,9 +66,15 @@ export function ModulesNav({ current }: Props) {
         const className = `rounded-none ${isCurrent ? style.activeClass : style.inactiveClass} ${!isLast ? "border-r" : ""}`
 
         const inner = (
-          <Button variant="ghost" size="sm" className={className}>
-            <Icon className="h-4 w-4 mr-1" />
-            <span className="hidden sm:inline">{def.label}</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            className={className}
+            title={def.label}
+            aria-label={def.label}
+          >
+            <Icon className="h-4 w-4 sm:mr-1" />
+            <span className="hidden lg:inline">{def.label}</span>
           </Button>
         )
 

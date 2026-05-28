@@ -118,6 +118,13 @@ function StocksSubTab() {
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
   const [editingStock, setEditingStock] = React.useState<string | null>(null)
   const [newStock, setNewStock] = React.useState("")
+  // Bug feedback testeur 2026-05-25 (cmplkehs9/cmplkbnye) — badge "À vérifier"
+  // était purement décoratif. On le rend cliquable pour éditer le prix
+  // directement depuis la ligne (les autres granulés sont entre 0,40 et
+  // 0,55 €/kg, donc 22 €/kg pour les granulés agneau était bien à corriger
+  // sans devoir passer par "Nouvel aliment").
+  const [editingPrix, setEditingPrix] = React.useState<string | null>(null)
+  const [newPrix, setNewPrix] = React.useState("")
 
   const [formData, setFormData] = React.useState({
     id: "", nom: "", type: "granules", especesCibles: "", prix: "", stock: "", stockMin: "", description: "",
@@ -193,6 +200,30 @@ function StocksSubTab() {
       toast({ title: "Stock mis a jour" })
       setEditingStock(null)
       setNewStock("")
+      fetchData()
+    } catch {
+      toast({ variant: "destructive", title: "Erreur" })
+    }
+  }
+
+  // Bug feedback testeur 2026-05-25 (cmplkehs9/cmplkbnye) — édition rapide
+  // du prix depuis la ligne, déclenchée par le badge "À vérifier".
+  const updatePrix = async (id: string) => {
+    const prixNum = parseFloat(newPrix)
+    if (Number.isNaN(prixNum) || prixNum < 0) {
+      toast({ variant: "destructive", title: "Prix invalide" })
+      return
+    }
+    try {
+      const response = await fetch('/api/elevage/aliments', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, prix: prixNum }),
+      })
+      if (!response.ok) throw new Error('Erreur')
+      toast({ title: "Prix mis à jour" })
+      setEditingPrix(null)
+      setNewPrix("")
       fetchData()
     } catch {
       toast({ variant: "destructive", title: "Erreur" })
@@ -279,14 +310,28 @@ function StocksSubTab() {
                       <TableCell className="font-medium">{a.nom}</TableCell>
                       <TableCell><Badge variant="outline">{labelType(a.type)}</Badge></TableCell>
                       <TableCell className="text-right">
+                        {editingPrix === a.id ? (
+                          <div className="flex items-center gap-1 justify-end">
+                            <Input type="number" step="0.01" min="0" value={newPrix} onChange={(e) => setNewPrix(e.target.value)} className="w-24 h-8" autoFocus />
+                            <span className="text-xs text-muted-foreground">{"\u20ac"}/kg</span>
+                            <Button size="sm" variant="ghost" onClick={() => updatePrix(a.id)}>&#10003;</Button>
+                            <Button size="sm" variant="ghost" onClick={() => { setEditingPrix(null); setNewPrix("") }}>&times;</Button>
+                          </div>
+                        ) : (
                         <div className="flex items-center justify-end gap-1.5">
                           {a.prix ? `${a.prix.toFixed(2)} \u20ac` : '-'}
                           {prixHorsNorme && (
-                            <Badge variant="outline" className="border-amber-400 text-amber-700 text-[10px]" title={prixCheck.message}>
+                            <button
+                              type="button"
+                              onClick={() => { setEditingPrix(a.id); setNewPrix(a.prix?.toString() || "") }}
+                              title={`${prixCheck.message} — cliquez pour corriger`}
+                              className="inline-flex items-center rounded-md border border-amber-400 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 hover:bg-amber-100 transition-colors cursor-pointer"
+                            >
                               À vérifier
-                            </Badge>
+                            </button>
                           )}
                         </div>
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
                         {editingStock === a.id ? (
@@ -381,6 +426,12 @@ function ConsommationsSubTab() {
   const [filterDateFin, setFilterDateFin] = React.useState("")
   // QA 2026-05-15 — édition par ligne
   const [editingConsoId, setEditingConsoId] = React.useState<number | null>(null)
+  // Bug feedback testeur 2026-05-26 (cmpm6xi6w / cmpmqtzdg) — les alertes
+  // de stock étaient des window.confirm() natifs, invisibles des agents
+  // de test (« accepté silencieusement »). Migration vers ConfirmDialog
+  // in-app. `stockConfirm` porte le message serveur (422 STOCK_*).
+  const [stockConfirm, setStockConfirm] = React.useState<{ message: string } | null>(null)
+  const [deletingConsoId, setDeletingConsoId] = React.useState<number | null>(null)
 
   const [formData, setFormData] = React.useState({
     alimentId: "", lotId: "", date: new Date().toISOString().split("T")[0], quantite: "", notes: "",
@@ -465,9 +516,12 @@ function ConsommationsSubTab() {
     }
     if (response.status === 422 && payload.code === "STOCK_INSUFFISANT") {
       const message = payload.details?.message ?? payload.error ?? "Stock insuffisant"
-      if (window.confirm(`${message}\n\nEnregistrer quand même (stock passera en négatif) ?`)) {
-        await submitConsommation(true)
-      }
+      setStockConfirm({ message: `${message}\n\nEnregistrer quand même (le stock passera en négatif) ?` })
+      return
+    }
+    if (response.status === 422 && payload.code === "STOCK_NON_INITIALISE") {
+      const message = payload.details?.message ?? payload.error ?? "Stock non initialisé"
+      setStockConfirm({ message })
       return
     }
     toast({
@@ -490,14 +544,16 @@ function ConsommationsSubTab() {
     }
   }
 
-  const handleDelete = async (id: number) => {
-    if (!confirm("Supprimer cette consommation ? Le stock sera restaure.")) return
+  const handleDeleteConfirm = async () => {
+    if (deletingConsoId == null) return
     try {
-      await fetch(`/api/elevage/consommations-aliments?id=${id}`, { method: "DELETE" })
-      toast({ title: "Consommation supprimée, stock restaure" })
+      await fetch(`/api/elevage/consommations-aliments?id=${deletingConsoId}`, { method: "DELETE" })
+      toast({ title: "Consommation supprimée, stock restauré" })
       fetchData()
     } catch {
       toast({ variant: "destructive", title: "Erreur" })
+    } finally {
+      setDeletingConsoId(null)
     }
   }
 
@@ -625,7 +681,7 @@ function ConsommationsSubTab() {
                         <Button variant="ghost" size="sm" onClick={() => handleEditConso(c)} title="Modifier" className="text-slate-600 hover:text-slate-900">
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
-                        <Button variant="ghost" size="sm" onClick={() => handleDelete(c.id)} className="text-red-600 hover:text-red-700" title="Supprimer">
+                        <Button variant="ghost" size="sm" onClick={() => setDeletingConsoId(c.id)} className="text-red-600 hover:text-red-700" title="Supprimer">
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
@@ -640,6 +696,35 @@ function ConsommationsSubTab() {
           )}
         </CardContent>
       </Card>
+
+      {/* Alerte stock (insuffisant / non initialisé) — modale in-app
+          remplaçant les window.confirm() natifs (cmpm6xi6w / cmpmqtzdg). */}
+      <ConfirmDialog
+        open={stockConfirm !== null}
+        onOpenChange={(o) => !o && setStockConfirm(null)}
+        title="Stock insuffisant"
+        description={
+          <span className="whitespace-pre-line">{stockConfirm?.message ?? ""}</span>
+        }
+        confirmLabel="Enregistrer quand même"
+        cancelLabel="Annuler"
+        variant="warning"
+        onConfirm={async () => {
+          setStockConfirm(null)
+          await submitConsommation(true)
+        }}
+      />
+
+      {/* Suppression d'une consommation — modale in-app (remplace confirm()). */}
+      <ConfirmDialog
+        open={deletingConsoId !== null}
+        onOpenChange={(o) => !o && setDeletingConsoId(null)}
+        title="Supprimer cette consommation ?"
+        description="Le stock de l'aliment sera restauré. Cette action est irréversible."
+        confirmLabel="Supprimer"
+        variant="destructive"
+        onConfirm={handleDeleteConfirm}
+      />
     </div>
   )
 }
@@ -981,8 +1066,22 @@ function SoinsSubTab() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {soins.map((soin) => (
-                  <TableRow key={soin.id} className={!soin.fait ? "bg-blue-50" : ""}>
+                {soins.map((soin) => {
+                  // Bug feedback testeur 2026-05-26 (cmplp16kb) — afficher
+                  // distinctement la date prévue et la date de réalisation
+                  // pour ne pas perdre l'historique du planning. Badge "En
+                  // retard" en rouge si datePrevue < aujourd'hui et !fait.
+                  const dateAffichee = soin.datePrevue ?? soin.date
+                  const enRetard =
+                    !soin.fait &&
+                    !!soin.datePrevue &&
+                    new Date(soin.datePrevue) < new Date(new Date().toDateString())
+                  const realiseDiffPrevue =
+                    soin.fait &&
+                    !!soin.datePrevue &&
+                    new Date(soin.datePrevue).toDateString() !== new Date(soin.date).toDateString()
+                  return (
+                  <TableRow key={soin.id} className={!soin.fait ? (enRetard ? "bg-red-50" : "bg-blue-50") : ""}>
                     <TableCell>
                       <div className="flex items-center gap-0.5">
                         <Button variant="ghost" size="sm" onClick={() => toggleFait(soin.id, soin.fait)} title={soin.fait ? "Marquer non fait" : "Marquer fait"} className={soin.fait ? "text-green-600" : "text-slate-400"}>
@@ -993,14 +1092,25 @@ function SoinsSubTab() {
                         </Button>
                       </div>
                     </TableCell>
-                    <TableCell>{new Date(soin.date).toLocaleDateString('fr-FR')}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-col">
+                        <span>{new Date(dateAffichee).toLocaleDateString('fr-FR')}</span>
+                        {enRetard && (
+                          <span className="text-[10px] font-medium text-red-700 uppercase tracking-wide">En retard</span>
+                        )}
+                        {realiseDiffPrevue && (
+                          <span className="text-[10px] text-emerald-700">Fait le {new Date(soin.date).toLocaleDateString('fr-FR')}</span>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell><Badge variant="outline">{SOIN_TYPE_LABELS[soin.type] || soin.type}</Badge></TableCell>
                     <TableCell>{soin.lot?.nom || soin.animal?.nom || '-'}</TableCell>
                     <TableCell>{soin.produit || '-'}</TableCell>
                     <TableCell className="text-right">{soin.cout ? `${soin.cout.toFixed(2)} \u20ac` : '-'}</TableCell>
                     <TableCell className="text-muted-foreground text-sm max-w-[200px] truncate">{soin.notes || '-'}</TableCell>
                   </TableRow>
-                ))}
+                  )
+                })}
                 {soins.length === 0 && <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Aucun soin enregistré</TableCell></TableRow>}
               </TableBody>
             </Table>
