@@ -153,6 +153,41 @@ export async function POST(request: NextRequest) {
           )
         }
       }
+
+      // Bug feedback testeur 2026-05-26 (cmpm75c6r) — Garde-fou doublon :
+      // 2 saisies sur la même date+lot dans la même journée est
+      // probablement une double saisie accidentelle (ou 2 passages au
+      // poulailler dans la même journée). On bloque la 2e avec un code
+      // distinct ; l'éleveur peut confirmer pour additionner.
+      if (date && !animalId) {
+        const dateOnly = new Date(date)
+        dateOnly.setHours(0, 0, 0, 0)
+        const dateNext = new Date(dateOnly)
+        dateNext.setDate(dateNext.getDate() + 1)
+        const existant = await prisma.productionOeuf.findFirst({
+          where: {
+            userId: session.user.id,
+            lotId,
+            date: { gte: dateOnly, lt: dateNext },
+          },
+          select: { id: true, quantite: true },
+        })
+        if (existant) {
+          return NextResponse.json(
+            {
+              error: 'Collecte déjà saisie',
+              code: 'DOUBLON_DATE_LOT',
+              details: {
+                idExistant: existant.id,
+                quantiteExistante: existant.quantite,
+                dateLue: dateOnly.toLocaleDateString('fr-FR'),
+                message: `Une collecte de ${existant.quantite} œufs existe déjà sur ce lot pour le ${dateOnly.toLocaleDateString('fr-FR')}. Confirmer pour ajouter une 2e ligne (ex. 2 passages dans la journée), sinon modifiez la ligne existante.`,
+              },
+            },
+            { status: 422 }
+          )
+        }
+      }
     }
 
     const production = await prisma.productionOeuf.create({

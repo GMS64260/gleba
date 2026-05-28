@@ -30,10 +30,25 @@ export const TREE_CARE_PROFILES: TreeCareProfile[] = [
       { type: "taille", label: "Taille de formation/fructification", description: "Supprimer gourmands, bois mort, aérer le centre", moisDebut: 1, moisFin: 3, priorite: "haute", recurrence: "annuelle", saisonRecommandee: "hiver" },
       { type: "taille", label: "Taille en vert", description: "Éclaircissage des fruits, pincement des rameaux", moisDebut: 6, moisFin: 7, priorite: "moyenne", recurrence: "annuelle", saisonRecommandee: "ete" },
       { type: "traitement", label: "Traitement hivernal (huile blanche)", description: "Pulvérisation huile de paraffine contre cochenilles et œufs d'insectes", moisDebut: 2, moisFin: 3, priorite: "haute", recurrence: "annuelle", saisonRecommandee: "hiver" },
-      { type: "traitement", label: "Bouillie bordelaise", description: "Traitement préventif contre tavelure et chancre", moisDebut: 11, moisFin: 12, priorite: "moyenne", recurrence: "annuelle", saisonRecommandee: "automne" },
+      // Bug feedback testeur 2026-05-25 (cmplk5arp) — La tavelure (Venturia
+      // inaequalis) se traite au PRINTEMPS lors des projections d'ascospores
+      // (BBCH 51-71), pas en novembre. La bouillie bordelaise d'automne (chute
+      // des feuilles) cible le chancre (Nectria) et la bactériose, mais PAS
+      // la tavelure. On sépare en deux opérations distinctes.
+      { type: "traitement", label: "Bouillie bordelaise (chancre)", description: "Traitement préventif à la chute des feuilles contre le chancre (Nectria) et les bactérioses", moisDebut: 11, moisFin: 12, priorite: "moyenne", recurrence: "annuelle", saisonRecommandee: "automne" },
+      { type: "traitement", label: "Traitement anti-tavelure", description: "Bouillie bordelaise au stade pré-floral (BBCH 51-71) contre la tavelure (Venturia inaequalis)", moisDebut: 3, moisFin: 5, priorite: "haute", recurrence: "annuelle", saisonRecommandee: "printemps" },
       { type: "fertilisation", label: "Apport de compost", description: "Enfouir compost mûr au pied, 3-5 kg/arbre", moisDebut: 3, moisFin: 4, priorite: "haute", recurrence: "annuelle", saisonRecommandee: "printemps" },
-      { type: "recolte", label: "Récolte des pommes", description: "Récolte à maturité selon variété", moisDebut: 8, moisFin: 10, priorite: "haute", recurrence: "annuelle", saisonRecommandee: "automne" },
-      { type: "greffe", label: "Greffe en fente ou en couronne", description: "Greffe sur porte-greffe compatible", moisDebut: 3, moisFin: 4, priorite: "basse", recurrence: "annuelle", saisonRecommandee: "printemps" },
+      // Bug feedback testeur 2026-05-25 (cmplk375i) — Le profil générique
+      // "Pommier" annonçait la récolte août-octobre, ce qui est trop précoce
+      // pour les variétés tardives (Belle de Boskoop, Reinette du Canada,
+      // Granny, etc.). Le code consommateur doit affiner par variété.
+      { type: "recolte", label: "Récolte des pommes", description: "Récolte à maturité selon variété : précoces fin août (Reinette, Reine des Reinettes), mi-saison sept-oct (Golden), tardives mi-sept à fin oct (Belle de Boskoop, Reinette du Canada, Granny)", moisDebut: 9, moisFin: 10, priorite: "haute", recurrence: "annuelle", saisonRecommandee: "automne" },
+      // Bug feedback testeur 2026-05-25 (cmplk6ira) — La greffe en fente se
+      // pratique en repos végétatif (fév-mars, sujet dormant) alors que la
+      // greffe en couronne nécessite le démarrage de sève (avril-mai, écorce
+      // décollée). On sépare en deux opérations.
+      { type: "greffe", label: "Greffe en fente", description: "Greffe en fente sur porte-greffe en repos végétatif (avant montée de sève)", moisDebut: 2, moisFin: 3, priorite: "basse", recurrence: "annuelle", saisonRecommandee: "printemps" },
+      { type: "greffe", label: "Greffe en couronne", description: "Greffe en couronne au démarrage de sève (écorce décollée)", moisDebut: 4, moisFin: 5, priorite: "basse", recurrence: "annuelle", saisonRecommandee: "printemps" },
     ],
   },
   {

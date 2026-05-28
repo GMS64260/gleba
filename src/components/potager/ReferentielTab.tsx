@@ -23,12 +23,15 @@ const ESPECE_TYPES = [
   { value: "petit_fruit", label: "Petits fruits", icon: Cherry },
 ] as const
 
+// Bug feedback testeur 2026-05-26 (cmpm71z5s) — ajout du label
+// "Ornement" pour ne pas afficher la valeur brute minuscule "ornement".
 const TYPE_LABELS: Record<string, string> = {
   legume: "Légume",
   arbre_fruitier: "Arbre fruitier",
   petit_fruit: "Petit fruit",
   aromatique: "Aromatique",
   engrais_vert: "Engrais vert",
+  ornement: "Ornement",
 }
 
 interface EspeceWithRelations {

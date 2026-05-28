@@ -66,11 +66,13 @@ export const VARIETES_AUTOFERTILES_PATTERNS = [
   "sunburst",
   "lapins",
   // Pommiers
-  "golden delicious", // partiellement
   "reinette grise",
   // Poiriers
-  "conférence", // partiellement
-  "williams", // partiellement
+  // Bug feedback testeur 2026-05-26 (cmpm6ysul) — Williams et Conférence
+  // sont PARTIELLEMENT autofertiles : nécessitent un pollinisateur pour
+  // un rendement correct. Sortis du fallback "autofertile=true" pour ne
+  // pas induire en erreur ("plant seul = OK") alors qu'il faut associer.
+  // Idem Golden Delicious (partiel) — retiré pour la même raison.
   // Figuiers (presque tous)
   "brown turkey",
   "violette de bordeaux",

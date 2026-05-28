@@ -82,7 +82,25 @@ interface PollinisationData {
     pollinisateursCompat: { arbrePollinisateur: { id: number; nom: string; espece: string | null; variete: string | null } }[]
   }[]
   alertes: { id: number; nom: string; espece: string | null; floraison: string | null; groupePollinisation: string | null }[]
-  stats: { totalArbres: number; autofertiles: number; sansPollinisateur: number }
+  alertesAnemophiles?: { id: number; nom: string; espece: string | null; variete: string | null; raison: string }[]
+  stats: { totalArbres: number; autofertiles: number; sansPollinisateur: number; anemophiles?: number; anemophilesSeuls?: number }
+}
+
+// Bug feedback testeur 2026-05-26 (cmploo5f8) — Le compteur "Sans
+// pollinisateur" du KPI excluait déjà les noyers (anémophiles), mais le
+// tableau "Associations de pollinisation" continuait à afficher "Aucun !"
+// pour eux, ce qui semblait incohérent. On filtre côté UI avec la même
+// règle pour afficher "Anémophile" à la place.
+function estAnemophileEspece(espece: string | null | undefined): boolean {
+  if (!espece) return false
+  const esp = espece.toLowerCase()
+  return (
+    esp.includes("noyer") ||
+    esp.includes("châtaignier") || esp.includes("chataignier") ||
+    esp.includes("pistachier") ||
+    esp.includes("olivier") ||
+    esp.includes("noisetier")
+  )
 }
 
 const TYPES_OBS = [
@@ -1599,6 +1617,13 @@ function PollinisationSubTab() {
                         </div>
                       ) : isAutofertile ? (
                         <span className="text-sm text-muted-foreground">-</span>
+                      ) : estAnemophileEspece(arbre.espece) ? (
+                        <span
+                          className="text-xs text-sky-700"
+                          title="Espèce anémophile (pollinisation par le vent). Prévoir au moins 2 variétés différentes pour assurer la pollinisation croisée."
+                        >
+                          Anémophile
+                        </span>
                       ) : hasDerive ? (
                         <span className="text-xs text-amber-600" title="Pollinisateur dérivé automatiquement (même espèce, groupes compatibles)">À associer (auto)</span>
                       ) : (

@@ -301,8 +301,16 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
   // sur >0 kg N-1 (sinon la comparaison n'a aucun sens), et on supprime le
   // "-100%" affolant quand l'année en cours n'a pas encore démarré : on
   // affiche plutôt "Saison à venir" + référence absolue.
-  const hasComparatifN1 = (stats?.recoltesAnneePrecedente ?? 0) > 0
-  const aucuneRecolteN = (stats?.recoltesAnnee ?? 0) === 0 && hasComparatifN1
+  // Bug feedback testeur 2026-05-25 (cmplkaazg) — sur l'année courante
+  // avec récoltes (N=85kg) mais N-1=0, on disait "Pas de comparatif" alors
+  // que c'était la première année avec activité. On distingue désormais 3
+  // cas: première année (N>0, N-1=0), saison à venir (N=0, N-1>0), comparatif
+  // disponible (les deux > 0).
+  const recoltesN = stats?.recoltesAnnee ?? 0
+  const recoltesN1 = stats?.recoltesAnneePrecedente ?? 0
+  const hasComparatifN1 = recoltesN1 > 0 && recoltesN > 0
+  const aucuneRecolteN = recoltesN === 0 && recoltesN1 > 0
+  const premiereAnnee = recoltesN > 0 && recoltesN1 === 0
 
   return (
     <div className="space-y-6">
@@ -426,6 +434,10 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                 <p className="text-[10px] text-amber-100 italic">
                   Saison à venir (N-1 : {stats?.recoltesAnneePrecedente?.toFixed(1)} kg)
                 </p>
+              ) : premiereAnnee ? (
+                <p className="text-[10px] text-amber-100 italic">
+                  Première année avec activité (N-1 = 0 kg)
+                </p>
               ) : hasComparatifN1 ? (
                 <>
                   <div className="flex items-center gap-1 text-xs">
@@ -495,21 +507,47 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
         </div>
       </TooltipProvider>
 
-      {/* Irrigation */}
-      <IrrigationAdvisor />
+      {/* Irrigation — bug feedback testeur 2026-05-25 (cmplk9r2d) :
+          les conseils irrigation se basent sur les cultures actives
+          (terminee=null), donc ils n'ont de sens que sur l'année en
+          cours. Sur 2024/2025/2027, on masque le bloc plutôt que
+          d'afficher les mêmes cultures urgentes à tort. */}
+      {year === new Date().getFullYear() ? (
+        <IrrigationAdvisor />
+      ) : (
+        <div className="border rounded-lg p-4 bg-slate-50 text-sm text-slate-600">
+          Les conseils d&apos;irrigation sont calculés sur les cultures actives à
+          ce jour. Pour les consulter, sélectionnez l&apos;année en cours.
+        </div>
+      )}
 
       {/* Calendrier */}
       <div>
         <div className="flex items-center gap-3 mb-3">
-          <Tabs
-            value={calendarMode}
-            onValueChange={(v) => setCalendarMode(v as "cultures" | "itps")}
-          >
-            <TabsList>
-              <TabsTrigger value="cultures">Calendrier des cultures</TabsTrigger>
-              <TabsTrigger value="itps">Calendrier des ITPs</TabsTrigger>
-            </TabsList>
-          </Tabs>
+          {/* Bug feedback testeur 2026-05-25 — l'onglet "Calendrier des ITPs"
+              restait inerte avec le composant Tabs (probable conflit de
+              focus/event-bubbling). On remplace par un toggle button-group
+              explicite qui appelle setCalendarMode directement. */}
+          <div role="tablist" className="inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={calendarMode === "cultures"}
+              onClick={() => setCalendarMode("cultures")}
+              className={`inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium transition-all ${calendarMode === "cultures" ? "bg-background text-foreground shadow" : "hover:bg-background/50"}`}
+            >
+              Calendrier des cultures
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={calendarMode === "itps"}
+              onClick={() => setCalendarMode("itps")}
+              className={`inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium transition-all ${calendarMode === "itps" ? "bg-background text-foreground shadow" : "hover:bg-background/50"}`}
+            >
+              Calendrier des ITPs
+            </button>
+          </div>
         </div>
         {calendarMode === "cultures" ? (
           <CalendarView year={year} />

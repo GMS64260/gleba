@@ -285,9 +285,19 @@ export function CalendrierTab() {
               //   - taux > 110 % → rouge + tooltip « anomalie de saisie »
               //   - 95-110 % → vert (saison de pic)
               //   - 0-95 %    → bleu/vert standard
+              //
+              // Bug feedback testeur 2026-05-26 (cmplojf11) — Le dénominateur
+              // était fixe (7 × attenduJour) même si l'éleveur n'avait saisi
+              // qu'1 jour sur la semaine, ce qui faisait afficher 14 % au lieu
+              // de ~96 %. On compte désormais le nombre de jours qui ont
+              // effectivement reçu une saisie pour ajuster le dénominateur.
               const total = data.stats.totalOeufs
               const attenduJour = data.stats.estimationOeufsJour
-              const attenduSem = attenduJour * 7
+              const joursAvecSaisie = new Set(
+                (data.productions ?? []).map((p) => p.date.slice(0, 10))
+              ).size
+              const denominateurJours = Math.max(1, Math.min(7, joursAvecSaisie))
+              const attenduSem = attenduJour * denominateurJours
               const ratio = total > 0 && attenduSem > 0 ? (total / attenduSem) * 100 : null
               const anomalie = ratio !== null && ratio > 110
               const labelColor = anomalie ? 'text-red-700' : 'text-green-700'
@@ -324,7 +334,10 @@ export function CalendrierTab() {
                   ) : (
                     <p className={`text-2xl font-bold ${labelColor}`}>{display}</p>
                   )}
-                  <p className={`text-xs ${subColor}`}>Taux collecte sem.</p>
+                  <p className={`text-xs ${subColor}`}>
+                    Taux collecte
+                    {joursAvecSaisie > 0 && joursAvecSaisie < 7 ? ` (${joursAvecSaisie}j)` : " sem."}
+                  </p>
                 </div>
               )
             })()}

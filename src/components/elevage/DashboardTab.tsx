@@ -32,7 +32,7 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart"
-import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, PieChart, Pie, Cell } from "recharts"
+import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts"
 
 interface DashboardTabProps {
   year: number
@@ -549,22 +549,28 @@ export function DashboardTab({ year }: DashboardTabProps) {
             {/* Repartition animaux par type */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm">Repartition par espèce</CardTitle>
+                <CardTitle className="text-sm">Répartition par espèce</CardTitle>
                 <CardDescription>Animaux actifs</CardDescription>
               </CardHeader>
               <CardContent>
                 {data.animauxParType.length > 0 ? (
-                  <ChartContainer config={{}} className="h-[250px]">
+                  <ChartContainer config={{}} className="h-[280px]">
+                    {/* Bug feedback testeur 2026-05-25 (cmplkfit/cmplk944c) —
+                        Le PieChart restait blanc même avec 69 animaux à
+                        afficher. On force un remount via la clé (signature
+                        des données) et on désactive l'animation. La hauteur
+                        est élargie pour laisser la place à la Legend. */}
                     <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
+                      <PieChart key={data.animauxParType.map((e) => `${e.nom}:${e.count}`).join("|")}>
                         <Pie
                           data={data.animauxParType}
                           dataKey="count"
                           nameKey="nom"
                           cx="50%"
-                          cy="50%"
-                          outerRadius={80}
-                          label={({ name, value }) => `${name}: ${value}`}
+                          cy="45%"
+                          outerRadius={70}
+                          label={false}
+                          isAnimationActive={false}
                         >
                           {data.animauxParType.map((entry, index) => (
                             <Cell
@@ -574,6 +580,7 @@ export function DashboardTab({ year }: DashboardTabProps) {
                           ))}
                         </Pie>
                         <ChartTooltip content={<ChartTooltipContent />} />
+                        <Legend verticalAlign="bottom" height={36} wrapperStyle={{ fontSize: 11 }} />
                       </PieChart>
                     </ResponsiveContainer>
                   </ChartContainer>

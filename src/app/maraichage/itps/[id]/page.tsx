@@ -450,24 +450,50 @@ export default function EditITPPage() {
                 <FormField
                   control={form.control}
                   name="dureeCulture"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Durée culture (jours)</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          min={0}
-                          max={365}
-                          placeholder="Jours en planche"
-                          {...field}
-                          value={field.value ?? ""}
-                          onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : null)}
-                        />
-                      </FormControl>
-                      <FormDescription>Entre plantation et fin</FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+                  render={({ field }) => {
+                    // Bug feedback testeur 2026-05-25 (cmpljz6s9) — pour
+                    // détecter l'incohérence entre Durée culture et les
+                    // semaines plantation/récolte, on calcule l'écart en
+                    // jours et on l'affiche en aide.
+                    const sP = form.watch("semainePlantation")
+                    const sR = form.watch("semaineRecolte")
+                    let diffJours: number | null = null
+                    if (sP && sR) {
+                      const semaines = sR > sP ? sR - sP : (52 - sP) + sR
+                      diffJours = semaines * 7
+                    }
+                    const ecartImportant =
+                      diffJours !== null &&
+                      typeof field.value === "number" &&
+                      Math.abs(field.value - diffJours) > 14
+                    return (
+                      <FormItem>
+                        <FormLabel>Durée culture (jours)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min={0}
+                            max={365}
+                            placeholder="Jours en planche"
+                            {...field}
+                            value={field.value ?? ""}
+                            onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : null)}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          Entre plantation et fin.
+                          {diffJours !== null && (
+                            <span className={ecartImportant ? "text-amber-600 font-medium block mt-1" : "block mt-1"}>
+                              {ecartImportant ? "⚠ " : ""}
+                              Plantation→récolte ≈ {diffJours} j (S{sP}→S{sR}).
+                              {ecartImportant && " La durée culture saisie diverge — vérifier."}
+                            </span>
+                          )}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )
+                  }}
                 />
               </CardContent>
             </Card>

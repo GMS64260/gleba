@@ -566,16 +566,16 @@ export default function DashboardComptabilite() {
               </CardHeader>
               <CardContent>
                 {data.charts.revenusParCategorie.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={300}>
+                  <ResponsiveContainer width="100%" height={320}>
                     <PieChart>
                       <Pie
                         data={data.charts.revenusParCategorie}
                         dataKey="montant"
                         nameKey="categorie"
                         cx="50%"
-                        cy="50%"
-                        outerRadius={100}
-                        label={({ name, percent }) => `${name} (${((percent || 0) * 100).toFixed(0)}%)`}
+                        cy="45%"
+                        outerRadius={90}
+                        label={({ percent }) => ((percent || 0) >= 0.05 ? `${((percent || 0) * 100).toFixed(0)}%` : '')}
                         labelLine={false}
                       >
                         {data.charts.revenusParCategorie.map((entry, index) => (
@@ -583,6 +583,7 @@ export default function DashboardComptabilite() {
                         ))}
                       </Pie>
                       <Tooltip formatter={(value) => [formatEuro(Number(value || 0)), '']} />
+                      <Legend verticalAlign="bottom" height={36} wrapperStyle={{ fontSize: 12 }} />
                     </PieChart>
                   </ResponsiveContainer>
                 ) : (
@@ -600,16 +601,16 @@ export default function DashboardComptabilite() {
               </CardHeader>
               <CardContent>
                 {data.charts.depensesParCategorie.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={300}>
+                  <ResponsiveContainer width="100%" height={320}>
                     <PieChart>
                       <Pie
                         data={data.charts.depensesParCategorie}
                         dataKey="montant"
                         nameKey="categorie"
                         cx="50%"
-                        cy="50%"
-                        outerRadius={100}
-                        label={({ name, percent }) => `${name} (${((percent || 0) * 100).toFixed(0)}%)`}
+                        cy="45%"
+                        outerRadius={90}
+                        label={({ percent }) => ((percent || 0) >= 0.05 ? `${((percent || 0) * 100).toFixed(0)}%` : '')}
                         labelLine={false}
                       >
                         {data.charts.depensesParCategorie.map((entry, index) => (
@@ -617,6 +618,7 @@ export default function DashboardComptabilite() {
                         ))}
                       </Pie>
                       <Tooltip formatter={(value) => [formatEuro(Number(value || 0)), '']} />
+                      <Legend verticalAlign="bottom" height={36} wrapperStyle={{ fontSize: 12 }} />
                     </PieChart>
                   </ResponsiveContainer>
                 ) : (

@@ -375,28 +375,44 @@ function ItpsSubTab() {
   const [isLoading, setIsLoading] = React.useState(true)
 
   const [loadError, setLoadError] = React.useState<string | null>(null)
+  // Bug feedback testeur 2026-05-26 (cmplonap8) — "Failed to fetch"
+  // intermittent au premier clic sur l'onglet ITPs. Souvent une race
+  // navigateur (TypeError) plutôt qu'une erreur serveur. On ajoute un
+  // retry automatique transparent pour ne pas exposer ce flake à l'user.
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
     setLoadError(null)
-    try {
-      const response = await fetch("/api/itps?pageSize=200")
-      if (!response.ok) {
-        // Feedback Marc 2026-05-16 — Bug 13 : on récupère le détail
-        // d'erreur retourné par l'API pour ne pas afficher un toast
-        // générique qui contredit l'état "Aucun ITP trouvé." du DataTable.
-        let msg = `Erreur ${response.status}`
-        try {
-          const errJson = await response.json()
-          if (errJson?.error) msg = String(errJson.error)
-        } catch { /* ignore */ }
-        throw new Error(msg)
+    const attempt = async (retriesLeft: number): Promise<void> => {
+      try {
+        const response = await fetch("/api/itps?pageSize=200", { cache: "no-store" })
+        if (!response.ok) {
+          // Feedback Marc 2026-05-16 — Bug 13 : on récupère le détail
+          // d'erreur retourné par l'API pour ne pas afficher un toast
+          // générique qui contredit l'état "Aucun ITP trouvé." du DataTable.
+          let msg = `Erreur ${response.status}`
+          try {
+            const errJson = await response.json()
+            if (errJson?.error) msg = String(errJson.error)
+          } catch { /* ignore */ }
+          throw new Error(msg)
+        }
+        const result = await response.json()
+        setData(Array.isArray(result) ? result : result.data || [])
+      } catch (err) {
+        const isNetworkErr =
+          err instanceof TypeError ||
+          (err instanceof Error && /Failed to fetch|NetworkError/i.test(err.message))
+        if (isNetworkErr && retriesLeft > 0) {
+          await new Promise((r) => setTimeout(r, 400))
+          return attempt(retriesLeft - 1)
+        }
+        const message = err instanceof Error ? err.message : "Impossible de charger les ITPs"
+        setLoadError(message)
+        toast({ variant: "destructive", title: "Erreur", description: message })
       }
-      const result = await response.json()
-      setData(Array.isArray(result) ? result : result.data || [])
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Impossible de charger les ITPs"
-      setLoadError(message)
-      toast({ variant: "destructive", title: "Erreur", description: message })
+    }
+    try {
+      await attempt(1)
     } finally {
       setIsLoading(false)
     }
@@ -496,7 +512,7 @@ function StocksSubTab() {
                 </div>
                 <div>
                   <CardTitle className="text-sm">Irrigation</CardTitle>
-                  <CardDescription className="text-xs">Cultures a irriguer</CardDescription>
+                  <CardDescription className="text-xs">Cultures à irriguer</CardDescription>
                 </div>
               </div>
             </CardHeader>

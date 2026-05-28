@@ -189,7 +189,7 @@ export function VergerCalendarView({ year }: VergerCalendarViewProps) {
       <CardHeader className="pb-2">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <CardTitle className="text-lg flex items-center gap-2">
-            Calendrier des operations
+            Calendrier des opérations
             {monthOpsCount.total > 0 && (
               <Badge variant="secondary" className="text-xs">
                 {monthOpsCount.remaining} a faire / {monthOpsCount.total}

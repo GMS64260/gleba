@@ -39,10 +39,15 @@ const portesGreffe: PG[] = [
   { id: "pg-pommier-mm111",   nom: "Pommier MM111",   vigueur: 5, precocite: 2, sensibilites: [], drageonnement: false, notes: "Vigoureux — sols pauvres tolérés.", especes: ["Pommier"] },
   { id: "pg-pommier-pajam2",  nom: "Pommier Pajam2",  vigueur: 2, precocite: 5, sensibilites: ["asphyxie"], drageonnement: true, notes: "Type M9, tolérance feu bactérien.", especes: ["Pommier"] },
   // Poirier
-  { id: "pg-poirier-sydo",        nom: "Poirier Sydo",        vigueur: 4, precocite: 3, sensibilites: ["calcaire"], drageonnement: false, notes: "Franc poirier amélioré.", especes: ["Poirier"] },
-  { id: "pg-poirier-ba29",        nom: "Poirier BA29",        vigueur: 3, precocite: 4, sensibilites: ["calcaire", "secheresse"], drageonnement: false, notes: "Cognassier — vigueur moyenne.", especes: ["Poirier"] },
-  { id: "pg-poirier-ohf",         nom: "Poirier OHF",         vigueur: 3, precocite: 4, sensibilites: ["feu_bacterien"], drageonnement: false, notes: "Old Home × Farmingdale.", especes: ["Poirier"] },
-  { id: "pg-poirier-cognassier-a", nom: "Poirier Cognassier A", vigueur: 3, precocite: 4, sensibilites: ["calcaire"], drageonnement: true, especes: ["Poirier", "Cognassier"] },
+  // Bug feedback testeur 2026-05-25 (cmplk7sdu) — BA29, Sydo et
+  // Cognassier A sont botaniquement des cognassiers (Cydonia oblonga)
+  // utilisés comme porte-greffe pour le poirier. Le libellé "Poirier
+  // BA29" induisait en erreur vs la colonne "Cognassier BA29" de la
+  // fiche arbre. On utilise le nom botanique partout.
+  { id: "pg-poirier-sydo",        nom: "Cognassier Sydo",        vigueur: 4, precocite: 3, sensibilites: ["calcaire"], drageonnement: false, notes: "Sélection Sydo — cognassier vigoureux porte-greffe poirier.", especes: ["Poirier"] },
+  { id: "pg-poirier-ba29",        nom: "Cognassier BA29",        vigueur: 3, precocite: 4, sensibilites: ["calcaire", "secheresse"], drageonnement: false, notes: "Cognassier de Provence BA29 — vigueur moyenne, le plus utilisé en pro.", especes: ["Poirier"] },
+  { id: "pg-poirier-ohf",         nom: "Poirier OHF",         vigueur: 3, precocite: 4, sensibilites: ["feu_bacterien"], drageonnement: false, notes: "Old Home × Farmingdale — franc de poirier.", especes: ["Poirier"] },
+  { id: "pg-poirier-cognassier-a", nom: "Cognassier A",        vigueur: 3, precocite: 4, sensibilites: ["calcaire"], drageonnement: true, especes: ["Poirier", "Cognassier"] },
   // Prunier
   { id: "pg-prunier-mariana",     nom: "Prunier Mariana 2624", vigueur: 5, precocite: 3, sensibilites: [], drageonnement: false, especes: ["Prunier", "Abricotier"] },
   { id: "pg-prunier-saint-julien", nom: "Prunier Saint-Julien A", vigueur: 3, precocite: 4, sensibilites: ["secheresse"], drageonnement: true, especes: ["Prunier", "Abricotier", "Pêcher"] },

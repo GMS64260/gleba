@@ -36,20 +36,18 @@ export async function GET(request: NextRequest) {
       prisma.arbre.count({ where: { userId, type: "forestier" } }),
       // Bug #13 — Le filtre strict (productif=true + datePlantation passée)
       // descendait le compteur à 0 dès que la date était absente, malgré
-      // récoltes enregistrées et flag Productif=Oui dans la fiche. On
-      // compte désormais les arbres marqués productif=true ET
-      // (datePlantation absente OU passée) — la date manquante est
-      // une lacune de saisie, pas une raison d'invalider la production.
-      // Les dates futures restent exclues pour éviter qu'un arbre planté
-      // en 2099 (seed test) fausse le KPI.
+      // récoltes enregistrées et flag Productif=Oui dans la fiche.
+      //
+      // Bug feedback testeur 2026-05-26 (cmpm704oo) — Compter aussi les
+      // arbres sans date plantée comme "productifs" induisait en erreur :
+      // 21/21 productifs alors qu'aucun n'avait de date. On exige désormais
+      // une date de plantation < aujourd'hui ; le bandeau "X arbres sans
+      // date" pousse l'utilisateur à compléter sa saisie.
       prisma.arbre.count({
         where: {
           userId,
           productif: true,
-          OR: [
-            { datePlantation: null },
-            { datePlantation: { lte: new Date() } },
-          ],
+          datePlantation: { lte: new Date() },
           type: { in: ["fruitier", "petit_fruit"] },
         },
       }),

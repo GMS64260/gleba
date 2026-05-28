@@ -302,10 +302,22 @@ export async function getCulturesPrevues(
   }
 
   // Mode 2: Cultures directes (sans rotation)
+  //
+  // Bug feedback testeur 2026-05-25 (cmplk8h0e) — `getRecoltesPrevues`
+  // utilisait toutes les cultures de l'année (y compris celles dont la
+  // récolte est déjà faite ou terminées), tandis que `getRecoltesAnneeAggregat`
+  // (utilisé par le header) filtre `recolteFaite=false AND terminee=null`.
+  // Résultat : header 1367 kg attendu vs somme du détail 1692 kg.
+  // On aligne ici en excluant les cultures déjà récoltées/terminées : la
+  // récolte réelle saisie remplace la projection pour ces cultures (cf.
+  // KPI annuel). La projection détaillée ne couvre désormais que ce qu'il
+  // RESTE à produire — cohérent avec l'agrégat unifié.
   const culturesDirectes = await prisma.culture.findMany({
     where: {
       userId,
       annee,
+      terminee: null,
+      recolteFaite: false,
       ...(options?.especeId && { especeId: options.especeId }),
       ...(options?.plancheId && { planche: { nom: options.plancheId } }),
       ...(options?.ilot && { planche: { ilot: options.ilot } }),

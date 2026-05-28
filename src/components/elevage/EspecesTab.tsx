@@ -322,7 +322,10 @@ export function EspecesTab() {
                     <TableCell className="text-right">{esp.prixAchat ? `${esp.prixAchat} \u20ac` : '-'}</TableCell>
                     <TableCell className="text-right">
                       {esp._count.animaux + esp._count.lots > 0 ? (
-                        <Badge variant="outline">{esp._count.animaux} ind. / {esp._count.lots} lots</Badge>
+                        <Badge variant="outline">
+                          {esp._count.animaux} ind. / {esp._count.lots}{" "}
+                          {esp._count.lots > 1 ? "lots" : "lot"}
+                        </Badge>
                       ) : (
                         <span className="text-muted-foreground text-sm">-</span>
                       )}

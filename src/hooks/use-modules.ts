@@ -77,7 +77,10 @@ export function useModules(): UseModulesResult {
   const refresh = React.useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch("/api/user/preferences")
+      // Bug feedback testeur 2026-05-25 (cmplk8yoz) — on force `no-store`
+      // pour éviter qu'un cache navigateur/CDN renvoie l'ancien état du
+      // toggle après un PUT.
+      const res = await fetch("/api/user/preferences", { cache: "no-store" })
       if (res.ok) {
         const prefs = await res.json()
         const m = sanitizeModulesActifs(prefs.modulesActifs)
@@ -92,7 +95,11 @@ export function useModules(): UseModulesResult {
   }, [])
 
   React.useEffect(() => {
-    if (!cached) refresh()
+    // Bug feedback testeur 2026-05-25 (cmplk8yoz) — on refresh
+    // systématiquement au mount, même quand on a un cache local : ça
+    // garantit que le toggle reflète la valeur serveur en cas de modif
+    // depuis un autre onglet/appareil.
+    refresh()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

@@ -119,11 +119,32 @@ export async function POST(request: NextRequest) {
     // -10/-20 kg en base. On garde la possibilité de forcer (via
     // `overrideStock`) pour les éleveurs qui consomment avant d'avoir
     // saisi un approvisionnement.
+    //
+    // Bug feedback testeur 2026-05-25 (cmplkce65/cmplk4qpj) — Si l'aliment
+    // n'a JAMAIS été initialisé (UserStockAliment inexistant), on refuse la
+    // saisie en l'identifiant comme code distinct STOCK_NON_INITIALISE.
+    // Cela évite qu'un stock implicite à 0 fasse passer immédiatement en
+    // négatif sans que l'éleveur ait conscience que le stock n'avait pas
+    // été renseigné.
+    const existing = await prisma.userStockAliment.findUnique({
+      where: { userId_alimentId: { userId, alimentId } },
+      select: { stock: true },
+    })
+
+    if (!overrideStock && existing === null) {
+      return NextResponse.json(
+        {
+          error: 'Stock non initialisé',
+          code: 'STOCK_NON_INITIALISE',
+          details: {
+            message: `Le stock de cet aliment n'a jamais été renseigné. Initialisez-le d'abord depuis l'onglet « Stocks » (ou confirmez pour enregistrer la consommation et laisser le stock partir en négatif).`,
+          },
+        },
+        { status: 422 }
+      )
+    }
+
     if (!overrideStock) {
-      const existing = await prisma.userStockAliment.findUnique({
-        where: { userId_alimentId: { userId, alimentId } },
-        select: { stock: true },
-      })
       const stockActuel = existing?.stock ?? 0
       if (stockActuel - quantite < 0) {
         return NextResponse.json(

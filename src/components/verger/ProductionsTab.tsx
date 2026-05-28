@@ -407,13 +407,13 @@ function RecoltesFruitsSubTab() {
         </Card>
       </div>
 
-      {/* Alertes peremption */}
+      {/* Alertes péremption */}
       {(perimesCount > 0 || bientotPerimesCount > 0) && (
         <Card className="border-orange-200 bg-orange-50">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm text-orange-700 flex items-center gap-2">
               <AlertTriangle className="h-4 w-4" />
-              Alertes peremption
+              Alertes péremption
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -522,7 +522,7 @@ function RecoltesFruitsSubTab() {
                   <TableRow>
                     <TableHead>Date récolte</TableHead>
                     <TableHead>Arbre</TableHead>
-                    <TableHead className="text-right">Quantite</TableHead>
+                    <TableHead className="text-right">Quantité</TableHead>
                     <TableHead className="text-right">Prix/kg</TableHead>
                     <TableHead className="text-right">Total</TableHead>
                     <TableHead>Client</TableHead>
@@ -560,8 +560,8 @@ function RecoltesFruitsSubTab() {
                   <TableRow>
                     <TableHead>Date</TableHead>
                     <TableHead>Arbre</TableHead>
-                    <TableHead className="text-right">Quantite</TableHead>
-                    <TableHead>Qualite</TableHead>
+                    <TableHead className="text-right">Quantité</TableHead>
+                    <TableHead>Qualité</TableHead>
                     <TableHead>Statut</TableHead>
                     <TableHead>Notes</TableHead>
                   </TableRow>
@@ -636,7 +636,7 @@ function RecoltesFruitsSubTab() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Qualite</Label>
+                <Label>Qualité</Label>
                 <Select
                   value={newRecolte.qualite}
                   onValueChange={(v) => setNewRecolte({ ...newRecolte, qualite: v })}
@@ -664,7 +664,7 @@ function RecoltesFruitsSubTab() {
               </div>
             </div>
             <div>
-              <Label>Date de peremption</Label>
+              <Label>Date de péremption</Label>
               <Input
                 type="date"
                 value={newRecolte.datePeremption}

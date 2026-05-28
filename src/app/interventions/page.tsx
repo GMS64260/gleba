@@ -837,7 +837,7 @@ export default function InterventionsPage() {
                             />
                           </div>
                           <div>
-                            <Label>Unite</Label>
+                            <Label>Unité</Label>
                             <select
                               value={form.uniteDose}
                               onChange={(e) => setForm({ ...form, uniteDose: e.target.value })}
@@ -908,7 +908,7 @@ export default function InterventionsPage() {
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <Label>Quantite</Label>
+                          <Label>Quantité</Label>
                           <Input
                             type="number"
                             step="0.01"
@@ -918,7 +918,7 @@ export default function InterventionsPage() {
                           />
                         </div>
                         <div>
-                          <Label>Unite</Label>
+                          <Label>Unité</Label>
                           <select
                             value={form.intrantUnite}
                             onChange={(e) => setForm({ ...form, intrantUnite: e.target.value })}
@@ -1330,13 +1330,13 @@ export default function InterventionsPage() {
                                       </p>
                                       {intervention.intrantQuantite !== null && (
                                         <p>
-                                          <span className="text-muted-foreground">Quantite :</span>{" "}
+                                          <span className="text-muted-foreground">Quantité :</span>{" "}
                                           {intervention.intrantQuantite} {intervention.intrantUnite}
                                         </p>
                                       )}
                                       {intervention.intrantCout !== null && (
                                         <p>
-                                          <span className="text-muted-foreground">Cout :</span>{" "}
+                                          <span className="text-muted-foreground">Coût :</span>{" "}
                                           {formatEuro(intervention.intrantCout)}
                                         </p>
                                       )}

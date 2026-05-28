@@ -142,6 +142,12 @@ function JardinContent() {
   // marquée "culture" indépendamment de son contenu (Demo-C tunnel = 0 planche).
   // L'utilisateur voyait un canvas vide alors que Demo-A avait 11 planches.
   // On préfère désormais la parcelle qui a déjà des planches assignées.
+  //
+  // Bug feedback testeur 2026-05-26 (cmpm769mw) — Si plusieurs parcelles
+  // matchent l'usage (le user a Nath et Luc + autres), sélectionner UNE
+  // parcelle cache les autres. On bascule sur "Toutes les parcelles"
+  // (selectedParcelleId=null) quand ≥ 2 parcelles correspondent à l'usage,
+  // pour ne plus rater 12 planches sur 13.
   const urlAutoSelectDone = React.useRef(false)
   React.useEffect(() => {
     if (urlAutoSelectDone.current) return
@@ -156,8 +162,14 @@ function JardinContent() {
       const matches = parcelles.filter(pa =>
         pa.usage?.split(',').map(u => u.trim()).includes(usage)
       )
-      const match = matches.find(pa => pa.plancheCount > 0) ?? matches[0]
-      if (match) setSelectedParcelleId(match.id)
+      if (matches.length >= 2) {
+        // Plusieurs parcelles culture → on laisse "Toutes les parcelles"
+        // pour ne pas cacher l'inventaire complet.
+        setSelectedParcelleId(null)
+      } else {
+        const match = matches.find(pa => pa.plancheCount > 0) ?? matches[0]
+        if (match) setSelectedParcelleId(match.id)
+      }
       urlAutoSelectDone.current = true
     }
   }, [searchParams, parcelles])

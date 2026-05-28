@@ -168,6 +168,23 @@ export default function DetailArbrePage() {
     if (session?.user && id) fetchArbre()
   }, [session?.user, id, router])
 
+  // Bug feedback testeur 2026-05-26 (cmpm7260v) — l'onglet « Récoltes »
+  // renvoyait vers la liste globale non filtrée. On charge ici les
+  // récoltes de CET arbre (route déjà filtrable par arbreId).
+  const [recoltesArbre, setRecoltesArbre] = React.useState<
+    Array<{ id: number; date: string; quantite: number; qualite: string | null; statut: string }>
+  >([])
+  const [recoltesLoading, setRecoltesLoading] = React.useState(true)
+  React.useEffect(() => {
+    if (!session?.user || !id) return
+    setRecoltesLoading(true)
+    fetch(`/api/arbres/recoltes?arbreId=${id}`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => setRecoltesArbre(Array.isArray(d) ? d : []))
+      .catch(() => setRecoltesArbre([]))
+      .finally(() => setRecoltesLoading(false))
+  }, [session?.user, id])
+
   // Bug #1 — Recharger la liste des porte-greffes quand l'espèce change.
   // L'API filtre par especeId via la table porte_greffe_especes.
   React.useEffect(() => {
@@ -646,14 +663,52 @@ export default function DetailArbrePage() {
           <TabsContent value="recoltes">
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Récoltes de cet arbre</CardTitle>
+                <CardTitle className="text-base flex items-center justify-between">
+                  <span>Récoltes de cet arbre</span>
+                  {recoltesArbre.length > 0 && (
+                    <span className="text-sm font-normal text-muted-foreground">
+                      Total {Math.round(recoltesArbre.reduce((s, r) => s + (r.quantite || 0), 0) * 100) / 100} kg
+                      {" · "}
+                      {recoltesArbre.length} récolte{recoltesArbre.length > 1 ? "s" : ""}
+                    </span>
+                  )}
+                </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-muted-foreground mb-4">
-                  Consultez les récoltes de cet arbre dans la page dédiée.
-                </p>
+                {recoltesLoading ? (
+                  <p className="text-muted-foreground text-sm">Chargement…</p>
+                ) : recoltesArbre.length === 0 ? (
+                  <p className="text-muted-foreground text-sm mb-4">
+                    Aucune récolte enregistrée pour cet arbre.
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto mb-4">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b text-left text-muted-foreground">
+                          <th className="p-2 font-medium">Date</th>
+                          <th className="p-2 font-medium text-right">Quantité</th>
+                          <th className="p-2 font-medium">Qualité</th>
+                          <th className="p-2 font-medium">Statut</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {recoltesArbre.map((r) => (
+                          <tr key={r.id} className="border-b hover:bg-slate-50">
+                            <td className="p-2 whitespace-nowrap">
+                              {new Date(r.date).toLocaleDateString("fr-FR")}
+                            </td>
+                            <td className="p-2 text-right font-medium">{r.quantite} kg</td>
+                            <td className="p-2">{r.qualite || "—"}</td>
+                            <td className="p-2">{r.statut}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
                 <Link href="/verger?tab=productions">
-                  <Button variant="outline">Voir les récoltes</Button>
+                  <Button variant="outline" size="sm">Voir toutes les récoltes</Button>
                 </Link>
               </CardContent>
             </Card>

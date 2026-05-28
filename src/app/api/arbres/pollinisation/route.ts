@@ -90,6 +90,25 @@ export async function GET(request: NextRequest) {
     const estAutofertile = (a: typeof arbres[number]) =>
       a.autofertile || isAutofertileFallback(a.variete)
 
+    // Bug feedback testeur 2026-05-25 (cmplk71ec) — Les espèces anémophiles
+    // (pollinisation par le vent, pas par les insectes) ne suivent pas la
+    // même logique que les fruitiers entomophiles : un couple de
+    // Franquettes ne se pollinise pas bien à cause de la protogynie
+    // (heterodichogamie), mais l'alerte "sans pollinisateur compatible"
+    // qui sert à signaler un cerisier seul est inadaptée pour eux.
+    // On les exclut de l'alerte pour ne pas diluer le signal "vrais"
+    // problèmes (cerisier isolé, etc.).
+    const estAnemophile = (a: typeof arbres[number]) => {
+      const esp = (a.espece || "").toLowerCase()
+      return (
+        esp.includes("noyer") ||
+        esp.includes("châtaignier") || esp.includes("chataignier") ||
+        esp.includes("pistachier") ||
+        esp.includes("olivier") ||
+        esp.includes("noisetier")
+      )
+    }
+
     for (const a of arbres) {
       if (estAutofertile(a)) continue
       if (!a.espece) continue
@@ -116,11 +135,13 @@ export async function GET(request: NextRequest) {
     }
 
     // Alertes: arbres non autofertiles sans pollinisateur compatible
-    // (ni explicite, ni dérivé).
+    // (ni explicite, ni dérivé). Les espèces anémophiles sont exclues
+    // (cf. cmplk71ec — alerte cerisier diluée par les noyers).
     const alertes = arbres
       .filter(
         (a) =>
           !estAutofertile(a) &&
+          !estAnemophile(a) &&
           a.pollinisateursCompat.length === 0 &&
           !compatibilitesDerivees.has(a.id)
       )
@@ -131,6 +152,31 @@ export async function GET(request: NextRequest) {
         variete: a.variete,
         floraison: a.floraison,
         groupePollinisation: a.groupePollinisation,
+      }))
+
+    // Bug feedback testeur 2026-05-25 (cmplk71ec) — Alertes spécifiques
+    // aux anémophiles : il faut au minimum 2 individus de variétés
+    // différentes pour assurer la pollinisation croisée (protogynie).
+    // Si un seul individu d'une variété donnée → flag distinct.
+    const especesAnemo = new Map<string, Set<string>>() // espece → set(variete)
+    for (const a of arbres) {
+      if (!estAnemophile(a) || !a.espece) continue
+      if (!especesAnemo.has(a.espece)) especesAnemo.set(a.espece, new Set())
+      if (a.variete) especesAnemo.get(a.espece)!.add(a.variete)
+    }
+    const alertesAnemophiles = arbres
+      .filter((a) => estAnemophile(a))
+      .filter((a) => {
+        if (!a.espece) return false
+        const varietes = especesAnemo.get(a.espece)
+        return !varietes || varietes.size < 2
+      })
+      .map((a) => ({
+        id: a.id,
+        nom: a.nom,
+        espece: a.espece,
+        variete: a.variete,
+        raison: "Espèce anémophile (pollinisation par le vent) — prévoir au moins 2 variétés différentes pour assurer la pollinisation croisée.",
       }))
 
     // Toutes les associations
@@ -164,6 +210,7 @@ export async function GET(request: NextRequest) {
       arbres: arbresEnrichis,
       associations,
       alertes,
+      alertesAnemophiles,
       // Feedback Marc 2026-05-16 — V2 Bug 6 : on expose les paires
       // détectées automatiquement pour que l'UI puisse proposer
       // "Associer ces pollinisateurs en 1 clic".
@@ -172,6 +219,8 @@ export async function GET(request: NextRequest) {
         totalArbres: arbres.length,
         autofertiles: arbres.filter(estAutofertile).length,
         sansPollinisateur: alertes.length,
+        anemophiles: arbres.filter(estAnemophile).length,
+        anemophilesSeuls: alertesAnemophiles.length,
         avecCompatibiliteAuto: compatibilitesDerivees.size,
       },
     })
