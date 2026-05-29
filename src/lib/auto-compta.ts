@@ -120,6 +120,49 @@ export async function createVenteFromRecolte(
 }
 
 /**
+ * Bug R28 — Cree une DepenseManuelle "auto" quand un LotAnimaux est acheté
+ * (prixAchatTotal). Sans ça, le KPI Dépenses du dashboard (qui somme les
+ * DepenseManuelle) ignorait les achats de lots, alors que la liste les agrège.
+ * La liste exclut les écritures auto → pas de double comptage.
+ */
+export async function createDepenseFromLotAnimaux(
+  userId: string,
+  lot: {
+    id: number
+    nom?: string | null
+    prixAchatTotal?: number | null
+    dateArrivee?: Date | string | null
+  }
+) {
+  const montantTTC = lot.prixAchatTotal || 0
+  return prisma.$transaction(async (tx) => {
+    await tx.depenseManuelle.deleteMany({
+      where: { sourceType: 'achat_animal', sourceId: lot.id, auto: true },
+    })
+    if (montantTTC <= 0) return null
+    const { montantHT, montantTVA } = calculTVA(montantTTC, 5.5)
+    return tx.depenseManuelle.create({
+      data: {
+        userId,
+        date: lot.dateArrivee ? new Date(lot.dateArrivee) : new Date(),
+        categorie: 'achats',
+        description: `Achat lot ${lot.nom || `#${lot.id}`}`,
+        tauxTVA: 5.5,
+        montantHT,
+        montantTVA,
+        montant: montantTTC,
+        journal: 'AC',
+        module: 'elevage',
+        paye: true,
+        sourceType: 'achat_animal',
+        sourceId: lot.id,
+        auto: true,
+      },
+    })
+  })
+}
+
+/**
  * Cree une VenteManuelle quand une RecolteArbre est marquee "vendu"
  */
 export async function createVenteFromRecolteArbre(

@@ -10,7 +10,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { lotSchema } from '@/lib/validations/elevage-lot'
-import { deleteAutoEntry } from '@/lib/auto-compta'
+import { deleteAutoEntry, createDepenseFromLotAnimaux } from '@/lib/auto-compta'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -169,6 +169,9 @@ export async function POST(request: NextRequest) {
       },
     })
 
+    // Bug R28 : écriture comptable auto de l'achat du lot (KPI dépenses).
+    await createDepenseFromLotAnimaux(session.user.id, lot)
+
     return NextResponse.json({ data: lot }, { status: 201 })
   } catch (error) {
     console.error('POST /api/elevage/lots error:', error)
@@ -273,6 +276,8 @@ export async function DELETE(request: NextRequest) {
       await prisma.soinAnimal.deleteMany({
         where: { lotId: parseInt(id), userId: session.user.id },
       })
+      // Bug R28 : supprimer l'écriture comptable auto de l'achat du lot.
+      await deleteAutoEntry('achat_animal', parseInt(id), 'depense')
     } catch (cleanupError) {
       console.error('Cleanup error (lot DELETE):', cleanupError)
     }
