@@ -53,27 +53,41 @@ export function ZntFieldset({ distanceM, respectee, onChange, zntProduitM, requi
               })
             }}
             placeholder={`min ${seuil}m`}
-            required={required}
           />
         </div>
         <div>
-          <Label className="text-xs">ZNT respectée</Label>
-          <select
-            className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-xs"
-            value={effectif == null ? "" : effectif ? "oui" : "non"}
-            onChange={(e) => {
-              const next = e.target.value
-              onChange({
-                distanceM,
-                respectee: next === "" ? null : next === "oui",
-              })
-            }}
-            required={required}
-          >
-            <option value="">—</option>
-            <option value="oui">Oui</option>
-            <option value="non">Non (signaler)</option>
-          </select>
+          <Label className="text-xs">
+            ZNT respectée{required && <span className="text-red-600"> *</span>}
+          </Label>
+          {/* Bug bloquant phyto (2026-05-29) — boutons-toggle au lieu d'un
+              `<select required>` natif (commit fiable + plus de blocage HTML5
+              silencieux ; validation via serveur, toast visible). */}
+          <div className="flex gap-1" role="radiogroup" aria-label="ZNT respectée">
+            {([
+              { v: true, label: "Oui" },
+              { v: false, label: "Non (signaler)" },
+            ] as const).map((opt) => {
+              const active = effectif === opt.v
+              return (
+                <button
+                  key={opt.label}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  onClick={() => onChange({ distanceM, respectee: opt.v })}
+                  className={`h-9 px-3 rounded-md border text-xs transition-colors ${
+                    active
+                      ? opt.v
+                        ? "bg-cyan-600 text-white border-cyan-600"
+                        : "bg-red-600 text-white border-red-600"
+                      : "bg-background hover:bg-slate-100 border-input"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              )
+            })}
+          </div>
         </div>
       </div>
       {zntProduitM != null && (

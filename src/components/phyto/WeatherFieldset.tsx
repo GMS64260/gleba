@@ -79,7 +79,6 @@ export function WeatherFieldset({
             onChange={(e) =>
               setField("temperatureC", e.target.value === "" ? null : parseFloat(e.target.value))
             }
-            required={required}
             placeholder="15"
           />
         </div>
@@ -96,7 +95,6 @@ export function WeatherFieldset({
             onChange={(e) =>
               setField("ventKmh", e.target.value === "" ? null : parseFloat(e.target.value))
             }
-            required={required}
             placeholder="< 19"
           />
         </div>
@@ -115,32 +113,51 @@ export function WeatherFieldset({
             onChange={(e) =>
               setField("hygrometriePct", e.target.value === "" ? null : parseInt(e.target.value, 10))
             }
-            required={required}
             placeholder="60"
           />
         </div>
 
         <div>
-          <Label className="text-xs">Pluie ±24h</Label>
+          <Label className="text-xs">
+            Pluie ±24h{required && <span className="text-red-600"> *</span>}
+          </Label>
           <div className="flex gap-2">
-            <select
-              className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-xs"
-              value={value.pluie24h == null ? "" : value.pluie24h ? "oui" : "non"}
-              onChange={(e) => {
-                // Bug R22 : deux setField consécutifs s'écrasaient (le 2e relisait
-                // `value` non encore mis à jour) → « Non »/« — » ne s'enregistrait
-                // jamais, le champ requis restait vide et bloquait tout l'envoi.
-                // On met à jour les deux champs en UN SEUL onChange atomique.
-                const next = e.target.value
-                const pluie = next === "" ? null : next === "oui"
-                onChange({ ...value, pluie24h: pluie, pluie24hMm: pluie ? value.pluie24hMm : null })
-              }}
-              required={required}
-            >
-              <option value="">—</option>
-              <option value="non">Non</option>
-              <option value="oui">Oui</option>
-            </select>
+            {/* Bug bloquant phyto (2026-05-29) — l'ancien `<select required>` natif
+                contrôlé ne committait pas sa valeur de façon fiable et, surtout,
+                la validation HTML5 native bloquait la soumission EN SILENCE (aucun
+                POST, le toast « champs manquants » ne se déclenchait jamais). On le
+                remplace par des boutons-toggle : un vrai onClick commit toujours la
+                valeur, et la validation passe désormais par le serveur (toast visible). */}
+            <div className="flex gap-1" role="radiogroup" aria-label="Pluie dans les ±24h">
+              {([
+                { v: false, label: "Non" },
+                { v: true, label: "Oui" },
+              ] as const).map((opt) => {
+                const active = value.pluie24h === opt.v
+                return (
+                  <button
+                    key={opt.label}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    onClick={() =>
+                      onChange({
+                        ...value,
+                        pluie24h: opt.v,
+                        pluie24hMm: opt.v ? value.pluie24hMm : null,
+                      })
+                    }
+                    className={`h-9 px-3 rounded-md border text-xs transition-colors ${
+                      active
+                        ? "bg-sky-600 text-white border-sky-600"
+                        : "bg-background hover:bg-slate-100 border-input"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                )
+              })}
+            </div>
             {value.pluie24h === true && (
               <Input
                 type="number"
@@ -154,7 +171,6 @@ export function WeatherFieldset({
                 }
                 placeholder="mm"
                 className="w-20"
-                required={required}
               />
             )}
           </div>
