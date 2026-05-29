@@ -51,6 +51,7 @@ interface BesoinSemence {
   stockActuel: number
   stockUnites: number
   nbGrainesG: number | null
+  nbGrainesGEstime?: boolean
   doseSemis: number | null
   uniteDose: "g_m2" | "pieces_m2" | "graines_plant" | "caieux_m2" | null
   tauxGerminationPct: number | null
@@ -260,9 +261,13 @@ function makePlantsColumns(appliquerMarge: boolean): ColumnDef<BesoinSemence>[] 
     {
       accessorKey: "nbGrainesG",
       header: "Graines/g",
-      cell: ({ getValue }) => {
-        const v = getValue() as number | null
-        return v ? v.toLocaleString() : "-"
+      cell: ({ row }) => {
+        const v = row.original.nbGrainesG
+        if (!v) return "-"
+        // Valeur estimée (fallback espèce, pas saisie sur la variété) → marquée « ~ … est. »
+        return row.original.nbGrainesGEstime
+          ? <span className="text-muted-foreground" title="Estimation par espèce (graines/g non renseigné sur la variété)">~{v.toLocaleString()} est.</span>
+          : v.toLocaleString()
       },
     },
     {

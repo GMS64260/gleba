@@ -368,7 +368,7 @@ function RecoltesFruitsSubTab() {
           <CardContent className="pb-3 px-4">
             <p className="text-2xl font-bold">{stockKg.toFixed(1)} kg</p>
             {stockValeur > 0 && (
-              <p className="text-xs text-muted-foreground">{stockValeur.toFixed(0)} EUR estime</p>
+              <p className="text-xs text-muted-foreground">{stockValeur.toFixed(0)} € estimé</p>
             )}
           </CardContent>
         </Card>
@@ -624,7 +624,7 @@ function RecoltesFruitsSubTab() {
                 />
               </div>
               <div>
-                <Label>Quantite (kg) *</Label>
+                <Label>Quantité (kg) *</Label>
                 <Input
                   type="number"
                   step="0.1"
