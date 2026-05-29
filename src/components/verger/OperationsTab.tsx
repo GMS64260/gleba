@@ -250,11 +250,19 @@ export function OperationsTab() {
       // utilise la réponse serveur comme source de vérité et on
       // corrige aussi l'accent ("Annule" → "Annulé").
       const nextFait = !op.fait
+      // Bug feedback testeur 2026-05-26 (cmpm70td5) — au passage "fait", on
+      // enregistre la date RÉELLE de réalisation (aujourd'hui) au lieu de
+      // laisser la date prévue ; à l'annulation, on revient à la date prévue
+      // si elle existe. La datePrevue reste inchangée (planification).
+      const today = new Date().toISOString().split("T")[0]
+      const nextDate = nextFait
+        ? today
+        : (op.datePrevue ? op.datePrevue.split("T")[0] : undefined)
       try {
         const res = await fetch(`/api/arbres/operations/${op.id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ fait: nextFait }),
+          body: JSON.stringify({ fait: nextFait, ...(nextDate ? { date: nextDate } : {}) }),
         })
         if (!res.ok) {
           toast({ variant: "destructive", title: "Erreur", description: "Mise à jour refusée" })
@@ -298,6 +306,16 @@ export function OperationsTab() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    // Bug feedback testeur 2026-05-26 (cmpmqugqr) — un traitement phyto sans
+    // produit/dose rend le registre non conforme (Bio/HVE). On confirme
+    // explicitement avant d'enregistrer une fiche incomplète.
+    if (newOperation.type === "traitement" && (!newOperation.produit.trim() || !newOperation.quantite.trim())) {
+      const ok = await confirmDialog(
+        "Traitement sans produit et/ou dose : la fiche sera incomplète et non conforme au registre phytosanitaire (Bio/HVE). Enregistrer quand même ?",
+        { title: "Traitement incomplet", confirmLabel: "Enregistrer quand même", variant: "warning" }
+      )
+      if (!ok) return
+    }
     try {
       const res = await fetch("/api/arbres/operations", {
         method: "POST",
