@@ -471,6 +471,58 @@ const MOIS_LABELS = ["Jan", "Fév", "Mar", "Avr", "Mai", "Jun", "Jul", "Aoû", "
 /** Familles Prunus : la taille hivernale favorise gommose et chancre. */
 const PRUNUS = ["cerisier", "prunier", "pêcher", "pecher", "abricotier", "amandier"]
 
+/**
+ * Délai indicatif d'entrée en production (années après plantation), par
+ * espèce. Sources : INRAE/CTIFL (formes basse-tige/porte-greffes courants).
+ * Feedback testeur cmpmqv4og/cmpm704oo : un arbre récemment planté ne peut
+ * pas être "productif".
+ */
+const ANNEES_AVANT_PRODUCTION: Record<string, number> = {
+  pommier: 3, poirier: 4, cerisier: 4, prunier: 3, pêcher: 3, pecher: 3,
+  abricotier: 3, amandier: 4, noyer: 6, châtaignier: 6, chataignier: 6,
+  noisetier: 4, figuier: 2, olivier: 5, vigne: 3, kiwi: 3, cognassier: 3,
+  néflier: 3, neflier: 3, grenadier: 4, plaqueminier: 4, agrumes: 3,
+  framboisier: 1, groseillier: 2, cassissier: 2, mûrier: 2, murier: 2,
+  fraisier: 1, sureau: 2, argousier: 3,
+}
+
+export interface ProductifWarning {
+  tooYoung: boolean
+  anneeEstimee: number | null
+  message: string
+}
+
+/**
+ * Vérifie la cohérence du statut "productif" avec l'âge de l'arbre.
+ * Retourne un avertissement si l'arbre est marqué productif alors qu'il
+ * n'a pas atteint l'âge d'entrée en production de son espèce.
+ */
+export function checkProductifCoherence(
+  espece: string | null | undefined,
+  datePlantation: string | Date | null | undefined,
+  productif: boolean
+): ProductifWarning | null {
+  if (!productif || !espece || !datePlantation) return null
+  const d = typeof datePlantation === "string" ? new Date(datePlantation) : datePlantation
+  if (Number.isNaN(d.getTime())) return null
+  const especeNorm = espece.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim()
+  let delai: number | undefined
+  for (const [k, v] of Object.entries(ANNEES_AVANT_PRODUCTION)) {
+    const kn = k.normalize("NFD").replace(/[̀-ͯ]/g, "")
+    if (especeNorm.includes(kn)) { delai = v; break }
+  }
+  if (delai == null) return null
+  const now = new Date()
+  const ageAns = (now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24 * 365.25)
+  if (ageAns >= delai) return null
+  const anneeEstimee = d.getFullYear() + delai
+  return {
+    tooYoung: true,
+    anneeEstimee,
+    message: `Cet arbre a ~${Math.max(0, Math.floor(ageAns))} an(s) ; un ${espece.toLowerCase()} entre généralement en production vers ${delai} ans (≈ ${anneeEstimee}). Le statut « Productif » semble prématuré.`,
+  }
+}
+
 function moisDansFenetre(mois: number, debut: number, fin: number): boolean {
   if (debut <= fin) return mois >= debut && mois <= fin
   return mois >= debut || mois <= fin // wrap-around (ex. nov→fév)

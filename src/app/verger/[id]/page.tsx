@@ -11,7 +11,8 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ArrowLeft, TreeDeciduous, Save, Trash2 } from "lucide-react"
+import { ArrowLeft, TreeDeciduous, Save, Trash2, AlertTriangle } from "lucide-react"
+import { checkProductifCoherence } from "@/lib/tree-care-calendar"
 import { Combobox } from "@/components/ui/combobox"
 import { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
@@ -603,6 +604,17 @@ export default function DetailArbrePage() {
                         <SelectItem value="non">Non</SelectItem>
                       </SelectContent>
                     </Select>
+                    {/* Avertissement cohérence productif/âge (cmpmqv4og). */}
+                    {(() => {
+                      const w = checkProductifCoherence(arbre.espece, arbre.datePlantation, arbre.productif)
+                      if (!w) return null
+                      return (
+                        <p className="mt-1 flex items-start gap-1 text-xs text-amber-700">
+                          <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                          <span>{w.message}</span>
+                        </p>
+                      )
+                    })()}
                   </div>
                   <div>
                     <Label>Première année de production</Label>
