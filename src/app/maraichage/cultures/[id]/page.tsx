@@ -199,14 +199,19 @@ export default function EditCulturePage() {
 
     const year = form.getValues("annee") || new Date().getFullYear()
 
+    // Chronologie : une étape antérieure au semis tombe l'année suivante (ITP
+    // chevauchant deux années, ex. semis août → récolte janvier).
     if (itp.semaineSemis) {
       form.setValue("dateSemis", weekToDate(year, itp.semaineSemis))
     }
     if (itp.semainePlantation) {
-      form.setValue("datePlantation", weekToDate(year, itp.semainePlantation))
+      const an = itp.semaineSemis && itp.semainePlantation < itp.semaineSemis ? year + 1 : year
+      form.setValue("datePlantation", weekToDate(an, itp.semainePlantation))
     }
     if (itp.semaineRecolte) {
-      form.setValue("dateRecolte", weekToDate(year, itp.semaineRecolte))
+      const ref = itp.semainePlantation ?? itp.semaineSemis
+      const an = ref && itp.semaineRecolte < ref ? year + 1 : year
+      form.setValue("dateRecolte", weekToDate(an, itp.semaineRecolte))
     }
 
     // Auto-remplir nbRangs seulement si vide ou encore égal à la valeur de l'ITP précédent

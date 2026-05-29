@@ -132,9 +132,18 @@ export function NewCultureDialog({ open, onOpenChange, plancheId, plancheNom, pl
     if (!itpId) return
     const itp = itps.find(i => i.id === itpId)
     if (!itp) return
+    // Chronologie : une étape dont la semaine est antérieure au semis tombe l'année
+    // suivante (ITP chevauchant deux années, ex. semis août → récolte janvier).
     if (itp.semaineSemis) setDateSemis(format(weekToDate(annee, itp.semaineSemis), "yyyy-MM-dd"))
-    if (itp.semainePlantation) setDatePlantation(format(weekToDate(annee, itp.semainePlantation), "yyyy-MM-dd"))
-    if (itp.semaineRecolte) setDateRecolte(format(weekToDate(annee, itp.semaineRecolte), "yyyy-MM-dd"))
+    if (itp.semainePlantation) {
+      const an = itp.semaineSemis && itp.semainePlantation < itp.semaineSemis ? annee + 1 : annee
+      setDatePlantation(format(weekToDate(an, itp.semainePlantation), "yyyy-MM-dd"))
+    }
+    if (itp.semaineRecolte) {
+      const ref = itp.semainePlantation ?? itp.semaineSemis
+      const an = ref && itp.semaineRecolte < ref ? annee + 1 : annee
+      setDateRecolte(format(weekToDate(an, itp.semaineRecolte), "yyyy-MM-dd"))
+    }
     if (itp.nbRangs) setNbRangs(itp.nbRangs)
     if (itp.espacement) setEspacement(Math.round(itp.espacement))
   }, [itpId, itps, annee])

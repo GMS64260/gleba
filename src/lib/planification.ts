@@ -4,7 +4,7 @@
  */
 
 import prisma from '@/lib/prisma'
-import { calculerDateDepuisSemaine } from './assistant-helpers'
+import { calculerDateDepuisSemaine, dateSemaineChrono } from './assistant-helpers'
 import { alertesAssociations } from './associations-alertes'
 
 /**
@@ -960,14 +960,15 @@ export async function creerCulturesBatch(
 
     // Calculer les dates a partir des semaines
     const annee = culture.annee
+    // Chronologie : récolte/plantation antérieures au semis tombent l'année suivante.
     const dateSemis = itp.semaineSemis
       ? calculerDateDepuisSemaine(annee, itp.semaineSemis)
       : null
     const datePlantation = itp.semainePlantation
-      ? calculerDateDepuisSemaine(annee, itp.semainePlantation)
+      ? dateSemaineChrono(annee, itp.semainePlantation, itp.semaineSemis)
       : null
     const dateRecolte = itp.semaineRecolte
-      ? calculerDateDepuisSemaine(annee, itp.semaineRecolte)
+      ? dateSemaineChrono(annee, itp.semaineRecolte, itp.semainePlantation ?? itp.semaineSemis)
       : null
 
     // Creer la culture

@@ -4,7 +4,7 @@
  */
 
 import { differenceInDays } from 'date-fns'
-import { calculerDateDepuisSemaine } from '../assistant-helpers'
+import { calculerDateDepuisSemaine, dateSemaineChrono } from '../assistant-helpers'
 
 export interface ValidationResult {
   valid: boolean
@@ -108,7 +108,7 @@ export function validateCultureDates(data: {
 
       // Plantation
       if (datePlantation && data.itp.semainePlantation) {
-        const dateTheorique = calculerDateDepuisSemaine(data.annee, data.itp.semainePlantation)
+        const dateTheorique = dateSemaineChrono(data.annee, data.itp.semainePlantation, data.itp.semaineSemis)
         const diff = Math.abs(differenceInDays(datePlantation, dateTheorique))
         if (diff > TOLERANCE_DAYS) {
           warnings.push(
@@ -119,7 +119,7 @@ export function validateCultureDates(data: {
 
       // Récolte
       if (dateRecolte && data.itp.semaineRecolte) {
-        const dateTheorique = calculerDateDepuisSemaine(data.annee, data.itp.semaineRecolte)
+        const dateTheorique = dateSemaineChrono(data.annee, data.itp.semaineRecolte, data.itp.semainePlantation ?? data.itp.semaineSemis)
         const diff = Math.abs(differenceInDays(dateRecolte, dateTheorique))
         if (diff > TOLERANCE_DAYS) {
           warnings.push(
