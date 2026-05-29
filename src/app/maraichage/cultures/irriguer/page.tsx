@@ -135,7 +135,7 @@ function CulturesIrriguerContent() {
       toast({
         variant: "destructive",
         title: "Erreur",
-        description: "Impossible de charger les cultures a irriguer",
+        description: "Impossible de charger les cultures à irriguer",
       })
     } finally {
       setIsLoading(false)
@@ -585,7 +585,7 @@ function CulturesIrriguerContent() {
             <CardContent className="py-8 text-center text-muted-foreground">
               {filtreUrgence !== 'all' || filtreTypeIrrigation !== 'all' || filtreBesoinEau !== 'all'
                 ? 'Aucune culture ne correspond aux filtres'
-                : `Aucune culture a irriguer pour ${annee}`}
+                : `Aucune culture à irriguer pour ${annee}`}
             </CardContent>
           </Card>
         ) : (
