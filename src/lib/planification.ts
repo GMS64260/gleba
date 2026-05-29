@@ -239,6 +239,9 @@ export async function getCulturesPrevues(
           especeId: true,
           varieteId: true,
           itpId: true,
+          dateSemis: true,
+          datePlantation: true,
+          dateRecolte: true,
         },
       },
     },
@@ -286,11 +289,14 @@ export async function getCulturesPrevues(
             itpId: detail.itpId,
             especeId: detail.itp?.especeId || null,
             especeCouleur: detail.itp?.espece?.couleur || null,
-            varieteId: null, // A definir lors de la creation
+            varieteId: cultureExistante?.varieteId ?? null, // A definir lors de la creation
             annee,
-            semaineSemis: detail.itp?.semaineSemis || null,
-            semainePlantation: detail.itp?.semainePlantation || null,
-            semaineRecolte: detail.itp?.semaineRecolte || null,
+            // Bug R19/R26 : si une culture réelle existe, ses dates SAISIES priment
+            // sur les semaines théoriques de l'ITP (sinon toutes les successions
+            // d'une planche affichent les mêmes semaines ITP).
+            semaineSemis: cultureExistante?.dateSemis ? dateVersSemaine(cultureExistante.dateSemis) : (detail.itp?.semaineSemis || null),
+            semainePlantation: cultureExistante?.datePlantation ? dateVersSemaine(cultureExistante.datePlantation) : (detail.itp?.semainePlantation || null),
+            semaineRecolte: cultureExistante?.dateRecolte ? dateVersSemaine(cultureExistante.dateRecolte) : (detail.itp?.semaineRecolte || null),
             dureeCulture: detail.itp?.dureeCulture || null,
             nbRangs: detail.itp?.nbRangs || null,
             espacement: detail.itp?.espacement || null,
@@ -1092,8 +1098,9 @@ export async function getStatsPlanification(userId: string, annee: number) {
   // détails de rotation, qui multiplient × N le compteur). On filtre
   // aussi les variétés null (cultures pour lesquelles le maraîcher n'a
   // pas encore choisi une variété précise).
+  // Bug R6 : exclure les variétés « placeholder » (« Non spécifiée ») du compteur.
   const cultureRows = await prisma.culture.findMany({
-    where: { userId, annee, varieteId: { not: null } },
+    where: { userId, annee, varieteId: { not: null }, variete: { isPlaceholder: false } },
     select: { varieteId: true, especeId: true },
     distinct: ['varieteId'],
   })
