@@ -468,6 +468,78 @@ export function generateCareOperations(
 
 const MOIS_LABELS = ["Jan", "Fév", "Mar", "Avr", "Mai", "Jun", "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc"]
 
+/** Familles Prunus : la taille hivernale favorise gommose et chancre. */
+const PRUNUS = ["cerisier", "prunier", "pêcher", "pecher", "abricotier", "amandier"]
+
+function moisDansFenetre(mois: number, debut: number, fin: number): boolean {
+  if (debut <= fin) return mois >= debut && mois <= fin
+  return mois >= debut || mois <= fin // wrap-around (ex. nov→fév)
+}
+
+export interface SaisonWarning {
+  niveau: "alerte" | "info"
+  message: string
+}
+
+/**
+ * Vérifie si une opération (taille, traitement, récolte…) tombe dans une
+ * période agronomiquement recommandée pour l'espèce. Retourne un
+ * avertissement NON bloquant si la date est hors fenêtre.
+ *
+ * Feedback testeurs 2026-05-26 (cmpmqshr3 : taille cerisier en mars ;
+ * cmpm719ks : taille de formation pommier en mai). Sources : INRAE,
+ * CTIFL, ITAB.
+ */
+export function checkOperationSaison(
+  espece: string | null | undefined,
+  type: string,
+  date: Date | string | null | undefined,
+  variete?: string | null
+): SaisonWarning | null {
+  if (!espece || !type || !date) return null
+  const d = typeof date === "string" ? new Date(date) : date
+  if (Number.isNaN(d.getTime())) return null
+  const mois = d.getMonth() + 1
+  const especeNorm = espece.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim()
+
+  // Garde-fou spécifique Prunus : pas de taille en repos végétatif
+  // (déc.-mars) — risque chancre bactérien / gommose.
+  if (type === "taille" && PRUNUS.some((p) => especeNorm.includes(p.normalize("NFD").replace(/[̀-ͯ]/g, "")))) {
+    if (mois === 12 || mois <= 3) {
+      return {
+        niveau: "alerte",
+        message:
+          "Les Prunus (cerisier, prunier, pêcher…) ne se taillent pas en hiver/début de printemps : risque de chancre bactérien et de gommose. Taillez de préférence après la récolte (juillet-août).",
+      }
+    }
+  }
+
+  const profile = findTreeCareProfile(espece)
+  if (!profile) return null
+
+  const opsType = profile.operations.filter((o) => o.type === type)
+  if (opsType.length === 0) return null
+
+  const dansUneFenetre = opsType.some((o) => moisDansFenetre(mois, o.moisDebut, o.moisFin))
+  if (dansUneFenetre) return null
+
+  const fenetres = opsType
+    .map((o) =>
+      o.moisDebut === o.moisFin
+        ? MOIS_LABELS[o.moisDebut - 1]
+        : `${MOIS_LABELS[o.moisDebut - 1]}–${MOIS_LABELS[o.moisFin - 1]}`
+    )
+    .join(", ")
+  const typeLabel: Record<string, string> = {
+    taille: "La taille", traitement: "Le traitement", recolte: "La récolte",
+    fertilisation: "La fertilisation", greffe: "La greffe",
+  }
+  return {
+    niveau: "info",
+    message: `${typeLabel[type] ?? "Cette opération"} du ${profile.espece.toLowerCase()} est habituellement recommandée en ${fenetres}. La date saisie (${MOIS_LABELS[mois - 1]}) est hors de cette période.`,
+  }
+}
+
 export interface MonthlyCalendarEntry {
   mois: number
   label: string

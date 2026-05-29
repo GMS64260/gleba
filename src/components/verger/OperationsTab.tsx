@@ -6,7 +6,8 @@
 
 import * as React from "react"
 import { ColumnDef } from "@tanstack/react-table"
-import { Wrench, ListTodo, Check, CheckCircle } from "lucide-react"
+import { Wrench, ListTodo, Check, CheckCircle, AlertTriangle } from "lucide-react"
+import { checkOperationSaison } from "@/lib/tree-care-calendar"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -44,6 +45,8 @@ interface Arbre {
   id: number
   nom: string
   type: string
+  espece?: string | null
+  variete?: string | null
 }
 
 interface OperationArbre {
@@ -444,6 +447,28 @@ export function OperationsTab() {
                 />
               </div>
             </div>
+            {/* Alerte agronomique hors-saison (cmpmqshr3, cmpm719ks) — non
+                bloquante, basée sur le calendrier d'entretien par espèce. */}
+            {(() => {
+              const arbre = arbres.find((a) => a.id.toString() === newOperation.arbreId)
+              const dateRef = newOperation.date || newOperation.datePrevue
+              const w = arbre
+                ? checkOperationSaison(arbre.espece, newOperation.type, dateRef, arbre.variete)
+                : null
+              if (!w) return null
+              return (
+                <div
+                  className={`flex items-start gap-2 rounded-md border p-2 text-xs ${
+                    w.niveau === "alerte"
+                      ? "border-red-300 bg-red-50 text-red-700"
+                      : "border-amber-300 bg-amber-50 text-amber-700"
+                  }`}
+                >
+                  <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                  <span>{w.message}</span>
+                </div>
+              )
+            })()}
             <div>
               <Label>Description</Label>
               <Input
