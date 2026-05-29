@@ -17,6 +17,9 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
+import { AvisDialog } from "@/components/avis/AvisDialog"
+import { AvisCell } from "@/components/avis/AvisCell"
+import type { AvisStatsListe } from "@/lib/avis/types"
 
 // Type pour les ITPs avec relations
 interface ITPWithRelations {
@@ -38,6 +41,7 @@ interface ITPWithRelations {
     famille: { id: string; couleur: string | null } | null
   } | null
   _count: { cultures: number; rotationsDetails: number }
+  avisStats?: AvisStatsListe
 }
 
 // PROMPT 05 — Audit agronomique : ne plus exposer les identifiants techniques
@@ -156,13 +160,14 @@ export default function ITPsPage() {
   const [isLoading, setIsLoading] = React.useState(true)
   const [pageIndex, setPageIndex] = React.useState(0)
   const [pageCount, setPageCount] = React.useState(0)
+  const [avisRef, setAvisRef] = React.useState<ITPWithRelations | null>(null)
   const pageSize = 50
 
   // Charger les données
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
     try {
-      const url = `/api/itps?page=${pageIndex + 1}&pageSize=${pageSize}`
+      const url = `/api/itps?page=${pageIndex + 1}&pageSize=${pageSize}&avis=1`
       const response = await fetch(url)
       if (!response.ok) throw new Error("Erreur lors du chargement")
       const result = await response.json()
@@ -252,6 +257,27 @@ export default function ITPsPage() {
     URL.revokeObjectURL(url)
   }
 
+  const columnsAvecAvis = React.useMemo<ColumnDef<ITPWithRelations>[]>(
+    () => [
+      ...columns,
+      {
+        id: "avis",
+        header: "Avis",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <AvisCell
+            stats={row.original.avisStats}
+            onClick={(e) => {
+              e.stopPropagation()
+              setAvisRef(row.original)
+            }}
+          />
+        ),
+      },
+    ],
+    []
+  )
+
   return (
     <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
       <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
@@ -297,7 +323,7 @@ export default function ITPsPage() {
         </div>
 
         <DataTable
-          columns={columns}
+          columns={columnsAvecAvis}
           data={data}
           isLoading={isLoading}
           pageCount={pageCount}
@@ -312,6 +338,15 @@ export default function ITPsPage() {
           onRowDelete={handleDelete}
           searchPlaceholder="Rechercher un ITP..."
           emptyMessage="Aucun ITP trouve. Cliquez sur + pour en créer un."
+        />
+
+        <AvisDialog
+          refType="ITP"
+          refId={avisRef?.id ?? null}
+          nom={avisRef ? formatItpLabel(avisRef) : undefined}
+          open={avisRef !== null}
+          onOpenChange={(o) => !o && setAvisRef(null)}
+          onSaved={fetchData}
         />
       </main>
     </div>

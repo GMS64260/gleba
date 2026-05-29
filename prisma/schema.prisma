@@ -600,6 +600,7 @@ enum AvisRefType {
   PORTE_GREFFE  // porte-greffe arboricole
   ESPECE        // espèce (notamment fruitière)
   RACE          // race animale
+  ITP           // itinéraire technique de plante
 }
 
 /// Avis communautaire générique (référentiel communautaire solidaire).

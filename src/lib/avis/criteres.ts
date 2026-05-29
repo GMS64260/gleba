@@ -61,6 +61,16 @@ export const AVIS_CONFIG: Record<AvisRefType, AvisConfig> = {
       { key: 'prolificite', label: 'Prolificité' },
     ],
   },
+  ITP: {
+    labelObjet: 'itinéraire technique',
+    labelReprend: 'Vous le recommandez ?',
+    criteres: [
+      { key: 'fiabilite', label: 'Fiabilité' },
+      { key: 'rendement', label: 'Rendement obtenu' },
+      { key: 'precocite', label: 'Précocité' },
+      { key: 'facilite', label: 'Facilité de suivi' },
+    ],
+  },
 }
 
 export function avisConfig(refType: AvisRefType): AvisConfig {

@@ -4,9 +4,9 @@
  */
 
 /** Type d'objet noté. Valeurs alignées sur l'enum Prisma `AvisRefType`. */
-export type AvisRefType = 'VARIETE' | 'PORTE_GREFFE' | 'ESPECE' | 'RACE'
+export type AvisRefType = 'VARIETE' | 'PORTE_GREFFE' | 'ESPECE' | 'RACE' | 'ITP'
 
-export const AVIS_REF_TYPES: AvisRefType[] = ['VARIETE', 'PORTE_GREFFE', 'ESPECE', 'RACE']
+export const AVIS_REF_TYPES: AvisRefType[] = ['VARIETE', 'PORTE_GREFFE', 'ESPECE', 'RACE', 'ITP']
 
 /** Forme minimale d'un avis pour les calculs (notes = { critereKey: 1-5 }). */
 export interface AvisNotable {
