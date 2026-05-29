@@ -1083,7 +1083,7 @@ function LotsSubTab() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="text-sm text-muted-foreground">
-          {lots.length} lot(s) &bull; {lots.reduce((sum, l) => sum + l.quantiteActuelle, 0)} animaux au total
+          {lots.length} lot(s) &bull; {lots.reduce((sum, l) => sum + ((l as typeof l & { effectifCalcule?: number }).effectifCalcule ?? l.quantiteActuelle), 0)} animaux au total
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={fetchData}>
@@ -1203,21 +1203,33 @@ function LotsSubTab() {
                     <TableCell className="text-right">{lot.quantiteInitiale}</TableCell>
                     <TableCell className="text-right font-bold">
                       {(() => {
-                        // Bug #18 — Signaler les écarts initial → actuel non
-                        // tracés (ni naissances dans le lot, ni transferts).
-                        const l = lot as typeof lot & { naissancesVivantes?: number }
-                        const naissances = l.naissancesVivantes ?? 0
-                        const ecart = lot.quantiteActuelle - lot.quantiteInitiale
-                        const ecartNonTrace = ecart - naissances
-                        if (ecartNonTrace > 0) {
-                          return (
-                            <span title={`+${ecart} animaux dont ${naissances} naissance(s) enregistrée(s). Écart non documenté : ${ecartNonTrace}.`} className="inline-flex items-center gap-1">
-                              {lot.quantiteActuelle}
-                              <span className="text-amber-600 text-xs">⚠️</span>
-                            </span>
-                          )
+                        // Bug feedback testeur 2026-05-26 (cmpmr3837, cmpm7cssg)
+                        // — on affiche l'effectif RECONSTITUÉ à partir des
+                        // mouvements (initial + naissances − abattages), avec
+                        // le détail en infobulle, au lieu du compteur stocké
+                        // qui ne se décrémentait pas des abattages.
+                        const l = lot as typeof lot & {
+                          naissancesVivantes?: number
+                          abattagesTotal?: number
+                          effectifCalcule?: number
                         }
-                        return lot.quantiteActuelle
+                        const naissances = l.naissancesVivantes ?? 0
+                        const abattages = l.abattagesTotal ?? 0
+                        const effectif = l.effectifCalcule ?? lot.quantiteActuelle
+                        const parts = [`${lot.quantiteInitiale} initial`]
+                        if (naissances > 0) parts.push(`+${naissances} naissance(s)`)
+                        if (abattages > 0) parts.push(`−${abattages} abattage(s)`)
+                        const title = parts.length > 1
+                          ? `Mouvements : ${parts.join("  ")}  →  effectif ${effectif}`
+                          : `Effectif ${effectif} (aucun mouvement enregistré)`
+                        return (
+                          <span title={title} className="inline-flex items-center gap-1 cursor-help">
+                            {effectif}
+                            {(naissances > 0 || abattages > 0) && (
+                              <span className="text-muted-foreground text-[10px] font-normal">ⓘ</span>
+                            )}
+                          </span>
+                        )
                       })()}
                     </TableCell>
                     <TableCell>{lot.dateArrivee ? new Date(lot.dateArrivee).toLocaleDateString('fr-FR') : '-'}</TableCell>

@@ -52,6 +52,7 @@ export async function GET(request: NextRequest) {
     // ni achat enregistrés.
     const lotIds = lots.map(l => l.id)
     const naissancesParLot = new Map<number, number>()
+    const abattagesParLot = new Map<number, number>()
     if (lotIds.length > 0) {
       const meresInLots = await prisma.animal.findMany({
         where: { userId: session.user.id, lotId: { in: lotIds } },
@@ -67,12 +68,41 @@ export async function GET(request: NextRequest) {
         if (!lotId) continue
         naissancesParLot.set(lotId, (naissancesParLot.get(lotId) ?? 0) + n.nombreVivants)
       }
+      // Bug feedback testeur 2026-05-26 (cmpmr3837, cmpm7cssg) — l'effectif
+      // "Actuel" stocké (quantiteActuelle) dérivait des mouvements réels :
+      // les 5 abattages du lot Lapins ne le décrémentaient pas (affiché 14
+      // au lieu de 2). On calcule un effectif AUTORITAIRE reconstitué à
+      // partir des mouvements traçables : initial + naissances − abattages.
+      const abattages = await prisma.abattage.groupBy({
+        by: ['lotId'],
+        where: { userId: session.user.id, lotId: { in: lotIds }, annule: false },
+        _sum: { quantite: true },
+      })
+      for (const a of abattages) {
+        if (a.lotId == null) continue
+        abattagesParLot.set(a.lotId, a._sum.quantite ?? 0)
+      }
     }
 
-    const enriched = lots.map(l => ({
-      ...l,
-      naissancesVivantes: naissancesParLot.get(l.id) ?? 0,
-    }))
+    const enriched = lots.map(l => {
+      const naissances = naissancesParLot.get(l.id) ?? 0
+      const abattages = abattagesParLot.get(l.id) ?? 0
+      // Plafond traçable : un lot ne peut pas dépasser
+      // initial + naissances − abattages. Si le compteur stocké est
+      // au-dessus (abattages non décrémentés → bug cmpmr3837), on le
+      // ramène au plafond. S'il est en-dessous (mortalités/ventes
+      // individuelles non tracées par lot), on conserve la valeur
+      // stockée, plus basse donc plus prudente.
+      const plafond = Math.max(0, l.quantiteInitiale + naissances - abattages)
+      const effectifCalcule = Math.min(l.quantiteActuelle, plafond)
+      return {
+        ...l,
+        naissancesVivantes: naissances,
+        abattagesTotal: abattages,
+        // Effectif reconstitué (source de vérité pour l'affichage).
+        effectifCalcule,
+      }
+    })
 
     return NextResponse.json({ data: enriched })
   } catch (error) {
