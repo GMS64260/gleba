@@ -10,6 +10,7 @@ import { createVarieteSchema } from '@/lib/validations'
 import { Prisma } from '@prisma/client'
 import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
 import { cleanReferentielName, normalizeVarieteName } from '@/lib/normalize'
+import { statsAvisPourRefs } from '@/lib/avis/stats-liste'
 
 // GET /api/varietes - Référentiel global (lecture)
 export async function GET(request: NextRequest) {
@@ -27,6 +28,9 @@ export async function GET(request: NextRequest) {
     // Tri
     const sortBy = searchParams.get('sortBy') || 'id'
     const sortOrder = searchParams.get('sortOrder') || 'asc'
+    // avis=1 : enrichir chaque variété des stats communautaires (opt-in — coûteux,
+    // ne pas l'imposer aux appelants qui n'affichent pas les avis : jardin, verger…).
+    const includeAvis = searchParams.get('avis') === '1'
 
     // Filtres
     const search = searchParams.get('search') || ''
@@ -92,16 +96,23 @@ export async function GET(request: NextRequest) {
       prisma.variete.count({ where }),
     ])
 
-    // Enrichir les varietes avec le stock per-user
+    // Avis communautaires (opt-in via ?avis=1) : stats agrégées via le moteur générique.
+    const statsMap = includeAvis
+      ? await statsAvisPourRefs(prisma, 'VARIETE', varietes.map((v) => v.id))
+      : null
+
+    // Enrichir les varietes avec le stock per-user (+ stats communautaires si demandé)
     const enriched = varietes.map(v => {
       const userStock = v.userStocks[0]
       const { userStocks: _us, ...rest } = v
-      return {
+      const base = {
         ...rest,
         userStockGraines: userStock?.stockGraines ?? null,
         userStockPlants: userStock?.stockPlants ?? null,
         userStockDate: userStock?.dateStock ?? null,
       }
+      if (!statsMap) return base
+      return { ...base, avisStats: statsMap.get(v.id) }
     })
 
     return NextResponse.json({

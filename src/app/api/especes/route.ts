@@ -10,6 +10,7 @@ import { createEspeceSchema } from '@/lib/validations'
 import { Prisma } from '@prisma/client'
 import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
 import { cleanReferentielName, normalizeReferentielKey } from '@/lib/normalize'
+import { statsAvisPourRefs } from '@/lib/avis/stats-liste'
 
 // GET /api/especes - Référentiel global (lecture)
 export async function GET(request: NextRequest) {
@@ -104,8 +105,17 @@ export async function GET(request: NextRequest) {
       prisma.espece.count({ where }),
     ])
 
+    // Avis communautaires (opt-in via ?avis=1)
+    const includeAvis = searchParams.get('avis') === '1'
+    const statsMap = includeAvis
+      ? await statsAvisPourRefs(prisma, 'ESPECE', especes.map((e) => e.id))
+      : null
+    const data = statsMap
+      ? especes.map((e) => ({ ...e, avisStats: statsMap.get(e.id) }))
+      : especes
+
     return NextResponse.json({
-      data: especes,
+      data,
       total,
       page,
       pageSize,

@@ -30,6 +30,9 @@ npx tsx prisma/seed.ts 2>/dev/null || echo "Database already seeded or seed skip
 echo "==> Creating demo account (if not exists)..."
 npx tsx prisma/seed-demo.ts 2>/dev/null || echo "Demo account already exists or creation skipped"
 
+echo "==> Seeding animal breeds referential (idempotent)..."
+npx tsx prisma/seed-races.ts 2>/dev/null || echo "Breeds seed skipped"
+
 echo "==> Checking data migration v1.0.0..."
 if [ -f "especes_enriched.csv" ]; then
   # Feedback Marc 2026-05-16 — V3 Bug 2 : on n'utilise plus `--force`

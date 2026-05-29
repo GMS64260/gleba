@@ -167,6 +167,9 @@ model User {
   // DEV2 #2 — Consentement cookies (RGPD)
   cookieConsents        CookieConsent[]
 
+  // Référentiel communautaire — avis (polymorphe)
+  avis                  Avis[]
+
   @@map("users")
 }
 
@@ -589,6 +592,48 @@ model Variete {
   @@unique([especeId, nomNormalise], name: "espece_nom_normalise")
   @@index([isPlaceholder])
   @@map("varietes")
+}
+
+/// Type d'objet référentiel noté par un Avis communautaire.
+enum AvisRefType {
+  VARIETE       // cultivar (légume ou fruitier)
+  PORTE_GREFFE  // porte-greffe arboricole
+  ESPECE        // espèce (notamment fruitière)
+  RACE          // race animale
+}
+
+/// Avis communautaire générique (référentiel communautaire solidaire).
+/// Polymorphe : note n'importe quel objet référentiel via (refType, refId).
+/// Validation hybride : signal humain (notation étoiles + reprise) + signal
+/// data-driven (production réelle, calculé à la volée par type). 1 avis par
+/// utilisateur par objet (modifiable via upsert).
+model Avis {
+  id                 String      @id @default(cuid())
+  refType            AvisRefType @map("ref_type")
+  refId              String      @map("ref_id") // id de l'objet noté (pas de FK : cible polymorphe)
+  userId             String      @map("user_id")
+  user               User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Niveau 0 — signal fort à 1 geste (« je la replante » / « je la recommande », label par type)
+  reprend            Boolean?    @map("reprend")
+  // Niveau 1 — notation multi-critères { critereKey: 1-5 } ; critères définis par refType
+  notes              Json        @default("{}") @map("notes")
+  // Niveau 2 — commentaire libre
+  commentaire        String?     @map("commentaire") @db.Text
+
+  // Snapshot du terroir AU MOMENT de l'avis (n'évolue plus) — base de la
+  // ventilation « Selon le terroir ». Nullable = « non précisé ».
+  contexteTypeSol    String?     @map("contexte_type_sol")
+  contexteZoneClimat String?     @map("contexte_zone_climat")
+  contexteCodePostal String?     @map("contexte_code_postal")
+
+  createdAt          DateTime    @default(now()) @map("created_at")
+  updatedAt          DateTime    @updatedAt @map("updated_at")
+
+  @@unique([refType, refId, userId])
+  @@index([refType, refId])
+  @@index([userId])
+  @@map("avis")
 }
 
 /// ITP - Itinéraires Techniques des Plantes
@@ -1562,8 +1607,29 @@ model EspeceAnimale {
   // Relations
   animaux     Animal[]
   lots        LotAnimaux[]
+  races       RaceAnimale[]
 
   @@map("especes_animales")
+}
+
+/// Races animales (référentiel communautaire) — rattachées à une espèce animale.
+/// Ex : Sussex/Marans (poule), Limousine/Charolaise (bovin), Alpine (caprin)…
+model RaceAnimale {
+  id              String        @id @default(cuid())
+  nom             String        @map("nom")
+  especeAnimaleId String        @map("espece_animale_id")
+  especeAnimale   EspeceAnimale @relation(fields: [especeAnimaleId], references: [id], onDelete: Cascade)
+  origine         String?       @map("origine")
+  aptitudes       String[]      @default([]) @map("aptitudes") // ['ponte','viande','lait','rusticité',...]
+  rusticite       Int?          @map("rusticite") // 1-5 indicatif
+  description     String?       @map("description")
+  createdAt       DateTime      @default(now()) @map("created_at")
+
+  animaux         Animal[]
+
+  @@unique([especeAnimaleId, nom])
+  @@index([especeAnimaleId])
+  @@map("races_animales")
 }
 
 /// Aliments pour animaux (similaire à Fertilisant)
@@ -1602,7 +1668,9 @@ model Animal {
   // PROMPT 19A — typage de l'identifiant pour validation regex et registre
   typeIdentifiant String?        @map("type_identifiant") // 'BDNI bovin'|'IPG ovin'|'IPG caprin'|'IPG porcin'|'SIRE équin'|'Bague volière'|'Boucle aux.'|'Puce RFID'|'Auxiliaire éleveur'
   nom             String?        @map("nom")
-  race            String?        @map("race") // Race/variété
+  race            String?        @map("race") // Race/variété (texte libre, rétro-compat)
+  raceAnimaleId   String?        @map("race_animale_id") // FK référentiel RaceAnimale
+  raceAnimale     RaceAnimale?   @relation(fields: [raceAnimaleId], references: [id], onDelete: SetNull)
   sexe            String?        @map("sexe") // "male", "femelle", "inconnu"
   dateNaissance   DateTime?      @map("date_naissance")
   dateArrivee     DateTime?      @map("date_arrivee")

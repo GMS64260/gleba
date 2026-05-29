@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
+import { statsAvisPourRefs } from "@/lib/avis/stats-liste"
 
 export async function GET(request: NextRequest) {
   const { error } = await requireAuthApi()
@@ -18,6 +19,7 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url)
   const especeId = searchParams.get("especeId")
+  const includeAvis = searchParams.get("avis") === "1"
 
   if (especeId) {
     const portesGreffe = await prisma.porteGreffe.findMany({
@@ -50,9 +52,13 @@ export async function GET(request: NextRequest) {
     },
     orderBy: [{ nom: "asc" }],
   })
+  const statsMap = includeAvis
+    ? await statsAvisPourRefs(prisma, 'PORTE_GREFFE', all.map((pg) => pg.id))
+    : null
   const flat = all.map((pg) => ({
     ...pg,
     especesCompatibles: pg.especes.map((e) => e.especeId),
+    ...(statsMap ? { avisStats: statsMap.get(pg.id) } : {}),
   }))
   return NextResponse.json({ data: flat, count: flat.length })
 }

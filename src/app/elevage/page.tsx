@@ -35,6 +35,7 @@ import { AnimauxTab } from "@/components/elevage/AnimauxTab"
 import { ProductionTab } from "@/components/elevage/ProductionTab"
 import { AlimentationTab } from "@/components/elevage/AlimentationTab"
 import { EspecesTab } from "@/components/elevage/EspecesTab"
+import { RacesTab } from "@/components/elevage/RacesTab"
 import { ReproductionTab } from "@/components/elevage/ReproductionTab"
 import { TourElevage } from "@/components/tours/tour-elevage"
 import { PremiersPasBanner } from "@/components/premiers-pas-banner"
@@ -48,6 +49,7 @@ const TABS = [
   { id: "reproduction", label: "Reproduction", icon: Bird, shortLabel: "Repro." },
   { id: "alimentation", label: "Alimentation", icon: Package, shortLabel: "Aliment." },
   { id: "especes", label: "Espèces", icon: Leaf, shortLabel: "Espèces" },
+  { id: "races", label: "Races", icon: Bird, shortLabel: "Races" },
 ] as const
 
 type TabId = (typeof TABS)[number]["id"]
@@ -230,6 +232,7 @@ export default function ElevageDashboard() {
         {activeTab === "reproduction" && <ReproductionTab />}
         {activeTab === "alimentation" && <AlimentationTab />}
         {activeTab === "especes" && <EspecesTab />}
+        {activeTab === "races" && <RacesTab />}
       </main>
 
       {/* Footer */}

@@ -22,6 +22,9 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet"
 import { useToast } from "@/hooks/use-toast"
+import { AvisDialog } from "@/components/avis/AvisDialog"
+import { AvisCell } from "@/components/avis/AvisCell"
+import type { AvisStatsListe } from "@/lib/avis/types"
 
 const ESPECE_TYPES = [
   { value: "all", label: "Tous", icon: Leaf },
@@ -114,6 +117,7 @@ interface EspeceWithRelations {
   categorie: string | null
   famille: { id: string; couleur: string | null; nomFr: string | null } | null
   _count: { varietes: number; cultures: number }
+  avisStats?: AvisStatsListe
 }
 
 interface EspeceDetail {
@@ -287,6 +291,7 @@ function EspecesReferentiel() {
   const [filteredData, setFilteredData] = React.useState<EspeceWithRelations[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [selectedType, setSelectedType] = React.useState("all")
+  const [avisRef, setAvisRef] = React.useState<EspeceWithRelations | null>(null)
 
   // Sheet state
   const [sheetOpen, setSheetOpen] = React.useState(false)
@@ -300,7 +305,7 @@ function EspecesReferentiel() {
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
     try {
-      const response = await fetch("/api/especes?pageSize=500")
+      const response = await fetch("/api/especes?pageSize=500&avis=1")
       if (!response.ok) throw new Error("Erreur")
       const result = await response.json()
       const items = Array.isArray(result) ? result : result.data || []
@@ -377,6 +382,27 @@ function EspecesReferentiel() {
     }
   }, [toast])
 
+  const columnsAvecAvis = React.useMemo<ColumnDef<EspeceWithRelations>[]>(
+    () => [
+      ...columns,
+      {
+        id: "avis",
+        header: "Avis",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <AvisCell
+            stats={row.original.avisStats}
+            onClick={(e) => {
+              e.stopPropagation()
+              setAvisRef(row.original)
+            }}
+          />
+        ),
+      },
+    ],
+    []
+  )
+
   return (
     <div className="space-y-4">
       <Tabs value={selectedType} onValueChange={setSelectedType}>
@@ -391,7 +417,7 @@ function EspecesReferentiel() {
       </Tabs>
 
       <DataTable
-        columns={columns}
+        columns={columnsAvecAvis}
         data={filteredData}
         isLoading={isLoading}
         showPagination={true}
@@ -400,6 +426,15 @@ function EspecesReferentiel() {
         onRowClick={openDetail}
         searchPlaceholder="Rechercher une espèce..."
         emptyMessage="Aucune espèce trouvée."
+      />
+
+      <AvisDialog
+        refType="ESPECE"
+        refId={avisRef?.id ?? null}
+        nom={avisRef?.id}
+        open={avisRef !== null}
+        onOpenChange={(o) => !o && setAvisRef(null)}
+        onSaved={fetchData}
       />
 
       {/* Sheet fiche espece */}
@@ -532,21 +567,27 @@ type PorteGreffeRow = {
   drageonnement: boolean
   especesCompatibles: string[]
   notes: string | null
+  avisStats?: AvisStatsListe
 }
 
 function PorteGreffesReferentiel() {
   const { toast } = useToast()
   const [data, setData] = React.useState<PorteGreffeRow[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
+  const [avisRef, setAvisRef] = React.useState<PorteGreffeRow | null>(null)
 
-  React.useEffect(() => {
+  const fetchData = React.useCallback(() => {
     setIsLoading(true)
-    fetch("/api/verger/porte-greffes")
+    fetch("/api/verger/porte-greffes?avis=1")
       .then((r) => (r.ok ? r.json() : null))
       .then((res) => setData(res?.data || []))
       .catch(() => toast({ variant: "destructive", title: "Erreur de chargement" }))
       .finally(() => setIsLoading(false))
   }, [toast])
+
+  React.useEffect(() => {
+    fetchData()
+  }, [fetchData])
 
   const columns: ColumnDef<PorteGreffeRow>[] = [
     { accessorKey: "nom", header: "Nom", cell: ({ getValue }) => <span className="font-medium">{getValue() as string}</span> },
@@ -571,17 +612,41 @@ function PorteGreffesReferentiel() {
       },
     },
     { accessorKey: "drageonnement", header: "Drageonne", cell: ({ getValue }) => (getValue() ? "Oui" : "Non") },
+    {
+      id: "avis",
+      header: "Avis",
+      enableSorting: false,
+      cell: ({ row }) => (
+        <AvisCell
+          stats={row.original.avisStats}
+          onClick={(e) => {
+            e.stopPropagation()
+            setAvisRef(row.original)
+          }}
+        />
+      ),
+    },
   ]
 
   return (
-    <DataTable
-      columns={columns}
-      data={data}
-      isLoading={isLoading}
-      showPagination={false}
-      searchPlaceholder="Rechercher un porte-greffe..."
-      emptyMessage="Aucun porte-greffe en référentiel."
-    />
+    <>
+      <DataTable
+        columns={columns}
+        data={data}
+        isLoading={isLoading}
+        showPagination={false}
+        searchPlaceholder="Rechercher un porte-greffe..."
+        emptyMessage="Aucun porte-greffe en référentiel."
+      />
+      <AvisDialog
+        refType="PORTE_GREFFE"
+        refId={avisRef?.id ?? null}
+        nom={avisRef?.nom}
+        open={avisRef !== null}
+        onOpenChange={(o) => !o && setAvisRef(null)}
+        onSaved={fetchData}
+      />
+    </>
   )
 }
 
