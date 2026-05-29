@@ -472,7 +472,7 @@ export async function getBesoinsSemences(
   userId: string,
   annee: number
 ): Promise<BesoinSemence[]> {
-  const { calculerBesoin } = await import('./semences/calcul')
+  const { calculerBesoin, defaultGrainesParGramme } = await import('./semences/calcul')
   const culturesPrevues = await getCulturesPrevues(userId, annee)
 
   // Référentiel : modes/dose par espèce, graines/g par variété, stocks user.
@@ -605,7 +605,9 @@ export async function getBesoinsSemences(
       doseGParM2: espece?.doseSemis ?? null,
       uniteDose: (espece?.uniteDose ?? null) as 'g_m2' | 'pieces_m2' | 'graines_plant' | 'caieux_m2' | null,
       tauxGerminationPct: espece?.tauxGermination ?? null,
-      grainesParGramme: variete?.nbGrainesG ?? null,
+      // Fallback PMG par espèce si la variété n'a pas de graines/g saisi
+      // (évite « 0 g / — à commander » silencieux — cmpm700xw).
+      grainesParGramme: variete?.nbGrainesG ?? defaultGrainesParGramme(acc.especeId),
       margeSecuritePct: espece?.margeSecuritePct ?? 15,
       stockGrammes: stock?.stockGraines ?? 0,
       stockUnites: stock?.stockPlants ?? 0,

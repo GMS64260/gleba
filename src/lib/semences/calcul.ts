@@ -63,6 +63,44 @@ export interface BesoinSemenceResult {
 
 const DEFAULT_MARGE = 15
 
+/**
+ * Graines par gramme indicatives par espèce (≈ 1000 / PMG en g), pour les
+ * variétés dont `nbGrainesG` n'est pas renseigné. Évite qu'un plant repiqué
+ * tombe silencieusement à « 0 g / — à commander » (feedback testeur
+ * cmpm700xw : chou kale sans dose). Sources : catalogues Kokopelli/ITAB.
+ */
+const GRAINES_PAR_GRAMME_DEFAUT: Record<string, number> = {
+  chou: 330, "chou kale": 330, "chou pommé": 330, "chou-fleur": 330,
+  "chou de bruxelles": 330, "chou brocoli": 330, "chou frisé": 330,
+  "chou de chine": 400, "chou-rave": 330, brocoli: 330,
+  tomate: 325, aubergine: 250, poivron: 150, piment: 150,
+  laitue: 800, mâche: 800, roquette: 550, épinard: 100, mache: 800,
+  poireau: 400, oignon: 250, échalote: 250, ciboulette: 800,
+  carotte: 800, panais: 450, persil: 600, céleri: 2500, celeri: 2500,
+  betterave: 50, radis: 100, navet: 400, fenouil: 250,
+  concombre: 35, courgette: 7, courge: 5, melon: 35, "courge butternut": 5,
+  basilic: 700, coriandre: 90, aneth: 700, thym: 6000,
+  haricot: 4, "haricot vert": 4, "haricot sec": 4, "petit pois": 4, pois: 4, fève: 1, feve: 1,
+}
+
+/**
+ * Retourne un nombre de graines/g indicatif pour une espèce (fallback quand
+ * la variété n'a pas de PMG renseigné). null si inconnu.
+ */
+export function defaultGrainesParGramme(especeNom: string | null | undefined): number | null {
+  if (!especeNom) return null
+  const n = especeNom.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim()
+  // Match exact puis par inclusion (ex. "Chou kale" → "chou").
+  for (const [k, v] of Object.entries(GRAINES_PAR_GRAMME_DEFAUT)) {
+    if (k.normalize("NFD").replace(/[̀-ͯ]/g, "") === n) return v
+  }
+  for (const [k, v] of Object.entries(GRAINES_PAR_GRAMME_DEFAUT)) {
+    const kn = k.normalize("NFD").replace(/[̀-ͯ]/g, "")
+    if (n.includes(kn) || kn.includes(n)) return v
+  }
+  return null
+}
+
 export function calculerBesoin(input: BesoinSemenceInput): BesoinSemenceResult {
   const mode: ModeSemis = (input.mode ?? 'graine_directe') as ModeSemis
   const marge = Math.max(0, input.margeSecuritePct ?? DEFAULT_MARGE)
