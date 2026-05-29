@@ -82,53 +82,42 @@ export function GanttRow({ itp, onEdit }: GanttRowProps) {
   // Sources : J.-M. Fortier, Le Jardinier-Maraîcher (phase germination).
   const PHASE_SEMIS_SEMAINES_DIRECT = 3
 
+  // Bug testeur 2026-05-29 (Carotte-automne-conservation-serre) — durée en
+  // semaines entre deux semaines de l'année, en tenant compte d'un passage
+  // d'année (récolte < semis → +52). Sans ça, `recolte - semis` était négatif
+  // et les barres avaient une largeur < 0 (semis/croissance invisibles).
+  const dureeSem = (debut: number, fin: number) =>
+    fin >= debut ? fin - debut : fin + 52 - debut
+  // Largeur en %, bornée pour ne pas déborder de l'axe 52 semaines (les cycles
+  // qui débordent sur l'année suivante sont tronqués proprement à S52).
+  const barre = (debut: number, dureeSemaines: number, color: string, label: string) => {
+    const start = (debut / 52) * 100
+    const width = Math.min(100 - start, Math.max(0, (dureeSemaines / 52) * 100))
+    return { start, width, color, label }
+  }
+
   const calculateBars = () => {
     const bars: { start: number; width: number; color: string; label: string }[] = []
 
     // Cas pépinière : Semis (orange) puis Croissance (vert)
     if (itp.semaineSemis && itp.semainePlantation) {
-      bars.push({
-        start: (itp.semaineSemis / 52) * 100,
-        width: ((itp.semainePlantation - itp.semaineSemis) / 52) * 100,
-        color: '#ff9800',
-        label: 'Semis'
-      })
+      bars.push(barre(itp.semaineSemis, dureeSem(itp.semaineSemis, itp.semainePlantation), '#ff9800', 'Semis'))
     } else if (itp.semaineSemis && itp.semaineRecolte && !itp.semainePlantation) {
       // Cas semis direct : on découpe en Semis (3 sem) + Croissance
-      const cycle = itp.semaineRecolte - itp.semaineSemis
-      const semisFin = itp.semaineSemis + Math.min(PHASE_SEMIS_SEMAINES_DIRECT, Math.max(1, Math.floor(cycle / 3)))
-      bars.push({
-        start: (itp.semaineSemis / 52) * 100,
-        width: ((semisFin - itp.semaineSemis) / 52) * 100,
-        color: '#ff9800',
-        label: 'Semis / germination'
-      })
-      bars.push({
-        start: (semisFin / 52) * 100,
-        width: ((itp.semaineRecolte - semisFin) / 52) * 100,
-        color: '#4caf50',
-        label: 'Croissance'
-      })
+      const cycle = dureeSem(itp.semaineSemis, itp.semaineRecolte)
+      const phaseSemis = Math.min(PHASE_SEMIS_SEMAINES_DIRECT, Math.max(1, Math.floor(cycle / 3)))
+      bars.push(barre(itp.semaineSemis, phaseSemis, '#ff9800', 'Semis / germination'))
+      bars.push(barre(itp.semaineSemis + phaseSemis, cycle - phaseSemis, '#4caf50', 'Croissance'))
     }
 
     // Cas pépinière (suite) : bande croissance
     if (itp.semainePlantation && itp.semaineRecolte) {
-      bars.push({
-        start: (itp.semainePlantation / 52) * 100,
-        width: ((itp.semaineRecolte - itp.semainePlantation) / 52) * 100,
-        color: '#4caf50',
-        label: 'Croissance'
-      })
+      bars.push(barre(itp.semainePlantation, dureeSem(itp.semainePlantation, itp.semaineRecolte), '#4caf50', 'Croissance'))
     }
 
     // Barre récolte (violet) : semaineRecolte → semaineRecolte + dureeRecolte
     if (itp.semaineRecolte && itp.dureeRecolte) {
-      bars.push({
-        start: (itp.semaineRecolte / 52) * 100,
-        width: ((itp.dureeRecolte) / 52) * 100,
-        color: '#9c27b0',
-        label: 'Récolte'
-      })
+      bars.push(barre(itp.semaineRecolte, itp.dureeRecolte, '#9c27b0', 'Récolte'))
     }
 
     return bars

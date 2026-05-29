@@ -359,7 +359,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="h-[240px]">
+                <div className="h-[240px] w-full min-w-0">
                   {/* QA Hélène 2026-05-15 — Bug #4 : `key` basé sur la
                       signature des données force un remount complet
                       quand on ajoute/supprime un arbre, sinon Recharts
@@ -444,7 +444,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="h-[250px]">
+            <div className="h-[250px] w-full min-w-0">
               {data?.charts.recoltesFruitsMois && (
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={data.charts.recoltesFruitsMois}>
@@ -477,7 +477,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="h-[250px]">
+            <div className="h-[250px] w-full min-w-0">
               {data?.charts.productionBoisMois && (
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={data.charts.productionBoisMois}>
@@ -504,7 +504,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="h-[250px]">
+            <div className="h-[250px] w-full min-w-0">
               {/* QA Hélène 2026-05-15 — Bug #5 : avec un seul type
                   d'arbres (ex. 21 fruitiers, 0 autre), Recharts dessinait
                   un mini-arc 5 % au lieu d'un disque plein. On affiche
@@ -547,7 +547,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="h-[250px]">
+            <div className="h-[250px] w-full min-w-0">
               {data?.charts.topRecoltesArbres && data.charts.topRecoltesArbres.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={data.charts.topRecoltesArbres} layout="vertical">

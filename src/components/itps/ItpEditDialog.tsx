@@ -274,38 +274,26 @@ function GanttPreview({
 }) {
   const bars: { start: number; width: number; color: string; label: string }[] = []
 
+  // Bug testeur 2026-05-29 — passage d'année (récolte < semis → +52) sinon
+  // largeurs négatives = barres invisibles (Carotte-automne-conservation-serre).
+  const dureeSem = (debut: number, fin: number) => (fin >= debut ? fin - debut : fin + 52 - debut)
+  const pushBarre = (debut: number, dureeSemaines: number, color: string, label: string) => {
+    const start = (debut / 52) * 100
+    bars.push({ start, width: Math.min(100 - start, Math.max(0, (dureeSemaines / 52) * 100)), color, label })
+  }
+
   if (semaineSemis && semainePlantation) {
-    bars.push({
-      start: (semaineSemis / 52) * 100,
-      width: ((semainePlantation - semaineSemis) / 52) * 100,
-      color: '#ff9800',
-      label: 'Semis',
-    })
+    pushBarre(semaineSemis, dureeSem(semaineSemis, semainePlantation), '#ff9800', 'Semis')
   } else if (semaineSemis && semaineRecolte && !semainePlantation) {
-    bars.push({
-      start: (semaineSemis / 52) * 100,
-      width: ((semaineRecolte - semaineSemis) / 52) * 100,
-      color: '#ff9800',
-      label: 'Semis',
-    })
+    pushBarre(semaineSemis, dureeSem(semaineSemis, semaineRecolte), '#ff9800', 'Semis')
   }
 
   if (semainePlantation && semaineRecolte) {
-    bars.push({
-      start: (semainePlantation / 52) * 100,
-      width: ((semaineRecolte - semainePlantation) / 52) * 100,
-      color: '#4caf50',
-      label: 'Croissance',
-    })
+    pushBarre(semainePlantation, dureeSem(semainePlantation, semaineRecolte), '#4caf50', 'Croissance')
   }
 
   if (semaineRecolte && dureeRecolte) {
-    bars.push({
-      start: (semaineRecolte / 52) * 100,
-      width: (dureeRecolte / 52) * 100,
-      color: '#9c27b0',
-      label: 'Récolte',
-    })
+    pushBarre(semaineRecolte, dureeRecolte, '#9c27b0', 'Récolte')
   }
 
   const months = ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"]

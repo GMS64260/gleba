@@ -181,7 +181,11 @@ function semainVersMois(semaine: number): number {
  * Convertit une date en numero de semaine ISO (1-53) — sert de fallback
  * quand Culture.semaineRecolte n'est pas fourni par un ITP rattache.
  */
-function dateVersSemaine(d: Date): number {
+function dateVersSemaine(d: Date, anneeAttendue?: number): number | null {
+  // Bug (testeur) : une récolte en janvier 2027 (carotte conservation) ne doit pas
+  // apparaître en semaine 2 du calendrier 2026. Si la date n'est pas dans l'année
+  // affichée, on retourne null (la culture sera exclue de cette vue annuelle).
+  if (anneeAttendue != null && d.getFullYear() !== anneeAttendue) return null
   const start = new Date(d.getFullYear(), 0, 1)
   const diff = (d.getTime() - start.getTime()) / 86_400_000
   return Math.min(53, Math.max(1, Math.ceil((diff + start.getDay() + 1) / 7)))
@@ -278,6 +282,11 @@ export async function getCulturesPrevues(
             c => c.itpId === detail.itpId || c.especeId === detail.itp?.especeId
           )
 
+          // Bug R3/B (testeur) : ne pas injecter de culture « fantôme » à créer
+          // quand la planche est DÉJÀ occupée par des cultures réelles cette
+          // année (la suggestion de rotation polluait l'inventaire réel).
+          if (!cultureExistante && planche.cultures.length > 0) continue
+
           culturesPrevues.push({
             plancheId: planche.nom,
             plancheLongueur: planche.longueur,
@@ -294,9 +303,9 @@ export async function getCulturesPrevues(
             // Bug R19/R26 : si une culture réelle existe, ses dates SAISIES priment
             // sur les semaines théoriques de l'ITP (sinon toutes les successions
             // d'une planche affichent les mêmes semaines ITP).
-            semaineSemis: cultureExistante?.dateSemis ? dateVersSemaine(cultureExistante.dateSemis) : (detail.itp?.semaineSemis || null),
-            semainePlantation: cultureExistante?.datePlantation ? dateVersSemaine(cultureExistante.datePlantation) : (detail.itp?.semainePlantation || null),
-            semaineRecolte: cultureExistante?.dateRecolte ? dateVersSemaine(cultureExistante.dateRecolte) : (detail.itp?.semaineRecolte || null),
+            semaineSemis: cultureExistante?.dateSemis ? dateVersSemaine(cultureExistante.dateSemis, annee) : (detail.itp?.semaineSemis || null),
+            semainePlantation: cultureExistante?.datePlantation ? dateVersSemaine(cultureExistante.datePlantation, annee) : (detail.itp?.semainePlantation || null),
+            semaineRecolte: cultureExistante?.dateRecolte ? dateVersSemaine(cultureExistante.dateRecolte, annee) : (detail.itp?.semaineRecolte || null),
             dureeCulture: detail.itp?.dureeCulture || null,
             nbRangs: detail.itp?.nbRangs || null,
             espacement: detail.itp?.espacement || null,
@@ -368,16 +377,16 @@ export async function getCulturesPrevues(
         especeCouleur: culture.espece?.couleur || null,
         varieteId: culture.varieteId,
         annee: culture.annee || annee,
-        semaineSemis: culture.itp?.semaineSemis ?? (culture.dateSemis ? dateVersSemaine(culture.dateSemis) : null),
-        semainePlantation:
-          culture.itp?.semainePlantation
-          ?? (culture.datePlantation ? dateVersSemaine(culture.datePlantation) : null),
-        // BUG-feedback (Marc 2026-05-16) : sans ITP rattaché, la culture
-        // était ignorée par les KPI "Récoltes prévues" alors que la date
-        // de récolte est saisie. Fallback systématique sur dateRecolte.
-        semaineRecolte:
-          culture.itp?.semaineRecolte
-          ?? (culture.dateRecolte ? dateVersSemaine(culture.dateRecolte) : null),
+        // Bug R19/R26 : la DATE RÉELLE saisie sur la culture prime sur la semaine
+        // théorique de l'ITP (sinon 2 cultures en succession affichent la même
+        // semaine ITP). Année-aware → exclut les récoltes d'une autre année.
+        semaineSemis: culture.dateSemis ? dateVersSemaine(culture.dateSemis, annee) : (culture.itp?.semaineSemis ?? null),
+        semainePlantation: culture.datePlantation
+          ? dateVersSemaine(culture.datePlantation, annee)
+          : (culture.itp?.semainePlantation ?? null),
+        semaineRecolte: culture.dateRecolte
+          ? dateVersSemaine(culture.dateRecolte, annee)
+          : (culture.itp?.semaineRecolte ?? null),
         dureeCulture: culture.itp?.dureeCulture || null,
         nbRangs: culture.nbRangs || culture.itp?.nbRangs || null,
         espacement: culture.espacement || culture.itp?.espacement || null,
@@ -675,10 +684,19 @@ export async function getBesoinsPlants(
 ): Promise<BesoinPlant[]> {
   const culturesPrevues = await getCulturesPrevues(userId, annee)
 
-  // Filtrer les cultures avec plantation
-  const culturesAvecPlantation = culturesPrevues.filter(
-    c => c.semainePlantation !== null && c.especeId
-  )
+  // Bug R5 : « Plants à produire » ne concerne que les espèces semées en pépinière
+  // puis repiquées (ou bouturées). Les bulbes/caïeux/tubercules (oignon, ail, PdT)
+  // se plantent directement → ils relèvent de « Semences/bulbilles », PAS de « Plants »
+  // (sinon double comptage entre les deux écrans).
+  const modesEspeces = await prisma.espece.findMany({ select: { id: true, modeSemis: true } })
+  const modeMap = new Map(modesEspeces.map(e => [e.id, e.modeSemis]))
+
+  // Filtrer les cultures avec plantation (hors bulbe/caïeu et semis direct)
+  const culturesAvecPlantation = culturesPrevues.filter((c) => {
+    if (c.semainePlantation === null || !c.especeId) return false
+    const mode = modeMap.get(c.especeId)
+    return mode !== 'bulbe_caieu' && mode !== 'graine_directe'
+  })
 
   // BUG #3 (audit Marc 2026-05-15) — Prorata identique à
   // `getBesoinsSemences` pour que les surfaces affichées dans

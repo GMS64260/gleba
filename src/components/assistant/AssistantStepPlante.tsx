@@ -102,7 +102,11 @@ function getDureeEstimee(itp: ITPData): string | null {
     return `${itp.dureeCulture} jours`
   }
   if (itp.semaineSemis && itp.semaineRecolte) {
-    const semaines = itp.semaineRecolte - itp.semaineSemis
+    // Passage d'année (récolte < semis → +52) pour les cycles d'automne/hiver.
+    const semaines =
+      itp.semaineRecolte >= itp.semaineSemis
+        ? itp.semaineRecolte - itp.semaineSemis
+        : itp.semaineRecolte + 52 - itp.semaineSemis
     if (semaines > 0) {
       return `~${semaines} semaines`
     }
