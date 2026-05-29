@@ -443,11 +443,19 @@ export function CampagneDetailDialog({ campagneId, open, onOpenChange, onUpdate 
                               probable d'erreur de saisie (ex. préparation
                               trous prévue 31/10 mais réalisée 25/05). */}
                           {etape.datePrevue && etape.dateRealisation &&
-                            new Date(etape.dateRealisation) < new Date(etape.datePrevue) && (
-                            <div className="text-xs text-amber-700 mt-1 flex items-center gap-1">
-                              ⚠ Date réalisée antérieure à la date prévue — vérifier la cohérence.
-                            </div>
-                          )}
+                            new Date(etape.dateRealisation) < new Date(etape.datePrevue) && (() => {
+                              // cmpm73k8u — préciser le délai pour situer l'écart
+                              // (ex. trous préparés 159 j avant la date prévue).
+                              const jours = Math.round(
+                                (new Date(etape.datePrevue).getTime() - new Date(etape.dateRealisation).getTime())
+                                / 86400000
+                              )
+                              return (
+                                <div className="text-xs text-amber-700 mt-1 flex items-center gap-1">
+                                  ⚠ Date réalisée {jours} j avant la date prévue — vérifier la cohérence.
+                                </div>
+                              )
+                            })()}
                         </div>
                         <Button variant="ghost" size="sm" onClick={() => deleteEtape(etape)}>
                           <Trash2 className="h-3.5 w-3.5 text-red-500" />

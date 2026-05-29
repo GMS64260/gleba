@@ -118,10 +118,13 @@ const columns: ColumnDef<EspeceWithRelations>[] = [
   },
   {
     accessorKey: "rendement",
-    header: "Rendement (kg/m2)",
+    header: "Rendement (kg/m²)",
     cell: ({ getValue }) => {
       const val = getValue() as number | null
-      return val ? val.toFixed(1) : "-"
+      // Format français (virgule) cohérent avec la fiche espèce (cmpmqxjug).
+      return val != null
+        ? val.toLocaleString("fr-FR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+        : "-"
     },
   },
   {
