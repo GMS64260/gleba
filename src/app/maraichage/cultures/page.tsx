@@ -20,6 +20,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
+import { confirmDialog } from "@/lib/global-dialog"
 
 // Types d'états pour le filtre
 const CULTURE_ETATS = [
@@ -372,7 +373,7 @@ export default function CulturesPage() {
   }
 
   const handleDelete = async (row: CultureWithRelations) => {
-    if (!confirm(`Supprimer la culture #${row.id} ?`)) return
+    if (!(await confirmDialog(`Supprimer la culture #${row.id} ?`))) return
 
     try {
       const response = await fetch(`/api/cultures/${row.id}`, {

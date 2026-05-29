@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { confirmDialog } from "@/lib/global-dialog"
 import {
   Card,
   CardContent,
@@ -95,9 +96,9 @@ export function FeedbackDashboard({ data }: { data: DashboardData }) {
 
   const handleResend = async () => {
     if (
-      !confirm(
+      !(await confirmDialog(
         `Renvoyer l'invitation feedback aux ${pending.length} utilisateur(s) qui n'ont pas répondu ?`
-      )
+      ))
     ) {
       return
     }

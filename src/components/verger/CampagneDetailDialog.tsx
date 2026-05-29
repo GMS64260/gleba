@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
+import { confirmDialog } from "@/lib/global-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -233,7 +234,7 @@ export function CampagneDetailDialog({ campagneId, open, onOpenChange, onUpdate 
   }
 
   const deleteEtape = async (etape: Etape) => {
-    if (!confirm(`Supprimer l'etape "${etape.description || ETAPE_LIBELLES[etape.type]}" ?`)) return
+    if (!(await confirmDialog(`Supprimer l'etape "${etape.description || ETAPE_LIBELLES[etape.type]}" ?`))) return
     const res = await fetch(`/api/arbres/campagnes/${campagneId}/etapes/${etape.id}`, {
       method: "DELETE",
     })

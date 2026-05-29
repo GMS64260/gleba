@@ -24,6 +24,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { DataTable } from "@/components/tables/DataTable"
 import { useToast } from "@/hooks/use-toast"
+import { confirmDialog } from "@/lib/global-dialog"
 import { WeatherFieldset, EMPTY_WEATHER, type WeatherData } from "@/components/phyto/WeatherFieldset"
 import { MaterielFieldset } from "@/components/phyto/MaterielFieldset"
 
@@ -371,7 +372,7 @@ export function OperationsTab() {
         onAdd={() => setShowDialog(true)}
         onRefresh={fetchData}
         onRowDelete={async (row) => {
-          if (!confirm("Supprimer cette operation ?")) return
+          if (!(await confirmDialog("Supprimer cette operation ?"))) return
           try {
             await fetch(`/api/arbres/operations/${row.id}`, { method: "DELETE" })
             toast({ title: "Operation supprimée" })

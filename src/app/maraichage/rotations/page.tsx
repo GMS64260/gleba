@@ -14,6 +14,7 @@ import { DataTable } from "@/components/tables/DataTable"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
+import { confirmDialog } from "@/lib/global-dialog"
 
 // Type pour les rotations avec relations
 interface RotationDetail {
@@ -196,7 +197,7 @@ export default function RotationsPage() {
       return
     }
 
-    if (!confirm(`Supprimer la rotation "${row.id}" ?`)) return
+    if (!(await confirmDialog(`Supprimer la rotation "${row.id}" ?`))) return
 
     try {
       const response = await fetch(`/api/rotations/${encodeURIComponent(row.id)}`, {

@@ -16,6 +16,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
+import { confirmDialog } from "@/lib/global-dialog"
 import { Badge } from "@/components/ui/badge"
 import {
   DropdownMenu,
@@ -105,7 +106,7 @@ export function UserTable({ users }: UserTableProps) {
   }
 
   async function deleteUser(userId: string) {
-    if (!confirm("Supprimer cet utilisateur et toutes ses donnees ?")) return
+    if (!(await confirmDialog("Supprimer cet utilisateur et toutes ses donnees ?"))) return
 
     setLoading(userId)
     try {

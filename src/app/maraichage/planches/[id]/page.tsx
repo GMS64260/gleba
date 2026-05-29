@@ -9,6 +9,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { PlancheHistory, RotationAdvice } from '@/components/planche'
 import { PlancheInfoTable } from '@/components/planches/PlancheInfoTable'
+import { alertDialog } from '@/lib/global-dialog'
 
 interface Planche {
   id: string
@@ -226,7 +227,7 @@ export default function PlancheDetailPage({ params }: PageProps) {
       setIsEditing(false)
       onUpdate()
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Erreur inconnue')
+      await alertDialog(err instanceof Error ? err.message : 'Erreur inconnue')
     } finally {
       setSaving(false)
     }

@@ -43,6 +43,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
 import { oeufsAttendusJour } from "@/lib/elevage/taux-ponte"
 import { labelStatutLot, labelUnite } from "@/lib/elevage/labels"
+import { confirmDialog } from "@/lib/global-dialog"
 
 // ============================================================
 // Composant principal
@@ -761,7 +762,7 @@ function VentesSubTab() {
   }
 
   const handleDelete = async (id: number) => {
-    if (!confirm("Supprimer cette vente ?")) return
+    if (!(await confirmDialog("Supprimer cette vente ?"))) return
     try {
       await fetch(`/api/elevage/ventes?id=${id}`, { method: 'DELETE' })
       toast({ title: "Vente supprimée" })

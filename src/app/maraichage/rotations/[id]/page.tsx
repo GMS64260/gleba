@@ -35,6 +35,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
+import { confirmDialog } from "@/lib/global-dialog"
 import { updateRotationSchema, type UpdateRotationInput } from "@/lib/validations"
 
 interface ITP {
@@ -222,7 +223,7 @@ export default function EditRotationPage() {
       return
     }
 
-    if (!confirm(`Supprimer la rotation "${id}" ?`)) return
+    if (!(await confirmDialog(`Supprimer la rotation "${id}" ?`))) return
 
     try {
       const response = await fetch(`/api/rotations/${encodeURIComponent(id)}`, {

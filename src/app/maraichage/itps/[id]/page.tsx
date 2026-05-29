@@ -34,6 +34,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
+import { confirmDialog } from "@/lib/global-dialog"
 import { updateITPSchema, type UpdateITPInput, ITP_TYPE_PLANCHE } from "@/lib/validations/itp"
 
 interface Espece {
@@ -173,7 +174,7 @@ export default function EditITPPage() {
       return
     }
 
-    if (!confirm(`Supprimer l'ITP "${id}" ?`)) return
+    if (!(await confirmDialog(`Supprimer l'ITP "${id}" ?`))) return
 
     try {
       const response = await fetch(`/api/itps/${encodeURIComponent(id)}`, {

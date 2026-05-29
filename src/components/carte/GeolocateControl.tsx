@@ -9,6 +9,7 @@ import { useState, useCallback } from "react"
 import { useMap } from "react-leaflet"
 import L from "leaflet"
 import { Crosshair, Loader2 } from "lucide-react"
+import { alertDialog } from "@/lib/global-dialog"
 
 const GEOLOC_ZOOM = 16
 
@@ -17,9 +18,9 @@ export default function GeolocateControl() {
   const [loading, setLoading] = useState(false)
   const [marker, setMarker] = useState<L.Marker | null>(null)
 
-  const handleGeolocate = useCallback(() => {
+  const handleGeolocate = useCallback(async () => {
     if (!navigator.geolocation) {
-      alert("La geolocalisation n'est pas supportee par votre navigateur.")
+      await alertDialog("La geolocalisation n'est pas supportee par votre navigateur.")
       return
     }
 
@@ -67,7 +68,7 @@ export default function GeolocateControl() {
             message = "Délai de geolocalisation depasse."
             break
         }
-        alert(message)
+        void alertDialog(message)
       },
       {
         enableHighAccuracy: true,

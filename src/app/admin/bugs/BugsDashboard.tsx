@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useMemo } from "react"
+import { confirmDialog, alertDialog } from "@/lib/global-dialog"
 import {
   Card,
   CardContent,
@@ -168,7 +169,7 @@ export function BugsDashboard({ initialBugs, stats }: Props) {
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
-        alert(err.error || "Erreur lors de la mise à jour")
+        await alertDialog(err.error || "Erreur lors de la mise à jour")
         return
       }
       const { bug } = await res.json()
@@ -197,12 +198,12 @@ export function BugsDashboard({ initialBugs, stats }: Props) {
   }
 
   const deleteBug = async (id: string) => {
-    if (!confirm("Supprimer définitivement ce retour ?")) return
+    if (!(await confirmDialog("Supprimer définitivement ce retour ?"))) return
     setSavingId(id)
     try {
       const res = await fetch(`/api/admin/bugs/${id}`, { method: "DELETE" })
       if (!res.ok) {
-        alert("Erreur lors de la suppression")
+        await alertDialog("Erreur lors de la suppression")
         return
       }
       setBugs((prev) => prev.filter((b) => b.id !== id))

@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { InlineEditField } from "./InlineEditField"
 import { Droplets, Ruler, MapPin, Loader2, Satellite } from "lucide-react"
+import { alertDialog } from "@/lib/global-dialog"
 
 interface Planche {
   id: string
@@ -92,7 +93,7 @@ export function PlancheInfoTable({ planche, onUpdate }: PlancheInfoTableProps) {
         retentionEau: json.calculs.retentionEau,
       })
     } catch (e) {
-      alert("Impossible de récupérer les données sol pour ces coordonnées.")
+      await alertDialog("Impossible de récupérer les données sol pour ces coordonnées.")
     } finally {
       setSoilLoading(false)
     }
@@ -118,7 +119,7 @@ export function PlancheInfoTable({ planche, onUpdate }: PlancheInfoTableProps) {
       setSoilEstimate(null)
       onUpdate()
     } catch {
-      alert("Erreur lors de la sauvegarde")
+      await alertDialog("Erreur lors de la sauvegarde")
     }
   }
 
@@ -137,7 +138,7 @@ export function PlancheInfoTable({ planche, onUpdate }: PlancheInfoTableProps) {
       onUpdate()
     } catch (error) {
       console.error('Erreur:', error)
-      alert('Erreur lors de la sauvegarde')
+      await alertDialog('Erreur lors de la sauvegarde')
     }
   }
 

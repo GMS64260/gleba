@@ -17,6 +17,7 @@ import { useToast } from '@/hooks/use-toast'
 import { Slider } from '@/components/ui/slider'
 import { useModules } from '@/hooks/use-modules'
 import { MODULES, MODULE_IDS, type ModuleId } from '@/lib/modules'
+import { confirmDialog } from '@/lib/global-dialog'
 
 // Clé localStorage pour les parametres
 const SETTINGS_KEY = 'gleba_settings'
@@ -135,7 +136,7 @@ export default function ParametresPage() {
   }, [])
 
   const handleGenerateToken = async () => {
-    if (mcpHasToken && !confirm('Un token existe déjà. Le régénérer va invalider le précédent. Continuer ?')) return
+    if (mcpHasToken && !(await confirmDialog('Un token existe déjà. Le régénérer va invalider le précédent. Continuer ?'))) return
     setMcpLoading(true)
     try {
       const res = await fetch('/api/user/api-token', { method: 'POST' })
@@ -154,7 +155,7 @@ export default function ParametresPage() {
   }
 
   const handleRevokeToken = async () => {
-    if (!confirm('Révoquer le token ? Les connexions MCP existantes seront coupées.')) return
+    if (!(await confirmDialog('Révoquer le token ? Les connexions MCP existantes seront coupées.'))) return
     setMcpLoading(true)
     try {
       await fetch('/api/user/api-token', { method: 'DELETE' })
@@ -252,8 +253,8 @@ export default function ParametresPage() {
     }
   }
 
-  const handleReset = () => {
-    if (confirm('Réinitialiser tous les paramètres aux valeurs par défaut ?')) {
+  const handleReset = async () => {
+    if (await confirmDialog('Réinitialiser tous les paramètres aux valeurs par défaut ?')) {
       setSettings(defaultSettings)
       localStorage.removeItem(SETTINGS_KEY)
       toast({
@@ -386,8 +387,8 @@ export default function ParametresPage() {
     }
   }
 
-  const handleRemoveImage = () => {
-    if (confirm('Supprimer l\'image de fond ?')) {
+  const handleRemoveImage = async () => {
+    if (await confirmDialog('Supprimer l\'image de fond ?')) {
       setSettings((prev) => ({ ...prev, backgroundImage: null }))
       toast({
         title: 'Image supprimée',
@@ -398,7 +399,7 @@ export default function ParametresPage() {
 
   // Suppression de toutes les données utilisateur
   const handleDeleteAllData = async () => {
-    const confirmation1 = confirm(
+    const confirmation1 = await confirmDialog(
       '⚠️ ATTENTION ⚠️\n\nVous allez supprimer TOUTES vos données :\n- Cultures, récoltes, irrigations\n- Planches, fertilisations\n- Arbres, objets jardin\n- Notes\n\nCette action est IRRÉVERSIBLE.\n\nContinuer ?'
     )
     if (!confirmation1) return

@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
+import { confirmDialog } from "@/lib/global-dialog"
 import { getCategorieEmoji } from "@/lib/categories-emojis"
 
 // Types d'especes
@@ -327,7 +328,7 @@ function EspecesPageContent() {
       return
     }
 
-    if (!confirm(`Supprimer l'espece "${row.id}" ?`)) return
+    if (!(await confirmDialog(`Supprimer l'espece "${row.id}" ?`))) return
 
     try {
       const response = await fetch(`/api/especes/${encodeURIComponent(row.id)}`, {

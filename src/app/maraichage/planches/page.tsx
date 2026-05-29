@@ -14,6 +14,7 @@ import { AssistantDialog, AssistantButton } from "@/components/assistant"
 import { DataTable } from "@/components/tables/DataTable"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
+import { confirmDialog } from "@/lib/global-dialog"
 import { EditableSelectCell } from "@/components/planches/EditableSelectCell"
 import { CompleterTerrainDialog } from "@/components/planches/CompleterTerrainDialog"
 
@@ -202,7 +203,7 @@ export default function PlanchesPage() {
       return
     }
 
-    if (!confirm(`Supprimer la planche "${row.nom}" ?`)) return
+    if (!(await confirmDialog(`Supprimer la planche "${row.nom}" ?`))) return
 
     try {
       const response = await fetch(`/api/planches/${encodeURIComponent(row.nom)}`, {

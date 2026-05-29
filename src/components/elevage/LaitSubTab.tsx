@@ -27,6 +27,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
+import { confirmDialog } from "@/lib/global-dialog"
 
 type Animal = { id: number; nom: string | null; identifiant: string | null; especeAnimale?: { production?: string; nom?: string } }
 type Lot = { id: number; nom: string | null; especeAnimale?: { production?: string; nom?: string } }
@@ -509,7 +510,7 @@ function FabricationsView() {
                         size="sm"
                         title="Supprimer"
                         onClick={async () => {
-                          if (!confirm(`Supprimer ${l.numeroLot} ?`)) return
+                          if (!(await confirmDialog(`Supprimer ${l.numeroLot} ?`))) return
                           const res = await fetch(`/api/elevage/lots-fromage?id=${l.id}`, { method: "DELETE" })
                           if (res.ok) reload()
                           else {

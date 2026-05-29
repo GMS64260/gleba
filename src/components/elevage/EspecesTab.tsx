@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
+import { confirmDialog } from "@/lib/global-dialog"
 
 interface EspeceAnimale {
   id: string
@@ -194,7 +195,7 @@ export function EspecesTab() {
       toast({ variant: "destructive", title: "Suppression impossible", description: `${nom} est utilisee par ${count} animaux/lots` })
       return
     }
-    if (!confirm(`Supprimer l'espece "${nom}" ?`)) return
+    if (!(await confirmDialog(`Supprimer l'espece "${nom}" ?`))) return
     try {
       const res = await fetch(`/api/elevage/especes-animales?id=${id}`, { method: 'DELETE' })
       if (!res.ok) throw new Error()
