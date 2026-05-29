@@ -42,6 +42,7 @@ import { Label } from "@/components/ui/label"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
 import { oeufsAttendusJour } from "@/lib/elevage/taux-ponte"
+import { labelStatutLot, labelUnite } from "@/lib/elevage/labels"
 
 // ============================================================
 // Composant principal
@@ -466,7 +467,7 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
                     {lots.map(lot => (
                       <SelectItem key={lot.id} value={lot.id.toString()}>
                         {lot.nom || `Lot #${lot.id}`} ({lot.quantiteActuelle} {lot.especeAnimale.nom}
-                        {lot.statut && lot.statut !== 'actif' ? ` — ${lot.statut}` : ''})
+                        {lot.statut && lot.statut !== 'actif' ? ` — ${labelStatutLot(lot.statut)}` : ''})
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -902,13 +903,13 @@ function VentesSubTab() {
                     <TableCell>{new Date(vente.date).toLocaleDateString('fr-FR')}</TableCell>
                     <TableCell><Badge variant="outline">{TYPE_LABELS[vente.type] || vente.type}</Badge></TableCell>
                     <TableCell>{vente.description || '-'}</TableCell>
-                    <TableCell className="text-right">{vente.quantite} {vente.unite}</TableCell>
+                    <TableCell className="text-right">{vente.quantite} {labelUnite(vente.unite)}</TableCell>
                     <TableCell className="text-right">{vente.prixUnitaire.toFixed(2)} &euro;</TableCell>
                     <TableCell className="text-right font-bold text-green-600">{vente.prixTotal.toFixed(2)} &euro;</TableCell>
                     <TableCell>{vente.client || '-'}</TableCell>
                     <TableCell>
                       <Badge className={vente.paye ? "bg-green-100 text-green-800" : "bg-orange-100 text-orange-800"}>
-                        {vente.paye ? "Paye" : "A payer"}
+                        {vente.paye ? "Payé" : "À payer"}
                       </Badge>
                     </TableCell>
                     <TableCell>

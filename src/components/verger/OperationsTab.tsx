@@ -377,8 +377,8 @@ export function OperationsTab() {
             toast({ variant: "destructive", title: "Erreur" })
           }
         }}
-        searchPlaceholder="Rechercher une operation..."
-        emptyMessage="Aucune operation trouvée."
+        searchPlaceholder="Rechercher une opération..."
+        emptyMessage="Aucune opération trouvée."
       />
 
       {/* Dialog nouvelle operation */}

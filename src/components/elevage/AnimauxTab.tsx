@@ -27,6 +27,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
+import { labelStatutAnimal, labelStatutLot } from "@/lib/elevage/labels"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -668,7 +669,7 @@ function AnimauxSubTab() {
                       {animal.sexe === 'femelle' ? '\u2640' : animal.sexe === 'male' ? '\u2642' : '-'}
                     </TableCell>
                     <TableCell>
-                      <Badge className={STATUT_COLORS[animal.statut] || ''}>{animal.statut}</Badge>
+                      <Badge className={STATUT_COLORS[animal.statut] || ''}>{labelStatutAnimal(animal.statut)}</Badge>
                     </TableCell>
                     <TableCell>{animal.lot?.nom || '-'}</TableCell>
                     <TableCell className="text-right">
@@ -1231,7 +1232,7 @@ function LotsSubTab() {
                       )}
                     </TableCell>
                     <TableCell className="text-right">{lot.prixAchatTotal ? `${lot.prixAchatTotal.toFixed(2)} \u20ac` : '-'}</TableCell>
-                    <TableCell><Badge className={STATUT_COLORS[lot.statut] || ''}>{lot.statut}</Badge></TableCell>
+                    <TableCell><Badge className={STATUT_COLORS[lot.statut] || ''}>{labelStatutLot(lot.statut)}</Badge></TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                         <TooltipProvider delayDuration={100}>
