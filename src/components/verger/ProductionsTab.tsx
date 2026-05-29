@@ -230,6 +230,12 @@ function RecoltesFruitsSubTab() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    // Famille C — au lieu d'un bouton grisé muet, on valide explicitement
+    // l'arbre requis avec un message clair.
+    if (!newRecolte.arbreId) {
+      toast({ title: "Sélectionnez un arbre", variant: "destructive" })
+      return
+    }
     try {
       const res = await fetch("/api/arbres/recoltes", {
         method: "POST",
@@ -279,6 +285,9 @@ function RecoltesFruitsSubTab() {
           }
         }
         fetchData()
+      } else {
+        const data = await res.json().catch(() => ({}))
+        toast({ title: "Échec de l'enregistrement", description: data.error || `Erreur ${res.status}`, variant: "destructive" })
       }
     } catch {
       toast({ title: "Erreur", variant: "destructive" })

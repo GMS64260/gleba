@@ -218,6 +218,15 @@ export default function TransactionsPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
+    if (!formData.categorie) {
+      toast({
+        variant: "destructive",
+        title: "Catégorie requise",
+        description: "Veuillez choisir une catégorie avant d'enregistrer.",
+      })
+      return
+    }
+
     const endpoint = formType === "vente"
       ? "/api/comptabilite/ventes-manuelles"
       : "/api/comptabilite/depenses-manuelles"
@@ -285,10 +294,15 @@ export default function TransactionsPage() {
         })
         fetchData()
       } else {
-        throw new Error()
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || `Erreur ${res.status}`)
       }
-    } catch {
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible d'enregistrer" })
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Erreur",
+        description: err instanceof Error ? err.message : "Impossible d'enregistrer",
+      })
     }
   }
 
@@ -692,7 +706,7 @@ export default function TransactionsPage() {
                     <div>
                       <Label>Catégorie</Label>
                       <Select value={formData.categorie} onValueChange={(v) => setFormData({ ...formData, categorie: v })}>
-                        <SelectTrigger><SelectValue placeholder="Choisir..." /></SelectTrigger>
+                        <SelectTrigger><SelectValue placeholder="— Choisir une catégorie —" /></SelectTrigger>
                         <SelectContent>
                           {formType === "vente" ? (
                             <>

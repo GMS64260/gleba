@@ -296,6 +296,14 @@ export default function FacturesPage() {
 
   const enregistrerFacture = async () => {
     if (savingFacture) return
+    if (!factureData.client.trim()) {
+      toast({
+        variant: "destructive",
+        title: "Client requis",
+        description: "Veuillez renseigner le nom du client avant d'enregistrer.",
+      })
+      return
+    }
     setSavingFacture(true)
     try {
       const res = await fetch('/api/comptabilite/factures', {
@@ -860,7 +868,7 @@ export default function FacturesPage() {
                 )}
 
                 <div className="flex gap-2">
-                  <Button onClick={enregistrerFacture} disabled={!factureData.client || totalFacture === 0 || savingFacture}>
+                  <Button onClick={enregistrerFacture} disabled={totalFacture === 0 || savingFacture}>
                     <FileText className="h-4 w-4 mr-2" />
                     {savingFacture ? 'Enregistrement…' : 'Enregistrer et générer le PDF'}
                   </Button>

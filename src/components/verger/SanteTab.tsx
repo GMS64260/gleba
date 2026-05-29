@@ -271,6 +271,12 @@ function ObservationsSubTab() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    // Famille C — au lieu d'un bouton grisé muet (perçu comme « ça bloque »),
+    // on valide explicitement les champs requis avec un message clair.
+    if (!formData.arbreId) {
+      toast({ title: "Sélectionnez un arbre", variant: "destructive" })
+      return
+    }
     // PROMPT 11 LOT D — Le type est désormais obligatoire (plus de défaut).
     if (!formData.type) {
       toast({ title: "Choisissez un type d'observation", variant: "destructive" })
@@ -298,6 +304,9 @@ function ObservationsSubTab() {
         setFormData(defaultFormData)
         toast({ title: editingObs ? "Observation modifiée" : "Observation enregistrée" })
         fetchData()
+      } else {
+        const data = await res.json().catch(() => ({}))
+        toast({ title: "Échec de l'enregistrement", description: data.error || `Erreur ${res.status}`, variant: "destructive" })
       }
     } catch {
       toast({ title: "Erreur", variant: "destructive" })
@@ -498,7 +507,7 @@ function ObservationsSubTab() {
               <div>
                 <Label>Arbre *</Label>
                 <Select value={formData.arbreId} onValueChange={(v) => setFormData({ ...formData, arbreId: v })}>
-                  <SelectTrigger><SelectValue placeholder="Sélectionner" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="— Sélectionner un arbre —" /></SelectTrigger>
                   <SelectContent>
                     {arbres.map((a) => (
                       <SelectItem key={a.id} value={a.id.toString()}>{a.nom}</SelectItem>
@@ -679,7 +688,7 @@ function ObservationsSubTab() {
               <Label>Notes</Label>
               <Textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} rows={2} />
             </div>
-            <Button type="submit" className="w-full" disabled={!formData.arbreId}>
+            <Button type="submit" className="w-full">
               {editingObs ? "Enregistrer les modifications" : "Enregistrer l'observation"}
             </Button>
           </form>
@@ -888,6 +897,12 @@ function RegistrePhytoSubTab() {
 
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    // Famille C — au lieu d'un bouton grisé muet, on valide explicitement
+    // l'arbre requis avec un message clair.
+    if (!addForm.arbreId) {
+      toast({ title: "Sélectionnez un arbre", variant: "destructive" })
+      return
+    }
     try {
       const res = await fetch("/api/arbres/observations", {
         method: "POST",
@@ -1241,7 +1256,7 @@ function RegistrePhytoSubTab() {
               <div>
                 <Label>Arbre *</Label>
                 <Select value={addForm.arbreId} onValueChange={(v) => setAddForm({ ...addForm, arbreId: v })}>
-                  <SelectTrigger><SelectValue placeholder="Sélectionner" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="— Sélectionner un arbre —" /></SelectTrigger>
                   <SelectContent>
                     {arbres.map((a) => (
                       <SelectItem key={a.id} value={a.id.toString()}>{a.nom}</SelectItem>
@@ -1418,7 +1433,7 @@ function RegistrePhytoSubTab() {
               <Label>Notes</Label>
               <Textarea value={addForm.notes} onChange={(e) => setAddForm({ ...addForm, notes: e.target.value })} rows={2} />
             </div>
-            <Button type="submit" className="w-full" disabled={!addForm.arbreId}>
+            <Button type="submit" className="w-full">
               Enregistrer le traitement
             </Button>
           </form>
@@ -1462,6 +1477,16 @@ function PollinisationSubTab() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    // Famille C — au lieu d'un bouton grisé muet, on valide explicitement
+    // les deux arbres requis avec des messages clairs.
+    if (!formData.arbrePolliniseId) {
+      toast({ title: "Sélectionnez l'arbre à polliniser", variant: "destructive" })
+      return
+    }
+    if (!formData.arbrePollinisateurId) {
+      toast({ title: "Sélectionnez le pollinisateur", variant: "destructive" })
+      return
+    }
     try {
       const res = await fetch("/api/arbres/pollinisation", {
         method: "POST",
@@ -1655,7 +1680,7 @@ function PollinisationSubTab() {
             <div>
               <Label>Arbre à polliniser *</Label>
               <Select value={formData.arbrePolliniseId} onValueChange={(v) => setFormData({ ...formData, arbrePolliniseId: v })}>
-                <SelectTrigger><SelectValue placeholder="Sélectionner" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="— Sélectionner l'arbre à polliniser —" /></SelectTrigger>
                 <SelectContent>
                   {data?.arbres.filter((a) => !a.autofertile).map((a) => (
                     <SelectItem key={a.id} value={a.id.toString()}>
@@ -1668,7 +1693,7 @@ function PollinisationSubTab() {
             <div>
               <Label>Pollinisateur *</Label>
               <Select value={formData.arbrePollinisateurId} onValueChange={(v) => setFormData({ ...formData, arbrePollinisateurId: v })}>
-                <SelectTrigger><SelectValue placeholder="Sélectionner" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="— Sélectionner le pollinisateur —" /></SelectTrigger>
                 <SelectContent>
                   {data?.arbres.filter((a) => a.id.toString() !== formData.arbrePolliniseId).map((a) => (
                     <SelectItem key={a.id} value={a.id.toString()}>
@@ -1693,7 +1718,7 @@ function PollinisationSubTab() {
               <Label>Notes</Label>
               <Input value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} />
             </div>
-            <Button type="submit" className="w-full" disabled={!formData.arbrePolliniseId || !formData.arbrePollinisateurId}>
+            <Button type="submit" className="w-full">
               Créer l'association
             </Button>
           </form>

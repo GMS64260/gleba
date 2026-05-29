@@ -81,7 +81,14 @@ export function RacesTab() {
   const filtered = filtre === "all" ? races : races.filter((r) => r.especeAnimaleId === filtre)
 
   const ajouter = async () => {
-    if (!form.nom.trim() || !form.especeAnimaleId) return
+    if (!form.especeAnimaleId) {
+      toast({ title: "Sélectionnez une espèce", variant: "destructive" })
+      return
+    }
+    if (!form.nom.trim()) {
+      toast({ title: "Renseignez le nom de la race", variant: "destructive" })
+      return
+    }
     try {
       const res = await fetch("/api/elevage/races", {
         method: "POST",
@@ -210,7 +217,7 @@ export function RacesTab() {
                 placeholder="Ex: Sussex"
               />
             </div>
-            <Button type="button" className="w-full" disabled={!form.nom.trim() || !form.especeAnimaleId} onClick={ajouter}>
+            <Button type="button" className="w-full" onClick={ajouter}>
               Ajouter
             </Button>
           </div>

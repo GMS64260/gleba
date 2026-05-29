@@ -306,6 +306,12 @@ export function OperationsTab() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    // Famille C — au lieu d'un bouton grisé muet, on valide explicitement
+    // l'arbre requis avec un message clair.
+    if (!newOperation.arbreId) {
+      toast({ title: "Sélectionnez un arbre", variant: "destructive" })
+      return
+    }
     // Bug feedback testeur 2026-05-26 (cmpmqugqr) — un traitement phyto sans
     // produit/dose rend le registre non conforme (Bio/HVE). On confirme
     // explicitement avant d'enregistrer une fiche incomplète.
@@ -351,6 +357,9 @@ export function OperationsTab() {
         resetForm()
         toast({ title: "Operation enregistrée" })
         fetchData()
+      } else {
+        const data = await res.json().catch(() => ({}))
+        toast({ title: "Échec de l'enregistrement", description: data.error || `Erreur ${res.status}`, variant: "destructive" })
       }
     } catch {
       toast({ title: "Erreur", variant: "destructive" })
@@ -418,7 +427,7 @@ export function OperationsTab() {
                   onValueChange={(v) => setNewOperation({ ...newOperation, arbreId: v })}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Sélectionner" />
+                    <SelectValue placeholder="— Sélectionner un arbre —" />
                   </SelectTrigger>
                   <SelectContent>
                     {arbres.map((a) => (
