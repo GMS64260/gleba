@@ -40,7 +40,7 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart"
-import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer } from "recharts"
+import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Legend } from "recharts"
 
 // ============================================================
 // Types
@@ -362,6 +362,9 @@ function NaissancesSubTab() {
                   <XAxis dataKey="mois" tick={{ fontSize: 12 }} />
                   <YAxis tick={{ fontSize: 12 }} />
                   <ChartTooltip content={<ChartTooltipContent />} />
+                  {/* Légende pour distinguer les 2 séries (cmpmr6l75) : sans
+                      elle, les 2 barres d'un même mois semblaient être 2 mois. */}
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
                   <Bar dataKey="nes" fill="#f472b6" radius={[4, 4, 0, 0]} name="Nés" />
                   <Bar dataKey="vivants" fill="#34d399" radius={[4, 4, 0, 0]} name="Vivants" />
                 </BarChart>
