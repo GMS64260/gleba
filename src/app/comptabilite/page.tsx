@@ -226,6 +226,11 @@ export default function DashboardComptabilite() {
   const [data, setData] = React.useState<ComptaStats | null>(null)
   const [loading, setLoading] = React.useState(true)
 
+  // Bug R2 : mémoriser l'année choisie pour la propager aux sous-pages (Transactions…).
+  React.useEffect(() => {
+    if (typeof window !== "undefined") window.localStorage.setItem("gleba_compta_year", String(selectedYear))
+  }, [selectedYear])
+
   // Années disponibles
   const currentYear = new Date().getFullYear()
   // QA Camille 2026-05-15 — bonus : plage factorisée [N+1 … N-4] (inclut

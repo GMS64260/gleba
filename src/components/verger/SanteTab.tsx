@@ -944,14 +944,19 @@ function RegistrePhytoSubTab() {
         toast({ title: "Traitement enregistré" })
         fetchData()
       } else {
+        // Bug R22 : échec rendu VISIBLE et actionnable (le dialog reste ouvert) —
+        // avant, la liste des champs manquants passait en titre tronqué peu lisible.
         const err = await res.json().catch(() => ({}))
         toast({
-          title: err.error || "Erreur lors de l'enregistrement",
+          title: "Enregistrement impossible",
+          description: Array.isArray(err.manquants) && err.manquants.length
+            ? `Champs requis manquants : ${err.manquants.join(", ")}`
+            : (err.error || "Vérifiez les champs obligatoires du traitement."),
           variant: "destructive",
         })
       }
     } catch {
-      toast({ title: "Erreur", variant: "destructive" })
+      toast({ title: "Erreur réseau", description: "Impossible de contacter le serveur.", variant: "destructive" })
     }
   }
 

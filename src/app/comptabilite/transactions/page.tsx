@@ -72,6 +72,17 @@ const MODULE_ICONS: Record<string, React.ReactNode> = {
   autre: <Receipt className="h-4 w-4 text-blue-600" />,
 }
 
+// Bug R1 : libellé de module cohérent (le code interne « potager » s'affichait
+// « Potager » dans les lignes mais « Maraîchage » dans les filtres/cartes).
+const MODULE_LABELS: Record<string, string> = {
+  potager: "Maraîchage",
+  verger: "Verger",
+  elevage: "Élevage",
+  boutique: "Boutique",
+  autre: "Autre",
+}
+const moduleLabel = (m: string) => MODULE_LABELS[m] ?? (m.charAt(0).toUpperCase() + m.slice(1))
+
 export default function TransactionsPage() {
   const { toast } = useToast()
   const [activeTab, setActiveTab] = React.useState("revenus")
@@ -82,7 +93,15 @@ export default function TransactionsPage() {
   const [statsDepenses, setStatsDepenses] = React.useState<any>(null)
   const [sourcesBreakdown, setSourcesBreakdown] = React.useState<SourceBreakdown[]>([])
   const [sourcesOpen, setSourcesOpen] = React.useState(false)
-  const [selectedYear, setSelectedYear] = React.useState(new Date().getFullYear())
+  // Bug R2 : l'année choisie sur le dashboard Compta se propage aux sous-pages
+  // via localStorage (partagé), au lieu de toujours réinitialiser à l'année courante.
+  const [selectedYear, setSelectedYear] = React.useState(() => {
+    if (typeof window !== "undefined") {
+      const ls = window.localStorage.getItem("gleba_compta_year")
+      if (ls && /^\d{4}$/.test(ls)) return parseInt(ls, 10)
+    }
+    return new Date().getFullYear()
+  })
   const [selectedModule, setSelectedModule] = React.useState<string>("all")
 
   // Form states for manual entry (DEV1 #3 — refonte conforme)
@@ -414,7 +433,7 @@ export default function TransactionsPage() {
                               <TableCell>
                                 <div className="flex items-center gap-1.5">
                                   {MODULE_ICONS[s.module] || MODULE_ICONS.autre}
-                                  <span className="capitalize text-xs">{s.module}</span>
+                                  <span className="capitalize text-xs">{moduleLabel(s.module)}</span>
                                 </div>
                               </TableCell>
                               <TableCell className="text-xs">{s.label}</TableCell>
@@ -502,7 +521,7 @@ export default function TransactionsPage() {
                             <TableCell>
                               <div className="flex items-center gap-1">
                                 {MODULE_ICONS[r.module]}
-                                <span className="capitalize text-sm">{r.module}</span>
+                                <span className="capitalize text-sm">{moduleLabel(r.module)}</span>
                               </div>
                             </TableCell>
                             <TableCell className="max-w-[250px] truncate">{r.description}</TableCell>
@@ -590,7 +609,7 @@ export default function TransactionsPage() {
                             <TableCell>
                               <div className="flex items-center gap-1">
                                 {MODULE_ICONS[d.module]}
-                                <span className="capitalize text-sm">{d.module}</span>
+                                <span className="capitalize text-sm">{moduleLabel(d.module)}</span>
                               </div>
                             </TableCell>
                             <TableCell className="max-w-[250px] truncate">{d.description}</TableCell>
