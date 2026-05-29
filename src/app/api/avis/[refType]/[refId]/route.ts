@@ -35,6 +35,8 @@ async function refExiste(refType: AvisRefType, refId: string): Promise<boolean> 
       return !!(await prisma.espece.findUnique({ where: { id: refId }, select: { id: true } }))
     case 'RACE':
       return !!(await prisma.raceAnimale.findUnique({ where: { id: refId }, select: { id: true } }))
+    case 'ITP':
+      return !!(await prisma.iTP.findUnique({ where: { id: refId }, select: { id: true } }))
   }
 }
 

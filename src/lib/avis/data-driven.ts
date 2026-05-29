@@ -90,6 +90,24 @@ async function rendementEspece(prisma: PrismaClient, refIds: string[]) {
   return finaliser(accArbres)
 }
 
+/** ITP : cultures suivant cet itinéraire ayant réellement produit (Culture.itpId → Recolte). */
+async function rendementITP(prisma: PrismaClient, refIds: string[]) {
+  const cultures = await prisma.culture.findMany({
+    where: { itpId: { in: refIds }, recoltes: { some: { quantite: { gt: 0 } } } },
+    select: { itpId: true, userId: true, recoltes: { where: { quantite: { gt: 0 } }, select: { quantite: true } } },
+  })
+  const acc = new Map<string, Acc>()
+  for (const c of cultures) {
+    if (!c.itpId) continue
+    const a = acc.get(c.itpId) ?? { unites: 0, users: new Set<string>(), total: 0 }
+    a.unites += 1
+    a.users.add(c.userId)
+    a.total += c.recoltes.reduce((s, r) => s + r.quantite, 0)
+    acc.set(c.itpId, a)
+  }
+  return finaliser(acc)
+}
+
 /** RACE : animaux réellement élevés de cette race (preuve terrain). */
 async function rendementRace(prisma: PrismaClient, refIds: string[]) {
   const animaux = await prisma.animal.findMany({
@@ -124,6 +142,8 @@ export async function rendementReel(
       return rendementEspece(prisma, refIds)
     case 'RACE':
       return rendementRace(prisma, refIds)
+    case 'ITP':
+      return rendementITP(prisma, refIds)
   }
 }
 

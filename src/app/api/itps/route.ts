@@ -9,6 +9,7 @@ import prisma from '@/lib/prisma'
 import { createITPSchema } from '@/lib/validations'
 import { Prisma } from '@prisma/client'
 import { requireAuthApi } from '@/lib/auth-utils'
+import { statsAvisPourRefs } from '@/lib/avis/stats-liste'
 
 // GET /api/itps - Référentiel global (lecture)
 export async function GET(request: NextRequest) {
@@ -74,8 +75,15 @@ export async function GET(request: NextRequest) {
       prisma.iTP.count({ where }),
     ])
 
+    // Avis communautaires (opt-in via ?avis=1)
+    const includeAvis = searchParams.get('avis') === '1'
+    const statsMap = includeAvis
+      ? await statsAvisPourRefs(prisma, 'ITP', itps.map((i) => i.id))
+      : null
+    const data = statsMap ? itps.map((i) => ({ ...i, avisStats: statsMap.get(i.id) })) : itps
+
     return NextResponse.json({
-      data: itps,
+      data,
       total,
       page,
       pageSize,
