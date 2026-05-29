@@ -108,6 +108,7 @@ interface LotVolaille {
   id: number
   nom: string | null
   quantiteActuelle: number
+  effectifCalcule?: number
   statut: string | null
   especeAnimale: { nom: string; type: string }
 }
@@ -466,7 +467,7 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
                   <SelectContent>
                     {lots.map(lot => (
                       <SelectItem key={lot.id} value={lot.id.toString()}>
-                        {lot.nom || `Lot #${lot.id}`} ({lot.quantiteActuelle} {lot.especeAnimale.nom}
+                        {lot.nom || `Lot #${lot.id}`} ({lot.effectifCalcule ?? lot.quantiteActuelle} {lot.especeAnimale.nom}
                         {lot.statut && lot.statut !== 'actif' ? ` — ${labelStatutLot(lot.statut)}` : ''})
                       </SelectItem>
                     ))}
@@ -489,15 +490,16 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
                   l'espèce). Même source de vérité que le calendrier hebdo. */}
               {(() => {
                 const lot = lots.find((l) => l.id.toString() === formData.lotId)
-                if (!lot || lot.quantiteActuelle <= 0) return null
+                const effectif = lot ? (lot.effectifCalcule ?? lot.quantiteActuelle) : 0
+                if (!lot || effectif <= 0) return null
                 const attendu = oeufsAttendusJour(
-                  lot.quantiteActuelle,
+                  effectif,
                   lot.especeAnimale.nom,
                   formData.date ? new Date(formData.date) : new Date()
                 )
                 return (
                   <p className="text-xs text-muted-foreground -mt-2">
-                    ~{attendu} œuf{attendu > 1 ? 's' : ''}/jour attendu pour {lot.quantiteActuelle}{' '}
+                    ~{attendu} œuf{attendu > 1 ? 's' : ''}/jour attendu pour {effectif}{' '}
                     {lot.especeAnimale.nom} à cette période
                   </p>
                 )
