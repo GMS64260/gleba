@@ -1690,6 +1690,8 @@ model LotAnimaux {
   collectesLait    CollecteLait[]
   // PROMPT 19A — mouvements de cheptel
   mouvements       MouvementCheptel[]
+  // Naissances rattachées directement au lot (cmpm79lql)
+  naissances       NaissanceAnimale[] @relation("LotNaissances")
 
   @@index([userId])
   @@index([especeAnimaleId])
@@ -1901,6 +1903,10 @@ model NaissanceAnimale {
   user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   mereId        Int?      @map("mere_id")
   mere          Animal?   @relation("NaissanceMere", fields: [mereId], references: [id], onDelete: SetNull)
+  // Rattachement direct à un lot (élevage en lot, ex. lapins) quand il
+  // n'y a pas de mère nominative — feedback testeur cmpm79lql.
+  lotId         Int?        @map("lot_id")
+  lot           LotAnimaux? @relation("LotNaissances", fields: [lotId], references: [id], onDelete: SetNull)
   pereIdentifiant String? @map("pere_identifiant") // Référence si père connu
   date          DateTime  @default(now()) @map("date")
   nombreNes     Int       @map("nombre_nes")
@@ -1916,6 +1922,7 @@ model NaissanceAnimale {
 
   @@index([userId])
   @@index([mereId])
+  @@index([lotId])
   @@index([date])
   @@map("naissances_animales")
 }

@@ -40,6 +40,7 @@ export async function GET(request: NextRequest) {
               especeAnimale: { select: { id: true, nom: true, dureeGestation: true, dureeCouvaison: true } },
             },
           },
+          lot: { select: { id: true, nom: true, especeAnimale: { select: { nom: true } } } },
         },
         orderBy: { date: 'desc' },
         take: limit,
@@ -121,6 +122,7 @@ export async function POST(request: NextRequest) {
         data: {
           userId,
           mereId: parsed.data.mereId ?? null,
+          lotId: parsed.data.lotId ?? null,
           pereIdentifiant: parsed.data.pereIdentifiant ?? null,
           date: parsed.data.date ?? new Date(),
           nombreNes: parsed.data.nombreNes,
@@ -142,13 +144,16 @@ export async function POST(request: NextRequest) {
       }
 
       const vivants = parsed.data.nombreVivants
-      if (vivants > 0 && created.mere) {
-        if (created.mere.lotId) {
-          await tx.lotAnimaux.update({
-            where: { id: created.mere.lotId },
-            data: { quantiteActuelle: { increment: vivants } },
-          })
-        } else if (created.mere.especeAnimaleId) {
+      // Priorité au lot explicitement choisi (élevage en lot, cmpm79lql),
+      // sinon au lot de la mère, sinon création d'un lot "Petits ...".
+      const lotCible = parsed.data.lotId ?? created.mere?.lotId ?? null
+      if (vivants > 0 && lotCible) {
+        await tx.lotAnimaux.update({
+          where: { id: lotCible },
+          data: { quantiteActuelle: { increment: vivants } },
+        })
+      } else if (vivants > 0 && created.mere) {
+        if (created.mere.especeAnimaleId) {
           const annee = (parsed.data.date ?? new Date()).getFullYear()
           const espece = await tx.especeAnimale.findUnique({
             where: { id: created.mere.especeAnimaleId },
@@ -216,6 +221,7 @@ export async function PATCH(request: NextRequest) {
       where: { id },
       data: {
         mereId: parsed.data.mereId ?? null,
+        lotId: parsed.data.lotId ?? null,
         pereIdentifiant: parsed.data.pereIdentifiant ?? null,
         date: parsed.data.date ?? existing.date,
         nombreNes: parsed.data.nombreNes,

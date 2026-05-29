@@ -56,6 +56,8 @@ interface Naissance {
   pereIdentifiant: string | null
   notes: string | null
   mereId: number | null
+  lotId: number | null
+  lot: { id: number; nom: string | null; especeAnimale?: { nom: string } } | null
   mere: {
     id: number
     nom: string | null
@@ -140,12 +142,14 @@ function NaissancesSubTab() {
   const [naissances, setNaissances] = React.useState<Naissance[]>([])
   const [stats, setStats] = React.useState<NaissanceStats | null>(null)
   const [femelles, setFemelles] = React.useState<AnimalFemelle[]>([])
+  // Lots actifs pour rattacher une portée (élevage en lot, cmpm79lql)
+  const [lots, setLots] = React.useState<{ id: number; nom: string | null; especeAnimale: { nom: string } }[]>([])
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
   // QA 2026-05-15 — édition par ligne
   const [editingNaissId, setEditingNaissId] = React.useState<number | null>(null)
 
   const EMPTY_NAISS_FORM = {
-    mereId: "", pereIdentifiant: "",
+    mereId: "", lotId: "", pereIdentifiant: "",
     date: new Date().toISOString().split('T')[0],
     nombreNes: "", nombreVivants: "",
     nombreMales: "", nombreFemelles: "",
@@ -162,6 +166,7 @@ function NaissancesSubTab() {
     setEditingNaissId(n.id)
     setFormData({
       mereId: n.mereId ? n.mereId.toString() : "",
+      lotId: n.lotId ? n.lotId.toString() : "",
       pereIdentifiant: n.pereIdentifiant ?? "",
       date: n.date.split('T')[0],
       nombreNes: n.nombreNes.toString(),
@@ -177,9 +182,10 @@ function NaissancesSubTab() {
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
     try {
-      const [naissRes, animauxRes] = await Promise.all([
+      const [naissRes, animauxRes, lotsRes] = await Promise.all([
         fetch('/api/elevage/naissances'),
         fetch('/api/elevage/animaux?statut=actif&sexe=femelle'),
+        fetch('/api/elevage/lots?statut=actif'),
       ])
 
       if (naissRes.ok) {
@@ -190,6 +196,10 @@ function NaissancesSubTab() {
       if (animauxRes.ok) {
         const result = await animauxRes.json()
         setFemelles(result.data || [])
+      }
+      if (lotsRes.ok) {
+        const result = await lotsRes.json()
+        setLots(result.data || [])
       }
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les données" })
@@ -223,6 +233,7 @@ function NaissancesSubTab() {
       const payload = {
         ...(isEdit ? { id: editingNaissId } : {}),
         mereId: toIntOrNull(formData.mereId),
+        lotId: toIntOrNull(formData.lotId),
         pereIdentifiant: formData.pereIdentifiant?.trim() || null,
         date: formData.date || undefined,
         nombreNes: toIntOrNull(formData.nombreNes) ?? 0,
@@ -374,18 +385,36 @@ function NaissancesSubTab() {
               <DialogDescription>{editingNaissId ? `Édition de la naissance #${editingNaissId}` : "Mise bas ou éclosion"}</DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label>Mère</Label>
-                <Select value={formData.mereId} onValueChange={(v) => setFormData(f => ({ ...f, mereId: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Sélectionner la mère..." /></SelectTrigger>
-                  <SelectContent>
-                    {femelles.map(a => (
-                      <SelectItem key={a.id} value={a.id.toString()}>
-                        {a.nom || a.identifiant || `#${a.id}`} ({a.especeAnimale.nom})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Mère</Label>
+                  <Select value={formData.mereId} onValueChange={(v) => setFormData(f => ({ ...f, mereId: v }))}>
+                    <SelectTrigger><SelectValue placeholder="Sélectionner la mère..." /></SelectTrigger>
+                    <SelectContent>
+                      {femelles.map(a => (
+                        <SelectItem key={a.id} value={a.id.toString()}>
+                          {a.nom || a.identifiant || `#${a.id}`} ({a.especeAnimale.nom})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {/* Rattachement à un lot (élevage en lot sans mère
+                    nominative, ex. lapins) — cmpm79lql. La portée est
+                    alors comptée dans l'effectif du lot. */}
+                <div className="space-y-2">
+                  <Label>Lot (élevage en lot)</Label>
+                  <Select value={formData.lotId} onValueChange={(v) => setFormData(f => ({ ...f, lotId: v }))}>
+                    <SelectTrigger><SelectValue placeholder="Aucun / via la mère" /></SelectTrigger>
+                    <SelectContent>
+                      {lots.map(l => (
+                        <SelectItem key={l.id} value={l.id.toString()}>
+                          {l.nom || `Lot #${l.id}`} ({l.especeAnimale.nom})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -450,6 +479,7 @@ function NaissancesSubTab() {
                 <TableRow>
                   <TableHead>Date</TableHead>
                   <TableHead>Mère</TableHead>
+                  <TableHead>Lot</TableHead>
                   <TableHead>Espèce</TableHead>
                   <TableHead className="text-right">Nés</TableHead>
                   <TableHead className="text-right">Vivants</TableHead>
@@ -466,7 +496,8 @@ function NaissancesSubTab() {
                     <TableCell className="font-medium">
                       {n.mere ? (n.mere.nom || n.mere.identifiant || `#${n.mere.id}`) : '-'}
                     </TableCell>
-                    <TableCell>{n.mere?.especeAnimale.nom || '-'}</TableCell>
+                    <TableCell>{n.lot ? (n.lot.nom || `Lot #${n.lot.id}`) : '-'}</TableCell>
+                    <TableCell>{n.mere?.especeAnimale.nom || n.lot?.especeAnimale?.nom || '-'}</TableCell>
                     <TableCell className="text-right font-bold">{n.nombreNes}</TableCell>
                     <TableCell className="text-right text-green-600 font-bold">{n.nombreVivants}</TableCell>
                     <TableCell className="text-right">
@@ -490,7 +521,7 @@ function NaissancesSubTab() {
                   </TableRow>
                 ))}
                 {naissances.length === 0 && (
-                  <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Aucune naissance enregistrée</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">Aucune naissance enregistrée</TableCell></TableRow>
                 )}
               </TableBody>
             </Table>

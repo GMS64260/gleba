@@ -59,12 +59,21 @@ export async function GET(request: NextRequest) {
         select: { id: true, lotId: true },
       })
       const lotByMereId = new Map(meresInLots.map(m => [m.id, m.lotId]))
+      // Naissances rattachables au lot : soit directement (lotId), soit via
+      // la mère présente dans le lot. On attribue chaque naissance à UN seul
+      // lot (priorité au lotId explicite) pour éviter le double comptage.
       const naissances = await prisma.naissanceAnimale.findMany({
-        where: { userId: session.user.id, mereId: { in: meresInLots.map(m => m.id) } },
-        select: { mereId: true, nombreVivants: true },
+        where: {
+          userId: session.user.id,
+          OR: [
+            { lotId: { in: lotIds } },
+            { mereId: { in: meresInLots.map(m => m.id) } },
+          ],
+        },
+        select: { mereId: true, lotId: true, nombreVivants: true },
       })
       for (const n of naissances) {
-        const lotId = n.mereId != null ? lotByMereId.get(n.mereId) : null
+        const lotId = n.lotId ?? (n.mereId != null ? lotByMereId.get(n.mereId) ?? null : null)
         if (!lotId) continue
         naissancesParLot.set(lotId, (naissancesParLot.get(lotId) ?? 0) + n.nombreVivants)
       }
