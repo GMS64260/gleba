@@ -348,10 +348,11 @@ export async function GET(request: NextRequest) {
     const kpiCompta = !module ? await getKpiCompta(userId, year, asOf) : null
 
     const stats = {
-      // Total SSOT — autoritaire si pas de filtre module. Avec un filtre
-      // module, on retombe sur le reduce local (le helper ne ventile pas
-      // encore par module).
-      total: kpiCompta ? kpiCompta.revenusYtd : filtered.reduce((sum, r) => sum + r.montant, 0),
+      // Bug R27 : le total doit être la SOMME DES LIGNES affichées (sources
+      // brutes), sinon l'utilisateur additionne les transactions et n'obtient
+      // pas le total (écart « fantôme » avec getKpiCompta qui agrège les
+      // VenteManuelle, dont les écritures auto peuvent être désynchronisées).
+      total: filtered.reduce((sum, r) => sum + r.montant, 0),
       count: filtered.length,
       parModule: {
         potager: filtered.filter(r => r.module === 'potager').reduce((sum, r) => sum + r.montant, 0),
