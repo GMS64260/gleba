@@ -392,7 +392,7 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
           <Leaf className="h-4 w-4" />
           <AlertTitle>Irrigation automatique</AlertTitle>
           <AlertDescription>
-            Cette espèce a un besoin en eau eleve. La culture sera marquee "a irriguer".
+            Cette espèce a un besoin en eau élevé. La culture sera marquée « à irriguer ».
           </AlertDescription>
         </Alert>
       )}
