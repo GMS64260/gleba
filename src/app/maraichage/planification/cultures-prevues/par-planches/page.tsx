@@ -111,7 +111,7 @@ const columns: ColumnDef<CulturePrevue>[] = [
       return (
         <Link href={`/maraichage/rotations/${encodeURIComponent(rotationId)}`}>
           <span className="text-sm text-blue-600 hover:underline">
-            {rotationId} (A{rotationAnnee})
+            {rotationId}{rotationAnnee > 0 ? ` (A${rotationAnnee})` : ""}
           </span>
         </Link>
       )

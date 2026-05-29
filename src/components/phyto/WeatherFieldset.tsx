@@ -127,9 +127,13 @@ export function WeatherFieldset({
               className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-xs"
               value={value.pluie24h == null ? "" : value.pluie24h ? "oui" : "non"}
               onChange={(e) => {
+                // Bug R22 : deux setField consécutifs s'écrasaient (le 2e relisait
+                // `value` non encore mis à jour) → « Non »/« — » ne s'enregistrait
+                // jamais, le champ requis restait vide et bloquait tout l'envoi.
+                // On met à jour les deux champs en UN SEUL onChange atomique.
                 const next = e.target.value
-                setField("pluie24h", next === "" ? null : next === "oui")
-                if (next !== "oui") setField("pluie24hMm", null)
+                const pluie = next === "" ? null : next === "oui"
+                onChange({ ...value, pluie24h: pluie, pluie24hMm: pluie ? value.pluie24hMm : null })
               }}
               required={required}
             >
