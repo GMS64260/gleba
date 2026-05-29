@@ -23,7 +23,29 @@ export function getSemaineDepuisDate(date: Date): number {
 }
 
 /**
- * Calcule les dates de culture à partir d'un ITP
+ * Date d'une semaine en respectant la CHRONOLOGIE d'un itinéraire : si la semaine
+ * cible est antérieure à une semaine de référence (l'étape précédente), l'étape
+ * tombe l'année suivante. Indispensable pour les ITP qui chevauchent deux années
+ * (ex : semis semaine 31 en août → récolte semaine 2 en janvier de l'année +1).
+ * `calculerDateDepuisSemaine` gère naturellement les semaines > 52 (débordement
+ * sur l'année suivante via addWeeks).
+ */
+export function dateSemaineChrono(
+  annee: number,
+  semaine: number,
+  semaineReference?: number | null
+): Date {
+  let s = Math.max(Math.round(semaine), 1)
+  if (semaineReference != null) {
+    while (s < semaineReference) s += 52
+  }
+  return calculerDateDepuisSemaine(annee, s)
+}
+
+/**
+ * Calcule les dates de culture à partir d'un ITP, en cascade chronologique
+ * (semis → plantation → récolte). Chaque étape dont la semaine « recule » par
+ * rapport à la précédente passe à l'année suivante.
  */
 export function calculerDatesCulture(
   itp: {
@@ -44,19 +66,26 @@ export function calculerDatesCulture(
   let datePlantation: Date | null = null
   let dateRecolte: Date | null = null
 
-  if (itp.semaineSemis) {
-    const semaine = Math.min(Math.max(itp.semaineSemis + decalage, 1), 52)
-    dateSemis = calculerDateDepuisSemaine(annee, semaine)
+  const sSemis = itp.semaineSemis ? Math.max(itp.semaineSemis + decalage, 1) : null
+  const sPlant = itp.semainePlantation ? Math.max(itp.semainePlantation + decalage, 1) : null
+  const sRec = itp.semaineRecolte ? Math.max(itp.semaineRecolte + decalage, 1) : null
+
+  if (sSemis != null) dateSemis = calculerDateDepuisSemaine(annee, sSemis)
+
+  // Semaine "absolue" de plantation (≥ semis)
+  let semPlantAbs: number | null = null
+  if (sPlant != null) {
+    semPlantAbs = sPlant
+    if (sSemis != null) while (semPlantAbs < sSemis) semPlantAbs += 52
+    datePlantation = calculerDateDepuisSemaine(annee, semPlantAbs)
   }
 
-  if (itp.semainePlantation) {
-    const semaine = Math.min(Math.max(itp.semainePlantation + decalage, 1), 52)
-    datePlantation = calculerDateDepuisSemaine(annee, semaine)
-  }
-
-  if (itp.semaineRecolte) {
-    const semaine = Math.min(Math.max(itp.semaineRecolte + decalage, 1), 52)
-    dateRecolte = calculerDateDepuisSemaine(annee, semaine)
+  // Récolte ≥ plantation (ou semis si pas de plantation)
+  if (sRec != null) {
+    const ref = semPlantAbs ?? sSemis
+    let semRecAbs = sRec
+    if (ref != null) while (semRecAbs < ref) semRecAbs += 52
+    dateRecolte = calculerDateDepuisSemaine(annee, semRecAbs)
   }
 
   return { dateSemis, datePlantation, dateRecolte }

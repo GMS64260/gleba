@@ -190,9 +190,14 @@ export default function NewCulturePage() {
     // l'ENSEMBLE du cycle uniformément. Sinon on cassait le cycle : ex. semis
     // remplacé par today, plantation par today, récolte laissée à la date ITP
     // qui tombait par hasard sur today → cycle d'1 jour.
+    // Chronologie : une étape antérieure au semis tombe l'année suivante (ITP
+    // chevauchant deux années, ex. semis août → récolte janvier).
+    const anPlant = itp.semainePlantation && itp.semaineSemis && itp.semainePlantation < itp.semaineSemis ? year + 1 : year
+    const refRec = itp.semainePlantation ?? itp.semaineSemis
+    const anRec = itp.semaineRecolte && refRec && itp.semaineRecolte < refRec ? year + 1 : year
     let semisDate = itp.semaineSemis ? weekToDate(year, itp.semaineSemis) : null
-    let plantationDate = itp.semainePlantation ? weekToDate(year, itp.semainePlantation) : null
-    let recolteDate = itp.semaineRecolte ? weekToDate(year, itp.semaineRecolte) : null
+    let plantationDate = itp.semainePlantation ? weekToDate(anPlant, itp.semainePlantation) : null
+    let recolteDate = itp.semaineRecolte ? weekToDate(anRec, itp.semaineRecolte) : null
 
     if (year === today.getFullYear()) {
       const firstAnchor = semisDate ?? plantationDate
