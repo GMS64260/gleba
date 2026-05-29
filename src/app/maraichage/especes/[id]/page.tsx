@@ -7,7 +7,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { useRouter, useParams } from "next/navigation"
-import { ArrowLeft, Leaf, Save, Trash2, Plus, Pencil } from "lucide-react"
+import { ArrowLeft, Leaf, Save, Trash2, Plus, Pencil, MessageSquare, CheckCircle2, ArrowDownWideNarrow } from "lucide-react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 
@@ -59,6 +59,9 @@ import {
   ESPECE_NIVEAUX,
   ESPECE_IRRIGATION,
 } from "@/lib/validations/espece"
+import { StarRating } from "@/components/avis/StarRating"
+import { AvisDialog } from "@/components/avis/AvisDialog"
+import type { AvisStatsListe } from "@/lib/avis/types"
 
 interface Variete {
   id: string
@@ -74,6 +77,7 @@ interface Variete {
   bio: boolean
   description: string | null
   _count?: { cultures: number }
+  avisStats?: AvisStatsListe
 }
 
 const EMPTY_VARIETE_FORM = {
@@ -104,6 +108,25 @@ export default function EditEspecePage() {
   const [showVarieteDialog, setShowVarieteDialog] = React.useState(false)
   const [editingVariete, setEditingVariete] = React.useState<Variete | null>(null)
   const [varieteForm, setVarieteForm] = React.useState(EMPTY_VARIETE_FORM)
+  // Avis communautaires
+  const [avisVariete, setAvisVariete] = React.useState<Variete | null>(null)
+  const [triParNote, setTriParNote] = React.useState(false)
+
+  // Charge les variétés via /api/varietes (superset enrichi des stats d'avis via avis=1).
+  const reloadVarietes = React.useCallback(async () => {
+    const res = await fetch(`/api/varietes?especeId=${encodeURIComponent(especeId)}&pageSize=500&avis=1`)
+    const json = await res.json()
+    setVarietes(json.data || [])
+  }, [especeId])
+
+  const varietesAffichees = React.useMemo(() => {
+    if (!triParNote) return varietes
+    return [...varietes].sort((a, b) => {
+      const sa = a.avisStats?.nbAvis ? a.avisStats.scoreCommunautaire : -1
+      const sb = b.avisStats?.nbAvis ? b.avisStats.scoreCommunautaire : -1
+      return sb - sa || a.id.localeCompare(b.id)
+    })
+  }, [varietes, triParNote])
 
   const form = useForm<UpdateEspeceInput>({
     resolver: zodResolver(updateEspeceSchema),
@@ -148,7 +171,7 @@ export default function EditEspecePage() {
     ])
       .then(([famillesData, especeData, fournisseursData]) => {
         setFamilles(Array.isArray(famillesData) ? famillesData : [])
-        setVarietes(especeData.varietes || [])
+        void reloadVarietes()
         setFournisseurs(fournisseursData.data || fournisseursData || [])
         form.reset({
           familleId: especeData.familleId || null,
@@ -187,7 +210,7 @@ export default function EditEspecePage() {
         })
         router.push("/especes")
       })
-  }, [especeId, form, router, toast])
+  }, [especeId, form, router, toast, reloadVarietes])
 
   const onSubmit = async (data: UpdateEspeceInput) => {
     setIsSubmitting(true)
@@ -294,8 +317,7 @@ export default function EditEspecePage() {
           const err = await res.json()
           throw new Error(err.error || "Erreur")
         }
-        const updated = await res.json()
-        setVarietes(varietes.map((v) => (v.id === updated.id ? updated : v)))
+        await reloadVarietes() // recharge avec avisStats à jour
         toast({ title: "Variété modifiée" })
       } else {
         // POST
@@ -321,8 +343,7 @@ export default function EditEspecePage() {
           const err = await res.json()
           throw new Error(err.error || "Erreur")
         }
-        const created = await res.json()
-        setVarietes([...varietes, created])
+        await reloadVarietes() // recharge avec avisStats à jour
         toast({ title: "Variété ajoutée" })
       }
       setShowVarieteDialog(false)
@@ -346,7 +367,7 @@ export default function EditEspecePage() {
         const err = await res.json()
         throw new Error(err.error || "Erreur")
       }
-      setVarietes(varietes.filter((x) => x.id !== v.id))
+      await reloadVarietes()
       toast({ title: "Variété supprimée" })
     } catch (error) {
       toast({
@@ -1060,17 +1081,29 @@ export default function EditEspecePage() {
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between">
                     <CardTitle>Varietes de {especeId}</CardTitle>
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={() => {
-                        resetVarieteForm()
-                        setShowVarieteDialog(true)
-                      }}
-                    >
-                      <Plus className="h-4 w-4 mr-1" />
-                      Ajouter
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={triParNote ? "default" : "outline"}
+                        onClick={() => setTriParNote((t) => !t)}
+                        title="Trier par note communautaire"
+                      >
+                        <ArrowDownWideNarrow className="h-4 w-4 mr-1" />
+                        Mieux notées
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => {
+                          resetVarieteForm()
+                          setShowVarieteDialog(true)
+                        }}
+                      >
+                        <Plus className="h-4 w-4 mr-1" />
+                        Ajouter
+                      </Button>
+                    </div>
                   </CardHeader>
                   <CardContent>
                     {varietes.length === 0 ? (
@@ -1082,17 +1115,42 @@ export default function EditEspecePage() {
                             <TableHead>Nom</TableHead>
                             <TableHead>Fournisseur</TableHead>
                             <TableHead>Bio</TableHead>
+                            <TableHead>Avis</TableHead>
                             <TableHead className="text-right">Stock graines (g)</TableHead>
                             <TableHead className="text-right">Stock plants</TableHead>
                             <TableHead className="text-right">Actions</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {varietes.map((v) => (
+                          {varietesAffichees.map((v) => (
                             <TableRow key={v.id}>
                               <TableCell className="font-medium">{v.id}</TableCell>
                               <TableCell>{v.fournisseur?.id || "-"}</TableCell>
                               <TableCell>{v.bio ? "Oui" : "-"}</TableCell>
+                              <TableCell>
+                                <button
+                                  type="button"
+                                  className="flex items-center gap-1.5 rounded px-1 py-0.5 hover:bg-slate-100"
+                                  onClick={() => setAvisVariete(v)}
+                                  title="Voir et donner un avis"
+                                >
+                                  {v.avisStats && v.avisStats.nbAvis > 0 ? (
+                                    <>
+                                      <StarRating value={v.avisStats.noteMoyenne ?? 0} size={14} />
+                                      <span className="text-xs text-muted-foreground">
+                                        ({v.avisStats.nbAvis})
+                                      </span>
+                                      {v.avisStats.badgeTerrain && (
+                                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                                      )}
+                                    </>
+                                  ) : (
+                                    <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                                      <MessageSquare className="h-3.5 w-3.5" /> Donner un avis
+                                    </span>
+                                  )}
+                                </button>
+                              </TableCell>
                               <TableCell className="text-right">{v.stockGraines ?? "-"}</TableCell>
                               <TableCell className="text-right">{v.stockPlants ?? "-"}</TableCell>
                               <TableCell className="text-right">
@@ -1288,6 +1346,20 @@ export default function EditEspecePage() {
             </form>
           </DialogContent>
         </Dialog>
+
+        {/* Avis communautaires sur une variété */}
+        <AvisDialog
+          refType="VARIETE"
+          refId={avisVariete?.id ?? null}
+          nom={avisVariete?.id}
+          open={avisVariete !== null}
+          onOpenChange={(open) => {
+            if (!open) setAvisVariete(null)
+          }}
+          onSaved={() => {
+            void reloadVarietes()
+          }}
+        />
       </main>
     </div>
   )

@@ -15,3 +15,8 @@ export const naissanceSchema = z.object({
   // PROMPT 18 — lien optionnel vers la saillie d'origine
   saillieId: z.string().nullable().optional(),
 })
+  // Cohérence : on ne peut pas avoir plus de vivants que de nés.
+  .refine((d) => d.nombreVivants <= d.nombreNes, {
+    message: 'Le nombre de vivants ne peut pas dépasser le nombre de nés',
+    path: ['nombreVivants'],
+  })

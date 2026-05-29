@@ -14,6 +14,11 @@ export const saillieSchema = z.object({
   confirmationGestation: z.coerce.date().nullable().optional(),
   notes: z.string().max(2000).nullable().optional(),
 })
+  // La confirmation de gestation ne peut pas précéder la saillie.
+  .refine((d) => !d.confirmationGestation || d.confirmationGestation >= d.date, {
+    message: 'La confirmation de gestation ne peut pas précéder la date de saillie',
+    path: ['confirmationGestation'],
+  })
 
 export const updateSaillieSchema = z.object({
   id: z.string().min(1),
@@ -27,5 +32,10 @@ export const updateSaillieSchema = z.object({
   semenceLot: z.string().max(100).nullable().optional(),
   pereExterneRef: z.string().max(200).nullable().optional(),
 })
+  // Si les deux dates sont fournies, la confirmation ne précède pas la saillie.
+  .refine((d) => !d.confirmationGestation || !d.date || d.confirmationGestation >= d.date, {
+    message: 'La confirmation de gestation ne peut pas précéder la date de saillie',
+    path: ['confirmationGestation'],
+  })
 
 export type SaillieInput = z.infer<typeof saillieSchema>
