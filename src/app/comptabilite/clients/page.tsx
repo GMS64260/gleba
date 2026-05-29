@@ -20,6 +20,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
 import { fetchWithRetry } from "@/lib/fetch-retry"
+import { confirmDialog } from "@/lib/global-dialog"
 
 interface Client {
   id: number
@@ -200,7 +201,7 @@ export default function ClientsPage() {
   }
 
   const handleDelete = async (client: Client) => {
-    if (!confirm(`Désactiver le client "${client.nom}" ?`)) return
+    if (!(await confirmDialog(`Désactiver le client "${client.nom}" ?`))) return
 
     try {
       const response = await fetch(`/api/comptabilite/clients?id=${client.id}`, {

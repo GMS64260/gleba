@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/table"
 import { Combobox } from "@/components/ui/combobox"
 import { useToast } from "@/hooks/use-toast"
+import { confirmDialog } from "@/lib/global-dialog"
 
 interface RecolteWithRelations {
   id: number
@@ -169,7 +170,7 @@ export default function RecoltesPage() {
   const stockValeur = stockRecoltes.reduce((sum, r) => sum + (r.quantite * (r.espece?.prixKg || 0)), 0)
 
   const handleDelete = async (id: number) => {
-    if (!confirm("Supprimer cette récolte ?")) return
+    if (!(await confirmDialog("Supprimer cette récolte ?"))) return
 
     try {
       const response = await fetch(`/api/recoltes/${id}`, { method: "DELETE" })
@@ -232,7 +233,7 @@ export default function RecoltesPage() {
   }
 
   const handleMarquerPerte = async (recolte: RecolteWithRelations) => {
-    if (!confirm("Marquer cette récolte comme perte ?")) return
+    if (!(await confirmDialog("Marquer cette récolte comme perte ?"))) return
 
     try {
       const res = await fetch(`/api/recoltes/${recolte.id}`, {

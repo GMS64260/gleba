@@ -29,6 +29,7 @@ import {
 import { UserMenu } from "@/components/auth/UserMenu"
 
 import { useToast } from "@/hooks/use-toast"
+import { confirmDialog } from "@/lib/global-dialog"
 import {
   Sprout,
   TreeDeciduous,
@@ -430,7 +431,7 @@ export default function InterventionsPage() {
   }
 
   const handleDelete = async (id: number) => {
-    if (!confirm("Supprimer cette intervention ?")) return
+    if (!(await confirmDialog("Supprimer cette intervention ?"))) return
 
     try {
       const res = await fetch(`/api/interventions?id=${id}`, { method: "DELETE" })

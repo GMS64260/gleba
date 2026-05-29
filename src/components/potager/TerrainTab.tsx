@@ -20,6 +20,7 @@ import { DataTable } from "@/components/tables/DataTable"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/hooks/use-toast"
+import { confirmDialog } from "@/lib/global-dialog"
 import { EditableSelectCell } from "@/components/planches/EditableSelectCell"
 
 // ============================================================
@@ -256,7 +257,7 @@ function PlanchesSubTab() {
             })
             return
           }
-          if (!confirm(`Supprimer "${row.nom}" ?`)) return
+          if (!(await confirmDialog(`Supprimer "${row.nom}" ?`))) return
           try {
             await fetch(`/api/planches/${encodeURIComponent(row.nom)}`, { method: "DELETE" })
             toast({ title: "Planche supprimée" })
@@ -401,7 +402,7 @@ function RotationsSubTab() {
             })
             return
           }
-          if (!confirm(`Supprimer "${row.id}" ?`)) return
+          if (!(await confirmDialog(`Supprimer "${row.id}" ?`))) return
           try {
             await fetch(`/api/rotations/${encodeURIComponent(row.id)}`, { method: "DELETE" })
             toast({ title: "Rotation supprimée" })
@@ -566,7 +567,7 @@ function AssociationsSubTab() {
         onRowClick={(row) => router.push(`/associations/${row.id}`)}
         onRowEdit={(row) => router.push(`/associations/${row.id}`)}
         onRowDelete={async (row) => {
-          if (!confirm(`Supprimer "${row.nom}" ?`)) return
+          if (!(await confirmDialog(`Supprimer "${row.nom}" ?`))) return
           try {
             await fetch(`/api/associations/${row.id}`, { method: "DELETE" })
             toast({ title: "Association supprimée" })

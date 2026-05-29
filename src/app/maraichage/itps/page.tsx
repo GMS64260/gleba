@@ -16,6 +16,7 @@ import { DataTable } from "@/components/tables/DataTable"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
+import { confirmDialog } from "@/lib/global-dialog"
 
 // Type pour les ITPs avec relations
 interface ITPWithRelations {
@@ -205,7 +206,7 @@ export default function ITPsPage() {
       return
     }
 
-    if (!confirm(`Supprimer l'ITP "${row.id}" ?`)) return
+    if (!(await confirmDialog(`Supprimer l'ITP "${row.id}" ?`))) return
 
     try {
       const response = await fetch(`/api/itps/${encodeURIComponent(row.id)}`, {

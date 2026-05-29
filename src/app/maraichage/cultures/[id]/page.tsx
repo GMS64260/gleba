@@ -34,6 +34,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
+import { confirmDialog } from "@/lib/global-dialog"
 import { updateCultureSchema, type UpdateCultureInput } from "@/lib/validations"
 import { estimerNombrePlantsStrict } from "@/lib/assistant-helpers"
 
@@ -288,7 +289,7 @@ export default function EditCulturePage() {
   }
 
   const handleDelete = async () => {
-    if (!confirm(`Supprimer la culture #${cultureId} ?`)) return
+    if (!(await confirmDialog(`Supprimer la culture #${cultureId} ?`))) return
 
     try {
       const response = await fetch(`/api/cultures/${cultureId}`, {

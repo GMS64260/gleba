@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { Button } from "@/components/ui/button"
+import { confirmDialog } from "@/lib/global-dialog"
 import {
   Radio,
   Trash2,
@@ -104,7 +105,7 @@ export function StationMeteoConfig() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Supprimer cette station ?")) return
+    if (!(await confirmDialog("Supprimer cette station ?"))) return
     try {
       const res = await fetch(`/api/meteo/station?id=${id}`, { method: "DELETE" })
       if (!res.ok) setError("Erreur lors de la suppression")

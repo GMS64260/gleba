@@ -33,6 +33,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
+import { confirmDialog } from "@/lib/global-dialog"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
 interface Consommation {
@@ -167,7 +168,7 @@ export function ConsommationsTab() {
 
   // Supprimer consommation
   const handleDelete = async (id: number) => {
-    if (!confirm('Supprimer cette sortie de stock ?')) return
+    if (!(await confirmDialog('Supprimer cette sortie de stock ?'))) return
 
     try {
       const response = await fetch(`/api/consommations/${id}`, { method: 'DELETE' })

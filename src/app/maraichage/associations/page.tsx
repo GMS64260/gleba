@@ -15,6 +15,7 @@ import { DataTable } from "@/components/tables/DataTable"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
+import { confirmDialog } from "@/lib/global-dialog"
 
 // Type pour les associations avec relations
 interface AssociationWithRelations {
@@ -160,7 +161,7 @@ export default function AssociationsPage() {
   }
 
   const handleDelete = async (row: AssociationWithRelations) => {
-    if (!confirm(`Supprimer l'association "${row.nom}" ?`)) return
+    if (!(await confirmDialog(`Supprimer l'association "${row.nom}" ?`))) return
 
     try {
       const response = await fetch(`/api/associations/${row.id}`, {

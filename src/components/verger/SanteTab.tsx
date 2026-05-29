@@ -11,6 +11,7 @@
 import * as React from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { confirmDialog } from "@/lib/global-dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
@@ -320,7 +321,7 @@ function ObservationsSubTab() {
   }
 
   const handleDelete = async (id: number) => {
-    if (!confirm("Supprimer cette observation ?")) return
+    if (!(await confirmDialog("Supprimer cette observation ?"))) return
     try {
       const res = await fetch(`/api/arbres/observations/${id}`, { method: "DELETE" })
       if (res.ok) {

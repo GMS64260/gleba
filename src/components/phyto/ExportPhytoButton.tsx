@@ -20,6 +20,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Download, FileText } from "lucide-react"
 import { METHODES_TRAITEMENT, PRODUIT_CLASSIFICATIONS } from "@/lib/phyto/methodes"
+import { alertDialog } from "@/lib/global-dialog"
 
 interface ExportPhytoButtonProps {
   format: "pdf" | "csv"
@@ -62,7 +63,7 @@ export function ExportPhytoButton({ format }: ExportPhytoButtonProps) {
       const res = await fetch(`/api/registre-phyto/export?${params}`)
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
-        alert("Erreur export : " + (err.error || res.statusText))
+        await alertDialog("Erreur export : " + (err.error || res.statusText))
         return
       }
       const blob = await res.blob()

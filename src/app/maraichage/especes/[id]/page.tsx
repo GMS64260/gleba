@@ -51,6 +51,7 @@ import {
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
+import { confirmDialog } from "@/lib/global-dialog"
 import {
   updateEspeceSchema,
   type UpdateEspeceInput,
@@ -219,7 +220,7 @@ export default function EditEspecePage() {
   }
 
   const handleDelete = async () => {
-    if (!confirm(`Supprimer l'espece "${especeId}" ?`)) return
+    if (!(await confirmDialog(`Supprimer l'espece "${especeId}" ?`))) return
 
     try {
       const response = await fetch(`/api/especes/${encodeURIComponent(especeId)}`, {
@@ -336,7 +337,7 @@ export default function EditEspecePage() {
   }
 
   const handleVarieteDelete = async (v: Variete) => {
-    if (!confirm(`Supprimer la variete "${v.id}" ?`)) return
+    if (!(await confirmDialog(`Supprimer la variete "${v.id}" ?`))) return
     try {
       const res = await fetch(`/api/varietes/${encodeURIComponent(v.id)}`, {
         method: "DELETE",

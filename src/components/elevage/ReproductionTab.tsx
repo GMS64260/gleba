@@ -34,6 +34,7 @@ import {
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
+import { confirmDialog } from "@/lib/global-dialog"
 import {
   ChartContainer,
   ChartTooltip,
@@ -280,7 +281,7 @@ function NaissancesSubTab() {
   }
 
   const handleDelete = async (id: number) => {
-    if (!confirm("Supprimer cette naissance ?")) return
+    if (!(await confirmDialog("Supprimer cette naissance ?"))) return
     try {
       await fetch(`/api/elevage/naissances?id=${id}`, { method: 'DELETE' })
       toast({ title: "Naissance supprimée" })
@@ -830,7 +831,7 @@ function SailliesSubTab() {
                             variant="ghost"
                             size="sm"
                             onClick={async () => {
-                              if (!confirm("Supprimer cette saillie ?")) return
+                              if (!(await confirmDialog("Supprimer cette saillie ?"))) return
                               const res = await fetch(`/api/elevage/saillies?id=${s.id}`, { method: "DELETE" })
                               if (res.ok) reload()
                               else {

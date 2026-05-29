@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
+import { confirmDialog } from "@/lib/global-dialog"
 
 interface Fournisseur {
   id: string
@@ -159,7 +160,7 @@ export default function FournisseursPage() {
   }
 
   const handleDelete = async (fournisseur: Fournisseur) => {
-    if (!confirm(`Désactiver le fournisseur "${fournisseur.id}" ?`)) return
+    if (!(await confirmDialog(`Désactiver le fournisseur "${fournisseur.id}" ?`))) return
 
     try {
       const response = await fetch(`/api/comptabilite/fournisseurs?id=${fournisseur.id}`, {

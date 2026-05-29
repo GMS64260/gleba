@@ -6,6 +6,7 @@
  */
 
 import * as React from "react"
+import { alertDialog } from "@/lib/global-dialog"
 
 interface EditableSelectCellProps {
   plancheId: string
@@ -51,7 +52,7 @@ export function EditableSelectCell({
         onUpdate()
       } catch (error) {
         console.error('Erreur:', error)
-        alert('Erreur lors de la sauvegarde')
+        await alertDialog('Erreur lors de la sauvegarde')
         // Revenir à l'ancienne valeur
         setLocalValue(value || '')
       }

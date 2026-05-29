@@ -33,6 +33,7 @@ import { PluviometriePlanche } from "@/components/meteo/PluviometriePlanche"
 import { Combobox } from "@/components/ui/combobox"
 import { useToast } from "@/hooks/use-toast"
 import { useSettings } from "@/hooks/use-settings"
+import { confirmDialog } from "@/lib/global-dialog"
 
 interface PlancheWithCulture {
   id: string
@@ -608,7 +609,7 @@ function JardinContent() {
   const handleDeletePlanche = async () => {
     if (!selectedPlanche) return
     const plancheNom = selectedPlancheData?.nom || selectedPlanche
-    if (!confirm(`Supprimer la planche "${plancheNom}" ?`)) return
+    if (!(await confirmDialog(`Supprimer la planche "${plancheNom}" ?`))) return
 
     try {
       const response = await fetch(`/api/planches/${encodeURIComponent(plancheNom)}`, {
@@ -730,7 +731,7 @@ function JardinContent() {
   // Supprimer l'objet sélectionné
   const handleDeleteObjet = async () => {
     if (!selectedObjet) return
-    if (!confirm("Supprimer cet objet ?")) return
+    if (!(await confirmDialog("Supprimer cet objet ?"))) return
 
     try {
       const response = await fetch(`/api/objets-jardin/${selectedObjet}`, {
@@ -856,7 +857,7 @@ function JardinContent() {
   const handleDeleteArbre = async () => {
     if (!selectedArbre) return
     const arbre = arbres.find(a => a.id === selectedArbre)
-    if (!confirm(`Supprimer l'arbre "${arbre?.nom}" ?`)) return
+    if (!(await confirmDialog(`Supprimer l'arbre "${arbre?.nom}" ?`))) return
 
     try {
       const response = await fetch(`/api/arbres/${selectedArbre}`, {

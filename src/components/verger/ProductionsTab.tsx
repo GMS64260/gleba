@@ -9,6 +9,7 @@ import Link from "next/link"
 import { isPast, differenceInDays } from "date-fns"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { confirmDialog } from "@/lib/global-dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -285,7 +286,7 @@ function RecoltesFruitsSubTab() {
   }
 
   const handleDelete = async (id: number) => {
-    if (!confirm("Supprimer cette récolte ?")) return
+    if (!(await confirmDialog("Supprimer cette récolte ?"))) return
     try {
       const res = await fetch(`/api/arbres/recoltes/${id}`, { method: "DELETE" })
       if (res.ok) {
@@ -337,7 +338,7 @@ function RecoltesFruitsSubTab() {
   }
 
   const handlePerte = async (id: number) => {
-    if (!confirm("Marquer cette récolte comme perte ?")) return
+    if (!(await confirmDialog("Marquer cette récolte comme perte ?"))) return
     try {
       const res = await fetch(`/api/arbres/recoltes/${id}`, {
         method: "PATCH",
@@ -1022,7 +1023,7 @@ function ProductionBoisSubTab() {
   }
 
   const handleDelete = async (id: number) => {
-    if (!confirm("Supprimer cette production ?")) return
+    if (!(await confirmDialog("Supprimer cette production ?"))) return
     try {
       const res = await fetch(`/api/arbres/bois/${id}`, { method: "DELETE" })
       if (res.ok) {

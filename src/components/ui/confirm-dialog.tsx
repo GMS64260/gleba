@@ -41,6 +41,8 @@ interface ConfirmDialogProps {
   confirmLabel?: string
   cancelLabel?: string
   variant?: ConfirmVariant
+  /** Masque le bouton Annuler (mode alerte à un seul bouton). */
+  hideCancel?: boolean
   /** Action exécutée à la confirmation. Le dialog se ferme à la résolution. */
   onConfirm: () => Promise<void> | void
 }
@@ -65,6 +67,7 @@ export function ConfirmDialog({
   confirmLabel = "Confirmer",
   cancelLabel = "Annuler",
   variant = "destructive",
+  hideCancel = false,
   onConfirm,
 }: ConfirmDialogProps) {
   const [loading, setLoading] = React.useState(false)
@@ -99,13 +102,15 @@ export function ConfirmDialog({
         </DialogHeader>
 
         <DialogFooter className="gap-2 sm:gap-2">
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={loading}
-          >
-            {cancelLabel}
-          </Button>
+          {!hideCancel && (
+            <Button
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={loading}
+            >
+              {cancelLabel}
+            </Button>
+          )}
           <Button
             onClick={handleConfirm}
             disabled={loading}

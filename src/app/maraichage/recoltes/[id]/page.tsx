@@ -25,6 +25,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
+import { confirmDialog } from "@/lib/global-dialog"
 
 interface RecolteFormData {
   date: string
@@ -114,7 +115,7 @@ export default function EditRecoltePage() {
   }
 
   const handleDelete = async () => {
-    if (!confirm(`Supprimer cette recolte ?`)) return
+    if (!(await confirmDialog(`Supprimer cette recolte ?`))) return
 
     try {
       const response = await fetch(`/api/recoltes/${recolteId}`, {

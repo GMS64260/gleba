@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
+import { confirmDialog } from "@/lib/global-dialog"
 import { RotationAdviceCompact } from "@/components/planche"
 import { EspeceCombobox, type EspeceOption } from "@/components/especes/EspeceCombobox"
 
@@ -186,7 +187,7 @@ export function NewCultureDialog({ open, onOpenChange, plancheId, plancheNom, pl
       if (response.status === 409) {
         const payload = await response.json()
         if (payload?.rotationViolation) {
-          const ok = window.confirm(
+          const ok = await confirmDialog(
             `⚠️ ${payload.rotationViolation.message}\n\nCréer la culture quand même ? Elle sera marquée « rotation violée ».`
           )
           if (!ok) {

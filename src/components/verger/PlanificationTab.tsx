@@ -35,6 +35,7 @@ import {
   Mountain,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { confirmDialog } from "@/lib/global-dialog"
 
 interface PlanificationStats {
   arbresTotal: number
@@ -379,7 +380,7 @@ function ZonesSubTab() {
   }
 
   const handleDelete = async (id: number) => {
-    if (!confirm("Supprimer cette zone ? Les arbres seront dissociés.")) return
+    if (!(await confirmDialog("Supprimer cette zone ? Les arbres seront dissociés."))) return
     try {
       const res = await fetch(`/api/arbres/zones/${id}`, { method: "DELETE" })
       if (res.ok) {
