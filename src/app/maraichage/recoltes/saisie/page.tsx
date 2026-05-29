@@ -416,7 +416,7 @@ export default function SaisieRecoltePage() {
           <Button
             type="submit"
             className="w-full h-14 text-lg"
-            disabled={isSubmitting || !selectedCulture || !quantite}
+            disabled={isSubmitting || !quantite}
           >
             <Save className="h-5 w-5 mr-2" />
             {isSubmitting ? "Enregistrement..." : "Enregistrer la récolte"}

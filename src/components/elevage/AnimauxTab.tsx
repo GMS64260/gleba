@@ -236,6 +236,10 @@ function AnimauxSubTab() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!formData.especeAnimaleId) {
+      toast({ title: "Sélectionnez une espèce", variant: "destructive" })
+      return
+    }
     // Bug cmp8sagud (Marc 2026-05-16) — Toast générique "Impossible
     // d'enregistrer" sans détail. On récupère désormais le message
     // d'erreur retourné par l'API (zod flatten ou message custom) pour
@@ -358,6 +362,10 @@ function AnimauxSubTab() {
   const handleVenteSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!venteDialog) return
+    if (!venteForm.prixUnitaire) {
+      toast({ title: "Renseignez le prix de vente", variant: "destructive" })
+      return
+    }
     try {
       // Créer la vente
       const venteRes = await fetch('/api/elevage/ventes', {
@@ -522,7 +530,7 @@ function AnimauxSubTab() {
               <div className="space-y-2">
                 <Label>Espèce *</Label>
                 <Select value={formData.especeAnimaleId} onValueChange={(v) => setFormData(f => ({ ...f, especeAnimaleId: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Sélectionner..." /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="— Sélectionner une espèce —" /></SelectTrigger>
                   <SelectContent>
                     {especes.map(e => <SelectItem key={e.id} value={e.id}>{e.nom}</SelectItem>)}
                   </SelectContent>
@@ -598,7 +606,7 @@ function AnimauxSubTab() {
               </div>
               <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
-                <Button type="submit" disabled={!formData.especeAnimaleId}>
+                <Button type="submit">
                   {editingAnimalId ? "Mettre à jour" : "Créer"}
                 </Button>
               </div>
@@ -881,7 +889,7 @@ function AnimauxSubTab() {
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="outline" onClick={() => setVenteDialog(null)}>Annuler</Button>
-              <Button type="submit" disabled={!venteForm.prixUnitaire}>Enregistrer la vente</Button>
+              <Button type="submit">Enregistrer la vente</Button>
             </div>
           </form>
         </DialogContent>
@@ -1058,6 +1066,14 @@ function LotsSubTab() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!formData.especeAnimaleId) {
+      toast({ title: "Sélectionnez une espèce", variant: "destructive" })
+      return
+    }
+    if (!formData.quantiteInitiale) {
+      toast({ title: "Renseignez la quantité", variant: "destructive" })
+      return
+    }
     try {
       const isEdit = editingLotId !== null
       // Bug R17 : le schéma attend des nombres ; les Input renvoient des strings.
@@ -1114,7 +1130,7 @@ function LotsSubTab() {
                 <div className="space-y-2">
                   <Label>Espèce *</Label>
                   <Select value={formData.especeAnimaleId} onValueChange={(v) => setFormData(f => ({ ...f, especeAnimaleId: v }))}>
-                    <SelectTrigger><SelectValue placeholder="Sélectionner..." /></SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder="— Sélectionner une espèce —" /></SelectTrigger>
                     <SelectContent>
                       {especes.map(e => <SelectItem key={e.id} value={e.id}>{e.nom}</SelectItem>)}
                     </SelectContent>
@@ -1158,7 +1174,7 @@ function LotsSubTab() {
                 </div>
                 <div className="flex justify-end gap-2 pt-4">
                   <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
-                  <Button type="submit" disabled={!formData.especeAnimaleId || !formData.quantiteInitiale}>
+                  <Button type="submit">
                     {editingLotId ? "Mettre à jour" : "Créer"}
                   </Button>
                 </div>

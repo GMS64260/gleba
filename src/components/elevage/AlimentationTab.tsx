@@ -174,6 +174,14 @@ function StocksSubTab() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!formData.id) {
+      toast({ title: "Renseignez l'identifiant", variant: "destructive" })
+      return
+    }
+    if (!formData.nom) {
+      toast({ title: "Renseignez le nom", variant: "destructive" })
+      return
+    }
     const prixNum = formData.prix ? parseFloat(formData.prix) : null
     const check = verifierPrixAliment(prixNum, (formData.type as CategorieAliment) || "autre")
     // Cas prix=0 : erreur dure (le check renvoie ok=false sans seuil)
@@ -271,7 +279,7 @@ function StocksSubTab() {
               <div className="space-y-2"><Label>Stock minimum (alerte)</Label><Input type="number" step="0.1" value={formData.stockMin} onChange={(e) => setFormData(f => ({ ...f, stockMin: e.target.value }))} /></div>
               <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
-                <Button type="submit" disabled={!formData.id || !formData.nom}>Créer</Button>
+                <Button type="submit">Créer</Button>
               </div>
             </form>
           </DialogContent>
@@ -533,6 +541,14 @@ function ConsommationsSubTab() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!formData.alimentId) {
+      toast({ title: "Sélectionnez un aliment", variant: "destructive" })
+      return
+    }
+    if (!formData.quantite) {
+      toast({ title: "Renseignez la quantité", variant: "destructive" })
+      return
+    }
     try {
       await submitConsommation(false)
     } catch (err) {
@@ -613,7 +629,7 @@ function ConsommationsSubTab() {
                 <div className="space-y-2">
                   <Label>Aliment *</Label>
                   <Select value={formData.alimentId} onValueChange={(v) => setFormData(f => ({ ...f, alimentId: v }))}>
-                    <SelectTrigger><SelectValue placeholder="Sélectionner l'aliment..." /></SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder="— Sélectionner un aliment —" /></SelectTrigger>
                     <SelectContent>{aliments.map(a => <SelectItem key={a.id} value={a.id}>{a.nom}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
@@ -641,7 +657,7 @@ function ConsommationsSubTab() {
                 </div>
                 <div className="flex justify-end gap-2 pt-4">
                   <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
-                  <Button type="submit" disabled={!formData.alimentId || !formData.quantite}>
+                  <Button type="submit">
                     {editingConsoId ? "Mettre à jour" : "Enregistrer"}
                   </Button>
                 </div>

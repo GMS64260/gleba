@@ -269,6 +269,14 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (isSubmittingProd) return
+    if (!formData.lotId) {
+      toast({ title: "Sélectionnez un lot", variant: "destructive" })
+      return
+    }
+    if (!formData.quantite) {
+      toast({ title: "Renseignez le nombre d'œufs", variant: "destructive" })
+      return
+    }
     setIsSubmittingProd(true)
     const payload = {
       lotId: formData.lotId ? parseInt(formData.lotId) : null,
@@ -464,7 +472,7 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
               <div className="space-y-2">
                 <Label>Lot de pondeuses *</Label>
                 <Select value={formData.lotId} onValueChange={(v) => setFormData(f => ({ ...f, lotId: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Sélectionner le lot..." /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="— Sélectionner un lot —" /></SelectTrigger>
                   <SelectContent>
                     {lots.map(lot => (
                       <SelectItem key={lot.id} value={lot.id.toString()}>
@@ -532,7 +540,7 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
                 {/* Bug feedback testeur 2026-05-26 (cmploo6ye) — désactiver
                     le bouton pendant l'envoi pour éviter un double POST qui
                     crée une ligne fantôme. */}
-                <Button type="submit" disabled={!formData.lotId || !formData.quantite || isSubmittingProd}>
+                <Button type="submit" disabled={isSubmittingProd}>
                   {isSubmittingProd
                     ? "Enregistrement..."
                     : editingId
@@ -731,6 +739,14 @@ function VentesSubTab() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!formData.quantite) {
+      toast({ title: "Renseignez la quantité", variant: "destructive" })
+      return
+    }
+    if (!formData.prixUnitaire) {
+      toast({ title: "Renseignez le prix unitaire", variant: "destructive" })
+      return
+    }
     try {
       const isEdit = editingId !== null
       const body = {
@@ -871,7 +887,7 @@ function VentesSubTab() {
               </div>
               <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
-                <Button type="submit" disabled={!formData.quantite || !formData.prixUnitaire}>
+                <Button type="submit">
                   {editingId ? "Mettre à jour" : "Enregistrer"}
                 </Button>
               </div>
@@ -1052,6 +1068,10 @@ function AbattagesSubTab() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!formData.lotId) {
+      toast({ title: "Sélectionnez un lot", variant: "destructive" })
+      return
+    }
     try {
       const isEdit = editingId !== null
       const body = {
@@ -1164,7 +1184,7 @@ function AbattagesSubTab() {
               <div className="space-y-2">
                 <Label>Lot *</Label>
                 <Select value={formData.lotId} onValueChange={(v) => setFormData(f => ({ ...f, lotId: v }))}>
-                  <SelectTrigger><SelectValue placeholder="..." /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="— Sélectionner un lot —" /></SelectTrigger>
                   <SelectContent>{lots.map(l => <SelectItem key={l.id} value={l.id.toString()}>{l.nom || `Lot #${l.id}`} ({l.quantiteActuelle} {l.especeAnimale.nom})</SelectItem>)}</SelectContent>
                 </Select>
               </div>
@@ -1192,7 +1212,7 @@ function AbattagesSubTab() {
               </div>
               <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
-                <Button type="submit" disabled={!formData.lotId}>
+                <Button type="submit">
                   {editingId ? "Mettre à jour" : "Enregistrer"}
                 </Button>
               </div>
