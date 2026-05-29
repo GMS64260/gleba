@@ -548,7 +548,7 @@ function ObservationsSubTab() {
               <div>
                 <Label>Organe</Label>
                 <Select value={formData.organe} onValueChange={(v) => setFormData({ ...formData, organe: v })}>
-                  <SelectTrigger><SelectValue placeholder="Choisir" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="— Choisir un organe (optionnel) —" /></SelectTrigger>
                   <SelectContent>
                     {ORGANES.map((o) => (
                       <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
@@ -1326,7 +1326,7 @@ function RegistrePhytoSubTab() {
                       {methodeExigeCertiphyto(addForm.methodeTraitement) && (
                         <div>
                           <Label>N° AMM <span className="text-red-600">*</span></Label>
-                          <Input value={addForm.numAMM} onChange={(e) => setAddForm({ ...addForm, numAMM: e.target.value })} placeholder="Ex: 2210548" required />
+                          <Input value={addForm.numAMM} onChange={(e) => setAddForm({ ...addForm, numAMM: e.target.value })} placeholder="Ex: 2210548" />
                         </div>
                       )}
                     </div>
@@ -1371,7 +1371,7 @@ function RegistrePhytoSubTab() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label>Surface traitée (ha) <span className="text-red-600">*</span></Label>
-                      <Input type="number" step="0.01" required value={addForm.surfaceTraiteeHa}
+                      <Input type="number" step="0.01" value={addForm.surfaceTraiteeHa}
                         onChange={(e) => setAddForm({ ...addForm, surfaceTraiteeHa: e.target.value })} placeholder="0.5" />
                     </div>
                     <div>
@@ -1389,7 +1389,7 @@ function RegistrePhytoSubTab() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label>Volume bouillie (L/ha) <span className="text-red-600">*</span></Label>
-                      <Input type="number" step="0.5" required value={addForm.volumeBouillieLHa}
+                      <Input type="number" step="0.5" value={addForm.volumeBouillieLHa}
                         onChange={(e) => setAddForm({ ...addForm, volumeBouillieLHa: e.target.value })} placeholder="500" />
                     </div>
                     <div>
@@ -1401,7 +1401,7 @@ function RegistrePhytoSubTab() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label>N° Certiphyto opérateur <span className="text-red-600">*</span></Label>
-                      <Input required value={addForm.certiphytoNum}
+                      <Input value={addForm.certiphytoNum}
                         onChange={(e) => setAddForm({ ...addForm, certiphytoNum: e.target.value })} placeholder="01-AB-12345" />
                     </div>
                     <div>
