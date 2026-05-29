@@ -752,7 +752,7 @@ function VentesSubTab() {
       })
       if (!response.ok) throw new Error('Erreur')
       const total = parseFloat(formData.quantite) * parseFloat(formData.prixUnitaire)
-      toast({ title: "Vente enregistrée", description: `${total.toFixed(2)} \u20ac` })
+      toast({ title: "Vente enregistrée", description: `${total.toFixed(2)} €` })
       setIsDialogOpen(false)
       setFormData({ date: new Date().toISOString().split('T')[0], type: "oeufs", description: "", quantite: "", unite: "douzaine", prixUnitaire: "", client: "", paye: true, notes: "" })
       fetchData()
@@ -833,19 +833,19 @@ function VentesSubTab() {
               </div>
               <div className="space-y-2">
                 <Label>Description</Label>
-                <Input value={formData.description} onChange={(e) => setFormData(f => ({ ...f, description: e.target.value }))} placeholder="\u0152ufs plein air, Poulet fermier..." />
+                <Input value={formData.description} onChange={(e) => setFormData(f => ({ ...f, description: e.target.value }))} placeholder="Œufs plein air, Poulet fermier..." />
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-2">
-                  <Label>Quantit\u00e9 *</Label>
+                  <Label>Quantité *</Label>
                   <Input type="number" step="0.01" value={formData.quantite} onChange={(e) => setFormData(f => ({ ...f, quantite: e.target.value }))} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Unit\u00e9 *</Label>
+                  <Label>Unité *</Label>
                   <Select value={formData.unite} onValueChange={(v) => setFormData(f => ({ ...f, unite: v }))}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="unite">Unit\u00e9</SelectItem>
+                      <SelectItem value="unite">Unité</SelectItem>
                       <SelectItem value="douzaine">Douzaine</SelectItem>
                       <SelectItem value="kg">kg</SelectItem>
                       <SelectItem value="L">Litre</SelectItem>
@@ -854,7 +854,7 @@ function VentesSubTab() {
                 </div>
                 <div className="space-y-2">
                   <Label>Prix unit. *</Label>
-                  <Input type="number" step="0.01" value={formData.prixUnitaire} onChange={(e) => setFormData(f => ({ ...f, prixUnitaire: e.target.value }))} placeholder="\u20ac" />
+                  <Input type="number" step="0.01" value={formData.prixUnitaire} onChange={(e) => setFormData(f => ({ ...f, prixUnitaire: e.target.value }))} placeholder="€" />
                 </div>
               </div>
               {formData.quantite && formData.prixUnitaire && (
@@ -1240,7 +1240,7 @@ function AbattagesSubTab() {
                     <TableCell className="text-right">{a.poidsVif ? `${a.poidsVif} kg` : '-'}</TableCell>
                     <TableCell className="text-right">{a.poidsCarcasse ? `${a.poidsCarcasse} kg` : '-'}</TableCell>
                     <TableCell><Badge variant="outline">{DEST_LABELS[a.destination] || a.destination}</Badge></TableCell>
-                    <TableCell className="text-right text-green-600">{a.prixVente ? `${a.prixVente.toFixed(2)} \u20ac` : '-'}</TableCell>
+                    <TableCell className="text-right text-green-600">{a.prixVente ? `${a.prixVente.toFixed(2)} €` : '-'}</TableCell>
                     <TableCell className="text-right">
                       <Button variant="ghost" size="sm" onClick={() => handleEdit(a)} title="Modifier" className="text-slate-600 hover:text-slate-900">
                         <Pencil className="h-3.5 w-3.5" />

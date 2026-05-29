@@ -1060,7 +1060,19 @@ function LotsSubTab() {
     e.preventDefault()
     try {
       const isEdit = editingLotId !== null
-      const body = isEdit ? { id: editingLotId, ...formData } : formData
+      // Bug R17 : le schéma attend des nombres ; les Input renvoient des strings.
+      // On convertit explicitement (sinon POST 400 « expected number »).
+      const payload = {
+        especeAnimaleId: formData.especeAnimaleId,
+        nom: formData.nom || null,
+        dateArrivee: formData.dateArrivee || undefined,
+        quantiteInitiale: formData.quantiteInitiale ? parseInt(formData.quantiteInitiale, 10) : undefined,
+        provenance: formData.provenance || null,
+        prixAchatTotal: formData.prixAchatTotal ? parseFloat(formData.prixAchatTotal) : null,
+        parcelleGeoId: formData.parcelleGeoId || null,
+        notes: formData.notes || null,
+      }
+      const body = isEdit ? { id: editingLotId, ...payload } : payload
       const response = await fetch('/api/elevage/lots', {
         method: isEdit ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },

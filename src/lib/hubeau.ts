@@ -209,7 +209,10 @@ async function _fetchNappeInfoLive(lat: number, lng: number): Promise<NappeInfo 
     const stations = await fetchStationsProches(lat, lng, 100, 10)
     if (stations.length === 0) return null
 
-    const MAX_AGE_MS = 2 * 365 * 24 * 60 * 60 * 1000
+    // Bug #5 (testeur Marc) : une nappe relevée il y a ~20 mois était encore
+    // acceptée (seuil 2 ans) et affichée « DONNÉE PÉRIMÉE » en tête des conseils.
+    // Une donnée piézo de plus de 3 mois n'est plus pertinente pour le pilotage.
+    const MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000
 
     for (const station of stations) {
       const mesures = await fetchChroniques(station.code_bss, 30)

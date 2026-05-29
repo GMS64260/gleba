@@ -17,12 +17,16 @@ export async function GET(
   request: NextRequest,
   { params }: RouteParams
 ) {
-  const { error } = await requireAuthApi()
+  const { error, session } = await requireAuthApi()
   if (error) return error
 
   try {
     const { id } = await params
+    const userId = session!.user.id
 
+    // Bug #6 (testeur Marc) : les rotations sont un référentiel partagé (pas de
+    // userId). Sans filtre, planches + _count agrégeaient les planches de TOUS
+    // les comptes → compteur « 4 planche(s) » faux (3 réelles pour ce user).
     const rotation = await prisma.rotation.findUnique({
       where: { id },
       include: {
@@ -41,6 +45,7 @@ export async function GET(
           orderBy: { annee: 'asc' },
         },
         planches: {
+          where: { userId },
           select: {
             id: true,
             ilot: true,
@@ -50,7 +55,7 @@ export async function GET(
         },
         _count: {
           select: {
-            planches: true,
+            planches: { where: { userId } },
           },
         },
       },

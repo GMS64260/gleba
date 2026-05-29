@@ -78,8 +78,11 @@ export interface BesoinSemence {
   stockActuel: number
   /** Stock actuel en plants/caieux (modes bulbe_caieu / bouture). */
   stockUnites: number
-  /** Nombre de graines par gramme (renseigné sur Variete). */
+  /** Nombre de graines par gramme. Valeur de la variété, ou fallback par espèce
+   *  si non saisie (cf. nbGrainesGEstime). */
   nbGrainesG: number | null
+  /** true si nbGrainesG est une estimation (fallback espèce), pas la valeur saisie. */
+  nbGrainesGEstime: boolean
   doseSemis: number | null
   /** Unité dans laquelle est exprimée la dose (cf. Espece.uniteDose). */
   uniteDose: 'g_m2' | 'pieces_m2' | 'graines_plant' | 'caieux_m2' | null
@@ -473,7 +476,11 @@ export async function getBesoinsSemences(
   annee: number
 ): Promise<BesoinSemence[]> {
   const { calculerBesoin, defaultGrainesParGramme } = await import('./semences/calcul')
-  const culturesPrevues = await getCulturesPrevues(userId, annee)
+  // Bug #8 (testeur Marc) : la commande de semences ne doit porter que sur les
+  // cultures RÉELLEMENT créées. Les cultures « à créer » (suggestions de rotation,
+  // virtuelles) gonflaient les surfaces (80 m² de haricot > planche réelle) et
+  // faussaient la commande de graines.
+  const culturesPrevues = (await getCulturesPrevues(userId, annee)).filter((c) => c.existante)
 
   // Référentiel : modes/dose par espèce, graines/g par variété, stocks user.
   // Feedback Marc 2026-05-16 — Bug 12 : on ajoute `densite` au select
@@ -625,7 +632,11 @@ export async function getBesoinsSemences(
       margeSecuritePct: calc.margeSecuritePct,
       stockActuel: calc.stockGrammes,
       stockUnites: calc.stockUnites,
-      nbGrainesG: variete?.nbGrainesG ?? null,
+      // Bug #7 (testeur Marc) : on retournait null alors que le calcul utilise le
+      // fallback par espèce → l'UI affichait « - » avec un besoin pourtant calculé.
+      // On expose la valeur réellement utilisée + un flag « estimé » pour la transparence.
+      nbGrainesG: variete?.nbGrainesG ?? defaultGrainesParGramme(acc.especeId),
+      nbGrainesGEstime: variete?.nbGrainesG == null,
       doseSemis: espece?.doseSemis ?? null,
       uniteDose: (espece?.uniteDose ?? null) as 'g_m2' | 'pieces_m2' | 'graines_plant' | 'caieux_m2' | null,
       tauxGerminationPct: espece?.tauxGermination ?? null,
