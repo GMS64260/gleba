@@ -141,7 +141,7 @@ const columns: ColumnDef<EspeceWithRelations>[] = [
     // par défaut est désormais « saison » (année en cours, cultures
     // non terminées) ET filtré par user — le header le dit explicitement.
     header: () => (
-      <span title="Cultures de l'année en cours, non terminées (votre tenant)">
+      <span title="Nombre de cultures (parcelles semées/plantées) de cette espèce cette saison — pas le nombre de variétés du catalogue. 0 = espèce non plantée cette année.">
         Cultures saison
       </span>
     ),
