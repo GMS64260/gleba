@@ -35,6 +35,8 @@ const nextConfig = {
   // lien interne du codebase pas encore migré.
   async redirects() {
     return [
+      // Roadmap GitHub historique → Community Voice (roadmap communautaire)
+      { source: '/roadmap', destination: '/communaute', permanent: true },
       // Maraîchage
       { source: '/cultures', destination: '/maraichage/cultures', permanent: true },
       { source: '/cultures/:path*', destination: '/maraichage/cultures/:path*', permanent: true },

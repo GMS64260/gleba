@@ -12,7 +12,8 @@ export default auth((req) => {
   // Routes publiques (DEV2 #2 : pages légales accessibles sans login)
   const publicRoutes = [
     "/login", "/register", "/mot-de-passe-oublie", "/reset-password",
-    "/roadmap", "/robots.txt", "/sitemap.xml", "/manifest.json", "/feedback",
+    "/communaute", "/robots.txt", "/sitemap.xml", "/manifest.json", "/feedback",
+    "/desabonnement",
     // RGPD / LCEN : doivent rester accessibles sans authentification
     "/cgv", "/mentions-legales", "/confidentialite",
     // Pages cibles SEO (marketing)
@@ -29,6 +30,8 @@ export default auth((req) => {
   const isAuthApi = pathname.startsWith("/api/auth")
   const isMcpApi = pathname.startsWith("/api/mcp")
   const isFeedbackTokenApi = /^\/api\/feedback\/[^/]+$/.test(pathname)
+  // Désabonnement par token (public, sans authentification)
+  const isUnsubscribeApi = /^\/api\/desabonnement\/[^/]+$/.test(pathname)
   // DEV2 #2 — Consentement cookies doit pouvoir être enregistré
   // pour les visiteurs anonymes (avant connexion).
   const isCookieConsentApi = pathname === "/api/cookie-consent"
@@ -38,8 +41,11 @@ export default auth((req) => {
   const isPublicBoutiquePage = /^\/boutique\/[^/]+/.test(pathname) && pathname !== "/boutique"
   const isPublicBoutiqueApi = pathname.startsWith("/api/boutique/public/")
 
+  // API publiques en lecture seule (ex : Community Voice anonyme)
+  const isPublicApi = pathname.startsWith("/api/public/")
+
   // Si route publique ou API auth/MCP/feedback, laisser passer
-  if (isPublicRoute || isAuthApi || isMcpApi || isFeedbackTokenApi || isCookieConsentApi || isPublicBoutiquePage || isPublicBoutiqueApi) {
+  if (isPublicRoute || isAuthApi || isMcpApi || isFeedbackTokenApi || isUnsubscribeApi || isCookieConsentApi || isPublicBoutiquePage || isPublicBoutiqueApi || isPublicApi) {
     // Si connecté et sur login, rediriger vers home
     if (isLoggedIn && (pathname === "/login" || pathname === "/register")) {
       return NextResponse.redirect(new URL("/", req.nextUrl))

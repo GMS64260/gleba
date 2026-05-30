@@ -9,6 +9,7 @@
 import * as React from "react"
 import { Badge } from "@/components/ui/badge"
 import { Pencil } from "lucide-react"
+import { appliquerDecalageItp } from "@/lib/calendrier-climat"
 
 interface ITPWithEspece {
   id: string
@@ -31,9 +32,21 @@ interface ITPWithEspece {
 interface GanttRowProps {
   itp: ITPWithEspece
   onEdit?: (itp: ITPWithEspece) => void
+  /**
+   * Décalage en semaines appliqué aux dates de semis/plantation/récolte pour
+   * l'affichage (zone climatique + réglage fin précoce/tardif). L'ITP de
+   * référence n'est PAS modifié : on recale uniquement les barres.
+   */
+  decalage?: number
 }
 
-export function GanttRow({ itp, onEdit }: GanttRowProps) {
+export function GanttRow({ itp: itpRef, onEdit, decalage = 0 }: GanttRowProps) {
+  // On travaille sur une copie décalée pour le rendu des barres et du type de
+  // culture ; `onEdit` reçoit l'ITP de référence d'origine (édition en base).
+  const itp = React.useMemo(
+    () => appliquerDecalageItp(itpRef, decalage),
+    [itpRef, decalage]
+  )
   // BUG #15 (audit Marc 2026-05-15) : l'ail (mode bulbe_caieu) avait
   // s_semis (= préparation) + s_plantation (= mise en terre des caïeux)
   // tous deux renseignés, ce qui faisait afficher « Pépinière » alors
@@ -134,7 +147,7 @@ export function GanttRow({ itp, onEdit }: GanttRowProps) {
           ? "hover:bg-muted/70 cursor-pointer group"
           : "hover:bg-muted/50"
       }`}
-      onClick={isEditable ? () => onEdit(itp) : undefined}
+      onClick={isEditable ? () => onEdit(itpRef) : undefined}
     >
       {/* Colonne ITP/Espèce (sticky) */}
       <td className="p-2 sticky left-0 bg-white z-10 border-r">

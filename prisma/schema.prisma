@@ -61,6 +61,16 @@ model User {
   resetPasswordToken String?  @unique @map("reset_password_token")
   resetPasswordExpires DateTime? @map("reset_password_expires")
   apiToken          String?   @unique @map("api_token")
+  // Désabonnement des emails non transactionnels (campagnes feedback, etc.).
+  // Les emails transactionnels (vérification, reset mot de passe) n'y sont PAS
+  // soumis. `unsubscribeToken` est un token stable servant de lien de
+  // désabonnement en 1 clic dans le pied des emails.
+  emailOptOut       Boolean   @default(false) @map("email_opt_out")
+  emailOptOutAt     DateTime? @map("email_opt_out_at")
+  unsubscribeToken  String?   @unique @map("unsubscribe_token")
+  // Surcharge manuelle de la zone climatique (sinon dérivée du code postal de
+  // l'exploitation, cf. lib/terroir.ts). Sert à recaler le calendrier de semis.
+  zoneClimat        String?   @map("zone_climat")
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
 
@@ -169,6 +179,10 @@ model User {
 
   // Référentiel communautaire — avis (polymorphe)
   avis                  Avis[]
+
+  // Community Voice — demandes d'évolution & votes
+  evolutions            Evolution[]      @relation("EvolutionAuthor")
+  evolutionVotes        EvolutionVote[]  @relation("EvolutionVoter")
 
   @@map("users")
 }
@@ -946,6 +960,9 @@ model Recolte {
   statutBioSnapshot String? @map("statut_bio_snapshot") // Conventionnel | C1 | C2 | C3 | AB
   notes          String?   @map("notes")
   createdAt      DateTime  @default(now()) @map("created_at")
+
+  // Produits boutique issus de cette récolte (bouton "Mettre en vente").
+  produitsBoutique ProduitBoutique[]
 
   @@index([userId])
   @@index([especeId])
@@ -2726,6 +2743,10 @@ model ProduitBoutique {
   actif           Boolean   @default(true) @map("actif")
   // PROMPT 12 — Statut Bio du produit (propagé depuis le lot de récolte source).
   statutBio       String?   @map("statut_bio") // Conventionnel | C1 | C2 | C3 | AB
+  // Traçabilité : récolte du jardin à l'origine de ce produit (bouton "Mettre en vente").
+  // Permet de relier le stock boutique au stock physique récolté.
+  recolteId       Int?      @map("recolte_id")
+  recolte         Recolte?  @relation(fields: [recolteId], references: [id], onDelete: SetNull)
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
@@ -2736,6 +2757,7 @@ model ProduitBoutique {
   @@index([actif])
   @@index([categorie])
   @@index([statutBio])
+  @@index([recolteId])
   @@map("produits_boutique")
 }
 
@@ -2759,6 +2781,9 @@ model CommandeBoutique {
   dateRetraitSouhaitee DateTime? @map("date_retrait_souhaitee")
   notesClient     String?   @map("notes_client")
   notesPrivees    String?   @map("notes_privees")
+  // Jeton de suivi : permet au client de consulter sa commande sans compte
+  // via /boutique/[slug]/suivi/[numero]?token=...
+  suiviToken      String?   @unique @map("suivi_token")
   // Workflow
   statut          String    @default("nouveau") @map("statut") // "nouveau", "confirmee", "prete", "livree", "annulee"
   // PROMPT 16 LOT B — Câblage paiement / compta.
@@ -2885,4 +2910,61 @@ model SequenceFacture {
   @@unique([userId, exercice, type])
   @@index([userId])
   @@map("sequences_facture")
+}
+
+// ============================================================
+// Community Voice — demandes d'évolution & votes communautaires
+// ============================================================
+
+/// Catégorie d'une demande d'évolution (rattachée à un module ou général)
+enum EvolutionCategorie {
+  MARAICHAGE
+  VERGER
+  ELEVAGE
+  COMPTABILITE
+  GENERAL
+}
+
+/// Statut d'une demande d'évolution (cycle de vie vers la roadmap)
+enum EvolutionStatut {
+  PROPOSEE   // soumise par un utilisateur, ouverte au vote
+  PLANIFIEE  // retenue dans la roadmap
+  EN_COURS   // en cours de développement
+  LIVREE     // déployée en production
+  REFUSEE    // déclinée
+}
+
+/// Demande d'évolution soumise par un utilisateur (Community Voice)
+model Evolution {
+  id          String             @id @default(cuid())
+  userId      String             @map("user_id")
+  user        User               @relation("EvolutionAuthor", fields: [userId], references: [id], onDelete: Cascade)
+  titre       String
+  description String
+  categorie   EvolutionCategorie @default(GENERAL)
+  statut      EvolutionStatut    @default(PROPOSEE)
+  adminNote   String?            @map("admin_note")
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @updatedAt       @map("updated_at")
+
+  votes       EvolutionVote[]
+
+  @@index([statut])
+  @@index([categorie])
+  @@index([createdAt])
+  @@map("evolutions")
+}
+
+/// Vote d'un utilisateur sur une demande d'évolution (1 par user / évolution)
+model EvolutionVote {
+  id          String    @id @default(cuid())
+  evolutionId String    @map("evolution_id")
+  evolution   Evolution @relation(fields: [evolutionId], references: [id], onDelete: Cascade)
+  userId      String    @map("user_id")
+  user        User      @relation("EvolutionVoter", fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@unique([evolutionId, userId])
+  @@index([userId])
+  @@map("evolution_votes")
 }

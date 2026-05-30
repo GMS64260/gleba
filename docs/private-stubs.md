@@ -1,17 +1,29 @@
 # Stubs publics et code privé
 
 Gleba publie une version open-source du code sur GitHub mais conserve
-deux familles de fonctionnalités en privé :
+trois familles de fonctionnalités en privé :
 
 1. **Assistant IA** (`/src/lib/chat`, `/src/lib/ollama.ts`, `/src/app/api/chat`,
    `/src/app/api/mcp`, `/src/hooks/use-chat.ts`, `/mcp-server`).
 2. **Boutique en ligne** (`/src/app/boutique`, `/src/components/boutique`,
    `/src/app/api/boutique`).
+3. **Système de feedback** (`/src/app/feedback`, `/src/app/admin/feedback`,
+   `/src/app/api/feedback`, `/src/app/api/admin/feedback`,
+   `/src/lib/mail-feedback.ts`, `/scripts/send-feedback-*.ts`,
+   `/scripts/generate-feedback-tokens.ts`). Outil opérationnel propre à
+   gleba.fr (campagnes emails, enquêtes, signalement de bugs), non distribué
+   aux instances auto-hébergées.
 
 Toutes ces zones sont listées dans `.gitignore`. Les modèles Prisma de la
 boutique (`Boutique`, `ProduitBoutique`, `CommandeBoutique`,
-`LigneCommandeBoutique`) restent en revanche dans `prisma/schema.prisma`
-car le module Comptabilité y fait référence.
+`LigneCommandeBoutique`) et du feedback (`BugReport`, `FeedbackToken`,
+`FeedbackResponse`) restent en revanche dans `prisma/schema.prisma` (et leurs
+migrations), ainsi que le schéma de validation `src/lib/validations/feedback.ts`,
+car d'autres modules y font référence et pour garder les migrations cohérentes.
+
+Le mécanisme de **désabonnement** (`/src/app/desabonnement`,
+`/src/app/api/desabonnement`, `/src/lib/unsubscribe.ts`) reste **public** : c'est
+de l'infrastructure email générique, utilisée aussi par l'email de bienvenue.
 
 ## Pourquoi des stubs
 
@@ -22,10 +34,15 @@ Quatre composants publics importent du code privé :
 | `components/chat/ChatPanel`  | `app/{page,arbres,elevage,comptabilite}/page.tsx` |
 | `components/chat/ChatBubble` | `app/layout.tsx`                                  |
 | `components/auth/BoutiqueHeaderButton` | 4 pages module                          |
+| `components/feedback/FeedbackWidget`   | `app/layout.tsx`                        |
 
 Sans intervention, un clone GitHub ne compile pas (`Module not found`).
-On commit donc trois **stubs** au même chemin, qui rendent `null` (ou
+On commit donc des **stubs** au même chemin, qui rendent `null` (ou
 gardent leur logique conditionnée par un feature flag).
+
+`FeedbackWidget` suit la même mécanique que ChatPanel/ChatBubble : le stub
+public rend `null`, et le vrai composant reste sur le VPS via
+`git update-index --skip-worktree src/components/feedback/FeedbackWidget.tsx`.
 
 ## Comment ça marche
 

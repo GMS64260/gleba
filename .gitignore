@@ -80,3 +80,21 @@ et)
 /src/app/boutique/
 /src/components/boutique/
 /src/app/api/boutique/
+
+# Système de feedback (proprietary)
+# Outil opérationnel propre à gleba.fr (campagnes emails, enquêtes de
+# satisfaction, signalement de bugs). Non distribué aux instances
+# auto-hébergées. Les modèles Prisma (BugReport, FeedbackToken,
+# FeedbackResponse) et le schéma de validation restent publics ; seuls
+# l'UI, les routes, les scripts de campagne et les templates d'emails sont
+# privés. Le composant FeedbackWidget garde un STUB public (cf.
+# docs/private-stubs.md), le vrai code reste sur le VPS via skip-worktree.
+/src/app/feedback/
+/src/app/admin/feedback/
+/src/app/api/feedback/
+/src/app/api/admin/feedback/
+/src/lib/mail-feedback.ts
+/scripts/send-feedback-campaign.ts
+/scripts/send-feedback-invite.ts
+/scripts/generate-feedback-tokens.ts
+/docs/implementation-artifacts/tech-spec-feedback-widget.md

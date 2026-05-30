@@ -21,7 +21,7 @@ const ALL_PAGES: Page[] = [
   { href: "/logiciel-elevage", label: "Logiciel d'élevage", icon: Egg },
   { href: "/calendrier-semis", label: "Calendrier de semis", icon: Calendar },
   { href: "/assistant-ia-agricole", label: "Assistant IA agricole", icon: Bot },
-  { href: "/roadmap", label: "Roadmap publique", icon: Milestone },
+  { href: "/communaute", label: "Community Voice", icon: Milestone },
 ];
 
 /**

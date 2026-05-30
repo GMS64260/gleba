@@ -19,9 +19,11 @@ interface SendMailOptions {
   subject: string
   html: string
   replyTo?: string
+  /** En-têtes additionnels (ex. List-Unsubscribe pour les campagnes). */
+  headers?: Record<string, string>
 }
 
-export async function sendMail({ to, subject, html, replyTo }: SendMailOptions) {
+export async function sendMail({ to, subject, html, replyTo, headers }: SendMailOptions) {
   if (!process.env.SMTP_HOST || !process.env.SMTP_USER) {
     console.warn("SMTP non configure, email non envoye:", subject)
     return
@@ -33,6 +35,7 @@ export async function sendMail({ to, subject, html, replyTo }: SendMailOptions) 
     subject,
     html,
     ...(replyTo && { replyTo }),
+    ...(headers && { headers }),
   })
 }
 
@@ -329,8 +332,11 @@ export function passwordResetEmail(name: string | null, token: string) {
   }
 }
 
-export function welcomeEmail(name?: string | null) {
+export function welcomeEmail(name?: string | null, unsubscribeUrl?: string) {
   const displayName = name || "nouveau membre"
+  const unsubLine = unsubscribeUrl
+    ? `<br><a href="${unsubscribeUrl}" style="color:#cbd5e1;text-decoration:underline;">Se désabonner de ces emails</a>`
+    : ""
   return {
     subject: "Bienvenue sur Gleba !",
     html: `<!DOCTYPE html>
@@ -389,7 +395,7 @@ export function welcomeEmail(name?: string | null) {
           <td style="padding:20px 40px 28px;border-top:1px solid #f1f5f9;">
             <p style="margin:0;font-size:12px;color:#94a3b8;text-align:center;">
               Gleba — Logiciel libre de gestion agricole<br>
-              <a href="https://gleba.fr" style="color:#10b981;text-decoration:none;">gleba.fr</a> · <a href="mailto:contact@gleba.fr" style="color:#10b981;text-decoration:none;">contact@gleba.fr</a>
+              <a href="https://gleba.fr" style="color:#10b981;text-decoration:none;">gleba.fr</a> · <a href="mailto:contact@gleba.fr" style="color:#10b981;text-decoration:none;">contact@gleba.fr</a>${unsubLine}
             </p>
           </td>
         </tr>
@@ -402,7 +408,7 @@ export function welcomeEmail(name?: string | null) {
   }
 }
 
-function escapeHtml(str: string): string {
+export function escapeHtml(str: string): string {
   return str
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -411,334 +417,213 @@ function escapeHtml(str: string): string {
     .replace(/'/g, "&#039;")
 }
 
-const feedbackTypeLabels: Record<string, string> = {
-  bug: "Bug",
-  evolution: "Évolution",
-  autre: "Autre",
+// ─────────────────────────────────────────────────────────────────────────────
+// Emails côté CLIENT de la boutique (accusé de réception + suivi de commande).
+// Le producteur, lui, reçoit `commandeBoutiqueEmail`.
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface CommandeClientEmailArgs {
+  boutiqueNom: string
+  slug: string
+  numero: string
+  suiviToken: string
+  clientNom: string
+  total: number
+  lignes: Array<{ nom: string; quantite: number; unite: string; prixUnitaire: number; total: number }>
+  modesPaiement: string | null
+  modeLivraison: string | null
+  dateRetraitSouhaitee: Date | null
 }
 
-export function feedbackEmail({ userName, userEmail, type, message }: {
-  userName: string | null | undefined
-  userEmail: string
-  type: string
-  message: string
-}) {
-  const date = new Date().toLocaleString("fr-FR", { timeZone: "Europe/Paris" })
-  const displayName = userName || userEmail
-  const label = feedbackTypeLabels[type] || type
-  const safeMessage = escapeHtml(message)
-  const safeName = escapeHtml(displayName)
+/** URL publique de suivi d'une commande (sans compte). */
+export function commandeSuiviUrl(slug: string, numero: string, token: string): string {
+  return `https://gleba.fr/boutique/${encodeURIComponent(slug)}/suivi/${encodeURIComponent(numero)}?token=${encodeURIComponent(token)}`
+}
+
+/**
+ * Accusé de réception envoyé AU CLIENT juste après sa commande.
+ * Rappelle le récapitulatif, le montant à régler AU RETRAIT et le lien de suivi.
+ */
+export function commandeClientConfirmationEmail(args: CommandeClientEmailArgs) {
+  const suiviUrl = commandeSuiviUrl(args.slug, args.numero, args.suiviToken)
+  const dateRetrait = args.dateRetraitSouhaitee
+    ? args.dateRetraitSouhaitee.toLocaleDateString("fr-FR", { weekday: "long", day: "2-digit", month: "long" })
+    : null
+  const lignesHtml = args.lignes
+    .map(
+      (l) => `
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;">${escapeHtml(l.nom)}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:right;">${l.quantite} ${escapeHtml(l.unite)}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:600;">${l.total.toFixed(2)} €</td>
+      </tr>`
+    )
+    .join("")
 
   return {
-    subject: `[Gleba Feedback] [${label}] ${displayName}`,
-    replyTo: userEmail,
+    subject: `Votre commande ${args.numero} chez ${args.boutiqueNom}`,
     html: `<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"></head>
+<html><head><meta charset="utf-8"></head>
 <body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;padding:40px 20px;">
     <tr><td align="center">
-      <table width="480" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
         <tr>
-          <td style="background:linear-gradient(135deg,#065f46,#0d9488);padding:24px 40px;text-align:center;">
-            <h1 style="margin:0;font-size:22px;font-weight:300;color:#ffffff;">Feedback utilisateur</h1>
-            <p style="margin:8px 0 0;font-size:14px;color:#a7f3d0;">${label}</p>
+          <td style="background:linear-gradient(135deg,#0d9488,#f59e0b);padding:28px 40px;text-align:center;">
+            <h1 style="margin:0;font-size:22px;font-weight:300;color:#ffffff;">Merci pour votre commande&nbsp;!</h1>
+            <p style="margin:8px 0 0;font-size:14px;color:#fef3c7;">${escapeHtml(args.boutiqueNom)} — ${args.numero}</p>
           </td>
         </tr>
         <tr>
           <td style="padding:32px 40px;">
-            <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px;background:#f8fafc;border-radius:10px;overflow:hidden;">
-              <tr>
-                <td style="padding:8px 16px;font-size:13px;color:#64748b;border-bottom:1px solid #e2e8f0;">Utilisateur</td>
-                <td style="padding:8px 16px;font-size:14px;color:#1e293b;font-weight:500;border-bottom:1px solid #e2e8f0;">${safeName}</td>
-              </tr>
-              <tr>
-                <td style="padding:8px 16px;font-size:13px;color:#64748b;border-bottom:1px solid #e2e8f0;">Email</td>
-                <td style="padding:8px 16px;font-size:14px;color:#1e293b;font-weight:500;border-bottom:1px solid #e2e8f0;">${escapeHtml(userEmail)}</td>
-              </tr>
-              <tr>
-                <td style="padding:8px 16px;font-size:13px;color:#64748b;border-bottom:1px solid #e2e8f0;">Type</td>
-                <td style="padding:8px 16px;font-size:14px;color:#1e293b;font-weight:500;border-bottom:1px solid #e2e8f0;">${label}</td>
-              </tr>
-              <tr>
-                <td style="padding:8px 16px;font-size:13px;color:#64748b;">Date</td>
-                <td style="padding:8px 16px;font-size:14px;color:#1e293b;font-weight:500;">${date}</td>
-              </tr>
+            <p style="margin:0 0 20px;font-size:15px;color:#1e293b;line-height:1.6;">
+              Bonjour ${escapeHtml(args.clientNom)},<br><br>
+              Nous avons bien reçu votre commande. Le producteur va la préparer et vous
+              tiendra informé(e) de son avancement. Vous pouvez suivre son statut à tout moment
+              grâce au lien ci-dessous.
+            </p>
+
+            <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;margin:0 0 8px;">
+              <thead>
+                <tr style="background:#f1f5f9;">
+                  <th style="padding:10px 12px;text-align:left;font-size:12px;color:#475569;font-weight:600;">Produit</th>
+                  <th style="padding:10px 12px;text-align:right;font-size:12px;color:#475569;font-weight:600;">Qté</th>
+                  <th style="padding:10px 12px;text-align:right;font-size:12px;color:#475569;font-weight:600;">Total</th>
+                </tr>
+              </thead>
+              <tbody>${lignesHtml}</tbody>
+              <tfoot>
+                <tr style="background:#0d9488;color:white;">
+                  <td colspan="2" style="padding:12px;text-align:right;font-size:14px;font-weight:600;">À régler</td>
+                  <td style="padding:12px;text-align:right;font-size:16px;font-weight:700;">${args.total.toFixed(2)} €</td>
+                </tr>
+              </tfoot>
             </table>
-            <div style="background:#f8fafc;border-radius:10px;padding:16px;border-left:3px solid #10b981;">
-              <p style="margin:0 0 8px;font-size:13px;color:#64748b;font-weight:600;">Message :</p>
-              <p style="margin:0;font-size:14px;color:#1e293b;line-height:1.6;white-space:pre-wrap;">${safeMessage}</p>
+
+            <div style="background:#fffbeb;border-radius:10px;padding:14px 16px;border-left:3px solid #f59e0b;margin:16px 0;">
+              <p style="margin:0;font-size:13px;color:#78350f;line-height:1.6;">
+                <strong>Paiement au retrait.</strong> Le règlement se fait au moment de la remise de votre commande${args.modesPaiement ? `, par&nbsp;: ${escapeHtml(args.modesPaiement)}` : ""}.
+              </p>
+              ${args.modeLivraison ? `<p style="margin:8px 0 0;font-size:13px;color:#78350f;">Retrait / livraison&nbsp;: ${escapeHtml(args.modeLivraison)}</p>` : ""}
+              ${dateRetrait ? `<p style="margin:8px 0 0;font-size:13px;color:#78350f;">Date souhaitée&nbsp;: ${escapeHtml(dateRetrait)}</p>` : ""}
             </div>
-            <p style="margin:20px 0 0;font-size:13px;color:#94a3b8;">
-              Vous pouvez répondre directement à cet email pour contacter l'utilisateur.
-            </p>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:16px 40px 24px;border-top:1px solid #f1f5f9;">
-            <p style="margin:0;font-size:12px;color:#94a3b8;text-align:center;">
-              Notification automatique — <a href="https://gleba.fr" style="color:#10b981;text-decoration:none;">gleba.fr</a>
-            </p>
-          </td>
-        </tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`,
-  }
-}
 
-const BLOCKER_LABELS_FR: Record<string, string> = {
-  ux_confusing: "Interface confuse, difficile à prendre en main",
-  missing_features: "Manque de fonctionnalités importantes",
-  bugs_perf: "Bugs, lenteur ou fiabilité",
-  not_suited: "Pas adapté à mon type d'exploitation",
-  onboarding_unclear: "Onboarding peu clair",
-  mobile_lacking: "Pas pratique sur mobile / terrain",
-  docs_lacking: "Documentation insuffisante",
-  no_time: "Pas eu le temps d'explorer",
-}
-
-const MODULE_LABELS_FR: Record<string, string> = {
-  jardin: "Jardin / maraîchage",
-  verger: "Verger / arbres",
-  elevage: "Élevage",
-  compta: "Comptabilité / ventes",
-  ia: "Assistant IA",
-  meteo: "Météo / stations",
-}
-
-const WILL_RETURN_LABELS_FR: Record<string, string> = {
-  yes: "Oui, régulièrement",
-  maybe: "Peut-être",
-  no: "Non",
-}
-
-export function feedbackInviteEmail({
-  name,
-  url,
-}: {
-  name: string | null
-  url: string
-}) {
-  const displayName = name || "vous"
-  const safeName = escapeHtml(displayName)
-
-  return {
-    subject: "🌱 3 minutes pour m'aider à améliorer Gleba ?",
-    replyTo: process.env.FEEDBACK_EMAIL || undefined,
-    html: `<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"></head>
-<body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;padding:40px 20px;">
-    <tr><td align="center">
-      <table width="520" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
-
-        <tr>
-          <td style="background:linear-gradient(135deg,#065f46,#0d9488);padding:36px 40px;text-align:center;">
-            <h1 style="margin:0;font-size:28px;font-weight:300;color:#ffffff;letter-spacing:-0.5px;">Gleba</h1>
-            <p style="margin:8px 0 0;font-size:13px;color:#a7f3d0;letter-spacing:0.1em;text-transform:uppercase;">Votre avis compte</p>
-          </td>
-        </tr>
-
-        <tr>
-          <td style="padding:36px 40px 8px;">
-            <h2 style="margin:0 0 20px;font-size:20px;font-weight:600;color:#1e293b;line-height:1.4;">
-              Bonjour ${safeName},
-            </h2>
-            <p style="margin:0 0 18px;font-size:15px;color:#475569;line-height:1.7;">
-              Je suis <strong style="color:#0d9488;">Guillaume</strong>, créateur de Gleba.
-              Vous faites partie des tout premiers à avoir testé l'application — et ça compte
-              énormément pour moi.
-            </p>
-            <p style="margin:0 0 18px;font-size:15px;color:#475569;line-height:1.7;">
-              Aujourd'hui, j'ai besoin de votre regard honnête.
-              Qu'est-ce qui vous a freiné&nbsp;? Qu'est-ce qui manque&nbsp;?
-              Qu'est-ce qui vous ferait revenir&nbsp;?
-            </p>
-            <p style="margin:0 0 28px;font-size:15px;color:#475569;line-height:1.7;">
-              Quelques minutes de votre temps vont orienter <em>directement</em> les prochaines
-              améliorations. Même un retour critique ou négatif est <strong>extrêmement précieux</strong> —
-              c'est exactement ce qui me permettra de faire évoluer Gleba dans la bonne direction.
-            </p>
-
-            <table cellpadding="0" cellspacing="0" style="margin:0 auto 8px;">
+            <table cellpadding="0" cellspacing="0" style="margin:24px 0 0;">
               <tr>
-                <td style="background:linear-gradient(135deg,#059669,#0d9488);border-radius:12px;box-shadow:0 2px 8px rgba(13,148,136,0.25);">
-                  <a href="${url}" style="display:inline-block;padding:16px 36px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;letter-spacing:0.01em;">
-                    Donner mon retour →
+                <td style="background:linear-gradient(135deg,#0d9488,#0f766e);border-radius:10px;">
+                  <a href="${suiviUrl}" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;">
+                    Suivre ma commande →
                   </a>
                 </td>
               </tr>
             </table>
-            <p style="margin:12px 0 0;font-size:13px;color:#94a3b8;text-align:center;">
-              ⏱️ 3 minutes · 🔒 lien personnel
-            </p>
-
-            <div style="margin:32px 0 8px;padding:16px 18px;background:#f0fdf4;border-radius:10px;border-left:3px solid #10b981;">
-              <p style="margin:0;font-size:14px;color:#065f46;line-height:1.6;">
-                Si vous préférez répondre directement par email, je lirai chaque mot avec attention.
-                Vous pouvez simplement répondre à ce message.
-              </p>
-            </div>
-
-            <p style="margin:28px 0 0;font-size:15px;color:#475569;line-height:1.7;">
-              Merci sincèrement pour le temps que vous m'accorderez.
-            </p>
-            <p style="margin:6px 0 0;font-size:15px;color:#1e293b;font-weight:500;">
-              — Guillaume
-            </p>
-          </td>
-        </tr>
-
-        <tr>
-          <td style="padding:20px 40px 28px;border-top:1px solid #f1f5f9;">
-            <p style="margin:0 0 4px;font-size:11px;color:#cbd5e1;text-align:center;word-break:break-all;">
-              ${url}
-            </p>
-            <p style="margin:8px 0 0;font-size:12px;color:#94a3b8;text-align:center;">
-              <a href="https://gleba.fr" style="color:#10b981;text-decoration:none;">gleba.fr</a>
-              · <a href="mailto:contact@gleba.fr" style="color:#10b981;text-decoration:none;">contact@gleba.fr</a>
-            </p>
-          </td>
-        </tr>
-
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`,
-  }
-}
-
-export function feedbackSurveyEmail({
-  userName,
-  userEmail,
-  lang,
-  rating,
-  blockers,
-  whatBlocked,
-  missing,
-  modules,
-  willReturn,
-  comment,
-}: {
-  userName: string | null
-  userEmail: string
-  lang: string
-  rating: number
-  blockers: string[]
-  whatBlocked: string | null
-  missing: string | null
-  modules: string[]
-  willReturn: string | null
-  comment: string | null
-}) {
-  const date = new Date().toLocaleString("fr-FR", { timeZone: "Europe/Paris" })
-  const displayName = userName || userEmail
-
-  const blockersHtml = blockers.length
-    ? blockers
-        .map((b) => `<li>${escapeHtml(BLOCKER_LABELS_FR[b] || b)}</li>`)
-        .join("")
-    : "<li><em>—</em></li>"
-
-  const modulesHtml = modules.length
-    ? modules.map((m) => escapeHtml(MODULE_LABELS_FR[m] || m)).join(", ")
-    : "<em>—</em>"
-
-  const willReturnLabel = willReturn
-    ? WILL_RETURN_LABELS_FR[willReturn] || willReturn
-    : "—"
-
-  const row = (label: string, value: string) => `
-    <tr>
-      <td style="padding:8px 16px;font-size:13px;color:#64748b;border-bottom:1px solid #e2e8f0;vertical-align:top;width:140px;">${label}</td>
-      <td style="padding:8px 16px;font-size:14px;color:#1e293b;font-weight:500;border-bottom:1px solid #e2e8f0;">${value}</td>
-    </tr>`
-
-  const ratingColor = rating >= 8 ? "#059669" : rating >= 5 ? "#d97706" : "#dc2626"
-
-  return {
-    subject: `[Gleba Feedback] ${rating}/10 — ${displayName}`,
-    replyTo: userEmail,
-    html: `<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"></head>
-<body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;padding:40px 20px;">
-    <tr><td align="center">
-      <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
-        <tr>
-          <td style="background:linear-gradient(135deg,#065f46,#0d9488);padding:24px 40px;text-align:center;">
-            <h1 style="margin:0;font-size:22px;font-weight:300;color:#ffffff;">Retour utilisateur reçu</h1>
-            <p style="margin:8px 0 0;font-size:14px;color:#a7f3d0;">Note : <strong style="color:#ffffff;">${rating}/10</strong> · ${lang.toUpperCase()}</p>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:28px 40px;">
-            <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px;background:#f8fafc;border-radius:10px;overflow:hidden;">
-              ${row("Utilisateur", escapeHtml(displayName))}
-              ${row("Email", escapeHtml(userEmail))}
-              ${row("Note", `<span style="color:${ratingColor};font-weight:700;">${rating}/10</span>`)}
-              ${row("Reviendra ?", escapeHtml(willReturnLabel))}
-              ${row("Modules essayés", modulesHtml)}
-              ${row("Date", date)}
-            </table>
-
-            <h3 style="margin:24px 0 8px;font-size:14px;font-weight:600;color:#1e293b;">Points bloquants</h3>
-            <ul style="margin:0;padding:0 0 0 20px;font-size:14px;color:#1e293b;line-height:1.6;">
-              ${blockersHtml}
-            </ul>
-
-            ${
-              whatBlocked
-                ? `
-            <h3 style="margin:24px 0 8px;font-size:14px;font-weight:600;color:#1e293b;">Ce qui l'a freiné</h3>
-            <div style="background:#f8fafc;border-radius:10px;padding:14px;border-left:3px solid #f59e0b;">
-              <p style="margin:0;font-size:14px;color:#1e293b;line-height:1.6;white-space:pre-wrap;">${escapeHtml(whatBlocked)}</p>
-            </div>`
-                : ""
-            }
-
-            ${
-              missing
-                ? `
-            <h3 style="margin:24px 0 8px;font-size:14px;font-weight:600;color:#1e293b;">Fonctionnalités manquantes</h3>
-            <div style="background:#f8fafc;border-radius:10px;padding:14px;border-left:3px solid #6366f1;">
-              <p style="margin:0;font-size:14px;color:#1e293b;line-height:1.6;white-space:pre-wrap;">${escapeHtml(missing)}</p>
-            </div>`
-                : ""
-            }
-
-            ${
-              comment
-                ? `
-            <h3 style="margin:24px 0 8px;font-size:14px;font-weight:600;color:#1e293b;">Commentaire libre</h3>
-            <div style="background:#f8fafc;border-radius:10px;padding:14px;border-left:3px solid #10b981;">
-              <p style="margin:0;font-size:14px;color:#1e293b;line-height:1.6;white-space:pre-wrap;">${escapeHtml(comment)}</p>
-            </div>`
-                : ""
-            }
-
-            <p style="margin:24px 0 0;font-size:13px;color:#94a3b8;">
-              Répondez directement à cet email pour contacter l'utilisateur.
-            </p>
           </td>
         </tr>
         <tr>
           <td style="padding:16px 40px 24px;border-top:1px solid #f1f5f9;">
             <p style="margin:0;font-size:12px;color:#94a3b8;text-align:center;">
-              Formulaire de feedback — <a href="https://gleba.fr" style="color:#10b981;text-decoration:none;">gleba.fr</a>
+              ${escapeHtml(args.boutiqueNom)} · Boutique propulsée par <a href="https://gleba.fr" style="color:#10b981;text-decoration:none;">Gleba</a>
             </p>
           </td>
         </tr>
       </table>
     </td></tr>
   </table>
-</body>
-</html>`,
+</body></html>`,
   }
 }
+
+const STATUT_CLIENT: Record<string, { titre: string; message: string; couleur: string }> = {
+  confirmee: {
+    titre: "Votre commande est confirmée",
+    message: "Le producteur a confirmé votre commande et va la préparer.",
+    couleur: "#0d9488",
+  },
+  prete: {
+    titre: "Votre commande est prête !",
+    message: "Votre commande est prête. Vous pouvez venir la retirer selon les modalités convenues.",
+    couleur: "#16a34a",
+  },
+  livree: {
+    titre: "Commande remise — merci !",
+    message: "Votre commande vous a été remise. Merci de votre confiance, à bientôt !",
+    couleur: "#15803d",
+  },
+  annulee: {
+    titre: "Votre commande a été annulée",
+    message: "Votre commande a été annulée. Pour toute question, répondez directement à cet email.",
+    couleur: "#dc2626",
+  },
+}
+
+/** Faut-il notifier le client pour ce nouveau statut ? */
+export function statutNotifiableClient(statut: string): boolean {
+  return statut in STATUT_CLIENT
+}
+
+interface CommandeStatutEmailArgs {
+  boutiqueNom: string
+  slug: string
+  numero: string
+  suiviToken: string
+  clientNom: string
+  statut: string
+  total: number
+  modesPaiement: string | null
+}
+
+/** Email envoyé AU CLIENT à chaque changement de statut significatif. */
+export function commandeStatutClientEmail(args: CommandeStatutEmailArgs) {
+  const conf = STATUT_CLIENT[args.statut] ?? STATUT_CLIENT.confirmee
+  const suiviUrl = commandeSuiviUrl(args.slug, args.numero, args.suiviToken)
+  const rappelPaiement =
+    args.statut === "prete"
+      ? `<div style="background:#fffbeb;border-radius:10px;padding:14px 16px;border-left:3px solid #f59e0b;margin:16px 0;"><p style="margin:0;font-size:13px;color:#78350f;line-height:1.6;"><strong>${args.total.toFixed(2)} €</strong> à régler au retrait${args.modesPaiement ? `, par&nbsp;: ${escapeHtml(args.modesPaiement)}` : ""}.</p></div>`
+      : ""
+
+  return {
+    subject: `${conf.titre} — ${args.numero}`,
+    html: `<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;padding:40px 20px;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+        <tr>
+          <td style="background:${conf.couleur};padding:28px 40px;text-align:center;">
+            <h1 style="margin:0;font-size:22px;font-weight:300;color:#ffffff;">${escapeHtml(conf.titre)}</h1>
+            <p style="margin:8px 0 0;font-size:14px;color:#ffffff;opacity:0.85;">${escapeHtml(args.boutiqueNom)} — ${args.numero}</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:32px 40px;">
+            <p style="margin:0 0 16px;font-size:15px;color:#1e293b;line-height:1.6;">
+              Bonjour ${escapeHtml(args.clientNom)},<br><br>
+              ${escapeHtml(conf.message)}
+            </p>
+            ${rappelPaiement}
+            <table cellpadding="0" cellspacing="0" style="margin:20px 0 0;">
+              <tr>
+                <td style="background:${conf.couleur};border-radius:10px;">
+                  <a href="${suiviUrl}" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;">
+                    Voir ma commande →
+                  </a>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:16px 40px 24px;border-top:1px solid #f1f5f9;">
+            <p style="margin:0;font-size:12px;color:#94a3b8;text-align:center;">
+              ${escapeHtml(args.boutiqueNom)} · Boutique propulsée par <a href="https://gleba.fr" style="color:#10b981;text-decoration:none;">Gleba</a>
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`,
+  }
+}
+
