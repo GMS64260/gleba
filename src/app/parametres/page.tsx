@@ -82,6 +82,9 @@ export default function ParametresPage() {
   const [mcpHasToken, setMcpHasToken] = React.useState(false)
   const [mcpCopied, setMcpCopied] = React.useState<string | null>(null)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const fullFileInputRef = React.useRef<HTMLInputElement>(null)
+  const [exportingFull, setExportingFull] = React.useState(false)
+  const [importingFull, setImportingFull] = React.useState(false)
   const imageInputRef = React.useRef<HTMLInputElement>(null)
 
   // Charger les paramètres au montage.
@@ -336,6 +339,85 @@ export default function ParametresPage() {
       if (fileInputRef.current) {
         fileInputRef.current.value = ''
       }
+    }
+  }
+
+  // Sauvegarde COMPLÈTE du compte (toutes données + référentiels) — migration
+  const handleExportFull = async () => {
+    setExportingFull(true)
+    try {
+      const response = await fetch('/api/account/export')
+      if (!response.ok) throw new Error('Erreur export')
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `gleba_sauvegarde_complete_${new Date().toISOString().split('T')[0]}.json`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+      toast({
+        title: 'Sauvegarde complète téléchargée',
+        description: 'Conservez ce fichier précieusement. Il contient toutes vos données.',
+      })
+    } catch {
+      toast({
+        variant: 'destructive',
+        title: 'Erreur',
+        description: 'Impossible de générer la sauvegarde complète',
+      })
+    } finally {
+      setExportingFull(false)
+    }
+  }
+
+  const handleFullImportClick = () => {
+    fullFileInputRef.current?.click()
+  }
+
+  const handleFullFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const ok = await confirmDialog(
+      'Restaurer une sauvegarde complète ?\n\n' +
+        'Recommandé sur un compte VIERGE (instance fraîchement installée). ' +
+        "Sur un compte déjà rempli, l'import est annulé pour éviter tout conflit — " +
+        'aucune donnée existante ne sera modifiée.\n\nContinuer ?'
+    )
+    if (!ok) {
+      if (fullFileInputRef.current) fullFileInputRef.current.value = ''
+      return
+    }
+
+    setImportingFull(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const response = await fetch('/api/account/import', {
+        method: 'POST',
+        body: formData,
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'Erreur import')
+
+      const warn = Array.isArray(result.warnings) && result.warnings.length
+        ? ` (${result.warnings.length} avertissement${result.warnings.length > 1 ? 's' : ''})`
+        : ''
+      toast({
+        title: 'Restauration réussie',
+        description: (result.message || 'Données restaurées') + warn,
+      })
+    } catch (err) {
+      toast({
+        variant: 'destructive',
+        title: 'Échec de la restauration',
+        description: err instanceof Error ? err.message : 'Impossible de restaurer la sauvegarde',
+      })
+    } finally {
+      setImportingFull(false)
+      if (fullFileInputRef.current) fullFileInputRef.current.value = ''
     }
   }
 
@@ -873,54 +955,96 @@ export default function ParametresPage() {
           </CardContent>
         </Card>
 
-        {/* Export / Import */}
+        {/* Sauvegarde complète & migration */}
         <Card>
           <CardHeader>
-            <CardTitle>Données</CardTitle>
-            <CardDescription>Exportez ou importez vos données</CardDescription>
+            <CardTitle>Sauvegarde & portabilité</CardTitle>
+            <CardDescription>
+              Emportez toutes vos données où vous voulez. Idéal pour migrer vers votre
+              propre serveur (Raspberry Pi, NAS…).
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="grid md:grid-cols-2 gap-6">
+              {/* Sauvegarde complète */}
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium text-slate-900">Sauvegarde complète</h4>
+                <p className="text-sm text-slate-500">
+                  Un seul fichier avec <strong>toutes</strong> vos données : potager, verger,
+                  élevage, comptabilité, stocks, préférences. Vos données vous appartiennent.
+                </p>
+                <Button onClick={handleExportFull} disabled={exportingFull}>
+                  {exportingFull ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4 mr-2" />
+                  )}
+                  {exportingFull ? 'Préparation…' : 'Télécharger ma sauvegarde'}
+                </Button>
+              </div>
+
+              {/* Restauration / migration */}
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium text-slate-900">Restaurer / migrer</h4>
+                <p className="text-sm text-slate-500">
+                  Importez une sauvegarde complète sur cette instance. À faire sur un
+                  compte <strong>vierge</strong> (ex. votre nouvelle installation).
+                </p>
+                <input
+                  ref={fullFileInputRef}
+                  type="file"
+                  accept=".json"
+                  onChange={handleFullFileChange}
+                  className="hidden"
+                />
+                <Button variant="outline" onClick={handleFullImportClick} disabled={importingFull}>
+                  {importingFull ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Upload className="h-4 w-4 mr-2" />
+                  )}
+                  {importingFull ? 'Restauration…' : 'Restaurer une sauvegarde'}
+                </Button>
+              </div>
+            </div>
+
+            <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
+              <p className="text-sm text-emerald-800">
+                <strong>Migrer vers mon propre serveur :</strong> téléchargez votre sauvegarde
+                ici, installez Gleba chez vous (voir la documentation d'auto-hébergement),
+                créez votre compte sur la nouvelle instance, puis restaurez le fichier. Vous
+                récupérez tout, sans repartir de zéro.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Export tabulaire (avancé) */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Export tabulaire (avancé)</CardTitle>
+            <CardDescription>
+              Pour tableur ou analyse. N'inclut que le module potager (planches, cultures,
+              récoltes) — pour une vraie sauvegarde, utilisez « Sauvegarde complète » ci-dessus.
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-6">
-              {/* Export */}
               <div className="space-y-3">
-                <h4 className="text-sm font-medium text-slate-900">Exporter</h4>
-                <p className="text-sm text-slate-500">
-                  Téléchargez une sauvegarde de toutes vos données
-                </p>
+                <h4 className="text-sm font-medium text-slate-900">Exporter (partiel)</h4>
                 <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => handleExport('json')}
-                    disabled={exporting}
-                  >
-                    {exporting ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <Download className="h-4 w-4 mr-2" />
-                    )}
+                  <Button variant="outline" onClick={() => handleExport('json')} disabled={exporting}>
+                    {exporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
                     JSON
                   </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => handleExport('csv')}
-                    disabled={exporting}
-                  >
-                    {exporting ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <Download className="h-4 w-4 mr-2" />
-                    )}
+                  <Button variant="outline" onClick={() => handleExport('csv')} disabled={exporting}>
+                    {exporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
                     CSV
                   </Button>
                 </div>
               </div>
-
-              {/* Import */}
               <div className="space-y-3">
-                <h4 className="text-sm font-medium text-slate-900">Importer</h4>
-                <p className="text-sm text-slate-500">
-                  Restaurez vos données depuis un fichier JSON
-                </p>
+                <h4 className="text-sm font-medium text-slate-900">Importer (partiel)</h4>
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -929,21 +1053,10 @@ export default function ParametresPage() {
                   className="hidden"
                 />
                 <Button variant="outline" onClick={handleImportClick} disabled={importing}>
-                  {importing ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <Upload className="h-4 w-4 mr-2" />
-                  )}
+                  {importing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
                   {importing ? 'Import en cours...' : 'Importer JSON'}
                 </Button>
               </div>
-            </div>
-
-            <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-              <p className="text-sm text-yellow-800">
-                <strong>Attention :</strong> L'import remplacera les données existantes.
-                Pensez à faire un export avant d'importer.
-              </p>
             </div>
           </CardContent>
         </Card>
