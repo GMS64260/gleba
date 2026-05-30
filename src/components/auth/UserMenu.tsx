@@ -16,7 +16,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { User, LogOut, Shield, Settings } from "lucide-react"
+import { User, LogOut, Shield, Settings, Megaphone } from "lucide-react"
 
 interface UserMenuProps {
   user: {
@@ -53,6 +53,13 @@ export function UserMenu({ user }: UserMenuProps) {
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+
+        <Link href="/communaute">
+          <DropdownMenuItem className="cursor-pointer">
+            <Megaphone className="mr-2 h-4 w-4" />
+            Community Voice
+          </DropdownMenuItem>
+        </Link>
 
         <Link href="/parametres">
           <DropdownMenuItem className="cursor-pointer">

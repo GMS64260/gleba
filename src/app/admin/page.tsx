@@ -7,7 +7,7 @@ import prisma from "@/lib/prisma"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
-import { Users, UserPlus, Shield, Activity, Database, MessageSquare, Bug } from "lucide-react"
+import { Users, UserPlus, Shield, Activity, Database, MessageSquare, Bug, TrendingUp } from "lucide-react"
 import { AdminTabs } from "@/components/admin/AdminTabs"
 
 export default async function AdminPage() {
@@ -180,6 +180,26 @@ export default async function AdminPage() {
                 <Button variant="outline" className="w-full">
                   <Bug className="mr-2 h-4 w-4" />
                   Dashboard bugs
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <TrendingUp className="h-5 w-5 text-amber-600" />
+                Utilisation des comptes
+              </CardTitle>
+              <CardDescription>
+                Courbes d&apos;usage dans le temps et top utilisateurs (démo &amp; admins exclus)
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link href="/admin/usage">
+                <Button variant="outline" className="w-full">
+                  <TrendingUp className="mr-2 h-4 w-4" />
+                  Voir l&apos;utilisation par compte
                 </Button>
               </Link>
             </CardContent>

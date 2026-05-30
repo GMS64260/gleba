@@ -7,7 +7,7 @@
  */
 
 import * as React from "react"
-import { Filter } from "lucide-react"
+import { Filter, MapPin } from "lucide-react"
 
 import { Input } from "@/components/ui/input"
 import {
@@ -45,6 +45,20 @@ export function ItpCalendarView() {
   const [recherche, setRecherche] = React.useState('')
   const [editingItp, setEditingItp] = React.useState<ITPWithEspece | null>(null)
   const [editDialogOpen, setEditDialogOpen] = React.useState(false)
+  // Décalage climatique (zone de l'exploitation) appliqué aux barres.
+  const [decalageZone, setDecalageZone] = React.useState(0)
+  const [zoneLabel, setZoneLabel] = React.useState<string | null>(null)
+
+  React.useEffect(() => {
+    fetch("/api/calendrier-climat")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d) return
+        setDecalageZone(d.decalage ?? 0)
+        setZoneLabel(d.label ?? null)
+      })
+      .catch(() => {})
+  }, [])
 
   React.useEffect(() => {
     async function fetchITPs() {
@@ -130,6 +144,12 @@ export function ItpCalendarView() {
           <div className="w-4 h-3 bg-purple-500 rounded"></div>
           <span>Récolte</span>
         </div>
+        {zoneLabel && decalageZone !== 0 && (
+          <span className="inline-flex items-center gap-1 text-emerald-700">
+            <MapPin className="h-3 w-3" />
+            {zoneLabel} ({decalageZone > 0 ? "+" : "−"}{Math.abs(decalageZone)} sem.)
+          </span>
+        )}
         <span className="ml-auto text-muted-foreground">{itpsFiltres.length} itineraires</span>
       </div>
 
@@ -158,7 +178,7 @@ export function ItpCalendarView() {
             </thead>
             <tbody>
               {itpsFiltres.map(itp => (
-                <GanttRow key={itp.id} itp={itp} onEdit={handleEdit} />
+                <GanttRow key={itp.id} itp={itp} onEdit={handleEdit} decalage={decalageZone} />
               ))}
             </tbody>
           </table>

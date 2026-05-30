@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
-import { Github, Milestone, Shield } from "lucide-react";
+import { Github, Megaphone, Shield } from "lucide-react";
 
 /**
  * Nav + footer partagés pour toutes les pages marketing / SEO.
@@ -31,11 +31,11 @@ function MarketingNav() {
       </Link>
       <div className="flex items-center gap-5">
         <Link
-          href="/roadmap"
-          className="hidden sm:flex items-center gap-1.5 text-sm text-slate-400 hover:text-emerald-600 transition-colors"
+          href="/communaute"
+          className="hidden sm:flex items-center gap-1.5 text-sm text-slate-400 hover:text-violet-600 transition-colors"
         >
-          <Milestone className="h-4 w-4" />
-          <span>Roadmap</span>
+          <Megaphone className="h-4 w-4" />
+          <span>Community Voice</span>
         </Link>
         <a
           href="https://github.com/GMS64260/gleba"

@@ -126,10 +126,10 @@ export default function NotFound() {
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
-          <Link href="/roadmap">
+          <Link href="/communaute">
             <Button variant="outline" size="sm">
               <Compass className="h-4 w-4 mr-2" />
-              Roadmap
+              Community Voice
             </Button>
           </Link>
           <a

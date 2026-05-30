@@ -31,7 +31,7 @@ import {
   CloudSun,
   ClipboardCheck,
   Moon,
-  Milestone,
+  Megaphone,
   ArrowRight,
 } from "lucide-react";
 
@@ -245,11 +245,11 @@ export function HomeLanding() {
           </Link>
           <div className="flex items-center gap-3 sm:gap-5">
             <Link
-              href="/roadmap"
-              className="hidden sm:flex items-center gap-1.5 text-sm text-slate-400 hover:text-emerald-600 transition-colors duration-200"
+              href="/communaute"
+              className="hidden sm:flex items-center gap-1.5 text-sm text-slate-400 hover:text-violet-600 transition-colors duration-200"
             >
-              <Milestone className="h-4 w-4" />
-              <span>Roadmap</span>
+              <Megaphone className="h-4 w-4" />
+              <span>Community Voice</span>
             </Link>
             <a
               href="https://github.com/GMS64260/gleba"
@@ -629,8 +629,8 @@ export function HomeLanding() {
             >
               contact@gleba.fr
             </a>
-            <Link href="/roadmap" className="hover:text-slate-600 transition-colors duration-200">
-              Roadmap
+            <Link href="/communaute" className="hover:text-slate-600 transition-colors duration-200">
+              Community Voice
             </Link>
             <a
               href="https://github.com/GMS64260/gleba"

@@ -7,6 +7,11 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { sendMail, welcomeEmail } from "@/lib/mail"
+import {
+  getOrCreateUnsubscribeToken,
+  unsubscribeUrl,
+  listUnsubscribeHeaders,
+} from "@/lib/unsubscribe"
 
 const BASE_URL = process.env.NEXTAUTH_URL || "https://gleba.fr"
 
@@ -51,10 +56,14 @@ export async function GET(request: NextRequest) {
     })
 
     // Envoyer l'email de bienvenue maintenant que le compte est vérifié
-    const welcome = welcomeEmail(user.name)
-    sendMail({ to: user.email, subject: welcome.subject, html: welcome.html }).catch((err) =>
-      console.error("Erreur envoi email bienvenue:", err)
-    )
+    const unsubToken = await getOrCreateUnsubscribeToken(user.id)
+    const welcome = welcomeEmail(user.name, unsubscribeUrl(unsubToken))
+    sendMail({
+      to: user.email,
+      subject: welcome.subject,
+      html: welcome.html,
+      headers: listUnsubscribeHeaders(unsubToken),
+    }).catch((err) => console.error("Erreur envoi email bienvenue:", err))
 
     return redirect("/login?verify=success")
   } catch (error) {
