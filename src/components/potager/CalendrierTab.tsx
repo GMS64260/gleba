@@ -41,6 +41,7 @@ import { ItpCalendarView } from "@/components/dashboard/ItpCalendarView"
 import { IrrigationAdvisor } from "@/components/meteo"
 import { format, startOfWeek, endOfWeek, addWeeks } from "date-fns"
 import { fr } from "date-fns/locale"
+import { kpiCardClass, kpiSubtleClass } from "@/lib/kpi-theme"
 
 interface DashboardStats {
   culturesActives: number
@@ -317,11 +318,11 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
       {/* Mini-stats */}
       <TooltipProvider delayDuration={150}>
         <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
-          <Card className="bg-gradient-to-br from-emerald-500 to-emerald-600 text-white">
+          <Card className={kpiCardClass("neutre")}>
             <CardHeader className="pb-1 pt-3 px-4">
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <CardDescription className="text-emerald-100 text-xs flex items-center gap-1 cursor-help">
+                  <CardDescription className={`${kpiSubtleClass("neutre")} text-xs flex items-center gap-1 cursor-help`}>
                     Cultures actives
                     <Info className="h-3 w-3 opacity-80" />
                   </CardDescription>
@@ -349,10 +350,10 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                 const actives = stats?.culturesActives || 0
                 const delta = Math.max(0, total - actives)
                 if (delta === 0) {
-                  return <p className="text-xs text-emerald-100">sur {total} planifiée{total > 1 ? 's' : ''}</p>
+                  return <p className={`text-xs ${kpiSubtleClass("neutre")}`}>sur {total} planifiée{total > 1 ? 's' : ''}</p>
                 }
                 return (
-                  <p className="text-xs text-emerald-100">
+                  <p className={`text-xs ${kpiSubtleClass("neutre")}`}>
                     sur {total} planifiées · {delta} non démarrée{delta > 1 ? 's' : ''}/terminée{delta > 1 ? 's' : ''}
                   </p>
                 )
@@ -360,11 +361,11 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
             </CardContent>
           </Card>
 
-          <Card className="bg-gradient-to-br from-slate-700 to-slate-800 text-white">
+          <Card className={kpiCardClass("neutre")}>
             <CardHeader className="pb-1 pt-3 px-4">
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <CardDescription className="text-slate-300 text-xs flex items-center gap-1 cursor-help">
+                  <CardDescription className={`${kpiSubtleClass("neutre")} text-xs flex items-center gap-1 cursor-help`}>
                     Surface cultivée
                     <Info className="h-3 w-3 opacity-80" />
                   </CardDescription>
@@ -387,20 +388,20 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
             <CardContent className="pb-3 px-4">
               {stats?.surfacePlanifiee !== undefined &&
               stats.surfacePlanifiee !== (stats.surfaceCultivee ?? stats.surfaceTotale) ? (
-                <p className="text-xs text-slate-300">
+                <p className={`text-xs ${kpiSubtleClass("neutre")}`}>
                   / Planifiée {stats.surfacePlanifiee} m² · {stats.planches} planches
                 </p>
               ) : (
-                <p className="text-xs text-slate-300">{stats?.planches || 0} planches</p>
+                <p className={`text-xs ${kpiSubtleClass("neutre")}`}>{stats?.planches || 0} planches</p>
               )}
             </CardContent>
           </Card>
 
-          <Card className="bg-gradient-to-br from-amber-600 to-amber-700 text-white">
+          <Card className={kpiCardClass("revenu")}>
             <CardHeader className="pb-1 pt-3 px-4">
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <CardDescription className="text-amber-100 text-xs flex items-center gap-1 cursor-help">
+                  <CardDescription className={`${kpiSubtleClass("revenu")} text-xs flex items-center gap-1 cursor-help`}>
                     Récoltes {year}
                     <Info className="h-3 w-3 opacity-80" />
                   </CardDescription>
@@ -423,7 +424,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                   l'impression que les 85 kg = total de l'année (le bloc
                   Planification annonçait 1367 kg attendus). */}
               {(stats?.recoltesProjectionKg ?? 0) > 0 && (
-                <p className="text-xs text-amber-100 mb-0.5">
+                <p className={`text-xs ${kpiSubtleClass("revenu")} mb-0.5`}>
                   + {stats?.recoltesProjectionKg?.toFixed(1)} kg à venir
                   {stats?.recoltesTotalAttenduKg
                     ? ` (total attendu ${stats.recoltesTotalAttenduKg.toFixed(1)} kg)`
@@ -431,11 +432,11 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                 </p>
               )}
               {aucuneRecolteN ? (
-                <p className="text-xs text-amber-100 italic">
+                <p className={`text-xs ${kpiSubtleClass("revenu")} italic`}>
                   Saison à venir (N-1 : {stats?.recoltesAnneePrecedente?.toFixed(1)} kg)
                 </p>
               ) : premiereAnnee ? (
-                <p className="text-xs text-amber-100 italic">
+                <p className={`text-xs ${kpiSubtleClass("revenu")} italic`}>
                   Première année avec activité (N-1 = 0 kg)
                 </p>
               ) : hasComparatifN1 ? (
@@ -451,12 +452,12 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                       {yearDiffPercent}% vs {year - 1}
                     </span>
                   </div>
-                  <p className="text-xs text-amber-100 mt-0.5">
+                  <p className={`text-xs ${kpiSubtleClass("revenu")} mt-0.5`}>
                     (YTD vs YTD année dernière)
                   </p>
                 </>
               ) : (
-                <p className="text-xs text-amber-100 italic">
+                <p className={`text-xs ${kpiSubtleClass("revenu")} italic`}>
                   Pas de comparatif N-1 disponible
                 </p>
               )}
@@ -464,11 +465,11 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
           </Card>
 
           {/* Tâches résumé */}
-          <Card className="bg-gradient-to-br from-teal-500 to-teal-600 text-white">
+          <Card className={kpiCardClass("alerte")}>
             <CardHeader className="pb-1 pt-3 px-4">
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <CardDescription className="text-teal-100 text-xs flex items-center gap-1 cursor-help">
+                  <CardDescription className={`${kpiSubtleClass("alerte")} text-xs flex items-center gap-1 cursor-help`}>
                     Cette semaine
                     <Info className="h-3 w-3 opacity-80" />
                   </CardDescription>
@@ -500,7 +501,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                   dont {taches.stats.enRetard} en retard
                 </p>
               ) : (
-                <p className="text-xs text-teal-100">tâches à faire</p>
+                <p className={`text-xs ${kpiSubtleClass("alerte")}`}>tâches à faire</p>
               )}
             </CardContent>
           </Card>

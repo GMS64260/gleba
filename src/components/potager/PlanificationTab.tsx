@@ -24,6 +24,7 @@ import {
 } from "lucide-react"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { kpiCardClass, kpiSubtleClass } from "@/lib/kpi-theme"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -208,65 +209,65 @@ function PlanificationSubTab({ year }: { year: number }) {
     <div className="space-y-6">
       {/* Stats */}
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
-        <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white">
+        <Card className={kpiCardClass("neutre")}>
           <CardHeader className="pb-1 pt-3 px-4">
-            <CardDescription className="text-green-100 text-xs">Cultures prévues</CardDescription>
+            <CardDescription className={`${kpiSubtleClass("neutre")} text-xs`}>Cultures prévues</CardDescription>
             <CardTitle className="text-2xl">
-              {isLoading ? <Skeleton className="h-8 w-12 bg-green-400" /> : stats?.totalCultures || 0}
+              {isLoading ? <Skeleton className="h-8 w-12 bg-slate-500" /> : stats?.totalCultures || 0}
             </CardTitle>
           </CardHeader>
           <CardContent className="pb-3 px-4">
-            <p className="text-xs text-green-100">{stats?.culturesACreer || 0} à créer</p>
+            <p className={`text-xs ${kpiSubtleClass("neutre")}`}>{stats?.culturesACreer || 0} à créer</p>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-amber-500 to-orange-500 text-white">
+        <Card className={kpiCardClass("neutre")}>
           <CardHeader className="pb-1 pt-3 px-4">
-            <CardDescription className="text-amber-100 text-xs">Surface planifiée</CardDescription>
+            <CardDescription className={`${kpiSubtleClass("neutre")} text-xs`}>Surface planifiée</CardDescription>
             <CardTitle className="text-2xl">
-              {isLoading ? <Skeleton className="h-8 w-16 bg-amber-400" /> : `${stats?.surfacePlanifiee ?? stats?.surfaceTotale ?? 0} m²`}
+              {isLoading ? <Skeleton className="h-8 w-16 bg-slate-500" /> : `${stats?.surfacePlanifiee ?? stats?.surfaceTotale ?? 0} m²`}
             </CardTitle>
           </CardHeader>
           <CardContent className="pb-3 px-4">
             {stats && stats.surfaceCultivee !== undefined && stats.surfaceCultivee !== stats.surfacePlanifiee ? (
-              <p className="text-xs text-amber-100">
+              <p className={`text-xs ${kpiSubtleClass("neutre")}`}>
                 Dont cultivée {stats.surfaceCultivee} m²
               </p>
             ) : (
-              <p className="text-xs text-amber-100">Planifiée pour {year}</p>
+              <p className={`text-xs ${kpiSubtleClass("neutre")}`}>Planifiée pour {year}</p>
             )}
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white">
+        <Card className={kpiCardClass("revenu")}>
           <CardHeader className="pb-1 pt-3 px-4">
-            <CardDescription className="text-blue-100 text-xs">Récoltes {stats?.annee ?? year} attendues</CardDescription>
+            <CardDescription className={`${kpiSubtleClass("revenu")} text-xs`}>Récoltes {stats?.annee ?? year} attendues</CardDescription>
             <CardTitle className="text-2xl">
               {isLoading
-                ? <Skeleton className="h-8 w-16 bg-blue-400" />
+                ? <Skeleton className="h-8 w-16 bg-emerald-400" />
                 : `${(stats?.recoltesTotalAttenduKg ?? stats?.recoltesTotales ?? 0).toFixed(1)} kg`}
             </CardTitle>
           </CardHeader>
           <CardContent className="pb-3 px-4">
-            <p className="text-xs text-blue-100">
+            <p className={`text-xs ${kpiSubtleClass("revenu")}`}>
               {(stats?.recoltesRealiseesKg ?? 0).toFixed(1)} kg réalisé · {(stats?.recoltesProjectionKg ?? stats?.recoltesTotales ?? 0).toFixed(1)} kg à venir
             </p>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white">
+        <Card className={kpiCardClass("neutre")}>
           <CardHeader className="pb-1 pt-3 px-4">
-            <CardDescription className="text-purple-100 text-xs">Variétés planifiées</CardDescription>
+            <CardDescription className={`${kpiSubtleClass("neutre")} text-xs`}>Variétés planifiées</CardDescription>
             <CardTitle className="text-2xl">
               {isLoading ? (
-                <Skeleton className="h-8 w-10 bg-purple-400" />
+                <Skeleton className="h-8 w-10 bg-slate-500" />
               ) : (
                 stats?.nbVarietes ?? 0
               )}
             </CardTitle>
           </CardHeader>
           <CardContent className="pb-3 px-4">
-            <p className="text-xs text-purple-100">
+            <p className={`text-xs ${kpiSubtleClass("neutre")}`}>
               {stats?.nbEspeces ? `${stats.nbEspeces} espèce(s) couverte(s)` : "—"}
             </p>
           </CardContent>

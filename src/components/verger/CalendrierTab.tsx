@@ -38,6 +38,7 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { VergerCalendarView } from "./VergerCalendarView"
 import { TreeCareGantt } from "./TreeCareGantt"
+import { kpiCardClass, kpiSubtleClass } from "@/lib/kpi-theme"
 
 interface DashboardArbresData {
   stats: {
@@ -188,26 +189,26 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
     <div className="space-y-6">
       {/* Stats Cards */}
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
-        <Card className="bg-gradient-to-br from-lime-500 to-lime-600 text-white">
+        <Card className={kpiCardClass("neutre")}>
           <CardHeader className="pb-1 pt-3 px-4">
-            <CardDescription className="text-lime-100 text-xs">Total arbres</CardDescription>
+            <CardDescription className={`${kpiSubtleClass("neutre")} text-xs`}>Total arbres</CardDescription>
             <CardTitle className="text-2xl">
               {/* QA Hélène 2026-05-15 — Bug #9 : on garde l'ancienne
                   valeur visible pendant le refetch (stale-while-revalidate)
                   pour éviter le big number absent ~2s pendant qu'on
                   recharge après un ajout. Skeleton seulement au premier
                   chargement (data = null). */}
-              {data == null ? <Skeleton className="h-8 w-12 bg-lime-400" /> : data.stats.arbresTotal || 0}
+              {data == null ? <Skeleton className="h-8 w-12 bg-slate-500" /> : data.stats.arbresTotal || 0}
             </CardTitle>
           </CardHeader>
           <CardContent className="pb-3 px-4">
-            <p className="text-xs text-lime-100">{data?.stats.arbresProductifs || 0} fruitiers productifs</p>
+            <p className={`text-xs ${kpiSubtleClass("neutre")}`}>{data?.stats.arbresProductifs || 0} fruitiers productifs</p>
             {/* Fix verger 2026-05-31 (bug #2) — Rend explicite l'écart entre
                 le total verger (tous les arbres) et la liste Parcelles (arbres
                 rattachés à une parcelle) : N arbre(s) orphelin(s) sans
                 parcelle. */}
             {data?.stats.arbresSansParcelle ? (
-              <p className="text-xs text-lime-200">
+              <p className={`text-xs ${kpiSubtleClass("neutre")}`}>
                 dont {data.stats.arbresSansParcelle} sans parcelle
               </p>
             ) : null}
@@ -215,37 +216,37 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
         </Card>
 
         {/* Bug #6 — Surface verger (ha) */}
-        <Card className="bg-gradient-to-br from-emerald-500 to-emerald-600 text-white">
+        <Card className={kpiCardClass("neutre")}>
           <CardHeader className="pb-1 pt-3 px-4">
-            <CardDescription className="text-emerald-100 text-xs">Surface verger</CardDescription>
+            <CardDescription className={`${kpiSubtleClass("neutre")} text-xs`}>Surface verger</CardDescription>
             <CardTitle className="text-2xl">
-              {loading ? <Skeleton className="h-8 w-16 bg-emerald-400" /> : `${data?.stats.surfaceVergerHa ?? 0} ha`}
+              {loading ? <Skeleton className="h-8 w-16 bg-slate-500" /> : `${data?.stats.surfaceVergerHa ?? 0} ha`}
             </CardTitle>
           </CardHeader>
           <CardContent className="pb-3 px-4">
-            <p className="text-xs text-emerald-100">
+            <p className={`text-xs ${kpiSubtleClass("neutre")}`}>
               Parcelles avec arbres
             </p>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-slate-700 to-slate-800 text-white">
+        <Card className={kpiCardClass("neutre")}>
           <CardHeader className="pb-1 pt-3 px-4">
-            <CardDescription className="text-slate-300 text-xs">Fruitiers</CardDescription>
+            <CardDescription className={`${kpiSubtleClass("neutre")} text-xs`}>Fruitiers</CardDescription>
             <CardTitle className="text-2xl">
               {loading ? <Skeleton className="h-8 w-12 bg-slate-500" /> : data?.stats.arbresFruitiers || 0}
             </CardTitle>
           </CardHeader>
           <CardContent className="pb-3 px-4">
-            <p className="text-xs text-slate-300">+ {data?.stats.arbresPetitsFruits || 0} petits fruits</p>
+            <p className={`text-xs ${kpiSubtleClass("neutre")}`}>+ {data?.stats.arbresPetitsFruits || 0} petits fruits</p>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-amber-600 to-amber-700 text-white">
+        <Card className={kpiCardClass("revenu")}>
           <CardHeader className="pb-1 pt-3 px-4">
-            <CardDescription className="text-amber-100 text-xs">Récoltes fruits {year}</CardDescription>
+            <CardDescription className={`${kpiSubtleClass("revenu")} text-xs`}>Récoltes fruits {year}</CardDescription>
             <CardTitle className="text-2xl">
-              {loading ? <Skeleton className="h-8 w-16 bg-amber-400" /> : `${data?.stats.recoltesFruitsAnnee || 0} kg`}
+              {loading ? <Skeleton className="h-8 w-16 bg-emerald-400" /> : `${data?.stats.recoltesFruitsAnnee || 0} kg`}
             </CardTitle>
           </CardHeader>
           <CardContent className="pb-3 px-4">
@@ -261,22 +262,22 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                 </span>
               </div>
             ) : (
-              <p className="text-[10px] text-amber-100 italic">
+              <p className={`text-[10px] ${kpiSubtleClass("revenu")} italic`}>
                 Pas de comparatif N-1 disponible
               </p>
             )}
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-teal-500 to-teal-600 text-white">
+        <Card className={kpiCardClass("revenu")}>
           <CardHeader className="pb-1 pt-3 px-4">
-            <CardDescription className="text-teal-100 text-xs">Production bois</CardDescription>
+            <CardDescription className={`${kpiSubtleClass("revenu")} text-xs`}>Production bois</CardDescription>
             <CardTitle className="text-2xl">
-              {loading ? <Skeleton className="h-8 w-16 bg-teal-400" /> : `${data?.stats.productionBoisAnnee || 0} m³`}
+              {loading ? <Skeleton className="h-8 w-16 bg-emerald-400" /> : `${data?.stats.productionBoisAnnee || 0} m³`}
             </CardTitle>
           </CardHeader>
           <CardContent className="pb-3 px-4">
-            <p className="text-xs text-teal-100">
+            <p className={`text-xs ${kpiSubtleClass("revenu")}`}>
               {data?.stats.venteBoisAnnee ? `${data.stats.venteBoisAnnee} EUR vendus` : "Aucune vente"}
             </p>
           </CardContent>
