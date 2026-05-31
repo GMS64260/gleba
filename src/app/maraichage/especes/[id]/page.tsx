@@ -58,6 +58,7 @@ import {
   ESPECE_CATEGORIES,
   ESPECE_NIVEAUX,
   ESPECE_IRRIGATION,
+  ESPECE_IRRIGATION_LABELS,
 } from "@/lib/validations/espece"
 import { StarRating } from "@/components/avis/StarRating"
 import { AvisDialog } from "@/components/avis/AvisDialog"
@@ -703,7 +704,7 @@ export default function EditEspecePage() {
                               <SelectContent>
                                 {ESPECE_IRRIGATION.map((i) => (
                                   <SelectItem key={i} value={i}>
-                                    {i}
+                                    {ESPECE_IRRIGATION_LABELS[i]}
                                   </SelectItem>
                                 ))}
                               </SelectContent>

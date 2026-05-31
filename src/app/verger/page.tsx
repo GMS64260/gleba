@@ -102,9 +102,9 @@ function VergerPageInner() {
 
       {/* Header global */}
       <header className="border-b bg-white/95 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-2.5 flex items-center justify-between gap-2 max-w-[1600px]">
-          <div className="flex items-center gap-3">
-            <Link href="/" className="flex items-center hover:opacity-90 transition-opacity">
+        <div className="container mx-auto px-4 py-2.5 flex items-center justify-between gap-2 max-w-[1600px] flex-wrap">
+          <div className="flex items-center gap-3 min-w-0">
+            <Link href="/" className="flex items-center hover:opacity-90 transition-opacity flex-shrink-0">
               <Image
                 src="/gleba-logo.png"
                 alt="Gleba"
@@ -116,7 +116,7 @@ function VergerPageInner() {
             </Link>
             {session?.user && <HeaderMeteoWidget />}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap justify-end">
             {session?.user && <ModulesNav current="verger" />}
             {session?.user && <BoutiqueHeaderButton />}
             <Link href="/parametres">
@@ -134,7 +134,7 @@ function VergerPageInner() {
         <div className="container mx-auto px-4 max-w-[1600px]">
           <div className="flex items-center justify-between gap-2 flex-wrap lg:flex-nowrap">
             {/* DEV2 #7 — Tabs scrollables horizontalement sous lg (1366) */}
-            <div className="flex items-center -mb-px overflow-x-auto scrollbar-thin flex-shrink min-w-0 max-w-full">
+            <div className="flex items-center -mb-px overflow-x-auto scrollbar-hide flex-shrink min-w-0 max-w-full">
               {TABS.map((tab) => {
                 const isActive = activeTab === tab.id
                 return (

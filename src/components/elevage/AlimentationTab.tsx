@@ -45,8 +45,30 @@ import { verifierPrixAliment, type CategorieAliment } from "@/lib/elevage/prix-a
 // ============================================================
 
 export function AlimentationTab() {
+  // Bug testeur 2026-05-31 — le bouton « + Soin » d'une fiche animale pointe
+  // vers /elevage?tab=alimentation&sub=soins&animalId=29 mais on retombait
+  // toujours sur l'onglet Stocks (defaultValue figé) et le formulaire ne
+  // s'ouvrait pas. On lit `sub` (onglet) et `animalId` (pré-remplissage du
+  // soin) depuis l'URL au montage côté client.
+  const [activeSub, setActiveSub] = React.useState<string>("stocks")
+  const [soinAnimalId, setSoinAnimalId] = React.useState<string | null>(null)
+
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const sub = params.get("sub")
+    const animalId = params.get("animalId")
+    if (sub === "soins" || sub === "consommations" || sub === "stocks") {
+      setActiveSub(sub)
+    }
+    if (animalId) {
+      // Implique l'onglet Soins même si `sub` n'est pas explicite.
+      setActiveSub("soins")
+      setSoinAnimalId(animalId)
+    }
+  }, [])
+
   return (
-    <Tabs defaultValue="stocks" className="space-y-4">
+    <Tabs value={activeSub} onValueChange={setActiveSub} className="space-y-4">
       <TabsList>
         <TabsTrigger value="stocks" className="flex items-center gap-1.5">
           <Package className="h-4 w-4" />
@@ -69,7 +91,7 @@ export function AlimentationTab() {
         <ConsommationsSubTab />
       </TabsContent>
       <TabsContent value="soins">
-        <SoinsSubTab />
+        <SoinsSubTab initialAnimalId={soinAnimalId} />
       </TabsContent>
     </Tabs>
   )
@@ -305,8 +327,17 @@ function StocksSubTab() {
               </TableHeader>
               <TableBody>
                 {aliments.map((a) => {
-                  const stockNegatif = a.stock !== null && a.stock <= 0
-                  const stockBas = !stockNegatif && a.stock !== null && a.stockMin !== null && a.stock <= a.stockMin
+                  // Bug testeur 2026-05-31 — un stock jamais initialisé (NULL)
+                  // qui part en consommation forcée se retrouve stocké en
+                  // négatif (ex. -15 kg) et était affiché tel quel. On ne montre
+                  // plus de valeur négative : l'affichage est borné à 0 et on
+                  // signale explicitement qu'il faut (ré)initialiser le stock.
+                  const stockNonInitialise = a.stock === null || a.stock < 0
+                  const stockAffiche = a.stock !== null ? Math.max(0, a.stock) : null
+                  // « épuisé » = stock initialisé tombé exactement à 0 (alerte rouge).
+                  // Un stock négatif relève désormais de « non initialisé » (orange).
+                  const stockEpuise = a.stock !== null && a.stock === 0
+                  const stockBas = !stockEpuise && !stockNonInitialise && a.stock !== null && a.stockMin !== null && a.stock <= a.stockMin
                   // Feedback Marc 2026-05-16 \u2014 V3 Bug 4 : les s\u00e9quences
                   // d'\u00e9chappement \u00ab À vérifier \u00bb \u00e9taient rendues
                   // telles quelles dans le JSX (non interpr\u00e9t\u00e9es). On
@@ -314,7 +345,7 @@ function StocksSubTab() {
                   const prixCheck = verifierPrixAliment(a.prix ?? null, (a.type as CategorieAliment) ?? null)
                   const prixHorsNorme = !prixCheck.ok && prixCheck.seuil !== null
                   return (
-                    <TableRow key={a.id} className={stockNegatif ? "bg-red-50" : stockBas ? "bg-orange-50" : ""}>
+                    <TableRow key={a.id} className={stockEpuise ? "bg-red-50" : (stockNonInitialise || stockBas) ? "bg-orange-50" : ""}>
                       <TableCell className="font-medium">{a.nom}</TableCell>
                       <TableCell><Badge variant="outline">{labelType(a.type)}</Badge></TableCell>
                       <TableCell className="text-right">
@@ -350,24 +381,26 @@ function StocksSubTab() {
                           </div>
                         ) : (
                           <button
-                            onClick={() => { setEditingStock(a.id); setNewStock(a.stock?.toString() || "") }}
-                            className={`font-bold hover:underline ${stockNegatif ? 'text-red-600' : stockBas ? 'text-orange-600' : ''}`}
-                            title={stockNegatif ? "Stock négatif — vérifier les consommations" : undefined}
+                            onClick={() => { setEditingStock(a.id); setNewStock(stockAffiche !== null ? stockAffiche.toString() : "") }}
+                            className={`font-bold hover:underline ${stockNonInitialise ? 'text-orange-600' : stockBas ? 'text-orange-600' : ''}`}
+                            title={stockNonInitialise ? "Stock non initialisé — cliquez pour le renseigner" : undefined}
                           >
-                            {stockNegatif && "\u26a0\ufe0f "}
-                            {/* Bug #7 \u2014 Indication explicite quand stock non
-                                initialis\u00e9 pour \u00e9viter la lecture "rien \u00e0
-                                manger" alors qu'il faut juste cliquer. */}
-                            {a.stock !== null ? `${a.stock} kg` : 'Initialiser'}
+                            {/* Bug #7 + testeur 2026-05-31 \u2014 jamais de valeur
+                                n\u00e9gative affich\u00e9e : NULL ou stock < 0
+                                (consommation forc\u00e9e sur un stock non renseign\u00e9)
+                                \u2192 badge \u00ab Initialiser \u00bb au lieu de "-15 kg". */}
+                            {stockNonInitialise
+                              ? <span className="inline-flex items-center rounded-md border border-orange-400 bg-orange-50 px-1.5 py-0.5 text-[10px] font-medium text-orange-700">Initialiser</span>
+                              : `${stockAffiche} kg`}
                           </button>
                         )}
                       </TableCell>
                       <TableCell className="text-right text-muted-foreground">{a.stockMin !== null ? `${a.stockMin} kg` : '\u2014'}</TableCell>
                       <TableCell className="text-muted-foreground text-sm">{a.dateStock ? new Date(a.dateStock).toLocaleDateString('fr-FR') : '\u2014'}</TableCell>
                       <TableCell>
-                        {stockNegatif ? (
+                        {stockEpuise ? (
                           <AlertTriangle className="h-4 w-4 text-red-600" />
-                        ) : stockBas ? (
+                        ) : (stockNonInitialise || stockBas) ? (
                           <AlertTriangle className="h-4 w-4 text-orange-500" />
                         ) : null}
                       </TableCell>
@@ -781,7 +814,7 @@ const SOIN_TYPE_LABELS: Record<string, string> = {
   autre: "Autre",
 }
 
-function SoinsSubTab() {
+function SoinsSubTab({ initialAnimalId = null }: { initialAnimalId?: string | null }) {
   const { toast } = useToast()
   const [isLoading, setIsLoading] = React.useState(true)
   const [soins, setSoins] = React.useState<Soin[]>([])
@@ -862,6 +895,18 @@ function SoinsSubTab() {
   }, [filterFait, toast])
 
   React.useEffect(() => { fetchData() }, [fetchData])
+
+  // Bug testeur 2026-05-31 — arrivée depuis « + Soin » d'une fiche animale :
+  // on pré-ouvre le formulaire « Nouveau soin » ciblé sur cet animal. Ne se
+  // déclenche qu'une fois (ref) pour ne pas ré-ouvrir après fermeture.
+  const initialAnimalApplied = React.useRef(false)
+  React.useEffect(() => {
+    if (!initialAnimalId || initialAnimalApplied.current) return
+    initialAnimalApplied.current = true
+    setEditingSoinId(null)
+    setFormData({ ...EMPTY_SOIN_FORM, cible: "animal", animalId: initialAnimalId })
+    setIsDialogOpen(true)
+  }, [initialAnimalId])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

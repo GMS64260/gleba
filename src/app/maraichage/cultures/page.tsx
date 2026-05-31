@@ -53,7 +53,7 @@ interface CultureWithRelations {
     id: string
     famille: { id: string; couleur: string | null } | null
   }
-  variete: { id: string } | null
+  variete: { id: string; isPlaceholder?: boolean } | null
   planche: { id: string } | null
   quantite: number | null
   _count: { recoltes: number }
@@ -102,7 +102,14 @@ function createColumns(
     {
       accessorKey: "variete.id",
       header: "Variété",
-      cell: ({ getValue }) => getValue() || "-",
+      // Quand la variété n'est pas renseignée, l'API assigne un placeholder
+      // nommé « <Espèce> — Non spécifiée » → redondant avec la colonne
+      // Espèce. On n'affiche alors qu'un tiret.
+      cell: ({ row }) => {
+        const v = row.original.variete
+        if (!v || v.isPlaceholder) return "—"
+        return v.id
+      },
     },
     {
       accessorKey: "planche.nom",
@@ -201,7 +208,7 @@ function createColumns(
     },
     {
       accessorKey: "datePlantation",
-      header: "Plant.",
+      header: "Plantation",
       cell: ({ getValue }) => {
         const date = getValue() as string | null
         return date ? format(new Date(date), "dd/MM", { locale: fr }) : "-"
@@ -209,7 +216,7 @@ function createColumns(
     },
     {
       accessorKey: "dateRecolte",
-      header: "Réc.",
+      header: "Récolte",
       cell: ({ getValue }) => {
         const date = getValue() as string | null
         return date ? format(new Date(date), "dd/MM", { locale: fr }) : "-"
@@ -405,7 +412,13 @@ export default function CulturesPage() {
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link href="/">
-              <Button variant="ghost" size="sm">
+              {/* Bug #6 — cohérence couleur : page Maraîchage (verte), donc
+                  bouton Accueil en vert maraîchage (et non orange/élevage). */}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50"
+              >
                 <ArrowLeft className="h-4 w-4 mr-2" />
                 Accueil
               </Button>

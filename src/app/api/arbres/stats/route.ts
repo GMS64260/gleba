@@ -38,20 +38,32 @@ export async function GET(request: NextRequest) {
       // descendait le compteur à 0 dès que la date était absente, malgré
       // récoltes enregistrées et flag Productif=Oui dans la fiche.
       //
-      // Bug feedback testeur 2026-05-26 (cmpm704oo) — Compter aussi les
-      // arbres sans date plantée comme "productifs" induisait en erreur :
-      // 21/21 productifs alors qu'aucun n'avait de date. On exige désormais
-      // une date de plantation < aujourd'hui ; le bandeau "X arbres sans
-      // date" pousse l'utilisateur à compléter sa saisie.
+      // Fix verger 2026-05-31 — La condition `datePlantation <= now()`
+      // ramenait le compteur à 0 sur le compte démo (21 arbres
+      // Productif=Oui mais sans date de plantation saisie). Le KPI
+      // "fruitiers productifs" doit refléter le flag métier `productif`,
+      // pas la présence d'une date de plantation. On compte donc tous les
+      // fruitiers/petits fruits marqués productifs, indépendamment de la
+      // date. (La complétude des dates est suivie via `pyramideAge.sansDate`.)
       prisma.arbre.count({
         where: {
           userId,
           productif: true,
-          datePlantation: { lte: new Date() },
           type: { in: ["fruitier", "petit_fruit"] },
         },
       }),
     ])
+
+    // Fix verger 2026-05-31 (bug #2 cohérence 21 vs 20) — Le dashboard
+    // Verger compte tous les arbres (GET /api/arbres = 21) alors que la
+    // liste Parcelles n'agrège que les arbres rattachés à une parcelle
+    // (_count.arbres = 20). L'écart est une donnée réelle : 1 arbre a
+    // parcelle_geo_id = NULL (orphelin). On expose ce compteur pour rendre
+    // l'affichage explicite ("21 — dont 1 sans parcelle") sans inventer de
+    // rattachement ni modifier la page Parcelles (hors périmètre verger).
+    const arbresSansParcelle = await prisma.arbre.count({
+      where: { userId, parcelleGeoId: null },
+    })
 
     // Bug #6 — Surface verger : somme des parcelles ayant au moins un
     // arbre. Feedback Marc 2026-05-16 : la valeur affichée était 0 ha
@@ -303,6 +315,7 @@ export async function GET(request: NextRequest) {
         arbresPetitsFruits,
         arbresForestiers,
         arbresProductifs,
+        arbresSansParcelle,
         recoltesFruitsAnnee: Math.round((recoltesFruitsYear._sum.quantite || 0) * 100) / 100,
         recoltesFruitsCount: recoltesFruitsYear._count?.id || 0,
         recoltesFruitsAnneePrecedente: Math.round((recoltesFruitsLastYear._sum.quantite || 0) * 100) / 100,

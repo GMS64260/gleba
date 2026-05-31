@@ -196,6 +196,70 @@ const MOIS_NOMS = [
   'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'
 ]
 
+/**
+ * Bug #1 (testeur) — Cohérence temporelle semis ≤ plantation ≤ récolte.
+ *
+ * Cas réel : Pomme de terre B3 (mode bulbe/tubercule) sans date de semis
+ * saisie mais avec une date de plantation réelle (S15). Le calcul mélangeait
+ * la semaine de semis THÉORIQUE de l'ITP (S16) avec la plantation RÉELLE
+ * (S15) → « plantation avant semis ». Les tubercules/bulbes/semis directs
+ * n'ont d'ailleurs pas d'étape de semis en pépinière distincte.
+ *
+ * Règle : la donnée RÉELLE (saisie) prime toujours. Si une semaine provient
+ * d'un fallback ITP et casse l'ordre chronologique vis-à-vis d'une donnée
+ * réelle, on la supprime (null) plutôt que d'afficher une incohérence.
+ */
+function coherenceSemaines(input: {
+  semaineSemis: number | null
+  semainePlantation: number | null
+  semaineRecolte: number | null
+  semisReel: boolean
+  plantationReelle: boolean
+  recolteReelle: boolean
+}): { semaineSemis: number | null; semainePlantation: number | null; semaineRecolte: number | null } {
+  let { semaineSemis, semainePlantation, semaineRecolte } = input
+
+  // Semis théorique (ITP) postérieur à une plantation réelle → on l'écarte.
+  if (
+    semaineSemis != null &&
+    semainePlantation != null &&
+    semaineSemis > semainePlantation
+  ) {
+    if (!input.semisReel && input.plantationReelle) {
+      semaineSemis = null
+    } else if (input.semisReel && !input.plantationReelle) {
+      // Plantation théorique antérieure au semis réel → on l'écarte.
+      semainePlantation = null
+    }
+  }
+
+  // Plantation théorique postérieure à une récolte réelle → on l'écarte.
+  if (
+    semainePlantation != null &&
+    semaineRecolte != null &&
+    semainePlantation > semaineRecolte
+  ) {
+    if (!input.plantationReelle && input.recolteReelle) {
+      semainePlantation = null
+    } else if (input.plantationReelle && !input.recolteReelle) {
+      semaineRecolte = null
+    }
+  }
+
+  // Semis théorique postérieur à une récolte réelle (sans plantation) → écarté.
+  if (
+    semaineSemis != null &&
+    semaineRecolte != null &&
+    semaineSemis > semaineRecolte &&
+    !input.semisReel &&
+    input.recolteReelle
+  ) {
+    semaineSemis = null
+  }
+
+  return { semaineSemis, semainePlantation, semaineRecolte }
+}
+
 // ============================================================
 // FONCTIONS PRINCIPALES
 // ============================================================
@@ -287,6 +351,21 @@ export async function getCulturesPrevues(
           // année (la suggestion de rotation polluait l'inventaire réel).
           if (!cultureExistante && planche.cultures.length > 0) continue
 
+          // Bug R19/R26 : si une culture réelle existe, ses dates SAISIES priment
+          // sur les semaines théoriques de l'ITP (sinon toutes les successions
+          // d'une planche affichent les mêmes semaines ITP).
+          // Bug #1 : on applique ensuite `coherenceSemaines` pour éviter qu'un
+          // fallback ITP (ex. semis théorique) casse l'ordre vis-à-vis d'une
+          // date réelle (ex. plantation saisie sans semis → semis > plantation).
+          const semainesM1 = coherenceSemaines({
+            semaineSemis: cultureExistante?.dateSemis ? dateVersSemaine(cultureExistante.dateSemis, annee) : (detail.itp?.semaineSemis || null),
+            semainePlantation: cultureExistante?.datePlantation ? dateVersSemaine(cultureExistante.datePlantation, annee) : (detail.itp?.semainePlantation || null),
+            semaineRecolte: cultureExistante?.dateRecolte ? dateVersSemaine(cultureExistante.dateRecolte, annee) : (detail.itp?.semaineRecolte || null),
+            semisReel: !!cultureExistante?.dateSemis,
+            plantationReelle: !!cultureExistante?.datePlantation,
+            recolteReelle: !!cultureExistante?.dateRecolte,
+          })
+
           culturesPrevues.push({
             plancheId: planche.nom,
             plancheLongueur: planche.longueur,
@@ -300,12 +379,9 @@ export async function getCulturesPrevues(
             especeCouleur: detail.itp?.espece?.couleur || null,
             varieteId: cultureExistante?.varieteId ?? null, // A definir lors de la creation
             annee,
-            // Bug R19/R26 : si une culture réelle existe, ses dates SAISIES priment
-            // sur les semaines théoriques de l'ITP (sinon toutes les successions
-            // d'une planche affichent les mêmes semaines ITP).
-            semaineSemis: cultureExistante?.dateSemis ? dateVersSemaine(cultureExistante.dateSemis, annee) : (detail.itp?.semaineSemis || null),
-            semainePlantation: cultureExistante?.datePlantation ? dateVersSemaine(cultureExistante.datePlantation, annee) : (detail.itp?.semainePlantation || null),
-            semaineRecolte: cultureExistante?.dateRecolte ? dateVersSemaine(cultureExistante.dateRecolte, annee) : (detail.itp?.semaineRecolte || null),
+            semaineSemis: semainesM1.semaineSemis,
+            semainePlantation: semainesM1.semainePlantation,
+            semaineRecolte: semainesM1.semaineRecolte,
             dureeCulture: detail.itp?.dureeCulture || null,
             nbRangs: detail.itp?.nbRangs || null,
             espacement: detail.itp?.espacement || null,
@@ -364,6 +440,25 @@ export async function getCulturesPrevues(
     if (!dejaPresente && culture.planche) {
       const surface = (culture.planche.longueur || 0) * (culture.planche.largeur || 0)
 
+      // Bug R19/R26 : la DATE RÉELLE saisie sur la culture prime sur la semaine
+      // théorique de l'ITP (sinon 2 cultures en succession affichent la même
+      // semaine ITP). Année-aware → exclut les récoltes d'une autre année.
+      // Bug #1 : `coherenceSemaines` écarte le fallback ITP (ex. semis S16 pour
+      // une PdT/tubercule) lorsqu'il devient postérieur à la plantation RÉELLE
+      // (S15) — « plantation avant semis ».
+      const semainesM2 = coherenceSemaines({
+        semaineSemis: culture.dateSemis ? dateVersSemaine(culture.dateSemis, annee) : (culture.itp?.semaineSemis ?? null),
+        semainePlantation: culture.datePlantation
+          ? dateVersSemaine(culture.datePlantation, annee)
+          : (culture.itp?.semainePlantation ?? null),
+        semaineRecolte: culture.dateRecolte
+          ? dateVersSemaine(culture.dateRecolte, annee)
+          : (culture.itp?.semaineRecolte ?? null),
+        semisReel: !!culture.dateSemis,
+        plantationReelle: !!culture.datePlantation,
+        recolteReelle: !!culture.dateRecolte,
+      })
+
       culturesPrevues.push({
         plancheId: culture.planche.nom || culture.plancheId || '',
         plancheLongueur: culture.planche.longueur,
@@ -377,16 +472,9 @@ export async function getCulturesPrevues(
         especeCouleur: culture.espece?.couleur || null,
         varieteId: culture.varieteId,
         annee: culture.annee || annee,
-        // Bug R19/R26 : la DATE RÉELLE saisie sur la culture prime sur la semaine
-        // théorique de l'ITP (sinon 2 cultures en succession affichent la même
-        // semaine ITP). Année-aware → exclut les récoltes d'une autre année.
-        semaineSemis: culture.dateSemis ? dateVersSemaine(culture.dateSemis, annee) : (culture.itp?.semaineSemis ?? null),
-        semainePlantation: culture.datePlantation
-          ? dateVersSemaine(culture.datePlantation, annee)
-          : (culture.itp?.semainePlantation ?? null),
-        semaineRecolte: culture.dateRecolte
-          ? dateVersSemaine(culture.dateRecolte, annee)
-          : (culture.itp?.semaineRecolte ?? null),
+        semaineSemis: semainesM2.semaineSemis,
+        semainePlantation: semainesM2.semainePlantation,
+        semaineRecolte: semainesM2.semaineRecolte,
         dureeCulture: culture.itp?.dureeCulture || null,
         nbRangs: culture.nbRangs || culture.itp?.nbRangs || null,
         espacement: culture.espacement || culture.itp?.espacement || null,
@@ -1102,9 +1190,15 @@ export async function getStatsPlanification(userId: string, annee: number) {
   const culturesPrevues = await getCulturesPrevues(userId, annee)
   const recoltesPrevues = await getRecoltesPrevues(userId, annee, 'mois')
 
-  const totalCultures = culturesPrevues.length
+  // Bug #2 (testeur) — Le compteur « Cultures prévues » affichait 24 (longueur
+  // de `culturesPrevues` qui inclut les cultures DÉRIVÉES des rotations non
+  // encore créées en base) alors que la liste « Cultures » montre 22 (cultures
+  // réellement créées). On aligne le chiffre mis en avant sur les cultures
+  // créées ; les cultures planifiées via rotation restent exposées via
+  // `culturesACreer` (sous-libellé « X à créer »).
   const culturesExistantes = culturesPrevues.filter(c => c.existante).length
-  const culturesACreer = totalCultures - culturesExistantes
+  const culturesACreer = culturesPrevues.length - culturesExistantes
+  const totalCultures = culturesExistantes
   const surfaceTotale = culturesPrevues.reduce((sum, c) => sum + c.surface, 0)
   const recoltesTotales = recoltesPrevues.reduce((sum, r) => sum + r.totalKg, 0)
 

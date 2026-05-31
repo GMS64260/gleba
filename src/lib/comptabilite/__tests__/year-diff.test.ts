@@ -27,6 +27,37 @@ describe("computeYearDiff", () => {
     expect(r.state).toBe("vide")
   })
 
+  it("Bug COMPTA #2 : revenus N-1 = 0 mais dépenses N-1 > 0 → nouveau-revenus (et pas 'pas d'activité')", () => {
+    // Cas réel : « Achat lot Solognote » 3 300 € en 2025, 0 € de revenus 2025.
+    const r = computeYearDiff({
+      revenus: 5000,
+      revenusAnneePrecedente: 0,
+      depensesAnneePrecedente: 3300,
+    })
+    expect(r.state).toBe("nouveau-revenus")
+    expect(r.depensesPrecedente).toBe(3300)
+    expect(r.percent).toBe(0)
+  })
+
+  it("Bug COMPTA #2 : revenus N-1 = 0, dépenses N-1 = 0, N > 0 → nouveau (vraiment rien en N-1)", () => {
+    const r = computeYearDiff({
+      revenus: 1200,
+      revenusAnneePrecedente: 0,
+      depensesAnneePrecedente: 0,
+    })
+    expect(r.state).toBe("nouveau")
+  })
+
+  it("Bug COMPTA #2 : revenus N et N-1 = 0 mais dépenses N-1 > 0 → nouveau-revenus (activité N-1 réelle)", () => {
+    const r = computeYearDiff({
+      revenus: 0,
+      revenusAnneePrecedente: 0,
+      depensesAnneePrecedente: 3300,
+    })
+    expect(r.state).toBe("nouveau-revenus")
+    expect(r.depensesPrecedente).toBe(3300)
+  })
+
   it("stats null → state=vide (et pas de crash)", () => {
     expect(computeYearDiff(null).state).toBe("vide")
     expect(computeYearDiff(undefined).state).toBe("vide")

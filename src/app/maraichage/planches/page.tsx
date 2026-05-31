@@ -265,7 +265,7 @@ export default function PlanchesPage() {
             )}
             <AssistantButton onClick={() => setShowAssistant(true)} />
             <div className="text-sm text-muted-foreground">
-              {data.length} planches • {totalSurface.toFixed(0)} m² total
+              {data.length} planches • {totalSurface.toFixed(1)} m² total
             </div>
           </div>
         </div>

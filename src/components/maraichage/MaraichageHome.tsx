@@ -66,7 +66,30 @@ function HomeContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const [showWelcome, setShowWelcome] = React.useState(false)
+  // BUG #9 — le choix d'année du dashboard n'était pas persisté (revenait à
+  // l'année courante après F5). On le lit/écrit dans localStorage, sur le
+  // même pattern que la compta (`gleba_compta_year`).
   const [selectedYear, setSelectedYear] = React.useState(currentYearNow)
+  React.useEffect(() => {
+    try {
+      const stored = localStorage.getItem("gleba_dashboard_year")
+      if (stored) {
+        const y = parseInt(stored, 10)
+        if (!Number.isNaN(y) && availableYears.includes(y)) setSelectedYear(y)
+      }
+    } catch {
+      // localStorage indisponible (mode privé, quota) — on garde le défaut
+    }
+  }, [])
+  const handleYearChange = React.useCallback((value: string) => {
+    const y = parseInt(value, 10)
+    setSelectedYear(y)
+    try {
+      localStorage.setItem("gleba_dashboard_year", String(y))
+    } catch {
+      // ignore
+    }
+  }, [])
   const [showAssistant, setShowAssistant] = React.useState(false)
   const [showChat, setShowChat] = React.useState(false)
   const [showPluieBanner, setShowPluieBanner] = React.useState(false)
@@ -146,9 +169,12 @@ function HomeContent() {
 
       {/* Header global */}
       <header className="border-b bg-white/95 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-2.5 flex items-center justify-between gap-2 max-w-[1600px]">
-          <div className="flex items-center gap-3">
-            <Link href="/" className="flex items-center hover:opacity-90 transition-opacity">
+        {/* Bug responsive : header dense → overflow horizontal à 375/768px.
+            On autorise le wrap des deux clusters et on laisse le cluster
+            gauche (logo + météo) rétrécir (min-w-0) pour ne jamais déborder. */}
+        <div className="container mx-auto px-4 py-2.5 flex items-center justify-between gap-2 max-w-[1600px] flex-wrap">
+          <div className="flex items-center gap-3 min-w-0">
+            <Link href="/" className="flex items-center hover:opacity-90 transition-opacity flex-shrink-0">
               <Image
                 src="/gleba-logo.png"
                 alt="Gleba"
@@ -160,7 +186,7 @@ function HomeContent() {
             </Link>
             {session?.user && <HeaderMeteoWidget showLune />}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap justify-end">
             {/* Sections globales */}
             {session?.user && <ModulesNav current="maraichage" />}
             {session?.user && <BoutiqueHeaderButton />}
@@ -240,7 +266,7 @@ function HomeContent() {
               </Link>
               <Select
                 value={selectedYear.toString()}
-                onValueChange={(value) => setSelectedYear(parseInt(value))}
+                onValueChange={handleYearChange}
               >
                 <SelectTrigger className="w-[100px] h-8">
                   <Calendar className="h-3.5 w-3.5 mr-1 text-muted-foreground" />

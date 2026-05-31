@@ -169,7 +169,7 @@ export function IrrigationAdvisor({ parcelleId, lat, lng }: IrrigationAdvisorPro
           <div>
             <span className="font-medium text-sm">Conseils irrigation</span>
             {data.cachedAt && (
-              <p className="text-[10px] text-slate-400 leading-none mt-0.5">
+              <p className="text-xs text-slate-400 leading-none mt-0.5">
                 {data.cached
                   ? `Calculé il y a ${data.cacheAgeMinutes} min`
                   : "Calculé à l'instant"}

@@ -198,7 +198,7 @@ function createColumns(
     },
     {
       accessorKey: "datePlantation",
-      header: "Plant.",
+      header: "Plantation",
       cell: ({ getValue }) => {
         const date = getValue() as string | null
         return date ? format(new Date(date), "dd/MM", { locale: fr }) : "-"
@@ -206,7 +206,7 @@ function createColumns(
     },
     {
       accessorKey: "dateRecolte",
-      header: "Rec.",
+      header: "Récolte",
       cell: ({ getValue }) => {
         const date = getValue() as string | null
         return date ? format(new Date(date), "dd/MM", { locale: fr }) : "-"
@@ -226,7 +226,7 @@ function createColumns(
     },
     {
       accessorKey: "_count.recoltes",
-      header: "Nb",
+      header: "Récoltes",
       cell: ({ getValue }) => getValue() || 0,
     },
   ]

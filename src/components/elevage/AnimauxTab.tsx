@@ -260,13 +260,25 @@ function AnimauxSubTab() {
         ...formData,
         typeIdentifiant: formData.typeIdentifiant || null,
         identifiant: formData.identifiant || null,
+        // Bug testeur 2026-05-31 — on n'envoie plus de chaînes vides : un champ
+        // texte vide est explicitement `null` (évite de stocker race='' qui
+        // était lue comme « race non renseignée » alors que la saisie pouvait
+        // être perdue en amont).
+        race: formData.race || null,
+        sexe: formData.sexe || null,
+        provenance: formData.provenance || null,
+        nExploitationOrigine: formData.nExploitationOrigine || null,
         prixAchat: toNum(formData.prixAchat as unknown as string),
         poidsActuel: toNum(formData.poidsActuel as unknown as string),
         dateNaissance: (formData as { dateNaissance?: string }).dateNaissance || null,
       }
+      // Bug testeur 2026-05-31 — un nouvel animal est TOUJOURS créé actif. On
+      // force le statut côté payload de création pour qu'aucune valeur résiduelle
+      // ne puisse le faire naître « mort ». L'édition ne touche pas au statut ici
+      // (géré par les actions dédiées vente/abattage/décès).
       const body = isEdit
         ? { id: editingAnimalId, ...cleaned }
-        : cleaned
+        : { ...cleaned, statut: 'actif' }
       const response = await fetch('/api/elevage/animaux', {
         method: isEdit ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },

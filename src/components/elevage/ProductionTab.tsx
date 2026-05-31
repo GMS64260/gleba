@@ -192,8 +192,13 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
       }
       if (lotsRes.ok) {
         const result = await lotsRes.json()
+        // Bug testeur 2026-05-31 — la dropdown proposait des lots terminés
+        // (statut != 'actif') et affichait alors un effectif périmé, ce qui
+        // produisait un « taux de collecte 116 % » impossible. On restreint
+        // la saisie rapide aux seuls lots actifs ; l'effectif utilisé reste
+        // effectifCalcule ?? quantiteActuelle (jamais quantiteInitiale).
         const volailles = (result.data as LotVolaille[]).filter(
-          (l) => l.especeAnimale.type === 'volaille'
+          (l) => l.especeAnimale.type === 'volaille' && (l.statut ?? 'actif') === 'actif'
         )
         // Actifs d'abord, puis terminés/réformés. Tri secondaire par nom.
         volailles.sort((a, b) => {
@@ -1270,7 +1275,7 @@ function AbattagesSubTab() {
                   )
                 })}
                 {filteredAbattages.length === 0 && (
-                  <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">{especeFilter.size > 0 ? 'Aucun abattage pour cette sélection' : 'Aucun abattage enregistre'}</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">{especeFilter.size > 0 ? 'Aucun abattage pour cette sélection' : 'Aucun abattage enregistré'}</TableCell></TableRow>
                 )}
               </TableBody>
             </Table>
