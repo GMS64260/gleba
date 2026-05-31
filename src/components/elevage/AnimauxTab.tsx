@@ -528,7 +528,12 @@ function AnimauxSubTab() {
         </Button>
         <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) resetAnimalForm() }}>
           <DialogTrigger asChild>
-            <Button size="sm" onClick={() => setEditingAnimalId(null)}>
+            {/* Cause racine bug « animal créé corrompu » (#54 Étoile) : le bouton
+                ne remettait que editingAnimalId à null, PAS formData → un état
+                résiduel d'une édition précédente (animal mort, autre espèce,
+                identifiant déjà pris) était soumis tel quel à la création. On
+                réinitialise désormais TOUT le formulaire à l'ouverture. */}
+            <Button size="sm" onClick={() => resetAnimalForm()}>
               <Plus className="h-4 w-4 mr-1" />
               Ajouter
             </Button>
@@ -1131,7 +1136,10 @@ function LotsSubTab() {
           </Button>
           <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) resetLotForm() }}>
             <DialogTrigger asChild>
-              <Button size="sm" onClick={() => setEditingLotId(null)}><Plus className="h-4 w-4 mr-1" />Nouveau lot</Button>
+              {/* Même cause racine que « + Ajouter » animal : réinitialiser TOUT
+                  le formulaire (pas seulement l'editingLotId) pour ne pas hériter
+                  d'un état résiduel d'édition lors d'une création. */}
+              <Button size="sm" onClick={() => resetLotForm()}><Plus className="h-4 w-4 mr-1" />Nouveau lot</Button>
             </DialogTrigger>
             <DialogContent className="max-w-md">
               <DialogHeader>

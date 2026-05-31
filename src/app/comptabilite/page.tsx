@@ -64,6 +64,7 @@ import {
 } from "lucide-react"
 import { ChatPanel } from "@/components/chat/ChatPanel"
 import { formatEuroSemantic, formatPercentSemantic } from "@/lib/format-utils"
+import { kpiCardClass, kpiSubtleClass } from "@/lib/kpi-theme"
 // Modules du dashboard comptabilité (rationalisé)
 const modulesCompta = [
   {
@@ -374,9 +375,9 @@ export default function DashboardComptabilite() {
             ))
           ) : data?.stats ? (
             <>
-              <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white">
+              <Card className={kpiCardClass("revenu")}>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-blue-100 flex items-center gap-2">
+                  <CardTitle className={`text-sm font-medium ${kpiSubtleClass("revenu")} flex items-center gap-2`}>
                     <TrendingUp className="h-4 w-4" />
                     Revenus {selectedYear}
                   </CardTitle>
@@ -385,34 +386,34 @@ export default function DashboardComptabilite() {
                   <p className="text-3xl font-bold">{formatEuro(data.stats.revenus)}</p>
                   {yearDiff.state === "compare" ? (
                     <>
-                      <p className="text-sm text-blue-100 mt-1">
+                      <p className={`text-sm ${kpiSubtleClass("revenu")} mt-1`}>
                         {yearDiff.percent > 0 ? "+" : ""}{yearDiff.percent}% vs {selectedYear - 1}
                       </p>
-                      <p className="text-[10px] text-blue-100 opacity-90">
+                      <p className={`text-[10px] ${kpiSubtleClass("revenu")} opacity-90`}>
                         (YTD vs YTD année dernière)
                       </p>
                     </>
                   ) : yearDiff.state === "nouveau" ? (
-                    <p className="text-sm text-blue-100 mt-1">
+                    <p className={`text-sm ${kpiSubtleClass("revenu")} mt-1`}>
                       Nouveau · pas d'activité en {selectedYear - 1}
                     </p>
                   ) : yearDiff.state === "nouveau-revenus" ? (
                     // Bug COMPTA #2 — revenus N-1 = 0 mais il y a eu des
                     // dépenses en N-1 : ne pas prétendre « pas d'activité ».
-                    <p className="text-sm text-blue-100 mt-1">
+                    <p className={`text-sm ${kpiSubtleClass("revenu")} mt-1`}>
                       {selectedYear - 1} : 0 € de revenus, {formatEuro(yearDiff.depensesPrecedente)} de dépenses
                     </p>
                   ) : (
-                    <p className="text-[10px] text-blue-100 italic mt-1">
+                    <p className={`text-[10px] ${kpiSubtleClass("revenu")} italic mt-1`}>
                       Aucune activité en {selectedYear} ni en {selectedYear - 1}
                     </p>
                   )}
                 </CardContent>
               </Card>
 
-              <Card className="bg-gradient-to-br from-red-500 to-red-600 text-white">
+              <Card className={kpiCardClass("depense")}>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-red-100 flex items-center gap-2">
+                  <CardTitle className={`text-sm font-medium ${kpiSubtleClass("depense")} flex items-center gap-2`}>
                     <TrendingDown className="h-4 w-4" />
                     Dépenses {selectedYear}
                   </CardTitle>
@@ -423,7 +424,7 @@ export default function DashboardComptabilite() {
                       encore payées : info au comptable sur la trésorerie qui
                       sortira encore, sans masquer la charge (compta engagement). */}
                   {(data.stats.depensesNonPayees ?? 0) > 0 && (
-                    <p className="text-[10px] text-red-100 mt-1">
+                    <p className={`text-[10px] ${kpiSubtleClass("depense")} mt-1`}>
                       Dont {formatEuro(data.stats.depensesNonPayees ?? 0)} non encore payé(s)
                       {data.stats.nbDepensesNonPayees ? ` · ${data.stats.nbDepensesNonPayees} ligne(s)` : ''}
                     </p>
@@ -431,7 +432,7 @@ export default function DashboardComptabilite() {
                 </CardContent>
               </Card>
 
-              <Card className={`bg-gradient-to-br ${data.stats.benefice >= 0 ? 'from-emerald-500 to-emerald-600' : 'from-orange-500 to-orange-600'} text-white`}>
+              <Card className={kpiCardClass(data.stats.benefice >= 0 ? "revenu" : "depense")}>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium text-white/80 flex items-center gap-2">
                     <Wallet className="h-4 w-4" />
@@ -443,9 +444,9 @@ export default function DashboardComptabilite() {
                 </CardContent>
               </Card>
 
-              <Card className={`bg-gradient-to-br ${data.stats.margePercent >= 0 ? 'from-indigo-500 to-indigo-600' : 'from-red-500 to-red-600'} text-white`}>
+              <Card className={kpiCardClass(data.stats.margePercent >= 0 ? "revenu" : "depense")}>
                 <CardHeader className="pb-2">
-                  <CardTitle className={`text-sm font-medium ${data.stats.margePercent >= 0 ? 'text-indigo-100' : 'text-red-100'} flex items-center gap-2`}>
+                  <CardTitle className={`text-sm font-medium ${kpiSubtleClass(data.stats.margePercent >= 0 ? "revenu" : "depense")} flex items-center gap-2`}>
                     Marge
                   </CardTitle>
                 </CardHeader>

@@ -33,6 +33,7 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart"
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts"
+import { kpiCardClass, kpiSubtleClass } from "@/lib/kpi-theme"
 
 interface DashboardTabProps {
   year: number
@@ -272,18 +273,18 @@ export function DashboardTab({ year }: DashboardTabProps) {
                   : `${individus} individu${individus > 1 ? 's' : ''}`
               return (
                 <Link href="/elevage/animaux" className="block">
-                  <Card className="bg-gradient-to-br from-amber-500 to-amber-600 text-white hover:from-amber-600 hover:to-amber-700 transition-colors cursor-pointer">
+                  <Card className={`${kpiCardClass("neutre")} hover:brightness-110 transition-[filter] cursor-pointer`}>
                     <CardHeader className="pb-1 pt-3 px-4">
-                      <CardDescription className="text-amber-100 text-xs">Animaux actifs</CardDescription>
+                      <CardDescription className={`${kpiSubtleClass("neutre")} text-xs`}>Animaux actifs</CardDescription>
                       <CardTitle className="text-2xl">
                         {total === 0 ? 'Aucun animal' : `${total} animau${total > 1 ? 'x' : ''}`}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="pb-3 px-4">
                       {sousTitre ? (
-                        <p className="text-xs text-amber-100">{sousTitre}</p>
+                        <p className={`text-xs ${kpiSubtleClass("neutre")}`}>{sousTitre}</p>
                       ) : (
-                        <p className="text-xs text-amber-100">Ajoutez votre premier animal</p>
+                        <p className={`text-xs ${kpiSubtleClass("neutre")}`}>Ajoutez votre premier animal</p>
                       )}
                     </CardContent>
                   </Card>
@@ -291,9 +292,9 @@ export function DashboardTab({ year }: DashboardTabProps) {
               )
             })()}
 
-            <Card className="bg-gradient-to-br from-slate-700 to-slate-800 text-white">
+            <Card className={kpiCardClass("neutre")}>
               <CardHeader className="pb-1 pt-3 px-4">
-                <CardDescription className="text-slate-300 text-xs flex items-center gap-1">
+                <CardDescription className={`${kpiSubtleClass("neutre")} text-xs flex items-center gap-1`}>
                   Production œufs
                   {(() => {
                     const diff = data.stats.productionOeufsAnnee - data.stats.productionOeufsAnneePrecedente
@@ -306,7 +307,7 @@ export function DashboardTab({ year }: DashboardTabProps) {
                 <CardTitle className="text-2xl">{data.stats.productionOeufsAnnee}</CardTitle>
               </CardHeader>
               <CardContent className="pb-3 px-4">
-                <p className="text-xs text-slate-300">
+                <p className={`text-xs ${kpiSubtleClass("neutre")}`}>
                   {data.stats.productionOeufsAnneePrecedente > 0
                     ? `${data.stats.productionOeufsAnnee >= data.stats.productionOeufsAnneePrecedente ? '+' : ''}${Math.round(((data.stats.productionOeufsAnnee - data.stats.productionOeufsAnneePrecedente) / data.stats.productionOeufsAnneePrecedente) * 100)}% vs ${year - 1}`
                     : `œufs en ${year}`
@@ -315,19 +316,19 @@ export function DashboardTab({ year }: DashboardTabProps) {
               </CardContent>
             </Card>
 
-            <Card className={`bg-gradient-to-br ${data.stats.stockOeufs < 24 ? "from-orange-500 to-orange-600" : "from-emerald-500 to-emerald-600"} text-white`}>
+            <Card className={kpiCardClass(data.stats.stockOeufs < 24 ? "alerte" : "neutre")}>
               <CardHeader className="pb-1 pt-3 px-4">
-                <CardDescription className={`text-xs ${data.stats.stockOeufs < 24 ? "text-orange-100" : "text-emerald-100"}`}>Stock œufs</CardDescription>
+                <CardDescription className={`text-xs ${kpiSubtleClass(data.stats.stockOeufs < 24 ? "alerte" : "neutre")}`}>Stock œufs</CardDescription>
                 <CardTitle className="text-2xl">{data.stats.stockOeufs}</CardTitle>
               </CardHeader>
               <CardContent className="pb-3 px-4">
-                <p className={`text-xs ${data.stats.stockOeufs < 24 ? "text-orange-100" : "text-emerald-100"}`}>disponibles</p>
+                <p className={`text-xs ${kpiSubtleClass(data.stats.stockOeufs < 24 ? "alerte" : "neutre")}`}>disponibles</p>
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-br from-emerald-500 to-emerald-600 text-white">
+            <Card className={kpiCardClass("revenu")}>
               <CardHeader className="pb-1 pt-3 px-4">
-                <CardDescription className="text-emerald-100 text-xs flex items-center gap-1">
+                <CardDescription className={`${kpiSubtleClass("revenu")} text-xs flex items-center gap-1`}>
                   Ventes {year}
                   {(() => {
                     const diff = data.stats.ventesAnnee - data.stats.ventesAnneePrecedente
@@ -344,7 +345,7 @@ export function DashboardTab({ year }: DashboardTabProps) {
                     l'incohérence « X ventes / 0 € » (prix de vente non
                     renseignés) pour éviter la lecture trompeuse
                     « Ventes 0 € » alors qu'on en a une à 0 €. */}
-                <p className="text-xs text-emerald-100">
+                <p className={`text-xs ${kpiSubtleClass("revenu")}`}>
                   {data.stats.ventesAnneePrecedente > 0
                     ? `${data.stats.ventesAnnee >= data.stats.ventesAnneePrecedente ? '+' : ''}${Math.round(((data.stats.ventesAnnee - data.stats.ventesAnneePrecedente) / data.stats.ventesAnneePrecedente) * 100)}% vs ${year - 1}`
                     : `${data.stats.nbVentes} vente${data.stats.nbVentes > 1 ? 's' : ''}${data.stats.nbVentes > 0 && data.stats.ventesAnnee === 0 ? ' (prix manquants)' : ''}`
@@ -353,16 +354,16 @@ export function DashboardTab({ year }: DashboardTabProps) {
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-br from-orange-500 to-orange-600 text-white">
+            <Card className={kpiCardClass("neutre")}>
               <CardHeader className="pb-1 pt-3 px-4">
-                <CardDescription className="text-orange-100 text-xs">Abattages {year}</CardDescription>
+                <CardDescription className={`${kpiSubtleClass("neutre")} text-xs`}>Abattages {year}</CardDescription>
                 <CardTitle className="text-2xl">{data.stats.abattagesAnnee}</CardTitle>
               </CardHeader>
               <CardContent className="pb-3 px-4">
                 {/* Feedback Marc 2026-05-16 — V4 Bug 4 : si poids vif > 0
                     mais carcasse à 0, on signale l'incohérence agronomique
                     (perte de rendement ~30% normale entre vif et carcasse). */}
-                <p className="text-xs text-orange-100">
+                <p className={`text-xs ${kpiSubtleClass("neutre")}`}>
                   {data.stats.poidsCarcasseAnnee > 0
                     ? `${data.stats.poidsCarcasseAnnee.toFixed(1)} kg carcasse`
                     : data.stats.abattagesAnnee > 0

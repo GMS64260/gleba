@@ -32,6 +32,7 @@ import {
   LineChart,
   Line,
 } from "recharts"
+import { kpiCardClass } from "@/lib/kpi-theme"
 
 interface Stats {
   revenus: number
@@ -362,7 +363,7 @@ export default function RapportsPage() {
                 )}
                 {/* Résumé */}
                 <div className="grid gap-4 md:grid-cols-4">
-                  <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white">
+                  <Card className={kpiCardClass("revenu")}>
                     <CardHeader className="pb-2">
                       <CardTitle className="text-sm flex items-center gap-2">
                         <TrendingUp className="h-4 w-4" />
@@ -373,7 +374,7 @@ export default function RapportsPage() {
                       <p className="text-3xl font-bold">{formatEuro(stats.revenus)}</p>
                     </CardContent>
                   </Card>
-                  <Card className="bg-gradient-to-br from-red-500 to-red-600 text-white">
+                  <Card className={kpiCardClass("depense")}>
                     <CardHeader className="pb-2">
                       <CardTitle className="text-sm flex items-center gap-2">
                         <TrendingDown className="h-4 w-4" />
@@ -384,7 +385,7 @@ export default function RapportsPage() {
                       <p className="text-3xl font-bold">{formatEuro(stats.depenses)}</p>
                     </CardContent>
                   </Card>
-                  <Card className={`bg-gradient-to-br ${stats.benefice >= 0 ? 'from-emerald-500 to-emerald-600' : 'from-orange-500 to-orange-600'} text-white`}>
+                  <Card className={kpiCardClass(stats.benefice >= 0 ? "revenu" : "depense")}>
                     <CardHeader className="pb-2">
                       <CardTitle className="text-sm flex items-center gap-2">
                         <Wallet className="h-4 w-4" />
@@ -395,7 +396,7 @@ export default function RapportsPage() {
                       <p className="text-3xl font-bold">{formatEuro(Math.abs(stats.benefice))}</p>
                     </CardContent>
                   </Card>
-                  <Card className={`bg-gradient-to-br ${stats.margePercent >= 0 ? 'from-indigo-500 to-indigo-600' : 'from-red-500 to-red-600'} text-white`}>
+                  <Card className={kpiCardClass(stats.margePercent >= 0 ? "revenu" : "depense")}>
                     <CardHeader className="pb-2">
                       <CardTitle className="text-sm">Marge</CardTitle>
                     </CardHeader>
