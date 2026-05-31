@@ -178,6 +178,40 @@ export function CampagneDetailDialog({ campagneId, open, onOpenChange, onUpdate 
   const [campagne, setCampagne] = React.useState<Campagne | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [editingStatut, setEditingStatut] = React.useState(false)
+  const [exporting, setExporting] = React.useState(false)
+
+  // Fix verger 2026-05-31 (bug #3) — Le simple <a href> du bouton "Dossier
+  // PDF" ne déclenchait aucun téléchargement (lien sans `download` ni
+  // `target`, clic potentiellement intercepté dans la modale Radix). On
+  // récupère le PDF en blob et on force le téléchargement via un <a download>
+  // programmatique, ce qui marche dans tous les navigateurs et hors du flux
+  // de navigation SPA.
+  const handleExportPdf = React.useCallback(async () => {
+    if (!campagne || exporting) return
+    setExporting(true)
+    try {
+      const res = await fetch(`/api/arbres/campagnes/${campagne.id}/export`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `dossier-campagne-${campagne.id}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error("Export dossier PDF campagne:", err)
+      toast({
+        variant: "destructive",
+        title: "Erreur",
+        description: "Impossible de générer le dossier PDF.",
+      })
+    } finally {
+      setExporting(false)
+    }
+  }, [campagne, exporting, toast])
   // Bug #ybnkt — Tabs en non-controlled re-démontaient sur chaque load(),
   // ramenant l'utilisateur à l'Aperçu après un toggle d'étape. On contrôle
   // l'onglet actif et on ne le reset que lorsque la modale s'ouvre.
@@ -286,13 +320,15 @@ export function CampagneDetailDialog({ campagneId, open, onOpenChange, onUpdate 
             {campagne?.nom || "Chargement..."}
             {/* Bug #7 — Export PDF dossier campagne (aides PCAE / Plantons en Normandie). */}
             {campagne && (
-              <a
-                href={`/api/arbres/campagnes/${campagne.id}/export`}
-                className="ml-auto text-xs px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-normal"
+              <button
+                type="button"
+                onClick={handleExportPdf}
+                disabled={exporting}
+                className="ml-auto text-xs px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-normal disabled:opacity-60 disabled:cursor-wait"
                 title="Télécharger le dossier complet pour montage d'aides"
               >
-                📥 Dossier PDF
-              </a>
+                {exporting ? "Génération…" : "📥 Dossier PDF"}
+              </button>
             )}
           </DialogTitle>
           <DialogDescription>

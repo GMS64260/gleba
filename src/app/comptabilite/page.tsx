@@ -396,6 +396,12 @@ export default function DashboardComptabilite() {
                     <p className="text-sm text-blue-100 mt-1">
                       Nouveau · pas d'activité en {selectedYear - 1}
                     </p>
+                  ) : yearDiff.state === "nouveau-revenus" ? (
+                    // Bug COMPTA #2 — revenus N-1 = 0 mais il y a eu des
+                    // dépenses en N-1 : ne pas prétendre « pas d'activité ».
+                    <p className="text-sm text-blue-100 mt-1">
+                      {selectedYear - 1} : 0 € de revenus, {formatEuro(yearDiff.depensesPrecedente)} de dépenses
+                    </p>
                   ) : (
                     <p className="text-[10px] text-blue-100 italic mt-1">
                       Aucune activité en {selectedYear} ni en {selectedYear - 1}

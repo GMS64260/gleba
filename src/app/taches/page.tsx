@@ -90,6 +90,25 @@ function TachesContent() {
   const startIso = React.useMemo(() => weekStart.toISOString(), [weekStart])
   const endIso = React.useMemo(() => weekEnd.toISOString(), [weekEnd])
 
+  // Bug #6 (testeur) — Regroupe les irrigations par espèce pour éviter une
+  // longue liste de lignes quasi identiques (« 20× Tomate »). On conserve
+  // chaque planche en sous-ligne actionnable, mais sous un en-tête « ×N ».
+  const groupedIrrigation = React.useMemo(() => {
+    const groups = new Map<string, { especeId: string; couleur: string | null; items: IrrigationItem[] }>()
+    for (const item of data?.irrigation ?? []) {
+      const existing = groups.get(item.especeId)
+      if (existing) {
+        existing.items.push(item)
+      } else {
+        groups.set(item.especeId, { especeId: item.especeId, couleur: item.couleur, items: [item] })
+      }
+    }
+    // Trie les sous-lignes par date prévue, puis les groupes par taille décroissante.
+    const arr = Array.from(groups.values())
+    arr.forEach(g => g.items.sort((a, b) => new Date(a.datePrevue).getTime() - new Date(b.datePrevue).getTime()))
+    return arr.sort((a, b) => b.items.length - a.items.length || a.especeId.localeCompare(b.especeId))
+  }, [data?.irrigation])
+
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
     try {
@@ -478,48 +497,58 @@ function TachesContent() {
                     Tout est arrose !
                   </p>
                 ) : (
-                  <div className="space-y-2">
-                    {data.irrigation.map(item => {
-                      const datePrevue = new Date(item.datePrevue)
-                      const isToday = datePrevue.toDateString() === new Date().toDateString()
-                      const isPast = datePrevue < new Date() && !isToday
-
-                      return (
-                        <button
-                          key={item.id}
-                          onClick={() => marquerIrrigation(item.id)}
-                          className={`w-full flex items-center gap-3 p-3 rounded-lg border bg-white transition-all ${
-                            isPast ? 'border-red-300 bg-red-50' : 'border-slate-200 hover:border-cyan-300 hover:shadow-sm'
-                          }`}
-                        >
-                          <Droplets className={`h-5 w-5 flex-shrink-0 ${
-                            isPast ? 'text-red-600' : isToday ? 'text-cyan-600' : 'text-blue-500'
-                          }`} />
-                          <div className="flex items-center gap-2 flex-1 min-w-0">
-                            {item.couleur && (
-                              <div
-                                className="w-3 h-3 rounded-full flex-shrink-0"
-                                style={{ backgroundColor: item.couleur }}
-                              />
-                            )}
-                            <span className="font-medium truncate">{item.especeId}</span>
-                            {item.plancheId && (
-                              <span className="text-xs text-muted-foreground">({item.plancheId})</span>
-                            )}
-                          </div>
-                          <span className={`text-sm ${
-                            isPast ? 'text-red-600 font-medium' : isToday ? 'text-cyan-600' : 'text-blue-500'
-                          }`}>
-                            {isToday ? "Aujourd'hui" : format(datePrevue, "EEE d", { locale: fr })}
-                          </span>
-                          {item.plancheId && (
-                            <Badge variant="outline" className="flex-shrink-0">
-                              {item.plancheId}
+                  // Bug #6 (testeur) — Regroupement par espèce : avant, 20 cultures
+                  // de Tomate produisaient 20 lignes quasi identiques. On affiche
+                  // désormais un en-tête « Tomate ×4 » (nombre de planches) suivi
+                  // des lignes par planche, individuellement actionnables.
+                  <div className="space-y-3">
+                    {groupedIrrigation.map(groupe => (
+                      <div key={groupe.especeId} className="space-y-1.5">
+                        <div className="flex items-center gap-2 px-1">
+                          {groupe.couleur && (
+                            <div
+                              className="w-3 h-3 rounded-full flex-shrink-0"
+                              style={{ backgroundColor: groupe.couleur }}
+                            />
+                          )}
+                          <span className="font-semibold text-sm">{groupe.especeId}</span>
+                          {groupe.items.length > 1 && (
+                            <Badge variant="secondary" className="text-xs">
+                              ×{groupe.items.length}
                             </Badge>
                           )}
-                        </button>
-                      )
-                    })}
+                        </div>
+                        {groupe.items.map(item => {
+                          const datePrevue = new Date(item.datePrevue)
+                          const isToday = datePrevue.toDateString() === new Date().toDateString()
+                          const isPast = datePrevue < new Date() && !isToday
+
+                          return (
+                            <button
+                              key={item.id}
+                              onClick={() => marquerIrrigation(item.id)}
+                              className={`w-full flex items-center gap-3 p-2.5 pl-5 rounded-lg border bg-white transition-all ${
+                                isPast ? 'border-red-300 bg-red-50' : 'border-slate-200 hover:border-cyan-300 hover:shadow-sm'
+                              }`}
+                            >
+                              <Droplets className={`h-4 w-4 flex-shrink-0 ${
+                                isPast ? 'text-red-600' : isToday ? 'text-cyan-600' : 'text-blue-500'
+                              }`} />
+                              <div className="flex items-center gap-2 flex-1 min-w-0">
+                                <span className="text-sm text-muted-foreground truncate">
+                                  {item.plancheId || 'Sans planche'}
+                                </span>
+                              </div>
+                              <span className={`text-sm ${
+                                isPast ? 'text-red-600 font-medium' : isToday ? 'text-cyan-600' : 'text-blue-500'
+                              }`}>
+                                {isToday ? "Aujourd'hui" : format(datePrevue, "EEE d", { locale: fr })}
+                              </span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    ))}
                   </div>
                 )}
               </CardContent>

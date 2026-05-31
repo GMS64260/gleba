@@ -342,8 +342,10 @@ export function DataTable<TData, TValue>({
         </Table>
       </div>
 
-      {/* Pagination */}
-      {showPagination && (
+      {/* Pagination — masquée pendant le chargement : sinon le compteur
+          « 0 résultat(s) » et « Aucun résultat » s'affichaient en même temps
+          que le skeleton (bug d'états contradictoires). */}
+      {showPagination && !isLoading && (
         <div className="flex items-center justify-between px-2">
           <div className="text-sm text-muted-foreground">
             {table.getFilteredSelectedRowModel().rows.length > 0 && (
@@ -353,34 +355,57 @@ export function DataTable<TData, TValue>({
             )}
             {table.getFilteredRowModel().rows.length} résultat(s)
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => table.previousPage()}
-              disabled={!table.getCanPreviousPage()}
-            >
-              Précédent
-            </Button>
-            <span className="text-sm">
-              {/* QA Hélène 2026-05-15 — Bug #19 : sur un tableau vide
-                  Recharts pageCount=0 → "Page 1 sur 0". Désormais on
-                  affiche "Aucun résultat" dans ce cas. */}
-              {table.getPageCount() === 0 ? (
-                "Aucun résultat"
-              ) : (
-                <>Page {table.getState().pagination.pageIndex + 1} sur {table.getPageCount()}</>
-              )}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => table.nextPage()}
-              disabled={!table.getCanNextPage()}
-            >
-              Suivant
-            </Button>
-          </div>
+          {(() => {
+            // Bug #7 (testeur) — En pagination serveur (`manualPagination`), la
+            // recherche est appliquée côté client sur la page déjà chargée. Le
+            // `pageCount` serveur reflète le total NON filtré → « Page 1 sur 3 »
+            // avec des pages 2/3 vides après filtrage « Concombre ». Quand un
+            // filtre global est actif en mode manuel, on pagine sur le jeu
+            // filtré (présent en mémoire) au lieu du total serveur.
+            const isManual = !!onPaginationChange
+            const hasGlobalFilter = !onSearch && (globalFilter ?? "").trim().length > 0
+            const filteredCount = table.getFilteredRowModel().rows.length
+            const effectivePageCount = isManual && hasGlobalFilter
+              ? Math.max(1, Math.ceil(filteredCount / (table.getState().pagination.pageSize || pageSize)))
+              : table.getPageCount()
+            const currentPageIndex = isManual && hasGlobalFilter
+              ? Math.min(table.getState().pagination.pageIndex, effectivePageCount - 1)
+              : table.getState().pagination.pageIndex
+            const canPrev = isManual && hasGlobalFilter ? currentPageIndex > 0 : table.getCanPreviousPage()
+            const canNext = isManual && hasGlobalFilter
+              ? currentPageIndex < effectivePageCount - 1
+              : table.getCanNextPage()
+            return (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => table.previousPage()}
+                  disabled={!canPrev}
+                >
+                  Précédent
+                </Button>
+                <span className="text-sm">
+                  {/* QA Hélène 2026-05-15 — Bug #19 : sur un tableau vide
+                      Recharts pageCount=0 → "Page 1 sur 0". Désormais on
+                      affiche "Aucun résultat" dans ce cas. */}
+                  {effectivePageCount === 0 || filteredCount === 0 ? (
+                    "Aucun résultat"
+                  ) : (
+                    <>Page {currentPageIndex + 1} sur {effectivePageCount}</>
+                  )}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => table.nextPage()}
+                  disabled={!canNext}
+                >
+                  Suivant
+                </Button>
+              </div>
+            )
+          })()}
         </div>
       )}
     </div>

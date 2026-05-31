@@ -423,7 +423,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                   l'impression que les 85 kg = total de l'année (le bloc
                   Planification annonçait 1367 kg attendus). */}
               {(stats?.recoltesProjectionKg ?? 0) > 0 && (
-                <p className="text-[11px] text-amber-100 mb-0.5">
+                <p className="text-xs text-amber-100 mb-0.5">
                   + {stats?.recoltesProjectionKg?.toFixed(1)} kg à venir
                   {stats?.recoltesTotalAttenduKg
                     ? ` (total attendu ${stats.recoltesTotalAttenduKg.toFixed(1)} kg)`
@@ -431,11 +431,11 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                 </p>
               )}
               {aucuneRecolteN ? (
-                <p className="text-[10px] text-amber-100 italic">
+                <p className="text-xs text-amber-100 italic">
                   Saison à venir (N-1 : {stats?.recoltesAnneePrecedente?.toFixed(1)} kg)
                 </p>
               ) : premiereAnnee ? (
-                <p className="text-[10px] text-amber-100 italic">
+                <p className="text-xs text-amber-100 italic">
                   Première année avec activité (N-1 = 0 kg)
                 </p>
               ) : hasComparatifN1 ? (
@@ -451,12 +451,12 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                       {yearDiffPercent}% vs {year - 1}
                     </span>
                   </div>
-                  <p className="text-[10px] text-amber-100 mt-0.5">
+                  <p className="text-xs text-amber-100 mt-0.5">
                     (YTD vs YTD année dernière)
                   </p>
                 </>
               ) : (
-                <p className="text-[10px] text-amber-100 italic">
+                <p className="text-xs text-amber-100 italic">
                   Pas de comparatif N-1 disponible
                 </p>
               )}

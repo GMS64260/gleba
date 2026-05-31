@@ -60,12 +60,22 @@ function calculateSoilStatus(
   )
 
   if (recentCultures.length === 0) {
+    // Bug #4 (testeur) — Le message « Pas d'historique récent - toutes les
+    // cultures sont possibles » contredisait l'encart « Familles bloquées »
+    // quand des cultures ont été plantées l'ANNÉE COURANTE (targetYear).
+    // `calculateSoilStatus` ignore l'année courante (c.annee < targetYear)
+    // pour estimer les nutriments, mais `calculateBlockedFamilies` la prend
+    // en compte. Si des cultures existent cette année, l'historique n'est
+    // donc PAS vide : on adapte le message pour rester cohérent.
+    const hasCurrentYearCultures = cultures.some((c) => c.annee === targetYear)
     return {
       estimatedN: 'normal',
       estimatedP: 'normal',
       estimatedK: 'normal',
       lastHeavyFeeder: null,
-      suggestion: 'Pas d\'historique récent - toutes les cultures sont possibles',
+      suggestion: hasCurrentYearCultures
+        ? 'Cultures en place cette année — voir les familles bloquées ci-dessous'
+        : 'Pas d\'historique récent - toutes les cultures sont possibles',
     }
   }
 

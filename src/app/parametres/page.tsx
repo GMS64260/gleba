@@ -1268,7 +1268,11 @@ export default function ParametresPage() {
 
 function ModulesSection() {
   const { toast } = useToast()
-  const { modules, save } = useModules()
+  // BUG #10 — on lit `loading` pour ne PAS afficher les toggles tant que la
+  // valeur serveur (`modulesActifs`) n'est pas arrivée : sinon ils restent
+  // bloqués sur la valeur par défaut (tous ON) après un reload, désynchro de
+  // la préférence réelle renvoyée par GET /api/user/preferences.
+  const { modules, save, loading } = useModules()
   const [saving, setSaving] = React.useState(false)
 
   const toggle = async (id: ModuleId, active: boolean) => {
@@ -1309,7 +1313,22 @@ function ModulesSection() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        {MODULE_IDS.map((id) => {
+        {loading ? (
+          // Tant que la préférence serveur n'est pas chargée, on n'affiche pas
+          // l'état des toggles (évite le faux "tout ON" du défaut).
+          MODULE_IDS.map((id) => (
+            <div
+              key={id}
+              className="flex items-center justify-between gap-4 p-3 border rounded-lg animate-pulse"
+            >
+              <div className="flex-1 min-w-0 space-y-2">
+                <div className="h-4 w-32 bg-slate-200 rounded" />
+                <div className="h-3 w-48 bg-slate-100 rounded" />
+              </div>
+              <div className="h-5 w-9 bg-slate-200 rounded-full" />
+            </div>
+          ))
+        ) : MODULE_IDS.map((id) => {
           const def = MODULES[id]
           const active = modules.includes(id)
           return (

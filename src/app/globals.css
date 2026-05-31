@@ -6,6 +6,17 @@
   .text-balance {
     text-wrap: balance;
   }
+
+  /* Masque la scrollbar tout en gardant le scroll (overflow-x-auto).
+     Utilisé sur les barres d'onglets de second niveau (Élevage, Verger)
+     pour éviter une scrollbar horizontale disgracieuse sous lg. */
+  .scrollbar-hide {
+    -ms-overflow-style: none; /* IE/Edge */
+    scrollbar-width: none; /* Firefox */
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none; /* Chrome/Safari/Opera */
+  }
 }
 
 /* ============================================================ */
@@ -236,6 +247,23 @@
        explicitement marqué overflow-x-auto (tableaux, onglets). */
     overflow-x: hidden;
   }
+}
+
+/* ============================================================ */
+/* A11Y — Focus clavier visible (WCAG 2.4.7)                     */
+/* ============================================================ */
+/* Bug a11y : sur la nav principale (boutons verts), le focus par
+   défaut (focus-visible:ring-1 ring-ring, où --ring est vert) était
+   imperceptible sur un fond déjà vert. On force un outline 2px de
+   couleur contrastante (slate-900) avec offset, suffisamment visible
+   quel que soit le fond du module. Uniquement au clavier
+   (:focus-visible), jamais à la souris. */
+header :focus-visible,
+nav :focus-visible {
+  outline: 2px solid hsl(222 47% 11%) !important;
+  outline-offset: 2px !important;
+  box-shadow: none !important;
+  border-radius: 4px;
 }
 
 /* ============================================================ */

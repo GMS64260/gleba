@@ -43,6 +43,12 @@ function RecoltesPrevuesParSemainesContent() {
   const { toast } = useToast()
 
   const [data, setData] = React.useState<RecoltePrevue[]>([])
+  // Bug #3 (testeur) — Le « restant » du bandeau divergeait du KPI « à venir »
+  // (1216.8 vs 1135.8 kg) car il sommait la projection détaillée par semaine
+  // (incluant des cultures dérivées de rotation) alors que le KPI utilise
+  // l'agrégat unifié `getRecoltesAnneeAggregat`. On affiche désormais la MÊME
+  // valeur (`stats.projectionKg`) que la cartouche « Récoltes attendues ».
+  const [projectionKg, setProjectionKg] = React.useState<number | null>(null)
   const [isLoading, setIsLoading] = React.useState(true)
   const [annee, setAnnee] = React.useState(
     parseInt(searchParams.get("annee") || new Date().getFullYear().toString())
@@ -60,6 +66,7 @@ function RecoltesPrevuesParSemainesContent() {
       if (!response.ok) throw new Error("Erreur lors du chargement")
       const result = await response.json()
       setData(result.data)
+      setProjectionKg(typeof result.stats?.projectionKg === "number" ? result.stats.projectionKg : null)
     } catch (error) {
       toast({
         variant: "destructive",
@@ -77,7 +84,9 @@ function RecoltesPrevuesParSemainesContent() {
 
   // Filtrer les semaines avec des recoltes
   const semainesAvecRecoltes = data.filter(r => r.totalKg > 0)
-  const totalAnnee = data.reduce((sum, r) => sum + r.totalKg, 0)
+  // Bug #3 — « restant » unifié avec le KPI (projection de l'agrégat). Fallback
+  // sur la somme détaillée si l'agrégat n'est pas disponible.
+  const totalAnnee = projectionKg ?? data.reduce((sum, r) => sum + r.totalKg, 0)
 
   return (
     <div className="min-h-screen bg-slate-50 aurora-bg-subtle">

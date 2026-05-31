@@ -369,7 +369,7 @@ export default function EditRotationPage() {
                 {fields.map((field, index) => (
                   <div key={field.id} className="flex items-center gap-4 p-3 bg-slate-50 rounded-lg">
                     <Badge variant="outline" className="shrink-0">
-                      Annee {index + 1}
+                      Année {index + 1}
                     </Badge>
                     <FormField
                       control={form.control}

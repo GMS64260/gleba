@@ -46,7 +46,17 @@ export const ESPECE_CATEGORIES = [
 export const ESPECE_NIVEAUX = ['Facile', 'Moyen', 'Difficile'] as const
 
 // Niveaux d'irrigation
+// NB : la valeur 'Eleve' (sans accent) est l'identifiant STOCKÉ en base et
+// comparé dans la logique (cf. api/cultures/irriguer, assistant-helpers). On la
+// conserve telle quelle pour ne rien casser, mais on expose un libellé accentué
+// pour l'affichage (Bug #8 testeur : « Eleve » → « Élevé »).
 export const ESPECE_IRRIGATION = ['Faible', 'Moyen', 'Eleve'] as const
+
+export const ESPECE_IRRIGATION_LABELS: Record<(typeof ESPECE_IRRIGATION)[number], string> = {
+  Faible: 'Faible',
+  Moyen: 'Moyen',
+  Eleve: 'Élevé',
+}
 
 // Schéma de base pour une espece (correspond au modèle Prisma)
 export const baseEspeceSchema = z.object({

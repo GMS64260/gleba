@@ -46,6 +46,7 @@ interface DashboardArbresData {
     arbresPetitsFruits: number
     arbresForestiers: number
     arbresProductifs: number
+    arbresSansParcelle?: number
     recoltesFruitsAnnee: number
     recoltesFruitsCount: number
     recoltesFruitsAnneePrecedente: number
@@ -201,6 +202,15 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
           </CardHeader>
           <CardContent className="pb-3 px-4">
             <p className="text-xs text-lime-100">{data?.stats.arbresProductifs || 0} fruitiers productifs</p>
+            {/* Fix verger 2026-05-31 (bug #2) — Rend explicite l'écart entre
+                le total verger (tous les arbres) et la liste Parcelles (arbres
+                rattachés à une parcelle) : N arbre(s) orphelin(s) sans
+                parcelle. */}
+            {data?.stats.arbresSansParcelle ? (
+              <p className="text-xs text-lime-200">
+                dont {data.stats.arbresSansParcelle} sans parcelle
+              </p>
+            ) : null}
           </CardContent>
         </Card>
 
