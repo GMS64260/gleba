@@ -6,6 +6,11 @@ const config: Config = {
     "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
+    // src/lib doit être scanné : kpi-theme.ts y déclare les classes de gradient
+    // des KPI cards en littéral. Sans ça, Tailwind purge les teintes utilisées
+    // uniquement là (ex. neutre slate-700/800) → carte sans fond, texte blanc
+    // sur blanc.
+    "./src/lib/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
   	extend: {
