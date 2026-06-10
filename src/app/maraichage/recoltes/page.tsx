@@ -96,6 +96,7 @@ export default function RecoltesPage() {
     quantiteVendue: "",
     creerFacture: false,
   })
+  const [venteSubmitting, setVenteSubmitting] = React.useState(false)
 
   // Générer les annees disponibles (5 dernières annees)
   const currentYear = new Date().getFullYear()
@@ -177,6 +178,13 @@ export default function RecoltesPage() {
       if (response.ok) {
         setData(data.filter(r => r.id !== id))
         toast({ title: "Récolte supprimée" })
+      } else {
+        const payload = await response.json().catch(() => null)
+        toast({
+          variant: "destructive",
+          title: "Erreur",
+          description: payload?.error || "La suppression a échoué",
+        })
       }
     } catch (error) {
       toast({ variant: "destructive", title: "Erreur" })
@@ -196,12 +204,48 @@ export default function RecoltesPage() {
   }
 
   const handleVendre = async () => {
-    if (!selectedRecolte) return
+    if (!selectedRecolte || venteSubmitting) return
 
-    const prixKg = parseFloat(venteData.prixKg) || 0
-    const quantite = parseFloat(venteData.quantiteVendue) || selectedRecolte.quantite
+    // Règle projet (famille C) : pas de bouton grisé muet — gardes
+    // early-return avec toast au submit. Le serveur exige prix + date +
+    // client (recoltePatchSchema), on valide donc les trois ici.
+    const prixKg = parseFloat(venteData.prixKg)
+    if (!prixKg || prixKg <= 0) {
+      toast({
+        variant: "destructive",
+        title: "Prix manquant",
+        description: "Saisissez un prix au kg supérieur à 0 €.",
+      })
+      return
+    }
+    const quantite = parseFloat(venteData.quantiteVendue)
+    if (!quantite || quantite <= 0) {
+      toast({
+        variant: "destructive",
+        title: "Quantité invalide",
+        description: "Saisissez la quantité vendue en kg.",
+      })
+      return
+    }
+    if (quantite > selectedRecolte.quantite) {
+      toast({
+        variant: "destructive",
+        title: "Quantité trop élevée",
+        description: `Maximum disponible : ${selectedRecolte.quantite.toFixed(2)} kg.`,
+      })
+      return
+    }
+    if (!venteData.clientNom.trim()) {
+      toast({
+        variant: "destructive",
+        title: "Client manquant",
+        description: "Sélectionnez un client ou saisissez son nom.",
+      })
+      return
+    }
     const prixTotal = prixKg * quantite
 
+    setVenteSubmitting(true)
     try {
       const res = await fetch(`/api/recoltes/${selectedRecolte.id}`, {
         method: "PATCH",
@@ -211,6 +255,7 @@ export default function RecoltesPage() {
           dateVente: new Date().toISOString(),
           prixKg,
           prixTotal,
+          quantiteVendue: quantite,
           clientId: venteData.clientId ? parseInt(venteData.clientId) : null,
           clientNom: venteData.clientNom || null,
           creerFacture: venteData.creerFacture,
@@ -218,17 +263,27 @@ export default function RecoltesPage() {
       })
 
       if (res.ok) {
-        const updated = await res.json()
-        setData(data.map(r => r.id === updated.id ? updated : r))
         setShowVenteDialog(false)
         setSelectedRecolte(null)
         toast({
           title: "Vente enregistrée",
           description: venteData.creerFacture ? "Facture créée" : undefined
         })
+        // Une vente partielle scinde la récolte (reliquat en stock) → on
+        // recharge la liste plutôt que de patcher la ligne localement.
+        fetchData()
+      } else {
+        const payload = await res.json().catch(() => null)
+        toast({
+          variant: "destructive",
+          title: "Erreur",
+          description: payload?.error || "La vente n'a pas pu être enregistrée",
+        })
       }
     } catch (err) {
       toast({ title: "Erreur", variant: "destructive" })
+    } finally {
+      setVenteSubmitting(false)
     }
   }
 
@@ -246,6 +301,13 @@ export default function RecoltesPage() {
         const updated = await res.json()
         setData(data.map(r => r.id === updated.id ? updated : r))
         toast({ title: "Marqué comme perte" })
+      } else {
+        const payload = await res.json().catch(() => null)
+        toast({
+          variant: "destructive",
+          title: "Erreur",
+          description: payload?.error || "Le changement de statut a échoué",
+        })
       }
     } catch (err) {
       toast({ title: "Erreur", variant: "destructive" })
@@ -667,9 +729,9 @@ export default function RecoltesPage() {
                 <Button
                   onClick={handleVendre}
                   className="w-full bg-green-600 hover:bg-green-700"
-                  disabled={!venteData.prixKg}
+                  disabled={venteSubmitting}
                 >
-                  Confirmer la vente
+                  {venteSubmitting ? "Enregistrement…" : "Confirmer la vente"}
                 </Button>
               </div>
             )}

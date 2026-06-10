@@ -30,7 +30,13 @@ export const recoltePatchSchema = z.object({
   dateVente: z.coerce.date().nullable().optional(),
   prixKg: z.number().min(0).nullable().optional(),
   prixTotal: z.number().min(0).nullable().optional(),
-  clientId: z.string().nullable().optional(),
+  // Vente partielle : quantité réellement vendue (≤ quantité de la récolte).
+  // Le reliquat reste en stock (la route PATCH scinde la récolte).
+  quantiteVendue: z.number().positive().nullable().optional(),
+  // Recolte.clientId est un Int en base (FK Client.id) — le front envoie un
+  // number. L'ancien z.string() faisait échouer TOUT PATCH de vente avec un
+  // client existant sélectionné (400 silencieux).
+  clientId: z.number().int().nullable().optional(),
   clientNom: z.string().nullable().optional(),
   datePeremption: z.coerce.date().nullable().optional(),
   notes: z.string().max(5000).nullable().optional(),
@@ -55,7 +61,7 @@ export const recoltePatchSchema = z.object({
       })
     }
     const aUnClient =
-      (typeof data.clientId === 'string' && data.clientId.length > 0) ||
+      typeof data.clientId === 'number' ||
       (typeof data.clientNom === 'string' && data.clientNom.length > 0)
     if (!aUnClient) {
       ctx.addIssue({
