@@ -51,8 +51,19 @@ describe('recoltePatchSchema (BUG-07 vendu = prix + date + client)', () => {
   })
 
   it('accepte vendu si clientId présent mais clientNom null', () => {
-    const r = recoltePatchSchema.safeParse({ ...validVendu, clientNom: null, clientId: 'cl_123' })
+    // Recolte.clientId est un Int en base — le front envoie un number.
+    const r = recoltePatchSchema.safeParse({ ...validVendu, clientNom: null, clientId: 123 })
     expect(r.success).toBe(true)
+  })
+
+  it('refuse un clientId string (FK Int en base)', () => {
+    const r = recoltePatchSchema.safeParse({ ...validVendu, clientId: 'cl_123' })
+    expect(r.success).toBe(false)
+  })
+
+  it('accepte une vente partielle (quantiteVendue > 0) et refuse 0', () => {
+    expect(recoltePatchSchema.safeParse({ ...validVendu, quantiteVendue: 2.5 }).success).toBe(true)
+    expect(recoltePatchSchema.safeParse({ ...validVendu, quantiteVendue: 0 }).success).toBe(false)
   })
 
   it('accepte autres statuts (en_stock, perte) sans contrainte prix/date', () => {

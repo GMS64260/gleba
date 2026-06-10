@@ -6,6 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import prisma from '@/lib/prisma'
 import { updateRecolteSchema, recoltePatchSchema } from '@/lib/validations'
 import { requireAuthApi } from '@/lib/auth-utils'
@@ -14,6 +15,32 @@ import { invalidateKpi } from '@/lib/kpi'
 import { creerFacture } from '@/lib/facture-utils'
 
 type RouteParams = { params: Promise<{ id: string }> }
+
+/**
+ * Ajuste le compteur d'inventaire `UserStockEspece` (borné à ≥ 0).
+ * Le POST /api/recoltes incrémente l'inventaire à la création d'une récolte
+ * en_stock ; toute sortie (vente, perte, suppression, baisse de quantité)
+ * doit appliquer le delta inverse, sinon l'écran Stocks Maraîchage gonfle
+ * indéfiniment.
+ */
+async function ajusterInventaireEspece(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  especeId: string,
+  delta: number
+) {
+  if (!delta) return
+  const stock = await tx.userStockEspece.findUnique({
+    where: { userId_especeId: { userId, especeId } },
+    select: { inventaire: true },
+  })
+  const inventaire = Math.max(0, (stock?.inventaire ?? 0) + delta)
+  await tx.userStockEspece.upsert({
+    where: { userId_especeId: { userId, especeId } },
+    create: { userId, especeId, inventaire, dateInventaire: new Date() },
+    update: { inventaire, dateInventaire: new Date() },
+  })
+}
 
 // GET /api/recoltes/[id]
 export async function GET(
@@ -114,14 +141,29 @@ export async function PUT(
       )
     }
 
-    // Mise à jour
-    const recolte = await prisma.recolte.update({
-      where: { id: recolteId },
-      data: validationResult.data,
-      include: {
-        espece: true,
-        culture: true,
-      },
+    // Mise à jour + ajustement de l'inventaire si la récolte est en stock
+    // (changement de quantité ou d'espèce → le compteur doit suivre).
+    const recolte = await prisma.$transaction(async (tx) => {
+      const updated = await tx.recolte.update({
+        where: { id: recolteId },
+        data: validationResult.data,
+        include: {
+          espece: true,
+          culture: true,
+        },
+      })
+
+      if (existing.statut === 'en_stock') {
+        const userId = session!.user.id
+        if (updated.especeId !== existing.especeId) {
+          await ajusterInventaireEspece(tx, userId, existing.especeId, -existing.quantite)
+          await ajusterInventaireEspece(tx, userId, updated.especeId, updated.quantite)
+        } else if (updated.quantite !== existing.quantite) {
+          await ajusterInventaireEspece(tx, userId, existing.especeId, updated.quantite - existing.quantite)
+        }
+      }
+
+      return updated
     })
 
     invalidateKpi(session!.user.id)
@@ -209,7 +251,24 @@ export async function PATCH(
     if (body.datePeremption !== undefined) updateData.datePeremption = body.datePeremption ? new Date(body.datePeremption) : null
     if (body.notes !== undefined) updateData.notes = body.notes
 
-    // Transaction atomique : facture + update recolte
+    // Vente partielle : l'UI propose « Quantité vendue » mais l'ancien code
+    // l'ignorait (récolte entière marquée vendue, facture incohérente). On
+    // scinde désormais : la récolte vendue porte la quantité vendue, le
+    // reliquat redevient une récolte en_stock distincte.
+    const quantiteVendue =
+      body.statut === 'vendu' &&
+      typeof body.quantiteVendue === 'number' &&
+      body.quantiteVendue > 0
+        ? Math.min(body.quantiteVendue, existing.quantite)
+        : existing.quantite
+    // Scission limitée aux récoltes encore en stock : re-patcher une récolte
+    // déjà vendue ne doit pas générer un reliquat jamais compté en inventaire.
+    const reliquat =
+      body.statut === 'vendu' && existing.statut === 'en_stock'
+        ? existing.quantite - quantiteVendue
+        : 0
+
+    // Transaction atomique : facture + update recolte + reliquat + inventaire
     const recolte = await prisma.$transaction(async (tx) => {
       if (body.statut === "vendu" && body.creerFacture && body.prixTotal) {
         const totalHT = body.prixTotal / 1.055
@@ -231,7 +290,9 @@ export async function PATCH(
           modePaiement: 'especes',
           lignes: [{
             description: `${espece}${variete}`,
-            quantite: existing.quantite,
+            // Quantité réellement vendue (pas la quantité totale de la
+            // récolte) : sinon quantité × prix unitaire ≠ montant.
+            quantite: quantiteVendue,
             unite: 'kg',
             prixUnitaire: (body.prixKg || 0) / 1.055,
             tauxTVA: 5.5,
@@ -242,6 +303,35 @@ export async function PATCH(
         })
 
         updateData.factureId = facture.id
+      }
+
+      // Scission du reliquat non vendu : il reste en stock.
+      if (reliquat > 0) {
+        updateData.quantite = quantiteVendue
+        await tx.recolte.create({
+          data: {
+            userId,
+            especeId: existing.especeId,
+            cultureId: existing.cultureId,
+            date: existing.date,
+            quantite: reliquat,
+            statut: 'en_stock',
+            datePeremption: existing.datePeremption,
+            statutBioSnapshot: existing.statutBioSnapshot,
+            notes: `Reliquat non vendu de la récolte #${recolteId}`,
+          },
+        })
+      }
+
+      // Cohérence inventaire (UserStockEspece) sur transition de statut :
+      // sortie de stock (vente/perte/consommé) → décrément de la part sortie ;
+      // retour en stock → ré-incrément. Le reliquat scindé reste compté.
+      if (body.statut && body.statut !== existing.statut) {
+        if (existing.statut === 'en_stock' && body.statut !== 'en_stock') {
+          await ajusterInventaireEspece(tx, userId, existing.especeId, -quantiteVendue)
+        } else if (existing.statut !== 'en_stock' && body.statut === 'en_stock') {
+          await ajusterInventaireEspece(tx, userId, existing.especeId, existing.quantite)
+        }
       }
 
       return tx.recolte.update({
@@ -268,7 +358,7 @@ export async function PATCH(
         await createVenteFromRecolte(userId, {
           id: recolteId,
           especeId: existing.especeId,
-          quantite: existing.quantite,
+          quantite: quantiteVendue,
           prixKg: body.prixKg ?? existing.prixKg,
           prixTotal: body.prixTotal ?? existing.prixTotal,
           clientNom: body.clientNom ?? existing.clientNom,
@@ -336,9 +426,15 @@ export async function DELETE(
       console.error('Auto-compta cleanup error (recolte):', autoComptaError)
     }
 
-    // Suppression
-    await prisma.recolte.delete({
-      where: { id: recolteId },
+    // Suppression + décrément de l'inventaire si la récolte était comptée
+    // en stock (sinon le compteur Stocks garde un surplus fantôme).
+    await prisma.$transaction(async (tx) => {
+      if (recolte.statut === 'en_stock' && recolte.quantite > 0) {
+        await ajusterInventaireEspece(tx, session!.user.id, recolte.especeId, -recolte.quantite)
+      }
+      await tx.recolte.delete({
+        where: { id: recolteId },
+      })
     })
 
     invalidateKpi(session!.user.id)
