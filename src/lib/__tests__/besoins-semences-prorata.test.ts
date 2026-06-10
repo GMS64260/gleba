@@ -2,6 +2,11 @@
  * BUG-21 — tests : surface allouée au prorata quand plusieurs cultures
  * partagent une même planche (sinon double comptage Carotte 30 m² +
  * Actinidia 30 m² sur B1 alors que B1 fait 30 m² réel).
+ *
+ * Bug #8 (testeur Marc, lot bugs-v4) : `getBesoinsSemences` ne porte plus
+ * que sur les cultures RÉELLEMENT créées (`existante`). Les mocks passent
+ * donc par des cultures directes (prisma.culture.findMany), plus par des
+ * projections de rotation comme dans la version initiale du test.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -13,6 +18,7 @@ vi.mock('@/lib/prisma', () => ({
     variete: { findMany: vi.fn() },
     userStockVariete: { findMany: vi.fn() },
     culture: { findMany: vi.fn() },
+    iTP: { findMany: vi.fn() },
   },
 }))
 
@@ -25,53 +31,55 @@ const mocked = prisma as unknown as {
   variete: { findMany: ReturnType<typeof vi.fn> }
   userStockVariete: { findMany: ReturnType<typeof vi.fn> }
   culture: { findMany: ReturnType<typeof vi.fn> }
+  iTP: { findMany: ReturnType<typeof vi.fn> }
 }
 
-function plancheAvecRotation(nom: string, longueur: number, largeur: number, details: { itpId: string; especeId: string }[]) {
+function cultureDirecte(
+  id: number,
+  especeId: string,
+  planche: { nom: string; longueur: number; largeur: number }
+) {
   return {
-    nom,
-    longueur,
-    largeur,
-    surface: longueur * largeur,
-    ilot: null,
-    rotationId: 'r1',
-    rotation: {
-      nbAnnees: 1,
-      details: details.map((d, i) => ({
-        annee: 1,
-        itpId: d.itpId,
-        itp: {
-          id: d.itpId,
-          especeId: d.especeId,
-          semaineSemis: 12,
-          semainePlantation: null,
-          semaineRecolte: 30,
-          dureeCulture: null,
-          nbRangs: 2,
-          espacement: 50,
-          espece: { id: d.especeId, couleur: null },
-        },
-      })),
+    id,
+    plancheId: planche.nom,
+    planche: {
+      nom: planche.nom,
+      longueur: planche.longueur,
+      largeur: planche.largeur,
+      surface: planche.longueur * planche.largeur,
+      ilot: null,
+      rotationId: null,
     },
-    cultures: [],
+    itpId: null,
+    itp: null,
+    especeId,
+    espece: { id: especeId, couleur: null, rendement: null },
+    varieteId: null,
+    variete: null,
+    annee: 2026,
+    dateSemis: null,
+    datePlantation: null,
+    dateRecolte: null,
+    nbRangs: null,
+    espacement: null,
+    longueur: null,
   }
 }
 
 describe('getBesoinsSemences (BUG-21 prorata multi-cultures)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocked.planche.findMany.mockResolvedValue([])
     mocked.variete.findMany.mockResolvedValue([])
     mocked.userStockVariete.findMany.mockResolvedValue([])
-    mocked.culture.findMany.mockResolvedValue([])
+    mocked.iTP.findMany.mockResolvedValue([])
   })
 
   it("Carotte + Actinidia sur la même planche : surface = surface_planche / 2 (Marc B1)", async () => {
-    // Une planche de 30 m² avec 2 ITPs dans la même année de rotation.
-    mocked.planche.findMany.mockResolvedValue([
-      plancheAvecRotation('B1', 10, 3, [
-        { itpId: 'itp_carotte', especeId: 'carotte' },
-        { itpId: 'itp_actinidia', especeId: 'actinidia' },
-      ]),
+    // Une planche de 30 m² occupée par 2 cultures réelles.
+    mocked.culture.findMany.mockResolvedValue([
+      cultureDirecte(1, 'carotte', { nom: 'B1', longueur: 10, largeur: 3 }),
+      cultureDirecte(2, 'actinidia', { nom: 'B1', longueur: 10, largeur: 3 }),
     ])
     mocked.espece.findMany.mockResolvedValue([
       { id: 'carotte', couleur: null, modeSemis: 'graine_directe', doseSemis: 2, uniteDose: 'g_m2', tauxGermination: 80, margeSecuritePct: 25, famille: null },
@@ -87,8 +95,8 @@ describe('getBesoinsSemences (BUG-21 prorata multi-cultures)', () => {
   })
 
   it('Carotte seule sur planche : surface entière conservée (pas de division parasite)', async () => {
-    mocked.planche.findMany.mockResolvedValue([
-      plancheAvecRotation('B1', 10, 3, [{ itpId: 'itp_carotte', especeId: 'carotte' }]),
+    mocked.culture.findMany.mockResolvedValue([
+      cultureDirecte(1, 'carotte', { nom: 'B1', longueur: 10, largeur: 3 }),
     ])
     mocked.espece.findMany.mockResolvedValue([
       { id: 'carotte', couleur: null, modeSemis: 'graine_directe', doseSemis: 2, uniteDose: 'g_m2', tauxGermination: 80, margeSecuritePct: 25, famille: null },
@@ -100,12 +108,10 @@ describe('getBesoinsSemences (BUG-21 prorata multi-cultures)', () => {
   })
 
   it("Carotte + Actinidia + Poireau sur la même planche : 1/3 chacun", async () => {
-    mocked.planche.findMany.mockResolvedValue([
-      plancheAvecRotation('B1', 12, 2.5, [ // 30 m²
-        { itpId: 'itp_a', especeId: 'carotte' },
-        { itpId: 'itp_b', especeId: 'actinidia' },
-        { itpId: 'itp_c', especeId: 'poireau' },
-      ]),
+    mocked.culture.findMany.mockResolvedValue([
+      cultureDirecte(1, 'carotte', { nom: 'B1', longueur: 12, largeur: 2.5 }), // 30 m²
+      cultureDirecte(2, 'actinidia', { nom: 'B1', longueur: 12, largeur: 2.5 }),
+      cultureDirecte(3, 'poireau', { nom: 'B1', longueur: 12, largeur: 2.5 }),
     ])
     mocked.espece.findMany.mockResolvedValue([
       { id: 'carotte', couleur: null, modeSemis: 'graine_directe', doseSemis: 2, uniteDose: 'g_m2', tauxGermination: 80, margeSecuritePct: 0, famille: null },
@@ -120,9 +126,9 @@ describe('getBesoinsSemences (BUG-21 prorata multi-cultures)', () => {
   })
 
   it('cultures sur planches différentes : pas de division (chacune sa planche)', async () => {
-    mocked.planche.findMany.mockResolvedValue([
-      plancheAvecRotation('B1', 10, 3, [{ itpId: 'itp_carotte', especeId: 'carotte' }]),
-      plancheAvecRotation('B2', 5, 4, [{ itpId: 'itp_carotte', especeId: 'carotte' }]),
+    mocked.culture.findMany.mockResolvedValue([
+      cultureDirecte(1, 'carotte', { nom: 'B1', longueur: 10, largeur: 3 }),
+      cultureDirecte(2, 'carotte', { nom: 'B2', longueur: 5, largeur: 4 }),
     ])
     mocked.espece.findMany.mockResolvedValue([
       { id: 'carotte', couleur: null, modeSemis: 'graine_directe', doseSemis: 2, uniteDose: 'g_m2', tauxGermination: 80, margeSecuritePct: 0, famille: null },

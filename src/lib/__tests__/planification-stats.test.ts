@@ -63,9 +63,15 @@ describe('getStatsPlanification (BUG-14 variétés DISTINCT)', () => {
 
   it("appelle prisma.culture.findMany avec distinct=['varieteId'] et varieteId non-null", async () => {
     await getStatsPlanification('u1', 2026)
+    // Bug R6 : les variétés placeholder (« Non spécifiée ») sont exclues.
     expect(mocked.culture.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { userId: 'u1', annee: 2026, varieteId: { not: null } },
+        where: {
+          userId: 'u1',
+          annee: 2026,
+          varieteId: { not: null },
+          variete: { isPlaceholder: false },
+        },
         distinct: ['varieteId'],
       })
     )
