@@ -226,6 +226,49 @@ export const reserverProchainNumeroForEmission = reserverProchainNumero
 export const snapshotEmetteurForEmission = snapshotEmetteur
 
 /**
+ * Audit compta 2026-06 — annulation symétrique source métier ↔ facture.
+ * Appelé quand une source facturée (vente élevage, abattage, récolte, bois)
+ * est annulée, dé-vendue ou supprimée. Règles :
+ *   - facture déjà annulée → ok
+ *   - facture brouillon/émise non payée → annulée ici même
+ *   - facture payée → ok seulement si un avoir non annulé y est rattaché
+ *     (factureOrigineId) ; sinon refus — l'utilisateur doit émettre un avoir.
+ * Sans cette symétrie, la facture restait comptée dans KPI/TVA/FEC alors que
+ * la vente n'existait plus (CA fantôme), ou la vente disparaissait du FEC.
+ */
+export async function annulerFactureLiee(
+  db: PrismaTx,
+  userId: string,
+  factureId: number
+): Promise<{ ok: true } | { ok: false; raison: string }> {
+  const facture = await db.facture.findFirst({
+    where: { id: factureId, userId },
+    select: { id: true, numero: true, statut: true },
+  })
+  if (!facture || facture.statut === 'annulee') return { ok: true }
+
+  if (facture.statut === 'payee') {
+    const avoir = await db.facture.findFirst({
+      where: { userId, type: 'avoir', factureOrigineId: factureId, statut: { not: 'annulee' } },
+      select: { id: true },
+    })
+    if (!avoir) {
+      return {
+        ok: false,
+        raison: `La facture ${facture.numero} liée à cette vente est payée : émettez d'abord un avoir depuis Comptabilité > Factures.`,
+      }
+    }
+    return { ok: true }
+  }
+
+  await db.facture.update({
+    where: { id: facture.id },
+    data: { statut: 'annulee' },
+  })
+  return { ok: true }
+}
+
+/**
  * Crée une facture dans une transaction Prisma.
  * Gère la numérotation séquentielle avec lock FOR UPDATE (PROMPT 14B).
  */

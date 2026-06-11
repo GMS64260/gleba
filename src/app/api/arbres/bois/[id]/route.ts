@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { createVenteFromProductionBois, deleteAutoEntry } from "@/lib/auto-compta"
-import { creerFacture } from "@/lib/facture-utils"
+import { creerFacture, annulerFactureLiee } from "@/lib/facture-utils"
 import { m3PleinToStere } from "@/lib/recolte/lot"
 
 interface Params {
@@ -188,6 +188,21 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       )
     }
 
+    // Dé-vente d'une production facturée (retour en stock/utilisé) : la
+    // facture doit suivre, sinon le CA reste compté via la facture.
+    if (
+      existing.factureId &&
+      existing.statut === 'vendu' &&
+      body.statut &&
+      body.statut !== 'vendu'
+    ) {
+      const liee = await annulerFactureLiee(prisma, userId, existing.factureId)
+      if (!liee.ok) {
+        return NextResponse.json({ error: liee.raison }, { status: 409 })
+      }
+      updateData.factureId = null
+    }
+
     // Transaction atomique : facture + update production bois
     const production = await prisma.$transaction(async (tx) => {
       if (body.statut === "vendu" && body.creerFacture && body.prixVente) {
@@ -305,6 +320,15 @@ export async function DELETE(request: NextRequest, { params }: Params) {
 
     if (!existing) {
       return NextResponse.json({ error: "Production non trouvée" }, { status: 404 })
+    }
+
+    // Supprimer une production facturée laisserait une facture orpheline
+    // comptée dans KPI/TVA/FEC : elle doit être annulée (ou couverte par un avoir).
+    if (existing.factureId) {
+      const liee = await annulerFactureLiee(prisma, session!.user.id, existing.factureId)
+      if (!liee.ok) {
+        return NextResponse.json({ error: liee.raison }, { status: 409 })
+      }
     }
 
     // Supprimer les ecritures auto-compta liees

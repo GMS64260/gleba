@@ -127,9 +127,9 @@ export async function GET(request: NextRequest) {
     ] = await Promise.all([
       // === REVENUS ===
 
-      // Ventes elevage
+      // Ventes elevage (audit compta 2026-06 : exclure les annulées)
       prisma.venteProduit.aggregate({
-        where: { userId, date: { gte: startOfYear, lte: endOfYear } },
+        where: { userId, date: { gte: startOfYear, lte: endOfYear }, annule: false },
         _sum: { prixTotal: true },
         _count: true,
       }),
@@ -137,13 +137,13 @@ export async function GET(request: NextRequest) {
       // Ventes elevage par type
       prisma.venteProduit.groupBy({
         by: ['type'],
-        where: { userId, date: { gte: startOfYear, lte: endOfYear } },
+        where: { userId, date: { gte: startOfYear, lte: endOfYear }, annule: false },
         _sum: { prixTotal: true },
       }),
 
       // Ventes elevage annee précédente
       prisma.venteProduit.aggregate({
-        where: { userId, date: { gte: startOfPrevYear, lte: endOfPrevYear } },
+        where: { userId, date: { gte: startOfPrevYear, lte: endOfPrevYear }, annule: false },
         _sum: { prixTotal: true },
       }),
 
@@ -183,6 +183,7 @@ export async function GET(request: NextRequest) {
           date: { gte: startOfYear, lte: endOfYear },
           destination: 'vente',
           prixVente: { not: null },
+          annule: false,
         },
         _sum: { prixVente: true },
       }),
@@ -297,7 +298,7 @@ export async function GET(request: NextRequest) {
 
       // Factures impayées elevage
       prisma.venteProduit.aggregate({
-        where: { userId, paye: false },
+        where: { userId, paye: false, annule: false },
         _sum: { prixTotal: true },
         _count: true,
       }),
@@ -412,6 +413,7 @@ export async function GET(request: NextRequest) {
       WHERE user_id = ${userId}
         AND date >= ${startOfYear}
         AND date <= ${endOfYear}
+        AND annule = false
       GROUP BY EXTRACT(MONTH FROM date)
     ` as { mois: number; total: number }[]
 
@@ -503,6 +505,7 @@ export async function GET(request: NextRequest) {
         AND date <= ${endOfYear}
         AND destination = 'vente'
         AND prix_vente IS NOT NULL
+        AND annule = false
       GROUP BY EXTRACT(MONTH FROM date)
     ` as { mois: number; total: number }[]
 
@@ -625,7 +628,7 @@ export async function GET(request: NextRequest) {
     // Dernières transactions
     const [dernieresVentes, dernieresDepenses, dernieresRecoltesPotager] = await Promise.all([
       prisma.venteProduit.findMany({
-        where: { userId },
+        where: { userId, annule: false },
         orderBy: { date: 'desc' },
         take: 5,
         select: { id: true, date: true, type: true, prixTotal: true, paye: true },
@@ -679,7 +682,7 @@ export async function GET(request: NextRequest) {
 
     // Factures impayées detail
     const facturesImpayeesDetail = await prisma.venteProduit.findMany({
-      where: { userId, paye: false },
+      where: { userId, paye: false, annule: false },
       orderBy: { date: 'asc' },
       take: 10,
       select: { id: true, date: true, type: true, prixTotal: true, client: true },
