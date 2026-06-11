@@ -14,6 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { createDepenseFromSoinAnimal, deleteAutoEntry } from '@/lib/auto-compta'
 import { soinSchema } from '@/lib/validations/elevage-soin'
 
 function addDays(d: Date, n: number): Date {
@@ -183,6 +184,21 @@ export async function POST(request: NextRequest) {
       return { soin, nbEcartees }
     })
 
+    // Auto-comptabilite : creer une depense si cout > 0
+    if (result.soin.cout && result.soin.cout > 0) {
+      try {
+        await createDepenseFromSoinAnimal(session.user.id, {
+          id: result.soin.id,
+          type: result.soin.type,
+          cout: result.soin.cout,
+          date: result.soin.date,
+          fait: result.soin.fait,
+        })
+      } catch (autoComptaError) {
+        console.error('Auto-compta error (soin_animal POST):', autoComptaError)
+      }
+    }
+
     return NextResponse.json(
       {
         data: result.soin,
@@ -330,6 +346,20 @@ export async function PATCH(request: NextRequest) {
       return updated
     })
 
+    // Auto-comptabilite : resynchroniser la depense auto avec les valeurs finales
+    // (le helper supprime l'ecriture si cout devient null/0)
+    try {
+      await createDepenseFromSoinAnimal(session.user.id, {
+        id: soin.id,
+        type: soin.type,
+        cout: soin.cout,
+        date: soin.date,
+        fait: soin.fait,
+      })
+    } catch (autoComptaError) {
+      console.error('Auto-compta error (soin_animal PATCH):', autoComptaError)
+    }
+
     return NextResponse.json({ data: soin })
   } catch (error) {
     console.error('PATCH /api/elevage/soins error:', error)
@@ -350,6 +380,13 @@ export async function DELETE(request: NextRequest) {
       where: { id: parseInt(id), userId: session.user.id },
     })
     if (!existing) return NextResponse.json({ error: 'Soin non trouvé' }, { status: 404 })
+
+    // Supprimer les ecritures auto-compta liees
+    try {
+      await deleteAutoEntry('soin_animal', parseInt(id), 'depense')
+    } catch (autoComptaError) {
+      console.error('Auto-compta cleanup error (soin_animal):', autoComptaError)
+    }
 
     // POSTREVIEW Sprint 5 — Réintégration collectes en RECOUVREMENT par collecte
     // (avant : `lotId: null` matchait TOUS les soins d'animaux individuels via

@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
+import { createDepenseFromOperationArbre, deleteAutoEntry } from "@/lib/auto-compta"
 
 interface Params {
   params: Promise<{ id: string }>
@@ -91,7 +92,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
         produit: body.produit,
         quantite: body.quantite,
         unite: body.unite,
-        cout: body.cout != null ? parseFloat(body.cout) : undefined,
+        cout: body.cout !== undefined ? (body.cout != null ? parseFloat(body.cout) : null) : undefined,
         datePrevue: body.datePrevue !== undefined ? (body.datePrevue ? new Date(body.datePrevue) : null) : undefined,
         fait: body.fait,
         notes: body.notes,
@@ -99,6 +100,14 @@ export async function PUT(request: NextRequest, { params }: Params) {
         nbPersonnes: body.nbPersonnes !== undefined ? (body.nbPersonnes ? parseInt(body.nbPersonnes) : null) : undefined,
         recurrence: body.recurrence !== undefined ? (body.recurrence || null) : undefined,
         saisonRecommandee: body.saisonRecommandee !== undefined ? (body.saisonRecommandee || null) : undefined,
+        // DEV3 #6 — champs acceptés par le POST mais absents du PUT jusqu'ici
+        tempsHeures: body.tempsHeures !== undefined ? (body.tempsHeures != null ? parseFloat(body.tempsHeures) : null) : undefined,
+        temperatureC: body.temperatureC !== undefined ? (body.temperatureC != null ? parseFloat(body.temperatureC) : null) : undefined,
+        ventKmh: body.ventKmh !== undefined ? (body.ventKmh != null ? parseFloat(body.ventKmh) : null) : undefined,
+        hygrometriePct: body.hygrometriePct !== undefined ? (body.hygrometriePct != null ? parseInt(body.hygrometriePct) : null) : undefined,
+        pluie24h: body.pluie24h !== undefined ? (body.pluie24h != null ? Boolean(body.pluie24h) : null) : undefined,
+        pluie24hMm: body.pluie24hMm !== undefined ? (body.pluie24hMm != null ? parseFloat(body.pluie24hMm) : null) : undefined,
+        materiel: Array.isArray(body.materiel) ? body.materiel : undefined,
       },
       include: {
         arbre: {
@@ -110,6 +119,21 @@ export async function PUT(request: NextRequest, { params }: Params) {
         },
       },
     })
+
+    // Auto-comptabilite : resynchroniser la depense auto avec les valeurs finales
+    // (le helper supprime l'ecriture si cout devient null/0)
+    try {
+      await createDepenseFromOperationArbre(session!.user.id, {
+        id: operation.id,
+        type: operation.type,
+        description: operation.description,
+        cout: operation.cout,
+        date: operation.date,
+        fait: operation.fait,
+      })
+    } catch (autoComptaError) {
+      console.error('Auto-compta error (operation_arbre PUT):', autoComptaError)
+    }
 
     return NextResponse.json(operation)
   } catch (err) {
@@ -143,6 +167,13 @@ export async function DELETE(request: NextRequest, { params }: Params) {
 
     if (!existing) {
       return NextResponse.json({ error: "Opération non trouvée" }, { status: 404 })
+    }
+
+    // Supprimer les ecritures auto-compta liees
+    try {
+      await deleteAutoEntry('operation_arbre', operationId, 'depense')
+    } catch (autoComptaError) {
+      console.error('Auto-compta cleanup error (operation_arbre):', autoComptaError)
     }
 
     await prisma.operationArbre.delete({

@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
+import { createDepenseFromOperationArbre } from "@/lib/auto-compta"
 
 // Types d'opérations
 export const TYPES_OPERATIONS = [
@@ -48,10 +49,17 @@ export async function GET(request: NextRequest) {
 
     if (year) {
       const yearNum = parseInt(year)
-      where.date = {
-        gte: new Date(yearNum, 0, 1),
-        lte: new Date(yearNum, 11, 31),
-      }
+      // Le calendrier positionne les opérations sur `datePrevue || date` :
+      // on filtre donc sur les deux champs (sinon les ops planifiées sur
+      // l'année N avec une `date` sur N-1/N+1 disparaissaient). Borne haute
+      // exclusive (`lt` 1er janvier N+1) pour ne pas exclure le 31 décembre
+      // dès qu'une heure est renseignée.
+      const start = new Date(yearNum, 0, 1)
+      const end = new Date(yearNum + 1, 0, 1)
+      where.OR = [
+        { date: { gte: start, lt: end } },
+        { datePrevue: { gte: start, lt: end } },
+      ]
     }
 
     const operations = await prisma.operationArbre.findMany({
@@ -157,6 +165,22 @@ export async function POST(request: NextRequest) {
         },
       },
     })
+
+    // Auto-comptabilite : creer une depense si cout > 0
+    if (operation.cout && operation.cout > 0) {
+      try {
+        await createDepenseFromOperationArbre(userId, {
+          id: operation.id,
+          type: operation.type,
+          description: operation.description,
+          cout: operation.cout,
+          date: operation.date,
+          fait: operation.fait,
+        })
+      } catch (autoComptaError) {
+        console.error('Auto-compta error (operation_arbre POST):', autoComptaError)
+      }
+    }
 
     return NextResponse.json(operation, { status: 201 })
   } catch (err) {

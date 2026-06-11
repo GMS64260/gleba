@@ -115,35 +115,14 @@ export async function computeTvaPeriode(
   ])
 
   // ─── Sources déductibles ───────────────────────────────────────────
-  const [depensesManuelles, consommationsAliments, fertilisations] = await Promise.all([
-    prisma.depenseManuelle.findMany({
-      where: { userId, date: { gte: startDate, lte: endDate }, auto: { not: true } },
-    }),
-    prisma.consommationAliment.findMany({
-      where: { userId, date: { gte: startDate, lte: endDate } },
-      select: {
-        quantite: true,
-        aliment: {
-          select: {
-            prix: true,
-            userStocks: { where: { userId }, select: { prix: true }, take: 1 },
-          },
-        },
-      },
-    }),
-    prisma.fertilisation.findMany({
-      where: { userId, date: { gte: startDate, lte: endDate } },
-      select: {
-        quantite: true,
-        fertilisant: {
-          select: {
-            prix: true,
-            userStocks: { where: { userId }, select: { prix: true }, take: 1 },
-          },
-        },
-      },
-    }),
-  ])
+  // Audit compta 2026-06 (lot 5) : SSOT dépenses = Σ DepenseManuelle, AUTO
+  // INCLUSES. Les consommations d'aliments, fertilisations, soins, opérations
+  // verger, etc. produisent désormais leur écriture auto (auto-compta.ts) —
+  // les inférences directes sur les sources brutes sont supprimées (elles
+  // doublonneraient les écritures auto).
+  const depensesManuelles = await prisma.depenseManuelle.findMany({
+    where: { userId, date: { gte: startDate, lte: endDate } },
+  })
 
   // Buckets par taux (clés stables 0 / 2.1 / 5.5 / 10 / 20)
   const TAUX_KEYS = ['0', '2.1', '5.5', '10', '20'] as const
@@ -260,28 +239,6 @@ export async function computeTvaPeriode(
     }
   }
 
-  for (const c of consommationsAliments) {
-    const userPrix = c.aliment.userStocks?.[0]?.prix ?? c.aliment.prix
-    const ttc = c.quantite * (userPrix || 0)
-    if (ttc > 0) {
-      const ht = ttc / 1.10
-      addD('10', ht, ttc - ht)
-      nbInfereesDeductibles++
-      inferencesBreakdown.consommationsAliments++
-    }
-  }
-
-  for (const f of fertilisations) {
-    const userPrix = f.fertilisant.userStocks?.[0]?.prix ?? f.fertilisant.prix
-    const ttc = f.quantite * (userPrix || 0)
-    if (ttc > 0) {
-      const ht = ttc / 1.20
-      addD('20', ht, ttc - ht)
-      nbInfereesDeductibles++
-      inferencesBreakdown.fertilisations++
-    }
-  }
-
   // Totaux : arrondi GLOBAL par taux puis somme (pas d'arrondi par ligne).
   // Cela élimine la dérive 0,91 € identifiée par l'audit comptable.
   for (const k of TAUX_KEYS) {
@@ -325,8 +282,10 @@ export async function computeTvaPeriode(
       nbVenteBois: venteBois.length,
       nbAbattages: venteAbattage.length,
       nbDepenses: depensesManuelles.length,
-      nbConsommationsAliments: consommationsAliments.length,
-      nbFertilisations: fertilisations.length,
+      // Lot 5 : ces sources passent désormais par les écritures auto
+      // (comptées dans nbDepenses) — plus d'inférence directe.
+      nbConsommationsAliments: 0,
+      nbFertilisations: 0,
       nbInfereesCollectees,
       nbInfereesDeductibles,
       inferencesBreakdown,

@@ -270,6 +270,30 @@ export async function DELETE(request: NextRequest) {
 
     // Nettoyer les écritures auto-compta liées aux consommations d'aliments du lot
     try {
+      // Auto-compta : purger les écritures auto des consommations et soins du
+      // lot AVANT leur suppression en masse (sinon les DepenseManuelle auto
+      // resteraient orphelines).
+      const [consosLot, soinsLot] = await Promise.all([
+        prisma.consommationAliment.findMany({
+          where: { lotId: parseInt(id), userId: session.user.id },
+          select: { id: true },
+        }),
+        prisma.soinAnimal.findMany({
+          where: { lotId: parseInt(id), userId: session.user.id },
+          select: { id: true },
+        }),
+      ])
+      if (consosLot.length > 0) {
+        await prisma.depenseManuelle.deleteMany({
+          where: { sourceType: 'consommation_aliment', sourceId: { in: consosLot.map((c) => c.id) }, auto: true },
+        })
+      }
+      if (soinsLot.length > 0) {
+        await prisma.depenseManuelle.deleteMany({
+          where: { sourceType: 'soin_animal', sourceId: { in: soinsLot.map((s) => s.id) }, auto: true },
+        })
+      }
+
       await prisma.consommationAliment.deleteMany({
         where: { lotId: parseInt(id), userId: session.user.id },
       })

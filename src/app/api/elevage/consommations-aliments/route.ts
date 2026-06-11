@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { createDepenseFromConsommationAliment, deleteAutoEntry } from '@/lib/auto-compta'
 import { consommationAlimentSchema } from '@/lib/validations/consommation-aliment'
 
 export async function GET(request: NextRequest) {
@@ -195,6 +196,18 @@ export async function POST(request: NextRequest) {
       }),
     ])
 
+    // Auto-comptabilite : creer la depense auto (valorisation au prix du stock)
+    try {
+      await createDepenseFromConsommationAliment(userId, {
+        id: consommation.id,
+        alimentId: consommation.alimentId,
+        quantite: consommation.quantite,
+        date: consommation.date,
+      })
+    } catch (autoComptaError) {
+      console.error('Auto-compta error (consommation_aliment POST):', autoComptaError)
+    }
+
     return NextResponse.json({ data: consommation }, { status: 201 })
   } catch (error) {
     console.error('POST /api/elevage/consommations-aliments error:', error)
@@ -274,6 +287,18 @@ export async function PATCH(request: NextRequest) {
         },
       })
     })
+    // Auto-comptabilite : resynchroniser la depense auto avec les valeurs finales
+    try {
+      await createDepenseFromConsommationAliment(userId, {
+        id: updated.id,
+        alimentId: updated.alimentId,
+        quantite: updated.quantite,
+        date: updated.date,
+      })
+    } catch (autoComptaError) {
+      console.error('Auto-compta error (consommation_aliment PATCH):', autoComptaError)
+    }
+
     return NextResponse.json({ data: updated })
   } catch (error) {
     console.error('PATCH /api/elevage/consommations-aliments error:', error)
@@ -306,6 +331,13 @@ export async function DELETE(request: NextRequest) {
 
     if (!existing) {
       return NextResponse.json({ error: 'Consommation non trouvée' }, { status: 404 })
+    }
+
+    // Supprimer les ecritures auto-compta liees
+    try {
+      await deleteAutoEntry('consommation_aliment', consId, 'depense')
+    } catch (autoComptaError) {
+      console.error('Auto-compta cleanup error (consommation_aliment):', autoComptaError)
     }
 
     // Transaction : supprimer + ré-incrémenter le stock
