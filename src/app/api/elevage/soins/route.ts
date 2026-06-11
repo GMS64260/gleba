@@ -105,6 +105,24 @@ export async function POST(request: NextRequest) {
     const d = parsed.data
     const dateSoin = d.date || new Date()
 
+    // Audit élevage 2026-06-11 — validation tenant : l'animal/le lot soigné
+    // doit appartenir au user (sinon le soin référence — et la réponse
+    // expose via include — la fiche d'un animal d'un autre compte).
+    if (d.animalId) {
+      const a = await prisma.animal.findFirst({
+        where: { id: d.animalId, userId: session.user.id },
+        select: { id: true },
+      })
+      if (!a) return NextResponse.json({ error: 'Animal introuvable' }, { status: 404 })
+    }
+    if (d.lotId) {
+      const l = await prisma.lotAnimaux.findFirst({
+        where: { id: d.lotId, userId: session.user.id },
+        select: { id: true },
+      })
+      if (!l) return NextResponse.json({ error: 'Lot introuvable' }, { status: 404 })
+    }
+
     // Snapshot temps d'attente depuis le produit FK si renseigné
     let tempsLait = 0
     let tempsViande = 0
@@ -225,10 +243,91 @@ export async function PATCH(request: NextRequest) {
     if (motif !== undefined) updateData.motif = motif
     if (ordonnanceUrl !== undefined) updateData.ordonnanceUrl = ordonnanceUrl || null
 
-    const soin = await prisma.soinAnimal.update({
-      where: { id: parseInt(id) },
-      data: updateData,
-      include: { animal: true, lot: true, produitVeterinaire: true },
+    // Audit élevage 2026-06-11 — validation tenant des cibles modifiées.
+    if (updateData.animalId) {
+      const a = await prisma.animal.findFirst({
+        where: { id: updateData.animalId, userId: session.user.id },
+        select: { id: true },
+      })
+      if (!a) return NextResponse.json({ error: 'Animal introuvable' }, { status: 404 })
+    }
+    if (updateData.lotId) {
+      const l = await prisma.lotAnimaux.findFirst({
+        where: { id: updateData.lotId, userId: session.user.id },
+        select: { id: true },
+      })
+      if (!l) return NextResponse.json({ error: 'Lot introuvable' }, { status: 404 })
+    }
+
+    // Audit élevage 2026-06-11 — si la date du soin change, les fenêtres
+    // d'attente snapshotées doivent suivre (avant : finAttenteLait/Viande
+    // restaient calées sur l'ancienne date → blocages abattage et
+    // écartements lait faux).
+    const dateChangee = updateData.date !== undefined &&
+      new Date(updateData.date).getTime() !== existing.date.getTime()
+    if (dateChangee) {
+      const newDate = updateData.date as Date
+      updateData.finAttenteLait = existing.tempsAttenteLaitJ
+        ? addDays(newDate, existing.tempsAttenteLaitJ)
+        : existing.finAttenteLait
+      updateData.finAttenteViande = existing.tempsAttenteViandeJ
+        ? addDays(newDate, existing.tempsAttenteViandeJ)
+        : existing.finAttenteViande
+    }
+
+    const soin = await prisma.$transaction(async (tx) => {
+      const updated = await tx.soinAnimal.update({
+        where: { id: parseInt(id) },
+        data: updateData,
+        include: { animal: true, lot: true, produitVeterinaire: true },
+      })
+
+      // Ré-synchroniser l'écartement des collectes de lait si la fenêtre a
+      // bougé : réintégrer celles de l'ancienne fenêtre devenues hors
+      // couverture, écarter celles de la nouvelle.
+      if (dateChangee && existing.tempsAttenteLaitJ && (existing.animalId || existing.lotId)) {
+        const cibleWhere: any = existing.animalId
+          ? { animalId: existing.animalId }
+          : { lotId: existing.lotId }
+
+        const bornes = [existing.date, existing.finAttenteLait, updated.date, updated.finAttenteLait]
+          .filter((x): x is Date => x != null)
+        const minDate = new Date(Math.min(...bornes.map((b) => b.getTime())))
+        const maxDate = new Date(Math.max(...bornes.map((b) => b.getTime())))
+
+        const collectes = await tx.collecteLait.findMany({
+          where: {
+            userId: session.user.id,
+            ...cibleWhere,
+            date: { gte: minDate, lte: maxDate },
+          },
+          select: { id: true, date: true, ecarteAttente: true },
+        })
+        const autresSoins = await tx.soinAnimal.findMany({
+          where: {
+            userId: session.user.id,
+            id: { not: updated.id },
+            fait: true,
+            ...cibleWhere,
+            finAttenteLait: { not: null },
+          },
+          select: { date: true, finAttenteLait: true },
+        })
+        const couvertePar = (cDate: Date) =>
+          (updated.finAttenteLait != null && updated.date <= cDate && cDate <= updated.finAttenteLait) ||
+          autresSoins.some((s) => s.finAttenteLait != null && s.date <= cDate && cDate <= s.finAttenteLait)
+
+        const aEcarter = collectes.filter((c) => !c.ecarteAttente && couvertePar(c.date)).map((c) => c.id)
+        const aReintegrer = collectes.filter((c) => c.ecarteAttente && !couvertePar(c.date)).map((c) => c.id)
+        if (aEcarter.length > 0) {
+          await tx.collecteLait.updateMany({ where: { id: { in: aEcarter } }, data: { ecarteAttente: true } })
+        }
+        if (aReintegrer.length > 0) {
+          await tx.collecteLait.updateMany({ where: { id: { in: aReintegrer } }, data: { ecarteAttente: false } })
+        }
+      }
+
+      return updated
     })
 
     return NextResponse.json({ data: soin })

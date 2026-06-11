@@ -162,6 +162,9 @@ export async function POST(request: NextRequest) {
           paye,
           tauxTVA,
           notes,
+          // Audit élevage 2026-06-11 — garder le lien vente→animal pour que
+          // l'annulation puisse restaurer le statut de l'animal.
+          animalId: type === 'animal_vivant' ? parsed.data.animalId ?? null : null,
         },
         include: {
           destination: true,
@@ -236,6 +239,10 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Vente non trouvée' }, { status: 404 })
     }
 
+    if (existing.annule) {
+      return NextResponse.json({ error: 'Vente déjà annulée' }, { status: 409 })
+    }
+
     // Supprimer les ecritures auto-compta liees
     try {
       await deleteAutoEntry('vente_produit', parseInt(id), 'vente')
@@ -243,10 +250,22 @@ export async function DELETE(request: NextRequest) {
       console.error('Auto-compta cleanup error (vente_produit):', autoComptaError)
     }
 
-    // Soft-delete : marquer comme annule au lieu de supprimer
-    await prisma.venteProduit.update({
-      where: { id: parseInt(id) },
-      data: { annule: true, dateAnnulation: new Date() },
+    // Audit élevage 2026-06-11 — annuler une vente d'animal vivant doit
+    // rendre l'animal au cheptel (il restait 'vendu' définitivement).
+    // On ne restaure que si l'animal est toujours en statut 'vendu'.
+    await prisma.$transaction(async (tx) => {
+      // Soft-delete : marquer comme annule au lieu de supprimer
+      await tx.venteProduit.update({
+        where: { id: existing.id },
+        data: { annule: true, dateAnnulation: new Date() },
+      })
+
+      if (existing.type === 'animal_vivant' && existing.animalId) {
+        await tx.animal.updateMany({
+          where: { id: existing.animalId, userId: session.user.id, statut: 'vendu' },
+          data: { statut: 'actif', dateSortie: null, causeSortie: null },
+        })
+      }
     })
 
     return NextResponse.json({ success: true })

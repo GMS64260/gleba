@@ -404,6 +404,10 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Abattage non trouvé' }, { status: 404 })
     }
 
+    if (existing.annule) {
+      return NextResponse.json({ error: 'Abattage déjà annulé' }, { status: 409 })
+    }
+
     // Supprimer les ecritures auto-compta liees
     try {
       await deleteAutoEntry('abattage', parseInt(id), 'vente')
@@ -411,10 +415,43 @@ export async function DELETE(request: NextRequest) {
       console.error('Auto-compta cleanup error (abattage):', autoComptaError)
     }
 
-    // Soft-delete : marquer comme annule
-    await prisma.abattage.update({
-      where: { id: parseInt(id) },
-      data: { annule: true, dateAnnulation: new Date() },
+    // Audit élevage 2026-06-11 — l'annulation doit défaire les effets cheptel
+    // du POST (symétrie déjà appliquée au stock aliment) : avant, annuler un
+    // abattage laissait l'animal en statut 'abattu' et le lot décrémenté.
+    await prisma.$transaction(async (tx) => {
+      // Soft-delete : marquer comme annule
+      await tx.abattage.update({
+        where: { id: existing.id },
+        data: { annule: true, dateAnnulation: new Date() },
+      })
+
+      // Restaurer l'animal individuel (uniquement si c'est bien cet abattage
+      // qui l'avait sorti — on ne touche pas à un animal mort/vendu depuis).
+      if (existing.animalId) {
+        await tx.animal.updateMany({
+          where: { id: existing.animalId, userId: session.user.id, statut: 'abattu' },
+          data: { statut: 'actif', dateSortie: null, causeSortie: null },
+        })
+      }
+
+      // Ré-incrémenter l'effectif du lot et le réactiver s'il avait été
+      // clôturé par cet abattage.
+      if (existing.lotId && existing.quantite) {
+        const lot = await tx.lotAnimaux.findFirst({
+          where: { id: existing.lotId, userId: session.user.id },
+          select: { id: true, quantiteActuelle: true, statut: true },
+        })
+        if (lot) {
+          const nouvelleQuantite = lot.quantiteActuelle + existing.quantite
+          await tx.lotAnimaux.update({
+            where: { id: lot.id },
+            data: {
+              quantiteActuelle: nouvelleQuantite,
+              statut: lot.statut === 'termine' && nouvelleQuantite > 0 ? 'actif' : lot.statut,
+            },
+          })
+        }
+      }
     })
 
     return NextResponse.json({ success: true })

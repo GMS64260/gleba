@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
   const end = new Date(year, 11, 31, 23, 59, 59)
   const userId = session.user.id
 
-  const [entrees, sorties, lotsArrives, lotsTermine, exploitation] = await Promise.all([
+  const [entrees, sorties, lotsArrives, lotsTermine, abattagesLots, exploitation] = await Promise.all([
     prisma.animal.findMany({
       where: { userId, dateArrivee: { gte: start, lte: end } },
       include: { especeAnimale: { select: { nom: true } }, lot: { select: { id: true, nom: true } } },
@@ -57,6 +57,18 @@ export async function GET(request: NextRequest) {
       where: { userId, dateReforme: { gte: start, lte: end } },
       include: { especeAnimale: { select: { nom: true } } },
       orderBy: { dateReforme: 'asc' },
+    }),
+    // Audit élevage 2026-06-11 — les sorties PARTIELLES de lot (abattage de
+    // 5 lapins sur 30) n'apparaissaient pas au registre : seuls les animaux
+    // individuels (dateSortie) et la réforme complète du lot y figuraient.
+    // Les abattages individuels (animalId) sont déjà couverts par la
+    // dateSortie de l'animal — on n'ajoute que ceux rattachés à un lot.
+    prisma.abattage.findMany({
+      where: { userId, annule: false, lotId: { not: null }, date: { gte: start, lte: end } },
+      include: {
+        lot: { select: { id: true, nom: true, especeAnimale: { select: { nom: true } } } },
+      },
+      orderBy: { date: 'asc' },
     }),
     prisma.exploitation.findUnique({ where: { userId } }),
   ])
@@ -108,6 +120,18 @@ export async function GET(request: NextRequest) {
       origine: '',
       destination: '',
       motif: 'Réforme',
+    })
+  }
+  for (const a of abattagesLots) {
+    lignes.push({
+      date: a.date,
+      sens: 'Sortie',
+      espece: a.lot?.especeAnimale?.nom || '—',
+      ident: `Lot #${a.lotId} (×${a.quantite})`,
+      lot: a.lot?.nom || `Lot #${a.lotId}`,
+      origine: '',
+      destination: a.lieu === 'abattoir' ? 'Abattoir' : '',
+      motif: `Abattage${a.destination === 'vente' ? ' (vente)' : a.destination === 'auto_consommation' ? ' (autoconsommation)' : a.destination === 'don' ? ' (don)' : ''}`,
     })
   }
   lignes.sort((a, b) => a.date.getTime() - b.date.getTime())

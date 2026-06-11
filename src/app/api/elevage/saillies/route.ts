@@ -78,6 +78,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'L\'animal sélectionné n\'est pas une femelle' }, { status: 400 })
     }
 
+    // Audit élevage 2026-06-11 — validation tenant du mâle (la femelle
+    // l'est déjà ci-dessus).
+    if (data.maleId) {
+      const male = await prisma.animal.findFirst({
+        where: { id: data.maleId, userId: session.user.id },
+        select: { id: true },
+      })
+      if (!male) return NextResponse.json({ error: 'Mâle introuvable' }, { status: 404 })
+    }
+
     const duree =
       femelle.especeAnimale.dureeGestation ??
       DUREE_GESTATION_DEFAUTS[femelle.especeAnimale.id.toLowerCase()] ??
