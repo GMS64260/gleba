@@ -150,6 +150,15 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if (body.datePeremption !== undefined) updateData.datePeremption = body.datePeremption ? new Date(body.datePeremption) : null
     if (body.notes !== undefined) updateData.notes = body.notes
 
+    // Anti-double-facture : une récolte déjà facturée ne peut pas générer
+    // une seconde facture (l'ancienne resterait comptée dans KPI/TVA/FEC).
+    if (body.creerFacture && existing.factureId) {
+      return NextResponse.json(
+        { error: 'Cette récolte est déjà facturée', factureId: existing.factureId },
+        { status: 409 }
+      )
+    }
+
     // Transaction atomique : facture + update recolte arbre
     const recolte = await prisma.$transaction(async (tx) => {
       if (body.statut === "vendu" && body.creerFacture && body.prixTotal) {
@@ -212,6 +221,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           clientId: body.clientId ?? existing.clientId,
           dateVente: body.dateVente ?? existing.dateVente,
           arbre: existing.arbre ? { nom: existing.arbre.nom, espece: existing.arbre.espece } : null,
+          factureId: recolte.factureId,
         })
       } else if (existing.statut === 'vendu' && body.statut && body.statut !== 'vendu') {
         await deleteAutoEntry('recolte_arbre', recolteId, 'vente')

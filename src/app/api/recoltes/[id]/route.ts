@@ -268,6 +268,15 @@ export async function PATCH(
         ? existing.quantite - quantiteVendue
         : 0
 
+    // Anti-double-facture : une récolte déjà facturée ne peut pas générer
+    // une seconde facture (l'ancienne resterait comptée dans KPI/TVA/FEC).
+    if (body.creerFacture && existing.factureId) {
+      return NextResponse.json(
+        { error: 'Cette récolte est déjà facturée', factureId: existing.factureId },
+        { status: 409 }
+      )
+    }
+
     // Transaction atomique : facture + update recolte + reliquat + inventaire
     const recolte = await prisma.$transaction(async (tx) => {
       if (body.statut === "vendu" && body.creerFacture && body.prixTotal) {
@@ -364,6 +373,7 @@ export async function PATCH(
           clientNom: body.clientNom ?? existing.clientNom,
           clientId: body.clientId ?? existing.clientId,
           dateVente: body.dateVente ?? existing.dateVente,
+          factureId: recolte.factureId,
         })
       } else if (existing.statut === 'vendu' && body.statut && body.statut !== 'vendu') {
         // Recolte qui n'est plus vendue -> supprimer la vente auto

@@ -86,27 +86,30 @@ export async function computeTvaPeriode(
     prisma.venteManuelle.findMany({
       where: { userId, date: { gte: startDate, lte: endDate }, auto: { not: true } },
     }),
+    // Audit compta 2026-06 : mêmes filtres anti-double-comptage que le FEC
+    // (export/fec/route.ts) — une source facturée est comptée via sa Facture
+    // (factureId: null), les brouillons et annulés sont exclus.
     prisma.facture.findMany({
-      where: { userId, date: { gte: startDate, lte: endDate }, statut: { not: 'annulee' } },
+      where: { userId, date: { gte: startDate, lte: endDate }, statut: { notIn: ['annulee', 'brouillon'] } },
     }),
     prisma.venteProduit.findMany({
-      where: { userId, date: { gte: startDate, lte: endDate } },
+      where: { userId, date: { gte: startDate, lte: endDate }, factureId: null, annule: false },
       select: { prixTotal: true },
     }),
     prisma.recolte.findMany({
-      where: { userId, statut: 'vendu', dateVente: { gte: startDate, lte: endDate }, prixTotal: { not: null } },
+      where: { userId, statut: 'vendu', dateVente: { gte: startDate, lte: endDate }, prixTotal: { not: null }, factureId: null },
       select: { prixTotal: true },
     }),
     prisma.recolteArbre.findMany({
-      where: { userId, statut: 'vendu', dateVente: { gte: startDate, lte: endDate }, prixKg: { not: null } },
+      where: { userId, statut: 'vendu', dateVente: { gte: startDate, lte: endDate }, prixKg: { not: null }, factureId: null },
       select: { quantite: true, prixKg: true },
     }),
     prisma.productionBois.findMany({
-      where: { userId, dateVente: { gte: startDate, lte: endDate }, prixVente: { not: null } },
+      where: { userId, dateVente: { gte: startDate, lte: endDate }, prixVente: { not: null }, factureId: null },
       select: { prixVente: true },
     }),
     prisma.abattage.findMany({
-      where: { userId, date: { gte: startDate, lte: endDate }, prixVente: { not: null } },
+      where: { userId, date: { gte: startDate, lte: endDate }, prixVente: { not: null }, factureId: null, annule: false, destination: 'vente' },
       select: { prixVente: true },
     }),
   ])

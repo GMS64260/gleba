@@ -305,6 +305,15 @@ export async function PATCH(request: NextRequest) {
 
     const userId = session.user.id
 
+    // Anti-double-facture : une vente déjà facturée ne peut pas générer
+    // une seconde facture (l'ancienne resterait comptée dans KPI/TVA/FEC).
+    if (body.creerFacture && existing.factureId) {
+      return NextResponse.json(
+        { error: 'Cette vente est déjà facturée', factureId: existing.factureId },
+        { status: 409 }
+      )
+    }
+
     // Transaction atomique : facture + update vente
     const vente = await prisma.$transaction(async (tx) => {
       if (body.creerFacture && existing.prixTotal) {
@@ -363,6 +372,7 @@ export async function PATCH(request: NextRequest) {
         client: vente.client,
         date: vente.date,
         tauxTVA: vente.tauxTVA,
+        factureId: vente.factureId,
       })
     } catch (autoComptaError) {
       console.error('Auto-compta error (vente_produit PATCH):', autoComptaError)

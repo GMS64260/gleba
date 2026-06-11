@@ -10,6 +10,7 @@ import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { createVenteFromProductionBois, deleteAutoEntry } from "@/lib/auto-compta"
 import { creerFacture } from "@/lib/facture-utils"
+import { m3PleinToStere } from "@/lib/recolte/lot"
 
 interface Params {
   params: Promise<{ id: string }>
@@ -90,6 +91,9 @@ export async function PUT(request: NextRequest, { params }: Params) {
         date: body.date ? new Date(body.date) : undefined,
         type: body.type,
         volumeM3: body.volumeM3,
+        // Cohérence avec le POST : quand volumeM3 change, on recalcule
+        // volumeStere via la même conversion (m3PleinToStere).
+        volumeStere: body.volumeM3 !== undefined ? m3PleinToStere(body.volumeM3) : undefined,
         poidsKg: body.poidsKg,
         destination: body.destination,
         prixVente: body.prixVente,
@@ -147,7 +151,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     const updateData: any = {}
     if (body.statut !== undefined) {
       // Valider le statut
-      const validStatuts = ["en_stock", "vendu", "utilise", "perte"]
+      const validStatuts = ["en_stock", "vendu", "utilise"]
       if (!validStatuts.includes(body.statut)) {
         return NextResponse.json(
           { error: `Statut invalide. Valeurs acceptées: ${validStatuts.join(", ")}` },
@@ -163,10 +167,20 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if (body.clientNom !== undefined) updateData.clientNom = body.clientNom
     if (body.notes !== undefined) updateData.notes = body.notes
 
+    // Anti-double-facture : une production déjà facturée ne peut pas générer
+    // une seconde facture (l'ancienne resterait comptée dans KPI/TVA/FEC).
+    if (body.creerFacture && existing.factureId) {
+      return NextResponse.json(
+        { error: 'Cette production est déjà facturée', factureId: existing.factureId },
+        { status: 409 }
+      )
+    }
+
     // Transaction atomique : facture + update production bois
     const production = await prisma.$transaction(async (tx) => {
       if (body.statut === "vendu" && body.creerFacture && body.prixVente) {
-        const totalHT = body.prixVente / 1.055
+        // Bois = TVA 10 % (aligné sur l'écriture auto-compta, cf. auto-compta.ts)
+        const totalHT = body.prixVente / 1.10
         const totalTVA = body.prixVente - totalHT
         const typeDescription = existing.type || 'Bois'
         const arbreInfo = existing.arbre ? ` - ${existing.arbre.nom}` : ''
@@ -189,7 +203,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
             quantite: existing.volumeM3 || 1,
             unite: existing.volumeM3 ? 'm³' : 'lot',
             prixUnitaire: totalHT / (existing.volumeM3 || 1),
-            tauxTVA: 5.5,
+            tauxTVA: 10,
             montantHT: totalHT,
             montantTVA: totalTVA,
             montantTTC: body.prixVente,
@@ -238,6 +252,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           clientId: body.clientId ?? existing.clientId,
           dateVente: body.dateVente ?? existing.dateVente,
           arbre: existing.arbre ? { nom: existing.arbre.nom, espece: existing.arbre.espece } : null,
+          factureId: production.factureId,
         })
       } else if (existing.statut === 'vendu' && body.statut && body.statut !== 'vendu') {
         await deleteAutoEntry('production_bois', productionId, 'vente')
