@@ -150,6 +150,18 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if (body.datePeremption !== undefined) updateData.datePeremption = body.datePeremption ? new Date(body.datePeremption) : null
     if (body.notes !== undefined) updateData.notes = body.notes
 
+    // Sécurité multi-tenant : un clientId fourni doit appartenir à l'utilisateur
+    // (il est persisté sur la récolte, l'écriture auto et la facture).
+    if (body.clientId) {
+      const clientOk = await prisma.client.findFirst({
+        where: { id: body.clientId, userId },
+        select: { id: true },
+      })
+      if (!clientOk) {
+        return NextResponse.json({ error: 'Client introuvable' }, { status: 400 })
+      }
+    }
+
     // Anti-double-facture : une récolte déjà facturée ne peut pas générer
     // une seconde facture (l'ancienne resterait comptée dans KPI/TVA/FEC).
     if (body.creerFacture && existing.factureId) {

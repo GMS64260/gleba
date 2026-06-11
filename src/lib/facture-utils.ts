@@ -249,12 +249,17 @@ export async function creerFacture(tx: PrismaTx, params: CreerFactureParams) {
 
   let clientNom = params.clientNom || 'Client anonyme'
   let clientAdresse = params.clientAdresse || null
+  // Sécurité multi-tenant (audit compta 2026-06) : clientId n'est lié à la
+  // facture que si la fiche appartient à l'utilisateur. Sinon GET /factures
+  // et le PDF exposeraient le nom/SIRET/TVA intra du client d'un autre compte.
+  let clientId: number | null = null
 
   if (params.clientId) {
     const client = await tx.client.findFirst({
       where: { id: params.clientId, userId: params.userId },
     })
     if (client) {
+      clientId = client.id
       clientNom = client.nom
       clientAdresse = [client.adresse, client.codePostal, client.ville].filter(Boolean).join(', ')
     }
@@ -269,7 +274,7 @@ export async function creerFacture(tx: PrismaTx, params: CreerFactureParams) {
       userId: params.userId,
       numero,
       type: params.type,
-      clientId: params.clientId || null,
+      clientId,
       clientNom,
       clientAdresse,
       date,
