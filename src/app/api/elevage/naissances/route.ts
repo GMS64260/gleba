@@ -109,6 +109,32 @@ export async function POST(request: NextRequest) {
     }
     const userId = session.user.id
 
+    // Audit élevage 2026-06-11 — validation tenant : la mère, le lot cible
+    // et la saillie référencés doivent appartenir au user (avant : un POST
+    // avec un lotId/saillieId arbitraire écrivait dans les données d'un
+    // autre compte via tx.lotAnimaux.update / tx.saillie.update non scopés).
+    if (parsed.data.mereId) {
+      const mere = await prisma.animal.findFirst({
+        where: { id: parsed.data.mereId, userId },
+        select: { id: true },
+      })
+      if (!mere) return NextResponse.json({ error: 'Mère introuvable' }, { status: 404 })
+    }
+    if (parsed.data.lotId) {
+      const lot = await prisma.lotAnimaux.findFirst({
+        where: { id: parsed.data.lotId, userId },
+        select: { id: true },
+      })
+      if (!lot) return NextResponse.json({ error: 'Lot introuvable' }, { status: 404 })
+    }
+    if (parsed.data.saillieId) {
+      const saillie = await prisma.saillie.findFirst({
+        where: { id: parsed.data.saillieId, userId },
+        select: { id: true },
+      })
+      if (!saillie) return NextResponse.json({ error: 'Saillie introuvable' }, { status: 404 })
+    }
+
     // PROMPT 18 — si saillieId fourni, on lie la mise-bas à la saillie et on
     // bascule la saillie en statut "Mise-bas réalisée" dans la même transaction.
     // Bug cmp8rub7p (Marc 2026-05-16) — les naissances n'étaient pas reportées
@@ -172,9 +198,11 @@ export async function POST(request: NextRequest) {
               statut: 'actif',
             },
           })
-          await tx.lotAnimaux.update({
-            where: { id: lot.id },
-            data: { quantiteActuelle: vivants, quantiteInitiale: vivants },
+          // Audit élevage 2026-06-11 — relier la naissance au lot créé,
+          // sinon le DELETE ne sait pas quel effectif décrémenter.
+          await tx.naissanceAnimale.update({
+            where: { id: created.id },
+            data: { lotId: lot.id },
           })
         }
       }
@@ -206,6 +234,7 @@ export async function PATCH(request: NextRequest) {
     const userId = session.user.id
     const existing = await prisma.naissanceAnimale.findFirst({
       where: { id, userId },
+      include: { mere: { select: { lotId: true } } },
     })
     if (!existing) {
       return NextResponse.json({ error: 'Naissance introuvable' }, { status: 404 })
@@ -217,21 +246,71 @@ export async function PATCH(request: NextRequest) {
         { status: 400 }
       )
     }
-    const updated = await prisma.naissanceAnimale.update({
-      where: { id },
-      data: {
-        mereId: parsed.data.mereId ?? null,
-        lotId: parsed.data.lotId ?? null,
-        pereIdentifiant: parsed.data.pereIdentifiant ?? null,
-        date: parsed.data.date ?? existing.date,
-        nombreNes: parsed.data.nombreNes,
-        nombreVivants: parsed.data.nombreVivants,
-        nombreMales: parsed.data.nombreMales ?? null,
-        nombreFemelles: parsed.data.nombreFemelles ?? null,
-        poidsTotal: parsed.data.poidsTotal ?? null,
-        notes: parsed.data.notes ?? null,
-      },
-      include: { mere: { select: { id: true, nom: true, identifiant: true } } },
+
+    // Audit élevage 2026-06-11 — validation tenant des références modifiées.
+    let nouvelleMereLotId: number | null = null
+    if (parsed.data.mereId) {
+      const mere = await prisma.animal.findFirst({
+        where: { id: parsed.data.mereId, userId },
+        select: { id: true, lotId: true },
+      })
+      if (!mere) return NextResponse.json({ error: 'Mère introuvable' }, { status: 404 })
+      nouvelleMereLotId = mere.lotId
+    }
+    if (parsed.data.lotId) {
+      const lot = await prisma.lotAnimaux.findFirst({
+        where: { id: parsed.data.lotId, userId },
+        select: { id: true },
+      })
+      if (!lot) return NextResponse.json({ error: 'Lot introuvable' }, { status: 404 })
+    }
+
+    // Audit élevage 2026-06-11 — le POST crédite l'effectif du lot cible ;
+    // l'édition doit suivre (avant : passer de 8 à 5 vivants ou changer de
+    // lot laissait les compteurs de la création).
+    const ancienLot = existing.lotId ?? existing.mere?.lotId ?? null
+    const nouveauLot = parsed.data.lotId ?? nouvelleMereLotId ?? null
+    const ancienVivants = existing.nombreVivants
+    const nouveauVivants = parsed.data.nombreVivants
+
+    const updated = await prisma.$transaction(async (tx) => {
+      if (ancienLot !== nouveauLot || ancienVivants !== nouveauVivants) {
+        if (ancienLot && ancienVivants > 0) {
+          const lot = await tx.lotAnimaux.findFirst({
+            where: { id: ancienLot, userId },
+            select: { id: true, quantiteActuelle: true },
+          })
+          if (lot) {
+            await tx.lotAnimaux.update({
+              where: { id: lot.id },
+              data: { quantiteActuelle: Math.max(0, lot.quantiteActuelle - ancienVivants) },
+            })
+          }
+        }
+        if (nouveauLot && nouveauVivants > 0) {
+          await tx.lotAnimaux.updateMany({
+            where: { id: nouveauLot, userId },
+            data: { quantiteActuelle: { increment: nouveauVivants } },
+          })
+        }
+      }
+
+      return tx.naissanceAnimale.update({
+        where: { id },
+        data: {
+          mereId: parsed.data.mereId ?? null,
+          lotId: parsed.data.lotId ?? null,
+          pereIdentifiant: parsed.data.pereIdentifiant ?? null,
+          date: parsed.data.date ?? existing.date,
+          nombreNes: parsed.data.nombreNes,
+          nombreVivants: parsed.data.nombreVivants,
+          nombreMales: parsed.data.nombreMales ?? null,
+          nombreFemelles: parsed.data.nombreFemelles ?? null,
+          poidsTotal: parsed.data.poidsTotal ?? null,
+          notes: parsed.data.notes ?? null,
+        },
+        include: { mere: { select: { id: true, nom: true, identifiant: true } } },
+      })
     })
     return NextResponse.json({ data: updated })
   } catch (error) {
@@ -258,19 +337,24 @@ export async function DELETE(request: NextRequest) {
     })
     if (!existing) return NextResponse.json({ error: 'Naissance non trouvee' }, { status: 404 })
 
-    // Bug cmp8rub7p — décrémenter l'effectif du lot maternel si on avait
-    // incrémenté à la création (POST). Le seuil min 0 évite les compteurs
-    // négatifs si l'utilisateur a ajusté manuellement entre temps.
+    // Bug cmp8rub7p — décrémenter l'effectif du lot crédité à la création
+    // (POST). Le seuil min 0 évite les compteurs négatifs si l'utilisateur
+    // a ajusté manuellement entre temps.
+    // Audit élevage 2026-06-11 — le POST crédite en priorité le lot
+    // EXPLICITE (naissance.lotId), pas celui de la mère : le DELETE doit
+    // décrémenter le même (avant : un lot explicite ≠ lot de la mère
+    // laissait l'explicite gonflé et vidait celui de la mère à tort).
+    const lotCredite = existing.lotId ?? existing.mere?.lotId ?? null
     await prisma.$transaction(async (tx) => {
-      if (existing.mere?.lotId && existing.nombreVivants > 0) {
-        const lot = await tx.lotAnimaux.findUnique({
-          where: { id: existing.mere.lotId },
-          select: { quantiteActuelle: true },
+      if (lotCredite && existing.nombreVivants > 0) {
+        const lot = await tx.lotAnimaux.findFirst({
+          where: { id: lotCredite, userId: session.user.id },
+          select: { id: true, quantiteActuelle: true },
         })
         if (lot) {
           const next = Math.max(0, lot.quantiteActuelle - existing.nombreVivants)
           await tx.lotAnimaux.update({
-            where: { id: existing.mere.lotId },
+            where: { id: lot.id },
             data: { quantiteActuelle: next },
           })
         }

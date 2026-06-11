@@ -88,7 +88,10 @@ export async function GET(request: NextRequest) {
         : s.produit || ''
 
       doc.text(new Date(s.date).toLocaleDateString('fr-FR'), cols.date, y, { width: 55 })
-      doc.text(s.type, cols.type, y, { width: 80 })
+      // Audit élevage 2026-06-11 — un soin planifié non réalisé ne doit pas
+      // se présenter comme un traitement administré dans un document
+      // d'inspection : on le marque explicitement.
+      doc.text(s.fait ? s.type : `${s.type} (prévu)`, cols.type, y, { width: 80 })
       doc.text(cible, cols.cible, y, { width: 115 })
       doc.text(produit, cols.produit, y, { width: 120 })
       doc.text(s.dose || '', cols.dose, y, { width: 45 })

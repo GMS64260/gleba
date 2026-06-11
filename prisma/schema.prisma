@@ -1735,6 +1735,8 @@ model Animal {
   sailliesMale     Saillie[] @relation("SaillieMale")
   // PROMPT 19A — mouvements de cheptel
   mouvements       MouvementCheptel[]
+  // Audit élevage 2026-06-11 — ventes d'animal vivant (restauration à l'annulation)
+  ventesProduits   VenteProduit[]
 
   @@index([userId])
   @@index([especeAnimaleId])
@@ -1829,6 +1831,11 @@ model VenteProduit {
   paye          Boolean      @default(true) @map("paye")
   annule        Boolean      @default(false) @map("annule")
   dateAnnulation DateTime?   @map("date_annulation")
+  // Audit élevage 2026-06-11 — lien vers l'animal pour une vente
+  // animal_vivant : sans lui, l'annulation ne peut pas restaurer le statut
+  // de l'animal (il restait 'vendu' définitivement).
+  animalId      Int?         @map("animal_id")
+  animal        Animal?      @relation(fields: [animalId], references: [id], onDelete: SetNull)
   tauxTVA       Float        @default(5.5) @map("taux_tva")
   // PROMPT 17 — traçabilité fromage : lien vers lot de fabrication
   lotFromageId  String?      @map("lot_fromage_id")
@@ -1841,6 +1848,7 @@ model VenteProduit {
   @@index([date])
   @@index([factureId])
   @@index([lotFromageId])
+  @@index([animalId])
   @@map("ventes_produits")
 }
 

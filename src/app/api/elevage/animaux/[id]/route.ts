@@ -124,6 +124,22 @@ export async function PUT(
       return NextResponse.json({ error: 'Animal non trouvé' }, { status: 404 })
     }
 
+    // Audit élevage 2026-06-11 — garde parents : pas de self-parent, et la
+    // mère référencée doit appartenir au user.
+    if (body.mereId) {
+      const mid = parseInt(body.mereId)
+      if (mid === existing.id) {
+        return NextResponse.json({ error: 'Un animal ne peut pas être sa propre mère' }, { status: 400 })
+      }
+      const mere = await prisma.animal.findFirst({
+        where: { id: mid, userId: session.user.id },
+        select: { id: true },
+      })
+      if (!mere) {
+        return NextResponse.json({ error: 'Animal mère introuvable' }, { status: 400 })
+      }
+    }
+
     const {
       especeAnimaleId,
       lotId,

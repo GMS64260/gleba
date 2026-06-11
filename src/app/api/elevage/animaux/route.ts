@@ -133,6 +133,20 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Audit élevage 2026-06-11 — validation tenant des parents (avant : un
+    // mereId/pereId arbitraire reliait l'animal au cheptel d'un autre compte).
+    for (const [label, parentId] of [['mère', mereId], ['père', pereId]] as const) {
+      if (parentId) {
+        const parent = await prisma.animal.findFirst({
+          where: { id: parentId, userId: session.user.id },
+          select: { id: true },
+        })
+        if (!parent) {
+          return NextResponse.json({ error: `Animal ${label} introuvable` }, { status: 400 })
+        }
+      }
+    }
+
     const animal = await prisma.animal.create({
       data: {
         userId: session.user.id,
@@ -212,6 +226,24 @@ export async function PATCH(request: NextRequest) {
     if (causeSortie !== undefined) updateData.causeSortie = causeSortie
     if (mereId !== undefined) updateData.mereId = mereId ? parseInt(mereId) : null
     if (pereId !== undefined) updateData.pereId = pereId ? parseInt(pereId) : null
+
+    // Audit élevage 2026-06-11 — un animal ne peut pas être son propre
+    // parent (générait un arbre généalogique absurde) et les parents
+    // doivent appartenir au user.
+    for (const [label, parentId] of [['mère', updateData.mereId], ['père', updateData.pereId]] as const) {
+      if (parentId) {
+        if (parentId === existing.id) {
+          return NextResponse.json({ error: `Un animal ne peut pas être sa propre ${label}` }, { status: 400 })
+        }
+        const parent = await prisma.animal.findFirst({
+          where: { id: parentId, userId: session.user.id },
+          select: { id: true },
+        })
+        if (!parent) {
+          return NextResponse.json({ error: `Animal ${label} introuvable` }, { status: 400 })
+        }
+      }
+    }
     if (pereIdentifiant !== undefined) updateData.pereIdentifiant = pereIdentifiant ?? null
     if (identifiant !== undefined) updateData.identifiant = identifiant ?? null
     if (typeIdentifiant !== undefined) updateData.typeIdentifiant = typeIdentifiant ?? null

@@ -57,23 +57,15 @@ export async function GET(request: NextRequest) {
       }, 0)
       const totalConsoKg = consoAliments.reduce((sum, c) => sum + c.quantite, 0)
 
-      // Revenus ventes du lot
-      const ventesLot = await prisma.venteProduit.aggregate({
-        where: {
-          userId,
-          date: { gte: startOfYear, lte: endOfYear },
-          // Note: les ventes ne sont pas directement liees aux lots dans le schema
-          // On filtre par la periode
-        },
-        _sum: { prixTotal: true },
-        _count: true,
-      })
-
-      // Revenus abattages du lot
+      // Revenus abattages du lot (les ventes de produits ne sont pas
+      // rattachables à un lot dans le schéma — seuls les abattages le sont).
+      // Exclure les abattages annulés, sinon un abattage annulé continue de
+      // gonfler la marge du lot.
       const revenusAbattages = await prisma.abattage.aggregate({
         where: {
           userId,
           lotId: lot.id,
+          annule: false,
           date: { gte: startOfYear, lte: endOfYear },
         },
         _sum: { prixVente: true, poidsCarcasse: true, quantite: true },

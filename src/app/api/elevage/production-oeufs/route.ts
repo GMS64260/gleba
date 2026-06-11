@@ -94,6 +94,16 @@ export async function POST(request: NextRequest) {
 
     const { lotId, animalId, date, quantite, casses, sales, calibre, notes, overrideCoherence } = parsed.data
 
+    // Audit élevage 2026-06-11 — validation tenant : l'animal référencé doit
+    // appartenir au user (le lot l'est déjà plus bas).
+    if (animalId) {
+      const a = await prisma.animal.findFirst({
+        where: { id: animalId, userId: session.user.id },
+        select: { id: true },
+      })
+      if (!a) return NextResponse.json({ error: 'Animal introuvable' }, { status: 404 })
+    }
+
     // BUG #2 (audit Julien 15/05/2026) — Validation de cohérence sur
     // l'effectif. Avant : 999 œufs pour 29 pondeuses passait silencieusement.
     // Désormais : refus 422 si quantite > effectif × marge_espèce, sauf
@@ -240,13 +250,43 @@ export async function PATCH(request: NextRequest) {
 
     const updateData: any = {}
     if (date !== undefined) updateData.date = new Date(date)
-    if (quantite !== undefined) updateData.quantite = parseInt(quantite)
-    if (casses !== undefined) updateData.casses = parseInt(casses)
-    if (sales !== undefined) updateData.sales = parseInt(sales)
+    // Audit élevage 2026-06-11 — garde NaN : parseInt("abc") partait en
+    // erreur Prisma 500 illisible ; on renvoie un 400 explicite.
+    if (quantite !== undefined) {
+      const q = parseInt(quantite)
+      if (Number.isNaN(q) || q < 0) return NextResponse.json({ error: 'Quantité invalide' }, { status: 400 })
+      updateData.quantite = q
+    }
+    if (casses !== undefined) {
+      const c = parseInt(casses)
+      if (Number.isNaN(c) || c < 0) return NextResponse.json({ error: 'Nombre de cassés invalide' }, { status: 400 })
+      updateData.casses = c
+    }
+    if (sales !== undefined) {
+      const s = parseInt(sales)
+      if (Number.isNaN(s) || s < 0) return NextResponse.json({ error: 'Nombre de sales invalide' }, { status: 400 })
+      updateData.sales = s
+    }
     if (calibre !== undefined) updateData.calibre = calibre
     if (notes !== undefined) updateData.notes = notes
     if (lotId !== undefined) updateData.lotId = lotId ? parseInt(lotId) : null
     if (animalId !== undefined) updateData.animalId = animalId ? parseInt(animalId) : null
+
+    // Validation tenant des cibles modifiées.
+    if (updateData.lotId) {
+      const l = await prisma.lotAnimaux.findFirst({
+        where: { id: updateData.lotId, userId: session.user.id },
+        select: { id: true },
+      })
+      if (!l) return NextResponse.json({ error: 'Lot introuvable' }, { status: 404 })
+    }
+    if (updateData.animalId) {
+      const a = await prisma.animal.findFirst({
+        where: { id: updateData.animalId, userId: session.user.id },
+        select: { id: true },
+      })
+      if (!a) return NextResponse.json({ error: 'Animal introuvable' }, { status: 404 })
+    }
 
     const production = await prisma.productionOeuf.update({
       where: { id: parseInt(id) },

@@ -96,10 +96,13 @@ export async function GET(request: NextRequest) {
         ORDER BY mois
       ` as Promise<{ mois: number; total: bigint }[]>,
 
-      // Ventes annee (montant total)
+      // Ventes annee (montant total) — exclure les annulées, comme le
+      // GET /ventes, sinon le KPI Dashboard diverge de l'onglet Ventes
+      // dès la première annulation.
       prisma.venteProduit.aggregate({
         where: {
           userId,
+          annule: false,
           date: { gte: startOfYear, lte: endOfYear },
         },
         _sum: { prixTotal: true },
@@ -110,6 +113,7 @@ export async function GET(request: NextRequest) {
       prisma.venteProduit.aggregate({
         where: {
           userId,
+          annule: false,
           date: { gte: startOfPrevYear, lte: endOfPrevYear },
         },
         _sum: { prixTotal: true },
@@ -121,16 +125,18 @@ export async function GET(request: NextRequest) {
         by: ['type'],
         where: {
           userId,
+          annule: false,
           date: { gte: startOfYear, lte: endOfYear },
         },
         _sum: { prixTotal: true },
         _count: true,
       }),
 
-      // Abattages annee
+      // Abattages annee — même règle : les abattages annulés ne comptent pas.
       prisma.abattage.aggregate({
         where: {
           userId,
+          annule: false,
           date: { gte: startOfYear, lte: endOfYear },
         },
         _sum: { quantite: true, poidsCarcasse: true },

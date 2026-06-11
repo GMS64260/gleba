@@ -68,9 +68,42 @@ export async function POST(request: NextRequest) {
     }
     const data = parsed.data
 
+    // Audit élevage 2026-06-11 — validation tenant : l'animal/le lot
+    // référencé doit appartenir au user (même règle que mouvements-cheptel).
+    if (data.animalId) {
+      const a = await prisma.animal.findFirst({
+        where: { id: data.animalId, userId: session.user.id },
+        select: { id: true },
+      })
+      if (!a) return NextResponse.json({ error: 'Animal introuvable' }, { status: 404 })
+    }
+    if (data.lotId) {
+      const l = await prisma.lotAnimaux.findFirst({
+        where: { id: data.lotId, userId: session.user.id },
+        select: { id: true },
+      })
+      if (!l) return NextResponse.json({ error: 'Lot introuvable' }, { status: 404 })
+    }
+
     // Normalise la date au jour (00:00 UTC)
     const day = new Date(data.date)
     day.setUTCHours(0, 0, 0, 0)
+
+    // Audit élevage 2026-06-11 — écartement automatique : le POST /soins
+    // n'écarte que les collectes EXISTANTES à sa création ; une collecte
+    // saisie ensuite dans la fenêtre d'attente passait en circulation.
+    // On vérifie ici si un soin réalisé couvre la date de la collecte.
+    const soinCouvrant = await prisma.soinAnimal.findFirst({
+      where: {
+        userId: session.user.id,
+        fait: true,
+        finAttenteLait: { gte: day },
+        date: { lte: day },
+        ...(data.animalId ? { animalId: data.animalId } : { lotId: data.lotId }),
+      },
+      select: { id: true, finAttenteLait: true, produit: true, type: true },
+    })
+    const ecarte = (data.ecarteAttente ?? false) || soinCouvrant !== null
 
     // Upsert pour permettre "saisie identique à hier" / corrections
     const existing = await prisma.collecteLait.findFirst({
@@ -94,7 +127,7 @@ export async function POST(request: NextRequest) {
       mpGpl: data.mpGpl ?? null,
       cellulesParMl: data.cellulesParMl ?? null,
       temperatureC: data.temperatureC ?? null,
-      ecarteAttente: data.ecarteAttente ?? false,
+      ecarteAttente: ecarte,
       notes: data.notes ?? null,
       lotFromageId: data.lotFromageId ?? null,
     }
@@ -103,7 +136,15 @@ export async function POST(request: NextRequest) {
       ? await prisma.collecteLait.update({ where: { id: existing.id }, data: payload })
       : await prisma.collecteLait.create({ data: payload })
 
-    return NextResponse.json({ data: collecte }, { status: existing ? 200 : 201 })
+    return NextResponse.json(
+      {
+        data: collecte,
+        info: soinCouvrant && !data.ecarteAttente
+          ? `Collecte écartée automatiquement : traitement « ${soinCouvrant.produit || soinCouvrant.type} » en temps d'attente lait jusqu'au ${soinCouvrant.finAttenteLait?.toLocaleDateString('fr-FR')}.`
+          : null,
+      },
+      { status: existing ? 200 : 201 }
+    )
   } catch (err) {
     console.error('POST /api/elevage/collectes-lait error:', err)
     return NextResponse.json({ error: 'Erreur interne du serveur' }, { status: 500 })
@@ -124,7 +165,27 @@ export async function PATCH(request: NextRequest) {
     const existing = await prisma.collecteLait.findFirst({ where: { id, userId: session.user.id } })
     if (!existing) return NextResponse.json({ error: 'Collecte non trouvée' }, { status: 404 })
 
-    const collecte = await prisma.collecteLait.update({ where: { id }, data: updates })
+    // Audit élevage 2026-06-11 — si la date change sans consigne explicite
+    // d'écartement, on réévalue la fenêtre d'attente à la nouvelle date
+    // (sinon déplacer une collecte hors/dans une fenêtre gardait l'ancien flag).
+    const data: typeof updates & { ecarteAttente?: boolean } = { ...updates }
+    if (updates.date && updates.ecarteAttente === undefined && (existing.animalId || existing.lotId)) {
+      const day = new Date(updates.date)
+      day.setUTCHours(0, 0, 0, 0)
+      const soinCouvrant = await prisma.soinAnimal.findFirst({
+        where: {
+          userId: session.user.id,
+          fait: true,
+          finAttenteLait: { gte: day },
+          date: { lte: day },
+          ...(existing.animalId ? { animalId: existing.animalId } : { lotId: existing.lotId }),
+        },
+        select: { id: true },
+      })
+      data.ecarteAttente = soinCouvrant !== null
+    }
+
+    const collecte = await prisma.collecteLait.update({ where: { id }, data })
     return NextResponse.json({ data: collecte })
   } catch (err) {
     console.error('PATCH /api/elevage/collectes-lait error:', err)
