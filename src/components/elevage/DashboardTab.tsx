@@ -379,9 +379,12 @@ export function DashboardTab({ year }: DashboardTabProps) {
             {data.stats.tauxPonte !== null && (
               <Card>
                 <CardHeader className="pb-1 pt-3 px-4">
-                  <CardDescription className="text-xs flex items-center gap-1">
+                  <CardDescription
+                    className="text-xs flex items-center gap-1 cursor-help"
+                    title="Taux observé sur les 7 derniers jours (fenêtre glissante). Il évolue à chaque nouvelle collecte récente — c'est attendu. La référence « attendu période » indique le taux théorique de saison."
+                  >
                     <Egg className="h-3 w-3" />
-                    Taux de ponte (saisonnalisé)
+                    Taux de ponte (7 derniers jours)
                   </CardDescription>
                   <CardTitle className={`text-2xl ${data.stats.tauxPonte >= 70 ? 'text-green-600' : data.stats.tauxPonte >= 50 ? 'text-amber-600' : 'text-red-600'}`}>
                     {data.stats.tauxPonte}%

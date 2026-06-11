@@ -1141,6 +1141,14 @@ function SoinsSubTab({ initialAnimalId = null }: { initialAnimalId?: string | nu
                     soin.fait &&
                     !!soin.datePrevue &&
                     new Date(soin.datePrevue).toDateString() !== new Date(soin.date).toDateString()
+                  // Bug feedback testeur 2026-05-31 — un soin marqué "fait" à une
+                  // date antérieure à sa date prévue (réalisation anticipée) est
+                  // souvent un clic par erreur : on le signale en ambre au lieu
+                  // du vert "réalisé normalement". Non bloquant (l'avance peut
+                  // être volontaire en élevage).
+                  const realiseEnAvance =
+                    realiseDiffPrevue &&
+                    new Date(soin.date) < new Date(new Date(soin.datePrevue!).toDateString())
                   return (
                   <TableRow key={soin.id} className={!soin.fait ? (enRetard ? "bg-red-50" : "bg-blue-50") : ""}>
                     <TableCell>
@@ -1160,7 +1168,10 @@ function SoinsSubTab({ initialAnimalId = null }: { initialAnimalId?: string | nu
                           <span className="text-[10px] font-medium text-red-700 uppercase tracking-wide">En retard</span>
                         )}
                         {realiseDiffPrevue && (
-                          <span className="text-[10px] text-emerald-700">Fait le {new Date(soin.date).toLocaleDateString('fr-FR')}</span>
+                          <span className={`text-[10px] ${realiseEnAvance ? "font-medium text-amber-700" : "text-emerald-700"}`}>
+                            {realiseEnAvance ? "Fait en avance le " : "Fait le "}
+                            {new Date(soin.date).toLocaleDateString('fr-FR')}
+                          </span>
                         )}
                       </div>
                     </TableCell>
