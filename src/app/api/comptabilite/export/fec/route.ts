@@ -59,7 +59,9 @@ export async function GET(request: NextRequest) {
       orderBy: { date: 'asc' },
     }),
     prisma.facture.findMany({
-      where: { userId, date: { gte: start, lte: end }, statut: { not: 'annulee' } },
+      // Audit compta 2026-06 : un brouillon (numéro provisoire BR-) n'est pas
+      // une pièce comptable — il ne doit pas sortir dans le FEC.
+      where: { userId, date: { gte: start, lte: end }, statut: { notIn: ['annulee', 'brouillon'] } },
       orderBy: { date: 'asc' },
       include: { lignes: true },
     }),

@@ -81,8 +81,16 @@ export async function createVenteFromRecolte(
     clientNom?: string | null
     clientId?: number | null
     dateVente?: Date | string | null
+    factureId?: number | null
   }
 ) {
+  // Contrat anti-double-comptage (cf. kpi/compta.ts) : une vente facturée est
+  // comptée via sa Facture — pas d'écriture auto en plus.
+  if (recolte.factureId) {
+    await deleteAutoEntry('recolte', recolte.id, 'vente')
+    return null
+  }
+
   const montantTTC = recolte.prixTotal || (recolte.quantite * (recolte.prixKg || 0))
   if (montantTTC <= 0) return null
 
@@ -176,8 +184,15 @@ export async function createVenteFromRecolteArbre(
     clientId?: number | null
     dateVente?: Date | string | null
     arbre?: { nom?: string; espece?: string | null } | null
+    factureId?: number | null
   }
 ) {
+  // Vente facturée ⇒ comptée via la Facture, pas d'écriture auto (cf. kpi/compta.ts).
+  if (recolteArbre.factureId) {
+    await deleteAutoEntry('recolte_arbre', recolteArbre.id, 'vente')
+    return null
+  }
+
   const montantTTC = recolteArbre.prixTotal || (recolteArbre.quantite * (recolteArbre.prixKg || 0))
   if (montantTTC <= 0) return null
 
@@ -232,8 +247,15 @@ export async function createVenteFromVenteProduit(
     client?: string | null
     date?: Date | string | null
     tauxTVA?: number | null
+    factureId?: number | null
   }
 ) {
+  // Vente facturée ⇒ comptée via la Facture, pas d'écriture auto (cf. kpi/compta.ts).
+  if (venteProduit.factureId) {
+    await deleteAutoEntry('vente_produit', venteProduit.id, 'vente')
+    return null
+  }
+
   const montantTTC = venteProduit.prixTotal
   if (montantTTC <= 0) return null
 
@@ -291,8 +313,15 @@ export async function createVenteFromAbattage(
     animal?: { nom?: string | null } | null
     lot?: { nom?: string | null } | null
     tauxTVA?: number | null
+    factureId?: number | null
   }
 ) {
+  // Vente facturée ⇒ comptée via la Facture, pas d'écriture auto (cf. kpi/compta.ts).
+  if (abattage.factureId) {
+    await deleteAutoEntry('abattage', abattage.id, 'vente')
+    return null
+  }
+
   // Uniquement si destination = vente et qu'il y a un prix
   if (abattage.destination !== 'vente' || !abattage.prixVente || abattage.prixVente <= 0) {
     // Nettoyer toute ecriture auto residuelle
@@ -348,8 +377,15 @@ export async function createVenteFromProductionBois(
     clientId?: number | null
     dateVente?: Date | string | null
     arbre?: { nom?: string; espece?: string | null } | null
+    factureId?: number | null
   }
 ) {
+  // Vente facturée ⇒ comptée via la Facture, pas d'écriture auto (cf. kpi/compta.ts).
+  if (productionBois.factureId) {
+    await deleteAutoEntry('production_bois', productionBois.id, 'vente')
+    return null
+  }
+
   const montantTTC = productionBois.prixVente || 0
   if (montantTTC <= 0) return null
 

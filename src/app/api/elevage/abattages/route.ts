@@ -275,6 +275,15 @@ export async function PATCH(request: NextRequest) {
     if (prixVente !== undefined) updateData.prixVente = prixVente ? parseFloat(prixVente) : null
     if (notes !== undefined) updateData.notes = notes
 
+    // Anti-double-facture : un abattage déjà facturé ne peut pas générer
+    // une seconde facture (l'ancienne resterait comptée dans KPI/TVA/FEC).
+    if (body.creerFacture && existing.factureId) {
+      return NextResponse.json(
+        { error: 'Cet abattage est déjà facturé', factureId: existing.factureId },
+        { status: 409 }
+      )
+    }
+
     // Transaction atomique : facture + update abattage + ajustement lot
     const abattage = await prisma.$transaction(async (tx) => {
       // Créer une facture si demandé et si prixVente existe
@@ -365,6 +374,7 @@ export async function PATCH(request: NextRequest) {
           poidsCarcasse: abattage.poidsCarcasse,
           animal: abattage.animal ? { nom: abattage.animal.nom } : null,
           lot: abattage.lot ? { nom: abattage.lot.nom } : null,
+          factureId: abattage.factureId,
         })
       } else {
         // Destination n'est plus "vente" ou pas de prix -> supprimer l'auto entry

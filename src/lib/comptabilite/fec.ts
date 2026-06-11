@@ -199,7 +199,8 @@ export function genererFec(input: {
 
   // ============ FACTURES ÉMISES ============
   for (const f of input.factures) {
-    if (f.statut === 'annulee') continue
+    // Brouillon = numéro provisoire BR-, pas une pièce comptable.
+    if (f.statut === 'annulee' || f.statut === 'brouillon') continue
     const isAvoir = f.type === 'avoir'
     const sign = isAvoir ? -1 : 1
 
