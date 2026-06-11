@@ -37,6 +37,9 @@ export interface InferencesBreakdown {
 }
 
 export interface TvaPeriode {
+  /** true si l'exploitation est en franchise en base (art. 293 B) : aucune
+   *  TVA collectée ni déductible — la CA3 ne s'applique pas. */
+  franchise: boolean
   collectee: {
     parTaux: Record<string, TvaParTaux>
     total: number
@@ -46,6 +49,9 @@ export interface TvaPeriode {
     parTaux: Record<string, TvaParTaux>
     total: number
     baseTotal: number
+    /** TVA déductible sur immobilisations (catégorie 'materiel') — case 19
+     *  de la CA3, le reste va en case 20. */
+    immobilisations: number
   }
   solde: {
     tvaAPayer: number
@@ -73,6 +79,14 @@ export async function computeTvaPeriode(
   startDate: Date,
   endDate: Date
 ): Promise<TvaPeriode> {
+  // Audit compta 2026-06 : en franchise en base (293 B), l'exploitation ne
+  // collecte ni ne déduit aucune TVA — tout l'écran TVA/CA3 est sans objet.
+  const exploitation = await prisma.exploitation.findUnique({
+    where: { userId },
+    select: { regimeTva: true },
+  })
+  const franchise = exploitation?.regimeTva === 'franchise-293b'
+
   // ─── Sources collectées ─────────────────────────────────────────────
   const [
     ventesManuelles,
@@ -228,11 +242,14 @@ export async function computeTvaPeriode(
   }
 
   // Dépenses manuelles : valeurs saisies
+  let deductibleImmobilisations = 0
   for (const d of depensesManuelles) {
     const taux = String(d.tauxTVA ?? 20)
     const ht = d.montantHT ?? (d.montant / (1 + (d.tauxTVA ?? 20) / 100))
     const tva = d.montantTVA ?? (d.montant - ht)
     addD(taux, ht, tva)
+    // Case 19 CA3 : la TVA sur immobilisations (matériel) se déclare à part
+    if (d.categorie === 'materiel') deductibleImmobilisations += tva
     if (d.tvaInferee) {
       nbInfereesDeductibles++
       inferencesBreakdown.depensesManuelles++
@@ -258,7 +275,35 @@ export async function computeTvaPeriode(
   const baseDeductible = Object.values(tvaDeductible).reduce((s, t) => s + t.base, 0)
   const solde = Math.round((totalCollectee - totalDeductible) * 100) / 100
 
+  // Franchise 293 B : tout est à zéro (rien à collecter ni déduire) — on
+  // garde les compteurs de détails pour que l'UI puisse expliquer pourquoi.
+  if (franchise) {
+    const zeros = Object.fromEntries(TAUX_KEYS.map(k => [k, { base: 0, tva: 0 }]))
+    return {
+      franchise: true,
+      collectee: { parTaux: { ...zeros }, total: 0, baseTotal: 0 },
+      deductible: { parTaux: { ...zeros }, total: 0, baseTotal: 0, immobilisations: 0 },
+      solde: { tvaAPayer: 0, creditTVA: 0 },
+      details: {
+        nbVentes: ventesManuelles.length,
+        nbFactures: factures.length,
+        nbVentesElevage: ventesElevage.length,
+        nbRecoltesPotager: recoltesPotager.length,
+        nbRecoltesArbres: recoltesArbres.length,
+        nbVenteBois: venteBois.length,
+        nbAbattages: venteAbattage.length,
+        nbDepenses: depensesManuelles.length,
+        nbConsommationsAliments: 0,
+        nbFertilisations: 0,
+        nbInfereesCollectees: 0,
+        nbInfereesDeductibles: 0,
+        inferencesBreakdown,
+      },
+    }
+  }
+
   return {
+    franchise: false,
     collectee: {
       parTaux: tvaCollectee,
       total: Math.round(totalCollectee * 100) / 100,
@@ -268,6 +313,7 @@ export async function computeTvaPeriode(
       parTaux: tvaDeductible,
       total: Math.round(totalDeductible * 100) / 100,
       baseTotal: Math.round(baseDeductible * 100) / 100,
+      immobilisations: Math.round(deductibleImmobilisations * 100) / 100,
     },
     solde: {
       tvaAPayer: solde > 0 ? solde : 0,

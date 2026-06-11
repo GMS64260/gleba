@@ -21,6 +21,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        # Activé via .env privé du serveur ; défaut "false" (build open-source).
+        NEXT_PUBLIC_FEATURE_BOUTIQUE: ${NEXT_PUBLIC_FEATURE_BOUTIQUE:-false}
     container_name: gleba_app
     restart: unless-stopped
     environment:
@@ -39,11 +42,20 @@ services:
       SMTP_PASS: ${SMTP_PASS:-}
       SMTP_FROM: ${SMTP_FROM:-}
       FEEDBACK_EMAIL: ${FEEDBACK_EMAIL:-}
+      # Audit compta 2026-06 : les bornes d'exercice comptable sont calculées
+      # en heure locale du serveur — en UTC, une vente saisie le 1er janvier
+      # 00h30 (heure de Paris) tombait dans l'exercice précédent.
+      TZ: ${TZ:-Europe/Paris}
     ports:
       - "${APP_PORT:-3000}:3000"
     depends_on:
       db:
         condition: service_healthy
+    volumes:
+      # Persiste les fichiers téléversés (logos, bannières, photos produits,
+      # justificatifs…) entre les rebuilds du conteneur.
+      - uploads_data:/app/public/uploads
 
 volumes:
   postgres_data:
+  uploads_data:
