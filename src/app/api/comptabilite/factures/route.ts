@@ -82,6 +82,42 @@ export async function POST(request: NextRequest) {
     const d = parsed.data
     const userId = session.user.id
 
+    // Audit compta 2026-06 — avoirs bornés côté serveur : un avoir doit
+    // référencer une facture d'origine du même compte, émise ou payée, et la
+    // somme des avoirs ne peut pas dépasser le montant de la facture d'origine
+    // (sinon revenus/TVA négatifs arbitraires).
+    if (d.type === 'avoir') {
+      if (!d.factureOrigineId) {
+        return NextResponse.json(
+          { error: "Un avoir doit référencer une facture d'origine (factureOrigineId)" },
+          { status: 400 }
+        )
+      }
+      const origine = await prisma.facture.findFirst({
+        where: { id: d.factureOrigineId, userId },
+        select: { id: true, numero: true, type: true, statut: true, totalTTC: true },
+      })
+      if (!origine || origine.type === 'avoir' || !['emise', 'payee'].includes(origine.statut)) {
+        return NextResponse.json(
+          { error: "Facture d'origine introuvable, annulée ou invalide pour un avoir" },
+          { status: 400 }
+        )
+      }
+      const avoirsExistants = await prisma.facture.aggregate({
+        where: { userId, type: 'avoir', factureOrigineId: origine.id, statut: { not: 'annulee' } },
+        _sum: { totalTTC: true },
+      })
+      const dejaAvoir = avoirsExistants._sum.totalTTC ?? 0
+      if (dejaAvoir + d.totalTTC > origine.totalTTC + 0.01) {
+        return NextResponse.json(
+          {
+            error: `Le total des avoirs (${(dejaAvoir + d.totalTTC).toFixed(2)} €) dépasserait le montant de la facture ${origine.numero} (${origine.totalTTC.toFixed(2)} €)`,
+          },
+          { status: 400 }
+        )
+      }
+    }
+
     // Transaction atomique : numéro facture + création (évite les doublons)
     const facture = await prisma.$transaction(async (tx) => {
       return creerFacture(tx, {
@@ -146,18 +182,57 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Facture non trouvée' }, { status: 404 })
     }
 
-    // POSTREVIEW — Transition brouillon → émise :
+    // Audit compta 2026-06 — machine à états : avant, toute transition était
+    // acceptée (annulee→payee, emise→brouillon avec re-réservation de numéro,
+    // brouillon→payee sans numéro définitif ni snapshot, statut arbitraire).
+    if (updateData.statut !== undefined) {
+      const TRANSITIONS: Record<string, string[]> = {
+        brouillon: ['emise', 'payee'], // payee direct passe par le circuit d'émission
+        emise: ['payee', 'annulee'],
+        payee: ['emise', 'annulee'], // emise = correction de pointage ; annulee exige un avoir
+        annulee: [],
+      }
+      const autorisees = TRANSITIONS[existing.statut] ?? []
+      if (!autorisees.includes(updateData.statut)) {
+        return NextResponse.json(
+          {
+            error: `Transition de statut invalide : ${existing.statut} → ${updateData.statut}`,
+            details: autorisees.length
+              ? `Transitions possibles : ${autorisees.join(', ')}`
+              : 'Une facture annulée ne change plus de statut',
+          },
+          { status: 409 }
+        )
+      }
+      if (existing.statut === 'payee' && updateData.statut === 'annulee') {
+        const avoir = await prisma.facture.findFirst({
+          where: { userId: session.user.id, type: 'avoir', factureOrigineId: existing.id, statut: { not: 'annulee' } },
+          select: { id: true },
+        })
+        if (!avoir) {
+          return NextResponse.json(
+            { error: "Une facture payée ne peut être annulée qu'après émission d'un avoir" },
+            { status: 409 }
+          )
+        }
+      }
+    }
+
+    // POSTREVIEW — Transition brouillon → émise (ou payée directe) :
     // 1. Réserver un VRAI numéro via SequenceFacture (lock FOR UPDATE)
     // 2. Re-snapshot Exploitation (le régime fiscal/TVA peut avoir changé
     //    entre le brouillon et l'émission)
     // 3. Le tout dans une transaction Prisma pour atomicité
-    const isEmission = existing.statut === 'brouillon' && updateData.statut === 'emise'
+    const isEmission =
+      existing.statut === 'brouillon' && ['emise', 'payee'].includes(updateData.statut)
 
     const facture = await prisma.$transaction(async (tx) => {
       const data: any = {}
       if (updateData.statut !== undefined) {
         data.statut = updateData.statut
         if (updateData.statut === 'payee') data.datePaiement = new Date()
+        // Retour payée → émise : le paiement pointé était une erreur
+        if (existing.statut === 'payee' && updateData.statut === 'emise') data.datePaiement = null
       }
       if (updateData.modePaiement !== undefined) data.modePaiement = updateData.modePaiement
       if (updateData.notes !== undefined) data.notes = updateData.notes
