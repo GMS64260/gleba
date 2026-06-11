@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { createDepenseFromAchatAnimal } from '@/lib/auto-compta'
 import { animalSchema } from '@/lib/validations/elevage-animal'
 
 export async function GET(request: NextRequest) {
@@ -181,6 +182,21 @@ export async function POST(request: NextRequest) {
       },
     })
 
+    // Auto-comptabilite : creer une depense si prixAchat > 0
+    if (animal.prixAchat && animal.prixAchat > 0) {
+      try {
+        await createDepenseFromAchatAnimal(session.user.id, {
+          id: animal.id,
+          nom: animal.nom,
+          identifiant: animal.identifiant,
+          prixAchat: animal.prixAchat,
+          dateArrivee: animal.dateArrivee,
+        })
+      } catch (autoComptaError) {
+        console.error('Auto-compta error (achat_animal_individuel POST):', autoComptaError)
+      }
+    }
+
     return NextResponse.json({ data: animal }, { status: 201 })
   } catch (error) {
     console.error('POST /api/elevage/animaux error:', error)
@@ -260,6 +276,20 @@ export async function PATCH(request: NextRequest) {
         lot: { select: { id: true, nom: true } },
       },
     })
+
+    // Auto-comptabilite : resynchroniser la depense auto avec les valeurs finales
+    // (le helper supprime l'ecriture si prixAchat devient null/0)
+    try {
+      await createDepenseFromAchatAnimal(session.user.id, {
+        id: animal.id,
+        nom: animal.nom,
+        identifiant: animal.identifiant,
+        prixAchat: animal.prixAchat,
+        dateArrivee: animal.dateArrivee,
+      })
+    } catch (autoComptaError) {
+      console.error('Auto-compta error (achat_animal_individuel PATCH):', autoComptaError)
+    }
 
     return NextResponse.json({ data: animal })
   } catch (error) {

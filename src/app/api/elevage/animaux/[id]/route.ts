@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { createDepenseFromAchatAnimal, deleteAutoEntry } from '@/lib/auto-compta'
 
 export async function GET(
   request: NextRequest,
@@ -93,6 +94,19 @@ export async function PATCH(
       data,
       include: { especeAnimale: true, lot: true },
     })
+
+    // Auto-comptabilite : resynchroniser la depense auto avec les valeurs finales
+    try {
+      await createDepenseFromAchatAnimal(session.user.id, {
+        id: animal.id,
+        nom: animal.nom,
+        identifiant: animal.identifiant,
+        prixAchat: animal.prixAchat,
+        dateArrivee: animal.dateArrivee,
+      })
+    } catch (autoComptaError) {
+      console.error('Auto-compta error (achat_animal_individuel PATCH):', autoComptaError)
+    }
 
     return NextResponse.json({ data: animal })
   } catch (error) {
@@ -193,6 +207,20 @@ export async function PUT(
       },
     })
 
+    // Auto-comptabilite : resynchroniser la depense auto avec les valeurs finales
+    // (le helper supprime l'ecriture si prixAchat devient null/0)
+    try {
+      await createDepenseFromAchatAnimal(session.user.id, {
+        id: animal.id,
+        nom: animal.nom,
+        identifiant: animal.identifiant,
+        prixAchat: animal.prixAchat,
+        dateArrivee: animal.dateArrivee,
+      })
+    } catch (autoComptaError) {
+      console.error('Auto-compta error (achat_animal_individuel PUT):', autoComptaError)
+    }
+
     return NextResponse.json({ data: animal })
   } catch (error) {
     console.error('PUT /api/elevage/animaux/[id] error:', error)
@@ -219,6 +247,13 @@ export async function DELETE(
 
     if (!existing) {
       return NextResponse.json({ error: 'Animal non trouvé' }, { status: 404 })
+    }
+
+    // Supprimer les ecritures auto-compta liees
+    try {
+      await deleteAutoEntry('achat_animal_individuel', parseInt(id), 'depense')
+    } catch (autoComptaError) {
+      console.error('Auto-compta cleanup error (achat_animal_individuel):', autoComptaError)
     }
 
     await prisma.animal.delete({

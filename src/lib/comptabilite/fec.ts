@@ -194,20 +194,59 @@ export function genererFec(input: {
   depenses: FecInputDepense[]
   factures: FecInputFacture[]
 }): FecLine[] {
-  const out: FecLine[] = []
-  let ecritNum = 1
+  // Audit compta 2026-06 (lot 5) — deux exigences de la norme FEC :
+  //   1. Montants POSITIFS uniquement : un avoir (ou une remise négative)
+  //      inverse les colonnes débit/crédit au lieu de porter un montant < 0.
+  //   2. Chronologie : EcritureNum séquentiel PAR JOURNAL, croissant avec
+  //      EcritureDate. On collecte donc toutes les écritures, on trie par
+  //      date, puis on numérote par journal à l'émission.
+  type LigneTmp = {
+    compteNum: string
+    compteLib: string
+    debit: number
+    credit: number
+    tiers?: { num: string; lib: string }
+  }
+  type EcritureTmp = {
+    journal: string
+    date: Date
+    pieceRef: string
+    libelle: string
+    lignes: LigneTmp[]
+  }
+  const ecritures: EcritureTmp[] = []
 
   // ============ FACTURES ÉMISES ============
   for (const f of input.factures) {
     // Brouillon = numéro provisoire BR-, pas une pièce comptable.
     if (f.statut === 'annulee' || f.statut === 'brouillon') continue
     const isAvoir = f.type === 'avoir'
-    const sign = isAvoir ? -1 : 1
 
-    const journal = 'VE'
-    const pieceRef = f.numero
     const libelle = `${isAvoir ? 'Avoir' : 'Facture'} ${f.numero}${f.clientNom ? ' — ' + f.clientNom : ''}`
-    const base = ecritureBase(journal, ecritNum++, f.date, pieceRef, libelle)
+    const lignes: LigneTmp[] = []
+    // Montants positifs : l'avoir inverse le sens, un montant négatif aussi.
+    const push = (
+      compteNum: string,
+      compteLib: string,
+      montant: number,
+      sens: 'D' | 'C',
+      tiers?: LigneTmp['tiers']
+    ) => {
+      if (!montant) return
+      let m = montant
+      let s: 'D' | 'C' = isAvoir ? (sens === 'D' ? 'C' : 'D') : sens
+      if (m < 0) {
+        m = -m
+        s = s === 'D' ? 'C' : 'D'
+      }
+      lignes.push({
+        compteNum,
+        compteLib,
+        debit: s === 'D' ? m : 0,
+        credit: s === 'C' ? m : 0,
+        tiers,
+      })
+    }
 
     // POSTREVIEW — Compte auxiliaire client basé sur clientId (et non factureId)
     // pour permettre le lettrage et le suivi de balance âgée.
@@ -218,8 +257,8 @@ export function genererFec(input: {
       : `411A${(f.clientNom || 'ANONYME').replace(/[^A-Z0-9]/gi, '').slice(0, 6).toUpperCase().padEnd(6, 'X')}`
     const tiers = { num: tiersNum, lib: f.clientNom || 'Client anonyme' }
 
-    // Débit client (créance) = TTC * sign
-    out.push(line(base, COMPTES_BILAN.clients, 'Créances clients', sign * f.totalTTC, 0, tiers))
+    // Débit client (créance) = TTC
+    push(COMPTES_BILAN.clients, 'Créances clients', f.totalTTC, 'D', tiers)
 
     // POSTREVIEW — Compte de produits selon les lignes de facture si disponibles
     // (fallback : 708000 "autres produits" plutôt que 701100 légumes par défaut)
@@ -230,7 +269,9 @@ export function genererFec(input: {
       for (const l of lignesCateg) {
         const compte = compteVente(l.categorie)
         const key = compte.num
-        const tva = l.montantHT > 0 ? (l.montantTVA || 0) : 0
+        // La TVA des lignes négatives (remises) suit son HT — le sens est
+        // géré par push(), plus besoin de l'écraser à 0.
+        const tva = l.montantTVA || 0
         const ex = htParCompte.get(key)
         if (ex) {
           ex.ht += l.montantHT
@@ -241,8 +282,8 @@ export function genererFec(input: {
       }
       // Émission ligne par compte
       for (const c of htParCompte.values()) {
-        if (c.ht !== 0) out.push(line(base, c.num, c.lib, 0, sign * c.ht))
-        if (c.tva !== 0) out.push(line(base, COMPTES_BILAN.tvaCollectee, 'TVA collectée', 0, sign * c.tva))
+        push(c.num, c.lib, c.ht, 'C')
+        push(COMPTES_BILAN.tvaCollectee, 'TVA collectée', c.tva, 'C')
       }
     } else {
       // Fallback (pas de lignes : facture historique pré-14C) → 708000 + ventilation TVA par taux
@@ -251,10 +292,12 @@ export function genererFec(input: {
         ? Object.entries(f.totauxParTauxTva)
         : ([[String(5.5), { ht: f.totalHT, tva: f.totalTVA }]] as Array<[string, { ht: number; tva: number }]>)
       for (const [, t] of ventilation) {
-        if (t.ht !== 0) out.push(line(base, compteFallback.num, compteFallback.lib, 0, sign * t.ht))
-        if (t.tva !== 0) out.push(line(base, COMPTES_BILAN.tvaCollectee, 'TVA collectée', 0, sign * t.tva))
+        push(compteFallback.num, compteFallback.lib, t.ht, 'C')
+        push(COMPTES_BILAN.tvaCollectee, 'TVA collectée', t.tva, 'C')
       }
     }
+
+    ecritures.push({ journal: 'VE', date: f.date, pieceRef: f.numero, libelle, lignes })
   }
 
   // ============ VENTES MANUELLES (non auto) ============
@@ -262,41 +305,66 @@ export function genererFec(input: {
     const journal = v.modeReglement === 'Espèces' ? 'CA' : v.modeReglement === 'À crédit' ? 'VE' : 'BQ'
     const pieceRef = v.numeroPiece || `VM-${v.id}`
     const libelle = `${v.description}${v.clientNom ? ' — ' + v.clientNom : ''}`
-    const base = ecritureBase(journal, ecritNum++, v.date, pieceRef, libelle)
 
     const compteTreso = compteTresorerie(v.modeReglement) || COMPTES_BILAN.clients
     const compteV = compteVente(v.categorie)
     const ht = v.montantHT ?? (v.montant / (1 + v.tauxTVA / 100))
     const tva = v.montantTVA ?? (v.montant - ht)
 
+    const lignes: LigneTmp[] = []
     // Débit trésorerie (ou client si à crédit) = TTC
-    out.push(line(base, compteTreso, compteTreso === COMPTES_BILAN.caisse ? 'Caisse' : compteTreso === COMPTES_BILAN.banque ? 'Banque' : 'Créances clients', v.montant, 0))
+    lignes.push({
+      compteNum: compteTreso,
+      compteLib: compteTreso === COMPTES_BILAN.caisse ? 'Caisse' : compteTreso === COMPTES_BILAN.banque ? 'Banque' : 'Créances clients',
+      debit: v.montant,
+      credit: 0,
+    })
     // Crédit vente HT
-    if (ht !== 0) out.push(line(base, compteV.num, compteV.lib, 0, ht))
+    if (ht !== 0) lignes.push({ compteNum: compteV.num, compteLib: compteV.lib, debit: 0, credit: ht })
     // Crédit TVA collectée
-    if (tva !== 0) out.push(line(base, COMPTES_BILAN.tvaCollectee, 'TVA collectée', 0, tva))
+    if (tva !== 0) lignes.push({ compteNum: COMPTES_BILAN.tvaCollectee, compteLib: 'TVA collectée', debit: 0, credit: tva })
+
+    ecritures.push({ journal, date: v.date, pieceRef, libelle, lignes })
   }
 
-  // ============ DÉPENSES MANUELLES (non auto) ============
+  // ============ DÉPENSES MANUELLES (auto incluses — SSOT dépenses) ============
   for (const d of input.depenses) {
     const journal = d.modeReglement === 'Espèces' ? 'CA' : d.modeReglement === 'À crédit' ? 'AC' : 'BQ'
     const pieceRef = d.numeroPiece || `DM-${d.id}`
     const libelle = `${d.description}${d.fournisseurNom ? ' — ' + d.fournisseurNom : ''}`
-    const base = ecritureBase(journal, ecritNum++, d.date, pieceRef, libelle)
 
     const compteTreso = compteTresorerie(d.modeReglement) || COMPTES_BILAN.fournisseurs
     const compteA = compteAchat(d.categorie)
     const ht = d.montantHT ?? (d.montant / (1 + d.tauxTVA / 100))
     const tva = d.montantTVA ?? (d.montant - ht)
 
+    const lignes: LigneTmp[] = []
     // Débit achat HT
-    if (ht !== 0) out.push(line(base, compteA.num, compteA.lib, ht, 0))
+    if (ht !== 0) lignes.push({ compteNum: compteA.num, compteLib: compteA.lib, debit: ht, credit: 0 })
     // Débit TVA déductible
-    if (tva !== 0) out.push(line(base, COMPTES_BILAN.tvaDeductibleBiens, 'TVA déductible', tva, 0))
+    if (tva !== 0) lignes.push({ compteNum: COMPTES_BILAN.tvaDeductibleBiens, compteLib: 'TVA déductible', debit: tva, credit: 0 })
     // Crédit trésorerie (ou fournisseur si à crédit)
-    out.push(line(base, compteTreso, compteTreso === COMPTES_BILAN.caisse ? 'Caisse' : compteTreso === COMPTES_BILAN.banque ? 'Banque' : 'Dettes fournisseurs', 0, d.montant))
+    lignes.push({
+      compteNum: compteTreso,
+      compteLib: compteTreso === COMPTES_BILAN.caisse ? 'Caisse' : compteTreso === COMPTES_BILAN.banque ? 'Banque' : 'Dettes fournisseurs',
+      debit: 0,
+      credit: d.montant,
+    })
+
+    ecritures.push({ journal, date: d.date, pieceRef, libelle, lignes })
   }
 
+  // ============ TRI CHRONOLOGIQUE + NUMÉROTATION PAR JOURNAL ============
+  const out: FecLine[] = []
+  const triees = [...ecritures].sort((a, b) => a.date.getTime() - b.date.getTime())
+  const numParJournal: Record<string, number> = {}
+  for (const e of triees) {
+    numParJournal[e.journal] = (numParJournal[e.journal] ?? 0) + 1
+    const base = ecritureBase(e.journal, numParJournal[e.journal], e.date, e.pieceRef, e.libelle)
+    for (const l of e.lignes) {
+      out.push(line(base, l.compteNum, l.compteLib, l.debit, l.credit, l.tiers))
+    }
+  }
   return out
 }
 
@@ -323,9 +391,11 @@ export function validerEquilibre(lines: FecLine[]): {
     const c = parseFloat(l.Credit.replace(',', '.'))
     totalD += d
     totalC += c
-    if (!parEcr[l.EcritureNum]) parEcr[l.EcritureNum] = { debit: 0, credit: 0 }
-    parEcr[l.EcritureNum].debit += d
-    parEcr[l.EcritureNum].credit += c
+    // EcritureNum est séquentiel PAR JOURNAL : la clé d'écriture inclut le journal.
+    const key = `${l.JournalCode}-${l.EcritureNum}`
+    if (!parEcr[key]) parEcr[key] = { debit: 0, credit: 0 }
+    parEcr[key].debit += d
+    parEcr[key].credit += c
   }
   const erreurs: Array<{ ecriture: string; debit: number; credit: number; ecart: number }> = []
   for (const [num, t] of Object.entries(parEcr)) {

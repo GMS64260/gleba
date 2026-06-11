@@ -266,7 +266,16 @@ export async function GET(request: NextRequest) {
         where: { userId, date: dateRange, statut: 'vendu' },
       }),
       prisma.depenseManuelle.findMany({
-        where: { userId, date: dateRange, module: 'verger' },
+        // Lot 5 : les OperationArbre ont désormais une écriture auto module
+        // verger — on l'exclut car opsArbres est déjà sommé en brut ci-dessous.
+        // Les autres écritures auto verger (campagnes de plantation,
+        // interventions) restent : elles n'ont pas de source brute comptée ici.
+        where: {
+          userId,
+          date: dateRange,
+          module: 'verger',
+          NOT: { auto: true, sourceType: 'operation_arbre' },
+        },
       }),
     ])
 
@@ -293,19 +302,40 @@ export async function GET(request: NextRequest) {
       }),
       prisma.consommationAliment.findMany({
         where: { userId, date: dateRange },
-        include: { aliment: { select: { prix: true, nom: true } } },
+        include: {
+          aliment: {
+            select: {
+              prix: true,
+              nom: true,
+              // Lot 5 / audit M4 : valorisation au prix per-user comme la
+              // liste Dépenses et l'auto-compta (avant : prix global seul)
+              userStocks: { where: { userId }, select: { prix: true, coutUnitaire: true }, take: 1 },
+            },
+          },
+        },
       }),
       prisma.soinAnimal.findMany({
         where: { userId, date: dateRange },
       }),
       prisma.depenseManuelle.findMany({
-        where: { userId, date: dateRange, module: 'elevage' },
+        // Lot 5 : consommations et soins ont désormais des écritures auto —
+        // exclues ici car leurs sources brutes sont déjà sommées ci-dessous.
+        // Les achats de lots/animaux (auto) restent comptés via ces écritures.
+        where: {
+          userId,
+          date: dateRange,
+          module: 'elevage',
+          NOT: { auto: true, sourceType: { in: ['consommation_aliment', 'soin_animal'] } },
+        },
       }),
     ])
 
     const elevageRevenus = venteProduits.reduce((sum, v) => sum + v.prixTotal, 0)
       + abattages.filter(a => a.destination === 'vente').reduce((sum, a) => sum + (a.prixVente || 0), 0)
-    const elevageCoutAlim = consoAliments.reduce((sum, c) => sum + (c.quantite * (c.aliment.prix || 0)), 0)
+    const elevageCoutAlim = consoAliments.reduce((sum, c) => {
+      const prixUnitaire = c.aliment.userStocks?.[0]?.coutUnitaire ?? c.aliment.userStocks?.[0]?.prix ?? c.aliment.prix ?? 0
+      return sum + c.quantite * prixUnitaire
+    }, 0)
     const elevageCoutSoins = soins.reduce((sum, s) => sum + (s.cout || 0), 0)
     const elevageCoutAutre = depensesElevage.reduce((sum, d) => sum + d.montant, 0)
     const elevageCoutsTotal = elevageCoutAlim + elevageCoutSoins + elevageCoutAutre

@@ -909,6 +909,12 @@ export async function POST(request: NextRequest) {
         const fertilisantExists = await tx.fertilisant.findUnique({ where: { id: item.fertilisantId } })
         if (!fertilisantExists) continue
 
+        // TODO auto-compta : seul point de création de Fertilisation (pas de
+        // route CRUD dédiée). Création en masse dans une transaction d'import :
+        // on n'appelle pas createDepenseFromFertilisation('fertilisation') ici
+        // (le helper ouvre sa propre transaction et créerait des écritures même
+        // en cas de rollback de l'import). À brancher quand une route CRUD
+        // fertilisation existera, ou en post-traitement après commit.
         await tx.fertilisation.create({
           data: {
             userId,
@@ -1032,6 +1038,32 @@ export async function POST(request: NextRequest) {
       stats,
     }
     }, { timeout: 60000 }) // 60 second timeout for bulk import
+
+    // Auto-compta (post-commit) : les fertilisations n'ont pas de route CRUD,
+    // l'import est leur seul point de création. On génère ici les écritures
+    // DepenseManuelle auto manquantes (helper idempotent), hors transaction
+    // pour ne pas créer d'écritures en cas de rollback de l'import.
+    try {
+      const { createDepenseFromFertilisation } = await import('@/lib/auto-compta')
+      const [fertilisations, ecritures] = await Promise.all([
+        prisma.fertilisation.findMany({
+          where: { userId },
+          select: { id: true, fertilisantId: true, quantite: true, date: true },
+        }),
+        prisma.depenseManuelle.findMany({
+          where: { userId, sourceType: 'fertilisation', auto: true },
+          select: { sourceId: true },
+        }),
+      ])
+      const dejaCouvertes = new Set(ecritures.map((e) => e.sourceId))
+      for (const f of fertilisations) {
+        if (!dejaCouvertes.has(f.id)) {
+          await createDepenseFromFertilisation(userId, f)
+        }
+      }
+    } catch (autoComptaError) {
+      console.error('Auto-compta error (import fertilisations):', autoComptaError)
+    }
 
     return NextResponse.json({
       success: true,

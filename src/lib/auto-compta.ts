@@ -430,6 +430,297 @@ export async function createVenteFromProductionBois(
 // ============================================================
 
 /**
+ * Audit compta 2026-06 (lot 5) — Dépenses SSOT unifiée : le KPI, la TVA
+ * déductible et le FEC somment toutes les DepenseManuelle (auto incluses).
+ * Chaque source de coût métier doit donc produire son écriture auto, comme
+ * les ventes. Les écrans qui agrègent les sources brutes (liste Dépenses,
+ * stats, coûts de production) excluent les écritures auto correspondantes.
+ */
+
+/**
+ * Cree une DepenseManuelle quand une OperationArbre a un coût (taille,
+ * traitement, greffe...). TVA : 20 % traitement (intrants), 10 % sinon (service).
+ */
+export async function createDepenseFromOperationArbre(
+  userId: string,
+  operation: {
+    id: number
+    type: string
+    description?: string | null
+    cout?: number | null
+    date?: Date | string | null
+    fait?: boolean | null
+  }
+) {
+  // Une opération planifiée (fait=false) n'est pas une dépense réelle.
+  const montantTTC = operation.fait === false ? 0 : operation.cout || 0
+  return prisma.$transaction(async (tx) => {
+    await tx.depenseManuelle.deleteMany({
+      where: { sourceType: 'operation_arbre', sourceId: operation.id, auto: true },
+    })
+    if (montantTTC <= 0) return null
+    const tauxTVA = operation.type === 'traitement' ? 20 : 10
+    const { montantHT, montantTVA } = calculTVA(montantTTC, tauxTVA)
+    return tx.depenseManuelle.create({
+      data: {
+        userId,
+        date: operation.date ? new Date(operation.date) : new Date(),
+        categorie: operation.type === 'traitement' ? 'intrants' : 'main_oeuvre',
+        description: operation.description || `Opération verger - ${operation.type}`,
+        tauxTVA,
+        montantHT,
+        montantTVA,
+        montant: montantTTC,
+        journal: 'AC',
+        module: 'verger',
+        paye: true,
+        sourceType: 'operation_arbre',
+        sourceId: operation.id,
+        auto: true,
+      },
+    })
+  })
+}
+
+/**
+ * Cree une DepenseManuelle quand une CampagnePlantation a un coût réel.
+ * TVA 10 % (végétaux vivants).
+ */
+export async function createDepenseFromCampagnePlantation(
+  userId: string,
+  campagne: {
+    id: number
+    nom?: string | null
+    coutReel?: number | null
+    datePlantationReelle?: Date | string | null
+    datePlantationPrevue?: Date | string | null
+  }
+) {
+  const montantTTC = campagne.coutReel || 0
+  return prisma.$transaction(async (tx) => {
+    await tx.depenseManuelle.deleteMany({
+      where: { sourceType: 'campagne_plantation', sourceId: campagne.id, auto: true },
+    })
+    if (montantTTC <= 0) return null
+    const { montantHT, montantTVA } = calculTVA(montantTTC, 10)
+    return tx.depenseManuelle.create({
+      data: {
+        userId,
+        date: campagne.datePlantationReelle
+          ? new Date(campagne.datePlantationReelle)
+          : campagne.datePlantationPrevue
+            ? new Date(campagne.datePlantationPrevue)
+            : new Date(),
+        categorie: 'plants',
+        description: `Campagne de plantation - ${campagne.nom || `#${campagne.id}`}`,
+        tauxTVA: 10,
+        montantHT,
+        montantTVA,
+        montant: montantTTC,
+        journal: 'AC',
+        module: 'verger',
+        paye: true,
+        sourceType: 'campagne_plantation',
+        sourceId: campagne.id,
+        auto: true,
+      },
+    })
+  })
+}
+
+/**
+ * Cree une DepenseManuelle quand une ConsommationAliment est enregistrée.
+ * Valorisation : coutUnitaire per-user ?? prix per-user ?? prix global.
+ * TVA 10 % (aliments pour animaux), aligné sur l'inférence historique de tva.ts.
+ */
+export async function createDepenseFromConsommationAliment(
+  userId: string,
+  consommation: {
+    id: number
+    alimentId: string
+    quantite: number
+    date?: Date | string | null
+  }
+) {
+  const aliment = await prisma.aliment.findUnique({
+    where: { id: consommation.alimentId },
+    select: {
+      nom: true,
+      prix: true,
+      userStocks: { where: { userId }, select: { prix: true, coutUnitaire: true }, take: 1 },
+    },
+  })
+  const prixUnitaire =
+    aliment?.userStocks?.[0]?.coutUnitaire ?? aliment?.userStocks?.[0]?.prix ?? aliment?.prix ?? 0
+  const montantTTC = consommation.quantite * prixUnitaire
+
+  return prisma.$transaction(async (tx) => {
+    await tx.depenseManuelle.deleteMany({
+      where: { sourceType: 'consommation_aliment', sourceId: consommation.id, auto: true },
+    })
+    if (montantTTC <= 0) return null
+    const { montantHT, montantTVA } = calculTVA(montantTTC, 10)
+    return tx.depenseManuelle.create({
+      data: {
+        userId,
+        date: consommation.date ? new Date(consommation.date) : new Date(),
+        categorie: 'alimentation',
+        description: `Consommation aliment - ${aliment?.nom || consommation.alimentId} (${consommation.quantite} kg)`,
+        tauxTVA: 10,
+        montantHT,
+        montantTVA,
+        montant: montantTTC,
+        journal: 'AC',
+        module: 'elevage',
+        paye: true,
+        sourceType: 'consommation_aliment',
+        sourceId: consommation.id,
+        auto: true,
+      },
+    })
+  })
+}
+
+/**
+ * Cree une DepenseManuelle quand un SoinAnimal a un coût (véto, produits).
+ * TVA 20 % (prestations/produits vétérinaires).
+ */
+export async function createDepenseFromSoinAnimal(
+  userId: string,
+  soin: {
+    id: number
+    type: string
+    cout?: number | null
+    date?: Date | string | null
+    fait?: boolean | null
+  }
+) {
+  // Un soin planifié (fait=false) n'est pas une dépense réelle.
+  const montantTTC = soin.fait === false ? 0 : soin.cout || 0
+  return prisma.$transaction(async (tx) => {
+    await tx.depenseManuelle.deleteMany({
+      where: { sourceType: 'soin_animal', sourceId: soin.id, auto: true },
+    })
+    if (montantTTC <= 0) return null
+    const { montantHT, montantTVA } = calculTVA(montantTTC, 20)
+    return tx.depenseManuelle.create({
+      data: {
+        userId,
+        date: soin.date ? new Date(soin.date) : new Date(),
+        categorie: 'veterinaire',
+        description: `Soin animal - ${soin.type}`,
+        tauxTVA: 20,
+        montantHT,
+        montantTVA,
+        montant: montantTTC,
+        journal: 'AC',
+        module: 'elevage',
+        paye: true,
+        sourceType: 'soin_animal',
+        sourceId: soin.id,
+        auto: true,
+      },
+    })
+  })
+}
+
+/**
+ * Cree une DepenseManuelle quand un Animal individuel est acheté (prixAchat).
+ * sourceType distinct de 'achat_animal' (réservé aux lots, ids différents).
+ * TVA 5,5 % — aligné sur createDepenseFromLotAnimaux.
+ */
+export async function createDepenseFromAchatAnimal(
+  userId: string,
+  animal: {
+    id: number
+    nom?: string | null
+    identifiant?: string | null
+    prixAchat?: number | null
+    dateArrivee?: Date | string | null
+  }
+) {
+  const montantTTC = animal.prixAchat || 0
+  return prisma.$transaction(async (tx) => {
+    await tx.depenseManuelle.deleteMany({
+      where: { sourceType: 'achat_animal_individuel', sourceId: animal.id, auto: true },
+    })
+    if (montantTTC <= 0) return null
+    const { montantHT, montantTVA } = calculTVA(montantTTC, 5.5)
+    return tx.depenseManuelle.create({
+      data: {
+        userId,
+        date: animal.dateArrivee ? new Date(animal.dateArrivee) : new Date(),
+        categorie: 'achats',
+        description: `Achat animal - ${animal.nom || animal.identifiant || `#${animal.id}`}`,
+        tauxTVA: 5.5,
+        montantHT,
+        montantTVA,
+        montant: montantTTC,
+        journal: 'AC',
+        module: 'elevage',
+        paye: true,
+        sourceType: 'achat_animal_individuel',
+        sourceId: animal.id,
+        auto: true,
+      },
+    })
+  })
+}
+
+/**
+ * Cree une DepenseManuelle quand une Fertilisation est enregistrée.
+ * Valorisation : coutUnitaire per-user ?? prix per-user ?? prix global.
+ * TVA 20 % — aligné sur l'inférence historique de tva.ts.
+ */
+export async function createDepenseFromFertilisation(
+  userId: string,
+  fertilisation: {
+    id: number
+    fertilisantId: string
+    quantite: number
+    date?: Date | string | null
+  }
+) {
+  // NB : sur Fertilisant, l'id EST le nom (pas de champ nom, contrairement à Aliment)
+  const fertilisant = await prisma.fertilisant.findUnique({
+    where: { id: fertilisation.fertilisantId },
+    select: {
+      prix: true,
+      userStocks: { where: { userId }, select: { prix: true, coutUnitaire: true }, take: 1 },
+    },
+  })
+  const prixUnitaire =
+    fertilisant?.userStocks?.[0]?.coutUnitaire ?? fertilisant?.userStocks?.[0]?.prix ?? fertilisant?.prix ?? 0
+  const montantTTC = fertilisation.quantite * prixUnitaire
+
+  return prisma.$transaction(async (tx) => {
+    await tx.depenseManuelle.deleteMany({
+      where: { sourceType: 'fertilisation', sourceId: fertilisation.id, auto: true },
+    })
+    if (montantTTC <= 0) return null
+    const { montantHT, montantTVA } = calculTVA(montantTTC, 20)
+    return tx.depenseManuelle.create({
+      data: {
+        userId,
+        date: fertilisation.date ? new Date(fertilisation.date) : new Date(),
+        categorie: 'intrants',
+        description: `Fertilisation - ${fertilisation.fertilisantId} (${fertilisation.quantite} kg)`,
+        tauxTVA: 20,
+        montantHT,
+        montantTVA,
+        montant: montantTTC,
+        journal: 'AC',
+        module: 'potager',
+        paye: true,
+        sourceType: 'fertilisation',
+        sourceId: fertilisation.id,
+        auto: true,
+      },
+    })
+  })
+}
+
+/**
  * Cree une DepenseManuelle quand une Intervention a des couts (intrants, main d'oeuvre)
  */
 export async function createDepenseFromIntervention(
@@ -446,10 +737,16 @@ export async function createDepenseFromIntervention(
     cultureId?: number | null
     plancheId?: string | null
     arbreId?: number | null
+    fait?: boolean | null
   }
 ) {
-  const montantTTC = intervention.coutTotal || 0
-  if (montantTTC <= 0) return null
+  // Audit compta 2026-06 (#9) : une intervention planifiée (fait=false)
+  // n'est pas une dépense réelle — elle faussait dépenses et TVA déductible.
+  const montantTTC = intervention.fait === false ? 0 : intervention.coutTotal || 0
+  if (montantTTC <= 0) {
+    await deleteAutoEntry('intervention', intervention.id, 'depense')
+    return null
+  }
 
   // Determiner la categorie et le taux TVA
   let categorie = 'intrants'

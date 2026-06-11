@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
+import { createDepenseFromCampagnePlantation, deleteAutoEntry } from "@/lib/auto-compta"
 
 interface Params {
   params: Promise<{ id: string }>
@@ -90,6 +91,10 @@ export async function PUT(request: NextRequest, { params }: Params) {
         especeId: body.especeId !== undefined ? (body.especeId || null) : undefined,
         essenceLibre: body.essenceLibre !== undefined ? (body.essenceLibre || null) : undefined,
         varieteOuProvenance: body.varieteOuProvenance !== undefined ? (body.varieteOuProvenance || null) : undefined,
+        porteGreffeId: body.porteGreffeId !== undefined ? (body.porteGreffeId || null) : undefined,
+        typePlant: body.typePlant !== undefined ? (body.typePlant || null) : undefined,
+        conduite: body.conduite !== undefined ? (body.conduite || null) : undefined,
+        labelProvenance: body.labelProvenance !== undefined ? (body.labelProvenance || null) : undefined,
         nombrePlants: body.nombrePlants !== undefined ? (body.nombrePlants ? parseInt(body.nombrePlants) : null) : undefined,
         densitePlantsParHa: body.densitePlantsParHa !== undefined ? (body.densitePlantsParHa ? parseFloat(body.densitePlantsParHa) : null) : undefined,
         ecartementRang: body.ecartementRang !== undefined ? (body.ecartementRang ? parseFloat(body.ecartementRang) : null) : undefined,
@@ -115,6 +120,20 @@ export async function PUT(request: NextRequest, { params }: Params) {
         observations: { orderBy: { date: "desc" } },
       },
     })
+
+    // Auto-comptabilite : resynchroniser la depense auto (coutReel) avec les
+    // valeurs finales (le helper supprime l'ecriture si coutReel devient null/0)
+    try {
+      await createDepenseFromCampagnePlantation(session!.user.id, {
+        id: campagne.id,
+        nom: campagne.nom,
+        coutReel: campagne.coutReel,
+        datePlantationReelle: campagne.datePlantationReelle,
+        datePlantationPrevue: campagne.datePlantationPrevue,
+      })
+    } catch (autoComptaError) {
+      console.error('Auto-compta error (campagne_plantation PUT):', autoComptaError)
+    }
 
     return NextResponse.json(campagne)
   } catch (err) {
@@ -143,6 +162,13 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
     })
     if (!existing) {
       return NextResponse.json({ error: "Campagne non trouvée" }, { status: 404 })
+    }
+
+    // Supprimer les ecritures auto-compta liees
+    try {
+      await deleteAutoEntry('campagne_plantation', campagneId, 'depense')
+    } catch (autoComptaError) {
+      console.error('Auto-compta cleanup error (campagne_plantation):', autoComptaError)
     }
 
     await prisma.campagnePlantation.delete({ where: { id: campagneId } })

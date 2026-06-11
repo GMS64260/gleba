@@ -55,7 +55,10 @@ export async function GET(request: NextRequest) {
       orderBy: { date: 'asc' },
     }),
     prisma.depenseManuelle.findMany({
-      where: { userId, date: { gte: start, lte: end }, auto: { not: true } },
+      // Audit compta 2026-06 (lot 5) : SSOT dépenses = Σ DepenseManuelle AUTO
+      // INCLUSES (aucune source brute de dépense n'est injectée par ailleurs,
+      // contrairement aux ventes). Le FEC est ainsi aligné sur le KPI et la TVA.
+      where: { userId, date: { gte: start, lte: end } },
       orderBy: { date: 'asc' },
     }),
     prisma.facture.findMany({
@@ -152,7 +155,9 @@ export async function GET(request: NextRequest) {
   }
   for (const b of ventesBois) {
     const ttc = b.prixVente as number
-    const tauxTVA = 20
+    // Audit compta 2026-06 : 10 % — aligné sur l'écriture auto et la facture
+    // bois (auto-compta.ts, arbres/bois/[id]) ; le FEC sortait 20 %.
+    const tauxTVA = 10
     const ht = Math.round((ttc / (1 + tauxTVA / 100)) * 100) / 100
     const tva = Math.round((ttc - ht) * 100) / 100
     const desc = `Vente bois — ${b.arbre?.espece || b.arbre?.nom || b.qualiteBois || 'lot'} (${b.numLot ?? `#${b.id}`})`
@@ -210,7 +215,9 @@ export async function GET(request: NextRequest) {
   }
   for (const v of ventesElevage) {
     const ttc = v.prixTotal
-    const tauxTVA = 5.5
+    // Audit compta 2026-06 : taux réel de la vente (le FEC hardcodait 5,5 %
+    // même pour une vente saisie à 10/20 %)
+    const tauxTVA = v.tauxTVA ?? 5.5
     const ht = Math.round((ttc / (1 + tauxTVA / 100)) * 100) / 100
     const tva = Math.round((ttc - ht) * 100) / 100
     ventesIn.push({

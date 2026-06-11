@@ -159,12 +159,22 @@ describe("fec", () => {
     })
     const v = validerEquilibre(lignes)
     expect(v.equilibre).toBe(true)
-    // Sur un avoir le client est crédité (et non débité)
-    // Le montant facial doit être négatif au débit du compte client
+    // Norme FEC (audit compta 2026-06) : montants POSITIFS uniquement —
+    // sur un avoir le compte client est CRÉDITÉ du montant absolu (les
+    // montants négatifs au débit sont rejetés par Test Compta Demat).
     const ligneClient = lignes.find((l) => l.CompteNum.startsWith("411"))
     expect(ligneClient).toBeTruthy()
-    // Débit négatif = -52,75
-    expect(ligneClient!.Debit).toContain("-52,75")
+    expect(ligneClient!.Credit).toBe("52,75")
+    expect(ligneClient!.Debit).toBe("0,00")
+    // Et le produit est débité (au lieu d'être crédité)
+    const ligneProduit = lignes.find((l) => l.CompteNum.startsWith("70"))
+    expect(ligneProduit).toBeTruthy()
+    expect(ligneProduit!.Debit).toBe("50,00")
+    // Aucun montant négatif nulle part
+    for (const l of lignes) {
+      expect(l.Debit.startsWith("-")).toBe(false)
+      expect(l.Credit.startsWith("-")).toBe(false)
+    }
   })
 
   it("TSV : 18 colonnes obligatoires + tabulation", () => {
