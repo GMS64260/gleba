@@ -771,7 +771,7 @@ function AnimauxSubTab() {
                                   <Skull className="h-3.5 w-3.5" />
                                 </button>
                               </TooltipTrigger>
-                              <TooltipContent>Deces</TooltipContent>
+                              <TooltipContent>Décès</TooltipContent>
                             </Tooltip>
                           </div>
                         </TooltipProvider>

@@ -15,6 +15,7 @@ import {
   Check,
   AlertTriangle,
   TrendingUp,
+  Info,
 } from "lucide-react"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -267,8 +268,9 @@ export function CalendrierTab() {
                   }
                 >
                   ~{data.stats.estimationOeufsJour}/jour attendu
-                  {data.stats.estimationSource === 'historique' && " (historique)"}
-                  {data.stats.estimationSource === 'mixte' && " (théorique × observé)"}
+                  {data.stats.estimationSource === 'historique' && " (d'après vos saisies)"}
+                  {data.stats.estimationSource === 'mixte' && " (ajusté sur vos saisies)"}
+                  {data.stats.estimationSource !== 'theorique' && <Info className="inline-block h-2.5 w-2.5 ml-0.5 align-text-top" />}
                 </p>
               )}
             </div>
