@@ -10,7 +10,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { createVenteFromAbattage, deleteAutoEntry } from '@/lib/auto-compta'
-import { creerFacture } from '@/lib/facture-utils'
+import { creerFacture, annulerFactureLiee } from '@/lib/facture-utils'
 import { abattageSchema } from '@/lib/validations/elevage-abattage'
 
 export async function GET(request: NextRequest) {
@@ -266,6 +266,15 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Abattage non trouvé' }, { status: 404 })
     }
 
+    // Un abattage annulé ne se modifie plus : un PATCH recréait l'écriture
+    // auto-compta (revenu fantôme) voire émettait une facture.
+    if (existing.annule) {
+      return NextResponse.json(
+        { error: 'Abattage annulé — modification impossible' },
+        { status: 409 }
+      )
+    }
+
     const updateData: any = {}
     if (date !== undefined) updateData.date = new Date(date)
     if (quantite !== undefined) updateData.quantite = parseInt(quantite)
@@ -274,6 +283,21 @@ export async function PATCH(request: NextRequest) {
     if (destination !== undefined) updateData.destination = destination
     if (prixVente !== undefined) updateData.prixVente = prixVente ? parseFloat(prixVente) : null
     if (notes !== undefined) updateData.notes = notes
+
+    // Dé-vente d'un abattage facturé (destination quitte « vente ») :
+    // la facture doit suivre, sinon le CA reste compté via la facture.
+    if (
+      existing.factureId &&
+      destination !== undefined &&
+      destination !== 'vente' &&
+      existing.destination === 'vente'
+    ) {
+      const liee = await annulerFactureLiee(prisma, userId, existing.factureId)
+      if (!liee.ok) {
+        return NextResponse.json({ error: liee.raison }, { status: 409 })
+      }
+      updateData.factureId = null
+    }
 
     // Anti-double-facture : un abattage déjà facturé ne peut pas générer
     // une seconde facture (l'ancienne resterait comptée dans KPI/TVA/FEC).
@@ -416,6 +440,15 @@ export async function DELETE(request: NextRequest) {
 
     if (existing.annule) {
       return NextResponse.json({ error: 'Abattage déjà annulé' }, { status: 409 })
+    }
+
+    // Symétrie annulation ↔ facture : sans ça la facture restait comptée
+    // (KPI/TVA/FEC) alors que l'abattage était annulé.
+    if (existing.factureId) {
+      const liee = await annulerFactureLiee(prisma, session.user.id, existing.factureId)
+      if (!liee.ok) {
+        return NextResponse.json({ error: liee.raison }, { status: 409 })
+      }
     }
 
     // Supprimer les ecritures auto-compta liees

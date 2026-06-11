@@ -12,7 +12,7 @@ import { updateRecolteSchema, recoltePatchSchema } from '@/lib/validations'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { createVenteFromRecolte, deleteAutoEntry } from '@/lib/auto-compta'
 import { invalidateKpi } from '@/lib/kpi'
-import { creerFacture } from '@/lib/facture-utils'
+import { creerFacture, annulerFactureLiee } from '@/lib/facture-utils'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -289,6 +289,21 @@ export async function PATCH(
       )
     }
 
+    // Dé-vente d'une récolte facturée (retour en stock/perte) : la facture
+    // doit suivre, sinon le CA reste compté via la facture (CA fantôme).
+    if (
+      existing.factureId &&
+      existing.statut === 'vendu' &&
+      body.statut &&
+      body.statut !== 'vendu'
+    ) {
+      const liee = await annulerFactureLiee(prisma, userId, existing.factureId)
+      if (!liee.ok) {
+        return NextResponse.json({ error: liee.raison }, { status: 409 })
+      }
+      updateData.factureId = null
+    }
+
     // Transaction atomique : facture + update recolte + reliquat + inventaire
     const recolte = await prisma.$transaction(async (tx) => {
       if (body.statut === "vendu" && body.creerFacture && body.prixTotal) {
@@ -439,6 +454,15 @@ export async function DELETE(
         { error: `Récolte #${id} non trouvée` },
         { status: 404 }
       )
+    }
+
+    // Supprimer une récolte facturée laisserait une facture orpheline comptée
+    // dans KPI/TVA/FEC : la facture doit être annulée (ou couverte par un avoir).
+    if (recolte.factureId) {
+      const liee = await annulerFactureLiee(prisma, session!.user.id, recolte.factureId)
+      if (!liee.ok) {
+        return NextResponse.json({ error: liee.raison }, { status: 409 })
+      }
     }
 
     // Toujours nettoyer les ecritures auto-compta liees avant de supprimer

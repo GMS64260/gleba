@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { createVenteFromVenteProduit, deleteAutoEntry } from '@/lib/auto-compta'
-import { creerFacture } from '@/lib/facture-utils'
+import { creerFacture, annulerFactureLiee } from '@/lib/facture-utils'
 import { venteProduitSchema } from '@/lib/validations/elevage-vente'
 
 export async function GET(request: NextRequest) {
@@ -243,6 +243,15 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Vente déjà annulée' }, { status: 409 })
     }
 
+    // Symétrie annulation ↔ facture : sans ça la facture restait comptée
+    // (KPI/TVA/FEC) alors que la vente était annulée.
+    if (existing.factureId) {
+      const liee = await annulerFactureLiee(prisma, session.user.id, existing.factureId)
+      if (!liee.ok) {
+        return NextResponse.json({ error: liee.raison }, { status: 409 })
+      }
+    }
+
     // Supprimer les ecritures auto-compta liees
     try {
       await deleteAutoEntry('vente_produit', parseInt(id), 'vente')
@@ -296,6 +305,15 @@ export async function PATCH(request: NextRequest) {
 
     if (!existing) {
       return NextResponse.json({ error: 'Vente non trouvée' }, { status: 404 })
+    }
+
+    // Une vente annulée ne se modifie plus : un PATCH recréait l'écriture
+    // auto-compta (revenu fantôme) voire émettait une facture.
+    if (existing.annule) {
+      return NextResponse.json(
+        { error: 'Vente annulée — modification impossible' },
+        { status: 409 }
+      )
     }
 
     const updateData: any = {}

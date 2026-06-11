@@ -284,11 +284,12 @@ export async function GET(request: NextRequest) {
     // 3. ELEVAGE : Ventes produits + Abattages + Coûts alimentation + Soins
     // ============================================================
     const [venteProduits, abattages, consoAliments, soins, depensesElevage] = await Promise.all([
+      // Audit compta 2026-06 : exclure les ventes/abattages annulés
       prisma.venteProduit.findMany({
-        where: { userId, date: dateRange },
+        where: { userId, date: dateRange, annule: false },
       }),
       prisma.abattage.findMany({
-        where: { userId, date: dateRange },
+        where: { userId, date: dateRange, annule: false },
       }),
       prisma.consommationAliment.findMany({
         where: { userId, date: dateRange },
