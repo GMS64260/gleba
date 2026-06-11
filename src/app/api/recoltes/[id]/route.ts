@@ -268,6 +268,24 @@ export async function PATCH(
         ? existing.quantite - quantiteVendue
         : 0
 
+    // Audit compta 2026-06 : une récolte publiée en boutique se vend via une
+    // commande boutique (qui génère sa propre écriture compta) — la marquer
+    // « vendue » ici en plus créerait une double vente de la même marchandise.
+    if (body.statut === 'vendu' && existing.statut !== 'vendu') {
+      const produitBoutique = await prisma.produitBoutique.findFirst({
+        where: { recolteId, actif: true, userId },
+        select: { id: true, nom: true },
+      })
+      if (produitBoutique) {
+        return NextResponse.json(
+          {
+            error: `Cette récolte est publiée en boutique (« ${produitBoutique.nom} »). Retirez-la de la boutique ou vendez-la via une commande boutique.`,
+          },
+          { status: 409 }
+        )
+      }
+    }
+
     // Sécurité multi-tenant : un clientId fourni doit appartenir à l'utilisateur
     // (il est persisté sur la récolte, l'écriture auto et la facture).
     if (body.clientId) {

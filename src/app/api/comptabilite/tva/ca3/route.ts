@@ -25,6 +25,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
+import { computeTvaPeriode } from '@/lib/kpi/tva'
 import PDFDocument from 'pdfkit'
 
 export async function GET(request: NextRequest) {
@@ -36,44 +37,33 @@ export async function GET(request: NextRequest) {
   const year = searchParams.get('year') || String(new Date().getFullYear())
   const trimestre = searchParams.get('trimestre') || ''
 
-  // POSTREVIEW — On délègue à la route TVA pour le calcul. Le fetch via le
-  // hostname public peut échouer derrière un reverse proxy (Caddy) ou en SSR
-  // preview. On essaie 3 hôtes successivement : la requête courante, puis
-  // localhost:3000 (Docker interne), puis APP_URL si configuré.
-  async function fetchTva(): Promise<Response | null> {
-    const candidates: string[] = []
-    try {
-      candidates.push(new URL('/api/comptabilite/tva', request.url).toString())
-    } catch {
-      // request.url malformé : on continue avec les fallbacks
-    }
-    candidates.push('http://localhost:3000/api/comptabilite/tva')
-    if (process.env.APP_URL) {
-      candidates.push(`${process.env.APP_URL.replace(/\/$/, '')}/api/comptabilite/tva`)
-    }
-    const cookie = request.headers.get('cookie') || ''
-    for (const base of candidates) {
-      const url = new URL(base)
-      url.searchParams.set('year', year)
-      if (trimestre) url.searchParams.set('trimestre', trimestre)
-      try {
-        const res = await fetch(url.toString(), { headers: { cookie } })
-        if (res.ok) return res
-      } catch {
-        // try next
-      }
-    }
-    return null
+  // Audit compta 2026-06 : appel direct du helper partagé (avant : fetch HTTP
+  // interne vers /api/comptabilite/tva avec cookie — fragile derrière Caddy).
+  // Mêmes bornes que la route TVA.
+  const yearNum = parseInt(year, 10)
+  let startDate: Date
+  let endDate: Date
+  if (trimestre) {
+    const t = parseInt(trimestre, 10)
+    startDate = new Date(yearNum, (t - 1) * 3, 1)
+    endDate = new Date(yearNum, t * 3, 0, 23, 59, 59)
+  } else {
+    startDate = new Date(yearNum, 0, 1)
+    endDate = new Date(yearNum, 11, 31, 23, 59, 59)
   }
+  const tva = await computeTvaPeriode(session!.user.id, startDate, endDate)
 
-  const tvaRes = await fetchTva()
-  if (!tvaRes) {
-    return NextResponse.json({ error: 'Échec calcul TVA (toutes les routes ont échoué)' }, { status: 500 })
-  }
-  const tva = await tvaRes.json()
+  const collectee = tva.collectee.parTaux
+  const TAUX_CONNUS = new Set(['0', '2.1', '5.5', '10', '20'])
+  // Taux exotiques (ex. 8,5 % DOM) : inclus dans le total case 16 — on les
+  // liste à part pour que la somme des bases affichées reste cohérente.
+  const autresTaux = Object.entries(collectee)
+    .filter(([taux, t]) => !TAUX_CONNUS.has(taux) && (t.base !== 0 || t.tva !== 0))
 
-  const collectee = tva.collectee.parTaux as Record<string, { base: number; tva: number }>
-  const deductible = tva.deductible.parTaux as Record<string, { base: number; tva: number }>
+  // Case 19 : TVA déductible sur immobilisations (catégorie matériel) ;
+  // case 20 : le reste des biens et services.
+  const tvaImmos = tva.deductible.immobilisations
+  const tvaAutresBiens = Math.round((tva.deductible.total - tvaImmos) * 100) / 100
 
   // Mapping des cases CA3
   const cases: Array<{ code: string; libelle: string; valeur: number }> = [
@@ -81,11 +71,22 @@ export async function GET(request: NextRequest) {
     { code: '02', libelle: 'Base HT 5.5 %', valeur: collectee['5.5']?.base || 0 },
     { code: '03', libelle: 'Base HT 10 %', valeur: collectee['10']?.base || 0 },
     { code: '03B', libelle: 'Base HT 2.1 %', valeur: collectee['2.1']?.base || 0 },
+    ...autresTaux.map(([taux, t]) => ({
+      code: '—',
+      libelle: `Base HT ${taux} % (taux particulier, à ventiler manuellement)`,
+      valeur: t.base,
+    })),
     { code: '08', libelle: 'TVA collectée 20 %', valeur: collectee['20']?.tva || 0 },
     { code: '09', libelle: 'TVA collectée 5.5 %', valeur: collectee['5.5']?.tva || 0 },
     { code: '09B', libelle: 'TVA collectée 10 %', valeur: collectee['10']?.tva || 0 },
+    ...autresTaux.map(([taux, t]) => ({
+      code: '—',
+      libelle: `TVA collectée ${taux} % (taux particulier)`,
+      valeur: t.tva,
+    })),
     { code: '16', libelle: 'TVA collectée totale', valeur: tva.collectee.total },
-    { code: '20', libelle: 'TVA déductible autres biens et services', valeur: tva.deductible.total },
+    { code: '19', libelle: 'TVA déductible immobilisations', valeur: tvaImmos },
+    { code: '20', libelle: 'TVA déductible autres biens et services', valeur: tvaAutresBiens },
     { code: '23', libelle: 'TVA déductible totale', valeur: tva.deductible.total },
     { code: '28', libelle: 'TVA nette due (Solde à payer)', valeur: tva.solde.tvaAPayer },
     { code: '32', libelle: 'Crédit de TVA', valeur: tva.solde.creditTVA },
@@ -97,6 +98,9 @@ export async function GET(request: NextRequest) {
     const lines = [
       `# Aide à la déclaration TVA CA3 — Période ${year}${trimestre ? ` T${trimestre}` : ''}`,
       '# Généré par Gleba — à recopier sur impots.gouv.fr (formulaire 3310-CA3)',
+      ...(tva.franchise
+        ? ['# ATTENTION : exploitation en franchise en base (art. 293 B CGI) — aucune TVA à déclarer, la CA3 ne vous concerne pas.']
+        : []),
       `# nb_inferees_collectees;${tva.details.nbInfereesCollectees}`,
       `# nb_inferees_deductibles;${tva.details.nbInfereesDeductibles}`,
       'case;libelle;valeur_eur',
@@ -134,7 +138,9 @@ export async function GET(request: NextRequest) {
       .fontSize(9)
       .fillColor('#dc2626')
       .text(
-        '⚠ Aide à la déclaration — les valeurs doivent être recopiées manuellement sur impots.gouv.fr (formulaire 3310-CA3). La conformité reste de la responsabilité de l\'expert-comptable.',
+        tva.franchise
+          ? '⚠ Votre exploitation est en franchise en base (art. 293 B CGI) : vous ne collectez ni ne déduisez aucune TVA — la déclaration CA3 ne vous concerne pas. Toutes les cases sont à zéro.'
+          : '⚠ Aide à la déclaration — les valeurs doivent être recopiées manuellement sur impots.gouv.fr (formulaire 3310-CA3). La conformité reste de la responsabilité de l\'expert-comptable.',
         50,
         128,
         { width: 495 }

@@ -274,7 +274,11 @@ export async function annulerFactureLiee(
  */
 export async function creerFacture(tx: PrismaTx, params: CreerFactureParams) {
   const date = params.date || new Date()
-  const exercice = date.getFullYear()
+  // Audit compta 2026-06 : la numérotation est chronologique à l'ÉMISSION
+  // (art. 242 nonies A) — l'exercice du numéro est celui du jour d'émission,
+  // pas celui de la date métier (sinon facturer en juin 2026 une vente de
+  // décembre 2025 rouvrait la séquence F-2025 après coup).
+  const exercice = new Date().getFullYear()
   const typeSeq = typeSequence(params.type)
   const statut = params.statut || 'emise'
 
@@ -296,6 +300,7 @@ export async function creerFacture(tx: PrismaTx, params: CreerFactureParams) {
   // facture que si la fiche appartient à l'utilisateur. Sinon GET /factures
   // et le PDF exposeraient le nom/SIRET/TVA intra du client d'un autre compte.
   let clientId: number | null = null
+  let clientExonere = false
 
   if (params.clientId) {
     const client = await tx.client.findFirst({
@@ -305,12 +310,35 @@ export async function creerFacture(tx: PrismaTx, params: CreerFactureParams) {
       clientId = client.id
       clientNom = client.nom
       clientAdresse = [client.adresse, client.codePostal, client.ville].filter(Boolean).join(', ')
+      clientExonere = client.exonererTVA
     }
   }
 
   const emetteur = await snapshotEmetteur(tx, params.userId)
-  const totaux = totauxParTaux(params.lignes)
-  const mentions = params.mentionsSpecifiques ?? mentionsParDefaut(emetteur, params.lignes)
+
+  // Audit compta 2026-06 : un émetteur en franchise en base (art. 293 B) ne
+  // facture PAS de TVA (TVA facturée à tort = TVA due, art. 283-3 CGI) ;
+  // idem pour un client exonéré. Les lignes sont réécrites à TVA 0 (le TTC
+  // saisi devient le HT), quelle que soit la route appelante.
+  const sansTva = emetteur?.regimeTva === 'franchise-293b' || clientExonere
+  let lignes = params.lignes
+  let totalHT = params.totalHT
+  let totalTVA = params.totalTVA
+  let totalTTC = params.totalTTC
+  if (sansTva) {
+    lignes = params.lignes.map((l) => ({
+      ...l,
+      prixUnitaire: l.quantite > 0 ? l.montantTTC / l.quantite : l.montantTTC,
+      tauxTVA: 0,
+      montantHT: l.montantTTC,
+      montantTVA: 0,
+    }))
+    totalHT = params.totalTTC
+    totalTVA = 0
+  }
+
+  const totaux = totauxParTaux(lignes)
+  const mentions = params.mentionsSpecifiques ?? mentionsParDefaut(emetteur, lignes)
 
   return tx.facture.create({
     data: {
@@ -323,9 +351,9 @@ export async function creerFacture(tx: PrismaTx, params: CreerFactureParams) {
       date,
       dateEcheance: params.dateEcheance || null,
       objet: params.objet,
-      totalHT: params.totalHT,
-      totalTVA: params.totalTVA,
-      totalTTC: params.totalTTC,
+      totalHT,
+      totalTVA,
+      totalTTC,
       totauxParTauxTva: totaux as any,
       statut,
       modePaiement: params.modePaiement || null,
@@ -337,7 +365,7 @@ export async function creerFacture(tx: PrismaTx, params: CreerFactureParams) {
       emetteurSnapshot: emetteur as any,
       notes: params.notes || null,
       lignes: {
-        create: params.lignes.map((l, index) => ({
+        create: lignes.map((l, index) => ({
           ordre: index,
           description: l.description,
           quantite: l.quantite,
