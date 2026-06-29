@@ -20,6 +20,8 @@ import { requireAuthApi } from "@/lib/auth-utils"
 import PDFDocument from "pdfkit"
 import { mentionABFacture, labelMentionAB } from "@/lib/statut-bio"
 import { formatSiret, sirenFromSiret } from "@/lib/siret"
+import { identifiantLegalAffichage, getTerritoire } from "@/lib/territoires"
+import { symboleDevise } from "@/lib/format-utils"
 import type { EmetteurSnapshot } from "@/lib/facture-utils"
 
 interface Params {
@@ -65,8 +67,11 @@ export async function GET(_request: NextRequest, { params }: Params) {
       emetteur = {
         raisonSociale: exploitation.raisonSociale,
         formeJuridique: exploitation.formeJuridique,
+        territoire: exploitation.territoire,
         siret: exploitation.siret,
         siren: exploitation.siren,
+        identifiantLegal: exploitation.identifiantLegal,
+        devise: exploitation.devise,
         numeroTvaIntracom: exploitation.numeroTvaIntracom,
         regimeFiscal: exploitation.regimeFiscal,
         regimeTva: exploitation.regimeTva,
@@ -100,6 +105,14 @@ export async function GET(_request: NextRequest, { params }: Params) {
 
     const typeLabel = TYPE_LABELS[facture.type] || facture.type.toUpperCase()
 
+    // Outre-mer : devise, identifiant légal et libellé de taxe dépendent du
+    // territoire de l'émetteur (cf src/lib/territoires.ts). Anciennes factures
+    // sans ces champs : repli métropole (€, SIRET, TVA).
+    const devise = emetteur?.devise || "EUR"
+    const sym = symboleDevise(devise as "EUR" | "XPF")
+    const identEmetteur = emetteur ? identifiantLegalAffichage(emetteur) : null
+    const libelleTaxe = getTerritoire(emetteur?.territoire).libelleTaxe || "TVA"
+
     // ============================================================
     // EN-TÊTE : émetteur (gauche) + bloc facture (droite)
     // ============================================================
@@ -110,14 +123,16 @@ export async function GET(_request: NextRequest, { params }: Params) {
     let y = 72
     if (emetteur) {
       const formeLabel = emetteur.formeJuridique === "EI" ? "EI" : emetteur.formeJuridique
-      doc.text(`${formeLabel}${emetteur.capitalSocial ? ` au capital de ${formatMontant(emetteur.capitalSocial)} €` : ""}`, 50, y, { width: 280 })
+      doc.text(`${formeLabel}${emetteur.capitalSocial ? ` au capital de ${formatMontant(emetteur.capitalSocial, devise)} ${sym}` : ""}`, 50, y, { width: 280 })
       y += 12
       doc.text(emetteur.adresseSiege, 50, y, { width: 280 })
       y += 12
       doc.text(`${emetteur.codePostal} ${emetteur.ville}, ${emetteur.pays}`, 50, y, { width: 280 })
       y += 12
-      doc.text(`SIRET : ${formatSiret(emetteur.siret)}`, 50, y, { width: 280 })
-      y += 12
+      if (identEmetteur) {
+        doc.text(`${identEmetteur.label} : ${identEmetteur.valeur}`, 50, y, { width: 280 })
+        y += 12
+      }
       if (emetteur.numeroTvaIntracom) {
         doc.text(`TVA intra : ${emetteur.numeroTvaIntracom}`, 50, y, { width: 280 })
         y += 12
@@ -256,18 +271,18 @@ export async function GET(_request: NextRequest, { params }: Params) {
 
     // Bloc gauche : récap TVA par taux
     if (Object.keys(totaux).length > 0) {
-      doc.font("Helvetica-Bold").fontSize(9).fillColor("#475569").text("Récapitulatif TVA", 50, ly)
+      doc.font("Helvetica-Bold").fontSize(9).fillColor("#475569").text(`Récapitulatif ${libelleTaxe}`, 50, ly)
       doc.font("Helvetica").fontSize(9).fillColor("#475569")
       doc.text("Taux", 50, ly + 14, { width: 50, align: "left" })
       doc.text("Base HT", 100, ly + 14, { width: 70, align: "right" })
-      doc.text("TVA", 170, ly + 14, { width: 70, align: "right" })
+      doc.text(libelleTaxe, 170, ly + 14, { width: 70, align: "right" })
       let yt = ly + 26
       const sortedTaux = Object.keys(totaux).sort((a, b) => Number(a) - Number(b))
       for (const k of sortedTaux) {
         const t = totaux[k]
         doc.text(`${k} %`, 50, yt, { width: 50, align: "left" })
-        doc.text(formatMontant(t.ht), 100, yt, { width: 70, align: "right" })
-        doc.text(formatMontant(t.tva), 170, yt, { width: 70, align: "right" })
+        doc.text(formatMontant(t.ht, devise), 100, yt, { width: 70, align: "right" })
+        doc.text(formatMontant(t.tva, devise), 170, yt, { width: 70, align: "right" })
         yt += 12
       }
     }
@@ -275,17 +290,17 @@ export async function GET(_request: NextRequest, { params }: Params) {
     // Bloc droite : totaux
     doc.font("Helvetica").fontSize(10).fillColor("#475569")
     doc.text("Total HT", 350, ly, { width: 100, align: "right" })
-    doc.fillColor("#1e293b").text(`${formatMontant(facture.totalHT)} €`, 460, ly, { width: 85, align: "right" })
+    doc.fillColor("#1e293b").text(`${formatMontant(facture.totalHT, devise)} ${sym}`, 460, ly, { width: 85, align: "right" })
 
     ly += 16
-    doc.fillColor("#475569").text("TVA", 350, ly, { width: 100, align: "right" })
-    doc.fillColor("#1e293b").text(`${formatMontant(facture.totalTVA)} €`, 460, ly, { width: 85, align: "right" })
+    doc.fillColor("#475569").text(libelleTaxe, 350, ly, { width: 100, align: "right" })
+    doc.fillColor("#1e293b").text(`${formatMontant(facture.totalTVA, devise)} ${sym}`, 460, ly, { width: 85, align: "right" })
 
     ly += 18
     doc.rect(350, ly - 4, 195, 26).fillColor("#0d9488").fill()
     doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(11)
     doc.text("Net à payer TTC", 350, ly + 4, { width: 100, align: "right" })
-    doc.text(`${formatMontant(facture.totalTTC)} €`, 460, ly + 4, { width: 85, align: "right" })
+    doc.text(`${formatMontant(facture.totalTTC, devise)} ${sym}`, 460, ly + 4, { width: 85, align: "right" })
 
     ly += 38
     doc.font("Helvetica").fontSize(9).fillColor("#475569")
@@ -349,6 +364,10 @@ export async function GET(_request: NextRequest, { params }: Params) {
       doc.text("• TVA non applicable, art. 293 B du CGI.", 50, fy, { width: 495 })
       fy += 10
     }
+    if (mentions.includes("exoneration")) {
+      doc.text("• TVA non applicable.", 50, fy, { width: 495 })
+      fy += 10
+    }
     if (mentions.includes("escompte")) {
       const escompte = emetteur?.tauxEscompte || "néant"
       doc.text(`• Escompte pour règlement anticipé : ${escompte}.`, 50, fy, { width: 495 })
@@ -361,7 +380,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
     }
     if (mentions.includes("indemnite-40")) {
       const indemnite = emetteur?.indemniteRecouvrement ?? 40
-      doc.text(`• Indemnité forfaitaire pour frais de recouvrement : ${formatMontant(indemnite)} € (art. L441-10 C. com.).`, 50, fy, { width: 495 })
+      doc.text(`• Indemnité forfaitaire pour frais de recouvrement : ${formatMontant(indemnite, devise)} ${sym} (art. L441-10 C. com.).`, 50, fy, { width: 495 })
       fy += 10
     }
     if (facture.mentionsLegales) {
@@ -410,8 +429,9 @@ function formatDate(d: Date | string): string {
   return new Date(d).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" })
 }
 
-function formatMontant(n: number): string {
-  return n.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+function formatMontant(n: number, devise: string = "EUR"): string {
+  const decimals = devise === "XPF" ? 0 : 2
+  return n.toLocaleString("fr-FR", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
 }
 
 function formatNumber(n: number): string {

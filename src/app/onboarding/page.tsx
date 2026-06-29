@@ -29,6 +29,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
+import { CODES_TERRITOIRES, TERRITOIRES, getTerritoire, LABELS_REGIME_TVA } from "@/lib/territoires"
 
 const STEPS = ["Exploitation", "Modules", "Premier élément", "Import (optionnel)", "C'est parti !"]
 
@@ -37,7 +38,9 @@ interface OnboardingState {
   // Étape 1
   raisonSociale: string
   formeJuridique: string
+  territoire: string
   siret: string
+  identifiantLegal: string
   adresseSiege: string
   codePostal: string
   ville: string
@@ -62,7 +65,9 @@ const empty: OnboardingState = {
   step: 0,
   raisonSociale: "",
   formeJuridique: "EI",
+  territoire: "METROPOLE",
   siret: "",
+  identifiantLegal: "",
   adresseSiege: "",
   codePostal: "",
   ville: "",
@@ -88,11 +93,22 @@ export default function OnboardingPage() {
   const set = <K extends keyof OnboardingState>(key: K, v: OnboardingState[K]) =>
     setS((prev) => ({ ...prev, [key]: v }))
 
+  const terr = getTerritoire(s.territoire)
+  const usesSiret = terr.typeIdentifiant === "SIRET"
+  const onTerritoireChange = (code: string) => {
+    const t = getTerritoire(code)
+    setS((prev) => ({
+      ...prev,
+      territoire: code,
+      regimeTva: t.regimesTva.includes(prev.regimeTva) ? prev.regimeTva : t.regimeTvaDefaut,
+    }))
+  }
+
   const next = () => set("step", Math.min(s.step + 1, STEPS.length - 1))
   const prev = () => set("step", Math.max(s.step - 1, 0))
 
   const submitExploitation = async () => {
-    if (!s.siret && !s.raisonSociale) {
+    if (!s.siret && !s.identifiantLegal && !s.raisonSociale) {
       next()
       return
     }
@@ -104,7 +120,10 @@ export default function OnboardingPage() {
         body: JSON.stringify({
           raisonSociale: s.raisonSociale,
           formeJuridique: s.formeJuridique,
+          territoire: s.territoire,
           siret: s.siret.replace(/\s+/g, ""),
+          identifiantLegal: s.identifiantLegal,
+          devise: getTerritoire(s.territoire).devise,
           adresseSiege: s.adresseSiege,
           codePostal: s.codePostal,
           ville: s.ville,
@@ -212,10 +231,27 @@ export default function OnboardingPage() {
                   </select>
                 </div>
               </div>
+              <div>
+                <Label>Territoire</Label>
+                <select className="block h-10 w-full rounded-md border border-slate-300 px-3 bg-white" value={s.territoire} onChange={(e) => onTerritoireChange(e.target.value)}>
+                  {CODES_TERRITOIRES.map((c) => (
+                    <option key={c} value={c}>{TERRITOIRES[c].label}</option>
+                  ))}
+                </select>
+              </div>
               <div className="grid md:grid-cols-2 gap-3">
                 <div>
-                  <Label>SIRET</Label>
-                  <Input value={s.siret} onChange={(e) => set("siret", e.target.value)} placeholder="123 456 789 00012" inputMode="numeric" />
+                  {usesSiret ? (
+                    <>
+                      <Label>SIRET</Label>
+                      <Input value={s.siret} onChange={(e) => set("siret", e.target.value)} placeholder="123 456 789 00012" inputMode="numeric" />
+                    </>
+                  ) : (
+                    <>
+                      <Label>{terr.labelIdentifiant}</Label>
+                      <Input value={s.identifiantLegal} onChange={(e) => set("identifiantLegal", e.target.value)} placeholder={terr.placeholderIdentifiant} />
+                    </>
+                  )}
                 </div>
                 <div>
                   <Label>Email contact</Label>
@@ -248,9 +284,9 @@ export default function OnboardingPage() {
                 <div>
                   <Label>Régime TVA</Label>
                   <select className="block h-10 w-full rounded-md border border-slate-300 px-3 bg-white" value={s.regimeTva} onChange={(e) => set("regimeTva", e.target.value)}>
-                    <option value="franchise-293b">Franchise (art. 293 B)</option>
-                    <option value="reel-simplifie">Réel simplifié</option>
-                    <option value="reel-normal">Réel normal</option>
+                    {terr.regimesTva.map((r) => (
+                      <option key={r} value={r}>{LABELS_REGIME_TVA[r]}</option>
+                    ))}
                   </select>
                 </div>
               </div>

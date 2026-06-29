@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import PDFDocument from 'pdfkit'
+import { identifiantLegalAffichage } from '@/lib/territoires'
 
 interface Ligne {
   date: Date
@@ -148,7 +149,8 @@ export async function GET(request: NextRequest) {
     doc.font('Helvetica').fontSize(9).fillColor('#475569')
     doc.text(`Année ${year}`, 30, 52)
     if (exploitation) {
-      doc.text(`${exploitation.raisonSociale} — SIRET ${exploitation.siret}`, 30, 64)
+      const identExpl = identifiantLegalAffichage(exploitation)
+      doc.text(`${exploitation.raisonSociale}${identExpl ? ` — ${identExpl.label} ${identExpl.valeur}` : ""}`, 30, 64)
       doc.text(`${exploitation.adresseSiege}, ${exploitation.codePostal} ${exploitation.ville}`, 30, 76)
     }
     doc.text(`Imprimé le ${new Date().toLocaleDateString('fr-FR')}`, 30, 88)

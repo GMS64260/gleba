@@ -2864,8 +2864,16 @@ model Exploitation {
   // Identité
   raisonSociale       String   @map("raison_sociale")
   formeJuridique      String   @map("forme_juridique") // 'EI','GAEC','SARL','EARL','SCEA','SCIC','autre'
-  siret               String   @map("siret") // 14 chiffres, validation Luhn
-  siren               String   @map("siren") // 9 chiffres, dérivé du SIRET
+  // Outre-mer — territoire fiscal (cf src/lib/territoires.ts). Pilote l'identifiant
+  // légal, la devise, le régime de taxe et l'applicabilité du FEC.
+  territoire          String   @default("METROPOLE") @map("territoire")
+  // SIRET/SIREN : système SIRENE (métropole + DROM). Null hors de ce système (NC, PF…).
+  siret               String?  @map("siret") // 14 chiffres, validation Luhn (métropole/DROM)
+  siren               String?  @map("siren") // 9 chiffres, dérivé du SIRET
+  // Identifiant légal local hors SIRENE : RIDET (Nouvelle-Calédonie), N° Tahiti (Polynésie)…
+  identifiantLegal    String?  @map("identifiant_legal")
+  // Devise de facturation : EUR (métropole/DROM) ou XPF (franc Pacifique : NC, PF, WF).
+  devise              String   @default("EUR") @map("devise")
   numeroTvaIntracom   String?  @map("numero_tva_intracom") // FR + clé + SIREN
   // Fiscalité
   regimeFiscal        String   @map("regime_fiscal") // 'micro-BA','reel-simplifie','reel-normal'

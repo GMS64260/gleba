@@ -11,6 +11,7 @@
  */
 
 import type { PrismaClient } from '@prisma/client'
+import { factureSansTaxe } from '@/lib/territoires'
 
 type PrismaTx = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0]
 
@@ -78,8 +79,14 @@ export function totauxParTaux(lignes: LigneFactureInput[]): Record<string, { ht:
 export interface EmetteurSnapshot {
   raisonSociale: string
   formeJuridique: string
-  siret: string
-  siren: string
+  // Territoire fiscal — pilote identifiant légal, devise et libellé de taxe.
+  territoire: string
+  siret: string | null
+  siren: string | null
+  // Identifiant légal local hors SIRENE (RIDET, N° Tahiti…).
+  identifiantLegal: string | null
+  // Devise de la facture (EUR / XPF).
+  devise: string
   numeroTvaIntracom: string | null
   regimeFiscal: string
   regimeTva: string
@@ -106,8 +113,11 @@ async function snapshotEmetteur(tx: PrismaTx, userId: string): Promise<EmetteurS
   return {
     raisonSociale: e.raisonSociale,
     formeJuridique: e.formeJuridique,
+    territoire: e.territoire,
     siret: e.siret,
     siren: e.siren,
+    identifiantLegal: e.identifiantLegal,
+    devise: e.devise,
     numeroTvaIntracom: e.numeroTvaIntracom,
     regimeFiscal: e.regimeFiscal,
     regimeTva: e.regimeTva,
@@ -135,8 +145,10 @@ async function snapshotEmetteur(tx: PrismaTx, userId: string): Promise<EmetteurS
  */
 function mentionsParDefaut(snapshot: EmetteurSnapshot | null, lignes: LigneFactureInput[]): string[] {
   const out: string[] = []
-  // Mention 293 B si franchise
+  // Mention 293 B si franchise ; mention d'exonération générique si non-assujetti
+  // (territoires hors champ TVA : Guyane, Mayotte, COM…).
   if (snapshot?.regimeTva === 'franchise-293b') out.push('293b')
+  else if (snapshot?.regimeTva === 'non-assujetti') out.push('exoneration')
   // Mentions générales obligatoires (pro)
   out.push('escompte', 'penalites', 'indemnite-40')
   // Mention AB si au moins une ligne en AB
@@ -320,7 +332,7 @@ export async function creerFacture(tx: PrismaTx, params: CreerFactureParams) {
   // facture PAS de TVA (TVA facturée à tort = TVA due, art. 283-3 CGI) ;
   // idem pour un client exonéré. Les lignes sont réécrites à TVA 0 (le TTC
   // saisi devient le HT), quelle que soit la route appelante.
-  const sansTva = emetteur?.regimeTva === 'franchise-293b' || clientExonere
+  const sansTva = factureSansTaxe(emetteur?.regimeTva) || clientExonere
   let lignes = params.lignes
   let totalHT = params.totalHT
   let totalTVA = params.totalTVA

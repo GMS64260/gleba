@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 import PDFDocument from "pdfkit"
+import { identifiantLegalAffichage } from "@/lib/territoires"
 
 type Format = "pdf" | "csv"
 
@@ -52,7 +53,9 @@ export async function GET(request: NextRequest) {
       where: { userId },
       select: {
         raisonSociale: true,
+        territoire: true,
         siret: true,
+        identifiantLegal: true,
         adresseSiege: true,
         codePostal: true,
         ville: true,
@@ -210,7 +213,9 @@ export async function GET(request: NextRequest) {
 
 type Exploitation = {
   raisonSociale: string
-  siret: string
+  territoire?: string | null
+  siret: string | null
+  identifiantLegal?: string | null
   adresseSiege: string
   codePostal: string
   ville: string
@@ -312,7 +317,8 @@ function buildCsv(
 
   // En-tête en haut du CSV : exploitation + SIRET + agrément + période
   const emetteur = exploitation?.raisonSociale || user?.name || user?.email || ""
-  const siret = exploitation?.siret ? ` (SIRET ${exploitation.siret})` : ""
+  const ident = exploitation ? identifiantLegalAffichage(exploitation) : null
+  const siret = ident ? ` (${ident.label} ${ident.valeur})` : ""
   const agrement = exploitation?.certifBioOrganisme ? ` — Certification : ${exploitation.certifBioOrganisme}` : ""
   const periode = `${from.toISOString().slice(0, 10)} → ${to.toISOString().slice(0, 10)}`
   const header = [
@@ -403,7 +409,10 @@ async function buildPdf(
         30,
         67
       )
-      doc.text(`SIRET ${exploitation.siret}`, 30, 79)
+      {
+        const ident = identifiantLegalAffichage(exploitation)
+        if (ident) doc.text(`${ident.label} ${ident.valeur}`, 30, 79)
+      }
       if (exploitation.certifBioOrganisme) {
         doc.fillColor("#047857").font("Helvetica-Bold")
         doc.text(`Agrément AB : ${exploitation.certifBioOrganisme}`, 30, 91)

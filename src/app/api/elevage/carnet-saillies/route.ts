@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import PDFDocument from 'pdfkit'
+import { identifiantLegalAffichage } from '@/lib/territoires'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -44,7 +45,8 @@ export async function GET(request: NextRequest) {
     doc.font('Helvetica').fontSize(10).fillColor('#475569')
     doc.text(`Exercice ${year}`, 40, 62)
     if (exploitation) {
-      doc.text(`${exploitation.raisonSociale} — SIRET ${exploitation.siret}`, 40, 76)
+      const identExpl = identifiantLegalAffichage(exploitation)
+      doc.text(`${exploitation.raisonSociale}${identExpl ? ` — ${identExpl.label} ${identExpl.valeur}` : ""}`, 40, 76)
       doc.text(`${exploitation.adresseSiege}, ${exploitation.codePostal} ${exploitation.ville}`, 40, 90)
     }
     doc.text(`Imprimé le ${new Date().toLocaleDateString('fr-FR')}`, 40, 104)
