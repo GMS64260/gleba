@@ -205,16 +205,27 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
         return
       }
       try {
-        await fetch("/api/recoltes", {
+        const recolteRes = await fetch("/api/recoltes", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ cultureId, especeId, date: new Date().toISOString(), quantite }),
         })
-        await fetch(`/api/cultures/${cultureId}`, {
+        if (!recolteRes.ok) {
+          const p = await recolteRes.json().catch(() => null)
+          toast({ variant: "destructive", title: "Erreur", description: p?.error || "Impossible d'enregistrer la récolte" })
+          return
+        }
+        const cultureRes = await fetch(`/api/cultures/${cultureId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ recolteFaite: true }),
         })
+        if (!cultureRes.ok) {
+          const p = await cultureRes.json().catch(() => null)
+          toast({ variant: "destructive", title: "Erreur", description: p?.error || "Impossible de marquer la culture comme récoltée" })
+          fetchTaches()
+          return
+        }
         toast({ title: "Récolte enregistrée", description: `${quantite} kg` })
         fetchTaches()
       } catch {
@@ -225,11 +236,17 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
 
     try {
       const fieldMap = { semis: "semisFait", plantation: "plantationFaite", recolte: "recolteFaite" }
-      await fetch(`/api/cultures/${cultureId}`, {
+      const res = await fetch(`/api/cultures/${cultureId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ [fieldMap[type]]: !currentValue }),
       })
+      if (!res.ok) {
+        const p = await res.json().catch(() => null)
+        toast({ variant: "destructive", title: "Erreur", description: p?.error || "Impossible de mettre à jour la tâche" })
+        fetchTaches()
+        return
+      }
       setTaches((prev) => {
         if (!prev) return prev
         const key = type === "semis" ? "semis" : type === "plantation" ? "plantations" : "recoltes"
@@ -272,11 +289,17 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
   // Marquer irrigation
   const marquerIrrigation = async (irrigationId: number) => {
     try {
-      await fetch(`/api/irrigations/${irrigationId}`, {
+      const res = await fetch(`/api/irrigations/${irrigationId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ fait: true, dateEffective: new Date().toISOString() }),
       })
+      if (!res.ok) {
+        const p = await res.json().catch(() => null)
+        toast({ variant: "destructive", title: "Erreur", description: p?.error || "Impossible de noter l'arrosage" })
+        fetchTaches()
+        return
+      }
       setTaches((prev) => {
         if (!prev) return prev
         return {

@@ -283,9 +283,14 @@ function NaissancesSubTab() {
   const handleDelete = async (id: number) => {
     if (!(await confirmDialog("Supprimer cette naissance ?"))) return
     try {
-      await fetch(`/api/elevage/naissances?id=${id}`, { method: 'DELETE' })
-      toast({ title: "Naissance supprimée" })
-      fetchData()
+      const res = await fetch(`/api/elevage/naissances?id=${id}`, { method: 'DELETE' })
+      if (res.ok) {
+        toast({ title: "Naissance supprimée" })
+        fetchData()
+      } else {
+        const p = await res.json().catch(() => null)
+        toast({ variant: "destructive", title: "Erreur", description: p?.error || "Impossible de supprimer la naissance" })
+      }
     } catch {
       toast({ variant: "destructive", title: "Erreur" })
     }

@@ -407,9 +407,14 @@ export function CulturesTab({ year }: CulturesTabProps = {}) {
         onConfirm={async () => {
           if (!cultureToDelete) return
           try {
-            await fetch(`/api/cultures/${cultureToDelete.id}`, { method: "DELETE" })
-            toast({ title: "Culture supprimée" })
-            fetchData()
+            const res = await fetch(`/api/cultures/${cultureToDelete.id}`, { method: "DELETE" })
+            if (res.ok) {
+              toast({ title: "Culture supprimée" })
+              fetchData()
+            } else {
+              const p = await res.json().catch(() => null)
+              toast({ variant: "destructive", title: "Erreur", description: p?.error || "Impossible de supprimer la culture" })
+            }
           } catch {
             toast({ variant: "destructive", title: "Erreur" })
           }

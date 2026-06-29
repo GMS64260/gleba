@@ -170,6 +170,9 @@ export default function FournisseursPage() {
       if (response.ok) {
         toast({ title: "Fournisseur désactivé" })
         fetchData()
+      } else {
+        const p = await response.json().catch(() => null)
+        toast({ variant: "destructive", title: "Erreur", description: p?.error || "Impossible de désactiver ce fournisseur" })
       }
     } catch {
       toast({ variant: "destructive", title: "Erreur" })

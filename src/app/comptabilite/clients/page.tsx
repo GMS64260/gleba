@@ -211,6 +211,9 @@ export default function ClientsPage() {
       if (response.ok) {
         toast({ title: "Client désactivé" })
         fetchData()
+      } else {
+        const p = await response.json().catch(() => null)
+        toast({ variant: "destructive", title: "Erreur", description: p?.error || "Impossible de désactiver ce client" })
       }
     } catch {
       toast({ variant: "destructive", title: "Erreur" })
