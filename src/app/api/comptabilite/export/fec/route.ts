@@ -14,6 +14,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { genererFec, serialiserFec, validerEquilibre, type FecInputVente, type FecInputDepense } from '@/lib/comptabilite/fec'
+import { getTerritoire } from '@/lib/territoires'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -33,6 +34,20 @@ export async function GET(request: NextRequest) {
           "L'export FEC requiert l'identité légale (SIRET) de l'exploitation. Configurez-la dans /parametres/exploitation.",
       },
       { status: 409 }
+    )
+  }
+
+  // Le FEC est une obligation fiscale métropole + DROM (arrêté du 29/07/2013).
+  // Les COM (Nouvelle-Calédonie, Polynésie, Wallis-et-Futuna…) relèvent d'une
+  // fiscalité propre : l'export FEC métropolitain n'y est pas applicable.
+  if (exploitation && !getTerritoire(exploitation.territoire).fecApplicable && !check) {
+    const terr = getTerritoire(exploitation.territoire)
+    return NextResponse.json(
+      {
+        error: 'FEC non applicable',
+        details: `L'export FEC (format fiscal métropolitain) ne s'applique pas à ${terr.label}, qui relève d'une fiscalité propre.`,
+      },
+      { status: 422 }
     )
   }
 
@@ -347,7 +362,7 @@ export async function GET(request: NextRequest) {
   }
 
   const tsv = serialiserFec(lignes)
-  const siren = exploitation!.siren
+  const siren = exploitation!.siren || 'SANS-SIREN'
   const dateFin = `${exercice}1231`
   const filename = `${siren}FEC${dateFin}.txt`
 

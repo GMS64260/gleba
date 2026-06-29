@@ -8,10 +8,32 @@
  *   <p className={`text-3xl font-bold ${className}`}>{value}</p>
  */
 
+import type { Devise } from "./territoires"
+
 const euroFormatter = new Intl.NumberFormat("fr-FR", {
   style: "currency",
   currency: "EUR",
 })
+
+const xpfFormatter = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 })
+
+/** Symbole court de la devise (€, ou F pour le franc Pacifique XPF). */
+export function symboleDevise(devise: Devise = "EUR"): string {
+  return devise === "XPF" ? "F" : "€"
+}
+
+/**
+ * Formate un montant dans la devise de l'exploitation.
+ * - EUR : « 1 234,56 € »
+ * - XPF : « 1 235 F » (franc Pacifique, sans décimales)
+ */
+export function formatMontantDevise(montant: number, devise: Devise = "EUR"): string {
+  const safe = Number.isFinite(montant) ? montant : 0
+  if (devise === "XPF") {
+    return `${xpfFormatter.format(Math.round(safe))} F`
+  }
+  return euroFormatter.format(safe)
+}
 
 /**
  * Formate un montant en euros avec classe sémantique selon le signe.

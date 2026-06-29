@@ -6,6 +6,9 @@ import {
   tvaIntracomFromSiren,
   isValidTvaIntracomFr,
   formatSiret,
+  isValidRidet,
+  formatRidet,
+  isValidNumeroTahiti,
 } from "../siret"
 
 describe("siret", () => {
@@ -63,5 +66,37 @@ describe("siret", () => {
 
   it("formatte un SIRET en groupes 3-3-3-5", () => {
     expect(formatSiret("73282932000074")).toBe("732 829 320 00074")
+  })
+})
+
+describe("identifiants outre-mer", () => {
+  it("valide un RIDET (Nouvelle-Calédonie) avec ou sans point/suffixe", () => {
+    expect(isValidRidet("0858878.004")).toBe(true)
+    expect(isValidRidet("0858878004")).toBe(true)
+    expect(isValidRidet("0858878")).toBe(true)
+  })
+
+  it("rejette un RIDET au format invalide", () => {
+    expect(isValidRidet("12345")).toBe(false) // trop court
+    expect(isValidRidet("12345678901")).toBe(false) // trop long
+    expect(isValidRidet("ABC123")).toBe(false)
+    expect(isValidRidet("")).toBe(false)
+  })
+
+  it("formatte un RIDET base.établissement", () => {
+    expect(formatRidet("0858878004")).toBe("0858878.004")
+    expect(formatRidet("0858878.004")).toBe("0858878.004")
+    expect(formatRidet("0858878")).toBe("0858878")
+  })
+
+  it("valide un N° Tahiti (Polynésie française)", () => {
+    expect(isValidNumeroTahiti("123456")).toBe(true)
+    expect(isValidNumeroTahiti("123456A")).toBe(true)
+  })
+
+  it("rejette un N° Tahiti invalide", () => {
+    expect(isValidNumeroTahiti("12345")).toBe(false)
+    expect(isValidNumeroTahiti("1234567")).toBe(false)
+    expect(isValidNumeroTahiti("")).toBe(false)
   })
 })

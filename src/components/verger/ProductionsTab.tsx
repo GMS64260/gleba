@@ -29,6 +29,7 @@ import {
   FileText,
   Plus,
   Sprout,
+  Home,
 } from "lucide-react"
 import { Combobox } from "@/components/ui/combobox"
 import { useToast } from "@/hooks/use-toast"
@@ -250,7 +251,10 @@ function RecoltesFruitsSubTab() {
           notes: newRecolte.notes || null,
           // DEV3 #4 — traçabilité AB
           statutBioSnapshot: newRecolte.statutBioSnapshot || null,
-          parcelleId: newRecolte.parcelleId || null,
+          // On n'envoie la parcelle que si elle est renseignée, pour laisser
+          // l'API appliquer le défaut (parcelle de l'arbre) — sinon le N° de
+          // lot tombait en "-NA-" (traçabilité AB cassée).
+          ...(newRecolte.parcelleId ? { parcelleId: newRecolte.parcelleId } : {}),
           numLot: newRecolte.numLot || null,
           categorieCommerciale: newRecolte.categorieCommerciale || null,
           destinationCommerce: newRecolte.destinationCommerce || null,
@@ -301,6 +305,9 @@ function RecoltesFruitsSubTab() {
       if (res.ok) {
         setRecoltes(recoltes.filter((r) => r.id !== id))
         toast({ title: "Récolte supprimée" })
+      } else {
+        const data = await res.json().catch(() => ({}))
+        toast({ title: "Échec de la suppression", description: data.error || `Erreur ${res.status}`, variant: "destructive" })
       }
     } catch {
       toast({ title: "Erreur", variant: "destructive" })
@@ -340,6 +347,9 @@ function RecoltesFruitsSubTab() {
         setShowVenteDialog(false)
         toast({ title: "Vente enregistrée" })
         fetchData()
+      } else {
+        const data = await res.json().catch(() => ({}))
+        toast({ title: "Échec de la vente", description: data.error || `Erreur ${res.status}`, variant: "destructive" })
       }
     } catch {
       toast({ title: "Erreur", variant: "destructive" })
@@ -357,6 +367,29 @@ function RecoltesFruitsSubTab() {
       if (res.ok) {
         toast({ title: "Perte enregistrée" })
         fetchData()
+      } else {
+        const data = await res.json().catch(() => ({}))
+        toast({ title: "Échec de l'enregistrement de la perte", description: data.error || `Erreur ${res.status}`, variant: "destructive" })
+      }
+    } catch {
+      toast({ title: "Erreur", variant: "destructive" })
+    }
+  }
+
+  const handleUsageInterne = async (id: number) => {
+    if (!(await confirmDialog("Marquer cette récolte comme usage interne (auto-consommation) ?"))) return
+    try {
+      const res = await fetch(`/api/arbres/recoltes/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ statut: "consomme" }),
+      })
+      if (res.ok) {
+        toast({ title: "Usage interne enregistré" })
+        fetchData()
+      } else {
+        const data = await res.json().catch(() => ({}))
+        toast({ title: "Échec de l'enregistrement", description: data.error || `Erreur ${res.status}`, variant: "destructive" })
       }
     } catch {
       toast({ title: "Erreur", variant: "destructive" })
@@ -397,7 +430,7 @@ function RecoltesFruitsSubTab() {
           <CardHeader className="pb-1 pt-3 px-4">
             <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
               <AlertTriangle className="h-4 w-4 text-red-600" />
-              Pertes
+              Pertes / usages
             </CardTitle>
           </CardHeader>
           <CardContent className="pb-3 px-4">
@@ -451,7 +484,7 @@ function RecoltesFruitsSubTab() {
             </TabsTrigger>
             <TabsTrigger value="pertes" className="flex items-center gap-2">
               <AlertTriangle className="h-4 w-4" />
-              Pertes ({perteRecoltes.length})
+              Pertes & usages ({perteRecoltes.length})
             </TabsTrigger>
           </TabsList>
         </Tabs>
@@ -502,6 +535,9 @@ function RecoltesFruitsSubTab() {
                         <div className="flex items-center gap-1 justify-end">
                           <Button variant="ghost" size="sm" onClick={() => openVenteDialog(r)} title="Vendre">
                             <Euro className="h-4 w-4 text-green-600" />
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => handleUsageInterne(r.id)} title="Usage interne (auto-consommation)">
+                            <Home className="h-4 w-4 text-blue-600" />
                           </Button>
                           <Button variant="ghost" size="sm" onClick={() => handlePerte(r.id)} title="Perte">
                             <AlertTriangle className="h-4 w-4 text-orange-500" />
@@ -563,7 +599,7 @@ function RecoltesFruitsSubTab() {
         <Card>
           <CardContent className="p-0">
             {perteRecoltes.length === 0 ? (
-              <p className="p-8 text-muted-foreground text-center">Aucune perte enregistrée</p>
+              <p className="p-8 text-muted-foreground text-center">Aucune perte ni usage interne enregistré</p>
             ) : (
               <Table>
                 <TableHeader>
@@ -585,7 +621,7 @@ function RecoltesFruitsSubTab() {
                       <TableCell className="capitalize">{r.qualite || "-"}</TableCell>
                       <TableCell>
                         <Badge variant={r.statut === "perte" ? "destructive" : "outline"}>
-                          {r.statut === "perte" ? "Perte" : "Consomme"}
+                          {r.statut === "perte" ? "Perte" : "Usage interne"}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-muted-foreground text-sm">{r.notes || "-"}</TableCell>
@@ -974,6 +1010,9 @@ function ProductionBoisSubTab() {
         })
         toast({ title: "Production enregistrée en stock" })
         fetchData()
+      } else {
+        const data = await res.json().catch(() => ({}))
+        toast({ title: "Échec de l'enregistrement", description: data.error || `Erreur ${res.status}`, variant: "destructive" })
       }
     } catch {
       toast({ title: "Erreur", variant: "destructive" })
@@ -1002,6 +1041,9 @@ function ProductionBoisSubTab() {
         setVenteData({ clientId: "", clientNom: "", prixVente: "", creerFacture: false })
         toast({ title: "Vente enregistrée" })
         fetchData()
+      } else {
+        const data = await res.json().catch(() => ({}))
+        toast({ title: "Échec de la vente", description: data.error || `Erreur ${res.status}`, variant: "destructive" })
       }
     } catch {
       toast({ title: "Erreur", variant: "destructive" })
@@ -1025,6 +1067,9 @@ function ProductionBoisSubTab() {
         setUtiliseData({ destination: "chauffage" })
         toast({ title: "Marque comme utilise" })
         fetchData()
+      } else {
+        const data = await res.json().catch(() => ({}))
+        toast({ title: "Échec de la mise à jour", description: data.error || `Erreur ${res.status}`, variant: "destructive" })
       }
     } catch {
       toast({ title: "Erreur", variant: "destructive" })
@@ -1038,6 +1083,9 @@ function ProductionBoisSubTab() {
       if (res.ok) {
         setProductions(productions.filter((p) => p.id !== id))
         toast({ title: "Production supprimée" })
+      } else {
+        const data = await res.json().catch(() => ({}))
+        toast({ title: "Échec de la suppression", description: data.error || `Erreur ${res.status}`, variant: "destructive" })
       }
     } catch {
       toast({ title: "Erreur", variant: "destructive" })

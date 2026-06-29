@@ -84,3 +84,40 @@ export function isValidTvaIntracomFr(value: string | null | undefined): boolean 
   if (!isValidSiren(siren)) return false
   return key === (12 + 3 * (parseInt(siren, 10) % 97)) % 97
 }
+
+// ============================================================
+// Identifiants des territoires d'outre-mer (hors système SIRENE)
+// ============================================================
+
+/**
+ * Valide un numéro RIDET (Nouvelle-Calédonie).
+ * Le RIDET identifie un établissement : numéro Ridet de l'entreprise (6 à 7
+ * chiffres) suivi éventuellement d'un suffixe établissement de 3 chiffres,
+ * souvent noté « 0858878.004 ». Il n'y a pas de clé de contrôle publique
+ * normalisée : on valide donc uniquement le format (6 à 10 chiffres).
+ */
+export function isValidRidet(value: string | null | undefined): boolean {
+  if (!value) return false
+  const clean = value.replace(/[\s.]/g, '')
+  return /^\d{6,10}$/.test(clean)
+}
+
+/** Format d'affichage RIDET « 0858878.004 » (base . établissement). */
+export function formatRidet(value: string): string {
+  const clean = value.replace(/[\s.]/g, '')
+  if (clean.length >= 9) {
+    return `${clean.substring(0, clean.length - 3)}.${clean.slice(-3)}`
+  }
+  return clean
+}
+
+/**
+ * Valide un numéro Tahiti (Polynésie française).
+ * Le « N° Tahiti » est un identifiant à 6 chiffres, parfois suivi d'une lettre
+ * clé. Pas de checksum public : validation de format uniquement.
+ */
+export function isValidNumeroTahiti(value: string | null | undefined): boolean {
+  if (!value) return false
+  const clean = value.replace(/\s/g, '').toUpperCase()
+  return /^\d{6}[A-Z]?$/.test(clean)
+}
