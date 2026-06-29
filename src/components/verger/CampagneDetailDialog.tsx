@@ -112,15 +112,16 @@ const NATURE_LIBELLES: Record<string, string> = {
 // Feedback Marc 2026-05-16 — Bug 09 : l'aperçu campagne affichait
 // `forestier_futaie` / `planifiee` (valeurs brutes DB) alors que la
 // liste utilise les libellés humains. On centralise les labels ici.
+// Clés alignées sur les valeurs réellement persistées en base
+// (cf. TYPES_LIBELLE de PlantationsTab.tsx).
 const TYPE_FORMATION_LIBELLES: Record<string, string> = {
-  forestier_futaie: "Forestier — futaie",
-  forestier_taillis: "Forestier — taillis",
+  verger: "Verger",
+  haie: "Haie",
   agroforesterie: "Agroforesterie",
-  haie_bocagere: "Haie bocagère",
-  verger_fruitier: "Verger fruitier",
-  verger_petits_fruits: "Verger petits fruits",
-  pre_verger: "Pré-verger",
-  ripisylve: "Ripisylve",
+  forestier_futaie: "Futaie forestière",
+  forestier_taillis: "Taillis forestier",
+  bosquet: "Bosquet",
+  miscanthus: "Miscanthus",
   autre: "Autre",
 }
 
@@ -238,11 +239,20 @@ export function CampagneDetailDialog({ campagneId, open, onOpenChange, onUpdate 
       if (res.ok) {
         const data = await res.json()
         setCampagne(data)
+      } else {
+        // Sur échec, fermer la modale : sinon campagne reste null, le
+        // composant rend null et le parent garde selectedId → impossible
+        // de rouvrir la même campagne.
+        toast({ title: "Erreur", description: "Impossible de charger la campagne", variant: "destructive" })
+        onOpenChange(false)
       }
+    } catch {
+      toast({ title: "Erreur", description: "Impossible de charger la campagne", variant: "destructive" })
+      onOpenChange(false)
     } finally {
       setLoading(false)
     }
-  }, [campagneId])
+  }, [campagneId, toast, onOpenChange])
 
   React.useEffect(() => {
     if (open) load()
@@ -272,7 +282,12 @@ export function CampagneDetailDialog({ campagneId, open, onOpenChange, onUpdate 
     const res = await fetch(`/api/arbres/campagnes/${campagneId}/etapes/${etape.id}`, {
       method: "DELETE",
     })
-    if (res.ok) load()
+    if (res.ok) {
+      load()
+    } else {
+      const data = await res.json().catch(() => null)
+      toast({ title: "Erreur", description: data?.error || "Suppression de l'étape impossible", variant: "destructive" })
+    }
   }
 
   const submitObservation = async (e: React.FormEvent) => {
@@ -291,6 +306,9 @@ export function CampagneDetailDialog({ campagneId, open, onOpenChange, onUpdate 
       setObsForm({ nbVivants: "", nbMorts: "", nbManquants: "", hauteurMoyenneCm: "", vigueur: "", problemes: "", notes: "" })
       load()
       onUpdate?.()
+    } else {
+      const data = await res.json().catch(() => null)
+      toast({ title: "Erreur", description: data?.error || "Enregistrement de l'observation impossible", variant: "destructive" })
     }
   }
 
@@ -304,6 +322,9 @@ export function CampagneDetailDialog({ campagneId, open, onOpenChange, onUpdate 
       setEditingStatut(false)
       load()
       onUpdate?.()
+    } else {
+      const data = await res.json().catch(() => null)
+      toast({ title: "Erreur", description: data?.error || "Mise à jour du statut impossible", variant: "destructive" })
     }
   }
 

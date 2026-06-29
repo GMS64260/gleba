@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
       const yearNum = parseInt(year)
       where.date = {
         gte: new Date(yearNum, 0, 1),
-        lte: new Date(yearNum, 11, 31),
+        lt: new Date(yearNum + 1, 0, 1),
       }
     }
 

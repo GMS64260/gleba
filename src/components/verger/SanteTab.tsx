@@ -80,7 +80,7 @@ interface PollinisationData {
     floraison: string | null
     groupePollinisation: string | null
     autofertile: boolean
-    pollinisateursCompat: { arbrePollinisateur: { id: number; nom: string; espece: string | null; variete: string | null } }[]
+    pollinisateursCompat: { id: number; arbrePollinisateur: { id: number; nom: string; espece: string | null; variete: string | null } }[]
   }[]
   alertes: { id: number; nom: string; espece: string | null; floraison: string | null; groupePollinisation: string | null }[]
   alertesAnemophiles?: { id: number; nom: string; espece: string | null; variete: string | null; raison: string }[]
@@ -323,6 +323,9 @@ function ObservationsSubTab() {
       if (res.ok) {
         toast({ title: obs.resolu ? "Marqué non résolu" : "Marqué résolu" })
         fetchData()
+      } else {
+        const data = await res.json().catch(() => ({}))
+        toast({ title: "Échec de la mise à jour", description: data.error || `Erreur ${res.status}`, variant: "destructive" })
       }
     } catch {
       toast({ title: "Erreur", variant: "destructive" })
@@ -336,6 +339,9 @@ function ObservationsSubTab() {
       if (res.ok) {
         toast({ title: "Observation supprimée" })
         fetchData()
+      } else {
+        const data = await res.json().catch(() => ({}))
+        toast({ title: "Échec de la suppression", description: data.error || `Erreur ${res.status}`, variant: "destructive" })
       }
     } catch {
       toast({ title: "Erreur", variant: "destructive" })
@@ -623,14 +629,24 @@ function ObservationsSubTab() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label>Méthode</Label>
+                      {/* Les méthodes chimiques exigent les champs réglementaires
+                          (Arrêté 16/06/2009) absents de ce dialog : elles se
+                          saisissent dans le Registre phyto, sinon l'API renvoie
+                          systématiquement un 400. */}
                       <Select value={formData.methodeTraitement} onValueChange={(v) => setFormData({ ...formData, methodeTraitement: v })}>
                         <SelectTrigger><SelectValue placeholder="Choisir la méthode" /></SelectTrigger>
                         <SelectContent>
-                          {METHODES_TRAITEMENT.map((m) => (
+                          {METHODES_TRAITEMENT.filter(
+                            (m) => !methodeExigeCertiphyto(m.slug) || m.slug === formData.methodeTraitement
+                          ).map((m) => (
                             <SelectItem key={m.slug} value={m.slug}>{m.label}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Traitement chimique ? Saisissez-le dans l'onglet Registre phyto
+                        (champs réglementaires obligatoires).
+                      </p>
                     </div>
                     <div>
                       <Label>Action réalisée</Label>
@@ -741,7 +757,7 @@ function RegistrePhytoSubTab() {
     volumeBouillieLTotal: "",
     certiphytoNum: "",
     parcelleId: "",
-    operateurId: "",
+    operateurNom: "",
     zntDistanceM: "",
     zntRespectee: null as boolean | null,
   })
@@ -889,6 +905,15 @@ function RegistrePhytoSubTab() {
         setEditingObs(null)
         toast({ title: "Traitement mis à jour" })
         fetchData()
+      } else {
+        const data = await res.json().catch(() => ({}))
+        toast({
+          title: "Échec de la mise à jour",
+          description: Array.isArray(data.manquants) && data.manquants.length
+            ? `Champs requis manquants : ${data.manquants.join(", ")}`
+            : (data.error || `Erreur ${res.status}`),
+          variant: "destructive",
+        })
       }
     } catch {
       toast({ title: "Erreur", variant: "destructive" })
@@ -917,7 +942,14 @@ function RegistrePhytoSubTab() {
           volumeBouillieLTotal: addForm.volumeBouillieLTotal || null,
           certiphytoNum: addForm.certiphytoNum || null,
           parcelleId: addForm.parcelleId || null,
-          operateurId: addForm.operateurId || null,
+          // `operateurId` est une FK vers User : le nom saisi en texte libre
+          // partait dedans et provoquait une violation FK (500). On le range
+          // dans les notes en attendant un vrai champ dédié.
+          operateurId: null,
+          notes:
+            [addForm.notes, addForm.operateurNom.trim() ? `Opérateur : ${addForm.operateurNom.trim()}` : ""]
+              .filter(Boolean)
+              .join("\n") || null,
           zntDistanceM: addForm.zntDistanceM || null,
           zntRespectee: addForm.zntRespectee,
           temperatureC: addWeather.temperatureC,
@@ -950,7 +982,7 @@ function RegistrePhytoSubTab() {
           volumeBouillieLTotal: "",
           certiphytoNum: "",
           parcelleId: "",
-          operateurId: "",
+          operateurNom: "",
           zntDistanceM: "",
           zntRespectee: null,
         })
@@ -1155,9 +1187,13 @@ function RegistrePhytoSubTab() {
                         )}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button variant="ghost" size="sm" onClick={() => openEdit(obs)}>
-                          <Pencil className="h-4 w-4 text-lime-600" />
-                        </Button>
+                        {/* id < 0 = pseudo-ligne issue d'une OperationArbre :
+                            pas éditable via l'API observations. */}
+                        {obs.id > 0 && (
+                          <Button variant="ghost" size="sm" onClick={() => openEdit(obs)}>
+                            <Pencil className="h-4 w-4 text-lime-600" />
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   )
@@ -1406,8 +1442,8 @@ function RegistrePhytoSubTab() {
                     </div>
                     <div>
                       <Label>Opérateur</Label>
-                      <Input value={addForm.operateurId}
-                        onChange={(e) => setAddForm({ ...addForm, operateurId: e.target.value })} placeholder="Nom de l'opérateur" />
+                      <Input value={addForm.operateurNom}
+                        onChange={(e) => setAddForm({ ...addForm, operateurNom: e.target.value })} placeholder="Nom de l'opérateur" />
                     </div>
                   </div>
 
@@ -1513,6 +1549,9 @@ function PollinisationSubTab() {
       if (res.ok) {
         toast({ title: "Association supprimée" })
         fetchData()
+      } else {
+        const data = await res.json().catch(() => ({}))
+        toast({ title: "Échec de la suppression", description: data.error || `Erreur ${res.status}`, variant: "destructive" })
       }
     } catch {
       toast({ title: "Erreur", variant: "destructive" })
@@ -1643,6 +1682,18 @@ function PollinisationSubTab() {
                           {arbre.pollinisateursCompat.map((p) => (
                             <Badge key={p.arbrePollinisateur.id} variant="outline" className="text-xs">
                               {p.arbrePollinisateur.nom}
+                              <button
+                                type="button"
+                                className="ml-1 text-muted-foreground hover:text-red-600"
+                                title="Supprimer cette association"
+                                onClick={async () => {
+                                  if (await confirmDialog("Supprimer cette association de pollinisation ?")) {
+                                    handleDelete(p.id)
+                                  }
+                                }}
+                              >
+                                ×
+                              </button>
                             </Badge>
                           ))}
                         </div>

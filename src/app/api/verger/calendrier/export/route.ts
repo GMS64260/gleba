@@ -176,7 +176,8 @@ export async function GET(request: NextRequest) {
     y += 24
     doc.fontSize(8).fillColor("#7c2d12").font("Helvetica-Oblique")
     doc.text(
-      "⚠ Prunus (Cerisier, Prunier, Pêcher, Abricotier, Amandier) : aucune taille hivernale (gommose + chancre). Taille post-récolte et taille en vert juin-août uniquement.",
+      // « ⚠ » (U+26A0) n'existe pas en WinAnsi (polices AFM de pdfkit) → glyphe manquant.
+      "ATTENTION : Prunus (Cerisier, Prunier, Pêcher, Abricotier, Amandier) : aucune taille hivernale (gommose + chancre). Taille post-récolte et taille en vert juin-août uniquement.",
       30,
       y,
       { width: pageWidth }

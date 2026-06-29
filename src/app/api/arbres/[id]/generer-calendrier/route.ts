@@ -57,6 +57,9 @@ export async function POST(
         arbreId,
         userId: session!.user.id,
         notes: "auto:calendrier",
+        // On ne supprime que les opérations non faites : les ops
+        // auto-générées déjà réalisées sont de l'historique à préserver.
+        fait: false,
         datePrevue: { gte: startOfYear, lte: endOfYear },
       },
     })

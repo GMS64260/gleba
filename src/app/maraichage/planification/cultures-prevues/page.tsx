@@ -11,7 +11,7 @@ import { useSearchParams } from "next/navigation"
 import { formatSemaine } from "@/lib/assistant-helpers"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ColumnDef } from "@tanstack/react-table"
-import { ArrowLeft, Leaf, Calendar, CheckCircle2, XCircle } from "lucide-react"
+import { ArrowLeft, Leaf, Calendar, CheckCircle2, XCircle, Info } from "lucide-react"
 
 import { DataTable } from "@/components/tables/DataTable"
 import { Button } from "@/components/ui/button"
@@ -260,6 +260,20 @@ function CulturesPrevuesContent() {
               Par planches
             </Button>
           </Link>
+        </div>
+
+        {/* Note testeur 2026-05-31 — clarifier l'écart avec la liste Cultures :
+            cet écran agrège le réel (créées) + le prévisionnel des rotations (à
+            créer), donc son total dépasse normalement la liste des cultures. */}
+        <div className="mb-4 flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+          <Info className="h-4 w-4 shrink-0 text-slate-400 mt-0.5" />
+          <p>
+            Cet écran combine les cultures <span className="font-medium text-green-700">déjà créées</span> et
+            les cultures <span className="font-medium text-slate-700">prévues par vos rotations</span> mais
+            pas encore créées. Le total peut donc dépasser celui de la liste <em>Cultures</em>, qui ne montre
+            que les cultures réellement enregistrées. Une même planche peut apparaître deux fois (culture réelle
+            + étape de rotation) tant que la culture prévue n'a pas été créée.
+          </p>
         </div>
 
         <DataTable

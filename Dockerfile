@@ -28,6 +28,12 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 
+# Flag du module boutique (proprietary). Défaut "false" → la build open-source
+# masque les points d'accès. Activé via build-arg en déploiement privé.
+# NEXT_PUBLIC_* doit être présent au moment du `next build` (inliné côté client).
+ARG NEXT_PUBLIC_FEATURE_BOUTIQUE=false
+ENV NEXT_PUBLIC_FEATURE_BOUTIQUE=$NEXT_PUBLIC_FEATURE_BOUTIQUE
+
 RUN npx prisma generate
 RUN npm run build
 
@@ -53,6 +59,11 @@ RUN npm install -g tsx
 
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/package.json ./package.json
+
+# Le dossier des uploads (logos, bannières, photos, justificatifs) doit être
+# inscriptible par l'utilisateur `nextjs`. Le volume nommé monté ici hérite de
+# ces permissions à sa création.
+RUN mkdir -p ./public/uploads && chown -R nextjs:nodejs ./public/uploads
 
 # Copier le build standalone
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./

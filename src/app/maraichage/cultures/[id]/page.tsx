@@ -277,10 +277,21 @@ export default function EditCulturePage() {
         throw new Error(error.error || "Erreur lors de la mise à jour")
       }
 
-      toast({
-        title: "Culture modifiée",
-        description: `La culture #${cultureId} a été mise à jour`,
-      })
+      // Avertissements non bloquants (dates incohérentes, longueur > planche…).
+      const result = await response.json().catch(() => null)
+      const warnings: string[] = Array.isArray(result?.warnings) ? result.warnings : []
+      if (warnings.length > 0) {
+        toast({
+          variant: "destructive",
+          title: "Culture modifiée — à vérifier",
+          description: warnings.join(" · "),
+        })
+      } else {
+        toast({
+          title: "Culture modifiée",
+          description: `La culture #${cultureId} a été mise à jour`,
+        })
+      }
       router.push("/maraichage/cultures")
     } catch (error) {
       toast({

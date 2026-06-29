@@ -20,7 +20,9 @@ export async function GET(request: NextRequest) {
     const currentYear = yearParam ? parseInt(yearParam) : new Date().getFullYear()
 
     const startOfYear = new Date(currentYear, 0, 1)
-    const endOfYear = new Date(currentYear, 11, 31)
+    // Borne exclusive (1er janvier suivant) pour ne pas exclure les
+    // enregistrements du 31 décembre portant une heure.
+    const endOfYear = new Date(currentYear + 1, 0, 1)
 
     // Statistiques générales des arbres
     const [
@@ -125,7 +127,7 @@ export async function GET(request: NextRequest) {
     const recoltesFruitsYear = await prisma.recolteArbre.aggregate({
       where: {
         userId,
-        date: { gte: startOfYear, lte: endOfYear },
+        date: { gte: startOfYear, lt: endOfYear },
       },
       _sum: { quantite: true },
       _count: { id: true },
@@ -136,7 +138,7 @@ export async function GET(request: NextRequest) {
       by: ["date"],
       where: {
         userId,
-        date: { gte: startOfYear, lte: endOfYear },
+        date: { gte: startOfYear, lt: endOfYear },
       },
       _sum: { quantite: true },
     })
@@ -159,7 +161,7 @@ export async function GET(request: NextRequest) {
     const productionBoisYear = await prisma.productionBois.aggregate({
       where: {
         userId,
-        date: { gte: startOfYear, lte: endOfYear },
+        date: { gte: startOfYear, lt: endOfYear },
       },
       _sum: { volumeM3: true, poidsKg: true, prixVente: true },
       _count: { id: true },
@@ -170,7 +172,7 @@ export async function GET(request: NextRequest) {
       by: ["date"],
       where: {
         userId,
-        date: { gte: startOfYear, lte: endOfYear },
+        date: { gte: startOfYear, lt: endOfYear },
       },
       _sum: { volumeM3: true },
     })
@@ -191,7 +193,7 @@ export async function GET(request: NextRequest) {
       by: ["destination"],
       where: {
         userId,
-        date: { gte: startOfYear, lte: endOfYear },
+        date: { gte: startOfYear, lt: endOfYear },
       },
       _sum: { volumeM3: true },
     })
@@ -248,7 +250,7 @@ export async function GET(request: NextRequest) {
       by: ["arbreId"],
       where: {
         userId,
-        date: { gte: startOfYear, lte: endOfYear },
+        date: { gte: startOfYear, lt: endOfYear },
       },
       _sum: { quantite: true },
       orderBy: { _sum: { quantite: "desc" } },
@@ -275,12 +277,12 @@ export async function GET(request: NextRequest) {
 
     // Récoltes annee précédente (comparaison)
     const lastYearStart = new Date(currentYear - 1, 0, 1)
-    const lastYearEnd = new Date(currentYear - 1, 11, 31)
+    const lastYearEnd = new Date(currentYear, 0, 1)
 
     const recoltesFruitsLastYear = await prisma.recolteArbre.aggregate({
       where: {
         userId,
-        date: { gte: lastYearStart, lte: lastYearEnd },
+        date: { gte: lastYearStart, lt: lastYearEnd },
       },
       _sum: { quantite: true },
     })

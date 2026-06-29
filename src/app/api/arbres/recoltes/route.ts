@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
       const yearNum = parseInt(year)
       where.date = {
         gte: new Date(yearNum, 0, 1),
-        lte: new Date(yearNum, 11, 31),
+        lt: new Date(yearNum + 1, 0, 1),
       }
     }
 
@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (body.quantite === undefined || body.quantite < 0) {
+    if (typeof body.quantite !== "number" || !isFinite(body.quantite) || body.quantite < 0) {
       return NextResponse.json(
         { error: "La quantité doit être positive" },
         { status: 400 }
@@ -123,9 +123,15 @@ export async function POST(request: NextRequest) {
         const semaineDebut = varieteAvecRecolte.semaineRecolte
         const semaineFin = semaineDebut + (varieteAvecRecolte.dureeRecolte ?? 4)
         const toleranceSemaines = 3
+        // Fenêtre à cheval sur deux années (semaineFin > 53) : elle couvre
+        // [semaineDebut..53] ∪ [1..semaineFin-53]. La semaine saisie étant
+        // toujours ≤ 53, on teste l'appartenance aux deux segments.
         const horsSaison =
-          semaineSaisie < semaineDebut - toleranceSemaines ||
-          semaineSaisie > semaineFin + toleranceSemaines
+          semaineFin > 53
+            ? semaineSaisie < semaineDebut - toleranceSemaines &&
+              semaineSaisie > semaineFin - 53 + toleranceSemaines
+            : semaineSaisie < semaineDebut - toleranceSemaines ||
+              semaineSaisie > semaineFin + toleranceSemaines
         if (horsSaison) {
           recolteWarnings.push(
             `Hors saison : ${arbre.espece ?? "espèce"} ${arbre.variete} se récolte normalement semaines ${semaineDebut}-${semaineFin} (saisie semaine ${semaineSaisie}).`
@@ -152,8 +158,11 @@ export async function POST(request: NextRequest) {
         ? snapshotStatutBio(sourceBio.statutBio, sourceBio.dateDebutConversion, dateRecolte)
         : null)
 
-    // DEV3 #4 — parcelle d'origine : par défaut celle de l'arbre, surchargeable
-    const parcelleId = body.parcelleId !== undefined ? body.parcelleId : arbre.parcelleGeo?.id ?? null
+    // DEV3 #4 — parcelle d'origine : par défaut celle de l'arbre, surchargeable.
+    // Bug traçabilité AB : le front envoyait `parcelleId: null` (champ absent du
+    // formulaire), ce qui court-circuitait le défaut et produisait des lots "-NA-".
+    // On prend donc le défaut quand la valeur est null OU undefined.
+    const parcelleId = body.parcelleId ?? arbre.parcelleGeo?.id ?? null
 
     // DEV3 #4 — Numéro de lot auto YYYYMMDD-PARCELLE-ESPECE-NN si non fourni.
     // Pour le séquentiel NN, on compte le nb de lots du jour + même parcelle + même espèce.

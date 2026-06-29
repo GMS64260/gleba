@@ -1,0 +1,17 @@
+# Durcissement sécurité (2026-06-16) — auto-chargé par `docker compose up -d`.
+# no-new-privileges bloque l'escalade via binaires SUID (vecteur de l'incident
+# du 13/06). cap_drop retire les capabilities Linux ; pids/mem étouffent un
+# éventuel mineur/fork-bomb.
+services:
+  db:
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    cap_add: ["CHOWN","DAC_OVERRIDE","FOWNER","SETGID","SETUID"]  # requis par l'entrypoint postgres
+    pids_limit: 200
+
+  app:
+    # gleba_app tourne déjà en user non-root (nextjs uid 1001) : on peut tout droper.
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    pids_limit: 300
+    mem_limit: 1g

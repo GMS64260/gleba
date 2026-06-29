@@ -1208,10 +1208,10 @@ function SanitaireTab({
 // ============================================================
 
 const ELEVAGE_TYPE_STYLES: Record<string, { bg: string; text: string; label: string }> = {
-  entree: { bg: "bg-green-100", text: "text-green-700", label: "Entree" },
+  entree: { bg: "bg-green-100", text: "text-green-700", label: "Entrée" },
   sortie: { bg: "bg-orange-100", text: "text-orange-700", label: "Sortie" },
   naissance: { bg: "bg-pink-100", text: "text-pink-700", label: "Naissance" },
-  deces: { bg: "bg-red-100", text: "text-red-700", label: "Deces" },
+  deces: { bg: "bg-red-100", text: "text-red-700", label: "Décès" },
   soin: { bg: "bg-blue-100", text: "text-blue-700", label: "Soin" },
 }
 
@@ -1307,7 +1307,7 @@ function ElevageRegistreTab({
         </Card>
         <Card className={`bg-gradient-to-br ${data.stats.totalDeces > 0 ? 'from-red-500 to-red-600' : 'from-slate-400 to-slate-500'} text-white`}>
           <CardHeader className="pb-1 pt-3">
-            <CardTitle className="text-xs font-medium text-red-100">Deces</CardTitle>
+            <CardTitle className="text-xs font-medium text-red-100">Décès</CardTitle>
           </CardHeader>
           <CardContent className="pb-3">
             <p className="text-2xl font-bold">{data.stats.totalDeces}</p>

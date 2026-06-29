@@ -95,7 +95,7 @@ export function TreeCareGantt({ especes }: TreeCareGanttProps) {
           </button>
         </div>
         <a
-          href="/api/verger/calendrier/export"
+          href={`/api/verger/calendrier/export?scope=${scope}`}
           className="text-xs px-3 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700"
           title="Télécharger le calendrier en PDF"
         >

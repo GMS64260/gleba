@@ -360,7 +360,8 @@ export function PlantationsTab() {
         open={wizardOpen}
         onOpenChange={setWizardOpen}
         onSuccess={() => {
-          setWizardOpen(false)
+          // Ne pas fermer ici : le wizard affiche son écran de succès (étape 6),
+          // la fermeture est gérée par son bouton « Voir mes campagnes ».
           load()
         }}
       />

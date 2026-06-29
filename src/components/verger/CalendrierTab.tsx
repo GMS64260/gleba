@@ -126,7 +126,10 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
 
         if (opsRes.ok) {
           const ops: OperationArbre[] = await opsRes.json()
+          // Minuit local : une op prévue aujourd'hui n'est pas « en retard »
+          // (même normalisation que OperationsTab).
           const today = new Date()
+          today.setHours(0, 0, 0, 0)
           setOperationsEnRetard(
             ops.filter((op) => op.datePrevue && new Date(op.datePrevue) < today)
           )

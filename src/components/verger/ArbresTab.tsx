@@ -526,15 +526,24 @@ export function ArbresTab() {
         >
           Sans GPS
         </Button>
-        {/* Bug #8 — Planche A4 QR codes pour étiqueter les arbres. */}
+        {/* Bug #8 — Planche A4 QR codes pour étiqueter les arbres.
+            Lien désactivé si sélection vide ou > 60 arbres (limite de la
+            planche) plutôt que d'imprimer silencieusement TOUS les arbres. */}
         <a
-          href={`/api/verger/etiquettes-planche${
-            filteredData.length > 0 && filteredData.length <= 60
-              ? `?ids=${filteredData.map((a) => a.id).join(",")}`
+          href={`/api/verger/etiquettes-planche?ids=${filteredData.map((a) => a.id).join(",")}`}
+          aria-disabled={filteredData.length === 0 || filteredData.length > 60}
+          className={`ml-auto inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 ${
+            filteredData.length === 0 || filteredData.length > 60
+              ? "pointer-events-none opacity-50"
               : ""
           }`}
-          className="ml-auto inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700"
-          title="Imprimer une planche A4 d'étiquettes QR codes (6 par page)"
+          title={
+            filteredData.length === 0
+              ? "Aucun arbre dans la sélection filtrée"
+              : filteredData.length > 60
+                ? "Planche limitée à 60 arbres : affinez les filtres pour réduire la sélection"
+                : "Imprimer une planche A4 d'étiquettes QR codes (6 par page)"
+          }
         >
           📥 Planche QR codes
         </a>
@@ -575,11 +584,12 @@ export function ArbresTab() {
         onConfirm={async () => {
           if (!arbreToDelete) return
           try {
-            await fetch(`/api/arbres/${arbreToDelete.id}`, { method: "DELETE" })
+            const res = await fetch(`/api/arbres/${arbreToDelete.id}`, { method: "DELETE" })
+            if (!res.ok) throw new Error("delete failed")
             toast({ title: "Arbre supprimé" })
             fetchData()
           } catch {
-            toast({ variant: "destructive", title: "Erreur" })
+            toast({ variant: "destructive", title: "Erreur lors de la suppression" })
           }
         }}
         onArchive={async () => {
@@ -722,8 +732,11 @@ export function ArbresTab() {
                 <div>
                   <Label className="text-xs">Porte-greffe</Label>
                   <Select
-                    value={newArbre.porteGreffeId}
-                    onValueChange={(v) => setNewArbre({ ...newArbre, porteGreffeId: v })}
+                    // Radix Select contrôlé : une valeur "" ne correspond à aucun
+                    // SelectItem et empêche la sélection de s'afficher. On utilise
+                    // le sentinel "_none" (même pattern que la fiche détail arbre).
+                    value={newArbre.porteGreffeId || "_none"}
+                    onValueChange={(v) => setNewArbre({ ...newArbre, porteGreffeId: v === "_none" ? "" : v })}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder={
@@ -733,6 +746,7 @@ export function ArbresTab() {
                       } />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="_none">— Aucun</SelectItem>
                       {portesGreffeOptions.map((pg) => (
                         <SelectItem key={pg.id} value={pg.id}>
                           {pg.nom} (V{pg.vigueur}/P{pg.precocite})
@@ -744,11 +758,14 @@ export function ArbresTab() {
                 <div>
                   <Label className="text-xs">Conduite</Label>
                   <Select
-                    value={newArbre.conduite}
-                    onValueChange={(v) => setNewArbre({ ...newArbre, conduite: v })}
+                    // Même sentinel "_none" que le Select porte-greffe ci-dessus :
+                    // permet de revenir à « aucune » après avoir choisi une conduite.
+                    value={newArbre.conduite || "_none"}
+                    onValueChange={(v) => setNewArbre({ ...newArbre, conduite: v === "_none" ? "" : v })}
                   >
                     <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="_none">— Aucune</SelectItem>
                       {CONDUITES_ARBRE.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                     </SelectContent>
                   </Select>

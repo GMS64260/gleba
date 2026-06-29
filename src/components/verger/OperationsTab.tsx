@@ -5,6 +5,7 @@
  */
 
 import * as React from "react"
+import { format } from "date-fns"
 import { ColumnDef } from "@tanstack/react-table"
 import { Wrench, ListTodo, Check, CheckCircle, AlertTriangle } from "lucide-react"
 import { checkOperationSaison } from "@/lib/tree-care-calendar"
@@ -193,7 +194,8 @@ export function OperationsTab() {
   const [showDialog, setShowDialog] = React.useState(false)
   const [newOperation, setNewOperation] = React.useState({
     arbreId: "",
-    date: new Date().toISOString().split("T")[0],
+    // Date locale (toISOString donnait la veille en UTC entre minuit et 2h FR)
+    date: format(new Date(), "yyyy-MM-dd"),
     type: "taille",
     description: "",
     produit: "",
@@ -254,7 +256,7 @@ export function OperationsTab() {
       // enregistre la date RÉELLE de réalisation (aujourd'hui) au lieu de
       // laisser la date prévue ; à l'annulation, on revient à la date prévue
       // si elle existe. La datePrevue reste inchangée (planification).
-      const today = new Date().toISOString().split("T")[0]
+      const today = format(new Date(), "yyyy-MM-dd")
       const nextDate = nextFait
         ? today
         : (op.datePrevue ? op.datePrevue.split("T")[0] : undefined)
@@ -287,7 +289,7 @@ export function OperationsTab() {
   const resetForm = () => {
     setNewOperation({
       arbreId: "",
-      date: new Date().toISOString().split("T")[0],
+      date: format(new Date(), "yyyy-MM-dd"),
       type: "taille",
       description: "",
       produit: "",
@@ -337,11 +339,18 @@ export function OperationsTab() {
           cout: newOperation.cout ? parseFloat(newOperation.cout) : null,
           datePrevue: newOperation.datePrevue || null,
           fait: newOperation.fait,
-          notes: newOperation.notes || null,
+          notes:
+            [
+              newOperation.notes.trim(),
+              newOperation.operateur.trim() ? `Opérateur : ${newOperation.operateur.trim()}` : "",
+            ]
+              .filter(Boolean)
+              .join(" — ") || null,
           // DEV3 #6 — opérateur + temps + météo + matériel
-          // Note : `operateur` est ici en texte libre (pas FK). Pour une vraie
-          // intégration FK, créer un dropdown utilisateurs ; ici on stocke
-          // le label dans `description` pour traçabilité simple.
+          // Note : `operateur` est ici en texte libre (pas FK) alors que l'API
+          // n'accepte que `operateurId` (FK User). Pour une vraie intégration
+          // FK, créer un dropdown utilisateurs ; en attendant on concatène le
+          // label dans `notes` (ci-dessus) pour traçabilité simple.
           tempsHeures: newOperation.tempsHeures || null,
           temperatureC: opWeather.temperatureC,
           ventKmh: opWeather.ventKmh,
