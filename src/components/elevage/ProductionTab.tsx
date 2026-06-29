@@ -785,9 +785,14 @@ function VentesSubTab() {
   const handleDelete = async (id: number) => {
     if (!(await confirmDialog("Supprimer cette vente ?"))) return
     try {
-      await fetch(`/api/elevage/ventes?id=${id}`, { method: 'DELETE' })
-      toast({ title: "Vente supprimée" })
-      fetchData()
+      const res = await fetch(`/api/elevage/ventes?id=${id}`, { method: 'DELETE' })
+      if (res.ok) {
+        toast({ title: "Vente supprimée" })
+        fetchData()
+      } else {
+        const p = await res.json().catch(() => null)
+        toast({ variant: "destructive", title: "Erreur", description: p?.error || "Impossible de supprimer la vente" })
+      }
     } catch {
       toast({ variant: "destructive", title: "Erreur" })
     }

@@ -509,13 +509,21 @@ function JardinContent() {
         })
       )
 
-      await Promise.all([...planchePromises, ...objetPromises, ...arbrePromises])
+      const results = await Promise.all([...planchePromises, ...objetPromises, ...arbrePromises])
 
-      toast({
-        title: "Plan sauvegardé",
-        description: "Les positions ont été enregistrées"
-      })
-      setHasChanges(false)
+      if (results.every(r => r.ok)) {
+        toast({
+          title: "Plan sauvegardé",
+          description: "Les positions ont été enregistrées"
+        })
+        setHasChanges(false)
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Erreur",
+          description: "Certaines positions n'ont pas pu être enregistrées"
+        })
+      }
     } catch (error) {
       toast({
         variant: "destructive",

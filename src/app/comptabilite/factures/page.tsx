@@ -20,6 +20,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
+import { confirmDialog } from "@/lib/global-dialog"
 
 interface Impayee {
   id: number
@@ -250,6 +251,32 @@ export default function FacturesPage() {
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible de mettre à jour" })
     }
+  }
+
+  // Transition de statut d'une facture émise (machine à états côté API :
+  // emise→payee pose la date de paiement, emise→annulee est définitif).
+  const updateFactureStatut = async (factureId: number, statut: string, successMsg: string) => {
+    try {
+      const res = await fetch("/api/comptabilite/factures", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: factureId, statut }),
+      })
+      if (res.ok) {
+        toast({ title: successMsg })
+        fetchFacturesEmises()
+      } else {
+        const p = await res.json().catch(() => null)
+        toast({ variant: "destructive", title: "Erreur", description: p?.error || "Changement de statut impossible" })
+      }
+    } catch {
+      toast({ variant: "destructive", title: "Erreur", description: "Erreur réseau" })
+    }
+  }
+
+  const annulerFacture = async (f: FactureEmise) => {
+    if (!(await confirmDialog(`Annuler définitivement la facture ${f.numero} ?`))) return
+    updateFactureStatut(f.id, "annulee", "Facture annulée")
   }
 
   const addLigne = () => {
@@ -648,14 +675,36 @@ export default function FacturesPage() {
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => downloadFacturePDF(f.id, f.numero)}
-                            >
-                              <Download className="h-4 w-4 mr-1" />
-                              PDF
-                            </Button>
+                            <div className="flex items-center justify-end gap-1">
+                              {f.statut === "emise" && (
+                                <>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    title="Marquer payée"
+                                    onClick={() => updateFactureStatut(f.id, "payee", "Facture marquée payée")}
+                                  >
+                                    <Check className="h-4 w-4 text-green-600" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    title="Annuler la facture"
+                                    onClick={() => annulerFacture(f)}
+                                  >
+                                    <AlertCircle className="h-4 w-4 text-red-600" />
+                                  </Button>
+                                </>
+                              )}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => downloadFacturePDF(f.id, f.numero)}
+                              >
+                                <Download className="h-4 w-4 mr-1" />
+                                PDF
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}

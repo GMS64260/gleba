@@ -20,6 +20,8 @@ import {
   Trash2,
   Map as MapIcon,
   FileText,
+  Archive,
+  CheckCircle2,
 } from "lucide-react"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -28,6 +30,7 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { labelStatutAnimal, labelStatutLot } from "@/lib/elevage/labels"
+import { confirmDialog } from "@/lib/global-dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -315,9 +318,14 @@ function AnimauxSubTab() {
   const confirmDelete = async () => {
     if (!animalToDelete) return
     try {
-      await fetch(`/api/elevage/animaux/${animalToDelete.id}`, { method: 'DELETE' })
-      toast({ title: "Animal supprimé" })
-      fetchData()
+      const res = await fetch(`/api/elevage/animaux/${animalToDelete.id}`, { method: 'DELETE' })
+      if (res.ok) {
+        toast({ title: "Animal supprimé" })
+        fetchData()
+      } else {
+        const p = await res.json().catch(() => null)
+        toast({ variant: "destructive", title: "Erreur", description: p?.error || "Impossible de supprimer l'animal" })
+      }
     } catch {
       toast({ variant: "destructive", title: "Erreur" })
     }
@@ -1061,6 +1069,49 @@ function LotsSubTab() {
     }
   }
 
+  // Réforme d'un lot : sortie du cycle productif (ex. pondeuses en fin de ponte
+  // conservées). Transition supportée par l'API (PATCH statut + dateReforme).
+  const handleReformerLot = async (lot: Lot) => {
+    if (!(await confirmDialog(`Réformer le lot ${lot.nom || `#${lot.id}`} ? Il sortira du cycle productif.`))) return
+    try {
+      const res = await fetch('/api/elevage/lots', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: lot.id, statut: 'reforme', dateReforme: new Date().toISOString() }),
+      })
+      if (res.ok) {
+        toast({ title: "Lot réformé" })
+        fetchData()
+      } else {
+        const p = await res.json().catch(() => null)
+        toast({ variant: "destructive", title: "Erreur", description: p?.error || "Impossible de réformer le lot" })
+      }
+    } catch {
+      toast({ variant: "destructive", title: "Erreur", description: "Erreur réseau" })
+    }
+  }
+
+  // Clôture d'un lot : marqué « terminé » (lot vendu en bloc, fusionné, vidé…).
+  const handleCloturerLot = async (lot: Lot) => {
+    if (!(await confirmDialog(`Clôturer le lot ${lot.nom || `#${lot.id}`} ? Il sera marqué terminé.`))) return
+    try {
+      const res = await fetch('/api/elevage/lots', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: lot.id, statut: 'termine' }),
+      })
+      if (res.ok) {
+        toast({ title: "Lot clôturé" })
+        fetchData()
+      } else {
+        const p = await res.json().catch(() => null)
+        toast({ variant: "destructive", title: "Erreur", description: p?.error || "Impossible de clôturer le lot" })
+      }
+    } catch {
+      toast({ variant: "destructive", title: "Erreur", description: "Erreur réseau" })
+    }
+  }
+
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
     try {
@@ -1319,6 +1370,32 @@ function LotsSubTab() {
                               </TooltipTrigger>
                               <TooltipContent>Abattage</TooltipContent>
                             </Tooltip>
+                          )}
+                          {lot.statut === 'actif' && (
+                            <>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    onClick={() => handleReformerLot(lot)}
+                                    className="p-1.5 rounded-md transition-colors bg-slate-100 text-slate-400 hover:bg-orange-100 hover:text-orange-700"
+                                  >
+                                    <Archive className="h-3.5 w-3.5" />
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent>Réformer le lot</TooltipContent>
+                              </Tooltip>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    onClick={() => handleCloturerLot(lot)}
+                                    className="p-1.5 rounded-md transition-colors bg-slate-100 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
+                                  >
+                                    <CheckCircle2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent>Clôturer (terminé)</TooltipContent>
+                              </Tooltip>
+                            </>
                           )}
                         </TooltipProvider>
                       </div>

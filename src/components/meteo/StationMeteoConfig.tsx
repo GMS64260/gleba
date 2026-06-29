@@ -106,9 +106,14 @@ export function StationMeteoConfig() {
 
   async function handleDelete(id: string) {
     if (!(await confirmDialog("Supprimer cette station ?"))) return
+    setError(null)
     try {
       const res = await fetch(`/api/meteo/station?id=${id}`, { method: "DELETE" })
-      if (!res.ok) setError("Erreur lors de la suppression")
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        setError(data?.error || "Erreur lors de la suppression")
+        return
+      }
       await fetchStations()
     } catch {
       setError("Erreur reseau lors de la suppression")
@@ -116,13 +121,18 @@ export function StationMeteoConfig() {
   }
 
   async function handleToggle(id: string, active: boolean) {
+    setError(null)
     try {
       const res = await fetch("/api/meteo/station", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, active: !active }),
       })
-      if (!res.ok) setError("Erreur lors de la mise à jour")
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        setError(data?.error || "Erreur lors de la mise à jour")
+        return
+      }
       await fetchStations()
     } catch {
       setError("Erreur reseau lors de la mise à jour")
@@ -161,6 +171,9 @@ export function StationMeteoConfig() {
           Ajouter
         </Button>
       </div>
+
+      {/* Erreur visible en vue liste (le formulaire a son propre rendu) */}
+      {error && !showForm && <p className="text-sm text-red-600">{error}</p>}
 
       {/* Liste des stations */}
       {stations.length > 0 ? (

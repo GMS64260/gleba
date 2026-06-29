@@ -30,6 +30,7 @@ import { GanttRow } from "@/components/itps/GanttRow"
 import { ItpEditDialog } from "@/components/itps/ItpEditDialog"
 import { SemisLunaireEncart } from "@/components/itps/SemisLunaireEncart"
 import { libelleDecalage } from "@/lib/calendrier-climat"
+import { alertDialog } from "@/lib/global-dialog"
 
 interface ITPWithEspece {
   id: string
@@ -152,9 +153,14 @@ export default function ITCalendrierPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ zone }),
       })
-      if (r.ok) setClimat(await r.json())
+      if (r.ok) {
+        setClimat(await r.json())
+      } else {
+        const p = await r.json().catch(() => null)
+        await alertDialog(p?.error || "Impossible de changer la zone climatique", { title: "Erreur" })
+      }
     } catch {
-      /* silencieux */
+      await alertDialog("Erreur réseau lors du changement de zone climatique", { title: "Erreur" })
     } finally {
       setSavingZone(false)
     }

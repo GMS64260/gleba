@@ -259,9 +259,14 @@ function PlanchesSubTab() {
           }
           if (!(await confirmDialog(`Supprimer "${row.nom}" ?`))) return
           try {
-            await fetch(`/api/planches/${encodeURIComponent(row.nom)}`, { method: "DELETE" })
-            toast({ title: "Planche supprimée" })
-            fetchData()
+            const res = await fetch(`/api/planches/${encodeURIComponent(row.nom)}`, { method: "DELETE" })
+            if (res.ok) {
+              toast({ title: "Planche supprimée" })
+              fetchData()
+            } else {
+              const p = await res.json().catch(() => null)
+              toast({ variant: "destructive", title: "Erreur", description: p?.error || "Impossible de supprimer la planche" })
+            }
           } catch {
             toast({ variant: "destructive", title: "Erreur" })
           }
@@ -404,9 +409,14 @@ function RotationsSubTab() {
           }
           if (!(await confirmDialog(`Supprimer "${row.id}" ?`))) return
           try {
-            await fetch(`/api/rotations/${encodeURIComponent(row.id)}`, { method: "DELETE" })
-            toast({ title: "Rotation supprimée" })
-            fetchData()
+            const res = await fetch(`/api/rotations/${encodeURIComponent(row.id)}`, { method: "DELETE" })
+            if (res.ok) {
+              toast({ title: "Rotation supprimée" })
+              fetchData()
+            } else {
+              const p = await res.json().catch(() => null)
+              toast({ variant: "destructive", title: "Erreur", description: p?.error || "Impossible de supprimer la rotation" })
+            }
           } catch {
             toast({ variant: "destructive", title: "Erreur" })
           }
@@ -569,9 +579,14 @@ function AssociationsSubTab() {
         onRowDelete={async (row) => {
           if (!(await confirmDialog(`Supprimer "${row.nom}" ?`))) return
           try {
-            await fetch(`/api/associations/${row.id}`, { method: "DELETE" })
-            toast({ title: "Association supprimée" })
-            fetchData()
+            const res = await fetch(`/api/associations/${row.id}`, { method: "DELETE" })
+            if (res.ok) {
+              toast({ title: "Association supprimée" })
+              fetchData()
+            } else {
+              const p = await res.json().catch(() => null)
+              toast({ variant: "destructive", title: "Erreur", description: p?.error || "Impossible de supprimer l'association" })
+            }
           } catch {
             toast({ variant: "destructive", title: "Erreur" })
           }
