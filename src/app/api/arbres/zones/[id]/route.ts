@@ -14,6 +14,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   try {
     const { id } = await params
     const zoneId = parseInt(id)
+    if (isNaN(zoneId)) {
+      return NextResponse.json({ error: "ID invalide" }, { status: 400 })
+    }
     const body = await request.json()
 
     // Vérifier que la zone appartient à l'utilisateur
@@ -53,6 +56,9 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   try {
     const { id } = await params
     const zoneId = parseInt(id)
+    if (isNaN(zoneId)) {
+      return NextResponse.json({ error: "ID invalide" }, { status: 400 })
+    }
 
     const existing = await prisma.zoneVerger.findFirst({
       where: { id: zoneId, userId: session!.user.id },

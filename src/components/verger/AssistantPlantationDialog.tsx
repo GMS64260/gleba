@@ -302,9 +302,11 @@ export function AssistantPlantationDialog({ open, onOpenChange, onSuccess, prefi
         setState((s) => ({ ...s, step: 6 }))
         onSuccess?.()
       } else {
-        const err = await res.json()
-        toast({ title: "Erreur", description: err.error || "Création impossible", variant: "destructive" })
+        const err = await res.json().catch(() => null)
+        toast({ title: "Erreur", description: err?.error || "Création impossible", variant: "destructive" })
       }
+    } catch {
+      toast({ title: "Erreur", description: "Erreur réseau lors de la création de la campagne", variant: "destructive" })
     } finally {
       setSubmitting(false)
     }
@@ -341,11 +343,16 @@ export function AssistantPlantationDialog({ open, onOpenChange, onSuccess, prefi
   }, [state.essenceId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-calcul densité par défaut quand on choisit le type
+  // Bug densité haie : le référentiel exprime les haies en plants/100m
+  // linéaires (100 m ≈ 0,01 ha) alors que le champ est en plants/ha →
+  // conversion ×100 à l'injection, sans toucher au fichier data partagé.
+  const facteurDensite = state.typeFormation === "haie" ? 100 : 1
   React.useEffect(() => {
     if (!state.typeFormation || state.densitePlantsParHa) return
     const def = DENSITES_DEFAUT[state.typeFormation as TypeFormation]
     if (def) {
-      const moyen = Math.round((def.min + def.max) / 2)
+      const facteur = state.typeFormation === "haie" ? 100 : 1
+      const moyen = Math.round(((def.min + def.max) / 2) * facteur)
       update({ densitePlantsParHa: moyen.toString() })
     }
   }, [state.typeFormation]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -757,7 +764,10 @@ export function AssistantPlantationDialog({ open, onOpenChange, onSuccess, prefi
                   />
                   {state.typeFormation && DENSITES_DEFAUT[state.typeFormation as TypeFormation] && (
                     <p className="text-xs text-muted-foreground mt-1">
-                      Recommandé : {DENSITES_DEFAUT[state.typeFormation as TypeFormation].min} - {DENSITES_DEFAUT[state.typeFormation as TypeFormation].max}
+                      Recommandé : {DENSITES_DEFAUT[state.typeFormation as TypeFormation].min * facteurDensite} - {DENSITES_DEFAUT[state.typeFormation as TypeFormation].max * facteurDensite} plants/ha
+                      {state.typeFormation === "haie" && (
+                        <> (soit {DENSITES_DEFAUT.haie.min} - {DENSITES_DEFAUT.haie.max} {DENSITES_DEFAUT.haie.unite})</>
+                      )}
                     </p>
                   )}
                 </div>

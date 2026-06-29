@@ -16,7 +16,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { User, LogOut, Shield, Settings, Megaphone } from "lucide-react"
+import { User, LogOut, Shield, Settings, Megaphone, Store } from "lucide-react"
 
 interface UserMenuProps {
   user: {
@@ -28,6 +28,8 @@ interface UserMenuProps {
 
 export function UserMenu({ user }: UserMenuProps) {
   const isAdmin = user.role === "ADMIN"
+  // Boutique en ligne : module proprietary, masqué dans la build open-source.
+  const featureBoutique = process.env.NEXT_PUBLIC_FEATURE_BOUTIQUE === "true"
 
   return (
     <DropdownMenu>
@@ -53,6 +55,15 @@ export function UserMenu({ user }: UserMenuProps) {
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+
+        {featureBoutique && (
+          <Link href="/boutique">
+            <DropdownMenuItem className="cursor-pointer">
+              <Store className="mr-2 h-4 w-4" />
+              Ma boutique
+            </DropdownMenuItem>
+          </Link>
+        )}
 
         <Link href="/communaute">
           <DropdownMenuItem className="cursor-pointer">

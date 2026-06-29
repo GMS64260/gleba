@@ -20,6 +20,7 @@ import {
 } from "date-fns"
 import { fr } from "date-fns/locale"
 import {
+  Apple,
   ChevronLeft,
   ChevronRight,
   Scissors,
@@ -73,6 +74,7 @@ const TYPE_CONFIG: Record<string, { icon: React.ElementType; color: string; bg: 
   greffe: { icon: GitMerge, color: "text-emerald-600", bg: "bg-emerald-100", label: "Greffe" },
   traitement: { icon: SprayCan, color: "text-red-500", bg: "bg-red-100", label: "Traitement" },
   fertilisation: { icon: Flower2, color: "text-amber-600", bg: "bg-amber-100", label: "Fertilisation" },
+  recolte: { icon: Apple, color: "text-green-600", bg: "bg-green-100", label: "Récolte" },
   autre: { icon: Wrench, color: "text-slate-600", bg: "bg-slate-100", label: "Autre" },
 }
 
@@ -98,12 +100,16 @@ export function VergerCalendarView({ year }: VergerCalendarViewProps) {
     setCurrentMonth((prev) => new Date(year, prev.getMonth(), 1))
   }, [year])
 
-  // Fetch operations for the year
+  // Fetch operations for the displayed year. On suit l'année du mois
+  // affiché (et pas seulement la prop `year`) : prev/next permet de
+  // naviguer vers déc. N-1 / janv. N+1, qui restaient vides faute de
+  // refetch.
+  const displayedYear = currentMonth.getFullYear()
   React.useEffect(() => {
     async function fetchOps() {
       setIsLoading(true)
       try {
-        const res = await fetch(`/api/arbres/operations?year=${year}`)
+        const res = await fetch(`/api/arbres/operations?year=${displayedYear}`)
         if (res.ok) {
           setOperations(await res.json())
         }
@@ -114,7 +120,7 @@ export function VergerCalendarView({ year }: VergerCalendarViewProps) {
       }
     }
     fetchOps()
-  }, [year])
+  }, [displayedYear])
 
   const prevMonth = () => setCurrentMonth(subMonths(currentMonth, 1))
   const nextMonth = () => setCurrentMonth(addMonths(currentMonth, 1))

@@ -29,6 +29,9 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (error) return error
   const { id } = await params
   const campagneId = parseInt(id, 10)
+  if (isNaN(campagneId)) {
+    return NextResponse.json({ error: "ID invalide" }, { status: 400 })
+  }
 
   try {
     const body = await request.json()

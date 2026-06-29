@@ -123,6 +123,3 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({ data: out, count: out.length, type })
 }
-
-// Export des objets statiques pour usage interne éventuel.
-export { ESSENCES_FORESTIERES }

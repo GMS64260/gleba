@@ -14,6 +14,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   try {
     const { id } = await params
     const obsId = parseInt(id)
+    if (isNaN(obsId)) {
+      return NextResponse.json({ error: "ID invalide" }, { status: 400 })
+    }
     const body = await request.json()
 
     const existing = await prisma.observationSante.findFirst({
@@ -24,6 +27,22 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const data: Record<string, unknown> = {}
+    // Le dialog d'édition envoie aussi date et arbreId : sans ces deux blocs,
+    // leurs modifications étaient silencieusement perdues.
+    if (body.date) data.date = new Date(body.date)
+    if (body.arbreId !== undefined && body.arbreId) {
+      const newArbreId = parseInt(body.arbreId)
+      if (isNaN(newArbreId)) {
+        return NextResponse.json({ error: "Arbre invalide" }, { status: 400 })
+      }
+      const arbre = await prisma.arbre.findFirst({
+        where: { id: newArbreId, userId: session!.user.id },
+      })
+      if (!arbre) {
+        return NextResponse.json({ error: "Arbre non trouvé" }, { status: 404 })
+      }
+      data.arbreId = newArbreId
+    }
     if (body.type !== undefined) data.type = body.type
     if (body.symptome !== undefined) data.symptome = body.symptome
     if (body.diagnostic !== undefined) data.diagnostic = body.diagnostic
@@ -54,7 +73,19 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (body.zntRespectee !== undefined) data.zntRespectee = body.zntRespectee == null ? null : Boolean(body.zntRespectee)
     if (body.zntDistanceM !== undefined) data.zntDistanceM = body.zntDistanceM == null ? null : parseInt(body.zntDistanceM)
     if (body.parcelleId !== undefined) data.parcelleId = body.parcelleId || null
-    if (body.operateurId !== undefined) data.operateurId = body.operateurId || null
+    if (body.operateurId !== undefined) {
+      // FK vers User : ignorer toute valeur qui n'y correspond pas
+      // (le front a historiquement envoyé du texte libre).
+      if (body.operateurId) {
+        const op = await prisma.user.findUnique({
+          where: { id: String(body.operateurId) },
+          select: { id: true },
+        })
+        data.operateurId = op?.id ?? null
+      } else {
+        data.operateurId = null
+      }
+    }
     if (body.certiphytoNum !== undefined) data.certiphytoNum = body.certiphytoNum || null
     if (body.resolu !== undefined) {
       data.resolu = body.resolu
@@ -133,6 +164,9 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   try {
     const { id } = await params
     const obsId = parseInt(id)
+    if (isNaN(obsId)) {
+      return NextResponse.json({ error: "ID invalide" }, { status: 400 })
+    }
 
     const existing = await prisma.observationSante.findFirst({
       where: { id: obsId, userId: session!.user.id },

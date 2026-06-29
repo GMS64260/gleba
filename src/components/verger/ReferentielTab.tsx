@@ -479,7 +479,19 @@ function EspecesReferentiel() {
                   </div>
                   <div>
                     <p className="text-muted-foreground text-xs">Rendement</p>
-                    <p className="font-medium">{detail.rendement ? `${detail.rendement} kg/m²` : "-"}</p>
+                    {/* Même logique d'unité que la colonne du tableau (V2 Bug 5) :
+                        les arbres sont en kg/arbre, pas en kg/m². */}
+                    <p className="font-medium">
+                      {detail.rendement
+                        ? `${detail.rendement} ${
+                            ((detail as { uniteRendement?: string }).uniteRendement ?? "kg_m2") === "kg_arbre"
+                              ? "kg/arbre"
+                              : ((detail as { uniteRendement?: string }).uniteRendement ?? "kg_m2") === "biomasse_t_ha"
+                                ? "t/ha"
+                                : "kg/m²"
+                          }`
+                        : "-"}
+                    </p>
                   </div>
                   <div>
                     <p className="text-muted-foreground text-xs">Besoin eau</p>

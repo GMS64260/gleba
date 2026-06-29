@@ -37,6 +37,7 @@
   ],
   "exclude": [
     "node_modules",
+    "mcp-server",
     "prisma/import-potaleger.ts",
     "src/**/__tests__/**",
     "vitest.config.ts"

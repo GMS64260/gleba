@@ -37,12 +37,24 @@ export async function GET(request: NextRequest) {
   if (onglet === "especes") {
     const data = await prisma.espece.findMany({
       where: { type: { in: ["arbre_fruitier", "petit_fruit"] } },
-      select: { id: true, type: true, familleId: true, nomLatin: true, rendement: true, besoinEau: true, vivace: true },
+      select: { id: true, type: true, familleId: true, nomLatin: true, rendement: true, uniteRendement: true, besoinEau: true, vivace: true },
       orderBy: { id: "asc" },
     })
+    // Unité par ligne : les arbres sont en kg/arbre, pas en kg/m² (V2 Bug 5).
+    const uniteLabel = (u: string | null) =>
+      u === "kg_arbre" ? "kg/arbre" : u === "biomasse_t_ha" ? "t/ha" : "kg/m²"
     csv = toCsv(
-      ["Espèce", "Type", "Famille", "Nom latin", "Rendement (kg/m²)", "Besoin eau (1-5)", "Vivace"],
-      data.map((e) => [e.id, e.type, e.familleId ?? "", e.nomLatin ?? "", e.rendement ?? "", e.besoinEau ?? "", e.vivace ? "Oui" : "Non"])
+      ["Espèce", "Type", "Famille", "Nom latin", "Rendement", "Unité rendement", "Besoin eau (1-5)", "Vivace"],
+      data.map((e) => [
+        e.id,
+        e.type,
+        e.familleId ?? "",
+        e.nomLatin ?? "",
+        e.rendement ?? "",
+        e.rendement != null ? uniteLabel(e.uniteRendement) : "",
+        e.besoinEau ?? "",
+        e.vivace ? "Oui" : "Non",
+      ])
     )
     filename = "referentiel-especes-verger.csv"
   } else if (onglet === "porte-greffes") {

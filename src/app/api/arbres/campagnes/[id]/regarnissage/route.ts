@@ -20,72 +20,83 @@ export async function POST(_request: NextRequest, { params }: Params) {
   if (error) return error
   const { id } = await params
   const campagneId = parseInt(id, 10)
-
-  const mere = await prisma.campagnePlantation.findFirst({
-    where: { id: campagneId, userId: session.user.id },
-  })
-  if (!mere) return NextResponse.json({ error: "Cohorte introuvable" }, { status: 404 })
-  if (!mere.nombrePlants) {
-    return NextResponse.json({ error: "Nombre de plants initial inconnu" }, { status: 400 })
+  if (isNaN(campagneId)) {
+    return NextResponse.json({ error: "ID invalide" }, { status: 400 })
   }
 
-  // Nombre de plants à recommander = différence entre initial et dernier observé
-  const dernier = mere.nbPlantsRepriseAn3 ?? mere.nbPlantsRepriseAn2 ?? mere.nbPlantsRepriseAn1 ?? mere.nombrePlants
-  const manquants = Math.max(0, mere.nombrePlants - dernier)
+  try {
+    const mere = await prisma.campagnePlantation.findFirst({
+      where: { id: campagneId, userId: session.user.id },
+    })
+    if (!mere) return NextResponse.json({ error: "Cohorte introuvable" }, { status: 404 })
+    if (!mere.nombrePlants) {
+      return NextResponse.json({ error: "Nombre de plants initial inconnu" }, { status: 400 })
+    }
 
-  // POSTREVIEW Sprint 7 — Refus si manquants = 0 (taux reprise ≥ 100 % ou pas
-  // d'observation). Avant : créait une campagne fantôme à 0 plants.
-  if (manquants === 0) {
-    return NextResponse.json(
-      {
-        error: "Aucun regarnissage nécessaire",
-        details: `Taux de reprise actuel : ${mere.tauxReprise ?? "—"} %. Aucun plant manquant.`,
+    // Nombre de plants à recommander = différence entre initial et dernier observé
+    const dernier = mere.nbPlantsRepriseAn3 ?? mere.nbPlantsRepriseAn2 ?? mere.nbPlantsRepriseAn1 ?? mere.nombrePlants
+    const manquants = Math.max(0, mere.nombrePlants - dernier)
+
+    // POSTREVIEW Sprint 7 — Refus si manquants = 0 (taux reprise ≥ 100 % ou pas
+    // d'observation). Avant : créait une campagne fantôme à 0 plants.
+    if (manquants === 0) {
+      return NextResponse.json(
+        {
+          error: "Aucun regarnissage nécessaire",
+          details: `Taux de reprise actuel : ${mere.tauxReprise ?? "—"} %. Aucun plant manquant.`,
+        },
+        { status: 400 }
+      )
+    }
+
+    const nouvelle = await prisma.campagnePlantation.create({
+      data: {
+        userId: session.user.id,
+        nom: `Regarnissage ${mere.nom}`,
+        typeFormation: mere.typeFormation,
+        nature: "regarnissage",
+        cause: "echec_plantation",
+        peuplementPrecedent: mere.peuplementPrecedent,
+        essencePrecedente: mere.essencePrecedente,
+        porteGreffeId: mere.porteGreffeId,
+        typePlant: mere.typePlant,
+        conduite: mere.conduite,
+        labelProvenance: mere.labelProvenance,
+        parcelleGeoId: mere.parcelleGeoId,
+        zoneVergerId: mere.zoneVergerId,
+        surfaceHa: mere.surfaceHa,
+        especeId: mere.especeId,
+        essenceLibre: mere.essenceLibre,
+        varieteOuProvenance: mere.varieteOuProvenance,
+        nombrePlants: manquants,
+        densitePlantsParHa: mere.densitePlantsParHa,
+        ecartementRang: mere.ecartementRang,
+        ecartementPlant: mere.ecartementPlant,
+        pepiniere: mere.pepiniere,
+        prixUnitaire: mere.prixUnitaire,
+        budgetPrevu: manquants && mere.prixUnitaire ? manquants * mere.prixUnitaire : null,
+        protectionType: mere.protectionType,
+        objectifs: mere.objectifs,
+        notes: `Brouillon généré automatiquement depuis "${mere.nom}" (taux de reprise ${
+          mere.tauxReprise ?? "?"
+        } %, manquants ${manquants}).`,
+        statut: "planifiee",
+        campagneMereId: mere.id,
       },
-      { status: 400 }
+    })
+
+    // Marque la mère comme regarnissage planifié
+    await prisma.campagnePlantation.update({
+      where: { id: mere.id },
+      data: { regarnissagePlanifie: true },
+    })
+
+    return NextResponse.json({ data: nouvelle }, { status: 201 })
+  } catch (err) {
+    console.error("POST /api/arbres/campagnes/[id]/regarnissage error:", err)
+    return NextResponse.json(
+      { error: "Erreur lors de la génération du regarnissage" },
+      { status: 500 }
     )
   }
-
-  const nouvelle = await prisma.campagnePlantation.create({
-    data: {
-      userId: session.user.id,
-      nom: `Regarnissage ${mere.nom}`,
-      typeFormation: mere.typeFormation,
-      nature: "regarnissage",
-      cause: "echec_plantation",
-      peuplementPrecedent: mere.peuplementPrecedent,
-      essencePrecedente: mere.essencePrecedente,
-      porteGreffeId: mere.porteGreffeId,
-      typePlant: mere.typePlant,
-      conduite: mere.conduite,
-      labelProvenance: mere.labelProvenance,
-      parcelleGeoId: mere.parcelleGeoId,
-      zoneVergerId: mere.zoneVergerId,
-      surfaceHa: mere.surfaceHa,
-      especeId: mere.especeId,
-      essenceLibre: mere.essenceLibre,
-      varieteOuProvenance: mere.varieteOuProvenance,
-      nombrePlants: manquants,
-      densitePlantsParHa: mere.densitePlantsParHa,
-      ecartementRang: mere.ecartementRang,
-      ecartementPlant: mere.ecartementPlant,
-      pepiniere: mere.pepiniere,
-      prixUnitaire: mere.prixUnitaire,
-      budgetPrevu: manquants && mere.prixUnitaire ? manquants * mere.prixUnitaire : null,
-      protectionType: mere.protectionType,
-      objectifs: mere.objectifs,
-      notes: `Brouillon généré automatiquement depuis "${mere.nom}" (taux de reprise ${
-        mere.tauxReprise ?? "?"
-      } %, manquants ${manquants}).`,
-      statut: "planifiee",
-      campagneMereId: mere.id,
-    },
-  })
-
-  // Marque la mère comme regarnissage planifié
-  await prisma.campagnePlantation.update({
-    where: { id: mere.id },
-    data: { regarnissagePlanifie: true },
-  })
-
-  return NextResponse.json({ data: nouvelle }, { status: 201 })
 }

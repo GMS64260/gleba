@@ -442,6 +442,10 @@ export function generateCareOperations(
     if (op.type === "recolte") {
       if (tardiveMois && tardiveMois >= op.moisDebut && tardiveMois <= op.moisFin + 1) {
         moisCible = tardiveMois
+      } else if (op.moisDebut > op.moisFin) {
+        // Fenêtre à cheval sur l'année (ex. agrumes nov → mars) : milieu
+        // calculé modulo 12, sinon (11+3)/2 = juillet.
+        moisCible = ((Math.floor((op.moisDebut + op.moisFin + 12) / 2) - 1) % 12) + 1
       } else {
         // Milieu de la fenêtre de récolte plutôt que le tout début
         moisCible = Math.floor((op.moisDebut + op.moisFin) / 2)

@@ -42,7 +42,13 @@ export async function GET(request: NextRequest) {
     if (type && type !== 'all') where.type = type
     if (zone && zone !== 'all') {
       if (zone === 'none') where.zoneId = null
-      else where.zoneId = parseInt(zone)
+      else {
+        const zoneId = parseInt(zone)
+        if (isNaN(zoneId)) {
+          return NextResponse.json({ error: "Paramètre zone invalide" }, { status: 400 })
+        }
+        where.zoneId = zoneId
+      }
     }
     if (etat && etat !== 'all') where.etat = etat
     if (productif === 'true') where.productif = true
@@ -102,6 +108,27 @@ export async function POST(request: NextRequest) {
         { error: "La date de plantation est requise" },
         { status: 400 }
       )
+    }
+
+    // Isolation multi-tenant : la zone / parcelle référencée doit appartenir à l'utilisateur
+    if (body.zoneId) {
+      const zoneId = parseInt(body.zoneId)
+      const zone = isNaN(zoneId)
+        ? null
+        : await prisma.zoneVerger.findFirst({
+            where: { id: zoneId, userId: session!.user.id },
+          })
+      if (!zone) {
+        return NextResponse.json({ error: "Zone non trouvée" }, { status: 404 })
+      }
+    }
+    if (body.parcelleGeoId) {
+      const parcelle = await prisma.parcelleGeo.findFirst({
+        where: { id: body.parcelleGeoId, userId: session!.user.id },
+      })
+      if (!parcelle) {
+        return NextResponse.json({ error: "Parcelle non trouvée" }, { status: 404 })
+      }
     }
 
     const arbre = await prisma.arbre.create({

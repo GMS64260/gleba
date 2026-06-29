@@ -85,6 +85,27 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
     const body = await request.json()
 
+    // Isolation multi-tenant : la zone / parcelle référencée doit appartenir à l'utilisateur
+    if (body.zoneId) {
+      const zoneId = parseInt(body.zoneId)
+      const zone = isNaN(zoneId)
+        ? null
+        : await prisma.zoneVerger.findFirst({
+            where: { id: zoneId, userId: session!.user.id },
+          })
+      if (!zone) {
+        return NextResponse.json({ error: "Zone non trouvée" }, { status: 404 })
+      }
+    }
+    if (body.parcelleGeoId) {
+      const parcelle = await prisma.parcelleGeo.findFirst({
+        where: { id: body.parcelleGeoId, userId: session!.user.id },
+      })
+      if (!parcelle) {
+        return NextResponse.json({ error: "Parcelle non trouvée" }, { status: 404 })
+      }
+    }
+
     const arbre = await prisma.arbre.update({
       where: { id: arbreId },
       data: {
@@ -106,9 +127,11 @@ export async function PUT(request: NextRequest, { params }: Params) {
           ? (body.gpsLng != null ? parseFloat(body.gpsLng) : null)
           : undefined,
         fournisseur: body.fournisseur,
-        dateAchat: body.dateAchat ? new Date(body.dateAchat) : null,
-        prixAchat: body.prixAchat != null ? parseFloat(body.prixAchat) : null,
-        datePlantation: body.datePlantation ? new Date(body.datePlantation) : null,
+        dateAchat: body.dateAchat !== undefined ? (body.dateAchat ? new Date(body.dateAchat) : null) : undefined,
+        prixAchat: body.prixAchat !== undefined
+          ? (body.prixAchat != null && body.prixAchat !== "" ? parseFloat(body.prixAchat) : null)
+          : undefined,
+        datePlantation: body.datePlantation !== undefined ? (body.datePlantation ? new Date(body.datePlantation) : null) : undefined,
         age: body.age,
         posX: body.posX,
         posY: body.posY,
@@ -119,8 +142,12 @@ export async function PUT(request: NextRequest, { params }: Params) {
         couleur: body.couleur,
         notes: body.notes,
         productif: body.productif !== undefined ? body.productif : undefined,
-        anneeProduction: body.anneeProduction ? parseInt(body.anneeProduction) : undefined,
-        rendementMoyen: body.rendementMoyen ? parseFloat(body.rendementMoyen) : undefined,
+        anneeProduction: body.anneeProduction !== undefined
+          ? (body.anneeProduction != null && body.anneeProduction !== "" ? parseInt(body.anneeProduction) : null)
+          : undefined,
+        rendementMoyen: body.rendementMoyen !== undefined
+          ? (body.rendementMoyen != null && body.rendementMoyen !== "" ? parseFloat(body.rendementMoyen) : null)
+          : undefined,
         especeId: body.especeId || undefined,
         // Champs verger enrichis
         formeTaille: body.formeTaille !== undefined ? (body.formeTaille || null) : undefined,

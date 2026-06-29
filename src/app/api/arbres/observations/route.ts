@@ -99,6 +99,15 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    let operateurId: string | null = null
+    if (body.operateurId) {
+      const op = await prisma.user.findUnique({
+        where: { id: String(body.operateurId) },
+        select: { id: true },
+      })
+      operateurId = op?.id ?? null
+    }
+
     const observation = await prisma.observationSante.create({
       data: {
         userId: session!.user.id,
@@ -136,7 +145,9 @@ export async function POST(request: NextRequest) {
         zntRespectee: body.zntRespectee != null ? Boolean(body.zntRespectee) : null,
         zntDistanceM: body.zntDistanceM != null ? parseInt(body.zntDistanceM) : null,
         parcelleId: body.parcelleId || null,
-        operateurId: body.operateurId || null,
+        // `operateurId` est une FK vers User : toute autre valeur (le front a
+        // historiquement envoyé du texte libre) provoquerait une violation FK.
+        operateurId: operateurId,
         certiphytoNum: body.certiphytoNum || null,
       },
       include: {

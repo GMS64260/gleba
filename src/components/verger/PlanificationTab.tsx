@@ -94,8 +94,11 @@ interface PlanificationTabProps {
 }
 
 export function PlanificationTab({ year }: PlanificationTabProps) {
+  // Contrôlé : la carte « Besoins irrigation » du hub renvoie vers le
+  // sous-onglet Zones (où se saisit l'irrigation par zone).
+  const [subTab, setSubTab] = React.useState("planification")
   return (
-    <Tabs defaultValue="planification" className="space-y-4">
+    <Tabs value={subTab} onValueChange={setSubTab} className="space-y-4">
       <TabsList>
         <TabsTrigger value="planification" className="flex items-center gap-1.5">
           <TreeDeciduous className="h-4 w-4" />
@@ -112,7 +115,7 @@ export function PlanificationTab({ year }: PlanificationTabProps) {
       </TabsList>
 
       <TabsContent value="planification">
-        <PlanificationHubSubTab year={year} />
+        <PlanificationHubSubTab year={year} onGoToZones={() => setSubTab("zones")} />
       </TabsContent>
       <TabsContent value="zones">
         <ZonesSubTab />
@@ -128,7 +131,7 @@ export function PlanificationTab({ year }: PlanificationTabProps) {
 // Planification Hub
 // ============================================================
 
-function PlanificationHubSubTab({ year }: { year: number }) {
+function PlanificationHubSubTab({ year, onGoToZones }: { year: number; onGoToZones: () => void }) {
   const [stats, setStats] = React.useState<PlanificationStats | null>(null)
   const [loading, setLoading] = React.useState(true)
 
@@ -156,7 +159,15 @@ function PlanificationHubSubTab({ year }: { year: number }) {
     fetchStats()
   }, [year])
 
-  const actionCards = [
+  const actionCards: Array<{
+    title: string
+    description: string
+    icon: React.ElementType
+    color: string
+    bg: string
+    href?: string
+    onClick?: () => void
+  }> = [
     {
       title: "Calendrier de taille",
       description: "Planifier les tailles par espèce et saison",
@@ -187,7 +198,8 @@ function PlanificationHubSubTab({ year }: { year: number }) {
       icon: Droplets,
       color: "text-blue-600",
       bg: "bg-blue-50 border-blue-200",
-      href: `/verger?tab=planification`,
+      // L'irrigation se gère dans le sous-onglet Zones (pas d'URL dédiée).
+      onClick: onGoToZones,
     },
     {
       title: "Matrice pollinisation",
@@ -265,8 +277,8 @@ function PlanificationHubSubTab({ year }: { year: number }) {
 
       {/* Action Cards */}
       <div className="grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-        {actionCards.map((card) => (
-          <Link key={card.title} href={card.href}>
+        {actionCards.map((card) => {
+          const content = (
             <Card className={`hover:shadow-md transition-shadow cursor-pointer ${card.bg}`}>
               <CardContent className="pt-4 pb-4">
                 <div className="flex items-start justify-between">
@@ -281,8 +293,17 @@ function PlanificationHubSubTab({ year }: { year: number }) {
                 </div>
               </CardContent>
             </Card>
-          </Link>
-        ))}
+          )
+          return card.href ? (
+            <Link key={card.title} href={card.href}>
+              {content}
+            </Link>
+          ) : (
+            <button key={card.title} type="button" onClick={card.onClick} className="text-left">
+              {content}
+            </button>
+          )
+        })}
       </div>
     </div>
   )

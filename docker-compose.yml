@@ -8,7 +8,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gleba}
       POSTGRES_DB: ${POSTGRES_DB:-gleba}
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -47,7 +47,7 @@ services:
       # 00h30 (heure de Paris) tombait dans l'exercice précédent.
       TZ: ${TZ:-Europe/Paris}
     ports:
-      - "${APP_PORT:-3000}:3000"
+      - "127.0.0.1:${APP_PORT:-3000}:3000"
     depends_on:
       db:
         condition: service_healthy

@@ -65,11 +65,17 @@ export async function POST(request: NextRequest, { params }: Params) {
   const nbManquants = body.nbManquants ? parseInt(body.nbManquants) : null
 
   if (tauxReprise === null && nbVivants !== null) {
-    const total = (nbVivants || 0) + (nbMorts || 0) + (nbManquants || 0)
-    if (total > 0) {
-      tauxReprise = Math.round((nbVivants / total) * 1000) / 10
-    } else if (campagne.nombrePlants && campagne.nombrePlants > 0) {
-      tauxReprise = Math.round((nbVivants / campagne.nombrePlants) * 1000) / 10
+    if (nbMorts === null && nbManquants === null) {
+      // Seul nbVivants est saisi (cas du formulaire standard) : se baser sur
+      // le nombre de plants de la campagne, sinon vivants/vivants = 100 %.
+      if (campagne.nombrePlants && campagne.nombrePlants > 0) {
+        tauxReprise = Math.round((nbVivants / campagne.nombrePlants) * 1000) / 10
+      }
+    } else {
+      const total = nbVivants + (nbMorts || 0) + (nbManquants || 0)
+      if (total > 0) {
+        tauxReprise = Math.round((nbVivants / total) * 1000) / 10
+      }
     }
   }
 

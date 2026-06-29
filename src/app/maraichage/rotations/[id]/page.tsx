@@ -179,10 +179,18 @@ export default function EditRotationPage() {
   const onSubmit = async (data: UpdateRotationInput) => {
     setIsSubmitting(true)
     try {
+      // Une rotation au plan incomplet ne peut pas rester active : on normalise
+      // avant l'envoi pour éviter un état "active + plan vide" incohérent.
+      const details = data.details ?? []
+      const planComplet = details.length > 0 && details.some((d) => d.itpId)
+      const cycleCoherent = !data.nbAnnees || data.nbAnnees === details.length
+      const peutActiver = planComplet && cycleCoherent
+      const payload = { ...data, active: data.active && peutActiver }
+
       const response = await fetch(`/api/rotations/${encodeURIComponent(id)}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify(payload),
       })
 
       if (!response.ok) {
@@ -334,7 +342,9 @@ export default function EditRotationPage() {
                         </div>
                         <FormControl>
                           <Switch
-                            checked={field.value}
+                            // Plan incomplet → toggle forcé OFF et grisé, cohérent
+                            // avec le message "impossible d'activer cette rotation".
+                            checked={field.value && peutActiver}
                             onCheckedChange={(checked) => {
                               if (checked && !peutActiver) {
                                 toast({
@@ -347,7 +357,7 @@ export default function EditRotationPage() {
                               }
                               field.onChange(checked)
                             }}
-                            disabled={!peutActiver && !field.value}
+                            disabled={!peutActiver}
                           />
                         </FormControl>
                       </FormItem>

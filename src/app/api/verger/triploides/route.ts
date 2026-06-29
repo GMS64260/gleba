@@ -18,6 +18,7 @@ import {
   distanceMetres,
   DISTANCE_MAX_POLLINISATION_M,
 } from "@/lib/pollinisation"
+import { normalizeVarieteName } from "@/lib/normalize"
 
 export async function GET(_request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -41,28 +42,33 @@ export async function GET(_request: NextRequest) {
 
   // Hydrater chaque variété via la table Variete (par nomNormalise approximatif)
   // Pour rester simple, on indexe en mémoire par nom normalisé en lowercase.
+  // `nomNormalise` est désaccentué et sans tirets : il faut requêter et
+  // indexer avec la même normalisation (normalizeVarieteName), sinon les
+  // variétés accentuées ou à tirets ne matchent jamais.
   const noms = Array.from(new Set(arbres.map((a) => a.variete).filter(Boolean) as string[]))
   const varietes = noms.length
     ? await prisma.variete.findMany({
-        where: { nomNormalise: { in: noms.map((n) => n.toLowerCase()), mode: "insensitive" } },
+        where: { nomNormalise: { in: noms.map((n) => normalizeVarieteName(n)) } },
         select: { nomNormalise: true, ploidie: true, groupePollinisation: true },
       })
     : []
-  const idxVar = new Map(varietes.map((v) => [v.nomNormalise.toLowerCase(), v]))
+  const idxVar = new Map(varietes.map((v) => [v.nomNormalise, v]))
 
   // Enrichir chaque arbre avec ploidie/groupe
   type EnrichedArbre = (typeof arbres)[number] & { ploidie: string | null; groupePollinisation: string | null }
   const enriched: EnrichedArbre[] = arbres.map((a) => {
-    const v = a.variete ? idxVar.get(a.variete.toLowerCase()) : undefined
+    const v = a.variete ? idxVar.get(normalizeVarieteName(a.variete)) : undefined
     return { ...a, ploidie: v?.ploidie ?? null, groupePollinisation: v?.groupePollinisation ?? null }
   })
 
   const alertes = enriched
     .filter((a) => isTriploide({ nomNormalise: a.variete, ploidie: a.ploidie }))
     .map((arbre) => {
-      // Voisins : GPS < 30 m OU même zone si pas de GPS
+      // Voisins : même espèce uniquement (un cerisier ne pollinise pas un
+      // pommier), puis GPS < 30 m OU même zone si pas de GPS
       const voisins = enriched
         .filter((v) => v.id !== arbre.id)
+        .filter((v) => v.espece && arbre.espece && v.espece === arbre.espece)
         .filter((v) => {
           if (arbre.gpsLat != null && v.gpsLat != null) {
             return distanceMetres(
