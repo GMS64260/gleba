@@ -130,11 +130,27 @@ export async function GET(_request: NextRequest, { params }: Params) {
     doc.fontSize(11).fillColor("#0f172a").font("Helvetica-Bold").text("Taux de reprise observés", 40, y)
     y += 18
 
-    const reprises = [
-      ["N+1", campagne.nbPlantsRepriseAn1, campagne.tauxRepriseAn1],
-      ["N+2", campagne.nbPlantsRepriseAn2, campagne.tauxRepriseAn2],
-      ["N+3", campagne.nbPlantsRepriseAn3, campagne.tauxRepriseAn3],
-    ] as const
+    // Audit #13 : les colonnes agrégées nbPlantsRepriseAnX/tauxRepriseAnX ne
+    // sont pas peuplées (les observations vivent dans ObservationCampagne) →
+    // le PDF affichait toujours « non observé ». On dérive N+1/N+2/N+3 depuis
+    // les observations, par décalage d'année depuis la plantation (dernière
+    // observation de chaque année gagne, observations triées par date asc).
+    const plantationDate = campagne.datePlantationReelle || campagne.datePlantationPrevue
+    const derive: Record<number, { nb: number | null; taux: number | null }> = {}
+    if (plantationDate) {
+      const p = new Date(plantationDate).getTime()
+      for (const obs of campagne.observations) {
+        const offset = Math.round((new Date(obs.date).getTime() - p) / (365.25 * 86400000))
+        if (offset >= 1 && offset <= 3) {
+          derive[offset] = { nb: obs.nbVivants ?? null, taux: obs.tauxReprise ?? null }
+        }
+      }
+    }
+    const reprises: Array<[string, number | null, number | null]> = [
+      ["N+1", campagne.nbPlantsRepriseAn1 ?? derive[1]?.nb ?? null, campagne.tauxRepriseAn1 ?? derive[1]?.taux ?? null],
+      ["N+2", campagne.nbPlantsRepriseAn2 ?? derive[2]?.nb ?? null, campagne.tauxRepriseAn2 ?? derive[2]?.taux ?? null],
+      ["N+3", campagne.nbPlantsRepriseAn3 ?? derive[3]?.nb ?? null, campagne.tauxRepriseAn3 ?? derive[3]?.taux ?? null],
+    ]
 
     doc.fontSize(10).fillColor("#0f172a").font("Helvetica")
     for (const [annee, nb, taux] of reprises) {
