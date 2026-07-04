@@ -73,7 +73,10 @@ export async function GET(request: NextRequest) {
       }),
       prisma.culture.findMany({
         where: {
-          userId, annee,
+          // Audit #49 : pas de filtre `annee` sur les tâches EN RETARD — un
+          // retard reste un retard quelle que soit l'année (sinon les retards
+          // de l'année précédente étaient invisibles).
+          userId,
           semisFait: false,
           plantationFaite: false,
           recolteFaite: false,
@@ -94,7 +97,10 @@ export async function GET(request: NextRequest) {
       }),
       prisma.culture.findMany({
         where: {
-          userId, annee,
+          // Audit #49 : pas de filtre `annee` sur les tâches EN RETARD — un
+          // retard reste un retard quelle que soit l'année (sinon les retards
+          // de l'année précédente étaient invisibles).
+          userId,
           plantationFaite: false,
           recolteFaite: false,
           terminee: null,
@@ -114,7 +120,10 @@ export async function GET(request: NextRequest) {
       }),
       prisma.culture.findMany({
         where: {
-          userId, annee,
+          // Audit #49 : pas de filtre `annee` sur les tâches EN RETARD — un
+          // retard reste un retard quelle que soit l'année (sinon les retards
+          // de l'année précédente étaient invisibles).
+          userId,
           recolteFaite: false,
           terminee: null,
           dateRecolte: { lt: start, not: null },

@@ -173,7 +173,7 @@ export async function createSampleDataForUser(userId: string): Promise<void> {
       userId,
       especeId: "Tomate",
       cultureId: culture3.id,
-      date: new Date(currentYear, 6, 15), // 15 juillet
+      date: new Date(Date.now() - 21 * 86400000), // ~3 semaines avant (audit #50 : plus de date future)
       quantite: 5.5,
       notes: "Premières tomates de la saison",
     },
@@ -184,7 +184,7 @@ export async function createSampleDataForUser(userId: string): Promise<void> {
       userId,
       especeId: "Tomate",
       cultureId: culture3.id,
-      date: new Date(currentYear, 7, 1), // 1 août
+      date: new Date(Date.now() - 10 * 86400000), // ~10 jours avant (audit #50)
       quantite: 12.3,
       notes: "Belle récolte",
     },
@@ -195,7 +195,7 @@ export async function createSampleDataForUser(userId: string): Promise<void> {
       userId,
       especeId: "Courgette",
       cultureId: culture4.id,
-      date: new Date(currentYear, 6, 20), // 20 juillet
+      date: new Date(Date.now() - 14 * 86400000), // ~2 semaines avant (audit #50)
       quantite: 8.7,
       notes: "Courgettes bien développées",
     },
