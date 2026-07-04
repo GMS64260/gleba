@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
     const startOfYear = new Date(annee, 0, 1)
     const endOfYear = new Date(annee, 11, 31, 23, 59, 59)
 
-    const [animaux, naissances, soins, lots] = await Promise.all([
+    const [animaux, naissances, soins, lots, lotsReformes, abattages] = await Promise.all([
       // Tous les animaux avec mouvements dans l'annee
       prisma.animal.findMany({
         where: {
@@ -91,6 +91,33 @@ export async function GET(request: NextRequest) {
         },
         orderBy: { dateArrivee: 'asc' },
       }),
+
+      // Lots réformés dans l'année — sorties omises auparavant (audit #40)
+      prisma.lotAnimaux.findMany({
+        where: {
+          userId,
+          dateReforme: { gte: startOfYear, lte: endOfYear },
+        },
+        include: {
+          especeAnimale: { select: { nom: true } },
+        },
+        orderBy: { dateReforme: 'asc' },
+      }),
+
+      // Abattages de l'année (individuels ou par lot) — sorties omises
+      // auparavant (audit #40). On exclut les abattages annulés.
+      prisma.abattage.findMany({
+        where: {
+          userId,
+          dateAnnulation: null,
+          date: { gte: startOfYear, lte: endOfYear },
+        },
+        include: {
+          animal: { select: { nom: true, identifiant: true, especeAnimale: { select: { nom: true } } } },
+          lot: { select: { nom: true, especeAnimale: { select: { nom: true } } } },
+        },
+        orderBy: { date: 'asc' },
+      }),
     ])
 
     // Construire les entrees du registre chronologiquement
@@ -135,6 +162,36 @@ export async function GET(request: NextRequest) {
           lot: l.nom || `Lot #${l.id}`,
         })
       }
+    })
+
+    // Sorties par lot réformé
+    lotsReformes.forEach(l => {
+      if (l.dateReforme) {
+        entries.push({
+          date: l.dateReforme.toISOString(),
+          type: 'sortie',
+          animal: l.nom || `Lot #${l.id}`,
+          espece: l.especeAnimale.nom,
+          identifiant: `Lot ${l.quantiteActuelle} tetes`,
+          detail: `Réforme du lot (${l.quantiteActuelle} tête${l.quantiteActuelle > 1 ? 's' : ''})`,
+          lot: l.nom || `Lot #${l.id}`,
+        })
+      }
+    })
+
+    // Abattages (sorties)
+    abattages.forEach(ab => {
+      const espece = ab.animal?.especeAnimale?.nom || ab.lot?.especeAnimale?.nom || '-'
+      const nom = ab.animal?.nom || ab.animal?.identifiant || ab.lot?.nom || 'animal'
+      entries.push({
+        date: ab.date.toISOString(),
+        type: 'sortie',
+        animal: nom,
+        espece,
+        identifiant: ab.animal?.identifiant || (ab.lot ? `Lot (${ab.quantite} tête${ab.quantite > 1 ? 's' : ''})` : '-'),
+        detail: `Abattage${ab.quantite > 1 ? ` (${ab.quantite} têtes)` : ''} - ${ab.destination}${ab.poidsCarcasse ? ` - ${ab.poidsCarcasse} kg carcasse` : ''}`,
+        lot: ab.lot?.nom || '-',
+      })
     })
 
     // Naissances
