@@ -193,7 +193,13 @@ export function genererFec(input: {
   ventes: FecInputVente[]
   depenses: FecInputDepense[]
   factures: FecInputFacture[]
+  // Exploitation hors champ TVA française (franchise 293B, non-assujetti,
+  // TGC) : aucune ligne de TVA ne doit apparaître au FEC et le HT = TTC.
+  // Sans ce gate, les écritures auto/manuelles (tauxTVA 5,5/20 par défaut)
+  // injectaient une TVA fantôme contredisant le régime (audit 2026-07 #10).
+  sansTva?: boolean
 }): FecLine[] {
+  const sansTva = input.sansTva === true
   // Audit compta 2026-06 (lot 5) — deux exigences de la norme FEC :
   //   1. Montants POSITIFS uniquement : un avoir (ou une remise négative)
   //      inverse les colonnes débit/crédit au lieu de porter un montant < 0.
@@ -308,8 +314,8 @@ export function genererFec(input: {
 
     const compteTreso = compteTresorerie(v.modeReglement) || COMPTES_BILAN.clients
     const compteV = compteVente(v.categorie)
-    const ht = v.montantHT ?? (v.montant / (1 + v.tauxTVA / 100))
-    const tva = v.montantTVA ?? (v.montant - ht)
+    const ht = sansTva ? v.montant : (v.montantHT ?? (v.montant / (1 + v.tauxTVA / 100)))
+    const tva = sansTva ? 0 : (v.montantTVA ?? (v.montant - ht))
 
     const lignes: LigneTmp[] = []
     // Débit trésorerie (ou client si à crédit) = TTC
@@ -335,8 +341,8 @@ export function genererFec(input: {
 
     const compteTreso = compteTresorerie(d.modeReglement) || COMPTES_BILAN.fournisseurs
     const compteA = compteAchat(d.categorie)
-    const ht = d.montantHT ?? (d.montant / (1 + d.tauxTVA / 100))
-    const tva = d.montantTVA ?? (d.montant - ht)
+    const ht = sansTva ? d.montant : (d.montantHT ?? (d.montant / (1 + d.tauxTVA / 100)))
+    const tva = sansTva ? 0 : (d.montantTVA ?? (d.montant - ht))
 
     const lignes: LigneTmp[] = []
     // Débit achat HT

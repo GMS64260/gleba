@@ -14,7 +14,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { genererFec, serialiserFec, validerEquilibre, type FecInputVente, type FecInputDepense } from '@/lib/comptabilite/fec'
-import { getTerritoire } from '@/lib/territoires'
+import { getTerritoire, collecteTvaFrancaise } from '@/lib/territoires'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -343,7 +343,11 @@ export async function GET(request: NextRequest) {
     })),
   }))
 
-  const lignes = genererFec({ ventes: ventesIn, depenses: depensesIn, factures: facturesIn })
+  // Régime hors champ TVA française (293B, non-assujetti, TGC) : pas de ligne
+  // de TVA au FEC (les écritures auto/manuelles ont un taux 5,5/20 par défaut
+  // qui contredirait le régime déclaré — audit 2026-07 #10).
+  const sansTva = !collecteTvaFrancaise(exploitation?.regimeTva)
+  const lignes = genererFec({ ventes: ventesIn, depenses: depensesIn, factures: facturesIn, sansTva })
   const validation = validerEquilibre(lignes)
 
   if (check) {
