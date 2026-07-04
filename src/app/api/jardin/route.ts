@@ -40,11 +40,12 @@ export async function GET(request: NextRequest) {
         type: true,
         parcelleGeoId: true,
         cultures: {
+          // Audit #36 : « cultures en cours » = année courante ET non terminée.
+          // L'ancien OR incluait les cultures terminées de l'année (annee=currentYear
+          // matchait même avec terminee renseigné) → affichées comme en cours.
           where: {
-            OR: [
-              { annee: currentYear },
-              { terminee: null }
-            ]
+            annee: currentYear,
+            terminee: null,
           },
           select: {
             id: true,
