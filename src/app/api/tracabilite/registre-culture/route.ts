@@ -73,14 +73,27 @@ export async function GET(request: NextRequest) {
     // Pour chaque culture, compiler l'historique complet
     const registre = await Promise.all(
       cultures.map(async (culture) => {
-        // Recuperer interventions liees a cette culture
+        // Recuperer interventions liees a cette culture.
+        // Audit #71 : la branche `plancheId` captait AUSSI les traitements des
+        // autres cultures de la même planche sur l'année (successions). On ne
+        // rattache que : (a) les interventions explicitement liées à CETTE
+        // culture, (b) les interventions au niveau planche SANS culture précise,
+        // dans la fenêtre active de cette culture (semis/plantation → récolte).
+        const cultureStart = culture.dateSemis || culture.datePlantation || startOfYear
+        const cultureEnd = culture.finRecolte || culture.dateRecolte || endOfYear
         const interventions = await prisma.intervention.findMany({
           where: {
             userId,
             date: { gte: startOfYear, lte: endOfYear },
             OR: [
               { cultureId: culture.id },
-              ...(culture.plancheId ? [{ plancheId: culture.plancheId }] : []),
+              ...(culture.plancheId
+                ? [{
+                    plancheId: culture.plancheId,
+                    cultureId: null,
+                    date: { gte: cultureStart, lte: cultureEnd },
+                  }]
+                : []),
             ],
           },
           orderBy: { date: 'asc' },

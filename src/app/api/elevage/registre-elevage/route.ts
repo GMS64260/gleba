@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
   const end = new Date(year, 11, 31, 23, 59, 59)
   const userId = session.user.id
 
-  const [entrees, sorties, lotsArrives, lotsTermine, abattagesLots, exploitation] = await Promise.all([
+  const [entrees, sorties, lotsArrives, lotsTermine, abattagesLots, naissances, exploitation] = await Promise.all([
     prisma.animal.findMany({
       where: { userId, dateArrivee: { gte: start, lte: end } },
       include: { especeAnimale: { select: { nom: true } }, lot: { select: { id: true, nom: true } } },
@@ -71,6 +71,17 @@ export async function GET(request: NextRequest) {
       },
       orderBy: { date: 'asc' },
     }),
+    // Audit #23 : les naissances (surtout créditées sur un LOT existant, qui
+    // ne créent pas d'animal individuel ni ne changent la dateArrivee du lot)
+    // n'apparaissaient nulle part au registre → entrées manquantes.
+    prisma.naissanceAnimale.findMany({
+      where: { userId, date: { gte: start, lte: end } },
+      include: {
+        mere: { select: { especeAnimale: { select: { nom: true } }, nom: true, identifiant: true } },
+        lot: { select: { nom: true, especeAnimale: { select: { nom: true } } } },
+      },
+      orderBy: { date: 'asc' },
+    }),
     prisma.exploitation.findUnique({ where: { userId } }),
   ])
 
@@ -83,6 +94,20 @@ export async function GET(request: NextRequest) {
       ident: `${a.identifiant || `#${a.id}`}${a.nom ? ` (${a.nom})` : ''}`,
       lot: a.lot?.nom || '',
       origine: a.nExploitationOrigine || a.provenance || '',
+      destination: '',
+      motif: '',
+    })
+  }
+  for (const n of naissances) {
+    const espece = n.lot?.especeAnimale?.nom || n.mere?.especeAnimale?.nom || '—'
+    const mereLabel = n.mere ? ` (mère : ${n.mere.nom || n.mere.identifiant || '—'})` : ''
+    lignes.push({
+      date: n.date,
+      sens: 'Entrée',
+      espece,
+      ident: `Naissance ×${n.nombreVivants}${mereLabel}`,
+      lot: n.lot?.nom || '',
+      origine: 'Naissance',
       destination: '',
       motif: '',
     })

@@ -20,10 +20,13 @@ export async function GET(request: NextRequest) {
     const startOfYear = new Date(annee, 0, 1)
     const endOfYear = new Date(annee, 11, 31, 23, 59, 59)
 
-    // Recuperer tous les soins de l'annee
+    // Recuperer les soins RÉALISÉS de l'annee. Audit #70 : le carnet sanitaire
+    // réglementaire ne doit lister que les soins effectués (fait=true), pas les
+    // soins seulement planifiés (cohérent avec le registre d'élevage).
     const soins = await prisma.soinAnimal.findMany({
       where: {
         userId,
+        fait: true,
         date: { gte: startOfYear, lte: endOfYear },
       },
       include: {

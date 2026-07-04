@@ -169,6 +169,72 @@ export async function GET(request: NextRequest) {
       })
     )
 
+    // Audit #67 : inclure aussi les traitements saisis via les observations
+    // Santé du verger (mêmes champs réglementaires), comme le fait l'export
+    // PDF/CSV — l'écran les omettait, donnant un registre incomplet.
+    const observations = await prisma.observationSante.findMany({
+      where: {
+        userId,
+        date: { gte: startOfYear, lte: endOfYear },
+        OR: [
+          { methodeTraitement: { in: ["chimique_conventionnel", "chimique_cuivre", "biocontrole", "biologique_purin", "chimique", "biologique"] } },
+          { produit: { not: null } },
+          { numAMM: { not: null } },
+        ],
+      },
+      include: {
+        arbre: { select: { nom: true, espece: true, variete: true } },
+        parcelle: { select: { nom: true } },
+        operateur: { select: { name: true, email: true } },
+        user: { select: { name: true, email: true } },
+      },
+      orderBy: { date: 'asc' },
+    })
+    for (const o of observations) {
+      const produitNom = o.produit ?? null
+      const champsMissing: string[] = []
+      if (!o.produit) champsMissing.push('produitPhyto')
+      if (!o.numAMM) champsMissing.push('numAMM')
+      if (o.doseAppliquee == null) champsMissing.push('doseAppliquee')
+      entries.push({
+        id: 1_000_000_000 + o.id, // évite la collision d'id avec les interventions
+        date: o.date.toISOString(),
+        culture: o.arbre?.nom || 'Non renseigne',
+        espece: o.arbre?.espece || '',
+        parcelle: o.parcelle?.nom || 'Non renseigne',
+        localisation: '',
+        nuisibleCible: o.diagnostic ?? o.symptome ?? null,
+        produit: produitNom,
+        produitId: null,
+        substanceActive: null,
+        classification: classifierProduitHeuristique(produitNom),
+        autoriseAB: null,
+        numAMM: o.numAMM || null,
+        doseAppliquee: o.doseAppliquee || null,
+        uniteDose: o.uniteDose || null,
+        surfaceTraitee: null, // observations en ha — non additionnées au total m²
+        volumeBouillieLHa: o.volumeBouillieLHa ?? null,
+        temperatureC: o.temperatureC ?? null,
+        ventKmh: o.ventKmh ?? null,
+        hygrometriePct: o.hygrometriePct ?? null,
+        dar: o.dar ?? null,
+        delaiReentree: null,
+        conditionsMeteo: null,
+        applicateur: o.user.name || o.user.email,
+        operateurNom: o.operateur?.name || o.operateur?.email || null,
+        certiphytoNum: o.certiphytoNum ?? null,
+        certiphytoValidite: null,
+        justification: o.traitement ?? null,
+        observationLieeId: null,
+        intrantNumLot: null,
+        notes: null,
+        description: null,
+        champsManquants: champsMissing,
+        complet: champsMissing.length === 0,
+      })
+    }
+    entries.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+
     // Stats resume — PROMPT 11 : compteurs par classification correcte.
     const produitsUtilises = new Set(entries.filter(e => e.produit).map(e => e.produit))
     const surfaceTotale = entries.reduce((sum, e) => sum + (e.surfaceTraitee || 0), 0)
