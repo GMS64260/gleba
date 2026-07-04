@@ -18,6 +18,7 @@ import { Slider } from '@/components/ui/slider'
 import { useModules } from '@/hooks/use-modules'
 import { MODULES, MODULE_IDS, type ModuleId } from '@/lib/modules'
 import { confirmDialog } from '@/lib/global-dialog'
+import { todayLocalISO } from '@/lib/format-utils'
 
 // Clé localStorage pour les parametres
 const SETTINGS_KEY = 'gleba_settings'
@@ -278,7 +279,7 @@ export default function ParametresPage() {
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `gleba_export_${new Date().toISOString().split('T')[0]}.${format === 'json' ? 'json' : 'zip'}`
+      a.download = `gleba_export_${todayLocalISO()}.${format === 'json' ? 'json' : 'zip'}`
       document.body.appendChild(a)
       a.click()
       window.URL.revokeObjectURL(url)
@@ -352,7 +353,7 @@ export default function ParametresPage() {
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `gleba_sauvegarde_complete_${new Date().toISOString().split('T')[0]}.json`
+      a.download = `gleba_sauvegarde_complete_${todayLocalISO()}.json`
       document.body.appendChild(a)
       a.click()
       window.URL.revokeObjectURL(url)

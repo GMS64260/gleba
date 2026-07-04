@@ -21,6 +21,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
+import { todayLocalISO } from '@/lib/format-utils'
 
 interface Impayee {
   id: number
@@ -81,7 +82,7 @@ export default function FacturesPage() {
   // État formulaire facture
   const [factureData, setFactureData] = React.useState({
     numero: `F-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 1000)).padStart(4, '0')}`,
-    date: new Date().toISOString().split('T')[0],
+    date: todayLocalISO(),
     echeance: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     client: "",
     adresse: "",

@@ -63,6 +63,19 @@ export async function calculerStocksNet(
     })),
   ]
 
+  // Audit 2026-07 (#51) : une récolte « mise en vente » dans la boutique (liée
+  // à un ProduitBoutique actif) est committée à la boutique — son stock est
+  // suivi par ProduitBoutique.stockDispo. On l'EXCLUT du stock physique loose
+  // pour ne pas la compter deux fois (avant, elle restait « en stock » même
+  // après avoir été vendue en ligne).
+  const produitsBoutique = await prisma.produitBoutique.findMany({
+    where: { userId, actif: true, recolteId: { not: null } },
+    select: { recolteId: true },
+  })
+  const recolteIdsEnBoutique = produitsBoutique
+    .map(p => p.recolteId)
+    .filter((id): id is number => id != null)
+
   const result: Record<string, StockNet> = {}
 
   for (const espece of allEspeces) {
@@ -77,13 +90,14 @@ export async function calculerStocksNet(
     const dateRef = espece.dateInventaire || new Date(0)
     const baseline = espece.inventaire || 0
 
-    // Récoltes encore en stock, postérieures au comptage
+    // Récoltes encore en stock, postérieures au comptage, HORS boutique
     const recoltes = await prisma.recolte.findMany({
       where: {
         especeId: espece.id,
         userId,
         statut: 'en_stock',
         date: { gt: dateRef },
+        ...(recolteIdsEnBoutique.length > 0 && { id: { notIn: recolteIdsEnBoutique } }),
       },
       select: { quantite: true },
     })

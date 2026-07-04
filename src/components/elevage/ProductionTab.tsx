@@ -44,6 +44,7 @@ import { useToast } from "@/hooks/use-toast"
 import { oeufsAttendusJour } from "@/lib/elevage/taux-ponte"
 import { labelStatutLot, labelUnite } from "@/lib/elevage/labels"
 import { confirmDialog } from "@/lib/global-dialog"
+import { todayLocalISO } from '@/lib/format-utils'
 
 // ============================================================
 // Composant principal
@@ -166,7 +167,7 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
   } | null>(null)
 
   const [formData, setFormData] = React.useState({
-    lotId: "", date: new Date().toISOString().split('T')[0],
+    lotId: "", date: todayLocalISO(),
     quantite: "", casses: "0", sales: "0", calibre: "", notes: "",
   })
 
@@ -268,7 +269,7 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
   // Reset complet quand on ferme le dialog
   const resetForm = () => {
     setEditingId(null)
-    setFormData({ lotId: formData.lotId, date: new Date().toISOString().split('T')[0], quantite: "", casses: "0", sales: "0", calibre: "", notes: "" })
+    setFormData({ lotId: formData.lotId, date: todayLocalISO(), quantite: "", casses: "0", sales: "0", calibre: "", notes: "" })
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -363,7 +364,7 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
         description: `${overrideState.quantite} œufs — au-delà du plafond plausible (${overrideState.seuilMax}).`,
       })
       setIsDialogOpen(false)
-      setFormData({ lotId: formData.lotId, date: new Date().toISOString().split('T')[0], quantite: "", casses: "0", sales: "0", calibre: "", notes: "" })
+      setFormData({ lotId: formData.lotId, date: todayLocalISO(), quantite: "", casses: "0", sales: "0", calibre: "", notes: "" })
       fetchData()
     } else {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible d'enregistrer (override refusé)" })
@@ -698,14 +699,14 @@ function VentesSubTab() {
   const [editingId, setEditingId] = React.useState<number | null>(null)
 
   const [formData, setFormData] = React.useState({
-    date: new Date().toISOString().split('T')[0],
+    date: todayLocalISO(),
     type: "oeufs", description: "", quantite: "", unite: "douzaine",
     prixUnitaire: "", client: "", paye: true, notes: "",
   })
 
   const resetForm = () => {
     setEditingId(null)
-    setFormData({ date: new Date().toISOString().split('T')[0], type: "oeufs", description: "", quantite: "", unite: "douzaine", prixUnitaire: "", client: "", paye: true, notes: "" })
+    setFormData({ date: todayLocalISO(), type: "oeufs", description: "", quantite: "", unite: "douzaine", prixUnitaire: "", client: "", paye: true, notes: "" })
   }
 
   const handleEdit = (v: Vente) => {
@@ -775,7 +776,7 @@ function VentesSubTab() {
       const total = parseFloat(formData.quantite) * parseFloat(formData.prixUnitaire)
       toast({ title: "Vente enregistrée", description: `${total.toFixed(2)} €` })
       setIsDialogOpen(false)
-      setFormData({ date: new Date().toISOString().split('T')[0], type: "oeufs", description: "", quantite: "", unite: "douzaine", prixUnitaire: "", client: "", paye: true, notes: "" })
+      setFormData({ date: todayLocalISO(), type: "oeufs", description: "", quantite: "", unite: "douzaine", prixUnitaire: "", client: "", paye: true, notes: "" })
       fetchData()
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible d'enregistrer" })
@@ -1005,13 +1006,13 @@ function AbattagesSubTab() {
   const [editingId, setEditingId] = React.useState<number | null>(null)
 
   const [formData, setFormData] = React.useState({
-    lotId: "", date: new Date().toISOString().split('T')[0], quantite: "1",
+    lotId: "", date: todayLocalISO(), quantite: "1",
     poidsVif: "", poidsCarcasse: "", destination: "auto_consommation", prixVente: "", lieu: "", notes: "",
   })
 
   const resetForm = () => {
     setEditingId(null)
-    setFormData({ lotId: "", date: new Date().toISOString().split('T')[0], quantite: "1", poidsVif: "", poidsCarcasse: "", destination: "auto_consommation", prixVente: "", lieu: "", notes: "" })
+    setFormData({ lotId: "", date: todayLocalISO(), quantite: "1", poidsVif: "", poidsCarcasse: "", destination: "auto_consommation", prixVente: "", lieu: "", notes: "" })
   }
 
   const handleEdit = (a: Abattage) => {
