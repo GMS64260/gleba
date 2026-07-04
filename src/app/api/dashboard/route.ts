@@ -22,7 +22,9 @@ export async function GET(request: NextRequest) {
     const currentYear = yearParam ? parseInt(yearParam) : new Date().getFullYear()
 
     const startOfYear = new Date(currentYear, 0, 1)
-    const endOfYear = new Date(currentYear, 11, 31)
+    // Audit #54 : fin de journée du 31/12 (et non 00:00), sinon les récoltes
+    // datées du 31 décembre tombent hors borne et disparaissent du graphique.
+    const endOfYear = new Date(currentYear, 11, 31, 23, 59, 59, 999)
     const asOf = new Date()
 
     // Source unique de vérité pour les KPI agrégés (surface cultivée vs
