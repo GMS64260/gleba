@@ -884,7 +884,7 @@ function DialogSaillie(props: {
   const { toast } = useToast()
   const isEdit = !!props.editingSaillie
   const [form, setForm] = React.useState({
-    date: new Date().toISOString().split("T")[0],
+    date: todayLocalISO(),
     femelleId: 0,
     maleId: 0,
     type: "Monte naturelle",
@@ -910,7 +910,7 @@ function DialogSaillie(props: {
       })
     } else if (props.open && !props.editingSaillie) {
       setForm({
-        date: new Date().toISOString().split("T")[0],
+        date: todayLocalISO(),
         femelleId: 0, maleId: 0, type: "Monte naturelle",
         agentInseminateur: "", semenceLot: "", pereExterneRef: "", notes: "",
       })

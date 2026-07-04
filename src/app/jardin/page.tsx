@@ -34,6 +34,7 @@ import { Combobox } from "@/components/ui/combobox"
 import { useToast } from "@/hooks/use-toast"
 import { useSettings } from "@/hooks/use-settings"
 import { confirmDialog } from "@/lib/global-dialog"
+import { todayLocalISO } from '@/lib/format-utils'
 
 interface PlancheWithCulture {
   id: string
@@ -846,7 +847,7 @@ function JardinContent() {
           posY: maxY + 1,
           // datePlantation est requise par l'API ; la création rapide depuis
           // le plan ne la demande pas → date du jour par défaut (audit #22).
-          datePlantation: new Date().toISOString().split("T")[0],
+          datePlantation: todayLocalISO(),
           parcelleGeoId: selectedParcelleId || undefined,
         })
       })

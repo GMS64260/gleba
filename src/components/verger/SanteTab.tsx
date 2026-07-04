@@ -41,6 +41,7 @@ import { EpiFieldset } from "@/components/phyto/EpiFieldset"
 import { ZntFieldset } from "@/components/phyto/ZntFieldset"
 import { ExportPhytoButton } from "@/components/phyto/ExportPhytoButton"
 import { CuivreCounterCard } from "@/components/phyto/CuivreCounterCard"
+import { todayLocalISO } from '@/lib/format-utils'
 
 interface Arbre {
   id: number
@@ -182,7 +183,7 @@ function ObservationsSubTab() {
   const [editingObs, setEditingObs] = React.useState<Observation | null>(null)
   const defaultFormData = {
     arbreId: "",
-    date: new Date().toISOString().split("T")[0],
+    date: todayLocalISO(),
     // PROMPT 11 LOT D — Pas de défaut sur le type : forcer l'utilisateur à choisir
     // (audit A5 : "Observation" par défaut induisait en erreur).
     type: "",
@@ -738,7 +739,7 @@ function RegistrePhytoSubTab() {
   // DEV3 #1 — Champs réglementaires (Arrêté 16/06/2009)
   const [addForm, setAddForm] = React.useState({
     arbreId: "",
-    date: new Date().toISOString().split("T")[0],
+    date: todayLocalISO(),
     type: "maladie" as string,
     diagnostic: "",
     symptome: "",
@@ -964,7 +965,7 @@ function RegistrePhytoSubTab() {
         setShowAddDialog(false)
         setAddForm({
           arbreId: "",
-          date: new Date().toISOString().split("T")[0],
+          date: todayLocalISO(),
           type: "maladie",
           diagnostic: "",
           symptome: "",
