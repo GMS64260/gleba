@@ -232,9 +232,14 @@ const availableYears = getAvailableYears()
 // HELPERS
 // ============================================================
 
+// Audit fuseaux 2026-07 (#72) : les dates d'événements des registres sont des
+// dates « jour seul » stockées à minuit UTC. On les formate en UTC pour éviter
+// le décalage d'un jour en Outre-mer (offset négatif) et rester cohérent avec
+// l'agrégation serveur (toISOString().slice(0,10)) et l'export PDF.
 function formatDate(iso: string | null): string {
   if (!iso) return "-"
   return new Date(iso).toLocaleDateString("fr-FR", {
+    timeZone: "UTC",
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
@@ -244,6 +249,7 @@ function formatDate(iso: string | null): string {
 function formatDateShort(iso: string | null): string {
   if (!iso) return "-"
   return new Date(iso).toLocaleDateString("fr-FR", {
+    timeZone: "UTC",
     day: "2-digit",
     month: "short",
   })

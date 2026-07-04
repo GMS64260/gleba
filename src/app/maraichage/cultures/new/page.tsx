@@ -202,11 +202,20 @@ export default function NewCulturePage() {
     if (year === today.getFullYear()) {
       const firstAnchor = semisDate ?? plantationDate
       if (firstAnchor && firstAnchor < today) {
-        const offsetMs = today.getTime() - firstAnchor.getTime()
-        if (semisDate) semisDate = new Date(semisDate.getTime() + offsetMs)
-        if (plantationDate) plantationDate = new Date(plantationDate.getTime() + offsetMs)
-        if (recolteDate) recolteDate = new Date(recolteDate.getTime() + offsetMs)
-        const decalageJours = Math.ceil(offsetMs / 86400000)
+        // Audit fuseaux #76 : décalage en JOURS calendaires (setDate), pas en
+        // millisecondes. L'ajout d'un offset ms qui traverse le passage à
+        // l'heure d'été (mars) décalait les dates d'1h → un jour de trop près
+        // de minuit. setDate préserve l'heure locale et gère le DST.
+        const decalageJours = Math.ceil((today.getTime() - firstAnchor.getTime()) / 86400000)
+        const addJours = (d: Date | null) => {
+          if (!d) return d
+          const r = new Date(d)
+          r.setDate(r.getDate() + decalageJours)
+          return r
+        }
+        semisDate = addJours(semisDate)
+        plantationDate = addJours(plantationDate)
+        recolteDate = addJours(recolteDate)
         const semaineLabel = itp.semaineSemis
           ? formatSemaine(itp.semaineSemis)
           : itp.semainePlantation
