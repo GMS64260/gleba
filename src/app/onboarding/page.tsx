@@ -162,6 +162,24 @@ export default function OnboardingPage() {
   const finir = async () => {
     setSaving(true)
     try {
+      // Audit 2026-07 (#31) : la parcelle saisie à l'étape « premier élément »
+      // n'était jamais enregistrée. On la crée comme planche (non bloquant).
+      if (s.parcelleNom.trim()) {
+        try {
+          const surface = s.parcelleSurface ? parseFloat(s.parcelleSurface.replace(",", ".")) : null
+          await fetch("/api/planches", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              nom: s.parcelleNom.trim(),
+              surface: surface && !Number.isNaN(surface) ? surface : null,
+              typeSol: s.parcelleSol || null,
+            }),
+          })
+        } catch {
+          /* non bloquant : l'utilisateur pourra créer sa planche ensuite */
+        }
+      }
       await fetch("/api/onboarding", { method: "POST" })
       const firstModule = Object.entries(s.modulesActifs).find(([, on]) => on)?.[0] || "maraichage"
       const target = firstModule === "maraichage" ? "/maraichage" : `/${firstModule}`

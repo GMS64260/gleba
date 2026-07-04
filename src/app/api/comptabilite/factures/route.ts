@@ -306,6 +306,42 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
+    // Audit 2026-07 (#8) : annuler une facture liée à une vente métier
+    // (récolte, animal, bois, commande boutique) faisait disparaître le revenu
+    // de TOUS les agrégats — la facture sort des totaux (annulee) mais la
+    // source reste marquée « facturée » donc n'est pas recomptée non plus.
+    // On bloque et on oriente vers le bon flux (dé-vente / avoir).
+    const liens = await prisma.facture.findUnique({
+      where: { id: parseInt(id) },
+      select: {
+        _count: {
+          select: {
+            ventesProduits: true,
+            abattages: true,
+            recoltesArbres: true,
+            productionsBois: true,
+            commandesBoutique: true,
+          },
+        },
+      },
+    })
+    const nbLiens = liens
+      ? liens._count.ventesProduits + liens._count.abattages + liens._count.recoltesArbres +
+        liens._count.productionsBois + liens._count.commandesBoutique
+      : 0
+    if (nbLiens > 0) {
+      return NextResponse.json(
+        {
+          error: 'Annulation impossible',
+          details:
+            "Cette facture est rattachée à une vente (récolte, animal, bois ou commande boutique). " +
+            "Annulez d'abord la vente concernée (retour en stock) ou émettez un avoir — sinon le revenu " +
+            "disparaîtrait des totaux comptables.",
+        },
+        { status: 409 }
+      )
+    }
+
     await prisma.facture.update({
       where: { id: parseInt(id) },
       data: { statut: 'annulee' },
