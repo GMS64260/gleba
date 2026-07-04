@@ -410,7 +410,12 @@ export function OperationsTab() {
         onRowDelete={async (row) => {
           if (!(await confirmDialog("Supprimer cette operation ?"))) return
           try {
-            await fetch(`/api/arbres/operations/${row.id}`, { method: "DELETE" })
+            const res = await fetch(`/api/arbres/operations/${row.id}`, { method: "DELETE" })
+            if (!res.ok) {
+              const p = await res.json().catch(() => null)
+              toast({ variant: "destructive", title: "Erreur", description: p?.error || "Suppression impossible" })
+              return
+            }
             toast({ title: "Operation supprimée" })
             fetchData()
           } catch {

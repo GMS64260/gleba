@@ -155,7 +155,9 @@ export function DashboardTab({ year }: DashboardTabProps) {
     if (ids.length === 0) return
     setSoins([]) // optimistic
     try {
-      await Promise.all(
+      // Audit #83 : on vérifie chaque res.ok — fetch ne rejette pas sur 4xx/5xx,
+      // donc un échec passait pour un succès. Si une PATCH échoue, on recharge.
+      const res = await Promise.all(
         ids.map((id) =>
           fetch('/api/elevage/soins', {
             method: 'PATCH',
@@ -164,7 +166,13 @@ export function DashboardTab({ year }: DashboardTabProps) {
           })
         )
       )
-      toast({ title: `${ids.length} soin(s) marqué(s) comme fait(s)` })
+      const echecs = res.filter((r) => !r.ok).length
+      if (echecs > 0) {
+        toast({ variant: 'destructive', title: `${echecs} soin(s) non enregistré(s)`, description: 'Rechargement…' })
+        fetchSoins()
+      } else {
+        toast({ title: `${ids.length} soin(s) marqué(s) comme fait(s)` })
+      }
     } catch {
       toast({ variant: 'destructive', title: 'Erreur, recharge en cours' })
       fetchSoins()

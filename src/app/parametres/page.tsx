@@ -144,12 +144,15 @@ export default function ParametresPage() {
     setMcpLoading(true)
     try {
       const res = await fetch('/api/user/api-token', { method: 'POST' })
-      const data = await res.json()
-      if (data.token) {
+      const data = await res.json().catch(() => null)
+      if (res.ok && data?.token) {
         setMcpToken(data.token)
         setMcpHasToken(true)
         setMcpMaskedToken(null)
         toast({ title: 'Token généré', description: 'Copiez-le maintenant, il ne sera plus affiché en clair.' })
+      } else {
+        // Audit #88 : sans ce cas, un échec serveur (sans token) ne montrait rien.
+        toast({ variant: 'destructive', title: 'Erreur', description: data?.error || 'Le token n\'a pas pu être généré' })
       }
     } catch {
       toast({ variant: 'destructive', title: 'Erreur', description: 'Impossible de générer le token' })

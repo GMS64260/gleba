@@ -180,7 +180,13 @@ export default function OnboardingPage() {
           /* non bloquant : l'utilisateur pourra créer sa planche ensuite */
         }
       }
-      await fetch("/api/onboarding", { method: "POST" })
+      // Audit #87 : si le marquage onboarding échoue, ne pas rediriger (sinon
+      // l'utilisateur est renvoyé vers /onboarding en boucle par le middleware).
+      const res = await fetch("/api/onboarding", { method: "POST" })
+      if (!res.ok) {
+        toast({ variant: "destructive", title: "Erreur", description: "La finalisation a échoué, réessayez." })
+        return
+      }
       const firstModule = Object.entries(s.modulesActifs).find(([, on]) => on)?.[0] || "maraichage"
       const target = firstModule === "maraichage" ? "/maraichage" : `/${firstModule}`
       router.push(target)

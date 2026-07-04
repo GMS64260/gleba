@@ -597,7 +597,12 @@ function ConsommationsSubTab() {
   const handleDeleteConfirm = async () => {
     if (deletingConsoId == null) return
     try {
-      await fetch(`/api/elevage/consommations-aliments?id=${deletingConsoId}`, { method: "DELETE" })
+      const res = await fetch(`/api/elevage/consommations-aliments?id=${deletingConsoId}`, { method: "DELETE" })
+      if (!res.ok) {
+        const p = await res.json().catch(() => null)
+        toast({ variant: "destructive", title: "Erreur", description: p?.error || "Suppression impossible" })
+        return
+      }
       toast({ title: "Consommation supprimée, stock restauré" })
       fetchData()
     } catch {
