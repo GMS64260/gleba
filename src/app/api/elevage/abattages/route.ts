@@ -275,9 +275,18 @@ export async function PATCH(request: NextRequest) {
       )
     }
 
+    // Audit #94 : gardes NaN / date invalide (le PATCH n'était pas validé).
     const updateData: any = {}
-    if (date !== undefined) updateData.date = new Date(date)
-    if (quantite !== undefined) updateData.quantite = parseInt(quantite)
+    if (date !== undefined) {
+      const d = new Date(date)
+      if (Number.isNaN(d.getTime())) return NextResponse.json({ error: 'Date invalide' }, { status: 400 })
+      updateData.date = d
+    }
+    if (quantite !== undefined) {
+      const q = parseInt(quantite)
+      if (Number.isNaN(q) || q <= 0) return NextResponse.json({ error: 'Quantité invalide' }, { status: 400 })
+      updateData.quantite = q
+    }
     if (poidsVif !== undefined) updateData.poidsVif = poidsVif ? parseFloat(poidsVif) : null
     if (poidsCarcasse !== undefined) updateData.poidsCarcasse = poidsCarcasse ? parseFloat(poidsCarcasse) : null
     if (destination !== undefined) updateData.destination = destination
