@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { calculerStocksNet } from '@/lib/stocks-helpers'
 
 export async function PATCH(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -221,11 +222,16 @@ export async function GET(request: NextRequest) {
         },
         orderBy: { id: 'asc' },
       })
+      // Refonte stock 2026-07 : on affiche le STOCK NET recalculé (baseline
+      // manuel + récoltes en stock − consommations), et non plus le compteur
+      // inventaire brut (qui n'est plus incrémenté à chaque récolte). Sans ça
+      // l'écran afficherait vide pour les espèces sans comptage manuel.
+      const nets = await calculerStocksNet(userId)
       return NextResponse.json({
         data: especes.map(e => ({
           id: e.id,
           familleId: e.familleId,
-          inventaire: e.userStocks[0]?.inventaire ?? null,
+          inventaire: nets[e.id]?.stockNet ?? e.userStocks[0]?.inventaire ?? null,
           dateInventaire: e.userStocks[0]?.dateInventaire ?? null,
           couleur: e.couleur,
         })),

@@ -16,31 +16,11 @@ import { creerFacture, annulerFactureLiee } from '@/lib/facture-utils'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
-/**
- * Ajuste le compteur d'inventaire `UserStockEspece` (borné à ≥ 0).
- * Le POST /api/recoltes incrémente l'inventaire à la création d'une récolte
- * en_stock ; toute sortie (vente, perte, suppression, baisse de quantité)
- * doit appliquer le delta inverse, sinon l'écran Stocks Maraîchage gonfle
- * indéfiniment.
- */
-async function ajusterInventaireEspece(
-  tx: Prisma.TransactionClient,
-  userId: string,
-  especeId: string,
-  delta: number
-) {
-  if (!delta) return
-  const stock = await tx.userStockEspece.findUnique({
-    where: { userId_especeId: { userId, especeId } },
-    select: { inventaire: true },
-  })
-  const inventaire = Math.max(0, (stock?.inventaire ?? 0) + delta)
-  await tx.userStockEspece.upsert({
-    where: { userId_especeId: { userId, especeId } },
-    create: { userId, especeId, inventaire, dateInventaire: new Date() },
-    update: { inventaire, dateInventaire: new Date() },
-  })
-}
+// Refonte stock 2026-07 : le compteur UserStockEspece.inventaire n'est plus
+// ajusté à chaque mouvement de récolte. Le stock est recalculé par
+// calculerStocksNet (baseline manuel + récoltes en stock − consommations),
+// ce qui supprime le double comptage (audit #28). Les anciens appels à
+// ajusterInventaireEspece ont donc été retirés.
 
 // GET /api/recoltes/[id]
 export async function GET(
@@ -153,15 +133,8 @@ export async function PUT(
         },
       })
 
-      if (existing.statut === 'en_stock') {
-        const userId = session!.user.id
-        if (updated.especeId !== existing.especeId) {
-          await ajusterInventaireEspece(tx, userId, existing.especeId, -existing.quantite)
-          await ajusterInventaireEspece(tx, userId, updated.especeId, updated.quantite)
-        } else if (updated.quantite !== existing.quantite) {
-          await ajusterInventaireEspece(tx, userId, existing.especeId, updated.quantite - existing.quantite)
-        }
-      }
+      // Refonte stock 2026-07 : plus d'ajustement du compteur inventaire ici
+      // (recalcul par calculerStocksNet à partir des récoltes en stock).
 
       return updated
     })
@@ -377,16 +350,9 @@ export async function PATCH(
         })
       }
 
-      // Cohérence inventaire (UserStockEspece) sur transition de statut :
-      // sortie de stock (vente/perte/consommé) → décrément de la part sortie ;
-      // retour en stock → ré-incrément. Le reliquat scindé reste compté.
-      if (body.statut && body.statut !== existing.statut) {
-        if (existing.statut === 'en_stock' && body.statut !== 'en_stock') {
-          await ajusterInventaireEspece(tx, userId, existing.especeId, -quantiteVendue)
-        } else if (existing.statut !== 'en_stock' && body.statut === 'en_stock') {
-          await ajusterInventaireEspece(tx, userId, existing.especeId, existing.quantite)
-        }
-      }
+      // Refonte stock 2026-07 : la transition de statut n'ajuste plus de
+      // compteur — calculerStocksNet ne compte que les récoltes 'en_stock',
+      // donc une sortie (vente/perte/consommé) réduit le stock automatiquement.
 
       return tx.recolte.update({
         where: { id: recolteId },
@@ -490,15 +456,10 @@ export async function DELETE(
       console.error('Auto-compta cleanup error (recolte):', autoComptaError)
     }
 
-    // Suppression + décrément de l'inventaire si la récolte était comptée
-    // en stock (sinon le compteur Stocks garde un surplus fantôme).
-    await prisma.$transaction(async (tx) => {
-      if (recolte.statut === 'en_stock' && recolte.quantite > 0) {
-        await ajusterInventaireEspece(tx, session!.user.id, recolte.especeId, -recolte.quantite)
-      }
-      await tx.recolte.delete({
-        where: { id: recolteId },
-      })
+    // Refonte stock 2026-07 : supprimer la récolte suffit — calculerStocksNet
+    // ne comptera plus sa quantité (plus de compteur inventaire à décrémenter).
+    await prisma.recolte.delete({
+      where: { id: recolteId },
     })
 
     invalidateKpi(session!.user.id)

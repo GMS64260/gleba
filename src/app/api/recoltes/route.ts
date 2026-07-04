@@ -216,27 +216,11 @@ export async function POST(request: NextRequest) {
         })
       }
 
-      if (newRecolte.statut === 'en_stock' && newRecolte.quantite > 0) {
-        const userId = session!.user.id
-        const existing = await tx.userStockEspece.findUnique({
-          where: { userId_especeId: { userId, especeId: data.especeId } },
-          select: { inventaire: true },
-        })
-        const nouvelInventaire = (existing?.inventaire ?? 0) + newRecolte.quantite
-        await tx.userStockEspece.upsert({
-          where: { userId_especeId: { userId, especeId: data.especeId } },
-          create: {
-            userId,
-            especeId: data.especeId,
-            inventaire: nouvelInventaire,
-            dateInventaire: dateRecolte,
-          },
-          update: {
-            inventaire: nouvelInventaire,
-            dateInventaire: dateRecolte,
-          },
-        })
-      }
+      // Refonte stock 2026-07 (modèle baseline + événements) : on ne touche
+      // plus UserStockEspece.inventaire ici. Le stock est recalculé par
+      // calculerStocksNet à partir des récoltes en stock + inventaire manuel.
+      // (Avant, l'incrément ici était re-additionné par calculerStocksNet →
+      // double comptage, audit #28.)
 
       return newRecolte
     })
