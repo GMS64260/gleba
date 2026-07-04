@@ -433,12 +433,17 @@ function JardinContent() {
     setHasChanges(true)
   }, [selection])
 
+  // Normalise un angle dans [0, 360). Le modulo JS garde le signe : une
+  // rotation antihoraire (degrees < 0) produisait un angle négatif rejeté
+  // par le schéma Zod (min 0) → sauvegarde en échec (audit 2026-07, #24).
+  const normaliserAngle = (deg: number) => ((deg % 360) + 360) % 360
+
   // Tourner une planche
   const handleRotatePlanche = (degrees: number) => {
     if (!selectedPlanche) return
     setPlanches(prev => prev.map(p =>
       p.id === selectedPlanche
-        ? { ...p, rotation2D: ((p.rotation2D || 0) + degrees) % 360 }
+        ? { ...p, rotation2D: normaliserAngle((p.rotation2D || 0) + degrees) }
         : p
     ))
     setHasChanges(true)
@@ -449,7 +454,7 @@ function JardinContent() {
     if (!selectedObjet) return
     setObjets(prev => prev.map(o =>
       o.id === selectedObjet
-        ? { ...o, rotation2D: (o.rotation2D + degrees) % 360 }
+        ? { ...o, rotation2D: normaliserAngle(o.rotation2D + degrees) }
         : o
     ))
     setHasChanges(true)
@@ -839,6 +844,9 @@ function JardinContent() {
           envergure: newArbre.envergure,
           posX: 2,
           posY: maxY + 1,
+          // datePlantation est requise par l'API ; la création rapide depuis
+          // le plan ne la demande pas → date du jour par défaut (audit #22).
+          datePlantation: new Date().toISOString().split("T")[0],
           parcelleGeoId: selectedParcelleId || undefined,
         })
       })

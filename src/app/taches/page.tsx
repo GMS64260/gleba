@@ -140,15 +140,18 @@ function TachesContent() {
       const quantiteStr = prompt("Quantité récoltée (kg) :")
       if (!quantiteStr) return
 
-      const quantite = parseFloat(quantiteStr)
+      // Accepte la virgule décimale française ("2,5" → 2.5) — parseFloat seul
+      // tronquait à 2 (audit 2026-07, #47).
+      const quantite = parseFloat(quantiteStr.replace(",", ".").trim())
       if (isNaN(quantite) || quantite <= 0) {
         toast({ variant: "destructive", title: "Quantité invalide" })
         return
       }
 
       try {
-        // Créer la recolte
-        await fetch("/api/recoltes", {
+        // Créer la recolte — on vérifie le succès avant de marquer "fait"
+        // et d'afficher la confirmation (sinon faux succès, audit #32).
+        const recolteRes = await fetch("/api/recoltes", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -158,13 +161,23 @@ function TachesContent() {
             quantite,
           }),
         })
+        if (!recolteRes.ok) {
+          const p = await recolteRes.json().catch(() => null)
+          toast({ variant: "destructive", title: "Erreur", description: p?.error || "La récolte n'a pas pu être enregistrée." })
+          return
+        }
 
         // Marquer comme fait
-        await fetch(`/api/cultures/${cultureId}`, {
+        const patchRes = await fetch(`/api/cultures/${cultureId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ recolteFaite: true }),
         })
+        if (!patchRes.ok) {
+          toast({ variant: "destructive", title: "Récolte enregistrée mais statut non mis à jour", description: "Rafraîchissez la page." })
+          fetchData()
+          return
+        }
 
         toast({ title: "Récolte enregistrée", description: `${quantite} kg` })
         fetchData() // Recharger
