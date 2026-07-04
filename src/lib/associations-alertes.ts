@@ -23,9 +23,20 @@ export type AlerteAssociation = {
   notes?: string | null
 }
 
-function isDefavorable(nom: string): boolean {
-  const lower = nom.toLowerCase()
-  return lower.includes("incompat") || lower.includes("défavorable") || lower.includes("defavorable")
+/**
+ * Classe une association d'après son champ `type` (favorable | incompatible |
+ * neutre), source de vérité. Auparavant on reniflait le `nom` ("incompat") :
+ * une association type='incompatible' nommée "Laitue Tomate" était alors
+ * affichée comme FAVORABLE (audit 2026-07, #27). Repli sur le nom pour les
+ * lignes anciennes dont le type ne serait pas renseigné.
+ */
+function classeAssociation(type: string | null | undefined, nom: string): "favorable" | "defavorable" | "neutre" {
+  if (type === "incompatible") return "defavorable"
+  if (type === "favorable") return "favorable"
+  if (type === "neutre") return "neutre"
+  const lower = (nom || "").toLowerCase()
+  if (lower.includes("incompat") || lower.includes("défavorable") || lower.includes("defavorable")) return "defavorable"
+  return "favorable"
 }
 
 /**
@@ -61,7 +72,9 @@ export async function alertesAssociations(
     // Sous-ensemble des espèces présentes qui apparaissent dans l'association
     const present = uniq.filter((e) => especesAssoc.includes(e))
     if (present.length < 2) continue
-    const defavorable = isDefavorable(a.nom)
+    const classe = classeAssociation(a.type, a.nom)
+    if (classe === "neutre") continue // pas d'alerte pour une association neutre
+    const defavorable = classe === "defavorable"
     // On émet une alerte par PAIRE présente (en pratique 2-3 max)
     for (let i = 0; i < present.length; i++) {
       for (let j = i + 1; j < present.length; j++) {

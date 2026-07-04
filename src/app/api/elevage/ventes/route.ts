@@ -321,6 +321,47 @@ export async function PATCH(request: NextRequest) {
     if (client !== undefined) updateData.client = client
     if (notes !== undefined) updateData.notes = notes
 
+    // Audit 2026-07 (#15) : le PATCH ignorait date, type, quantité, prix,
+    // unité et description — l'édition affichait un succès mais ne changeait
+    // rien (CA/TVA/écriture auto calculés sur l'ancien prix). On les persiste.
+    if (body.date !== undefined) updateData.date = new Date(body.date)
+    if (body.type !== undefined) updateData.type = body.type
+    if (body.description !== undefined) updateData.description = body.description || null
+    if (body.unite !== undefined) updateData.unite = body.unite
+    if (body.quantite !== undefined) {
+      const q = parseFloat(String(body.quantite))
+      if (Number.isNaN(q) || q <= 0) {
+        return NextResponse.json({ error: 'Quantité invalide' }, { status: 400 })
+      }
+      updateData.quantite = q
+    }
+    if (body.prixUnitaire !== undefined) {
+      const pu = parseFloat(String(body.prixUnitaire))
+      if (Number.isNaN(pu) || pu < 0) {
+        return NextResponse.json({ error: 'Prix unitaire invalide' }, { status: 400 })
+      }
+      updateData.prixUnitaire = pu
+    }
+    if (body.tauxTVA !== undefined) {
+      const t = parseFloat(String(body.tauxTVA))
+      if (!Number.isNaN(t) && t >= 0 && t <= 100) updateData.tauxTVA = t
+    }
+    // Recalcul du total si quantité ou prix unitaire changent.
+    if (updateData.quantite !== undefined || updateData.prixUnitaire !== undefined) {
+      const q = updateData.quantite ?? existing.quantite
+      const pu = updateData.prixUnitaire ?? existing.prixUnitaire
+      updateData.prixTotal = q * pu
+    }
+    // Cohérence compta : une vente "Payé" ne peut pas être à 0 € (cf POST).
+    const payeFinal = updateData.paye ?? existing.paye
+    const prixTotalFinal = updateData.prixTotal ?? existing.prixTotal
+    if (payeFinal === true && prixTotalFinal === 0) {
+      return NextResponse.json(
+        { error: 'Une vente "Payé" ne peut pas être à 0 € — décochez "Payé" ou saisissez un prix.' },
+        { status: 400 }
+      )
+    }
+
     const userId = session.user.id
 
     // Anti-double-facture : une vente déjà facturée ne peut pas générer
