@@ -119,10 +119,12 @@ function ParcelleFeature({
 
   if (!feature) return null
 
-  // Construction du texte du tooltip
+  // Construction du texte du tooltip. `surface` est déjà en hectares
+  // (schema : surface_ha) — l'ancienne division par 10000 affichait « 0.00 ha »
+  // pour quasiment toutes les parcelles (audit 2026-07, #32).
   const tooltipContent = parcelle.nom + (
     parcelle.surface
-      ? ` - ${(parcelle.surface / 10000).toFixed(2)} ha`
+      ? ` - ${parcelle.surface.toFixed(2)} ha`
       : ""
   )
 

@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
-import { requireAuthApi } from '@/lib/auth-utils'
+import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
 import { statsAvisPourRefs } from '@/lib/avis/stats-liste'
 
 export async function GET(request: NextRequest) {
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const { error } = await requireAuthApi()
+  const { error } = await requireAdminApi()
   if (error) return error
 
   try {
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const { error } = await requireAuthApi()
+  const { error } = await requireAdminApi()
   if (error) return error
 
   const { searchParams } = new URL(request.url)

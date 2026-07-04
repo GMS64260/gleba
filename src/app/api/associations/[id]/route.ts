@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
-import { requireAuthApi } from "@/lib/auth-utils"
+import { requireAuthApi, requireAdminApi } from "@/lib/auth-utils"
 import { updateAssociationSchema } from "@/lib/validations/association"
 
 interface RouteParams {
@@ -51,7 +51,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 }
 
 export async function PUT(request: NextRequest, { params }: RouteParams) {
-  const { error } = await requireAuthApi()
+  const { error } = await requireAdminApi()
   if (error) return error
 
   try {
@@ -140,7 +140,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 }
 
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
-  const { error } = await requireAuthApi()
+  const { error } = await requireAdminApi()
   if (error) return error
 
   try {

@@ -111,12 +111,16 @@ export async function checkAdjacence(
   })
   const suggestions: SuggestionCompagnon[] = []
   for (const a of associationsAssoc) {
+    // On se base sur le champ `type` (favorable | incompatible | neutre), et
+    // non sur le nom : une association type='incompatible' nommée sans le mot
+    // « incompat » était suggérée comme compagnon bénéfique (audit 2026-07, #37).
+    // Repli sur le nom pour les lignes anciennes sans type explicite.
+    const typeLower = (a.type || "").toLowerCase()
     const nomLower = a.nom.toLowerCase()
-    if (
-      nomLower.includes("incompat") ||
-      nomLower.includes("défavorable") ||
-      nomLower.includes("defavorable")
-    ) {
+    const defavorable =
+      typeLower === "incompatible" ||
+      (!typeLower && (nomLower.includes("incompat") || nomLower.includes("défavorable") || nomLower.includes("defavorable")))
+    if (defavorable || typeLower === "neutre") {
       continue // pas une suggestion positive
     }
     for (const d of a.details) {
