@@ -182,6 +182,13 @@ export function GardenView({
 
   // Calculer la taille du jardin basée sur les planches, objets, arbres ET image de fond
   React.useEffect(() => {
+    // Audit 2026-07 (#25) : ne PAS recalculer le viewBox pendant un drag. Le
+    // mapping écran→SVG (getScreenCTM) dépend du viewBox ; le recalculer à
+    // chaque mousemove décalait la conversion, faisant « fuir » l'élément
+    // déplacé vers des coordonnées de plus en plus négatives. Le viewBox est
+    // figé le temps du drag puis réajusté à la fin (dragging → null).
+    if (dragging) return
+
     // Inclure l'image de fond meme s'il n'y a pas d'elements
     const hasElements = planches.length > 0 || objets.length > 0 || arbres.length > 0
     const hasBackground = backgroundImage?.image && bgImageSize
@@ -244,7 +251,7 @@ export function GardenView({
       w: Math.max(maxX - minX + margin * 2, 10),
       h: Math.max(maxY - minY + margin * 2, 8)
     })
-  }, [planches, objets, arbres, backgroundImage, bgImageSize])
+  }, [planches, objets, arbres, backgroundImage, bgImageSize, dragging])
 
   const getPlancheColor = (planche: PlancheWithCulture): string => {
     // Culture active
