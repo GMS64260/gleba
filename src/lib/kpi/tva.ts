@@ -17,6 +17,7 @@
  */
 
 import prisma from '@/lib/prisma'
+import { collecteTvaFrancaise } from '@/lib/territoires'
 
 export interface TvaParTaux {
   base: number
@@ -37,9 +38,12 @@ export interface InferencesBreakdown {
 }
 
 export interface TvaPeriode {
-  /** true si l'exploitation est en franchise en base (art. 293 B) : aucune
-   *  TVA collectée ni déductible — la CA3 ne s'applique pas. */
+  /** true si l'exploitation est hors champ de la CA3 (franchise 293 B,
+   *  non-assujetti DROM, ou TGC) : aucune TVA collectée ni déductible. Le
+   *  motif précis est porté par `regimeTva`. */
   franchise: boolean
+  /** Régime de taxe de l'exploitation, pour adapter le message d'exonération. */
+  regimeTva: string | null
   collectee: {
     parTaux: Record<string, TvaParTaux>
     total: number
@@ -85,7 +89,10 @@ export async function computeTvaPeriode(
     where: { userId },
     select: { regimeTva: true },
   })
-  const franchise = exploitation?.regimeTva === 'franchise-293b'
+  const regimeTva = exploitation?.regimeTva ?? null
+  // Hors champ CA3 : franchise 293 B, non-assujetti (DROM) et TGC (NC/Polynésie).
+  // Seuls les régimes réels collectent une TVA française déclarable.
+  const franchise = !collecteTvaFrancaise(regimeTva)
 
   // ─── Sources collectées ─────────────────────────────────────────────
   const [
@@ -97,8 +104,20 @@ export async function computeTvaPeriode(
     venteBois,
     venteAbattage,
   ] = await Promise.all([
+    // Ventes manuelles saisies (auto exclues car réinjectées via leurs sources
+    // brutes ci-dessous) PLUS les ventes auto de la boutique en ligne :
+    // celles-ci n'ont AUCUNE source brute réinjectée ici (la récolte liée reste
+    // "en stock"), donc les exclure les faisait disparaître de la TVA/CA3/FEC
+    // alors qu'elles étaient comptées dans le CA (audit 2026-07, critique #7).
     prisma.venteManuelle.findMany({
-      where: { userId, date: { gte: startDate, lte: endDate }, auto: { not: true } },
+      where: {
+        userId,
+        date: { gte: startDate, lte: endDate },
+        OR: [
+          { auto: { not: true } },
+          { auto: true, sourceType: 'commande_boutique' },
+        ],
+      },
     }),
     // Audit compta 2026-06 : mêmes filtres anti-double-comptage que le FEC
     // (export/fec/route.ts) — une source facturée est comptée via sa Facture
@@ -281,6 +300,7 @@ export async function computeTvaPeriode(
     const zeros = Object.fromEntries(TAUX_KEYS.map(k => [k, { base: 0, tva: 0 }]))
     return {
       franchise: true,
+      regimeTva,
       collectee: { parTaux: { ...zeros }, total: 0, baseTotal: 0 },
       deductible: { parTaux: { ...zeros }, total: 0, baseTotal: 0, immobilisations: 0 },
       solde: { tvaAPayer: 0, creditTVA: 0 },
@@ -304,6 +324,7 @@ export async function computeTvaPeriode(
 
   return {
     franchise: false,
+    regimeTva,
     collectee: {
       parTaux: tvaCollectee,
       total: Math.round(totalCollectee * 100) / 100,
