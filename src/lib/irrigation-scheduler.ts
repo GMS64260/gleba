@@ -75,9 +75,11 @@ export async function genererIrrigationsPlanifiees(
     const currentDate = new Date(startDate)
     currentDate.setDate(currentDate.getDate() + frequenceJours)
 
-    // Date de fin : dateRecolte ou fin d'annee
+    // Date de fin : dateRecolte ou fin de l'année de DÉBUT de culture.
+    // Audit #64 : l'ancien `currentYear` empêchait toute irrigation pour une
+    // culture démarrant l'année suivante (fin bornée au 31/12 de l'année courante).
     const dateFin = culture.finRecolte || culture.dateRecolte
-    const endDate = dateFin ? new Date(dateFin) : new Date(currentYear, 11, 31)
+    const endDate = dateFin ? new Date(dateFin) : new Date(startDate.getFullYear(), 11, 31)
 
     const irrigations: Date[] = []
     while (currentDate <= endDate) {

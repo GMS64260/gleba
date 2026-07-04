@@ -249,11 +249,11 @@ export async function GET(_request: NextRequest, { params }: Params) {
         ly,
         { width: 45, align: "right" }
       )
-      doc.text(formatMontant(ligne.prixUnitaire), cols.pu, ly, { width: 55, align: "right" })
+      doc.text(formatMontant(ligne.prixUnitaire, devise), cols.pu, ly, { width: 55, align: "right" })
       doc.text(`${ligne.tauxTVA}%`, cols.tva, ly, { width: 40, align: "right" })
       doc.fillColor("#1e293b")
-      doc.text(formatMontant(ligne.montantHT), cols.ht, ly, { width: 55, align: "right" })
-      doc.text(formatMontant(ligne.montantTTC), cols.ttc, ly, { width: 45, align: "right" })
+      doc.text(formatMontant(ligne.montantHT, devise), cols.ht, ly, { width: 55, align: "right" })
+      doc.text(formatMontant(ligne.montantTTC, devise), cols.ttc, ly, { width: 45, align: "right" })
 
       ly += rowH + 4
       doc.moveTo(50, ly - 2).lineTo(545, ly - 2).strokeColor("#f1f5f9").lineWidth(0.5).stroke()
