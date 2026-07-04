@@ -113,13 +113,19 @@ export async function detecterConsanguinite(
   userId?: string
 ): Promise<number[]> {
   if (femelleId === maleId) return [femelleId]
+  // ancetres() inclut l'animal lui-même + ses ascendants. On intersecte les
+  // deux ensembles COMPLETS : cela capture les ancêtres communs ET le cas
+  // parent×enfant direct (le père appartient aux ancêtres de sa fille, donc
+  // il figure dans l'intersection). L'ancienne version supprimait chaque
+  // animal de son propre ensemble avant l'intersection → l'accouplement
+  // père×fille passait inaperçu si le père n'avait pas d'ancêtres enregistrés
+  // (audit 2026-07, #18). femelleId et maleId étant distincts (early return),
+  // aucun faux positif : un animal n'apparaît dans l'ensemble de l'autre que
+  // s'il en est réellement un ascendant.
   const [aF, aM] = await Promise.all([
     ancetres(tx, femelleId, generations, userId),
     ancetres(tx, maleId, generations, userId),
   ])
-  // On exclut les animaux eux-mêmes — on cherche les ancêtres COMMUNS strict
-  aF.delete(femelleId)
-  aM.delete(maleId)
   const communs: number[] = []
   for (const id of aF) if (aM.has(id)) communs.push(id)
   return communs
