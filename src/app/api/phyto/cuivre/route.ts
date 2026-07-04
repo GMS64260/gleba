@@ -102,7 +102,12 @@ export async function GET() {
     traitements.push({
       date: i.date,
       parcelleId,
-      surfaceHa: i.surfaceTraiteeHa ?? i.surfaceTraitee ?? null,
+      // surfaceTraitee est saisie en m² (cf. libellé du formulaire) ; on la
+      // convertit en hectares. Auparavant elle était prise telle quelle comme
+      // des ha → cumul cuivre ×10 000 et fausse alerte "dépassement" (audit #38).
+      surfaceHa:
+        i.surfaceTraiteeHa ??
+        (i.surfaceTraitee != null ? i.surfaceTraitee / 10000 : null),
       doseAppliquee: i.doseAppliquee,
       uniteDose: i.uniteDose,
       volumeBouillieLHa: i.volumeBouillieLHa,

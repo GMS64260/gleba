@@ -140,7 +140,11 @@ export async function GET(request: NextRequest) {
       parcelle: i.parcelle?.nom ?? planche?.nom ?? null,
       espece,
       variete,
-      surfaceHa: i.surfaceTraiteeHa ?? i.surfaceTraitee ?? null,
+      // surfaceTraitee est saisie en m² : conversion en ha pour la colonne
+      // "Surface traitée (ha)" du registre officiel (audit #37, facteur 10 000).
+      surfaceHa:
+        i.surfaceTraiteeHa ??
+        (i.surfaceTraitee != null ? i.surfaceTraitee / 10000 : null),
       cible: i.cibleTraitement ?? null,
       methode: ref?.classification ?? null,
       produit: ref?.nomCommercial ?? i.produitPhyto ?? null,
