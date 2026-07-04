@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { normalizeVarieteName } from '@/lib/normalize'
+import { invalidateKpi } from '@/lib/kpi'
 
 interface ImportData {
   version?: string
@@ -1081,6 +1082,10 @@ export async function POST(request: NextRequest) {
     } catch (autoComptaError) {
       console.error('Auto-compta error (import fertilisations):', autoComptaError)
     }
+
+    // Audit #53 : l'import crée cultures/récoltes/planches mais n'invalidait
+    // pas le cache KPI → dashboard figé jusqu'à expiration.
+    invalidateKpi(userId)
 
     return NextResponse.json({
       success: true,
