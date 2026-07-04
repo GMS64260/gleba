@@ -242,11 +242,15 @@ export function deviseDuTerritoire(code?: string | null): Devise {
 }
 
 /**
- * Une facture est-elle émise sans taxe (TVA/TGC) à 0 ?
- * Vrai pour la franchise en base (art. 293 B) et les non-assujettis/exonérés.
+ * Une facture est-elle émise sans TVA française (taux 0) ?
+ * Vrai pour la franchise en base (art. 293 B), les non-assujettis (DROM,
+ * art. 294) ET la TGC (Nouvelle-Calédonie / Polynésie). Auparavant la TGC
+ * était absente → une exploitation calédonienne facturait une TVA française
+ * 5,5 % inexistante chez elle (document illégal, audit 2026-07 #13). La TGC a
+ * ses propres taux, non encore gérés : on n'émet pas de fausse TVA à la place.
  */
 export function factureSansTaxe(regimeTva?: string | null): boolean {
-  return regimeTva === 'franchise-293b' || regimeTva === 'non-assujetti'
+  return !collecteTvaFrancaise(regimeTva)
 }
 
 /**
