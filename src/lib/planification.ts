@@ -1053,18 +1053,24 @@ export async function creerCulturesBatch(
 
   // Resolve planche noms to cuid IDs
   const plancheNoms = [...new Set(cultures.map(c => c.plancheId))]
+  // Résolution par nom OU par id, mais UNIQUEMENT parmi les planches de
+  // l'utilisateur (audit 2026-07, #42 IDOR : le fallback sur l'id brut du
+  // client permettait de rattacher une culture à la planche d'un autre compte).
   const planchesDb = await prisma.planche.findMany({
-    where: { userId, nom: { in: plancheNoms } },
+    where: { userId, OR: [{ nom: { in: plancheNoms } }, { id: { in: plancheNoms } }] },
     select: { id: true, nom: true, largeur: true },
   })
   const plancheNomToId = new Map(planchesDb.map(p => [p.nom, p.id]))
+  const plancheIdsUser = new Set(planchesDb.map(p => p.id))
 
   for (const culture of cultures) {
     const itp = itpMap.get(culture.itpId)
     if (!itp || !itp.especeId) continue
 
-    // Resolve planche nom → cuid
-    const plancheCuidId = plancheNomToId.get(culture.plancheId) || culture.plancheId
+    // Resolve planche nom → cuid (appartenance vérifiée : nom OU id de l'user)
+    const plancheCuidId = plancheNomToId.get(culture.plancheId)
+      ?? (plancheIdsUser.has(culture.plancheId) ? culture.plancheId : null)
+    if (!plancheCuidId) continue // planche inconnue pour cet utilisateur → on ignore
 
     // Verifier si la culture existe deja
     const existing = await prisma.culture.findFirst({

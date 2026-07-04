@@ -73,6 +73,25 @@ export async function POST(request: NextRequest) {
 
     const datePrevue = body.datePlantationPrevue ? new Date(body.datePlantationPrevue) : null
 
+    // Audit 2026-07 (#15, IDOR) : vérifier que les ressources liées appartiennent
+    // bien à l'utilisateur (sinon on pouvait rattacher sa campagne à la parcelle
+    // / zone / production bois d'un autre compte).
+    const uid = session!.user.id
+    if (body.parcelleGeoId) {
+      const ok = await prisma.parcelleGeo.findFirst({ where: { id: body.parcelleGeoId, userId: uid }, select: { id: true } })
+      if (!ok) return NextResponse.json({ error: "Parcelle introuvable" }, { status: 400 })
+    }
+    if (body.zoneVergerId) {
+      const zid = parseInt(body.zoneVergerId)
+      const ok = !Number.isNaN(zid) && (await prisma.zoneVerger.findFirst({ where: { id: zid, userId: uid }, select: { id: true } }))
+      if (!ok) return NextResponse.json({ error: "Zone introuvable" }, { status: 400 })
+    }
+    if (body.productionBoisId) {
+      const pid = parseInt(body.productionBoisId)
+      const ok = !Number.isNaN(pid) && (await prisma.productionBois.findFirst({ where: { id: pid, userId: uid }, select: { id: true } }))
+      if (!ok) return NextResponse.json({ error: "Production bois introuvable" }, { status: 400 })
+    }
+
     const campagne = await prisma.campagnePlantation.create({
       data: {
         userId: session!.user.id,
