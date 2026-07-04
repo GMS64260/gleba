@@ -208,8 +208,41 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       return NextResponse.json({ error: "Arbre non trouve" }, { status: 404 })
     }
 
-    await prisma.arbre.delete({
-      where: { id: arbreId },
+    // Audit 2026-07 (#12) : la suppression cascade sur les récoltes de l'arbre,
+    // mais laissait orphelines les écritures comptables auto (VenteManuelle
+    // sourceType='recolte_arbre') → CA fantôme non nettoyable. Et une récolte
+    // facturée disparaissait sans que la facture (document légal) soit traitée.
+    const recoltes = await prisma.recolteArbre.findMany({
+      where: { arbreId, userId: session!.user.id },
+      select: { id: true, factureId: true },
+    })
+    const facturees = recoltes.filter((r) => r.factureId != null)
+    if (facturees.length > 0) {
+      return NextResponse.json(
+        {
+          error:
+            `Suppression impossible : ${facturees.length} récolte(s) de cet arbre sont facturées. ` +
+            `Annulez d'abord la ou les factures concernées, puis réessayez.`,
+        },
+        { status: 409 }
+      )
+    }
+
+    const recolteIds = recoltes.map((r) => r.id)
+    await prisma.$transaction(async (tx) => {
+      // Supprimer les écritures auto liées aux récoltes (pas de FK, sinon orphelines)
+      if (recolteIds.length > 0) {
+        await tx.venteManuelle.deleteMany({
+          where: {
+            userId: session!.user.id,
+            sourceType: "recolte_arbre",
+            sourceId: { in: recolteIds },
+            auto: true,
+          },
+        })
+      }
+      // La suppression de l'arbre cascade sur les récoltes (onDelete: Cascade)
+      await tx.arbre.delete({ where: { id: arbreId } })
     })
 
     return NextResponse.json({ success: true })
