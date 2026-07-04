@@ -376,7 +376,9 @@ export async function PATCH(request: NextRequest) {
     // Transaction atomique : facture + update vente
     const vente = await prisma.$transaction(async (tx) => {
       if (body.creerFacture && existing.prixTotal) {
-        const tva = existing.tauxTVA || 5.5
+        // Audit #25 : `|| 5.5` transformait un taux 0 % explicite (exonéré) en
+        // 5,5 %. On ne retombe sur 5,5 que si le taux est réellement absent.
+        const tva = existing.tauxTVA ?? 5.5
         const totalHT = existing.prixTotal / (1 + tva / 100)
         const totalTVA = existing.prixTotal - totalHT
 
