@@ -83,6 +83,16 @@ export async function confirmCommandeBoutique(
   opts: { provider?: string; ref?: string; tauxTVA?: number } = {},
   tx: Tx = prisma
 ): Promise<ConfirmationResult> {
+  // Verrou de ligne (audit 2026-07, #4) : sérialise les confirmations
+  // concurrentes de la même commande (double-clic / rejeu webhook). Le 2e
+  // appel attend le COMMIT du 1er puis relit paiementStatut='Confirmé' →
+  // no-op via l'idempotence ci-dessous, au lieu de doubler stock + écriture.
+  // (Efficace uniquement dans une transaction ; l'appelant en fournit une.)
+  await tx.$executeRawUnsafe(
+    'SELECT id FROM commandes_boutique WHERE id = $1 FOR UPDATE',
+    commandeId,
+  )
+
   const commande = await tx.commandeBoutique.findUnique({
     where: { id: commandeId },
     include: {
