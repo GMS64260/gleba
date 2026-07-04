@@ -187,7 +187,37 @@ function TachesContent() {
       return
     }
 
-    // Pour les autres (semis, plantation, annuler recolte)
+    // Décochage d'une récolte : supprimer la/les récolte(s) en stock créée(s)
+    // par le pointage, sinon elles restaient comptées dans le stock et un
+    // recochage en créait une seconde → double comptage (audit 2026-07, #81).
+    if (type === "recolte" && currentValue) {
+      if (!window.confirm("Annuler la récolte enregistrée pour cette culture ? La quantité sera retirée du stock.")) return
+      try {
+        const res = await fetch(`/api/recoltes?cultureId=${cultureId}&pageSize=200`)
+        if (res.ok) {
+          const payload = await res.json()
+          const rows: Array<{ id: number; statut: string }> = Array.isArray(payload) ? payload : payload.data || []
+          await Promise.all(
+            rows.filter(r => r.statut === "en_stock").map(r =>
+              fetch(`/api/recoltes/${r.id}`, { method: "DELETE" })
+            )
+          )
+        }
+        const patch = await fetch(`/api/cultures/${cultureId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ recolteFaite: false }),
+        })
+        if (!patch.ok) throw new Error("Erreur")
+        toast({ title: "Récolte annulée" })
+        fetchData()
+      } catch {
+        toast({ variant: "destructive", title: "Erreur" })
+      }
+      return
+    }
+
+    // Pour les autres (semis, plantation)
     try {
       const fieldMap = {
         semis: "semisFait",

@@ -440,8 +440,12 @@ export async function POST(request: NextRequest) {
         },
       })
 
-      // Décrément automatique du stock de semences (per-user)
-      if (data.varieteId && data.dateSemis && itp) {
+      // Décrément automatique du stock de semences (per-user).
+      // Audit #40 : on utilise l'ITP EFFECTIF de la culture (newCulture.itp),
+      // pas la variable `itp` (nulle quand l'ITP a été auto-assigné) → le
+      // décrément ne s'appliquait qu'avec un ITP choisi explicitement.
+      const itpEff = itp ?? newCulture.itp
+      if (data.varieteId && data.dateSemis && itpEff) {
         const variete = await tx.variete.findUnique({
           where: { id: data.varieteId },
           select: { nbGrainesG: true },
@@ -460,14 +464,14 @@ export async function POST(request: NextRequest) {
           let grammesNecessaires = 0
 
           if (espacement > 0 && variete.nbGrainesG > 0) {
-            const nbGrainesPlant = itp.nbGrainesPlant || 1
+            const nbGrainesPlant = itpEff.nbGrainesPlant || 1
             grammesNecessaires = Math.ceil(
               (longueur * nbRangs / espacement * 100 * nbGrainesPlant) /
               variete.nbGrainesG
             )
-          } else if (itp.doseSemis && planche?.largeur) {
+          } else if (itpEff.doseSemis && planche?.largeur) {
             grammesNecessaires = Math.ceil(
-              longueur * planche.largeur * itp.doseSemis
+              longueur * planche.largeur * itpEff.doseSemis
             )
           }
 
