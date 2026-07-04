@@ -175,21 +175,33 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'ID requis' }, { status: 400 })
     }
 
+    // Audit #91 : le front envoie null quand le champ est vide → parseFloat(null)
+    // = NaN persisté (casse ensuite les totaux). On convertit proprement :
+    // vide/null/invalide → null, sinon le nombre.
+    const num = (v: unknown): number | null => {
+      if (v === undefined || v === null || v === '') return null
+      const n = parseFloat(String(v))
+      return Number.isNaN(n) ? null : n
+    }
+    const stockN = stock !== undefined ? num(stock) : undefined
+    const prixN = prix !== undefined ? num(prix) : undefined
+    const stockMinN = stockMin !== undefined ? num(stockMin) : undefined
+
     // Mettre à jour le stock per-user via upsert
     const userStock = await prisma.userStockAliment.upsert({
       where: { userId_alimentId: { userId, alimentId: id } },
       create: {
         userId,
         alimentId: id,
-        stock: stock !== undefined ? parseFloat(stock) : null,
-        prix: prix !== undefined ? parseFloat(prix) : null,
-        stockMin: stockMin !== undefined ? parseFloat(stockMin) : null,
+        stock: stockN ?? null,
+        prix: prixN ?? null,
+        stockMin: stockMinN ?? null,
         dateStock: stock !== undefined ? new Date() : null,
       },
       update: {
-        stock: stock !== undefined ? parseFloat(stock) : undefined,
-        prix: prix !== undefined ? parseFloat(prix) : undefined,
-        stockMin: stockMin !== undefined ? parseFloat(stockMin) : undefined,
+        stock: stockN,
+        prix: prixN,
+        stockMin: stockMinN,
         dateStock: stock !== undefined ? new Date() : undefined,
       },
     })
