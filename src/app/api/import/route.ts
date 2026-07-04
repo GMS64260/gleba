@@ -987,11 +987,16 @@ export async function POST(request: NextRequest) {
 
     const totalImported = Object.values(stats).reduce((a, b) => a + b, 0)
 
-    // Générer automatiquement les irrigations planifiées pour les cultures importées
+    // Générer les irrigations planifiées pour les cultures importées.
+    // Audit 2026-07 (#30) : auparavant on régénérait pour TOUTES les cultures
+    // actives sans déduplication ni borne au présent → chaque import doublait
+    // les plannings existants et créait des dizaines de dates passées « en
+    // retard ». On saute les cultures qui ont déjà un planning et on ne crée
+    // que des dates futures.
     let irrigationsCreated = 0
     const currentYear = new Date().getFullYear()
+    const aujourdhui = new Date()
 
-    // Récupérer les cultures avec irrigation de l'annee en cours et suivante
     const culturesAIrriguer = await tx.culture.findMany({
       where: {
         userId,
@@ -1005,6 +1010,12 @@ export async function POST(request: NextRequest) {
     })
 
     for (const culture of culturesAIrriguer) {
+      // Dédup : ne pas régénérer si un planning existe déjà pour cette culture.
+      const dejaPlanifie = await tx.irrigationPlanifiee.count({
+        where: { cultureId: culture.id, userId },
+      })
+      if (dejaPlanifie > 0) continue
+
       const dateDebut = culture.datePlantation || culture.dateSemis
       const dateFin = culture.finRecolte || culture.dateRecolte
 
@@ -1020,7 +1031,8 @@ export async function POST(request: NextRequest) {
       const finDate = dateFin ? new Date(dateFin) : new Date(dateDebut.getFullYear(), 11, 31)
 
       while (currentDate <= finDate) {
-        irrigations.push(new Date(currentDate))
+        // Ne planifier que le futur : pas de tâche d'irrigation passée « en retard ».
+        if (currentDate >= aujourdhui) irrigations.push(new Date(currentDate))
         currentDate.setDate(currentDate.getDate() + frequenceJours)
       }
 
