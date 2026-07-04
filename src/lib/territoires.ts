@@ -250,6 +250,32 @@ export function factureSansTaxe(regimeTva?: string | null): boolean {
 }
 
 /**
+ * L'exploitation collecte-t-elle de la TVA française déclarable en CA3 ?
+ * SEULS les régimes réels (simplifié / normal) sont concernés. La franchise
+ * en base (293 B), les non-assujettis (DROM, art. 294) et la TGC (Nouvelle-
+ * Calédonie / Polynésie) sont hors champ de la CA3 : aucune TVA à payer.
+ * (Audit 2026-07 : l'écran TVA affichait une "TVA à payer" fictive pour
+ * non-assujetti et tgc — seule la franchise 293 B était neutralisée.)
+ */
+export function collecteTvaFrancaise(regimeTva?: string | null): boolean {
+  return regimeTva === 'reel-simplifie' || regimeTva === 'reel-normal'
+}
+
+/**
+ * Message d'explication à afficher quand la CA3 est neutralisée (toutes cases
+ * à zéro), selon le motif d'exonération. `null` pour un régime réel.
+ */
+export function motifHorsChampCa3(regimeTva?: string | null): string | null {
+  if (regimeTva === 'franchise-293b')
+    return 'Exploitation en franchise en base (art. 293 B CGI) : vous ne collectez ni ne déduisez aucune TVA — la déclaration CA3 ne vous concerne pas.'
+  if (regimeTva === 'non-assujetti')
+    return 'Exploitation non assujettie à la TVA (art. 294 CGI, DROM) : la déclaration CA3 ne vous concerne pas.'
+  if (regimeTva === 'tgc')
+    return 'Exploitation soumise à la TGC (Nouvelle-Calédonie / Polynésie), hors champ de la TVA française : la CA3 ne vous concerne pas.'
+  return null
+}
+
+/**
  * Mention fiscale à reporter en pied de facture selon le régime.
  * `null` si aucune mention spécifique n'est requise (régimes réels).
  */

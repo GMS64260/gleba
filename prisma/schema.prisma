@@ -2776,8 +2776,10 @@ model CommandeBoutique {
   user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   boutiqueId      String    @map("boutique_id")
   boutique        Boutique  @relation(fields: [boutiqueId], references: [id], onDelete: Cascade)
-  // Numéro lisible (ex: CMD-2026-0001)
-  numero          String    @unique @map("numero")
+  // Numéro lisible (ex: CMD-2026-0001), séquence PAR PRODUCTEUR.
+  // Unicité par (userId, numero) — cf @@unique plus bas. Une contrainte
+  // globale provoquait des collisions inter-boutiques (audit 2026-07).
+  numero          String    @map("numero")
   // Client
   clientNom       String    @map("client_nom")
   clientEmail     String    @map("client_email")
@@ -2807,6 +2809,7 @@ model CommandeBoutique {
 
   lignes          LigneCommandeBoutique[]
 
+  @@unique([userId, numero])
   @@index([userId])
   @@index([boutiqueId])
   @@index([statut])

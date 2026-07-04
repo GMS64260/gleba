@@ -98,13 +98,20 @@ export async function GET(request: NextRequest) {
         orderBy: { dateVente: 'desc' },
       }),
 
-      // VenteManuelle (exclure auto=true pour eviter le double comptage
-      // avec les sources brutes VenteProduit, Abattage, Recolte, etc.)
+      // VenteManuelle : on exclut les auto=true (réinjectées via leurs sources
+      // brutes VenteProduit, Abattage, Recolte…) SAUF celles de la boutique,
+      // qui n'ont pas de source brute réinjectée ici. Sans cette exception, une
+      // commande confirmée était comptée dans le total (getKpiCompta) mais
+      // absente de la liste des transactions (audit 2026-07, high #2). Les
+      // inclure alimente aussi commandeIdsDejaComptees → pas de double ligne.
       prisma.venteManuelle.findMany({
         where: {
           userId,
           date: { gte: startOfYear, lte: endOfYear },
-          auto: { not: true },
+          OR: [
+            { auto: { not: true } },
+            { auto: true, sourceType: 'commande_boutique' },
+          ],
         },
         orderBy: { date: 'desc' },
       }),

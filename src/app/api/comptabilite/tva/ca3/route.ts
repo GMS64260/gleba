@@ -26,6 +26,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { computeTvaPeriode } from '@/lib/kpi/tva'
+import { motifHorsChampCa3 } from '@/lib/territoires'
 import PDFDocument from 'pdfkit'
 
 export async function GET(request: NextRequest) {
@@ -99,7 +100,7 @@ export async function GET(request: NextRequest) {
       `# Aide à la déclaration TVA CA3 — Période ${year}${trimestre ? ` T${trimestre}` : ''}`,
       '# Généré par Gleba — à recopier sur impots.gouv.fr (formulaire 3310-CA3)',
       ...(tva.franchise
-        ? ['# ATTENTION : exploitation en franchise en base (art. 293 B CGI) — aucune TVA à déclarer, la CA3 ne vous concerne pas.']
+        ? [`# ATTENTION : ${motifHorsChampCa3(tva.regimeTva) ?? 'exploitation hors champ de la CA3 — aucune TVA à déclarer.'}`]
         : []),
       `# nb_inferees_collectees;${tva.details.nbInfereesCollectees}`,
       `# nb_inferees_deductibles;${tva.details.nbInfereesDeductibles}`,
@@ -139,7 +140,7 @@ export async function GET(request: NextRequest) {
       .fillColor('#dc2626')
       .text(
         tva.franchise
-          ? '⚠ Votre exploitation est en franchise en base (art. 293 B CGI) : vous ne collectez ni ne déduisez aucune TVA — la déclaration CA3 ne vous concerne pas. Toutes les cases sont à zéro.'
+          ? `⚠ ${motifHorsChampCa3(tva.regimeTva) ?? 'Votre exploitation est hors champ de la CA3.'} Toutes les cases sont à zéro.`
           : '⚠ Aide à la déclaration — les valeurs doivent être recopiées manuellement sur impots.gouv.fr (formulaire 3310-CA3). La conformité reste de la responsabilité de l\'expert-comptable.',
         50,
         128,
