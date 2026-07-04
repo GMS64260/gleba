@@ -193,6 +193,20 @@ export async function PATCH(request: NextRequest) {
     }
     if (updates.montantHT !== undefined) updateData.montantHT = updates.montantHT
     if (updates.montantTVA !== undefined) updateData.montantTVA = updates.montantTVA
+    // Audit 2026-07 (#9) : modifier le montant ou le taux sans fournir HT/TVA
+    // laissait montantHT/montantTVA périmés (TVA fausse dans la CA3/FEC/bilan).
+    // On les recalcule à partir des valeurs effectives.
+    if (
+      (updates.montant !== undefined || updates.tauxTVA !== undefined) &&
+      updates.montantHT === undefined &&
+      updates.montantTVA === undefined
+    ) {
+      const montant = updateData.montant ?? existing.montant
+      const taux = updateData.tauxTVA ?? existing.tauxTVA ?? 5.5
+      const ht = montant / (1 + taux / 100)
+      updateData.montantHT = Math.round(ht * 100) / 100
+      updateData.montantTVA = Math.round((montant - ht) * 100) / 100
+    }
     if (updates.journal !== undefined) updateData.journal = updates.journal
     if (updates.modeReglement !== undefined) updateData.modeReglement = updates.modeReglement
     if (updates.numeroPiece !== undefined) updateData.numeroPiece = updates.numeroPiece

@@ -262,12 +262,20 @@ export async function annulerCommandeBoutique(
         where: { id: ligne.produit.id },
         data: { stockDispo: ligne.produit.stockDispo + ligne.quantite },
       })
+      // Récolte source remise en stock si elle avait été marquée vendue (cf #51).
+      if (ligne.produit.recolteId) {
+        await tx.recolte.updateMany({
+          where: { id: ligne.produit.recolteId, statut: "vendu" },
+          data: { statut: "en_stock", dateVente: null },
+        })
+      }
     }
+    // Audit 2026-07 (#10) : on SUPPRIME la VenteManuelle auto au lieu de la
+    // passer paye=false. Le CA (sumVenteManuelle) somme toutes les VenteManuelle
+    // sans filtrer `paye` — une commande annulée restait donc comptée dans le
+    // chiffre d'affaires. La commande reste tracée (statut='annulee').
     if (commande.venteManuelleId) {
-      await tx.venteManuelle.update({
-        where: { id: commande.venteManuelleId },
-        data: { paye: false, notes: `Commande ${motif.toLowerCase()} le ${new Date().toISOString().slice(0, 10)}` },
-      })
+      await tx.venteManuelle.delete({ where: { id: commande.venteManuelleId } })
     }
   }
 

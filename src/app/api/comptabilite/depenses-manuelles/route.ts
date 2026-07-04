@@ -168,6 +168,19 @@ export async function PATCH(request: NextRequest) {
     }
     if (updates.montantHT !== undefined) updateData.montantHT = updates.montantHT
     if (updates.montantTVA !== undefined) updateData.montantTVA = updates.montantTVA
+    // Audit 2026-07 (#9) : recalcul HT/TVA si montant ou taux changent sans
+    // HT/TVA fournis (sinon TVA déductible périmée dans CA3/FEC/bilan).
+    if (
+      (updates.montant !== undefined || updates.tauxTVA !== undefined) &&
+      updates.montantHT === undefined &&
+      updates.montantTVA === undefined
+    ) {
+      const montant = updateData.montant ?? existing.montant
+      const taux = updateData.tauxTVA ?? existing.tauxTVA ?? 20
+      const ht = montant / (1 + taux / 100)
+      updateData.montantHT = Math.round(ht * 100) / 100
+      updateData.montantTVA = Math.round((montant - ht) * 100) / 100
+    }
     if (updates.fournisseurNom !== undefined) updateData.fournisseurNom = updates.fournisseurNom
     if (updates.fournisseurId !== undefined) updateData.fournisseurId = updates.fournisseurId
     if (updates.refFacture !== undefined) updateData.refFacture = updates.refFacture
