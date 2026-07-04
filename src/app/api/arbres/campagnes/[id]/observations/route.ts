@@ -65,12 +65,13 @@ export async function POST(request: NextRequest, { params }: Params) {
   const nbManquants = body.nbManquants ? parseInt(body.nbManquants) : null
 
   if (tauxReprise === null && nbVivants !== null) {
-    if (nbMorts === null && nbManquants === null) {
-      // Seul nbVivants est saisi (cas du formulaire standard) : se baser sur
-      // le nombre de plants de la campagne, sinon vivants/vivants = 100 %.
-      if (campagne.nombrePlants && campagne.nombrePlants > 0) {
-        tauxReprise = Math.round((nbVivants / campagne.nombrePlants) * 1000) / 10
-      }
+    // Audit #12 : le dénominateur du taux de reprise est le nombre de plants
+    // PLANTÉS de la campagne (source de vérité). L'ancienne branche
+    // vivants/(vivants+morts+manquants) surestimait le taux dès que des plants
+    // disparus n'étaient pas comptés. On ne retombe sur la somme observée que
+    // si la campagne n'a pas de nombre de plants renseigné.
+    if (campagne.nombrePlants && campagne.nombrePlants > 0) {
+      tauxReprise = Math.round((nbVivants / campagne.nombrePlants) * 1000) / 10
     } else {
       const total = nbVivants + (nbMorts || 0) + (nbManquants || 0)
       if (total > 0) {
