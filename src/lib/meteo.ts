@@ -128,7 +128,7 @@ export async function fetchOpenMeteoForecast(lat: number, lng: number): Promise<
       'relative_humidity_2m_min',
       'wind_speed_10m_max',
     ].join(','),
-    timezone: 'Europe/Paris',
+    timezone: 'auto', // audit #59 : fuseau du lieu (correct en métropole ET Outre-mer)
     forecast_days: '7',
   })
 
@@ -207,7 +207,7 @@ export async function fetchOpenMeteoHistory(
       'relative_humidity_2m_min',
       'wind_speed_10m_max',
     ].join(','),
-    timezone: 'Europe/Paris',
+    timezone: 'auto', // audit #59 : fuseau du lieu (correct en métropole ET Outre-mer)
   })
 
   const res = await fetch(`${OPEN_METEO_ARCHIVE_URL}?${params}`)
