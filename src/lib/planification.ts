@@ -317,81 +317,78 @@ export async function getCulturesPrevues(
 
   const culturesPrevues: CulturePrevue[] = []
 
-  // Determiner l'annee de base pour le calcul des rotations
-  // On utilise l'annee courante comme reference
-  const anneeBase = annee - 10 // On suppose que les rotations ont commence il y a max 10 ans
-
   for (const planche of planches) {
     if (!planche.rotation || planche.rotation.details.length === 0) continue
 
     const nbAnneesCycle = planche.rotation.nbAnnees || planche.rotation.details.length
 
-    // Pour chaque detail de rotation
+    // Étape courante du cycle, ancrée sur planche.annee (année où la rotation
+    // est à l'étape 1). Auparavant anneeBase = annee - 10 était relatif à
+    // l'année demandée, donc l'équation de correspondance était constante et
+    // la même étape ressortait chaque année (audit 2026-07, #26). Repli sur un
+    // epoch fixe si planche.annee absent : la phase est alors arbitraire mais
+    // progresse correctement d'une année sur l'autre.
+    const anneeRef = planche.annee ?? 2000
+    const etapeCourante = ((((annee - anneeRef) % nbAnneesCycle) + nbAnneesCycle) % nbAnneesCycle) + 1
+
     for (const detail of planche.rotation.details) {
-      // Calculer si cette annee du cycle correspond a l'annee demandee
-      // On teste plusieurs cycles pour trouver une correspondance
-      for (let cycleOffset = 0; cycleOffset <= 20; cycleOffset++) {
-        const anneeReelle = anneeBase + (cycleOffset * nbAnneesCycle) + (detail.annee - 1)
+      if (detail.annee !== etapeCourante) continue
 
-        if (anneeReelle === annee) {
-          // Filtrer par espece si demande
-          if (options?.especeId && detail.itp?.especeId !== options.especeId) {
-            continue
-          }
-
-          const surface = (planche.longueur || 0) * (planche.largeur || 0)
-
-          // Verifier si une culture existe deja
-          const cultureExistante = planche.cultures.find(
-            c => c.itpId === detail.itpId || c.especeId === detail.itp?.especeId
-          )
-
-          // Bug R3/B (testeur) : ne pas injecter de culture « fantôme » à créer
-          // quand la planche est DÉJÀ occupée par des cultures réelles cette
-          // année (la suggestion de rotation polluait l'inventaire réel).
-          if (!cultureExistante && planche.cultures.length > 0) continue
-
-          // Bug R19/R26 : si une culture réelle existe, ses dates SAISIES priment
-          // sur les semaines théoriques de l'ITP (sinon toutes les successions
-          // d'une planche affichent les mêmes semaines ITP).
-          // Bug #1 : on applique ensuite `coherenceSemaines` pour éviter qu'un
-          // fallback ITP (ex. semis théorique) casse l'ordre vis-à-vis d'une
-          // date réelle (ex. plantation saisie sans semis → semis > plantation).
-          const semainesM1 = coherenceSemaines({
-            semaineSemis: cultureExistante?.dateSemis ? dateVersSemaine(cultureExistante.dateSemis, annee) : (detail.itp?.semaineSemis || null),
-            semainePlantation: cultureExistante?.datePlantation ? dateVersSemaine(cultureExistante.datePlantation, annee) : (detail.itp?.semainePlantation || null),
-            semaineRecolte: cultureExistante?.dateRecolte ? dateVersSemaine(cultureExistante.dateRecolte, annee) : (detail.itp?.semaineRecolte || null),
-            semisReel: !!cultureExistante?.dateSemis,
-            plantationReelle: !!cultureExistante?.datePlantation,
-            recolteReelle: !!cultureExistante?.dateRecolte,
-          })
-
-          culturesPrevues.push({
-            plancheId: planche.nom,
-            plancheLongueur: planche.longueur,
-            plancheLargeur: planche.largeur,
-            plancheSurface: planche.surface,
-            ilot: deriveIlot(planche.ilot, planche.nom),
-            rotationId: planche.rotationId,
-            rotationAnnee: detail.annee,
-            itpId: detail.itpId,
-            especeId: detail.itp?.especeId || null,
-            especeCouleur: detail.itp?.espece?.couleur || null,
-            varieteId: cultureExistante?.varieteId ?? null, // A definir lors de la creation
-            annee,
-            semaineSemis: semainesM1.semaineSemis,
-            semainePlantation: semainesM1.semainePlantation,
-            semaineRecolte: semainesM1.semaineRecolte,
-            dureeCulture: detail.itp?.dureeCulture || null,
-            nbRangs: detail.itp?.nbRangs || null,
-            espacement: detail.itp?.espacement || null,
-            surface,
-            existante: !!cultureExistante,
-            cultureId: cultureExistante?.id || null,
-          })
-          break // Sortir de la boucle cycleOffset
-        }
+      // Filtrer par espece si demande
+      if (options?.especeId && detail.itp?.especeId !== options.especeId) {
+        continue
       }
+
+      const surface = (planche.longueur || 0) * (planche.largeur || 0)
+
+      // Verifier si une culture existe deja
+      const cultureExistante = planche.cultures.find(
+        c => c.itpId === detail.itpId || c.especeId === detail.itp?.especeId
+      )
+
+      // Bug R3/B (testeur) : ne pas injecter de culture « fantôme » à créer
+      // quand la planche est DÉJÀ occupée par des cultures réelles cette
+      // année (la suggestion de rotation polluait l'inventaire réel).
+      if (!cultureExistante && planche.cultures.length > 0) continue
+
+      // Bug R19/R26 : si une culture réelle existe, ses dates SAISIES priment
+      // sur les semaines théoriques de l'ITP (sinon toutes les successions
+      // d'une planche affichent les mêmes semaines ITP).
+      // Bug #1 : on applique ensuite `coherenceSemaines` pour éviter qu'un
+      // fallback ITP (ex. semis théorique) casse l'ordre vis-à-vis d'une
+      // date réelle (ex. plantation saisie sans semis → semis > plantation).
+      const semainesM1 = coherenceSemaines({
+        semaineSemis: cultureExistante?.dateSemis ? dateVersSemaine(cultureExistante.dateSemis, annee) : (detail.itp?.semaineSemis || null),
+        semainePlantation: cultureExistante?.datePlantation ? dateVersSemaine(cultureExistante.datePlantation, annee) : (detail.itp?.semainePlantation || null),
+        semaineRecolte: cultureExistante?.dateRecolte ? dateVersSemaine(cultureExistante.dateRecolte, annee) : (detail.itp?.semaineRecolte || null),
+        semisReel: !!cultureExistante?.dateSemis,
+        plantationReelle: !!cultureExistante?.datePlantation,
+        recolteReelle: !!cultureExistante?.dateRecolte,
+      })
+
+      culturesPrevues.push({
+        plancheId: planche.nom,
+        plancheLongueur: planche.longueur,
+        plancheLargeur: planche.largeur,
+        plancheSurface: planche.surface,
+        ilot: deriveIlot(planche.ilot, planche.nom),
+        rotationId: planche.rotationId,
+        rotationAnnee: detail.annee,
+        itpId: detail.itpId,
+        especeId: detail.itp?.especeId || null,
+        especeCouleur: detail.itp?.espece?.couleur || null,
+        varieteId: cultureExistante?.varieteId ?? null, // A definir lors de la creation
+        annee,
+        semaineSemis: semainesM1.semaineSemis,
+        semainePlantation: semainesM1.semainePlantation,
+        semaineRecolte: semainesM1.semaineRecolte,
+        dureeCulture: detail.itp?.dureeCulture || null,
+        nbRangs: detail.itp?.nbRangs || null,
+        espacement: detail.itp?.espacement || null,
+        surface,
+        existante: !!cultureExistante,
+        cultureId: cultureExistante?.id || null,
+      })
     }
   }
 

@@ -50,8 +50,29 @@ export default function CadastreSearch({ onImport }: CadastreSearchProps) {
       setResults([])
 
       try {
+        // L'API cadastre attend un code INSEE (5 chiffres). Si l'utilisateur
+        // a saisi un nom de commune, on le résout d'abord via /communes.
+        // (Audit 2026-07, #23 : avant, le nom était envoyé tel quel → 400.)
+        const saisie = commune.trim()
+        let codeInsee = saisie
+        let nomCommune = saisie
+        if (!/^\d{5}$/.test(saisie)) {
+          const rc = await fetch(`/api/carte/communes?q=${encodeURIComponent(saisie)}`)
+          if (!rc.ok) {
+            const d = await rc.json().catch(() => null)
+            throw new Error(d?.error || "Impossible de rechercher la commune.")
+          }
+          const communes: Array<{ nom: string; code: string }> = await rc.json()
+          if (!Array.isArray(communes) || communes.length === 0) {
+            setError("Aucune commune trouvée pour ce nom. Essayez le code INSEE (5 chiffres).")
+            return
+          }
+          codeInsee = communes[0].code
+          nomCommune = communes[0].nom
+        }
+
         // Construction des parametres de requete
-        const params = new URLSearchParams({ commune: commune.trim() })
+        const params = new URLSearchParams({ commune: codeInsee })
         if (section.trim()) params.set("section", section.trim())
         if (numero.trim()) params.set("numero", numero.trim())
 
@@ -64,13 +85,37 @@ export default function CadastreSearch({ onImport }: CadastreSearchProps) {
           )
         }
 
-        const data: CadastreResult[] = await response.json()
+        // L'API renvoie un FeatureCollection GeoJSON — on mappe features[]
+        // vers CadastreResult[] (avant, le client lisait .length sur l'objet
+        // → toujours vide, aucun résultat ni erreur affichés).
+        const geojson: {
+          features?: Array<{
+            geometry: unknown
+            properties: Record<string, unknown>
+          }>
+        } = await response.json()
 
-        if (data.length === 0) {
+        const features = geojson.features ?? []
+        const mapped: CadastreResult[] = features.map((f, idx) => {
+          const p = f.properties || {}
+          const sec = String(p.section ?? "")
+          const num = String(p.numero ?? "")
+          return {
+            id: String(p.idu ?? `${codeInsee}-${sec}-${num}-${idx}`),
+            commune: nomCommune,
+            codeCommune: String(p.code_insee ?? codeInsee),
+            section: sec,
+            numero: num,
+            contenance: typeof p.contenance === "number" ? p.contenance : null,
+            geometry: JSON.stringify(f.geometry),
+          }
+        })
+
+        if (mapped.length === 0) {
           setError("Aucune parcelle trouvée pour cette recherche.")
         }
 
-        setResults(data)
+        setResults(mapped)
       } catch (err) {
         const message =
           err instanceof Error ? err.message : "Erreur lors de la recherche."

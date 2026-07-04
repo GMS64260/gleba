@@ -71,6 +71,10 @@ export async function POST(request: NextRequest) {
         password: newHash,
         resetPasswordToken: null,
         resetPasswordExpires: null,
+        // Sécurité (audit 2026-07, #20) : une réinitialisation de mot de passe
+        // révoque le token API MCP (glb_). Sans cela, un attaquant ayant généré
+        // un token conservait un accès permanent malgré le changement de mdp.
+        apiToken: null,
       },
     })
 
