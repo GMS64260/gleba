@@ -66,35 +66,44 @@ export async function calculerStocksNet(
   const result: Record<string, StockNet> = {}
 
   for (const espece of allEspeces) {
+    // Modèle « baseline + événements » (refonte stock 2026-07).
+    // `inventaire`/`dateInventaire` = POINT DE COMPTAGE MANUEL (null si jamais
+    // fait). Le stock net est recalculé ici comme UNIQUE source de vérité :
+    //   net = baseline + Σ récoltes en stock APRÈS le comptage − Σ conso APRÈS.
+    // Les événements AVANT le comptage sont déjà reflétés dans la valeur saisie.
+    // Sans comptage manuel : baseline 0 depuis l'epoch → on somme tout.
+    // (Avant, l'inventaire était AUSSI incrémenté à chaque récolte puis les
+    // récoltes ré-additionnées ici → double comptage, audit #28.)
     const dateRef = espece.dateInventaire || new Date(0)
+    const baseline = espece.inventaire || 0
 
-    // Récoltes depuis date inventaire
+    // Récoltes encore en stock, postérieures au comptage
     const recoltes = await prisma.recolte.findMany({
       where: {
         especeId: espece.id,
         userId,
         statut: 'en_stock',
-        date: { gte: dateRef },
+        date: { gt: dateRef },
       },
       select: { quantite: true },
     })
     const totalRecoltes = recoltes.reduce((sum, r) => sum + r.quantite, 0)
 
-    // Consommations depuis date inventaire
+    // Consommations postérieures au comptage
     const consommations = await prisma.consommation.findMany({
       where: {
         especeId: espece.id,
         userId,
-        date: { gte: dateRef },
+        date: { gt: dateRef },
       },
       select: { quantite: true },
     })
     const totalConso = consommations.reduce((sum, c) => sum + c.quantite, 0)
 
     result[espece.id] = {
-      stockNet: (espece.inventaire || 0) + totalRecoltes - totalConso,
+      stockNet: baseline + totalRecoltes - totalConso,
       detail: {
-        inventaire: espece.inventaire || 0,
+        inventaire: baseline,
         recoltes: totalRecoltes,
         consommations: totalConso,
       },

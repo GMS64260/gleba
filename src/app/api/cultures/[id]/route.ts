@@ -346,26 +346,9 @@ export async function DELETE(
             auto: true,
           },
         })
-
-        // Décrément de l'inventaire pour les récoltes encore comptées en stock
-        const deltaParEspece = new Map<string, number>()
-        for (const r of recoltes) {
-          if (r.statut === 'en_stock' && r.quantite > 0) {
-            deltaParEspece.set(r.especeId, (deltaParEspece.get(r.especeId) ?? 0) + r.quantite)
-          }
-        }
-        for (const [especeId, delta] of deltaParEspece) {
-          const stock = await tx.userStockEspece.findUnique({
-            where: { userId_especeId: { userId: session!.user.id, especeId } },
-            select: { inventaire: true },
-          })
-          const inventaire = Math.max(0, (stock?.inventaire ?? 0) - delta)
-          await tx.userStockEspece.upsert({
-            where: { userId_especeId: { userId: session!.user.id, especeId } },
-            create: { userId: session!.user.id, especeId, inventaire, dateInventaire: new Date() },
-            update: { inventaire, dateInventaire: new Date() },
-          })
-        }
+        // Refonte stock 2026-07 : plus de décrément du compteur inventaire —
+        // les récoltes supprimées en cascade ne seront plus comptées par
+        // calculerStocksNet (qui ne somme que les récoltes 'en_stock').
       }
 
       // Suppression (les recoltes seront supprimées en cascade)
