@@ -133,9 +133,15 @@ export function PluviometriePlanche({ plancheId, typePlanche }: Props) {
     setData(null)
 
     fetch(`/api/meteo/pluviometrie?plancheId=${encodeURIComponent(plancheId)}`)
-      .then(r => r.json())
-      .then(d => {
-        setData(d)
+      .then(async r => {
+        // Audit #58 : sans vérif r.ok, une 500 (Open-Meteo indisponible) était
+        // affichée comme « Coordonnées GPS non renseignées » (message mensonger).
+        const d = await r.json().catch(() => null)
+        if (!r.ok) {
+          setError(d?.error || "Service météo momentanément indisponible")
+        } else {
+          setData(d)
+        }
         setLoading(false)
       })
       .catch(() => {

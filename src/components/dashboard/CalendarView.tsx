@@ -42,6 +42,7 @@ import {
 } from "@/components/ui/sheet"
 import { EventDialog } from "./EventDialog"
 import { YearView } from "./YearView"
+import { useToast } from "@/hooks/use-toast"
 
 interface CalendarEvent {
   id: number
@@ -63,6 +64,7 @@ interface CalendarViewProps {
 }
 
 export function CalendarView({ year }: CalendarViewProps) {
+  const { toast } = useToast()
   const [viewMode, setViewMode] = React.useState<'month' | 'year'>('month')
   const [currentMonth, setCurrentMonth] = React.useState(() => {
     const now = new Date()
@@ -225,7 +227,10 @@ export function CalendarView({ year }: CalendarViewProps) {
       // Rafraîchir depuis l'API
       refreshEvents()
     } catch (error) {
+      // Audit #86 : le déplacement échouait en silence (console.error seul).
       console.error("Erreur déplacement:", error)
+      toast({ variant: "destructive", title: "Déplacement impossible", description: error instanceof Error ? error.message : "Réessayez." })
+      refreshEvents() // remet l'événement à sa place
     } finally {
       setDraggedEvent(null)
     }
