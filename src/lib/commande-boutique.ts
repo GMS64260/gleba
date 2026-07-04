@@ -136,6 +136,18 @@ export async function confirmCommandeBoutique(
           `${ligne.produit.nom} = ${stockApres} ${ligne.produit.unite}`
       )
     }
+
+    // Audit 2026-07 (#51) : produit issu d'une récolte du jardin et désormais
+    // épuisé → on marque la récolte source « vendue » pour cohérence (elle ne
+    // doit plus apparaître comme stock loose ni pouvoir être vendue à part).
+    // Mise à jour DIRECTE (pas via l'API récolte) pour NE PAS déclencher une
+    // 2e écriture comptable : la commande boutique a déjà créé la VenteManuelle.
+    if (ligne.produit.recolteId && stockApres <= 0) {
+      await tx.recolte.updateMany({
+        where: { id: ligne.produit.recolteId, statut: "en_stock" },
+        data: { statut: "vendu", dateVente: commande.createdAt },
+      })
+    }
   }
 
   // 2) Création VenteManuelle.
