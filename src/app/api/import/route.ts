@@ -264,6 +264,11 @@ export async function POST(request: NextRequest) {
     }
 
     const userId = session!.user.id
+    // Sécurité (audit 2026-07 #29) : les référentiels (familles, fournisseurs,
+    // espèces, variétés, ITP, rotations, fertilisants, associations) sont
+    // GLOBAUX et partagés. Seul un admin peut les importer/écraser ; un import
+    // utilisateur standard n'importe que SES données (planches, cultures…).
+    const isAdmin = session!.user.role === 'ADMIN'
 
     // Vérifier que l'utilisateur existe
     const user = await prisma.user.findUnique({
@@ -308,7 +313,7 @@ export async function POST(request: NextRequest) {
     // ========================================
 
     // 1. Familles
-    if (data.familles?.length) {
+    if (isAdmin && data.familles?.length) {
       for (const item of data.familles) {
         await tx.famille.upsert({
           where: { id: item.id },
@@ -329,7 +334,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 2. Fournisseurs
-    if (data.fournisseurs?.length) {
+    if (isAdmin && data.fournisseurs?.length) {
       for (const item of data.fournisseurs) {
         await tx.fournisseur.upsert({
           where: { id: item.id },
@@ -356,7 +361,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 3. Espèces
-    if (data.especes?.length) {
+    if (isAdmin && data.especes?.length) {
       for (const item of data.especes) {
         await tx.espece.upsert({
           where: { id: item.id },
@@ -423,7 +428,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 4. Variétés
-    if (data.varietes?.length) {
+    if (isAdmin && data.varietes?.length) {
       for (const item of data.varietes) {
         const especeExists = await tx.espece.findUnique({ where: { id: item.especeId } })
         if (!especeExists) continue
@@ -480,7 +485,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 5. ITPs
-    if (data.itps?.length) {
+    if (isAdmin && data.itps?.length) {
       for (const item of data.itps) {
         // Vérifier que l'espece existe si fournie
         if (item.especeId) {
@@ -531,7 +536,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 6. Rotations
-    if (data.rotations?.length) {
+    if (isAdmin && data.rotations?.length) {
       for (const item of data.rotations) {
         await tx.rotation.upsert({
           where: { id: item.id },
@@ -552,7 +557,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 7. Rotation Details (ID auto-généré - créer de nouveaux)
-    if (data.rotationDetails?.length) {
+    if (isAdmin && data.rotationDetails?.length) {
       for (const item of data.rotationDetails) {
         const rotationExists = await tx.rotation.findUnique({ where: { id: item.rotationId } })
         if (!rotationExists) continue
@@ -589,7 +594,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 8. Fertilisants
-    if (data.fertilisants?.length) {
+    if (isAdmin && data.fertilisants?.length) {
       for (const item of data.fertilisants) {
         await tx.fertilisant.upsert({
           where: { id: item.id },
@@ -628,7 +633,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 9. Associations
-    if (data.associations?.length) {
+    if (isAdmin && data.associations?.length) {
       for (const item of data.associations) {
         // Chercher par nom d'abord
         const existingByNom = await tx.association.findFirst({
@@ -692,7 +697,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 10. Association Details (format alternatif si fourni séparément)
-    if (data.associationDetails?.length) {
+    if (isAdmin && data.associationDetails?.length) {
       for (const item of data.associationDetails) {
         const associationExists = await tx.association.findUnique({ where: { id: item.associationId } })
         if (!associationExists) continue
