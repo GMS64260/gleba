@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuthApi } from '@/lib/auth-utils'
+import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { createFournisseurSchema, updateFournisseurSchema } from '@/lib/validations'
 
@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
       ]
     }
 
-    const fournisseurs = await prisma.fournisseur.findMany({
+    const fournisseursRaw = await prisma.fournisseur.findMany({
       where,
       orderBy: { id: 'asc' },
       include: {
@@ -38,6 +38,14 @@ export async function GET(request: NextRequest) {
         }
       }
     })
+
+    // Sécurité (audit 2026-07 #42) : les coordonnées bancaires d'un référentiel
+    // partagé ne sont visibles que par les admins. Un utilisateur standard n'a
+    // pas à voir l'IBAN/BIC des fournisseurs des autres exploitations.
+    const isAdmin = session!.user.role === 'ADMIN'
+    const fournisseurs = isAdmin
+      ? fournisseursRaw
+      : fournisseursRaw.map(({ iban, bic, ribCle, ...rest }) => rest)
 
     // Stats
     const stats = await prisma.fournisseur.groupBy({
@@ -64,7 +72,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const { session, error } = await requireAuthApi()
+  const { session, error } = await requireAdminApi()
   if (error) return error
 
   try {
@@ -127,7 +135,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  const { session, error } = await requireAuthApi()
+  const { session, error } = await requireAdminApi()
   if (error) return error
 
   try {
@@ -191,7 +199,7 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const { session, error } = await requireAuthApi()
+  const { session, error } = await requireAdminApi()
   if (error) return error
 
   try {

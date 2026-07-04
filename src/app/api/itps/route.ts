@@ -8,7 +8,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { createITPSchema } from '@/lib/validations'
 import { Prisma } from '@prisma/client'
-import { requireAuthApi } from '@/lib/auth-utils'
+import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
 import { statsAvisPourRefs } from '@/lib/avis/stats-liste'
 
 // GET /api/itps - Référentiel global (lecture)
@@ -100,7 +100,7 @@ export async function GET(request: NextRequest) {
 
 // POST /api/itps
 export async function POST(request: NextRequest) {
-  const { error } = await requireAuthApi()
+  const { error } = await requireAdminApi()
   if (error) return error
 
   try {
