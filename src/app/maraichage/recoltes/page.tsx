@@ -7,7 +7,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { format, isPast, differenceInDays } from "date-fns"
+import { format, differenceInCalendarDays } from "date-fns"
 import { fr } from "date-fns/locale"
 import { ArrowLeft, BarChart3, Package, ShoppingCart, Euro, Trash2, AlertTriangle, Plus, RefreshCw, FileText, Clock, Timer } from "lucide-react"
 
@@ -155,12 +155,23 @@ export default function RecoltesPage() {
     [clients]
   )
 
-  // Compter les périmés et proches de péremption
+  // Compter les périmés et proches de péremption.
+  // Audit fuseaux #77 : la DLC est une date « jour seul » stockée à minuit UTC.
+  // On reconstruit son jour calendaire en date LOCALE et on compare en JOURS :
+  // un lot n'est périmé qu'APRÈS son jour de DLC (pas dès 00:00/02:00 le jour
+  // même), et le décompte n'est plus faussé en Outre-mer.
   const now = new Date()
-  const perimesCount = stockRecoltes.filter(r => r.datePeremption && isPast(new Date(r.datePeremption))).length
+  // Reconstruit le jour calendaire (stocké minuit UTC) en date LOCALE, pour
+  // affichage et comparaison sans décalage de fuseau.
+  const jourLocal = (iso: string) => {
+    const d = new Date(iso)
+    return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
+  }
+  const joursAvantDLC = (iso: string) => differenceInCalendarDays(jourLocal(iso), now)
+  const perimesCount = stockRecoltes.filter(r => r.datePeremption && joursAvantDLC(r.datePeremption) < 0).length
   const bientotPerimesCount = stockRecoltes.filter(r => {
     if (!r.datePeremption) return false
-    const days = differenceInDays(new Date(r.datePeremption), now)
+    const days = joursAvantDLC(r.datePeremption)
     return days >= 0 && days <= 3
   }).length
 
@@ -504,8 +515,8 @@ export default function RecoltesPage() {
                     </TableHeader>
                     <TableBody>
                       {stockRecoltes.map((r) => {
-                        const isPerime = r.datePeremption && isPast(new Date(r.datePeremption))
-                        const daysLeft = r.datePeremption ? differenceInDays(new Date(r.datePeremption), now) : null
+                        const isPerime = r.datePeremption ? joursAvantDLC(r.datePeremption) < 0 : false
+                        const daysLeft = r.datePeremption ? joursAvantDLC(r.datePeremption) : null
                         const isBientotPerime = daysLeft !== null && daysLeft >= 0 && daysLeft <= 3
 
                         return (
@@ -513,7 +524,7 @@ export default function RecoltesPage() {
                             key={r.id}
                             className={isPerime ? "bg-red-50" : isBientotPerime ? "bg-amber-50" : ""}
                           >
-                            <TableCell>{format(new Date(r.date), "dd/MM/yyyy", { locale: fr })}</TableCell>
+                            <TableCell>{format(jourLocal(r.date), "dd/MM/yyyy", { locale: fr })}</TableCell>
                             <TableCell>
                               <div className="flex items-center gap-2">
                                 <div
@@ -543,7 +554,7 @@ export default function RecoltesPage() {
                                     isBientotPerime ? "text-amber-600" :
                                     "text-slate-600"
                                   }>
-                                    {format(new Date(r.datePeremption), "dd/MM", { locale: fr })}
+                                    {format(jourLocal(r.datePeremption), "dd/MM", { locale: fr })}
                                     {daysLeft !== null && daysLeft >= 0 && (
                                       <span className="text-xs ml-1">
                                         ({daysLeft === 0 ? "aujourd'hui" : `J-${daysLeft}`})

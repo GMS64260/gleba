@@ -93,7 +93,9 @@ export function LunaireWidget({ embedded = false }: { embedded?: boolean }) {
   if (!today) return null
 
   const tc = TYPE_CFG[today.typeJour] || TYPE_CFG.repos
-  const todayStr = now.toISOString().split("T")[0]
+  // Audit fuseaux #78 : jour LOCAL (year/month sont locaux). toISOString() donne
+  // le jour UTC → entre minuit et 2h, « aujourd'hui » tombait sur la veille.
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`
   const firstDay = new Date(year, month - 1, 1).getDay()
   const offset = firstDay === 0 ? 6 : firstDay - 1
 
