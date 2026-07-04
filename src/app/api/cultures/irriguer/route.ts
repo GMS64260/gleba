@@ -457,16 +457,14 @@ export async function GET(request: NextRequest) {
       const pluie48h = meteo.pluie48hPassees
       if (pluie48h < SEUIL_PLUIE_AUTO_VALIDE) continue
 
-      // Calculer combien de jours sont couverts
-      const et0Moy = meteo.et0_7j / Math.max(meteo.historique.length, 1)
-      const joursCouv = joursCouverts(pluie48h + meteo.pluiePrevue5j, c.planche?.retentionEau ?? null, et0Moy)
-
-      // Auto-valider les irrigations planifiées dans la fenêtre couverte
+      // Auto-valider UNIQUEMENT les irrigations DUES (aujourd'hui ou en retard)
+      // couvertes par la pluie PASSÉE. Avant, on validait aussi les irrigations
+      // FUTURES sur la base des prévisions (joursCouv) : une irrigation de demain
+      // passait « faite » dès aujourd'hui, définitivement, via un simple GET
+      // (audit 2026-07, #34/#46). Les prévisions peuvent changer : on attend
+      // l'échéance réelle.
       for (const irr of c.irrigationsPlanifiees) {
-        const joursJusquIrrigation = Math.floor(
-          (new Date(irr.datePrevue).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
-        )
-        if (joursJusquIrrigation <= joursCouv) {
+        if (new Date(irr.datePrevue).getTime() <= Date.now()) {
           irrigationsAutoValidees.push(irr.id)
         }
       }
