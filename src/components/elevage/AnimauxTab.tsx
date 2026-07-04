@@ -392,6 +392,7 @@ function AnimauxSubTab() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          animalId: venteDialog.id, // requis par l'API pour type=animal_vivant (sinon 400)
           date: venteForm.date,
           type: "animal_vivant",
           description: venteForm.description || `${venteDialog.nom || venteDialog.identifiant || ''} (${venteDialog.especeAnimale.nom})`,
