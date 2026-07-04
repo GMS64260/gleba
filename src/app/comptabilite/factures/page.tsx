@@ -22,6 +22,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
 import { todayLocalISO } from '@/lib/format-utils'
+import { factureSansTaxe } from '@/lib/territoires'
 
 interface Impayee {
   id: number
@@ -95,13 +96,22 @@ export default function FacturesPage() {
   ])
   const [savingFacture, setSavingFacture] = React.useState(false)
   const [exploitationOk, setExploitationOk] = React.useState<boolean | null>(null)
+  const [regimeTva, setRegimeTva] = React.useState<string | null>(null)
 
   React.useEffect(() => {
     fetch('/api/exploitation')
       .then((r) => r.json())
-      .then(({ data }) => setExploitationOk(!!data))
+      .then(({ data }) => {
+        setExploitationOk(!!data)
+        setRegimeTva(data?.regimeTva ?? null)
+      })
       .catch(() => setExploitationOk(false))
   }, [])
+
+  // Franchise 293B / non-assujetti / TGC : pas de TVA à facturer. Le formulaire
+  // forçait quand même 5,5 % à l'affichage alors que la facture émise est à 0
+  // (creerFacture neutralise côté serveur) → aperçu trompeur (audit #48).
+  const sansTaxe = factureSansTaxe(regimeTva)
 
   // DEV1 #7 — État formulaire avoir refondu : sélecteur facture origine,
   // recopie auto client + montant, persistance via /api/comptabilite/factures
@@ -109,7 +119,7 @@ export default function FacturesPage() {
   // SequenceFacture FOR UPDATE).
   const [avoirData, setAvoirData] = React.useState({
     factureOrigineId: "",
-    date: new Date().toISOString().split("T")[0],
+    date: todayLocalISO(),
     motif: "",
     montant: "",
     tauxTVA: "5.5",
@@ -289,9 +299,11 @@ export default function FacturesPage() {
 
   const recalcLigne = (l: LigneFacture): LigneFacture => {
     const ht = Math.round(l.quantite * l.prixUnitaire * 100) / 100
-    const tva = Math.round(ht * (l.tauxTVA / 100) * 100) / 100
+    // En franchise/exonéré, la TVA est nulle quelle que soit la catégorie.
+    const tauxEffectif = sansTaxe ? 0 : l.tauxTVA
+    const tva = Math.round(ht * (tauxEffectif / 100) * 100) / 100
     const ttc = Math.round((ht + tva) * 100) / 100
-    return { ...l, montantHT: ht, montantTVA: tva, montantTTC: ttc }
+    return { ...l, tauxTVA: tauxEffectif, montantHT: ht, montantTVA: tva, montantTTC: ttc }
   }
 
   const updateLigne = (id: string, field: keyof LigneFacture, value: any) => {
@@ -457,7 +469,7 @@ export default function FacturesPage() {
       // Reset form
       setAvoirData({
         factureOrigineId: "",
-        date: new Date().toISOString().split("T")[0],
+        date: todayLocalISO(),
         motif: "",
         montant: "",
         tauxTVA: "5.5",

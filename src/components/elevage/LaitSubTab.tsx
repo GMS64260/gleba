@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
+import { todayLocalISO } from '@/lib/format-utils'
 
 type Animal = { id: number; nom: string | null; identifiant: string | null; especeAnimale?: { production?: string; nom?: string } }
 type Lot = { id: number; nom: string | null; especeAnimale?: { production?: string; nom?: string } }
@@ -60,7 +61,7 @@ type LotFromage = {
 }
 
 function todayIso(): string {
-  return new Date().toISOString().split("T")[0]
+  return todayLocalISO()
 }
 function addDaysIso(iso: string, n: number): string {
   const d = new Date(iso)

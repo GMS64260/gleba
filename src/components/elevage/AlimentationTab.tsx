@@ -476,12 +476,12 @@ function ConsommationsSubTab() {
   const [deletingConsoId, setDeletingConsoId] = React.useState<number | null>(null)
 
   const [formData, setFormData] = React.useState({
-    alimentId: "", lotId: "", date: new Date().toISOString().split("T")[0], quantite: "", notes: "",
+    alimentId: "", lotId: "", date: todayLocalISO(), quantite: "", notes: "",
   })
 
   const resetConsoForm = () => {
     setEditingConsoId(null)
-    setFormData({ alimentId: "", lotId: "", date: new Date().toISOString().split("T")[0], quantite: "", notes: "" })
+    setFormData({ alimentId: "", lotId: "", date: todayLocalISO(), quantite: "", notes: "" })
   }
 
   const handleEditConso = (c: Consommation) => {

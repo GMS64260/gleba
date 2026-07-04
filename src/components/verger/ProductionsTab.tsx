@@ -34,6 +34,7 @@ import {
 import { Combobox } from "@/components/ui/combobox"
 import { useToast } from "@/hooks/use-toast"
 import { AssistantPlantationDialog } from "./AssistantPlantationDialog"
+import { todayLocalISO } from '@/lib/format-utils'
 
 // ============================================================
 // Types
@@ -149,7 +150,7 @@ function RecoltesFruitsSubTab() {
   // DEV3 #4 — Champs traçabilité AB (audit Marc 2026-05-14)
   const [newRecolte, setNewRecolte] = React.useState({
     arbreId: "",
-    date: new Date().toISOString().split("T")[0],
+    date: todayLocalISO(),
     quantite: "",
     qualite: "",
     prixKg: "",
@@ -269,7 +270,7 @@ function RecoltesFruitsSubTab() {
         setShowDialog(false)
         setNewRecolte({
           arbreId: "",
-          date: new Date().toISOString().split("T")[0],
+          date: todayLocalISO(),
           quantite: "",
           qualite: "",
           prixKg: "",
@@ -903,7 +904,7 @@ function ProductionBoisSubTab() {
   // DEV3 #4 — Champs traçabilité bois (audit Marc)
   const [newProduction, setNewProduction] = React.useState({
     arbreId: "",
-    date: new Date().toISOString().split("T")[0],
+    date: todayLocalISO(),
     type: "elagage",
     volumeM3: "",
     volumeStere: "",
@@ -999,7 +1000,7 @@ function ProductionBoisSubTab() {
         setShowDialog(false)
         setNewProduction({
           arbreId: "",
-          date: new Date().toISOString().split("T")[0],
+          date: todayLocalISO(),
           type: "elagage",
           volumeM3: "",
           volumeStere: "",

@@ -30,6 +30,7 @@ import { UserMenu } from "@/components/auth/UserMenu"
 
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
+import { todayLocalISO } from '@/lib/format-utils'
 import {
   Sprout,
   TreeDeciduous,
@@ -215,7 +216,7 @@ export default function InterventionsPage() {
 
   // Form state
   const emptyForm = {
-    date: new Date().toISOString().split("T")[0],
+    date: todayLocalISO(),
     type: "autre",
     cultureId: "",
     plancheId: "",
@@ -450,7 +451,7 @@ export default function InterventionsPage() {
     const totalMin = intervention.dureeMinutes || 0
     setEditingIntervention(intervention)
     setForm({
-      date: intervention.date ? intervention.date.split("T")[0] : new Date().toISOString().split("T")[0],
+      date: intervention.date ? intervention.date.split("T")[0] : todayLocalISO(),
       type: intervention.type,
       cultureId: intervention.cultureId?.toString() || "",
       plancheId: intervention.plancheId || "",
