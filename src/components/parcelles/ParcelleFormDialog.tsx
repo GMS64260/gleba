@@ -65,7 +65,15 @@ export function ParcelleFormDialog({ open, parcelle, onClose }: ParcelleFormDial
 
     setSubmitting(true)
     try {
-      const body = formData
+      // Audit #33 : si la géométrie n'a PAS changé (simple renommage), on
+      // renvoie la surface existante pour empêcher le serveur de la recalculer
+      // et d'écraser la valeur en place. Si la géométrie a changé, on l'omet →
+      // le serveur recalcule normalement.
+      const geometryInchangee = isEdit && (geometry || "") === (parcelle?.geometry || "")
+      const body: Record<string, unknown> =
+        geometryInchangee && parcelle?.surface != null
+          ? { ...formData, surface: parcelle.surface }
+          : formData
       const url = isEdit ? `/api/parcelles/${parcelle!.id}` : "/api/parcelles"
       const method = isEdit ? "PUT" : "POST"
 

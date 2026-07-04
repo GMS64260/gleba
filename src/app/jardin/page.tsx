@@ -703,6 +703,12 @@ function JardinContent() {
 
   // Créer un nouvel objet
   const handleCreateObjet = async () => {
+    // Audit #35 : refuser les dimensions nulles (un champ vidé donnait 0 via
+    // `parseFloat("")||0`) → objet créé mais invisible sur le plan.
+    if (!newObjet.largeur || newObjet.largeur <= 0 || !newObjet.longueur || newObjet.longueur <= 0) {
+      toast({ variant: "destructive", title: "Dimensions requises", description: "Largeur et longueur doivent être supérieures à 0." })
+      return
+    }
     try {
       // Trouver une position libre
       let maxY = 0
