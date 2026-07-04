@@ -295,9 +295,14 @@ function JardinContent() {
       if (!response.ok) return
       const data = await response.json()
       const rows = Array.isArray(data) ? data : data.data || []
-      const filtered = selectedParcelleId
-        ? rows.filter((a: { parcelleGeoId?: string | null }) => a.parcelleGeoId === selectedParcelleId)
-        : rows
+      // Le filtre « Non assigné » (selectedParcelleId='none') vise les arbres
+      // sans parcelle (parcelleGeoId=null). L'ancien `=== 'none'` ne matchait
+      // jamais null → tous les arbres masqués (audit 2026-07, #30).
+      const filtered = !selectedParcelleId
+        ? rows
+        : selectedParcelleId === 'none'
+          ? rows.filter((a: { parcelleGeoId?: string | null }) => !a.parcelleGeoId)
+          : rows.filter((a: { parcelleGeoId?: string | null }) => a.parcelleGeoId === selectedParcelleId)
       setArbres(filtered)
     } catch (error) {
       // Ignorer
