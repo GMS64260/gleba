@@ -45,6 +45,7 @@ import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
+import { todayLocalISO } from '@/lib/format-utils'
 
 interface Animal {
   id: number
@@ -101,7 +102,7 @@ export default function AnimauxPage() {
     race: "",
     sexe: "",
     dateNaissance: "",
-    dateArrivee: new Date().toISOString().split('T')[0],
+    dateArrivee: todayLocalISO(),
     provenance: "",
     prixAchat: "",
     poidsActuel: "",
@@ -166,7 +167,7 @@ export default function AnimauxPage() {
         race: "",
         sexe: "",
         dateNaissance: "",
-        dateArrivee: new Date().toISOString().split('T')[0],
+        dateArrivee: todayLocalISO(),
         provenance: "",
         prixAchat: "",
         poidsActuel: "",

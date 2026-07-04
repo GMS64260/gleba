@@ -25,6 +25,7 @@ import {
   compteAchat,
   JOURNAUX,
 } from "@/lib/comptabilite/plan-comptable-agricole"
+import { todayLocalISO } from '@/lib/format-utils'
 
 // DEV1 #3 — Modes de règlement (lus par compteTresorerie pour générer
 // la contrepartie 512 banque / 530 caisse / 411 client / 401 fournisseur).
@@ -107,7 +108,7 @@ export default function TransactionsPage() {
   // Form states for manual entry (DEV1 #3 — refonte conforme)
   const [formType, setFormType] = React.useState<"vente" | "depense">("vente")
   const [formData, setFormData] = React.useState({
-    date: new Date().toISOString().split('T')[0],
+    date: todayLocalISO(),
     categorie: "",
     description: "",
     quantite: "",
@@ -274,7 +275,7 @@ export default function TransactionsPage() {
       if (res.ok) {
         toast({ title: "Enregistré", description: `${formType === "vente" ? "Vente" : "Dépense"} ajoutée` })
         setFormData({
-          date: new Date().toISOString().split('T')[0],
+          date: todayLocalISO(),
           categorie: "",
           description: "",
           quantite: "",

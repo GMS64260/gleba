@@ -39,6 +39,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
 import { verifierPrixAliment, type CategorieAliment } from "@/lib/elevage/prix-aliment-seuils"
+import { todayLocalISO } from '@/lib/format-utils'
 
 // ============================================================
 // Composant principal
@@ -828,7 +829,7 @@ function SoinsSubTab({ initialAnimalId = null }: { initialAnimalId?: string | nu
     cible: "lot" as "lot" | "animal",
     lotId: "",
     animalId: "",
-    date: new Date().toISOString().split('T')[0],
+    date: todayLocalISO(),
     type: "Vaccination",
     description: "",
     produit: "",

@@ -91,3 +91,20 @@ export function formatStockSemantic(
   }
   return { value: safe.toString(), className, alert }
 }
+
+/**
+ * Date du jour au format "YYYY-MM-DD" dans le fuseau LOCAL de l'utilisateur.
+ *
+ * À utiliser pour toute valeur par défaut de champ <input type="date">.
+ * `new Date().toISOString().split('T')[0]` donnait le jour UTC : décalé d'un
+ * jour en soirée pour l'Europe (UTC+1/+2) et une bonne partie de la journée en
+ * Outre-mer (UTC+11 en Nouvelle-Calédonie, UTC-10 en Polynésie…) — la date
+ * pré-remplie tombait la veille ou le lendemain (audit 2026-07, #44/#45/#49).
+ */
+export function todayLocalISO(): string {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, "0")
+  const day = String(d.getDate()).padStart(2, "0")
+  return `${y}-${m}-${day}`
+}

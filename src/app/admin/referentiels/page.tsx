@@ -24,6 +24,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
 import { Skeleton } from "@/components/ui/skeleton"
+import { todayLocalISO } from '@/lib/format-utils'
 
 const REFERENTIELS = [
   { id: "familles", label: "Familles botaniques", count: 0, icon: "🌿" },
@@ -80,7 +81,7 @@ export default function ReferentielsAdminPage() {
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = url
-      a.download = `${type}_${new Date().toISOString().split('T')[0]}.json`
+      a.download = `${type}_${todayLocalISO()}.json`
       document.body.appendChild(a)
       a.click()
       window.URL.revokeObjectURL(url)

@@ -41,6 +41,7 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart"
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Legend } from "recharts"
+import { todayLocalISO } from '@/lib/format-utils'
 
 // ============================================================
 // Types
@@ -151,7 +152,7 @@ function NaissancesSubTab() {
 
   const EMPTY_NAISS_FORM = {
     mereId: "", lotId: "", pereIdentifiant: "",
-    date: new Date().toISOString().split('T')[0],
+    date: todayLocalISO(),
     nombreNes: "", nombreVivants: "",
     nombreMales: "", nombreFemelles: "",
     poidsTotal: "", notes: "",
@@ -548,7 +549,7 @@ function NaissancesSubTab() {
 function CalculateurSubTab() {
   const [especes, setEspeces] = React.useState<{ id: string; nom: string; type: string; dureeGestation: number | null; dureeCouvaison: number | null }[]>([])
   const [selectedEspece, setSelectedEspece] = React.useState<string>("")
-  const [dateAccouplement, setDateAccouplement] = React.useState(new Date().toISOString().split('T')[0])
+  const [dateAccouplement, setDateAccouplement] = React.useState(todayLocalISO())
 
   React.useEffect(() => {
     fetch('/api/elevage/especes-animales')

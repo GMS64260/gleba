@@ -49,6 +49,7 @@ import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { useToast } from "@/hooks/use-toast"
+import { todayLocalISO } from '@/lib/format-utils'
 
 // ============================================================
 // Types
@@ -166,7 +167,7 @@ function AnimauxSubTab() {
   const EMPTY_ANIMAL_FORM = {
     especeAnimaleId: "", identifiant: "", typeIdentifiant: "",
     nom: "", race: "", sexe: "",
-    dateNaissance: "", dateArrivee: new Date().toISOString().split('T')[0],
+    dateNaissance: "", dateArrivee: todayLocalISO(),
     provenance: "", nExploitationOrigine: "",
     prixAchat: "", poidsActuel: "", notes: "",
   }
@@ -187,7 +188,7 @@ function AnimauxSubTab() {
       race: a.race ?? "",
       sexe: a.sexe ?? "",
       dateNaissance: a.dateNaissance ? a.dateNaissance.split('T')[0] : "",
-      dateArrivee: a.dateArrivee ? a.dateArrivee.split('T')[0] : new Date().toISOString().split('T')[0],
+      dateArrivee: a.dateArrivee ? a.dateArrivee.split('T')[0] : todayLocalISO(),
       provenance: a.provenance ?? "",
       nExploitationOrigine: a.nExploitationOrigine ?? "",
       prixAchat: a.prixAchat ? a.prixAchat.toString() : "",
@@ -334,19 +335,19 @@ function AnimauxSubTab() {
   // --- Dialogs abattage / vente / mort ---
   const [abattageDialog, setAbattageDialog] = React.useState<Animal | null>(null)
   const [abattageForm, setAbattageForm] = React.useState({
-    date: new Date().toISOString().split('T')[0],
+    date: todayLocalISO(),
     poidsVif: "", poidsCarcasse: "", destination: "auto_consommation", prixVente: "", lieu: "", notes: "",
   })
 
   const [venteDialog, setVenteDialog] = React.useState<Animal | null>(null)
   const [venteForm, setVenteForm] = React.useState({
-    date: new Date().toISOString().split('T')[0],
+    date: todayLocalISO(),
     prixUnitaire: "", client: "", description: "", notes: "",
   })
 
   const [mortDialog, setMortDialog] = React.useState<Animal | null>(null)
   const [mortForm, setMortForm] = React.useState({
-    date: new Date().toISOString().split('T')[0],
+    date: todayLocalISO(),
     cause: "", notes: "",
   })
 
@@ -372,7 +373,7 @@ function AnimauxSubTab() {
       if (!res.ok) throw new Error('Erreur')
       toast({ title: "Abattage enregistré", description: `${abattageDialog.nom || abattageDialog.identifiant || ''} marqué comme abattu` })
       setAbattageDialog(null)
-      setAbattageForm({ date: new Date().toISOString().split('T')[0], poidsVif: "", poidsCarcasse: "", destination: "auto_consommation", prixVente: "", lieu: "", notes: "" })
+      setAbattageForm({ date: todayLocalISO(), poidsVif: "", poidsCarcasse: "", destination: "auto_consommation", prixVente: "", lieu: "", notes: "" })
       fetchData()
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible d'enregistrer l'abattage" })
@@ -413,7 +414,7 @@ function AnimauxSubTab() {
       })
       toast({ title: "Vente enregistrée", description: `${venteDialog.nom || venteDialog.identifiant || ''} marque comme vendu` })
       setVenteDialog(null)
-      setVenteForm({ date: new Date().toISOString().split('T')[0], prixUnitaire: "", client: "", description: "", notes: "" })
+      setVenteForm({ date: todayLocalISO(), prixUnitaire: "", client: "", description: "", notes: "" })
       fetchData()
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible d'enregistrer la vente" })
@@ -436,7 +437,7 @@ function AnimauxSubTab() {
       if (!res.ok) throw new Error('Erreur')
       toast({ title: "Décès enregistré", description: `${mortDialog.nom || mortDialog.identifiant || ''} marqué comme mort` })
       setMortDialog(null)
-      setMortForm({ date: new Date().toISOString().split('T')[0], cause: "", notes: "" })
+      setMortForm({ date: todayLocalISO(), cause: "", notes: "" })
       fetchData()
     } catch {
       toast({ variant: "destructive", title: "Erreur" })
@@ -752,7 +753,7 @@ function AnimauxSubTab() {
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <button
-                                  onClick={() => { setVenteForm(f => ({ ...f, date: new Date().toISOString().split('T')[0] })); setVenteDialog(animal) }}
+                                  onClick={() => { setVenteForm(f => ({ ...f, date: todayLocalISO() })); setVenteDialog(animal) }}
                                   className="p-1.5 rounded-md transition-colors bg-slate-100 text-slate-400 hover:bg-blue-100 hover:text-blue-600"
                                 >
                                   <ShoppingCart className="h-3.5 w-3.5" />
@@ -763,7 +764,7 @@ function AnimauxSubTab() {
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <button
-                                  onClick={() => { setAbattageForm(f => ({ ...f, date: new Date().toISOString().split('T')[0], poidsVif: animal.poidsActuel?.toString() || "" })); setAbattageDialog(animal) }}
+                                  onClick={() => { setAbattageForm(f => ({ ...f, date: todayLocalISO(), poidsVif: animal.poidsActuel?.toString() || "" })); setAbattageDialog(animal) }}
                                   className="p-1.5 rounded-md transition-colors bg-slate-100 text-slate-400 hover:bg-red-100 hover:text-red-600"
                                 >
                                   <Scissors className="h-3.5 w-3.5" />
@@ -774,7 +775,7 @@ function AnimauxSubTab() {
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <button
-                                  onClick={() => { setMortForm(f => ({ ...f, date: new Date().toISOString().split('T')[0] })); setMortDialog(animal) }}
+                                  onClick={() => { setMortForm(f => ({ ...f, date: todayLocalISO() })); setMortDialog(animal) }}
                                   className="p-1.5 rounded-md transition-colors bg-slate-100 text-slate-400 hover:bg-slate-200 hover:text-slate-600"
                                 >
                                   <Skull className="h-3.5 w-3.5" />
@@ -1007,7 +1008,7 @@ function LotsSubTab() {
 
   const EMPTY_LOT_FORM = {
     especeAnimaleId: "", nom: "",
-    dateArrivee: new Date().toISOString().split('T')[0],
+    dateArrivee: todayLocalISO(),
     quantiteInitiale: "", provenance: "", prixAchatTotal: "", notes: "",
     parcelleGeoId: "",
   }
@@ -1023,7 +1024,7 @@ function LotsSubTab() {
     setFormData({
       especeAnimaleId: lot.especeAnimale.id,
       nom: lot.nom ?? "",
-      dateArrivee: lot.dateArrivee ? lot.dateArrivee.split('T')[0] : new Date().toISOString().split('T')[0],
+      dateArrivee: lot.dateArrivee ? lot.dateArrivee.split('T')[0] : todayLocalISO(),
       quantiteInitiale: lot.quantiteInitiale.toString(),
       provenance: lot.provenance ?? "",
       prixAchatTotal: lot.prixAchatTotal ? lot.prixAchatTotal.toString() : "",
@@ -1036,7 +1037,7 @@ function LotsSubTab() {
   // Dialog abattage lot
   const [abatLotDialog, setAbatLotDialog] = React.useState<Lot | null>(null)
   const [abatLotForm, setAbatLotForm] = React.useState({
-    date: new Date().toISOString().split('T')[0],
+    date: todayLocalISO(),
     quantite: "1", poidsVif: "", poidsCarcasse: "",
     destination: "auto_consommation", prixVente: "", lieu: "", notes: "",
   })
@@ -1063,7 +1064,7 @@ function LotsSubTab() {
       if (!res.ok) throw new Error('Erreur')
       toast({ title: "Abattage enregistré", description: `${abatLotForm.quantite} animal(aux) du lot ${abatLotDialog.nom || `#${abatLotDialog.id}`}` })
       setAbatLotDialog(null)
-      setAbatLotForm({ date: new Date().toISOString().split('T')[0], quantite: "1", poidsVif: "", poidsCarcasse: "", destination: "auto_consommation", prixVente: "", lieu: "", notes: "" })
+      setAbatLotForm({ date: todayLocalISO(), quantite: "1", poidsVif: "", poidsCarcasse: "", destination: "auto_consommation", prixVente: "", lieu: "", notes: "" })
       fetchData()
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible d'enregistrer l'abattage" })
@@ -1363,7 +1364,7 @@ function LotsSubTab() {
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <button
-                                  onClick={() => { setAbatLotForm(f => ({ ...f, date: new Date().toISOString().split('T')[0], quantite: "1" })); setAbatLotDialog(lot) }}
+                                  onClick={() => { setAbatLotForm(f => ({ ...f, date: todayLocalISO(), quantite: "1" })); setAbatLotDialog(lot) }}
                                   className="p-1.5 rounded-md transition-colors bg-slate-100 text-slate-400 hover:bg-red-100 hover:text-red-600"
                                 >
                                   <Scissors className="h-3.5 w-3.5" />
