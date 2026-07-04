@@ -402,7 +402,7 @@ function coerceValue(value: unknown, type: string): unknown {
 export async function importAccount(
   userId: string,
   payload: ExportResult,
-  opts: { dryRun?: boolean } = {},
+  opts: { dryRun?: boolean; isAdmin?: boolean } = {},
 ): Promise<ImportResult> {
   const manifest = buildManifest()
   const data = payload?.data ?? {}
@@ -423,9 +423,23 @@ export async function importAccount(
     const pending: PendingPatch[] = []
 
     // 1) RÉFÉRENTIELS — upsert par id (préservé). idMap = identité.
+    // Sécurité (audit 2026-07 #21) : les référentiels sont GLOBAUX et partagés.
+    // Seul un admin peut les écraser ; un import de compte utilisateur ne
+    // touche QUE ses propres données (owned/child ci-dessous).
     for (const meta of manifest.values()) {
       if (meta.klass !== "referential" || !meta.pkField) continue
       const rows = data[meta.name] ?? []
+      if (!opts.isAdmin) {
+        if (rows.length) skipped[meta.name] = rows.length
+        // idMap identité : les FK owned pointant vers ces référentiels
+        // continuent de résoudre vers les lignes globales existantes.
+        const map = ensureMap(meta.name)
+        for (const row of rows) {
+          const pk = row[meta.pkField]
+          if (pk !== null && pk !== undefined) map.set(pk, pk)
+        }
+        continue
+      }
       const map = ensureMap(meta.name)
       let count = 0
       for (const row of rows) {
@@ -435,14 +449,20 @@ export async function importAccount(
         const updateData = { ...createData }
         delete (updateData as Row)[meta.pkField]
         try {
+          await tx.$executeRawUnsafe("SAVEPOINT sp_ref")
           await (tx as any)[meta.delegate].upsert({
             where: { [meta.pkField]: pk },
             create: createData,
             update: updateData,
           })
+          await tx.$executeRawUnsafe("RELEASE SAVEPOINT sp_ref")
           map.set(pk, pk)
           count++
         } catch (e) {
+          // Sans savepoint, une erreur avorte TOUTE la transaction Postgres
+          // (25P02) et les upserts suivants échouaient en silence → faux
+          // succès (audit 2026-07 #50). On rétablit l'état et on continue.
+          await tx.$executeRawUnsafe("ROLLBACK TO SAVEPOINT sp_ref").catch(() => {})
           warnings.push(
             `Référentiel ${meta.name} #${String(pk)} ignoré : ${(e as Error).message.split("\n")[0]}`,
           )
@@ -514,9 +534,14 @@ export async function importAccount(
         }
 
         try {
+          // Savepoint par ligne : sinon la 1re erreur avorte toute la
+          // transaction et les créations suivantes échouent en silence tandis
+          // que la fonction renvoyait quand même « N importés » (audit #50).
+          await tx.$executeRawUnsafe("SAVEPOINT sp_row")
           const created = (await (tx as any)[meta.delegate].create({
             data: createData,
           })) as Row
+          await tx.$executeRawUnsafe("RELEASE SAVEPOINT sp_row")
           const newPk = created[meta.pkField]
           if (oldPk !== null && oldPk !== undefined) map.set(oldPk, newPk)
           count++
@@ -532,6 +557,7 @@ export async function importAccount(
             })
           }
         } catch (e) {
+          await tx.$executeRawUnsafe("ROLLBACK TO SAVEPOINT sp_row").catch(() => {})
           skip++
           warnings.push(
             `${meta.name} : une ligne ignorée (${(e as Error).message.split("\n")[0]})`,
@@ -550,13 +576,16 @@ export async function importAccount(
       const newFk = targetMap?.get(p.oldValue)
       if (newFk === undefined) continue // cible jamais importée → reste null
       try {
+        await tx.$executeRawUnsafe("SAVEPOINT sp_patch")
         await (tx as any)[p.delegate].update({
           where: { [p.pkField]: p.newPk },
           data: { [p.fkField]: newFk },
         })
+        await tx.$executeRawUnsafe("RELEASE SAVEPOINT sp_patch")
         patched++
       } catch {
-        /* ligne disparue / contrainte : on laisse la FK à null */
+        /* ligne disparue / contrainte : on laisse la FK à null (savepoint) */
+        await tx.$executeRawUnsafe("ROLLBACK TO SAVEPOINT sp_patch").catch(() => {})
       }
     }
     if (patched) warnings.push(`${patched} référence(s) différée(s) reconnectée(s).`)

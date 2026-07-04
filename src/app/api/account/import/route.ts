@@ -57,7 +57,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const result = await importAccount(session!.user.id, payload, { dryRun })
+    const result = await importAccount(session!.user.id, payload, {
+      dryRun,
+      isAdmin: session!.user.role === "ADMIN",
+    })
 
     return NextResponse.json({
       success: true,
