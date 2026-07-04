@@ -241,9 +241,11 @@ export async function GET(request: NextRequest) {
     for (const irr of irrigationsPlanifiees) {
       if (irr.fait) continue
       const meteo = getIrrigationMeteo(irr)
-      const joursAvant = Math.floor((irr.datePrevue.getTime() - Date.now()) / 86_400_000)
-      // Auto-valider si : date passée ou aujourd'hui + pluie récente suffisante
-      if (joursAvant <= 0 && meteo.probablementInutile) {
+      // Auto-valider seulement si l'échéance est RÉELLEMENT passée. Avant,
+      // `floor((datePrevue - now)/24h) <= 0` comptait une irrigation de
+      // demain-minuit comme « aujourd'hui » dès qu'elle était à moins de 24 h,
+      // et la marquait faite en avance (audit 2026-07, #46).
+      if (irr.datePrevue.getTime() <= Date.now() && meteo.probablementInutile) {
         autoValidIds.push(irr.id)
         irr.fait = true // Marquer localement pour l'affichage
       }
