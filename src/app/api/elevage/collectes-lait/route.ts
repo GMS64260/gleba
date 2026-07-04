@@ -88,6 +88,14 @@ export async function POST(request: NextRequest) {
     // Normalise la date au jour (00:00 UTC)
     const day = new Date(data.date)
     day.setUTCHours(0, 0, 0, 0)
+    // Fin du jour de collecte (exclusif) pour comparer les soins À LA
+    // GRANULARITÉ DU JOUR : un soin `fait` porte une date-heure complète
+    // (ex. 13:00), or la collecte est normalisée à 00:00. Avec `date: { lte: day }`
+    // un traitement de l'après-midi ne "couvrait" pas la traite du même jour →
+    // le lait du jour du traitement partait en circulation (audit 2026-07 #17,
+    // risque sanitaire). On écarte tout le jour du traitement (choix prudent).
+    const jourSuivant = new Date(day)
+    jourSuivant.setUTCDate(jourSuivant.getUTCDate() + 1)
 
     // Audit élevage 2026-06-11 — écartement automatique : le POST /soins
     // n'écarte que les collectes EXISTANTES à sa création ; une collecte
@@ -98,7 +106,7 @@ export async function POST(request: NextRequest) {
         userId: session.user.id,
         fait: true,
         finAttenteLait: { gte: day },
-        date: { lte: day },
+        date: { lt: jourSuivant },
         ...(data.animalId ? { animalId: data.animalId } : { lotId: data.lotId }),
       },
       select: { id: true, finAttenteLait: true, produit: true, type: true },
