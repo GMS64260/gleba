@@ -100,9 +100,11 @@ function StockInput({
 
   const handleBlur = () => {
     setEditing(false)
-    const numVal = isInteger
-      ? parseInt(localValue) || null
-      : parseFloat(localValue) || null
+    // Audit 2026-07 (#53) : `parseFloat(x) || null` transformait 0 en null
+    // (« non renseigné ») — saisir un stock à 0 ne l'enregistrait jamais.
+    // On ne convertit en null que si le champ est vide ou non numérique.
+    const parsed = isInteger ? parseInt(localValue) : parseFloat(localValue)
+    const numVal = localValue.trim() === "" || Number.isNaN(parsed) ? null : parsed
     if (numVal !== value) {
       onChange(numVal)
       onSave(numVal)
