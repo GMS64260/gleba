@@ -28,12 +28,14 @@ describe("territoires", () => {
     expect(m.fecApplicable).toBe(true)
   })
 
-  it("factureSansTaxe : franchise + non-assujetti", () => {
+  it("factureSansTaxe : vrai sauf régimes réels (TVA française collectée)", () => {
     expect(factureSansTaxe("franchise-293b")).toBe(true)
     expect(factureSansTaxe("non-assujetti")).toBe(true)
+    // TGC (Nouvelle-Calédonie) n'est pas de la TVA française → facture sans TVA.
+    expect(factureSansTaxe("tgc")).toBe(true)
+    expect(factureSansTaxe("reel-simplifie")).toBe(false)
     expect(factureSansTaxe("reel-normal")).toBe(false)
-    expect(factureSansTaxe("tgc")).toBe(false)
-    expect(factureSansTaxe(null)).toBe(false)
+    expect(factureSansTaxe(null)).toBe(true)
   })
 
   it("mentionFiscale selon le régime", () => {

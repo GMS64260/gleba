@@ -16,8 +16,9 @@ export async function PUT(
   request: NextRequest,
   { params }: RouteParams
 ) {
-  const { error } = await requireAdminApi()
+  const { session, error } = await requireAuthApi()
   if (error) return error
+  const isAdmin = session!.user.role === 'ADMIN'
 
   try {
     const { id } = await params
@@ -44,6 +45,14 @@ export async function PUT(
       )
     }
 
+    // Seul l'auteur d'une variété perso (ou un admin) peut la modifier.
+    if (!isAdmin && existing.userId !== session!.user.id) {
+      return NextResponse.json(
+        { error: 'Vous ne pouvez modifier que vos propres variétés.' },
+        { status: 403 }
+      )
+    }
+
     // Vérifier que le fournisseur existe si fourni
     if (validationResult.data.fournisseurId) {
       const fournisseur = await prisma.fournisseur.findUnique({
@@ -57,10 +66,15 @@ export async function PUT(
       }
     }
 
-    // Mise à jour
+    // Mise à jour (l'auteur d'un perso peut basculer « proposer à la communauté »).
     const variete = await prisma.variete.update({
       where: { id },
-      data: validationResult.data,
+      data: {
+        ...validationResult.data,
+        ...(existing.userId && body.partageCommunaute !== undefined
+          ? { partageCommunaute: body.partageCommunaute === true }
+          : {}),
+      },
       include: {
         espece: true,
         fournisseur: true,
@@ -82,8 +96,9 @@ export async function DELETE(
   request: NextRequest,
   { params }: RouteParams
 ) {
-  const { error } = await requireAdminApi()
+  const { session, error } = await requireAuthApi()
   if (error) return error
+  const isAdmin = session!.user.role === 'ADMIN'
 
   try {
     const { id } = await params
@@ -104,6 +119,14 @@ export async function DELETE(
       return NextResponse.json(
         { error: `Variété "${id}" non trouvée` },
         { status: 404 }
+      )
+    }
+
+    // Seul l'auteur d'une variété perso (ou un admin) peut la supprimer.
+    if (!isAdmin && variete.userId !== session!.user.id) {
+      return NextResponse.json(
+        { error: 'Vous ne pouvez supprimer que vos propres variétés.' },
+        { status: 403 }
       )
     }
 

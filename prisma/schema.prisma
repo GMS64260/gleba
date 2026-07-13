@@ -162,6 +162,10 @@ model User {
   bugReports            BugReport[]
   bugStatusLogs         BugStatusLog[]      @relation("BugStatusLogAuthor")
 
+  // Référentiel perso (espèces/variétés créées par l'utilisateur, cf. partageCommunaute)
+  especesPerso          Espece[]            @relation("EspecePerso")
+  varietesPerso         Variete[]           @relation("VarietePerso")
+
   // Préférences (modules visibles, etc.)
   preferences           UserPreference[]
 
@@ -429,6 +433,14 @@ model Espece {
   couleur         String?  @map("couleur") // Code couleur UI (#RRGGBB)
   description     String?  @map("description")
 
+  // Catalogue communautaire vs perso (cf. src/lib/territoires.ts pour l'esprit).
+  // userId null = catalogue Gleba officiel (seed). userId renseigné = créé par un
+  // membre ; partageCommunaute = proposé/partagé à la communauté (visible par tous)
+  // vs privé (visible par l'auteur seul).
+  userId            String?  @map("user_id")
+  auteur            User?    @relation("EspecePerso", fields: [userId], references: [id], onDelete: Cascade)
+  partageCommunaute Boolean  @default(false) @map("partage_communaute")
+
   // Nouveaux champs (parité Potaleger)
   categorie       String?  @map("categorie")       // Catégorie visuelle (emoji)
   niveau          String?  @map("niveau")          // Facile, Moyen, Difficile
@@ -582,6 +594,13 @@ model Variete {
   dateStock      DateTime?    @map("date_stock")
   bio            Boolean      @default(false) @map("bio")
   description    String?      @map("description")
+
+  // Catalogue communautaire vs perso. userId null = catalogue Gleba officiel.
+  // userId renseigné = variété d'un membre ; partageCommunaute = proposée à la
+  // communauté (visible par tous) vs privée (visible par l'auteur seul).
+  userId            String?  @map("user_id")
+  auteur            User?    @relation("VarietePerso", fields: [userId], references: [id], onDelete: Cascade)
+  partageCommunaute Boolean  @default(false) @map("partage_communaute")
 
   // PROMPT 05 — Audit Verger : différenciation unifère/bifère pour les figuiers.
   // Valeurs : 'unifere' (1 récolte par an) | 'bifere' (2 récoltes : figues-fleurs

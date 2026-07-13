@@ -65,9 +65,13 @@ export async function GET(request: NextRequest) {
 
     // Requête avec comptage
     const userId = session!.user.id
+    // Visibilité : catalogue Gleba officiel (userId null) + communauté (partagé) + mes perso.
+    const whereVisible: Prisma.VarieteWhereInput = {
+      AND: [where, { OR: [{ userId: null }, { partageCommunaute: true }, { userId }] }],
+    }
     const [varietes, total] = await Promise.all([
       prisma.variete.findMany({
-        where,
+        where: whereVisible,
         include: {
           espece: {
             include: {
@@ -93,7 +97,7 @@ export async function GET(request: NextRequest) {
         skip,
         take: pageSize,
       }),
-      prisma.variete.count({ where }),
+      prisma.variete.count({ where: whereVisible }),
     ])
 
     // Avis communautaires (opt-in via ?avis=1) : stats agrégées via le moteur générique.
@@ -131,10 +135,13 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST /api/varietes (admin only - données de reference globales)
+// POST /api/varietes
+// - Admin : variété du catalogue Gleba officiel (userId null).
+// - Utilisateur : variété perso (userId = lui), proposée à la communauté ou privée.
 export async function POST(request: NextRequest) {
-  const { error } = await requireAdminApi()
+  const { session, error } = await requireAuthApi()
   if (error) return error
+  const isAdmin = session!.user.role === 'ADMIN'
 
   try {
     const body = await request.json()
@@ -198,9 +205,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Création
+    // Création : admin → catalogue Gleba officiel ; utilisateur → perso (proposé ou privé).
     const variete = await prisma.variete.create({
-      data: { ...data, nomNormalise },
+      data: {
+        ...data,
+        nomNormalise,
+        userId: isAdmin ? null : session!.user.id,
+        partageCommunaute: isAdmin ? false : body.partageCommunaute === true,
+      },
       include: {
         espece: true,
         fournisseur: true,

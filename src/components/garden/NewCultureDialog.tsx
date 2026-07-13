@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useSession } from "next-auth/react"
 import { format } from "date-fns"
 import { Save } from "lucide-react"
 
@@ -91,14 +92,42 @@ export function NewCultureDialog({ open, onOpenChange, plancheId, plancheNom, pl
     }
   }, [open, plancheLongueur])
 
-  // Charger les especes
-  React.useEffect(() => {
-    if (!open) return
-    fetch("/api/especes?pageSize=500")
+  // Charger les especes (visibles : Gleba officiel + communauté + mes perso)
+  const loadEspeces = React.useCallback(() => {
+    return fetch("/api/especes?pageSize=500")
       .then(r => r.json())
       .then(d => setEspeces(d.data || []))
       .catch(() => setEspeces([]))
-  }, [open])
+  }, [])
+
+  React.useEffect(() => {
+    if (!open) return
+    loadEspeces()
+  }, [open, loadEspeces])
+
+  const { data: authSession } = useSession()
+  const currentUserId = (authSession?.user as { id?: string } | undefined)?.id ?? null
+
+  // Création d'une espèce perso (ex. Maracuja) directement depuis le sélecteur.
+  const handleCreateEspece = async (nom: string) => {
+    try {
+      const res = await fetch("/api/especes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: nom, type: "legume", vivace: false, aPlanifier: true }),
+      })
+      const created = await res.json().catch(() => null)
+      if (res.ok && created?.id) {
+        await loadEspeces()
+        setEspeceId(created.id)
+        toast({ title: "Espèce perso créée", description: `« ${created.id} » ajoutée à votre catalogue.` })
+      } else {
+        toast({ variant: "destructive", title: "Erreur", description: created?.error || "Impossible de créer l'espèce" })
+      }
+    } catch {
+      toast({ variant: "destructive", title: "Erreur", description: "Erreur réseau" })
+    }
+  }
 
   // Charger varietes + ITPs quand espece change
   React.useEffect(() => {
@@ -248,6 +277,8 @@ export function NewCultureDialog({ open, onOpenChange, plancheId, plancheNom, pl
                 defaultTypes={["legume", "aromatique", "engrais_vert"]}
                 recentStorageKey="espece-recents-garden"
                 placeholder="Rechercher une espèce…"
+                currentUserId={currentUserId}
+                onCreate={handleCreateEspece}
               />
             </div>
           </div>

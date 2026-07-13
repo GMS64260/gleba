@@ -42,6 +42,16 @@ export type EspeceOption = {
   type?: EspeceType | string | null
   categorie?: string | null
   couleur?: string | null
+  // Origine catalogue : userId null = Gleba officiel ; sinon = créée par un membre.
+  userId?: string | null
+  partageCommunaute?: boolean
+}
+
+/** Badge d'origine d'une entrée catalogue (null = Gleba officiel, pas de badge). */
+function origineBadge(o: EspeceOption, currentUserId?: string | null) {
+  if (o.userId == null) return null
+  if (currentUserId && o.userId === currentUserId) return { label: "Perso", cls: "bg-amber-100 text-amber-700" }
+  return { label: "Communauté", cls: "bg-sky-100 text-sky-700" }
 }
 
 type TabKey = "all" | EspeceType
@@ -92,6 +102,10 @@ type Props = {
   recentStorageKey?: string
   disabled?: boolean
   className?: string
+  /** Id de l'utilisateur courant, pour distinguer ses espèces perso. */
+  currentUserId?: string | null
+  /** Si fourni, propose « Créer l'espèce … » quand la recherche ne matche rien. */
+  onCreate?: (nom: string) => void
 }
 
 export function EspeceCombobox({
@@ -104,8 +118,11 @@ export function EspeceCombobox({
   recentStorageKey = "espece-recents-default",
   disabled,
   className,
+  currentUserId,
+  onCreate,
 }: Props) {
   const [open, setOpen] = React.useState(false)
+  const [query, setQuery] = React.useState("")
   const initialTab: TabKey =
     defaultTypes && defaultTypes.length === 1 ? defaultTypes[0] : "all"
   const [tab, setTab] = React.useState<TabKey>(initialTab)
@@ -201,9 +218,21 @@ export function EspeceCombobox({
             return norm(v).includes(norm(s)) ? 1 : 0
           }}
         >
-          <CommandInput placeholder={placeholder} />
+          <CommandInput placeholder={placeholder} value={query} onValueChange={setQuery} />
           <CommandList>
-            <CommandEmpty>Aucune espèce trouvée.</CommandEmpty>
+            <CommandEmpty>
+              {onCreate && query.trim() ? (
+                <button
+                  type="button"
+                  onClick={() => { onCreate(query.trim()); setOpen(false); setQuery("") }}
+                  className="w-full text-left px-2 py-1.5 text-sm text-green-700 hover:bg-green-50 rounded"
+                >
+                  ＋ Créer l&apos;espèce « {query.trim()} » (perso)
+                </button>
+              ) : (
+                <span className="px-2 py-1.5 text-sm text-muted-foreground">Aucune espèce trouvée.</span>
+              )}
+            </CommandEmpty>
             {tab === "all" && recentOptions.length > 0 && (
               <>
                 <CommandGroup heading="Récemment utilisés">
@@ -248,11 +277,17 @@ export function EspeceCombobox({
                     />
                   )}
                   {o.id}
-                  {o.type && o.type !== "legume" && (
-                    <span className="ml-auto text-xs text-muted-foreground">
-                      {o.type.replace("_", " ")}
-                    </span>
-                  )}
+                  <span className="ml-auto flex items-center gap-1">
+                    {(() => {
+                      const b = origineBadge(o, currentUserId)
+                      return b ? (
+                        <span className={cn("text-[10px] px-1.5 py-0.5 rounded", b.cls)}>{b.label}</span>
+                      ) : null
+                    })()}
+                    {o.type && o.type !== "legume" && (
+                      <span className="text-xs text-muted-foreground">{o.type.replace("_", " ")}</span>
+                    )}
+                  </span>
                 </CommandItem>
               ))}
             </CommandGroup>

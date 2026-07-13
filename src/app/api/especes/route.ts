@@ -85,10 +85,16 @@ export async function GET(request: NextRequest) {
         ? { userId: session!.user.id, annee: saisonAnnee, terminee: null }
         : { userId: session!.user.id }
 
+    // Visibilité catalogue : Gleba officiel (userId null) + communauté (partagé
+    // par un membre) + mes propres espèces perso. Jamais le perso privé d'un autre.
+    const whereVisible: Prisma.EspeceWhereInput = {
+      AND: [where, { OR: [{ userId: null }, { partageCommunaute: true }, { userId: session!.user.id }] }],
+    }
+
     // Requête avec comptage
     const [especes, total] = await Promise.all([
       prisma.espece.findMany({
-        where,
+        where: whereVisible,
         include: {
           famille: true,
           _count: {
@@ -102,7 +108,7 @@ export async function GET(request: NextRequest) {
         skip,
         take: pageSize,
       }),
-      prisma.espece.count({ where }),
+      prisma.espece.count({ where: whereVisible }),
     ])
 
     // Avis communautaires (opt-in via ?avis=1)
@@ -132,10 +138,14 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST /api/especes (admin only - données de reference globales)
+// POST /api/especes
+// - Admin : crée une espèce du catalogue Gleba officiel (userId null).
+// - Utilisateur : crée une espèce perso (userId = lui), proposée à la communauté
+//   (partageCommunaute=true) ou gardée privée (false).
 export async function POST(request: NextRequest) {
-  const { error } = await requireAdminApi()
+  const { session, error } = await requireAuthApi()
   if (error) return error
+  const isAdmin = session!.user.role === 'ADMIN'
 
   try {
     const body = await request.json()
@@ -183,9 +193,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Création
+    // Création : admin → catalogue Gleba officiel ; utilisateur → perso (proposé ou privé).
     const espece = await prisma.espece.create({
-      data,
+      data: {
+        ...data,
+        userId: isAdmin ? null : session!.user.id,
+        partageCommunaute: isAdmin ? false : body.partageCommunaute === true,
+      },
       include: {
         famille: true,
       },

@@ -9,8 +9,9 @@ import * as React from "react"
 import { Suspense } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
+import { useSession } from "next-auth/react"
 import { ColumnDef } from "@tanstack/react-table"
-import { ArrowLeft, Leaf, Droplets, TreeDeciduous, Cherry, Salad, Sprout, Flower2 } from "lucide-react"
+import { ArrowLeft, Leaf, Droplets, TreeDeciduous, Cherry, Salad, Sprout, Flower2, Share2, Lock } from "lucide-react"
 
 import { DataTable } from "@/components/tables/DataTable"
 import { Button } from "@/components/ui/button"
@@ -51,6 +52,10 @@ const TYPE_LABELS: Record<string, string> = {
 interface EspeceWithRelations {
   id: string
   type: string
+  // Catalogue communautaire : userId null = Gleba officiel ; renseigné = perso
+  // d'un membre. partageCommunaute = proposé/partagé à la communauté.
+  userId: string | null
+  partageCommunaute: boolean
   familleId: string | null
   nomLatin: string | null
   rendement: number | null
@@ -218,6 +223,8 @@ function EspecesPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { toast } = useToast()
+  const { data: session } = useSession()
+  const currentUserId = (session?.user as any)?.id as string | undefined
   const [data, setData] = React.useState<EspeceWithRelations[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [pageIndex, setPageIndex] = React.useState(0)
@@ -334,7 +341,12 @@ function EspecesPageContent() {
       const response = await fetch(`/api/especes/${encodeURIComponent(row.id)}`, {
         method: "DELETE",
       })
-      if (!response.ok) throw new Error("Erreur lors de la suppression")
+      if (!response.ok) {
+        // Surface le message de l'API (ex : 409 « utilisée par X culture(s) »
+        // ou 403 « vos propres espèces »).
+        const p = await response.json().catch(() => null)
+        throw new Error(p?.error || "Erreur lors de la suppression")
+      }
       toast({
         title: "Espèce supprimée",
         description: `L'espece "${row.id}" a été supprimée`,
@@ -344,7 +356,34 @@ function EspecesPageContent() {
       toast({
         variant: "destructive",
         title: "Erreur",
-        description: "Impossible de supprimer l'espèce",
+        description: error instanceof Error ? error.message : "Impossible de supprimer l'espèce",
+      })
+    }
+  }
+
+  // Catalogue communautaire : proposer/retirer son espèce perso à la communauté.
+  const handleTogglePartage = async (row: EspeceWithRelations) => {
+    const next = !row.partageCommunaute
+    try {
+      const res = await fetch(`/api/especes/${encodeURIComponent(row.id)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ partageCommunaute: next }),
+      })
+      if (!res.ok) {
+        const p = await res.json().catch(() => null)
+        throw new Error(p?.error || "Action impossible")
+      }
+      toast({
+        title: next ? "Proposée à la communauté" : "Rendue privée",
+        description: `« ${row.id} »`,
+      })
+      fetchData()
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Erreur",
+        description: error instanceof Error ? error.message : "Action impossible",
       })
     }
   }
@@ -373,6 +412,41 @@ function EspecesPageContent() {
     link.download = `especes${selectedType && selectedType !== 'all' ? `-${selectedType}` : ''}.csv`
     link.click()
     URL.revokeObjectURL(url)
+  }
+
+  // Colonne « Origine » : badge Gleba/Perso/Communauté + bouton proposer/rendre
+  // privé sur ses propres espèces perso. La suppression reste gérée par la
+  // colonne d'actions du DataTable (onRowDelete, contrôle d'auteur côté API).
+  const origineColumn: ColumnDef<EspeceWithRelations> = {
+    id: "origine",
+    header: "Origine",
+    enableSorting: false,
+    cell: ({ row }) => {
+      const e = row.original
+      const mine = !!currentUserId && e.userId === currentUserId
+      return (
+        <div className="flex items-center gap-1" onClick={(ev) => ev.stopPropagation()}>
+          {e.userId == null ? (
+            <Badge variant="outline" className="text-xs text-muted-foreground">Gleba</Badge>
+          ) : mine ? (
+            <Badge variant="secondary" className="text-xs">Perso</Badge>
+          ) : e.partageCommunaute ? (
+            <Badge variant="outline" className="text-xs">Communauté</Badge>
+          ) : null}
+          {mine && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 w-8 p-0 hover:bg-emerald-100 hover:text-emerald-700"
+              title={e.partageCommunaute ? "Rendre privé (retirer de la communauté)" : "Proposer à la communauté"}
+              onClick={() => handleTogglePartage(e)}
+            >
+              {e.partageCommunaute ? <Lock className="h-4 w-4" /> : <Share2 className="h-4 w-4" />}
+            </Button>
+          )}
+        </div>
+      )
+    },
   }
 
   // Determine which types to show based on mode
@@ -462,7 +536,7 @@ function EspecesPageContent() {
         </div>
 
         <DataTable
-          columns={columns}
+          columns={[...columns, origineColumn]}
           data={data}
           isLoading={isLoading}
           pageCount={pageCount}

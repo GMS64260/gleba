@@ -259,6 +259,33 @@ export function AssistantPlantationDialog({ open, onOpenChange, onSuccess, prefi
           ? selectedItem.id.replace(/^fruitier::/, "")
           : null
 
+      // Verger : une essence fruitière saisie en libre (ex. Maracuja, absente du
+      // catalogue) devient une espèce perso réutilisable, retrouvable ensuite.
+      let especeId = especeIdFruitier
+      const estContexteFruitier =
+        state.typeFormation === "verger" || state.typeFormation === "agroforesterie"
+      if (!especeId && estContexteFruitier && state.essenceLibre.trim()) {
+        try {
+          const r = await fetch("/api/especes", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              id: state.essenceLibre.trim(),
+              type: "arbre_fruitier",
+              uniteRendement: "kg_arbre",
+              vivace: true,
+              aPlanifier: false,
+            }),
+          })
+          if (r.ok) {
+            const created = await r.json().catch(() => null)
+            if (created?.id) especeId = created.id
+          }
+        } catch {
+          // non bloquant : l'arbre gardera l'essence en texte libre.
+        }
+      }
+
       const payload = {
         nom: state.nom.trim(),
         typeFormation: state.typeFormation,
@@ -272,7 +299,7 @@ export function AssistantPlantationDialog({ open, onOpenChange, onSuccess, prefi
         parcelleGeoId: state.parcelleGeoId || null,
         zoneVergerId: state.zoneVergerId || null,
         surfaceHa: state.surfaceHa || null,
-        especeId: especeIdFruitier,
+        especeId,
         essenceLibre,
         varieteOuProvenance: state.varieteOuProvenance || null,
         porteGreffeId: state.porteGreffeId || null,
