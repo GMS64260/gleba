@@ -5,6 +5,7 @@
  */
 
 import * as React from "react"
+import { useSession } from "next-auth/react"
 import {
   Settings,
   Plus,
@@ -21,6 +22,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
@@ -34,7 +36,13 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
-import { confirmDialog } from "@/lib/global-dialog"
+import {
+  OrigineControls,
+  useReferentielActions,
+  FiltreOrigine,
+  filtrerParOrigine,
+  type FiltreOrigineValue,
+} from "@/components/referentiel/catalogue-communaute"
 
 interface EspeceAnimale {
   id: string
@@ -51,6 +59,8 @@ interface EspeceAnimale {
   prixAchat: number | null
   couleur: string | null
   description: string | null
+  userId: string | null
+  partageCommunaute: boolean
   _count: { animaux: number; lots: number }
 }
 
@@ -89,10 +99,14 @@ const emptyForm = {
   dureeGestation: "", dureeCouvaison: "", dureeElevage: "",
   poidsAdulte: "", rendementCarcasse: "", ponteAnnuelle: "",
   consommationJour: "", prixAchat: "", couleur: "#F59E0B", description: "",
+  partageCommunaute: false,
 }
 
 export function EspecesTab() {
   const { toast } = useToast()
+  const { data: session } = useSession()
+  const currentUserId = (session?.user as any)?.id as string | undefined
+  const isAdmin = (session?.user as any)?.role === "ADMIN"
   const [isLoading, setIsLoading] = React.useState(true)
   const [especes, setEspeces] = React.useState<EspeceAnimale[]>([])
   const [filteredEspeces, setFilteredEspeces] = React.useState<EspeceAnimale[]>([])
@@ -100,6 +114,7 @@ export function EspecesTab() {
   const [editingId, setEditingId] = React.useState<string | null>(null)
   const [formData, setFormData] = React.useState(emptyForm)
   const [selectedType, setSelectedType] = React.useState("all")
+  const [filtreOrigine, setFiltreOrigine] = React.useState<FiltreOrigineValue>("tout")
 
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
@@ -108,6 +123,8 @@ export function EspecesTab() {
       if (res.ok) {
         const result = await res.json()
         setEspeces(result.data)
+      } else {
+        throw new Error("Erreur de chargement")
       }
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les espèces" })
@@ -118,6 +135,8 @@ export function EspecesTab() {
 
   React.useEffect(() => { fetchData() }, [fetchData])
 
+  const referentielActions = useReferentielActions("/api/elevage/especes-animales", fetchData, toast)
+
   React.useEffect(() => {
     if (selectedType === "all") {
       setFilteredEspeces(especes)
@@ -125,6 +144,12 @@ export function EspecesTab() {
       setFilteredEspeces(especes.filter(e => e.type === selectedType))
     }
   }, [selectedType, especes])
+
+  // Filtre d'origine (Gleba / communauté / perso) appliqué par-dessus le filtre de type.
+  const displayedEspeces = React.useMemo(
+    () => filtrerParOrigine(filteredEspeces, filtreOrigine, currentUserId),
+    [filteredEspeces, filtreOrigine, currentUserId]
+  )
 
   const openCreate = () => {
     setEditingId(null)
@@ -146,6 +171,7 @@ export function EspecesTab() {
       prixAchat: e.prixAchat?.toString() || "",
       couleur: e.couleur || "#F59E0B",
       description: e.description || "",
+      partageCommunaute: e.partageCommunaute,
     })
     setIsDialogOpen(true)
   }
@@ -168,16 +194,19 @@ export function EspecesTab() {
         ponteAnnuelle: formData.ponteAnnuelle ? parseInt(formData.ponteAnnuelle) : null,
         consommationJour: formData.consommationJour ? parseFloat(formData.consommationJour) : null,
         prixAchat: formData.prixAchat ? parseFloat(formData.prixAchat) : null,
+        partageCommunaute: formData.partageCommunaute,
       }
 
       const isEdit = editingId !== null
-      const url = isEdit ? `/api/elevage/especes-animales?id=${editingId}` : '/api/elevage/especes-animales'
-      const method = isEdit ? 'PATCH' : 'POST'
+      const url = isEdit
+        ? `/api/elevage/especes-animales/${encodeURIComponent(editingId)}`
+        : '/api/elevage/especes-animales'
+      const method = isEdit ? 'PUT' : 'POST'
 
       const response = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       if (!response.ok) {
-        const err = await response.json()
-        throw new Error(err.error || 'Erreur')
+        const err = await response.json().catch(() => null)
+        throw new Error(err?.error || 'Erreur')
       }
 
       toast({ title: isEdit ? "Espèce modifiée" : "Espèce créée", description: formData.nom })
@@ -187,22 +216,6 @@ export function EspecesTab() {
       fetchData()
     } catch (error: any) {
       toast({ variant: "destructive", title: "Erreur", description: error.message || "Impossible de sauvegarder" })
-    }
-  }
-
-  const handleDelete = async (id: string, nom: string, count: number) => {
-    if (count > 0) {
-      toast({ variant: "destructive", title: "Suppression impossible", description: `${nom} est utilisee par ${count} animaux/lots` })
-      return
-    }
-    if (!(await confirmDialog(`Supprimer l'espece "${nom}" ?`))) return
-    try {
-      const res = await fetch(`/api/elevage/especes-animales?id=${id}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error()
-      toast({ title: "Espèce supprimée" })
-      fetchData()
-    } catch {
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible de supprimer" })
     }
   }
 
@@ -278,10 +291,13 @@ export function EspecesTab() {
           </Button>
           <Button size="sm" onClick={openCreate}>
             <Plus className="h-4 w-4 mr-1" />
-            Nouvelle espèce
+            Ajouter
           </Button>
         </div>
       </div>
+
+      {/* Filtre par origine (catalogue Gleba / communauté / mes espèces) */}
+      <FiltreOrigine value={filtreOrigine} onChange={setFiltreOrigine} labelPerso="Mes espèces" />
 
       {/* Table */}
       <Card>
@@ -301,11 +317,12 @@ export function EspecesTab() {
                   <TableHead className="text-right">Ponte/an</TableHead>
                   <TableHead className="text-right">Prix achat</TableHead>
                   <TableHead className="text-right">Animaux</TableHead>
+                  <TableHead>Origine</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredEspeces.map((esp) => (
+                {displayedEspeces.map((esp) => (
                   <TableRow key={esp.id}>
                     <TableCell>
                       <div className="w-6 h-6 rounded-full border" style={{ backgroundColor: esp.couleur || '#ccc' }} />
@@ -331,20 +348,31 @@ export function EspecesTab() {
                         <span className="text-muted-foreground text-sm">-</span>
                       )}
                     </TableCell>
+                    <TableCell>
+                      <OrigineControls
+                        entree={{ id: esp.id, userId: esp.userId, partageCommunaute: esp.partageCommunaute }}
+                        nom={esp.nom}
+                        currentUserId={currentUserId}
+                        actions={referentielActions}
+                        showRemove={false}
+                      />
+                    </TableCell>
                     <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button variant="ghost" size="sm" onClick={() => openEdit(esp)}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => handleDelete(esp.id, esp.nom, esp._count.animaux + esp._count.lots)} className="text-red-600 hover:text-red-700">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
+                      {(isAdmin || esp.userId === currentUserId) && (
+                        <div className="flex justify-end gap-1">
+                          <Button variant="ghost" size="sm" onClick={() => openEdit(esp)}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => referentielActions.remove(esp.id, esp.nom)} className="text-red-600 hover:text-red-700">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
-                {filteredEspeces.length === 0 && (
-                  <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">Aucune espèce configuree</TableCell></TableRow>
+                {displayedEspeces.length === 0 && (
+                  <TableRow><TableCell colSpan={11} className="text-center py-8 text-muted-foreground">Aucune espèce configuree</TableCell></TableRow>
                 )}
               </TableBody>
             </Table>
@@ -436,6 +464,15 @@ export function EspecesTab() {
               <div className="space-y-2"><Label>Conso/jour (kg)</Label><Input type="number" min="0" step="0.01" value={formData.consommationJour} onChange={(e) => setFormData(f => ({ ...f, consommationJour: e.target.value }))} placeholder="0.12" /></div>
               <div className="space-y-2"><Label>Prix d'achat (&euro;)</Label><Input type="number" min="0" step="0.5" value={formData.prixAchat} onChange={(e) => setFormData(f => ({ ...f, prixAchat: e.target.value }))} placeholder="15" /></div>
             </div>
+            {!isAdmin && (
+              <label className="flex items-center gap-2 text-sm text-slate-600">
+                <Checkbox
+                  checked={formData.partageCommunaute}
+                  onCheckedChange={(v) => setFormData(f => ({ ...f, partageCommunaute: v === true }))}
+                />
+                Proposer à la communauté Gleba
+              </label>
+            )}
             <div className="flex justify-end gap-2 pt-4">
               <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
               <Button type="submit" disabled={!formData.nom || !formData.id}>
