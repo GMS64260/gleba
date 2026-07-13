@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { updateEspeceSchema } from '@/lib/validations'
 import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
+import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -17,8 +18,9 @@ export async function GET(
   request: NextRequest,
   { params }: RouteParams
 ) {
-  const { error } = await requireAuthApi()
+  const { error, session } = await requireAuthApi()
   if (error) return error
+  const userId = session!.user.id
 
   let resolvedId: string | null = null
   try {
@@ -35,16 +37,19 @@ export async function GET(
       // id n'est pas percent-encodé — on garde la valeur brute.
     }
 
-    const espece = await prisma.espece.findUnique({
-      where: { id: resolvedId },
+    // Visibilité : Gleba officiel + communauté + mes perso (jamais le perso privé
+    // d'autrui) — sur l'espèce ET ses variétés/ITP inclus.
+    const espece = await prisma.espece.findFirst({
+      where: { AND: [{ id: resolvedId }, visibiliteReferentiel(userId)] },
       include: {
         famille: true,
         varietes: {
+          where: visibiliteReferentiel(userId),
           include: {
             fournisseur: true,
           },
         },
-        itps: true,
+        itps: { where: visibiliteReferentiel(userId) },
         _count: {
           select: {
             cultures: true,

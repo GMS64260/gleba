@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { updateITPSchema } from '@/lib/validations'
 import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
+import { peutEditerReferentiel, visibiliteReferentiel } from '@/lib/referentiel-communaute'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -26,8 +27,9 @@ export async function GET(
 
     // Audit Marc 2026-05-14 — Bug 13 : compteur cultures par tenant
     // (cf. /api/itps GET pour le détail du bug).
-    let itp = await prisma.iTP.findUnique({
-      where: { id },
+    // Visibilité : Gleba officiel + communauté + mes perso (jamais le perso privé d'autrui).
+    let itp = await prisma.iTP.findFirst({
+      where: { AND: [{ id }, visibiliteReferentiel(userId)] },
       include: {
         espece: { include: { famille: true } },
         _count: {
@@ -46,7 +48,7 @@ export async function GET(
     // Évite un toast d'erreur frustrant quand le user devine l'URL.
     if (!itp) {
       itp = await prisma.iTP.findFirst({
-        where: { especeId: id },
+        where: { AND: [{ especeId: id }, visibiliteReferentiel(userId)] },
         include: {
           espece: { include: { famille: true } },
           _count: {
@@ -82,8 +84,9 @@ export async function PUT(
   request: NextRequest,
   { params }: RouteParams
 ) {
-  const { error } = await requireAdminApi()
+  const { session, error } = await requireAuthApi()
   if (error) return error
+  const isAdmin = session!.user.role === 'ADMIN'
 
   try {
     const { id } = await params
@@ -107,6 +110,14 @@ export async function PUT(
       return NextResponse.json(
         { error: `ITP "${id}" non trouvé` },
         { status: 404 }
+      )
+    }
+
+    // Seul l'auteur d'un ITP perso (ou un admin) peut le modifier.
+    if (!peutEditerReferentiel(existing, session!.user.id, isAdmin)) {
+      return NextResponse.json(
+        { error: 'Vous ne pouvez modifier que vos propres ITP.' },
+        { status: 403 }
       )
     }
 
@@ -136,10 +147,15 @@ export async function PUT(
       }
     }
 
-    // Mise à jour
+    // Mise à jour (l'auteur d'un perso peut basculer « proposer à la communauté »).
     const itp = await prisma.iTP.update({
       where: { id },
-      data,
+      data: {
+        ...data,
+        ...(existing.userId && body.partageCommunaute !== undefined
+          ? { partageCommunaute: body.partageCommunaute === true }
+          : {}),
+      },
       include: {
         espece: true,
       },
@@ -160,8 +176,9 @@ export async function DELETE(
   request: NextRequest,
   { params }: RouteParams
 ) {
-  const { error } = await requireAdminApi()
+  const { session, error } = await requireAuthApi()
   if (error) return error
+  const isAdmin = session!.user.role === 'ADMIN'
 
   try {
     const { id } = await params
@@ -183,6 +200,14 @@ export async function DELETE(
       return NextResponse.json(
         { error: `ITP "${id}" non trouvé` },
         { status: 404 }
+      )
+    }
+
+    // Seul l'auteur d'un ITP perso (ou un admin) peut le supprimer.
+    if (!peutEditerReferentiel(itp, session!.user.id, isAdmin)) {
+      return NextResponse.json(
+        { error: 'Vous ne pouvez supprimer que vos propres ITP.' },
+        { status: 403 }
       )
     }
 

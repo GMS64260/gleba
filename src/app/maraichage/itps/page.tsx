@@ -8,9 +8,10 @@
 import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { useSession } from "next-auth/react"
 import { formatSemaine } from "@/lib/assistant-helpers"
 import { ColumnDef } from "@tanstack/react-table"
-import { ArrowLeft, Route, Calendar, Ruler } from "lucide-react"
+import { ArrowLeft, Route, Calendar, Ruler, Share2, Lock, Trash2 } from "lucide-react"
 
 import { DataTable } from "@/components/tables/DataTable"
 import { Button } from "@/components/ui/button"
@@ -20,10 +21,15 @@ import { confirmDialog } from "@/lib/global-dialog"
 import { AvisDialog } from "@/components/avis/AvisDialog"
 import { AvisCell } from "@/components/avis/AvisCell"
 import type { AvisStatsListe } from "@/lib/avis/types"
+import { badgeOrigine } from "@/lib/referentiel-communaute"
 
 // Type pour les ITPs avec relations
 interface ITPWithRelations {
   id: string
+  // Catalogue communautaire : userId null = Gleba officiel ; renseigné = perso
+  // d'un membre. partageCommunaute = proposé/partagé à la communauté.
+  userId: string | null
+  partageCommunaute: boolean
   especeId: string | null
   semaineSemis: number | null
   semainePlantation: number | null
@@ -156,6 +162,8 @@ const columns: ColumnDef<ITPWithRelations>[] = [
 export default function ITPsPage() {
   const router = useRouter()
   const { toast } = useToast()
+  const { data: session } = useSession()
+  const currentUserId = (session?.user as any)?.id as string | undefined
   const [data, setData] = React.useState<ITPWithRelations[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [pageIndex, setPageIndex] = React.useState(0)
@@ -217,18 +225,77 @@ export default function ITPsPage() {
       const response = await fetch(`/api/itps/${encodeURIComponent(row.id)}`, {
         method: "DELETE",
       })
-      if (!response.ok) throw new Error("Erreur lors de la suppression")
-      toast({
-        title: "ITP supprime",
-        description: `L'ITP "${row.id}" a été supprimé`,
-      })
-      fetchData()
-    } catch (error) {
+      if (response.ok) {
+        toast({
+          title: "ITP supprime",
+          description: `L'ITP "${row.id}" a été supprimé`,
+        })
+        fetchData()
+      } else {
+        const p = await response.json().catch(() => null)
+        toast({
+          variant: "destructive",
+          title: "Erreur",
+          description: p?.error || "Impossible de supprimer l'ITP",
+        })
+      }
+    } catch {
       toast({
         variant: "destructive",
         title: "Erreur",
-        description: "Impossible de supprimer l'ITP",
+        description: "Erreur réseau",
       })
+    }
+  }
+
+  // Catalogue communautaire : proposer/retirer son ITP perso à la communauté.
+  const handleTogglePartage = async (itp: ITPWithRelations) => {
+    const next = !itp.partageCommunaute
+    try {
+      const res = await fetch(`/api/itps/${encodeURIComponent(itp.id)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ partageCommunaute: next }),
+      })
+      if (res.ok) {
+        toast({
+          title: next ? "Proposé à la communauté" : "Rendu privé",
+          description: `« ${formatItpLabel(itp)} »`,
+        })
+        fetchData()
+      } else {
+        const p = await res.json().catch(() => null)
+        toast({
+          variant: "destructive",
+          title: "Erreur",
+          description: p?.error || "Action impossible",
+        })
+      }
+    } catch {
+      toast({ variant: "destructive", title: "Erreur", description: "Action impossible" })
+    }
+  }
+
+  // Suppression d'un ITP perso (auteur). Le 409 « utilisé par… » est affiché.
+  const handlePersoDelete = async (itp: ITPWithRelations) => {
+    if (!(await confirmDialog(`Supprimer votre ITP « ${formatItpLabel(itp)} » ?`))) return
+    try {
+      const res = await fetch(`/api/itps/${encodeURIComponent(itp.id)}`, {
+        method: "DELETE",
+      })
+      if (res.ok) {
+        toast({ title: "ITP supprimé", description: `« ${formatItpLabel(itp)} »` })
+        fetchData()
+      } else {
+        const p = await res.json().catch(() => null)
+        toast({
+          variant: "destructive",
+          title: "Erreur",
+          description: p?.error || "Suppression impossible",
+        })
+      }
+    } catch {
+      toast({ variant: "destructive", title: "Erreur", description: "Suppression impossible" })
     }
   }
 
@@ -274,8 +341,51 @@ export default function ITPsPage() {
           />
         ),
       },
+      // Colonne « Origine » : badge Gleba/Perso/Communauté + actions sur son perso.
+      {
+        id: "origine",
+        header: "Origine",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const itp = row.original
+          const badge = badgeOrigine(itp, currentUserId)
+          const mine = !!currentUserId && itp.userId === currentUserId
+          return (
+            <div className="flex items-center gap-1" onClick={(ev) => ev.stopPropagation()}>
+              {badge ? (
+                <Badge variant="outline" className={`text-xs ${badge.cls}`}>{badge.label}</Badge>
+              ) : (
+                <Badge variant="outline" className="text-xs text-muted-foreground">Gleba</Badge>
+              )}
+              {mine && (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0 hover:bg-emerald-100 hover:text-emerald-700"
+                    title={itp.partageCommunaute ? "Rendre privé (retirer de la communauté)" : "Proposer à la communauté"}
+                    onClick={() => handleTogglePartage(itp)}
+                  >
+                    {itp.partageCommunaute ? <Lock className="h-4 w-4" /> : <Share2 className="h-4 w-4" />}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0 hover:bg-red-100 hover:text-red-600"
+                    title="Supprimer"
+                    onClick={() => handlePersoDelete(itp)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </>
+              )}
+            </div>
+          )
+        },
+      },
     ],
-    []
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [currentUserId]
   )
 
   return (
