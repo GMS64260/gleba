@@ -162,9 +162,13 @@ model User {
   bugReports            BugReport[]
   bugStatusLogs         BugStatusLog[]      @relation("BugStatusLogAuthor")
 
-  // Référentiel perso (espèces/variétés créées par l'utilisateur, cf. partageCommunaute)
+  // Référentiel perso (créé par l'utilisateur, cf. partageCommunaute / referentiel-communaute.ts)
   especesPerso          Espece[]            @relation("EspecePerso")
   varietesPerso         Variete[]           @relation("VarietePerso")
+  itpsPerso             ITP[]               @relation("ItpPerso")
+  porteGreffesPerso     PorteGreffe[]       @relation("PorteGreffePerso")
+  essencesBocageresPerso EssenceBocagere[]  @relation("EssenceBocagerePerso")
+  essencesForestieresPerso EssenceForestiere[] @relation("EssenceForestierePerso")
 
   // Préférences (modules visibles, etc.)
   preferences           UserPreference[]
@@ -503,6 +507,10 @@ model PorteGreffe {
   sensibilites    String[] @map("sensibilites") // ['asphyxie','calcaire','secheresse']
   drageonnement   Boolean  @default(false) @map("drageonnement")
   notes           String?  @map("notes")
+  // Référentiel communautaire (cf. src/lib/referentiel-communaute.ts). null = Gleba officiel.
+  userId            String?  @map("user_id")
+  auteur            User?    @relation("PorteGreffePerso", fields: [userId], references: [id], onDelete: Cascade)
+  partageCommunaute Boolean  @default(false) @map("partage_communaute")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
@@ -569,11 +577,43 @@ model EssenceBocagere {
   persistant  Boolean  @default(false) @map("persistant")
   epineux     Boolean  @default(false) @map("epineux")
   notes       String?  @map("notes")
+  // Référentiel communautaire (cf. src/lib/referentiel-communaute.ts). null = Gleba officiel.
+  userId            String?  @map("user_id")
+  auteur            User?    @relation("EssenceBocagerePerso", fields: [userId], references: [id], onDelete: Cascade)
+  partageCommunaute Boolean  @default(false) @map("partage_communaute")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
+  @@index([userId])
   @@index([nomLatin])
   @@map("essences_bocageres")
+}
+
+/// Essences forestières (chêne, hêtre, douglas…) — Assistant Plantation forestier.
+/// Migré depuis src/data/essences-forestieres.ts vers la base pour devenir un
+/// référentiel communautaire contribuable, au même titre que les autres.
+model EssenceForestiere {
+  id              String   @id @default(cuid())
+  nom             String   @map("nom")
+  nomLatin        String   @map("nom_latin")
+  categorie       String   @map("categorie") // 'feuillu' | 'resineux' | 'petit_fruit' | 'fruitier'
+  usages          String[] @map("usages")
+  densitesParHa   Json?    @map("densites_par_ha") // { futaie?, taillis?, agroforesterie?, haie? }
+  croissance      String   @map("croissance") // 'lente' | 'moyenne' | 'rapide' | 'tres_rapide'
+  sols            String[] @map("sols")
+  expositions     String[] @map("expositions")
+  cycleAnsRecolte Int?     @map("cycle_ans_recolte")
+  conseils        String?  @map("conseils")
+  // Référentiel communautaire (cf. src/lib/referentiel-communaute.ts). null = Gleba officiel.
+  userId            String?  @map("user_id")
+  auteur            User?    @relation("EssenceForestierePerso", fields: [userId], references: [id], onDelete: Cascade)
+  partageCommunaute Boolean  @default(false) @map("partage_communaute")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@index([nomLatin])
+  @@map("essences_forestieres")
 }
 
 /// Variétés (cultivars d'espèces)
@@ -701,10 +741,16 @@ model ITP {
   sourceReference     String?   @map("source_reference")
   derniereRevision    DateTime? @map("derniere_revision")
 
+  // Référentiel communautaire (cf. src/lib/referentiel-communaute.ts). null = Gleba officiel.
+  userId            String?  @map("user_id")
+  auteur            User?    @relation("ItpPerso", fields: [userId], references: [id], onDelete: Cascade)
+  partageCommunaute Boolean  @default(false) @map("partage_communaute")
+
   // Relations
   cultures         Culture[]
   rotationsDetails RotationDetail[]
 
+  @@index([userId])
   @@map("itps")
 }
 

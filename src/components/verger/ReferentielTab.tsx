@@ -7,13 +7,15 @@
 
 import * as React from "react"
 import Link from "next/link"
+import { useSession } from "next-auth/react"
 import { ColumnDef } from "@tanstack/react-table"
-import { Leaf, TreeDeciduous, Cherry, Loader2, ExternalLink, GitBranch, Bug, TreePine, Download } from "lucide-react"
+import { Leaf, TreeDeciduous, Cherry, Loader2, ExternalLink, GitBranch, Bug, TreePine, Trees, Download, Share2, Lock, Trash2 } from "lucide-react"
 
 import { DataTable } from "@/components/tables/DataTable"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { badgeOrigine } from "@/lib/referentiel-communaute"
 import {
   Sheet,
   SheetContent,
@@ -101,6 +103,131 @@ function humaniseSlug(s: string): string {
   return s
     .replace(/_/g, " ")
     .replace(/^\w/, (c) => c.toUpperCase())
+}
+
+// ============================================================================
+// Référentiel communautaire — badge d'origine + actions perso (proposer/rendre
+// privé/supprimer), harmonisé avec src/components/potager/ReferentielTab.tsx
+// et src/lib/referentiel-communaute.ts.
+// ============================================================================
+
+type EntreeCommunaute = { id: string; userId: string | null; partageCommunaute: boolean }
+
+/**
+ * Handlers PUT (bascule partage) / DELETE (suppression) pour un référentiel
+ * communautaire donné (apiBase = ex. "/api/verger/porte-greffes").
+ */
+function useReferentielActions(
+  apiBase: string,
+  refetch: () => void,
+  toast: ReturnType<typeof useToast>["toast"]
+) {
+  const togglePartage = React.useCallback(
+    async (id: string, nom: string, current: boolean) => {
+      const next = !current
+      try {
+        const res = await fetch(`${apiBase}/${encodeURIComponent(id)}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ partageCommunaute: next }),
+        })
+        if (res.ok) {
+          toast({
+            title: next ? "Proposé à la communauté" : "Rendu privé",
+            description: `« ${nom} »`,
+          })
+          refetch()
+        } else {
+          const p = await res.json().catch(() => null)
+          toast({
+            variant: "destructive",
+            title: "Erreur",
+            description: p?.error || "Action impossible",
+          })
+        }
+      } catch {
+        toast({ variant: "destructive", title: "Erreur", description: "Action impossible" })
+      }
+    },
+    [apiBase, refetch, toast]
+  )
+
+  const remove = React.useCallback(
+    async (id: string, nom: string) => {
+      if (!window.confirm(`Supprimer « ${nom} » ?`)) return
+      try {
+        const res = await fetch(`${apiBase}/${encodeURIComponent(id)}`, { method: "DELETE" })
+        if (res.ok) {
+          toast({ title: "Supprimé", description: `« ${nom} »` })
+          refetch()
+        } else {
+          const p = await res.json().catch(() => null)
+          toast({
+            variant: "destructive",
+            title: "Erreur",
+            description: p?.error || "Suppression impossible",
+          })
+        }
+      } catch {
+        toast({ variant: "destructive", title: "Erreur", description: "Suppression impossible" })
+      }
+    },
+    [apiBase, refetch, toast]
+  )
+
+  return { togglePartage, remove }
+}
+
+/** Colonne « Origine » : badge Gleba/Perso/Communauté + actions sur son perso. */
+function makeOrigineColumn<T extends EntreeCommunaute>(
+  nomOf: (row: T) => string,
+  currentUserId: string | undefined,
+  actions: {
+    togglePartage: (id: string, nom: string, current: boolean) => void
+    remove: (id: string, nom: string) => void
+  }
+): ColumnDef<T> {
+  return {
+    id: "origine",
+    header: "Origine",
+    enableSorting: false,
+    cell: ({ row }) => {
+      const e = row.original
+      const mine = !!currentUserId && e.userId === currentUserId
+      const badge = badgeOrigine(e, currentUserId)
+      return (
+        <div className="flex items-center gap-1" onClick={(ev) => ev.stopPropagation()}>
+          {e.userId == null ? (
+            <Badge variant="outline" className="text-xs text-muted-foreground">Gleba</Badge>
+          ) : badge ? (
+            <Badge variant="outline" className={`text-xs ${badge.cls}`}>{badge.label}</Badge>
+          ) : null}
+          {mine && (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0 hover:bg-emerald-100 hover:text-emerald-700"
+                title={e.partageCommunaute ? "Rendre privé (retirer de la communauté)" : "Proposer à la communauté"}
+                onClick={() => actions.togglePartage(e.id, nomOf(e), e.partageCommunaute)}
+              >
+                {e.partageCommunaute ? <Lock className="h-4 w-4" /> : <Share2 className="h-4 w-4" />}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0 hover:bg-red-100 hover:text-red-600"
+                title="Supprimer"
+                onClick={() => actions.remove(e.id, nomOf(e))}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </>
+          )}
+        </div>
+      )
+    },
+  }
 }
 
 interface EspeceWithRelations {
@@ -247,8 +374,18 @@ const SOUS_REFS = [
   { key: "porte-greffes", label: "Porte-greffes", icon: GitBranch },
   { key: "bioagresseurs", label: "Bioagresseurs", icon: Bug },
   { key: "essences", label: "Essences bocagères", icon: TreePine },
+  { key: "essences-forestieres", label: "Essences forestières", icon: Trees },
 ] as const
 type SousRef = typeof SOUS_REFS[number]["key"]
+
+// L'export CSV du référentiel (route dédiée hors périmètre) ne couvre pas les
+// essences forestières : on masque le bouton pour cet onglet.
+const SOUS_REFS_EXPORTABLES: ReadonlyArray<SousRef> = [
+  "especes",
+  "porte-greffes",
+  "bioagresseurs",
+  "essences",
+]
 
 export function ReferentielTab() {
   const [sousRef, setSousRef] = React.useState<SousRef>("especes")
@@ -269,18 +406,21 @@ export function ReferentielTab() {
             </button>
           ))}
         </div>
-        <a
-          href={`/api/verger/referentiel/export?onglet=${sousRef}`}
-          className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700"
-        >
-          <Download className="h-3.5 w-3.5" />
-          Export CSV
-        </a>
+        {SOUS_REFS_EXPORTABLES.includes(sousRef) && (
+          <a
+            href={`/api/verger/referentiel/export?onglet=${sousRef}`}
+            className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700"
+          >
+            <Download className="h-3.5 w-3.5" />
+            Export CSV
+          </a>
+        )}
       </div>
       {sousRef === "especes" && <EspecesReferentiel />}
       {sousRef === "porte-greffes" && <PorteGreffesReferentiel />}
       {sousRef === "bioagresseurs" && <BioagresseursReferentiel />}
       {sousRef === "essences" && <EssencesReferentiel />}
+      {sousRef === "essences-forestieres" && <EssencesForestieresReferentiel />}
     </div>
   )
 }
@@ -579,11 +719,15 @@ type PorteGreffeRow = {
   drageonnement: boolean
   especesCompatibles: string[]
   notes: string | null
+  userId: string | null
+  partageCommunaute: boolean
   avisStats?: AvisStatsListe
 }
 
 function PorteGreffesReferentiel() {
   const { toast } = useToast()
+  const { data: session } = useSession()
+  const currentUserId = (session?.user as any)?.id as string | undefined
   const [data, setData] = React.useState<PorteGreffeRow[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [avisRef, setAvisRef] = React.useState<PorteGreffeRow | null>(null)
@@ -600,6 +744,8 @@ function PorteGreffesReferentiel() {
   React.useEffect(() => {
     fetchData()
   }, [fetchData])
+
+  const actions = useReferentielActions("/api/verger/porte-greffes", fetchData, toast)
 
   const columns: ColumnDef<PorteGreffeRow>[] = [
     { accessorKey: "nom", header: "Nom", cell: ({ getValue }) => <span className="font-medium">{getValue() as string}</span> },
@@ -638,6 +784,7 @@ function PorteGreffesReferentiel() {
         />
       ),
     },
+    makeOrigineColumn<PorteGreffeRow>((r) => r.nom, currentUserId, actions),
   ]
 
   return (
@@ -753,14 +900,18 @@ type EssenceBocageRow = {
   roles: string[]
   persistant: boolean
   epineux: boolean
+  userId: string | null
+  partageCommunaute: boolean
 }
 
 function EssencesReferentiel() {
   const { toast } = useToast()
+  const { data: session } = useSession()
+  const currentUserId = (session?.user as any)?.id as string | undefined
   const [data, setData] = React.useState<EssenceBocageRow[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
 
-  React.useEffect(() => {
+  const fetchData = React.useCallback(() => {
     setIsLoading(true)
     fetch("/api/verger/essences-bocageres")
       .then((r) => (r.ok ? r.json() : null))
@@ -768,6 +919,12 @@ function EssencesReferentiel() {
       .catch(() => toast({ variant: "destructive", title: "Erreur de chargement" }))
       .finally(() => setIsLoading(false))
   }, [toast])
+
+  React.useEffect(() => {
+    fetchData()
+  }, [fetchData])
+
+  const actions = useReferentielActions("/api/verger/essences-bocageres", fetchData, toast)
 
   const columns: ColumnDef<EssenceBocageRow>[] = [
     {
@@ -799,6 +956,7 @@ function EssencesReferentiel() {
     },
     { accessorKey: "persistant", header: "Persistant", cell: ({ getValue }) => (getValue() ? "Oui" : "—") },
     { accessorKey: "epineux", header: "Épineux", cell: ({ getValue }) => (getValue() ? "Oui" : "—") },
+    makeOrigineColumn<EssenceBocageRow>((r) => r.nomCommun, currentUserId, actions),
   ]
 
   return (
@@ -807,8 +965,106 @@ function EssencesReferentiel() {
       data={data}
       isLoading={isLoading}
       showPagination={false}
+      onRefresh={fetchData}
       searchPlaceholder="Rechercher une essence..."
       emptyMessage="Aucune essence en référentiel."
+    />
+  )
+}
+
+// ============================================================================
+// Sous-référentiel Essences forestières (table essences_forestieres) —
+// harmonisé au modèle communauté/perso.
+// ============================================================================
+
+type EssenceForestiereRow = {
+  id: string
+  nom: string
+  nomLatin: string
+  categorie: string
+  usages: string[]
+  croissance: string
+  cycleAnsRecolte: number | null
+  conseils: string | null
+  userId: string | null
+  partageCommunaute: boolean
+}
+
+function EssencesForestieresReferentiel() {
+  const { toast } = useToast()
+  const { data: session } = useSession()
+  const currentUserId = (session?.user as any)?.id as string | undefined
+  const [data, setData] = React.useState<EssenceForestiereRow[]>([])
+  const [isLoading, setIsLoading] = React.useState(true)
+
+  const fetchData = React.useCallback(() => {
+    setIsLoading(true)
+    fetch("/api/verger/essences-forestieres")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((res) => setData(res?.data || []))
+      .catch(() => toast({ variant: "destructive", title: "Erreur de chargement" }))
+      .finally(() => setIsLoading(false))
+  }, [toast])
+
+  React.useEffect(() => {
+    fetchData()
+  }, [fetchData])
+
+  const actions = useReferentielActions("/api/verger/essences-forestieres", fetchData, toast)
+
+  const columns: ColumnDef<EssenceForestiereRow>[] = [
+    {
+      accessorKey: "nom",
+      header: "Essence",
+      cell: ({ row }) => (
+        <div>
+          <div className="font-medium">{row.original.nom}</div>
+          <div className="text-xs text-muted-foreground italic">{row.original.nomLatin}</div>
+        </div>
+      ),
+    },
+    {
+      accessorKey: "categorie",
+      header: "Catégorie",
+      cell: ({ getValue }) => labelCategorie(getValue() as string),
+    },
+    { accessorKey: "croissance", header: "Croissance" },
+    {
+      accessorKey: "usages",
+      header: "Usages",
+      cell: ({ getValue }) => {
+        const arr = (getValue() as string[]) ?? []
+        if (arr.length === 0) return <span className="text-muted-foreground">—</span>
+        return (
+          <div className="flex flex-wrap gap-1">
+            {arr.slice(0, 3).map((u) => (
+              <Badge key={u} variant="outline" className="text-[10px] py-0">{humaniseSlug(u)}</Badge>
+            ))}
+            {arr.length > 3 && <span className="text-xs text-muted-foreground">+{arr.length - 3}</span>}
+          </div>
+        )
+      },
+    },
+    {
+      accessorKey: "cycleAnsRecolte",
+      header: "Cycle (ans)",
+      cell: ({ getValue }) => {
+        const v = getValue() as number | null
+        return v != null ? `${v}` : "—"
+      },
+    },
+    makeOrigineColumn<EssenceForestiereRow>((r) => r.nom, currentUserId, actions),
+  ]
+
+  return (
+    <DataTable
+      columns={columns}
+      data={data}
+      isLoading={isLoading}
+      showPagination={false}
+      onRefresh={fetchData}
+      searchPlaceholder="Rechercher une essence forestière..."
+      emptyMessage="Aucune essence forestière en référentiel."
     />
   )
 }

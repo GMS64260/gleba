@@ -10,6 +10,7 @@ import { createITPSchema } from '@/lib/validations'
 import { Prisma } from '@prisma/client'
 import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
 import { statsAvisPourRefs } from '@/lib/avis/stats-liste'
+import { visibiliteReferentiel, attributionCreation } from '@/lib/referentiel-communaute'
 
 // GET /api/itps - Référentiel global (lecture)
 export async function GET(request: NextRequest) {
@@ -48,13 +49,20 @@ export async function GET(request: NextRequest) {
       where.especeId = especeId
     }
 
+    // Visibilité catalogue communautaire : Gleba officiel (userId null) +
+    // communauté (partagé par un membre) + mes propres ITP perso. Jamais le
+    // perso privé d'un autre. On combine avec les filtres existants via AND.
+    const whereVisible: Prisma.ITPWhereInput = {
+      AND: [where, visibiliteReferentiel(userId)],
+    }
+
     // Audit Marc 2026-05-14 — Bug 13 : "ITP Tomate hâtive serre · 3
     // cultures affichées (réel = 2)". Le `_count.cultures` était global,
     // ce qui agrégeait les cultures des autres tenants (comptes démo).
     // On filtre désormais sur l'utilisateur courant.
     const [itps, total] = await Promise.all([
       prisma.iTP.findMany({
-        where,
+        where: whereVisible,
         include: {
           espece: {
             include: {
@@ -72,7 +80,7 @@ export async function GET(request: NextRequest) {
         skip,
         take: pageSize,
       }),
-      prisma.iTP.count({ where }),
+      prisma.iTP.count({ where: whereVisible }),
     ])
 
     // Avis communautaires (opt-in via ?avis=1)
@@ -99,9 +107,13 @@ export async function GET(request: NextRequest) {
 }
 
 // POST /api/itps
+// - Admin : crée un ITP du catalogue Gleba officiel (userId null).
+// - Utilisateur : crée un ITP perso (userId = lui), proposé à la communauté
+//   (partageCommunaute=true) ou gardé privé (false).
 export async function POST(request: NextRequest) {
-  const { error } = await requireAdminApi()
+  const { session, error } = await requireAuthApi()
   if (error) return error
+  const isAdmin = session!.user.role === 'ADMIN'
 
   try {
     const body = await request.json()
@@ -154,9 +166,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Création
+    // Création : admin → catalogue Gleba officiel ; utilisateur → perso
+    // (proposé à la communauté ou privé).
     const itp = await prisma.iTP.create({
-      data,
+      data: {
+        ...data,
+        ...attributionCreation(isAdmin, session!.user.id, body.partageCommunaute === true),
+      },
       include: {
         espece: true,
       },
