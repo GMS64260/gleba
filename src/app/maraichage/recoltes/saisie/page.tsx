@@ -36,8 +36,8 @@ interface Culture {
   dateRecolte: string | null
   finRecolte: string | null
   terminee: string | null
-  espece: { id: string; rendement: number | null }
-  variete: { id: string } | null
+  espece: { id: string; nom: string | null; rendement: number | null }
+  variete: { id: string; nom: string | null } | null
   planche: { id: string; nom?: string; longueur: number | null; largeur: number | null; surface: number | null } | null
   totalRecolte: number
 }
@@ -283,8 +283,8 @@ export default function SaisieRecoltePage() {
                                   <span className="flex items-center gap-2">
                                     <span className="inline-block h-2 w-2 rounded-full bg-green-500 shrink-0" />
                                     <span>
-                                      {c.espece.id}
-                                      {c.variete && ` - ${c.variete.id}`}
+                                      {c.espece.nom ?? c.espece.id}
+                                      {c.variete && ` - ${c.variete.nom ?? c.variete.id}`}
                                       {c.planche && ` (${c.planche.nom || c.planche.id})`}
                                     </span>
                                     {c.dateRecolte && (
@@ -310,8 +310,8 @@ export default function SaisieRecoltePage() {
                                   <span className="flex items-center gap-2">
                                     <span className="inline-block h-2 w-2 rounded-full bg-slate-300 shrink-0" />
                                     <span>
-                                      {c.espece.id}
-                                      {c.variete && ` - ${c.variete.id}`}
+                                      {c.espece.nom ?? c.espece.id}
+                                      {c.variete && ` - ${c.variete.nom ?? c.variete.id}`}
                                       {c.planche && ` (${c.planche.nom || c.planche.id})`}
                                     </span>
                                     {c.dateRecolte && (

@@ -31,8 +31,9 @@ interface JourLunaire {
 
 interface ITPLite {
   id: string
+  nom?: string | null
   especeId: string | null
-  espece?: { id?: string; couleur?: string | null; famille?: { id?: string } | null } | null
+  espece?: { id?: string; nom?: string | null; couleur?: string | null; famille?: { id?: string } | null } | null
   semaineSemis: number | null
 }
 
@@ -119,7 +120,7 @@ export function SemisLunaireEncart({ itps, decalage, horizonSemaines = 3 }: Prop
         famille: itp.espece?.famille?.id ?? null,
       })
       if (!cat) continue
-      const nom = itp.especeId || itp.id
+      const nom = itp.espece?.nom ?? itp.espece?.id ?? itp.especeId ?? itp.nom ?? itp.id
       if (!map.has(cat)) map.set(cat, new Set())
       map.get(cat)!.add(nom)
     }

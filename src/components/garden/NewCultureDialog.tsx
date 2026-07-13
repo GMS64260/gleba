@@ -38,6 +38,7 @@ function weekToDate(year: number, week: number): Date {
 
 interface ITPData {
   id: string
+  nom: string | null
   especeId: string | null
   semaineSemis: number | null
   semainePlantation: number | null
@@ -58,7 +59,7 @@ interface NewCultureDialogProps {
 export function NewCultureDialog({ open, onOpenChange, plancheId, plancheNom, plancheLongueur, onCreated }: NewCultureDialogProps) {
   const { toast } = useToast()
   const [especes, setEspeces] = React.useState<EspeceOption[]>([])
-  const [varietes, setVarietes] = React.useState<{ id: string }[]>([])
+  const [varietes, setVarietes] = React.useState<{ id: string; nom: string | null }[]>([])
   const [itps, setItps] = React.useState<ITPData[]>([])
   const [isSubmitting, setIsSubmitting] = React.useState(false)
 
@@ -302,7 +303,7 @@ export function NewCultureDialog({ open, onOpenChange, plancheId, plancheNom, pl
                 </SelectTrigger>
                 <SelectContent>
                   {varietes.map(v => (
-                    <SelectItem key={v.id} value={v.id}>{v.id}</SelectItem>
+                    <SelectItem key={v.id} value={v.id}>{v.nom ?? v.id}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -319,7 +320,7 @@ export function NewCultureDialog({ open, onOpenChange, plancheId, plancheNom, pl
                 </SelectTrigger>
                 <SelectContent>
                   {itps.map(itp => (
-                    <SelectItem key={itp.id} value={itp.id}>{itp.id}</SelectItem>
+                    <SelectItem key={itp.id} value={itp.id}>{itp.nom ?? itp.id}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

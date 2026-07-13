@@ -85,7 +85,7 @@ export async function GET(request: NextRequest, { params }: Params) {
         id: c.id,
         annee: c.annee || currentYear,
         especeId: c.especeId,
-        especeNom: c.especeId,
+        especeNom: c.espece?.nom ?? c.especeId,
         familleId: c.espece.familleId,
         familleNom: c.espece.famille?.id || null,
         familleCouleur: c.espece.famille?.couleur || null,

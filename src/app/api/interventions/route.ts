@@ -82,7 +82,7 @@ export async function GET(request: NextRequest) {
         ...i,
         source: 'intervention' as const,
         sourceLabel: null as string | null,
-        cultureNom: cult ? `${cult.espece?.id || '?'}${cult.variete ? ' - ' + cult.variete.id : ''}` : (arbre ? arbre.nom : null),
+        cultureNom: cult ? `${cult.espece?.nom ?? cult.espece?.id ?? '?'}${cult.variete ? ' - ' + (cult.variete.nom ?? cult.variete.id) : ''}` : (arbre ? arbre.nom : null),
         plancheNom: planche?.nom || (cult?.planche as any)?.nom || null,
       }
     })
@@ -102,7 +102,7 @@ export async function GET(request: NextRequest) {
 
     const cultureEntries: any[] = []
     for (const c of cultures) {
-      const cultureLabel = `${c.espece?.id || '?'}${c.variete ? ' - ' + c.variete.id : ''}`
+      const cultureLabel = `${c.espece?.nom ?? c.espece?.id ?? '?'}${c.variete ? ' - ' + (c.variete.nom ?? c.variete.id) : ''}`
       const plancheLabel = c.planche?.nom || null
 
       // Semis planifié ou réalisé

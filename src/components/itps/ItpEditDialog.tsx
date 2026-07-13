@@ -31,9 +31,11 @@ import { useToast } from "@/hooks/use-toast"
 
 interface ITPWithEspece {
   id: string
+  nom: string | null
   especeId: string | null
   espece?: {
     id: string
+    nom: string | null
     couleur: string | null
   } | null
   semaineSemis: number | null
@@ -100,7 +102,7 @@ export function ItpEditDialog({ itp, open, onOpenChange, onSaved }: ItpEditDialo
 
       toast({
         title: "ITP mis à jour",
-        description: `"${itp.id}" modifié avec succès`,
+        description: `"${itp.nom ?? itp.id}" modifié avec succès`,
       })
 
       onSaved({
@@ -149,10 +151,10 @@ export function ItpEditDialog({ itp, open, onOpenChange, onSaved }: ItpEditDialo
                 style={{ backgroundColor: itp.espece.couleur }}
               />
             )}
-            {itp.id}
+            {itp.nom ?? itp.id}
           </DialogTitle>
           <DialogDescription className="flex items-center gap-2">
-            {itp.especeId && <span>{itp.especeId}</span>}
+            {itp.especeId && <span>{itp.espece?.nom ?? itp.espece?.id ?? itp.especeId}</span>}
             {itp.typePlanche && (
               <Badge variant="outline" className="text-xs">{itp.typePlanche}</Badge>
             )}

@@ -69,16 +69,16 @@ export async function GET(request: NextRequest) {
           const culture = await prisma.culture.findUnique({
             where: { id: intervention.cultureId },
             include: {
-              espece: { select: { id: true } },
-              variete: { select: { id: true } },
+              espece: { select: { id: true, nom: true } },
+              variete: { select: { id: true, nom: true } },
               planche: { select: { nom: true, ilot: true, type: true } },
             },
           })
           if (culture) {
-            especeNom = culture.espece.id
+            especeNom = culture.espece.nom ?? culture.espece.id
             cultureNom = culture.variete
-              ? `${culture.espece.id} (${culture.variete.id})`
-              : culture.espece.id
+              ? `${culture.espece.nom ?? culture.espece.id} (${culture.variete.nom ?? culture.variete.id})`
+              : culture.espece.nom ?? culture.espece.id
             if (culture.planche) {
               plancheNom = culture.planche.nom
               plancheLocalisation = [culture.planche.ilot, culture.planche.type]

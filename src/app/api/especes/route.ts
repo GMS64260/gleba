@@ -174,48 +174,61 @@ export async function POST(request: NextRequest) {
 
     const data = validationResult.data
 
-    // Normalisation du nom pour éviter "Carotte Nantaise" vs "Carotte-Nantaise"
-    const cleanedId = cleanReferentielName(data.id)
-    if (cleanedId !== data.id) {
-      data.id = cleanedId
+    // `data.id` porte le NOM saisi (contrat client inchangé). Le nom affiché vit
+    // désormais dans `nom` ; l'id technique dépend de l'origine (cf. plus bas).
+    const nomSaisi = cleanReferentielName(data.id)
+    const nomNormalise = normalizeReferentielKey(nomSaisi)
+    const attrib = attributionCreation(isAdmin, session!.user.id, body.partageCommunaute === true)
+    const estOfficiel = attrib.userId === null
+
+    if (estOfficiel) {
+      // Catalogue Gleba : l'id reste le nom lisible (rétro-compat des FK cultures).
+      // Unicité globale sur le nom (exact + "mou").
+      const existing = await prisma.espece.findUnique({ where: { id: nomSaisi } })
+      if (existing) {
+        return NextResponse.json({ error: `L'espece "${nomSaisi}" existe déjà` }, { status: 409 })
+      }
+      const officiels = await prisma.espece.findMany({
+        where: { userId: null },
+        select: { id: true, nomNormalise: true },
+      })
+      const conflit = officiels.find((e) => (e.nomNormalise ?? normalizeReferentielKey(e.id)) === nomNormalise)
+      if (conflit) {
+        return NextResponse.json(
+          {
+            error: `Une espece similaire existe déjà : "${conflit.id}". Si c'est la même espece, utilisez-la ; sinon, choisissez un nom plus distinctif.`,
+            conflit: conflit.id,
+          },
+          { status: 409 }
+        )
+      }
+    } else {
+      // Perso : dédup bornée à MES espèces (aucune fuite d'existence inter-membres,
+      // et garantie par l'index unique partiel (user_id, nom_normalise)).
+      const conflit = await prisma.espece.findFirst({
+        where: { userId: attrib.userId, nomNormalise },
+        select: { id: true, nom: true },
+      })
+      if (conflit) {
+        return NextResponse.json(
+          {
+            error: `Vous avez déjà une espèce « ${conflit.nom ?? conflit.id} » dans votre catalogue.`,
+            conflit: conflit.id,
+          },
+          { status: 409 }
+        )
+      }
     }
 
-    // Vérifier si l'espece existe déjà (exact)
-    const existing = await prisma.espece.findUnique({
-      where: { id: data.id },
-    })
-
-    if (existing) {
-      return NextResponse.json(
-        { error: `L'espece "${data.id}" existe déjà` },
-        { status: 409 }
-      )
-    }
-
-    // Détection de doublon "mou" (différence d'accent / tiret / espace / casse),
-    // bornée aux entrées VISIBLES (officiel + communauté + les miennes) : on ne
-    // révèle pas l'existence d'une entrée privée d'un autre membre.
-    const normalizedKey = normalizeReferentielKey(data.id)
-    const allEspeces = await prisma.espece.findMany({
-      where: visibiliteReferentiel(session!.user.id),
-      select: { id: true },
-    })
-    const conflit = allEspeces.find((e) => normalizeReferentielKey(e.id) === normalizedKey)
-    if (conflit) {
-      return NextResponse.json(
-        {
-          error: `Une espece similaire existe déjà : "${conflit.id}". Si c'est la même espece, utilisez-la ; sinon, choisissez un nom plus distinctif.`,
-          conflit: conflit.id,
-        },
-        { status: 409 }
-      )
-    }
-
-    // Création : admin → catalogue Gleba officiel ; utilisateur → perso (proposé ou privé).
+    // Création : officiel → id = nom lisible ; perso → id omis → cuid (@default).
+    const { id: _nomBrut, ...rest } = data
     const espece = await prisma.espece.create({
       data: {
-        ...data,
-        ...attributionCreation(isAdmin, session!.user.id, body.partageCommunaute === true),
+        ...rest,
+        ...(estOfficiel ? { id: nomSaisi } : {}),
+        nom: nomSaisi,
+        nomNormalise,
+        ...attrib,
       },
       include: {
         famille: true,

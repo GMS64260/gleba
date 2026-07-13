@@ -158,30 +158,12 @@ export async function POST(request: NextRequest) {
 
     const data = validationResult.data
 
-    // Normalisation du nom (display) : trim, collapse whitespace, etc.
-    const cleanedId = cleanReferentielName(data.id)
-    if (cleanedId !== data.id) {
-      data.id = cleanedId
-    }
-
-    // Clé normalisée pour la déduplication (même formule que la migration SQL
-    // et l'index unique composite (espece, nom_normalise)).
-    const nomNormalise = normalizeVarieteName(data.id)
-
-    // Dédup bornée aux variétés VISIBLES (officiel + communauté + les miennes).
-    const conflit = await prisma.variete.findFirst({
-      where: { AND: [{ especeId: data.especeId, nomNormalise }, visibiliteReferentiel(session!.user.id)] },
-      select: { id: true },
-    })
-    if (conflit) {
-      return NextResponse.json(
-        {
-          error: `Une variété similaire existe déjà pour cette espèce : "${conflit.id}". Si c'est la même, utilisez-la ; sinon, choisissez un nom plus distinctif.`,
-          canonique: conflit.id,
-        },
-        { status: 409 }
-      )
-    }
+    // `data.id` porte le NOM saisi. Le nom affiché vit dans `nom` ; l'id technique
+    // dépend de l'origine (officiel = nom lisible, perso = cuid).
+    const nomSaisi = cleanReferentielName(data.id)
+    const nomNormalise = normalizeVarieteName(nomSaisi)
+    const attrib = attributionCreation(isAdmin, session!.user.id, body.partageCommunaute === true)
+    const estOfficiel = attrib.userId === null
 
     // L'espèce parente doit être VISIBLE par l'utilisateur (sinon on rattacherait
     // — et divulguerait — l'espèce privée d'autrui).
@@ -209,12 +191,35 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Création : admin → catalogue Gleba officiel ; utilisateur → perso (proposé ou privé).
+    // Dédup scoped par origine (cf. index uniques partiels) : l'officiel est unique
+    // par espèce ; le perso, unique par (membre, espèce) — aucune fuite inter-membres.
+    const conflit = await prisma.variete.findFirst({
+      where: estOfficiel
+        ? { especeId: data.especeId, nomNormalise, userId: null }
+        : { especeId: data.especeId, nomNormalise, userId: attrib.userId },
+      select: { id: true, nom: true },
+    })
+    if (conflit) {
+      return NextResponse.json(
+        {
+          error: estOfficiel
+            ? `Une variété similaire existe déjà pour cette espèce : "${conflit.id}". Si c'est la même, utilisez-la ; sinon, choisissez un nom plus distinctif.`
+            : `Vous avez déjà une variété « ${conflit.nom ?? conflit.id} » pour cette espèce dans votre catalogue.`,
+          canonique: conflit.id,
+        },
+        { status: 409 }
+      )
+    }
+
+    // Création : officiel → id = nom lisible ; perso → id omis → cuid (@default).
+    const { id: _nomBrut, ...rest } = data
     const variete = await prisma.variete.create({
       data: {
-        ...data,
+        ...rest,
+        ...(estOfficiel ? { id: nomSaisi } : {}),
+        nom: nomSaisi,
         nomNormalise,
-        ...attributionCreation(isAdmin, session!.user.id, body.partageCommunaute === true),
+        ...attrib,
       },
       include: {
         espece: true,

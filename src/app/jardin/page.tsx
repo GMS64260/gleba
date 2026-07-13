@@ -55,6 +55,7 @@ interface PlancheWithCulture {
     } | null
     espece: {
       id: string
+      nom: string | null
       couleur: string | null
       famille: { couleur: string | null } | null
     }
@@ -920,7 +921,7 @@ function JardinContent() {
         if (existing) {
           existing.count++
         } else {
-          items.set(espece.id, { color, name: espece.id, count: 1 })
+          items.set(espece.id, { color, name: espece.nom ?? espece.id, count: 1 })
         }
       })
     })
@@ -1153,7 +1154,7 @@ function JardinContent() {
                                   }}
                                 />
                                 <div className="flex-1">
-                                  <span className="font-medium text-sm block">{culture.espece.id}</span>
+                                  <span className="font-medium text-sm block">{culture.espece.nom ?? culture.espece.id}</span>
                                   <span className="text-xs text-muted-foreground">
                                     {culture.nbRangs || 1} rang{(culture.nbRangs || 1) > 1 ? 's' : ''} × {espacementRangs}cm
                                     {ajuste && <span className="text-orange-600 ml-1">⚠ ajusté</span>}

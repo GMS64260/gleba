@@ -68,6 +68,7 @@ function weekToDate(year: number, week: number): Date {
 
 interface ITPData {
   id: string
+  nom: string | null
   especeId: string | null
   semaineSemis: number | null
   semainePlantation: number | null
@@ -83,7 +84,7 @@ export default function NewCulturePage() {
   const { toast } = useToast()
   // Bug #12 — charger aussi le type d'espèce pour le combobox filtrable.
   const [especes, setEspeces] = React.useState<EspeceOption[]>([])
-  const [varietes, setVarietes] = React.useState<{ id: string; especeId: string }[]>([])
+  const [varietes, setVarietes] = React.useState<{ id: string; nom: string | null; especeId: string }[]>([])
   const [itps, setItps] = React.useState<ITPData[]>([])
   const [planches, setPlanches] = React.useState<{ id: string; nom?: string; longueur: number | null }[]>([])
   const [isSubmitting, setIsSubmitting] = React.useState(false)
@@ -389,7 +390,7 @@ export default function NewCulturePage() {
                         <SelectContent>
                           {varietes.map((v) => (
                             <SelectItem key={v.id} value={v.id}>
-                              {v.id}
+                              {v.nom ?? v.id}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -418,7 +419,7 @@ export default function NewCulturePage() {
                         <SelectContent>
                           {itps.map((itp) => (
                             <SelectItem key={itp.id} value={itp.id}>
-                              {itp.id}
+                              {itp.nom ?? itp.id}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -506,7 +507,7 @@ export default function NewCulturePage() {
                   return (
                     <div className="flex items-center justify-between gap-2 text-xs text-slate-600 bg-blue-50 border border-blue-100 rounded p-2 mt-2">
                       <span>
-                        💡 Dates pré-remplies depuis l'ITP <strong>{itp.id}</strong> (
+                        💡 Dates pré-remplies depuis l'ITP <strong>{itp.nom ?? itp.id}</strong> (
                         {[
                           itp.semaineSemis ? `${formatSemaine(itp.semaineSemis)} semis` : null,
                           itp.semainePlantation ? `${formatSemaine(itp.semainePlantation)} plantation` : null,

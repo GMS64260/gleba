@@ -42,6 +42,7 @@ interface RotationContext {
   allFamilies: FamilleData[]
   especeToCheck?: {
     id: string
+    nom?: string | null
     familleId: string | null
     besoinN: number | null
   }
@@ -261,7 +262,7 @@ function calculateRecommendedFamilies(
  * Calcule le conseil pour une espece spécifique
  */
 function calculateEspeceAdvice(
-  espece: { id: string; familleId: string | null; besoinN: number | null },
+  espece: { id: string; nom?: string | null; familleId: string | null; besoinN: number | null },
   blockedFamilies: BlockedFamily[],
   soilStatus: SoilAnalysis
 ): EspeceAdvice {
@@ -294,7 +295,7 @@ function calculateEspeceAdvice(
       status: 'warning',
       message: 'Culture gourmande sur sol appauvri',
       details: [
-        `${espece.id} a un besoin élevé en azote (${espece.besoinN}/5)`,
+        `${espece.nom ?? espece.id} a un besoin élevé en azote (${espece.besoinN}/5)`,
         'Le sol est estimé appauvri en azote',
         'Envisagez une fertilisation ou une légumineuse avant',
       ],

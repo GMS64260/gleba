@@ -23,9 +23,11 @@ import { ItpEditDialog } from "@/components/itps/ItpEditDialog"
 
 interface ITPWithEspece {
   id: string
+  nom: string | null
   especeId: string | null
   espece?: {
     id: string
+    nom: string | null
     couleur: string | null
   } | null
   semaineSemis: number | null

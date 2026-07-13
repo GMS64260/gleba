@@ -40,9 +40,11 @@ import { updateRotationSchema, type UpdateRotationInput } from "@/lib/validation
 
 interface ITP {
   id: string
+  nom: string | null
   especeId: string | null
   espece: {
     id: string
+    nom: string | null
     couleur: string | null
     famille: { id: string } | null
   } | null
@@ -408,10 +410,10 @@ export default function EditRotationPage() {
                                         style={{ backgroundColor: itp.espece.couleur }}
                                       />
                                     )}
-                                    {itp.id}
+                                    {itp.nom ?? itp.id}
                                     {itp.espece && (
                                       <span className="text-muted-foreground">
-                                        ({itp.espece.id})
+                                        ({itp.espece.nom ?? itp.espece.id})
                                       </span>
                                     )}
                                   </div>

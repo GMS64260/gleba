@@ -25,6 +25,7 @@ interface PlancheWithCulture {
     } | null
     espece: {
       id: string
+      nom: string | null
       couleur: string | null
       famille: { couleur: string | null } | null
     }
@@ -926,7 +927,7 @@ export function GardenView({
                           opacity={0.9}
                           style={{ pointerEvents: "none" }}
                         >
-                          {culture.espece.id}
+                          {culture.espece.nom ?? culture.espece.id}
                         </text>
                       </g>
                     )
