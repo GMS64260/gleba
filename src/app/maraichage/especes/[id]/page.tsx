@@ -7,6 +7,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { useRouter, useParams } from "next/navigation"
+import { useSession } from "next-auth/react"
 import { ArrowLeft, Leaf, Save, Trash2, Plus, Pencil, MessageSquare, CheckCircle2, ArrowDownWideNarrow } from "lucide-react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -63,6 +64,13 @@ import {
 import { StarRating } from "@/components/avis/StarRating"
 import { AvisDialog } from "@/components/avis/AvisDialog"
 import type { AvisStatsListe } from "@/lib/avis/types"
+import {
+  useReferentielActions,
+  OrigineControls,
+  FiltreOrigine,
+  filtrerParOrigine,
+  type FiltreOrigineValue,
+} from "@/components/referentiel/catalogue-communaute"
 
 interface Variete {
   id: string
@@ -77,6 +85,8 @@ interface Variete {
   stockPlants: number | null
   bio: boolean
   description: string | null
+  userId: string | null
+  partageCommunaute: boolean
   _count?: { cultures: number }
   avisStats?: AvisStatsListe
 }
@@ -99,6 +109,8 @@ export default function EditEspecePage() {
   const params = useParams()
   const especeId = decodeURIComponent(params.id as string)
   const { toast } = useToast()
+  const { data: session } = useSession()
+  const currentUserId = (session?.user as any)?.id as string | undefined
   const [familles, setFamilles] = React.useState<{ id: string }[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [isSubmitting, setIsSubmitting] = React.useState(false)
@@ -112,6 +124,7 @@ export default function EditEspecePage() {
   // Avis communautaires
   const [avisVariete, setAvisVariete] = React.useState<Variete | null>(null)
   const [triParNote, setTriParNote] = React.useState(false)
+  const [filtreOrigine, setFiltreOrigine] = React.useState<FiltreOrigineValue>("tout")
 
   // Charge les variétés via /api/varietes (superset enrichi des stats d'avis via avis=1).
   const reloadVarietes = React.useCallback(async () => {
@@ -120,14 +133,17 @@ export default function EditEspecePage() {
     setVarietes(json.data || [])
   }, [especeId])
 
+  const actions = useReferentielActions("/api/varietes", reloadVarietes, toast)
+
   const varietesAffichees = React.useMemo(() => {
-    if (!triParNote) return varietes
-    return [...varietes].sort((a, b) => {
+    const filtrees = filtrerParOrigine(varietes, filtreOrigine, currentUserId)
+    if (!triParNote) return filtrees
+    return [...filtrees].sort((a, b) => {
       const sa = a.avisStats?.nbAvis ? a.avisStats.scoreCommunautaire : -1
       const sb = b.avisStats?.nbAvis ? b.avisStats.scoreCommunautaire : -1
       return sb - sa || a.id.localeCompare(b.id)
     })
-  }, [varietes, triParNote])
+  }, [varietes, triParNote, filtreOrigine, currentUserId])
 
   const form = useForm<UpdateEspeceInput>({
     resolver: zodResolver(updateEspeceSchema),
@@ -1110,6 +1126,13 @@ export default function EditEspecePage() {
                     {varietes.length === 0 ? (
                       <p className="text-muted-foreground text-sm">Aucune variété pour cette espèce</p>
                     ) : (
+                      <>
+                      <FiltreOrigine
+                        value={filtreOrigine}
+                        onChange={setFiltreOrigine}
+                        labelPerso="Mes variétés"
+                        className="mb-4"
+                      />
                       <Table>
                         <TableHeader>
                           <TableRow>
@@ -1117,12 +1140,20 @@ export default function EditEspecePage() {
                             <TableHead>Fournisseur</TableHead>
                             <TableHead>Bio</TableHead>
                             <TableHead>Avis</TableHead>
+                            <TableHead>Origine</TableHead>
                             <TableHead className="text-right">Stock graines (g)</TableHead>
                             <TableHead className="text-right">Stock plants</TableHead>
                             <TableHead className="text-right">Actions</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
+                          {varietesAffichees.length === 0 && (
+                            <TableRow>
+                              <TableCell colSpan={8} className="text-center text-muted-foreground py-6">
+                                Aucune variété pour ce filtre.
+                              </TableCell>
+                            </TableRow>
+                          )}
                           {varietesAffichees.map((v) => (
                             <TableRow key={v.id}>
                               <TableCell className="font-medium">{v.id}</TableCell>
@@ -1151,6 +1182,15 @@ export default function EditEspecePage() {
                                     </span>
                                   )}
                                 </button>
+                              </TableCell>
+                              <TableCell>
+                                <OrigineControls
+                                  entree={v}
+                                  nom={v.id}
+                                  currentUserId={currentUserId}
+                                  actions={actions}
+                                  showRemove={false}
+                                />
                               </TableCell>
                               <TableCell className="text-right">{v.stockGraines ?? "-"}</TableCell>
                               <TableCell className="text-right">{v.stockPlants ?? "-"}</TableCell>
@@ -1182,6 +1222,7 @@ export default function EditEspecePage() {
                           ))}
                         </TableBody>
                       </Table>
+                      </>
                     )}
                   </CardContent>
                 </Card>

@@ -35,6 +35,7 @@ export async function GET(request: NextRequest) {
     const vivace = searchParams.get('vivace')
     const aPlanifier = searchParams.get('aPlanifier')
     const type = searchParams.get('type')
+    const origine = searchParams.get('origine') // 'perso' | 'gleba' | 'communaute' | null
 
     // Audit Marc Bug #6 — Compteur "Cultures" : par défaut "saison active"
     // = cultures de l'année en cours non terminées. Mode "historique"
@@ -87,8 +88,19 @@ export async function GET(request: NextRequest) {
 
     // Visibilité catalogue : Gleba officiel (userId null) + communauté (partagé
     // par un membre) + mes propres espèces perso. Jamais le perso privé d'un autre.
+    // Filtre optionnel par origine (badge) : perso / gleba / communauté — appliqué
+    // CÔTÉ SERVEUR pour rester cohérent avec la pagination.
+    const me = session!.user.id
+    const origineFilter: Prisma.EspeceWhereInput =
+      origine === 'perso'
+        ? { userId: me }
+        : origine === 'gleba'
+        ? { userId: null }
+        : origine === 'communaute'
+        ? { userId: { not: null }, partageCommunaute: true }
+        : {}
     const whereVisible: Prisma.EspeceWhereInput = {
-      AND: [where, { OR: [{ userId: null }, { partageCommunaute: true }, { userId: session!.user.id }] }],
+      AND: [where, { OR: [{ userId: null }, { partageCommunaute: true }, { userId: me }] }, origineFilter],
     }
 
     // Requête avec comptage

@@ -11,7 +11,7 @@ import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useSession } from "next-auth/react"
 import { ColumnDef } from "@tanstack/react-table"
-import { ArrowLeft, Leaf, Droplets, TreeDeciduous, Cherry, Salad, Sprout, Flower2, Share2, Lock } from "lucide-react"
+import { ArrowLeft, Leaf, Droplets, TreeDeciduous, Cherry, Salad, Sprout, Flower2 } from "lucide-react"
 
 import { DataTable } from "@/components/tables/DataTable"
 import { Button } from "@/components/ui/button"
@@ -19,8 +19,13 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
-import { confirmDialog } from "@/lib/global-dialog"
 import { getCategorieEmoji } from "@/lib/categories-emojis"
+import {
+  makeOrigineColumn,
+  useReferentielActions,
+  FiltreOrigine,
+  type FiltreOrigineValue,
+} from "@/components/referentiel/catalogue-communaute"
 
 // Types d'especes
 const ESPECE_TYPES = [
@@ -243,6 +248,8 @@ function EspecesPageContent() {
   const [debouncedSearch, setDebouncedSearch] = React.useState('')
   // Audit Marc Bug #6 — Toggle "Saison active" / "Historique total"
   const [cultureCount, setCultureCount] = React.useState<'saison' | 'historique'>('saison')
+  // Filtre par origine (catalogue communautaire) : Tout / Gleba / Communauté / Mes espèces
+  const [filtreOrigine, setFiltreOrigine] = React.useState<FiltreOrigineValue>('tout')
   const pageSize = 50
 
   // Debounce de la recherche (300ms)
@@ -280,6 +287,10 @@ function EspecesPageContent() {
       if (debouncedSearch) {
         url += `&search=${encodeURIComponent(debouncedSearch)}`
       }
+      // Filtre par origine côté SERVEUR (cohérent avec la pagination).
+      if (filtreOrigine !== 'tout') {
+        url += `&origine=${filtreOrigine}`
+      }
       const response = await fetch(url)
       if (!response.ok) throw new Error("Erreur lors du chargement")
       const result = await response.json()
@@ -294,7 +305,7 @@ function EspecesPageContent() {
     } finally {
       setIsLoading(false)
     }
-  }, [pageIndex, selectedType, debouncedSearch, cultureCount, toast])
+  }, [pageIndex, selectedType, debouncedSearch, cultureCount, filtreOrigine, toast])
 
   // Ne charger les données qu'après initialisation
   React.useEffect(() => {
@@ -325,68 +336,8 @@ function EspecesPageContent() {
     router.push(`/especes/${encodeURIComponent(row.id)}`)
   }
 
-  const handleDelete = async (row: EspeceWithRelations) => {
-    if (row._count.cultures > 0) {
-      toast({
-        variant: "destructive",
-        title: "Impossible de supprimer",
-        description: `${row.id} a ${row._count.cultures} culture(s) associée(s)`,
-      })
-      return
-    }
-
-    if (!(await confirmDialog(`Supprimer l'espece "${row.id}" ?`))) return
-
-    try {
-      const response = await fetch(`/api/especes/${encodeURIComponent(row.id)}`, {
-        method: "DELETE",
-      })
-      if (!response.ok) {
-        // Surface le message de l'API (ex : 409 « utilisée par X culture(s) »
-        // ou 403 « vos propres espèces »).
-        const p = await response.json().catch(() => null)
-        throw new Error(p?.error || "Erreur lors de la suppression")
-      }
-      toast({
-        title: "Espèce supprimée",
-        description: `L'espece "${row.id}" a été supprimée`,
-      })
-      fetchData()
-    } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "Erreur",
-        description: error instanceof Error ? error.message : "Impossible de supprimer l'espèce",
-      })
-    }
-  }
-
-  // Catalogue communautaire : proposer/retirer son espèce perso à la communauté.
-  const handleTogglePartage = async (row: EspeceWithRelations) => {
-    const next = !row.partageCommunaute
-    try {
-      const res = await fetch(`/api/especes/${encodeURIComponent(row.id)}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ partageCommunaute: next }),
-      })
-      if (!res.ok) {
-        const p = await res.json().catch(() => null)
-        throw new Error(p?.error || "Action impossible")
-      }
-      toast({
-        title: next ? "Proposée à la communauté" : "Rendue privée",
-        description: `« ${row.id} »`,
-      })
-      fetchData()
-    } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "Erreur",
-        description: error instanceof Error ? error.message : "Action impossible",
-      })
-    }
-  }
+  // Catalogue communautaire : actions partagées (proposer/rendre privé, supprimer).
+  const referentielActions = useReferentielActions('/api/especes', fetchData, toast)
 
   // Export CSV
   const handleExport = () => {
@@ -414,40 +365,17 @@ function EspecesPageContent() {
     URL.revokeObjectURL(url)
   }
 
-  // Colonne « Origine » : badge Gleba/Perso/Communauté + bouton proposer/rendre
-  // privé sur ses propres espèces perso. La suppression reste gérée par la
-  // colonne d'actions du DataTable (onRowDelete, contrôle d'auteur côté API).
-  const origineColumn: ColumnDef<EspeceWithRelations> = {
-    id: "origine",
-    header: "Origine",
-    enableSorting: false,
-    cell: ({ row }) => {
-      const e = row.original
-      const mine = !!currentUserId && e.userId === currentUserId
-      return (
-        <div className="flex items-center gap-1" onClick={(ev) => ev.stopPropagation()}>
-          {e.userId == null ? (
-            <Badge variant="outline" className="text-xs text-muted-foreground">Gleba</Badge>
-          ) : mine ? (
-            <Badge variant="secondary" className="text-xs">Perso</Badge>
-          ) : e.partageCommunaute ? (
-            <Badge variant="outline" className="text-xs">Communauté</Badge>
-          ) : null}
-          {mine && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 w-8 p-0 hover:bg-emerald-100 hover:text-emerald-700"
-              title={e.partageCommunaute ? "Rendre privé (retirer de la communauté)" : "Proposer à la communauté"}
-              onClick={() => handleTogglePartage(e)}
-            >
-              {e.partageCommunaute ? <Lock className="h-4 w-4" /> : <Share2 className="h-4 w-4" />}
-            </Button>
-          )}
-        </div>
-      )
-    },
-  }
+  // Colonne « Origine » partagée : badge Gleba/Perso/Communauté + actions
+  // (proposer/rendre privé/supprimer) sur ses propres espèces perso.
+  const origineColumn = makeOrigineColumn<EspeceWithRelations>(
+    (e) => e.id,
+    currentUserId,
+    referentielActions
+  )
+
+  // Filtre client par origine (combiné au filtre de type géré côté serveur).
+  // Le filtre par origine est appliqué côté serveur (via l'URL) → data est déjà filtré.
+  const displayedData = data
 
   // Determine which types to show based on mode
   const displayTypes = isArbresMode ? ESPECE_TYPES_ARBRES : ESPECE_TYPES
@@ -535,9 +463,17 @@ function EspecesPageContent() {
           )}
         </div>
 
+        {/* Filtre par origine (catalogue communautaire) */}
+        <FiltreOrigine
+          value={filtreOrigine}
+          onChange={(v) => { setFiltreOrigine(v); setPageIndex(0) }}
+          labelPerso="Mes espèces"
+          className="mb-4"
+        />
+
         <DataTable
           columns={[...columns, origineColumn]}
-          data={data}
+          data={displayedData}
           isLoading={isLoading}
           pageCount={pageCount}
           pageIndex={pageIndex}
@@ -550,7 +486,6 @@ function EspecesPageContent() {
           onExport={handleExport}
           onRowClick={handleRowClick}
           onRowEdit={handleEdit}
-          onRowDelete={handleDelete}
           searchPlaceholder="Rechercher une espèce..."
           emptyMessage="Aucune espèce trouvée. Lancez npm run db:seed pour ajouter les données de base."
         />

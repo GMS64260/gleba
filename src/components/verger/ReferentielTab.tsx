@@ -9,13 +9,21 @@ import * as React from "react"
 import Link from "next/link"
 import { useSession } from "next-auth/react"
 import { ColumnDef } from "@tanstack/react-table"
-import { Leaf, TreeDeciduous, Cherry, Loader2, ExternalLink, GitBranch, Bug, TreePine, Trees, Download, Share2, Lock, Trash2 } from "lucide-react"
+import { Leaf, TreeDeciduous, Cherry, Loader2, ExternalLink, GitBranch, Bug, TreePine, Trees, Download } from "lucide-react"
 
 import { DataTable } from "@/components/tables/DataTable"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { badgeOrigine } from "@/lib/referentiel-communaute"
+import {
+  useReferentielActions,
+  makeOrigineColumn,
+  FiltreOrigine,
+  filtrerParOrigine,
+  type EntreeCommunaute,
+  type FiltreOrigineValue,
+} from "@/components/referentiel/catalogue-communaute"
+import { AjoutReferentielDialog } from "@/components/referentiel/AjoutReferentielDialog"
 import {
   Sheet,
   SheetContent,
@@ -105,131 +113,6 @@ function humaniseSlug(s: string): string {
     .replace(/^\w/, (c) => c.toUpperCase())
 }
 
-// ============================================================================
-// Référentiel communautaire — badge d'origine + actions perso (proposer/rendre
-// privé/supprimer), harmonisé avec src/components/potager/ReferentielTab.tsx
-// et src/lib/referentiel-communaute.ts.
-// ============================================================================
-
-type EntreeCommunaute = { id: string; userId: string | null; partageCommunaute: boolean }
-
-/**
- * Handlers PUT (bascule partage) / DELETE (suppression) pour un référentiel
- * communautaire donné (apiBase = ex. "/api/verger/porte-greffes").
- */
-function useReferentielActions(
-  apiBase: string,
-  refetch: () => void,
-  toast: ReturnType<typeof useToast>["toast"]
-) {
-  const togglePartage = React.useCallback(
-    async (id: string, nom: string, current: boolean) => {
-      const next = !current
-      try {
-        const res = await fetch(`${apiBase}/${encodeURIComponent(id)}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ partageCommunaute: next }),
-        })
-        if (res.ok) {
-          toast({
-            title: next ? "Proposé à la communauté" : "Rendu privé",
-            description: `« ${nom} »`,
-          })
-          refetch()
-        } else {
-          const p = await res.json().catch(() => null)
-          toast({
-            variant: "destructive",
-            title: "Erreur",
-            description: p?.error || "Action impossible",
-          })
-        }
-      } catch {
-        toast({ variant: "destructive", title: "Erreur", description: "Action impossible" })
-      }
-    },
-    [apiBase, refetch, toast]
-  )
-
-  const remove = React.useCallback(
-    async (id: string, nom: string) => {
-      if (!window.confirm(`Supprimer « ${nom} » ?`)) return
-      try {
-        const res = await fetch(`${apiBase}/${encodeURIComponent(id)}`, { method: "DELETE" })
-        if (res.ok) {
-          toast({ title: "Supprimé", description: `« ${nom} »` })
-          refetch()
-        } else {
-          const p = await res.json().catch(() => null)
-          toast({
-            variant: "destructive",
-            title: "Erreur",
-            description: p?.error || "Suppression impossible",
-          })
-        }
-      } catch {
-        toast({ variant: "destructive", title: "Erreur", description: "Suppression impossible" })
-      }
-    },
-    [apiBase, refetch, toast]
-  )
-
-  return { togglePartage, remove }
-}
-
-/** Colonne « Origine » : badge Gleba/Perso/Communauté + actions sur son perso. */
-function makeOrigineColumn<T extends EntreeCommunaute>(
-  nomOf: (row: T) => string,
-  currentUserId: string | undefined,
-  actions: {
-    togglePartage: (id: string, nom: string, current: boolean) => void
-    remove: (id: string, nom: string) => void
-  }
-): ColumnDef<T> {
-  return {
-    id: "origine",
-    header: "Origine",
-    enableSorting: false,
-    cell: ({ row }) => {
-      const e = row.original
-      const mine = !!currentUserId && e.userId === currentUserId
-      const badge = badgeOrigine(e, currentUserId)
-      return (
-        <div className="flex items-center gap-1" onClick={(ev) => ev.stopPropagation()}>
-          {e.userId == null ? (
-            <Badge variant="outline" className="text-xs text-muted-foreground">Gleba</Badge>
-          ) : badge ? (
-            <Badge variant="outline" className={`text-xs ${badge.cls}`}>{badge.label}</Badge>
-          ) : null}
-          {mine && (
-            <>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-8 w-8 p-0 hover:bg-emerald-100 hover:text-emerald-700"
-                title={e.partageCommunaute ? "Rendre privé (retirer de la communauté)" : "Proposer à la communauté"}
-                onClick={() => actions.togglePartage(e.id, nomOf(e), e.partageCommunaute)}
-              >
-                {e.partageCommunaute ? <Lock className="h-4 w-4" /> : <Share2 className="h-4 w-4" />}
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-8 w-8 p-0 hover:bg-red-100 hover:text-red-600"
-                title="Supprimer"
-                onClick={() => actions.remove(e.id, nomOf(e))}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </>
-          )}
-        </div>
-      )
-    },
-  }
-}
-
 interface EspeceWithRelations {
   id: string
   type: string
@@ -245,6 +128,8 @@ interface EspeceWithRelations {
   famille: { id: string; couleur: string | null; nomFr: string | null } | null
   _count: { varietes: number; cultures: number }
   avisStats?: AvisStatsListe
+  userId: string | null
+  partageCommunaute: boolean
 }
 
 interface EspeceDetail {
@@ -427,10 +312,13 @@ export function ReferentielTab() {
 
 function EspecesReferentiel() {
   const { toast } = useToast()
+  const { data: session } = useSession()
+  const currentUserId = (session?.user as any)?.id as string | undefined
   const [data, setData] = React.useState<EspeceWithRelations[]>([])
   const [filteredData, setFilteredData] = React.useState<EspeceWithRelations[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [selectedType, setSelectedType] = React.useState("all")
+  const [filtreOrigine, setFiltreOrigine] = React.useState<FiltreOrigineValue>("tout")
   const [avisRef, setAvisRef] = React.useState<EspeceWithRelations | null>(null)
 
   // Sheet state
@@ -522,9 +410,12 @@ function EspecesReferentiel() {
     }
   }, [toast])
 
+  const referentielActions = useReferentielActions("/api/especes", fetchData, toast)
+
   const columnsAvecAvis = React.useMemo<ColumnDef<EspeceWithRelations>[]>(
     () => [
       ...columns,
+      makeOrigineColumn<EspeceWithRelations>((e) => e.id, currentUserId, referentielActions),
       {
         id: "avis",
         header: "Avis",
@@ -540,7 +431,7 @@ function EspecesReferentiel() {
         ),
       },
     ],
-    []
+    [currentUserId, referentielActions]
   )
 
   return (
@@ -556,9 +447,21 @@ function EspecesReferentiel() {
         </TabsList>
       </Tabs>
 
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <FiltreOrigine value={filtreOrigine} onChange={setFiltreOrigine} labelPerso="Mes entrées" />
+        <AjoutReferentielDialog
+          titre="Ajouter une espèce fruitière"
+          apiBase="/api/especes"
+          champs={[{ key: "id", label: "Nom", required: true, placeholder: "ex. Maracuja" }]}
+          extraBody={{ type: "arbre_fruitier", uniteRendement: "kg_arbre", vivace: true, aPlanifier: false }}
+          onCreated={fetchData}
+          triggerLabel="Ajouter une espèce"
+        />
+      </div>
+
       <DataTable
         columns={columnsAvecAvis}
-        data={filteredData}
+        data={filtrerParOrigine(filteredData, filtreOrigine, currentUserId)}
         isLoading={isLoading}
         showPagination={true}
         pageSize={50}
@@ -730,6 +633,7 @@ function PorteGreffesReferentiel() {
   const currentUserId = (session?.user as any)?.id as string | undefined
   const [data, setData] = React.useState<PorteGreffeRow[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
+  const [filtreOrigine, setFiltreOrigine] = React.useState<FiltreOrigineValue>("tout")
   const [avisRef, setAvisRef] = React.useState<PorteGreffeRow | null>(null)
 
   const fetchData = React.useCallback(() => {
@@ -789,9 +693,19 @@ function PorteGreffesReferentiel() {
 
   return (
     <>
+      <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+        <FiltreOrigine value={filtreOrigine} onChange={setFiltreOrigine} labelPerso="Mes entrées" />
+        <AjoutReferentielDialog
+          titre="Ajouter un porte-greffe"
+          apiBase="/api/verger/porte-greffes"
+          champs={[{ key: "nom", label: "Nom", required: true }]}
+          onCreated={fetchData}
+          triggerLabel="Ajouter un porte-greffe"
+        />
+      </div>
       <DataTable
         columns={columns}
-        data={data}
+        data={filtrerParOrigine(data, filtreOrigine, currentUserId)}
         isLoading={isLoading}
         showPagination={false}
         searchPlaceholder="Rechercher un porte-greffe..."
@@ -910,6 +824,7 @@ function EssencesReferentiel() {
   const currentUserId = (session?.user as any)?.id as string | undefined
   const [data, setData] = React.useState<EssenceBocageRow[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
+  const [filtreOrigine, setFiltreOrigine] = React.useState<FiltreOrigineValue>("tout")
 
   const fetchData = React.useCallback(() => {
     setIsLoading(true)
@@ -960,15 +875,30 @@ function EssencesReferentiel() {
   ]
 
   return (
-    <DataTable
-      columns={columns}
-      data={data}
-      isLoading={isLoading}
-      showPagination={false}
-      onRefresh={fetchData}
-      searchPlaceholder="Rechercher une essence..."
-      emptyMessage="Aucune essence en référentiel."
-    />
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <FiltreOrigine value={filtreOrigine} onChange={setFiltreOrigine} labelPerso="Mes entrées" />
+        <AjoutReferentielDialog
+          titre="Ajouter une essence bocagère"
+          apiBase="/api/verger/essences-bocageres"
+          champs={[
+            { key: "nomCommun", label: "Nom commun", required: true },
+            { key: "nomLatin", label: "Nom latin", required: true },
+          ]}
+          onCreated={fetchData}
+          triggerLabel="Ajouter une essence"
+        />
+      </div>
+      <DataTable
+        columns={columns}
+        data={filtrerParOrigine(data, filtreOrigine, currentUserId)}
+        isLoading={isLoading}
+        showPagination={false}
+        onRefresh={fetchData}
+        searchPlaceholder="Rechercher une essence..."
+        emptyMessage="Aucune essence en référentiel."
+      />
+    </div>
   )
 }
 
@@ -996,6 +926,7 @@ function EssencesForestieresReferentiel() {
   const currentUserId = (session?.user as any)?.id as string | undefined
   const [data, setData] = React.useState<EssenceForestiereRow[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
+  const [filtreOrigine, setFiltreOrigine] = React.useState<FiltreOrigineValue>("tout")
 
   const fetchData = React.useCallback(() => {
     setIsLoading(true)
@@ -1057,14 +988,41 @@ function EssencesForestieresReferentiel() {
   ]
 
   return (
-    <DataTable
-      columns={columns}
-      data={data}
-      isLoading={isLoading}
-      showPagination={false}
-      onRefresh={fetchData}
-      searchPlaceholder="Rechercher une essence forestière..."
-      emptyMessage="Aucune essence forestière en référentiel."
-    />
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <FiltreOrigine value={filtreOrigine} onChange={setFiltreOrigine} labelPerso="Mes entrées" />
+        <AjoutReferentielDialog
+          titre="Ajouter une essence forestière"
+          apiBase="/api/verger/essences-forestieres"
+          champs={[
+            { key: "nom", label: "Nom commun", required: true },
+            { key: "nomLatin", label: "Nom latin", required: true },
+            {
+              key: "categorie",
+              label: "Catégorie",
+              type: "select",
+              defaut: "feuillu",
+              options: [
+                { value: "feuillu", label: "Feuillu" },
+                { value: "resineux", label: "Résineux" },
+                { value: "fruitier", label: "Fruitier" },
+                { value: "petit_fruit", label: "Petit fruit" },
+              ],
+            },
+          ]}
+          onCreated={fetchData}
+          triggerLabel="Ajouter une essence"
+        />
+      </div>
+      <DataTable
+        columns={columns}
+        data={filtrerParOrigine(data, filtreOrigine, currentUserId)}
+        isLoading={isLoading}
+        showPagination={false}
+        onRefresh={fetchData}
+        searchPlaceholder="Rechercher une essence forestière..."
+        emptyMessage="Aucune essence forestière en référentiel."
+      />
+    </div>
   )
 }
