@@ -64,7 +64,7 @@ interface RecolteWithRelations {
   }
   culture: {
     id: number
-    variete: { id: string } | null
+    variete: { id: string; nom: string | null } | null
     planche: { id: string; nom: string } | null
   }
 }
@@ -534,7 +534,7 @@ export default function RecoltesPage() {
                                 <span className="font-medium">{r.especeId}</span>
                               </div>
                             </TableCell>
-                            <TableCell>{r.culture?.variete?.id || "-"}</TableCell>
+                            <TableCell>{r.culture?.variete?.nom ?? r.culture?.variete?.id ?? "-"}</TableCell>
                             <TableCell>{r.culture?.planche?.nom || "-"}</TableCell>
                             <TableCell className="text-right font-medium text-green-600">
                               {r.quantite.toFixed(2)} kg
@@ -683,7 +683,7 @@ export default function RecoltesPage() {
                         <TableRow key={r.id}>
                           <TableCell>{format(new Date(r.date), "dd/MM/yyyy", { locale: fr })}</TableCell>
                           <TableCell>{r.especeId}</TableCell>
-                          <TableCell>{r.culture?.variete?.id || "-"}</TableCell>
+                          <TableCell>{r.culture?.variete?.nom ?? r.culture?.variete?.id ?? "-"}</TableCell>
                           <TableCell className="text-right text-orange-600">{r.quantite.toFixed(2)} kg</TableCell>
                           <TableCell className="text-muted-foreground">{r.notes || "-"}</TableCell>
                         </TableRow>
@@ -707,7 +707,7 @@ export default function RecoltesPage() {
                 <div className="p-3 bg-green-50 rounded-lg">
                   <p className="text-sm text-green-700">
                     {selectedRecolte.especeId} - {selectedRecolte.quantite.toFixed(2)} kg
-                    {selectedRecolte.culture?.variete && ` (${selectedRecolte.culture.variete.id})`}
+                    {selectedRecolte.culture?.variete && ` (${selectedRecolte.culture.variete.nom ?? selectedRecolte.culture.variete.id})`}
                   </p>
                 </div>
                 <div>

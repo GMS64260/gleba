@@ -44,6 +44,7 @@ const TYPE_LABELS: Record<string, string> = {
 
 interface EspeceWithRelations {
   id: string
+  nom: string | null
   type: string
   // Catalogue communautaire : userId null = Gleba officiel ; renseigné = perso
   // d'un membre. partageCommunaute = proposé/partagé à la communauté.
@@ -86,7 +87,7 @@ const columns: ColumnDef<EspeceWithRelations>[] = [
       return (
         <div className="flex items-center gap-2">
           <div className="w-3 h-3 rounded-full" style={{ backgroundColor: couleur }} />
-          <span className="font-medium">{espece.id}</span>
+          <span className="font-medium">{espece.nom ?? espece.id}</span>
         </div>
       )
     },
@@ -209,7 +210,7 @@ export function ReferentielTab() {
 
   // Colonne « Origine » partagée : badge Gleba/Perso/Communauté + actions sur son perso.
   const origineColumn = makeOrigineColumn<EspeceWithRelations>(
-    (e) => e.id,
+    (e) => e.nom ?? e.id,
     currentUserId,
     referentielActions
   )

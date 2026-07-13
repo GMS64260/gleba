@@ -115,6 +115,7 @@ function humaniseSlug(s: string): string {
 
 interface EspeceWithRelations {
   id: string
+  nom: string | null
   type: string
   familleId: string | null
   nomLatin: string | null
@@ -134,6 +135,7 @@ interface EspeceWithRelations {
 
 interface EspeceDetail {
   id: string
+  nom: string | null
   type: string
   familleId: string | null
   nomLatin: string | null
@@ -145,6 +147,7 @@ interface EspeceDetail {
   famille: { id: string; couleur: string | null; nomFr: string | null } | null
   varietes: {
     id: string
+    nom: string | null
     especeId: string
     precocite: string | null
     fournisseurId: string | null
@@ -179,7 +182,7 @@ const columns: ColumnDef<EspeceWithRelations>[] = [
       return (
         <div className="flex items-center gap-2">
           <div className="w-3 h-3 rounded-full" style={{ backgroundColor: couleur }} />
-          <span className="font-medium">{espece.id}</span>
+          <span className="font-medium">{espece.nom ?? espece.id}</span>
         </div>
       )
     },
@@ -415,7 +418,7 @@ function EspecesReferentiel() {
   const columnsAvecAvis = React.useMemo<ColumnDef<EspeceWithRelations>[]>(
     () => [
       ...columns,
-      makeOrigineColumn<EspeceWithRelations>((e) => e.id, currentUserId, referentielActions),
+      makeOrigineColumn<EspeceWithRelations>((e) => e.nom ?? e.id, currentUserId, referentielActions),
       {
         id: "avis",
         header: "Avis",
@@ -474,7 +477,7 @@ function EspecesReferentiel() {
       <AvisDialog
         refType="ESPECE"
         refId={avisRef?.id ?? null}
-        nom={avisRef?.id}
+        nom={avisRef?.nom ?? avisRef?.id}
         open={avisRef !== null}
         onOpenChange={(o) => !o && setAvisRef(null)}
         onSaved={fetchData}
@@ -497,7 +500,7 @@ function EspecesReferentiel() {
                       style={{ backgroundColor: detail.couleur || detail.famille?.couleur || "#888" }}
                     />
                   )}
-                  <SheetTitle className="text-left">{detail.id}</SheetTitle>
+                  <SheetTitle className="text-left">{detail.nom ?? detail.id}</SheetTitle>
                 </div>
                 <SheetDescription className="text-left">
                   {detail.nomLatin && <span className="italic">{detail.nomLatin}</span>}
@@ -564,7 +567,7 @@ function EspecesReferentiel() {
                           key={v.id}
                           className="flex items-center justify-between text-sm p-2 rounded-md bg-slate-50 border"
                         >
-                          <span className="font-medium">{v.id}</span>
+                          <span className="font-medium">{v.nom ?? v.id}</span>
                           <div className="flex items-center gap-2 text-xs text-muted-foreground">
                             {v.precocite && <Badge variant="outline" className="text-[10px] px-1.5 py-0">{v.precocite}</Badge>}
                             {v.fournisseur && <span>{v.fournisseur.id}</span>}

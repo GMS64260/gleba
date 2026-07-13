@@ -36,6 +36,7 @@ import { createITPSchema, type CreateITPInput } from "@/lib/validations"
 
 interface Espece {
   id: string
+  nom: string | null
   type: string
   famille: { id: string } | null
 }
@@ -174,7 +175,7 @@ export default function NewITPPage() {
                           <SelectItem value="_none">Aucune</SelectItem>
                           {especes.map((espece) => (
                             <SelectItem key={espece.id} value={espece.id}>
-                              {espece.id} {espece.famille ? `(${espece.famille.id})` : ""}
+                              {espece.nom ?? espece.id} {espece.famille ? `(${espece.famille.id})` : ""}
                             </SelectItem>
                           ))}
                         </SelectContent>

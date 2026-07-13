@@ -57,6 +57,7 @@ interface Stats {
 
 interface ITPWithRelations {
   id: string
+  nom: string | null
   especeId: string | null
   semaineSemis: number | null
   semainePlantation: number | null
@@ -68,6 +69,7 @@ interface ITPWithRelations {
   notes: string | null
   espece: {
     id: string
+    nom: string | null
     couleur: string | null
     famille: { id: string; couleur: string | null } | null
   } | null
@@ -315,7 +317,7 @@ const itpColumns: ColumnDef<ITPWithRelations>[] = [
       return (
         <div className="flex items-center gap-2">
           <div className="w-3 h-3 rounded-full" style={{ backgroundColor: couleur }} />
-          <span className="font-medium">{itp.id}</span>
+          <span className="font-medium">{itp.nom ?? itp.id}</span>
         </div>
       )
     },
@@ -323,7 +325,7 @@ const itpColumns: ColumnDef<ITPWithRelations>[] = [
   {
     accessorKey: "espece.id",
     header: "Espèce",
-    cell: ({ row }) => row.original.espece?.id || "-",
+    cell: ({ row }) => row.original.espece?.nom ?? row.original.espece?.id ?? "-",
   },
   {
     accessorKey: "semaineSemis",

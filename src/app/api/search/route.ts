@@ -44,13 +44,13 @@ export async function GET(request: NextRequest) {
       where: { userId, OR: [{ varieteId: like }, { especeId: like }] },
       take: TAKE,
       orderBy: { id: 'desc' },
-      select: { id: true, especeId: true, varieteId: true, plancheId: true, annee: true },
+      select: { id: true, especeId: true, varieteId: true, plancheId: true, annee: true, espece: { select: { nom: true } }, variete: { select: { nom: true } } },
     }),
     prisma.variete.findMany({
       where: { OR: [{ id: like }, { nomNormalise: like }] },
       take: TAKE,
       orderBy: { id: 'asc' },
-      select: { id: true, nomNormalise: true, especeId: true },
+      select: { id: true, nom: true, nomNormalise: true, especeId: true },
     }),
     prisma.arbre.findMany({
       where: { userId, OR: [{ nom: like }, { espece: like }, { variete: like }] },
@@ -98,7 +98,7 @@ export async function GET(request: NextRequest) {
       where: { userId, OR: [{ especeId: like }, { notes: like }] },
       take: TAKE,
       orderBy: { date: 'desc' },
-      select: { id: true, especeId: true, notes: true, quantite: true, date: true },
+      select: { id: true, especeId: true, notes: true, quantite: true, date: true, espece: { select: { nom: true } } },
     }),
     prisma.produitBoutique.findMany({
       where: { userId, nom: like },
@@ -111,14 +111,14 @@ export async function GET(request: NextRequest) {
   const items: SearchItem[] = [
     ...cultures.map((c): SearchItem => ({
       id: `culture-${c.id}`,
-      label: `${c.especeId || '?'}${c.varieteId ? ` — ${c.varieteId}` : ''}`,
+      label: `${c.espece?.nom ?? c.especeId ?? '?'}${c.varieteId ? ` — ${c.variete?.nom ?? c.varieteId}` : ''}`,
       sub: `Culture ${c.annee} · planche ${c.plancheId || '—'}`,
       type: 'Culture',
       href: `/maraichage/cultures/${c.id}`,
     })),
     ...varietes.map((v): SearchItem => ({
       id: `variete-${v.id}`,
-      label: v.id,
+      label: v.nom ?? v.id,
       sub: `Variété (${v.especeId || '?'})`,
       type: 'Variété',
       href: `/maraichage/cultures?variete=${encodeURIComponent(v.id)}`,
@@ -174,7 +174,7 @@ export async function GET(request: NextRequest) {
     })),
     ...recoltes.map((r): SearchItem => ({
       id: `recolte-${r.id}`,
-      label: `${r.especeId || ''} · ${r.quantite} kg`,
+      label: `${r.espece?.nom ?? r.especeId ?? ''} · ${r.quantite} kg`,
       sub: `${r.notes || ''} · ${new Date(r.date).toLocaleDateString('fr-FR')}`.trim(),
       type: 'Récolte',
       href: `/maraichage/recoltes`,

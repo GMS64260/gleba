@@ -421,7 +421,13 @@ model Fertilisant {
 
 /// Espèces de plantes cultivables
 model Espece {
-  id              String   @id @map("espece")
+  // id : pour l'officiel (Gleba, admin) = le nom lisible (rétro-compat des FK
+  // cultures existantes) ; pour le perso, id omis à la création → cuid généré,
+  // ce qui permet à deux membres d'avoir chacun leur « Tomate ». Le nom affiché
+  // vit dans `nom` (cf. src/lib/referentiel-communaute.ts).
+  id              String   @id @default(cuid()) @map("espece")
+  nom             String?  @map("nom")            // Nom affiché ; = id pour l'officiel, saisi pour le perso
+  nomNormalise    String?  @map("nom_normalise")  // Clé de dédup perso (normalizeReferentielKey). Unicité perso via index partiel SQL (user_id, nom_normalise) WHERE user_id IS NOT NULL.
   type            String   @default("legume") @map("type") // legume, aromatique, engrais_vert, arbre_fruitier, petit_fruit, ornement
   uniteRendement  String   @default("kg_m2") @map("unite_rendement") // kg_m2 | kg_arbre | biomasse_t_ha — voir docs/conventions.md
   familleId       String?  @map("famille")
@@ -621,7 +627,9 @@ model EssenceForestiere {
 
 /// Variétés (cultivars d'espèces)
 model Variete {
-  id             String       @id @map("variete")
+  // id : officiel = nom lisible (rétro-compat FK) ; perso = cuid (id omis → @default(cuid())).
+  id             String       @id @default(cuid()) @map("variete")
+  nom            String?      @map("nom")           // Nom affiché ; = id pour l'officiel, saisi pour le perso
   nomNormalise   String       @map("nom_normalise") // Clé déduplication, peuplée via normalizeVarieteName
   isPlaceholder  Boolean      @default(false) @map("is_placeholder") // "Non spécifiée" — affiche bandeau "À renseigner"
   especeId       String       @map("espece")
@@ -665,7 +673,11 @@ model Variete {
   cultures         Culture[]
   userStocks       UserStockVariete[]
 
-  @@unique([especeId, nomNormalise], name: "espece_nom_normalise")
+  // Unicité gérée par index partiels SQL (migration 20260713150000_catalogue_cle_technique),
+  // car Prisma ne sait pas exprimer un index unique partiel (WHERE) :
+  //   officiel : UNIQUE (espece, nom_normalise) WHERE user_id IS NULL
+  //   perso    : UNIQUE (user_id, espece, nom_normalise) WHERE user_id IS NOT NULL
+  @@index([especeId, nomNormalise])
   @@index([isPlaceholder])
   @@index([userId])
   @@map("varietes")
@@ -716,7 +728,10 @@ model Avis {
 
 /// ITP - Itinéraires Techniques des Plantes
 model ITP {
-  id                String  @id @map("it_plante")
+  // id : officiel = nom lisible (rétro-compat FK) ; perso = cuid (id omis → @default(cuid())).
+  id                String  @id @default(cuid()) @map("it_plante")
+  nom               String? @map("nom")           // Nom affiché ; = id pour l'officiel, saisi pour le perso
+  nomNormalise      String? @map("nom_normalise") // Clé de dédup perso (index partiel SQL user_id, nom_normalise)
   especeId          String? @map("espece")
   espece            Espece? @relation(fields: [especeId], references: [id], onDelete: SetNull)
   semaineSemis      Int?    @map("s_semis") // Semaine semis (1-52)

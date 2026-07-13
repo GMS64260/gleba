@@ -11,6 +11,7 @@ import { Prisma } from '@prisma/client'
 import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
 import { statsAvisPourRefs } from '@/lib/avis/stats-liste'
 import { visibiliteReferentiel, attributionCreation } from '@/lib/referentiel-communaute'
+import { cleanReferentielName, normalizeReferentielKey } from '@/lib/normalize'
 
 // GET /api/itps - Référentiel global (lecture)
 export async function GET(request: NextRequest) {
@@ -129,16 +130,31 @@ export async function POST(request: NextRequest) {
 
     const data = validationResult.data
 
-    // Vérifier si l'ITP existe déjà
-    const existing = await prisma.iTP.findUnique({
-      where: { id: data.id },
-    })
+    // `data.id` porte le NOM saisi. Le nom affiché vit dans `nom` ; l'id technique
+    // dépend de l'origine (officiel = nom lisible, perso = cuid).
+    const nomSaisi = cleanReferentielName(data.id)
+    const nomNormalise = normalizeReferentielKey(nomSaisi)
+    const attrib = attributionCreation(isAdmin, session!.user.id, body.partageCommunaute === true)
+    const estOfficiel = attrib.userId === null
 
-    if (existing) {
-      return NextResponse.json(
-        { error: `L'ITP "${data.id}" existe déjà` },
-        { status: 409 }
-      )
+    if (estOfficiel) {
+      // Catalogue Gleba : l'id reste le nom lisible (rétro-compat). Unicité globale.
+      const existing = await prisma.iTP.findUnique({ where: { id: nomSaisi } })
+      if (existing) {
+        return NextResponse.json({ error: `L'ITP "${nomSaisi}" existe déjà` }, { status: 409 })
+      }
+    } else {
+      // Perso : dédup bornée à MES ITP (index unique partiel user_id, nom_normalise).
+      const conflit = await prisma.iTP.findFirst({
+        where: { userId: attrib.userId, nomNormalise },
+        select: { id: true, nom: true },
+      })
+      if (conflit) {
+        return NextResponse.json(
+          { error: `Vous avez déjà un itinéraire « ${conflit.nom ?? conflit.id} » dans votre catalogue.`, conflit: conflit.id },
+          { status: 409 }
+        )
+      }
     }
 
     // Vérifier que l'espece existe si fournie + cohérence du type de culture
@@ -167,12 +183,15 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Création : admin → catalogue Gleba officiel ; utilisateur → perso
-    // (proposé à la communauté ou privé).
+    // Création : officiel → id = nom lisible ; perso → id omis → cuid (@default).
+    const { id: _nomBrut, ...rest } = data
     const itp = await prisma.iTP.create({
       data: {
-        ...data,
-        ...attributionCreation(isAdmin, session!.user.id, body.partageCommunaute === true),
+        ...rest,
+        ...(estOfficiel ? { id: nomSaisi } : {}),
+        nom: nomSaisi,
+        nomNormalise,
+        ...attrib,
       },
       include: {
         espece: true,

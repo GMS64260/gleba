@@ -81,6 +81,7 @@ interface CultureIrriguer {
   } | null
   variete: {
     id: string
+    nom: string | null
   } | null
 }
 
@@ -672,7 +673,7 @@ function CulturesIrriguerContent() {
                                   <span className="font-medium break-words">{culture.especeId}</span>
                                   {culture.variete && (
                                     <span className="text-sm text-muted-foreground break-words">
-                                      ({culture.variete.id})
+                                      ({culture.variete.nom ?? culture.variete.id})
                                     </span>
                                   )}
                                   {culture.sousAbri && (

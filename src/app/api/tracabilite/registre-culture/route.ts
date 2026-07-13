@@ -41,8 +41,8 @@ export async function GET(request: NextRequest) {
     const cultures = await prisma.culture.findMany({
       where: cultureWhere,
       include: {
-        espece: { select: { id: true, familleId: true, type: true } },
-        variete: { select: { id: true, bio: true } },
+        espece: { select: { id: true, nom: true, familleId: true, type: true } },
+        variete: { select: { id: true, nom: true, bio: true } },
         itp: { select: { id: true, nbRangs: true, espacement: true } },
         planche: {
           select: {
@@ -270,9 +270,9 @@ export async function GET(request: NextRequest) {
         return {
           id: culture.id,
           identification: {
-            espece: culture.espece.id,
+            espece: culture.espece.nom ?? culture.espece.id,
             famille: culture.espece.familleId,
-            variete: culture.variete?.id || null,
+            variete: culture.variete?.nom ?? culture.variete?.id ?? null,
             bio: culture.variete?.bio || false,
             planche: culture.planche?.nom || null,
             surface: culture.planche?.surface || null,

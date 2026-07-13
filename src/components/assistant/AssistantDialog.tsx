@@ -50,6 +50,7 @@ export interface PlancheData {
 
 export interface EspeceData {
   id: string
+  nom?: string | null
   type?: string
   familleId?: string
   famille?: { id: string; couleur?: string | null }
@@ -64,6 +65,7 @@ export interface EspeceData {
 
 export interface ITPData {
   id: string
+  nom?: string | null
   especeId?: string
   semaineSemis?: number | null
   semainePlantation?: number | null
@@ -82,6 +84,7 @@ export interface ITPData {
 
 export interface VarieteData {
   id: string
+  nom?: string | null
   especeId: string
   fournisseurId?: string | null
   stockGraines?: number | null

@@ -74,6 +74,7 @@ import {
 
 interface Variete {
   id: string
+  nom: string | null
   especeId: string
   fournisseurId: string | null
   fournisseur: { id: string } | null
@@ -125,6 +126,8 @@ export default function EditEspecePage() {
   const [avisVariete, setAvisVariete] = React.useState<Variete | null>(null)
   const [triParNote, setTriParNote] = React.useState(false)
   const [filtreOrigine, setFiltreOrigine] = React.useState<FiltreOrigineValue>("tout")
+  // Nom affiché de l'espèce : = id pour l'officiel, `nom` pour le perso (id=cuid).
+  const [especeNom, setEspeceNom] = React.useState<string>(especeId)
 
   // Charge les variétés via /api/varietes (superset enrichi des stats d'avis via avis=1).
   const reloadVarietes = React.useCallback(async () => {
@@ -141,7 +144,7 @@ export default function EditEspecePage() {
     return [...filtrees].sort((a, b) => {
       const sa = a.avisStats?.nbAvis ? a.avisStats.scoreCommunautaire : -1
       const sb = b.avisStats?.nbAvis ? b.avisStats.scoreCommunautaire : -1
-      return sb - sa || a.id.localeCompare(b.id)
+      return sb - sa || (a.nom ?? a.id).localeCompare(b.nom ?? b.id)
     })
   }, [varietes, triParNote, filtreOrigine, currentUserId])
 
@@ -188,6 +191,7 @@ export default function EditEspecePage() {
     ])
       .then(([famillesData, especeData, fournisseursData]) => {
         setFamilles(Array.isArray(famillesData) ? famillesData : [])
+        setEspeceNom(especeData.nom ?? especeId)
         void reloadVarietes()
         setFournisseurs(fournisseursData.data || fournisseursData || [])
         form.reset({
@@ -245,7 +249,7 @@ export default function EditEspecePage() {
 
       toast({
         title: "Espèce modifiée",
-        description: `L'espece "${especeId}" a été mise à jour`,
+        description: `L'espece "${especeNom}" a été mise à jour`,
       })
       router.push("/especes")
     } catch (error) {
@@ -260,7 +264,7 @@ export default function EditEspecePage() {
   }
 
   const handleDelete = async () => {
-    if (!(await confirmDialog(`Supprimer l'espece "${especeId}" ?`))) return
+    if (!(await confirmDialog(`Supprimer l'espece "${especeNom}" ?`))) return
 
     try {
       const response = await fetch(`/api/especes/${encodeURIComponent(especeId)}`, {
@@ -274,7 +278,7 @@ export default function EditEspecePage() {
 
       toast({
         title: "Espèce supprimée",
-        description: `L'espece "${especeId}" a été supprimée`,
+        description: `L'espece "${especeNom}" a été supprimée`,
       })
       router.push("/especes")
     } catch (error) {
@@ -375,7 +379,7 @@ export default function EditEspecePage() {
   }
 
   const handleVarieteDelete = async (v: Variete) => {
-    if (!(await confirmDialog(`Supprimer la variete "${v.id}" ?`))) return
+    if (!(await confirmDialog(`Supprimer la variete "${v.nom ?? v.id}" ?`))) return
     try {
       const res = await fetch(`/api/varietes/${encodeURIComponent(v.id)}`, {
         method: "DELETE",
@@ -426,7 +430,7 @@ export default function EditEspecePage() {
             </Link>
             <div className="flex items-center gap-2">
               <Leaf className="h-6 w-6 text-emerald-600" />
-              <h1 className="text-xl font-bold">Modifier : {especeId}</h1>
+              <h1 className="text-xl font-bold">Modifier : {especeNom}</h1>
             </div>
           </div>
           <Button variant="destructive" size="sm" onClick={handleDelete}>
@@ -460,7 +464,7 @@ export default function EditEspecePage() {
                   <CardContent className="space-y-4">
                     <div className="p-3 bg-muted rounded-md">
                       <p className="text-sm text-muted-foreground">Nom de l&apos;espèce</p>
-                      <p className="font-medium">{especeId}</p>
+                      <p className="font-medium">{especeNom}</p>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -1097,7 +1101,7 @@ export default function EditEspecePage() {
               <TabsContent value="varietes">
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between">
-                    <CardTitle>Varietes de {especeId}</CardTitle>
+                    <CardTitle>Varietes de {especeNom}</CardTitle>
                     <div className="flex items-center gap-2">
                       <Button
                         type="button"
@@ -1156,7 +1160,7 @@ export default function EditEspecePage() {
                           )}
                           {varietesAffichees.map((v) => (
                             <TableRow key={v.id}>
-                              <TableCell className="font-medium">{v.id}</TableCell>
+                              <TableCell className="font-medium">{v.nom ?? v.id}</TableCell>
                               <TableCell>{v.fournisseur?.id || "-"}</TableCell>
                               <TableCell>{v.bio ? "Oui" : "-"}</TableCell>
                               <TableCell>
@@ -1186,7 +1190,7 @@ export default function EditEspecePage() {
                               <TableCell>
                                 <OrigineControls
                                   entree={v}
-                                  nom={v.id}
+                                  nom={v.nom ?? v.id}
                                   currentUserId={currentUserId}
                                   actions={actions}
                                   showRemove={false}
@@ -1258,7 +1262,7 @@ export default function EditEspecePage() {
         }}>
           <DialogContent className="max-w-lg">
             <DialogHeader>
-              <DialogTitle>{editingVariete ? `Modifier : ${editingVariete.id}` : "Nouvelle variété"}</DialogTitle>
+              <DialogTitle>{editingVariete ? `Modifier : ${editingVariete.nom ?? editingVariete.id}` : "Nouvelle variété"}</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleVarieteSubmit} className="space-y-4">
               {!editingVariete && (
@@ -1393,7 +1397,7 @@ export default function EditEspecePage() {
         <AvisDialog
           refType="VARIETE"
           refId={avisVariete?.id ?? null}
-          nom={avisVariete?.id}
+          nom={avisVariete?.nom ?? avisVariete?.id}
           open={avisVariete !== null}
           onOpenChange={(open) => {
             if (!open) setAvisVariete(null)

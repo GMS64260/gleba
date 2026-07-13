@@ -111,7 +111,7 @@ export async function GET(request: NextRequest) {
     cultureIds.length > 0
       ? prisma.culture.findMany({
           where: { id: { in: cultureIds } },
-          include: { espece: { select: { id: true } }, variete: { select: { id: true } }, planche: { select: { nom: true } } },
+          include: { espece: { select: { id: true, nom: true } }, variete: { select: { id: true, nom: true } }, planche: { select: { nom: true } } },
         })
       : Promise.resolve([]),
     plancheIds.length > 0
@@ -132,8 +132,8 @@ export async function GET(request: NextRequest) {
     const culture = i.cultureId ? cultureById.get(i.cultureId) : null
     const planche = culture?.planche ?? (i.plancheId ? plancheById.get(i.plancheId) : null)
     const arbre = i.arbreId ? arbreById.get(i.arbreId) : null
-    const espece = culture?.espece.id ?? arbre?.espece ?? null
-    const variete = culture?.variete?.id ?? arbre?.variete ?? null
+    const espece = culture?.espece.nom ?? culture?.espece.id ?? arbre?.espece ?? null
+    const variete = culture?.variete?.nom ?? culture?.variete?.id ?? arbre?.variete ?? null
     return {
       source: "intervention",
       date: i.date.toISOString().slice(0, 10),

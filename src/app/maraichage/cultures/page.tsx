@@ -51,9 +51,10 @@ interface CultureWithRelations {
   type: string
   espece: {
     id: string
+    nom: string | null
     famille: { id: string; couleur: string | null } | null
   }
-  variete: { id: string; isPlaceholder?: boolean } | null
+  variete: { id: string; nom: string | null; isPlaceholder?: boolean } | null
   planche: { id: string } | null
   quantite: number | null
   _count: { recoltes: number }
@@ -94,7 +95,7 @@ function createColumns(
               className="w-3 h-3 rounded-full"
               style={{ backgroundColor: couleur }}
             />
-            <span className="font-medium">{espece?.id}</span>
+            <span className="font-medium">{espece?.nom ?? espece?.id}</span>
           </div>
         )
       },
@@ -108,7 +109,7 @@ function createColumns(
       cell: ({ row }) => {
         const v = row.original.variete
         if (!v || v.isPlaceholder) return "—"
-        return v.id
+        return v.nom ?? v.id
       },
     },
     {

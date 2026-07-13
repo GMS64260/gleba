@@ -39,6 +39,8 @@ export type EspeceType =
 
 export type EspeceOption = {
   id: string
+  /** Nom affiché : = id pour l'officiel, `nom` saisi pour le perso (id=cuid). */
+  nom?: string | null
   type?: EspeceType | string | null
   categorie?: string | null
   couleur?: string | null
@@ -53,6 +55,9 @@ function origineBadge(o: EspeceOption, currentUserId?: string | null) {
   if (currentUserId && o.userId === currentUserId) return { label: "Perso", cls: "bg-amber-100 text-amber-700" }
   return { label: "Communauté", cls: "bg-sky-100 text-sky-700" }
 }
+
+/** Nom affiché/recherché d'une option (perso → `nom`, officiel → id lisible). */
+const nomOf = (o: EspeceOption) => o.nom ?? o.id
 
 type TabKey = "all" | EspeceType
 
@@ -143,7 +148,7 @@ export function EspeceCombobox({
     } else {
       list = list.filter((o) => o.type === tab)
     }
-    return [...list].sort((a, b) => a.id.localeCompare(b.id, "fr"))
+    return [...list].sort((a, b) => nomOf(a).localeCompare(nomOf(b), "fr"))
   }, [options, tab, defaultTypes])
 
   const recentOptions = React.useMemo(
@@ -181,7 +186,7 @@ export function EspeceCombobox({
                   style={{ backgroundColor: selected.couleur }}
                 />
               )}
-              {selected.id}
+              {nomOf(selected)}
             </span>
           ) : (
             <span className="text-muted-foreground">{placeholder}</span>
@@ -239,7 +244,7 @@ export function EspeceCombobox({
                   {recentOptions.map((o) => (
                     <CommandItem
                       key={`recent-${o.id}`}
-                      value={o.id}
+                      value={nomOf(o)}
                       onSelect={() => handleSelect(o.id)}
                     >
                       <Check
@@ -254,7 +259,7 @@ export function EspeceCombobox({
                           style={{ backgroundColor: o.couleur }}
                         />
                       )}
-                      {o.id}
+                      {nomOf(o)}
                     </CommandItem>
                   ))}
                 </CommandGroup>
@@ -263,7 +268,7 @@ export function EspeceCombobox({
             )}
             <CommandGroup heading={tab === "all" ? "Toutes les espèces" : undefined}>
               {filtered.map((o) => (
-                <CommandItem key={o.id} value={o.id} onSelect={() => handleSelect(o.id)}>
+                <CommandItem key={o.id} value={nomOf(o)} onSelect={() => handleSelect(o.id)}>
                   <Check
                     className={cn(
                       "mr-2 h-4 w-4",
@@ -276,7 +281,7 @@ export function EspeceCombobox({
                       style={{ backgroundColor: o.couleur }}
                     />
                   )}
-                  {o.id}
+                  {nomOf(o)}
                   <span className="ml-auto flex items-center gap-1">
                     {(() => {
                       const b = origineBadge(o, currentUserId)

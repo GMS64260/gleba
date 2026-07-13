@@ -13,9 +13,11 @@ import { appliquerDecalageItp } from "@/lib/calendrier-climat"
 
 interface ITPWithEspece {
   id: string
+  nom: string | null
   especeId: string | null
   espece?: {
     id: string
+    nom: string | null
     couleur: string | null
     /** BUG #15 — mode_semis pour différencier pépinière vs caïeux/bulbe direct */
     modeSemis?: string | null
@@ -159,9 +161,9 @@ export function GanttRow({ itp: itpRef, onEdit, decalage = 0 }: GanttRowProps) {
             />
           )}
           <div className="min-w-0 flex-1">
-            <div className="font-medium text-sm truncate">{itp.id}</div>
+            <div className="font-medium text-sm truncate">{itp.nom ?? itp.id}</div>
             {itp.especeId && (
-              <div className="text-xs text-muted-foreground truncate">{itp.especeId}</div>
+              <div className="text-xs text-muted-foreground truncate">{itp.espece?.nom ?? itp.espece?.id ?? itp.especeId}</div>
             )}
           </div>
           {isEditable && (

@@ -39,12 +39,14 @@ import { updateITPSchema, type UpdateITPInput, ITP_TYPE_PLANCHE } from "@/lib/va
 
 interface Espece {
   id: string
+  nom: string | null
   type: string
   famille: { id: string } | null
 }
 
 interface ITPData {
   id: string
+  nom: string | null
   especeId: string | null
   semaineSemis: number | null
   semainePlantation: number | null
@@ -231,7 +233,7 @@ export default function EditITPPage() {
             </Link>
             <div className="flex items-center gap-2">
               <Route className="h-6 w-6 text-indigo-600" />
-              <h1 className="text-xl font-bold">{id}</h1>
+              <h1 className="text-xl font-bold">{itpData?.nom ?? id}</h1>
             </div>
           </div>
           {itpData && (
@@ -282,7 +284,7 @@ export default function EditITPPage() {
                           <SelectItem value="_none">Aucune</SelectItem>
                           {especes.map((espece) => (
                             <SelectItem key={espece.id} value={espece.id}>
-                              {espece.id} {espece.famille ? `(${espece.famille.id})` : ""}
+                              {espece.nom ?? espece.id} {espece.famille ? `(${espece.famille.id})` : ""}
                             </SelectItem>
                           ))}
                         </SelectContent>

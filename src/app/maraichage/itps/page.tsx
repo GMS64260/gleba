@@ -26,6 +26,7 @@ import { badgeOrigine } from "@/lib/referentiel-communaute"
 // Type pour les ITPs avec relations
 interface ITPWithRelations {
   id: string
+  nom: string | null
   // Catalogue communautaire : userId null = Gleba officiel ; renseigné = perso
   // d'un membre. partageCommunaute = proposé/partagé à la communauté.
   userId: string | null
@@ -43,6 +44,7 @@ interface ITPWithRelations {
   modeDemarrage: string | null
   espece: {
     id: string
+    nom: string | null
     couleur: string | null
     famille: { id: string; couleur: string | null } | null
   } | null
@@ -56,10 +58,11 @@ interface ITPWithRelations {
 // utilisé en BDD et sert d'ancre d'URL.
 function formatItpLabel(itp: ITPWithRelations): string {
   const id = itp.id
-  // Heuristique : si l'id est déjà lisible (commence par un nom d'espèce
-  // capitalisé), on le garde tel quel.
-  if (!/^ITP-/i.test(id)) return id
-  const espece = itp.espece?.id ?? itp.especeId ?? 'ITP'
+  // Officiel : l'id lisible EST le nom (fallback `nom` si besoin), sauf les
+  // identifiants techniques historiques "ITP-..." reconstruits depuis l'espèce.
+  // Perso : l'id est un cuid opaque → on affiche `nom`.
+  if (!/^ITP-/i.test(id)) return itp.nom ?? id
+  const espece = itp.espece?.nom ?? itp.espece?.id ?? itp.especeId ?? 'ITP'
   const mode = itp.modeDemarrage ?? itp.typePlanche ?? 'plein champ'
   return `${espece} — ${mode.toLowerCase()}`
 }
@@ -89,7 +92,7 @@ const columns: ColumnDef<ITPWithRelations>[] = [
   {
     accessorKey: "espece.id",
     header: "Espèce",
-    cell: ({ row }) => row.original.espece?.id || "-",
+    cell: ({ row }) => row.original.espece?.nom ?? row.original.espece?.id ?? "-",
   },
   {
     accessorKey: "semaineSemis",
@@ -214,12 +217,12 @@ export default function ITPsPage() {
       toast({
         variant: "destructive",
         title: "Impossible de supprimer",
-        description: `${row.id} est utilise dans ${row._count.cultures} culture(s) et ${row._count.rotationsDetails} rotation(s)`,
+        description: `${formatItpLabel(row)} est utilise dans ${row._count.cultures} culture(s) et ${row._count.rotationsDetails} rotation(s)`,
       })
       return
     }
 
-    if (!(await confirmDialog(`Supprimer l'ITP "${row.id}" ?`))) return
+    if (!(await confirmDialog(`Supprimer l'ITP "${formatItpLabel(row)}" ?`))) return
 
     try {
       const response = await fetch(`/api/itps/${encodeURIComponent(row.id)}`, {
@@ -228,7 +231,7 @@ export default function ITPsPage() {
       if (response.ok) {
         toast({
           title: "ITP supprime",
-          description: `L'ITP "${row.id}" a été supprimé`,
+          description: `L'ITP "${formatItpLabel(row)}" a été supprimé`,
         })
         fetchData()
       } else {

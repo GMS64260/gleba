@@ -241,9 +241,9 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
   }
 
   // Display helpers
-  const especeId = espece?.id || culture.especeId || '-'
-  const itpId = itp?.id || culture.itpId || '-'
-  const varieteId = variete?.id || culture.varieteId || 'Non definie'
+  const especeId = espece?.nom ?? espece?.id ?? culture.especeId ?? '-'
+  const itpId = itp?.nom ?? itp?.id ?? culture.itpId ?? '-'
+  const varieteId = variete?.nom ?? variete?.id ?? culture.varieteId ?? 'Non definie'
   const especeRef = espece || culture.espece
 
   return (

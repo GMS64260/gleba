@@ -300,8 +300,8 @@ export async function PATCH(
       if (body.statut === "vendu" && body.creerFacture && body.prixTotal) {
         const totalHT = body.prixTotal / 1.055
         const totalTVA = body.prixTotal - totalHT
-        const espece = existing.espece?.id || 'Légumes'
-        const variete = existing.culture?.variete?.id ? ` - ${existing.culture.variete.id}` : ''
+        const espece = existing.espece?.nom ?? existing.espece?.id ?? 'Légumes'
+        const variete = existing.culture?.variete?.id ? ` - ${existing.culture.variete.nom ?? existing.culture.variete.id}` : ''
 
         const facture = await creerFacture(tx, {
           userId,

@@ -56,6 +56,7 @@ const TYPE_LABELS: Record<string, string> = {
 // Type pour les especes avec relations
 interface EspeceWithRelations {
   id: string
+  nom: string | null
   type: string
   // Catalogue communautaire : userId null = Gleba officiel ; renseigné = perso
   // d'un membre. partageCommunaute = proposé/partagé à la communauté.
@@ -120,7 +121,7 @@ const columns: ColumnDef<EspeceWithRelations>[] = [
               style={{ backgroundColor: couleur }}
             />
           )}
-          <span className="font-medium">{espece.id}</span>
+          <span className="font-medium">{espece.nom ?? espece.id}</span>
           {espece.vivace && (
             <Badge variant="outline" className="text-xs">Vivace</Badge>
           )}
@@ -368,7 +369,7 @@ function EspecesPageContent() {
   // Colonne « Origine » partagée : badge Gleba/Perso/Communauté + actions
   // (proposer/rendre privé/supprimer) sur ses propres espèces perso.
   const origineColumn = makeOrigineColumn<EspeceWithRelations>(
-    (e) => e.id,
+    (e) => e.nom ?? e.id,
     currentUserId,
     referentielActions
   )

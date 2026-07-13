@@ -34,9 +34,11 @@ import { alertDialog } from "@/lib/global-dialog"
 
 interface ITPWithEspece {
   id: string
+  nom: string | null
   especeId: string | null
   espece?: {
     id: string
+    nom: string | null
     couleur: string | null
     modeSemis?: string | null
     famille?: { id?: string } | null

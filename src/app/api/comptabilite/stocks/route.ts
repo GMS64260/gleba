@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
       prisma.recolte.findMany({
         where: { userId, statut: 'en_stock' },
         include: {
-          espece: { select: { id: true, prixKg: true } },
+          espece: { select: { id: true, nom: true, prixKg: true } },
         },
       }),
 
@@ -96,7 +96,7 @@ export async function GET(request: NextRequest) {
           id: true,
           plancheId: true,
           quantite: true,
-          espece: { select: { id: true, rendement: true, prixKg: true } },
+          espece: { select: { id: true, nom: true, rendement: true, prixKg: true } },
           variete: { select: { id: true } },
           planche: { select: { surface: true, largeur: true, longueur: true, nom: true } },
         },
@@ -234,7 +234,7 @@ export async function GET(request: NextRequest) {
           id: `variete-graines-${uv.varieteId}`,
           module: 'potager',
           categorie: 'Graines',
-          nom: `${uv.variete.id} (${uv.variete.espece.id})`,
+          nom: `${uv.variete.nom ?? uv.variete.id} (${uv.variete.espece.nom ?? uv.variete.espece.id})`,
           stock: uv.stockGraines,
           unite: 'g',
           stockMin: 100,
@@ -247,7 +247,7 @@ export async function GET(request: NextRequest) {
           id: `variete-plants-${uv.varieteId}`,
           module: 'potager',
           categorie: 'Plants',
-          nom: `${uv.variete.id} (${uv.variete.espece.id})`,
+          nom: `${uv.variete.nom ?? uv.variete.id} (${uv.variete.espece.nom ?? uv.variete.espece.id})`,
           stock: uv.stockPlants,
           unite: 'plants',
           stockMin: 10,
@@ -295,7 +295,7 @@ export async function GET(request: NextRequest) {
         existing.hasPrix = existing.hasPrix || hasPrix
       } else {
         recoltesParEspece.set(key, {
-          nom: r.espece?.id || key,
+          nom: r.espece?.nom ?? r.espece?.id ?? key,
           totalKg: r.quantite,
           valeur: val,
           hasPrix,
@@ -360,7 +360,7 @@ export async function GET(request: NextRequest) {
         existing.hasPrix = existing.hasPrix || prixMoyen > 0
       } else {
         culturesParEspece.set(key, {
-          nom: c.espece.id,
+          nom: c.espece.nom ?? c.espece.id,
           nbCultures: 1,
           planches: new Set(c.plancheId ? [c.plancheId] : []),
           stockEstime: estimeKg,

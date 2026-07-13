@@ -49,6 +49,7 @@ function weekToDate(year: number, week: number): Date {
 
 interface ITPData {
   id: string
+  nom: string | null
   especeId: string | null
   semaineSemis: number | null
   semainePlantation: number | null
@@ -65,7 +66,7 @@ export default function EditCulturePage() {
   const cultureId = params.id as string
   const { toast } = useToast()
   const [especes, setEspeces] = React.useState<{ id: string }[]>([])
-  const [varietes, setVarietes] = React.useState<{ id: string; especeId: string }[]>([])
+  const [varietes, setVarietes] = React.useState<{ id: string; nom: string | null; especeId: string }[]>([])
   const [itps, setItps] = React.useState<ITPData[]>([])
   const [planches, setPlanches] = React.useState<{ id: string; nom?: string; longueur: number | null }[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
@@ -440,7 +441,7 @@ export default function EditCulturePage() {
                         <SelectContent>
                           {varietes.map((v) => (
                             <SelectItem key={v.id} value={v.id}>
-                              {v.id}
+                              {v.nom ?? v.id}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -469,7 +470,7 @@ export default function EditCulturePage() {
                         <SelectContent>
                           {itps.map((itp) => (
                             <SelectItem key={itp.id} value={itp.id}>
-                              {itp.id}
+                              {itp.nom ?? itp.id}
                             </SelectItem>
                           ))}
                         </SelectContent>
