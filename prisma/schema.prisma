@@ -169,6 +169,8 @@ model User {
   porteGreffesPerso     PorteGreffe[]       @relation("PorteGreffePerso")
   essencesBocageresPerso EssenceBocagere[]  @relation("EssenceBocagerePerso")
   essencesForestieresPerso EssenceForestiere[] @relation("EssenceForestierePerso")
+  especesAnimalesPerso  EspeceAnimale[]     @relation("EspeceAnimalePerso")
+  racesPerso            RaceAnimale[]       @relation("RaceAnimalePerso")
 
   // Préférences (modules visibles, etc.)
   preferences           UserPreference[]
@@ -1686,12 +1688,17 @@ model EspeceAnimale {
   prixAchat         Float?    @map("prix_achat") // Prix moyen d'achat €
   couleur           String?   @map("couleur") // Couleur UI
   description       String?   @map("description")
+  // Référentiel communautaire (cf. src/lib/referentiel-communaute.ts). null = Gleba officiel.
+  userId            String?   @map("user_id")
+  auteur            User?     @relation("EspeceAnimalePerso", fields: [userId], references: [id], onDelete: Cascade)
+  partageCommunaute Boolean   @default(false) @map("partage_communaute")
 
   // Relations
   animaux     Animal[]
   lots        LotAnimaux[]
   races       RaceAnimale[]
 
+  @@index([userId])
   @@map("especes_animales")
 }
 
@@ -1706,12 +1713,17 @@ model RaceAnimale {
   aptitudes       String[]      @default([]) @map("aptitudes") // ['ponte','viande','lait','rusticité',...]
   rusticite       Int?          @map("rusticite") // 1-5 indicatif
   description     String?       @map("description")
+  // Référentiel communautaire (cf. src/lib/referentiel-communaute.ts). null = Gleba officiel.
+  userId            String?     @map("user_id")
+  auteur            User?       @relation("RaceAnimalePerso", fields: [userId], references: [id], onDelete: Cascade)
+  partageCommunaute Boolean     @default(false) @map("partage_communaute")
   createdAt       DateTime      @default(now()) @map("created_at")
 
   animaux         Animal[]
 
   @@unique([especeAnimaleId, nom])
   @@index([especeAnimaleId])
+  @@index([userId])
   @@map("races_animales")
 }
 

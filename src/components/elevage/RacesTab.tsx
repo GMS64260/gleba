@@ -6,11 +6,13 @@
  */
 
 import * as React from "react"
+import { useSession } from "next-auth/react"
 import { Plus, Trash2, Bird } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Select,
@@ -30,10 +32,16 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
-import { confirmDialog } from "@/lib/global-dialog"
 import { AvisCell } from "@/components/avis/AvisCell"
 import { AvisDialog } from "@/components/avis/AvisDialog"
 import type { AvisStatsListe } from "@/lib/avis/types"
+import {
+  OrigineControls,
+  useReferentielActions,
+  FiltreOrigine,
+  filtrerParOrigine,
+  type FiltreOrigineValue,
+} from "@/components/referentiel/catalogue-communaute"
 
 interface EspeceAnimale {
   id: string
@@ -46,23 +54,31 @@ interface Race {
   especeAnimaleId: string
   especeAnimale?: { id: string; nom: string }
   avisStats?: AvisStatsListe
+  userId: string | null
+  partageCommunaute: boolean
 }
 
 export function RacesTab() {
   const { toast } = useToast()
+  const { data: session } = useSession()
+  const currentUserId = (session?.user as any)?.id as string | undefined
+  const isAdmin = (session?.user as any)?.role === "ADMIN"
   const [especes, setEspeces] = React.useState<EspeceAnimale[]>([])
   const [races, setRaces] = React.useState<Race[]>([])
   const [filtre, setFiltre] = React.useState("all")
+  const [filtreOrigine, setFiltreOrigine] = React.useState<FiltreOrigineValue>("tout")
   const [loading, setLoading] = React.useState(true)
   const [avisRace, setAvisRace] = React.useState<Race | null>(null)
   const [showAdd, setShowAdd] = React.useState(false)
-  const [form, setForm] = React.useState({ nom: "", especeAnimaleId: "" })
+  const [form, setForm] = React.useState({ nom: "", especeAnimaleId: "", partageCommunaute: false })
 
   const reload = React.useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch("/api/elevage/races?avis=1").then((r) => r.json())
-      setRaces(res.data || [])
+      const res = await fetch("/api/elevage/races?avis=1")
+      if (!res.ok) throw new Error("Erreur de chargement")
+      const json = await res.json()
+      setRaces(json.data || [])
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les races" })
     } finally {
@@ -78,7 +94,10 @@ export function RacesTab() {
     reload()
   }, [reload])
 
-  const filtered = filtre === "all" ? races : races.filter((r) => r.especeAnimaleId === filtre)
+  const referentielActions = useReferentielActions("/api/elevage/races", reload, toast)
+
+  const parEspece = filtre === "all" ? races : races.filter((r) => r.especeAnimaleId === filtre)
+  const filtered = filtrerParOrigine(parEspece, filtreOrigine, currentUserId)
 
   const ajouter = async () => {
     if (!form.especeAnimaleId) {
@@ -93,7 +112,11 @@ export function RacesTab() {
       const res = await fetch("/api/elevage/races", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nom: form.nom.trim(), especeAnimaleId: form.especeAnimaleId }),
+        body: JSON.stringify({
+          nom: form.nom.trim(),
+          especeAnimaleId: form.especeAnimaleId,
+          partageCommunaute: form.partageCommunaute,
+        }),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
@@ -101,19 +124,7 @@ export function RacesTab() {
       }
       toast({ title: "Race ajoutée" })
       setShowAdd(false)
-      setForm({ nom: "", especeAnimaleId: "" })
-      reload()
-    } catch (e) {
-      toast({ variant: "destructive", title: "Erreur", description: e instanceof Error ? e.message : "Erreur" })
-    }
-  }
-
-  const supprimer = async (r: Race) => {
-    if (!(await confirmDialog(`Supprimer la race « ${r.nom} » ?`))) return
-    try {
-      const res = await fetch(`/api/elevage/races?id=${encodeURIComponent(r.id)}`, { method: "DELETE" })
-      if (!res.ok) throw new Error("Erreur")
-      toast({ title: "Race supprimée" })
+      setForm({ nom: "", especeAnimaleId: "", partageCommunaute: false })
       reload()
     } catch (e) {
       toast({ variant: "destructive", title: "Erreur", description: e instanceof Error ? e.message : "Erreur" })
@@ -145,7 +156,9 @@ export function RacesTab() {
           </Button>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-4">
+        {/* Filtre par origine (catalogue Gleba / communauté / mes races) */}
+        <FiltreOrigine value={filtreOrigine} onChange={setFiltreOrigine} labelPerso="Mes races" />
         {loading ? (
           <Skeleton className="h-40 w-full" />
         ) : filtered.length === 0 ? (
@@ -157,6 +170,7 @@ export function RacesTab() {
                 <TableHead>Race</TableHead>
                 <TableHead>Espèce</TableHead>
                 <TableHead>Avis</TableHead>
+                <TableHead>Origine</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -168,17 +182,28 @@ export function RacesTab() {
                   <TableCell>
                     <AvisCell stats={r.avisStats} onClick={() => setAvisRace(r)} />
                   </TableCell>
+                  <TableCell>
+                    <OrigineControls
+                      entree={{ id: r.id, userId: r.userId, partageCommunaute: r.partageCommunaute }}
+                      nom={r.nom}
+                      currentUserId={currentUserId}
+                      actions={referentielActions}
+                      showRemove={false}
+                    />
+                  </TableCell>
                   <TableCell className="text-right">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 w-8 p-0 hover:bg-red-100 hover:text-red-600"
-                      onClick={() => supprimer(r)}
-                      title="Supprimer"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    {(isAdmin || r.userId === currentUserId) && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0 hover:bg-red-100 hover:text-red-600"
+                        onClick={() => referentielActions.remove(r.id, r.nom)}
+                        title="Supprimer"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
@@ -217,6 +242,15 @@ export function RacesTab() {
                 placeholder="Ex: Sussex"
               />
             </div>
+            {!isAdmin && (
+              <label className="flex items-center gap-2 text-sm text-slate-600">
+                <Checkbox
+                  checked={form.partageCommunaute}
+                  onCheckedChange={(v) => setForm((f) => ({ ...f, partageCommunaute: v === true }))}
+                />
+                Proposer à la communauté Gleba
+              </label>
+            )}
             <Button type="button" className="w-full" onClick={ajouter}>
               Ajouter
             </Button>

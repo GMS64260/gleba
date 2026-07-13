@@ -1,18 +1,22 @@
 /**
- * API Espèces Animales - Référentiel
- * GET /api/elevage/especes-animales - Liste des especes
- * POST /api/elevage/especes-animales - Créer une espece
- * PATCH /api/elevage/especes-animales?id=xxx - Modifier une espece
- * DELETE /api/elevage/especes-animales?id=xxx - Supprimer une espece
+ * API Espèces Animales — Référentiel communautaire.
+ * GET  /api/elevage/especes-animales — Liste (visibilité communauté/perso)
+ * POST /api/elevage/especes-animales — Créer une espèce
+ *   - Admin : catalogue Gleba officiel (userId null).
+ *   - Utilisateur : perso (userId = lui), proposé à la communauté ou privé.
+ *
+ * Édition / suppression : voir /api/elevage/especes-animales/[id].
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
+import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { visibiliteReferentiel, attributionCreation } from '@/lib/referentiel-communaute'
 
 export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
   if (error) return error
+  const userId = session!.user.id
 
   try {
     const { searchParams } = new URL(request.url)
@@ -23,8 +27,13 @@ export async function GET(request: NextRequest) {
     if (type) where.type = type
     if (production) where.production = production
 
+    // Visibilité catalogue communautaire : Gleba officiel (userId null) +
+    // communauté (partagé par un membre) + mes propres espèces perso. Jamais
+    // le perso privé d'un autre. On combine avec les filtres existants via AND.
+    const whereVisible = { AND: [where, visibiliteReferentiel(userId)] }
+
     const especes = await prisma.especeAnimale.findMany({
-      where,
+      where: whereVisible,
       orderBy: { nom: 'asc' },
     })
 
@@ -33,7 +42,6 @@ export async function GET(request: NextRequest) {
     // alors que le Dashboard comptait 33 (4 individus actifs + 29 en lots).
     // On scope par utilisateur connecté et on filtre sur statut actif.
     // Pour les lots, on remonte effectifReel = somme(quantiteActuelle).
-    const userId = session?.user.id
     const especeIds = especes.map((e) => e.id)
 
     const [animauxParEspece, lotsParEspece] = await Promise.all([
@@ -81,8 +89,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const { error } = await requireAdminApi()
+  const { error, session } = await requireAuthApi()
   if (error) return error
+  const isAdmin = session!.user.role === 'ADMIN'
 
   try {
     const body = await request.json()
@@ -112,6 +121,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Création : admin → catalogue Gleba officiel (userId null) ;
+    // utilisateur → perso (userId = lui), proposé à la communauté ou privé.
     const espece = await prisma.especeAnimale.create({
       data: {
         id,
@@ -130,6 +141,7 @@ export async function POST(request: NextRequest) {
         prixAchat,
         couleur,
         description,
+        ...attributionCreation(isAdmin, session!.user.id, body.partageCommunaute === true),
       },
     })
 
@@ -144,96 +156,6 @@ export async function POST(request: NextRequest) {
     }
     return NextResponse.json(
       { error: 'Erreur lors de la création', details: "Erreur interne du serveur" },
-      { status: 500 }
-    )
-  }
-}
-
-export async function PATCH(request: NextRequest) {
-  const { error } = await requireAdminApi()
-  if (error) return error
-
-  try {
-    const { searchParams } = new URL(request.url)
-    const id = searchParams.get('id')
-    if (!id) {
-      return NextResponse.json({ error: 'ID requis' }, { status: 400 })
-    }
-
-    const body = await request.json()
-    const {
-      nom, type, production, categorieReglementaire, productions,
-      dureeGestation, dureeCouvaison, dureeElevage,
-      poidsAdulte, rendementCarcasse, ponteAnnuelle,
-      consommationJour, prixAchat, couleur, description,
-    } = body
-
-    const data: any = {}
-    if (nom !== undefined) data.nom = nom
-    if (type !== undefined) data.type = type
-    if (production !== undefined) data.production = production
-    if (categorieReglementaire !== undefined) data.categorieReglementaire = categorieReglementaire ?? null
-    if (productions !== undefined) data.productions = Array.isArray(productions) ? productions : []
-    if (dureeGestation !== undefined) data.dureeGestation = dureeGestation
-    if (dureeCouvaison !== undefined) data.dureeCouvaison = dureeCouvaison
-    if (dureeElevage !== undefined) data.dureeElevage = dureeElevage
-    if (poidsAdulte !== undefined) data.poidsAdulte = poidsAdulte
-    if (rendementCarcasse !== undefined) data.rendementCarcasse = rendementCarcasse
-    if (ponteAnnuelle !== undefined) data.ponteAnnuelle = ponteAnnuelle
-    if (consommationJour !== undefined) data.consommationJour = consommationJour
-    if (prixAchat !== undefined) data.prixAchat = prixAchat
-    if (couleur !== undefined) data.couleur = couleur
-    if (description !== undefined) data.description = description
-
-    const espece = await prisma.especeAnimale.update({
-      where: { id },
-      data,
-    })
-
-    return NextResponse.json({ data: espece })
-  } catch (error) {
-    console.error('PATCH /api/elevage/especes-animales error:', error)
-    return NextResponse.json(
-      { error: 'Erreur lors de la modification', details: "Erreur interne du serveur" },
-      { status: 500 }
-    )
-  }
-}
-
-export async function DELETE(request: NextRequest) {
-  const { error } = await requireAdminApi()
-  if (error) return error
-
-  try {
-    const { searchParams } = new URL(request.url)
-    const id = searchParams.get('id')
-    if (!id) {
-      return NextResponse.json({ error: 'ID requis' }, { status: 400 })
-    }
-
-    // Vérifier qu'aucun animal/lot ne l'utilise
-    const counts = await prisma.especeAnimale.findUnique({
-      where: { id },
-      include: { _count: { select: { animaux: true, lots: true } } },
-    })
-
-    if (!counts) {
-      return NextResponse.json({ error: 'Espèce non trouvée' }, { status: 404 })
-    }
-
-    if (counts._count.animaux > 0 || counts._count.lots > 0) {
-      return NextResponse.json(
-        { error: `Impossible de supprimer : ${counts._count.animaux} animaux et ${counts._count.lots} lots liés` },
-        { status: 409 }
-      )
-    }
-
-    await prisma.especeAnimale.delete({ where: { id } })
-    return NextResponse.json({ success: true })
-  } catch (error) {
-    console.error('DELETE /api/elevage/especes-animales error:', error)
-    return NextResponse.json(
-      { error: 'Erreur lors de la suppression', details: "Erreur interne du serveur" },
       { status: 500 }
     )
   }
