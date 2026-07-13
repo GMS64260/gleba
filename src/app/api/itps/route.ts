@@ -146,8 +146,9 @@ export async function POST(request: NextRequest) {
     // sinon le trigger PG la met à NULL silencieusement — on rejette en
     // 400 plutôt avec un message clair côté UI).
     if (data.especeId) {
-      const espece = await prisma.espece.findUnique({
-        where: { id: data.especeId },
+      // L'espèce parente doit être VISIBLE (sinon rattachement/divulgation d'un privé d'autrui).
+      const espece = await prisma.espece.findFirst({
+        where: { AND: [{ id: data.especeId }, visibiliteReferentiel(session!.user.id)] },
         select: { id: true, typeCultureSemis: true },
       })
       if (!espece) {

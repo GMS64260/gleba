@@ -11,6 +11,7 @@ import { Prisma } from '@prisma/client'
 import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
 import { cleanReferentielName, normalizeVarieteName } from '@/lib/normalize'
 import { statsAvisPourRefs } from '@/lib/avis/stats-liste'
+import { visibiliteReferentiel, attributionCreation } from '@/lib/referentiel-communaute'
 
 // GET /api/varietes - Référentiel global (lecture)
 export async function GET(request: NextRequest) {
@@ -67,7 +68,7 @@ export async function GET(request: NextRequest) {
     const userId = session!.user.id
     // Visibilité : catalogue Gleba officiel (userId null) + communauté (partagé) + mes perso.
     const whereVisible: Prisma.VarieteWhereInput = {
-      AND: [where, { OR: [{ userId: null }, { partageCommunaute: true }, { userId }] }],
+      AND: [where, visibiliteReferentiel(userId)],
     }
     const [varietes, total] = await Promise.all([
       prisma.variete.findMany({
@@ -167,8 +168,9 @@ export async function POST(request: NextRequest) {
     // et l'index unique composite (espece, nom_normalise)).
     const nomNormalise = normalizeVarieteName(data.id)
 
+    // Dédup bornée aux variétés VISIBLES (officiel + communauté + les miennes).
     const conflit = await prisma.variete.findFirst({
-      where: { especeId: data.especeId, nomNormalise },
+      where: { AND: [{ especeId: data.especeId, nomNormalise }, visibiliteReferentiel(session!.user.id)] },
       select: { id: true },
     })
     if (conflit) {
@@ -181,9 +183,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Vérifier que l'espece existe
-    const espece = await prisma.espece.findUnique({
-      where: { id: data.especeId },
+    // L'espèce parente doit être VISIBLE par l'utilisateur (sinon on rattacherait
+    // — et divulguerait — l'espèce privée d'autrui).
+    const espece = await prisma.espece.findFirst({
+      where: { AND: [{ id: data.especeId }, visibiliteReferentiel(session!.user.id)] },
+      select: { id: true },
     })
     if (!espece) {
       return NextResponse.json(
@@ -210,8 +214,7 @@ export async function POST(request: NextRequest) {
       data: {
         ...data,
         nomNormalise,
-        userId: isAdmin ? null : session!.user.id,
-        partageCommunaute: isAdmin ? false : body.partageCommunaute === true,
+        ...attributionCreation(isAdmin, session!.user.id, body.partageCommunaute === true),
       },
       include: {
         espece: true,

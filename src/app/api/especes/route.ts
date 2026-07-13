@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { createEspeceSchema } from '@/lib/validations'
+import { visibiliteReferentiel, attributionCreation } from '@/lib/referentiel-communaute'
 import { Prisma } from '@prisma/client'
 import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
 import { cleanReferentielName, normalizeReferentielKey } from '@/lib/normalize'
@@ -100,7 +101,7 @@ export async function GET(request: NextRequest) {
         ? { userId: { not: null }, partageCommunaute: true }
         : {}
     const whereVisible: Prisma.EspeceWhereInput = {
-      AND: [where, { OR: [{ userId: null }, { partageCommunaute: true }, { userId: me }] }, origineFilter],
+      AND: [where, visibiliteReferentiel(me), origineFilter],
     }
 
     // Requête avec comptage
@@ -191,9 +192,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Détection de doublon "mou" (différence d'accent / tiret / espace / casse)
+    // Détection de doublon "mou" (différence d'accent / tiret / espace / casse),
+    // bornée aux entrées VISIBLES (officiel + communauté + les miennes) : on ne
+    // révèle pas l'existence d'une entrée privée d'un autre membre.
     const normalizedKey = normalizeReferentielKey(data.id)
-    const allEspeces = await prisma.espece.findMany({ select: { id: true } })
+    const allEspeces = await prisma.espece.findMany({
+      where: visibiliteReferentiel(session!.user.id),
+      select: { id: true },
+    })
     const conflit = allEspeces.find((e) => normalizeReferentielKey(e.id) === normalizedKey)
     if (conflit) {
       return NextResponse.json(
@@ -209,8 +215,7 @@ export async function POST(request: NextRequest) {
     const espece = await prisma.espece.create({
       data: {
         ...data,
-        userId: isAdmin ? null : session!.user.id,
-        partageCommunaute: isAdmin ? false : body.partageCommunaute === true,
+        ...attributionCreation(isAdmin, session!.user.id, body.partageCommunaute === true),
       },
       include: {
         famille: true,

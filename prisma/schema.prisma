@@ -497,6 +497,7 @@ model Espece {
   portesGreffe       PorteGreffeEspece[]
   bioagresseurs      BioagresseurEspece[]
 
+  @@index([userId])
   @@map("especes")
 }
 
@@ -666,6 +667,7 @@ model Variete {
 
   @@unique([especeId, nomNormalise], name: "espece_nom_normalise")
   @@index([isPlaceholder])
+  @@index([userId])
   @@map("varietes")
 }
 
