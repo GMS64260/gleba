@@ -6,11 +6,13 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
+import { useSession } from "next-auth/react"
 import { ColumnDef } from "@tanstack/react-table"
-import { Leaf, Salad, TreeDeciduous, Cherry, Sprout, Flower2 } from "lucide-react"
+import { Leaf, Salad, TreeDeciduous, Cherry, Sprout, Flower2, Share2, Lock, Trash2 } from "lucide-react"
 
 import { DataTable } from "@/components/tables/DataTable"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/hooks/use-toast"
 
@@ -37,6 +39,10 @@ const TYPE_LABELS: Record<string, string> = {
 interface EspeceWithRelations {
   id: string
   type: string
+  // Catalogue communautaire : userId null = Gleba officiel ; renseigné = perso
+  // d'un membre. partageCommunaute = proposé/partagé à la communauté.
+  userId: string | null
+  partageCommunaute: boolean
   familleId: string | null
   nomLatin: string | null
   rendement: number | null
@@ -155,6 +161,8 @@ const columns: ColumnDef<EspeceWithRelations>[] = [
 export function ReferentielTab() {
   const router = useRouter()
   const { toast } = useToast()
+  const { data: session } = useSession()
+  const currentUserId = (session?.user as any)?.id as string | undefined
   const [data, setData] = React.useState<EspeceWithRelations[]>([])
   const [filteredData, setFilteredData] = React.useState<EspeceWithRelations[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
@@ -188,6 +196,99 @@ export function ReferentielTab() {
     }
   }, [selectedType, data])
 
+  // Catalogue communautaire : proposer/retirer sa variété perso à la communauté.
+  const handleTogglePartage = async (espece: EspeceWithRelations) => {
+    const next = !espece.partageCommunaute
+    try {
+      const res = await fetch(`/api/especes/${encodeURIComponent(espece.id)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ partageCommunaute: next }),
+      })
+      if (!res.ok) {
+        const p = await res.json().catch(() => null)
+        throw new Error(p?.error || "Action impossible")
+      }
+      toast({
+        title: next ? "Proposée à la communauté" : "Rendue privée",
+        description: `« ${espece.id} »`,
+      })
+      fetchData()
+    } catch (e) {
+      toast({
+        variant: "destructive",
+        title: "Erreur",
+        description: e instanceof Error ? e.message : "Action impossible",
+      })
+    }
+  }
+
+  // Suppression d'une espèce perso (auteur). Le 409 « utilisée par… » est affiché.
+  const handleDelete = async (espece: EspeceWithRelations) => {
+    if (!window.confirm(`Supprimer votre espèce « ${espece.id} » ?`)) return
+    try {
+      const res = await fetch(`/api/especes/${encodeURIComponent(espece.id)}`, {
+        method: "DELETE",
+      })
+      if (!res.ok) {
+        const p = await res.json().catch(() => null)
+        throw new Error(p?.error || "Suppression impossible")
+      }
+      toast({ title: "Espèce supprimée", description: `« ${espece.id} »` })
+      fetchData()
+    } catch (e) {
+      toast({
+        variant: "destructive",
+        title: "Erreur",
+        description: e instanceof Error ? e.message : "Suppression impossible",
+      })
+    }
+  }
+
+  // Colonne « Origine » : badge Gleba/Perso/Communauté + actions sur son perso.
+  const origineColumn: ColumnDef<EspeceWithRelations> = {
+    id: "origine",
+    header: "Origine",
+    enableSorting: false,
+    cell: ({ row }) => {
+      const e = row.original
+      const mine = !!currentUserId && e.userId === currentUserId
+      return (
+        <div className="flex items-center gap-1" onClick={(ev) => ev.stopPropagation()}>
+          {e.userId == null ? (
+            <Badge variant="outline" className="text-xs text-muted-foreground">Gleba</Badge>
+          ) : mine ? (
+            <Badge variant="secondary" className="text-xs">Perso</Badge>
+          ) : e.partageCommunaute ? (
+            <Badge variant="outline" className="text-xs">Communauté</Badge>
+          ) : null}
+          {mine && (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0 hover:bg-emerald-100 hover:text-emerald-700"
+                title={e.partageCommunaute ? "Rendre privé (retirer de la communauté)" : "Proposer à la communauté"}
+                onClick={() => handleTogglePartage(e)}
+              >
+                {e.partageCommunaute ? <Lock className="h-4 w-4" /> : <Share2 className="h-4 w-4" />}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0 hover:bg-red-100 hover:text-red-600"
+                title="Supprimer"
+                onClick={() => handleDelete(e)}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </>
+          )}
+        </div>
+      )
+    },
+  }
+
   return (
     <div className="space-y-4">
       <Tabs value={selectedType} onValueChange={setSelectedType}>
@@ -202,7 +303,7 @@ export function ReferentielTab() {
       </Tabs>
 
       <DataTable
-        columns={columns}
+        columns={[...columns, origineColumn]}
         data={filteredData}
         isLoading={isLoading}
         showPagination={true}

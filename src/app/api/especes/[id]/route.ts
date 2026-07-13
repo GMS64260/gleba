@@ -79,8 +79,9 @@ export async function PUT(
   request: NextRequest,
   { params }: RouteParams
 ) {
-  const { error } = await requireAdminApi()
+  const { session, error } = await requireAuthApi()
   if (error) return error
+  const isAdmin = session!.user.role === 'ADMIN'
 
   try {
     const { id } = await params
@@ -107,10 +108,23 @@ export async function PUT(
       )
     }
 
-    // Mise à jour
+    // Seul l'auteur d'une espèce perso (ou un admin) peut la modifier.
+    if (!isAdmin && existing.userId !== session!.user.id) {
+      return NextResponse.json(
+        { error: 'Vous ne pouvez modifier que vos propres espèces.' },
+        { status: 403 }
+      )
+    }
+
+    // Mise à jour (l'auteur d'un perso peut basculer « proposer à la communauté »).
     const espece = await prisma.espece.update({
       where: { id },
-      data: validationResult.data,
+      data: {
+        ...validationResult.data,
+        ...(existing.userId && body.partageCommunaute !== undefined
+          ? { partageCommunaute: body.partageCommunaute === true }
+          : {}),
+      },
       include: {
         famille: true,
       },
@@ -131,8 +145,9 @@ export async function DELETE(
   request: NextRequest,
   { params }: RouteParams
 ) {
-  const { error } = await requireAdminApi()
+  const { session, error } = await requireAuthApi()
   if (error) return error
+  const isAdmin = session!.user.role === 'ADMIN'
 
   try {
     const { id } = await params
@@ -154,6 +169,14 @@ export async function DELETE(
       return NextResponse.json(
         { error: `Espèce "${id}" non trouvée` },
         { status: 404 }
+      )
+    }
+
+    // Seul l'auteur d'une espèce perso (ou un admin) peut la supprimer.
+    if (!isAdmin && espece.userId !== session!.user.id) {
+      return NextResponse.json(
+        { error: 'Vous ne pouvez supprimer que vos propres espèces.' },
+        { status: 403 }
       )
     }
 
