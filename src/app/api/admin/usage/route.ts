@@ -1,11 +1,18 @@
 /**
- * API Admin - Courbes d'utilisation par utilisateur dans le temps
+ * API Admin - Courbes d'activité par utilisateur dans le temps
  * GET /api/admin/usage?days=90&bucket=week&top=8
  *
- * Exclut le compte démo (demo@gleba.fr) et les comptes ADMIN pour ne
- * garder que les vrais utilisateurs. Retourne :
- *  - ranking : classement des plus gros utilisateurs (connexions + contenu)
- *  - series  : connexions par période (bucket) pour le top N, prêtes à tracer
+ * Métrique : jours actifs (table activity_days — 1 ligne par user et par
+ * jour UTC où il a utilisé l'app, alimentée par touchActivity() et
+ * backfillée depuis l'historique). Les anciennes stats de connexions
+ * sous-comptaient : la session JWT dure 30 jours, un utilisateur quotidien
+ * n'apparaissait qu'à la re-saisie de son mot de passe.
+ *
+ * Exclut le compte démo (demo@gleba.fr) et les comptes ADMIN. Le contenu
+ * créé exclut les données d'exemple générées à l'inscription
+ * (createSampleDataForUser). Retourne :
+ *  - ranking : classement des utilisateurs les plus actifs
+ *  - series  : jours actifs par période (bucket) pour le top N
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -60,39 +67,40 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // 3. Connexions totales + dans la fenêtre + dernière connexion (par user)
-    const [totalLoginsRows, windowLoginsRows, lastLoginRows, contentByUser] =
+    // 3. Jours actifs : total + fenêtre + dernier jour (par user)
+    const [totalDaysRows, windowDaysRows, lastDayRows, contentByUser] =
       await Promise.all([
-        prisma.loginLog.groupBy({
+        prisma.activityDay.groupBy({
           by: ["userId"],
-          where: { userId: { in: userIds }, success: true },
+          where: { userId: { in: userIds } },
           _count: true,
         }),
-        prisma.loginLog.groupBy({
+        prisma.activityDay.groupBy({
           by: ["userId"],
-          where: { userId: { in: userIds }, success: true, createdAt: { gte: windowStart } },
+          where: { userId: { in: userIds }, day: { gte: windowStart } },
           _count: true,
         }),
-        prisma.loginLog.groupBy({
+        prisma.activityDay.groupBy({
           by: ["userId"],
-          where: { userId: { in: userIds }, success: true },
-          _max: { createdAt: true },
+          where: { userId: { in: userIds } },
+          _max: { day: true },
         }),
         getContentByUser(userIds),
       ])
 
-    const totalLoginsMap = toCountMap(totalLoginsRows)
-    const windowLoginsMap = toCountMap(windowLoginsRows)
-    const lastLoginMap = new Map<string, Date | null>()
-    for (const r of lastLoginRows) {
-      if (r.userId) lastLoginMap.set(r.userId, r._max.createdAt ?? null)
+    const totalDaysMap = toCountMap(totalDaysRows)
+    const windowDaysMap = toCountMap(windowDaysRows)
+    const lastDayMap = new Map<string, Date | null>()
+    for (const r of lastDayRows) {
+      if (r.userId) lastDayMap.set(r.userId, r._max.day ?? null)
     }
 
-    // 4. Classement (score = connexions totales + contenu créé)
+    // 4. Classement : les plus actifs sur la fenêtre, puis sur le total,
+    //    puis au contenu créé
     const ranking = users
       .map((u) => {
-        const totalLogins = totalLoginsMap.get(u.id) ?? 0
-        const loginsInWindow = windowLoginsMap.get(u.id) ?? 0
+        const activeDaysTotal = totalDaysMap.get(u.id) ?? 0
+        const activeDaysInWindow = windowDaysMap.get(u.id) ?? 0
         const contentTotal = contentByUser.get(u.id) ?? 0
         return {
           id: u.id,
@@ -100,25 +108,21 @@ export async function GET(request: NextRequest) {
           name: u.name,
           active: u.active,
           createdAt: u.createdAt.toISOString(),
-          totalLogins,
-          loginsInWindow,
-          lastLogin: lastLoginMap.get(u.id)?.toISOString() ?? null,
+          activeDaysTotal,
+          activeDaysInWindow,
+          lastActivity: lastDayMap.get(u.id)?.toISOString() ?? null,
           contentTotal,
-          score: totalLogins + contentTotal,
         }
       })
-      .sort((a, b) => b.score - a.score || b.totalLogins - a.totalLogins)
-
-    // 5. Séries temporelles : connexions par bucket pour le top N (les plus
-    //    actifs sur la fenêtre, puis sur le total)
-    const topUsers = [...ranking]
       .sort(
         (a, b) =>
-          b.loginsInWindow - a.loginsInWindow ||
-          b.totalLogins - a.totalLogins ||
+          b.activeDaysInWindow - a.activeDaysInWindow ||
+          b.activeDaysTotal - a.activeDaysTotal ||
           b.contentTotal - a.contentTotal
       )
-      .slice(0, top)
+
+    // 5. Séries temporelles : jours actifs par bucket pour le top N
+    const topUsers = ranking.slice(0, top)
     const topIds = topUsers.map((u) => u.id)
 
     const buckets = buildBuckets(windowStart, now, bucket)
@@ -130,11 +134,10 @@ export async function GET(request: NextRequest) {
         Array<{ userId: string; bucket: string; n: number }>
       >`
         SELECT user_id AS "userId",
-               to_char(date_trunc(${bucketSql}, created_at), 'YYYY-MM-DD') AS bucket,
+               to_char(date_trunc(${bucketSql}, day::timestamp), 'YYYY-MM-DD') AS bucket,
                count(*)::int AS n
-        FROM login_logs
-        WHERE success = true
-          AND created_at >= ${windowStart}
+        FROM activity_days
+        WHERE day >= ${windowStart}
           AND user_id = ANY(${topIds})
         GROUP BY user_id, bucket
       `
@@ -172,30 +175,45 @@ export async function GET(request: NextRequest) {
   }
 }
 
-/** Somme du contenu créé par user sur les principales tables métier. */
+/**
+ * Contenu créé par user sur les principales tables métier, HORS données
+ * d'exemple de l'inscription : on ignore les lignes créées dans les
+ * 2 minutes suivant la création du compte (le seed s'exécute à
+ * l'inscription). Les planches n'ont pas de created_at : on exclut les
+ * deux planches du seed par leur nom.
+ */
 async function getContentByUser(userIds: string[]): Promise<Map<string, number>> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const delegates: any[] = [
-    prisma.culture,
-    prisma.recolte,
-    prisma.planche,
-    prisma.note,
-    prisma.venteProduit,
-    prisma.animal,
-    prisma.recolteArbre,
-    prisma.facture,
-  ]
+  const rows = await prisma.$queryRaw<Array<{ userId: string; total: number }>>`
+    SELECT t.user_id AS "userId", sum(t.n)::int AS total FROM (
+      SELECT c.user_id, count(*) AS n FROM cultures c
+        JOIN users u ON u.id = c.user_id
+        WHERE c.created_at > u.created_at + interval '2 minutes' GROUP BY c.user_id
+      UNION ALL SELECT r.user_id, count(*) FROM recoltes r
+        JOIN users u ON u.id = r.user_id
+        WHERE r.created_at > u.created_at + interval '2 minutes' GROUP BY r.user_id
+      UNION ALL SELECT n2.user_id, count(*) FROM notes n2
+        JOIN users u ON u.id = n2.user_id
+        WHERE n2.created_at > u.created_at + interval '2 minutes' GROUP BY n2.user_id
+      UNION ALL SELECT v.user_id, count(*) FROM ventes_produits v
+        JOIN users u ON u.id = v.user_id
+        WHERE v.created_at > u.created_at + interval '2 minutes' GROUP BY v.user_id
+      UNION ALL SELECT a.user_id, count(*) FROM animaux a
+        JOIN users u ON u.id = a.user_id
+        WHERE a.created_at > u.created_at + interval '2 minutes' GROUP BY a.user_id
+      UNION ALL SELECT ra.user_id, count(*) FROM recoltes_arbres ra
+        JOIN users u ON u.id = ra.user_id
+        WHERE ra.created_at > u.created_at + interval '2 minutes' GROUP BY ra.user_id
+      UNION ALL SELECT f.user_id, count(*) FROM factures f
+        JOIN users u ON u.id = f.user_id
+        WHERE f.created_at > u.created_at + interval '2 minutes' GROUP BY f.user_id
+      UNION ALL SELECT p.user_id, count(*) FROM planches p
+        WHERE p.nom NOT IN ('Planche A', 'Planche B') GROUP BY p.user_id
+    ) t
+    WHERE t.user_id = ANY(${userIds})
+    GROUP BY t.user_id
+  `
   const map = new Map<string, number>()
-  const results = await Promise.all(
-    delegates.map((d) =>
-      d.groupBy({ by: ["userId"], where: { userId: { in: userIds } }, _count: true })
-    )
-  )
-  for (const rows of results) {
-    for (const r of rows as Array<{ userId: string | null; _count: number }>) {
-      if (r.userId) map.set(r.userId, (map.get(r.userId) ?? 0) + (r._count ?? 0))
-    }
-  }
+  for (const r of rows) map.set(r.userId, Number(r.total))
   return map
 }
 

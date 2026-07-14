@@ -1,9 +1,10 @@
 "use client"
 
 /**
- * Page Admin - Utilisation par utilisateur dans le temps
- * Courbes de connexions par période + classement des plus gros utilisateurs
- * (compte démo et comptes admin exclus).
+ * Page Admin - Activité par utilisateur dans le temps
+ * Courbes de jours actifs par période + classement des utilisateurs les
+ * plus actifs (compte démo et comptes admin exclus, contenu d'exemple
+ * de l'inscription non compté).
  */
 
 import * as React from "react"
@@ -43,7 +44,7 @@ import {
   Loader2,
   Trophy,
   Users,
-  LogIn,
+  CalendarCheck,
   Search,
   ArrowUp,
   ArrowDown,
@@ -56,11 +57,10 @@ interface RankUser {
   name: string | null
   active: boolean
   createdAt: string
-  totalLogins: number
-  loginsInWindow: number
-  lastLogin: string | null
+  activeDaysTotal: number
+  activeDaysInWindow: number
+  lastActivity: string | null
   contentTotal: number
-  score: number
 }
 
 interface SeriesUser {
@@ -81,10 +81,10 @@ interface UsageData {
 type SortKey =
   | "default"
   | "user"
-  | "loginsInWindow"
-  | "totalLogins"
+  | "activeDaysInWindow"
+  | "activeDaysTotal"
   | "contentTotal"
-  | "lastLogin"
+  | "lastActivity"
   | "createdAt"
 
 const PALETTE = [
@@ -113,6 +113,17 @@ function fmtDate(s: string | null) {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
+  })
+}
+
+/** Dates pures (jours actifs) : à formater en UTC pour ne pas glisser d'un jour */
+function fmtDay(s: string | null) {
+  if (!s) return "—"
+  return new Date(s).toLocaleDateString("fr-FR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: "UTC",
   })
 }
 
@@ -213,7 +224,7 @@ export default function AdminUsagePage() {
         case "user":
           cmp = userLabel(a).localeCompare(userLabel(b), "fr", { sensitivity: "base" })
           break
-        case "lastLogin":
+        case "lastActivity":
         case "createdAt": {
           const av = a[sortKey] ? new Date(a[sortKey] as string).getTime() : 0
           const bv = b[sortKey] ? new Date(b[sortKey] as string).getTime() : 0
@@ -228,13 +239,15 @@ export default function AdminUsagePage() {
     return sorted
   }, [data, search, sortKey, sortDir])
 
+  const bucketLabel = bucket === "day" ? "jour" : bucket === "week" ? "semaine" : "mois"
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-amber-50 to-white">
       <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <TrendingUp className="h-8 w-8 text-amber-600" />
-            <h1 className="text-2xl font-bold text-amber-800">Utilisation des comptes</h1>
+            <h1 className="text-2xl font-bold text-amber-800">Activité des comptes</h1>
           </div>
           <Link href="/admin">
             <Button variant="outline" size="sm">
@@ -279,7 +292,7 @@ export default function AdminUsagePage() {
         ) : !data ? (
           <Card>
             <CardContent className="py-12 text-center text-muted-foreground">
-              Impossible de charger les métriques d&apos;utilisation
+              Impossible de charger les métriques d&apos;activité
             </CardContent>
           </Card>
         ) : (
@@ -301,10 +314,10 @@ export default function AdminUsagePage() {
                 }`}
               />
               <SummaryCard
-                icon={<LogIn className="h-5 w-5 text-green-600" />}
-                label="Courbes affichées"
-                value={data.series.users.length}
-                hint={`top ${top} sur la période`}
+                icon={<CalendarCheck className="h-5 w-5 text-green-600" />}
+                label="Actifs sur la période"
+                value={data.ranking.filter((u) => u.activeDaysInWindow > 0).length}
+                hint={`au moins 1 jour actif sur ${data.range.days}j`}
               />
             </div>
 
@@ -313,16 +326,17 @@ export default function AdminUsagePage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <TrendingUp className="h-5 w-5 text-amber-600" />
-                  Connexions par {bucket === "day" ? "jour" : bucket === "week" ? "semaine" : "mois"}
+                  Jours actifs par {bucketLabel}
                 </CardTitle>
                 <CardDescription>
-                  Une courbe par utilisateur (top {top} sur la période). Survolez pour le détail.
+                  Un jour est « actif » dès que l&apos;utilisateur a utilisé l&apos;app ce jour-là
+                  (visite ou action). Une courbe par utilisateur (top {top} sur la période).
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 {!hasSeriesData ? (
                   <div className="h-[360px] flex items-center justify-center text-muted-foreground">
-                    Aucune connexion enregistrée sur cette période
+                    Aucune activité enregistrée sur cette période
                   </div>
                 ) : (
                   <ResponsiveContainer width="100%" height={400}>
@@ -360,7 +374,8 @@ export default function AdminUsagePage() {
                   Top utilisateurs
                 </CardTitle>
                 <CardDescription>
-                  Classés par activité (connexions + contenu créé). Idéal pour relancer les plus engagés.
+                  Classés par jours actifs sur la période. Le contenu créé ne compte pas
+                  les données d&apos;exemple de l&apos;inscription.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -389,10 +404,10 @@ export default function AdminUsagePage() {
                         <TableRow>
                           <TableHead className="w-[40px]">#</TableHead>
                           <SortHead label="Utilisateur" col="user" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
-                          <SortHead label={`Connexions (${data.range.days}j)`} col="loginsInWindow" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} align="right" />
-                          <SortHead label="Connexions totales" col="totalLogins" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} align="right" />
+                          <SortHead label={`Jours actifs (${data.range.days}j)`} col="activeDaysInWindow" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} align="right" />
+                          <SortHead label="Jours actifs (total)" col="activeDaysTotal" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} align="right" />
                           <SortHead label="Contenu créé" col="contentTotal" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} align="right" />
-                          <SortHead label="Dernière connexion" col="lastLogin" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                          <SortHead label="Dernière activité" col="lastActivity" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
                           <SortHead label="Inscrit le" col="createdAt" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
                         </TableRow>
                       </TableHeader>
@@ -423,16 +438,16 @@ export default function AdminUsagePage() {
                               </div>
                             </TableCell>
                             <TableCell className="text-right font-semibold">
-                              {u.loginsInWindow}
+                              {u.activeDaysInWindow}
                             </TableCell>
                             <TableCell className="text-right text-muted-foreground">
-                              {u.totalLogins}
+                              {u.activeDaysTotal}
                             </TableCell>
                             <TableCell className="text-right text-muted-foreground">
                               {u.contentTotal}
                             </TableCell>
                             <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
-                              {fmtDate(u.lastLogin)}
+                              {fmtDay(u.lastActivity)}
                             </TableCell>
                             <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
                               {fmtDate(u.createdAt)}

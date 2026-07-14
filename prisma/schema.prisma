@@ -154,6 +154,9 @@ model User {
   // Logs de connexion
   loginLogs             LoginLog[]
 
+  // Jours d'activité (stats admin)
+  activityDays          ActivityDay[]
+
   // Feedback
   feedbackTokens        FeedbackToken[]
   feedbackResponses     FeedbackResponse[]
@@ -240,6 +243,19 @@ model LoginLog {
   @@index([createdAt])
   @@index([email])
   @@map("login_logs")
+}
+
+// Un enregistrement par utilisateur et par jour (UTC) où il a utilisé l'app.
+// Alimenté par touchActivity() (src/lib/activity.ts) via les helpers d'auth,
+// backfillé depuis l'historique (login_logs + created_at des tables métier).
+model ActivityDay {
+  userId String   @map("user_id")
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  day    DateTime @db.Date
+
+  @@id([userId, day])
+  @@index([day])
+  @@map("activity_days")
 }
 
 /// Lien unique de feedback envoyé à un utilisateur ciblé
