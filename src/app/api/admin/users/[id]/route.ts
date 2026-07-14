@@ -71,6 +71,15 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const body = await request.json()
     const { name, password, role, active } = body
 
+    // Le compte système « Communauté Gleba » (sentinelle, non connectable) n'est
+    // ni modifiable ni supprimable — parité avec la garde du DELETE.
+    if (id === COMMUNAUTE_USER_ID) {
+      return NextResponse.json(
+        { error: "Le compte système « Communauté Gleba » ne peut pas être modifié." },
+        { status: 400 }
+      )
+    }
+
     // Verifier que l'utilisateur existe
     const existing = await prisma.user.findUnique({
       where: { id },

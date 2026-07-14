@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { updateVarieteSchema } from '@/lib/validations'
 import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
+import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -61,6 +62,22 @@ export async function PUT(
       if (!fournisseur) {
         return NextResponse.json(
           { error: `Le fournisseur "${validationResult.data.fournisseurId}" n'existe pas` },
+          { status: 400 }
+        )
+      }
+    }
+
+    // Sécurité (parité avec le POST) : si on change l'espèce parente, elle doit
+    // être VISIBLE par l'appelant — sinon un membre rattacherait (et la réponse
+    // include:{espece} divulguerait) l'espèce privée d'autrui.
+    if (validationResult.data.especeId) {
+      const espece = await prisma.espece.findFirst({
+        where: { AND: [{ id: validationResult.data.especeId }, visibiliteReferentiel(session!.user.id)] },
+        select: { id: true },
+      })
+      if (!espece) {
+        return NextResponse.json(
+          { error: `L'espèce "${validationResult.data.especeId}" n'existe pas` },
           { status: 400 }
         )
       }

@@ -138,10 +138,25 @@ export async function POST(request: NextRequest) {
     const estOfficiel = attrib.userId === null
 
     if (estOfficiel) {
-      // Catalogue Gleba : l'id reste le nom lisible (rétro-compat). Unicité globale.
+      // Catalogue Gleba : l'id reste le nom lisible (rétro-compat). Unicité globale
+      // exacte + "mou" (nom normalisé), par parité avec les espèces — review #6.
       const existing = await prisma.iTP.findUnique({ where: { id: nomSaisi } })
       if (existing) {
         return NextResponse.json({ error: `L'ITP "${nomSaisi}" existe déjà` }, { status: 409 })
+      }
+      const officiels = await prisma.iTP.findMany({
+        where: { userId: null },
+        select: { id: true, nomNormalise: true },
+      })
+      const conflit = officiels.find((i) => (i.nomNormalise ?? normalizeReferentielKey(i.id)) === nomNormalise)
+      if (conflit) {
+        return NextResponse.json(
+          {
+            error: `Un itinéraire similaire existe déjà : "${conflit.id}". Si c'est le même, utilisez-le ; sinon, choisissez un nom plus distinctif.`,
+            conflit: conflit.id,
+          },
+          { status: 409 }
+        )
       }
     } else {
       // Perso : dédup bornée à MES ITP (index unique partiel user_id, nom_normalise).
