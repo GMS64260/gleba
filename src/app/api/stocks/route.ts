@@ -116,9 +116,11 @@ export async function GET(request: NextRequest) {
           variete: {
             select: {
               id: true,
+              nom: true,
               especeId: true,
               nbGrainesG: true,
               fournisseurId: true,
+              espece: { select: { nom: true } },
             },
           },
         },
@@ -127,7 +129,11 @@ export async function GET(request: NextRequest) {
 
       return userStocks.map(us => ({
         id: us.variete.id,
+        // Refactor clé technique : id = cuid opaque pour le perso ; on expose le
+        // nom lisible pour l'affichage (fallback sur l'id de l'officiel).
+        varieteNom: us.variete.nom ?? us.variete.id,
         especeId: us.variete.especeId,
+        especeNom: us.variete.espece?.nom ?? us.variete.especeId,
         stockGraines: us.stockGraines,
         stockPlants: us.stockPlants,
         dateStock: us.dateStock,
@@ -142,9 +148,11 @@ export async function GET(request: NextRequest) {
         where: especeTypeFilter ? { espece: { type: especeTypeFilter } } : undefined,
         select: {
           id: true,
+          nom: true,
           especeId: true,
           nbGrainesG: true,
           fournisseurId: true,
+          espece: { select: { nom: true } },
           userStocks: {
             where: { userId },
             select: {
@@ -159,7 +167,11 @@ export async function GET(request: NextRequest) {
 
       return varietes.map(v => ({
         id: v.id,
+        // Refactor clé technique : id = cuid opaque pour le perso ; on expose le
+        // nom lisible pour l'affichage (fallback sur l'id de l'officiel).
+        varieteNom: v.nom ?? v.id,
         especeId: v.especeId,
+        especeNom: v.espece?.nom ?? v.especeId,
         stockGraines: v.userStocks[0]?.stockGraines ?? null,
         stockPlants: v.userStocks[0]?.stockPlants ?? null,
         dateStock: v.userStocks[0]?.dateStock ?? null,

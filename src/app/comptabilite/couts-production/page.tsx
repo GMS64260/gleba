@@ -57,6 +57,7 @@ import {
 
 interface EspeceData {
   especeId: string
+  especeNom?: string
   nbCultures: number
   surface: number
   production: number
@@ -78,6 +79,7 @@ interface EspeceData {
 interface CultureData {
   cultureId: number
   especeId: string
+  especeNom?: string
   variete: string | null
   plancheNom: string | null
   surface: number
@@ -241,7 +243,7 @@ export default function CoutsProductionPage() {
       .sort((a, b) => b.margeBrute - a.margeBrute)
       .slice(0, 10)
       .map(e => ({
-        name: e.especeId,
+        name: e.especeNom ?? e.especeId,
         marge: e.margeBrute,
         revenus: e.revenus,
         couts: e.coutTotal,
@@ -266,7 +268,7 @@ export default function CoutsProductionPage() {
     return data.parEspece
       .filter(e => e.production > 0 && (e.coutKg > 0 || e.prixMoyenKg > 0))
       .map(e => ({
-        name: e.especeId,
+        name: e.especeNom ?? e.especeId,
         coutKg: e.coutKg,
         prixKg: e.prixMoyenKg,
         margeKg: e.prixMoyenKg - e.coutKg,
@@ -553,7 +555,7 @@ export default function CoutsProductionPage() {
                           )}
                         </TableCell>
                         <TableCell className="font-medium">
-                          {espece.especeId}
+                          {espece.especeNom ?? espece.especeId}
                           <span className="text-xs text-muted-foreground ml-2">({espece.nbCultures})</span>
                         </TableCell>
                         <TableCell className="text-right">{formatNumber(espece.surface)}</TableCell>
@@ -586,7 +588,7 @@ export default function CoutsProductionPage() {
                             <div className="p-4">
                               <div className="flex items-center justify-between mb-3">
                                 <h3 className="text-sm font-semibold text-teal-800">
-                                  Detail des cultures - {espece.especeId}
+                                  Detail des cultures - {espece.especeNom ?? espece.especeId}
                                 </h3>
                                 <Button
                                   variant="ghost"

@@ -268,6 +268,7 @@ export async function GET(request: NextRequest) {
         espece: {
           select: {
             id: true,
+            nom: true,
             couleur: true,
             besoinEau: true,
             irrigation: true,

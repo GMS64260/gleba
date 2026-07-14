@@ -65,6 +65,7 @@ interface CultureIrriguer {
   meteo: MeteoResume | null
   espece: {
     id: string
+    nom: string | null
     couleur: string | null
     besoinEau: number | null
     irrigation: string | null
@@ -670,7 +671,7 @@ function CulturesIrriguerContent() {
                                       style={{ backgroundColor: culture.espece.couleur }}
                                     />
                                   )}
-                                  <span className="font-medium break-words">{culture.especeId}</span>
+                                  <span className="font-medium break-words">{culture.espece?.nom ?? culture.especeId}</span>
                                   {culture.variete && (
                                     <span className="text-sm text-muted-foreground break-words">
                                       ({culture.variete.nom ?? culture.variete.id})
@@ -809,7 +810,7 @@ function CulturesIrriguerContent() {
                             style={{ backgroundColor: c.espece.couleur }}
                           />
                         )}
-                        <span>{c.especeId}</span>
+                        <span>{c.espece?.nom ?? c.especeId}</span>
                         {c.planche && (
                           <Badge variant="secondary" className="text-xs">{c.planche.nom || c.planche.id}</Badge>
                         )}

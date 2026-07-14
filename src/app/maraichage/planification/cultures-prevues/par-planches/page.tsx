@@ -29,8 +29,10 @@ interface CulturePrevue {
   plancheId: string
   ilot: string | null
   especeId: string | null
+  especeNom?: string | null
   especeCouleur: string | null
   itpId: string | null
+  itpNom?: string | null
   rotationId: string | null
   rotationAnnee: number
   annee: number
@@ -130,7 +132,7 @@ const columns: ColumnDef<CulturePrevue>[] = [
               style={{ backgroundColor: culture.especeCouleur }}
             />
           )}
-          <span className="font-medium">{culture.especeId || "-"}</span>
+          <span className="font-medium">{culture.especeNom ?? culture.especeId ?? "-"}</span>
         </div>
       )
     },
@@ -241,7 +243,7 @@ function CulturesPrevuesParPlanchesContent() {
       c.ilot || "",
       c.rotationId || "",
       c.rotationAnnee.toString(),
-      c.especeId || "",
+      c.especeNom ?? c.especeId ?? "",
       c.semaineSemis?.toString() || "",
       c.semainePlantation?.toString() || "",
       c.semaineRecolte?.toString() || "",

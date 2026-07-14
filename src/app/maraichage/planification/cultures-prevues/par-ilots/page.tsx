@@ -29,8 +29,10 @@ interface CulturePrevue {
   plancheId: string
   ilot: string | null
   especeId: string | null
+  especeNom?: string | null
   especeCouleur: string | null
   itpId: string | null
+  itpNom?: string | null
   annee: number
   semaineSemis: number | null
   semainePlantation: number | null
@@ -79,7 +81,7 @@ const columns: ColumnDef<CulturePrevue>[] = [
               style={{ backgroundColor: culture.especeCouleur }}
             />
           )}
-          <span>{culture.especeId || "-"}</span>
+          <span>{culture.especeNom ?? culture.especeId ?? "-"}</span>
         </div>
       )
     },
@@ -162,7 +164,7 @@ function CulturesPrevuesParIlotsContent() {
     const rows = data.map(c => [
       c.ilot || "Sans ilot",
       c.plancheId,
-      c.especeId || "",
+      c.especeNom ?? c.especeId ?? "",
       c.semaineSemis?.toString() || "",
       c.semainePlantation?.toString() || "",
       c.semaineRecolte?.toString() || "",

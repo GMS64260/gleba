@@ -48,7 +48,10 @@ export async function GET(request: NextRequest) {
           dateSemis: true,
           semisFait: true,
           espece: {
-            select: { couleur: true },
+            select: { couleur: true, nom: true },
+          },
+          variete: {
+            select: { nom: true },
           },
           planche: {
             select: { nom: true, ilot: true },
@@ -71,7 +74,10 @@ export async function GET(request: NextRequest) {
           datePlantation: true,
           plantationFaite: true,
           espece: {
-            select: { couleur: true },
+            select: { couleur: true, nom: true },
+          },
+          variete: {
+            select: { nom: true },
           },
           planche: {
             select: { nom: true, ilot: true },
@@ -94,7 +100,10 @@ export async function GET(request: NextRequest) {
           dateRecolte: true,
           recolteFaite: true,
           espece: {
-            select: { couleur: true },
+            select: { couleur: true, nom: true },
+          },
+          variete: {
+            select: { nom: true },
           },
           planche: {
             select: { nom: true, ilot: true },
@@ -117,7 +126,10 @@ export async function GET(request: NextRequest) {
               especeId: true,
               varieteId: true,
               espece: {
-                select: { couleur: true },
+                select: { couleur: true, nom: true },
+              },
+              variete: {
+                select: { nom: true },
               },
               planche: {
                 select: {
@@ -269,6 +281,8 @@ export async function GET(request: NextRequest) {
         date: c.dateSemis?.toISOString() || '',
         fait: c.semisFait,
         couleur: c.espece?.couleur || null,
+        especeNom: c.espece?.nom ?? c.especeId,
+        varieteNom: c.variete?.nom ?? c.varieteId ?? null,
       })),
       ...culturesAvecPlantation.map(c => ({
         id: c.id,
@@ -280,6 +294,8 @@ export async function GET(request: NextRequest) {
         date: c.datePlantation?.toISOString() || '',
         fait: c.plantationFaite,
         couleur: c.espece?.couleur || null,
+        especeNom: c.espece?.nom ?? c.especeId,
+        varieteNom: c.variete?.nom ?? c.varieteId ?? null,
       })),
       ...culturesAvecRecolte.map(c => ({
         id: c.id,
@@ -291,6 +307,8 @@ export async function GET(request: NextRequest) {
         date: c.dateRecolte?.toISOString() || '',
         fait: c.recolteFaite,
         couleur: c.espece?.couleur || null,
+        especeNom: c.espece?.nom ?? c.especeId,
+        varieteNom: c.variete?.nom ?? c.varieteId ?? null,
       })),
       ...irrigationsPlanifiees.map(i => {
         const meteo = getIrrigationMeteo(i)
@@ -304,6 +322,8 @@ export async function GET(request: NextRequest) {
           date: i.datePrevue.toISOString(),
           fait: i.fait,
           couleur: i.culture.espece?.couleur || null,
+          especeNom: i.culture.espece?.nom ?? i.culture.especeId,
+          varieteNom: i.culture.variete?.nom ?? i.culture.varieteId ?? null,
           cultureId: i.culture.id,
           pluiePrevue: meteo.pluiePrevue !== null ? Math.round(meteo.pluiePrevue * 10) / 10 : null,
           probablementInutile: meteo.probablementInutile,

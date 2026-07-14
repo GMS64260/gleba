@@ -4,6 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import prisma from '@/lib/prisma'
 import { requireAuthApi, getUserId } from '@/lib/auth-utils'
 import { getBesoinsSemences } from '@/lib/planification'
 import { computeManquantsBreakdown } from '@/lib/semences/manquants'
@@ -21,6 +22,25 @@ export async function GET(request: NextRequest) {
     const annee = parseInt(searchParams.get('annee') || new Date().getFullYear().toString())
 
     const besoins = await getBesoinsSemences(userId, annee)
+
+    // Résolution du NOM lisible par id : pour les entrées perso, la FK
+    // especeId/varieteId est un cuid opaque ; le nom affichable vit dans
+    // `nom` (= id pour l'officiel). On construit une Map id→nom sur les ids
+    // présents, puis on expose especeNom/varieteNom (= nom ?? id) sur chaque
+    // item. especeId/varieteId restent inchangés (clés/filtres/groupBy/URL).
+    const especeIds = [...new Set(besoins.map(b => b.especeId).filter(Boolean))] as string[]
+    const varieteIds = [...new Set(besoins.map(b => b.varieteId).filter((v): v is string => !!v))]
+    const [especesNoms, varietesNoms] = await Promise.all([
+      prisma.espece.findMany({ where: { id: { in: especeIds } }, select: { id: true, nom: true } }),
+      prisma.variete.findMany({ where: { id: { in: varieteIds } }, select: { id: true, nom: true } }),
+    ])
+    const especeNomMap = new Map(especesNoms.map(e => [e.id, e.nom]))
+    const varieteNomMap = new Map(varietesNoms.map(v => [v.id, v.nom]))
+    const data = besoins.map(b => ({
+      ...b,
+      especeNom: especeNomMap.get(b.especeId) ?? b.especeId,
+      varieteNom: b.varieteId ? (varieteNomMap.get(b.varieteId) ?? b.varieteId) : null,
+    }))
 
     // Filtres dérivés (modes/totaux pour l'UI à 3 onglets).
     const graineDirecte = besoins.filter(b => b.mode === 'graine_directe' && b.statut !== 'IGNORE')
@@ -53,7 +73,7 @@ export async function GET(request: NextRequest) {
       Date.now() - maxDateMaj > STOCK_STALE_DAYS * 24 * 3600 * 1000
 
     return NextResponse.json({
-      data: besoins,
+      data,
       stats: {
         nbEspeces: new Set(besoins.map(b => b.especeId)).size,
         totalPlants: besoins.reduce((sum, b) => sum + b.nbPlants, 0),

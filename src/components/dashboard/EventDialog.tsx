@@ -26,7 +26,9 @@ interface CalendarEvent {
   id: number
   type: "semis" | "plantation" | "recolte" | "irrigation"
   especeId: string
+  especeNom?: string | null
   varieteId: string | null
+  varieteNom?: string | null
   plancheName: string | null
   ilot: string | null
   date: string
@@ -126,7 +128,7 @@ export function EventDialog({ event, open, onOpenChange, onUpdate }: EventDialog
 
         toast({
           title: "Récolte enregistrée",
-          description: `${quantite} kg de ${event.especeId}`,
+          description: `${quantite} kg de ${event.especeNom ?? event.especeId}`,
         })
 
         onUpdate()
@@ -227,9 +229,9 @@ export function EventDialog({ event, open, onOpenChange, onUpdate }: EventDialog
                 />
               )}
               <div>
-                <span className="font-medium">{event.especeId}</span>
+                <span className="font-medium">{event.especeNom ?? event.especeId}</span>
                 {event.varieteId && (
-                  <span className="text-sm text-muted-foreground ml-1">({event.varieteId})</span>
+                  <span className="text-sm text-muted-foreground ml-1">({event.varieteNom ?? event.varieteId})</span>
                 )}
               </div>
             </div>
