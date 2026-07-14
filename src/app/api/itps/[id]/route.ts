@@ -123,21 +123,32 @@ export async function PUT(
 
     const data = validationResult.data
 
-    // Vérifier que l'espece existe si fournie + cohérence semis_direct
-    // (Audit Marc Bug F : pas de plantation pour les semis directs)
-    const especeIdEffectif = data.especeId ?? existing.especeId
-    if (especeIdEffectif) {
-      const espece = await prisma.espece.findUnique({
-        where: { id: especeIdEffectif },
-        select: { id: true, typeCultureSemis: true },
+    // Sécurité (parité avec le POST) : si on CHANGE l'espèce parente, elle doit
+    // être VISIBLE par l'appelant — sinon rattachement/divulgation (la réponse
+    // include:{espece} renverrait) de l'espèce privée d'autrui.
+    if (data.especeId) {
+      const espece = await prisma.espece.findFirst({
+        where: { AND: [{ id: data.especeId }, visibiliteReferentiel(session!.user.id)] },
+        select: { id: true },
       })
-      if (data.especeId && !espece) {
+      if (!espece) {
         return NextResponse.json(
           { error: `L'espèce "${data.especeId}" n'existe pas` },
           { status: 400 }
         )
       }
-      if (espece?.typeCultureSemis === 'semis_direct' && data.semainePlantation != null) {
+    }
+
+    // Cohérence semis_direct (Audit Marc Bug F : pas de plantation pour les
+    // semis directs) sur l'espèce EFFECTIVE (nouvelle ou existante). Lecture
+    // interne du seul typeCultureSemis — aucune donnée d'espèce n'est renvoyée ici.
+    const especeIdEffectif = data.especeId ?? existing.especeId
+    if (especeIdEffectif && data.semainePlantation != null) {
+      const espece = await prisma.espece.findUnique({
+        where: { id: especeIdEffectif },
+        select: { typeCultureSemis: true },
+      })
+      if (espece?.typeCultureSemis === 'semis_direct') {
         return NextResponse.json(
           {
             error: `L'espèce "${especeIdEffectif}" est en semis direct. Le champ Plantation doit être vide.`,
