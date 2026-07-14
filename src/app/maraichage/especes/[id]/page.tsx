@@ -1194,6 +1194,7 @@ export default function EditEspecePage() {
                                   currentUserId={currentUserId}
                                   actions={actions}
                                   showRemove={false}
+                                  signalerRefType="VARIETE"
                                 />
                               </TableCell>
                               <TableCell className="text-right">{v.stockGraines ?? "-"}</TableCell>

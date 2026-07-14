@@ -418,7 +418,7 @@ function EspecesReferentiel() {
   const columnsAvecAvis = React.useMemo<ColumnDef<EspeceWithRelations>[]>(
     () => [
       ...columns,
-      makeOrigineColumn<EspeceWithRelations>((e) => e.nom ?? e.id, currentUserId, referentielActions),
+      makeOrigineColumn<EspeceWithRelations>((e) => e.nom ?? e.id, currentUserId, referentielActions, "ESPECE"),
       {
         id: "avis",
         header: "Avis",
@@ -691,7 +691,7 @@ function PorteGreffesReferentiel() {
         />
       ),
     },
-    makeOrigineColumn<PorteGreffeRow>((r) => r.nom, currentUserId, actions),
+    makeOrigineColumn<PorteGreffeRow>((r) => r.nom, currentUserId, actions, "PORTE_GREFFE"),
   ]
 
   return (

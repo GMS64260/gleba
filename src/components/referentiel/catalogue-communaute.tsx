@@ -13,12 +13,22 @@
 
 import * as React from "react"
 import { ColumnDef } from "@tanstack/react-table"
-import { Share2, Lock, Trash2 } from "lucide-react"
+import { Share2, Lock, Trash2, Flag } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Textarea } from "@/components/ui/textarea"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { confirmDialog } from "@/lib/global-dialog"
-import type { useToast } from "@/hooks/use-toast"
+import { useToast } from "@/hooks/use-toast"
+import type { AvisRefType } from "@/lib/avis/types"
 import {
   badgeOrigine,
   origineReferentiel,
@@ -85,6 +95,85 @@ export interface OrigineActions {
 }
 
 /**
+ * Bouton « signaler » (décision #3 : modération a posteriori) — signale à la
+ * modération une entrée communautaire d'un AUTRE membre. Dialogue autonome
+ * (motif libre) → POST /api/signalements.
+ */
+function SignalerButton({ refType, refId, nom }: { refType: AvisRefType; refId: string; nom: string }) {
+  const { toast } = useToast()
+  const [open, setOpen] = React.useState(false)
+  const [motif, setMotif] = React.useState("")
+  const [sending, setSending] = React.useState(false)
+
+  async function submit() {
+    if (motif.trim().length < 3) {
+      toast({ variant: "destructive", title: "Motif requis", description: "Indiquez brièvement le problème." })
+      return
+    }
+    setSending(true)
+    try {
+      const res = await fetch("/api/signalements", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refType, refId, motif: motif.trim() }),
+      })
+      if (res.ok) {
+        const p = await res.json().catch(() => null)
+        toast({
+          title: p?.deja ? "Déjà signalé" : "Signalement envoyé",
+          description: p?.deja ? `« ${nom} » est déjà en attente de modération.` : `Merci, « ${nom} » a été transmis à la modération.`,
+        })
+        setOpen(false)
+        setMotif("")
+      } else {
+        const p = await res.json().catch(() => null)
+        toast({ variant: "destructive", title: "Erreur", description: p?.error || "Signalement impossible" })
+      }
+    } catch {
+      toast({ variant: "destructive", title: "Erreur", description: "Signalement impossible" })
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-8 w-8 p-0 hover:bg-orange-100 hover:text-orange-600"
+        title="Signaler à la modération"
+        onClick={() => setOpen(true)}
+      >
+        <Flag className="h-4 w-4" />
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-md" onClick={(ev) => ev.stopPropagation()}>
+          <DialogHeader>
+            <DialogTitle>Signaler « {nom} »</DialogTitle>
+            <DialogDescription>
+              Cette entrée du catalogue communautaire vous semble erronée, inappropriée ou en double ?
+              Décrivez le problème : un modérateur la vérifiera.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={motif}
+            onChange={(e) => setMotif(e.target.value)}
+            placeholder="Ex. : doublon de « Tomate Marmande », données erronées, contenu inapproprié…"
+            rows={4}
+            maxLength={2000}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)} disabled={sending}>Annuler</Button>
+            <Button onClick={submit} disabled={sending}>{sending ? "Envoi…" : "Signaler"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
+/**
  * Badge d'origine + actions (proposer/rendre privé/supprimer) sur ses perso.
  * Rendu partagé, utilisable dans une cellule DataTable comme dans un tableau simple.
  */
@@ -94,6 +183,7 @@ export function OrigineControls({
   currentUserId,
   actions,
   showRemove = true,
+  signalerRefType,
 }: {
   entree: EntreeCommunaute
   nom: string
@@ -101,9 +191,13 @@ export function OrigineControls({
   actions: OrigineActions
   /** Afficher le bouton supprimer (désactivé quand la suppression est gérée ailleurs). */
   showRemove?: boolean
+  /** Si fourni, affiche le bouton « signaler » sur les entrées communautaires d'autres membres. */
+  signalerRefType?: AvisRefType
 }) {
   const mine = !!currentUserId && entree.userId === currentUserId
   const badge = badgeOrigine(entree, currentUserId)
+  // Signalable : entrée d'un AUTRE membre, proposée à la communauté (pas l'officiel Gleba, pas la mienne).
+  const signalable = !!signalerRefType && !mine && entree.userId != null && entree.partageCommunaute
   return (
     <div className="flex items-center gap-1" onClick={(ev) => ev.stopPropagation()}>
       {entree.userId == null ? (
@@ -135,6 +229,7 @@ export function OrigineControls({
           )}
         </>
       )}
+      {signalable && <SignalerButton refType={signalerRefType!} refId={entree.id} nom={nom} />}
     </div>
   )
 }
@@ -143,14 +238,21 @@ export function OrigineControls({
 export function makeOrigineColumn<T extends EntreeCommunaute>(
   nomOf: (row: T) => string,
   currentUserId: string | undefined | null,
-  actions: OrigineActions
+  actions: OrigineActions,
+  signalerRefType?: AvisRefType
 ): ColumnDef<T> {
   return {
     id: "origine",
     header: "Origine",
     enableSorting: false,
     cell: ({ row }) => (
-      <OrigineControls entree={row.original} nom={nomOf(row.original)} currentUserId={currentUserId} actions={actions} />
+      <OrigineControls
+        entree={row.original}
+        nom={nomOf(row.original)}
+        currentUserId={currentUserId}
+        actions={actions}
+        signalerRefType={signalerRefType}
+      />
     ),
   }
 }

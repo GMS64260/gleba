@@ -212,7 +212,8 @@ export function ReferentielTab() {
   const origineColumn = makeOrigineColumn<EspeceWithRelations>(
     (e) => e.nom ?? e.id,
     currentUserId,
-    referentielActions
+    referentielActions,
+    "ESPECE"
   )
 
   // Filtre client par origine (combiné au filtre de type).

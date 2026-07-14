@@ -7,7 +7,7 @@ import prisma from "@/lib/prisma"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
-import { Users, UserPlus, Shield, Activity, Database, MessageSquare, Bug, TrendingUp } from "lucide-react"
+import { Users, UserPlus, Shield, Activity, Database, MessageSquare, Bug, TrendingUp, Flag } from "lucide-react"
 import { AdminTabs } from "@/components/admin/AdminTabs"
 
 export default async function AdminPage() {
@@ -180,6 +180,26 @@ export default async function AdminPage() {
                 <Button variant="outline" className="w-full">
                   <Bug className="mr-2 h-4 w-4" />
                   Dashboard bugs
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Flag className="h-5 w-5 text-orange-600" />
+                Signalements
+              </CardTitle>
+              <CardDescription>
+                Entrées du catalogue communautaire signalées par les membres
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link href="/admin/signalements">
+                <Button variant="outline" className="w-full">
+                  <Flag className="mr-2 h-4 w-4" />
+                  Modérer les signalements
                 </Button>
               </Link>
             </CardContent>
