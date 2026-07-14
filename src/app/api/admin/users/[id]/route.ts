@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAdminApi, hashPassword } from "@/lib/auth-utils"
+import { reprendreReferentielCommunaute, COMMUNAUTE_USER_ID } from "@/lib/account-lifecycle"
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -160,6 +161,14 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       )
     }
 
+    // Le compte système « Communauté Gleba » (sentinelle) n'est pas supprimable.
+    if (id === COMMUNAUTE_USER_ID) {
+      return NextResponse.json(
+        { error: "Le compte système « Communauté Gleba » ne peut pas être supprimé." },
+        { status: 400 }
+      )
+    }
+
     // Verifier que l'utilisateur existe
     const existing = await prisma.user.findUnique({
       where: { id },
@@ -172,12 +181,23 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       )
     }
 
-    // Suppression (cascade sur les données)
-    await prisma.user.delete({
-      where: { id },
-    })
+    // Décision produit #2 — reprise par la communauté : dans une transaction, on
+    // réattribue d'abord les entrées de référentiel PARTAGÉES du membre à la
+    // sentinelle « Communauté Gleba » (elles survivent, badge Communauté), PUIS on
+    // supprime le compte — le cascade emporte alors ses données et ses entrées de
+    // référentiel restées PRIVÉES.
+    const { reprises } = await prisma.$transaction(
+      async (tx) => {
+        const r = await reprendreReferentielCommunaute(tx, id)
+        await tx.user.delete({ where: { id } })
+        return r
+      },
+      // Le delete cascade sur toutes les données du compte (cultures, récoltes,
+      // animaux…) — timeout élargi pour les comptes volumineux.
+      { timeout: 30_000 }
+    )
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, referentielReprisParCommunaute: reprises })
   } catch (error) {
     console.error("DELETE /api/admin/users/[id] error:", error)
     return NextResponse.json(
