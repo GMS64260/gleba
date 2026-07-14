@@ -6,6 +6,7 @@ import { auth } from "./auth"
 import { redirect } from "next/navigation"
 import { NextResponse } from "next/server"
 import { checkRateLimit, getClientIP } from "./rate-limit"
+import { touchActivity } from "./activity"
 
 /**
  * Récupère la session courante (Server Component)
@@ -23,6 +24,7 @@ export async function requireAuth() {
   if (!session?.user) {
     redirect("/login")
   }
+  touchActivity(session.user.id)
   return session
 }
 
@@ -61,6 +63,7 @@ export async function requireAuthApi(request?: Request) {
       session: null,
     }
   }
+  touchActivity(session.user.id)
   return { error: null, session }
 }
 
