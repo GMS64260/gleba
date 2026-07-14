@@ -313,22 +313,24 @@ function makePlantsColumns(appliquerMarge: boolean): ColumnDef<BesoinSemence>[] 
 //   - Oignon, Échalote → bulbilles   (mini-bulbes ou plants à repiquer)
 //   - Pomme de terre, Topinambour, Crosne → tubercules
 //   - Reste          → unité générique
-const isTubercule = (especeId: string): boolean => {
-  return /pomme de terre|patate|topinambour|crosne|oca |oxalis/i.test(especeId)
+// Le matching se fait sur le NOM lisible de l'espèce (« Ail », « Oignon »…),
+// pas sur l'id : pour une espèce perso l'id est un cuid opaque → on passe `especeNom`.
+const isTubercule = (nom: string): boolean => {
+  return /pomme de terre|patate|topinambour|crosne|oca |oxalis/i.test(nom)
 }
 
-const isAil = (especeId: string): boolean => {
-  return /^ail|\bail\b/i.test(especeId)
+const isAil = (nom: string): boolean => {
+  return /^ail|\bail\b/i.test(nom)
 }
 
-const isOignonEchalote = (especeId: string): boolean => {
-  return /oignon|echalote|échalote|ciboule/i.test(especeId)
+const isOignonEchalote = (nom: string): boolean => {
+  return /oignon|echalote|échalote|ciboule/i.test(nom)
 }
 
-const uniteSemence = (especeId: string): string => {
-  if (isAil(especeId)) return "caïeux"
-  if (isOignonEchalote(especeId)) return "bulbilles"
-  if (isTubercule(especeId)) return "tubercules"
+const uniteSemence = (nom: string): string => {
+  if (isAil(nom)) return "caïeux"
+  if (isOignonEchalote(nom)) return "bulbilles"
+  if (isTubercule(nom)) return "tubercules"
   return "unités"
 }
 
@@ -339,7 +341,7 @@ const caieuxColumns: ColumnDef<BesoinSemence>[] = [
     header: "Bulbilles / tubercules nécessaires",
     cell: ({ row }) => {
       const v = row.original.besoinCaieux
-      return `${v.toLocaleString()} ${uniteSemence(row.original.especeId)}`
+      return `${v.toLocaleString()} ${uniteSemence(row.original.especeNom ?? row.original.especeId)}`
     },
   },
   {
@@ -352,7 +354,7 @@ const caieuxColumns: ColumnDef<BesoinSemence>[] = [
     header: "À commander",
     cell: ({ row }) => {
       const v = row.original.caieuxACommander
-      return v > 0 ? `${v.toLocaleString()} ${uniteSemence(row.original.especeId)}` : "—"
+      return v > 0 ? `${v.toLocaleString()} ${uniteSemence(row.original.especeNom ?? row.original.especeId)}` : "—"
     },
   },
   {
