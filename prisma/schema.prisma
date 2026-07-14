@@ -189,6 +189,9 @@ model User {
 
   // Référentiel communautaire — avis (polymorphe)
   avis                  Avis[]
+  // Référentiel communautaire — signalements (modération a posteriori, décision #3)
+  signalements          Signalement[]    @relation("SignalementAuteur")
+  signalementsResolus   Signalement[]    @relation("SignalementResolveur")
 
   // Community Voice — demandes d'évolution & votes
   evolutions            Evolution[]      @relation("EvolutionAuthor")
@@ -724,6 +727,30 @@ model Avis {
   @@index([refType, refId])
   @@index([userId])
   @@map("avis")
+}
+
+/// Signalement d'une entrée communautaire (décision produit #3 : publication
+/// immédiate + modération A POSTERIORI). Un membre signale une entrée partagée
+/// jugée problématique ; un admin la traite (retrait/rendre-privé) ou la rejette.
+/// Cible polymorphe (refType, refId), même convention que Avis — pas de FK.
+model Signalement {
+  id           String      @id @default(cuid())
+  refType      AvisRefType @map("ref_type")
+  refId        String      @map("ref_id") // id de l'entrée signalée (cible polymorphe)
+  userId       String      @map("user_id") // auteur du signalement
+  auteur       User        @relation("SignalementAuteur", fields: [userId], references: [id], onDelete: Cascade)
+  motif        String      @db.Text
+  statut       String      @default("ouvert") // ouvert | traite | rejete
+  resolvedAt   DateTime?   @map("resolved_at")
+  resolvedById String?     @map("resolved_by_id")
+  resolvedBy   User?       @relation("SignalementResolveur", fields: [resolvedById], references: [id], onDelete: SetNull)
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+
+  @@index([refType, refId])
+  @@index([statut])
+  @@index([userId])
+  @@map("signalements")
 }
 
 /// ITP - Itinéraires Techniques des Plantes

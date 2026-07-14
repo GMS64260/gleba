@@ -20,6 +20,9 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 import { getCategorieEmoji } from "@/lib/categories-emojis"
+import { AvisCell } from "@/components/avis/AvisCell"
+import { AvisDialog } from "@/components/avis/AvisDialog"
+import type { AvisStatsListe } from "@/lib/avis/types"
 import {
   makeOrigineColumn,
   useReferentielActions,
@@ -57,6 +60,7 @@ const TYPE_LABELS: Record<string, string> = {
 interface EspeceWithRelations {
   id: string
   nom: string | null
+  avisStats?: AvisStatsListe
   type: string
   // Catalogue communautaire : userId null = Gleba officiel ; renseigné = perso
   // d'un membre. partageCommunaute = proposé/partagé à la communauté.
@@ -251,6 +255,8 @@ function EspecesPageContent() {
   const [cultureCount, setCultureCount] = React.useState<'saison' | 'historique'>('saison')
   // Filtre par origine (catalogue communautaire) : Tout / Gleba / Communauté / Mes espèces
   const [filtreOrigine, setFiltreOrigine] = React.useState<FiltreOrigineValue>('tout')
+  // Avis communautaires (décision #4) : espèce dont on ouvre la modale de notation.
+  const [avisRef, setAvisRef] = React.useState<EspeceWithRelations | null>(null)
   const pageSize = 50
 
   // Debounce de la recherche (300ms)
@@ -281,7 +287,7 @@ function EspecesPageContent() {
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
     try {
-      let url = `/api/especes?page=${pageIndex + 1}&pageSize=${pageSize}&cultureCount=${cultureCount}`
+      let url = `/api/especes?page=${pageIndex + 1}&pageSize=${pageSize}&cultureCount=${cultureCount}&avis=1`
       if (selectedType && selectedType !== 'all') {
         url += `&type=${selectedType}`
       }
@@ -371,8 +377,25 @@ function EspecesPageContent() {
   const origineColumn = makeOrigineColumn<EspeceWithRelations>(
     (e) => e.nom ?? e.id,
     currentUserId,
-    referentielActions
+    referentielActions,
+    "ESPECE"
   )
+
+  // Colonne « Avis » communautaires (décision #4) : note ★ + nb d'avis, clic → modale de notation.
+  const avisColumn: ColumnDef<EspeceWithRelations> = {
+    id: "avis",
+    header: "Avis",
+    enableSorting: false,
+    cell: ({ row }) => (
+      <AvisCell
+        stats={row.original.avisStats}
+        onClick={(e) => {
+          e.stopPropagation()
+          setAvisRef(row.original)
+        }}
+      />
+    ),
+  }
 
   // Filtre client par origine (combiné au filtre de type géré côté serveur).
   // Le filtre par origine est appliqué côté serveur (via l'URL) → data est déjà filtré.
@@ -473,7 +496,7 @@ function EspecesPageContent() {
         />
 
         <DataTable
-          columns={[...columns, origineColumn]}
+          columns={[...columns, avisColumn, origineColumn]}
           data={displayedData}
           isLoading={isLoading}
           pageCount={pageCount}
@@ -489,6 +512,16 @@ function EspecesPageContent() {
           onRowEdit={handleEdit}
           searchPlaceholder="Rechercher une espèce..."
           emptyMessage="Aucune espèce trouvée. Lancez npm run db:seed pour ajouter les données de base."
+        />
+
+        {/* Avis communautaires sur une espèce (décision #4) */}
+        <AvisDialog
+          refType="ESPECE"
+          refId={avisRef?.id ?? null}
+          nom={avisRef?.nom ?? avisRef?.id}
+          open={avisRef !== null}
+          onOpenChange={(open) => { if (!open) setAvisRef(null) }}
+          onSaved={fetchData}
         />
       </main>
     </div>

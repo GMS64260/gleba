@@ -189,6 +189,7 @@ export function RacesTab() {
                       currentUserId={currentUserId}
                       actions={referentielActions}
                       showRemove={false}
+                      signalerRefType="RACE"
                     />
                   </TableCell>
                   <TableCell className="text-right">
