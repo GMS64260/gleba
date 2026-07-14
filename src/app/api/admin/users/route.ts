@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAdminApi, hashPassword } from "@/lib/auth-utils"
 import { createSampleDataForUser } from "@/lib/user-sample-data"
+import { COMMUNAUTE_USER_ID } from "@/lib/account-lifecycle"
 
 // GET /api/admin/users
 export async function GET() {
@@ -16,6 +17,9 @@ export async function GET() {
 
   try {
     const users = await prisma.user.findMany({
+      // Exclut le compte système sentinelle « Communauté Gleba » (non connectable,
+      // reprend les entrées de référentiel partagées des comptes supprimés).
+      where: { id: { not: COMMUNAUTE_USER_ID } },
       orderBy: { createdAt: "desc" },
       select: {
         id: true,
