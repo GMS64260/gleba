@@ -34,7 +34,7 @@ import { useToast } from "@/hooks/use-toast"
 interface RecoltePrevue {
   periode: string
   periodeNum: number
-  especes: { especeId: string; especeCouleur: string | null; quantite: number }[]
+  especes: { especeId: string; especeNom?: string; especeCouleur: string | null; quantite: number }[]
   totalKg: number
 }
 
@@ -189,7 +189,7 @@ function RecoltesPrevuesParSemainesContent() {
                                     backgroundColor: e.especeCouleur ? `${e.especeCouleur}20` : undefined,
                                   }}
                                 >
-                                  {e.especeId}: {e.quantite.toFixed(1)} kg
+                                  {e.especeNom ?? e.especeId}: {e.quantite.toFixed(1)} kg
                                 </Badge>
                               ))}
                             </div>

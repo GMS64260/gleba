@@ -4,6 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import prisma from '@/lib/prisma'
 import { requireAuthApi, getUserId } from '@/lib/auth-utils'
 import { getRecoltesPrevues } from '@/lib/planification'
 import { getRecoltesAnneeAggregat } from '@/lib/kpi/recoltes-annee'
@@ -27,6 +28,27 @@ export async function GET(request: NextRequest) {
       getRecoltesAnneeAggregat(userId, annee),
     ])
 
+    // Clé technique : especeId peut être un cuid opaque pour une espèce perso.
+    // On résout un nom lisible (espece.nom ?? id) pour l'affichage, sans toucher
+    // especeId (conservé comme clé de groupement / de rendu React). Additif.
+    const especeIds = [
+      ...new Set(recoltesPrevues.flatMap(r => r.especes.map(e => e.especeId))),
+    ]
+    const especeNomRows = especeIds.length
+      ? await prisma.espece.findMany({
+          where: { id: { in: especeIds } },
+          select: { id: true, nom: true },
+        })
+      : []
+    const especeNomMap = new Map(especeNomRows.map(e => [e.id, e.nom ?? e.id]))
+    const data = recoltesPrevues.map(r => ({
+      ...r,
+      especes: r.especes.map(e => ({
+        ...e,
+        especeNom: especeNomMap.get(e.especeId) ?? e.especeId,
+      })),
+    }))
+
     const projectionAnnee = recoltesPrevues.reduce((sum, r) => sum + r.totalKg, 0)
     const surfaceTotale = recoltesPrevues.reduce((sum, r) => sum + r.totalSurface, 0)
 
@@ -37,7 +59,7 @@ export async function GET(request: NextRequest) {
     )
 
     return NextResponse.json({
-      data: recoltesPrevues,
+      data,
       stats: {
         // Compat ancien front : totalAnnee = projection pure (champ déjà utilisé).
         totalAnnee: Math.round(projectionAnnee * 100) / 100,

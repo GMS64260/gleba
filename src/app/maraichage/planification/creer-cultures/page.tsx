@@ -38,8 +38,10 @@ interface CulturePrevue {
   plancheId: string
   ilot: string | null
   especeId: string | null
+  especeNom?: string | null
   especeCouleur: string | null
   itpId: string | null
+  itpNom?: string | null
   annee: number
   semaineSemis: number | null
   semainePlantation: number | null
@@ -326,10 +328,10 @@ function CreerCulturesContent() {
                                 style={{ backgroundColor: c.especeCouleur }}
                               />
                             )}
-                            {c.especeId || "-"}
+                            {c.especeNom ?? c.especeId ?? "-"}
                           </div>
                         </TableCell>
-                        <TableCell>{c.itpId || "-"}</TableCell>
+                        <TableCell>{c.itpNom ?? c.itpId ?? "-"}</TableCell>
                         <TableCell>{formatSemaine(c.semaineSemis)}</TableCell>
                         <TableCell>{formatSemaine(c.semainePlantation)}</TableCell>
                         <TableCell>{formatSemaine(c.semaineRecolte)}</TableCell>

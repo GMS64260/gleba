@@ -66,7 +66,9 @@ interface TacheItem {
   id: number
   type: "semis" | "plantation" | "recolte"
   especeId: string
+  especeNom?: string | null
   varieteId: string | null
+  varieteNom?: string | null
   plancheId: string | null
   date: string
   fait: boolean
@@ -78,6 +80,7 @@ interface IrrigationItem {
   id: number
   cultureId: number
   especeId: string
+  especeNom?: string | null
   plancheId: string | null
   ilot: string | null
   datePrevue: string
@@ -757,7 +760,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                                   />
                                 )}
                                 <span className={`font-medium truncate text-sm ${inutile ? "line-through text-muted-foreground" : ""}`}>
-                                  {item.especeId}
+                                  {item.especeNom ?? item.especeId}
                                 </span>
                               </div>
                               <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -888,10 +891,10 @@ function TaskSection({
                         />
                       )}
                       <span className={`font-medium truncate text-sm ${item.fait ? "line-through" : ""}`}>
-                        {item.especeId}
+                        {item.especeNom ?? item.especeId}
                       </span>
                       {item.varieteId && (
-                        <span className="text-xs text-muted-foreground truncate hidden sm:inline">{item.varieteId}</span>
+                        <span className="text-xs text-muted-foreground truncate hidden sm:inline">{item.varieteNom ?? item.varieteId}</span>
                       )}
                     </div>
                     <div className="flex items-center gap-1 flex-shrink-0">
@@ -909,7 +912,7 @@ function TaskSection({
                   </div>
                   {/* Variété visible sur mobile sous le nom */}
                   {item.varieteId && (
-                    <p className="text-[11px] text-muted-foreground truncate pl-6 mt-0.5 sm:hidden">{item.varieteId}</p>
+                    <p className="text-[11px] text-muted-foreground truncate pl-6 mt-0.5 sm:hidden">{item.varieteNom ?? item.varieteId}</p>
                   )}
                 </button>
               )

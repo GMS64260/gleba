@@ -40,8 +40,10 @@ import { useToast } from "@/hooks/use-toast"
 
 interface BesoinSemence {
   especeId: string
+  especeNom?: string
   especeCouleur: string | null
   varieteId: string | null
+  varieteNom?: string | null
   surfaceTotale: number
   nbPlants: number
   mode: "graine_directe" | "plant_repique" | "bulbe_caieu" | "bouture"
@@ -120,7 +122,7 @@ const baseColumns: ColumnDef<BesoinSemence>[] = [
               style={{ backgroundColor: b.especeCouleur }}
             />
           )}
-          <span className="font-medium">{b.especeId}</span>
+          <span className="font-medium">{b.especeNom ?? b.especeId}</span>
         </div>
       )
     },
@@ -128,7 +130,7 @@ const baseColumns: ColumnDef<BesoinSemence>[] = [
   {
     accessorKey: "varieteId",
     header: "Variété",
-    cell: ({ getValue }) => getValue() || "-",
+    cell: ({ row }) => row.original.varieteNom ?? row.original.varieteId ?? "-",
   },
   {
     accessorKey: "surfaceTotale",
@@ -432,8 +434,8 @@ function SemencesContent() {
       "Statut",
     ]
     const rows = data.map(b => [
-      b.especeId,
-      b.varieteId || "",
+      b.especeNom ?? b.especeId,
+      b.varieteNom ?? b.varieteId ?? "",
       b.mode,
       b.surfaceTotale.toFixed(1),
       b.nbPlants.toString(),

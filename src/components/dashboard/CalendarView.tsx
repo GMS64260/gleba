@@ -48,7 +48,9 @@ interface CalendarEvent {
   id: number
   type: "semis" | "plantation" | "recolte" | "irrigation"
   especeId: string
+  especeNom?: string | null
   varieteId: string | null
+  varieteNom?: string | null
   plancheName: string | null
   ilot: string | null
   date: string
@@ -499,8 +501,8 @@ export function CalendarView({ year }: CalendarViewProps) {
                                     >
                                       <EventIcon className={`h-4 w-4 ${iconColor} flex-shrink-0`} />
                                       <span className={`truncate ${event.fait ? "line-through opacity-60" : ""} ${inutile ? "line-through text-muted-foreground" : ""}`}>
-                                        {event.especeId}
-                                        {event.varieteId && <span className="text-muted-foreground"> ({event.varieteId})</span>}
+                                        {event.especeNom ?? event.especeId}
+                                        {event.varieteId && <span className="text-muted-foreground"> ({event.varieteNom ?? event.varieteId})</span>}
                                       </span>
                                       {event.plancheName && (
                                         <span className="text-muted-foreground flex-shrink-0">→ {event.plancheName}</span>
@@ -669,8 +671,8 @@ export function CalendarView({ year }: CalendarViewProps) {
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className={`font-medium ${event.fait ? "line-through opacity-60" : ""} ${inutile ? "line-through text-muted-foreground" : ""}`}>
-                            {event.especeId}
-                            {event.varieteId && <span className="font-normal text-muted-foreground"> ({event.varieteId})</span>}
+                            {event.especeNom ?? event.especeId}
+                            {event.varieteId && <span className="font-normal text-muted-foreground"> ({event.varieteNom ?? event.varieteId})</span>}
                           </p>
                           <p className="text-sm text-muted-foreground">
                             {typeLabel[event.type]}

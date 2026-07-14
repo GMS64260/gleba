@@ -34,7 +34,9 @@ interface TacheItem {
   id: number
   type: "semis" | "plantation" | "recolte"
   especeId: string
+  especeNom?: string
   varieteId: string | null
+  varieteNom?: string | null
   plancheId: string | null
   date: string
   fait: boolean
@@ -45,6 +47,7 @@ interface IrrigationItem {
   id: number
   cultureId: number
   especeId: string
+  especeNom?: string
   plancheId: string | null
   ilot: string | null
   datePrevue: string
@@ -94,13 +97,13 @@ function TachesContent() {
   // longue liste de lignes quasi identiques (« 20× Tomate »). On conserve
   // chaque planche en sous-ligne actionnable, mais sous un en-tête « ×N ».
   const groupedIrrigation = React.useMemo(() => {
-    const groups = new Map<string, { especeId: string; couleur: string | null; items: IrrigationItem[] }>()
+    const groups = new Map<string, { especeId: string; especeNom?: string; couleur: string | null; items: IrrigationItem[] }>()
     for (const item of data?.irrigation ?? []) {
       const existing = groups.get(item.especeId)
       if (existing) {
         existing.items.push(item)
       } else {
-        groups.set(item.especeId, { especeId: item.especeId, couleur: item.couleur, items: [item] })
+        groups.set(item.especeId, { especeId: item.especeId, especeNom: item.especeNom, couleur: item.couleur, items: [item] })
       }
     }
     // Trie les sous-lignes par date prévue, puis les groupes par taille décroissante.
@@ -370,11 +373,11 @@ function TachesContent() {
                     />
                   )}
                   <span className={`font-medium truncate ${item.fait ? "line-through" : ""}`}>
-                    {item.especeId}
+                    {item.especeNom ?? item.especeId}
                   </span>
                   {item.varieteId && (
                     <span className="text-sm text-muted-foreground truncate">
-                      {item.varieteId}
+                      {item.varieteNom ?? item.varieteId}
                     </span>
                   )}
                 </div>
@@ -554,7 +557,7 @@ function TachesContent() {
                               style={{ backgroundColor: groupe.couleur }}
                             />
                           )}
-                          <span className="font-semibold text-sm">{groupe.especeId}</span>
+                          <span className="font-semibold text-sm">{groupe.especeNom ?? groupe.especeId}</span>
                           {groupe.items.length > 1 && (
                             <Badge variant="secondary" className="text-xs">
                               ×{groupe.items.length}

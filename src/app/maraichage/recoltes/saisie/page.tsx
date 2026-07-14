@@ -68,7 +68,7 @@ export default function SaisieRecoltePage() {
   const [datePeremption, setDatePeremption] = React.useState<string>("")
   const [notes, setNotes] = React.useState<string>("")
   const [isSubmitting, setIsSubmitting] = React.useState(false)
-  const [recentRecoltes, setRecentRecoltes] = React.useState<{especeId: string; cultureId: number; quantite: number}[]>([])
+  const [recentRecoltes, setRecentRecoltes] = React.useState<{especeId: string; especeNom?: string; cultureId: number; quantite: number}[]>([])
 
   // Charger les cultures actives (en cours de recolte ou plantées)
   React.useEffect(() => {
@@ -181,14 +181,15 @@ export default function SaisieRecoltePage() {
       }
 
       // Ajouter aux recoltes récentes
+      const especeNom = cultureData.espece.nom ?? cultureData.especeId
       setRecentRecoltes((prev) => [
-        { especeId: cultureData.especeId, cultureId: cultureData.id, quantite: parseFloat(quantite) },
+        { especeId: cultureData.especeId, especeNom, cultureId: cultureData.id, quantite: parseFloat(quantite) },
         ...prev.slice(0, 4),
       ])
 
       toast({
         title: "Récolte enregistrée",
-        description: `${quantite} kg de ${cultureData.especeId}`,
+        description: `${quantite} kg de ${especeNom}`,
       })
 
       // Réinitialiser le formulaire (garder la culture sélectionnée)
@@ -433,7 +434,7 @@ export default function SaisieRecoltePage() {
               <ul className="space-y-2">
                 {recentRecoltes.map((r, i) => (
                   <li key={i} className="flex justify-between text-sm">
-                    <span>{r.especeId}</span>
+                    <span>{r.especeNom ?? r.especeId}</span>
                     <span className="font-medium text-green-600">{r.quantite} kg</span>
                   </li>
                 ))}

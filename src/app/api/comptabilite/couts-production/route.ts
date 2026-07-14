@@ -14,6 +14,7 @@ import { getKpiCompta } from '@/lib/kpi'
 interface CultureCost {
   cultureId: number
   especeId: string
+  especeNom: string
   variete: string | null
   plancheNom: string | null
   surface: number
@@ -35,6 +36,7 @@ interface CultureCost {
 
 interface EspeceAgg {
   especeId: string
+  especeNom: string
   nbCultures: number
   surface: number
   production: number
@@ -230,6 +232,9 @@ export async function GET(request: NextRequest) {
       cultureCosts.push({
         cultureId: culture.id,
         especeId: culture.especeId,
+        // Nom lisible : pour une espèce perso, especeId est un cuid opaque ;
+        // le nom affiché vit dans espece.nom (= id pour l'officiel).
+        especeNom: culture.espece?.nom ?? culture.especeId,
         variete: culture.varieteId || null,
         plancheNom: culture.planche?.nom || null,
         surface: round2(surface),
@@ -383,6 +388,9 @@ export async function GET(request: NextRequest) {
 
       parEspece.push({
         especeId,
+        // Nom lisible partagé par toutes les cultures de cette espèce (garde
+        // especeId comme clé de groupement/tri/URL).
+        especeNom: costs[0]?.especeNom ?? especeId,
         nbCultures: costs.length,
         surface: round2(surface),
         production: round2(production),

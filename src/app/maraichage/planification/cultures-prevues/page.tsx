@@ -29,8 +29,10 @@ interface CulturePrevue {
   plancheId: string
   ilot: string | null
   especeId: string | null
+  especeNom?: string | null
   especeCouleur: string | null
   itpId: string | null
+  itpNom?: string | null
   annee: number
   semaineSemis: number | null
   semainePlantation: number | null
@@ -54,7 +56,7 @@ const columns: ColumnDef<CulturePrevue>[] = [
               style={{ backgroundColor: culture.especeCouleur }}
             />
           )}
-          <span className="font-medium">{culture.especeId || "-"}</span>
+          <span className="font-medium">{culture.especeNom ?? culture.especeId ?? "-"}</span>
         </div>
       )
     },
@@ -62,7 +64,7 @@ const columns: ColumnDef<CulturePrevue>[] = [
   {
     accessorKey: "itpId",
     header: "ITP",
-    cell: ({ getValue }) => getValue() || "-",
+    cell: ({ row }) => row.original.itpNom ?? row.original.itpId ?? "-",
   },
   {
     accessorKey: "plancheId",
@@ -178,8 +180,8 @@ function CulturesPrevuesContent() {
   const handleExport = () => {
     const headers = ["Espèce", "ITP", "Planche", "Ilot", "S.Semis", "S.Plantation", "S.Récolte", "Surface (m2)", "Statut"]
     const rows = data.map(c => [
-      c.especeId || "",
-      c.itpId || "",
+      c.especeNom ?? c.especeId ?? "",
+      c.itpNom ?? c.itpId ?? "",
       c.plancheId,
       c.ilot || "",
       c.semaineSemis?.toString() || "",

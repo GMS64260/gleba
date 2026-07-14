@@ -45,7 +45,9 @@ import { AlertTriangle } from "lucide-react"
 
 interface VarieteStock {
   id: string
+  varieteNom?: string
   especeId: string
+  especeNom?: string
   stockGraines: number | null
   stockPlants: number | null
   dateStock: string | null
@@ -540,8 +542,8 @@ function StocksPageContent() {
                   <TableBody>
                     {filterBySearch(data.graines).map((v) => (
                       <TableRow key={v.id}>
-                        <TableCell className="font-medium">{v.id}</TableCell>
-                        <TableCell>{v.especeId}</TableCell>
+                        <TableCell className="font-medium">{v.varieteNom ?? v.id}</TableCell>
+                        <TableCell>{v.especeNom ?? v.especeId}</TableCell>
                         <TableCell>{v.nbGrainesG || "-"}</TableCell>
                         <TableCell>
                           <StockInput
@@ -596,8 +598,8 @@ function StocksPageContent() {
                   <TableBody>
                     {filterBySearch(data.plants).map((v) => (
                       <TableRow key={v.id}>
-                        <TableCell className="font-medium">{v.id}</TableCell>
-                        <TableCell>{v.especeId}</TableCell>
+                        <TableCell className="font-medium">{v.varieteNom ?? v.id}</TableCell>
+                        <TableCell>{v.especeNom ?? v.especeId}</TableCell>
                         <TableCell>
                           <StockInput
                             value={v.stockPlants}

@@ -27,8 +27,10 @@ import { useToast } from "@/hooks/use-toast"
 
 interface BesoinPlant {
   especeId: string
+  especeNom?: string
   especeCouleur: string | null
   varieteId: string | null
+  varieteNom?: string | null
   nbPlants: number
   semainePlantation: number | null
   stockActuel: number
@@ -59,7 +61,7 @@ const columns: ColumnDef<BesoinPlant>[] = [
               style={{ backgroundColor: b.especeCouleur }}
             />
           )}
-          <span className="font-medium">{b.especeId}</span>
+          <span className="font-medium">{b.especeNom ?? b.especeId}</span>
         </div>
       )
     },
@@ -67,7 +69,7 @@ const columns: ColumnDef<BesoinPlant>[] = [
   {
     accessorKey: "varieteId",
     header: "Variété",
-    cell: ({ getValue }) => getValue() || "-",
+    cell: ({ row }) => row.original.varieteNom ?? row.original.varieteId ?? "-",
   },
   {
     accessorKey: "semainePlantation",
@@ -177,8 +179,8 @@ function PlantsContent() {
   const handleExport = () => {
     const headers = ["Espèce", "Variété", "Semaine plantation", "Nb plants", "Stock", "A commander", "Planches"]
     const rows = data.map(b => [
-      b.especeId,
-      b.varieteId || "",
+      b.especeNom ?? b.especeId,
+      b.varieteNom ?? b.varieteId ?? "",
       b.semainePlantation?.toString() || "",
       b.nbPlants.toString(),
       b.stockActuel.toString(),

@@ -42,6 +42,7 @@ export default function EditRecoltePage() {
   const [isSubmitting, setIsSubmitting] = React.useState(false)
   const [recolteInfo, setRecolteInfo] = React.useState<{
     especeId: string
+    especeNom?: string
     cultureId: number
   } | null>(null)
 
@@ -63,6 +64,7 @@ export default function EditRecoltePage() {
       .then((data) => {
         setRecolteInfo({
           especeId: data.especeId,
+          especeNom: data.espece?.nom ?? data.especeId,
           cultureId: data.cultureId,
         })
         form.reset({
@@ -194,7 +196,7 @@ export default function EditRecoltePage() {
                   <div className="p-3 bg-muted rounded-md space-y-1">
                     <p className="text-sm">
                       <span className="text-muted-foreground">Espèce:</span>{" "}
-                      <span className="font-medium">{recolteInfo.especeId}</span>
+                      <span className="font-medium">{recolteInfo.especeNom ?? recolteInfo.especeId}</span>
                     </p>
                     <p className="text-sm">
                       <span className="text-muted-foreground">Culture:</span>{" "}
