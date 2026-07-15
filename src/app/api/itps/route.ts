@@ -12,6 +12,8 @@ import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
 import { statsAvisPourRefs } from '@/lib/avis/stats-liste'
 import { visibiliteReferentiel, attributionCreation } from '@/lib/referentiel-communaute'
 import { cleanReferentielName, normalizeReferentielKey } from '@/lib/normalize'
+import { terroirDeUser } from '@/lib/terroir'
+import { zoneHorsReferenceMetropole } from '@/lib/calendrier-climat'
 
 // GET /api/itps - Référentiel global (lecture)
 export async function GET(request: NextRequest) {
@@ -198,6 +200,18 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Zone de calage. Si non précisée par un membre en zone d'outre-mer, on
+    // hérite de SA zone : sinon son ITP (zoneClimat null = référentiel métropole)
+    // serait masqué de son propre calendrier, qui n'affiche que les ITP de sa zone.
+    // Les ITP officiels (admin) gardent la valeur transmise (null par défaut).
+    let zoneClimat = data.zoneClimat ?? null
+    if (zoneClimat == null && !estOfficiel) {
+      const terroir = await terroirDeUser(prisma, session!.user.id)
+      if (zoneHorsReferenceMetropole(terroir.zoneClimat)) {
+        zoneClimat = terroir.zoneClimat
+      }
+    }
+
     // Création : officiel → id = nom lisible ; perso → id omis → cuid (@default).
     const { id: _nomBrut, ...rest } = data
     const itp = await prisma.iTP.create({
@@ -206,6 +220,7 @@ export async function POST(request: NextRequest) {
         ...(estOfficiel ? { id: nomSaisi } : {}),
         nom: nomSaisi,
         nomNormalise,
+        zoneClimat,
         ...attrib,
       },
       include: {

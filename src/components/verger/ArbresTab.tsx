@@ -24,6 +24,9 @@ import { DataTable } from "@/components/tables/DataTable"
 import { Combobox } from "@/components/ui/combobox"
 import { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
+import { adequationEspece } from "@/lib/adequation-zone"
+import type { ZoneClimat } from "@/lib/terroir"
+import { Snowflake } from "lucide-react"
 
 const TYPES_ARBRES = [
   { value: "all", label: "Tous", icon: TreeDeciduous },
@@ -91,6 +94,9 @@ const CONDUITES_ARBRE = ["Gobelet", "Axe central", "Palmette", "Espalier", "Libr
 interface EspeceRef {
   id: string
   type: string
+  // Référentiel géographique : adéquation à la zone climatique.
+  zonesAdaptees?: string | null
+  besoinFroid?: string | null
 }
 
 interface VarieteRef {
@@ -217,6 +223,9 @@ export function ArbresTab() {
   const [especesRef, setEspecesRef] = React.useState<EspeceRef[]>([])
   const [varietesRef, setVarietesRef] = React.useState<VarieteRef[]>([])
   const [fournisseursRef, setFournisseursRef] = React.useState<string[]>([])
+  // Zone climatique de l'utilisateur (référentiel géographique) : sert à
+  // avertir quand on plante un fruitier à besoin de froid en climat tropical.
+  const [userZone, setUserZone] = React.useState<ZoneClimat | null>(null)
   // PROMPT 10 — porte-greffes filtrés par espèce courante du formulaire
   const [portesGreffeOptions, setPortesGreffeOptions] = React.useState<
     Array<{ id: string; nom: string; vigueur: number; precocite: number }>
@@ -290,6 +299,14 @@ export function ArbresTab() {
     fetchData()
   }, [fetchData])
 
+  // Zone climatique effective de l'utilisateur (pour l'avertissement plantation).
+  React.useEffect(() => {
+    fetch("/api/calendrier-climat")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d) setUserZone((d.zone ?? null) as ZoneClimat | null) })
+      .catch(() => {})
+  }, [])
+
   // Charger le referentiel des especes arbres + leurs varietes
   React.useEffect(() => {
     Promise.all([
@@ -298,7 +315,7 @@ export function ArbresTab() {
       fetch("/api/comptabilite/fournisseurs?actif=true").then(r => r.json()).catch(() => null),
     ]).then(([especesRes, varietesRes, fournisseursRes]) => {
       const especes = especesRes?.data || []
-      setEspecesRef(especes.map((e: any) => ({ id: e.id, type: e.type })))
+      setEspecesRef(especes.map((e: any) => ({ id: e.id, type: e.type, zonesAdaptees: e.zonesAdaptees, besoinFroid: e.besoinFroid })))
       const especesIds = new Set(especes.map((e: any) => e.id))
       const varietes = (varietesRes?.data || [])
         .filter((v: any) => especesIds.has(v.especeId))
@@ -355,6 +372,21 @@ export function ArbresTab() {
     const unique = [...new Set([...refVarietes, ...userVarietes])]
     return unique.sort().map(v => ({ value: v, label: v }))
   }, [data, varietesRef, newArbre.espece])
+
+  // Avertissement d'adéquation : l'espèce sélectionnée est-elle peu adaptée à la
+  // zone de l'utilisateur ? (ex : fruitier à besoin de froid en climat tropical).
+  // Non bloquant — le membre peut planter quand même (microclimat d'altitude…).
+  const avertissementZone = React.useMemo(() => {
+    if (!newArbre.espece || !userZone) return null
+    const ref = especesRef.find(e => e.id === newArbre.espece)
+    if (!ref) return null
+    const { statut, raison } = adequationEspece({
+      zonesAdaptees: ref.zonesAdaptees,
+      besoinFroid: ref.besoinFroid,
+      userZone,
+    })
+    return statut === 'peu_adaptee' ? raison : null
+  }, [newArbre.espece, especesRef, userZone])
 
   const fournisseurOptions = React.useMemo(() => {
     const userFournisseurs = data.map((a: any) => a.fournisseur).filter(Boolean) as string[]
@@ -674,6 +706,12 @@ export function ArbresTab() {
                   options={especeOptions}
                   placeholder="Ex: Pommier, Chene..."
                 />
+                {avertissementZone && (
+                  <p className="mt-1.5 flex items-start gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
+                    <Snowflake className="h-3.5 w-3.5 mt-0.5 flex-shrink-0 text-amber-500" />
+                    <span>Peu adaptée à votre zone : {avertissementZone}. Vous pouvez planter quand même (microclimat, altitude…).</span>
+                  </p>
+                )}
               </div>
               <div>
                 <Label>Variété</Label>

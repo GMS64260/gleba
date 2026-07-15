@@ -20,6 +20,7 @@ import {
 } from '@/lib/terroir'
 import {
   decalageZone,
+  zoneHorsReferenceMetropole,
   SEMAINE_DERNIERES_GELEES,
   SEMAINE_PREMIERES_GELEES,
 } from '@/lib/calendrier-climat'
@@ -40,12 +41,16 @@ function payloadPourZone(
     zoneDerivee,
     labelDerivee: zoneDerivee ? ZONE_CLIMAT_LABEL[zoneDerivee] : null,
     decalage: decalageZone(zone),
+    // Zone d'outre-mer : le décalage métropolitain n'a pas de sens, le calendrier
+    // s'appuie sur des ITP calés sur la zone (cf. itpApplicableAZone côté client).
+    horsReference: zoneHorsReferenceMetropole(zone),
     dernieresGelees: zone ? SEMAINE_DERNIERES_GELEES[zone] : null,
     premieresGelees: zone ? SEMAINE_PREMIERES_GELEES[zone] : null,
     options: ZONES_CLIMAT.map((z) => ({
       value: z,
       label: ZONE_CLIMAT_LABEL[z],
       decalage: decalageZone(z),
+      horsReference: zoneHorsReferenceMetropole(z),
     })),
   }
 }

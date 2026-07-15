@@ -8,6 +8,9 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { findTreeCareProfile, generateCareOperations } from "@/lib/tree-care-calendar"
+import { zoneEffectiveUser } from "@/lib/terroir"
+import { adequationEspece } from "@/lib/adequation-zone"
+import { visibiliteReferentiel } from "@/lib/referentiel-communaute"
 
 // Types d'arbres disponibles
 export const TYPES_ARBRES = [
@@ -201,7 +204,28 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ ...arbre, calendrierGenere }, { status: 201 })
+    // Avertissement d'adéquation géographique (non bloquant) : ex. planter un
+    // fruitier à besoin de froid en zone tropicale. Renvoyé pour affichage
+    // (toast) — couvre le plan du jardin, le chat et les imports, qui passent
+    // tous par cette route. Le catalogue officiel a id = nom (rattachement direct).
+    let avertissementZone: string | null = null
+    if (arbre.espece) {
+      const espece = await prisma.espece.findFirst({
+        where: { AND: [{ id: arbre.espece }, visibiliteReferentiel(session!.user.id)] },
+        select: { zonesAdaptees: true, besoinFroid: true },
+      })
+      if (espece && (espece.zonesAdaptees || espece.besoinFroid)) {
+        const userZone = await zoneEffectiveUser(prisma, session!.user.id)
+        const { statut, raison } = adequationEspece({
+          zonesAdaptees: espece.zonesAdaptees,
+          besoinFroid: espece.besoinFroid,
+          userZone,
+        })
+        if (statut === "peu_adaptee") avertissementZone = raison
+      }
+    }
+
+    return NextResponse.json({ ...arbre, calendrierGenere, avertissementZone }, { status: 201 })
   } catch (err) {
     console.error("POST /api/arbres error:", err)
     return NextResponse.json(

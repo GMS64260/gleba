@@ -20,6 +20,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { GanttRow } from "@/components/itps/GanttRow"
 import { ItpEditDialog } from "@/components/itps/ItpEditDialog"
+import { itpApplicableAZone } from "@/lib/calendrier-climat"
+import type { ZoneClimat } from "@/lib/terroir"
 
 interface ITPWithEspece {
   id: string
@@ -35,6 +37,7 @@ interface ITPWithEspece {
   semaineRecolte: number | null
   dureeRecolte: number | null
   typePlanche: string | null
+  zoneClimat?: string | null
   notes: string | null
 }
 
@@ -50,14 +53,19 @@ export function ItpCalendarView() {
   // Décalage climatique (zone de l'exploitation) appliqué aux barres.
   const [decalageZone, setDecalageZone] = React.useState(0)
   const [zoneLabel, setZoneLabel] = React.useState<string | null>(null)
+  const [zone, setZone] = React.useState<string | null>(null)
+  const [horsReference, setHorsReference] = React.useState(false)
 
   React.useEffect(() => {
     fetch("/api/calendrier-climat")
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (!d) return
-        setDecalageZone(d.decalage ?? 0)
+        // Outre-mer : ITP calés sur la zone, donc aucun décalage métropolitain.
+        setHorsReference(d.horsReference ?? false)
+        setDecalageZone(d.horsReference ? 0 : (d.decalage ?? 0))
         setZoneLabel(d.label ?? null)
+        setZone(d.zone ?? null)
       })
       .catch(() => {})
   }, [])
@@ -82,6 +90,10 @@ export function ItpCalendarView() {
 
   const itpsFiltres = React.useMemo(() => {
     return itps.filter(itp => {
+      // Filtre par zone : outre-mer → ITP calés sur la zone ; métropole → référentiel métropolitain.
+      if (!itpApplicableAZone(itp.zoneClimat, zone as ZoneClimat | null)) {
+        return false
+      }
       if (filtreTypePlanche !== 'all' && itp.typePlanche !== filtreTypePlanche) {
         return false
       }
@@ -95,7 +107,7 @@ export function ItpCalendarView() {
       }
       return true
     })
-  }, [itps, filtreTypePlanche, recherche])
+  }, [itps, filtreTypePlanche, recherche, zone])
 
   const handleEdit = (itp: ITPWithEspece) => {
     setEditingItp(itp)
@@ -146,7 +158,13 @@ export function ItpCalendarView() {
           <div className="w-4 h-3 bg-purple-500 rounded"></div>
           <span>Récolte</span>
         </div>
-        {zoneLabel && decalageZone !== 0 && (
+        {zoneLabel && horsReference && (
+          <span className="inline-flex items-center gap-1 text-emerald-700">
+            <MapPin className="h-3 w-3" />
+            {zoneLabel} — calé sur vos saisons
+          </span>
+        )}
+        {zoneLabel && !horsReference && decalageZone !== 0 && (
           <span className="inline-flex items-center gap-1 text-emerald-700">
             <MapPin className="h-3 w-3" />
             {zoneLabel} ({decalageZone > 0 ? "+" : "−"}{Math.abs(decalageZone)} sem.)
@@ -160,7 +178,15 @@ export function ItpCalendarView() {
         <Skeleton className="h-[300px] w-full" />
       ) : itpsFiltres.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
-          <p>Aucun ITP trouvé</p>
+          {horsReference ? (
+            <p className="text-sm max-w-sm mx-auto">
+              Pas encore d&apos;itinéraire de référence pour votre zone ({zoneLabel}). Les
+              calendriers métropolitains ne sont pas transposables — créez les vôtres, calés
+              sur vos saisons locales.
+            </p>
+          ) : (
+            <p>Aucun ITP trouvé</p>
+          )}
         </div>
       ) : (
         <div className="overflow-x-auto rounded-lg border">

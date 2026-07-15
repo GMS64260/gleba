@@ -29,6 +29,8 @@ import {
   FiltreOrigine,
   type FiltreOrigineValue,
 } from "@/components/referentiel/catalogue-communaute"
+import { adequationEspece, badgeAdequation } from "@/lib/adequation-zone"
+import type { ZoneClimat } from "@/lib/terroir"
 
 // Types d'especes
 const ESPECE_TYPES = [
@@ -78,6 +80,9 @@ interface EspeceWithRelations {
   couleur: string | null
   description: string | null
   categorie: string | null
+  // Référentiel géographique : adéquation à la zone climatique.
+  zonesAdaptees: string | null
+  besoinFroid: string | null
   famille: { id: string; couleur: string | null; nomFr: string | null } | null
   _count: { varietes: number; cultures: number; arbres?: number }
 }
@@ -257,7 +262,17 @@ function EspecesPageContent() {
   const [filtreOrigine, setFiltreOrigine] = React.useState<FiltreOrigineValue>('tout')
   // Avis communautaires (décision #4) : espèce dont on ouvre la modale de notation.
   const [avisRef, setAvisRef] = React.useState<EspeceWithRelations | null>(null)
+  // Zone climatique effective de l'utilisateur (référentiel géographique) : sert
+  // au badge d'adéquation « adaptée / peu adaptée à votre zone ».
+  const [userZone, setUserZone] = React.useState<ZoneClimat | null>(null)
   const pageSize = 50
+
+  React.useEffect(() => {
+    fetch("/api/calendrier-climat")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d) setUserZone((d.zone ?? null) as ZoneClimat | null) })
+      .catch(() => {})
+  }, [])
 
   // Debounce de la recherche (300ms)
   React.useEffect(() => {
@@ -397,6 +412,33 @@ function EspecesPageContent() {
     ),
   }
 
+  // Colonne « Zone » (référentiel géographique) : adéquation de l'espèce à la
+  // zone climatique de l'utilisateur. Affichée seulement si elle a du sens
+  // (zone connue + au moins une espèce porteuse d'un signal, ou zone d'outre-mer)
+  // pour ne pas encombrer les utilisateurs métropolitains d'une colonne vide.
+  const adequationColumn: ColumnDef<EspeceWithRelations> = {
+    id: "adequation",
+    header: "Zone",
+    enableSorting: false,
+    cell: ({ row }) => {
+      const { statut, raison } = adequationEspece({
+        zonesAdaptees: row.original.zonesAdaptees,
+        besoinFroid: row.original.besoinFroid,
+        userZone,
+      })
+      const badge = badgeAdequation(statut)
+      if (!badge) return <span className="text-muted-foreground">—</span>
+      return (
+        <Badge className={`text-xs ${badge.cls}`} title={raison ?? undefined}>
+          {badge.label}
+        </Badge>
+      )
+    },
+  }
+
+  const showAdequation =
+    !!userZone && data.some((e) => e.zonesAdaptees || e.besoinFroid)
+
   // Filtre client par origine (combiné au filtre de type géré côté serveur).
   // Le filtre par origine est appliqué côté serveur (via l'URL) → data est déjà filtré.
   const displayedData = data
@@ -496,7 +538,11 @@ function EspecesPageContent() {
         />
 
         <DataTable
-          columns={[...columns, avisColumn, origineColumn]}
+          columns={
+            showAdequation
+              ? [...columns, adequationColumn, avisColumn, origineColumn]
+              : [...columns, avisColumn, origineColumn]
+          }
           data={displayedData}
           isLoading={isLoading}
           pageCount={pageCount}

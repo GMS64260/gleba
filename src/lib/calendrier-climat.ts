@@ -22,6 +22,55 @@ import { ZONE_CLIMAT_LABEL } from './terroir'
 export type CategorieLunaire = 'feuille' | 'fruit' | 'racine' | 'fleur'
 
 /**
+ * Zones d'outre-mer tropicales/équatoriales : leur calendrier ne se dérive PAS
+ * du référentiel métropolitain par décalage (saisons humide/sèche, et surtout
+ * inversion des saisons en hémisphère sud). Pour ces zones on s'appuie sur des
+ * ITP dédiés (ITP.zoneClimat) ; à défaut, on affiche « pas de calendrier de
+ * référence pour votre zone » plutôt qu'un décalage trompeur.
+ */
+export const ZONES_HORS_REFERENCE_METROPOLE: readonly ZoneClimat[] = [
+  'tropical_antilles',
+  'equatorial',
+  'tropical_austral',
+] as const
+
+/** Zones de l'hémisphère SUD : saisons inversées vs métropole. */
+export const ZONES_HEMISPHERE_SUD: readonly ZoneClimat[] = ['tropical_austral'] as const
+
+/**
+ * Vrai si le référentiel ITP métropolitain (et donc le décalage en semaines)
+ * n'a pas de sens pour cette zone : il faut un ITP calé sur la zone.
+ */
+export function zoneHorsReferenceMetropole(zone: ZoneClimat | null | undefined): boolean {
+  return zone != null && ZONES_HORS_REFERENCE_METROPOLE.includes(zone)
+}
+
+/** Vrai si la zone est dans l'hémisphère sud (saisons inversées). */
+export function zoneHemisphereSud(zone: ZoneClimat | null | undefined): boolean {
+  return zone != null && ZONES_HEMISPHERE_SUD.includes(zone)
+}
+
+/**
+ * Un ITP est-il applicable à la zone de l'utilisateur ?
+ * - Zone d'outre-mer (hors référence) → seuls les ITP calés sur CETTE zone
+ *   (itpZoneClimat === userZone). Les ITP métropolitains ne sont pas
+ *   transposables (semaines calendaires inadaptées, hémisphère éventuellement
+ *   inversé).
+ * - Zone métropolitaine ou indéterminée → seuls les ITP du référentiel
+ *   métropolitain (itpZoneClimat null). Les ITP tropicaux dédiés sont masqués
+ *   (leurs semaines ne veulent rien dire en métropole).
+ */
+export function itpApplicableAZone(
+  itpZoneClimat: string | null | undefined,
+  userZone: ZoneClimat | null | undefined
+): boolean {
+  if (zoneHorsReferenceMetropole(userZone)) {
+    return itpZoneClimat === userZone
+  }
+  return itpZoneClimat == null
+}
+
+/**
  * Décalage des semis de plein air en semaines, par rapport à la zone de
  * référence (océanique altéré = 0). Positif = plus tardif (saison qui démarre
  * plus tard), négatif = plus précoce.
@@ -33,11 +82,16 @@ export type CategorieLunaire = 'feuille' | 'fruit' | 'racine' | 'fleur'
  */
 export const DECALAGE_ZONE: Record<ZoneClimat, number> = {
   mediterraneen: -2,
-  tropical: -3,
   oceanique: -1,
   oceanique_altere: 0,
   semi_continental: 1,
   montagnard: 3,
+  // Outre-mer : le décalage vis-à-vis du référentiel métropolitain n'a pas de
+  // sens (cf. zoneHorsReferenceMetropole). Valeur neutre 0 — jamais appliquée
+  // en pratique car ces zones passent par des ITP dédiés.
+  tropical_antilles: 0,
+  equatorial: 0,
+  tropical_austral: 0,
 }
 
 /**
@@ -47,11 +101,14 @@ export const DECALAGE_ZONE: Record<ZoneClimat, number> = {
  */
 export const SEMAINE_DERNIERES_GELEES: Record<ZoneClimat, number | null> = {
   mediterraneen: 9, // début mars
-  tropical: null,
   oceanique: 13, // fin mars
   oceanique_altere: 15, // mi-avril
   semi_continental: 17, // fin avril / début mai
   montagnard: 22, // début juin
+  // Outre-mer tropical : pas de gelée (le modèle « saints de glace » ne s'applique pas).
+  tropical_antilles: null,
+  equatorial: null,
+  tropical_austral: null,
 }
 
 /**
@@ -60,11 +117,14 @@ export const SEMAINE_DERNIERES_GELEES: Record<ZoneClimat, number | null> = {
  */
 export const SEMAINE_PREMIERES_GELEES: Record<ZoneClimat, number | null> = {
   mediterraneen: 49, // début décembre
-  tropical: null,
   oceanique: 46, // mi-novembre
   oceanique_altere: 44, // début novembre
   semi_continental: 42, // mi-octobre
   montagnard: 39, // fin septembre
+  // Outre-mer tropical : pas de gelée.
+  tropical_antilles: null,
+  equatorial: null,
+  tropical_austral: null,
 }
 
 /** Décalage en semaines pour une zone (0 si zone inconnue). */

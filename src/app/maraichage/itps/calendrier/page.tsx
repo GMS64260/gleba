@@ -29,7 +29,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { GanttRow } from "@/components/itps/GanttRow"
 import { ItpEditDialog } from "@/components/itps/ItpEditDialog"
 import { SemisLunaireEncart } from "@/components/itps/SemisLunaireEncart"
-import { libelleDecalage } from "@/lib/calendrier-climat"
+import { libelleDecalage, itpApplicableAZone } from "@/lib/calendrier-climat"
+import type { ZoneClimat } from "@/lib/terroir"
 import { alertDialog } from "@/lib/global-dialog"
 
 interface ITPWithEspece {
@@ -49,6 +50,7 @@ interface ITPWithEspece {
   dureeRecolte: number | null
   dureePepiniere?: number | null
   typePlanche: string | null
+  zoneClimat?: string | null
   notes: string | null
 }
 
@@ -56,6 +58,7 @@ interface ZoneOption {
   value: string
   label: string
   decalage: number
+  horsReference: boolean
 }
 
 interface ClimatPayload {
@@ -65,6 +68,7 @@ interface ClimatPayload {
   zoneDerivee: string | null
   labelDerivee: string | null
   decalage: number
+  horsReference: boolean
   dernieresGelees: number | null
   premieresGelees: number | null
   options: ZoneOption[]
@@ -142,8 +146,11 @@ export default function ITCalendrierPage() {
   const userADeLAbri = typesPlanchesUser.some((t) => TYPES_ABRI.includes(t))
   const userADuPleinChamp = typesPlanchesUser.includes("Plein champ")
 
-  // Décalage total appliqué à l'affichage
-  const decalageZone = climat?.decalage ?? 0
+  // Décalage total appliqué à l'affichage. En zone d'outre-mer (hors référence
+  // métropolitaine), les ITP sont déjà calés sur les saisons locales : aucun
+  // décalage de zone, seul le réglage fin reste actif.
+  const horsReference = climat?.horsReference ?? false
+  const decalageZone = horsReference ? 0 : (climat?.decalage ?? 0)
   const decalageTotal = decalageZone + reglageFin
 
   const changerZone = async (value: string) => {
@@ -171,6 +178,12 @@ export default function ITCalendrierPage() {
   // Filtrer les ITPs
   const itpsFiltres = React.useMemo(() => {
     return itps.filter((itp) => {
+      // Filtre par zone climatique : en outre-mer on ne montre que les ITP
+      // calés sur la zone, en métropole que le référentiel métropolitain.
+      if (!itpApplicableAZone(itp.zoneClimat, (climat?.zone ?? null) as ZoneClimat | null)) {
+        return false
+      }
+
       // Filtre planches
       if (filtreTypePlanche === "mes-planches") {
         const t = itp.typePlanche
@@ -194,7 +207,7 @@ export default function ITCalendrierPage() {
 
       return true
     })
-  }, [itps, filtreTypePlanche, recherche, userADeLAbri, userADuPleinChamp])
+  }, [itps, filtreTypePlanche, recherche, userADeLAbri, userADuPleinChamp, climat?.zone])
 
   const handleEdit = (itp: ITPWithEspece) => {
     setEditingItp(itp)
@@ -271,10 +284,16 @@ export default function ITCalendrierPage() {
                       Zone non détectée (renseignez le code postal de votre exploitation
                       ou choisissez une zone). Calendrier affiché sans décalage.
                     </>
+                  ) : horsReference ? (
+                    <>
+                      {climat!.source === "auto" ? "Détectée automatiquement" : "Choix manuel"} :{" "}
+                      <strong>{climat!.label}</strong> — calendrier calé sur les saisons locales
+                      (itinéraires dédiés à votre zone, sans décalage métropolitain).
+                    </>
                   ) : (
                     <>
-                      {climat.source === "auto" ? "Détectée automatiquement" : "Choix manuel"} :{" "}
-                      <strong>{climat.label}</strong> — dates {libelleDecalage(decalageZone)}.
+                      {climat!.source === "auto" ? "Détectée automatiquement" : "Choix manuel"} :{" "}
+                      <strong>{climat!.label}</strong> — dates {libelleDecalage(decalageZone)}.
                     </>
                   )}
                 </p>
@@ -412,7 +431,20 @@ export default function ITCalendrierPage() {
               <Skeleton className="h-96 w-full" />
             ) : itpsFiltres.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
-                <p>Aucun ITP trouvé avec ces filtres</p>
+                {horsReference ? (
+                  <div className="max-w-md mx-auto space-y-2">
+                    <p className="font-medium text-slate-700">
+                      Pas encore de calendrier de référence pour votre zone ({climat?.label}).
+                    </p>
+                    <p className="text-sm">
+                      Les itinéraires métropolitains ne sont pas transposables ici (saisons
+                      différentes, hémisphère parfois inversé). Créez vos propres itinéraires
+                      calés sur vos saisons locales — ils enrichiront le référentiel de la communauté.
+                    </p>
+                  </div>
+                ) : (
+                  <p>Aucun ITP trouvé avec ces filtres</p>
+                )}
               </div>
             ) : (
               <div className="overflow-x-auto">

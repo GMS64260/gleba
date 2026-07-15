@@ -3,6 +3,7 @@
  */
 
 import { z } from 'zod'
+import { ZONES_CLIMAT } from '@/lib/terroir'
 
 // Types de planche
 // Feedback Marc 2026-05-16 — V2 Bug 7 : la base contient « Sous abri »
@@ -30,6 +31,10 @@ export const baseITPSchema = z.object({
   espacementRangs: z.number().int().min(1).max(200).nullable().optional(), // cm entre rangs
   nbGrainesPlant: z.number().min(0).max(100).nullable().optional(),
   doseSemis: z.number().min(0).max(1000).nullable().optional(), // g/m2 ou g/ml
+  // Zone climatique de calage (référentiel géographique). null = référentiel
+  // métropolitain « moyen ». À la création côté serveur, un ITP perso hérite
+  // par défaut de la zone de son auteur si celle-ci est une zone d'outre-mer.
+  zoneClimat: z.enum(ZONES_CLIMAT).nullable().optional(),
 })
 
 // Schéma pour la création

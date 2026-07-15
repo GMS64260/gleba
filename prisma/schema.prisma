@@ -472,6 +472,18 @@ model Espece {
   auteur            User?    @relation("EspecePerso", fields: [userId], references: [id], onDelete: Cascade)
   partageCommunaute Boolean  @default(false) @map("partage_communaute")
 
+  // Adéquation géographique (référentiel géographique — cf. src/lib/terroir.ts).
+  // - zonesAdaptees : CSV de zones climatiques (valeurs de ZONES_CLIMAT) où
+  //   l'espèce est cultivable. null = non renseigné → l'espèce reste neutre
+  //   partout (comportement historique). Sert au badge « adaptée / peu adaptée
+  //   à votre zone » du catalogue.
+  // - besoinFroid : besoin de froid hivernal (vernalisation / dormance) pour
+  //   fructifier : aucun | faible | modere | eleve. Un fruitier « eleve » ne
+  //   fructifie pas en zone tropicale de plaine (avertissement à la plantation).
+  //   null = non renseigné.
+  zonesAdaptees     String?  @map("zones_adaptees")
+  besoinFroid       String?  @map("besoin_froid")
+
   // Nouveaux champs (parité Potaleger)
   categorie       String?  @map("categorie")       // Catégorie visuelle (emoji)
   niveau          String?  @map("niveau")          // Facile, Moyen, Difficile
@@ -808,11 +820,20 @@ model ITP {
   auteur            User?    @relation("ItpPerso", fields: [userId], references: [id], onDelete: Cascade)
   partageCommunaute Boolean  @default(false) @map("partage_communaute")
 
+  // Zone climatique de calage de l'itinéraire (valeur de ZONES_CLIMAT, cf.
+  // src/lib/terroir.ts). null = référentiel métropolitain « moyen » (océanique
+  // altéré) — comportement historique, décalable par zone via calendrier-climat.
+  // Non-null = ITP calé sur les saisons réelles d'une zone (ex : tropical_austral,
+  // semaines calendaires directement correctes, sans décalage). La planification
+  // et le calendrier privilégient l'ITP de la zone de l'utilisateur.
+  zoneClimat        String?  @map("zone_climat")
+
   // Relations
   cultures         Culture[]
   rotationsDetails RotationDetail[]
 
   @@index([userId])
+  @@index([zoneClimat])
   @@map("itps")
 }
 
