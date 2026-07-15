@@ -869,7 +869,17 @@ function JardinContent() {
         throw new Error(err.error || "Erreur création")
       }
 
-      toast({ title: "Arbre créé", description: newArbre.nom })
+      // Avertissement d'adéquation géographique (ex. fruitier à besoin de froid
+      // en zone tropicale) renvoyé par l'API — non bloquant.
+      const created = await response.json().catch(() => null)
+      if (created?.avertissementZone) {
+        toast({
+          title: "Arbre créé — attention à votre climat",
+          description: `${newArbre.espece} : ${created.avertissementZone}.`,
+        })
+      } else {
+        toast({ title: "Arbre créé", description: newArbre.nom })
+      }
       setShowNewArbreDialog(false)
       setNewArbre({ nom: "", type: "fruitier", espece: "", variete: "", fournisseur: "", envergure: 2 })
       fetchArbres()

@@ -13,12 +13,19 @@
 import type { PrismaClient } from '@prisma/client'
 
 export const ZONES_CLIMAT = [
+  // Métropole
   'oceanique',
   'oceanique_altere',
   'semi_continental',
   'montagnard',
   'mediterraneen',
-  'tropical',
+  // Outre-mer. La saisonnalité n'y suit PAS le modèle métropolitain (deux
+  // saisons humide/sèche, et surtout inversion des saisons en hémisphère sud) :
+  // on ne peut donc pas dériver leur calendrier par simple décalage. Ces zones
+  // s'appuient sur des ITP dédiés (cf. calendrier-climat.ts / zoneHorsReferenceMetropole).
+  'tropical_antilles',  // Antilles (Guadeloupe, Martinique, St-Martin/St-Barth) — hém. Nord
+  'equatorial',         // Guyane — équatorial, humide toute l'année
+  'tropical_austral',   // Réunion, Mayotte, Nouvelle-Calédonie, Polynésie, Wallis — hém. SUD (saisons inversées)
 ] as const
 
 export type ZoneClimat = (typeof ZONES_CLIMAT)[number]
@@ -29,7 +36,9 @@ export const ZONE_CLIMAT_LABEL: Record<ZoneClimat, string> = {
   semi_continental: 'Semi-continental',
   montagnard: 'Montagnard',
   mediterraneen: 'Méditerranéen',
-  tropical: 'Tropical',
+  tropical_antilles: 'Tropical antillais',
+  equatorial: 'Équatorial (Guyane)',
+  tropical_austral: 'Tropical austral (hém. Sud)',
 }
 
 /**
@@ -73,27 +82,53 @@ const DEPT_ZONE: Record<string, ZoneClimat> = {
 }
 
 /**
+ * Zone climatique par préfixe à 3 chiffres pour les collectivités d'outre-mer.
+ * Le climat y dépend de l'archipel (et surtout de l'hémisphère), pas d'un
+ * décalage vis-à-vis de la métropole. Saint-Pierre-et-Miquelon (975) est
+ * subpolaire océanique : faute de zone dédiée, on le rattache à l'océanique
+ * (froid, mais pas tropical — c'était l'ancien classement erroné).
+ */
+const OUTREMER_ZONE: Record<string, ZoneClimat> = {
+  '971': 'tropical_antilles', // Guadeloupe
+  '972': 'tropical_antilles', // Martinique
+  '973': 'equatorial',        // Guyane
+  '974': 'tropical_austral',  // La Réunion (hém. Sud)
+  '975': 'oceanique',         // Saint-Pierre-et-Miquelon (subpolaire, approximé)
+  '976': 'tropical_austral',  // Mayotte (hém. Sud)
+  '977': 'tropical_antilles', // Saint-Barthélemy
+  '978': 'tropical_antilles', // Saint-Martin
+  '986': 'tropical_austral',  // Wallis-et-Futuna (hém. Sud)
+  '987': 'tropical_austral',  // Polynésie française (hém. Sud)
+  '988': 'tropical_austral',  // Nouvelle-Calédonie (hém. Sud)
+}
+
+/**
  * Zone climatique depuis un code postal français.
+ * - 97x / 98x (outre-mer) → table OUTREMER_ZONE (préfixe à 3 chiffres)
  * - 20xxx (Corse) → méditerranéen
- * - 97xxx / 98xxx (DROM-COM) → tropical
  * - sinon : département (2 premiers chiffres) → table
  */
 export function zoneClimatiqueDepuisCodePostal(codePostal?: string | null): ZoneClimat | null {
   if (!codePostal) return null
   const cp = codePostal.trim()
   if (!/^\d{2}/.test(cp)) return null
-  if (cp.startsWith('97') || cp.startsWith('98')) return 'tropical'
+  if (cp.startsWith('97') || cp.startsWith('98')) return OUTREMER_ZONE[cp.slice(0, 3)] ?? null
   if (cp.startsWith('20')) return 'mediterraneen' // Corse (2A/2B)
   return DEPT_ZONE[cp.slice(0, 2)] ?? null
 }
 
 /**
- * Fallback grossier par coordonnées (métropole) quand aucun code postal n'est
- * disponible. Approximation volontairement simple ; ne détecte pas le montagnard
- * (besoin de l'altitude).
+ * Fallback grossier par coordonnées quand aucun code postal n'est disponible.
+ * Approximation volontairement simple, RÉSERVÉE À LA MÉTROPOLE (bornes lat/lng
+ * de la France continentale) : hors de ces bornes on renvoie null plutôt que de
+ * classer à tort un point outre-mer (ex : la Nouvelle-Calédonie serait sinon
+ * vue « méditerranéenne »). Ne détecte pas le montagnard (besoin de l'altitude).
  */
 export function zoneClimatiqueDepuisLatLng(lat?: number | null, lng?: number | null): ZoneClimat | null {
   if (lat == null || lng == null) return null
+  // Hors France métropolitaine continentale → indéterminé (l'outre-mer se
+  // dérive du code postal, pas de ce repli grossier).
+  if (lat < 41 || lat > 51.5 || lng < -5.5 || lng > 10) return null
   // Pourtour méditerranéen + Corse
   if (lat <= 44 && lng >= 3) return 'mediterraneen'
   // Façade est (Alsace, Bourgogne-Franche-Comté, Rhône)
@@ -136,6 +171,27 @@ export interface TerroirUser {
   typeSol: string | null
   zoneClimat: ZoneClimat | null
   codePostal: string | null
+}
+
+/**
+ * Zone climatique EFFECTIVE d'un utilisateur : surcharge manuelle
+ * (`user.zoneClimat`) si valide, sinon zone dérivée du terroir. C'est la même
+ * règle « surcharge > dérivée » que l'API /api/calendrier-climat, factorisée
+ * pour les usages serveur (ex : avertissement de plantation).
+ */
+export async function zoneEffectiveUser(
+  prisma: PrismaClient,
+  userId: string
+): Promise<ZoneClimat | null> {
+  const [user, terroir] = await Promise.all([
+    prisma.user.findUnique({ where: { id: userId }, select: { zoneClimat: true } }),
+    terroirDeUser(prisma, userId),
+  ])
+  const surcharge =
+    user?.zoneClimat && (ZONES_CLIMAT as readonly string[]).includes(user.zoneClimat)
+      ? (user.zoneClimat as ZoneClimat)
+      : null
+  return surcharge ?? terroir.zoneClimat
 }
 
 /**
