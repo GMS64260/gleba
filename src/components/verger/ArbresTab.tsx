@@ -7,7 +7,7 @@
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import { ColumnDef } from "@tanstack/react-table"
-import { TreeDeciduous, Leaf, Cherry, Fence, Flower2, Shrub, CalendarPlus } from "lucide-react"
+import { TreeDeciduous, Leaf, Cherry, Fence, Flower2, Shrub, CalendarPlus, Map as MapIcon, MapPin } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -24,6 +24,10 @@ import { DataTable } from "@/components/tables/DataTable"
 import { Combobox } from "@/components/ui/combobox"
 import { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
+import { GpsPositionButton } from "@/components/gps/GpsPositionButton"
+import { GpsMapPickerDialog } from "@/components/gps/GpsMapPickerDialog"
+import { ReleveGpsDialog } from "@/components/verger/ReleveGpsDialog"
+import { roundCoord } from "@/lib/geolocation"
 import { adequationEspece } from "@/lib/adequation-zone"
 import type { ZoneClimat } from "@/lib/terroir"
 import { Snowflake } from "lucide-react"
@@ -232,6 +236,10 @@ export function ArbresTab() {
   >([])
   // PROMPT 10 — filtres "fiche incomplète"
   const [filtreCompletude, setFiltreCompletude] = React.useState<"all" | "sansPorteGreffe" | "sansGps">("all")
+  // Feedback LVBB40430 — saisie GPS assistée (géoloc, carte, relevé en série)
+  const [mapPickerOpen, setMapPickerOpen] = React.useState(false)
+  const [releveGpsOpen, setReleveGpsOpen] = React.useState(false)
+  const [newArbreGpsAccuracy, setNewArbreGpsAccuracy] = React.useState<number | null>(null)
   const [newArbre, setNewArbre] = React.useState({
     nom: "",
     type: "fruitier",
@@ -394,6 +402,28 @@ export function ArbresTab() {
     return unique.sort().map(v => ({ value: v, label: v }))
   }, [data, fournisseursRef])
 
+  // Feedback LVBB40430 — arbres déjà géolocalisés : repères bleus du sélecteur carte
+  const arbresAvecGps = React.useMemo(
+    () =>
+      data
+        .filter((a) => a.gpsLat != null && a.gpsLng != null)
+        .map((a) => ({ lat: a.gpsLat as number, lng: a.gpsLng as number, label: a.nom })),
+    [data]
+  )
+
+  // File du relevé en série : arbres sans coordonnées (filtre type courant respecté)
+  const arbresSansGps = React.useMemo(() => {
+    let list = data.filter((a) => a.gpsLat == null || a.gpsLng == null)
+    if (selectedType !== "all") list = list.filter((a) => a.type === selectedType)
+    return [...list]
+      .sort((a, b) => a.nom.localeCompare(b.nom, "fr"))
+      .map((a) => ({ id: a.id, nom: a.nom, espece: a.espece, variete: a.variete }))
+  }, [data, selectedType])
+
+  const handleGpsSaved = React.useCallback((arbreId: number, lat: number, lng: number) => {
+    setData((prev) => prev.map((a) => (a.id === arbreId ? { ...a, gpsLat: lat, gpsLng: lng } : a)))
+  }, [])
+
   const resetForm = () => {
     setNewArbre({
       nom: "",
@@ -419,6 +449,7 @@ export function ArbresTab() {
     setBatchMode(false)
     setBatchPrefix("")
     setBatchCount("5")
+    setNewArbreGpsAccuracy(null)
   }
 
   const buildArbrePayload = (overrideNom?: string) => ({
@@ -557,6 +588,23 @@ export function ArbresTab() {
           onClick={() => setFiltreCompletude("sansGps")}
         >
           Sans GPS
+        </Button>
+        {/* Feedback LVBB40430 — géolocaliser les arbres en enchaînant, sans
+            recopier de coordonnées depuis une autre application. */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setReleveGpsOpen(true)}
+          disabled={arbresSansGps.length === 0}
+          className="text-lime-700 border-lime-300 hover:bg-lime-50 hover:text-lime-800"
+          title={
+            arbresSansGps.length === 0
+              ? "Tous les arbres affichés ont déjà des coordonnées GPS"
+              : "Enchaîner la géolocalisation des arbres sans coordonnées, arbre par arbre"
+          }
+        >
+          <MapPin className="h-4 w-4 mr-1" />
+          Relevé GPS en série{arbresSansGps.length > 0 ? ` (${arbresSansGps.length})` : ""}
         </Button>
         {/* Bug #8 — Planche A4 QR codes pour étiqueter les arbres.
             Lien désactivé si sélection vide ou > 60 arbres (limite de la
@@ -870,7 +918,10 @@ export function ArbresTab() {
                 <Input
                   type="number" step="0.000001"
                   value={newArbre.gpsLat}
-                  onChange={(e) => setNewArbre({ ...newArbre, gpsLat: e.target.value })}
+                  onChange={(e) => {
+                    setNewArbre({ ...newArbre, gpsLat: e.target.value })
+                    setNewArbreGpsAccuracy(null)
+                  }}
                   placeholder="48.8566"
                 />
               </div>
@@ -879,9 +930,35 @@ export function ArbresTab() {
                 <Input
                   type="number" step="0.000001"
                   value={newArbre.gpsLng}
-                  onChange={(e) => setNewArbre({ ...newArbre, gpsLng: e.target.value })}
+                  onChange={(e) => {
+                    setNewArbre({ ...newArbre, gpsLng: e.target.value })
+                    setNewArbreGpsAccuracy(null)
+                  }}
                   placeholder="2.3522"
                 />
+              </div>
+              {/* Feedback LVBB40430 — plus de recopie manuelle : géolocalisation
+                  en un tap ou pointage sur l'orthophoto IGN. */}
+              <div className="col-span-2 flex flex-wrap items-center gap-2">
+                <GpsPositionButton
+                  onPosition={(fix) => {
+                    setNewArbre((prev) => ({
+                      ...prev,
+                      gpsLat: String(roundCoord(fix.lat)),
+                      gpsLng: String(roundCoord(fix.lng)),
+                    }))
+                    setNewArbreGpsAccuracy(fix.accuracy)
+                  }}
+                />
+                <Button type="button" variant="outline" size="sm" onClick={() => setMapPickerOpen(true)}>
+                  <MapIcon className="h-4 w-4 mr-1.5" />
+                  Choisir sur la carte
+                </Button>
+                {newArbreGpsAccuracy != null && (
+                  <span className="text-xs text-muted-foreground">
+                    précision ± {Math.round(newArbreGpsAccuracy)} m
+                  </span>
+                )}
               </div>
             </div>
 
@@ -930,6 +1007,27 @@ export function ArbresTab() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Feedback LVBB40430 — sélecteur de position sur carte (modale d'ajout) */}
+      <GpsMapPickerDialog
+        open={mapPickerOpen}
+        onOpenChange={setMapPickerOpen}
+        initialLat={newArbre.gpsLat ? parseFloat(newArbre.gpsLat) : null}
+        initialLng={newArbre.gpsLng ? parseFloat(newArbre.gpsLng) : null}
+        contextPoints={arbresAvecGps}
+        onConfirm={(lat, lng) => {
+          setNewArbre((prev) => ({ ...prev, gpsLat: String(lat), gpsLng: String(lng) }))
+          setNewArbreGpsAccuracy(null)
+        }}
+      />
+
+      {/* Feedback LVBB40430 — relevé GPS en série des arbres sans coordonnées */}
+      <ReleveGpsDialog
+        open={releveGpsOpen}
+        onOpenChange={setReleveGpsOpen}
+        arbres={arbresSansGps}
+        onSaved={handleGpsSaved}
+      />
     </div>
   )
 }

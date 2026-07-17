@@ -634,7 +634,7 @@ export function CalendarView({ year }: CalendarViewProps) {
 
             {/* Sheet mobile pour les événements du jour */}
             <Sheet open={daySheetOpen} onOpenChange={setDaySheetOpen}>
-              <SheetContent side="bottom" className="h-auto max-h-[70vh]">
+              <SheetContent side="bottom" className="h-auto max-h-[70dvh]">
                 <SheetHeader>
                   <SheetTitle>
                     {selectedDayForMobile && format(selectedDayForMobile.date, "EEEE d MMMM yyyy", { locale: fr })}

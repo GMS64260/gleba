@@ -382,7 +382,7 @@ export function EspecesTab() {
 
       {/* Dialog Creer/Modifier */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-lg max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingId ? "Modifier l'espèce" : "Nouvelle espèce"}</DialogTitle>
             <DialogDescription>

@@ -157,7 +157,7 @@ export function GlobalSearch() {
             {loading && <Loader2 className="h-4 w-4 animate-spin text-slate-400" />}
             <kbd className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded">Esc</kbd>
           </div>
-          <Command.List className="max-h-[60vh] overflow-y-auto">
+          <Command.List className="max-h-[60dvh] overflow-y-auto">
             {query.trim().length < 2 ? (
               <div className="p-6 text-sm text-slate-500 text-center">
                 Tapez au moins 2 caractères pour rechercher dans cultures, variétés, arbres,

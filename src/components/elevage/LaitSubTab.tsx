@@ -605,7 +605,7 @@ function DialogCreationLot(props: { open: boolean; onOpenChange: (b: boolean) =>
 
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Nouvelle fabrication</DialogTitle>
           <DialogDescription>
