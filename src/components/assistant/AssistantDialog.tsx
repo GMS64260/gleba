@@ -406,7 +406,7 @@ export function AssistantDialog({ open, onOpenChange }: AssistantDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[650px] max-h-[90vh] !flex !flex-col overflow-hidden">
+      <DialogContent className="sm:max-w-[650px] max-h-[90dvh] !flex !flex-col overflow-hidden">
         <DialogHeader className="flex-shrink-0">
           <div className="flex items-center gap-2 mb-2">
             <Wand2 className="h-5 w-5 text-green-600" />

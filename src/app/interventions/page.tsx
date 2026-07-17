@@ -644,7 +644,7 @@ export default function InterventionsPage() {
                   Nouvelle intervention
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+              <DialogContent className="max-w-2xl max-h-[90dvh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>
                     {editingIntervention ? "Modifier l'intervention" : "Nouvelle intervention"}

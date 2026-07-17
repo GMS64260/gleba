@@ -992,7 +992,7 @@ function SoinsSubTab({ initialAnimalId = null }: { initialAnimalId?: string | nu
             <DialogTrigger asChild><Button size="sm" onClick={() => setEditingSoinId(null)}><Plus className="h-4 w-4 mr-1" />Nouveau soin</Button></DialogTrigger>
             <DialogContent className="max-w-md">
               <DialogHeader><DialogTitle>{editingSoinId ? "Modifier le soin" : "Enregistrer un soin"}</DialogTitle><DialogDescription>{editingSoinId ? `Édition du soin #${editingSoinId}` : "Vaccination, vermifuge, traitement..."}</DialogDescription></DialogHeader>
-              <form onSubmit={handleSubmit} className="space-y-3 max-h-[70vh] overflow-y-auto pr-2">
+              <form onSubmit={handleSubmit} className="space-y-3 max-h-[70dvh] overflow-y-auto pr-2">
                 {/* Cible : animal ou lot */}
                 <div className="space-y-2">
                   <Label>Cible *</Label>

@@ -106,7 +106,7 @@ export function ParcelleFormDialog({ open, parcelle, onClose }: ParcelleFormDial
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {isEdit ? `Modifier "${parcelle!.nom}"` : "Nouvelle parcelle"}

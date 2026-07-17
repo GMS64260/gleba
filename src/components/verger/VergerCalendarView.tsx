@@ -441,7 +441,7 @@ export function VergerCalendarView({ year }: VergerCalendarViewProps) {
 
             {/* Mobile Sheet */}
             <Sheet open={daySheetOpen} onOpenChange={setDaySheetOpen}>
-              <SheetContent side="bottom" className="h-auto max-h-[70vh]">
+              <SheetContent side="bottom" className="h-auto max-h-[70dvh]">
                 <SheetHeader>
                   <SheetTitle>
                     {selectedDayForMobile &&

@@ -30,8 +30,8 @@ L.Icon.Default.mergeOptions({
 const DEFAULT_CENTER: L.LatLngExpression = [46.6, 2.3]
 const DEFAULT_ZOOM = 6
 
-// URLs des fonds de carte
-const TILE_URLS = {
+// URLs des fonds de carte (exportées : réutilisées par le sélecteur GPS verger)
+export const TILE_URLS = {
   osm: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
   satelliteIgn:
     "https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&STYLE=normal&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/jpeg",
@@ -42,7 +42,7 @@ const TILE_URLS = {
 } as const
 
 // Attributions
-const ATTRIBUTIONS = {
+export const ATTRIBUTIONS = {
   osm: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
   ign: '&copy; <a href="https://www.ign.fr/">IGN</a>',
 } as const

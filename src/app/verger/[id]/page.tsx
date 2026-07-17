@@ -11,11 +11,14 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ArrowLeft, TreeDeciduous, Save, Trash2, AlertTriangle } from "lucide-react"
+import { ArrowLeft, TreeDeciduous, Save, Trash2, AlertTriangle, Map as MapIcon } from "lucide-react"
 import { checkProductifCoherence } from "@/lib/tree-care-calendar"
 import { Combobox } from "@/components/ui/combobox"
 import { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
+import { GpsPositionButton } from "@/components/gps/GpsPositionButton"
+import { GpsMapPickerDialog } from "@/components/gps/GpsMapPickerDialog"
+import { roundCoord } from "@/lib/geolocation"
 
 interface Arbre {
   id: number
@@ -89,6 +92,10 @@ export default function DetailArbrePage() {
   const [fournisseursRef, setFournisseursRef] = React.useState<string[]>([])
   // Bug #1 — Référentiel des porte-greffes compatibles avec l'espèce.
   const [portesGreffesRef, setPortesGreffesRef] = React.useState<Array<{ id: string; nom: string; vigueur: number | null; precocite: number | null }>>([])
+  // Feedback LVBB40430 — saisie GPS assistée (géoloc directe + carte)
+  const [gpsPickerOpen, setGpsPickerOpen] = React.useState(false)
+  const [gpsAccuracy, setGpsAccuracy] = React.useState<number | null>(null)
+  const [autresArbresGps, setAutresArbresGps] = React.useState<Array<{ lat: number; lng: number; label: string }>>([])
 
   React.useEffect(() => {
     // Suggestions issues des arbres déjà saisis
@@ -100,6 +107,13 @@ export default function DetailArbrePage() {
           fournisseurs: [...new Set(data.map((a: any) => a.fournisseur).filter(Boolean))].sort() as string[],
           portGreffes: [...new Set(data.map((a: any) => a.portGreffe).filter(Boolean))].sort() as string[],
         })
+        // Feedback LVBB40430 — les autres arbres géolocalisés servent de
+        // repères sur le sélecteur carte.
+        setAutresArbresGps(
+          data
+            .filter((a: any) => a.gpsLat != null && a.gpsLng != null && a.id !== Number(id))
+            .map((a: any) => ({ lat: a.gpsLat, lng: a.gpsLng, label: a.nom }))
+        )
       }
     })
 
@@ -121,7 +135,7 @@ export default function DetailArbrePage() {
         .filter(Boolean)
       setFournisseursRef(fournisseurs)
     })
-  }, [])
+  }, [id])
 
   const TYPE_TO_REF: Record<string, string> = { fruitier: "arbre_fruitier", petit_fruit: "petit_fruit" }
 
@@ -456,12 +470,13 @@ export default function DetailArbrePage() {
                       type="number"
                       step="0.000001"
                       value={arbre.gpsLat ?? ""}
-                      onChange={(e) =>
+                      onChange={(e) => {
                         setArbre({
                           ...arbre,
                           gpsLat: e.target.value ? parseFloat(e.target.value) : null,
                         })
-                      }
+                        setGpsAccuracy(null)
+                      }}
                       placeholder="ex: 49.183456"
                     />
                   </div>
@@ -471,15 +486,43 @@ export default function DetailArbrePage() {
                       type="number"
                       step="0.000001"
                       value={arbre.gpsLng ?? ""}
-                      onChange={(e) =>
+                      onChange={(e) => {
                         setArbre({
                           ...arbre,
                           gpsLng: e.target.value ? parseFloat(e.target.value) : null,
                         })
-                      }
+                        setGpsAccuracy(null)
+                      }}
                       placeholder="ex: 0.345678"
                     />
                   </div>
+                </div>
+
+                {/* Feedback LVBB40430 — plus de recopie manuelle : géolocalisation
+                    en un tap ou pointage sur l'orthophoto IGN. */}
+                <div className="-mt-2 flex flex-wrap items-center gap-2">
+                  <GpsPositionButton
+                    onPosition={(fix) => {
+                      setArbre({
+                        ...arbre,
+                        gpsLat: roundCoord(fix.lat),
+                        gpsLng: roundCoord(fix.lng),
+                      })
+                      setGpsAccuracy(fix.accuracy)
+                    }}
+                  />
+                  <Button type="button" variant="outline" size="sm" onClick={() => setGpsPickerOpen(true)}>
+                    <MapIcon className="h-4 w-4 mr-1.5" />
+                    Choisir sur la carte
+                  </Button>
+                  {gpsAccuracy != null && (
+                    <span className="text-xs text-muted-foreground">
+                      précision ± {Math.round(gpsAccuracy)} m
+                    </span>
+                  )}
+                  <span className="text-xs text-muted-foreground">
+                    — puis « Sauvegarder » en haut de page
+                  </span>
                 </div>
 
                 {/* Dates, provenance et achat */}
@@ -761,6 +804,20 @@ export default function DetailArbrePage() {
             : []
         }
         onConfirm={performDelete}
+      />
+
+      {/* Feedback LVBB40430 — sélecteur de position sur carte satellite */}
+      <GpsMapPickerDialog
+        open={gpsPickerOpen}
+        onOpenChange={setGpsPickerOpen}
+        initialLat={arbre.gpsLat}
+        initialLng={arbre.gpsLng}
+        contextPoints={autresArbresGps}
+        title={`Position de « ${arbre.nom} »`}
+        onConfirm={(lat, lng) => {
+          setArbre({ ...arbre, gpsLat: lat, gpsLng: lng })
+          setGpsAccuracy(null)
+        }}
       />
     </div>
   )
