@@ -430,7 +430,8 @@ export default function CulturesPage() {
             <h1 className="text-xl font-bold">Cultures</h1>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        {/* Responsive 360px — 3 boutons d'action ne tiennent pas sur une ligne */}
+        <div className="flex items-center gap-2 flex-wrap">
           <AssistantButton onClick={() => setShowAssistant(true)} />
           <Link href="/taches">
             <Button variant="outline" size="sm">

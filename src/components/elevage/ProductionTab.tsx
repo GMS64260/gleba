@@ -55,7 +55,7 @@ import { todayLocalISO } from '@/lib/format-utils'
 export function ProductionTab({ year }: { year?: number } = {}) {
   return (
     <Tabs defaultValue="oeufs" className="space-y-4">
-      <TabsList>
+      <TabsList className="flex-wrap h-auto gap-y-1">
         <TabsTrigger value="oeufs" className="flex items-center gap-1.5">
           <Egg className="h-4 w-4" />
           Œufs

@@ -479,7 +479,8 @@ function SemencesContent() {
   return (
     <div>
       <div className="flex items-center justify-between gap-2 flex-wrap mb-4">
-        <div className="flex items-center gap-4">
+        {/* Responsive 360px — retour + titre débordent sinon */}
+        <div className="flex items-center gap-4 flex-wrap">
           <Link href="/?tab=planification">
             <Button variant="ghost" size="sm">
               <ArrowLeft className="h-4 w-4 mr-2" />
@@ -492,7 +493,8 @@ function SemencesContent() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        {/* Responsive 360px — switch + bouton + select ne tiennent pas sur une ligne */}
+        <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-2 border rounded-md px-3 py-1.5 bg-white">
             <Switch
               id="toggle-marge"

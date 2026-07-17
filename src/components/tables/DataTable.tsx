@@ -190,11 +190,13 @@ export function DataTable<TData, TValue>({
   return (
     <div className="space-y-4">
       {/* Toolbar */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
+      {/* Responsive 360px — recherche + 4 boutons ≈ 640px : wrap (recherche pleine
+          largeur, boutons en dessous) au lieu d'être clippés par overflow-x hidden */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex w-full items-center gap-2 sm:w-auto">
           {title && <h2 className="text-lg font-semibold">{title}</h2>}
           {showSearch && (
-            <div className="relative">
+            <div className="relative w-full sm:w-auto">
               <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder={searchPlaceholder}
@@ -206,13 +208,13 @@ export function DataTable<TData, TValue>({
                     setGlobalFilter(e.target.value)
                   }
                 }}
-                className="pl-8 w-[250px]"
+                className="pl-8 w-full sm:w-[250px]"
               />
             </div>
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {onRefresh && (
             <Button variant="outline" size="sm" onClick={onRefresh}>
               <RefreshCw className="h-4 w-4" />
@@ -346,7 +348,8 @@ export function DataTable<TData, TValue>({
           « 0 résultat(s) » et « Aucun résultat » s'affichaient en même temps
           que le skeleton (bug d'états contradictoires). */}
       {showPagination && !isLoading && (
-        <div className="flex items-center justify-between px-2">
+        // Responsive 360px — compteur + boutons de page wrappent au lieu d'être clippés
+        <div className="flex flex-wrap items-center justify-between gap-2 px-2">
           <div className="text-sm text-muted-foreground">
             {table.getFilteredSelectedRowModel().rows.length > 0 && (
               <span>

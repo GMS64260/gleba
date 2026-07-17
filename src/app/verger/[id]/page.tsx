@@ -283,7 +283,8 @@ export default function DetailArbrePage() {
     <div className="min-h-screen bg-gradient-to-b from-lime-50 to-white">
       <div className="container mx-auto px-4 py-8 max-w-[1000px]">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        {/* Responsive 360px — Supprimer/Sauvegarder passent à la ligne */}
+        <div className="flex flex-wrap items-center justify-between gap-y-2 mb-6">
           <div className="flex items-center gap-4">
             <Link href="/verger?tab=arbres">
               <Button variant="ghost" size="sm">
@@ -327,7 +328,7 @@ export default function DetailArbrePage() {
               </CardHeader>
               <CardContent className="space-y-6">
                 {/* Identité */}
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label>Nom *</Label>
                     <Input
@@ -355,7 +356,7 @@ export default function DetailArbrePage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
                     <Label>Espèce</Label>
                     <Combobox
@@ -424,7 +425,7 @@ export default function DetailArbrePage() {
                 </div>
 
                 {/* Bug #1 — Conduite (formeTaille) + Circonférence + GPS lat/lng */}
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
                     <Label>Conduite</Label>
                     <Select
@@ -463,7 +464,7 @@ export default function DetailArbrePage() {
                   <div>{/* spacer */}</div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label>GPS Latitude</Label>
                     <Input
@@ -526,7 +527,7 @@ export default function DetailArbrePage() {
                 </div>
 
                 {/* Dates, provenance et achat */}
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label>Date plantation</Label>
                     <Input
@@ -547,7 +548,7 @@ export default function DetailArbrePage() {
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
                     <Label>Fournisseur / Pépinière</Label>
                     <Combobox
@@ -583,7 +584,7 @@ export default function DetailArbrePage() {
                 </div>
 
                 {/* Caractéristiques physiques */}
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
                     <Label>Envergure (m)</Label>
                     <Input
@@ -632,7 +633,7 @@ export default function DetailArbrePage() {
                 </div>
 
                 {/* Production */}
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
                     <Label>Productif</Label>
                     <Select

@@ -555,7 +555,8 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
               restait inerte avec le composant Tabs (probable conflit de
               focus/event-bubbling). On remplace par un toggle button-group
               explicite qui appelle setCalendarMode directement. */}
-          <div role="tablist" className="inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground">
+          {/* Responsive 360px — les 2 libellés nowrap ≈ 343px : wrap sur 2 lignes (sm:h-9 = rendu desktop inchangé) */}
+          <div role="tablist" className="inline-flex h-auto sm:h-9 flex-wrap items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground">
             <button
               type="button"
               role="tab"
@@ -701,7 +702,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
               />
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-base">
+                  <CardTitle className="flex flex-wrap items-center gap-2 text-base">
                     <Droplets className="h-5 w-5 text-cyan-600" />
                     A irriguer
                     <div className="flex items-center gap-1.5 ml-auto">
@@ -834,7 +835,7 @@ function TaskSection({
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="flex items-center gap-2 text-base">
+        <CardTitle className="flex flex-wrap items-center gap-2 text-base">
           <Icon className={`h-5 w-5 ${iconColor}`} />
           {title}
           <div className="flex items-center gap-1.5 ml-auto">

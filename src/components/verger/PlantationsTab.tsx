@@ -148,7 +148,7 @@ export function PlantationsTab() {
             Verger, haie, agroforesterie, replantation forestière
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Link href="/verger/aides">
             <Button variant="outline" size="sm">
               <HelpCircle className="h-4 w-4 mr-1" />

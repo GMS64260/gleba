@@ -473,7 +473,8 @@ export default function RecoltesPage() {
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="mb-4">
+          {/* Responsive 360px — 3 onglets + compteurs : TabsList inline-flex h-9 clippe sinon */}
+          <TabsList className="mb-4 flex-wrap h-auto gap-y-1">
             <TabsTrigger value="stock" className="flex items-center gap-2">
               <Package className="h-4 w-4" />
               Stock ({stockRecoltes.length})

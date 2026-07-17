@@ -72,7 +72,7 @@ function addDaysIso(iso: string, n: number): string {
 export function LaitSubTab() {
   return (
     <Tabs defaultValue="collecte" className="space-y-4">
-      <TabsList>
+      <TabsList className="flex-wrap h-auto gap-y-1">
         <TabsTrigger value="collecte" className="flex items-center gap-1.5">
           <Milk className="h-4 w-4" />
           Collecte

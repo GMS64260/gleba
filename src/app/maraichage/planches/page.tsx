@@ -256,7 +256,8 @@ export default function PlanchesPage() {
             <h1 className="text-xl font-bold">Planches</h1>
           </div>
         </div>
-        <div className="flex items-center gap-4">
+        {/* Responsive 360px — bouton + assistant + stats ne tiennent pas sur une ligne */}
+        <div className="flex items-center gap-4 flex-wrap">
           {totalPlanches > 0 && (
             <Button variant="outline" size="sm" onClick={() => setShowCompleter(true)}>
               <ListChecks className="h-4 w-4 mr-2" />

@@ -70,7 +70,7 @@ export function AlimentationTab() {
 
   return (
     <Tabs value={activeSub} onValueChange={setActiveSub} className="space-y-4">
-      <TabsList>
+      <TabsList className="flex-wrap h-auto gap-y-1">
         <TabsTrigger value="stocks" className="flex items-center gap-1.5">
           <Package className="h-4 w-4" />
           Stocks
@@ -642,7 +642,7 @@ function ConsommationsSubTab() {
 
       {/* Filtres et actions */}
       <div className="flex items-center gap-4 flex-wrap">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Calendar className="h-4 w-4 text-muted-foreground" />
           <Input type="date" value={filterDateDebut} onChange={(e) => setFilterDateDebut(e.target.value)} className="w-[150px]" />
           <span className="text-muted-foreground">au</span>
@@ -977,7 +977,7 @@ function SoinsSubTab({ initialAnimalId = null }: { initialAnimalId?: string | nu
   return (
     <div className="space-y-4">
       {/* Filtres + Actions */}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <Select value={filterFait} onValueChange={setFilterFait}>
           <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
           <SelectContent>

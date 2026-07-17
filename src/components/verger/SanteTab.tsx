@@ -133,7 +133,7 @@ const ORGANES = [
 export function SanteTab() {
   return (
     <Tabs defaultValue="observations" className="space-y-4">
-      <TabsList>
+      <TabsList className="flex-wrap h-auto gap-y-1">
         <TabsTrigger value="observations" className="flex items-center gap-1.5">
           <HeartPulse className="h-4 w-4" />
           Observations

@@ -102,7 +102,8 @@ const RETENTION_EAU = [
 export function TerrainTab() {
   return (
     <Tabs defaultValue="planches" className="space-y-4">
-      <TabsList>
+      {/* Responsive 360px — TabsList inline-flex h-9 clippe les 3 triggers (~350px) */}
+      <TabsList className="h-auto flex-wrap gap-y-1">
         <TabsTrigger value="planches" className="flex items-center gap-1.5">
           <LayoutGrid className="h-4 w-4" />
           Planches

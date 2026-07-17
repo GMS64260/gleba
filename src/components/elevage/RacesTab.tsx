@@ -133,7 +133,7 @@ export function RacesTab() {
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
+      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-y-2">
         <CardTitle className="flex items-center gap-2">
           <Bird className="h-5 w-5 text-lime-600" /> Races animales
         </CardTitle>

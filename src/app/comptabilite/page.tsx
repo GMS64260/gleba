@@ -285,7 +285,8 @@ export default function DashboardComptabilite() {
 
       {/* Header */}
       <header className="border-b border-b-2 border-b-blue-500 bg-white/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-3 flex items-center justify-between gap-2 max-w-[1600px]">
+        {/* Responsive 360px — même wrap que le header élevage */}
+        <div className="container mx-auto px-4 py-3 flex items-center justify-between gap-2 max-w-[1600px] flex-wrap">
           <Link href="/" className="flex items-center hover:opacity-90 transition-opacity">
             <Image
               src="/gleba-logo.png"
@@ -317,7 +318,7 @@ export default function DashboardComptabilite() {
           <PremiersPasBanner module="comptabilite" />
         </div>
         {/* Titre + Sélecteur d'annee */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-wrap items-center justify-between gap-y-2 mb-6">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
               <Euro className="h-5 w-5 text-blue-700" />
