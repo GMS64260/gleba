@@ -24,7 +24,6 @@ import {
 } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
-import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 
 interface CulturePrevue {
   plancheId: string
@@ -184,10 +183,8 @@ function CulturesPrevuesParIlotsContent() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
-      <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
-      <AppHeader current="maraichage" />
-      <PageToolbar>
+    <div>
+      <div className="flex items-center justify-between gap-2 flex-wrap mb-4">
         <div className="flex items-center gap-4">
           <Link href="/?tab=planification">
             <Button variant="ghost" size="sm">
@@ -225,9 +222,9 @@ function CulturesPrevuesParIlotsContent() {
             </SelectContent>
           </Select>
         </div>
-      </PageToolbar>
+      </div>
 
-      <main className="container mx-auto px-4 py-6">
+      <main>
         {/* Onglets */}
         <div className="flex gap-2 mb-4">
           <Link href={`/maraichage/planification/cultures-prevues?annee=${annee}`}>

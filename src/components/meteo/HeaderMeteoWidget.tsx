@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import {
   Cloud,
   CloudFog,
@@ -144,6 +145,15 @@ export function HeaderMeteoWidget({ showLune = false }: { showLune?: boolean }) 
         </PopoverTrigger>
         <PopoverContent className="w-[380px] p-0" align="start" sideOffset={8}>
           <MeteoWidget lat={parcelle.centroidLat} lng={parcelle.centroidLng} />
+          {/* Palier 3 : la météo a désormais une page dédiée */}
+          <div className="border-t px-3 py-2 text-right">
+            <Link
+              href="/meteo"
+              className="text-xs font-medium text-sky-700 hover:text-sky-900 hover:underline underline-offset-2"
+            >
+              Ouvrir la page Météo →
+            </Link>
+          </div>
         </PopoverContent>
       </Popover>
 

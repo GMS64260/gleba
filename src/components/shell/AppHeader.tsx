@@ -25,8 +25,8 @@ import { HeaderMeteoWidget } from "@/components/meteo/HeaderMeteoWidget"
 import type { ModuleId } from "@/lib/modules"
 
 interface AppHeaderProps {
-  /** Module courant, pour l'état actif de ModulesNav */
-  current: ModuleId
+  /** Module courant, pour l'état actif de ModulesNav ; absent sur les pages transverses (ex. /meteo) */
+  current?: ModuleId
   /** Affiche la lune dans le widget météo (activé sur les homes) */
   showLune?: boolean
 }
