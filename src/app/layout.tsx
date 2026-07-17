@@ -9,7 +9,6 @@ import { GlobalSearch } from "@/components/global-search";
 import { OnboardingRedirect } from "@/components/onboarding-redirect";
 import { CookieBanner } from "@/components/CookieBanner";
 import { GlobalDialogHost } from "@/components/ui/global-dialog-host";
-import { MobileBottomNav } from "@/components/shell/MobileBottomNav";
 
 
 const spaceGrotesk = Space_Grotesk({
@@ -204,8 +203,6 @@ export default function RootLayout({
         <SessionProvider>
           <OnboardingRedirect />
           {children}
-          {/* Palier 4 — barre modules mobile (masquée sur jardin/auth/admin) */}
-          <MobileBottomNav />
           <GlobalSearch />
           <Toaster />
           <GlobalDialogHost />
