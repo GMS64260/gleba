@@ -41,6 +41,7 @@ import {
 import { Combobox } from "@/components/ui/combobox"
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
+import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 
 interface RecolteWithRelations {
   id: number
@@ -356,33 +357,32 @@ export default function RecoltesPage() {
     <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
       <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
       {/* Header */}
-      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link href="/">
-              <Button variant="ghost" size="sm">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Accueil
-              </Button>
-            </Link>
-            <div className="flex items-center gap-2">
-              <BarChart3 className="h-6 w-6 text-green-600" />
-              <h1 className="text-xl font-bold">Récoltes</h1>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={fetchData}>
-              <RefreshCw className="h-4 w-4" />
+      <AppHeader current="maraichage" />
+      <PageToolbar>
+        <div className="flex items-center gap-4">
+          <Link href="/">
+            <Button variant="ghost" size="sm">
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Accueil
             </Button>
-            <Link href="/maraichage/recoltes/saisie">
-              <Button className="bg-green-600 hover:bg-green-700">
-                <Plus className="h-4 w-4 mr-1" />
-                Nouvelle récolte
-              </Button>
-            </Link>
+          </Link>
+          <div className="flex items-center gap-2">
+            <BarChart3 className="h-6 w-6 text-green-600" />
+            <h1 className="text-xl font-bold">Récoltes</h1>
           </div>
         </div>
-      </header>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={fetchData}>
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+          <Link href="/maraichage/recoltes/saisie">
+            <Button className="bg-green-600 hover:bg-green-700">
+              <Plus className="h-4 w-4 mr-1" />
+              Nouvelle récolte
+            </Button>
+          </Link>
+        </div>
+      </PageToolbar>
 
       <main className="container mx-auto px-4 py-6 space-y-6">
         {/* Filtres */}

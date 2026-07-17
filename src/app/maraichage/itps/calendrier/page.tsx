@@ -32,6 +32,7 @@ import { SemisLunaireEncart } from "@/components/itps/SemisLunaireEncart"
 import { libelleDecalage, itpApplicableAZone } from "@/lib/calendrier-climat"
 import type { ZoneClimat } from "@/lib/terroir"
 import { alertDialog } from "@/lib/global-dialog"
+import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 
 interface ITPWithEspece {
   id: string
@@ -223,25 +224,23 @@ export default function ITCalendrierPage() {
   return (
     <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
       <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
-      {/* Header */}
-      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link href="/maraichage/itps">
-              <Button variant="ghost" size="sm">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                ITPs
-              </Button>
-            </Link>
-            <div>
-              <h1 className="text-xl font-bold">Calendrier des ITPs</h1>
-              <p className="text-sm text-muted-foreground">
-                Timeline annuelle adaptée à votre climat — cliquez sur une ligne pour modifier
-              </p>
-            </div>
+      <AppHeader current="maraichage" />
+      <PageToolbar>
+        <div className="flex items-center gap-4">
+          <Link href="/maraichage/itps">
+            <Button variant="ghost" size="sm">
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              ITPs
+            </Button>
+          </Link>
+          <div>
+            <h1 className="text-xl font-bold">Calendrier des ITPs</h1>
+            <p className="text-sm text-muted-foreground">
+              Timeline annuelle adaptée à votre climat — cliquez sur une ligne pour modifier
+            </p>
           </div>
         </div>
-      </header>
+      </PageToolbar>
 
       {/* Content */}
       <main className="container mx-auto px-4 py-6">
