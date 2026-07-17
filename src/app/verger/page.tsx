@@ -2,23 +2,16 @@
 
 import * as React from "react"
 import Link from "next/link"
-import Image from "next/image"
-import { useSession } from "next-auth/react"
-import { useSearchParams } from "next/navigation"
+import { useSearchParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { UserMenu } from "@/components/auth/UserMenu"
-import { ModulesNav } from "@/components/auth/ModulesNav"
-import { BoutiqueHeaderButton } from "@/components/auth/BoutiqueHeaderButton"
+import { AppHeader } from "@/components/shell/AppHeader"
+import { ModuleTabBar } from "@/components/shell/ModuleTabBar"
 import {
-  Sprout,
-  Settings,
   Map as MapIcon,
   TreeDeciduous,
   Calendar,
   Leaf,
-  Bird,
-  Wallet,
   Apple,
   Wrench,
   HeartPulse,
@@ -27,7 +20,6 @@ import {
   Wand2,
 } from "lucide-react"
 import { ChatPanel } from "@/components/chat/ChatPanel"
-import { HeaderMeteoWidget } from "@/components/meteo"
 import { CalendrierTab } from "@/components/verger/CalendrierTab"
 import { ArbresTab } from "@/components/verger/ArbresTab"
 import { ProductionsTab } from "@/components/verger/ProductionsTab"
@@ -65,22 +57,30 @@ export default function VergerPage() {
 }
 
 function VergerPageInner() {
-  const { data: session } = useSession()
   const searchParams = useSearchParams()
+  const router = useRouter()
   const [selectedYear, setSelectedYear] = React.useState(currentYearNow)
   const [showChat, setShowChat] = React.useState(false)
   const [showAssistant, setShowAssistant] = React.useState(false)
-  // Support ?tab=xxx from redirects
-  const tabParam = searchParams.get("tab")
-  const initialTab = TABS.some(t => t.id === tabParam) ? (tabParam as TabId) : "calendrier"
-  const [activeTab, setActiveTab] = React.useState<TabId>(initialTab)
 
-  // Update tab when URL param changes
-  React.useEffect(() => {
-    if (tabParam && TABS.some(t => t.id === tabParam)) {
-      setActiveTab(tabParam as TabId)
-    }
-  }, [tabParam])
+  // Palier 2 (unification onglets) : l'URL est la source de vérité, comme
+  // sur MaraichageHome — chaque onglet devient partageable en deep-link.
+  const tabParam = searchParams.get("tab")
+  const activeTab: TabId = TABS.some((t) => t.id === tabParam) ? (tabParam as TabId) : "calendrier"
+
+  const setActiveTab = React.useCallback(
+    (tab: TabId) => {
+      const params = new URLSearchParams(searchParams.toString())
+      if (tab === "calendrier") {
+        params.delete("tab")
+      } else {
+        params.set("tab", tab)
+      }
+      const query = params.toString()
+      router.push(query ? `/verger?${query}` : "/verger", { scroll: false })
+    },
+    [searchParams, router]
+  )
 
   // POSTREVIEW — ?action=plantation ouvre le dialog AssistantPlantation
   // (utilisé par le bandeau "Premiers pas" pour ce step)
@@ -100,114 +100,65 @@ function VergerPageInner() {
         </div>
       )}
 
-      {/* Header global */}
-      <header className="border-b bg-white/95 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-2.5 flex items-center justify-between gap-2 max-w-[1600px] flex-wrap">
-          <div className="flex items-center gap-3 min-w-0">
-            <Link href="/" className="flex items-center hover:opacity-90 transition-opacity flex-shrink-0">
-              <Image
-                src="/gleba-logo.png"
-                alt="Gleba"
-                width={120}
-                height={80}
-                className="h-10 w-auto rounded-lg"
-                priority
-              />
-            </Link>
-            {session?.user && <HeaderMeteoWidget />}
-          </div>
-          <div className="flex items-center gap-2 flex-wrap justify-end">
-            {session?.user && <ModulesNav current="verger" />}
-            {session?.user && <BoutiqueHeaderButton />}
-            <Link href="/parametres">
-              <Button variant="ghost" size="sm">
-                <Settings className="h-4 w-4" />
+      {/* Shell partagé (palier 2) : header global + barre d'onglets communs */}
+      <AppHeader current="verger" />
+      <ModuleTabBar
+        tabs={TABS}
+        activeTab={activeTab}
+        onTabChange={(tab) => setActiveTab(tab as TabId)}
+        accent="lime"
+        actions={
+          <>
+            <Button
+              size="sm"
+              onClick={() => setShowAssistant(true)}
+              className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white shadow-md"
+              title="Assistant Plantation"
+            >
+              <Wand2 className="h-4 w-4 mr-1" />
+              <span className="hidden sm:inline">Plantation</span>
+            </Button>
+            <Link href="/jardin?usage=verger">
+              <Button variant="outline" size="sm" className="text-teal-700 border-teal-300 hover:bg-teal-50">
+                <MapIcon className="h-4 w-4 mr-1" />
+                <span className="hidden sm:inline">Plan</span>
               </Button>
             </Link>
-            {session?.user && <UserMenu user={session.user} />}
-          </div>
-        </div>
-      </header>
-
-      {/* Navigation par onglets + selecteur d'annee + bouton Plan verger */}
-      <nav className="border-b border-t-2 border-t-lime-500 bg-white/80 backdrop-blur-sm sticky top-[61px] z-40">
-        <div className="container mx-auto px-4 max-w-[1600px]">
-          <div className="flex items-center justify-between gap-2 flex-wrap lg:flex-nowrap">
-            {/* DEV2 #7 — Tabs scrollables horizontalement sous lg (1366) */}
-            <div className="flex items-center -mb-px overflow-x-auto scrollbar-hide flex-shrink min-w-0 max-w-full">
-              {TABS.map((tab) => {
-                const isActive = activeTab === tab.id
-                return (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`flex items-center gap-1.5 px-3 lg:px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                      isActive
-                        ? "border-lime-600 text-lime-700"
-                        : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
-                    }`}
-                    title={tab.label}
-                  >
-                    <tab.icon className={`h-4 w-4 ${isActive ? "text-lime-600" : ""}`} />
-                    <span className="hidden lg:inline">{tab.label}</span>
-                  </button>
-                )
-              })}
-            </div>
-
-            {/* Actions a droite: Plan verger + Annee */}
-            <div className="flex items-center gap-2 py-2">
-              <Button
-                size="sm"
-                onClick={() => setShowAssistant(true)}
-                className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white shadow-md"
-                title="Assistant Plantation"
-              >
-                <Wand2 className="h-4 w-4 mr-1" />
-                <span className="hidden sm:inline">Plantation</span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowChat((v) => !v)}
+              className={showChat ? "text-white bg-lime-600 hover:bg-lime-700 border-lime-600" : "text-lime-700 border-lime-300 hover:bg-lime-50"}
+              title="Assistant IA"
+            >
+              <Bot className="h-4 w-4 mr-1" />
+              <span className="hidden sm:inline">IA</span>
+            </Button>
+            <Link href="/parcelles">
+              <Button variant="outline" size="sm" className="text-purple-700 border-purple-300 hover:bg-purple-50">
+                <MapIcon className="h-4 w-4 mr-1" />
+                <span className="hidden sm:inline">Parcelles</span>
               </Button>
-              <Link href="/jardin?usage=verger">
-                <Button variant="outline" size="sm" className="text-teal-700 border-teal-300 hover:bg-teal-50">
-                  <MapIcon className="h-4 w-4 mr-1" />
-                  <span className="hidden sm:inline">Plan</span>
-                </Button>
-              </Link>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowChat((v) => !v)}
-                className={showChat ? "text-white bg-lime-600 hover:bg-lime-700 border-lime-600" : "text-lime-700 border-lime-300 hover:bg-lime-50"}
-                title="Assistant IA"
-              >
-                <Bot className="h-4 w-4 mr-1" />
-                <span className="hidden sm:inline">IA</span>
-              </Button>
-              <Link href="/parcelles">
-                <Button variant="outline" size="sm" className="text-purple-700 border-purple-300 hover:bg-purple-50">
-                  <MapIcon className="h-4 w-4 mr-1" />
-                  <span className="hidden sm:inline">Parcelles</span>
-                </Button>
-              </Link>
-              <Select
-                value={selectedYear.toString()}
-                onValueChange={(value) => setSelectedYear(parseInt(value))}
-              >
-                <SelectTrigger className="w-[100px] h-8">
-                  <Calendar className="h-3.5 w-3.5 mr-1 text-muted-foreground" />
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableYears.map((year) => (
-                    <SelectItem key={year} value={year.toString()}>
-                      {year}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </div>
-      </nav>
+            </Link>
+            <Select
+              value={selectedYear.toString()}
+              onValueChange={(value) => setSelectedYear(parseInt(value))}
+            >
+              <SelectTrigger className="w-[100px] h-8">
+                <Calendar className="h-3.5 w-3.5 mr-1 text-muted-foreground" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {availableYears.map((year) => (
+                  <SelectItem key={year} value={year.toString()}>
+                    {year}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </>
+        }
+      />
 
       {/* POSTREVIEW Sprint 6 — Tour Shepherd.js Verger */}
       <TourVerger />

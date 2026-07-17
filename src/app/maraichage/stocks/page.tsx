@@ -11,7 +11,7 @@
 import * as React from "react"
 import { Suspense } from "react"
 import Link from "next/link"
-import { useSearchParams } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import {
   ArrowLeft,
   Package,
@@ -170,8 +170,33 @@ function StockInput({
 function StocksPageContent() {
   const { toast } = useToast()
   const searchParams = useSearchParams()
+  const router = useRouter()
   const especeType = searchParams.get('especeType') // 'arbres' | 'legumes' | null
   const isArbresMode = especeType === 'arbres'
+
+  // Palier 2 (unification onglets) : l'onglet actif vit dans l'URL (?tab=)
+  // pour être partageable en deep-link, comme partout ailleurs.
+  const STOCK_TABS = React.useMemo(
+    () => ["graines", "plants", "fertilisants", "recoltes", "consommations"],
+    []
+  )
+  const defaultStockTab = isArbresMode ? "plants" : "graines"
+  const tabParam = searchParams.get("tab")
+  const activeStockTab = tabParam && STOCK_TABS.includes(tabParam) ? tabParam : defaultStockTab
+  const handleStockTabChange = React.useCallback(
+    (value: string) => {
+      const params = new URLSearchParams(searchParams.toString())
+      if (value === defaultStockTab) {
+        params.delete("tab")
+      } else {
+        params.set("tab", value)
+      }
+      const query = params.toString()
+      // replace : changer d'onglet interne ne doit pas empiler l'historique
+      router.replace(query ? `/maraichage/stocks?${query}` : "/maraichage/stocks", { scroll: false })
+    },
+    [searchParams, router, defaultStockTab]
+  )
 
   const [isLoading, setIsLoading] = React.useState(true)
   const [isSaving, setIsSaving] = React.useState(false)
@@ -488,7 +513,7 @@ function StocksPageContent() {
         )}
 
         {/* Tabs */}
-        <Tabs defaultValue={isArbresMode ? "plants" : "graines"} className="space-y-4">
+        <Tabs value={activeStockTab} onValueChange={handleStockTabChange} className="space-y-4">
           <TabsList>
             {!isArbresMode && (
               <TabsTrigger value="graines" className="flex items-center gap-2">

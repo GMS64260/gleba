@@ -2,20 +2,17 @@
 
 import * as React from "react"
 import Link from "next/link"
-import Image from "next/image"
 import { useSession } from "next-auth/react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { UserMenu } from "@/components/auth/UserMenu"
-import { ModulesNav } from "@/components/auth/ModulesNav"
-import { BoutiqueHeaderButton } from "@/components/auth/BoutiqueHeaderButton"
+import { AppHeader } from "@/components/shell/AppHeader"
+import { ModuleTabBar } from "@/components/shell/ModuleTabBar"
 import { WelcomeDialog } from "@/components/onboarding/WelcomeDialog"
 import {
   Sprout,
   LayoutGrid,
   BarChart3,
-  Settings,
   Map as MapIcon,
   MapPin,
   TreeDeciduous,
@@ -29,7 +26,6 @@ import {
 import { AssistantDialog } from "@/components/assistant"
 import { Wand2, Bot } from "lucide-react"
 import { ChatPanel } from "@/components/chat/ChatPanel"
-import { HeaderMeteoWidget } from "@/components/meteo/HeaderMeteoWidget"
 import { CalendrierTab } from "@/components/potager/CalendrierTab"
 import { PremiersPasBanner } from "@/components/premiers-pas-banner"
 import { TourMaraichage } from "@/components/tours/tour-maraichage"
@@ -167,123 +163,66 @@ function HomeContent() {
 
 
 
-      {/* Header global */}
-      <header className="border-b bg-white/95 backdrop-blur-sm sticky top-0 z-50">
-        {/* Bug responsive : header dense → overflow horizontal à 375/768px.
-            On autorise le wrap des deux clusters et on laisse le cluster
-            gauche (logo + météo) rétrécir (min-w-0) pour ne jamais déborder. */}
-        <div className="container mx-auto px-4 py-2.5 flex items-center justify-between gap-2 max-w-[1600px] flex-wrap">
-          <div className="flex items-center gap-3 min-w-0">
-            <Link href="/" className="flex items-center hover:opacity-90 transition-opacity flex-shrink-0">
-              <Image
-                src="/gleba-logo.png"
-                alt="Gleba"
-                width={120}
-                height={80}
-                className="h-10 w-auto rounded-lg"
-                priority
-              />
-            </Link>
-            {session?.user && <HeaderMeteoWidget showLune />}
-          </div>
-          <div className="flex items-center gap-2 flex-wrap justify-end">
-            {/* Sections globales */}
-            {session?.user && <ModulesNav current="maraichage" />}
-            {session?.user && <BoutiqueHeaderButton />}
-            <Link href="/parametres">
-              <Button variant="ghost" size="sm">
-                <Settings className="h-4 w-4" />
+      {/* Shell partagé (palier 2) : header global + barre d'onglets communs */}
+      <AppHeader current="maraichage" showLune />
+      <ModuleTabBar
+        tabs={TABS}
+        activeTab={activeTab}
+        onTabChange={(tab) => setActiveTab(tab as TabId)}
+        accent="emerald"
+        actions={
+          <>
+            <Link href="/jardin?usage=culture">
+              <Button variant="outline" size="sm" className="text-teal-700 border-teal-300 hover:bg-teal-50">
+                <MapIcon className="h-4 w-4 mr-1" />
+                <span className="hidden sm:inline">Plan</span>
               </Button>
             </Link>
-            {session?.user && <UserMenu user={session.user} />}
-          </div>
-        </div>
-      </header>
-
-      {/* Navigation par onglets + sélecteur d'annee + bouton Plan jardin */}
-      <nav className="border-b border-t-2 border-t-emerald-500 bg-white/80 backdrop-blur-sm sticky top-[61px] z-40">
-        <div className="container mx-auto px-4 max-w-[1600px]">
-          {/* Bug responsive cmpkygqu8 — Sur viewport 375px, la rangée
-              onglets + actions débordait. On wrap désormais en colonne
-              sur mobile (onglets scrollables horizontalement séparément),
-              et on revient à la ligne unique à partir de sm: (>=640px). */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-            {/* Onglets — scrollables horizontalement sur mobile */}
-            <div className="flex items-center -mb-px overflow-x-auto">
-              {TABS.map((tab) => {
-                const isActive = activeTab === tab.id
-                return (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`flex items-center gap-1.5 px-3 lg:px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                      isActive
-                        ? "border-emerald-600 text-emerald-700"
-                        : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
-                    }`}
-                    title={tab.label}
-                  >
-                    <tab.icon className={`h-4 w-4 ${isActive ? "text-emerald-600" : ""}`} />
-                    <span className="hidden lg:inline">{tab.label}</span>
-                  </button>
-                )
-              })}
-            </div>
-
-            {/* Actions à droite: Plan jardin + Année */}
-            <div className="flex items-center gap-2 py-2">
-              <Link href="/jardin?usage=culture">
-                <Button variant="outline" size="sm" className="text-teal-700 border-teal-300 hover:bg-teal-50">
-                  <MapIcon className="h-4 w-4 mr-1" />
-                  <span className="hidden sm:inline">Plan</span>
-                </Button>
-              </Link>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowAssistant(true)}
-                className="text-emerald-700 border-emerald-300 hover:bg-emerald-50"
-                title="Assistant culture"
-              >
-                <Wand2 className="h-4 w-4 mr-1" />
-                <span className="hidden sm:inline">Semer</span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowAssistant(true)}
+              className="text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+              title="Assistant culture"
+            >
+              <Wand2 className="h-4 w-4 mr-1" />
+              <span className="hidden sm:inline">Semer</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowChat((v) => !v)}
+              className={showChat ? "text-white bg-emerald-600 hover:bg-emerald-700 border-emerald-600" : "text-emerald-700 border-emerald-300 hover:bg-emerald-50"}
+              title="Assistant IA"
+            >
+              <Bot className="h-4 w-4 mr-1" />
+              <span className="hidden sm:inline">IA</span>
+            </Button>
+            <Link href="/parcelles">
+              <Button variant="outline" size="sm" className="text-purple-700 border-purple-300 hover:bg-purple-50">
+                <MapPin className="h-4 w-4 mr-1" />
+                <span className="hidden sm:inline">Parcelles</span>
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowChat((v) => !v)}
-                className={showChat ? "text-white bg-emerald-600 hover:bg-emerald-700 border-emerald-600" : "text-emerald-700 border-emerald-300 hover:bg-emerald-50"}
-                title="Assistant IA"
-              >
-                <Bot className="h-4 w-4 mr-1" />
-                <span className="hidden sm:inline">IA</span>
-              </Button>
-              <Link href="/parcelles">
-                <Button variant="outline" size="sm" className="text-purple-700 border-purple-300 hover:bg-purple-50">
-                  <MapPin className="h-4 w-4 mr-1" />
-                  <span className="hidden sm:inline">Parcelles</span>
-                </Button>
-              </Link>
-              <Select
-                value={selectedYear.toString()}
-                onValueChange={handleYearChange}
-              >
-                <SelectTrigger className="w-[100px] h-8">
-                  <Calendar className="h-3.5 w-3.5 mr-1 text-muted-foreground" />
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableYears.map((year) => (
-                    <SelectItem key={year} value={year.toString()}>
-                      {year}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </div>
-      </nav>
+            </Link>
+            <Select
+              value={selectedYear.toString()}
+              onValueChange={handleYearChange}
+            >
+              <SelectTrigger className="w-[100px] h-8">
+                <Calendar className="h-3.5 w-3.5 mr-1 text-muted-foreground" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {availableYears.map((year) => (
+                  <SelectItem key={year} value={year.toString()}>
+                    {year}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </>
+        }
+      />
 
       {/* Bannière nouveauté - pluviométrie */}
       {showPluieBanner && session?.user && (
