@@ -27,9 +27,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import dynamic from "next/dynamic"
 import { GardenView, type SelectionItem } from "@/components/garden/GardenView"
-import { NewCultureDialog } from "@/components/garden/NewCultureDialog"
-import { PluviometriePlanche } from "@/components/meteo/PluviometriePlanche"
+
+// Palier 4 (perf) : dialogs lourds chargés à la demande, hors du bundle
+// initial de l'éditeur (le plus gros écran client de l'app).
+const NewCultureDialog = dynamic(
+  () => import("@/components/garden/NewCultureDialog").then((m) => m.NewCultureDialog),
+  { ssr: false }
+)
+const PluviometriePlanche = dynamic(
+  () => import("@/components/meteo/PluviometriePlanche").then((m) => m.PluviometriePlanche),
+  { ssr: false }
+)
 import { Combobox } from "@/components/ui/combobox"
 import { useToast } from "@/hooks/use-toast"
 import { useSettings } from "@/hooks/use-settings"
