@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
+import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 
 interface BesoinPlant {
   especeId: string
@@ -201,46 +202,45 @@ function PlantsContent() {
   return (
     <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
       <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
-      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link href="/?tab=planification">
-              <Button variant="ghost" size="sm">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Planification
-              </Button>
-            </Link>
-            <div className="flex items-center gap-2">
-              <Leaf className="h-6 w-6 text-cyan-600" />
-              <h1 className="text-xl font-bold">Plants nécessaires</h1>
-            </div>
-          </div>
-
+      <AppHeader current="maraichage" />
+      <PageToolbar>
+        <div className="flex items-center gap-4">
+          <Link href="/?tab=planification">
+            <Button variant="ghost" size="sm">
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Planification
+            </Button>
+          </Link>
           <div className="flex items-center gap-2">
-            <Link href="/maraichage/stocks">
-              <Button variant="outline" size="sm">
-                <Package className="h-4 w-4 mr-2" />
-                Gerer stocks
-              </Button>
-            </Link>
-            <Select
-              value={annee.toString()}
-              onValueChange={(value) => setAnnee(parseInt(value))}
-            >
-              <SelectTrigger className="w-[100px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {annees.map((a) => (
-                  <SelectItem key={a} value={a.toString()}>
-                    {a}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Leaf className="h-6 w-6 text-cyan-600" />
+            <h1 className="text-xl font-bold">Plants nécessaires</h1>
           </div>
         </div>
-      </header>
+
+        <div className="flex items-center gap-2">
+          <Link href="/maraichage/stocks">
+            <Button variant="outline" size="sm">
+              <Package className="h-4 w-4 mr-2" />
+              Gerer stocks
+            </Button>
+          </Link>
+          <Select
+            value={annee.toString()}
+            onValueChange={(value) => setAnnee(parseInt(value))}
+          >
+            <SelectTrigger className="w-[100px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {annees.map((a) => (
+                <SelectItem key={a} value={a.toString()}>
+                  {a}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </PageToolbar>
 
       <main className="container mx-auto px-4 py-6">
         {/* Stats */}

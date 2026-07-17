@@ -21,6 +21,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
+import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 
 // Types d'états pour le filtre
 const CULTURE_ETATS = [
@@ -409,43 +410,42 @@ export default function CulturesPage() {
       <AssistantDialog open={showAssistant} onOpenChange={setShowAssistant} />
 
       {/* Header */}
-      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link href="/">
-              {/* Bug #6 — cohérence couleur : page Maraîchage (verte), donc
-                  bouton Accueil en vert maraîchage (et non orange/élevage). */}
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50"
-              >
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Accueil
-              </Button>
-            </Link>
-            <div className="flex items-center gap-2">
-              <Leaf className="h-6 w-6 text-green-600" />
-              <h1 className="text-xl font-bold">Cultures</h1>
-            </div>
-          </div>
+      <AppHeader current="maraichage" />
+      <PageToolbar>
+        <div className="flex items-center gap-4">
+          <Link href="/">
+            {/* Bug #6 — cohérence couleur : page Maraîchage (verte), donc
+                bouton Accueil en vert maraîchage (et non orange/élevage). */}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50"
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Accueil
+            </Button>
+          </Link>
           <div className="flex items-center gap-2">
-            <AssistantButton onClick={() => setShowAssistant(true)} />
-            <Link href="/taches">
-              <Button variant="outline" size="sm">
-                <CheckCircle className="h-4 w-4 mr-2" />
-                Taches
-              </Button>
-            </Link>
-            <Link href="/maraichage/cultures/irriguer">
-              <Button variant="outline" size="sm">
-                <Droplets className="h-4 w-4 mr-2" />
-                Irrigation
-              </Button>
-            </Link>
+            <Leaf className="h-6 w-6 text-green-600" />
+            <h1 className="text-xl font-bold">Cultures</h1>
           </div>
         </div>
-      </header>
+        <div className="flex items-center gap-2">
+          <AssistantButton onClick={() => setShowAssistant(true)} />
+          <Link href="/taches">
+            <Button variant="outline" size="sm">
+              <CheckCircle className="h-4 w-4 mr-2" />
+              Taches
+            </Button>
+          </Link>
+          <Link href="/maraichage/cultures/irriguer">
+            <Button variant="outline" size="sm">
+              <Droplets className="h-4 w-4 mr-2" />
+              Irrigation
+            </Button>
+          </Link>
+        </div>
+      </PageToolbar>
 
       {/* Content */}
       <main className="container mx-auto px-4 py-6">

@@ -36,6 +36,7 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
 import { updateITPSchema, type UpdateITPInput, ITP_TYPE_PLANCHE } from "@/lib/validations/itp"
+import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 
 interface Espece {
   id: string
@@ -204,11 +205,10 @@ export default function EditITPPage() {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-50">
-        <header className="border-b bg-white sticky top-0 z-50">
-          <div className="container mx-auto px-4 py-4">
-            <Skeleton className="h-8 w-48" />
-          </div>
-        </header>
+        <AppHeader current="maraichage" />
+        <PageToolbar>
+          <Skeleton className="h-8 w-64" />
+        </PageToolbar>
         <main className="container mx-auto px-4 py-6 max-w-3xl space-y-6">
           <Skeleton className="h-48 w-full" />
           <Skeleton className="h-32 w-full" />
@@ -221,33 +221,31 @@ export default function EditITPPage() {
   return (
     <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
       <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
-      {/* Header */}
-      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link href="/maraichage/itps">
-              <Button variant="ghost" size="sm">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                ITPs
-              </Button>
-            </Link>
-            <div className="flex items-center gap-2">
-              <Route className="h-6 w-6 text-indigo-600" />
-              <h1 className="text-xl font-bold">{itpData?.nom ?? id}</h1>
-            </div>
+      <AppHeader current="maraichage" />
+      <PageToolbar>
+        <div className="flex items-center gap-4">
+          <Link href="/maraichage/itps">
+            <Button variant="ghost" size="sm">
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              ITPs
+            </Button>
+          </Link>
+          <div className="flex items-center gap-2">
+            <Route className="h-6 w-6 text-indigo-600" />
+            <h1 className="text-xl font-bold">{itpData?.nom ?? id}</h1>
           </div>
-          {itpData && (
-            <div className="flex items-center gap-2">
-              <Badge variant="outline">
-                {itpData._count.rotationsDetails} rotation(s)
-              </Badge>
-              <Badge variant="outline">
-                {itpData._count.cultures} culture(s)
-              </Badge>
-            </div>
-          )}
         </div>
-      </header>
+        {itpData && (
+          <div className="flex items-center gap-2">
+            <Badge variant="outline">
+              {itpData._count.rotationsDetails} rotation(s)
+            </Badge>
+            <Badge variant="outline">
+              {itpData._count.cultures} culture(s)
+            </Badge>
+          </div>
+        )}
+      </PageToolbar>
 
       {/* Content */}
       <main className="container mx-auto px-4 py-6 max-w-3xl">

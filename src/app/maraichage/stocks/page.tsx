@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
+import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 import { ConsommationsTab } from "@/components/stocks/ConsommationsTab"
 import { formatStockSemantic } from "@/lib/format-utils"
 import { AlertTriangle } from "lucide-react"
@@ -320,11 +321,10 @@ function StocksPageContent() {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-50">
-        <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
-          <div className="container mx-auto px-4 py-4">
-            <Skeleton className="h-8 w-64" />
-          </div>
-        </header>
+        <AppHeader current={isArbresMode ? "verger" : "maraichage"} />
+        <PageToolbar>
+          <Skeleton className="h-8 w-64" />
+        </PageToolbar>
         <main className="container mx-auto px-4 py-6">
           <Skeleton className="h-96 w-full" />
         </main>
@@ -335,45 +335,45 @@ function StocksPageContent() {
   return (
     <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
       <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
-      {/* Header */}
-      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link href={isArbresMode ? "/verger" : "/"}>
-              <Button variant="ghost" size="sm">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                {isArbresMode ? "Verger" : "Accueil"}
-              </Button>
-            </Link>
-            <div className="flex items-center gap-2">
-              {isArbresMode ? (
-                <TreeDeciduous className="h-6 w-6 text-lime-600" />
-              ) : (
-                <Package className="h-6 w-6 text-purple-600" />
-              )}
-              <h1 className="text-xl font-bold">
-                {isArbresMode ? "Stocks Plants d'arbres" : "Gestion des stocks"}
-              </h1>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Rechercher..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-8 w-[200px]"
-              />
-            </div>
-            <Button variant="outline" size="sm" onClick={fetchData}>
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Actualiser
+      {/* Shell global (palier 1) : la nav inter-modules et le compte restent
+          visibles ; le titre et les actions de page passent en PageToolbar. */}
+      <AppHeader current={isArbresMode ? "verger" : "maraichage"} />
+      <PageToolbar>
+        <div className="flex items-center gap-4">
+          <Link href={isArbresMode ? "/verger" : "/"}>
+            <Button variant="ghost" size="sm">
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              {isArbresMode ? "Verger" : "Accueil"}
             </Button>
+          </Link>
+          <div className="flex items-center gap-2">
+            {isArbresMode ? (
+              <TreeDeciduous className="h-6 w-6 text-lime-600" />
+            ) : (
+              <Package className="h-6 w-6 text-purple-600" />
+            )}
+            <h1 className="text-xl font-bold">
+              {isArbresMode ? "Stocks Plants d'arbres" : "Gestion des stocks"}
+            </h1>
           </div>
         </div>
-      </header>
+
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Rechercher..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-8 w-[200px]"
+            />
+          </div>
+          <Button variant="outline" size="sm" onClick={fetchData}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Actualiser
+          </Button>
+        </div>
+      </PageToolbar>
 
       {/* Content */}
       <main className="container mx-auto px-4 py-6 max-w-[1600px]">
@@ -762,11 +762,12 @@ function StocksPageContent() {
 function StocksLoadingFallback() {
   return (
     <div className="min-h-screen bg-slate-50">
-      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4">
-          <Skeleton className="h-8 w-64" />
-        </div>
-      </header>
+      {/* Avant résolution des searchParams, on ne connaît pas le mode arbres :
+          on affiche le shell maraîchage (cas dominant), corrigé au montage. */}
+      <AppHeader current="maraichage" />
+      <PageToolbar>
+        <Skeleton className="h-8 w-64" />
+      </PageToolbar>
       <main className="container mx-auto px-4 py-6">
         <Skeleton className="h-12 w-full mb-4" />
         <Skeleton className="h-96 w-full" />

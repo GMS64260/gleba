@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
+import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 import { getCategorieEmoji } from "@/lib/categories-emojis"
 import { AvisCell } from "@/components/avis/AvisCell"
 import { AvisDialog } from "@/components/avis/AvisDialog"
@@ -450,11 +451,10 @@ function EspecesPageContent() {
   if (!isInitialized) {
     return (
       <div className="min-h-screen bg-slate-50">
-        <header className="border-b bg-white sticky top-0 z-50">
-          <div className="container mx-auto px-4 py-4">
-            <Skeleton className="h-8 w-64" />
-          </div>
-        </header>
+        <AppHeader current={isArbresMode ? "verger" : "maraichage"} />
+        <PageToolbar>
+          <Skeleton className="h-8 w-64" />
+        </PageToolbar>
         <main className="container mx-auto px-4 py-6">
           <Skeleton className="h-12 w-full mb-4" />
           <Skeleton className="h-96 w-full" />
@@ -467,8 +467,9 @@ function EspecesPageContent() {
     <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
       <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
       {/* Header */}
-      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center gap-4">
+      <AppHeader current={isArbresMode ? "verger" : "maraichage"} />
+      <PageToolbar>
+        <div className="flex items-center gap-4">
           <Link href={isArbresMode ? "/verger" : "/"}>
             <Button variant="ghost" size="sm">
               <ArrowLeft className="h-4 w-4 mr-2" />
@@ -486,7 +487,7 @@ function EspecesPageContent() {
             </h1>
           </div>
         </div>
-      </header>
+      </PageToolbar>
 
       {/* Content */}
       <main className="container mx-auto px-4 py-6">
@@ -578,11 +579,12 @@ function EspecesPageContent() {
 function EspecesLoadingFallback() {
   return (
     <div className="min-h-screen bg-slate-50">
-      <header className="border-b bg-white sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4">
-          <Skeleton className="h-8 w-64" />
-        </div>
-      </header>
+      {/* Avant résolution des searchParams, on ne connaît pas le mode arbres :
+          on affiche le shell maraîchage (cas dominant), corrigé au montage. */}
+      <AppHeader current="maraichage" />
+      <PageToolbar>
+        <Skeleton className="h-8 w-64" />
+      </PageToolbar>
       <main className="container mx-auto px-4 py-6">
         <Skeleton className="h-12 w-full mb-4" />
         <Skeleton className="h-96 w-full" />

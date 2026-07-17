@@ -17,6 +17,7 @@ import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
 import { EditableSelectCell } from "@/components/planches/EditableSelectCell"
 import { CompleterTerrainDialog } from "@/components/planches/CompleterTerrainDialog"
+import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 
 // Type pour les planches
 interface PlancheWithRelations {
@@ -241,35 +242,33 @@ export default function PlanchesPage() {
       {/* Assistant Maraîcher */}
       <AssistantDialog open={showAssistant} onOpenChange={setShowAssistant} />
 
-      {/* Header */}
-      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link href="/">
-              <Button variant="ghost" size="sm">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Accueil
-              </Button>
-            </Link>
-            <div className="flex items-center gap-2">
-              <LayoutGrid className="h-6 w-6 text-amber-600" />
-              <h1 className="text-xl font-bold">Planches</h1>
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            {totalPlanches > 0 && (
-              <Button variant="outline" size="sm" onClick={() => setShowCompleter(true)}>
-                <ListChecks className="h-4 w-4 mr-2" />
-                Compléter en masse
-              </Button>
-            )}
-            <AssistantButton onClick={() => setShowAssistant(true)} />
-            <div className="text-sm text-muted-foreground">
-              {data.length} planches • {totalSurface.toFixed(1)} m² total
-            </div>
+      <AppHeader current="maraichage" />
+      <PageToolbar>
+        <div className="flex items-center gap-4">
+          <Link href="/">
+            <Button variant="ghost" size="sm">
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Accueil
+            </Button>
+          </Link>
+          <div className="flex items-center gap-2">
+            <LayoutGrid className="h-6 w-6 text-amber-600" />
+            <h1 className="text-xl font-bold">Planches</h1>
           </div>
         </div>
-      </header>
+        <div className="flex items-center gap-4">
+          {totalPlanches > 0 && (
+            <Button variant="outline" size="sm" onClick={() => setShowCompleter(true)}>
+              <ListChecks className="h-4 w-4 mr-2" />
+              Compléter en masse
+            </Button>
+          )}
+          <AssistantButton onClick={() => setShowAssistant(true)} />
+          <div className="text-sm text-muted-foreground">
+            {data.length} planches • {totalSurface.toFixed(1)} m² total
+          </div>
+        </div>
+      </PageToolbar>
 
       {/* Content */}
       <main className="container mx-auto px-4 py-6">

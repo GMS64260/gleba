@@ -24,6 +24,7 @@ import {
   Coins,
 } from "lucide-react"
 import { AIDES_PLANTATION, NIVEAU_LIBELLE, type DispositifAide } from "@/data/aides-plantation"
+import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 
 const TYPES_LABEL: Record<string, string> = {
   forestier_futaie: "Futaie forestière",
@@ -90,22 +91,21 @@ export default function AidesPage() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <header className="border-b bg-white/95 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-3 max-w-[1200px] flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link href="/verger">
-              <Button variant="ghost" size="sm">
-                <ArrowLeft className="h-4 w-4 mr-1" />
-                Retour Verger & Forêt
-              </Button>
-            </Link>
-            <h1 className="text-lg font-semibold flex items-center gap-2">
-              <Coins className="h-5 w-5 text-amber-600" />
-              Aides à la plantation
-            </h1>
-          </div>
+      <AppHeader current="verger" />
+      <PageToolbar>
+        <div className="flex items-center gap-3">
+          <Link href="/verger">
+            <Button variant="ghost" size="sm">
+              <ArrowLeft className="h-4 w-4 mr-1" />
+              Retour Verger & Forêt
+            </Button>
+          </Link>
+          <h1 className="text-lg font-semibold flex items-center gap-2">
+            <Coins className="h-5 w-5 text-amber-600" />
+            Aides à la plantation
+          </h1>
         </div>
-      </header>
+      </PageToolbar>
 
       <main className="container mx-auto px-4 py-6 max-w-[1200px] space-y-6">
         {/* Intro */}

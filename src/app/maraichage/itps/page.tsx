@@ -22,6 +22,7 @@ import { AvisDialog } from "@/components/avis/AvisDialog"
 import { AvisCell } from "@/components/avis/AvisCell"
 import type { AvisStatsListe } from "@/lib/avis/types"
 import { badgeOrigine } from "@/lib/referentiel-communaute"
+import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 
 // Type pour les ITPs avec relations
 interface ITPWithRelations {
@@ -394,29 +395,27 @@ export default function ITPsPage() {
   return (
     <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
       <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
-      {/* Header */}
-      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link href="/">
-              <Button variant="ghost" size="sm">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Accueil
-              </Button>
-            </Link>
-            <div className="flex items-center gap-2">
-              <Route className="h-6 w-6 text-indigo-600" />
-              <h1 className="text-xl font-bold">Itinéraires Techniques (ITP)</h1>
-            </div>
-          </div>
-          <Link href="/maraichage/itps/calendrier">
-            <Button variant="outline" size="sm">
-              <Calendar className="h-4 w-4 mr-2" />
-              <span className="hidden sm:inline">Calendrier</span>
+      <AppHeader current="maraichage" />
+      <PageToolbar>
+        <div className="flex items-center gap-4">
+          <Link href="/">
+            <Button variant="ghost" size="sm">
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Accueil
             </Button>
           </Link>
+          <div className="flex items-center gap-2">
+            <Route className="h-6 w-6 text-indigo-600" />
+            <h1 className="text-xl font-bold">Itinéraires Techniques (ITP)</h1>
+          </div>
         </div>
-      </header>
+        <Link href="/maraichage/itps/calendrier">
+          <Button variant="outline" size="sm">
+            <Calendar className="h-4 w-4 mr-2" />
+            <span className="hidden sm:inline">Calendrier</span>
+          </Button>
+        </Link>
+      </PageToolbar>
 
       {/* Content */}
       <main className="container mx-auto px-4 py-6">
