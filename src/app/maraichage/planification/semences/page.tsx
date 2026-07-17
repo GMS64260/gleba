@@ -37,7 +37,6 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
-import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 
 interface BesoinSemence {
   especeId: string
@@ -478,10 +477,8 @@ function SemencesContent() {
   const margeCumulee = Math.max(0, totalGrainesMarge - totalGrainesBrut)
 
   return (
-    <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
-      <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
-      <AppHeader current="maraichage" />
-      <PageToolbar>
+    <div>
+      <div className="flex items-center justify-between gap-2 flex-wrap mb-4">
         <div className="flex items-center gap-4">
           <Link href="/?tab=planification">
             <Button variant="ghost" size="sm">
@@ -528,9 +525,9 @@ function SemencesContent() {
             </SelectContent>
           </Select>
         </div>
-      </PageToolbar>
+      </div>
 
-      <main className="container mx-auto px-4 py-6">
+      <main>
         {/* Alerte stock obsolète */}
         {stats?.stockObsolete && (
           <Card className="mb-4 border-amber-300 bg-amber-50">

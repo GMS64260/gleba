@@ -43,7 +43,8 @@ const STYLES: Record<ModuleId, ModuleStyle> = {
 }
 
 interface Props {
-  current: ModuleId
+  /** Module courant ; absent sur les pages transverses (ex. /meteo) : tous les modules sont alors des liens */
+  current?: ModuleId
 }
 
 export function ModulesNav({ current }: Props) {
