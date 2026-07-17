@@ -105,7 +105,8 @@ function GeolocateOverlay({ onFix }: { onFix: (lat: number, lng: number) => void
   }
 
   return (
-    <div className="absolute bottom-3 right-3 z-[1000]">
+    // bottom-6 : laisse la ligne d'attribution Leaflet lisible dessous
+    <div className="absolute bottom-6 right-3 z-[1000]">
       <button
         type="button"
         onClick={handleClick}
