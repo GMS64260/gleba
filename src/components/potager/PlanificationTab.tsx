@@ -6,7 +6,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { formatSemaine } from "@/lib/assistant-helpers"
 import { ColumnDef } from "@tanstack/react-table"
 import {
@@ -150,9 +150,32 @@ interface PlanificationTabProps {
   year: number
 }
 
+const SUB_TABS = ["planification", "itps", "stocks"]
+
 export function PlanificationTab({ year }: PlanificationTabProps) {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+
+  // Palier 2 (unification onglets) : le sous-onglet vit dans l'URL (?sub=),
+  // le paramètre ?tab=planification étant déjà pris par l'onglet de module.
+  const subParam = searchParams.get("sub")
+  const activeSub = subParam && SUB_TABS.includes(subParam) ? subParam : "planification"
+  const handleSubChange = React.useCallback(
+    (value: string) => {
+      const params = new URLSearchParams(searchParams.toString())
+      if (value === "planification") {
+        params.delete("sub")
+      } else {
+        params.set("sub", value)
+      }
+      // replace : changer de sous-onglet ne doit pas empiler l'historique
+      router.replace(`/?${params.toString()}`, { scroll: false })
+    },
+    [searchParams, router]
+  )
+
   return (
-    <Tabs defaultValue="planification" className="space-y-4">
+    <Tabs value={activeSub} onValueChange={handleSubChange} className="space-y-4">
       <TabsList>
         <TabsTrigger value="planification" className="flex items-center gap-1.5">
           <BarChart3 className="h-4 w-4" />
