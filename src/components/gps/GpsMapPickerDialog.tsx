@@ -102,15 +102,19 @@ export function GpsMapPickerDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[720px] p-4 sm:p-6">
+      {/* Colonne flex à hauteur bornée (quasi plein écran sur mobile) : la
+          carte prend l'espace restant (flex-1) et les boutons restent
+          toujours visibles. Pas de scroll de modale — impossible de toute
+          façon, le doigt sur la carte panne la carte, pas la page. */}
+      <DialogContent className="flex flex-col overflow-hidden gap-3 p-3 sm:p-6 h-[calc(100dvh-1rem)] sm:h-[min(85dvh,46rem)] sm:max-w-[720px]">
         <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
+          <DialogTitle className="pr-8">{title}</DialogTitle>
           <DialogDescription>
-            Touchez la carte pour placer le point (le marqueur se déplace aussi par
-            glisser-déposer), ou utilisez « Ma position » en bas de la carte.
+            Touchez la carte pour placer le point, ou utilisez « Ma position ».
+            Glissez le marqueur pour ajuster.
           </DialogDescription>
         </DialogHeader>
-        <div className="h-[55dvh] min-h-[280px] w-full overflow-hidden rounded-md border">
+        <div className="flex-1 min-h-0 w-full overflow-hidden rounded-md border">
           {view ? (
             <GpsMapPickerMap
               center={view.center}
@@ -123,16 +127,17 @@ export function GpsMapPickerDialog({
             <div className="h-full w-full bg-muted animate-pulse" />
           )}
         </div>
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-xs text-muted-foreground font-mono">
             {value ? `${roundCoord(value.lat)}, ${roundCoord(value.lng)}` : "Aucun point placé"}
           </p>
           <div className="ml-auto flex gap-2">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)}>
               Annuler
             </Button>
             <Button
               type="button"
+              size="sm"
               disabled={!value}
               onClick={() => {
                 if (!value) return
