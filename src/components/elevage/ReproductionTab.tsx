@@ -106,7 +106,7 @@ const MOIS_LABELS = ['Jan', 'Fev', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aou', 'Se
 export function ReproductionTab() {
   return (
     <Tabs defaultValue="saillies" className="space-y-4">
-      <TabsList>
+      <TabsList className="flex-wrap h-auto gap-y-1">
         <TabsTrigger value="saillies" className="flex items-center gap-1.5">
           <Heart className="h-4 w-4" />
           Saillies

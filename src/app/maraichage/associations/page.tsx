@@ -210,7 +210,8 @@ export default function AssociationsPage() {
       <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
       <AppHeader current="maraichage" />
       <PageToolbar>
-        <div className="flex items-center gap-4">
+        {/* Responsive 360px — le titre « Associations de plantes » déborde sinon */}
+        <div className="flex items-center gap-4 flex-wrap">
           <Link href="/">
             <Button variant="ghost" size="sm">
               <ArrowLeft className="h-4 w-4 mr-2" />

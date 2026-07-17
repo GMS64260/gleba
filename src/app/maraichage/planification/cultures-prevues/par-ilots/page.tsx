@@ -185,7 +185,8 @@ function CulturesPrevuesParIlotsContent() {
   return (
     <div>
       <div className="flex items-center justify-between gap-2 flex-wrap mb-4">
-        <div className="flex items-center gap-4">
+        {/* Responsive 360px — retour + titre débordent sinon */}
+        <div className="flex items-center gap-4 flex-wrap">
           <Link href="/?tab=planification">
             <Button variant="ghost" size="sm">
               <ArrowLeft className="h-4 w-4 mr-2" />
@@ -198,8 +199,9 @@ function CulturesPrevuesParIlotsContent() {
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 text-sm">
+        {/* Responsive 360px — badges îlots + select ne tiennent pas sur une ligne */}
+        <div className="flex items-center gap-4 flex-wrap">
+          <div className="flex items-center gap-2 text-sm flex-wrap">
             {Object.entries(stats.parIlot).slice(0, 3).map(([ilot, count]) => (
               <Badge key={ilot} variant="outline">
                 {ilot}: {count}
@@ -226,7 +228,7 @@ function CulturesPrevuesParIlotsContent() {
 
       <main>
         {/* Onglets */}
-        <div className="flex gap-2 mb-4">
+        <div className="flex gap-2 mb-4 flex-wrap">
           <Link href={`/maraichage/planification/cultures-prevues?annee=${annee}`}>
             <Button variant="outline" size="sm">
               Par espèce

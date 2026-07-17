@@ -106,7 +106,8 @@ function RecoltesPrevuesContent() {
   return (
     <div>
       <div className="flex items-center justify-between gap-2 flex-wrap mb-4">
-        <div className="flex items-center gap-4">
+        {/* Responsive 360px — retour + titre débordent sinon */}
+        <div className="flex items-center gap-4 flex-wrap">
           <Link href="/?tab=planification">
             <Button variant="ghost" size="sm">
               <ArrowLeft className="h-4 w-4 mr-2" />

@@ -176,7 +176,8 @@ export function PlanificationTab({ year }: PlanificationTabProps) {
 
   return (
     <Tabs value={activeSub} onValueChange={handleSubChange} className="space-y-4">
-      <TabsList>
+      {/* Responsive 360px — wrap de sécurité, sans effet desktop (h-auto = h-9 sur 1 ligne) */}
+      <TabsList className="h-auto flex-wrap gap-y-1">
         <TabsTrigger value="planification" className="flex items-center gap-1.5">
           <BarChart3 className="h-4 w-4" />
           Planification

@@ -204,7 +204,8 @@ function CulturesPrevuesContent() {
   return (
     <div>
       <div className="flex items-center justify-between gap-2 flex-wrap mb-4">
-        <div className="flex items-center gap-4">
+        {/* Responsive 360px — retour + titre débordent sinon */}
+        <div className="flex items-center gap-4 flex-wrap">
           <Link href="/?tab=planification">
             <Button variant="ghost" size="sm">
               <ArrowLeft className="h-4 w-4 mr-2" />
@@ -217,8 +218,9 @@ function CulturesPrevuesContent() {
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 text-sm">
+        {/* Responsive 360px — 3 badges + select ne tiennent pas sur une ligne */}
+        <div className="flex items-center gap-4 flex-wrap">
+          <div className="flex items-center gap-2 text-sm flex-wrap">
             <Badge variant="outline">{stats.total} cultures</Badge>
             <Badge variant="default" className="bg-green-600">{stats.existantes} créées</Badge>
             <Badge variant="secondary">{stats.aCreer} à créer</Badge>
@@ -243,7 +245,7 @@ function CulturesPrevuesContent() {
 
       <main>
         {/* Onglets */}
-        <div className="flex gap-2 mb-4">
+        <div className="flex gap-2 mb-4 flex-wrap">
           <Link href={`/maraichage/planification/cultures-prevues?annee=${annee}`}>
             <Button variant="default" size="sm">
               Par espèce

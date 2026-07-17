@@ -99,7 +99,7 @@ export function PlanificationTab({ year }: PlanificationTabProps) {
   const [subTab, setSubTab] = React.useState("planification")
   return (
     <Tabs value={subTab} onValueChange={setSubTab} className="space-y-4">
-      <TabsList>
+      <TabsList className="flex-wrap h-auto gap-y-1">
         <TabsTrigger value="planification" className="flex items-center gap-1.5">
           <TreeDeciduous className="h-4 w-4" />
           Planification

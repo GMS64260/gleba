@@ -472,9 +472,10 @@ function RecoltesFruitsSubTab() {
       )}
 
       {/* Bouton ajouter + Tabs stock/vendu/pertes */}
-      <div className="flex items-center justify-between">
+      {/* Responsive 360px — le bouton passe sous les tabs si trop étroit */}
+      <div className="flex flex-wrap items-center justify-between gap-y-2">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1">
-          <TabsList>
+          <TabsList className="flex-wrap h-auto gap-y-1">
             <TabsTrigger value="stock" className="flex items-center gap-2">
               <Package className="h-4 w-4" />
               Stock ({stockRecoltes.length})
@@ -1141,9 +1142,10 @@ function ProductionBoisSubTab() {
       </div>
 
       {/* Tabs + bouton ajouter */}
-      <div className="flex items-center justify-between">
+      {/* Responsive 360px — le bouton passe sous les tabs si trop étroit */}
+      <div className="flex flex-wrap items-center justify-between gap-y-2">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1">
-          <TabsList>
+          <TabsList className="flex-wrap h-auto gap-y-1">
             <TabsTrigger value="stock" className="flex items-center gap-2">
               <Package className="h-4 w-4" />
               Stock ({stockProductions.length})

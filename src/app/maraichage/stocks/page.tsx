@@ -364,7 +364,8 @@ function StocksPageContent() {
           visibles ; le titre et les actions de page passent en PageToolbar. */}
       <AppHeader current={isArbresMode ? "verger" : "maraichage"} />
       <PageToolbar>
-        <div className="flex items-center gap-4">
+        {/* Responsive 360px — le titre « Stocks Plants d'arbres » déborde sinon */}
+        <div className="flex items-center gap-4 flex-wrap">
           <Link href={isArbresMode ? "/verger" : "/"}>
             <Button variant="ghost" size="sm">
               <ArrowLeft className="h-4 w-4 mr-2" />
@@ -383,7 +384,7 @@ function StocksPageContent() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <div className="relative">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
@@ -514,7 +515,8 @@ function StocksPageContent() {
 
         {/* Tabs */}
         <Tabs value={activeStockTab} onValueChange={handleStockTabChange} className="space-y-4">
-          <TabsList>
+          {/* Responsive 360px — 5 onglets : TabsList inline-flex h-9 clippe sinon */}
+          <TabsList className="flex-wrap h-auto gap-y-1">
             {!isArbresMode && (
               <TabsTrigger value="graines" className="flex items-center gap-2">
                 <Sprout className="h-4 w-4" />
