@@ -12,6 +12,7 @@
  */
 
 import * as React from "react"
+import { useHideOnScroll } from "@/hooks/use-hide-on-scroll"
 
 interface TabDef {
   id: string
@@ -41,8 +42,15 @@ interface ModuleTabBarProps {
 
 export function ModuleTabBar({ tabs, activeTab, onTabChange, accent, actions }: ModuleTabBarProps) {
   const a = ACCENTS[accent]
+  // Suit le header escamotable : quand il s'efface au scroll, les onglets
+  // du module remontent seuls en haut de l'écran.
+  const headerHidden = useHideOnScroll()
   return (
-    <nav className={`border-b border-t-2 ${a.top} bg-white/80 backdrop-blur-sm sticky top-[61px] z-40`}>
+    <nav
+      className={`border-b border-t-2 ${a.top} bg-white/80 backdrop-blur-sm sticky z-40 transition-[top] duration-200 motion-reduce:transition-none ${
+        headerHidden ? "top-0" : "top-[61px]"
+      }`}
+    >
       <div className="container mx-auto px-4 max-w-[1600px]">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center -mb-px overflow-x-auto scrollbar-hide min-w-0">

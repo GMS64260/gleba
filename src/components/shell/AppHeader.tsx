@@ -22,6 +22,7 @@ import { UserMenu } from "@/components/auth/UserMenu"
 import { ModulesNav } from "@/components/auth/ModulesNav"
 import { BoutiqueHeaderButton } from "@/components/auth/BoutiqueHeaderButton"
 import { HeaderMeteoWidget } from "@/components/meteo/HeaderMeteoWidget"
+import { useHideOnScroll } from "@/hooks/use-hide-on-scroll"
 import type { ModuleId } from "@/lib/modules"
 
 interface AppHeaderProps {
@@ -33,9 +34,16 @@ interface AppHeaderProps {
 
 export function AppHeader({ current, showLune = false }: AppHeaderProps) {
   const { data: session } = useSession()
+  // Retour Guillaume 2026-07-17 : le header s'efface en descendant (seuls
+  // les onglets du module restent), réapparaît dès qu'on remonte.
+  const hidden = useHideOnScroll()
 
   return (
-    <header className="border-b bg-white/95 backdrop-blur-sm sticky top-0 z-50">
+    <header
+      className={`border-b bg-white/95 backdrop-blur-sm sticky top-0 z-50 transition-transform duration-200 motion-reduce:transition-none ${
+        hidden ? "-translate-y-full" : "translate-y-0"
+      }`}
+    >
       <div className="container mx-auto px-4 py-2.5 flex items-center justify-between gap-2 max-w-[1600px] flex-wrap">
         <div className="flex items-center gap-3 min-w-0">
           <Link href="/" className="flex items-center hover:opacity-90 transition-opacity flex-shrink-0">
