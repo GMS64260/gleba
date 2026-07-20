@@ -19,6 +19,7 @@ import {
   ChevronLeft,
   ChevronRight,
   TrendingDown,
+  ShieldAlert,
 } from "lucide-react"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -79,6 +80,21 @@ interface DashboardData {
     mois: number
     total: number
   }[]
+  productions: {
+    type: "oeufs" | "lait" | "fromage" | "viande"
+    label: string
+    quantite: number
+    unite: string
+    detail?: string
+  }[]
+}
+
+interface QualiteLaitSummary {
+  nbSuivis: number
+  nbAvecMesure: number
+  nbAlerte: number
+  nbSurveillance: number
+  cellulesMoyennes: number | null
 }
 
 interface SoinItem {
@@ -110,6 +126,8 @@ export function DashboardTab({ year }: DashboardTabProps) {
   const [data, setData] = React.useState<DashboardData | null>(null)
   const [soins, setSoins] = React.useState<SoinItem[]>([])
   const [loadingSoins, setLoadingSoins] = React.useState(true)
+  // PROMPT 20 — synthèse qualité du lait (cellules) sur 90 j
+  const [qualite, setQualite] = React.useState<QualiteLaitSummary | null>(null)
 
   // Charger stats dashboard
   React.useEffect(() => {
@@ -148,6 +166,14 @@ export function DashboardTab({ year }: DashboardTabProps) {
   React.useEffect(() => {
     fetchSoins()
   }, [fetchSoins])
+
+  // PROMPT 20 — charge la synthèse qualité (silencieux : absent = pas d'élevage laitier)
+  React.useEffect(() => {
+    fetch('/api/elevage/qualite-lait?fenetre=90')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (j?.troupeau) setQualite(j.troupeau) })
+      .catch(() => {})
+  }, [])
 
   // PROMPT 20a — Bulk actions sur les soins
   const bulkSoinsDone = async () => {
@@ -439,6 +465,53 @@ export function DashboardTab({ year }: DashboardTabProps) {
                 </CardContent>
               </Card>
             )}
+            {/* PROMPT 20 — Qualité du lait / cellules (uniquement si élevage laitier suivi) */}
+            {qualite && qualite.nbSuivis > 0 && qualite.nbAvecMesure > 0 && (
+              <Link href="/elevage?tab=production" className="block">
+                <Card
+                  className={
+                    (qualite.nbAlerte > 0
+                      ? "border-red-200 bg-red-50 "
+                      : qualite.nbSurveillance > 0
+                        ? "border-amber-200 bg-amber-50 "
+                        : "") + "hover:brightness-105 transition-[filter] cursor-pointer"
+                  }
+                >
+                  <CardHeader className="pb-1 pt-3 px-4">
+                    <CardDescription className="text-xs flex items-center gap-1">
+                      <ShieldAlert className="h-3 w-3" />
+                      Qualité lait (cellules)
+                    </CardDescription>
+                    <CardTitle
+                      className={`text-2xl ${
+                        qualite.nbAlerte > 0
+                          ? "text-red-600"
+                          : qualite.nbSurveillance > 0
+                            ? "text-amber-600"
+                            : "text-emerald-600"
+                      }`}
+                    >
+                      {qualite.nbAlerte > 0
+                        ? `${qualite.nbAlerte} en alerte`
+                        : qualite.nbSurveillance > 0
+                          ? `${qualite.nbSurveillance} à surveiller`
+                          : "OK"}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="pb-3 px-4">
+                    <p className="text-xs text-muted-foreground">
+                      {qualite.cellulesMoyennes != null
+                        ? `moyenne ${
+                            qualite.cellulesMoyennes >= 1000
+                              ? `${(qualite.cellulesMoyennes / 1000).toFixed(2)} M`
+                              : `${qualite.cellulesMoyennes} k`
+                          }/mL sur 90 j`
+                        : "sur 90 j"}
+                    </p>
+                  </CardContent>
+                </Card>
+              </Link>
+            )}
             {data.stats.mortaliteAnnee > 0 && (
               <Card className={data.stats.tauxMortalite > 5 ? "border-red-200 bg-red-50" : ""}>
                 <CardHeader className="pb-1 pt-3 px-4">
@@ -483,6 +556,39 @@ export function DashboardTab({ year }: DashboardTabProps) {
             </Card>
           </div>
 
+          {/* Synthèse de toutes les productions enregistrées sur la période. */}
+          <section aria-labelledby="productions-dashboard-title" className="space-y-3">
+            <div>
+              <h2 id="productions-dashboard-title" className="text-lg font-semibold">Productions enregistrées</h2>
+              <p className="text-sm text-muted-foreground">Année {year}</p>
+            </div>
+            {data.productions.length > 0 ? (
+              <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {data.productions.map((production) => (
+                  <Card key={production.type} className="min-w-0">
+                    <CardHeader className="px-4 pb-1 pt-3">
+                      <CardDescription className="text-xs">{production.label}</CardDescription>
+                      <CardTitle className="break-words text-2xl">
+                        {production.quantite.toLocaleString("fr-FR")} {production.unite}
+                      </CardTitle>
+                    </CardHeader>
+                    {production.detail && (
+                      <CardContent className="px-4 pb-3">
+                        <p className="text-xs text-muted-foreground">{production.detail}</p>
+                      </CardContent>
+                    )}
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <Card>
+                <CardContent className="flex min-h-24 items-center justify-center py-4 text-center text-sm text-muted-foreground">
+                  Aucune production enregistrée en {year}.
+                </CardContent>
+              </Card>
+            )}
+          </section>
+
           {/* Alertes */}
           {(data.stats.soinsAPlanifier > 0 || data.stats.alimentsStockBas > 0) && (
             <div className="grid gap-4 md:grid-cols-2">
@@ -525,12 +631,12 @@ export function DashboardTab({ year }: DashboardTabProps) {
                 max(données) × 1.2 (jamais hardcodé), placeholder « Pas
                 encore de données » si l'année est vide plutôt qu'un
                 graphe blanc déconcertant. */}
-            <Card>
+            <Card className="min-w-0">
               <CardHeader>
                 <CardTitle className="text-sm">Production d&apos;œufs par mois</CardTitle>
                 <CardDescription>Année {year}</CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="min-w-0 overflow-hidden">
                 {(() => {
                   const maxOeufs = Math.max(0, ...productionMoisData.map((d) => d.oeufs))
                   if (maxOeufs <= 0) {
@@ -543,7 +649,7 @@ export function DashboardTab({ year }: DashboardTabProps) {
                   }
                   const yMax = Math.ceil(maxOeufs * 1.2)
                   return (
-                    <ChartContainer config={{}} className="h-[250px]">
+                    <ChartContainer config={{}} className="h-[250px] aspect-auto">
                       <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={productionMoisData}>
                           <XAxis dataKey="mois" tick={{ fontSize: 12 }} />
@@ -559,14 +665,14 @@ export function DashboardTab({ year }: DashboardTabProps) {
             </Card>
 
             {/* Repartition animaux par type */}
-            <Card>
+            <Card className="min-w-0">
               <CardHeader>
                 <CardTitle className="text-sm">Répartition par espèce</CardTitle>
                 <CardDescription>Animaux actifs</CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="min-w-0 overflow-hidden">
                 {data.animauxParType.length > 0 ? (
-                  <ChartContainer config={{}} className="h-[280px]">
+                  <ChartContainer config={{}} className="h-[280px] aspect-auto">
                     {/* Bug feedback testeur 2026-05-25 (cmplkfit/cmplk944c) —
                         Le PieChart restait blanc même avec 69 animaux à
                         afficher. On force un remount via la clé (signature

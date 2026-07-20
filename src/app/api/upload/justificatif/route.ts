@@ -10,8 +10,8 @@
  *   - Taille max : 10 MB
  *
  * Stockage :
- *   - public/uploads/<userId>/justificatifs/<uuid>.<ext>
- *   - URL : /uploads/<userId>/justificatifs/<uuid>.<ext>
+ *   - storage/justificatifs/<userId>/<uuid>.<ext> (hors racine publique)
+ *   - URL authentifiée : /api/upload/justificatif/<uuid>.<ext>
  *
  * Pas de traitement (le PDF / scan doit rester intègre pour valeur probante).
  *
@@ -68,13 +68,13 @@ export async function POST(request: NextRequest) {
   const userId = session!.user.id
   const uuid = randomUUID()
   const filename = `${uuid}.${ext}`
-  const dir = path.join(process.cwd(), "public", "uploads", userId, "justificatifs")
+  const dir = path.join(process.cwd(), "storage", "justificatifs", userId)
   await mkdir(dir, { recursive: true })
 
   const buffer = Buffer.from(await (file as Blob).arrayBuffer())
   await writeFile(path.join(dir, filename), buffer)
 
-  const url = `/uploads/${userId}/justificatifs/${filename}`
+  const url = `/api/upload/justificatif/${filename}`
   const originalName = (file as File).name || `justificatif.${ext}`
 
   return NextResponse.json({

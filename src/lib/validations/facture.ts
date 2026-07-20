@@ -9,7 +9,7 @@ const TAUX_TVA = [0, 2.1, 5.5, 10, 20] as const
 const ligneSchema = z
   .object({
     description: z.string().min(1, "Description requise").max(500),
-    quantite: z.coerce.number().min(0).default(1),
+    quantite: z.coerce.number().positive("La quantité doit être strictement positive").default(1),
     unite: z.string().max(20).optional().default("unité"),
     prixUnitaire: z.coerce.number().min(0),
     tauxTVA: z.coerce
@@ -22,14 +22,18 @@ const ligneSchema = z
     montantTTC: z.coerce.number().min(0),
     statutBio: z.string().optional().nullable(),
   })
-  .refine(
-    (l) => {
-      // Cohérence ht + tva ≈ ttc (tolérance arrondi 0.02)
-      const calc = Math.round((l.montantHT + l.montantTVA) * 100) / 100
-      return Math.abs(calc - l.montantTTC) <= 0.02
-    },
-    { message: "Cohérence HT + TVA = TTC violée", path: ["montantTTC"] }
-  )
+  .superRefine((l, ctx) => {
+    const close = (a: number, b: number, tolerance = 0.02) => Math.abs(a - b) <= tolerance
+    if (!close(l.quantite * l.prixUnitaire, l.montantHT)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Quantité × prix unitaire doit être égal au montant HT", path: ["montantHT"] })
+    }
+    if (!close(l.montantHT * l.tauxTVA / 100, l.montantTVA)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Le montant de TVA ne correspond pas au taux appliqué", path: ["montantTVA"] })
+    }
+    if (!close(l.montantHT + l.montantTVA, l.montantTTC)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Cohérence HT + TVA = TTC violée", path: ["montantTTC"] })
+    }
+  })
 
 export const createFactureSchema = z
   .object({
@@ -55,8 +59,9 @@ export const createFactureSchema = z
     (f) => {
       // Cohérence : somme des lignes ≈ totaux globaux (tolérance 0.05 €)
       const sumHT = f.lignes.reduce((s, l) => s + l.montantHT, 0)
+      const sumTVA = f.lignes.reduce((s, l) => s + l.montantTVA, 0)
       const sumTTC = f.lignes.reduce((s, l) => s + l.montantTTC, 0)
-      return Math.abs(sumHT - f.totalHT) <= 0.05 && Math.abs(sumTTC - f.totalTTC) <= 0.05
+      return Math.abs(sumHT - f.totalHT) <= 0.05 && Math.abs(sumTVA - f.totalTVA) <= 0.05 && Math.abs(sumTTC - f.totalTTC) <= 0.05
     },
     { message: "Totaux facture incohérents avec la somme des lignes", path: ["totalTTC"] }
   )

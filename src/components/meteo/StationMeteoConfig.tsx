@@ -33,7 +33,7 @@ interface StationMeteo {
 // COMPOSANT
 // ============================================================
 
-export function StationMeteoConfig() {
+export function StationMeteoConfig({ onStationsChanged }: { onStationsChanged?: () => void } = {}) {
   const [stations, setStations] = React.useState<StationMeteo[]>([])
   const [loading, setLoading] = React.useState(true)
   const [showForm, setShowForm] = React.useState(false)
@@ -97,8 +97,9 @@ export function StationMeteoConfig() {
       setShowForm(false)
 
       await fetchStations()
-    } catch (e: any) {
-      setError(e.message)
+      onStationsChanged?.()
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Erreur lors de l’enregistrement")
     } finally {
       setSaving(false)
     }
@@ -115,6 +116,7 @@ export function StationMeteoConfig() {
         return
       }
       await fetchStations()
+      onStationsChanged?.()
     } catch {
       setError("Erreur reseau lors de la suppression")
     }
@@ -134,6 +136,7 @@ export function StationMeteoConfig() {
         return
       }
       await fetchStations()
+      onStationsChanged?.()
     } catch {
       setError("Erreur reseau lors de la mise à jour")
     }
@@ -246,7 +249,6 @@ export function StationMeteoConfig() {
               >
                 <option value="ecowitt">Ecowitt</option>
                 <option value="wunderground">Weather Underground</option>
-                <option value="netatmo">Netatmo</option>
               </select>
             </div>
           </div>
@@ -273,7 +275,7 @@ export function StationMeteoConfig() {
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 className="w-full mt-1 px-3 py-1.5 border rounded text-sm"
-                required={provider !== "netatmo"}
+                required
               />
             </div>
             {provider === "ecowitt" && (
@@ -333,7 +335,7 @@ export function StationMeteoConfig() {
       <div className="text-[10px] text-slate-400 leading-relaxed">
         <p><strong>Ecowitt</strong> : Cles API sur ecowitt.net/home/index → API → Get API/App Key</p>
         <p><strong>Weather Underground</strong> : Cle API sur wunderground.com → My Profile → API Keys</p>
-        <p><strong>Netatmo</strong> : Support a venir (OAuth2)</p>
+        <p>La connexion est testée avant enregistrement. Une seule station est active pour toute l&apos;exploitation.</p>
       </div>
     </div>
   )

@@ -20,6 +20,12 @@ const nextConfig = {
   // n'existe pas au runtime. En externe, le require() natif fonctionne.
   serverExternalPackages: ['pdfkit', 'qrcode'],
 
+  // Vue 3D du jardin (react-three-fiber) : ces paquets sont livrés en ESM
+  // non transpilé ; on les transpile pour un build standalone fiable. Ils ne
+  // sont chargés que côté client (dynamic import ssr:false), donc sans impact
+  // sur le poids des autres pages.
+  transpilePackages: ['three', '@react-three/fiber', '@react-three/drei'],
+
   // Optimisations
   poweredByHeader: false,
 

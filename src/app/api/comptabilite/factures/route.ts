@@ -118,8 +118,26 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Transaction atomique : numéro facture + création (évite les doublons)
+    // Transaction atomique : verrouillage de l'origine + plafond des avoirs
+    // + numéro facture + création. Le contrôle effectué plus haut améliore le
+    // message rapide, celui-ci garantit l'invariant sous concurrence.
     const facture = await prisma.$transaction(async (tx) => {
+      if (d.type === 'avoir' && d.factureOrigineId) {
+        const locked = await tx.$queryRaw<Array<{ id: number; total_ttc: number }>>`
+          SELECT id, total_ttc
+          FROM factures
+          WHERE id = ${d.factureOrigineId} AND user_id = ${userId}
+          FOR UPDATE
+        `
+        if (locked.length !== 1) throw new Error('AVOIR_INVALIDE:Facture d’origine introuvable')
+        const cumul = await tx.facture.aggregate({
+          where: { userId, type: 'avoir', factureOrigineId: d.factureOrigineId, statut: { not: 'annulee' } },
+          _sum: { totalTTC: true },
+        })
+        if ((cumul._sum.totalTTC ?? 0) + d.totalTTC > Number(locked[0].total_ttc) + 0.01) {
+          throw new Error('AVOIR_INVALIDE:Le total des avoirs dépasserait le montant de la facture d’origine')
+        }
+      }
       return creerFacture(tx, {
         userId,
         type: d.type,
@@ -154,6 +172,9 @@ export async function POST(request: NextRequest) {
     invalidateKpi(session.user.id)
     return NextResponse.json({ data: facture }, { status: 201 })
   } catch (error) {
+    if (error instanceof Error && error.message.startsWith('AVOIR_INVALIDE:')) {
+      return NextResponse.json({ error: error.message.slice('AVOIR_INVALIDE:'.length) }, { status: 409 })
+    }
     console.error('POST /api/comptabilite/factures error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la création', details: "Erreur interne du serveur" },

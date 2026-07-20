@@ -110,9 +110,7 @@ export function CookieBanner() {
           <div className="flex-1 text-sm">
             {!detail ? (
               <p className="text-slate-700">
-                Nous utilisons des cookies pour faire fonctionner le site (essentiels) et,
-                avec votre accord, pour mesurer l&apos;audience et personnaliser votre expérience.
-                Vous pouvez accepter, refuser ou personnaliser vos choix à tout moment.
+                Cookies essentiels au site ; cookies optionnels uniquement avec votre accord.
                 <a href="/confidentialite" className="underline ml-1">
                   En savoir plus
                 </a>
@@ -183,7 +181,7 @@ export function CookieBanner() {
               <Button variant="outline" size="sm" onClick={refuserTout}>
                 Tout refuser
               </Button>
-              <Button size="sm" onClick={accepterTout} className="bg-emerald-600 hover:bg-emerald-700">
+              <Button size="sm" onClick={accepterTout} className="bg-emerald-700 hover:bg-emerald-800">
                 Tout accepter
               </Button>
             </>
@@ -192,7 +190,7 @@ export function CookieBanner() {
               <Button variant="ghost" size="sm" onClick={() => setDetail(false)}>
                 Retour
               </Button>
-              <Button size="sm" onClick={sauvegarderPerso} className="bg-emerald-600 hover:bg-emerald-700">
+              <Button size="sm" onClick={sauvegarderPerso} className="bg-emerald-700 hover:bg-emerald-800">
                 Enregistrer mes choix
               </Button>
             </>

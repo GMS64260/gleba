@@ -9,6 +9,7 @@ import prisma from '@/lib/prisma'
 import { calculerStockOeufs } from '@/lib/stocks-helpers'
 import { tauxPonteSaisonnalise } from '@/lib/lait'
 import { tauxPonteAttenduPeriode } from '@/lib/elevage/taux-ponte'
+import { agregerProductionsLaitieresDashboard, construireProductionsDashboard } from '@/lib/elevage/dashboard-productions'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -329,12 +330,11 @@ export async function GET(request: NextRequest) {
       : 0
 
     // PROMPT 17 — KPI lait
-    const [laitAggAnnee, laitNonAffecte, laitJ30] = await Promise.all([
-      prisma.collecteLait.aggregate({
-        where: { userId, date: { gte: startOfYear, lte: endOfYear } },
-        _sum: { quantiteLitres: true },
-        _count: true,
-      }),
+    const [productionsLaitieres, laitNonAffecte, laitJ30] = await Promise.all([
+      agregerProductionsLaitieresDashboard({
+        collecteLait: { aggregate: (args) => prisma.collecteLait.aggregate(args) },
+        lotFromage: { aggregate: (args) => prisma.lotFromage.aggregate(args) },
+      }, userId, startOfYear, endOfYear),
       prisma.collecteLait.aggregate({
         where: { userId, lotFromageId: null, ecarteAttente: false, date: { gte: startOfYear, lte: endOfYear } },
         _sum: { quantiteLitres: true },
@@ -344,10 +344,17 @@ export async function GET(request: NextRequest) {
         _sum: { quantiteLitres: true },
       }),
     ])
-    const laitTotalAnnee = Number(laitAggAnnee._sum.quantiteLitres ?? 0)
+    const laitTotalAnnee = productionsLaitieres.laitLitres
     const laitNonAffecteL = Number(laitNonAffecte._sum.quantiteLitres ?? 0)
     const laitJ30L = Number(laitJ30._sum.quantiteLitres ?? 0)
     const laitMoyenJourJ30 = Math.round((laitJ30L / 30) * 100) / 100
+    const productions = construireProductionsDashboard({
+      oeufs: nbOeufsAnnee,
+      laitLitres: laitTotalAnnee,
+      fromagePieces: productionsLaitieres.fromagePieces,
+      fromageKg: productionsLaitieres.fromageKg,
+      viandeKg: poidsCarcasseTotal,
+    })
 
     // BUG #8 (audit Julien 15/05/2026) — Avant : la carte « Animaux actifs »
     // affichait juste le COUNT(Animal statut='actif'), avec un sous-titre
@@ -394,7 +401,7 @@ export async function GET(request: NextRequest) {
         laitTotalAnnee: Math.round(laitTotalAnnee * 100) / 100,
         laitMoyenJourJ30,
         laitStockTransformable: Math.round(laitNonAffecteL * 100) / 100,
-        nbCollectesAnnee: laitAggAnnee._count,
+        nbCollectesAnnee: productionsLaitieres.nbCollectes,
       },
       // BUG #7 : la répartition par espèce additionne désormais les
       // animaux individuels + ceux comptés en LotAnimaux.quantiteActuelle.
@@ -413,6 +420,7 @@ export async function GET(request: NextRequest) {
         mois: Number(p.mois),
         total: Number(p.total),
       })),
+      productions,
     })
   } catch (error) {
     console.error('GET /api/elevage/stats error:', error)

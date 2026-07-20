@@ -18,6 +18,11 @@ export function unsubscribeUrl(token: string): string {
   return `${MAIL_BASE_URL.replace(/\/$/, "")}/desabonnement/${token}`
 }
 
+/** URL du handler POST one-click RFC 8058 (distincte de la page HTML). */
+export function oneClickUnsubscribeUrl(token: string): string {
+  return `${MAIL_BASE_URL.replace(/\/$/, "")}/api/desabonnement/${token}`
+}
+
 /**
  * Retourne le token de désabonnement de l'utilisateur, en le créant s'il
  * n'existe pas encore. Accepte un client transaction Prisma optionnel.
@@ -42,9 +47,8 @@ export async function getOrCreateUnsubscribeToken(
 
 /** En-tête List-Unsubscribe (RFC 2369 / 8058) pour une bonne délivrabilité. */
 export function listUnsubscribeHeaders(token: string): Record<string, string> {
-  const url = unsubscribeUrl(token)
   return {
-    "List-Unsubscribe": `<${url}>`,
+    "List-Unsubscribe": `<${oneClickUnsubscribeUrl(token)}>`,
     "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
   }
 }

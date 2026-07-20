@@ -166,6 +166,7 @@ export default function EditEspecePage() {
       categorie: null,
       niveau: null,
       densite: null,
+      etalement: null,
       doseSemis: null,
       tauxGermination: null,
       temperatureGerm: null,
@@ -210,6 +211,7 @@ export default function EditEspecePage() {
           categorie: especeData.categorie || null,
           niveau: especeData.niveau || null,
           densite: especeData.densite || null,
+          etalement: especeData.etalement || null,
           doseSemis: especeData.doseSemis || null,
           tauxGermination: especeData.tauxGermination || null,
           temperatureGerm: especeData.temperatureGerm || null,
@@ -669,6 +671,29 @@ export default function EditEspecePage() {
                                 type="number"
                                 step="0.1"
                                 placeholder="Ex: 4"
+                                {...field}
+                                value={field.value ?? ""}
+                                onChange={(e) =>
+                                  field.onChange(e.target.value ? parseFloat(e.target.value) : null)
+                                }
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name="etalement"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Étalement à maturité (m)</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                step="0.05"
+                                placeholder="Ex: 0.6"
                                 {...field}
                                 value={field.value ?? ""}
                                 onChange={(e) =>

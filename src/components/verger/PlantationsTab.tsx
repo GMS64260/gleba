@@ -233,7 +233,7 @@ export function PlantationsTab() {
           </SelectContent>
         </Select>
         <Select value={filterType} onValueChange={setFilterType}>
-          <SelectTrigger className="w-[200px] h-9">
+          <SelectTrigger className="h-9 w-full sm:w-[200px]">
             <SelectValue placeholder="Type" />
           </SelectTrigger>
           <SelectContent>

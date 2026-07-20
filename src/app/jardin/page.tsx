@@ -7,7 +7,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
-import { ArrowLeft, Map as MapIcon, RotateCcw, ZoomIn, ZoomOut, Plus, Crosshair, Trash2, X, RotateCw, Copy } from "lucide-react"
+import { ArrowLeft, Box, CalendarClock, ChevronDown, Download, Image as ImageIcon, Layers as LayersIcon, Map as MapIcon, Maximize2, Minimize2, RotateCcw, Ruler, Upload, ZoomIn, ZoomOut, Plus, Crosshair, Trash2, X, RotateCw, Copy } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -27,8 +27,27 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import dynamic from "next/dynamic"
-import { GardenView, type SelectionItem } from "@/components/garden/GardenView"
+import { Slider } from "@/components/ui/slider"
+import {
+  GardenView,
+  DEFAULT_LAYERS,
+  type GardenLayers,
+  type GardenTool,
+  type LiaisonAssociation,
+  type SelectionItem,
+} from "@/components/garden/GardenView"
+import { useFondPlan } from "@/hooks/use-fond-plan"
+import { calibrerFond, distance, formatDistance } from "@/lib/plan-fond-utils"
+import { croissanceCulture, envergureArbreADate } from "@/lib/plan-croissance"
 
 // Palier 4 (perf) : dialogs lourds chargés à la demande, hors du bundle
 // initial de l'éditeur (le plus gros écran client de l'app).
@@ -60,16 +79,29 @@ interface PlancheWithCulture {
     id: number
     nbRangs: number | null
     espacement: number | null
+    dateSemis: string | null
+    datePlantation: string | null
+    dateRecolte: string | null
+    finRecolte: string | null
     itp: {
       espacementRangs: number | null
+      espacement: number | null
+      dureeCulture: number | null
+      dureeRecolte: number | null
     } | null
     espece: {
       id: string
       nom: string | null
       couleur: string | null
-      famille: { couleur: string | null } | null
+      etalement: number | null
+      famille: { id: string; couleur: string | null } | null
     }
   }[]
+}
+
+interface RegleAssociation {
+  type: string
+  details: { especeId: string | null; familleId: string | null }[]
 }
 
 interface ObjetJardin {
@@ -100,6 +132,8 @@ interface Arbre {
   posX: number
   posY: number
   envergure: number
+  envergureAdulte: number | null
+  especeEtalement: number | null
   couleur: string | null
   notes: string | null
 }
@@ -147,8 +181,48 @@ function JardinContent() {
   const [arbres, setArbres] = React.useState<Arbre[]>([])
   const [especes, setEspeces] = React.useState<Espece[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
-  const [scale, setScale] = React.useState(20)
+  const [scale, setScale] = React.useState(16)
+  const [isPlanFullscreen, setIsPlanFullscreen] = React.useState(false)
   const [hasChanges, setHasChanges] = React.useState(false)
+
+  // Image de fond persistée côté serveur (satellite/drone) + outils du plan
+  const { fond, majReglages, televerserImage, supprimerImage } = useFondPlan(selectedParcelleId)
+  const [tool, setTool] = React.useState<GardenTool>('select')
+
+  // Plan vivant : date affichée (null = aujourd'hui) + calques togglables
+  const [dateVue, setDateVue] = React.useState<Date | null>(null)
+  const [layers, setLayers] = React.useState<GardenLayers>(DEFAULT_LAYERS)
+  const [reglesAssociations, setReglesAssociations] = React.useState<RegleAssociation[]>([])
+  const [showFondDialog, setShowFondDialog] = React.useState(false)
+  const [calibPoints, setCalibPoints] = React.useState<{ p1: { x: number; y: number }; p2: { x: number; y: number } } | null>(null)
+  const [calibDistance, setCalibDistance] = React.useState("")
+  const [exportingPng, setExportingPng] = React.useState(false)
+  const fondFileInputRef = React.useRef<HTMLInputElement>(null)
+  const planContainerRef = React.useRef<HTMLDivElement>(null)
+
+  // Échap quitte l'outil mesure/calibration
+  React.useEffect(() => {
+    if (tool === 'select') return
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setTool('select')
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [tool])
+
+  React.useEffect(() => {
+    if (!isPlanFullscreen) return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsPlanFullscreen(false)
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener("keydown", handleKeyDown)
+    }
+  }, [isPlanFullscreen])
 
   // Lire la parcelle depuis l'URL si presente (?parcelle=ID ou ?usage=culture|verger)
   // Bug feedback cmpkyc0qy — Sur ?usage=culture, le `find` retournait la 1re parcelle
@@ -202,7 +276,7 @@ function JardinContent() {
   const [showNewCultureDialog, setShowNewCultureDialog] = React.useState(false)
   const [newPlanche, setNewPlanche] = React.useState({ nom: "", largeur: settings.defaultPlancheLargeur, longueur: settings.defaultPlancheLongueur })
   const [newObjet, setNewObjet] = React.useState({ nom: "", type: "allee", largeur: 0.5, longueur: 5 })
-  const [newArbre, setNewArbre] = React.useState({ nom: "", type: "fruitier", espece: "", variete: "", fournisseur: "", envergure: 2 })
+  const [newArbre, setNewArbre] = React.useState({ nom: "", type: "fruitier", espece: "", variete: "", fournisseur: "", envergure: 2, envergureAdulte: "" })
 
   // Mettre à jour les valeurs par défaut quand les settings changent
   React.useEffect(() => {
@@ -392,6 +466,90 @@ function JardinContent() {
     Promise.all([fetchArbres(), fetchEspeces(), fetchParcelles()])
   }, [fetchArbres, fetchEspeces, fetchParcelles])
 
+  // Règles d'association (calque liaisons favorables/défavorables)
+  React.useEffect(() => {
+    fetch("/api/associations")
+      .then(r => (r.ok ? r.json() : []))
+      .then((data) => {
+        if (!Array.isArray(data)) return
+        setReglesAssociations(
+          data.map((a: { type: string; details?: { especeId: string | null; familleId: string | null }[] }) => ({
+            type: a.type,
+            details: (a.details || []).map(d => ({ especeId: d.especeId, familleId: d.familleId })),
+          }))
+        )
+      })
+      .catch(() => {})
+  }, [])
+
+  // --- Plan vivant : tailles à la date affichée -------------------------
+
+  const dateAffichee = React.useMemo(() => dateVue ?? new Date(), [dateVue])
+
+  // Cultures présentes à la date affichée, avec leur fraction de croissance
+  const planchesAffichees = React.useMemo(() => {
+    return planches.map(p => ({
+      ...p,
+      cultures: p.cultures
+        .map(c => ({ ...c, croissance: croissanceCulture(c, dateAffichee) }))
+        .filter(c => c.croissance !== null),
+    }))
+  }, [planches, dateAffichee])
+
+  // Arbres : envergure dessinée à la date affichée (mesure du jour par défaut)
+  const arbresAffiches = React.useMemo(() => {
+    if (!dateVue) return arbres
+    const aujourdHui = new Date()
+    return arbres
+      .map(a => ({ ...a, envergure: envergureArbreADate(a, dateAffichee, aujourdHui) }))
+      .filter(a => a.envergure > 0.05)
+  }, [arbres, dateVue, dateAffichee])
+
+  // Liaisons d'association entre planches voisines (centres < 4 m)
+  const liaisons = React.useMemo<LiaisonAssociation[]>(() => {
+    if (!layers.associations || reglesAssociations.length === 0) return []
+    const matche = (
+      details: RegleAssociation["details"],
+      espece: { id: string; famille: { id: string } | null }
+    ) =>
+      details.some(
+        d =>
+          (d.especeId && d.especeId === espece.id) ||
+          (d.familleId && espece.famille && d.familleId === espece.famille.id)
+      )
+    const actives = planchesAffichees.filter(p => p.cultures.length > 0 && p.posX !== null && p.posY !== null)
+    const result: LiaisonAssociation[] = []
+    for (let i = 0; i < actives.length; i++) {
+      for (let j = i + 1; j < actives.length; j++) {
+        const a = actives[i]
+        const b = actives[j]
+        const ax = (a.posX ?? 0) + (a.largeur ?? 0.8) / 2
+        const ay = (a.posY ?? 0) + (a.longueur ?? 2) / 2
+        const bx = (b.posX ?? 0) + (b.largeur ?? 0.8) / 2
+        const by = (b.posY ?? 0) + (b.longueur ?? 2) / 2
+        if (Math.hypot(bx - ax, by - ay) > 4) continue
+        let type: LiaisonAssociation["type"] | null = null
+        for (const regle of reglesAssociations) {
+          if (regle.type !== "favorable" && regle.type !== "incompatible") continue
+          const concerne = a.cultures.some(c1 =>
+            b.cultures.some(
+              c2 =>
+                c1.espece.id !== c2.espece.id &&
+                matche(regle.details, c1.espece) &&
+                matche(regle.details, c2.espece)
+            )
+          )
+          if (concerne) {
+            type = regle.type
+            if (type === "incompatible") break // l'avertissement prime
+          }
+        }
+        if (type) result.push({ x1: ax, y1: ay, x2: bx, y2: by, type })
+      }
+    }
+    return result
+  }, [layers.associations, reglesAssociations, planchesAffichees])
+
   // Données de l'element selectionne
   const selectedPlancheData = planches.find(p => p.id === selectedPlanche)
   const selectedObjetData = objets.find(o => o.id === selectedObjet)
@@ -525,6 +683,7 @@ function JardinContent() {
             posX: a.posX,
             posY: a.posY,
             envergure: a.envergure,
+            envergureAdulte: a.envergureAdulte,
             couleur: a.couleur,
             notes: a.notes
           })
@@ -585,7 +744,7 @@ function JardinContent() {
   // Recentrer la vue
   const handleRecenter = () => {
     // Reset scale et laisser le GardenView recalculer le viewBox
-    setScale(20)
+    setScale(16)
   }
 
   // Créer une nouvelle planche
@@ -865,6 +1024,7 @@ function JardinContent() {
           variete: newArbre.variete || null,
           fournisseur: newArbre.fournisseur || null,
           envergure: newArbre.envergure,
+          envergureAdulte: newArbre.envergureAdulte || null,
           posX: 2,
           posY: maxY + 1,
           // datePlantation est requise par l'API ; la création rapide depuis
@@ -891,7 +1051,7 @@ function JardinContent() {
         toast({ title: "Arbre créé", description: newArbre.nom })
       }
       setShowNewArbreDialog(false)
-      setNewArbre({ nom: "", type: "fruitier", espece: "", variete: "", fournisseur: "", envergure: 2 })
+      setNewArbre({ nom: "", type: "fruitier", espece: "", variete: "", fournisseur: "", envergure: 2, envergureAdulte: "" })
       fetchArbres()
     } catch (error) {
       toast({
@@ -930,9 +1090,177 @@ function JardinContent() {
     }
   }
 
+  // --- Image de fond : upload, suppression, calibration 2 points ---
+
+  const handleFondFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (fondFileInputRef.current) fondFileInputRef.current.value = ""
+    if (!file) return
+    const result = await televerserImage(file)
+    if (result.ok) {
+      toast({
+        title: "Image de fond enregistrée",
+        description: "Calibrez maintenant l'échelle en cliquant 2 repères connus du plan.",
+      })
+    } else {
+      toast({ variant: "destructive", title: "Erreur", description: result.erreur })
+    }
+  }
+
+  const handleFondRemove = async () => {
+    if (!fond) return
+    const cible = fond.source === 'global' ? "le fond commun à toutes les parcelles" : "le fond de cette parcelle"
+    if (!(await confirmDialog(`Supprimer ${cible} ?`))) return
+    const ok = await supprimerImage()
+    toast(ok ? { title: "Image de fond supprimée" } : { variant: "destructive", title: "Erreur", description: "Suppression impossible" })
+  }
+
+  // 2 points cliqués sur le plan → demander la distance réelle
+  const handleCalibrate = React.useCallback((p1: { x: number; y: number }, p2: { x: number; y: number }) => {
+    setCalibPoints({ p1, p2 })
+    setCalibDistance("")
+  }, [])
+
+  const handleCalibrateApply = async () => {
+    if (!calibPoints || !fond) return
+    const distanceReelle = parseFloat(calibDistance.replace(",", "."))
+    if (!Number.isFinite(distanceReelle) || distanceReelle <= 0) {
+      toast({ variant: "destructive", title: "Distance invalide", description: "Saisissez la distance réelle en mètres." })
+      return
+    }
+    // Dimensions naturelles de l'image (data URL locale, chargement immédiat)
+    const img = new window.Image()
+    try {
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve()
+        img.onerror = () => reject(new Error("Image illisible"))
+        img.src = fond.image
+      })
+    } catch {
+      toast({ variant: "destructive", title: "Erreur", description: "Impossible de lire l'image de fond" })
+      return
+    }
+    const reglages = calibrerFond({
+      p1: calibPoints.p1,
+      p2: calibPoints.p2,
+      distanceReelle,
+      fond,
+      imageWidth: img.naturalWidth,
+      imageHeight: img.naturalHeight,
+    })
+    if (!reglages) {
+      toast({ variant: "destructive", title: "Calibration impossible", description: "Les deux points sont trop proches." })
+      return
+    }
+    majReglages(reglages)
+    setCalibPoints(null)
+    setTool('select')
+    toast({
+      title: "Échelle calibrée",
+      description: `1 pixel de l'image = ${reglages.scale.toFixed(3)} m. Le plan respecte maintenant l'échelle réelle.`,
+    })
+  }
+
+  // Export PNG du plan : sérialise le SVG (fond inclus, en data URL) puis
+  // rastérise sur canvas. Plafonné à ~8k px pour rester dans les limites canvas.
+  const handleExportPng = async () => {
+    const svg = planContainerRef.current?.querySelector("svg")
+    if (!svg) {
+      toast({ variant: "destructive", title: "Erreur", description: "Aucun plan à exporter" })
+      return
+    }
+    setExportingPng(true)
+    let svgUrl: string | null = null
+    try {
+      const clone = svg.cloneNode(true) as SVGSVGElement
+      clone.setAttribute("xmlns", "http://www.w3.org/2000/svg")
+      const wPx = svg.width.baseVal.value
+      const hPx = svg.height.baseVal.value
+      const facteur = Math.max(0.5, Math.min(2, 8192 / Math.max(wPx, hPx)))
+      const xml = new XMLSerializer().serializeToString(clone)
+      svgUrl = URL.createObjectURL(new Blob([xml], { type: "image/svg+xml;charset=utf-8" }))
+      const img = new window.Image()
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve()
+        img.onerror = () => reject(new Error("Rendu du plan impossible"))
+        img.src = svgUrl!
+      })
+      const canvas = document.createElement("canvas")
+      canvas.width = Math.round(wPx * facteur)
+      canvas.height = Math.round(hPx * facteur)
+      const ctx = canvas.getContext("2d")
+      if (!ctx) throw new Error("Canvas indisponible")
+      ctx.fillStyle = "#ffffff"
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+      const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, "image/png"))
+      if (!blob) throw new Error("Export PNG impossible")
+      const a = document.createElement("a")
+      a.href = URL.createObjectURL(blob)
+      a.download = `plan-jardin-${todayLocalISO()}.png`
+      document.body.appendChild(a)
+      a.click()
+      URL.revokeObjectURL(a.href)
+      document.body.removeChild(a)
+      toast({ title: "Plan exporté", description: "Image PNG téléchargée" })
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Erreur",
+        description: error instanceof Error ? error.message : "Export impossible",
+      })
+    } finally {
+      if (svgUrl) URL.revokeObjectURL(svgUrl)
+      setExportingPng(false)
+    }
+  }
+
+  // Menu des calques d'affichage (utilisé dans les deux barres d'outils)
+  const calquesMenu = (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="icon" aria-label="Calques d'affichage" title="Calques d'affichage">
+          <LayersIcon className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-64">
+        <DropdownMenuCheckboxItem
+          checked={layers.fond}
+          onCheckedChange={(v) => setLayers(l => ({ ...l, fond: !!v }))}
+        >
+          Image de fond
+        </DropdownMenuCheckboxItem>
+        <DropdownMenuCheckboxItem
+          checked={layers.grille}
+          onCheckedChange={(v) => setLayers(l => ({ ...l, grille: !!v }))}
+        >
+          Grille
+        </DropdownMenuCheckboxItem>
+        <DropdownMenuCheckboxItem
+          checked={layers.etiquettes}
+          onCheckedChange={(v) => setLayers(l => ({ ...l, etiquettes: !!v }))}
+        >
+          Étiquettes
+        </DropdownMenuCheckboxItem>
+        <DropdownMenuCheckboxItem
+          checked={layers.projectionAdulte}
+          onCheckedChange={(v) => setLayers(l => ({ ...l, projectionAdulte: !!v }))}
+        >
+          Projection adulte des arbres
+        </DropdownMenuCheckboxItem>
+        <DropdownMenuCheckboxItem
+          checked={layers.associations}
+          onCheckedChange={(v) => setLayers(l => ({ ...l, associations: !!v }))}
+        >
+          Associations entre planches
+        </DropdownMenuCheckboxItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+
   // Légende des couleurs - toutes les cultures
   const legendItems = React.useMemo(() => {
-    const items = new Map<string, { color: string; name: string; count: number }>()
+    const items = new Map<string, { especeId: string; color: string; name: string; count: number }>()
     planches.forEach(p => {
       p.cultures.forEach(c => {
         const espece = c.espece
@@ -941,27 +1269,69 @@ function JardinContent() {
         if (existing) {
           existing.count++
         } else {
-          items.set(espece.id, { color, name: espece.nom ?? espece.id, count: 1 })
+          items.set(espece.id, { especeId: espece.id, color, name: espece.nom ?? espece.id, count: 1 })
         }
       })
     })
     return Array.from(items.values()).sort((a, b) => b.count - a.count)
   }, [planches])
 
+  // Surbrillance depuis la légende : planches portant chaque espèce
+  const planchesParEspece = React.useMemo(() => {
+    const map = new Map<string, string[]>()
+    planches.forEach(p => {
+      p.cultures.forEach(c => {
+        const ids = map.get(c.espece.id) ?? []
+        if (!ids.includes(p.id)) ids.push(p.id)
+        map.set(c.espece.id, ids)
+      })
+    })
+    return map
+  }, [planches])
+
+  const selectionPlancheIds = React.useMemo(
+    () => new Set(selection.filter(s => s.type === 'planche').map(s => s.id as string)),
+    [selection]
+  )
+
+  // Vrai si la sélection courante est exactement « les planches de cette espèce »
+  const especeEnSurbrillance = React.useCallback(
+    (especeId: string) => {
+      const ids = planchesParEspece.get(especeId) ?? []
+      return ids.length > 0 && selection.length === ids.length && ids.every(id => selectionPlancheIds.has(id))
+    },
+    [planchesParEspece, selection, selectionPlancheIds]
+  )
+
+  // Clic sur la légende : sélectionne les planches de l'espèce (re-clic = désélection)
+  const handleLegendClick = React.useCallback(
+    (especeId: string) => {
+      const ids = planchesParEspece.get(especeId) ?? []
+      if (ids.length === 0) return
+      setSelection(
+        especeEnSurbrillance(especeId) ? [] : ids.map(id => ({ type: 'planche' as const, id }))
+      )
+    },
+    [planchesParEspece, especeEnSurbrillance]
+  )
+
   return (
     <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
       <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
       {/* Header */}
       <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-3 flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-4 flex-wrap">
+        <div className="container mx-auto flex flex-wrap items-center justify-between gap-3 px-3 py-3 sm:px-4">
+          {/* xl:min-w-fit : le bloc titre ne se compresse jamais sur grand
+              écran — si la barre d'outils manque de place, elle passe sur sa
+              propre ligne (flex-wrap du parent) au lieu de chevaucher le titre. */}
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 sm:gap-4 xl:min-w-fit xl:flex-nowrap">
             <Link href="/">
               <Button variant="ghost" size="sm">
                 <ArrowLeft className="h-4 w-4 mr-2" />
                 Accueil
               </Button>
             </Link>
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 xl:flex-nowrap">
               <MapIcon className="h-6 w-6 text-green-600 flex-shrink-0" />
               {/* Bug cmp8rs6uh (Marc 2026-05-16) — titre cassé sur 3 lignes
                   quand le sélecteur de parcelle pousse la ligne : on bloque
@@ -975,7 +1345,7 @@ function JardinContent() {
                   value={selectedParcelleId ?? "all"}
                   onValueChange={(v) => setSelectedParcelleId(v === "all" ? null : v === "none" ? "none" : v)}
                 >
-                  <SelectTrigger className="w-[200px] ml-2">
+                  <SelectTrigger className="w-full min-w-0 sm:ml-2 sm:w-[200px]">
                     <SelectValue placeholder="Toutes les parcelles" />
                   </SelectTrigger>
                   <SelectContent>
@@ -992,13 +1362,17 @@ function JardinContent() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          {/* Barre complète sur grand écran. En dessous de 1280 px, une version
+              compacte évite tout débordement et conserve des cibles tactiles de 40 px.
+              flex-wrap : si la place manque quand même (fenêtre ~1280 px), les
+              boutons passent à la ligne au lieu de chevaucher le titre. */}
+          <div className="hidden flex-wrap items-center justify-end gap-2 xl:flex">
             {/* Zoom */}
-            <Button variant="outline" size="icon" onClick={() => setScale(s => Math.max(20, s - 10))}>
+            <Button variant="outline" size="icon" aria-label="Dézoomer" onClick={() => setScale(s => Math.max(6, s - 5))}>
               <ZoomOut className="h-4 w-4" />
             </Button>
             <span className="text-sm w-16 text-center">{scale}px/m</span>
-            <Button variant="outline" size="icon" onClick={() => setScale(s => Math.min(100, s + 10))}>
+            <Button variant="outline" size="icon" aria-label="Zoomer" onClick={() => setScale(s => Math.min(120, s + 5))}>
               <ZoomIn className="h-4 w-4" />
             </Button>
 
@@ -1010,6 +1384,11 @@ function JardinContent() {
               Recentrer
             </Button>
 
+            <Button variant="outline" size="sm" onClick={() => setIsPlanFullscreen(true)}>
+              <Maximize2 className="mr-2 h-4 w-4" />
+              Plein écran
+            </Button>
+
             {/* Cartographie */}
             <Link href="/jardin/carte">
               <Button variant="outline" size="sm">
@@ -1017,6 +1396,60 @@ function JardinContent() {
                 Cartographie
               </Button>
             </Link>
+
+            {/* Vue 3D (nouveauté) */}
+            <Link
+              href={
+                selectedParcelleId && selectedParcelleId !== "none"
+                  ? `/jardin/3d?parcelle=${encodeURIComponent(selectedParcelleId)}`
+                  : "/jardin/3d"
+              }
+            >
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+              >
+                <Box className="h-4 w-4 mr-2" />
+                Vue 3D
+              </Button>
+            </Link>
+
+            <div className="w-px h-6 bg-slate-300 mx-1" />
+
+            {/* Outils : mesure, image de fond, export — icônes seules pour ne
+                pas faire déborder la barre (libellés en tooltip/aria-label) */}
+            <Button
+              variant={tool === 'measure' ? "default" : "outline"}
+              size="icon"
+              onClick={() => setTool(t => t === 'measure' ? 'select' : 'measure')}
+              aria-label="Mesurer une distance"
+              title="Mesurer une distance sur le plan"
+            >
+              <Ruler className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setShowFondDialog(true)}
+              aria-label="Image de fond"
+              title="Image de fond (satellite, drone)"
+            >
+              <ImageIcon className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={handleExportPng}
+              disabled={exportingPng}
+              aria-label="Exporter le plan en PNG"
+              title="Exporter le plan en PNG"
+            >
+              <Download className="h-4 w-4" />
+            </Button>
+            {calquesMenu}
+
+            <div className="w-px h-6 bg-slate-300 mx-1" />
 
             <Button variant="outline" size="sm" onClick={() => setShowNewPlancheDialog(true)}>
               <Plus className="h-4 w-4 mr-2" />
@@ -1038,52 +1471,245 @@ function JardinContent() {
               <span className="text-xs text-muted-foreground animate-pulse">Sauvegarde...</span>
             )}
           </div>
+
+          <div className="flex w-full flex-wrap items-center gap-2 xl:hidden">
+            <div className="flex h-10 items-center rounded-md border bg-white">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9"
+                aria-label="Dézoomer"
+                onClick={() => setScale(s => Math.max(6, s - 5))}
+              >
+                <ZoomOut className="h-4 w-4" />
+              </Button>
+              <span className="w-14 text-center text-xs tabular-nums">{scale}px/m</span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9"
+                aria-label="Zoomer"
+                onClick={() => setScale(s => Math.min(120, s + 5))}
+              >
+                <ZoomIn className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <Button variant="outline" size="icon" className="h-10 w-10" onClick={handleRecenter} aria-label="Recentrer le plan">
+              <Crosshair className="h-4 w-4" />
+            </Button>
+
+            <Button variant="outline" size="icon" className="h-10 w-10" onClick={() => setIsPlanFullscreen(true)} aria-label="Afficher le plan en plein écran">
+              <Maximize2 className="h-4 w-4" />
+            </Button>
+
+            <Button variant="outline" size="icon" className="h-10 w-10" asChild>
+              <Link href="/jardin/carte" aria-label="Ouvrir la cartographie">
+                <MapIcon className="h-4 w-4" />
+              </Link>
+            </Button>
+
+            <Button
+              variant={tool === 'measure' ? "default" : "outline"}
+              size="icon"
+              className="h-10 w-10"
+              onClick={() => setTool(t => t === 'measure' ? 'select' : 'measure')}
+              aria-label="Mesurer une distance"
+            >
+              <Ruler className="h-4 w-4" />
+            </Button>
+
+            {calquesMenu}
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="h-10 flex-1 sm:flex-none">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Ajouter
+                  <ChevronDown className="ml-2 h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuItem onSelect={() => setShowNewPlancheDialog(true)}>
+                  <Plus /> Nouvelle planche
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setShowNewObjetDialog(true)}>
+                  <Plus /> Nouvel objet
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setShowNewArbreDialog(true)}>
+                  <Plus /> Nouvel arbre
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={() => setShowFondDialog(true)}>
+                  <ImageIcon /> Image de fond…
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={handleExportPng} disabled={exportingPng}>
+                  <Download /> Exporter en PNG
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={handleReset}>
+                  <RotateCcw /> Réorganiser le plan
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {saving && (
+              <span className="w-full text-xs text-muted-foreground animate-pulse">Sauvegarde...</span>
+            )}
+          </div>
         </div>
       </header>
 
       {/* Content */}
-      <main className="container mx-auto px-4 py-4">
+      <main className="container mx-auto px-2 py-3 sm:px-4 sm:py-4">
         <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
           {/* Plan */}
-          <Card className="overflow-hidden">
-            <CardContent className="p-0" style={{ height: 'calc(100vh - 200px)', minHeight: '500px' }}>
+          <Card className={isPlanFullscreen ? "fixed inset-0 z-[100] overflow-hidden rounded-none border-0 bg-emerald-50" : "overflow-hidden"}>
+            <CardContent className={isPlanFullscreen ? "relative h-[100dvh] p-0" : "relative h-[max(420px,calc(100dvh-250px))] p-0 sm:h-[max(500px,calc(100dvh-200px))]"}>
+              {isPlanFullscreen && (
+                <>
+                  <div className="absolute right-3 top-3 z-20 flex items-center gap-1 rounded-xl border bg-white/95 p-1.5 shadow-lg backdrop-blur sm:right-4 sm:top-4 sm:gap-2">
+                    <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => setScale(s => Math.max(6, s - 5))} aria-label="Dézoomer">
+                      <ZoomOut className="h-5 w-5" />
+                    </Button>
+                    <span className="min-w-12 text-center text-xs font-medium tabular-nums">{scale}px/m</span>
+                    <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => setScale(s => Math.min(120, s + 5))} aria-label="Zoomer">
+                      <ZoomIn className="h-5 w-5" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-10 w-10" onClick={handleRecenter} aria-label="Recentrer">
+                      <Crosshair className="h-5 w-5" />
+                    </Button>
+                    <Button
+                      variant={tool === 'measure' ? "default" : "ghost"}
+                      size="icon"
+                      className="h-10 w-10"
+                      onClick={() => setTool(t => t === 'measure' ? 'select' : 'measure')}
+                      aria-label="Mesurer une distance"
+                    >
+                      <Ruler className="h-5 w-5" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => setIsPlanFullscreen(false)} aria-label="Quitter le plein écran">
+                      <Minimize2 className="h-5 w-5" />
+                    </Button>
+                  </div>
+                  <div className="pointer-events-none absolute bottom-3 left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded-full bg-slate-900/75 px-3 py-1.5 text-xs text-white shadow sm:bottom-4">
+                    1 doigt pour déplacer · 2 doigts pour zoomer
+                  </div>
+                </>
+              )}
+              {tool !== 'select' && (
+                <div className="absolute top-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full bg-slate-900/80 py-1.5 pl-3 pr-1.5 text-xs text-white shadow">
+                  <span className="whitespace-nowrap">
+                    {tool === 'measure'
+                      ? "Mesure : touchez 2 points du plan"
+                      : "Calibration : touchez 2 repères dont vous connaissez la distance réelle"}
+                  </span>
+                  <button
+                    type="button"
+                    className="rounded-full bg-white/20 p-1 hover:bg-white/30"
+                    onClick={() => setTool('select')}
+                    aria-label="Quitter l'outil"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              )}
               {isLoading ? (
                 <div className="h-full flex items-center justify-center text-muted-foreground">
                   Chargement...
                 </div>
-              ) : planches.length === 0 && arbres.length === 0 && objets.length === 0 ? (
+              ) : planches.length === 0 && arbres.length === 0 && objets.length === 0 && !fond ? (
                 <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
                   <MapIcon className="h-12 w-12 mb-4 opacity-50" />
                   <p>Aucun élément sur cette parcelle</p>
-                  <Button variant="link" onClick={() => setShowNewPlancheDialog(true)}>
-                    Créer une planche
-                  </Button>
+                  <div className="flex flex-wrap items-center justify-center gap-1">
+                    <Button variant="link" onClick={() => setShowNewPlancheDialog(true)}>
+                      Créer une planche
+                    </Button>
+                    <Button variant="link" onClick={() => setShowFondDialog(true)}>
+                      Importer une image de fond
+                    </Button>
+                  </div>
                 </div>
               ) : (
-                <GardenView
-                  planches={planches}
-                  objets={objets}
-                  arbres={arbres}
-                  editable
-                  selection={selection}
-                  onSelectionChange={handleSelectionChange}
-                  onGroupMove={handleGroupMove}
-                  onPlancheMove={handlePlancheMove}
-                  onObjetMove={handleObjetMove}
-                  onArbreMove={handleArbreMove}
-                  scale={scale}
-                  plancheColor={settings.plancheColor}
-                  selectedColor={settings.plancheSelectedColor}
-                  gridColor={settings.gridColor}
-                  backgroundImage={settings.backgroundImage ? {
-                    image: settings.backgroundImage,
-                    opacity: settings.backgroundOpacity,
-                    scale: settings.backgroundScale,
-                    offsetX: settings.backgroundOffsetX,
-                    offsetY: settings.backgroundOffsetY,
-                    rotation: settings.backgroundRotation,
-                  } : undefined}
-                />
+                <div ref={planContainerRef} className="h-full w-full">
+                  <GardenView
+                    planches={planchesAffichees}
+                    objets={objets}
+                    arbres={arbresAffiches}
+                    editable
+                    selection={selection}
+                    onSelectionChange={handleSelectionChange}
+                    onGroupMove={handleGroupMove}
+                    onPlancheMove={handlePlancheMove}
+                    onObjetMove={handleObjetMove}
+                    onArbreMove={handleArbreMove}
+                    scale={scale}
+                    onScaleChange={setScale}
+                    plancheColor={settings.plancheColor}
+                    selectedColor={settings.plancheSelectedColor}
+                    gridColor={settings.gridColor}
+                    tool={tool}
+                    onCalibrate={handleCalibrate}
+                    layers={layers}
+                    liaisons={liaisons}
+                    backgroundImage={fond ? {
+                      image: fond.image,
+                      opacity: fond.opacity,
+                      scale: fond.scale,
+                      offsetX: fond.offsetX,
+                      offsetY: fond.offsetY,
+                      rotation: fond.rotation,
+                      contour: fond.contour,
+                    } : undefined}
+                  />
+                </div>
+              )}
+
+              {/* Plan vivant : curseur temporel (masqué en plein écran) */}
+              {!isPlanFullscreen && !isLoading && (planches.length > 0 || arbres.length > 0) && (
+                <div className="absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full border bg-white/95 px-3 py-1.5 shadow-lg backdrop-blur">
+                  <CalendarClock className={`h-4 w-4 shrink-0 ${dateVue ? "text-amber-600" : "text-emerald-700"}`} />
+                  <input
+                    type="range"
+                    min={0}
+                    max={364}
+                    value={Math.max(0, Math.min(364, Math.floor(
+                      (dateAffichee.getTime() - new Date(dateAffichee.getFullYear(), 0, 1).getTime()) / 86400000
+                    )))}
+                    onChange={(e) => {
+                      setDateVue(new Date(dateAffichee.getFullYear(), 0, 1 + parseInt(e.target.value)))
+                    }}
+                    className="w-32 accent-emerald-600 sm:w-48"
+                    aria-label="Date affichée sur le plan"
+                  />
+                  <span className="w-[92px] text-center text-xs font-medium tabular-nums">
+                    {dateAffichee.toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" })}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-1.5 text-xs"
+                    onClick={() => {
+                      const d = new Date(dateAffichee)
+                      d.setFullYear(d.getFullYear() + 1)
+                      setDateVue(d)
+                    }}
+                    title="Projeter le verger un an plus tard"
+                  >
+                    +1 an
+                  </Button>
+                  {dateVue && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-1.5 text-xs text-emerald-700"
+                      onClick={() => setDateVue(null)}
+                    >
+                      Aujourd&apos;hui
+                    </Button>
+                  )}
+                </div>
               )}
             </CardContent>
           </Card>
@@ -1493,23 +2119,47 @@ function JardinContent() {
                         />
                       </div>
 
-                      {/* Envergure */}
-                      <div>
-                        <Label className="text-xs text-muted-foreground">Envergure (m)</Label>
-                        <Input
-                          className="h-8 text-sm"
-                          type="number"
-                          step="0.5"
-                          min="0.5"
-                          value={selectedArbreData.envergure}
-                          onChange={(e) => {
-                            const val = parseFloat(e.target.value) || 1
-                            setArbres(prev => prev.map(a =>
-                              a.id === selectedArbre ? { ...a, envergure: val } : a
-                            ))
-                            setHasChanges(true)
-                          }}
-                        />
+                      {/* Envergure actuelle + projection adulte (cercle pointillé) */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Envergure (m)</Label>
+                          <Input
+                            className="h-8 text-sm"
+                            type="number"
+                            step="0.5"
+                            min="0.5"
+                            value={selectedArbreData.envergure}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value) || 1
+                              setArbres(prev => prev.map(a =>
+                                a.id === selectedArbre ? { ...a, envergure: val } : a
+                              ))
+                              setHasChanges(true)
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Adulte (m)</Label>
+                          <Input
+                            className="h-8 text-sm"
+                            type="number"
+                            step="0.5"
+                            min="0.5"
+                            value={selectedArbreData.envergureAdulte ?? ""}
+                            placeholder={selectedArbreData.especeEtalement ? String(selectedArbreData.especeEtalement) : "—"}
+                            onChange={(e) => {
+                              const val = e.target.value ? parseFloat(e.target.value) : null
+                              setArbres(prev => prev.map(a =>
+                                a.id === selectedArbre ? { ...a, envergureAdulte: Number.isFinite(val as number) ? val : null } : a
+                              ))
+                              setHasChanges(true)
+                            }}
+                          />
+                        </div>
+                        <p className="col-span-2 text-[11px] leading-snug text-muted-foreground">
+                          La taille adulte s&apos;affiche en pointillés sur le plan
+                          {selectedArbreData.especeEtalement ? " (héritée de l'espèce si vide)" : ""}.
+                        </p>
                       </div>
 
                       {/* Couleur personnalisee */}
@@ -1612,18 +2262,32 @@ function JardinContent() {
                 {legendItems.length === 0 ? (
                   <p className="text-sm text-muted-foreground">Aucune culture active</p>
                 ) : (
-                  <ul className="space-y-1">
-                    {legendItems.map(item => (
-                      <li key={item.name} className="flex items-center justify-between gap-2 text-sm">
-                        <div className="flex items-center gap-2">
-                          <div className="w-3 h-3 rounded" style={{ backgroundColor: item.color }} />
-                          <span>{item.name}</span>
-                        </div>
-                        {item.count > 1 && (
-                          <span className="text-xs text-muted-foreground">×{item.count}</span>
-                        )}
-                      </li>
-                    ))}
+                  <ul className="space-y-0.5">
+                    {legendItems.map(item => {
+                      const active = especeEnSurbrillance(item.especeId)
+                      return (
+                        <li key={item.especeId}>
+                          <button
+                            type="button"
+                            onClick={() => handleLegendClick(item.especeId)}
+                            title={active ? "Retirer la surbrillance" : "Mettre les planches de cette culture en surbrillance"}
+                            className={`flex w-full items-center justify-between gap-2 rounded px-1.5 py-1 text-left text-sm transition-colors ${
+                              active
+                                ? "bg-blue-50 ring-1 ring-inset ring-blue-300"
+                                : "hover:bg-slate-100"
+                            }`}
+                          >
+                            <div className="flex min-w-0 items-center gap-2">
+                              <div className="h-3 w-3 shrink-0 rounded" style={{ backgroundColor: item.color }} />
+                              <span className="truncate">{item.name}</span>
+                            </div>
+                            {item.count > 1 && (
+                              <span className="text-xs text-muted-foreground">×{item.count}</span>
+                            )}
+                          </button>
+                        </li>
+                      )
+                    })}
                   </ul>
                 )}
               </CardContent>
@@ -1680,6 +2344,19 @@ function JardinContent() {
                 <p>• Shift+clic pour multi-sélection</p>
                 <p>• Dessinez un rectangle pour sélectionner un groupe</p>
                 <p>• Glissez un élément du groupe pour tout déplacer</p>
+                <p className="border-t pt-2 mt-2">
+                  <span className="font-medium text-slate-700">Photo satellite en fond :</span>{" "}
+                  dessinez votre parcelle dans la{" "}
+                  <Link href="/jardin/carte" className="font-medium text-emerald-700 underline">
+                    cartographie
+                  </Link>{" "}
+                  puis « Capturer le fond satellite » — la photo arrive ici avec l&apos;échelle
+                  et le contour de la parcelle déjà calés.
+                </p>
+                <p>
+                  • Vous pouvez aussi importer votre propre image (photo de drone…) via le
+                  bouton « Fond », puis caler l&apos;échelle en cliquant 2 repères connus.
+                </p>
               </CardContent>
             </Card>
           </div>
@@ -1862,22 +2539,183 @@ function JardinContent() {
                 placeholder="Ex: Pépinière du coin"
               />
             </div>
-            <div>
-              <Label htmlFor="arbre-envergure">Envergure (m)</Label>
-              <Input
-                id="arbre-envergure"
-                type="number"
-                step="0.5"
-                min="0.5"
-                value={newArbre.envergure}
-                onChange={e => setNewArbre(a => ({ ...a, envergure: parseFloat(e.target.value) || 2 }))}
-              />
-              <p className="text-xs text-muted-foreground mt-1">Diametre de la couronne</p>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="arbre-envergure">Envergure (m)</Label>
+                <Input
+                  id="arbre-envergure"
+                  type="number"
+                  step="0.5"
+                  min="0.5"
+                  value={newArbre.envergure}
+                  onChange={e => setNewArbre(a => ({ ...a, envergure: parseFloat(e.target.value) || 2 }))}
+                />
+                <p className="text-xs text-muted-foreground mt-1">Diamètre actuel de la couronne</p>
+              </div>
+              <div>
+                <Label htmlFor="arbre-envergure-adulte">Envergure adulte (m)</Label>
+                <Input
+                  id="arbre-envergure-adulte"
+                  type="number"
+                  step="0.5"
+                  min="0.5"
+                  placeholder="Ex : 4"
+                  value={newArbre.envergureAdulte}
+                  onChange={e => setNewArbre(a => ({ ...a, envergureAdulte: e.target.value }))}
+                />
+                <p className="text-xs text-muted-foreground mt-1">Projection en pointillés (sinon héritée de l&apos;espèce)</p>
+              </div>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowNewArbreDialog(false)}>Annuler</Button>
             <Button onClick={handleCreateArbre}>Créer</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog image de fond (satellite / drone) */}
+      <Dialog open={showFondDialog} onOpenChange={setShowFondDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Image de fond du plan</DialogTitle>
+          </DialogHeader>
+          <input
+            ref={fondFileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="hidden"
+            onChange={handleFondFileChange}
+          />
+          {fond ? (
+            <div className="space-y-4 py-2">
+              <div className="relative overflow-hidden rounded-lg border bg-slate-100">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={fond.image}
+                  alt="Image de fond du plan"
+                  className="mx-auto max-h-44 w-auto object-contain"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {fond.source === 'parcelle'
+                  ? "Fond propre à la parcelle sélectionnée."
+                  : "Fond commun à toutes les parcelles."}{" "}
+                Échelle actuelle : {fond.scale.toFixed(3)} m/pixel.
+              </p>
+              <div>
+                <Label className="mb-2 flex justify-between text-xs text-muted-foreground">
+                  <span>Opacité</span>
+                  <span>{Math.round(fond.opacity * 100)}%</span>
+                </Label>
+                <Slider
+                  value={[fond.opacity]}
+                  onValueChange={([v]) => majReglages({ opacity: v })}
+                  min={0.1}
+                  max={1}
+                  step={0.05}
+                />
+              </div>
+              <div>
+                <Label className="mb-2 flex justify-between text-xs text-muted-foreground">
+                  <span>Rotation</span>
+                  <span>{Math.round(fond.rotation)}°</span>
+                </Label>
+                <Slider
+                  value={[fond.rotation]}
+                  onValueChange={([v]) => majReglages({ rotation: v })}
+                  min={-180}
+                  max={180}
+                  step={1}
+                />
+              </div>
+              <div className="flex flex-wrap gap-2 border-t pt-3">
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setShowFondDialog(false)
+                    setTool('calibrate')
+                  }}
+                >
+                  <Ruler className="h-4 w-4 mr-2" />
+                  Calibrer l&apos;échelle (2 points)
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => fondFileInputRef.current?.click()}>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Remplacer
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-red-600 hover:text-red-700"
+                  onClick={handleFondRemove}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Supprimer
+                </Button>
+              </div>
+              {selectedParcelleId && selectedParcelleId !== 'none' && fond.source === 'global' && (
+                <p className="text-xs text-muted-foreground">
+                  Remplacer l&apos;image créera un fond propre à la parcelle sélectionnée ; les autres
+                  parcelles garderont le fond commun.
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-3 py-2">
+              <div
+                onClick={() => fondFileInputRef.current?.click()}
+                className="cursor-pointer rounded-lg border-2 border-dashed border-slate-300 p-8 text-center transition-colors hover:border-green-500 hover:bg-green-50"
+              >
+                <ImageIcon className="mx-auto mb-3 h-12 w-12 text-slate-400" />
+                <p className="text-sm text-slate-600">
+                  Cliquez pour importer une capture satellite (Google Maps, IGN…) ou une photo de drone
+                </p>
+                <p className="mt-1 text-xs text-slate-400">JPG, PNG, WebP — max 10 Mo</p>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                L&apos;image s&apos;affiche sous le plan, puis vous calez l&apos;échelle réelle en cliquant
+                2 repères dont vous connaissez la distance (façade, portail…). Elle est enregistrée sur
+                votre compte et synchronisée entre vos appareils.
+              </p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog calibration 2 points */}
+      <Dialog open={!!calibPoints} onOpenChange={(open) => { if (!open) setCalibPoints(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Calibrer l&apos;échelle du fond</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-muted-foreground">
+              Distance actuelle entre les 2 points sur le plan :{" "}
+              <span className="font-medium text-foreground">
+                {calibPoints ? formatDistance(distance(calibPoints.p1, calibPoints.p2)) : "–"}
+              </span>
+            </p>
+            <div>
+              <Label htmlFor="calib-distance">Distance réelle entre ces 2 points (m)</Label>
+              <Input
+                id="calib-distance"
+                type="text"
+                inputMode="decimal"
+                placeholder="Ex : 12,5"
+                value={calibDistance}
+                onChange={(e) => setCalibDistance(e.target.value)}
+                autoFocus
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                L&apos;image sera redimensionnée pour respecter l&apos;échelle réelle ; le premier point
+                cliqué reste en place.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCalibPoints(null)}>Annuler</Button>
+            <Button onClick={handleCalibrateApply}>Appliquer</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

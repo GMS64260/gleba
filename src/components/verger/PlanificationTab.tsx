@@ -162,7 +162,7 @@ function PlanificationHubSubTab({ year, onGoToZones }: { year: number; onGoToZon
   const actionCards: Array<{
     title: string
     description: string
-    icon: React.ElementType
+    icon: React.ComponentType<{ className?: string }>
     color: string
     bg: string
     href?: string
@@ -419,7 +419,7 @@ function ZonesSubTab() {
   return (
     <div className="space-y-4">
       {/* Stats */}
-      <div className="grid gap-3 grid-cols-3">
+      <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
         <Card>
           <CardContent className="pt-4">
             <p className="text-sm text-muted-foreground">Zones</p>

@@ -1,188 +1,185 @@
-# Compte démo Gleba — « Ferme du Bois Joli »
+# Compte démo Gleba — « Ferme du Bois Joli » (scénario v2, 2026-07-20)
 
-> Fiche scénario pour démos commerciales, captures marketing et tests utilisateurs.
-> Toutes les données de l'utilisateur `demo@gleba.fr` doivent rester cohérentes avec ce document.
+> Fiche scénario pour démos commerciales, captures marketing et tests prospects.
+> Toutes les données de `demo@gleba.fr` doivent rester cohérentes avec ce document.
+> **Le scénario est l'autorité ; le code (`prisma/seed-demo.ts`) est l'implémentation.**
+
+Refonte v2 : jeu de données **complet et evergreen** couvrant tous les modules ayant
+évolué (plan 2D vivant, caprin laitier pro P20-P27, comptabilité régime réel + TVA +
+factures + FEC). Remplace le scénario figé « au 14 mai » devenu obsolète et pollué par
+les tests utilisateurs.
 
 ---
 
-## Identité fictive
+## Principe evergreen (dates relatives)
+
+Le seed **ne fige aucune date en dur**. Tout est calculé par rapport à la **date de
+reseed** (`now`) :
+
+- **Année courante `Y`** = année de reseed. Campagne de l'année en cours, activité
+  **YTD (1er janvier → aujourd'hui)** : un visiteur voit toujours une ferme vivante.
+- **Historique `Y-1`** = année complète précédente (synthèses mensuelles) pour alimenter
+  les comparatifs N/N-1 des tableaux de bord.
+- Le **cycle** cultural reste agronomiquement juste (semis → +6 sem. plantation →
+  +8 sem. récolte) ; seule l'ancre calendaire suit `now`. Rejouer le seed suffit à
+  « rafraîchir » la démo — c'est la réponse durable à l'obsolescence.
+
+Conséquence : les chiffres exacts (CA, kg récoltés) **dépendent du jour de reseed**.
+Les cibles ci-dessous sont des ordres de grandeur pour un reseed en pleine saison.
+
+---
+
+## Identité
 
 | Champ | Valeur |
 |---|---|
-| **Nom de la ferme** | Ferme du Bois Joli |
+| **Ferme** | Ferme du Bois Joli |
 | **Exploitants** | Camille & Thomas Lefèvre |
-| **Localisation** | La Boissière-de-Montaigu, Vendée (85) |
-| **Installation** | 2022 (5e saison en 2026) |
-| **Statut juridique** | EARL micro-BA, exonérée TVA (régime art. 293 B) |
-| **Surface totale** | 1,5 ha (cadastrale) |
-| **Modèle économique** | AMAP hebdomadaire (12 paniers/sem) · Marché du samedi (Montaigu) · Boutique en ligne |
-| **Compte démo** | `demo@gleba.fr` / `demo2026` |
+| **Localisation** | La Boissière-de-Montaigu, Vendée (85600) |
+| **Installation** | ~6 saisons (polyculture-élevage bio) |
+| **Forme juridique** | EARL |
+| **Régime** | **Réel simplifié agricole**, **assujettie TVA** (réel simplifié) |
+| **SIRET / SIREN** | `40483304800006` / `404833048` (fictifs mais **Luhn-valides** pour FEC) |
+| **TVA intracom.** | `FR83404833048` |
+| **Certification** | AB — Ecocert FR-BIO-01 |
+| **Compte** | `demo@gleba.fr` / `demo2026` |
+| **Modules actifs** | maraîchage, verger, élevage, comptabilité (+ boutique) |
 
 ---
 
-## Découpage des surfaces
+## Surfaces (5 parcelles, toutes AB)
 
-| Parcelle | Surface | Usage | Couches d'activité |
+| Parcelle | Surface | Usage | Couches |
 |---|---|---|---|
-| Demo-A — Serre | 200 m² | Cultures abritées (tomate, aubergine, basilic, salades hâtives) | `MARAICHAGE` |
-| Demo-B — Plein champ | 800 m² | Légumes racines et de plein vent (carotte, oignon, courge, haricot, pomme de terre) | `MARAICHAGE` |
-| Demo-C — Tunnel | 200 m² | Mi-saison (fraise, salade, concombre, mâche) | `MARAICHAGE` |
-| Demo-V — Verger | 800 m² | 20 arbres fruitiers diversifiés + haie bocagère 30 m | `VERGER` |
-| Demo-E — Bâtiments & enclos | 200 m² | Poulailler + chèvrerie + porcherie | `ELEVAGE` |
-| Demo-P — Pâture | 4 000 m² | Brebis Solognote, rotation chèvres | `PATURAGE`, `ELEVAGE` |
+| Demo-A · Serre | 200 m² (0,02 ha) | Cultures abritées (tomate, aubergine, poivron, basilic, salades hâtives) | `MARAICHAGE` |
+| Demo-B · Plein champ | 800 m² (0,08 ha) | Racines & plein vent (carotte, oignon, courge, haricot, PDT) | `MARAICHAGE` |
+| Demo-C · Tunnel maraîcher | 200 m² (0,02 ha) | Mi-saison (concombre, salade, radis, mâche) | `MARAICHAGE` |
+| Demo-V · Verger | 800 m² (0,08 ha) | ~20 fruitiers diversifiés | `VERGER` |
+| Demo-P · Pâture | 4 000 m² (0,4 ha) | Brebis + chèvres, pâturage tournant | `PATURAGE`, `ELEVAGE` |
 
-Total cultivé en 2026 (KPI surface) : **1 200 m²** (Demo-A + Demo-B + Demo-C). Cette valeur doit apparaître à l'identique sur :
-
-- Maraîchage › Calendrier (carte « Surface cultivée »)
-- Maraîchage › Planification (carte « Surface planifiée »)
-- Maraîchage › Cultures (somme des `surface` des cultures actives)
+Planches : **A1-A3** (serre 8×1,2), **B1-B6** (plein champ 25×1,2), **C1-C4** (tunnel 10×1,2).
+Rotations globales assignées : A→`Rotation-4ans-A`, B→`Rotation-4ans-B`, C→`Rotation-3ans-Courges`.
+Surface cultivée courante ≈ **1 200 m²** (A+B+C) — identique sur Calendrier / Planification / Cultures.
 
 ---
 
-## Cheptel
+## Maraîchage (campagne `Y`, YTD)
 
-| Lot | Espèce | Effectif | Race | Démarrage |
-|---|---|---|---|---|
-| Pondeuses 2026 | Poule | 30 | Marans noir cuivré | 2026-01-15 (poulettes 18 sem.) |
-| Solognote 2025 | Brebis | 15 | Solognote | 2025-04-10 (gardées pour reproduction) |
-| Alpines lait | Chèvre | 4 (animaux individuels) | Alpine chamoisée | 2024-06-20 |
-| Gascons | Cochon | 2 (animaux individuels) | Gascon | 2026-02-05 |
-| (Lapins) | Lapin | 6 femelles + 1 mâle | Géant des Flandres | 2026-03-01 |
+~20 cultures réparties en trois états, toujours vivantes quel que soit le jour de reseed :
 
-**Production attendue 2026 (au 14 mai, S20) :**
+- **Récoltées** (terminées, `recolteFaite`) : radis, épinard, laitue de printemps, fève, petit pois.
+- **En cours de récolte** (centrées sur `now`) : tomate, aubergine, poivron, concombre, courgette, carotte, oignon, haricot vert, pomme de terre, basilic.
+- **À venir** : courge butternut/potimarron, poireau, chou, haricot sec, mâche.
 
-- 1 250 œufs collectés YTD (taux de ponte ~ 35 % cohérent avec hiver vendéen)
-- 60 L lait de chèvre / semaine — tarir une des 4 chèvres fin août pour la rotation
-- 0 abattage Solognote en 2026 (toutes en reproduction, vente prévue agneaux en juin)
-- 4 mises-bas lapines simulées (12 lapereaux nés à terme)
+Chaque culture porte `especeId` + `varieteId` **nommée** (jamais « — Non spécifiée ») + `itpId`
+(pour la croissance du plan 2D vivant) + `aIrriguer` sur les espèces exigeantes. Étalement
+présent (référentiel) → rendu à l'échelle sur le plan.
+
+Récoltes : mix `en_stock` / `vendu` (avec `prixKg`+`prixTotal`+`dateVente`). Les récoltes
+vendues génèrent une VenteManuelle « auto » (voir Comptabilité).
 
 ---
 
-## Verger
+## Verger (Demo-V)
 
-20 arbres fruitiers répartis sur Demo-V :
+~20 arbres **plantés en années passées** (2018-2023, verger établi → aucun achat n'impacte
+la compta de `Y`) : Pommier (Reine des Reinettes, Golden), Poirier (Williams, Conférence),
+Prunier (Mirabelle, Reine-Claude), Cerisier (Burlat, Napoléon), Figuier (Brown Turkey),
+Noyer (Franquette). `envergureAdulte` renseignée (projection houppier), `etat`, `formeTaille`.
 
-| Variété | Quantité | Porte-greffe | Plantation | Note |
-|---|---|---|---|---|
-| Pommier Reine des Reinettes | 5 | M106 | 2022 | Production 2026 attendue : ~ 80 kg/arbre |
-| Pommier Golden | 4 | MM106 | 2022 | Tavelure observée — gravité moyenne sur 1 arbre |
-| Poirier Williams | 3 | Cognassier BA29 | 2023 | Première récolte 2026 |
-| Prunier Mirabelle | 3 | Saint-Julien A | 2023 | |
-| Cerisier Burlat | 2 | Sainte-Lucie | 2024 | Récolte mi-juin |
-| Figuier Brown Turkey | 1 | Franc | 2022 | |
-| Noyer Franquette | 2 | Franc | 2022 | |
-
-**Haie bocagère** : 30 m linéaires (cornouiller, noisetier, charme, sureau, prunellier).
-
-**Observations 2026 :**
-
-- S2-S6 : 3 opérations de taille (Pommier x3, Poirier x1)
-- S14 : 1 observation sanitaire — tavelure Pommier Golden, gravité moyenne
-- 8 traitements bio (bouillie bordelaise + huile blanche) programmés sur la saison
-
-**Récoltes** : 0 kg au 14 mai (saison non commencée — cerises à partir de mi-juin).
+- **Récoltes fruits** `Y` : cerises (juin), premières prunes (juillet) — vendues (dont facture).
+- **Opérations** : tailles d'hiver (janv-fév), traitement bio bouillie bordelaise (printemps) → dépenses auto.
+- **Observation sanitaire** : tavelure Pommier Golden, gravité moyenne, traitement cuivre **saisi
+  canoniquement** (`produit` + `methodeTraitement`) pour le registre phyto.
 
 ---
 
-## Maraîchage — état au 14 mai 2026 (S20)
+## Élevage — vitrine complète (dont caprin laitier pro)
 
-| Indicateur | Valeur cible |
-|---|---|
-| Cultures actives | 18 |
-| Cultures à semer/planter sous 4 semaines | 12 |
-| Récoltes en cours (S18-S20) | 4 (radis, salade beurre, épinard, fève) |
-| Cumul récolté YTD | ~ 85 kg |
-| Surface utilisée | 1 200 m² (identique sur tous les écrans) |
+| Lot / animaux | Espèce | Effectif | Détail |
+|---|---|---|---|
+| Pondeuses `Y` | Poule Marans | ~30 | Arrivée janv. `Y` (poulettes) — **seul achat animal de l'année** |
+| Solognote | Brebis Solognote | ~15 | Troupeau viande, arrivé années passées |
+| Agnelles | Brebis Solognote | ~10 | Renouvellement |
+| Chèvres laitières | Chèvre Alpine | 4 (individuelles) | **Cœur de la vitrine caprine** |
+| Gascons | Cochon Gascon | 2 | Engraissement |
+| Lapins | Géant des Flandres | 6 F + 1 M | Mises-bas |
 
-Variétés représentatives (à piocher dans le référentiel existant) :
+**Poules** : `ProductionOeuf` hebdomadaire sur ~18 mois (tendance) ; ventes œufs mensuelles (VenteProduit type `oeufs`).
 
-- Tomate : Saint-Pierre, Coeur de Bœuf, Pineapple
-- Salade : Reine de Mai, Batavia Reine des Glaces, Mâche Verte de Cambrai
-- Radis : 18 jours, Rave de Pâques
-- Carotte : Nantaise, Touchon, Chantenay
-- Oignon : Mulhouse, Stuttgart
-- Courge : Butternut, Potimarron, Spaghetti
-- Aubergine : Violetta di Firenze
-- Concombre : Marketmore
-- Haricot : Cargo, Cobra
-- Pomme de terre : Charlotte, Bintje
+**Caprin laitier pro (P20-P27)** — les 4 Alpines (Bergère, Clochette, Vanille, Praline) rattachées au lot laitier :
 
-Toutes les variétés DOIVENT avoir un nom non-vide. **Pas de variété `-`, pas de doublon `Nantaise` / `-Nantaise`, pas de culture orpheline (sans planche), pas d'arbre fantôme planche 54.**
+- **Reproduction (P23/P24)** : `Saillie` reliée à une `CampagneReproduction` (« Lutte automne `Y-1` — désaisonnement »), mise-bas → `NaissanceAnimale`, tarissement prévu. Une chèvre en **`lactationLongue`** (ne plus suggérer le tarissement).
+- **Lactation en cours** : `CollecteLait` biquotidienne (matin/soir) de la mise-bas (~5 mois avant `now`) à aujourd'hui → courbe 305 j, palmarès des chèvres.
+- **Qualité / cellules (P20)** : analyses ~mensuelles (MG/MP/cellules). Clochette et Vanille en **alerte cellules** (mammite subclinique) pour démontrer l'alerte.
+- **Alimentation / ration (P25)** : `Aliment` avec valeurs INRA (UFL/PDIN/PDIE/UEL) — foin de prairie + granulés chèvre ; `ConsommationAliment` mensuelle sur le lot → dépenses auto.
+- **Fromagerie (P27)** : 3 `LotFromage` (Tomme, Crottin, Bûche cendrée) numérotés `L-Y-Www-NN`, DLC/DLUO, agrément, traçabilité lait→lot→vente.
+- **Sanitaire** : `SoinAnimal` (vermifuge, parage, prophylaxie) avec coûts → dépenses auto.
+
+**Ventes élevage** : fromages, lait cru, œufs → `VenteProduit` (dont une facture restaurant + une cantine).
 
 ---
 
-## Comptabilité — état au 14 mai 2026
+## Comptabilité — régime réel simplifié + TVA + factures + FEC
 
-| Indicateur | Valeur cible |
-|---|---|
-| CA YTD | ~ 8 400 € |
-| Répartition CA | 60 % AMAP (5 040 €), 25 % marché (2 100 €), 15 % boutique en ligne (1 260 €) |
-| Dépenses YTD | ~ 3 100 € |
-| Principales dépenses | Semences (450 €), aliment poules (380 €), gasoil (280 €), MSA (1 200 €), assurance (290 €), divers (500 €) |
-| Marge brute YTD | ~ 5 300 € |
-| Régime TVA | Non applicable (art. 293 B) — aucune ligne TVA |
-| Numérotation factures | Continue (F-2026-001, F-2026-002, …) — PAS de saut |
+**Modèle monétaire (contrat SSOT, cf. `src/lib/kpi/compta.ts`)** :
 
-**Le CA doit être strictement identique** sur les écrans suivants :
+- **Revenus** = Σ `VenteManuelle.montant` + Σ `Facture.totalTTC` (non annulées).
+- **Dépenses** = Σ `DepenseManuelle.montant`.
+- Chaque vente issue d'un autre module (récolte, vente produit, récolte arbre) produit une
+  VenteManuelle **`auto`** miroir (mapping `src/lib/auto-compta.ts`), SAUF si elle est
+  **facturée** (alors comptée via la `Facture`, pas d'écriture auto).
+- La ventilation par module (écran Rapports) lit les tables sources ; le **contrôle de
+  cohérence** SSOT ↔ somme des modules doit rester à 0 (aucun bandeau d'alerte).
 
-- Comptabilité › Accueil (KPI haut)
-- Comptabilité › Rapports (graphique annuel)
-- Comptabilité › Coûts de production (sous-total par espèce)
+**TVA** : produits alimentaires **5,5 %**, services/bois **10 %**, matériel/véto **20 %**.
+Chaque écriture respecte **TTC = HT + TVA au centime** → export **FEC équilibré** (débit = crédit).
+
+**Factures B2B** (~4) : restaurant, épicerie bio, cantine — adossées 1:1 à une vente source
+(`factureId` posé, pas d'écriture auto). Mix payée / émise. Numérotation continue `F-Y-0001…`.
+
+**Répartition CA `Y` (ordre de grandeur, ferme bio 1,5 ha)** : ~55 % maraîchage (AMAP + marché),
+~20 % élevage (fromages/lait/œufs), ~10 % verger, ~15 % boutique + divers. Dépenses ~50-60 % du CA.
+
+**Historique `Y-1`** : synthèses mensuelles VenteManuelle + DepenseManuelle → comparatif N-1.
 
 ---
 
 ## Boutique en ligne
 
-- 14 commandes passées en 2026
-- 3 commandes en cours de préparation (statut `EN_PREPARATION`)
-- Panier moyen : 42 €
-- CA boutique YTD : 588 € (soit ~ 7 % du CA total, cohérent avec le mix Compta)
-- Catalogue : 8 produits actifs (paniers AMAP, panier découverte, œufs, miel, confitures, herbes aromatiques)
-
-Les 14 commandes doivent générer des `VenteManuelle` (ou équivalent) qui remontent dans Compta › CA boutique en ligne.
+Boutique « Ferme du Bois Joli » (slug `ferme-du-bois-joli`), ~8-10 produits (paniers AMAP &
+découverte, œufs, fromages, confitures, légumes à l'unité), ~15 commandes réparties sur `Y`
+(livrées + quelques en préparation/nouvelles). Chaque commande **livrée** → `VenteManuelle`
+(module `boutique`) remontant en compta. Les commandes non livrées sont comptées à part
+(compteur), pas en revenus.
 
 ---
 
-## Règles d'invariance
-
-Ces invariants doivent être **vérifiés à chaque rebuild du seed** :
+## Règles d'invariance (vérifiées à chaque rebuild)
 
 | # | Invariant | Pourquoi |
 |---|---|---|
-| 1 | Surface 1 200 m² identique sur Calendrier, Planification, Cultures | Bug récurrent A1 |
-| 2 | CA YTD identique sur Accueil, Rapports, Coûts | Bug récurrent A4 |
-| 3 | Lot « Pondeuses 2026 » (pas 2024) | Bug audit AP |
-| 4 | Année active = 2026 partout dans l'UI | Bug audit AP |
-| 5 | 0 variété nommée `-`, 0 doublon | Bug A1 |
-| 6 | 0 culture orpheline (sans planche assignée) | Bug A1 |
-| 7 | 0 rotation associée à 0 planche | Bug A1 |
-| 8 | Boutique 14 cmd ⇒ Compta inclut leur CA | Bug A4 / chaîne câblée |
-| 9 | Pas d'arbre référencé sur planche 54 fantôme | Bug A5 |
-| 10 | Pas de % de variation N/N-1 absurde (>500 %) en accueil | Bug audit AP |
+| 1 | Surface ~1 200 m² identique Calendrier / Planification / Cultures | cohérence maraîchage |
+| 2 | CA identique Accueil / Rapports / Coûts (SSOT `getKpiCompta`) | bug récurrent A4 |
+| 3 | **coherenceCheck = 0** (aucun bandeau d'incohérence compta) | contrat SSOT ↔ modules |
+| 4 | Export FEC **équilibré** (débit = crédit) + SIRET/SIREN valides | régime réel |
+| 5 | Année active = `Y` partout ; historique `Y-1` présent pour N-1 | evergreen |
+| 6 | 0 variété `— Non spécifiée`, 0 nom de test (`Test-Bug`, `cc`, `Fff`…) | dé-pollution |
+| 7 | 0 culture orpheline (sans planche), 0 rotation sur 0 planche | intégrité |
+| 8 | Boutique : commandes livrées ⇒ CA compta ; non livrées = compteur | chaîne câblée |
+| 9 | Achats arbres en années passées (verger établi) ⇒ pas de fuite compta `Y` | cohérence |
+| 10 | Caprin : lait/collectes/cellules/palmarès/fromagerie/économie tous peuplés | vitrine pro |
 
 ---
 
 ## Workflow de reset
 
 ```bash
-# 1. Wipe les données du compte démo (cascade contrôlée)
+# 1. Purge exhaustive des données métier du compte démo (cascade contrôlée)
 npx tsx prisma/reset-demo.ts
-
-# 2. Rejouer le seed du scénario
+# 2. Rejoue le scénario complet, evergreen (ancré à la date du jour)
 npx tsx prisma/seed-demo.ts
-
-# 3. Vérification manuelle UI sur les 7 écrans clés :
-#    - Maraîchage › Calendrier
-#    - Maraîchage › Planification
-#    - Maraîchage › Cultures
-#    - Verger › Calendrier
-#    - Verger › Arbres
-#    - Élevage › Dashboard
-#    - Comptabilité › Accueil + Rapports
+# 3. Vérification : npx tsx prisma/verify-demo.ts (invariants + cohérence + FEC)
 ```
 
----
-
-## Personne-ressource
-
-Pour toute évolution du scénario (changement de campagne, ajout de gamme, etc.), modifier ce document **AVANT** de toucher `prisma/seed-demo.ts`. Le scénario est l'autorité, le code est l'implémentation.
+Pour toute évolution du scénario, **modifier ce document AVANT** de toucher `prisma/seed-demo.ts`.

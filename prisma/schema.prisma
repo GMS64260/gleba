@@ -47,6 +47,17 @@ enum BugPriority {
   CRITICAL
 }
 
+enum MediaReferentielSource {
+  WIKIMEDIA_COMMONS
+  MEMBRE
+}
+
+enum MediaReferentielStatut {
+  PROPOSE
+  VALIDE
+  REJETE
+}
+
 /// Utilisateurs de l'application
 model User {
   id                String    @id @default(cuid())
@@ -111,6 +122,13 @@ model User {
   sequencesLotFromage   SequenceLotFromage[]
   // PROMPT 18 — saillies / reproduction
   saillies              Saillie[]
+  // PROMPT 24 — campagnes de lutte / reproduction
+  campagnesReproduction CampagneReproduction[]
+  // PROMPT 26 — livraison laiterie & paie du lait
+  livraisonsLait        LivraisonLait[]
+  paiesLait             PaieLait[]
+  // PROMPT 27 — mouvements de stock fromage (cave / affinage)
+  mouvementsFromage     MouvementFromage[]
   // PROMPT 19A — mouvements de cheptel
   mouvementsCheptel     MouvementCheptel[]
 
@@ -160,6 +178,7 @@ model User {
   // Feedback
   feedbackTokens        FeedbackToken[]
   feedbackResponses     FeedbackResponse[]
+  growthCampaignContacts GrowthCampaignContact[]
 
   // Bug reports (widget de feedback intégré)
   bugReports            BugReport[]
@@ -178,6 +197,9 @@ model User {
   // Préférences (modules visibles, etc.)
   preferences           UserPreference[]
 
+  // Image de fond du plan 2D (une par parcelle + une globale)
+  fondsPlan             FondPlan[]
+
   // Boutique en ligne (1 par utilisateur)
   boutique              Boutique?
   produitsBoutique      ProduitBoutique[]
@@ -195,6 +217,8 @@ model User {
   // Référentiel communautaire — signalements (modération a posteriori, décision #3)
   signalements          Signalement[]    @relation("SignalementAuteur")
   signalementsResolus   Signalement[]    @relation("SignalementResolveur")
+  mediasReferentiel     MediaReferentiel[] @relation("MediaReferentielContributeur")
+  mediasReferentielValides MediaReferentiel[] @relation("MediaReferentielValidateur")
 
   // Community Voice — demandes d'évolution & votes
   evolutions            Evolution[]      @relation("EvolutionAuthor")
@@ -292,6 +316,21 @@ model FeedbackResponse {
 
   @@index([userId])
   @@map("feedback_responses")
+}
+
+/// Journal anti-doublon des campagnes Growth. Aucun email ni contenu n'est conservé.
+model GrowthCampaignContact {
+  id              String   @id @default(cuid())
+  userId          String   @map("user_id")
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contactedAt     DateTime @default(now()) @map("contacted_at")
+  templateVersion String   @map("template_version")
+  kind            String
+  outcome         String
+
+  @@index([contactedAt])
+  @@index([userId, contactedAt])
+  @@map("growth_campaign_contacts")
 }
 
 /// Retours envoyés depuis le widget de feedback (bug / évolution / autre)
@@ -488,6 +527,7 @@ model Espece {
   categorie       String?  @map("categorie")       // Catégorie visuelle (emoji)
   niveau          String?  @map("niveau")          // Facile, Moyen, Difficile
   densite         Float?   @map("densite")         // Plants/m²
+  etalement       Float?   @map("etalement")       // Étalement/diamètre à maturité (m) — empreinte à l'échelle sur le plan 2D
   doseSemis       Float?   @map("dose_semis")      // valeur conditionnée par uniteDose
   tauxGermination Float?   @map("taux_germination") // % germination réaliste par espèce
 
@@ -533,9 +573,45 @@ model Espece {
   campagnesPlantation CampagnePlantation[]
   portesGreffe       PorteGreffeEspece[]
   bioagresseurs      BioagresseurEspece[]
+  medias             MediaReferentiel[]
 
   @@index([userId])
   @@map("especes")
+}
+
+/// Illustration traçable d'une fiche végétale. Aucun média ne peut être
+/// publié sans auteur, licence et provenance. Les contributions membres sont
+/// proposées puis validées ; un import Commons est une sélection éditoriale,
+/// pas une aspiration automatique de la photothèque.
+model MediaReferentiel {
+  id                 String                  @id @default(cuid())
+  especeId           String                  @map("espece_id")
+  espece             Espece                  @relation(fields: [especeId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  source             MediaReferentielSource
+  statut             MediaReferentielStatut  @default(PROPOSE)
+  url                String
+  miniatureUrl       String?                 @map("miniature_url")
+  urlOrigine         String?                 @map("url_origine")
+  auteur             String
+  licence            String
+  urlLicence         String                  @map("url_licence")
+  citation           String                  @db.Text
+  organe              String                  @default("plante") // plante | feuille | fleur | fruit | graine | ecorce | autre
+  description        String?                 @db.Text
+  principale         Boolean                 @default(false)
+  contributeurId     String?                 @map("contributeur_id")
+  contributeur       User?                   @relation("MediaReferentielContributeur", fields: [contributeurId], references: [id], onDelete: SetNull)
+  valideParId        String?                 @map("valide_par_id")
+  validePar          User?                   @relation("MediaReferentielValidateur", fields: [valideParId], references: [id], onDelete: SetNull)
+  valideAt           DateTime?               @map("valide_at")
+  controleAt         DateTime?               @map("controle_at")
+  createdAt          DateTime                @default(now()) @map("created_at")
+  updatedAt          DateTime                @updatedAt @map("updated_at")
+
+  @@index([especeId, statut])
+  @@index([contributeurId])
+  @@index([source])
+  @@map("medias_referentiel")
 }
 
 /// Porte-greffes (Pommier M9/MM106, Pêcher GF677, Cerisier Gisela5…)
@@ -920,6 +996,34 @@ model Planche {
   @@map("planches")
 }
 
+/// Image de fond du plan 2D (capture satellite, photo de drone) persistée
+/// côté serveur pour être partagée entre appareils. Une ligne par utilisateur
+/// et par « clé » de parcelle : id de ParcelleGeo, ou "global" pour le fond
+/// commun à toutes les parcelles. Le binaire vit dans storage/plan-fonds
+/// (volume Docker), servi uniquement par une route authentifiée propriétaire.
+model FondPlan {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parcelleKey String   @default("global") @map("parcelle_key")
+  fichier     String   @map("fichier")   // chemin relatif dans storage/plan-fonds
+  mimeType    String   @map("mime_type")
+  // Contour(s) de la parcelle projetés dans les PIXELS de l'image (JSON
+  // [[[px,py],…],…]) : dessinés collés à la photo, ils suivent calibration,
+  // décalage et rotation du fond. Renseigné par la capture satellite.
+  contour     String?  @map("contour")
+  opacity     Float    @default(0.5) @map("opacity")
+  scale       Float    @default(0.1) @map("scale") // mètres par pixel de l'image
+  offsetX     Float    @default(0) @map("offset_x") // décalage X en mètres
+  offsetY     Float    @default(0) @map("offset_y") // décalage Y en mètres
+  rotation    Float    @default(0) @map("rotation") // degrés
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([userId, parcelleKey])
+  @@map("fonds_plan")
+}
+
 /// Parcelle géoréférencée (cartographie)
 model ParcelleGeo {
   id              String    @id @default(cuid())
@@ -1255,6 +1359,7 @@ model Arbre {
   posX            Float     @map("pos_x")
   posY            Float     @map("pos_y")
   envergure       Float     @default(2) @map("envergure") // Diamètre en mètres (pour affichage)
+  envergureAdulte Float?    @map("envergure_adulte") // Diamètre de couronne adulte projeté (m) — cercle pointillé sur le plan ; null = repli sur espece.etalement
   // Infos complémentaires
   hauteur         Float?    @map("hauteur") // Hauteur actuelle en mètres
   etat            String?   @map("etat") // "excellent", "bon", "moyen", "mauvais", "mort"
@@ -1778,6 +1883,8 @@ model EspeceAnimale {
   animaux     Animal[]
   lots        LotAnimaux[]
   races       RaceAnimale[]
+  // PROMPT 24 — campagnes de reproduction ciblant cette espèce
+  campagnes   CampagneReproduction[]
 
   @@index([userId])
   @@map("especes_animales")
@@ -1816,6 +1923,11 @@ model Aliment {
   especesCibles String?      @map("especes_cibles") // CSV: "volaille,lapin"
   proteines     Float?       @map("proteines") // % protéines
   energie       Float?       @map("energie") // kcal/kg
+  // PROMPT 25 — valeurs alimentaires INRA (par kg brut) pour le calcul de ration
+  ufl           Float?       @map("ufl") // Unités Fourragères Lait / kg brut
+  pdin          Float?       @map("pdin") // g PDIN / kg brut
+  pdie          Float?       @map("pdie") // g PDIE / kg brut
+  uel           Float?       @map("uel") // Unités d'Encombrement Lait / kg brut (capacité d'ingestion)
   prix          Float?       @map("prix") // €/kg
   stock         Float?       @map("stock") // kg en stock
   dateStock     DateTime?    @map("date_stock")
@@ -1877,6 +1989,9 @@ model Animal {
   // Infos complémentaires
   poidsActuel     Float?         @map("poids_actuel") // kg
   couleur         String?        @map("couleur_robe") // Couleur de l'animal
+  // PROMPT 24 — lactation longue : femelle traite sans tarir (fréquent en caprin).
+  // Coupe la suggestion de tarissement du suivi de lactation (cf. /api/elevage/lactation).
+  lactationLongue Boolean        @default(false) @map("lactation_longue")
   notes           String?        @map("notes")
   createdAt       DateTime       @default(now()) @map("created_at")
   updatedAt       DateTime       @updatedAt @map("updated_at")
@@ -2243,6 +2358,9 @@ model Saillie {
   dateTarissementPrevue DateTime? @map("date_tarissement_prevue") // ~60j avant mise-bas (caprin/bovin)
   // Statut courant — synchronisé par triggers applicatifs
   statut               String   @default("En attente") @map("statut") // 'En attente','Gestante','Non gestante','Mise-bas réalisée','Avortement'
+  // PROMPT 24 — rattachement à une campagne de lutte (planning de reproduction)
+  campagneId           String?  @map("campagne_id")
+  campagne             CampagneReproduction? @relation(fields: [campagneId], references: [id], onDelete: SetNull)
   notes                String?  @map("notes")
   // Lien retour vers la mise-bas réalisée (1:1)
   miseBas              NaissanceAnimale? @relation("SaillieMiseBas")
@@ -2256,6 +2374,36 @@ model Saillie {
   @@index([dateMiseBasAttendue])
   @@index([statut])
   @@map("saillies")
+}
+
+// ============================================================
+// PROMPT 24 — CAMPAGNES DE LUTTE / REPRODUCTION
+// ============================================================
+
+/// Campagne de reproduction : période de lutte d'un groupe de femelles, avec
+/// mode de conduite (monte naturelle, désaisonnement lumineux/hormonal, effet
+/// bouc). Permet d'étaler les mises-bas (lait toute l'année) et de suivre la
+/// réussite d'un groupe. Les saillies s'y rattachent (Saillie.campagneId).
+model CampagneReproduction {
+  id              String   @id @default(cuid())
+  userId          String   @map("user_id")
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  nom             String   @map("nom") // ex: "Lutte printemps 2026 — désaisonnement"
+  typeConduite    String   @map("type_conduite") // 'Monte naturelle','Désaisonnement lumineux','Traitement hormonal','Effet bouc','IA'
+  especeAnimaleId String?  @map("espece_animale_id")
+  especeAnimale   EspeceAnimale? @relation(fields: [especeAnimaleId], references: [id], onDelete: SetNull)
+  dateDebut       DateTime @map("date_debut")
+  dateFin         DateTime? @map("date_fin")
+  objectifMiseBas DateTime? @map("objectif_mise_bas") // fenêtre de mise-bas visée
+  notes           String?  @map("notes")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  saillies        Saillie[]
+
+  @@index([userId, dateDebut])
+  @@index([especeAnimaleId])
+  @@map("campagnes_reproduction")
 }
 
 // ============================================================
@@ -2316,16 +2464,93 @@ model LotFromage {
   allergenes          String?  @map("allergenes")
   // N° d'agrément sanitaire éventuel (CE FR XX-XXX-XXX)
   numeroAgrement      String?  @map("numero_agrement")
+  // PROMPT 27 — cave / affinage : DLC (frais) distincte de la DLUO, cycle de vie
+  dlc                 DateTime? @map("dlc")
+  etat                String    @default("affinage") @map("etat") // 'affinage' | 'pret' | 'ecoule'
   notes               String?  @map("notes")
   createdAt           DateTime @default(now()) @map("created_at")
   updatedAt           DateTime @updatedAt @map("updated_at")
 
   collectes           CollecteLait[]
   ventesProduit       VenteProduit[]
+  // PROMPT 27 — sorties de cave (vente, perte, don, ajustement)
+  mouvements          MouvementFromage[]
 
   @@unique([userId, numeroLot])
   @@index([userId, dateFabrication])
   @@map("lots_fromage")
+}
+
+// ============================================================
+// PROMPT 26 — LIVRAISON LAITERIE & PAIE DU LAIT
+// ============================================================
+
+/// Livraison de lait à un collecteur/laiterie (par opposition à la
+/// transformation à la ferme). Analyses du tank pour la paie du lait.
+model LivraisonLait {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date      DateTime @map("date")
+  litres    Decimal  @map("litres") @db.Decimal(10, 2)
+  laiterie  String?  @map("laiterie")
+  tb        Decimal? @map("tb") @db.Decimal(5, 2) // g/L matière grasse
+  tp        Decimal? @map("tp") @db.Decimal(5, 2) // g/L matière protéique
+  cellules  Int?     @map("cellules") // ×10³/mL
+  germes    Int?     @map("germes") // ×10³/mL germes totaux
+  lipolyse  Decimal? @map("lipolyse") @db.Decimal(5, 2)
+  notes     String?  @map("notes")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId, date])
+  @@map("livraisons_lait")
+}
+
+/// Paie du lait mensuelle (relevé du collecteur). Montant net des primes et
+/// pénalités qualité, saisi ou estimé à partir de la grille.
+model PaieLait {
+  id            String   @id @default(cuid())
+  userId        String   @map("user_id")
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  annee         Int      @map("annee")
+  mois          Int      @map("mois") // 1-12
+  litres        Decimal  @map("litres") @db.Decimal(10, 2)
+  prixBaseMille Decimal  @map("prix_base_mille") @db.Decimal(10, 2) // €/1000 L
+  primeQualite  Decimal  @default(0) @map("prime_qualite") @db.Decimal(10, 2) // €
+  penalite      Decimal  @default(0) @map("penalite") @db.Decimal(10, 2) // €
+  montantHT     Decimal  @map("montant_ht") @db.Decimal(10, 2)
+  laiterie      String?  @map("laiterie")
+  notes         String?  @map("notes")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@unique([userId, annee, mois])
+  @@index([userId, annee])
+  @@map("paies_lait")
+}
+
+// ============================================================
+// PROMPT 27 — STOCK D'AFFINAGE / CAVE
+// ============================================================
+
+/// Mouvement de stock d'un lot de fromage en cave : sorties (vente, perte, don)
+/// et ajustements d'inventaire. Le stock restant = fabrication − Σ sorties.
+model MouvementFromage {
+  id           String     @id @default(cuid())
+  userId       String     @map("user_id")
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lotFromageId String     @map("lot_fromage_id")
+  lotFromage   LotFromage @relation(fields: [lotFromageId], references: [id], onDelete: Cascade)
+  date         DateTime   @map("date")
+  type         String     @map("type") // 'sortie_vente' | 'sortie_perte' | 'sortie_don' | 'ajustement'
+  nbPieces     Int        @default(0) @map("nb_pieces")
+  poidsKg      Decimal    @default(0) @map("poids_kg") @db.Decimal(10, 3)
+  notes        String?    @map("notes")
+  createdAt    DateTime   @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([lotFromageId])
+  @@map("mouvements_fromage")
 }
 
 // ============================================================
@@ -2830,7 +3055,7 @@ model StationMeteo {
   userId      String   @map("user_id")
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   nom         String   @map("nom")
-  provider    String   @map("provider") // "ecowitt", "wunderground", "netatmo"
+  provider    String   @map("provider") // "ecowitt", "wunderground", "open-meteo-reference"
   stationId   String   @map("station_id")
   apiKey      String?  @map("api_key")
   appKey      String?  @map("app_key") // Ecowitt app key

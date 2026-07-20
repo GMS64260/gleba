@@ -9,20 +9,40 @@ export default auth((req) => {
   const { pathname } = req.nextUrl
   const isLoggedIn = !!req.auth
 
+  // La racine reste une landing statique pour les visiteurs et les moteurs.
+  // Une session active reçoit le tableau de bord par réécriture interne afin
+  // de conserver l'URL historique `/` et tous les liens applicatifs existants.
+  if (pathname === "/" && isLoggedIn) {
+    return NextResponse.rewrite(new URL("/dashboard", req.nextUrl))
+  }
+
+  // Compatibilité des anciens justificatifs stockés sous public/uploads :
+  // même authentifié, un utilisateur ne doit jamais lire le dossier d'un autre.
+  const legacyJustificatif = /^\/uploads\/([^/]+)\/justificatifs\//.exec(pathname)
+  if (legacyJustificatif && (!isLoggedIn || legacyJustificatif[1] !== req.auth?.user?.id)) {
+    return new NextResponse(null, { status: 404 })
+  }
+
   // Routes publiques (DEV2 #2 : pages légales accessibles sans login)
   const publicRoutes = [
     "/login", "/register", "/mot-de-passe-oublie", "/reset-password",
-    "/communaute", "/robots.txt", "/sitemap.xml", "/manifest.json", "/feedback",
+    "/communaute", "/referentiel", "/robots.txt", "/sitemap.xml", "/manifest.json", "/feedback",
+    "/1c943f7c7006d54211c7143b25a23aa8.txt",
     "/desabonnement",
     // RGPD / LCEN : doivent rester accessibles sans authentification
     "/cgv", "/mentions-legales", "/confidentialite",
     // Pages cibles SEO (marketing)
     "/logiciel-maraichage", "/logiciel-micro-ferme", "/logiciel-permaculture",
     "/logiciel-verger", "/logiciel-elevage", "/calendrier-semis",
-    "/assistant-ia-agricole",
+    "/assistant-ia-agricole", "/logiciel-arboriculture",
+    "/logiciel-elevage-volailles", "/planification-maraichage",
+    "/logiciel-elevage-ovin", "/logiciel-elevage-caprin",
+    "/rotation-cultures-maraichage", "/itineraire-technique-maraichage",
+    "/registre-phytosanitaire", "/referentiel",
+    "/logiciel-jardin", "/logiciel-potager",
   ]
-  // La home "/" est publique (Server Component qui sert la landing aux non connectés
-  // et l'app aux connectés). Cas dédié car `route + "/"` matche tout avec route = "/".
+  // La home publique est traitée à part car `route + "/"` matcherait tout
+  // avec une route égale à "/".
   const isHomePage = pathname === "/"
   const isPublicRoute = isHomePage || publicRoutes.some((route) => pathname === route || pathname.startsWith(route + "/"))
 
@@ -73,6 +93,8 @@ export default auth((req) => {
 
 export const config = {
   matcher: [
+    // Les anciens justificatifs image seraient sinon exclus par l'extension.
+    "/uploads/:path*",
     // Matcher tout sauf les fichiers statiques
     "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],

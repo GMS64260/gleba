@@ -127,7 +127,7 @@ const STATUT_COLORS: Record<string, string> = {
 export function AnimauxTab() {
   return (
     <Tabs defaultValue="animaux" className="space-y-4">
-      <TabsList>
+      <TabsList className="h-auto flex-wrap">
         <TabsTrigger value="animaux" className="flex items-center gap-1.5">
           <Bird className="h-4 w-4" />
           Animaux
@@ -563,8 +563,8 @@ function AnimauxSubTab() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div className="space-y-2 col-span-2">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="space-y-2 sm:col-span-2">
                   <Label>Identifiant principal</Label>
                   <Input value={formData.identifiant} onChange={(e) => setFormData(f => ({ ...f, identifiant: e.target.value }))} placeholder="BDNI/IPG/SIRE..." />
                 </div>

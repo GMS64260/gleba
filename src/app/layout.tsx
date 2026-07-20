@@ -94,8 +94,11 @@ export const metadata: Metadata = {
     canonical: "https://gleba.fr",
   },
   icons: {
-    icon: "/favicon.ico",
-    apple: "/apple-icon.png",
+    icon: [
+      { url: "/icon-192.png?v=20260718", type: "image/png", sizes: "192x192" },
+    ],
+    shortcut: "/icon-192.png?v=20260718",
+    apple: "/apple-icon.png?v=20260718",
   },
   manifest: "/manifest.json",
   category: "agriculture",
@@ -117,11 +120,6 @@ const jsonLdSoftware = {
   applicationCategory: "BusinessApplication",
   applicationSubCategory: "Farm Management Software",
   operatingSystem: "Web, Self-hosted (Docker)",
-  offers: {
-    "@type": "Offer",
-    price: "0",
-    priceCurrency: "EUR",
-  },
   description: "Logiciel libre tout-en-un pour gérer une micro-ferme diversifiée : maraîchage, verger, élevage, comptabilité, traçabilité et IA.",
   url: "https://gleba.fr",
   author: {
@@ -130,8 +128,6 @@ const jsonLdSoftware = {
   },
   license: "https://www.gnu.org/licenses/agpl-3.0.html",
   image: "https://gleba.fr/og-image.png",
-  screenshot: "https://gleba.fr/og-image.png",
-  softwareVersion: "1.0.0",
   inLanguage: "fr-FR",
   featureList: [
     "Planification maraîchère et rotation des cultures",
@@ -141,7 +137,7 @@ const jsonLdSoftware = {
     "Comptabilité et facturation",
     "Traçabilité phytosanitaire (AMM, DAR)",
     "Plan 2D interactif du jardin",
-    "Météo et pilotage de l'irrigation",
+    "Météo et conseils d'irrigation",
     "Assistant IA en langage naturel",
     "135 espèces végétales pré-configurées",
   ],

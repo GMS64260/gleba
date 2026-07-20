@@ -7,7 +7,6 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { useSearchParams } from "next/navigation"
 import { Suspense } from "react"
 import {
   ArrowLeft,
@@ -20,12 +19,17 @@ import {
   ChevronLeft,
   ChevronRight,
   RefreshCw,
+  AlertTriangle,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
 import { format, startOfWeek, endOfWeek, addWeeks } from "date-fns"
 import { fr } from "date-fns/locale"
@@ -72,18 +76,24 @@ interface TachesData {
 }
 
 function TachesContent() {
-  const searchParams = useSearchParams()
   const { toast } = useToast()
   const [data, setData] = React.useState<TachesData | null>(null)
   const [isLoading, setIsLoading] = React.useState(true)
   const [weekOffset, setWeekOffset] = React.useState(0)
+  const [pendingAction, setPendingAction] = React.useState<
+    | { kind: "recolte"; cultureId: number; especeId: string; label: string }
+    | { kind: "annulation-recolte"; cultureId: number; especeId: string; label: string }
+    | { kind: "irrigation"; irrigationId: number; label: string }
+    | null
+  >(null)
+  const [actionValue, setActionValue] = React.useState("")
+  const [actionLoading, setActionLoading] = React.useState(false)
 
   // Calculer la semaine courante - mémoriser pour éviter les boucles infinies
-  const { currentDate, weekStart, weekEnd } = React.useMemo(() => {
+  const { weekStart, weekEnd } = React.useMemo(() => {
     const base = new Date()
     const current = addWeeks(base, weekOffset)
     return {
-      currentDate: current,
       weekStart: startOfWeek(current, { weekStartsOn: 1 }),
       weekEnd: endOfWeek(current, { weekStartsOn: 1 }),
     }
@@ -121,7 +131,7 @@ function TachesContent() {
       if (!response.ok) throw new Error("Erreur")
       const result = await response.json()
       setData(result)
-    } catch (error) {
+    } catch {
       toast({
         variant: "destructive",
         title: "Erreur",
@@ -137,11 +147,24 @@ function TachesContent() {
   }, [fetchData])
 
   // Marquer une tache comme faite
-  const toggleTache = async (cultureId: number, type: "semis" | "plantation" | "recolte", currentValue: boolean, especeId: string) => {
-    // Pour les recoltes, demander la quantité
+  const toggleTache = async (cultureId: number, type: "semis" | "plantation" | "recolte", currentValue: boolean, especeId: string, label: string) => {
     if (type === "recolte" && !currentValue) {
-      const quantiteStr = prompt("Quantité récoltée (kg) :")
-      if (!quantiteStr) return
+      setActionValue("")
+      setPendingAction({ kind: "recolte", cultureId, especeId, label })
+      return
+    }
+
+    if (type === "recolte" && currentValue) {
+      setActionValue("")
+      setPendingAction({ kind: "annulation-recolte", cultureId, especeId, label })
+      return
+    }
+
+    await updateSimpleTache(cultureId, type, currentValue)
+  }
+
+  const enregistrerRecolte = async (cultureId: number, especeId: string) => {
+      const quantiteStr = actionValue
 
       // Accepte la virgule décimale française ("2,5" → 2.5) — parseFloat seul
       // tronquait à 2 (audit 2026-07, #47).
@@ -151,6 +174,7 @@ function TachesContent() {
         return
       }
 
+      setActionLoading(true)
       try {
         // Créer la recolte — on vérifie le succès avant de marquer "fait"
         // et d'afficher la confirmation (sinon faux succès, audit #32).
@@ -183,18 +207,20 @@ function TachesContent() {
         }
 
         toast({ title: "Récolte enregistrée", description: `${quantite} kg` })
+        setPendingAction(null)
         fetchData() // Recharger
-      } catch (error) {
+      } catch {
         toast({ variant: "destructive", title: "Erreur" })
+      } finally {
+        setActionLoading(false)
       }
-      return
-    }
+  }
 
     // Décochage d'une récolte : supprimer la/les récolte(s) en stock créée(s)
     // par le pointage, sinon elles restaient comptées dans le stock et un
     // recochage en créait une seconde → double comptage (audit 2026-07, #81).
-    if (type === "recolte" && currentValue) {
-      if (!window.confirm("Annuler la récolte enregistrée pour cette culture ? La quantité sera retirée du stock.")) return
+  const annulerRecolte = async (cultureId: number) => {
+      setActionLoading(true)
       try {
         const res = await fetch(`/api/recoltes?cultureId=${cultureId}&pageSize=200`)
         if (res.ok) {
@@ -213,14 +239,16 @@ function TachesContent() {
         })
         if (!patch.ok) throw new Error("Erreur")
         toast({ title: "Récolte annulée" })
+        setPendingAction(null)
         fetchData()
       } catch {
         toast({ variant: "destructive", title: "Erreur" })
+      } finally {
+        setActionLoading(false)
       }
-      return
-    }
+  }
 
-    // Pour les autres (semis, plantation)
+  const updateSimpleTache = async (cultureId: number, type: "semis" | "plantation" | "recolte", currentValue: boolean) => {
     try {
       const fieldMap = {
         semis: "semisFait",
@@ -256,7 +284,7 @@ function TachesContent() {
         title: currentValue ? "Annule" : "Fait !",
         description: `${type} ${currentValue ? "a refaire" : "termine"}`,
       })
-    } catch (error) {
+    } catch {
       toast({
         variant: "destructive",
         title: "Erreur",
@@ -267,11 +295,8 @@ function TachesContent() {
 
   // Marquer irrigation planifiée comme faite
   const marquerIrrigation = async (irrigationId: number) => {
-    // Demander si quantité différente du prévu
-    const noteStr = prompt(
-      "Notes sur l'arrosage ?\n(ex: \"Plus que prévu\", \"Sol sec\", \"Pluie\" ou laissez vide)"
-    )
-
+    const noteStr = actionValue.trim()
+    setActionLoading(true)
     try {
       const response = await fetch(`/api/irrigations/${irrigationId}`, {
         method: "PATCH",
@@ -298,12 +323,15 @@ function TachesContent() {
         title: "Arrosage noté !",
         description: noteStr || "Irrigation standard",
       })
-    } catch (error) {
+      setPendingAction(null)
+    } catch {
       toast({
         variant: "destructive",
         title: "Erreur",
         description: "Impossible de noter l'arrosage",
       })
+    } finally {
+      setActionLoading(false)
     }
   }
 
@@ -316,7 +344,7 @@ function TachesContent() {
     emptyText,
   }: {
     title: string
-    icon: React.ElementType
+    icon: React.ComponentType<{ className?: string }>
     iconColor: string
     items: TacheItem[]
     type: "semis" | "plantation" | "recolte"
@@ -353,7 +381,7 @@ function TachesContent() {
             {items.map(item => (
               <button
                 key={item.id}
-                onClick={() => toggleTache(item.id, type, item.fait, item.especeId)}
+                onClick={() => toggleTache(item.id, type, item.fait, item.especeId, item.especeNom ?? item.especeId)}
                 className={`w-full flex items-center gap-3 p-3 rounded-lg border transition-all ${
                   item.fait
                     ? "bg-green-50 border-green-200 opacity-60"
@@ -572,7 +600,14 @@ function TachesContent() {
                           return (
                             <button
                               key={item.id}
-                              onClick={() => marquerIrrigation(item.id)}
+                              onClick={() => {
+                                setActionValue("")
+                                setPendingAction({
+                                  kind: "irrigation",
+                                  irrigationId: item.id,
+                                  label: `${groupe.especeNom ?? groupe.especeId} · ${item.plancheId || "Sans planche"}`,
+                                })
+                              }}
                               className={`w-full flex items-center gap-3 p-2.5 pl-5 rounded-lg border bg-white transition-all ${
                                 isPast ? 'border-red-300 bg-red-50' : 'border-slate-200 hover:border-cyan-300 hover:shadow-sm'
                               }`}
@@ -602,6 +637,103 @@ function TachesContent() {
           </>
         )}
       </main>
+
+      <Dialog open={pendingAction !== null} onOpenChange={(nextOpen) => {
+        if (!nextOpen && !actionLoading) setPendingAction(null)
+      }}>
+        <DialogContent className="max-h-[calc(100dvh-1rem)] overflow-y-auto sm:max-w-[430px]">
+          {pendingAction?.kind === "recolte" && (
+            <>
+              <DialogHeader>
+                <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-xl bg-purple-100">
+                  <Package className="h-5 w-5 text-purple-600" />
+                </div>
+                <DialogTitle>Enregistrer la récolte</DialogTitle>
+                <DialogDescription>{pendingAction.label} — indiquez la quantité réellement récoltée.</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-2 rounded-xl border border-purple-200 bg-purple-50/60 p-4">
+                <Label htmlFor="task-recolte-quantite">Quantité récoltée</Label>
+                <div className="relative">
+                  <Input
+                    id="task-recolte-quantite"
+                    type="number"
+                    inputMode="decimal"
+                    min="0.01"
+                    step="0.01"
+                    autoFocus
+                    value={actionValue}
+                    onChange={(e) => setActionValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") enregistrerRecolte(pendingAction.cultureId, pendingAction.especeId)
+                    }}
+                    placeholder="0,00"
+                    className="h-11 bg-white pr-12 text-base"
+                  />
+                  <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm font-medium text-muted-foreground">kg</span>
+                </div>
+              </div>
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <Button variant="outline" onClick={() => setPendingAction(null)} disabled={actionLoading}>Retour</Button>
+                <Button onClick={() => enregistrerRecolte(pendingAction.cultureId, pendingAction.especeId)} disabled={actionLoading}>
+                  {actionLoading && <RefreshCw className="mr-2 h-4 w-4 animate-spin" />}
+                  Enregistrer la récolte
+                </Button>
+              </div>
+            </>
+          )}
+
+          {pendingAction?.kind === "irrigation" && (
+            <>
+              <DialogHeader>
+                <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-xl bg-cyan-100">
+                  <Droplets className="h-5 w-5 text-cyan-600" />
+                </div>
+                <DialogTitle>Confirmer l’arrosage</DialogTitle>
+                <DialogDescription>{pendingAction.label}</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-2 rounded-xl border border-cyan-200 bg-cyan-50/60 p-4">
+                <Label htmlFor="task-irrigation-notes">Observation facultative</Label>
+                <Textarea
+                  id="task-irrigation-notes"
+                  autoFocus
+                  value={actionValue}
+                  onChange={(e) => setActionValue(e.target.value)}
+                  placeholder="Sol sec, pluie récente, quantité ajustée…"
+                  className="min-h-24 resize-none bg-white"
+                />
+              </div>
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <Button variant="outline" onClick={() => setPendingAction(null)} disabled={actionLoading}>Retour</Button>
+                <Button onClick={() => marquerIrrigation(pendingAction.irrigationId)} disabled={actionLoading}>
+                  {actionLoading && <RefreshCw className="mr-2 h-4 w-4 animate-spin" />}
+                  Confirmer l’arrosage
+                </Button>
+              </div>
+            </>
+          )}
+
+          {pendingAction?.kind === "annulation-recolte" && (
+            <>
+              <DialogHeader>
+                <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-xl bg-amber-100">
+                  <AlertTriangle className="h-5 w-5 text-amber-700" />
+                </div>
+                <DialogTitle>Annuler cette récolte ?</DialogTitle>
+                <DialogDescription>
+                  La récolte de {pendingAction.label} sera marquée à faire et les quantités encore en stock seront retirées.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <Button variant="outline" onClick={() => setPendingAction(null)} disabled={actionLoading}>Conserver</Button>
+                <Button variant="destructive" onClick={() => annulerRecolte(pendingAction.cultureId)} disabled={actionLoading}>
+                  {actionLoading && <RefreshCw className="mr-2 h-4 w-4 animate-spin" />}
+                  Annuler la récolte
+                </Button>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

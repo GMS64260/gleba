@@ -10,10 +10,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireAuthApi, getUserId } from '@/lib/auth-utils'
-import { fetchOpenMeteoForecast, fetchOpenMeteoHistory } from '@/lib/meteo'
+import { fetchEcowittData, fetchOpenMeteoForecast, fetchOpenMeteoHistory, fetchWundergroundData } from '@/lib/meteo'
 import { genererRecommandationIrrigation } from '@/lib/meteo-agro'
 import { irrigationCache, irrigationCacheKey } from '@/lib/irrigation-cache'
 import type { MeteoJournaliere, MeteoPrevision } from '@/lib/meteo'
+import type { Prisma } from '@prisma/client'
 
 const TYPES_SOUS_ABRI = ['Serre', 'Tunnel', 'Châssis', 'Chassis']
 
@@ -26,6 +27,16 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const parcelleId = searchParams.get('parcelleId')
     const forceRefresh = searchParams.get('refresh') === '1'
+
+    const station = await prisma.stationMeteo.findFirst({ where: { userId, active: true } })
+    let stationToday: MeteoJournaliere | null = null
+    if (station?.provider === 'ecowitt' && station.appKey && station.apiKey) {
+      stationToday = await fetchEcowittData(station.appKey, station.apiKey, station.stationId)
+    } else if (station?.provider === 'wunderground' && station.apiKey) {
+      stationToday = await fetchWundergroundData(station.apiKey, station.stationId)
+    } else if (station?.provider === 'open-meteo-reference' && station.lat && station.lng) {
+      stationToday = (await fetchOpenMeteoForecast(station.lat, station.lng)).daily[0] ?? null
+    }
 
     const cacheKey = irrigationCacheKey(userId, parcelleId)
 
@@ -48,14 +59,12 @@ export async function GET(request: NextRequest) {
     // ── Calcul complet ──────────────────────────────────────────
 
     // Récupérer les cultures actives (non terminées) avec leurs planches et parcelles
-    const whereClause: any = {
+    const whereClause: Prisma.CultureWhereInput = {
       userId,
       terminee: null,
-      planche: { isNot: null },
-    }
-
-    if (parcelleId) {
-      whereClause.planche = { ...whereClause.planche, parcelleGeoId: parcelleId }
+      planche: parcelleId
+        ? { is: { parcelleGeoId: parcelleId } }
+        : { isNot: null },
     }
 
     const cultures = await prisma.culture.findMany({
@@ -141,6 +150,15 @@ export async function GET(request: NextRequest) {
 
         const forecast = await fetchOpenMeteoForecast(group.lat, group.lng)
         previsions = forecast.daily
+        if (stationToday && previsions[0]?.date === stationToday.date) {
+          previsions[0] = {
+            ...previsions[0],
+            precipitation: stationToday.precipitation,
+            tempMin: stationToday.tempMin,
+            tempMax: stationToday.tempMax,
+            windSpeedMax: stationToday.windSpeedMax,
+          }
+        }
       } catch {
         continue
       }

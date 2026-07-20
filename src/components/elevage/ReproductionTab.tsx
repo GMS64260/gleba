@@ -14,6 +14,7 @@ import {
   Calculator,
   Trash2,
   Heart,
+  Activity,
 } from "lucide-react"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -119,6 +120,14 @@ export function ReproductionTab() {
           <Calculator className="h-4 w-4" />
           Calculateur
         </TabsTrigger>
+        <TabsTrigger value="campagnes" className="flex items-center gap-1.5">
+          <Calendar className="h-4 w-4" />
+          Campagnes
+        </TabsTrigger>
+        <TabsTrigger value="indicateurs" className="flex items-center gap-1.5">
+          <Activity className="h-4 w-4" />
+          Indicateurs
+        </TabsTrigger>
       </TabsList>
 
       <TabsContent value="saillies">
@@ -130,7 +139,439 @@ export function ReproductionTab() {
       <TabsContent value="calculateur">
         <CalculateurSubTab />
       </TabsContent>
+      <TabsContent value="campagnes">
+        <CampagnesSubTab />
+      </TabsContent>
+      <TabsContent value="indicateurs">
+        <IndicateursSubTab />
+      </TabsContent>
     </Tabs>
+  )
+}
+
+// ============================================================
+// Campagnes de lutte / reproduction (PROMPT 24)
+// ============================================================
+
+type Campagne = {
+  id: string
+  nom: string
+  typeConduite: string
+  espece: string | null
+  especeAnimaleId: string | null
+  dateDebut: string
+  dateFin: string | null
+  objectifMiseBas: string | null
+  notes: string | null
+  nbSaillies: number
+  tauxReussite: number | null
+}
+const TYPES_CONDUITE = [
+  "Monte naturelle",
+  "Désaisonnement lumineux",
+  "Traitement hormonal",
+  "Effet bouc",
+  "IA",
+] as const
+
+function CampagnesSubTab() {
+  const { toast } = useToast()
+  const [campagnes, setCampagnes] = React.useState<Campagne[]>([])
+  const [especes, setEspeces] = React.useState<{ id: string; nom: string }[]>([])
+  const [loading, setLoading] = React.useState(true)
+  const [open, setOpen] = React.useState(false)
+  const EMPTY = { nom: "", typeConduite: "Monte naturelle", especeAnimaleId: "", dateDebut: todayLocalISO(), dateFin: "", objectifMiseBas: "", notes: "" }
+  const [form, setForm] = React.useState(EMPTY)
+  const [saving, setSaving] = React.useState(false)
+
+  const reload = React.useCallback(() => {
+    setLoading(true)
+    fetch("/api/elevage/campagnes")
+      .then((r) => r.json())
+      .then((j) => setCampagnes(j.data || []))
+      .finally(() => setLoading(false))
+  }, [])
+
+  React.useEffect(() => {
+    reload()
+    fetch("/api/elevage/especes-animales")
+      .then((r) => r.json())
+      .then((j) => setEspeces((j.data || []).map((e: { id: string; nom: string }) => ({ id: e.id, nom: e.nom }))))
+      .catch(() => {})
+  }, [reload])
+
+  const submit = async () => {
+    if (!form.nom.trim()) {
+      toast({ variant: "destructive", title: "Nom requis" })
+      return
+    }
+    setSaving(true)
+    try {
+      const res = await fetch("/api/elevage/campagnes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nom: form.nom,
+          typeConduite: form.typeConduite,
+          especeAnimaleId: form.especeAnimaleId || null,
+          dateDebut: form.dateDebut,
+          dateFin: form.dateFin || null,
+          objectifMiseBas: form.objectifMiseBas || null,
+          notes: form.notes || null,
+        }),
+      })
+      if (!res.ok) {
+        const j = await res.json()
+        toast({ variant: "destructive", title: "Erreur", description: j.error || "Échec" })
+      } else {
+        toast({ title: "Campagne créée" })
+        setOpen(false)
+        setForm(EMPTY)
+        reload()
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const supprimer = async (c: Campagne) => {
+    if (!(await confirmDialog(`Supprimer la campagne « ${c.nom} » ? Les saillies rattachées seront détachées.`))) return
+    const res = await fetch(`/api/elevage/campagnes?id=${c.id}`, { method: "DELETE" })
+    if (res.ok) reload()
+    else toast({ variant: "destructive", title: "Suppression impossible" })
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Calendar className="h-5 w-5 text-rose-600" />
+              Campagnes de lutte
+            </CardTitle>
+            <CardDescription>
+              Planifiez les périodes de lutte (monte, désaisonnement, effet bouc) pour étaler les mises-bas et suivre la
+              réussite par groupe. Rattachez-y les saillies dans l'onglet Saillies.
+            </CardDescription>
+          </div>
+          <Button onClick={() => setOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Nouvelle campagne
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <div className="text-sm text-slate-500">Chargement…</div>
+        ) : campagnes.length === 0 ? (
+          <div className="text-sm text-slate-500 bg-slate-50 p-4 rounded">
+            Aucune campagne. Créez-en une pour planifier une période de lutte et regrouper les saillies.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="border-b">
+                <tr>
+                  <th className="p-2 text-left">Campagne</th>
+                  <th className="p-2 text-left">Conduite</th>
+                  <th className="p-2 text-left">Période</th>
+                  <th className="p-2 text-left">Mise-bas visée</th>
+                  <th className="p-2 text-center">Saillies</th>
+                  <th className="p-2 text-center">Réussite</th>
+                  <th className="p-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {campagnes.map((c) => (
+                  <tr key={c.id} className="border-b hover:bg-slate-50">
+                    <td className="p-2 font-medium">
+                      {c.nom}
+                      {c.espece && <span className="text-xs text-slate-400 ml-1">· {c.espece}</span>}
+                    </td>
+                    <td className="p-2"><Badge variant="outline">{c.typeConduite}</Badge></td>
+                    <td className="p-2 text-slate-600">
+                      {new Date(c.dateDebut).toLocaleDateString("fr-FR")}
+                      {c.dateFin ? ` → ${new Date(c.dateFin).toLocaleDateString("fr-FR")}` : ""}
+                    </td>
+                    <td className="p-2 text-slate-600">
+                      {c.objectifMiseBas ? new Date(c.objectifMiseBas).toLocaleDateString("fr-FR") : "—"}
+                    </td>
+                    <td className="p-2 text-center">{c.nbSaillies}</td>
+                    <td className="p-2 text-center">
+                      {c.tauxReussite != null ? (
+                        <Badge variant="outline" className={c.tauxReussite >= 80 ? "bg-emerald-50 text-emerald-700" : c.tauxReussite >= 50 ? "bg-amber-50 text-amber-700" : "bg-red-50 text-red-700"}>
+                          {c.tauxReussite} %
+                        </Badge>
+                      ) : "—"}
+                    </td>
+                    <td className="p-2 text-right">
+                      <Button variant="ghost" size="sm" onClick={() => supprimer(c)} title="Supprimer">
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Nouvelle campagne de lutte</DialogTitle>
+            <DialogDescription>Regroupe une période de reproduction et ses saillies.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <div>
+              <Label>Nom</Label>
+              <Input value={form.nom} onChange={(e) => setForm({ ...form, nom: e.target.value })} placeholder="Lutte printemps 2026" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Conduite</Label>
+                <select className="block h-10 w-full rounded-md border border-slate-300 px-2 bg-white" value={form.typeConduite} onChange={(e) => setForm({ ...form, typeConduite: e.target.value })}>
+                  {TYPES_CONDUITE.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <div>
+                <Label>Espèce (option.)</Label>
+                <select className="block h-10 w-full rounded-md border border-slate-300 px-2 bg-white" value={form.especeAnimaleId} onChange={(e) => setForm({ ...form, especeAnimaleId: e.target.value })}>
+                  <option value="">— Toutes —</option>
+                  {especes.map((e) => <option key={e.id} value={e.id}>{e.nom}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Début</Label>
+                <Input type="date" value={form.dateDebut} onChange={(e) => setForm({ ...form, dateDebut: e.target.value })} />
+              </div>
+              <div>
+                <Label>Fin (option.)</Label>
+                <Input type="date" value={form.dateFin} onChange={(e) => setForm({ ...form, dateFin: e.target.value })} />
+              </div>
+            </div>
+            <div>
+              <Label>Mise-bas visée (option.)</Label>
+              <Input type="date" value={form.objectifMiseBas} onChange={(e) => setForm({ ...form, objectifMiseBas: e.target.value })} />
+            </div>
+            <div>
+              <Label>Notes</Label>
+              <Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={2} />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 mt-2">
+            <Button variant="outline" onClick={() => setOpen(false)}>Annuler</Button>
+            <Button onClick={submit} disabled={saving}>{saving ? "…" : "Créer"}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </Card>
+  )
+}
+
+// ============================================================
+// Indicateurs de reproduction (PROMPT 23)
+// ============================================================
+
+type ReproData = {
+  annee: number
+  periode: {
+    nbSaillies: number
+    nbSailliesAvecIssue: number
+    nbMiseBas: number
+    tauxFertilite: number | null
+    prolificite: number | null
+    prolificiteVivants: number | null
+    mortaliteNaissance: number | null
+  }
+  historique: {
+    ivvMoyenJours: number | null
+    nbFemellesIvv: number
+    agePremierPartJours: number | null
+    nbFemellesAgePremierPart: number
+  }
+}
+
+function joursEnLisible(j: number | null): string {
+  if (j == null) return "—"
+  if (j >= 365) {
+    const ans = Math.floor(j / 365)
+    const mois = Math.round((j % 365) / 30)
+    return mois > 0 ? `${ans} an${ans > 1 ? "s" : ""} ${mois} mois` : `${ans} an${ans > 1 ? "s" : ""}`
+  }
+  if (j >= 60) return `${Math.round(j / 30)} mois`
+  return `${j} j`
+}
+
+type EtatTroupeau = {
+  data: { id: number; nom: string | null; identifiant: string | null; espece: string | null; etat: string; label: string }[]
+  repartition: Record<string, number>
+  labels: Record<string, string>
+}
+const ETAT_COULEUR: Record<string, string> = {
+  lactation: "bg-blue-100 text-blue-800 border-blue-200",
+  lactation_gestante: "bg-violet-100 text-violet-800 border-violet-200",
+  gestante_tarie: "bg-amber-100 text-amber-800 border-amber-200",
+  vide: "bg-slate-100 text-slate-700 border-slate-200",
+  nullipare: "bg-emerald-100 text-emerald-800 border-emerald-200",
+}
+
+function IndicateursSubTab() {
+  const [data, setData] = React.useState<ReproData | null>(null)
+  const [etat, setEtat] = React.useState<EtatTroupeau | null>(null)
+  const [loading, setLoading] = React.useState(true)
+  const [annee, setAnnee] = React.useState(new Date().getFullYear())
+
+  React.useEffect(() => {
+    setLoading(true)
+    fetch(`/api/elevage/repro-indicateurs?annee=${annee}`)
+      .then((r) => r.json())
+      .then(setData)
+      .finally(() => setLoading(false))
+  }, [annee])
+
+  React.useEffect(() => {
+    fetch(`/api/elevage/etat-physiologique`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (j?.data) setEtat(j) })
+      .catch(() => {})
+  }, [])
+
+  const p = data?.periode
+  const h = data?.historique
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Activity className="h-5 w-5 text-rose-600" />
+              Indicateurs de reproduction
+            </CardTitle>
+            <CardDescription>
+              Fertilité, prolificité et mortinatalité sur l'année ; intervalle entre mises-bas (IVV) et âge au premier
+              part sur tout l'historique.
+            </CardDescription>
+          </div>
+          <select
+            className="h-9 rounded-md border border-slate-300 px-2 bg-white text-sm"
+            value={annee}
+            onChange={(e) => setAnnee(parseInt(e.target.value, 10))}
+          >
+            {[0, -1, -2, -3].map((d) => (
+              <option key={d} value={new Date().getFullYear() + d}>
+                {new Date().getFullYear() + d}
+              </option>
+            ))}
+          </select>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        {loading ? (
+          <div className="text-sm text-slate-500">Chargement…</div>
+        ) : !p || !h ? (
+          <div className="text-sm text-slate-500">Données indisponibles.</div>
+        ) : (
+          <>
+            <div>
+              <div className="text-xs font-semibold text-slate-500 uppercase mb-2">Campagne {data?.annee}</div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <ReproTile
+                  label="Fertilité"
+                  value={p.tauxFertilite != null ? `${p.tauxFertilite} %` : "—"}
+                  sub={`${p.nbSailliesAvecIssue} saillie(s) avec issue`}
+                />
+                <ReproTile
+                  label="Prolificité"
+                  value={p.prolificite != null ? `${p.prolificite}` : "—"}
+                  sub={p.prolificiteVivants != null ? `${p.prolificiteVivants} vivants / MB` : "nés par mise-bas"}
+                />
+                <ReproTile
+                  label="Mortinatalité"
+                  value={p.mortaliteNaissance != null ? `${p.mortaliteNaissance} %` : "—"}
+                  tone={p.mortaliteNaissance != null && p.mortaliteNaissance > 15 ? "bad" : "neutral"}
+                  sub="nés − vivants"
+                />
+                <ReproTile label="Mises-bas" value={`${p.nbMiseBas}`} sub={`${p.nbSaillies} saillie(s)`} />
+              </div>
+            </div>
+            <div>
+              <div className="text-xs font-semibold text-slate-500 uppercase mb-2">Structurel (historique)</div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <ReproTile
+                  label="IVV moyen"
+                  value={joursEnLisible(h.ivvMoyenJours)}
+                  sub={`${h.nbFemellesIvv} femelle(s) suivie(s)`}
+                />
+                <ReproTile
+                  label="Âge au 1er part"
+                  value={joursEnLisible(h.agePremierPartJours)}
+                  sub={`${h.nbFemellesAgePremierPart} femelle(s)`}
+                />
+              </div>
+            </div>
+            {etat && etat.data.length > 0 && (
+              <div>
+                <div className="text-xs font-semibold text-slate-500 uppercase mb-2">État physiologique du troupeau</div>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {Object.entries(etat.repartition)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([k, n]) => (
+                      <Badge key={k} variant="outline" className={ETAT_COULEUR[k] || ""}>
+                        {etat.labels[k] || k} : {n}
+                      </Badge>
+                    ))}
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <tbody>
+                      {etat.data.map((f) => (
+                        <tr key={f.id} className="border-b">
+                          <td className="p-1.5 font-medium">{f.nom || f.identifiant || `#${f.id}`}</td>
+                          <td className="p-1.5 text-slate-500 text-xs">{f.espece}</td>
+                          <td className="p-1.5">
+                            <Badge variant="outline" className={ETAT_COULEUR[f.etat] || ""}>{f.label}</Badge>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+            <p className="text-xs text-slate-400">
+              Fertilité = saillies fécondantes / saillies avec issue connue. IVV = intervalle moyen entre deux
+              mises-bas successives. État physiologique déduit des mises-bas, saillies gestantes et dernières traites.
+            </p>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function ReproTile({
+  label,
+  value,
+  sub,
+  tone = "neutral",
+}: {
+  label: string
+  value: string
+  sub?: string
+  tone?: "neutral" | "bad"
+}) {
+  return (
+    <div className="rounded-lg border p-3">
+      <div className="text-xs text-slate-500">{label}</div>
+      <div className={`text-xl font-semibold ${tone === "bad" ? "text-red-700" : "text-slate-800"}`}>{value}</div>
+      {sub && <div className="text-xs text-slate-400 mt-0.5">{sub}</div>}
+    </div>
   )
 }
 
@@ -357,12 +798,12 @@ function NaissancesSubTab() {
 
       {/* Graphique naissances par mois */}
       {stats && stats.totalNaissances > 0 && (
-        <Card>
+        <Card className="min-w-0">
           <CardHeader>
             <CardTitle className="text-sm">Naissances par mois</CardTitle>
           </CardHeader>
-          <CardContent>
-            <ChartContainer config={{}} className="h-[200px]">
+          <CardContent className="min-w-0 overflow-hidden">
+            <ChartContainer config={{}} className="h-[200px] aspect-auto">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData}>
                   <XAxis dataKey="mois" tick={{ fontSize: 12 }} />

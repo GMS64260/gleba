@@ -8,6 +8,10 @@ import {
   Home,
   Milestone,
   Bot,
+  RefreshCw,
+  ListChecks,
+  Flower2,
+  Carrot,
   type LucideIcon,
 } from "lucide-react";
 
@@ -15,21 +19,32 @@ type Page = { href: string; label: string; icon: LucideIcon };
 
 const ALL_PAGES: Page[] = [
   { href: "/logiciel-maraichage", label: "Logiciel de maraîchage", icon: Sprout },
+  { href: "/planification-maraichage", label: "Planification maraîchère", icon: Calendar },
+  { href: "/rotation-cultures-maraichage", label: "Rotations de cultures", icon: RefreshCw },
+  { href: "/itineraire-technique-maraichage", label: "Itinéraires techniques", icon: ListChecks },
+  { href: "/logiciel-jardin", label: "Logiciel de jardin", icon: Flower2 },
+  { href: "/logiciel-potager", label: "Logiciel de potager", icon: Carrot },
   { href: "/logiciel-micro-ferme", label: "Logiciel pour micro-ferme", icon: Home },
   { href: "/logiciel-permaculture", label: "Logiciel de permaculture", icon: Layers },
   { href: "/logiciel-verger", label: "Logiciel de verger", icon: TreeDeciduous },
+  { href: "/logiciel-arboriculture", label: "Logiciel d'arboriculture", icon: TreeDeciduous },
   { href: "/logiciel-elevage", label: "Logiciel d'élevage", icon: Egg },
+  { href: "/logiciel-elevage-volailles", label: "Gestion d'élevage de volailles", icon: Egg },
+  { href: "/logiciel-elevage-ovin", label: "Gestion d'élevage ovin", icon: Egg },
+  { href: "/logiciel-elevage-caprin", label: "Gestion d'élevage caprin", icon: Egg },
   { href: "/calendrier-semis", label: "Calendrier de semis", icon: Calendar },
   { href: "/assistant-ia-agricole", label: "Assistant IA agricole", icon: Bot },
+  { href: "/referentiel", label: "Référentiel agricole public", icon: Sprout },
   { href: "/communaute", label: "Community Voice", icon: Milestone },
 ];
 
 /**
  * Bloc de maillage interne entre les pages cibles SEO.
- * Exclut automatiquement la page courante. Limite à 6 liens.
+ * Exclut automatiquement la page courante. Toutes les pages sont affichées :
+ * les pages filles doivent recevoir des liens depuis chaque page mère.
  */
 export function InternalLinks({ currentPath }: { currentPath: string }) {
-  const pages = ALL_PAGES.filter((p) => p.href !== currentPath).slice(0, 6);
+  const pages = ALL_PAGES.filter((p) => p.href !== currentPath);
 
   return (
     <section className="py-16 px-4 bg-white/60">

@@ -8,6 +8,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireAuthApi, getUserId } from '@/lib/auth-utils'
+import { fetchEcowittData, fetchWundergroundData } from '@/lib/meteo'
+import { irrigationCache } from '@/lib/irrigation-cache'
 
 // GET /api/meteo/station
 export async function GET() {
@@ -60,7 +62,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const providersValides = ['ecowitt', 'wunderground', 'netatmo']
+    const providersValides = ['ecowitt', 'wunderground']
     if (!providersValides.includes(provider)) {
       return NextResponse.json(
         { error: `Provider invalide. Valeurs acceptées : ${providersValides.join(', ')}` },
@@ -83,8 +85,19 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const station = await prisma.stationMeteo.create({
-      data: {
+    const test = provider === 'ecowitt'
+      ? await fetchEcowittData(appKey, apiKey, stationId)
+      : await fetchWundergroundData(apiKey, stationId)
+    if (!test) {
+      return NextResponse.json(
+        { error: 'Connexion impossible. Vérifiez l’identifiant et les clés de la station.' },
+        { status: 422 }
+      )
+    }
+
+    const station = await prisma.$transaction(async (tx) => {
+      await tx.stationMeteo.updateMany({ where: { userId }, data: { active: false } })
+      return tx.stationMeteo.create({ data: {
         userId,
         nom,
         provider,
@@ -93,8 +106,7 @@ export async function POST(request: NextRequest) {
         appKey: appKey || null,
         lat: lat ? parseFloat(lat) : null,
         lng: lng ? parseFloat(lng) : null,
-      },
-      select: {
+      }, select: {
         id: true,
         nom: true,
         provider: true,
@@ -103,8 +115,9 @@ export async function POST(request: NextRequest) {
         lng: true,
         active: true,
         createdAt: true,
-      },
+      } })
     })
+    irrigationCache.invalidateUser(userId)
 
     return NextResponse.json(station, { status: 201 })
   } catch (err) {
@@ -169,11 +182,17 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json()
     const { id, active } = body
 
-    if (!id || typeof active !== 'boolean') {
+    if ((id !== null && typeof id !== 'string') || typeof active !== 'boolean') {
       return NextResponse.json(
         { error: 'Paramètres id et active requis' },
         { status: 400 }
       )
+    }
+
+    if (id === null) {
+      await prisma.stationMeteo.updateMany({ where: { userId }, data: { active: false } })
+      irrigationCache.invalidateUser(userId)
+      return NextResponse.json({ activeStationId: null })
     }
 
     const station = await prisma.stationMeteo.findFirst({
@@ -187,17 +206,16 @@ export async function PATCH(request: NextRequest) {
       )
     }
 
-    const updated = await prisma.stationMeteo.update({
-      where: { id },
-      data: { active },
-      select: {
-        id: true,
-        nom: true,
-        provider: true,
-        stationId: true,
-        active: true,
-      },
+    const updated = await prisma.$transaction(async (tx) => {
+      if (active) {
+        await tx.stationMeteo.updateMany({ where: { userId, id: { not: id } }, data: { active: false } })
+      }
+      return tx.stationMeteo.update({
+        where: { id }, data: { active },
+        select: { id: true, nom: true, provider: true, stationId: true, active: true },
+      })
     })
+    irrigationCache.invalidateUser(userId)
 
     return NextResponse.json(updated)
   } catch (err) {

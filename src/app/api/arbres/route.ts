@@ -72,7 +72,34 @@ export async function GET(request: NextRequest) {
       orderBy: { nom: "asc" },
     })
 
-    return NextResponse.json(arbres)
+    // Étalement adulte de l'espèce (repli du cercle pointillé quand
+    // envergureAdulte n'est pas saisie sur l'arbre). Le catalogue officiel a
+    // id = nom, donc le champ texte libre `espece` se résout directement.
+    const clesEspeces = [
+      ...new Set(
+        arbres.flatMap((a) => [a.especeId, a.espece].filter((v): v is string => Boolean(v)))
+      ),
+    ]
+    const etalements = clesEspeces.length
+      ? await prisma.espece.findMany({
+          where: {
+            AND: [{ id: { in: clesEspeces } }, visibiliteReferentiel(session!.user.id)],
+            etalement: { not: null },
+          },
+          select: { id: true, etalement: true },
+        })
+      : []
+    const etalementParEspece = new Map(etalements.map((e) => [e.id, e.etalement]))
+
+    return NextResponse.json(
+      arbres.map((a) => ({
+        ...a,
+        especeEtalement:
+          (a.especeId ? etalementParEspece.get(a.especeId) : undefined) ??
+          (a.espece ? etalementParEspece.get(a.espece) : undefined) ??
+          null,
+      }))
+    )
   } catch (err) {
     console.error("GET /api/arbres error:", err)
     return NextResponse.json(
@@ -150,6 +177,10 @@ export async function POST(request: NextRequest) {
         posX: body.posX ?? 0,
         posY: body.posY ?? 0,
         envergure: body.envergure ?? 2,
+        envergureAdulte:
+          body.envergureAdulte != null && body.envergureAdulte !== ""
+            ? parseFloat(body.envergureAdulte)
+            : null,
         hauteur: body.hauteur || null,
         etat: body.etat || null,
         pollinisateur: body.pollinisateur || null,

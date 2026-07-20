@@ -51,17 +51,27 @@ export async function GET(request: NextRequest) {
             id: true,
             nbRangs: true,
             espacement: true,
+            // Dates réelles : servent au « plan vivant » (croissance interpolée)
+            dateSemis: true,
+            datePlantation: true,
+            dateRecolte: true,
+            finRecolte: true,
             itp: {
               select: {
-                espacementRangs: true
+                espacementRangs: true,
+                espacement: true,
+                dureeCulture: true,
+                dureeRecolte: true
               }
             },
             espece: {
               select: {
                 id: true,
+                nom: true,
                 couleur: true,
+                etalement: true,
                 famille: {
-                  select: { couleur: true }
+                  select: { id: true, couleur: true }
                 }
               }
             }

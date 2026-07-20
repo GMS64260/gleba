@@ -28,6 +28,8 @@ export async function GET(request: NextRequest) {
     },
   })
   if (!animal) return NextResponse.json({ error: 'Animal non trouvé' }, { status: 404 })
+  // PROMPT 24 — lactation longue : la chèvre est traite sans tarissement prévu
+  const lactationLongue = animal.lactationLongue === true
 
   const derniereMiseBas = animal.naissancesMere[0]?.date
 
@@ -45,6 +47,7 @@ export async function GET(request: NextRequest) {
       animal: { id: animal.id, nom: animal.nom, identifiant: animal.identifiant },
       courbe: [],
       dim: null,
+      lactationLongue,
       suggererTarissement: false,
     })
   }
@@ -61,7 +64,8 @@ export async function GET(request: NextRequest) {
   const moy7 = derniers7j.length > 0
     ? derniers7j.reduce((s, p) => s + p.volume, 0) / derniers7j.length
     : 0
-  const suggererTarissement = dimAct > 270 || (dimAct > 60 && moy7 < 0.5)
+  // PROMPT 24 — pas de suggestion de tarissement si conduite en lactation longue
+  const suggererTarissement = !lactationLongue && (dimAct > 270 || (dimAct > 60 && moy7 < 0.5))
 
   return NextResponse.json({
     animal: { id: animal.id, nom: animal.nom, identifiant: animal.identifiant },
@@ -69,6 +73,7 @@ export async function GET(request: NextRequest) {
     dim: dimAct,
     courbe,
     moyenne7j: Math.round(moy7 * 1000) / 1000,
+    lactationLongue,
     suggererTarissement,
   })
 }

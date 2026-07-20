@@ -6,19 +6,13 @@
 
 import * as React from "react"
 import Link from "next/link"
-import Image from "next/image"
 import { useSession } from "next-auth/react"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { UserMenu } from "@/components/auth/UserMenu"
-import { ModulesNav } from "@/components/auth/ModulesNav"
-import { BoutiqueHeaderButton } from "@/components/auth/BoutiqueHeaderButton"
+import { AppHeader } from "@/components/shell/AppHeader"
+import { ModuleTabBar } from "@/components/shell/ModuleTabBar"
 import {
   Bird,
-  Sprout,
-  TreeDeciduous,
-  Wallet,
-  Settings,
   Calendar,
   BarChart3,
   Egg,
@@ -28,7 +22,6 @@ import {
   Bot,
 } from "lucide-react"
 import { ChatPanel } from "@/components/chat/ChatPanel"
-import { HeaderMeteoWidget } from "@/components/meteo"
 import { CalendrierTab } from "@/components/elevage/CalendrierTab"
 import { DashboardTab } from "@/components/elevage/DashboardTab"
 import { AnimauxTab } from "@/components/elevage/AnimauxTab"
@@ -116,64 +109,14 @@ export default function ElevageDashboard() {
         </div>
       )}
 
-      {/* Header global */}
-      <header className="border-b bg-white/95 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-2.5 flex items-center justify-between gap-2 max-w-[1600px] flex-wrap">
-          <div className="flex items-center gap-3 min-w-0">
-            <Link href="/" className="flex items-center hover:opacity-90 transition-opacity flex-shrink-0">
-              <Image
-                src="/gleba-logo.png"
-                alt="Gleba"
-                width={120}
-                height={80}
-                className="h-10 w-auto rounded-lg"
-                priority
-              />
-            </Link>
-            {session?.user && <HeaderMeteoWidget />}
-          </div>
-          <div className="flex items-center gap-2 flex-wrap justify-end">
-            {/* Sections globales */}
-            <ModulesNav current="elevage" />
-            {session?.user && <BoutiqueHeaderButton />}
-            <Link href="/parametres">
-              <Button variant="ghost" size="sm">
-                <Settings className="h-4 w-4" />
-              </Button>
-            </Link>
-            {session?.user && <UserMenu user={session.user} />}
-          </div>
-        </div>
-      </header>
-
-      {/* Navigation par onglets + selecteur d'annee */}
-      <nav className="border-b border-t-2 border-t-amber-500 bg-white/80 backdrop-blur-sm sticky top-[61px] z-40">
-        <div className="container mx-auto px-4 max-w-[1600px]">
-          <div className="flex items-center justify-between gap-2 flex-wrap lg:flex-nowrap">
-            {/* DEV2 #7 — Tabs scrollables horizontalement sous lg */}
-            <div className="flex items-center -mb-px overflow-x-auto scrollbar-hide flex-shrink min-w-0 max-w-full">
-              {TABS.map((tab) => {
-                const isActive = activeTab === tab.id
-                return (
-                  <button
-                    key={tab.id}
-                    onClick={() => handleTabChange(tab.id)}
-                    className={`flex items-center gap-1.5 px-3 lg:px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                      isActive
-                        ? "border-amber-600 text-amber-700"
-                        : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
-                    }`}
-                    title={tab.label}
-                  >
-                    <tab.icon className={`h-4 w-4 ${isActive ? "text-amber-600" : ""}`} />
-                    <span className="hidden lg:inline">{tab.label}</span>
-                  </button>
-                )
-              })}
-            </div>
-
-            {/* Carte + Annee */}
-            <div className="flex items-center gap-2 py-2">
+      <AppHeader current="elevage" />
+      <ModuleTabBar
+        tabs={TABS}
+        activeTab={activeTab}
+        onTabChange={(tab) => handleTabChange(tab as TabId)}
+        accent="amber"
+        actions={
+          <>
               <Link href="/jardin/carte?usage=elevage">
                 <Button variant="outline" size="sm" className="text-amber-700 border-amber-300 hover:bg-amber-50">
                   <MapIcon className="h-4 w-4 mr-1" />
@@ -212,16 +155,15 @@ export default function ElevageDashboard() {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-          </div>
-        </div>
-      </nav>
+          </>
+        }
+      />
 
       {/* POSTREVIEW Sprint 6 — Tour Shepherd.js Élevage */}
       <TourElevage />
       {/* Contenu de l'onglet actif */}
       <main className="container mx-auto px-4 py-6 max-w-[1600px] space-y-4">
-        <PremiersPasBanner module="elevage" />
+        {activeTab === "calendrier" && <PremiersPasBanner module="elevage" />}
         {activeTab === "calendrier" && <CalendrierTab />}
         {activeTab === "dashboard" && <DashboardTab year={selectedYear} />}
         {activeTab === "animaux" && <AnimauxTab />}

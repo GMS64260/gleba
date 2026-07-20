@@ -34,6 +34,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { UserMenu } from "@/components/auth/UserMenu"
 import { useToast } from "@/hooks/use-toast"
+import { confirmDialog } from "@/lib/global-dialog"
 import {
   Megaphone,
   ChevronUp,
@@ -150,7 +151,7 @@ export default function CommunautePage() {
   }
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm("Supprimer cette demande d'évolution ?")) return
+    if (!(await confirmDialog("Supprimer cette demande d'évolution ?"))) return
     try {
       const res = await fetch(`/api/evolutions/${id}`, { method: "DELETE" })
       if (!res.ok) throw new Error()

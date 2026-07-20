@@ -198,6 +198,13 @@ export default function ReferentielsAdminPage() {
           </p>
         </div>
 
+        <div className="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div><div className="font-medium text-emerald-950">Photos de l’encyclopédie agricole</div><p className="text-sm text-emerald-800">Valider les contributions des membres et contrôler leurs crédits.</p></div>
+            <Link href="/admin/referentiel/medias"><Button className="bg-emerald-700 hover:bg-emerald-800">Modérer les photos</Button></Link>
+          </div>
+        </div>
+
         {/* Input caché pour fichiers */}
         <input
           ref={fileInputRef}

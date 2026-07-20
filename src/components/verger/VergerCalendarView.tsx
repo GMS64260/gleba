@@ -69,7 +69,7 @@ interface VergerCalendarViewProps {
   onToggleFait?: (op: OperationEvent) => void
 }
 
-const TYPE_CONFIG: Record<string, { icon: React.ElementType; color: string; bg: string; label: string }> = {
+const TYPE_CONFIG: Record<string, { icon: React.ComponentType<{ className?: string }>; color: string; bg: string; label: string }> = {
   taille: { icon: Scissors, color: "text-violet-600", bg: "bg-violet-100", label: "Taille" },
   greffe: { icon: GitMerge, color: "text-emerald-600", bg: "bg-emerald-100", label: "Greffe" },
   traitement: { icon: SprayCan, color: "text-red-500", bg: "bg-red-100", label: "Traitement" },

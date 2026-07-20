@@ -19,6 +19,9 @@ import {
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { Sprout, Leaf, Package, Droplets, ExternalLink, Loader2, MapPin } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
@@ -47,6 +50,18 @@ interface EventDialogProps {
 export function EventDialog({ event, open, onOpenChange, onUpdate }: EventDialogProps) {
   const { toast } = useToast()
   const [loading, setLoading] = React.useState(false)
+  const [completionMode, setCompletionMode] = React.useState(false)
+  const [quantite, setQuantite] = React.useState("")
+  const [notes, setNotes] = React.useState("")
+  const eventId = event?.id
+  const eventType = event?.type
+  const eventFait = event?.fait
+
+  React.useEffect(() => {
+    setCompletionMode(Boolean(!eventFait && (eventType === "recolte" || eventType === "irrigation")))
+    setQuantite("")
+    setNotes("")
+  }, [eventId, eventType, eventFait, open])
 
   if (!event) return null
 
@@ -89,17 +104,20 @@ export function EventDialog({ event, open, onOpenChange, onUpdate }: EventDialog
   const Icon = config.icon
 
   const handleToggle = async () => {
-    // Pour les recoltes, demander la quantité si on marque comme fait
-    if (event.type === "recolte" && !event.fait) {
-      const quantiteStr = prompt("Quantité récoltée (kg) :")
-      if (!quantiteStr) return // Annulé
+    // Les informations complémentaires restent dans ce même overlay : aucune
+    // boîte prompt/confirm native et aucun empilement de fenêtres.
+    if (!event.fait && (event.type === "recolte" || event.type === "irrigation") && !completionMode) {
+      setCompletionMode(true)
+      return
+    }
 
-      const quantite = parseFloat(quantiteStr)
-      if (isNaN(quantite) || quantite <= 0) {
+    if (event.type === "recolte" && !event.fait) {
+      const parsedQuantite = Number.parseFloat(quantite.replace(",", "."))
+      if (!Number.isFinite(parsedQuantite) || parsedQuantite <= 0) {
         toast({
           variant: "destructive",
-          title: "Erreur",
-          description: "Quantité invalide",
+          title: "Quantité à renseigner",
+          description: "Indiquez une quantité récoltée supérieure à zéro.",
         })
         return
       }
@@ -114,7 +132,7 @@ export function EventDialog({ event, open, onOpenChange, onUpdate }: EventDialog
             cultureId: event.id,
             especeId: event.especeId,
             date: new Date().toISOString(),
-            quantite,
+            quantite: parsedQuantite,
           }),
         })
         if (!responseRecolte.ok) throw new Error("Erreur création récolte")
@@ -128,12 +146,12 @@ export function EventDialog({ event, open, onOpenChange, onUpdate }: EventDialog
 
         toast({
           title: "Récolte enregistrée",
-          description: `${quantite} kg de ${event.especeNom ?? event.especeId}`,
+          description: `${parsedQuantite} kg de ${event.especeNom ?? event.especeId}`,
         })
 
         onUpdate()
         onOpenChange(false)
-      } catch (error) {
+      } catch {
         toast({
           variant: "destructive",
           title: "Erreur",
@@ -149,15 +167,6 @@ export function EventDialog({ event, open, onOpenChange, onUpdate }: EventDialog
     setLoading(true)
     try {
       if (event.type === "irrigation") {
-        // Si on marque comme fait, demander des notes
-        let notes = null
-        if (!event.fait) {
-          const noteStr = prompt(
-            "Notes sur l'arrosage ?\n(ex: \"Plus que prévu\", \"Sol sec\", \"Pluie\" ou laissez vide)"
-          )
-          notes = noteStr || null
-        }
-
         // Marquer l'irrigation planifiée comme faite
         const response = await fetch(`/api/irrigations/${event.id}`, {
           method: "PATCH",
@@ -165,7 +174,7 @@ export function EventDialog({ event, open, onOpenChange, onUpdate }: EventDialog
           body: JSON.stringify({
             fait: !event.fait,
             dateEffective: !event.fait ? new Date().toISOString() : null,
-            notes,
+            notes: !event.fait ? notes.trim() || null : null,
           }),
         })
         if (!response.ok) throw new Error("Erreur")
@@ -190,7 +199,7 @@ export function EventDialog({ event, open, onOpenChange, onUpdate }: EventDialog
 
       onUpdate()
       onOpenChange(false)
-    } catch (error) {
+    } catch {
       toast({
         variant: "destructive",
         title: "Erreur",
@@ -203,7 +212,7 @@ export function EventDialog({ event, open, onOpenChange, onUpdate }: EventDialog
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="max-h-[calc(100dvh-1rem)] overflow-y-auto sm:max-w-[425px]">
         <DialogHeader>
           <div className="flex items-center gap-2 mb-2">
             <div className={`p-2 rounded-lg ${config.bg}`}>
@@ -271,8 +280,50 @@ export function EventDialog({ event, open, onOpenChange, onUpdate }: EventDialog
             )}
           </div>
 
+          {completionMode && event.type === "recolte" && (
+            <div className="space-y-3 rounded-xl border border-purple-200 bg-purple-50/60 p-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="event-recolte-quantite">Quantité récoltée</Label>
+                <div className="relative">
+                  <Input
+                    id="event-recolte-quantite"
+                    type="number"
+                    inputMode="decimal"
+                    min="0.01"
+                    step="0.01"
+                    autoFocus
+                    value={quantite}
+                    onChange={(e) => setQuantite(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleToggle()
+                    }}
+                    placeholder="0,00"
+                    className="h-11 pr-12 text-base"
+                  />
+                  <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm font-medium text-muted-foreground">kg</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {completionMode && event.type === "irrigation" && (
+            <div className="space-y-3 rounded-xl border border-cyan-200 bg-cyan-50/60 p-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="event-irrigation-notes">Observation</Label>
+                <Textarea
+                  id="event-irrigation-notes"
+                  autoFocus
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Sol sec, pluie récente, quantité ajustée…"
+                  className="min-h-20 resize-none bg-white"
+                />
+              </div>
+            </div>
+          )}
+
           {/* Actions */}
-          <div className="flex gap-2">
+          <div className="flex flex-col-reverse gap-2 sm:flex-row">
             <Button
               onClick={handleToggle}
               disabled={loading}
@@ -286,6 +337,10 @@ export function EventDialog({ event, open, onOpenChange, onUpdate }: EventDialog
                 </>
               ) : event.fait ? (
                 <>Annuler</>
+              ) : completionMode && event.type === "recolte" ? (
+                <>Enregistrer la récolte</>
+              ) : completionMode && event.type === "irrigation" ? (
+                <>Confirmer l’arrosage</>
               ) : (
                 <>Marquer comme fait</>
               )}
@@ -298,9 +353,11 @@ export function EventDialog({ event, open, onOpenChange, onUpdate }: EventDialog
           </div>
 
           {/* Info selon type */}
-          <div className="text-xs text-muted-foreground p-3 bg-muted/50 rounded-lg">
-            {config.action}
-          </div>
+          {event.fait || (event.type !== "recolte" && event.type !== "irrigation") ? (
+            <div className="text-xs text-muted-foreground p-3 bg-muted/50 rounded-lg">
+              {config.action}
+            </div>
+          ) : null}
         </div>
       </DialogContent>
     </Dialog>

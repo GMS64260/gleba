@@ -6,7 +6,6 @@
  */
 
 import * as React from "react"
-import Link from "next/link"
 import {
   CheckCircle2,
   Circle,
@@ -25,8 +24,10 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import {
   Tooltip,
   TooltipContent,
@@ -120,6 +121,9 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
   const [loadingStats, setLoadingStats] = React.useState(true)
   const [loadingTaches, setLoadingTaches] = React.useState(true)
   const [weekOffset, setWeekOffset] = React.useState(0)
+  const [pendingHarvest, setPendingHarvest] = React.useState<{ cultureId: number; especeId: string } | null>(null)
+  const [harvestQuantity, setHarvestQuantity] = React.useState("")
+  const [harvestLoading, setHarvestLoading] = React.useState(false)
   const { weekStart, weekEnd } = React.useMemo(() => {
     const base = new Date()
     const current = addWeeks(base, weekOffset)
@@ -197,16 +201,21 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
     cultureId: number,
     type: "semis" | "plantation" | "recolte",
     currentValue: boolean,
-    especeId: string
+    especeId: string,
+    quantity?: number
   ) => {
     if (type === "recolte" && !currentValue) {
-      const quantiteStr = prompt("Quantite recoltee (kg) :")
-      if (!quantiteStr) return
-      const quantite = parseFloat(quantiteStr)
-      if (isNaN(quantite) || quantite <= 0) {
-        toast({ variant: "destructive", title: "Quantite invalide" })
+      if (quantity === undefined) {
+        setHarvestQuantity("")
+        setPendingHarvest({ cultureId, especeId })
         return
       }
+      const quantite = quantity
+      if (isNaN(quantite) || quantite <= 0) {
+        toast({ variant: "destructive", title: "Quantité invalide" })
+        return
+      }
+      setHarvestLoading(true)
       try {
         const recolteRes = await fetch("/api/recoltes", {
           method: "POST",
@@ -230,9 +239,12 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
           return
         }
         toast({ title: "Récolte enregistrée", description: `${quantite} kg` })
+        setPendingHarvest(null)
         fetchTaches()
       } catch {
         toast({ variant: "destructive", title: "Erreur" })
+      } finally {
+        setHarvestLoading(false)
       }
       return
     }
@@ -793,6 +805,55 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
           </>
         ) : null}
       </div>
+      <Dialog open={pendingHarvest !== null} onOpenChange={(nextOpen) => {
+        if (!nextOpen && !harvestLoading) setPendingHarvest(null)
+      }}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-xl bg-purple-100">
+              <Package className="h-5 w-5 text-purple-600" />
+            </div>
+            <DialogTitle>Enregistrer la récolte</DialogTitle>
+            <DialogDescription>Indiquez la quantité réellement récoltée. Elle sera ajoutée au suivi des récoltes.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 rounded-xl border border-purple-200 bg-purple-50/60 p-4">
+            <Label htmlFor="calendar-harvest-quantity">Quantité récoltée</Label>
+            <div className="relative">
+              <Input
+                id="calendar-harvest-quantity"
+                type="number"
+                inputMode="decimal"
+                min="0.01"
+                step="0.01"
+                autoFocus
+                value={harvestQuantity}
+                onChange={(e) => setHarvestQuantity(e.target.value)}
+                placeholder="0,00"
+                className="h-11 bg-white pr-12 text-base"
+              />
+              <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm font-medium text-muted-foreground">kg</span>
+            </div>
+          </div>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button variant="outline" onClick={() => setPendingHarvest(null)} disabled={harvestLoading}>Retour</Button>
+            <Button
+              disabled={harvestLoading || !pendingHarvest}
+              onClick={() => {
+                if (!pendingHarvest) return
+                toggleTache(
+                  pendingHarvest.cultureId,
+                  "recolte",
+                  false,
+                  pendingHarvest.especeId,
+                  Number.parseFloat(harvestQuantity.replace(",", "."))
+                )
+              }}
+            >
+              Enregistrer la récolte
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -817,7 +878,7 @@ function TaskSection({
   onBulkDone,
 }: {
   title: string
-  icon: React.ElementType
+  icon: React.ComponentType<{ className?: string }>
   iconColor: string
   items: TacheItem[]
   type: "semis" | "plantation" | "recolte"

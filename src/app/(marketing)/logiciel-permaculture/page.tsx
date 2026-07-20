@@ -1,224 +1,29 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import {
-  Layers,
-  Moon,
-  Leaf,
-  CloudRain,
-  Sprout,
-  TreeDeciduous,
-} from "lucide-react";
-import { ScreenshotPlaceholder } from "@/components/seo/ScreenshotPlaceholder";
-import { FAQSection, type FAQItem } from "@/components/seo/FAQSection";
-import { CTASection } from "@/components/seo/CTASection";
-import { Breadcrumb } from "@/components/seo/Breadcrumb";
-import { InternalLinks } from "@/components/seo/InternalLinks";
+import { BusinessLanding } from "@/components/seo/BusinessLanding";
 
 export const metadata: Metadata = {
-  title: "Logiciel de permaculture — Conception, design et gestion de ferme permacole",
-  description:
-    "Gleba est le logiciel libre de référence pour les fermes en permaculture : design 2D, associations de cultures, rotations longues, calendrier lunaire, biodiversité, verger-maraîcher, ruches et poulaillers. Gratuit, open source, hébergé en France.",
+  title: "Logiciel pour ferme en permaculture — Plan 2D, cultures et verger",
+  description: "Cartographiez planches, arbres et objets, puis suivez cultures, associations, rotations, verger, élevage, récoltes et interventions avec Gleba.",
   alternates: { canonical: "https://gleba.fr/logiciel-permaculture" },
-  openGraph: {
-    title: "Logiciel de permaculture — Gleba",
-    description:
-      "Le logiciel libre pour concevoir, gérer et suivre une ferme en permaculture.",
-    url: "https://gleba.fr/logiciel-permaculture",
-    type: "article",
-  },
+  openGraph: { title: "Gleba pour une ferme en permaculture", description: "Plan 2D et suivi des productions diversifiées dans un logiciel open source.", url: "https://gleba.fr/logiciel-permaculture", type: "article" },
 };
 
-const FAQS: FAQItem[] = [
-  {
-    question: "Quel logiciel utiliser pour concevoir une ferme en permaculture ?",
-    answer:
-      "Pour le design initial (cartographie, zones, secteurs, courbes de niveau), des outils comme QGIS ou des plans manuels restent pertinents. Pour la gestion quotidienne (cultures, rotations, associations, suivi des récoltes, traçabilité, comptabilité), Gleba est le seul logiciel libre qui couvre l'ensemble du cycle de vie d'une ferme permacole.",
-  },
-  {
-    question: "Gleba gère-t-il les associations de cultures et les guildes ?",
-    answer:
-      "Oui. Gleba intègre une base d'associations bénéfiques (tomate/basilic, carotte/poireau, maïs/haricot/courge) et signale les associations à éviter. Le moteur de planification respecte ces règles automatiquement quand vous placez vos cultures sur les planches.",
-  },
-  {
-    question: "Le calendrier lunaire est-il inclus ?",
-    answer:
-      "Oui. Gleba affiche les phases de la lune, les jours fruits/feuilles/fleurs/racines selon la biodynamie, et recommande les périodes optimales pour semer, repiquer, tailler ou récolter selon vos cultures.",
-  },
-  {
-    question: "Peut-on suivre verger-maraîcher, ruches et basse-cour ?",
-    answer:
-      "Oui. Gleba a été conçu pour les systèmes permacoles diversifiés. Vous pouvez gérer simultanément un verger-maraîcher (arbres + cultures intercalaires), des ruches (récoltes de miel, traitements varroa), une basse-cour (ponte, alimentation, généalogie) et des zones de biodiversité.",
-  },
-  {
-    question: "Gleba est-il adapté à un projet de design permacole en amont d'installation ?",
-    answer:
-      "Oui. Vous pouvez modéliser votre projet sur le plan 2D (parcelles, planches, arbres, zones humides) avant l'installation, simuler vos rotations sur 5 ans et estimer rendements et besoins en intrants. C'est un excellent outil pour les dossiers de prêt ou de subvention.",
-  },
-];
-
 export default function Page() {
-  return (
-    <>
-      <Breadcrumb items={[{ label: "Logiciel de permaculture", href: "/logiciel-permaculture" }]} />
-
-      <section className="px-4 pt-6 pb-20 sm:pt-12 sm:pb-24">
-        <div className="max-w-4xl mx-auto text-center">
-          <p className="text-xs tracking-[0.25em] uppercase text-emerald-600/70 font-medium mb-6">
-            Permaculture · Agroécologie · Biodynamie · Systèmes vivants
-          </p>
-          <h1 className="font-heading text-4xl sm:text-5xl lg:text-6xl font-extralight tracking-tight text-slate-900 leading-[1.1]">
-            Le logiciel libre pour
-            <br />
-            <span className="bg-gradient-to-r from-emerald-700 via-teal-600 to-emerald-600 bg-clip-text text-transparent font-normal">
-              vos fermes en permaculture
-            </span>
-          </h1>
-          <p className="mt-8 text-lg sm:text-xl text-slate-500 font-light max-w-2xl mx-auto leading-relaxed">
-            Design 2D du site, associations de cultures, rotations longues, calendrier lunaire, verger-maraîcher,
-            ruches, basse-cour. <strong className="text-slate-700 font-medium">Tout pour concevoir, lancer et suivre une ferme
-            permacole productive</strong> — dans un logiciel libre, gratuit et hébergé en France.
-          </p>
-
-          <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-3">
-            <Link
-              href="/register"
-              className="inline-flex items-center px-7 py-3.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium transition-colors shadow-lg shadow-emerald-600/20"
-            >
-              Essayer gratuitement
-            </Link>
-            <a
-              href="#principes"
-              className="inline-flex items-center px-7 py-3.5 rounded-full border border-slate-200 text-slate-700 hover:border-emerald-300 hover:text-emerald-700 text-sm font-medium transition-colors"
-            >
-              Voir les fonctionnalités
-            </a>
-          </div>
-
-          <ScreenshotPlaceholder
-            alt="Design 2D d'une ferme en permaculture avec zones, planches, arbres et mare"
-            caption="Design 2D d'une ferme permacole avec zones, planches et verger-maraîcher"
-            aspectRatio="16/9"
-            priority
-            className="mt-16"
-          />
-        </div>
-      </section>
-
-      <section className="py-20 px-4 bg-white/60">
-        <div className="max-w-3xl mx-auto">
-          <h2 className="font-heading text-3xl sm:text-4xl font-extralight text-slate-900 tracking-tight text-center mb-12">
-            La permaculture, en pratique <span className="font-normal">au quotidien</span>
-          </h2>
-
-          <div className="space-y-5 text-[17px] leading-relaxed text-slate-600">
-            <p>
-              La permaculture est une éthique et un ensemble de principes&nbsp;: observer avant d&apos;agir, créer
-              des systèmes résilients, intégrer plutôt que séparer, valoriser la diversité, transformer le déchet
-              en ressource. Au quotidien sur une ferme, c&apos;est aussi&nbsp;: trois ateliers en parallèle, vingt
-              espèces dans la même planche, des arbres fruitiers entre les rangs de légumes, une ruche dans le
-              fond, et trente poules qui se baladent dans le verger.
-            </p>
-            <p>
-              Aucun logiciel agricole grand public ne pense comme ça. Tous séparent les activités (maraîchage
-              d&apos;un côté, élevage de l&apos;autre), traitent une planche comme une monoculture, et ignorent
-              les interactions entre cultures, arbres et animaux. Résultat&nbsp;: les permaculteurs reviennent au
-              papier ou au tableur.
-            </p>
-            <p>
-              <strong className="text-slate-900 font-medium">
-                Gleba a été construit autour des pratiques permacoles&nbsp;:
-              </strong>{" "}
-              associations de cultures, guildes, étagement vertical, rotations longues, verger-maraîcher,
-              calendrier lunaire et biodynamique, intégration animale, traçabilité non chimique.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <section id="principes" className="py-24 px-4 scroll-mt-8">
-        <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="font-heading text-3xl sm:text-4xl lg:text-5xl font-extralight text-slate-900 tracking-tight">
-              Conçu pour les <span className="font-normal">systèmes vivants</span>
-            </h2>
-          </div>
-
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[
-              {
-                icon: Layers,
-                title: "Associations & guildes",
-                description:
-                  "Base d'associations bénéfiques et antagonistes intégrée. Le moteur respecte vos guildes lors de la planification automatique.",
-              },
-              {
-                icon: TreeDeciduous,
-                title: "Verger-maraîcher",
-                description:
-                  "Modélisez vos lignes d'arbres fruitiers avec cultures intercalaires. Suivez la productivité par strate et par parcelle.",
-              },
-              {
-                icon: Moon,
-                title: "Calendrier lunaire",
-                description:
-                  "Phases de la lune, jours fruits/feuilles/fleurs/racines selon la biodynamie. Recommandations adaptées culture par culture.",
-              },
-              {
-                icon: CloudRain,
-                title: "Gestion de l'eau",
-                description:
-                  "Pluviométrie par parcelle, baissières, mares, irrigation par cycle de plante. Adapté aux installations en climat sec.",
-              },
-              {
-                icon: Leaf,
-                title: "Biodiversité",
-                description:
-                  "Suivi des haies, mares, bandes fleuries, hôtels à insectes. Indicateurs de biodiversité par parcelle.",
-              },
-              {
-                icon: Sprout,
-                title: "Semences paysannes",
-                description:
-                  "Gérez vos lots de semences, vos sélections variétales, vos échanges avec d'autres fermes. Aucune dépendance aux catalogues.",
-              },
-            ].map((feature) => (
-              <div
-                key={feature.title}
-                className="bg-white/80 backdrop-blur-sm rounded-2xl border border-slate-100 p-7 hover:border-emerald-200 transition-colors"
-              >
-                <div className="inline-flex items-center justify-center w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 mb-5">
-                  <feature.icon className="h-5 w-5" strokeWidth={1.5} />
-                </div>
-                <h3 className="text-lg font-medium text-slate-900 mb-2 tracking-tight">
-                  {feature.title}
-                </h3>
-                <p className="text-sm text-slate-500 leading-relaxed">
-                  {feature.description}
-                </p>
-              </div>
-            ))}
-          </div>
-
-          <ScreenshotPlaceholder
-            alt="Vue calendrier lunaire avec jours fruits, feuilles, fleurs et racines"
-            caption="Calendrier lunaire biodynamique intégré"
-            aspectRatio="16/10"
-            className="mt-16"
-          />
-        </div>
-      </section>
-
-      <InternalLinks currentPath="/logiciel-permaculture" />
-
-      <FAQSection
-        title="Questions sur le logiciel de permaculture"
-        faqs={FAQS}
-      />
-
-      <CTASection
-        title="Concevez et suivez votre ferme permacole avec Gleba"
-        subtitle="Logiciel libre, gratuit, hébergé en France. Démarrez votre design 2D en quelques minutes."
-      />
-    </>
-  );
+  return <BusinessLanding breadcrumb="Logiciel pour ferme en permaculture" currentPath="/logiciel-permaculture" eyebrow="Plan 2D · Cultures · Verger · Élevage" title="Un logiciel pour documenter" highlightedTitle="une ferme diversifiée" introduction="Les fermes inspirées de la permaculture combinent souvent planches, arbres, haies, animaux et petits aménagements. Gleba permet de représenter ces éléments puis de suivre les productions et interventions associées." proof="le plan 2D manipule parcelles, planches, arbres et objets ; les modules Maraîchage, Verger et Élevage partagent ensuite les données de la même exploitation." capabilities={[
+    { title: "Plan 2D", description: "Dessinez les planches et positionnez arbres et objets aux dimensions et coordonnées choisies." },
+    { title: "Associations", description: "Consultez le référentiel d'associations favorables, incompatibles ou neutres entre espèces." },
+    { title: "Rotations", description: "Préparez et relisez les séquences de cultures prévues sur chaque planche." },
+    { title: "Verger", description: "Suivez arbres, variétés, porte-greffes, pollinisation, opérations, observations et récoltes." },
+    { title: "Élevage", description: "Gérez animaux ou lots, soins, alimentation, production, reproduction et naissances." },
+    { title: "Interventions", description: "Conservez un historique commun des travaux réalisés sur cultures, parcelles et arbres." },
+  ]} workflowTitle="Dessiner puis documenter le système" workflow={[
+    { title: "Représenter", description: "Créez les parcelles et placez les éléments suivis sur le plan de l'exploitation." },
+    { title: "Organiser", description: "Préparez cultures, rotations, arbres et ateliers animaux dans leurs modules dédiés." },
+    { title: "Observer", description: "Enregistrez interventions, observations, productions et récoltes au fil des saisons." },
+  ]} limits="Gleba n'est pas un logiciel de conception permacole automatique : il ne calcule ni zones, ni secteurs, ni courbes de niveau, ni design optimal. Il ne place pas automatiquement des guildes de plantes. Ces décisions restent celles du concepteur." faqs={[
+    { question: "Gleba réalise-t-il automatiquement un design en permaculture ?", answer: "Non. Le plan 2D sert à dessiner et documenter les éléments décidés par l'utilisateur ; aucun moteur ne conçoit automatiquement le site." },
+    { question: "Les associations de cultures sont-elles disponibles ?", answer: "Oui. Un référentiel recense des relations favorables, incompatibles ou neutres. Il s'agit d'une information consultable, pas d'un placement automatique." },
+    { question: "Peut-on suivre arbres, légumes et animaux ensemble ?", answer: "Oui. Les trois modules existent dans la même application et utilisent les parcelles de l'exploitation." },
+    { question: "Gleba remplace-t-il un SIG ?", answer: "Non. Le plan 2D est conçu pour le suivi de la ferme ; un SIG spécialisé reste plus adapté aux analyses topographiques ou hydrologiques avancées." },
+  ]} />;
 }

@@ -164,7 +164,7 @@ function VergerPageInner() {
       <TourVerger />
       {/* Contenu de l'onglet actif */}
       <main className="container mx-auto px-4 py-6 max-w-[1600px] space-y-4">
-        <PremiersPasBanner module="verger" />
+        {activeTab === "calendrier" && <PremiersPasBanner module="verger" />}
         {activeTab === "calendrier" && <CalendrierTab year={selectedYear} />}
         {activeTab === "plantations" && <PlantationsTab />}
         {activeTab === "arbres" && <ArbresTab />}
