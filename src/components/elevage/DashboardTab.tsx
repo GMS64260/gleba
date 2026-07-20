@@ -61,6 +61,7 @@ interface DashboardData {
     tauxMortalite: number
     tauxPonte: number | null
     nbPondeuses: number
+    activiteOeufs: boolean
     fcr: number | null
     consoAlimentsKg: number
     // PROMPT 17 — KPI lait
@@ -80,6 +81,10 @@ interface DashboardData {
     mois: number
     total: number
   }[]
+  ventesParCategorie: {
+    categories: { categorie: string; label: string }[]
+    mois: Array<{ mois: number; label: string; [categorie: string]: number | string }>
+  }
   productions: {
     type: "oeufs" | "lait" | "fromage" | "viande"
     label: string
@@ -124,6 +129,7 @@ export function DashboardTab({ year }: DashboardTabProps) {
   const { toast } = useToast()
   const [isLoading, setIsLoading] = React.useState(true)
   const [data, setData] = React.useState<DashboardData | null>(null)
+  const [statsError, setStatsError] = React.useState<string | null>(null)
   const [soins, setSoins] = React.useState<SoinItem[]>([])
   const [loadingSoins, setLoadingSoins] = React.useState(true)
   // PROMPT 20 — synthèse qualité du lait (cellules) sur 90 j
@@ -133,13 +139,14 @@ export function DashboardTab({ year }: DashboardTabProps) {
   React.useEffect(() => {
     async function fetchStats() {
       setIsLoading(true)
+      setStatsError(null)
       try {
         const response = await fetch(`/api/elevage/stats?annee=${year}`)
-        if (response.ok) {
-          setData(await response.json())
-        }
+        if (!response.ok) throw new Error("Réponse statistiques invalide")
+        setData(await response.json())
       } catch {
-        // silent
+        setData(null)
+        setStatsError("Impossible de charger les statistiques de l’élevage. Réessayez dans quelques instants.")
       } finally {
         setIsLoading(false)
       }
@@ -282,6 +289,10 @@ export function DashboardTab({ year }: DashboardTabProps) {
             <Skeleton key={i} className="h-24" />
           ))}
         </div>
+      ) : statsError ? (
+        <Card role="alert" className="border-red-200">
+          <CardContent className="py-6 text-center text-sm text-red-700">{statsError}</CardContent>
+        </Card>
       ) : data && (
         <>
           {/* Ligne 1 : Stats principales avec tendances N-1 */}
@@ -326,7 +337,7 @@ export function DashboardTab({ year }: DashboardTabProps) {
               )
             })()}
 
-            <Card className={kpiCardClass("neutre")}>
+            {data.stats.activiteOeufs && <Card className={kpiCardClass("neutre")}>
               <CardHeader className="pb-1 pt-3 px-4">
                 <CardDescription className={`${kpiSubtleClass("neutre")} text-xs flex items-center gap-1`}>
                   Production œufs
@@ -348,9 +359,9 @@ export function DashboardTab({ year }: DashboardTabProps) {
                   }
                 </p>
               </CardContent>
-            </Card>
+            </Card>}
 
-            <Card className={kpiCardClass(data.stats.stockOeufs < 24 ? "alerte" : "neutre")}>
+            {data.stats.activiteOeufs && <Card className={kpiCardClass(data.stats.stockOeufs < 24 ? "alerte" : "neutre")}>
               <CardHeader className="pb-1 pt-3 px-4">
                 <CardDescription className={`text-xs ${kpiSubtleClass(data.stats.stockOeufs < 24 ? "alerte" : "neutre")}`}>Stock œufs</CardDescription>
                 <CardTitle className="text-2xl">{data.stats.stockOeufs}</CardTitle>
@@ -358,7 +369,7 @@ export function DashboardTab({ year }: DashboardTabProps) {
               <CardContent className="pb-3 px-4">
                 <p className={`text-xs ${kpiSubtleClass(data.stats.stockOeufs < 24 ? "alerte" : "neutre")}`}>disponibles</p>
               </CardContent>
-            </Card>
+            </Card>}
 
             <Card className={kpiCardClass("revenu")}>
               <CardHeader className="pb-1 pt-3 px-4">
@@ -627,11 +638,48 @@ export function DashboardTab({ year }: DashboardTabProps) {
 
           {/* Graphiques */}
           <div className="grid gap-4 md:grid-cols-2">
+            <Card className="min-w-0">
+              <CardHeader>
+                <CardTitle className="text-sm">Ventes par catégorie</CardTitle>
+                <CardDescription>Chiffre d&apos;affaires {year}</CardDescription>
+              </CardHeader>
+              <CardContent className="min-w-0 overflow-x-auto pb-2">
+                {data.ventesParCategorie.categories.length > 0 ? (
+                  <ChartContainer config={{}} className="h-[240px] min-w-[620px] w-full aspect-auto sm:h-[300px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={data.ventesParCategorie.mois} margin={{ left: 4, right: 8 }}>
+                        <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                        <YAxis tick={{ fontSize: 11 }} tickFormatter={(value) => `${value} €`} />
+                        <ChartTooltip
+                          content={<ChartTooltipContent formatter={(value) => `${Number(value).toLocaleString("fr-FR")} €`} />}
+                        />
+                        <Legend wrapperStyle={{ fontSize: 12 }} />
+                        {data.ventesParCategorie.categories.map(({ categorie, label }, index) => (
+                          <Bar
+                            key={categorie}
+                            dataKey={categorie}
+                            name={label}
+                            stackId="ventes"
+                            fill={`hsl(${(index * 67 + 145) % 360} 65% 45%)`}
+                          />
+                        ))}
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </ChartContainer>
+                ) : (
+                  <div className="h-[250px] flex flex-col items-center justify-center text-muted-foreground gap-1">
+                    <TrendingUp className="h-8 w-8 opacity-30" />
+                    <p className="text-sm">Aucune vente enregistrée en {year}.</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
             {/* Production œufs par mois — BUG #7 : axe Y dynamique sur
                 max(données) × 1.2 (jamais hardcodé), placeholder « Pas
                 encore de données » si l'année est vide plutôt qu'un
                 graphe blanc déconcertant. */}
-            <Card className="min-w-0">
+            {data.stats.activiteOeufs && <Card className="min-w-0">
               <CardHeader>
                 <CardTitle className="text-sm">Production d&apos;œufs par mois</CardTitle>
                 <CardDescription>Année {year}</CardDescription>
@@ -662,7 +710,7 @@ export function DashboardTab({ year }: DashboardTabProps) {
                   )
                 })()}
               </CardContent>
-            </Card>
+            </Card>}
 
             {/* Repartition animaux par type */}
             <Card className="min-w-0">

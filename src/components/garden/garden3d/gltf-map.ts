@@ -77,7 +77,9 @@ export function modelPourCulture(
 
 /** Modèle glTF d'un arbre selon son type, varié de façon déterministe par id. */
 export function modelPourArbre(type: string, seed: number): string {
-  const feuillus = ["tree_default", "tree_oak", "tree_fat", "tree_detailed"]
+  // Modèles ronds (rapport hauteur/largeur ~1,5–1,66) : évite les arbres
+  // « tours » (tree_default 2,26 / tree_small 2,71 écartés du choix par défaut).
+  const feuillus = ["tree_oak", "tree_fat", "tree_detailed"]
   switch (type) {
     case "petit_fruit": return url(seed % 2 ? "tree_small" : "plant_bushLarge")
     case "ornement": return url(seed % 2 ? "tree_cone" : "tree_thin")

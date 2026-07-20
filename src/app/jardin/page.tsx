@@ -1510,6 +1510,24 @@ function JardinContent() {
             </Button>
 
             <Button
+              variant="outline"
+              size="icon"
+              className="h-10 w-10 border-emerald-300 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+              asChild
+            >
+              <Link
+                href={
+                  selectedParcelleId && selectedParcelleId !== "none"
+                    ? `/jardin/3d?parcelle=${encodeURIComponent(selectedParcelleId)}`
+                    : "/jardin/3d"
+                }
+                aria-label="Ouvrir la vue 3D"
+              >
+                <Box className="h-4 w-4" />
+              </Link>
+            </Button>
+
+            <Button
               variant={tool === 'measure' ? "default" : "outline"}
               size="icon"
               className="h-10 w-10"

@@ -9,7 +9,12 @@ import prisma from '@/lib/prisma'
 import { calculerStockOeufs } from '@/lib/stocks-helpers'
 import { tauxPonteSaisonnalise } from '@/lib/lait'
 import { tauxPonteAttenduPeriode } from '@/lib/elevage/taux-ponte'
-import { agregerProductionsLaitieresDashboard, construireProductionsDashboard } from '@/lib/elevage/dashboard-productions'
+import {
+  aUneActiviteOeufsDashboard,
+  agregerProductionsLaitieresDashboard,
+  agregerVentesDashboard,
+  construireProductionsDashboard,
+} from '@/lib/elevage/dashboard-productions'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -35,12 +40,13 @@ export async function GET(request: NextRequest) {
       productionOeufsMois,
       ventesAnnee,
       ventesAnneePrecedente,
-      ventesParType,
+      ventesParCategorie,
       abattagesAnnee,
       soinsAPlanifier,
       alimentsStockBas,
       stockOeufs,
       mortaliteAnnee,
+      animauxPondeursActifs,
       totalPondeuses,
       lotsPondeusesDetail,
       lotsParType,
@@ -121,17 +127,7 @@ export async function GET(request: NextRequest) {
         _count: true,
       }),
 
-      // Ventes par type
-      prisma.venteProduit.groupBy({
-        by: ['type'],
-        where: {
-          userId,
-          annule: false,
-          date: { gte: startOfYear, lte: endOfYear },
-        },
-        _sum: { prixTotal: true },
-        _count: true,
-      }),
+      agregerVentesDashboard(prisma, userId, startOfYear, endOfYear),
 
       // Abattages annee — même règle : les abattages annulés ne comptent pas.
       prisma.abattage.aggregate({
@@ -185,6 +181,15 @@ export async function GET(request: NextRequest) {
           userId,
           statut: 'mort',
           dateSortie: { gte: startOfYear, lte: endOfYear },
+        },
+      }),
+
+      // Animaux individuels rattachés à un atelier œufs actif.
+      prisma.animal.count({
+        where: {
+          userId,
+          statut: 'actif',
+          especeAnimale: { production: { in: ['oeufs', 'mixte'] } },
         },
       }),
 
@@ -271,6 +276,11 @@ export async function GET(request: NextRequest) {
     const ventesTotalPrecedente = ventesAnneePrecedente._sum.prixTotal || 0
     const consoAlimentsKg = totalConsommationAliments._sum.quantite || 0
     const poidsCarcasseTotal = abattagesAnnee._sum.poidsCarcasse || 0
+    const activiteOeufs = aUneActiviteOeufsDashboard({
+      animauxPondeursActifs,
+      lotsPondeursActifs: nbPondeuses,
+      oeufsProduitsAnnee: nbOeufsAnnee,
+    })
 
     // BUG #5 (audit Julien 15/05/2026) — Avant : « attendu période = 8 % »
     // en mai pour des Marans, à cause de la formule absurde
@@ -394,6 +404,7 @@ export async function GET(request: NextRequest) {
         tauxPonteSaisonAttendu: tauxPonteAttendu,
         tauxPonteRatio,
         nbPondeuses,
+        activiteOeufs,
         nbOeufsPeriode7j: nbOeufs7j,
         fcr: fcr !== null ? Math.round(fcr * 100) / 100 : null,
         consoAlimentsKg: Math.round(consoAlimentsKg * 10) / 10,
@@ -411,11 +422,7 @@ export async function GET(request: NextRequest) {
         couleur: especeMap.get(especeAnimaleId)?.couleur,
         count,
       })),
-      ventesParType: ventesParType.map(v => ({
-        type: v.type,
-        total: v._sum.prixTotal || 0,
-        count: v._count,
-      })),
+      ventesParCategorie,
       productionOeufsMois: productionOeufsMois.map(p => ({
         mois: Number(p.mois),
         total: Number(p.total),
