@@ -20,8 +20,10 @@ import {
   X,
   Milk,
   Wheat,
+  Euro,
 } from "lucide-react"
 import { LaitSubTab } from "./LaitSubTab"
+import { EconomieLaitSubTab } from "./EconomieLaitSubTab"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -72,6 +74,10 @@ export function ProductionTab({ year }: { year?: number } = {}) {
           <Scissors className="h-4 w-4" />
           Abattages
         </TabsTrigger>
+        <TabsTrigger value="economie" className="flex items-center gap-1.5">
+          <Euro className="h-4 w-4" />
+          Économie
+        </TabsTrigger>
       </TabsList>
 
       <TabsContent value="oeufs">
@@ -85,6 +91,9 @@ export function ProductionTab({ year }: { year?: number } = {}) {
       </TabsContent>
       <TabsContent value="abattages">
         <AbattagesSubTab />
+      </TabsContent>
+      <TabsContent value="economie">
+        <EconomieLaitSubTab year={year} />
       </TabsContent>
     </Tabs>
   )
@@ -519,7 +528,7 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
                   </p>
                 )
               })()}
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <div className="space-y-2">
                   <Label>Casses</Label>
                   <Input type="number" min="0" value={formData.casses} onChange={(e) => setFormData(f => ({ ...f, casses: e.target.value }))} />
@@ -803,7 +812,7 @@ function VentesSubTab() {
     <div className="space-y-4">
       {/* Stats */}
       {stats && (
-        <div className="grid gap-3 grid-cols-3">
+        <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
           <Card className="bg-gradient-to-br from-emerald-500 to-emerald-600 text-white">
             <CardHeader className="pb-1 pt-3 px-4">
               <CardDescription className="text-emerald-100 text-xs">Chiffre d'affaires</CardDescription>

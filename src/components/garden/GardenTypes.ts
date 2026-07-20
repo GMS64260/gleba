@@ -19,15 +19,18 @@ export interface PlancheWithCulture {
   posY: number | null
   rotation2D: number | null
   ilot: string | null
+  type?: string | null
   cultures: {
     id: number
     nbRangs: number | null
     espacement: number | null
-    itp: { espacementRangs: number | null } | null
+    croissance?: number | null
+    itp: { espacementRangs: number | null; espacement: number | null } | null
     espece: {
       id: string
       couleur: string | null
-      famille: { couleur: string | null } | null
+      etalement: number | null
+      famille: { id?: string; couleur: string | null } | null
     }
   }[]
 }
@@ -53,6 +56,8 @@ export interface Arbre {
   posX: number
   posY: number
   envergure: number
+  envergureAdulte?: number | null
+  especeEtalement?: number | null
   couleur: string | null
 }
 
@@ -63,6 +68,7 @@ export interface BackgroundImageSettings {
   offsetX: number
   offsetY: number
   rotation: number
+  contour?: number[][][] | null
 }
 
 export const OBJET_COLORS: Record<string, string> = {

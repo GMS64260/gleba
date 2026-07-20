@@ -11,7 +11,9 @@
  */
 
 import * as React from "react"
-import { Milk, FileText, LineChart, Plus, Copy, Loader2, Download, Trash2 } from "lucide-react"
+import { Milk, FileText, LineChart, Plus, Copy, Loader2, Download, Trash2, ShieldAlert, TrendingUp, TrendingDown, Minus, Trophy, Truck, Warehouse } from "lucide-react"
+import { LivraisonLaitSubTab } from "./LivraisonLaitSubTab"
+import { AffinageSubTab } from "./AffinageSubTab"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -85,6 +87,22 @@ export function LaitSubTab() {
           <LineChart className="h-4 w-4" />
           Lactation
         </TabsTrigger>
+        <TabsTrigger value="qualite" className="flex items-center gap-1.5">
+          <ShieldAlert className="h-4 w-4" />
+          Qualité
+        </TabsTrigger>
+        <TabsTrigger value="palmares" className="flex items-center gap-1.5">
+          <Trophy className="h-4 w-4" />
+          Palmarès
+        </TabsTrigger>
+        <TabsTrigger value="livraisons" className="flex items-center gap-1.5">
+          <Truck className="h-4 w-4" />
+          Livraisons
+        </TabsTrigger>
+        <TabsTrigger value="cave" className="flex items-center gap-1.5">
+          <Warehouse className="h-4 w-4" />
+          Cave
+        </TabsTrigger>
       </TabsList>
 
       <TabsContent value="collecte">
@@ -96,7 +114,444 @@ export function LaitSubTab() {
       <TabsContent value="lactation">
         <LactationView />
       </TabsContent>
+      <TabsContent value="qualite">
+        <QualiteView />
+      </TabsContent>
+      <TabsContent value="palmares">
+        <PalmaresView />
+      </TabsContent>
+      <TabsContent value="livraisons">
+        <LivraisonLaitSubTab />
+      </TabsContent>
+      <TabsContent value="cave">
+        <AffinageSubTab />
+      </TabsContent>
     </Tabs>
+  )
+}
+
+// ============================================================
+// Vue Palmarès — classement des chèvres par lactation (PROMPT 21)
+// ============================================================
+
+type LactationSynthese = {
+  rang: number | null
+  debut: string
+  fin: string | null
+  enCours: boolean
+  jours: number
+  laitTotal: number
+  lait305: number
+  nbTraites: number
+  moyenneJour: number
+  pic: number
+  tbMoyen: number | null
+  tpMoyen: number | null
+  cellulesMoy: number | null
+}
+type LignePalmares = {
+  animalId: number
+  nom: string | null
+  identifiant: string | null
+  espece: string | null
+  nbLactations: number
+  lactation: LactationSynthese
+}
+type StatsPalmares = {
+  annee: number
+  nbChevres: number
+  lait305Moyen: number | null
+  moyenneJourTroupeau: number | null
+  meilleure: { nom: string | null; lait305: number } | null
+}
+
+type TriPalmares = "lait305" | "moyenneJour" | "pic" | "tbMoyen" | "tpMoyen"
+
+function PalmaresView() {
+  const [lignes, setLignes] = React.useState<LignePalmares[]>([])
+  const [stats, setStats] = React.useState<StatsPalmares | null>(null)
+  const [loading, setLoading] = React.useState(true)
+  const [annee, setAnnee] = React.useState(new Date().getFullYear())
+  const [tri, setTri] = React.useState<TriPalmares>("lait305")
+
+  React.useEffect(() => {
+    setLoading(true)
+    fetch(`/api/elevage/palmares-lait?annee=${annee}`)
+      .then((r) => r.json())
+      .then((j) => {
+        setLignes(j.data || [])
+        setStats(j.stats || null)
+      })
+      .finally(() => setLoading(false))
+  }, [annee])
+
+  const triees = React.useMemo(() => {
+    const val = (l: LignePalmares): number => {
+      const v = l.lactation[tri]
+      return typeof v === "number" ? v : -1
+    }
+    return [...lignes].sort((a, b) => val(b) - val(a))
+  }, [lignes, tri])
+
+  const moyenne305 = stats?.lait305Moyen ?? null
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Trophy className="h-5 w-5 text-amber-500" />
+              Palmarès des chèvres
+            </CardTitle>
+            <CardDescription>
+              Classement par lactation (lait 305 j standardisé, pic, TB/TP) pour piloter réforme et renouvellement.
+              La lactation de référence est celle de l'année sélectionnée.
+            </CardDescription>
+          </div>
+          <div className="flex items-end gap-2">
+            <select
+              className="h-9 rounded-md border border-slate-300 px-2 bg-white text-sm"
+              value={annee}
+              onChange={(e) => setAnnee(parseInt(e.target.value, 10))}
+            >
+              {[0, -1, -2, -3].map((d) => (
+                <option key={d} value={new Date().getFullYear() + d}>
+                  {new Date().getFullYear() + d}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {stats && stats.nbChevres > 0 && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="rounded-lg border p-3">
+              <div className="text-xs text-slate-500">Chèvres suivies</div>
+              <div className="text-xl font-semibold">{stats.nbChevres}</div>
+            </div>
+            <div className="rounded-lg border p-3">
+              <div className="text-xs text-slate-500">Lait 305 j moyen</div>
+              <div className="text-xl font-semibold">{stats.lait305Moyen ?? "—"} <span className="text-sm text-slate-400">L</span></div>
+            </div>
+            <div className="rounded-lg border p-3">
+              <div className="text-xs text-slate-500">Moyenne troupeau</div>
+              <div className="text-xl font-semibold">{stats.moyenneJourTroupeau ?? "—"} <span className="text-sm text-slate-400">L/j</span></div>
+            </div>
+            <div className="rounded-lg border p-3 bg-amber-50 border-amber-200">
+              <div className="text-xs text-slate-500">Meilleure</div>
+              <div className="text-base font-semibold truncate" title={stats.meilleure?.nom ?? ""}>
+                {stats.meilleure?.nom ?? "—"}
+              </div>
+              <div className="text-xs text-amber-700">{stats.meilleure?.lait305 ?? 0} L / 305 j</div>
+            </div>
+          </div>
+        )}
+
+        <div className="flex items-center gap-2 text-xs text-slate-600">
+          <span>Trier par :</span>
+          {([
+            ["lait305", "Lait 305 j"],
+            ["moyenneJour", "Moyenne/j"],
+            ["pic", "Pic"],
+            ["tbMoyen", "TB"],
+            ["tpMoyen", "TP"],
+          ] as [TriPalmares, string][]).map(([k, label]) => (
+            <button
+              key={k}
+              type="button"
+              onClick={() => setTri(k)}
+              className={`px-2 py-1 rounded border ${tri === k ? "bg-slate-800 text-white border-slate-800" : "bg-white border-slate-300 hover:bg-slate-50"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {loading ? (
+          <div className="text-sm text-slate-500">Chargement…</div>
+        ) : triees.length === 0 ? (
+          <div className="text-sm text-slate-500 bg-slate-50 p-4 rounded">
+            Aucune lactation exploitable pour {annee}. Enregistrez les mises-bas (onglet Reproduction) et les collectes
+            de lait par animal pour bâtir le palmarès.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="border-b">
+                <tr>
+                  <th className="p-2 text-left w-8">#</th>
+                  <th className="p-2 text-left">Chèvre</th>
+                  <th className="p-2 text-center">Lact.</th>
+                  <th className="p-2 text-right">Lait 305 j</th>
+                  <th className="p-2 text-right">Moyenne/j</th>
+                  <th className="p-2 text-right">Pic</th>
+                  <th className="p-2 text-right">TB / TP</th>
+                  <th className="p-2 text-right">Cellules</th>
+                  <th className="p-2 text-center">DIM</th>
+                </tr>
+              </thead>
+              <tbody>
+                {triees.map((l, i) => {
+                  const sousMoyenne = moyenne305 != null && l.lactation.lait305 < moyenne305 * 0.7
+                  return (
+                    <tr key={l.animalId} className="border-b hover:bg-slate-50">
+                      <td className="p-2 text-slate-400">{i + 1}</td>
+                      <td className="p-2 font-medium">
+                        {l.nom || l.identifiant || `#${l.animalId}`}
+                        {sousMoyenne && (
+                          <Badge variant="outline" className="ml-2 text-[10px] bg-red-50 text-red-700 border-red-200">
+                            sous la moyenne
+                          </Badge>
+                        )}
+                      </td>
+                      <td className="p-2 text-center text-slate-500">
+                        {l.lactation.rang ?? "?"}
+                        {l.nbLactations > 1 ? `/${l.nbLactations}` : ""}
+                      </td>
+                      <td className="p-2 text-right font-semibold">
+                        {l.lactation.lait305} L
+                        {l.lactation.enCours && (
+                          <span className="text-[10px] text-blue-600 ml-1" title="Lactation en cours">▸</span>
+                        )}
+                      </td>
+                      <td className="p-2 text-right">{l.lactation.moyenneJour} L</td>
+                      <td className="p-2 text-right text-slate-600">{l.lactation.pic} L</td>
+                      <td className="p-2 text-right text-slate-600">
+                        {l.lactation.tbMoyen ?? "—"} / {l.lactation.tpMoyen ?? "—"}
+                      </td>
+                      <td className="p-2 text-right text-slate-600">
+                        {l.lactation.cellulesMoy != null ? fmtCellules(l.lactation.cellulesMoy) : "—"}
+                      </td>
+                      <td className="p-2 text-center text-slate-500">
+                        {l.lactation.enCours ? `${l.lactation.jours} j` : `${l.lactation.jours} j`}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+            <p className="text-xs text-slate-400 mt-2">
+              ▸ = lactation en cours (le lait 305 j n'est pas encore complet). TB/TP en g/L. « Lact. » = rang de lactation.
+            </p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+// ============================================================
+// Vue Qualité — cellules & mammites (PROMPT 20)
+// ============================================================
+
+type LigneQualite = {
+  type: "animal" | "lot"
+  id: number
+  nom: string | null
+  identifiant: string | null
+  espece: string | null
+  categorie: string
+  seuils: { surveillance: number; alerte: number }
+  derniere: { date: string; cellules: number | null; mg: number | null; mp: number | null } | null
+  moyenneCellules: number | null
+  moyenneMg: number | null
+  moyenneMp: number | null
+  nbMesures: number
+  tendance: "hausse" | "baisse" | "stable" | null
+  statut: "ok" | "surveillance" | "alerte"
+}
+type TroupeauQualite = {
+  fenetreJours: number
+  nbSuivis: number
+  nbAvecMesure: number
+  nbSansMesure: number
+  cellulesMoyennes: number | null
+  tbMoyen: number | null
+  tpMoyen: number | null
+  nbAlerte: number
+  nbSurveillance: number
+}
+
+const STATUT_BADGE: Record<string, string> = {
+  alerte: "bg-red-100 text-red-800 border-red-200",
+  surveillance: "bg-amber-100 text-amber-800 border-amber-200",
+  ok: "bg-emerald-100 text-emerald-800 border-emerald-200",
+}
+const STATUT_LABEL: Record<string, string> = {
+  alerte: "Alerte mammite",
+  surveillance: "À surveiller",
+  ok: "Correct",
+}
+
+/** Numération en ×10³/mL → libellé lisible (ex. 1 250 → « 1,25 M/mL »). */
+function fmtCellules(v: number | null | undefined): string {
+  if (v == null) return "—"
+  if (v >= 1000) return `${(v / 1000).toLocaleString("fr-FR", { maximumFractionDigits: 2 })} M/mL`
+  return `${v.toLocaleString("fr-FR")} k/mL`
+}
+
+function TendanceIcon({ t }: { t: LigneQualite["tendance"] }) {
+  if (t === "hausse") return <TrendingUp className="h-4 w-4 text-red-600" aria-label="En hausse" />
+  if (t === "baisse") return <TrendingDown className="h-4 w-4 text-emerald-600" aria-label="En baisse" />
+  if (t === "stable") return <Minus className="h-4 w-4 text-slate-400" aria-label="Stable" />
+  return <span className="text-slate-300">—</span>
+}
+
+function QualiteView() {
+  const [lignes, setLignes] = React.useState<LigneQualite[]>([])
+  const [troupeau, setTroupeau] = React.useState<TroupeauQualite | null>(null)
+  const [loading, setLoading] = React.useState(true)
+  const [fenetre, setFenetre] = React.useState(180)
+  const [masquerSansMesure, setMasquerSansMesure] = React.useState(true)
+
+  React.useEffect(() => {
+    setLoading(true)
+    fetch(`/api/elevage/qualite-lait?fenetre=${fenetre}`)
+      .then((r) => r.json())
+      .then((j) => {
+        setLignes(j.data || [])
+        setTroupeau(j.troupeau || null)
+      })
+      .finally(() => setLoading(false))
+  }, [fenetre])
+
+  const visibles = masquerSansMesure ? lignes.filter((l) => l.nbMesures > 0) : lignes
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <ShieldAlert className="h-5 w-5 text-red-600" />
+              Cellules & qualité du lait
+            </CardTitle>
+            <CardDescription>
+              Détection des mammites subcliniques à partir des analyses saisies (numération cellulaire, TB, TP).
+              Seuils adaptés à la filière — la chèvre a une numération de base naturellement plus haute que la vache.
+            </CardDescription>
+          </div>
+          <div className="flex items-end gap-2">
+            <select
+              className="h-9 rounded-md border border-slate-300 px-2 bg-white text-sm"
+              value={fenetre}
+              onChange={(e) => setFenetre(parseInt(e.target.value, 10))}
+            >
+              <option value={90}>90 jours</option>
+              <option value={180}>180 jours</option>
+              <option value={365}>1 an</option>
+            </select>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Synthèse troupeau */}
+        {troupeau && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="rounded-lg border p-3">
+              <div className="text-xs text-slate-500">Cellules moyennes</div>
+              <div className="text-xl font-semibold">{fmtCellules(troupeau.cellulesMoyennes)}</div>
+            </div>
+            <div className="rounded-lg border p-3">
+              <div className="text-xs text-slate-500">TB / TP moyens</div>
+              <div className="text-xl font-semibold">
+                {troupeau.tbMoyen ?? "—"} <span className="text-sm text-slate-400">/</span> {troupeau.tpMoyen ?? "—"}
+                <span className="text-xs text-slate-400 ml-1">g/L</span>
+              </div>
+            </div>
+            <div className={`rounded-lg border p-3 ${troupeau.nbAlerte > 0 ? "border-red-200 bg-red-50" : ""}`}>
+              <div className="text-xs text-slate-500">En alerte</div>
+              <div className={`text-xl font-semibold ${troupeau.nbAlerte > 0 ? "text-red-700" : ""}`}>
+                {troupeau.nbAlerte}
+              </div>
+            </div>
+            <div className={`rounded-lg border p-3 ${troupeau.nbSurveillance > 0 ? "border-amber-200 bg-amber-50" : ""}`}>
+              <div className="text-xs text-slate-500">À surveiller</div>
+              <div className={`text-xl font-semibold ${troupeau.nbSurveillance > 0 ? "text-amber-700" : ""}`}>
+                {troupeau.nbSurveillance}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {troupeau && troupeau.nbSansMesure > 0 && (
+          <label className="flex items-center gap-2 text-xs text-slate-600">
+            <input
+              type="checkbox"
+              checked={masquerSansMesure}
+              onChange={(e) => setMasquerSansMesure(e.target.checked)}
+            />
+            Masquer les {troupeau.nbSansMesure} animaux sans analyse sur la période
+          </label>
+        )}
+
+        {loading ? (
+          <div className="text-sm text-slate-500">Chargement…</div>
+        ) : visibles.length === 0 ? (
+          <div className="text-sm text-slate-500 bg-slate-50 p-4 rounded">
+            Aucune analyse de lait saisie sur la période. Renseignez la numération cellulaire (et TB/TP) lors de la
+            saisie des collectes pour activer la détection des mammites.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="border-b">
+                <tr>
+                  <th className="p-2 text-left">Animal / Lot</th>
+                  <th className="p-2 text-left">Statut</th>
+                  <th className="p-2 text-right">Dernière numération</th>
+                  <th className="p-2 text-center">Tendance</th>
+                  <th className="p-2 text-right">Moyenne</th>
+                  <th className="p-2 text-right">TB / TP</th>
+                  <th className="p-2 text-center">Mesures</th>
+                  <th className="p-2 text-right">Le</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibles.map((l) => (
+                  <tr key={`${l.type}-${l.id}`} className="border-b hover:bg-slate-50">
+                    <td className="p-2 font-medium">
+                      {l.nom || l.identifiant || `${l.type === "lot" ? "Lot" : "#"}${l.id}`}
+                      {l.type === "lot" && <Badge variant="outline" className="ml-2 text-[10px]">Lot</Badge>}
+                    </td>
+                    <td className="p-2">
+                      {l.nbMesures > 0 ? (
+                        <Badge variant="outline" className={STATUT_BADGE[l.statut]}>
+                          {STATUT_LABEL[l.statut]}
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-slate-400">pas d'analyse</span>
+                      )}
+                    </td>
+                    <td className="p-2 text-right font-semibold">
+                      {fmtCellules(l.derniere?.cellules)}
+                    </td>
+                    <td className="p-2 text-center">
+                      <div className="inline-flex justify-center">
+                        <TendanceIcon t={l.tendance} />
+                      </div>
+                    </td>
+                    <td className="p-2 text-right text-slate-600">{fmtCellules(l.moyenneCellules)}</td>
+                    <td className="p-2 text-right text-slate-600">
+                      {l.derniere?.mg ?? l.moyenneMg ?? "—"} / {l.derniere?.mp ?? l.moyenneMp ?? "—"}
+                    </td>
+                    <td className="p-2 text-center text-slate-500">{l.nbMesures}</td>
+                    <td className="p-2 text-right text-xs text-slate-500">
+                      {l.derniere ? new Date(l.derniere.date).toLocaleDateString("fr-FR") : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="text-xs text-slate-400 mt-2">
+              Seuils indicatifs de conduite de troupeau (mammites subcliniques), pas des seuils réglementaires de paie du lait.
+            </p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 
@@ -729,8 +1184,10 @@ function LactationView() {
     dim: number | null
     courbe: { dim: number; date: string; volume: number; moyenne7j: number }[]
     moyenne7j?: number
+    lactationLongue?: boolean
     suggererTarissement?: boolean
   } | null>(null)
+  const [savingLL, setSavingLL] = React.useState(false)
 
   React.useEffect(() => {
     fetch("/api/elevage/animaux?statut=actif")
@@ -745,12 +1202,31 @@ function LactationView() {
       })
   }, [])
 
-  React.useEffect(() => {
+  const reloadLactation = React.useCallback(() => {
     if (selectedId == null) return
     fetch(`/api/elevage/lactation?animalId=${selectedId}`)
       .then((r) => r.json())
       .then(setData)
   }, [selectedId])
+
+  React.useEffect(() => {
+    reloadLactation()
+  }, [reloadLactation])
+
+  const toggleLactationLongue = async () => {
+    if (selectedId == null || data == null) return
+    setSavingLL(true)
+    try {
+      await fetch(`/api/elevage/animaux/${selectedId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lactationLongue: !data.lactationLongue }),
+      })
+      reloadLactation()
+    } finally {
+      setSavingLL(false)
+    }
+  }
 
   return (
     <Card>
@@ -781,12 +1257,30 @@ function LactationView() {
 
         {data && (
           <>
-            <div className="flex flex-wrap gap-3 text-sm">
+            <div className="flex flex-wrap items-center gap-3 text-sm">
               <Badge variant="outline">DIM : {data.dim ?? "—"} j</Badge>
               <Badge variant="outline">Moyenne 7 j : {data.moyenne7j ?? 0} L/j</Badge>
               {data.suggererTarissement && (
                 <Badge className="bg-amber-100 text-amber-800">⚠ Tarissement à envisager</Badge>
               )}
+              {data.lactationLongue && (
+                <Badge className="bg-violet-100 text-violet-800">Lactation longue</Badge>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={toggleLactationLongue}
+                disabled={savingLL}
+                className="ml-auto text-xs"
+              >
+                {savingLL ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : data.lactationLongue ? (
+                  "Repasser en lactation normale"
+                ) : (
+                  "Marquer en lactation longue"
+                )}
+              </Button>
             </div>
             <SparkLactation points={data.courbe} />
           </>

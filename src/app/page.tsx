@@ -1,21 +1,12 @@
 /**
  * Page d'accueil Gleba — Server Component
  *
- * Comportement conditionnel selon la session :
- *  - Visiteur non connecté → <HomeLanding /> (landing publique, SSR full, SEO)
- *  - Utilisateur connecté → <MaraichageHome /> (l'app, comme avant)
- *
- * Permet à gleba.fr d'être indexable directement par Google sans passer par /login.
+ * Landing publique statique. Le middleware réécrit en interne les visites
+ * authentifiées de `/` vers `/dashboard`, sans changer l'URL du navigateur.
  */
 
-import { auth } from "@/lib/auth";
 import { HomeLanding } from "@/components/seo/HomeLanding";
-import { MaraichageHome } from "@/components/maraichage/MaraichageHome";
 
-export default async function Home() {
-  const session = await auth();
-  if (!session?.user) {
-    return <HomeLanding />;
-  }
-  return <MaraichageHome />;
+export default function Home() {
+  return <HomeLanding />;
 }

@@ -298,8 +298,6 @@ export default function ParcellePanel({
   )
 }
 
-import { settingsKey } from '@/hooks/use-settings'
-
 /**
  * Calcule le bounding box d'un polygone GeoJSON
  */
@@ -332,44 +330,94 @@ function getBoundingBox(geojsonStr: string) {
 }
 
 /**
+ * Projette le polygone de la parcelle dans les PIXELS de l'image capturée
+ * (même bbox, même dimensions) : le contour reste collé à la photo sur le
+ * plan 2D, même après recalibration ou rotation du fond.
+ */
+function contourEnPixels(
+  geojsonStr: string,
+  bbox: { lng1: number; lat1: number; lng2: number; lat2: number },
+  width: number,
+  height: number
+): number[][][] | null {
+  try {
+    const geo = JSON.parse(geojsonStr)
+    const rings: [number, number][][] =
+      geo.type === 'MultiPolygon'
+        ? geo.coordinates.map((poly: [number, number][][]) => poly[0])
+        : geo.type === 'Polygon'
+          ? [geo.coordinates[0]]
+          : []
+    if (rings.length === 0) return null
+    const dLng = bbox.lng2 - bbox.lng1
+    const dLat = bbox.lat2 - bbox.lat1
+    if (dLng <= 0 || dLat <= 0) return null
+    // Le haut de l'image WMS = lat2 (nord) → py croît vers le sud
+    return rings.map(ring =>
+      ring.map(([lng, lat]) => [
+        Math.round(((lng - bbox.lng1) / dLng) * width * 100) / 100,
+        Math.round(((bbox.lat2 - lat) / dLat) * height * 100) / 100,
+      ])
+    )
+  } catch {
+    return null
+  }
+}
+
+/**
  * Bloc d'export de l'image satellite vers le plan 2D
  */
 function SatelliteExport({ geometry, parcelleId }: { geometry: string; parcelleId: string }) {
   const [capturing, setCapturing] = useState(false)
   const [captured, setCaptured] = useState(false)
+  const [erreur, setErreur] = useState<string | null>(null)
 
   const handleCapture = async () => {
     const bbox = getBoundingBox(geometry)
-    if (!bbox) return
+    if (!bbox) {
+      setErreur('Géométrie de parcelle illisible')
+      return
+    }
 
     setCapturing(true)
     setCaptured(false)
+    setErreur(null)
 
     try {
       const res = await fetch(
         `/api/carte/satellite?bbox=${bbox.lng1},${bbox.lat1},${bbox.lng2},${bbox.lat2}&width=1280&height=1024`
       )
-      if (!res.ok) throw new Error('Erreur satellite')
+      if (!res.ok) throw new Error("Impossible de récupérer l'image satellite IGN")
 
       const data = await res.json()
 
-      // Sauvegarder dans les settings spécifiques à cette parcelle
-      const key = settingsKey(parcelleId)
-      const stored = localStorage.getItem(key)
-      const settings = stored ? JSON.parse(stored) : {}
-      settings.backgroundImage = data.image
-      settings.backgroundOpacity = 0.5
-      settings.backgroundScale = (data.dimensions.scaleX + data.dimensions.scaleY) / 2
-      settings.backgroundOffsetX = 0
-      settings.backgroundOffsetY = 0
-      settings.backgroundRotation = 0
-      settings.planWidth = Math.ceil(data.dimensions.widthMeters)
-      settings.planHeight = Math.ceil(data.dimensions.heightMeters)
-      localStorage.setItem(key, JSON.stringify(settings))
+      // Persistance serveur (FondPlan) : le fond suit le compte sur tous les
+      // appareils, et l'échelle m/px issue du bbox géographique arrive déjà
+      // calibrée — aucun réglage manuel nécessaire sur le plan 2D.
+      const blob = await (await fetch(data.image)).blob()
+      const formData = new FormData()
+      formData.append('parcelle', parcelleId)
+      formData.append('file', blob, 'satellite-ign.jpg')
+      formData.append('opacity', '0.8')
+      formData.append('scale', String((data.dimensions.scaleX + data.dimensions.scaleY) / 2))
+      formData.append('offsetX', '0')
+      formData.append('offsetY', '0')
+      formData.append('rotation', '0')
+
+      // Contour de la parcelle dessiné sur la carte → visible sur le plan 2D
+      const contour = contourEnPixels(geometry, bbox, data.width, data.height)
+      if (contour) formData.append('contour', JSON.stringify(contour))
+
+      const up = await fetch('/api/jardin/fond', { method: 'POST', body: formData })
+      if (!up.ok) {
+        const err = await up.json().catch(() => null)
+        throw new Error(err?.error || "Enregistrement du fond impossible")
+      }
 
       setCaptured(true)
     } catch (err) {
       console.error('Capture satellite:', err)
+      setErreur(err instanceof Error ? err.message : 'Capture impossible')
     } finally {
       setCapturing(false)
     }
@@ -381,8 +429,11 @@ function SatelliteExport({ geometry, parcelleId }: { geometry: string; parcelleI
         Plan 2D
       </h3>
       <p className="text-xs text-muted-foreground">
-        Utiliser la photo satellite de cette parcelle comme fond du plan 2D.
+        Utiliser la photo satellite de cette parcelle comme fond du plan 2D. L&apos;échelle
+        est calée automatiquement et le fond est enregistré sur votre compte.
       </p>
+
+      {erreur && <p className="text-xs font-medium text-red-600">{erreur}</p>}
 
       {!captured ? (
         <Button

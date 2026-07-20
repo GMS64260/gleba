@@ -21,13 +21,14 @@ import {
   Package,
   Route,
   ArrowRight,
+  CheckCircle2,
+  ClipboardList,
 } from "lucide-react"
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { kpiCardClass, kpiSubtleClass } from "@/lib/kpi-theme"
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
-import { Skeleton } from "@/components/ui/skeleton"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DataTable } from "@/components/tables/DataTable"
 import { useToast } from "@/hooks/use-toast"
 
@@ -80,69 +81,36 @@ interface ITPWithRelations {
 // Sous-onglets planification
 // ============================================================
 
-const planifLinks = [
+const planifGroups = [
   {
-    title: "Cultures prévues par espèce",
-    href: "/planification/cultures-prevues",
-    icon: Leaf,
-    color: "text-green-600",
-    bgColor: "bg-green-50",
+    title: "Construire mon plan",
+    description: "Choisir les cultures et les répartir dans l’espace.",
+    tone: "emerald",
+    items: [
+      { title: "Cultures par espèce", description: "Voir ce qui est prévu", href: "/maraichage/planification/cultures-prevues", icon: Leaf },
+      { title: "Répartition par îlots", description: "Organiser les grandes zones", href: "/maraichage/planification/cultures-prevues/par-ilots", icon: Map },
+      { title: "Répartition par planches", description: "Affecter chaque emplacement", href: "/maraichage/planification/cultures-prevues/par-planches", icon: LayoutGrid },
+      { title: "Associations", description: "Vérifier les compatibilités", href: "/maraichage/planification/associations", icon: Users },
+    ],
   },
   {
-    title: "Par îlots",
-    href: "/planification/cultures-prevues/par-ilots",
-    icon: Map,
-    color: "text-amber-600",
-    bgColor: "bg-amber-50",
+    title: "Préparer la mise en culture",
+    description: "Transformer le plan en besoins concrets.",
+    tone: "amber",
+    items: [
+      { title: "Créer les cultures", description: "Générer les cultures planifiées", href: "/maraichage/planification/creer-cultures", icon: FileStack },
+      { title: "Semences nécessaires", description: "Calculer les quantités à prévoir", href: "/maraichage/planification/semences", icon: Sprout },
+      { title: "Plants nécessaires", description: "Préparer les plants à produire ou acheter", href: "/maraichage/planification/plants", icon: Package },
+    ],
   },
   {
-    title: "Par planches",
-    href: "/planification/cultures-prevues/par-planches",
-    icon: LayoutGrid,
-    color: "text-blue-600",
-    bgColor: "bg-blue-50",
-  },
-  {
-    title: "Récoltes par mois",
-    href: "/planification/recoltes-prevues",
-    icon: BarChart3,
-    color: "text-purple-600",
-    bgColor: "bg-purple-50",
-  },
-  {
-    title: "Récoltes par semaines",
-    href: "/planification/recoltes-prevues/par-semaines",
-    icon: CalendarRange,
-    color: "text-indigo-600",
-    bgColor: "bg-indigo-50",
-  },
-  {
-    title: "Associations cultures",
-    href: "/planification/associations",
-    icon: Users,
-    color: "text-pink-600",
-    bgColor: "bg-pink-50",
-  },
-  {
-    title: "Créer cultures",
-    href: "/planification/creer-cultures",
-    icon: FileStack,
-    color: "text-teal-600",
-    bgColor: "bg-teal-50",
-  },
-  {
-    title: "Semences nécessaires",
-    href: "/planification/semences",
-    icon: Sprout,
-    color: "text-orange-600",
-    bgColor: "bg-orange-50",
-  },
-  {
-    title: "Plants nécessaires",
-    href: "/planification/plants",
-    icon: Package,
-    color: "text-cyan-600",
-    bgColor: "bg-cyan-50",
+    title: "Suivre la saison",
+    description: "Lire la charge et les récoltes dans le temps.",
+    tone: "violet",
+    items: [
+      { title: "Récoltes par mois", description: "Vision globale de la saison", href: "/maraichage/planification/recoltes-prevues", icon: BarChart3 },
+      { title: "Récoltes par semaine", description: "Anticiper la charge opérationnelle", href: "/maraichage/planification/recoltes-prevues/par-semaines", icon: CalendarRange },
+    ],
   },
 ]
 
@@ -176,15 +144,26 @@ export function PlanificationTab({ year }: PlanificationTabProps) {
 
   return (
     <Tabs value={activeSub} onValueChange={handleSubChange} className="space-y-4">
-      {/* Responsive 360px — wrap de sécurité, sans effet desktop (h-auto = h-9 sur 1 ligne) */}
-      <TabsList className="h-auto flex-wrap gap-y-1">
+      <div className="sm:hidden">
+        <Select value={activeSub} onValueChange={handleSubChange}>
+          <SelectTrigger className="h-10 w-full bg-white font-medium">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="planification">Organiser la saison</SelectItem>
+            <SelectItem value="itps">Itinéraires techniques (ITP)</SelectItem>
+            <SelectItem value="stocks">Stocks et approvisionnements</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <TabsList className="hidden sm:inline-flex">
         <TabsTrigger value="planification" className="flex items-center gap-1.5">
           <BarChart3 className="h-4 w-4" />
-          Planification
+          Organiser la saison
         </TabsTrigger>
         <TabsTrigger value="itps" className="flex items-center gap-1.5">
           <Route className="h-4 w-4" />
-          ITPs
+          Itinéraires techniques
         </TabsTrigger>
         <TabsTrigger value="stocks" className="flex items-center gap-1.5">
           <Package className="h-4 w-4" />
@@ -233,94 +212,73 @@ function PlanificationSubTab({ year }: { year: number }) {
 
   return (
     <div className="space-y-6">
-      {/* Stats */}
-      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
-        <Card className={kpiCardClass("neutre")}>
-          <CardHeader className="pb-1 pt-3 px-4">
-            <CardDescription className={`${kpiSubtleClass("neutre")} text-xs`}>Cultures prévues</CardDescription>
-            <CardTitle className="text-2xl">
-              {isLoading ? <Skeleton className="h-8 w-12 bg-slate-500" /> : stats?.totalCultures || 0}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pb-3 px-4">
-            <p className={`text-xs ${kpiSubtleClass("neutre")}`}>{stats?.culturesACreer || 0} à créer</p>
-          </CardContent>
-        </Card>
-
-        <Card className={kpiCardClass("neutre")}>
-          <CardHeader className="pb-1 pt-3 px-4">
-            <CardDescription className={`${kpiSubtleClass("neutre")} text-xs`}>Surface planifiée</CardDescription>
-            <CardTitle className="text-2xl">
-              {isLoading ? <Skeleton className="h-8 w-16 bg-slate-500" /> : `${stats?.surfacePlanifiee ?? stats?.surfaceTotale ?? 0} m²`}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pb-3 px-4">
-            {stats && stats.surfaceCultivee !== undefined && stats.surfaceCultivee !== stats.surfacePlanifiee ? (
-              <p className={`text-xs ${kpiSubtleClass("neutre")}`}>
-                Dont cultivée {stats.surfaceCultivee} m²
-              </p>
-            ) : (
-              <p className={`text-xs ${kpiSubtleClass("neutre")}`}>Planifiée pour {year}</p>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className={kpiCardClass("revenu")}>
-          <CardHeader className="pb-1 pt-3 px-4">
-            <CardDescription className={`${kpiSubtleClass("revenu")} text-xs`}>Récoltes {stats?.annee ?? year} attendues</CardDescription>
-            <CardTitle className="text-2xl">
-              {isLoading
-                ? <Skeleton className="h-8 w-16 bg-emerald-400" />
-                : `${(stats?.recoltesTotalAttenduKg ?? stats?.recoltesTotales ?? 0).toFixed(1)} kg`}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pb-3 px-4">
-            <p className={`text-xs ${kpiSubtleClass("revenu")}`}>
-              {(stats?.recoltesRealiseesKg ?? 0).toFixed(1)} kg réalisé · {(stats?.recoltesProjectionKg ?? stats?.recoltesTotales ?? 0).toFixed(1)} kg à venir
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className={kpiCardClass("neutre")}>
-          <CardHeader className="pb-1 pt-3 px-4">
-            <CardDescription className={`${kpiSubtleClass("neutre")} text-xs`}>Variétés planifiées</CardDescription>
-            <CardTitle className="text-2xl">
-              {isLoading ? (
-                <Skeleton className="h-8 w-10 bg-slate-500" />
-              ) : (
-                stats?.nbVarietes ?? 0
+      {/* Entrée orientée tâche : l'utilisateur comprend immédiatement l'état
+          de sa saison et la prochaine action utile. */}
+      <div className="overflow-hidden rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-950 via-emerald-900 to-teal-800 text-white shadow-sm">
+        <div className="grid gap-5 p-5 sm:p-6 lg:grid-cols-[1fr_auto] lg:items-center">
+          <div>
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <Badge className="border-white/20 bg-white/10 text-white hover:bg-white/10">Saison {year}</Badge>
+              {!isLoading && stats?.culturesACreer === 0 && (
+                <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-100">
+                  <CheckCircle2 className="h-4 w-4" /> Plan prêt à utiliser
+                </span>
               )}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pb-3 px-4">
-            <p className={`text-xs ${kpiSubtleClass("neutre")}`}>
-              {stats?.nbEspeces ? `${stats.nbEspeces} espèce(s) couverte(s)` : "—"}
+            </div>
+            <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">Organiser ma saison</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-emerald-100">
+              Construisez votre plan, préparez les semences et les plants, puis suivez la production attendue au fil de l’année.
             </p>
-          </CardContent>
-        </Card>
+          </div>
+          <Link
+            href={`${stats?.culturesACreer ? "/maraichage/planification/creer-cultures" : "/maraichage/planification/cultures-prevues"}?annee=${year}`}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-white px-4 text-sm font-semibold text-emerald-950 shadow-sm transition hover:bg-emerald-50"
+          >
+            <ClipboardList className="h-4 w-4" />
+            {stats?.culturesACreer ? `Créer ${stats.culturesACreer} culture${stats.culturesACreer > 1 ? "s" : ""}` : "Consulter mon plan"}
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
       </div>
 
-      {/* Liens d'action */}
-      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-        {planifLinks.map((item) => (
-          <Link key={item.href} href={`${item.href}?annee=${year}`}>
-            <Card className="h-full hover:shadow-md transition-all hover:scale-[1.01] cursor-pointer group">
-              <CardHeader className="pb-2">
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`w-9 h-9 rounded-lg ${item.bgColor} flex items-center justify-center`}
-                  >
-                    <item.icon className={`h-4 w-4 ${item.color}`} />
-                  </div>
-                  <CardTitle className="text-sm flex items-center gap-2">
-                    {item.title}
-                    <ArrowRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </CardTitle>
+      {/* Parcours en trois intentions, au lieu de neuf cartes concurrentes. */}
+      <div className="space-y-5">
+        {planifGroups.map((group, groupIndex) => {
+          const toneClasses = group.tone === "emerald"
+            ? "bg-emerald-50 text-emerald-700 border-emerald-100"
+            : group.tone === "amber"
+              ? "bg-amber-50 text-amber-700 border-amber-100"
+              : "bg-violet-50 text-violet-700 border-violet-100"
+          return (
+            <section key={group.title} className="rounded-2xl border bg-white p-4 shadow-sm sm:p-5">
+              <div className="mb-4 flex items-start gap-3">
+                <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-sm font-bold ${toneClasses}`}>{groupIndex + 1}</span>
+                <div>
+                  <h3 className="font-semibold text-slate-950">{group.title}</h3>
+                  <p className="mt-0.5 text-sm text-muted-foreground">{group.description}</p>
                 </div>
-              </CardHeader>
-            </Card>
-          </Link>
-        ))}
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {group.items.map((item) => (
+                  <Link
+                    key={item.href}
+                    href={`${item.href}?annee=${year}`}
+                    className="group flex min-h-20 items-center gap-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3 transition hover:border-emerald-300 hover:bg-white hover:shadow-sm"
+                  >
+                    <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border ${toneClasses}`}>
+                      <item.icon className="h-4 w-4" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium text-slate-900">{item.title}</span>
+                      <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">{item.description}</span>
+                    </span>
+                    <ArrowRight className="h-4 w-4 shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-emerald-600" />
+                  </Link>
+                ))}
+              </div>
+            </section>
+          )
+        })}
       </div>
     </div>
   )

@@ -485,7 +485,7 @@ export async function getMeteoForParcelle(
 
   // Fetch prévisions Open-Meteo (necessaire pour current + daily 7j)
   const forecast = await fetchOpenMeteoForecast(lat, lng)
-  const current = forecast.current
+  let current = forecast.current
   const daily = forecast.daily
 
   // Sauvegarder en cache seulement si le cache est périmé ou absent
@@ -501,10 +501,24 @@ export async function getMeteoForParcelle(
       stationData = await fetchEcowittData(station.appKey, station.apiKey, station.stationId)
     } else if (station.provider === 'wunderground' && station.apiKey) {
       stationData = await fetchWundergroundData(station.apiKey, station.stationId)
+    } else if (station.provider === 'open-meteo-reference' && station.lat && station.lng) {
+      const stationForecast = await fetchOpenMeteoForecast(station.lat, station.lng)
+      stationData = stationForecast.daily[0] ?? null
     }
 
     if (stationData) {
-      source = `station_perso (${station.nom})`
+      source = station.provider === 'open-meteo-reference'
+        ? `station publique de référence (${station.nom} · ${station.stationId}) via Open-Meteo`
+        : `station personnelle (${station.nom})`
+      if (current) {
+        current = {
+          ...current,
+          temperature: stationData.tempMoy,
+          humidity: stationData.humidityMax,
+          windSpeed: stationData.windSpeedMax,
+          precipitation: stationData.precipitation,
+        }
+      }
       await saveMeteoCache(lat, lng, stationData, 'station_perso')
       // Remplacer les données du jour par celles de la station (nullish coalescing pour gérer 0°C/0mm)
       const todayIdx = daily.findIndex(d => d.date === stationData!.date)

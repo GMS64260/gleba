@@ -14,6 +14,7 @@
 # être commités (données user-specific).
 /public/uploads/*
 !/public/uploads/.gitkeep
+/storage/
 
 # next.js
 /.next/
@@ -97,4 +98,18 @@ et)
 /scripts/send-feedback-campaign.ts
 /scripts/send-feedback-invite.ts
 /scripts/generate-feedback-tokens.ts
+/scripts/send-feedback-segmented.ts
+/scripts/send-merci-gps.ts
+/scripts/growth-campaign.ts
 /docs/implementation-artifacts/tech-spec-feedback-widget.md
+
+# Artefacts d'outils de revue (non versionnés)
+/codex-review.zip
+/codex-review-diff.zip
+/CODEX-DIFF-REVIEW-LOG.md
+/.paperclip/
+
+# Tooling agent local (cohérent avec CLAUDE.md ci-dessus)
+/AGENTS.md
+/.claude/skills/codex-review/
+/.claude/skills/codex-review-diff/

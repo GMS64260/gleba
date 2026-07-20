@@ -13,6 +13,7 @@
 
 import * as React from "react"
 import { useHideOnScroll } from "@/hooks/use-hide-on-scroll"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 interface TabDef {
   id: string
@@ -47,13 +48,34 @@ export function ModuleTabBar({ tabs, activeTab, onTabChange, accent, actions }: 
   const headerHidden = useHideOnScroll()
   return (
     <nav
-      className={`border-b border-t-2 ${a.top} bg-white/80 backdrop-blur-sm sticky z-40 transition-[top] duration-200 motion-reduce:transition-none ${
-        headerHidden ? "top-0" : "top-[61px]"
+      className={`relative border-b border-t-2 ${a.top} bg-white/90 backdrop-blur-sm z-40 xl:sticky xl:transition-[top] xl:duration-200 motion-reduce:transition-none ${
+        headerHidden ? "xl:top-0" : "xl:top-[61px]"
       }`}
     >
       <div className="container mx-auto px-4 max-w-[1600px]">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center -mb-px overflow-x-auto scrollbar-hide min-w-0">
+        {/* Mobile : une section clairement nommée, puis les raccourcis sur une
+            ligne compacte. Les cinq icônes sans libellé n'étaient pas
+            compréhensibles et la rangée d'actions se cassait sur 2–3 lignes. */}
+        <div className="space-y-2 py-2 xl:hidden">
+          <Select value={activeTab} onValueChange={onTabChange}>
+            <SelectTrigger className="h-10 w-full bg-white font-medium">
+              <SelectValue placeholder="Choisir une section" />
+            </SelectTrigger>
+            <SelectContent>
+              {tabs.map((tab) => (
+                <SelectItem key={tab.id} value={tab.id}>{tab.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {actions && (
+            <div className="flex items-center gap-2 overflow-x-auto pb-0.5 scrollbar-hide [&>*]:shrink-0">
+              {actions}
+            </div>
+          )}
+        </div>
+
+        <div className="hidden xl:flex xl:items-center xl:justify-between">
+          <div className="flex min-w-0 items-center -mb-px overflow-x-auto scrollbar-hide">
             {tabs.map((tab) => {
               const isActive = activeTab === tab.id
               return (
@@ -68,7 +90,7 @@ export function ModuleTabBar({ tabs, activeTab, onTabChange, accent, actions }: 
                   title={tab.label}
                 >
                   <tab.icon className={`h-4 w-4 ${isActive ? a.icon : ""}`} />
-                  <span className="hidden lg:inline">{tab.label}</span>
+                  <span className="hidden 2xl:inline">{tab.label}</span>
                 </button>
               )
             })}

@@ -13,6 +13,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js 20
         uses: actions/setup-node@v4
@@ -29,6 +31,13 @@ jobs:
         env:
           # URL bidon : on n'a pas besoin de connexion DB pour `prisma generate`
           DATABASE_URL: "postgresql://x:x@localhost:5432/x"
+
+      - name: Lint quality gate
+        run: npm run lint:ci -- --base "$LINT_BASE_SHA"
+        env:
+          # PR: compare aux lignes ajoutées depuis la branche cible.
+          # Push: compare au commit précédant le push; la baseline protège aussi le total.
+          LINT_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
 
       - name: Run vitest
         run: npm test

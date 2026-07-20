@@ -11,7 +11,8 @@
  *   await alertDialog("Erreur lors de la sauvegarde")
  *
  * Un <GlobalDialogHost/> monté une fois au layout racine consomme la file.
- * Si le host n'est pas encore monté (SSR, early), on retombe sur le natif.
+ * Si le host n'est pas encore monté (SSR, early), l'action est annulée :
+ * Gleba n'affiche jamais de boîte système native.
  */
 
 export type GlobalDialogVariant = "destructive" | "warning" | "default"
@@ -48,9 +49,7 @@ export interface ConfirmOptions {
 export function confirmDialog(message: string, opts: ConfirmOptions = {}): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
     if (!pushFn) {
-      // Fallback (host non monté) : reste fonctionnel.
-      if (typeof window !== "undefined") resolve(window.confirm(message))
-      else resolve(false)
+      resolve(false)
       return
     }
     pushFn({
@@ -70,7 +69,6 @@ export function confirmDialog(message: string, opts: ConfirmOptions = {}): Promi
 export function alertDialog(message: string, opts: { title?: string } = {}): Promise<void> {
   return new Promise<void>((resolve) => {
     if (!pushFn) {
-      if (typeof window !== "undefined") window.alert(message)
       resolve()
       return
     }

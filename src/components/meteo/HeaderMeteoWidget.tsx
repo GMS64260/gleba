@@ -22,6 +22,7 @@ import { MeteoWidget } from "./MeteoWidget"
 import { LunaireWidget } from "@/components/lunaire/LunaireWidget"
 
 interface Parcelle {
+  id: string
   nom: string
   centroidLat: number
   centroidLng: number
@@ -64,9 +65,9 @@ export function HeaderMeteoWidget({ showLune = false }: { showLune?: boolean }) 
             x.centroidLat && x.centroidLng
         )
         if (!p) return
-        setParcelle({ nom: p.nom, centroidLat: p.centroidLat, centroidLng: p.centroidLng })
+        setParcelle({ id: p.id, nom: p.nom, centroidLat: p.centroidLat, centroidLng: p.centroidLng })
 
-        const meteoRes = await fetch(`/api/meteo?lat=${p.centroidLat}&lng=${p.centroidLng}`)
+        const meteoRes = await fetch(`/api/meteo?parcelleId=${p.id}`)
         if (!meteoRes.ok) return
         const data = await meteoRes.json()
         if (data.actuelle) {
@@ -143,8 +144,8 @@ export function HeaderMeteoWidget({ showLune = false }: { showLune?: boolean }) 
             <ChevronDown className="h-3.5 w-3.5 text-slate-400 group-hover:text-slate-600" />
           </button>
         </PopoverTrigger>
-        <PopoverContent className="w-[380px] p-0" align="start" sideOffset={8}>
-          <MeteoWidget lat={parcelle.centroidLat} lng={parcelle.centroidLng} />
+        <PopoverContent className="w-[calc(100vw-2rem)] max-w-[380px] p-0" align="start" sideOffset={8}>
+          <MeteoWidget parcelleId={parcelle.id} />
           {/* Palier 3 : la météo a désormais une page dédiée */}
           <div className="border-t px-3 py-2 text-right">
             <Link

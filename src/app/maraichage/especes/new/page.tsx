@@ -67,6 +67,8 @@ export default function NewEspecePage() {
       aPlanifier: true,
       couleur: null,
       description: null,
+      etalement: null,
+      densite: null,
     },
   })
 
@@ -287,6 +289,61 @@ export default function NewEspecePage() {
                     </FormItem>
                   )}
                 />
+
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="etalement"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Étalement à maturité (m)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.05"
+                            placeholder="Ex: 0.6"
+                            {...field}
+                            value={field.value ?? ""}
+                            onChange={(e) =>
+                              field.onChange(
+                                e.target.value ? parseFloat(e.target.value) : null
+                              )
+                            }
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          Diamètre occupé par une plante adulte — dessinée à l&apos;échelle sur le plan 2D
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="densite"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Densité (plants/m²)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.1"
+                            placeholder="Ex: 4"
+                            {...field}
+                            value={field.value ?? ""}
+                            onChange={(e) =>
+                              field.onChange(
+                                e.target.value ? parseFloat(e.target.value) : null
+                              )
+                            }
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
 
                 <div className="grid grid-cols-4 gap-4">
                   <FormField

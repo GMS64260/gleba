@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
-import { Github, Megaphone, Shield } from "lucide-react";
+import { BookOpen, Shield } from "lucide-react";
 
 /**
  * Nav + footer partagés pour toutes les pages marketing / SEO.
@@ -17,41 +17,38 @@ export function MarketingShell({ children }: { children: React.ReactNode }) {
 }
 
 function MarketingNav() {
+  const businessLinks = [
+    ["/logiciel-maraichage", "Maraîchage"],
+    ["/logiciel-potager", "Potager"],
+    ["/logiciel-jardin", "Jardin"],
+    ["/logiciel-arboriculture", "Arboriculture"],
+    ["/logiciel-elevage", "Élevage"],
+    ["/logiciel-permaculture", "Permaculture"],
+    ["/calendrier-semis", "Calendrier semis"],
+  ] as const;
+
   return (
-    <nav className="w-full px-6 md:px-8 py-5 flex items-center justify-between max-w-6xl mx-auto">
-      <Link href="/" aria-label="Accueil Gleba">
-        <Image
-          src="/gleba-logo.png"
-          alt="Gleba"
-          width={400}
-          height={136}
-          className="h-12 sm:h-16 w-auto"
-          priority
-        />
-      </Link>
-      <div className="flex items-center gap-5">
-        <Link
-          href="/communaute"
-          className="hidden sm:flex items-center gap-1.5 text-sm text-slate-400 hover:text-violet-600 transition-colors"
-        >
-          <Megaphone className="h-4 w-4" />
-          <span>Community Voice</span>
+    <nav aria-label="Navigation principale" className="w-full border-b border-slate-100 bg-white/90 backdrop-blur-sm">
+      <div className="mx-auto flex max-w-7xl items-center justify-between gap-5 px-4 py-4 sm:px-6 lg:px-8">
+        <Link href="/" aria-label="Accueil Gleba" className="shrink-0">
+          <Image src="/gleba-logo.png" alt="Gleba" width={400} height={136} className="h-11 w-auto sm:h-14" priority />
         </Link>
-        <a
-          href="https://github.com/GMS64260/gleba"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="hidden sm:flex items-center gap-1.5 text-sm text-slate-400 hover:text-slate-700 transition-colors"
-        >
-          <Github className="h-4 w-4" />
-          <span>Source</span>
-        </a>
-        <Link
-          href="/register"
-          className="inline-flex items-center px-4 py-2 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium transition-colors shadow-sm"
-        >
-          Essayer Gleba
-        </Link>
+        <div className="hidden items-center gap-1 lg:flex">
+          {businessLinks.map(([href, label]) => (
+            <Link key={href} href={href} className="rounded-full px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-emerald-50 hover:text-emerald-800">{label}</Link>
+          ))}
+        </div>
+        <div className="flex shrink-0 items-center gap-3">
+          <Link href="/referentiel" className="hidden items-center gap-1.5 text-sm font-medium text-slate-500 transition-colors hover:text-emerald-700 xl:flex"><BookOpen className="h-4 w-4" />Référentiel</Link>
+          <Link href="/register" className="inline-flex items-center rounded-full bg-emerald-700 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-emerald-800">Essayer Gleba</Link>
+        </div>
+      </div>
+      <div className="border-t border-slate-100 px-3 py-2 lg:hidden">
+        <div className="mx-auto flex max-w-2xl flex-wrap items-center justify-center gap-1">
+          {businessLinks.map(([href, label]) => (
+            <Link key={href} href={href} className="whitespace-nowrap rounded-full px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-emerald-50 hover:text-emerald-800">{label}</Link>
+          ))}
+        </div>
       </div>
     </nav>
   );
@@ -75,8 +72,14 @@ function MarketingFooter() {
           <Link href="/logiciel-maraichage" className="hover:text-emerald-600 transition-colors">
             Maraîchage
           </Link>
+          <Link href="/logiciel-potager" className="hover:text-emerald-600 transition-colors">
+            Potager
+          </Link>
+          <Link href="/logiciel-jardin" className="hover:text-emerald-600 transition-colors">
+            Jardin
+          </Link>
           <Link href="/logiciel-verger" className="hover:text-emerald-600 transition-colors">
-            Verger
+            Arboriculture
           </Link>
           <Link href="/logiciel-elevage" className="hover:text-emerald-600 transition-colors">
             Élevage
@@ -86,6 +89,9 @@ function MarketingFooter() {
           </Link>
           <Link href="/calendrier-semis" className="hover:text-emerald-600 transition-colors">
             Calendrier semis
+          </Link>
+          <Link href="/referentiel" className="hover:text-emerald-600 transition-colors">
+            Référentiel
           </Link>
         </div>
         <div className="flex items-center gap-4">

@@ -88,6 +88,8 @@ export async function PATCH(
     if (body.dateSortie !== undefined) data.dateSortie = new Date(body.dateSortie)
     if (body.causeSortie !== undefined) data.causeSortie = body.causeSortie
     if (body.poidsActuel !== undefined) data.poidsActuel = body.poidsActuel
+    // PROMPT 24 — bascule lactation longue (trait sans tarir)
+    if (body.lactationLongue !== undefined) data.lactationLongue = Boolean(body.lactationLongue)
 
     const animal = await prisma.animal.update({
       where: { id: parseInt(id) },

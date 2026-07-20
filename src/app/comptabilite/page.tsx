@@ -7,15 +7,12 @@
 
 import * as React from "react"
 import Link from "next/link"
-import Image from "next/image"
 import { useSession } from "next-auth/react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
-import { UserMenu } from "@/components/auth/UserMenu"
-import { ModulesNav } from "@/components/auth/ModulesNav"
-import { BoutiqueHeaderButton } from "@/components/auth/BoutiqueHeaderButton"
+import { AppHeader } from "@/components/shell/AppHeader"
 import { TourComptabilite } from "@/components/tours/tour-comptabilite"
 import { PremiersPasBanner } from "@/components/premiers-pas-banner"
 import { computeYearDiff } from "@/lib/comptabilite/year-diff"
@@ -36,10 +33,6 @@ import {
   Area,
 } from "recharts"
 import {
-  Sprout,
-  TreeDeciduous,
-  Bird,
-  Settings,
   ArrowRight,
   Calendar,
   TrendingUp,
@@ -147,6 +140,13 @@ const modulesCompta = [
     color: "text-indigo-600",
     bgColor: "bg-indigo-50",
   },
+]
+
+const groupesCompta = [
+  { title: "Au quotidien", description: "Saisir, facturer et suivre les règlements", hrefs: ["/comptabilite/transactions", "/comptabilite/factures"] },
+  { title: "Mes partenaires", description: "Retrouver rapidement clients et fournisseurs", hrefs: ["/comptabilite/clients", "/comptabilite/fournisseurs"] },
+  { title: "Piloter et déclarer", description: "Comprendre les résultats, les stocks et préparer les exports", hrefs: ["/comptabilite/stocks", "/comptabilite/rapports", "/comptabilite/export", "/comptabilite/couts-production"] },
+  { title: "Suivi terrain", description: "Relier les opérations aux coûts et aux registres", hrefs: ["/interventions", "/tracabilite"] },
 ]
 
 interface ComptaStats {
@@ -283,33 +283,7 @@ export default function DashboardComptabilite() {
         </div>
       )}
 
-      {/* Header */}
-      <header className="border-b border-b-2 border-b-blue-500 bg-white/80 backdrop-blur-sm sticky top-0 z-50">
-        {/* Responsive 360px — même wrap que le header élevage */}
-        <div className="container mx-auto px-4 py-3 flex items-center justify-between gap-2 max-w-[1600px] flex-wrap">
-          <Link href="/" className="flex items-center hover:opacity-90 transition-opacity">
-            <Image
-              src="/gleba-logo.png"
-              alt="Gleba"
-              width={150}
-              height={100}
-              className="h-10 w-auto rounded-lg"
-              priority
-            />
-          </Link>
-          <div className="flex items-center gap-2">
-            {/* Boutons Maraîchage / Verger & Forêt / Élevage / Compta */}
-            <ModulesNav current="comptabilite" />
-            {session?.user && <BoutiqueHeaderButton />}
-            <Link href="/parametres">
-              <Button variant="ghost" size="sm">
-                <Settings className="h-4 w-4" />
-              </Button>
-            </Link>
-            {session?.user && <UserMenu user={session.user} />}
-          </div>
-        </div>
-      </header>
+      <AppHeader current="comptabilite" />
 
       {/* POSTREVIEW Sprint 6 — Tour Shepherd.js Comptabilité */}
       <TourComptabilite />
@@ -318,14 +292,17 @@ export default function DashboardComptabilite() {
           <PremiersPasBanner module="comptabilite" />
         </div>
         {/* Titre + Sélecteur d'annee */}
-        <div className="flex flex-wrap items-center justify-between gap-y-2 mb-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
               <Euro className="h-5 w-5 text-blue-700" />
             </div>
             <h1 className="text-xl font-semibold text-slate-800">Gestion Comptable</h1>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0 [&>*]:shrink-0">
+            <Button asChild size="sm" className="bg-blue-600 hover:bg-blue-700">
+              <Link href="/comptabilite/transactions">Nouvelle transaction</Link>
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -517,23 +494,29 @@ export default function DashboardComptabilite() {
           </div>
         )}
 
-        {/* Modules Grid */}
-        <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 mb-8">
-          {modulesCompta.map((module) => (
-            <Link key={module.href} href={module.href}>
-              <Card className="h-full hover:shadow-lg transition-all hover:scale-[1.02] cursor-pointer group">
-                <CardHeader className="pb-2">
-                  <div className="flex items-center justify-between">
-                    <div className={`w-10 h-10 rounded-lg ${module.bgColor} flex items-center justify-center`}>
-                      <module.icon className={`h-5 w-5 ${module.color}`} />
+        {/* Entrées organisées selon le chemin utilisateur, pas selon la structure technique. */}
+        <div className="grid gap-4 lg:grid-cols-2 mb-8">
+          {groupesCompta.map((groupe) => (
+            <Card key={groupe.title}>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">{groupe.title}</CardTitle>
+                <CardDescription>{groupe.description}</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-2 sm:grid-cols-2">
+                {modulesCompta.filter((module) => groupe.hrefs.includes(module.href)).map((module) => (
+                  <Link key={module.href} href={module.href} className="group flex min-w-0 items-center gap-3 rounded-lg border bg-white p-3 transition-colors hover:border-blue-300 hover:bg-blue-50/50">
+                    <div className={`h-9 w-9 shrink-0 rounded-lg ${module.bgColor} flex items-center justify-center`}>
+                      <module.icon className={`h-4 w-4 ${module.color}`} />
                     </div>
-                    <ArrowRight className="h-4 w-4 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </div>
-                  <CardTitle className="text-base">{module.title}</CardTitle>
-                  <CardDescription className="text-xs">{module.description}</CardDescription>
-                </CardHeader>
-              </Card>
-            </Link>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{module.title}</p>
+                      <p className="truncate text-xs text-muted-foreground">{module.description}</p>
+                    </div>
+                    <ArrowRight className="h-4 w-4 shrink-0 text-slate-400 transition-transform group-hover:translate-x-0.5" />
+                  </Link>
+                ))}
+              </CardContent>
+            </Card>
           ))}
         </div>
 

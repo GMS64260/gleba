@@ -51,6 +51,11 @@ export async function GET(request: NextRequest) {
       especesCibles: a.especesCibles,
       proteines: a.proteines,
       energie: a.energie,
+      // PROMPT 25 — valeurs alimentaires INRA pour le calcul de ration
+      ufl: a.ufl,
+      pdin: a.pdin,
+      pdie: a.pdie,
+      uel: a.uel,
       prix: a.userStocks[0]?.prix ?? a.prix,
       stock: a.userStocks[0]?.stock ?? null,
       stockMin: a.userStocks[0]?.stockMin ?? a.stockMin,
@@ -95,12 +100,17 @@ export async function POST(request: NextRequest) {
       especesCibles,
       proteines,
       energie,
+      ufl,
+      pdin,
+      pdie,
+      uel,
       prix,
       stock,
       stockMin,
       fournisseurId,
       description,
     } = body
+    const num = (v: unknown) => (v === "" || v == null ? null : parseFloat(v as string))
 
     if (!id || !nom) {
       return NextResponse.json(
@@ -123,6 +133,10 @@ export async function POST(request: NextRequest) {
           especesCibles,
           proteines: proteines ? parseFloat(proteines) : null,
           energie: energie ? parseFloat(energie) : null,
+          ufl: num(ufl),
+          pdin: num(pdin),
+          pdie: num(pdie),
+          uel: num(uel),
           prix: parsedPrix,
           fournisseurId,
           description,

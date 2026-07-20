@@ -16,7 +16,9 @@ import {
   Calendar,
   Check,
   Trash2,
+  Scale,
 } from "lucide-react"
+import { RationSubTab } from "./RationSubTab"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -83,6 +85,10 @@ export function AlimentationTab() {
           <Stethoscope className="h-4 w-4" />
           Soins
         </TabsTrigger>
+        <TabsTrigger value="ration" className="flex items-center gap-1.5">
+          <Scale className="h-4 w-4" />
+          Ration
+        </TabsTrigger>
       </TabsList>
 
       <TabsContent value="stocks">
@@ -93,6 +99,9 @@ export function AlimentationTab() {
       </TabsContent>
       <TabsContent value="soins">
         <SoinsSubTab initialAnimalId={soinAnimalId} />
+      </TabsContent>
+      <TabsContent value="ration">
+        <RationSubTab />
       </TabsContent>
     </Tabs>
   )
@@ -150,7 +159,7 @@ function StocksSubTab() {
   const [newPrix, setNewPrix] = React.useState("")
 
   const [formData, setFormData] = React.useState({
-    id: "", nom: "", type: "granules", especesCibles: "", prix: "", stock: "", stockMin: "", description: "",
+    id: "", nom: "", type: "granules", especesCibles: "", prix: "", stock: "", stockMin: "", description: "", ufl: "", pdin: "", pdie: "", uel: "",
   })
   // QA Julien 2026-05-15 — Bug #12 : payload en attente quand prix
   // hors-norme, en attente de confirmation utilisateur via ConfirmDialog.
@@ -188,7 +197,7 @@ function StocksSubTab() {
       if (!response.ok) throw new Error('Erreur')
       toast({ title: "Aliment créé" })
       setIsDialogOpen(false)
-      setFormData({ id: "", nom: "", type: "granules", especesCibles: "", prix: "", stock: "", stockMin: "", description: "" })
+      setFormData({ id: "", nom: "", type: "granules", especesCibles: "", prix: "", stock: "", stockMin: "", description: "", ufl: "", pdin: "", pdie: "", uel: "" })
       fetchData()
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible de créer l'aliment" })
@@ -300,6 +309,16 @@ function StocksSubTab() {
                 <div className="space-y-2"><Label>Stock (kg)</Label><Input type="number" step="0.1" value={formData.stock} onChange={(e) => setFormData(f => ({ ...f, stock: e.target.value }))} /></div>
               </div>
               <div className="space-y-2"><Label>Stock minimum (alerte)</Label><Input type="number" step="0.1" value={formData.stockMin} onChange={(e) => setFormData(f => ({ ...f, stockMin: e.target.value }))} /></div>
+              {/* PROMPT 25 — valeurs alimentaires INRA (par kg brut) pour le calcul de ration */}
+              <div className="pt-2 border-t">
+                <p className="text-xs text-muted-foreground mb-2">Valeurs alimentaires (par kg brut) — pour le calculateur de ration</p>
+                <div className="grid grid-cols-4 gap-2">
+                  <div className="space-y-1"><Label className="text-xs">UFL</Label><Input type="number" step="0.01" value={formData.ufl} onChange={(e) => setFormData(f => ({ ...f, ufl: e.target.value }))} placeholder="0.85" /></div>
+                  <div className="space-y-1"><Label className="text-xs">PDIN (g)</Label><Input type="number" step="1" value={formData.pdin} onChange={(e) => setFormData(f => ({ ...f, pdin: e.target.value }))} placeholder="90" /></div>
+                  <div className="space-y-1"><Label className="text-xs">PDIE (g)</Label><Input type="number" step="1" value={formData.pdie} onChange={(e) => setFormData(f => ({ ...f, pdie: e.target.value }))} placeholder="95" /></div>
+                  <div className="space-y-1"><Label className="text-xs">UEL</Label><Input type="number" step="0.01" value={formData.uel} onChange={(e) => setFormData(f => ({ ...f, uel: e.target.value }))} placeholder="1.0" /></div>
+                </div>
+              </div>
               <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
                 <Button type="submit">Créer</Button>
@@ -616,7 +635,7 @@ function ConsommationsSubTab() {
     <div className="space-y-4">
       {/* Stats */}
       {stats && (
-        <div className="grid gap-3 grid-cols-3">
+        <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
           <Card>
             <CardHeader className="pb-1 pt-3 px-4">
               <CardDescription className="text-xs">Total consommé</CardDescription>

@@ -17,6 +17,10 @@ import {
   ChevronUp,
   Loader2,
   MapPin,
+  Tractor,
+  ShieldCheck,
+  PawPrint,
+  Trees,
 } from "lucide-react"
 
 // ============================================================
@@ -170,13 +174,14 @@ interface MeteoWidgetProps {
   lat?: number
   lng?: number
   compact?: boolean
+  defaultExpanded?: boolean
 }
 
-export function MeteoWidget({ parcelleId, lat, lng, compact = false }: MeteoWidgetProps) {
+export function MeteoWidget({ parcelleId, lat, lng, compact = false, defaultExpanded = false }: MeteoWidgetProps) {
   const [data, setData] = React.useState<MeteoData | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
-  const [expanded, setExpanded] = React.useState(false)
+  const [expanded, setExpanded] = React.useState(defaultExpanded)
 
   React.useEffect(() => {
     async function fetchMeteo() {
@@ -202,8 +207,8 @@ export function MeteoWidget({ parcelleId, lat, lng, compact = false }: MeteoWidg
         }
 
         setData(await res.json())
-      } catch (e: any) {
-        setError(e.message)
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : "Erreur API météo")
       } finally {
         setLoading(false)
       }
@@ -235,6 +240,12 @@ export function MeteoWidget({ parcelleId, lat, lng, compact = false }: MeteoWidg
 
   const { actuelle, previsions, alertes, ensoleillement } = data
   const dangers = alertes.filter(a => a.niveau === "danger" || a.niveau === "attention")
+  const prochainsJours = previsions.slice(0, 5)
+  const traitement = prochainsJours.find(j => j.windSpeedMax < 19 && j.precipitation < 1)
+  const recolte = prochainsJours.find(j => j.precipitation < 1 && j.precipitationProba < 30 && j.windSpeedMax < 35)
+  const chaleur = Math.max(...prochainsJours.map(j => j.tempMax), -Infinity)
+  const gel = prochainsJours.find(j => j.tempMin <= 2)
+  const jourCourt = (date: string) => new Date(`${date}T12:00:00`).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric" })
 
   return (
     <div className="border rounded-lg bg-white overflow-hidden">
@@ -287,6 +298,16 @@ export function MeteoWidget({ parcelleId, lat, lng, compact = false }: MeteoWidg
       {/* Contenu etendu */}
       {expanded && (
         <div className="border-t">
+          <div className="px-3 py-3 bg-emerald-50/50 border-b">
+            <p className="text-xs font-semibold text-emerald-900 flex items-center gap-2 mb-2"><Tractor className="h-4 w-4" /> Fenêtres de travail · 5 jours</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="rounded-md border bg-white p-2 text-xs"><p className="font-medium flex items-center gap-1"><ShieldCheck className="h-3.5 w-3.5 text-emerald-600" /> Traitement</p><p className="text-slate-500 mt-0.5">{traitement ? `${jourCourt(traitement.date)} · vent ${Math.round(traitement.windSpeedMax)} km/h, pluie ${traitement.precipitation.toFixed(1)} mm` : "Aucune fenêtre favorable"}</p></div>
+              <div className="rounded-md border bg-white p-2 text-xs"><p className="font-medium flex items-center gap-1"><Tractor className="h-3.5 w-3.5 text-amber-600" /> Récolte / foin</p><p className="text-slate-500 mt-0.5">{recolte ? `${jourCourt(recolte.date)} · fenêtre sèche, risque pluie ${Math.round(recolte.precipitationProba)} %` : "Pas de créneau sec assez fiable"}</p></div>
+              <div className="rounded-md border bg-white p-2 text-xs"><p className="font-medium flex items-center gap-1"><PawPrint className="h-3.5 w-3.5 text-orange-600" /> Élevage</p><p className="text-slate-500 mt-0.5">{chaleur >= 30 ? `Pic ${Math.round(chaleur)}°C · sécuriser eau, ombre, ventilation` : `Pic ${Math.round(chaleur)}°C · stress thermique limité`}</p></div>
+              <div className="rounded-md border bg-white p-2 text-xs"><p className="font-medium flex items-center gap-1"><Trees className="h-3.5 w-3.5 text-lime-700" /> Verger / plants</p><p className="text-slate-500 mt-0.5">{gel ? `${jourCourt(gel.date)} · ${Math.round(gel.tempMin)}°C, préparer les protections` : "Pas de gel proche détecté"}</p></div>
+            </div>
+            <p className="text-[10px] text-slate-400 mt-2">Aide à la décision : confirmer les conditions sur la parcelle avant intervention.</p>
+          </div>
           {/* Alertes */}
           {dangers.length > 0 && (
             <div className="px-3 py-2 space-y-1.5">

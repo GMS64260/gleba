@@ -55,7 +55,15 @@ services:
       # Persiste les fichiers téléversés (logos, bannières, photos produits,
       # justificatifs…) entre les rebuilds du conteneur.
       - uploads_data:/app/public/uploads
+      # Les justificatifs comptables sont séparés de la racine publique et
+      # servis uniquement par une route authentifiée avec contrôle propriétaire.
+      - justificatifs_data:/app/storage/justificatifs
+      # Images de fond du plan 2D (satellite/drone), même modèle que les
+      # justificatifs : hors racine publique, route authentifiée propriétaire.
+      - plan_fonds_data:/app/storage/plan-fonds
 
 volumes:
   postgres_data:
   uploads_data:
+  justificatifs_data:
+  plan_fonds_data:

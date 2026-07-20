@@ -136,6 +136,9 @@ export async function PUT(request: NextRequest, { params }: Params) {
         posX: body.posX,
         posY: body.posY,
         envergure: body.envergure,
+        envergureAdulte: body.envergureAdulte !== undefined
+          ? (body.envergureAdulte != null && body.envergureAdulte !== "" ? parseFloat(body.envergureAdulte) : null)
+          : undefined,
         hauteur: body.hauteur,
         etat: body.etat,
         pollinisateur: body.pollinisateur,

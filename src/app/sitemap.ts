@@ -8,43 +8,55 @@ export const revalidate = 3600;
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = "https://gleba.fr";
-  const now = new Date();
+  // Dates éditoriales réelles : ne pas annoncer artificiellement une mise à
+  // jour à chaque génération du sitemap.
+  const marketingUpdatedAt = new Date("2026-07-17");
 
   // Pages principales
   const corePages: MetadataRoute.Sitemap = [
     {
       url: baseUrl,
-      lastModified: now,
+      lastModified: marketingUpdatedAt,
       changeFrequency: "weekly",
       priority: 1.0,
     },
     // /login retiré du sitemap : formulaire pur, noindex. La home "/" est désormais la landing publique.
     {
-      url: `${baseUrl}/register`,
-      lastModified: now,
-      changeFrequency: "monthly",
-      priority: 0.7,
-    },
-    {
       url: `${baseUrl}/communaute`,
-      lastModified: now,
+      lastModified: marketingUpdatedAt,
       changeFrequency: "weekly",
       priority: 0.6,
+    },
+    {
+      url: `${baseUrl}/referentiel`,
+      lastModified: marketingUpdatedAt,
+      changeFrequency: "weekly",
+      priority: 0.9,
     },
   ];
 
   // Pages cibles SEO (longue traîne — priorité élevée)
   const seoTargetPages: MetadataRoute.Sitemap = [
     "/logiciel-maraichage",
+    "/planification-maraichage",
+    "/rotation-cultures-maraichage",
+    "/itineraire-technique-maraichage",
     "/logiciel-micro-ferme",
     "/logiciel-permaculture",
+    "/logiciel-jardin",
+    "/logiciel-potager",
     "/logiciel-verger",
+    "/logiciel-arboriculture",
     "/logiciel-elevage",
+    "/logiciel-elevage-volailles",
+    "/logiciel-elevage-ovin",
+    "/logiciel-elevage-caprin",
+    "/registre-phytosanitaire",
     "/calendrier-semis",
     "/assistant-ia-agricole",
   ].map((path) => ({
     url: `${baseUrl}${path}`,
-    lastModified: now,
+    lastModified: marketingUpdatedAt,
     changeFrequency: "monthly" as const,
     priority: 0.9,
   }));
@@ -56,7 +68,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     "/confidentialite",
   ].map((path) => ({
     url: `${baseUrl}${path}`,
-    lastModified: now,
+    lastModified: marketingUpdatedAt,
     changeFrequency: "yearly" as const,
     priority: 0.3,
   }));
@@ -95,5 +107,28 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     boutiquePages = [];
   }
 
-  return [...corePages, ...seoTargetPages, ...legalPages, ...boutiquePages];
+  // Fiches publiques du référentiel : uniquement catalogue officiel et
+  // contributions explicitement partagées, jamais les entrées personnelles.
+  let referentielPages: MetadataRoute.Sitemap = [];
+  try {
+    const especes = await prisma.espece.findMany({
+      where: {
+        OR: [
+          { userId: null },
+          { userId: { not: null }, partageCommunaute: true },
+        ],
+      },
+      select: { id: true },
+    });
+    referentielPages = especes.map((espece) => ({
+      url: `${baseUrl}/referentiel/vegetaux/${encodeURIComponent(espece.id)}`,
+      lastModified: marketingUpdatedAt,
+      changeFrequency: "monthly" as const,
+      priority: 0.6,
+    }));
+  } catch {
+    referentielPages = [];
+  }
+
+  return [...corePages, ...seoTargetPages, ...legalPages, ...referentielPages, ...boutiquePages];
 }

@@ -126,7 +126,7 @@ interface AnimalDetail {
 interface TimelineEvent {
   date: string
   type: "soin" | "production" | "naissance" | "abattage"
-  icon: React.ElementType
+  icon: React.ComponentType<{ className?: string }>
   iconColor: string
   bgColor: string
   title: string

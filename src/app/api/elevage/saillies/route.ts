@@ -108,6 +108,15 @@ export async function POST(request: NextRequest) {
       consanguinite = await detecterConsanguinite(prisma, data.femelleId, data.maleId, 3, session.user.id)
     }
 
+    // PROMPT 24 — validation tenant de la campagne rattachée
+    if (data.campagneId) {
+      const c = await prisma.campagneReproduction.findFirst({
+        where: { id: data.campagneId, userId: session.user.id },
+        select: { id: true },
+      })
+      if (!c) return NextResponse.json({ error: 'Campagne introuvable' }, { status: 404 })
+    }
+
     const saillie = await prisma.saillie.create({
       data: {
         userId: session.user.id,
@@ -119,6 +128,7 @@ export async function POST(request: NextRequest) {
         semenceLot: data.semenceLot ?? null,
         pereExterneRef: data.pereExterneRef ?? null,
         confirmationGestation: data.confirmationGestation ?? null,
+        campagneId: data.campagneId ?? null,
         dateMiseBasAttendue: dateMb,
         dateTarissementPrevue: dateTar,
         statut: data.confirmationGestation ? 'Gestante' : 'En attente',

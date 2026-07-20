@@ -12,9 +12,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { StationMeteoConfig } from '@/components/meteo'
 import { useToast } from '@/hooks/use-toast'
-import { Slider } from '@/components/ui/slider'
 import { useModules } from '@/hooks/use-modules'
 import { MODULES, MODULE_IDS, type ModuleId } from '@/lib/modules'
 import { confirmDialog } from '@/lib/global-dialog'
@@ -76,6 +76,8 @@ export default function ParametresPage() {
   const [exporting, setExporting] = React.useState(false)
   const [importing, setImporting] = React.useState(false)
   const [deleting, setDeleting] = React.useState(false)
+  const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false)
+  const [deleteConfirmation, setDeleteConfirmation] = React.useState('')
   // MCP / API Token
   const [mcpLoading, setMcpLoading] = React.useState(false)
   const [mcpToken, setMcpToken] = React.useState<string | null>(null)
@@ -86,7 +88,6 @@ export default function ParametresPage() {
   const fullFileInputRef = React.useRef<HTMLInputElement>(null)
   const [exportingFull, setExportingFull] = React.useState(false)
   const [importingFull, setImportingFull] = React.useState(false)
-  const imageInputRef = React.useRef<HTMLInputElement>(null)
 
   // Charger les paramètres au montage.
   // BUG #10 : on essaie d'abord le serveur (`/api/user/preferences`) ; si
@@ -425,78 +426,13 @@ export default function ParametresPage() {
     }
   }
 
-  // Gestion de l'image de fond
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    // Verifier que c'est une image
-    if (!file.type.startsWith('image/')) {
-      toast({
-        variant: 'destructive',
-        title: 'Erreur',
-        description: 'Veuillez selectionner un fichier image (JPG, PNG, etc.)',
-      })
-      return
-    }
-
-    // Verifier la taille (max 10 MB)
-    if (file.size > 10 * 1024 * 1024) {
-      toast({
-        variant: 'destructive',
-        title: 'Erreur',
-        description: 'L\'image est trop volumineuse (max 10 MB)',
-      })
-      return
-    }
-
-    const reader = new FileReader()
-    reader.onload = (event) => {
-      const dataUrl = event.target?.result as string
-      setSettings((prev) => ({ ...prev, backgroundImage: dataUrl }))
-      toast({
-        title: 'Image chargee',
-        description: 'N\'oubliez pas d\'enregistrer les parametres',
-      })
-    }
-    reader.onerror = () => {
-      toast({
-        variant: 'destructive',
-        title: 'Erreur',
-        description: 'Impossible de lire le fichier image',
-      })
-    }
-    reader.readAsDataURL(file)
-
-    if (imageInputRef.current) {
-      imageInputRef.current.value = ''
-    }
-  }
-
-  const handleRemoveImage = async () => {
-    if (await confirmDialog('Supprimer l\'image de fond ?')) {
-      setSettings((prev) => ({ ...prev, backgroundImage: null }))
-      toast({
-        title: 'Image supprimée',
-        description: 'N\'oubliez pas d\'enregistrer les parametres',
-      })
-    }
-  }
-
   // Suppression de toutes les données utilisateur
   const handleDeleteAllData = async () => {
-    const confirmation1 = await confirmDialog(
-      '⚠️ ATTENTION ⚠️\n\nVous allez supprimer TOUTES vos données :\n- Cultures, récoltes, irrigations\n- Planches, fertilisations\n- Arbres, objets jardin\n- Notes\n\nCette action est IRRÉVERSIBLE.\n\nContinuer ?'
-    )
-    if (!confirmation1) return
-
-    const confirmation2 = prompt(
-      'Pour confirmer, tapez "SUPPRIMER" en majuscules :'
-    )
-    if (confirmation2 !== 'SUPPRIMER') {
+    if (deleteConfirmation !== 'SUPPRIMER') {
       toast({
-        title: 'Annulé',
-        description: 'Suppression annulée',
+        title: 'Confirmation requise',
+        description: 'Tapez SUPPRIMER en majuscules pour confirmer.',
+        variant: 'destructive',
       })
       return
     }
@@ -518,6 +454,7 @@ export default function ParametresPage() {
         title: 'Données supprimées',
         description: result.message,
       })
+      setDeleteDialogOpen(false)
 
       // Recharger la page après 2 secondes
       setTimeout(() => {
@@ -800,7 +737,7 @@ export default function ParametresPage() {
           </CardContent>
         </Card>
 
-        {/* Image de fond */}
+        {/* Image de fond — gérée depuis l'éditeur 2D (persistance serveur) */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -808,154 +745,18 @@ export default function ParametresPage() {
               Image de fond (satellite)
             </CardTitle>
             <CardDescription>
-              Ajoutez une image satellite ou photo aerienne de votre jardin comme fond de plan
+              L&apos;image satellite ou photo de drone se gère désormais directement sur le plan du
+              jardin (bouton « Fond ») : import, opacité, rotation et calibration de l&apos;échelle en
+              2 clics. Elle est enregistrée sur votre compte et synchronisée entre vos appareils.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
-            {/* Upload image */}
-            <div>
-              <input
-                ref={imageInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleImageUpload}
-                className="hidden"
-              />
-
-              {settings.backgroundImage ? (
-                <div className="space-y-4">
-                  <div className="relative border rounded-lg overflow-hidden bg-slate-100">
-                    <img
-                      src={settings.backgroundImage}
-                      alt="Fond du jardin"
-                      className="max-h-48 w-auto mx-auto object-contain"
-                    />
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => imageInputRef.current?.click()}
-                    >
-                      <Upload className="h-4 w-4 mr-2" />
-                      Changer l'image
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={handleRemoveImage}
-                      className="text-red-600 hover:text-red-700"
-                    >
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      Supprimer
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div
-                  onClick={() => imageInputRef.current?.click()}
-                  className="border-2 border-dashed border-slate-300 rounded-lg p-8 text-center cursor-pointer hover:border-green-500 hover:bg-green-50 transition-colors"
-                >
-                  <ImageIcon className="h-12 w-12 text-slate-400 mx-auto mb-3" />
-                  <p className="text-sm text-slate-600">
-                    Cliquez pour ajouter une image satellite
-                  </p>
-                  <p className="text-xs text-slate-400 mt-1">
-                    JPG, PNG (max 10 MB)
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Parametres de l'image */}
-            {settings.backgroundImage && (
-              <div className="space-y-4 pt-4 border-t">
-                <h4 className="text-sm font-medium text-slate-900">Ajustements</h4>
-
-                {/* Opacite */}
-                <div>
-                  <label className="flex justify-between text-sm text-slate-600 mb-2">
-                    <span>Opacite</span>
-                    <span>{Math.round(settings.backgroundOpacity * 100)}%</span>
-                  </label>
-                  <Slider
-                    value={[settings.backgroundOpacity]}
-                    onValueChange={([value]) => setSettings((prev) => ({ ...prev, backgroundOpacity: value }))}
-                    min={0.1}
-                    max={1}
-                    step={0.05}
-                    className="w-full"
-                  />
-                </div>
-
-                {/* Echelle */}
-                <div>
-                  <label className="flex justify-between text-sm text-slate-600 mb-2">
-                    <span>Echelle (metres par pixel)</span>
-                    <span>{settings.backgroundScale.toFixed(3)} m/px</span>
-                  </label>
-                  <Slider
-                    value={[settings.backgroundScale]}
-                    onValueChange={([value]) => setSettings((prev) => ({ ...prev, backgroundScale: value }))}
-                    min={0.01}
-                    max={1}
-                    step={0.005}
-                    className="w-full"
-                  />
-                  <p className="text-xs text-slate-400 mt-1">
-                    Ajustez pour que l'image corresponde a l'echelle reelle de votre jardin
-                  </p>
-                </div>
-
-                {/* Position X/Y */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm text-slate-600 mb-1">Décalage X (m)</label>
-                    <input
-                      type="number"
-                      value={settings.backgroundOffsetX}
-                      onChange={(e) => setSettings((prev) => ({ ...prev, backgroundOffsetX: parseFloat(e.target.value) || 0 }))}
-                      step="0.5"
-                      className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm text-slate-600 mb-1">Décalage Y (m)</label>
-                    <input
-                      type="number"
-                      value={settings.backgroundOffsetY}
-                      onChange={(e) => setSettings((prev) => ({ ...prev, backgroundOffsetY: parseFloat(e.target.value) || 0 }))}
-                      step="0.5"
-                      className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                    />
-                  </div>
-                </div>
-
-                {/* Rotation */}
-                <div>
-                  <label className="flex justify-between text-sm text-slate-600 mb-2">
-                    <span>Rotation</span>
-                    <span>{settings.backgroundRotation}°</span>
-                  </label>
-                  <Slider
-                    value={[settings.backgroundRotation]}
-                    onValueChange={([value]) => setSettings((prev) => ({ ...prev, backgroundRotation: value }))}
-                    min={-180}
-                    max={180}
-                    step={1}
-                    className="w-full"
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* Bouton sauvegarder */}
-            {settings.backgroundImage && (
-              <div className="flex justify-end pt-4 border-t">
-                <Button onClick={handleSave} disabled={saving}>
-                  <Save className="h-4 w-4 mr-2" />
-                  {saving ? 'Enregistrement...' : 'Enregistrer'}
-                </Button>
-              </div>
-            )}
+          <CardContent>
+            <Link href="/jardin">
+              <Button variant="outline">
+                <ImageIcon className="h-4 w-4 mr-2" />
+                Ouvrir le plan du jardin
+              </Button>
+            </Link>
           </CardContent>
         </Card>
 
@@ -1237,7 +1038,10 @@ export default function ParametresPage() {
                 </div>
                 <Button
                   variant="destructive"
-                  onClick={handleDeleteAllData}
+                  onClick={() => {
+                    setDeleteConfirmation('')
+                    setDeleteDialogOpen(true)
+                  }}
                   disabled={deleting}
                 >
                   {deleting ? (
@@ -1262,6 +1066,46 @@ export default function ParametresPage() {
           </CardContent>
         </Card>
       </main>
+
+      <Dialog open={deleteDialogOpen} onOpenChange={(nextOpen) => {
+        if (!deleting) setDeleteDialogOpen(nextOpen)
+      }}>
+        <DialogContent className="max-h-[calc(100dvh-1rem)] overflow-y-auto sm:max-w-[460px]">
+          <DialogHeader>
+            <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-xl bg-red-100">
+              <Trash2 className="h-5 w-5 text-red-700" />
+            </div>
+            <DialogTitle>Supprimer toutes vos données ?</DialogTitle>
+            <DialogDescription>Cette action est irréversible. Les référentiels Gleba seront conservés.</DialogDescription>
+          </DialogHeader>
+          <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+            <p className="font-medium">Seront définitivement supprimés :</p>
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-red-800">
+              <li>Cultures, récoltes et irrigations</li>
+              <li>Planches et fertilisations</li>
+              <li>Arbres, objets du jardin et notes</li>
+            </ul>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="delete-all-confirmation">Tapez <strong>SUPPRIMER</strong> pour confirmer</Label>
+            <Input
+              id="delete-all-confirmation"
+              autoFocus
+              autoComplete="off"
+              value={deleteConfirmation}
+              onChange={(e) => setDeleteConfirmation(e.target.value)}
+              className="h-11"
+            />
+          </div>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={deleting}>Conserver mes données</Button>
+            <Button variant="destructive" onClick={handleDeleteAllData} disabled={deleting || deleteConfirmation !== 'SUPPRIMER'}>
+              {deleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Supprimer définitivement
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

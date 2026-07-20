@@ -80,6 +80,9 @@ export const baseEspeceSchema = z.object({
   categorie: z.string().max(50).nullable().optional(),
   niveau: z.string().max(20).nullable().optional(),
   densite: z.number().min(0).max(1000).nullable().optional(),
+  // Étalement/diamètre à maturité (m) — dessine l'empreinte de chaque plante
+  // à l'échelle sur le plan 2D (équivalent potager de l'envergure des arbres)
+  etalement: z.number().min(0.01).max(30).nullable().optional(),
   doseSemis: z.number().min(0).max(1000).nullable().optional(),
   // Audit Marc — unité explicite + type de culture pour empêcher les
   // saisies aberrantes (carotte avec date plantation, etc.)

@@ -11,7 +11,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { CloudSun, MapPin, Settings } from "lucide-react"
+import { CloudSun, MapPin, Radio, Settings } from "lucide-react"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 import { MeteoWidget } from "@/components/meteo/MeteoWidget"
 import { IrrigationAdvisor } from "@/components/meteo/IrrigationAdvisor"
@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
+import { StationMeteoConfig } from "@/components/meteo/StationMeteoConfig"
 
 interface ParcelleMeteo {
   id: string
@@ -27,15 +28,25 @@ interface ParcelleMeteo {
   centroidLng: number
 }
 
+interface StationMeteo {
+  id: string
+  nom: string
+  stationId: string
+  active: boolean
+}
+
 export default function MeteoPage() {
   const [parcelles, setParcelles] = React.useState<ParcelleMeteo[]>([])
   const [selectedId, setSelectedId] = React.useState<string | null>(null)
   const [loading, setLoading] = React.useState(true)
+  const [stations, setStations] = React.useState<StationMeteo[]>([])
+  const [sourceVersion, setSourceVersion] = React.useState(0)
+  const [showConfig, setShowConfig] = React.useState(false)
 
   React.useEffect(() => {
     async function load() {
       try {
-        const res = await fetch("/api/carte")
+        const [res, stationRes] = await Promise.all([fetch("/api/carte"), fetch("/api/meteo/station")])
         if (!res.ok) return
         const data = await res.json()
         const avecCoords = (data as Array<{ id: string; nom: string; centroidLat: number | null; centroidLng: number | null }>)
@@ -43,6 +54,7 @@ export default function MeteoPage() {
           .map((p) => ({ id: p.id, nom: p.nom, centroidLat: p.centroidLat as number, centroidLng: p.centroidLng as number }))
         setParcelles(avecCoords)
         if (avecCoords.length > 0) setSelectedId(avecCoords[0].id)
+        if (stationRes.ok) setStations((await stationRes.json()).data || [])
       } catch {
         // silencieux — l'état vide guide l'utilisateur
       } finally {
@@ -53,6 +65,24 @@ export default function MeteoPage() {
   }, [])
 
   const parcelle = parcelles.find((p) => p.id === selectedId) ?? null
+  const activeStation = stations.find((s) => s.active)
+
+  async function reloadStations() {
+    const res = await fetch("/api/meteo/station")
+    if (res.ok) setStations((await res.json()).data || [])
+    setSourceVersion((v) => v + 1)
+  }
+
+  async function selectSource(value: string) {
+    const res = await fetch("/api/meteo/station", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(value === "parcelle" ? { id: null, active: false } : { id: value, active: true }),
+    })
+    if (!res.ok) return
+    setStations((current) => current.map((s) => ({ ...s, active: value !== "parcelle" && s.id === value })))
+    setSourceVersion((v) => v + 1)
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
@@ -79,16 +109,30 @@ export default function MeteoPage() {
               </SelectContent>
             </Select>
           )}
-          <Link href="/parametres">
-            <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" onClick={() => setShowConfig((v) => !v)}>
               <Settings className="h-4 w-4 mr-1" />
-              <span className="hidden sm:inline">Station</span>
-            </Button>
-          </Link>
+              <span className="hidden sm:inline">Configurer</span>
+          </Button>
         </div>
       </PageToolbar>
 
       <main className="container mx-auto px-4 py-6 max-w-[1600px]">
+        <Card className="mb-4">
+          <CardContent className="py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2 min-w-0">
+              <Radio className="h-4 w-4 text-sky-600 shrink-0" />
+              <div className="min-w-0"><p className="text-sm font-medium">Source météo de l&apos;exploitation</p><p className="text-xs text-slate-500 truncate">Ce choix s&apos;applique aussi aux alertes et aux conseils d&apos;irrigation.</p></div>
+            </div>
+            <Select value={activeStation?.id ?? "parcelle"} onValueChange={selectSource}>
+              <SelectTrigger className="w-full sm:w-[320px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="parcelle">Prévisions localisées à la parcelle</SelectItem>
+                {stations.map((s) => <SelectItem key={s.id} value={s.id}>{s.nom} · {s.stationId}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </CardContent>
+        </Card>
+        {showConfig && <Card className="mb-4"><CardContent className="py-4"><StationMeteoConfig onStationsChanged={reloadStations} /></CardContent></Card>}
         {loading ? (
           <div className="grid gap-4 lg:grid-cols-2">
             <Skeleton className="h-96 w-full" />
@@ -111,8 +155,8 @@ export default function MeteoPage() {
           </Card>
         ) : (
           <div className="grid gap-4 lg:grid-cols-2 items-start">
-            <MeteoWidget lat={parcelle.centroidLat} lng={parcelle.centroidLng} />
-            <IrrigationAdvisor lat={parcelle.centroidLat} lng={parcelle.centroidLng} />
+            <MeteoWidget key={`meteo-${sourceVersion}-${parcelle.id}`} parcelleId={parcelle.id} defaultExpanded />
+            <IrrigationAdvisor key={`irrigation-${sourceVersion}-${parcelle.id}`} parcelleId={parcelle.id} lat={parcelle.centroidLat} lng={parcelle.centroidLng} />
           </div>
         )}
       </main>

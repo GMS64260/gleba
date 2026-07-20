@@ -37,6 +37,13 @@ export async function GET(request: NextRequest) {
     )
   }
 
+  if (exploitation && !/^\d{9}$/.test(exploitation.siren || '') && !check) {
+    return NextResponse.json(
+      { error: 'SIREN invalide', details: "L’export FEC exige un SIREN valide à 9 chiffres." },
+      { status: 409 }
+    )
+  }
+
   // Le FEC est une obligation fiscale métropole + DROM (arrêté du 29/07/2013).
   // Les COM (Nouvelle-Calédonie, Polynésie, Wallis-et-Futuna…) relèvent d'une
   // fiscalité propre : l'export FEC métropolitain n'y est pas applicable.
@@ -365,8 +372,15 @@ export async function GET(request: NextRequest) {
     })
   }
 
+  if (!validation.equilibre) {
+    return NextResponse.json(
+      { error: 'FEC déséquilibré', details: `Écart débit/crédit : ${validation.ecart}` },
+      { status: 422 }
+    )
+  }
+
   const tsv = serialiserFec(lignes)
-  const siren = exploitation!.siren || 'SANS-SIREN'
+  const siren = exploitation!.siren!
   const dateFin = `${exercice}1231`
   const filename = `${siren}FEC${dateFin}.txt`
 

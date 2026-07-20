@@ -31,6 +31,8 @@ export const animalSchema = z
     pereIdentifiant: z.string().max(100).nullable().optional(),
     poidsActuel: z.number().min(0).nullable().optional(),
     couleur: z.string().max(50).nullable().optional(),
+    // PROMPT 24 — lactation longue (trait sans tarir)
+    lactationLongue: z.boolean().optional(),
     notes: z.string().max(5000).nullable().optional(),
   })
   .refine(
