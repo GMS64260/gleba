@@ -16,7 +16,7 @@ const treeUrl = (n: string) => NATURE_BASE + n + ".glb"
 
 // Cultures Quaternius disponibles (toutes ont les stades 1,2,3,4,Crop).
 const CROP_BASES = ["Carrot", "Beet", "Tomato", "Lettuce", "Corn", "Wheat", "Pumpkin", "Watermelon", "BushBerries", "Bamboo", "Rice"]
-const CROP_STAGES = ["1", "2", "3", "4", "Crop"]
+const CROP_STAGES = ["1", "2", "3", "4"]
 
 const TREE_MODELS = ["tree_oak", "tree_fat", "tree_detailed", "tree_small", "tree_cone", "tree_thin", "plant_bushLarge"]
 
@@ -31,51 +31,50 @@ function norm(s: string | null | undefined): string {
   return (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
 }
 
-/** Stade discret d'une culture selon la croissance [0..1]. */
+/**
+ * Stade discret d'une culture selon la croissance [0..1]. On s'arrête au stade
+ * « plante sur pied » (_4) : le stade `_Crop` de Quaternius est le légume
+ * RÉCOLTÉ (produit isolé) — moche une fois mis à l'échelle de la planche.
+ */
 function stage(c: number): string {
-  return c < 0.25 ? "1" : c < 0.45 ? "2" : c < 0.65 ? "3" : c < 0.85 ? "4" : "Crop"
+  return c < 0.3 ? "1" : c < 0.55 ? "2" : c < 0.8 ? "3" : "4"
 }
 const cropUrl = (base: string, c: number) => `${CROP_BASE}${base}_${stage(c)}.glb`
 
 /**
- * Modèle glTF d'une culture. Résout par mot-clé du nom (français), puis par
- * famille botanique (id latin). `croissance` pilote le stade.
+ * Modèle glTF d'une culture — UNIQUEMENT si un modèle fidèle existe (le pack
+ * gratuit ne couvre pas toutes les espèces). Renvoie `null` sinon : l'appelant
+ * bascule alors sur un rendu procédural par famille (jamais de « faux légume »).
+ * `croissance` pilote le stade.
  */
 export function modelPourCulture(
   nom: string | null | undefined,
   familleId: string | null | undefined,
   croissance: number
-): string {
+): string | null {
   const n = norm(nom)
-  // Par mot-clé d'espèce
+  // Espèces avec un modèle VRAIMENT fidèle (mot-clé)
   if (/carotte|panais/.test(n)) return cropUrl("Carrot", croissance)
-  if (/navet|radis|betterave|rutabaga|topinambour|celeri-rave/.test(n)) return cropUrl("Beet", croissance)
-  if (/tomate|poivron|aubergine|piment/.test(n)) return cropUrl("Tomato", croissance)
+  if (/betterave|radis|navet|rutabaga/.test(n)) return cropUrl("Beet", croissance)
+  if (/tomate/.test(n)) return cropUrl("Tomato", croissance)
   if (/courge|courgette|potiron|citrouille|potimarron|butternut|concombre|cornichon|patisson/.test(n)) return cropUrl("Pumpkin", croissance)
   if (/melon|pasteque/.test(n)) return cropUrl("Watermelon", croissance)
   if (/mais/.test(n)) return cropUrl("Corn", croissance)
-  if (/ble|avoine|orge|seigle|cereale|sarrasin|epeautre/.test(n)) return cropUrl("Wheat", croissance)
+  if (/\bble\b|avoine|orge|seigle|cereale|epeautre|sarrasin/.test(n)) return cropUrl("Wheat", croissance)
   if (/riz/.test(n)) return cropUrl("Rice", croissance)
-  if (/fraise|framboise|groseille|cassis|myrtille|mure|baie|cranberry/.test(n)) return cropUrl("BushBerries", croissance)
-  if (/haricot|pois|feve|lentille|soja/.test(n)) return cropUrl("BushBerries", croissance)
-  if (/poireau|oignon|ail|echalote|ciboule/.test(n)) return cropUrl("Bamboo", croissance)
-  if (/salade|laitue|mache|epinard|roquette|chou|blette|celeri|fenouil|artichaut|endive|cresson|basilic|persil|aromate|menthe|thym/.test(n))
-    return cropUrl("Lettuce", croissance)
+  if (/fraise|framboise|groseille|cassis|myrtille|mure/.test(n)) return cropUrl("BushBerries", croissance)
+  if (/laitue|salade|mache|epinard|roquette|cresson|blette/.test(n)) return cropUrl("Lettuce", croissance)
+  if (/poireau/.test(n)) return cropUrl("Bamboo", croissance)
 
-  // Par famille botanique (id latin)
+  // Repli par famille : seulement là où le modèle représente bien toute la famille
   switch (familleId) {
-    case "Solanaceae": return cropUrl("Tomato", croissance)
-    case "Cucurbitaceae": return cropUrl("Pumpkin", croissance)
     case "Apiaceae": return cropUrl("Carrot", croissance)
+    case "Cucurbitaceae": return cropUrl("Pumpkin", croissance)
     case "Poaceae": return cropUrl("Wheat", croissance)
-    case "Fabaceae": return cropUrl("BushBerries", croissance)
-    case "Brassicaceae": return cropUrl("Lettuce", croissance)
-    case "Alliaceae":
-    case "Amaryllidaceae": return cropUrl("Bamboo", croissance)
     case "Chenopodiaceae":
     case "Amaranthaceae": return cropUrl("Beet", croissance)
-    case "Rosaceae": return cropUrl("BushBerries", croissance)
-    default: return cropUrl("Lettuce", croissance) // défaut : feuillu générique
+    default: return null // aubergine, poivron, oignon, ail, haricot, pois,
+    // fève, basilic, pomme de terre, chou… → rendu procédural par famille
   }
 }
 

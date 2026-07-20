@@ -179,7 +179,7 @@ export default function ElevageDashboard() {
 
       {/* Footer */}
       <footer className="border-t mt-8 py-4 text-center text-sm text-slate-500">
-        <p>Gleba v1.0.0</p>
+        <p>Gleba v1.1.0</p>
       </footer>
     </div>
   )
