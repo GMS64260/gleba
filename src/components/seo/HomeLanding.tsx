@@ -654,7 +654,7 @@ export function HomeLanding() {
               height={34}
               className="h-8 w-auto opacity-40"
             />
-            <span className="text-slate-600">v1.0.0</span>
+            <span className="text-slate-600">v1.1.0</span>
           </div>
           <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
             <Link href="/logiciel-maraichage" className="hover:text-emerald-600 transition-colors">

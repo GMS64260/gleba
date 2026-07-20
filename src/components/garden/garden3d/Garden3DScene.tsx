@@ -16,7 +16,7 @@ import * as THREE from "three"
 
 import type { Garden3DData, Garden3DFond, Objet3D, Planche3D } from "./types"
 import { computeLayout } from "./layout"
-import { OBJET_COLORS, rnd, placerPlants } from "./procedural"
+import { OBJET_COLORS, rnd, shade, placerPlants, shapePourFamille, specPourShape, vertFeuillage, type GeoKind } from "./procedural"
 import { modelPourArbre, modelPourCulture } from "./gltf-map"
 import { InstancedGltf, type GltfInstance } from "./GltfModels"
 
@@ -30,9 +30,96 @@ function hashId(id: string | number): number {
   return Math.abs(h) % 100000
 }
 
-// ---- Planche surélevée + cultures glTF ------------------------------------
+// ---- Rendu procédural de repli (espèces sans modèle glTF fidèle) ----------
+// Forme par famille botanique + feuillage vert + fruits à la couleur de
+// l'espèce, comme la 2D. Géométries unitaires (xz ∈ [-0.5,0.5], y ∈ [0,1]).
 
-function Bed({ p, showLabels }: { p: Planche3D; showLabels: boolean }) {
+function displace(geo: THREE.BufferGeometry, amt: number, seed: number) {
+  geo.computeVertexNormals()
+  const pos = geo.attributes.position as THREE.BufferAttribute
+  const nor = geo.attributes.normal as THREE.BufferAttribute
+  for (let i = 0; i < pos.count; i++) {
+    const d = (rnd(seed + i * 1.7) - 0.5) * 2 * amt
+    pos.setXYZ(i, pos.getX(i) + nor.getX(i) * d, pos.getY(i) + nor.getY(i) * d, pos.getZ(i) + nor.getZ(i) * d)
+  }
+  pos.needsUpdate = true
+  geo.computeVertexNormals()
+}
+
+function makeGeo(kind: GeoKind): THREE.BufferGeometry {
+  switch (kind) {
+    case "blob": {
+      const g = new THREE.IcosahedronGeometry(0.5, 2)
+      displace(g, 0.12, 1)
+      g.translate(0, 0.5, 0)
+      return g
+    }
+    case "cone":
+    case "spike": {
+      const g = new THREE.ConeGeometry(0.5, 1, 7)
+      g.translate(0, 0.5, 0)
+      return g
+    }
+    default: {
+      const g = new THREE.SphereGeometry(0.5, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2)
+      g.scale(1, 2, 1)
+      displace(g, 0.06, 7)
+      return g
+    }
+  }
+}
+
+interface ProcPlant { x: number; z: number; r: number; h: number; rotY: number }
+
+function ProceduralField({ geo, instances, color, seed }: { geo: GeoKind; instances: ProcPlant[]; color: string; seed: number }) {
+  const mesh = React.useMemo(() => {
+    const g = makeGeo(geo)
+    const mat = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0, flatShading: true })
+    const im = new THREE.InstancedMesh(g, mat, instances.length)
+    im.castShadow = true
+    im.receiveShadow = true
+    im.frustumCulled = false
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler()
+    const v = new THREE.Vector3(), s = new THREE.Vector3(), col = new THREE.Color()
+    instances.forEach((p, i) => {
+      e.set(0, p.rotY, 0); q.setFromEuler(e)
+      v.set(p.x, SOIL_TOP, p.z); s.set(p.r * 2, Math.max(0.05, p.h), p.r * 2)
+      m.compose(v, q, s); im.setMatrixAt(i, m)
+      col.set(shade(color, (rnd(seed + i) - 0.5) * 0.25)); im.setColorAt(i, col)
+    })
+    im.instanceMatrix.needsUpdate = true
+    if (im.instanceColor) im.instanceColor.needsUpdate = true
+    return im
+  }, [geo, instances, color, seed])
+  React.useEffect(() => () => { mesh.geometry.dispose(); (mesh.material as THREE.Material).dispose() }, [mesh])
+  return <primitive object={mesh} />
+}
+
+function FruitField({ instances, color }: { instances: { x: number; y: number; z: number; r: number }[]; color: string }) {
+  const mesh = React.useMemo(() => {
+    const g = new THREE.SphereGeometry(1, 8, 6)
+    const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.5, metalness: 0 })
+    const im = new THREE.InstancedMesh(g, mat, instances.length)
+    im.castShadow = true
+    im.frustumCulled = false
+    const m = new THREE.Matrix4(), v = new THREE.Vector3(), s = new THREE.Vector3(), q = new THREE.Quaternion()
+    instances.forEach((p, i) => { v.set(p.x, p.y, p.z); s.set(p.r, p.r, p.r); m.compose(v, q, s); im.setMatrixAt(i, m) })
+    im.instanceMatrix.needsUpdate = true
+    return im
+  }, [instances, color])
+  React.useEffect(() => () => { mesh.geometry.dispose(); (mesh.material as THREE.Material).dispose() }, [mesh])
+  return <primitive object={mesh} />
+}
+
+// ---- Planche surélevée : cultures glTF (fidèles) ou procédurales (repli) ---
+
+interface BedField {
+  key: number
+  gltf?: { url: string; instances: GltfInstance[] }
+  proc?: { geo: GeoKind; foliage: ProcPlant[]; color: string; fruits?: { x: number; y: number; z: number; r: number }[]; fruitColor: string; seed: number }
+}
+
+function Bed({ p, showLabels, hovered, onHover }: { p: Planche3D; showLabels: boolean; hovered: boolean; onHover: (id: string | null) => void }) {
   const L = p.largeur ?? 1
   const P = p.longueur ?? 1
   const cx = (p.posX ?? 0) + L / 2
@@ -43,21 +130,42 @@ function Bed({ p, showLabels }: { p: Planche3D; showLabels: boolean }) {
   const n = Math.max(1, cultures.length)
   const bandLen = P / n
 
-  const fields = cultures.map((c, k) => {
+  const fields: BedField[] = cultures.map((c, k) => {
     const footprint = c.espece?.etalement || c.espacement || c.itp?.espacement || 0.3
     const bandCenterZ = -P / 2 + bandLen * (k + 0.5)
     const placed = placerPlants(L, bandLen, footprint, c.croissance, seed + k * 101)
-    const instances: GltfInstance[] = placed.map((pl) => ({
-      x: pl.x,
-      z: pl.z + bandCenterZ,
-      size: Math.max(0.1, pl.r * 2),
-      rotY: pl.rotY,
-    }))
-    return {
-      key: c.id,
-      url: modelPourCulture(c.espece?.nom, c.espece?.famille?.id, c.croissance),
-      instances,
+    const url = modelPourCulture(c.espece?.nom, c.espece?.famille?.id, c.croissance)
+
+    if (url) {
+      return {
+        key: c.id,
+        gltf: { url, instances: placed.map((pl) => ({ x: pl.x, z: pl.z + bandCenterZ, size: Math.max(0.1, pl.r * 2), rotY: pl.rotY })) },
+      }
     }
+
+    // Repli procédural : forme par famille, feuillage vert (ou couleur pour les
+    // feuillus/choux), fruits colorés à l'approche de la maturité.
+    const shape = shapePourFamille(c.espece?.famille?.id)
+    const spec = specPourShape(shape)
+    const foliage: ProcPlant[] = placed.map((pl) => ({ ...pl, h: spec.h * (0.35 + 0.65 * c.croissance) }))
+    const especeColor = c.espece?.couleur || null
+    const isLeafyColored = shape === "chou" || shape === "rosette"
+    const color = isLeafyColored && especeColor ? especeColor : vertFeuillage(seed + k)
+    const fruitColor = especeColor || "#c0413b"
+    let fruits: { x: number; y: number; z: number; r: number }[] | undefined
+    if (spec.fruits && c.croissance >= 0.7) {
+      const arr: { x: number; y: number; z: number; r: number }[] = []
+      foliage.forEach((pl, i) => {
+        const nb = 2 + Math.floor(rnd(seed + i) * 2)
+        for (let j = 0; j < nb; j++) {
+          const a = rnd(seed + i * 3 + j) * Math.PI * 2
+          const rr = pl.r * 0.6
+          arr.push({ x: pl.x + Math.cos(a) * rr, y: SOIL_TOP + pl.h * (0.35 + rnd(seed + i + j) * 0.4), z: pl.z + Math.sin(a) * rr, r: spec.fruitR })
+        }
+      })
+      fruits = arr
+    }
+    return { key: c.id, proc: { geo: spec.geo, foliage, color, fruits, fruitColor, seed: seed + k * 17 } }
   })
 
   const noms = [...new Set(cultures.map((c) => c.espece?.nom).filter(Boolean))] as string[]
@@ -65,20 +173,37 @@ function Bed({ p, showLabels }: { p: Planche3D; showLabels: boolean }) {
 
   return (
     <group position={[cx, 0, cz]} rotation={[0, rotY, 0]}>
-      {/* Cadre bois */}
+      {/* Cadre bois (léger surlignage au survol) */}
       <mesh position={[0, BED_H / 2, 0]} castShadow receiveShadow>
         <boxGeometry args={[L, BED_H, P]} />
-        <meshStandardMaterial color="#8a5a33" roughness={0.9} metalness={0} />
+        <meshStandardMaterial color="#8a5a33" roughness={0.9} metalness={0} emissive="#e8a24a" emissiveIntensity={hovered ? 0.35 : 0} />
       </mesh>
       {/* Terreau */}
       <mesh position={[0, SOIL_TOP - 0.03, 0]} receiveShadow>
         <boxGeometry args={[Math.max(0.1, L - 0.12), 0.06, Math.max(0.1, P - 0.12)]} />
         <meshStandardMaterial color="#4b3524" roughness={1} metalness={0} />
       </mesh>
-      {/* Cultures (modèles glTF instanciés) */}
-      {fields.map((f) => (
-        <InstancedGltf key={f.key} url={f.url} instances={f.instances} baseY={SOIL_TOP} />
-      ))}
+      {/* Cible de survol invisible couvrant le volume de la planche (cultures
+          comprises) → détail au survol, sans gêner l'orbite. */}
+      <mesh
+        position={[0, 0.85, 0]}
+        onPointerOver={(e) => { e.stopPropagation(); onHover(p.id); document.body.style.cursor = "pointer" }}
+        onPointerOut={(e) => { e.stopPropagation(); onHover(null); document.body.style.cursor = "auto" }}
+      >
+        <boxGeometry args={[L + 0.08, 1.7, P + 0.08]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
+      {/* Cultures : modèle glTF fidèle, sinon rendu procédural par famille */}
+      {fields.map((f) =>
+        f.gltf ? (
+          <InstancedGltf key={f.key} url={f.gltf.url} instances={f.gltf.instances} baseY={SOIL_TOP} />
+        ) : f.proc ? (
+          <React.Fragment key={f.key}>
+            <ProceduralField geo={f.proc.geo} instances={f.proc.foliage} color={f.proc.color} seed={f.proc.seed} />
+            {f.proc.fruits && f.proc.fruits.length > 0 && <FruitField instances={f.proc.fruits} color={f.proc.fruitColor} />}
+          </React.Fragment>
+        ) : null
+      )}
       {/* Serre / tunnel : couvert translucide */}
       {isSerre && (
         <mesh position={[0, 1.0, 0]}>
@@ -102,6 +227,43 @@ function Bed({ p, showLabels }: { p: Planche3D; showLabels: boolean }) {
           >
             {noms.slice(0, 2).join(" · ")}
             {noms.length > 2 ? ` +${noms.length - 2}` : ""}
+          </div>
+        </Html>
+      )}
+      {/* Encart de détails au survol — taille fixe (lisible à tout zoom) */}
+      {hovered && (
+        <Html position={[0, BED_H + 1.0, 0]} center zIndexRange={[40, 20]} style={{ pointerEvents: "none" }}>
+          <div
+            style={{
+              minWidth: 150,
+              maxWidth: 250,
+              background: "rgba(255,255,255,0.97)",
+              color: "#1f2a24",
+              borderRadius: 12,
+              padding: "10px 12px",
+              boxShadow: "0 8px 24px rgba(0,0,0,0.3)",
+              font: "13px system-ui, sans-serif",
+              lineHeight: 1.35,
+            }}
+          >
+            <div style={{ fontWeight: 700, fontSize: 14 }}>{p.nom || "Planche"}</div>
+            <div style={{ color: "#6b7a70", fontSize: 12, marginBottom: cultures.length ? 6 : 0 }}>
+              {L.toLocaleString("fr-FR", { maximumFractionDigits: 1 })}×{P.toLocaleString("fr-FR", { maximumFractionDigits: 1 })}&nbsp;m
+              {p.type ? ` · ${p.type}` : ""}
+            </div>
+            {cultures.length > 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                {cultures.map((c) => (
+                  <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: 999, background: c.espece?.couleur || "#5c9134", flexShrink: 0 }} />
+                    <span style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.espece?.nom || "Culture"}</span>
+                    <span style={{ color: "#0f8a5f", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{Math.round(c.croissance * 100)}%</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ color: "#6b7a70", fontStyle: "italic" }}>Aucune culture en cours</div>
+            )}
           </div>
         </Html>
       )}
@@ -245,6 +407,7 @@ export interface Garden3DSceneProps {
 
 export default function Garden3DScene({ data, fond, autoRotate = false, showLabels = false }: Garden3DSceneProps) {
   const { cx, cz, size } = React.useMemo(() => computeLayout(data, fond), [data, fond])
+  const [hoverBed, setHoverBed] = React.useState<string | null>(null)
   const sun: [number, number, number] = [size * 0.55, size * 0.6, size * 0.62]
   const half = size * 0.7
 
@@ -273,12 +436,12 @@ export default function Garden3DScene({ data, fond, autoRotate = false, showLabe
         scene.fog = new THREE.Fog("#d8e6f1", size * 1.5, size * 4.5)
       }}
     >
-      <hemisphereLight args={["#eaf4ff", "#69804d", 0.6]} />
-      <ambientLight intensity={0.16} />
+      <hemisphereLight args={["#eaf4ff", "#7a8f5c", 1.05]} />
+      <ambientLight intensity={0.4} />
       <directionalLight
         castShadow
         position={sun}
-        intensity={2.7}
+        intensity={2.3}
         color="#fff1d4"
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
@@ -299,7 +462,7 @@ export default function Garden3DScene({ data, fond, autoRotate = false, showLabe
         <group position={[-cx, 0, -cz]}>
           {fond && <Fond fond={fond} />}
           {data.planches.map((p) => (
-            <Bed key={`b-${p.id}`} p={p} showLabels={showLabels} />
+            <Bed key={`b-${p.id}`} p={p} showLabels={showLabels} hovered={hoverBed === p.id} onHover={setHoverBed} />
           ))}
           {data.objets.map((o) => (
             <Objet key={`o-${o.id}`} o={o} />

@@ -12,7 +12,7 @@ import { NextResponse } from "next/server"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { exportAccount } from "@/lib/account-transfer"
 
-const APP_VERSION = process.env.npm_package_version || "1.0.0"
+const APP_VERSION = process.env.npm_package_version || "1.1.0"
 
 export async function GET(request: Request) {
   const { error, session } = await requireAuthApi(request)
