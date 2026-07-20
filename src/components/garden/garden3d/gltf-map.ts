@@ -1,42 +1,45 @@
 /**
- * Correspondance espèce / famille botanique → modèle glTF low-poly (Kenney
- * Nature Kit, CC0). Fonctions pures (aucun import three). Le repli procédural
- * n'intervient plus que si un modèle échoue au chargement.
+ * Correspondance espèce / famille botanique → modèle glTF low-poly. Fonctions
+ * pures (aucun import three). Le repli procédural n'intervient plus.
  *
- * Voir public/models/nature/CREDITS.md pour la licence (CC0).
+ * - Cultures : pack Quaternius « Nature Crops » (CC0), converti OBJ→GLB dans
+ *   `public/models/crops/` — 11 cultures × 5 stades (1→4 croissance, Crop =
+ *   maturité). Le stade suit la croissance du « plan vivant ».
+ * - Arbres : Kenney Nature Kit (CC0), `public/models/nature/`.
+ * Licences CC0 : voir les fichiers CREDITS sous public/models/nature et crops.
  */
 
-export const MODEL_BASE = "/models/nature/"
+const NATURE_BASE = "/models/nature/"
+const CROP_BASE = "/models/crops/"
 
-/** Tous les fichiers à précharger (useGLTF.preload). */
+const treeUrl = (n: string) => NATURE_BASE + n + ".glb"
+
+// Cultures Quaternius disponibles (toutes ont les stades 1,2,3,4,Crop).
+const CROP_BASES = ["Carrot", "Beet", "Tomato", "Lettuce", "Corn", "Wheat", "Pumpkin", "Watermelon", "BushBerries", "Bamboo", "Rice"]
+const CROP_STAGES = ["1", "2", "3", "4", "Crop"]
+
+const TREE_MODELS = ["tree_oak", "tree_fat", "tree_detailed", "tree_small", "tree_cone", "tree_thin", "plant_bushLarge"]
+
+/** Tous les fichiers à précharger (évite le « pop » et le flash au changement de stade). */
 export const MODELES = [
-  "tree_default", "tree_oak", "tree_fat", "tree_detailed", "tree_small", "tree_cone", "tree_thin",
-  "crop_carrot", "crop_melon", "crop_pumpkin", "crop_turnip",
-  "crops_cornStageA", "crops_cornStageB", "crops_cornStageC", "crops_cornStageD",
-  "crops_wheatStageA", "crops_wheatStageB", "crops_leafsStageA", "crops_leafsStageB",
-  "plant_bush", "plant_bushSmall", "plant_bushDetailed", "plant_bushLarge",
-  "flower_redA", "flower_yellowA", "flower_purpleA", "grass_leafs",
-].map((n) => MODEL_BASE + n + ".glb")
-
-const url = (n: string) => MODEL_BASE + n + ".glb"
+  ...CROP_BASES.flatMap((b) => CROP_STAGES.map((s) => `${CROP_BASE}${b}_${s}.glb`)),
+  ...TREE_MODELS.map((n) => treeUrl(n)),
+]
 
 /** minuscule + sans accents, pour matcher les noms français. */
 function norm(s: string | null | undefined): string {
   return (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
 }
 
-/** Stade discret d'un modèle multi-stades selon la croissance [0..1]. */
-function stageCorn(c: number): string {
-  return c < 0.3 ? "crops_cornStageA" : c < 0.55 ? "crops_cornStageB" : c < 0.8 ? "crops_cornStageC" : "crops_cornStageD"
+/** Stade discret d'une culture selon la croissance [0..1]. */
+function stage(c: number): string {
+  return c < 0.25 ? "1" : c < 0.45 ? "2" : c < 0.65 ? "3" : c < 0.85 ? "4" : "Crop"
 }
-function stage2(base: string, c: number): string {
-  return c < 0.6 ? base + "StageA" : base + "StageB"
-}
+const cropUrl = (base: string, c: number) => `${CROP_BASE}${base}_${stage(c)}.glb`
 
 /**
- * Modèle glTF d'une culture. Résout d'abord par mot-clé du nom (français),
- * puis par famille botanique (id latin). `croissance` pilote le stade des
- * modèles multi-stades (maïs, blé, feuillus).
+ * Modèle glTF d'une culture. Résout par mot-clé du nom (français), puis par
+ * famille botanique (id latin). `croissance` pilote le stade.
  */
 export function modelPourCulture(
   nom: string | null | undefined,
@@ -45,33 +48,34 @@ export function modelPourCulture(
 ): string {
   const n = norm(nom)
   // Par mot-clé d'espèce
-  if (/carotte|panais/.test(n)) return url("crop_carrot")
-  if (/melon|pasteque/.test(n)) return url("crop_melon")
-  if (/courge|courgette|potiron|citrouille|potimarron|butternut|concombre|cornichon/.test(n)) return url("crop_pumpkin")
-  if (/navet|radis|betterave|rutabaga|topinambour/.test(n)) return url("crop_turnip")
-  if (/mais|maïs/.test(n)) return url(stageCorn(croissance))
-  if (/ble|avoine|orge|seigle|cereale|sarrasin|quinoa/.test(n)) return url(stage2("crops_wheat", croissance))
-  if (/tomate|poivron|aubergine|piment/.test(n)) return url("plant_bush")
-  if (/fraise|framboise|groseille|cassis|myrtille|mure|baie/.test(n)) return url("plant_bushLarge")
-  if (/haricot|pois|feve|lentille|soja|pois-chiche/.test(n)) return url("plant_bushSmall")
-  if (/basilic|thym|menthe|persil|coriandre|ciboulette|romarin|origan|sauge|aromate/.test(n)) return url("plant_bushDetailed")
-  if (/salade|laitue|mache|epinard|roquette|chou|blette|poireau|oignon|ail|echalote|celeri|fenouil|artichaut|endive|cresson/.test(n))
-    return url(stage2("crops_leafs", croissance))
+  if (/carotte|panais/.test(n)) return cropUrl("Carrot", croissance)
+  if (/navet|radis|betterave|rutabaga|topinambour|celeri-rave/.test(n)) return cropUrl("Beet", croissance)
+  if (/tomate|poivron|aubergine|piment/.test(n)) return cropUrl("Tomato", croissance)
+  if (/courge|courgette|potiron|citrouille|potimarron|butternut|concombre|cornichon|patisson/.test(n)) return cropUrl("Pumpkin", croissance)
+  if (/melon|pasteque/.test(n)) return cropUrl("Watermelon", croissance)
+  if (/mais/.test(n)) return cropUrl("Corn", croissance)
+  if (/ble|avoine|orge|seigle|cereale|sarrasin|epeautre/.test(n)) return cropUrl("Wheat", croissance)
+  if (/riz/.test(n)) return cropUrl("Rice", croissance)
+  if (/fraise|framboise|groseille|cassis|myrtille|mure|baie|cranberry/.test(n)) return cropUrl("BushBerries", croissance)
+  if (/haricot|pois|feve|lentille|soja/.test(n)) return cropUrl("BushBerries", croissance)
+  if (/poireau|oignon|ail|echalote|ciboule/.test(n)) return cropUrl("Bamboo", croissance)
+  if (/salade|laitue|mache|epinard|roquette|chou|blette|celeri|fenouil|artichaut|endive|cresson|basilic|persil|aromate|menthe|thym/.test(n))
+    return cropUrl("Lettuce", croissance)
 
   // Par famille botanique (id latin)
   switch (familleId) {
-    case "Solanaceae": return url("plant_bush")
-    case "Cucurbitaceae": return url("crop_pumpkin")
-    case "Apiaceae": return url("crop_carrot")
-    case "Poaceae": return url(stage2("crops_wheat", croissance))
-    case "Fabaceae": return url("plant_bushSmall")
-    case "Brassicaceae": return url(stage2("crops_leafs", croissance))
+    case "Solanaceae": return cropUrl("Tomato", croissance)
+    case "Cucurbitaceae": return cropUrl("Pumpkin", croissance)
+    case "Apiaceae": return cropUrl("Carrot", croissance)
+    case "Poaceae": return cropUrl("Wheat", croissance)
+    case "Fabaceae": return cropUrl("BushBerries", croissance)
+    case "Brassicaceae": return cropUrl("Lettuce", croissance)
     case "Alliaceae":
-    case "Amaryllidaceae": return url(stage2("crops_leafs", croissance))
-    case "Lamiaceae": return url("plant_bushDetailed")
-    case "Rosaceae": return url("plant_bushLarge")
-    case "Asteraceae": return url("flower_yellowA")
-    default: return url(stage2("crops_leafs", croissance)) // défaut : feuillu générique
+    case "Amaryllidaceae": return cropUrl("Bamboo", croissance)
+    case "Chenopodiaceae":
+    case "Amaranthaceae": return cropUrl("Beet", croissance)
+    case "Rosaceae": return cropUrl("BushBerries", croissance)
+    default: return cropUrl("Lettuce", croissance) // défaut : feuillu générique
   }
 }
 
@@ -81,10 +85,10 @@ export function modelPourArbre(type: string, seed: number): string {
   // « tours » (tree_default 2,26 / tree_small 2,71 écartés du choix par défaut).
   const feuillus = ["tree_oak", "tree_fat", "tree_detailed"]
   switch (type) {
-    case "petit_fruit": return url(seed % 2 ? "tree_small" : "plant_bushLarge")
-    case "ornement": return url(seed % 2 ? "tree_cone" : "tree_thin")
-    case "haie": return url("tree_thin")
+    case "petit_fruit": return treeUrl(seed % 2 ? "tree_small" : "plant_bushLarge")
+    case "ornement": return treeUrl(seed % 2 ? "tree_cone" : "tree_thin")
+    case "haie": return treeUrl("tree_thin")
     case "fruitier":
-    default: return url(feuillus[seed % feuillus.length])
+    default: return treeUrl(feuillus[seed % feuillus.length])
   }
 }
