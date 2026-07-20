@@ -6,12 +6,45 @@ export interface DashboardProduction {
   detail?: string
 }
 
+export interface DashboardVentes {
+  categories: { categorie: string; label: string }[]
+  mois: Array<{ mois: number; label: string; [categorie: string]: number | string }>
+}
+
+interface VenteDashboard {
+  type: string
+  date: Date
+  prixTotal: number
+}
+
+interface VenteDashboardClient {
+  venteProduit: {
+    findMany: (args: {
+      where: { userId: string; annule: false; date: { gte: Date; lte: Date } }
+      select: { type: true; date: true; prixTotal: true }
+      orderBy: { date: "asc" }
+    }) => Promise<VenteDashboard[]>
+  }
+}
+
 interface DashboardProductionTotals {
   oeufs: number
   laitLitres: number
   fromagePieces: number
   fromageKg: number
   viandeKg: number
+}
+
+export function aUneActiviteOeufsDashboard({
+  animauxPondeursActifs,
+  lotsPondeursActifs,
+  oeufsProduitsAnnee,
+}: {
+  animauxPondeursActifs: number
+  lotsPondeursActifs: number
+  oeufsProduitsAnnee: number
+}) {
+  return animauxPondeursActifs > 0 || lotsPondeursActifs > 0 || oeufsProduitsAnnee > 0
 }
 
 interface DashboardProductionAggregateClient {
@@ -59,6 +92,53 @@ export async function agregerProductionsLaitieresDashboard(
 
 const arrondir = (valeur: number, decimales = 2) =>
   Math.round(valeur * 10 ** decimales) / 10 ** decimales
+
+const VENTES_LABELS: Record<string, string> = {
+  oeufs: "Œufs",
+  lait: "Lait",
+  fromage: "Fromage",
+  autre: "Autres",
+  animal_vivant: "Animal vivant",
+}
+
+const labelVente = (type: string) =>
+  VENTES_LABELS[type] ?? type.replaceAll("_", " ").replace(/^./u, (lettre) => lettre.toLocaleUpperCase("fr-FR"))
+
+const LIBELLES_MOIS = ["Jan.", "Fév.", "Mars", "Avr.", "Mai", "Juin", "Juil.", "Août", "Sept.", "Oct.", "Nov.", "Déc."]
+
+/** Agrège les ventes par mois et catégorie sans figer les catégories disponibles. */
+export function construireVentesDashboard(ventes: VenteDashboard[]): DashboardVentes {
+  const categories = new Set<string>()
+  const mois: DashboardVentes["mois"] = LIBELLES_MOIS.map((label, index) => ({ mois: index + 1, label }))
+
+  for (const vente of ventes) {
+    const categorie = vente.type.toLocaleLowerCase("fr-FR")
+    const indexMois = vente.date.getMonth()
+    if (indexMois < 0 || indexMois > 11) continue
+    categories.add(categorie)
+    const courant = Number(mois[indexMois][categorie] ?? 0)
+    mois[indexMois][categorie] = arrondir(courant + Number(vente.prixTotal ?? 0))
+  }
+
+  return {
+    categories: Array.from(categories).map((categorie) => ({ categorie, label: labelVente(categorie) })),
+    mois,
+  }
+}
+
+export async function agregerVentesDashboard(
+  client: VenteDashboardClient,
+  userId: string,
+  startOfYear: Date,
+  endOfYear: Date
+) {
+  const ventes = await client.venteProduit.findMany({
+    where: { userId, annule: false, date: { gte: startOfYear, lte: endOfYear } },
+    select: { type: true, date: true, prixTotal: true },
+    orderBy: { date: "asc" },
+  })
+  return construireVentesDashboard(ventes)
+}
 
 /**
  * Construit la synthèse multi-production du dashboard.

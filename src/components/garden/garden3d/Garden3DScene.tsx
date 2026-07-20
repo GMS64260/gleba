@@ -254,7 +254,9 @@ export default function Garden3DScene({ data, fond, autoRotate = false, showLabe
     data.arbres.forEach((a) => {
       const u = modelPourArbre(a.type, hashId(a.id))
       const arr = map.get(u) ?? []
-      arr.push({ x: a.posX, z: a.posY, size: Math.max(0.6, a.envergure), rotY: rnd(a.id + 5) * Math.PI * 2 })
+      // Facteur 0,65 : les modèles sont réalistes (couronne = envergure, hauteur
+      // 1,5–1,7× la largeur) mais « écrasent » les planches ; on les tempère.
+      arr.push({ x: a.posX, z: a.posY, size: Math.max(0.5, a.envergure * 0.65), rotY: rnd(a.id + 5) * Math.PI * 2 })
       map.set(u, arr)
     })
     return [...map.entries()]

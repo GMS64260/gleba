@@ -1,6 +1,71 @@
 import { describe, expect, it, vi } from "vitest"
 
-import { agregerProductionsLaitieresDashboard, construireProductionsDashboard } from "../dashboard-productions"
+import {
+  aUneActiviteOeufsDashboard,
+  agregerProductionsLaitieresDashboard,
+  agregerVentesDashboard,
+  construireProductionsDashboard,
+  construireVentesDashboard,
+} from "../dashboard-productions"
+
+describe("aUneActiviteOeufsDashboard", () => {
+  it("masque les éléments œufs sans atelier ni production pour l’année", () => {
+    expect(aUneActiviteOeufsDashboard({
+      animauxPondeursActifs: 0,
+      lotsPondeursActifs: 0,
+      oeufsProduitsAnnee: 0,
+    })).toBe(false)
+  })
+
+  it.each([
+    { animauxPondeursActifs: 1, lotsPondeursActifs: 0, oeufsProduitsAnnee: 0 },
+    { animauxPondeursActifs: 0, lotsPondeursActifs: 12, oeufsProduitsAnnee: 0 },
+    { animauxPondeursActifs: 0, lotsPondeursActifs: 0, oeufsProduitsAnnee: 240 },
+  ])("affiche les éléments œufs dès qu’une activité pertinente existe", (activite) => {
+    expect(aUneActiviteOeufsDashboard(activite)).toBe(true)
+  })
+})
+
+describe("construireVentesDashboard", () => {
+  it("ventile les montants par mois et conserve les catégories dynamiques", () => {
+    const resultat = construireVentesDashboard([
+      { type: "oeufs", date: new Date(2025, 0, 8), prixTotal: 120.555 },
+      { type: "lait", date: new Date(2025, 0, 9), prixTotal: 80 },
+      { type: "oeufs", date: new Date(2025, 1, 2), prixTotal: 45.2 },
+      { type: "laine_brute", date: new Date(2025, 11, 2), prixTotal: 350 },
+    ])
+
+    expect(resultat.categories).toEqual([
+      { categorie: "oeufs", label: "Œufs" },
+      { categorie: "lait", label: "Lait" },
+      { categorie: "laine_brute", label: "Laine brute" },
+    ])
+    expect(resultat.mois).toHaveLength(12)
+    expect(resultat.mois[0]).toMatchObject({ mois: 1, label: "Jan.", oeufs: 120.56, lait: 80 })
+    expect(resultat.mois[1]).toMatchObject({ mois: 2, label: "Fév.", oeufs: 45.2 })
+    expect(resultat.mois[11]).toMatchObject({ mois: 12, label: "Déc.", laine_brute: 350 })
+  })
+
+  it("renvoie un état vide sans ventes", () => {
+    const resultat = construireVentesDashboard([])
+    expect(resultat.categories).toEqual([])
+    expect(resultat.mois).toHaveLength(12)
+  })
+
+  it("filtre explicitement par exploitation, année et ventes non annulées", async () => {
+    const findMany = vi.fn().mockResolvedValue([])
+    const debut = new Date(2025, 0, 1)
+    const fin = new Date(2025, 11, 31, 23, 59, 59)
+
+    await agregerVentesDashboard({ venteProduit: { findMany } }, "exploitation-a", debut, fin)
+
+    expect(findMany).toHaveBeenCalledWith({
+      where: { userId: "exploitation-a", annule: false, date: { gte: debut, lte: fin } },
+      select: { type: true, date: true, prixTotal: true },
+      orderBy: { date: "asc" },
+    })
+  })
+})
 
 describe("construireProductionsDashboard", () => {
   it("affiche simultanément chaque production avec son unité", () => {
