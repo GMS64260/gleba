@@ -170,6 +170,7 @@ function AnimauxSubTab() {
     dateNaissance: "", dateArrivee: todayLocalISO(),
     provenance: "", nExploitationOrigine: "",
     prixAchat: "", poidsActuel: "", notes: "",
+    lotId: "",
   }
   const [formData, setFormData] = React.useState(EMPTY_ANIMAL_FORM)
 
@@ -194,6 +195,7 @@ function AnimauxSubTab() {
       prixAchat: a.prixAchat ? a.prixAchat.toString() : "",
       poidsActuel: a.poidsActuel ? a.poidsActuel.toString() : "",
       notes: a.notes ?? "",
+      lotId: a.lot?.id ? String(a.lot.id) : "",
     })
     setIsDialogOpen(true)
   }
@@ -208,6 +210,10 @@ function AnimauxSubTab() {
   // troupeau en LOTS (poules, brebis, lapins) ne voyait que Chèvre et
   // Cochon. On fetch aussi les lots actifs pour agréger leurs espèces.
   const [lotsEspeceIds, setLotsEspeceIds] = React.useState<string[]>([])
+  // Lots actifs, pour rattacher un animal à un lot depuis sa fiche. Feedback
+  // éleveur 2026-07-21 (Cyril) : il n'existait aucune passerelle animal → lot
+  // dans l'UI (ni sur la fiche animal, ni sur la page du lot).
+  const [lotsActifs, setLotsActifs] = React.useState<Array<{ id: number; nom: string | null; especeAnimaleId: string }>>([])
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
     try {
@@ -224,10 +230,10 @@ function AnimauxSubTab() {
       if (especesRes.ok) setEspeces((await especesRes.json()).data)
       if (lotsRes.ok) {
         const lotsJson = await lotsRes.json()
-        const lots: Array<{ especeAnimaleId: string; statut: string }> = lotsJson.data ?? []
-        setLotsEspeceIds(
-          lots.filter((l) => l.statut === "actif").map((l) => l.especeAnimaleId)
-        )
+        const lots: Array<{ id: number; nom: string | null; especeAnimaleId: string; statut: string }> = lotsJson.data ?? []
+        const actifs = lots.filter((l) => l.statut === "actif")
+        setLotsEspeceIds(actifs.map((l) => l.especeAnimaleId))
+        setLotsActifs(actifs.map((l) => ({ id: l.id, nom: l.nom, especeAnimaleId: l.especeAnimaleId })))
       }
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les données" })
@@ -275,6 +281,7 @@ function AnimauxSubTab() {
         prixAchat: toNum(formData.prixAchat as unknown as string),
         poidsActuel: toNum(formData.poidsActuel as unknown as string),
         dateNaissance: (formData as { dateNaissance?: string }).dateNaissance || null,
+        lotId: formData.lotId ? parseInt(formData.lotId) : null,
       }
       // Bug testeur 2026-05-31 — un nouvel animal est TOUJOURS créé actif. On
       // force le statut côté payload de création pour qu'aucune valeur résiduelle
@@ -614,11 +621,11 @@ function AnimauxSubTab() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Date de naissance</Label>
-                  <Input type="date" value={formData.dateNaissance} onChange={(e) => setFormData(f => ({ ...f, dateNaissance: e.target.value }))} />
+                  <Input type="date" min="1990-01-01" max={todayLocalISO()} value={formData.dateNaissance} onChange={(e) => setFormData(f => ({ ...f, dateNaissance: e.target.value }))} />
                 </div>
                 <div className="space-y-2">
                   <Label>Date d&apos;arrivée</Label>
-                  <Input type="date" value={formData.dateArrivee} onChange={(e) => setFormData(f => ({ ...f, dateArrivee: e.target.value }))} />
+                  <Input type="date" min="1990-01-01" max={todayLocalISO()} value={formData.dateArrivee} onChange={(e) => setFormData(f => ({ ...f, dateArrivee: e.target.value }))} />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -630,6 +637,27 @@ function AnimauxSubTab() {
                   <Label>Poids (kg)</Label>
                   <Input type="number" step="0.1" value={formData.poidsActuel} onChange={(e) => setFormData(f => ({ ...f, poidsActuel: e.target.value }))} />
                 </div>
+              </div>
+              {/* Feedback éleveur 2026-07-21 — rattachement de l'animal à un lot
+                  directement depuis sa fiche (il n'y avait aucun moyen de le faire). */}
+              <div className="space-y-2">
+                <Label>Lot (optionnel)</Label>
+                <Select
+                  value={formData.lotId || "__none__"}
+                  onValueChange={(v) => setFormData(f => ({ ...f, lotId: v === "__none__" ? "" : v }))}
+                >
+                  <SelectTrigger><SelectValue placeholder="Aucun lot" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Aucun lot</SelectItem>
+                    {lotsActifs
+                      .filter((l) => !formData.especeAnimaleId || l.especeAnimaleId === formData.especeAnimaleId)
+                      .map((l) => (
+                        <SelectItem key={l.id} value={String(l.id)}>
+                          {l.nom || `Lot #${l.id}`}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>

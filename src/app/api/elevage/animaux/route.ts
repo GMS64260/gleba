@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { createDepenseFromAchatAnimal } from '@/lib/auto-compta'
-import { animalSchema } from '@/lib/validations/elevage-animal'
+import { animalSchema, isPlausibleAnimalDate } from '@/lib/validations/elevage-animal'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -213,7 +213,7 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { id, nom, race, sexe, statut, lotId, posX, posY, poidsActuel, couleur, notes, dateSortie, causeSortie, mereId, pereId, pereIdentifiant, identifiant, typeIdentifiant, nExploitationOrigine, nExploitationDestination, motifSortie, statutSanitaire } = body
+    const { id, nom, race, sexe, statut, lotId, posX, posY, poidsActuel, couleur, notes, dateSortie, causeSortie, mereId, pereId, pereIdentifiant, identifiant, typeIdentifiant, nExploitationOrigine, nExploitationDestination, motifSortie, statutSanitaire, prixAchat, provenance, dateNaissance, dateArrivee } = body
 
     if (!id) {
       return NextResponse.json({ error: 'ID requis' }, { status: 400 })
@@ -259,6 +259,32 @@ export async function PATCH(request: NextRequest) {
           return NextResponse.json({ error: `Animal ${label} introuvable` }, { status: 400 })
         }
       }
+    }
+    if (provenance !== undefined) updateData.provenance = provenance ?? null
+    // Bug éleveur 2026-07-21 (Cyril) — prixAchat était absent du PATCH : toute
+    // modification du prix d'achat (notamment la remise à 0 d'un achat saisi par
+    // erreur) était silencieusement ignorée, sans erreur. On l'applique désormais,
+    // 0 compris (0/null ⇒ la resync auto-compta ci-dessous supprime la dépense).
+    if (prixAchat !== undefined) {
+      const p = prixAchat === null || prixAchat === '' ? null : Number(prixAchat)
+      updateData.prixAchat = p === null || Number.isNaN(p) ? null : p
+    }
+    // Bug éleveur 2026-07-21 — dates de naissance/arrivée aussi ignorées par le
+    // PATCH, et sans borne d'année (faute de frappe "0204" au lieu de "2024").
+    for (const [field, raw, label] of [
+      ['dateNaissance', dateNaissance, 'de naissance'],
+      ['dateArrivee', dateArrivee, "d'arrivée"],
+    ] as const) {
+      if (raw === undefined) continue
+      if (raw === null || raw === '') { updateData[field] = null; continue }
+      const d = new Date(raw)
+      if (!isPlausibleAnimalDate(d)) {
+        return NextResponse.json(
+          { error: `Date ${label} invalide (année attendue entre 1990 et ${new Date().getFullYear() + 1})` },
+          { status: 400 }
+        )
+      }
+      updateData[field] = d
     }
     if (pereIdentifiant !== undefined) updateData.pereIdentifiant = pereIdentifiant ?? null
     if (identifiant !== undefined) updateData.identifiant = identifiant ?? null
