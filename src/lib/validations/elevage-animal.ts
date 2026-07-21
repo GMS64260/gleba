@@ -2,6 +2,20 @@ import { z } from 'zod'
 import { isValidIdentifiant, TYPES_IDENTIFIANT, type TypeIdentifiant } from '@/lib/identification-animal'
 import { caseInsensitiveEnum } from './case-insensitive-enum'
 
+/**
+ * Borne plausible pour une date d'animal (naissance / arrivée).
+ * Bug éleveur 2026-07-21 (Cyril) — une faute de frappe d'année ("0204" au
+ * lieu de "2024") passait sans contrôle et faussait la compta (dépense
+ * d'achat datée en l'an 204). On rejette toute année hors [1990 ; année+1].
+ * `null`/`undefined` restent valides (champ optionnel).
+ */
+export function isPlausibleAnimalDate(d: Date | null | undefined): boolean {
+  if (d == null) return true
+  if (Number.isNaN(d.getTime())) return false
+  const y = d.getFullYear()
+  return y >= 1990 && y <= new Date().getFullYear() + 1
+}
+
 export const animalSchema = z
   .object({
     especeAnimaleId: z.string().min(1, 'Espèce animale requise'),
@@ -42,3 +56,11 @@ export const animalSchema = z
       path: ['identifiant'],
     }
   )
+  .refine((d) => isPlausibleAnimalDate(d.dateNaissance), {
+    message: "Année de naissance invalide (attendu entre 1990 et l'an prochain)",
+    path: ['dateNaissance'],
+  })
+  .refine((d) => isPlausibleAnimalDate(d.dateArrivee), {
+    message: "Année d'arrivée invalide (attendu entre 1990 et l'an prochain)",
+    path: ['dateArrivee'],
+  })

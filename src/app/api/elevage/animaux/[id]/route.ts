@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { createDepenseFromAchatAnimal, deleteAutoEntry } from '@/lib/auto-compta'
+import { isPlausibleAnimalDate } from '@/lib/validations/elevage-animal'
 
 export async function GET(
   request: NextRequest,
@@ -178,6 +179,19 @@ export async function PUT(
       couleur,
       notes,
     } = body
+
+    // Bug éleveur 2026-07-21 — borne d'année sur les dates (évite "0204").
+    for (const [raw, label] of [
+      [dateNaissance, 'de naissance'],
+      [dateArrivee, "d'arrivée"],
+    ] as const) {
+      if (raw && !isPlausibleAnimalDate(new Date(raw))) {
+        return NextResponse.json(
+          { error: `Date ${label} invalide (année attendue entre 1990 et ${new Date().getFullYear() + 1})` },
+          { status: 400 }
+        )
+      }
+    }
 
     const animal = await prisma.animal.update({
       where: { id: parseInt(id) },
