@@ -57,20 +57,21 @@ export async function GET() {
       }),
       prisma.animal.findMany({
         where: { userId, parcelleGeoId: { not: null }, statut: 'actif' },
-        select: { parcelleGeoId: true, especeAnimale: { select: { nom: true } } },
+        select: { id: true, nom: true, identifiant: true, parcelleGeoId: true, especeAnimale: { select: { nom: true } } },
       }),
     ])
 
     type Agg = {
       totalTetes: number
       animauxIndividuels: number
+      animaux: Array<{ id: number; nom: string | null; identifiant: string | null; espece: string }>
       lots: Array<{ id: number; nom: string | null; espece: string; quantiteActuelle: number }>
       parEspece: Record<string, number>
     }
     const parParcelle = new Map<string, Agg>()
     const ensure = (pid: string): Agg => {
       let a = parParcelle.get(pid)
-      if (!a) { a = { totalTetes: 0, animauxIndividuels: 0, lots: [], parEspece: {} }; parParcelle.set(pid, a) }
+      if (!a) { a = { totalTetes: 0, animauxIndividuels: 0, animaux: [], lots: [], parEspece: {} }; parParcelle.set(pid, a) }
       return a
     }
     for (const l of lots) {
@@ -84,6 +85,7 @@ export async function GET() {
       if (!an.parcelleGeoId) continue
       const a = ensure(an.parcelleGeoId)
       a.animauxIndividuels += 1
+      a.animaux.push({ id: an.id, nom: an.nom, identifiant: an.identifiant, espece: an.especeAnimale.nom })
       a.totalTetes += 1
       a.parEspece[an.especeAnimale.nom] = (a.parEspece[an.especeAnimale.nom] ?? 0) + 1
     }
@@ -96,6 +98,7 @@ export async function GET() {
           ? {
               totalTetes: a.totalTetes,
               animauxIndividuels: a.animauxIndividuels,
+              animaux: a.animaux,
               lots: a.lots,
               parEspece: Object.entries(a.parEspece)
                 .map(([espece, count]) => ({ espece, count }))

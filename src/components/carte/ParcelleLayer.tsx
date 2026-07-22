@@ -17,6 +17,7 @@ const DEFAULT_COULEUR = "#4ade80" // vert Tailwind green-400
 export interface BetailParcelle {
   totalTetes: number
   animauxIndividuels: number
+  animaux: Array<{ id: number; nom: string | null; identifiant: string | null; espece: string }>
   lots: Array<{ id: number; nom: string | null; espece: string; quantiteActuelle: number }>
   parEspece: Array<{ espece: string; count: number }>
 }

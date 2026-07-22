@@ -88,28 +88,36 @@ export async function POST(request: NextRequest) {
       if (!p) return NextResponse.json({ error: 'Parcelle destination introuvable' }, { status: 404 })
     }
 
-    const m = await prisma.mouvementCheptel.create({
-      data: {
-        userId,
-        animalId: d.animalId ?? null,
-        lotId: d.lotId ?? null,
-        parcelleAvantId: d.parcelleAvantId ?? null,
-        parcelleApresId: d.parcelleApresId ?? null,
-        date: d.date,
-        motif: d.motif ?? null,
-        notes: d.notes ?? null,
-      },
-    })
-
-    // POSTREVIEW Sprint 5 — Mise à jour parcelle du lot SCOPÉE userId
-    // (avant : updateMany sans where userId → un utilisateur pouvait
-    // déplacer le lot d'un autre éleveur en POSTant son lotId)
-    if (d.lotId && d.parcelleApresId) {
-      await prisma.lotAnimaux.updateMany({
-        where: { id: d.lotId, userId },
-        data: { parcelleGeoId: d.parcelleApresId },
+    // Le journal et l'emplacement courant forment une seule opération : une
+    // erreur ne doit jamais laisser la carte et l'historique en désaccord.
+    const m = await prisma.$transaction(async (tx) => {
+      const mouvement = await tx.mouvementCheptel.create({
+        data: {
+          userId,
+          animalId: d.animalId ?? null,
+          lotId: d.lotId ?? null,
+          parcelleAvantId: d.parcelleAvantId ?? null,
+          parcelleApresId: d.parcelleApresId ?? null,
+          date: d.date,
+          motif: d.motif ?? null,
+          notes: d.notes ?? null,
+        },
       })
-    }
+
+      if (d.lotId) {
+        await tx.lotAnimaux.updateMany({
+          where: { id: d.lotId, userId },
+          data: { parcelleGeoId: d.parcelleApresId ?? null },
+        })
+      }
+      if (d.animalId) {
+        await tx.animal.updateMany({
+          where: { id: d.animalId, userId },
+          data: { parcelleGeoId: d.parcelleApresId ?? null },
+        })
+      }
+      return mouvement
+    })
 
     return NextResponse.json({ data: m }, { status: 201 })
   } catch (err) {

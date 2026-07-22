@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { X, Save, Trash2, Camera, Loader2, ExternalLink } from 'lucide-react'
+import { X, Save, Trash2, Camera, Loader2, ExternalLink, MoveRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -30,6 +30,7 @@ interface ParcelleGeoData {
   betail?: {
     totalTetes: number
     animauxIndividuels: number
+    animaux: Array<{ id: number; nom: string | null; identifiant: string | null; espece: string }>
     lots: Array<{ id: number; nom: string | null; espece: string; quantiteActuelle: number }>
     parEspece: Array<{ espece: string; count: number }>
   } | null
@@ -42,6 +43,8 @@ interface ParcellePanelProps {
   onSave: (data: Partial<ParcelleGeoData>) => void
   onDelete: (id: string) => void
   onClose: () => void
+  parcelles: Array<{ id: string; nom: string }>
+  onMovementComplete: (destinationId: string) => void | Promise<void>
 }
 
 // Options pour le champ usage
@@ -74,12 +77,18 @@ export default function ParcellePanel({
   onSave,
   onDelete,
   onClose,
+  parcelles,
+  onMovementComplete,
 }: ParcellePanelProps) {
   const [nom, setNom] = useState('')
   const [usages, setUsages] = useState<string[]>([])
   const [typeSol, setTypeSol] = useState<string | undefined>(undefined)
   const [couleur, setCouleur] = useState('#16a34a')
   const [notes, setNotes] = useState('')
+  const [movingSubject, setMovingSubject] = useState<{ type: 'lot' | 'animal'; id: number } | null>(null)
+  const [destinationId, setDestinationId] = useState('')
+  const [isMoving, setIsMoving] = useState(false)
+  const [movementError, setMovementError] = useState('')
 
   // Reinitialiser les champs quand la parcelle change
   useEffect(() => {
@@ -141,8 +150,38 @@ export default function ParcellePanel({
     }
   }
 
+  const handleMoveLot = async () => {
+    if (!parcelle || !movingSubject || !destinationId) return
+    setIsMoving(true)
+    setMovementError('')
+    try {
+      const response = await fetch('/api/elevage/mouvements-cheptel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          [movingSubject.type === 'lot' ? 'lotId' : 'animalId']: movingSubject.id,
+          parcelleAvantId: parcelle.id,
+          parcelleApresId: destinationId,
+          date: new Date().toISOString(),
+          motif: 'Changement de parcelle depuis la cartographie',
+        }),
+      })
+      if (!response.ok) {
+        const body = await response.json().catch(() => null)
+        throw new Error(body?.error || 'Impossible de déplacer ce lot')
+      }
+      setMovingSubject(null)
+      setDestinationId('')
+      await onMovementComplete(destinationId)
+    } catch (error) {
+      setMovementError(error instanceof Error ? error.message : 'Impossible de déplacer ce lot')
+    } finally {
+      setIsMoving(false)
+    }
+  }
+
   return (
-    <div className="w-80 bg-white shadow-lg h-full overflow-y-auto border-l flex flex-col">
+    <div className="w-full md:w-80 bg-white shadow-lg h-full overflow-y-auto border-l flex flex-col">
       {/* En-tete */}
       <div className="flex items-center justify-between p-4 border-b">
         <h2 className="text-lg font-semibold text-slate-900">{titre}</h2>
@@ -294,21 +333,80 @@ export default function ParcellePanel({
               <div className="space-y-1">
                 <p className="text-xs text-muted-foreground">Lots</p>
                 {parcelle.betail.lots.map((l) => (
-                  <Link
-                    key={l.id}
-                    href={`/elevage/lots/${l.id}`}
-                    className="flex justify-between text-sm hover:underline"
-                  >
-                    <span>{l.nom || `Lot #${l.id}`}</span>
-                    <span className="text-muted-foreground">{l.quantiteActuelle} · {l.espece}</span>
-                  </Link>
+                  <div key={l.id} className="rounded-md border p-2 space-y-2">
+                    <div className="flex items-center justify-between gap-2 text-sm">
+                      <Link href={`/elevage/lots/${l.id}`} className="min-w-0 truncate hover:underline">
+                        {l.nom || `Lot #${l.id}`}
+                      </Link>
+                      <span className="shrink-0 text-muted-foreground">{l.quantiteActuelle} · {l.espece}</span>
+                    </div>
+                    {movingSubject?.type === 'lot' && movingSubject.id === l.id ? (
+                      <div className="space-y-2">
+                        <Label htmlFor={`destination-${l.id}`} className="text-xs">Parcelle de destination</Label>
+                        <Select value={destinationId} onValueChange={setDestinationId}>
+                          <SelectTrigger id={`destination-${l.id}`} className="min-h-11">
+                            <SelectValue placeholder="Choisir une parcelle" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {parcelles.filter((p) => p.id !== parcelle.id).map((p) => (
+                              <SelectItem key={p.id} value={p.id}>{p.nom}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                          Confirmer déplacera tout le lot vers la parcelle choisie.
+                        </p>
+                        {movementError && <p role="alert" className="text-xs text-red-600">{movementError}</p>}
+                        <div className="grid grid-cols-2 gap-2">
+                          <Button type="button" variant="outline" className="min-h-11" onClick={() => { setMovingSubject(null); setDestinationId(''); setMovementError('') }}>
+                            Annuler
+                          </Button>
+                          <Button type="button" className="min-h-11 bg-amber-600 hover:bg-amber-700" disabled={!destinationId || isMoving} onClick={handleMoveLot}>
+                            {isMoving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Confirmer'}
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <Button type="button" variant="outline" className="w-full min-h-11 border-amber-300 text-amber-800" onClick={() => { setMovingSubject({ type: 'lot', id: l.id }); setMovementError('') }} disabled={parcelles.length < 2}>
+                        <MoveRight className="h-4 w-4 mr-2" />
+                        Déplacer vers une autre parcelle
+                      </Button>
+                    )}
+                  </div>
                 ))}
               </div>
             )}
             {parcelle.betail.animauxIndividuels > 0 && (
-              <Link href="/elevage?tab=animaux" className="block text-sm text-amber-700 hover:underline">
-                {parcelle.betail.animauxIndividuels} animal(aux) en individuel →
-              </Link>
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground">Animaux individuels</p>
+                {parcelle.betail.animaux.map((animal) => (
+                  <div key={animal.id} className="rounded-md border p-2 space-y-2">
+                    <p className="text-sm font-medium">{animal.nom || animal.identifiant || `Animal #${animal.id}`} <span className="font-normal text-muted-foreground">· {animal.espece}</span></p>
+                    {movingSubject?.type === 'animal' && movingSubject.id === animal.id ? (
+                      <div className="space-y-2">
+                        <Label htmlFor={`destination-animal-${animal.id}`} className="text-xs">Parcelle de destination</Label>
+                        <Select value={destinationId} onValueChange={setDestinationId}>
+                          <SelectTrigger id={`destination-animal-${animal.id}`} className="min-h-11"><SelectValue placeholder="Choisir une parcelle" /></SelectTrigger>
+                          <SelectContent>
+                            {parcelles.filter((p) => p.id !== parcelle.id).map((p) => <SelectItem key={p.id} value={p.id}>{p.nom}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">Confirmer déplacera cet animal vers la parcelle choisie.</p>
+                        {movementError && <p role="alert" className="text-xs text-red-600">{movementError}</p>}
+                        <div className="grid grid-cols-2 gap-2">
+                          <Button type="button" variant="outline" className="min-h-11" onClick={() => { setMovingSubject(null); setDestinationId(''); setMovementError('') }}>Annuler</Button>
+                          <Button type="button" className="min-h-11 bg-amber-600 hover:bg-amber-700" disabled={!destinationId || isMoving} onClick={handleMoveLot}>{isMoving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Confirmer'}</Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <Button type="button" variant="outline" className="w-full min-h-11 border-amber-300 text-amber-800" onClick={() => { setMovingSubject({ type: 'animal', id: animal.id }); setMovementError('') }} disabled={parcelles.length < 2}>
+                        <MoveRight className="h-4 w-4 mr-2" />Déplacer vers une autre parcelle
+                      </Button>
+                    )}
+                  </div>
+                ))}
+                <Link href="/elevage?tab=animaux" className="block text-sm text-amber-700 hover:underline">Voir tous les animaux →</Link>
+              </div>
             )}
           </div>
         )}

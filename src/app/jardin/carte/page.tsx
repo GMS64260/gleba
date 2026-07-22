@@ -139,6 +139,7 @@ function CartePageContent() {
     setIsCreating(false)
     setNewGeometry(null)
     setSelectedParcelle(parcelle)
+    if (window.matchMedia('(max-width: 767px)').matches) setShowList(false)
   }, [])
 
   // -- Dessin --
@@ -328,11 +329,20 @@ function CartePageContent() {
       const bounds = (window as any).L.latLngBounds(latlngs)
 
       mapRef.flyToBounds(bounds, { padding: [50, 50], maxZoom: 18 })
+      if (window.matchMedia('(max-width: 767px)').matches) setShowList(false)
     } catch {
       // Fallback : si le centroid est disponible dans les données
       console.warn("Impossible de parser la geometrie pour flyTo")
     }
   }, [mapRef])
+
+  const handleMovementComplete = useCallback(async (destinationId: string) => {
+    await fetchParcelles()
+    setSelectedParcelle(null)
+    const destination = parcelles.find((p) => p.id === destinationId)
+    if (destination) handleFlyTo(destination)
+    toast({ title: 'Lot déplacé', description: 'Le nouvel emplacement est enregistré.' })
+  }, [fetchParcelles, handleFlyTo, parcelles, toast])
 
   // -- Fermer le panel --
   const handleClosePanel = useCallback(() => {
@@ -377,7 +387,15 @@ function CartePageContent() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setShowList((prev) => !prev)}
+              onClick={() => setShowList((prev) => {
+                const next = !prev
+                if (next && window.matchMedia('(max-width: 767px)').matches) {
+                  setSelectedParcelle(null)
+                  setIsCreating(false)
+                  setNewGeometry(null)
+                }
+                return next
+              })}
               title={showList ? "Masquer la liste" : "Afficher la liste"}
             >
               {showList ? (
@@ -394,15 +412,16 @@ function CartePageContent() {
       </header>
 
       {/* Contenu principal */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden relative">
         {/* Liste des parcelles (gauche) */}
         {showList && (
-          <div className="hidden md:block flex-shrink-0">
+          <div className="absolute inset-0 z-40 md:static md:block md:flex-shrink-0">
             <ParcelleList
               parcelles={parcelles}
               selectedId={selectedParcelle?.id ?? null}
               onSelect={handleSelect}
               onFlyTo={handleFlyTo}
+              className="w-full md:w-64"
             />
           </div>
         )}
@@ -463,7 +482,7 @@ function CartePageContent() {
 
         {/* Panneau d'edition (droite) */}
         {isPanelOpen && (
-          <div className="flex-shrink-0 w-full md:w-80">
+          <div className="absolute inset-x-0 bottom-0 z-40 h-[72%] md:static md:h-auto md:flex-shrink-0 md:w-80">
             <ParcellePanel
               parcelle={selectedParcelle}
               isCreating={isCreating}
@@ -471,6 +490,8 @@ function CartePageContent() {
               onSave={handleSave}
               onDelete={handleDelete}
               onClose={handleClosePanel}
+              parcelles={parcelles}
+              onMovementComplete={handleMovementComplete}
             />
           </div>
         )}
