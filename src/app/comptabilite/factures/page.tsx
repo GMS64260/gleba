@@ -233,6 +233,27 @@ export default function FacturesPage() {
     }
   }
 
+  const downloadFactureUBL = async (factureId: number, numero: string) => {
+    try {
+      const res = await fetch(`/api/comptabilite/factures/${factureId}/ubl`, { credentials: "include" })
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}))
+        toast({ variant: "destructive", title: "Export UBL impossible", description: payload.error || `Erreur ${res.status}` })
+        return
+      }
+      const url = URL.createObjectURL(await res.blob())
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `${numero}.ubl.xml`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch {
+      toast({ variant: "destructive", title: "Export UBL impossible", description: "Erreur réseau" })
+    }
+  }
+
   const formatEuro = (value: number) => {
     return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(value)
   }
@@ -717,6 +738,17 @@ export default function FacturesPage() {
                                 <Download className="h-4 w-4 mr-1" />
                                 PDF
                               </Button>
+                              {f.type !== "avoir" && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  title="Exporter au format structuré UBL 2.1"
+                                  onClick={() => downloadFactureUBL(f.id, f.numero)}
+                                >
+                                  <Download className="h-4 w-4 mr-1" />
+                                  UBL
+                                </Button>
+                              )}
                             </div>
                           </TableCell>
                         </TableRow>

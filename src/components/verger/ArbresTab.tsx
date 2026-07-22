@@ -93,6 +93,12 @@ interface Arbre {
   }
 }
 
+interface ParcelleVerger {
+  id: string
+  nom: string
+  usage?: string | null
+}
+
 const CONDUITES_ARBRE = ["Gobelet", "Axe central", "Palmette", "Espalier", "Libre"] as const
 
 interface EspeceRef {
@@ -227,6 +233,7 @@ export function ArbresTab() {
   const [especesRef, setEspecesRef] = React.useState<EspeceRef[]>([])
   const [varietesRef, setVarietesRef] = React.useState<VarieteRef[]>([])
   const [fournisseursRef, setFournisseursRef] = React.useState<string[]>([])
+  const [parcelles, setParcelles] = React.useState<ParcelleVerger[]>([])
   // Zone climatique de l'utilisateur (référentiel géographique) : sert à
   // avertir quand on plante un fruitier à besoin de froid en climat tropical.
   const [userZone, setUserZone] = React.useState<ZoneClimat | null>(null)
@@ -261,6 +268,7 @@ export function ArbresTab() {
     circonferenceCm: "",
     gpsLat: "",
     gpsLng: "",
+    parcelleGeoId: "",
   })
   // PROMPT 10 — mode batch "N arbres identiques"
   const [batchMode, setBatchMode] = React.useState(false)
@@ -321,7 +329,8 @@ export function ArbresTab() {
       fetch("/api/especes?type=all_arbres&pageSize=500").then(r => r.json()).catch(() => null),
       fetch("/api/varietes?pageSize=1000").then(r => r.json()).catch(() => null),
       fetch("/api/comptabilite/fournisseurs?actif=true").then(r => r.json()).catch(() => null),
-    ]).then(([especesRes, varietesRes, fournisseursRes]) => {
+      fetch("/api/carte").then(r => r.json()).catch(() => []),
+    ]).then(([especesRes, varietesRes, fournisseursRes, parcellesRes]) => {
       const especes = especesRes?.data || []
       setEspecesRef(especes.map((e: any) => ({ id: e.id, type: e.type, zonesAdaptees: e.zonesAdaptees, besoinFroid: e.besoinFroid })))
       const especesIds = new Set(especes.map((e: any) => e.id))
@@ -333,6 +342,7 @@ export function ArbresTab() {
         .map((f: any) => f.id)
         .filter(Boolean)
       setFournisseursRef(fournisseurs)
+      setParcelles((Array.isArray(parcellesRes) ? parcellesRes : []).map((p: ParcelleVerger) => ({ id: p.id, nom: p.nom, usage: p.usage })))
     })
   }, [])
 
@@ -445,6 +455,7 @@ export function ArbresTab() {
       circonferenceCm: "",
       gpsLat: "",
       gpsLng: "",
+      parcelleGeoId: "",
     })
     setBatchMode(false)
     setBatchPrefix("")
@@ -473,6 +484,7 @@ export function ArbresTab() {
     circonferenceCm: newArbre.circonferenceCm ? parseFloat(newArbre.circonferenceCm) : null,
     gpsLat: newArbre.gpsLat ? parseFloat(newArbre.gpsLat) : null,
     gpsLng: newArbre.gpsLng ? parseFloat(newArbre.gpsLng) : null,
+    parcelleGeoId: newArbre.parcelleGeoId || null,
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -960,6 +972,27 @@ export function ArbresTab() {
                   </span>
                 )}
               </div>
+            </div>
+
+            <div className="space-y-2 rounded-lg border border-emerald-200 bg-emerald-50/60 p-3">
+              <Label>Parcelle du verger (optionnel)</Label>
+              <Select
+                value={newArbre.parcelleGeoId || "__none__"}
+                onValueChange={(v) => setNewArbre({ ...newArbre, parcelleGeoId: v === "__none__" ? "" : v })}
+              >
+                <SelectTrigger><SelectValue placeholder="Aucune parcelle" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Aucune parcelle</SelectItem>
+                  {parcelles.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.nom}{p.usage ? ` — ${p.usage}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                En création multiple, les {batchCount || "N"} arbres seront tous rattachés à cette parcelle.
+              </p>
             </div>
 
             {/* PROMPT 10 — Mode batch */}
