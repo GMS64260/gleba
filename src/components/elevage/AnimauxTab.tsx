@@ -111,6 +111,7 @@ interface EspeceAnimale {
   id: string
   nom: string
   type: string
+  production?: string | null
 }
 
 const STATUT_COLORS: Record<string, string> = {
@@ -579,13 +580,20 @@ function AnimauxSubTab() {
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label>Espèce *</Label>
+                <Label>Type d&apos;animal / production *</Label>
                 <Select value={formData.especeAnimaleId} onValueChange={(v) => setFormData(f => ({ ...f, especeAnimaleId: v }))}>
                   <SelectTrigger><SelectValue placeholder="— Sélectionner une espèce —" /></SelectTrigger>
                   <SelectContent>
-                    {especes.map(e => <SelectItem key={e.id} value={e.id}>{e.nom}</SelectItem>)}
+                    {especes.map(e => (
+                      <SelectItem key={e.id} value={e.id}>
+                        {e.nom}{e.production ? ` — ${e.production}` : ""}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">
+                  Choisissez ici l&apos;orientation du référentiel (lait, viande, laine…). La race précise se renseigne séparément ci-dessous.
+                </p>
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div className="space-y-2 sm:col-span-2">
@@ -620,7 +628,7 @@ function AnimauxSubTab() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Race</Label>
+                  <Label>Race précise</Label>
                   <Input value={formData.race} onChange={(e) => setFormData(f => ({ ...f, race: e.target.value }))} />
                 </div>
                 <div className="space-y-2">

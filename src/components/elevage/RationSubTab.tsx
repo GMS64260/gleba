@@ -16,7 +16,7 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
-import { besoinsChevre, bilanRation, type StadeGestation, type LigneRation } from "@/lib/elevage/ration"
+import { besoinsMonogastrique, besoinsRuminant, bilanRation, bilanRationMonogastrique, type ProfilEspeceRation, type StadeGestation, type LigneRation } from "@/lib/elevage/ration"
 
 type Aliment = {
   id: string
@@ -26,6 +26,8 @@ type Aliment = {
   pdie: number | null
   uel: number | null
   prix: number | null
+  energie: number | null
+  proteines: number | null
 }
 
 type LotOption = { id: number; nom: string | null; especeAnimale?: { nom?: string } }
@@ -35,6 +37,7 @@ type RationEnregistree = {
   nom: string
   lotId: number | null
   stade: string
+  profilEspece: ProfilEspeceRation
   poidsVif: number
   litresLait: number
   tauxButyreux: number
@@ -65,6 +68,7 @@ export function RationSubTab() {
   const [nom, setNom] = React.useState("")
   const [lotId, setLotId] = React.useState("")
   const [stade, setStade] = React.useState("lactation")
+  const [profilEspece, setProfilEspece] = React.useState<ProfilEspeceRation>('caprin')
   const [editingId, setEditingId] = React.useState<string | null>(null)
   const [saving, setSaving] = React.useState(false)
 
@@ -90,6 +94,7 @@ export function RationSubTab() {
     setNom(r.nom)
     setLotId(r.lotId ? String(r.lotId) : "")
     setStade(r.stade || "lactation")
+    setProfilEspece(r.profilEspece || 'caprin')
     setPoids(r.poidsVif)
     setLait(r.litresLait)
     setTb(r.tauxButyreux)
@@ -111,6 +116,7 @@ export function RationSubTab() {
       nom: nom.trim(),
       lotId: lotId ? parseInt(lotId, 10) : null,
       stade,
+      profilEspece,
       poidsVif: poids,
       litresLait: lait,
       tauxButyreux: tb,
@@ -150,19 +156,23 @@ export function RationSubTab() {
     setEditingId(null); setNom(""); setLotId(""); setStade("lactation"); setQuantites({})
   }
 
-  const besoins = React.useMemo(
-    () => besoinsChevre({ poidsVif: poids, litresLait: lait, tauxButyreux: tb, stadeGestation: gestation }),
-    [poids, lait, tb, gestation]
-  )
+  const estRuminant = profilEspece === 'caprin' || profilEspece === 'ovin' || profilEspece === 'bovin'
+  const besoins = React.useMemo(() => estRuminant
+    ? besoinsRuminant(profilEspece as 'caprin' | 'ovin' | 'bovin', { poidsVif: poids, litresLait: lait, tauxButyreux: tb, stadeGestation: gestation })
+    : null, [estRuminant, profilEspece, poids, lait, tb, gestation])
+  const besoinsMono = React.useMemo(() => !estRuminant
+    ? besoinsMonogastrique(profilEspece as 'porcin' | 'volaille' | 'lapin', poids)
+    : null, [estRuminant, profilEspece, poids])
 
   const lignes: LigneRation[] = React.useMemo(
     () =>
       aliments
         .filter((a) => (quantites[a.id] || 0) > 0)
-        .map((a) => ({ ufl: a.ufl, pdin: a.pdin, pdie: a.pdie, uel: a.uel, prix: a.prix, quantiteKg: quantites[a.id] })),
+        .map((a) => ({ ufl: a.ufl, pdin: a.pdin, pdie: a.pdie, uel: a.uel, prix: a.prix, energie: a.energie, proteines: a.proteines, quantiteKg: quantites[a.id] })),
     [aliments, quantites]
   )
-  const bilan = React.useMemo(() => bilanRation(lignes, besoins), [lignes, besoins])
+  const bilan = React.useMemo(() => besoins ? bilanRation(lignes, besoins) : null, [lignes, besoins])
+  const bilanMono = React.useMemo(() => besoinsMono ? bilanRationMonogastrique(lignes, besoinsMono) : null, [lignes, besoinsMono])
 
   const alimentsRenseignes = aliments.filter((a) => a.ufl != null || a.pdin != null)
 
@@ -177,8 +187,7 @@ export function RationSubTab() {
           Calculateur de ration
         </CardTitle>
         <CardDescription>
-          Besoins UFL/PDI d'une chèvre selon son stade, comparés aux apports de la ration composée à partir de vos
-          aliments. Renseignez les valeurs INRA (UFL, PDIN, PDIE) sur chaque aliment.
+          Rations bovines, ovines, caprines, porcines, avicoles et cunicoles. Les ruminants utilisent UFL/PDI ; les monogastriques utilisent énergie et protéines.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
@@ -214,15 +223,16 @@ export function RationSubTab() {
         )}
 
         {/* Profil animal */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <div><Label className="text-xs">Profil espèce</Label><select className="block h-10 w-full rounded-md border border-slate-300 px-2 bg-white text-sm" value={profilEspece} onChange={e => setProfilEspece(e.target.value as ProfilEspeceRation)}>{['caprin','ovin','bovin','porcin','volaille','lapin'].map(p => <option value={p} key={p}>{p}</option>)}</select></div>
+          {estRuminant && <div>
             <Label className="text-xs">Poids vif (kg)</Label>
             <Input type="number" min="10" value={poids} onChange={(e) => setPoids(parseFloat(e.target.value) || 0)} />
-          </div>
-          <div>
+          </div>}
+          {estRuminant && <div>
             <Label className="text-xs">Lait (L/j)</Label>
             <Input type="number" min="0" step="0.1" value={lait} onChange={(e) => setLait(parseFloat(e.target.value) || 0)} />
-          </div>
+          </div>}
           <div>
             <Label className="text-xs">TB (g/L)</Label>
             <Input type="number" min="20" step="0.5" value={tb} onChange={(e) => setTb(parseFloat(e.target.value) || 0)} />
@@ -242,7 +252,7 @@ export function RationSubTab() {
         </div>
 
         {/* Besoins */}
-        <div className="rounded-lg border p-3 bg-slate-50">
+        {besoins && <div className="rounded-lg border p-3 bg-slate-50">
           <div className="text-xs font-semibold text-slate-500 uppercase mb-1">Besoins journaliers</div>
           <div className="flex flex-wrap gap-4 text-sm">
             <span><b>{besoins.ufl}</b> UFL</span>
@@ -252,7 +262,8 @@ export function RationSubTab() {
               {besoins.detail.gestation.ufl > 0 ? ` · gestation ${besoins.detail.gestation.ufl} UFL` : ""})
             </span>
           </div>
-        </div>
+        </div>}
+        {besoinsMono && <div className="rounded-lg border p-3 bg-slate-50"><div className="text-xs font-semibold text-slate-500 uppercase mb-1">Repères journaliers</div><div className="flex flex-wrap gap-4 text-sm"><span><b>{besoinsMono.ingestionKg}</b> kg d’aliment</span><span><b>{besoinsMono.energieKcal}</b> kcal</span><span><b>{besoinsMono.proteinesG}</b> g protéines</span></div><p className="text-xs text-muted-foreground mt-2">Repère de formulation à confirmer selon âge, souche, objectif de croissance et aliment utilisé.</p></div>}
 
         {/* Composition de la ration */}
         {loading ? (
@@ -303,7 +314,7 @@ export function RationSubTab() {
         )}
 
         {/* Bilan */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {bilan && <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div className="rounded-lg border p-3">
             <div className="text-xs text-slate-500">Apport UFL</div>
             <div className="text-lg font-semibold">{bilan.ufl}</div>
@@ -330,7 +341,8 @@ export function RationSubTab() {
             <div className="text-lg font-semibold">{bilan.cout.toFixed(2)} €</div>
             <div className="text-xs text-slate-400">{bilan.uel > 0 ? `${bilan.uel} UEL` : ""}</div>
           </div>
-        </div>
+        </div>}
+        {bilanMono && <div className="grid grid-cols-2 md:grid-cols-4 gap-3"><div className="rounded-lg border p-3"><div className="text-xs text-slate-500">Ingestion</div><div className="text-lg font-semibold">{bilanMono.ingestionKg} kg</div></div><div className="rounded-lg border p-3"><div className="text-xs text-slate-500">Énergie</div><div className="text-lg font-semibold">{bilanMono.energieKcal} kcal</div><div className={couvClass(bilanMono.couvertureEnergie)}>{bilanMono.couvertureEnergie}%</div></div><div className="rounded-lg border p-3"><div className="text-xs text-slate-500">Protéines</div><div className="text-lg font-semibold">{bilanMono.proteinesG} g</div><div className={couvClass(bilanMono.couvertureProteines)}>{bilanMono.couvertureProteines}%</div></div><div className="rounded-lg border p-3"><div className="text-xs text-slate-500">Coût/jour</div><div className="text-lg font-semibold">{bilanMono.cout.toFixed(2)} €</div></div></div>}
 
         {/* Enregistrer le plan */}
         <div className="rounded-lg border p-3 space-y-2">

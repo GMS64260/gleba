@@ -14,7 +14,7 @@ import prisma from '@/lib/prisma'
 
 const ligneSchema = z.object({
   alimentId: z.string().min(1),
-  quantiteKg: z.coerce.number().min(0),
+  quantiteKg: z.coerce.number().min(0).max(10_000),
 })
 
 const rationSchema = z.object({
@@ -22,6 +22,7 @@ const rationSchema = z.object({
   lotId: z.coerce.number().int().nullable().optional(),
   animalId: z.coerce.number().int().nullable().optional(),
   stade: z.string().max(40).default('lactation'),
+  profilEspece: z.enum(['caprin', 'ovin', 'bovin', 'porcin', 'volaille', 'lapin']).default('caprin'),
   poidsVif: z.coerce.number().positive(),
   litresLait: z.coerce.number().min(0).default(0),
   tauxButyreux: z.coerce.number().min(0).default(35),
@@ -31,14 +32,37 @@ const rationSchema = z.object({
 })
 
 // Valide que lot/animal (si fournis) appartiennent bien à l'utilisateur.
-async function ciblesValides(userId: string, lotId?: number | null, animalId?: number | null): Promise<string | null> {
+async function rationValide(
+  userId: string,
+  lotId: number | null | undefined,
+  animalId: number | null | undefined,
+  composition: Array<{ alimentId: string; quantiteKg: number }>
+): Promise<string | null> {
+  let lot: { id: number; especeAnimaleId: string } | null = null
   if (lotId != null) {
-    const lot = await prisma.lotAnimaux.findFirst({ where: { id: lotId, userId }, select: { id: true } })
+    lot = await prisma.lotAnimaux.findFirst({
+      where: { id: lotId, userId }, select: { id: true, especeAnimaleId: true },
+    })
     if (!lot) return 'Lot introuvable dans votre cheptel.'
   }
   if (animalId != null) {
-    const a = await prisma.animal.findFirst({ where: { id: animalId, userId }, select: { id: true } })
+    const a = await prisma.animal.findFirst({
+      where: { id: animalId, userId }, select: { id: true, lotId: true, especeAnimaleId: true },
+    })
     if (!a) return 'Animal introuvable dans votre cheptel.'
+    if (lot && (a.lotId !== lot.id || a.especeAnimaleId !== lot.especeAnimaleId)) {
+      return 'L’animal n’appartient pas au lot ciblé.'
+    }
+  }
+  const alimentIds = [...new Set(composition.map((ligne) => ligne.alimentId))]
+  if (alimentIds.length > 0) {
+    const accessibles = await prisma.aliment.count({
+      where: {
+        id: { in: alimentIds },
+        OR: [{ ownerUserId: null }, { ownerUserId: userId }],
+      },
+    })
+    if (accessibles !== alimentIds.length) return 'Un ou plusieurs aliments sont introuvables ou privés.'
   }
   return null
 }
@@ -69,7 +93,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Données invalides', details: parsed.error.flatten() }, { status: 400 })
     }
     const d = parsed.data
-    const invalide = await ciblesValides(session.user.id, d.lotId ?? null, d.animalId ?? null)
+    const invalide = await rationValide(session.user.id, d.lotId ?? null, d.animalId ?? null, d.composition)
     if (invalide) return NextResponse.json({ error: invalide }, { status: 400 })
 
     const ration = await prisma.planRation.create({
@@ -79,6 +103,7 @@ export async function POST(request: NextRequest) {
         lotId: d.lotId ?? null,
         animalId: d.animalId ?? null,
         stade: d.stade,
+        profilEspece: d.profilEspece,
         poidsVif: d.poidsVif,
         litresLait: d.litresLait,
         tauxButyreux: d.tauxButyreux,
@@ -109,7 +134,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Données invalides', details: parsed.error.flatten() }, { status: 400 })
     }
     const d = parsed.data
-    const invalide = await ciblesValides(session.user.id, d.lotId ?? null, d.animalId ?? null)
+    const invalide = await rationValide(session.user.id, d.lotId ?? null, d.animalId ?? null, d.composition)
     if (invalide) return NextResponse.json({ error: invalide }, { status: 400 })
 
     const ration = await prisma.planRation.update({
@@ -119,6 +144,7 @@ export async function PATCH(request: NextRequest) {
         lotId: d.lotId ?? null,
         animalId: d.animalId ?? null,
         stade: d.stade,
+        profilEspece: d.profilEspece,
         poidsVif: d.poidsVif,
         litresLait: d.litresLait,
         tauxButyreux: d.tauxButyreux,

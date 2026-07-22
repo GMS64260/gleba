@@ -14,6 +14,7 @@
  */
 
 export type StadeGestation = 'aucune' | 'gestation_moyenne' | 'gestation_finale'
+export type ProfilEspeceRation = 'caprin' | 'ovin' | 'bovin' | 'porcin' | 'volaille' | 'lapin'
 
 export type BesoinsInput = {
   poidsVif: number // kg
@@ -59,13 +60,56 @@ export function besoinsChevre(x: BesoinsInput): Besoins {
   }
 }
 
+const COEFF_RUMINANTS: Record<'caprin' | 'ovin' | 'bovin', { entretienUfl: number; entretienPdi: number; laitUfl: number; laitPdi: number; tbRef: number }> = {
+  caprin: { entretienUfl: 0.033, entretienPdi: 2.5, laitUfl: 0.44, laitPdi: 48, tbRef: 35 },
+  ovin: { entretienUfl: 0.032, entretienPdi: 2.6, laitUfl: 0.43, laitPdi: 50, tbRef: 60 },
+  bovin: { entretienUfl: 0.041, entretienPdi: 3.25, laitUfl: 0.44, laitPdi: 48, tbRef: 40 },
+}
+
+export function besoinsRuminant(profil: 'caprin' | 'ovin' | 'bovin', x: BesoinsInput): Besoins {
+  if (profil === 'caprin') return besoinsChevre(x)
+  const c = COEFF_RUMINANTS[profil]
+  const pv75 = Math.pow(Math.max(0, x.poidsVif), 0.75)
+  const tb = x.tauxButyreux ?? c.tbRef
+  const stade = x.stadeGestation ?? 'aucune'
+  const entretien = { ufl: c.entretienUfl * pv75, pdi: c.entretienPdi * pv75 }
+  const lait = { ufl: (c.laitUfl + 0.0053 * (tb - c.tbRef)) * x.litresLait, pdi: c.laitPdi * x.litresLait }
+  const facteur = profil === 'bovin' ? 2.5 : 1
+  const gestation = { ufl: SURCOUT_GESTATION[stade].ufl * facteur, pdi: SURCOUT_GESTATION[stade].pdi * facteur }
+  return { ufl: r2(entretien.ufl + lait.ufl + gestation.ufl), pdi: r0(entretien.pdi + lait.pdi + gestation.pdi), detail: { entretien: { ufl: r2(entretien.ufl), pdi: r0(entretien.pdi) }, lait: { ufl: r2(lait.ufl), pdi: r0(lait.pdi) }, gestation: { ufl: r2(gestation.ufl), pdi: r0(gestation.pdi) } } }
+}
+
+export type BesoinsMonogastrique = { ingestionKg: number; energieKcal: number; proteinesG: number }
+const MONOGASTRIQUES: Record<'porcin' | 'volaille' | 'lapin', { ingestionPct: number; energieKcalKg: number; proteinesPct: number }> = {
+  porcin: { ingestionPct: 0.04, energieKcalKg: 3200, proteinesPct: 0.16 },
+  volaille: { ingestionPct: 0.05, energieKcalKg: 2800, proteinesPct: 0.17 },
+  lapin: { ingestionPct: 0.035, energieKcalKg: 2500, proteinesPct: 0.15 },
+}
+export function besoinsMonogastrique(profil: 'porcin' | 'volaille' | 'lapin', poidsVif: number): BesoinsMonogastrique {
+  const c = MONOGASTRIQUES[profil]
+  const ingestionKg = Math.max(0, poidsVif) * c.ingestionPct
+  return { ingestionKg: r2(ingestionKg), energieKcal: r0(ingestionKg * c.energieKcalKg), proteinesG: r0(ingestionKg * c.proteinesPct * 1000) }
+}
+
 export type LigneRation = {
   ufl?: number | null
   pdin?: number | null
   pdie?: number | null
   uel?: number | null
   prix?: number | null // €/kg
+  energie?: number | null // kcal/kg
+  proteines?: number | null // %
   quantiteKg: number
+}
+
+export function bilanRationMonogastrique(lignes: LigneRation[], besoins: BesoinsMonogastrique) {
+  const total = lignes.reduce((a, l) => ({
+    kg: a.kg + l.quantiteKg,
+    energie: a.energie + (l.energie || 0) * l.quantiteKg,
+    proteines: a.proteines + ((l.proteines || 0) / 100) * l.quantiteKg * 1000,
+    cout: a.cout + (l.prix || 0) * l.quantiteKg,
+  }), { kg: 0, energie: 0, proteines: 0, cout: 0 })
+  return { ingestionKg: r2(total.kg), energieKcal: r0(total.energie), proteinesG: r0(total.proteines), cout: r2(total.cout), couvertureEnergie: besoins.energieKcal ? r0(total.energie / besoins.energieKcal * 100) : null, couvertureProteines: besoins.proteinesG ? r0(total.proteines / besoins.proteinesG * 100) : null }
 }
 
 export type BilanRation = {

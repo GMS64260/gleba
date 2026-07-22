@@ -5,17 +5,25 @@ const mocks = vi.hoisted(() => ({
   requireAuthApi: vi.fn(),
   isAssignableAnimalLot: vi.fn(),
   especeFindUnique: vi.fn(),
+  especeFindFirst: vi.fn(),
   animalFindFirst: vi.fn(),
   animalCreate: vi.fn(),
   animalUpdate: vi.fn(),
+  enregistrerChangementLot: vi.fn(),
 }))
 
 vi.mock('@/lib/auth-utils', () => ({ requireAuthApi: mocks.requireAuthApi }))
-vi.mock('@/lib/elevage/animal-lot', () => ({ isAssignableAnimalLot: mocks.isAssignableAnimalLot }))
+vi.mock('@/lib/elevage/animal-lot', () => ({
+  isAssignableAnimalLot: mocks.isAssignableAnimalLot,
+  enregistrerChangementLot: mocks.enregistrerChangementLot,
+}))
 vi.mock('@/lib/auto-compta', () => ({ createDepenseFromAchatAnimal: vi.fn() }))
 vi.mock('@/lib/prisma', () => ({
   default: {
-    especeAnimale: { findUnique: mocks.especeFindUnique },
+    $transaction: (callback: (tx: unknown) => unknown) => callback({
+      animal: { create: mocks.animalCreate, update: mocks.animalUpdate },
+    }),
+    especeAnimale: { findUnique: mocks.especeFindUnique, findFirst: mocks.especeFindFirst },
     animal: {
       findFirst: mocks.animalFindFirst,
       create: mocks.animalCreate,
@@ -37,9 +45,10 @@ describe('affectation d’un lot via /api/elevage/animaux', () => {
     vi.clearAllMocks()
     mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: 'user-1' } } })
     mocks.especeFindUnique.mockResolvedValue({ id: 'ovin' })
+    mocks.especeFindFirst.mockResolvedValue({ id: 'brebis_solognote' })
     mocks.animalFindFirst.mockResolvedValue({ id: 7, especeAnimaleId: 'ovin' })
-    mocks.animalCreate.mockResolvedValue({ id: 7, prixAchat: null })
-    mocks.animalUpdate.mockResolvedValue({ id: 7, prixAchat: null })
+    mocks.animalCreate.mockResolvedValue({ id: 7, lotId: 42, prixAchat: null, createdAt: new Date(), dateArrivee: new Date() })
+    mocks.animalUpdate.mockImplementation(async ({ data }) => ({ id: 7, lotId: data.lotId ?? 42, prixAchat: null }))
   })
 
   it.each([
@@ -83,5 +92,16 @@ describe('affectation d’un lot via /api/elevage/animaux', () => {
     expect(response.status).toBe(200)
     expect(mocks.isAssignableAnimalLot).not.toHaveBeenCalled()
     expect(mocks.animalUpdate).toHaveBeenCalled()
+  })
+
+  it('PATCH applique le nouveau type de brebis au lieu de l’ignorer', async () => {
+    mocks.animalFindFirst.mockResolvedValue({ id: 7, especeAnimaleId: 'brebis_merinos_arles', lotId: null })
+
+    const response = await PATCH(request('PATCH', { id: 7, especeAnimaleId: 'brebis_solognote' }))
+
+    expect(response.status).toBe(200)
+    expect(mocks.animalUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ especeAnimaleId: 'brebis_solognote' }),
+    }))
   })
 })

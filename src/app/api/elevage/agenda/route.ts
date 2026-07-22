@@ -27,6 +27,10 @@ type Echeance = {
     | 'soin_planifie'
     | 'soin_retard'
     | 'stock_aliment'
+    | 'medicament_peremption'
+    | 'prophylaxie'
+    | 'tache_terrain'
+    | 'administratif'
   date: string | null
   joursRestants: number | null
   titre: string
@@ -53,7 +57,7 @@ export async function GET(request: NextRequest) {
     const now = new Date()
     const horizon = new Date(now.getTime() + horizonJours * 86_400_000)
 
-    const [gestantes, enAttente, soinsAttente, soinsPlanifies, stocksBas] = await Promise.all([
+    const [gestantes, enAttente, soinsAttente, soinsPlanifies, stocksBas, medicaments, prophylaxies, tachesTerrain, echeancesAdmin] = await Promise.all([
       // Saillies gestantes : mise-bas + tarissement à venir
       prisma.saillie.findMany({
         where: { userId, statut: 'Gestante' },
@@ -103,6 +107,22 @@ export async function GET(request: NextRequest) {
       prisma.userStockAliment.findMany({
         where: { userId, stockMin: { not: null } },
         select: { alimentId: true, stock: true, stockMin: true, aliment: { select: { nom: true } } },
+      }),
+      prisma.stockMedicamentElevage.findMany({
+        where: { userId, quantite: { gt: 0 }, datePeremption: { not: null, lte: horizon } },
+        select: { id: true, produitId: true, numeroLot: true, datePeremption: true },
+      }),
+      prisma.prophylaxieElevage.findMany({
+        where: { userId, statut: 'a_faire', datePrevue: { lte: horizon } },
+        select: { id: true, type: true, datePrevue: true, organisme: true },
+      }),
+      prisma.tacheTerrainElevage.findMany({
+        where: { userId, actif: true, prochaineEcheance: { lte: horizon } },
+        select: { id: true, titre: true, prochaineEcheance: true, priorite: true, categorie: true },
+      }),
+      prisma.echeanceAdministrativeElevage.findMany({
+        where: { userId, statut: 'a_faire', dateEcheance: { lte: horizon } },
+        select: { id: true, libelle: true, categorie: true, dateEcheance: true },
       }),
     ])
 
@@ -216,6 +236,44 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    for (const med of medicaments) {
+      if (!med.datePeremption) continue
+      const jr = jours(now, med.datePeremption)
+      echeances.push({
+        id: `med-${med.id}`, kind: 'medicament_peremption',
+        date: med.datePeremption.toISOString(), joursRestants: jr,
+        titre: `Médicament à contrôler — lot ${med.numeroLot}`,
+        detail: `${med.produitId}${jr < 0 ? ' · périmé' : ` · péremption dans ${jr} j`}`,
+        gravite: jr <= 0 ? 'urgent' : 'attention',
+      })
+    }
+    for (const p of prophylaxies) {
+      const jr = jours(now, p.datePrevue)
+      echeances.push({
+        id: `pro-${p.id}`, kind: 'prophylaxie', date: p.datePrevue.toISOString(), joursRestants: jr,
+        titre: `Prophylaxie — ${p.type}`,
+        detail: `${p.organisme || 'organisme à préciser'}${jr < 0 ? ` · retard ${-jr} j` : ` · dans ${jr} j`}`,
+        gravite: jr < 0 ? 'urgent' : 'attention',
+      })
+    }
+    for (const t of tachesTerrain) {
+      const jr = jours(now, t.prochaineEcheance)
+      echeances.push({
+        id: `terrain-${t.id}`, kind: 'tache_terrain', date: t.prochaineEcheance.toISOString(), joursRestants: jr,
+        titre: `Tournée — ${t.titre}`, detail: t.categorie,
+        gravite: t.priorite === 'urgente' || jr < 0 ? 'urgent' : t.priorite === 'haute' ? 'attention' : 'info',
+      })
+    }
+    for (const admin of echeancesAdmin) {
+      const jr = jours(now, admin.dateEcheance)
+      echeances.push({
+        id: `admin-${admin.id}`, kind: 'administratif', date: admin.dateEcheance.toISOString(), joursRestants: jr,
+        titre: `${admin.categorie} — ${admin.libelle}`,
+        detail: jr < 0 ? `en retard de ${-jr} j` : `dans ${jr} j`,
+        gravite: jr < 0 ? 'urgent' : jr <= 7 ? 'attention' : 'info',
+      })
+    }
+
     // Tri : urgent d'abord, puis par date (les sans-date en fin), retards en tête.
     const rangGravite: Record<Gravite, number> = { urgent: 0, attention: 1, info: 2 }
     echeances.sort((a, b) => {
@@ -234,6 +292,9 @@ export async function GET(request: NextRequest) {
       soins: echeances.filter((e) => e.kind === 'soin_planifie' || e.kind === 'soin_retard').length,
       diagnostics: echeances.filter((e) => e.kind === 'diagnostic_gestation').length,
       stock: echeances.filter((e) => e.kind === 'stock_aliment').length,
+      sanitaireReglementaire: echeances.filter((e) => e.kind === 'medicament_peremption' || e.kind === 'prophylaxie').length,
+      tachesTerrain: echeances.filter((e) => e.kind === 'tache_terrain').length,
+      administratif: echeances.filter((e) => e.kind === 'administratif').length,
     }
 
     return NextResponse.json({ echeances, counts, horizonJours })

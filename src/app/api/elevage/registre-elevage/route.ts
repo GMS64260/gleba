@@ -177,6 +177,8 @@ export async function GET(request: NextRequest) {
       const identExpl = identifiantLegalAffichage(exploitation)
       doc.text(`${exploitation.raisonSociale}${identExpl ? ` — ${identExpl.label} ${identExpl.valeur}` : ""}`, 30, 64)
       doc.text(`${exploitation.adresseSiege}, ${exploitation.codePostal} ${exploitation.ville}`, 30, 76)
+      if (exploitation.numeroEde) doc.text(`N° exploitation / EDE : ${exploitation.numeroEde}`, 360, 64)
+      if (exploitation.lieuDetentionPrincipal) doc.text(`Détention : ${exploitation.lieuDetentionPrincipal}`, 360, 76, { width: 430 })
     }
     doc.text(`Imprimé le ${new Date().toLocaleDateString('fr-FR')}`, 30, 88)
     doc.fontSize(8).fillColor('#94a3b8').text("Conformité : arrêté du 5 juin 2000 — conservation minimum 5 ans", 30, 100)

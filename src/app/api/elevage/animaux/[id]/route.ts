@@ -10,7 +10,7 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { createDepenseFromAchatAnimal, deleteAutoEntry } from '@/lib/auto-compta'
 import { isPlausibleAnimalDate } from '@/lib/validations/elevage-animal'
-import { isAssignableAnimalLot, isOwnedParcelle } from '@/lib/elevage/animal-lot'
+import { enregistrerChangementLot, isAssignableAnimalLot, isOwnedParcelle } from '@/lib/elevage/animal-lot'
 
 export async function GET(
   request: NextRequest,
@@ -218,9 +218,10 @@ export async function PUT(
       }
     }
 
-    const animal = await prisma.animal.update({
-      where: { id: parseInt(id) },
-      data: {
+    const animal = await prisma.$transaction(async (tx) => {
+      const updated = await tx.animal.update({
+        where: { id: parseInt(id) },
+        data: {
         especeAnimaleId,
         lotId: lotId !== undefined ? (lotId ? parseInt(lotId) : null) : undefined,
         identifiant,
@@ -243,10 +244,24 @@ export async function PUT(
         notes,
         parcelleGeoId: parcelleGeoId !== undefined ? (parcelleGeoId || null) : undefined,
       },
-      include: {
-        especeAnimale: true,
-        lot: true,
-      },
+        include: {
+          especeAnimale: true,
+          lot: true,
+        },
+      })
+      if (lotId !== undefined) {
+        await enregistrerChangementLot(tx, session.user.id, existing.id, existing.lotId, updated.lotId)
+      }
+      if (parcelleGeoId !== undefined && updated.parcelleGeoId !== existing.parcelleGeoId) {
+        await tx.mouvementCheptel.create({
+          data: {
+            userId: session.user.id, animalId: existing.id,
+            parcelleAvantId: existing.parcelleGeoId, parcelleApresId: updated.parcelleGeoId,
+            date: new Date(), motif: 'Modification de la fiche animal',
+          },
+        })
+      }
+      return updated
     })
 
     // Auto-comptabilite : resynchroniser la depense auto avec les valeurs finales

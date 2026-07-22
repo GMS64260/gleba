@@ -19,7 +19,7 @@
  * (les collectes sont stockées à 00:00 UTC, un soin peut être horodaté).
  */
 
-import type { Prisma } from '@prisma/client'
+import { Prisma } from '@prisma/client'
 
 type Db = Prisma.TransactionClient
 
@@ -56,7 +56,28 @@ type SoinCouvrant = { date: Date; finAttenteLait: Date | null; animalId: number 
 type CollecteCible = { animalId: number | null; lotId: number | null; date: Date }
 
 /** Un soin couvre-t-il une collecte ? (cible cross-granularité + fenêtre au jour) */
-function couvre(s: SoinCouvrant, c: CollecteCible, lotDe: Map<number, number | null>): boolean {
+type AppartenanceDatee = { animalId: number; lotId: number; dateDebut: Date; dateFin: Date | null }
+
+function lotALaDate(
+  animalId: number,
+  date: Date,
+  historiques: Map<number, AppartenanceDatee[]>,
+  lotCourant: Map<number, number | null>
+): number | null {
+  const ligne = historiques.get(animalId)?.find(
+    (h) => h.dateDebut <= date && (h.dateFin == null || date < h.dateFin)
+  )
+  // Compatibilité défensive pendant une migration progressive des anciennes
+  // données : le lot courant n'est utilisé que si aucun historique n'existe.
+  return ligne?.lotId ?? (historiques.has(animalId) ? null : lotCourant.get(animalId) ?? null)
+}
+
+function couvre(
+  s: SoinCouvrant,
+  c: CollecteCible,
+  historiques: Map<number, AppartenanceDatee[]>,
+  lotCourant: Map<number, number | null>
+): boolean {
   if (!s.finAttenteLait) return false
   if (!(floorDayUTC(s.date).getTime() <= c.date.getTime() && c.date.getTime() <= s.finAttenteLait.getTime())) {
     return false
@@ -64,9 +85,12 @@ function couvre(s: SoinCouvrant, c: CollecteCible, lotDe: Map<number, number | n
   if (s.animalId != null && c.animalId != null && s.animalId === c.animalId) return true
   if (s.lotId != null && c.lotId != null && s.lotId === c.lotId) return true
   // Soin individuel, collecte au niveau du lot de l'animal traité
-  if (s.animalId != null && c.lotId != null && lotDe.get(s.animalId) === c.lotId) return true
+  if (s.animalId != null && c.lotId != null && lotALaDate(s.animalId, s.date, historiques, lotCourant) === c.lotId) return true
   // Soin de lot, collecte individuelle d'un animal membre du lot traité
-  if (s.lotId != null && c.animalId != null && lotDe.get(c.animalId) === s.lotId) return true
+  // Un soin collectif s'applique aux membres présents AU MOMENT DU SOIN : un
+  // animal qui quitte ensuite le lot conserve son attente, tandis qu'un animal
+  // arrivé après le traitement ne doit pas être écarté à tort.
+  if (s.lotId != null && c.animalId != null && lotALaDate(c.animalId, s.date, historiques, lotCourant) === s.lotId) return true
   return false
 }
 
@@ -117,18 +141,36 @@ export async function resyncEcartementLait(
   for (const c of collectes) if (c.animalId != null) animalRefs.add(c.animalId)
   for (const s of soins) if (s.animalId != null) animalRefs.add(s.animalId)
   const lotDe = new Map<number, number | null>()
+  const historiques = new Map<number, AppartenanceDatee[]>()
   if (animalRefs.size > 0) {
-    const animaux = await db.animal.findMany({
-      where: { userId, id: { in: [...animalRefs] } },
-      select: { id: true, lotId: true },
-    })
+    const [animaux, affectations] = await Promise.all([
+      db.animal.findMany({
+        where: { userId, id: { in: [...animalRefs] } },
+        select: { id: true, lotId: true },
+      }),
+      db.$queryRaw<AppartenanceDatee[]>(Prisma.sql`
+        SELECT "animal_id" AS "animalId", "lot_id" AS "lotId",
+               "date_debut" AS "dateDebut", "date_fin" AS "dateFin"
+        FROM "historique_lots_animaux"
+        WHERE "user_id" = ${userId}
+          AND "animal_id" IN (${Prisma.join([...animalRefs])})
+          AND "date_debut" <= ${dateMax}
+          AND ("date_fin" IS NULL OR "date_fin" > ${debut})
+        ORDER BY "date_debut" DESC
+      `),
+    ])
     for (const a of animaux) lotDe.set(a.id, a.lotId)
+    for (const h of affectations) {
+      const lignes = historiques.get(h.animalId) ?? []
+      lignes.push(h)
+      historiques.set(h.animalId, lignes)
+    }
   }
 
   const aEcarter: string[] = []
   const aReintegrer: string[] = []
   for (const c of collectes) {
-    const doitEtreEcartee = soins.some((s) => couvre(s, c, lotDe))
+    const doitEtreEcartee = soins.some((s) => couvre(s, c, historiques, lotDe))
     if (doitEtreEcartee && !c.ecarteAttente) aEcarter.push(c.id)
     else if (!doitEtreEcartee && c.ecarteAttente) aReintegrer.push(c.id)
   }
@@ -171,11 +213,29 @@ export async function soinCouvrantCollecte(
   if (animalId != null) refs.add(animalId)
   for (const s of soins) if (s.animalId != null) refs.add(s.animalId)
   const lotDe = new Map<number, number | null>()
+  const historiques = new Map<number, AppartenanceDatee[]>()
   if (refs.size > 0) {
-    const animaux = await db.animal.findMany({ where: { userId, id: { in: [...refs] } }, select: { id: true, lotId: true } })
+    const [animaux, affectations] = await Promise.all([
+      db.animal.findMany({ where: { userId, id: { in: [...refs] } }, select: { id: true, lotId: true } }),
+      db.$queryRaw<AppartenanceDatee[]>(Prisma.sql`
+        SELECT "animal_id" AS "animalId", "lot_id" AS "lotId",
+               "date_debut" AS "dateDebut", "date_fin" AS "dateFin"
+        FROM "historique_lots_animaux"
+        WHERE "user_id" = ${userId}
+          AND "animal_id" IN (${Prisma.join([...refs])})
+          AND "date_debut" < ${finJour}
+          AND ("date_fin" IS NULL OR "date_fin" > ${jour})
+        ORDER BY "date_debut" DESC
+      `),
+    ])
     for (const a of animaux) lotDe.set(a.id, a.lotId)
+    for (const h of affectations) {
+      const lignes = historiques.get(h.animalId) ?? []
+      lignes.push(h)
+      historiques.set(h.animalId, lignes)
+    }
   }
   const c: CollecteCible = { animalId, lotId, date: jour }
-  const couvrant = soins.find((s) => couvre(s, c, lotDe))
+  const couvrant = soins.find((s) => couvre(s, c, historiques, lotDe))
   return couvrant ? { finAttenteLait: couvrant.finAttenteLait, produit: couvrant.produit, type: couvrant.type } : null
 }

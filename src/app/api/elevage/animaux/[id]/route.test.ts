@@ -6,13 +6,20 @@ const mocks = vi.hoisted(() => ({
   isAssignableAnimalLot: vi.fn(),
   animalFindFirst: vi.fn(),
   animalUpdate: vi.fn(),
+  enregistrerChangementLot: vi.fn(),
 }))
 
 vi.mock('@/lib/auth-utils', () => ({ requireAuthApi: mocks.requireAuthApi }))
-vi.mock('@/lib/elevage/animal-lot', () => ({ isAssignableAnimalLot: mocks.isAssignableAnimalLot }))
+vi.mock('@/lib/elevage/animal-lot', () => ({
+  isAssignableAnimalLot: mocks.isAssignableAnimalLot,
+  enregistrerChangementLot: mocks.enregistrerChangementLot,
+}))
 vi.mock('@/lib/auto-compta', () => ({ createDepenseFromAchatAnimal: vi.fn(), deleteAutoEntry: vi.fn() }))
 vi.mock('@/lib/prisma', () => ({
-  default: { animal: { findFirst: mocks.animalFindFirst, update: mocks.animalUpdate } },
+  default: {
+    $transaction: (callback: (tx: unknown) => unknown) => callback({ animal: { update: mocks.animalUpdate } }),
+    animal: { findFirst: mocks.animalFindFirst, update: mocks.animalUpdate },
+  },
 }))
 
 import { PUT } from './route'
@@ -27,7 +34,7 @@ describe('affectation d’un lot via PUT /api/elevage/animaux/[id]', () => {
     vi.clearAllMocks()
     mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: 'user-1' } } })
     mocks.animalFindFirst.mockResolvedValue({ id: 7, especeAnimaleId: 'ovin' })
-    mocks.animalUpdate.mockResolvedValue({ id: 7, prixAchat: null })
+    mocks.animalUpdate.mockImplementation(async ({ data }) => ({ id: 7, lotId: data.lotId ?? 42, prixAchat: null }))
   })
 
   it('refuse un lot non assignable avant écriture', async () => {
