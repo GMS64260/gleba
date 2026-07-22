@@ -131,6 +131,8 @@ model User {
   mouvementsFromage     MouvementFromage[]
   // PROMPT 19A — mouvements de cheptel
   mouvementsCheptel     MouvementCheptel[]
+  contratsElevage       ContratElevage[]
+  echeancesElevage      EcheanceAdministrativeElevage[]
 
   // Relations module comptabilité
   ventesManuelles       VenteManuelle[]
@@ -1052,6 +1054,9 @@ model ParcelleGeo {
   usage           String?   @map("usage") // culture, prairie, verger, friche...
   couleur         String?   @map("couleur") // Couleur d'affichage #RRGGBB
   notes           String?   @map("notes")
+  disponibiliteFourragereKgMsHa Float? @map("disponibilite_fourragere_kg_ms_ha")
+  eauDisponible   Boolean?  @map("eau_disponible")
+  etatCloture     String?   @map("etat_cloture") // bon|a_surveiller|a_reparer
 
   // Planches, objets et arbres rattachés à cette parcelle
   planches        Planche[]
@@ -1936,11 +1941,14 @@ model Aliment {
   fournisseurId String?      @map("fournisseur")
   fournisseur   Fournisseur? @relation(fields: [fournisseurId], references: [id], onDelete: SetNull)
   description   String?      @map("description")
+  ownerUserId   String?      @map("owner_user_id") // NULL = référentiel officiel partagé
+  origine       String       @default("officiel") @map("origine") // officiel|prive|communautaire
 
   // Relations
   consommations ConsommationAliment[]
   userStocks    UserStockAliment[]
 
+  @@index([ownerUserId])
   @@map("aliments")
 }
 
@@ -2015,6 +2023,7 @@ model Animal {
   mouvements       MouvementCheptel[]
   // Audit élevage 2026-06-11 — ventes d'animal vivant (restauration à l'annulation)
   ventesProduits   VenteProduit[]
+  consommationsAliments ConsommationAliment[]
 
   @@index([userId])
   @@index([especeAnimaleId])
@@ -2172,6 +2181,8 @@ model ConsommationAliment {
   aliment    Aliment     @relation(fields: [alimentId], references: [id], onDelete: Restrict)
   lotId      Int?        @map("lot_id")
   lot        LotAnimaux? @relation(fields: [lotId], references: [id], onDelete: SetNull)
+  animalId   Int?        @map("animal_id")
+  animal     Animal?     @relation(fields: [animalId], references: [id], onDelete: SetNull)
   date       DateTime    @default(now()) @map("date")
   quantite   Float       @map("quantite") // kg
   notes      String?     @map("notes")
@@ -2180,6 +2191,7 @@ model ConsommationAliment {
   @@index([userId])
   @@index([alimentId])
   @@index([lotId])
+  @@index([animalId])
   @@index([date])
   @@map("consommations_aliments")
 }
@@ -2270,6 +2282,83 @@ model ProduitVeterinaire {
   @@index([nom])
   @@index([substanceActive])
   @@map("produits_veterinaires")
+}
+
+/// Stock physique de la pharmacie d'une exploitation, par produit et lot.
+model StockMedicamentElevage {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  produitId   String   @map("produit_id")
+  numeroLot   String   @map("numero_lot")
+  quantite    Float    @map("quantite")
+  unite       String   @map("unite")
+  datePeremption DateTime? @map("date_peremption")
+  ordonnanceUrl String? @map("ordonnance_url")
+  fournisseur String? @map("fournisseur")
+  notes       String?  @map("notes")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([userId, produitId, numeroLot])
+  @@index([userId, datePeremption])
+  @@map("stocks_medicaments_elevage")
+}
+
+/// Prophylaxies, dépistages, vaccinations collectives et visites réglementaires.
+model ProphylaxieElevage {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  especeAnimaleId String? @map("espece_animale_id")
+  type        String   @map("type")
+  datePrevue  DateTime @map("date_prevue")
+  dateRealisee DateTime? @map("date_realisee")
+  statut      String   @default("a_faire") @map("statut")
+  organisme   String?  @map("organisme")
+  resultat    String?  @map("resultat")
+  documentUrl String?  @map("document_url")
+  notes       String?  @map("notes")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([userId, datePrevue])
+  @@map("prophylaxies_elevage")
+}
+
+/// Modèle de tâche récurrente pour la tournée terrain.
+model TacheTerrainElevage {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  titre       String   @map("titre")
+  description String?  @map("description")
+  categorie   String   @default("autre") @map("categorie")
+  priorite    String   @default("normale") @map("priorite")
+  animalId    Int?     @map("animal_id")
+  lotId       Int?     @map("lot_id")
+  prochaineEcheance DateTime @map("prochaine_echeance")
+  recurrenceJours Int? @map("recurrence_jours")
+  actif       Boolean  @default(true) @map("actif")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([userId, actif, prochaineEcheance])
+  @@map("taches_terrain_elevage")
+}
+
+/// Acquittement horodaté et idempotent d'une tâche de tournée.
+model RealisationTacheElevage {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  tacheId     String   @map("tache_id")
+  dateEcheance DateTime @map("date_echeance")
+  dateRealisation DateTime @default(now()) @map("date_realisation")
+  notes       String?  @map("notes")
+  clientOperationId String @map("client_operation_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([userId, clientOperationId])
+  @@unique([tacheId, dateEcheance])
+  @@index([userId, dateRealisation])
+  @@map("realisations_taches_elevage")
 }
 
 /// Naissances d'animaux
@@ -2538,6 +2627,45 @@ model PaieLait {
   @@map("paies_lait")
 }
 
+/// Contrats commerciaux liés aux productions animales.
+model ContratElevage {
+  id          String    @id @default(cuid())
+  userId      String    @map("user_id")
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  client      String    @map("client")
+  production  String    @map("production")
+  dateDebut   DateTime  @map("date_debut")
+  dateFin     DateTime? @map("date_fin")
+  prix        String?   @map("prix")
+  actif       Boolean   @default(true) @map("actif")
+  notes       String?   @map("notes")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@index([userId, actif])
+  @@index([dateFin])
+  @@map("contrats_elevage")
+}
+
+/// Échéances déclaratives et aides (PAC, identification, assurance…).
+model EcheanceAdministrativeElevage {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  libelle     String   @map("libelle")
+  categorie   String   @map("categorie")
+  dateEcheance DateTime @map("date_echeance")
+  statut      String   @default("a_faire") @map("statut")
+  montant     Float?   @map("montant")
+  notes       String?  @map("notes")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([userId, dateEcheance])
+  @@index([userId, statut])
+  @@map("echeances_administratives_elevage")
+}
+
 // ============================================================
 // PROMPT 27 — STOCK D'AFFINAGE / CAVE
 // ============================================================
@@ -2585,6 +2713,7 @@ model PlanRation {
   lotId          Int?     @map("lot_id")
   animalId       Int?     @map("animal_id")
   stade          String   @default("lactation") @map("stade") // stade physiologique visé
+  profilEspece   String   @default("caprin") @map("profil_espece")
   poidsVif       Float    @map("poids_vif")
   litresLait     Float    @default(0) @map("litres_lait")
   tauxButyreux   Float    @default(35) @map("taux_butyreux")
@@ -2597,6 +2726,24 @@ model PlanRation {
   @@index([userId])
   @@index([lotId])
   @@map("plans_ration")
+}
+
+/// Appartenance datée d'un animal à un lot. Source de vérité historique pour
+/// les délais d'attente et les mouvements : [dateDebut, dateFin), dateFin NULL
+/// désignant l'affectation courante.
+model HistoriqueLotAnimal {
+  id        String    @id @default(cuid())
+  userId    String    @map("user_id")
+  animalId  Int       @map("animal_id")
+  lotId     Int       @map("lot_id")
+  dateDebut DateTime  @map("date_debut")
+  dateFin   DateTime? @map("date_fin")
+  motif     String?   @map("motif")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([userId, animalId, dateDebut])
+  @@index([userId, lotId, dateDebut])
+  @@map("historique_lots_animaux")
 }
 
 /// Pesée d'un animal (GAP P1 — historique de poids & GMQ, review 2026-07-22).
@@ -3344,6 +3491,9 @@ model Exploitation {
   logoUrl             String?  @map("logo_url")
   // Certification AB (optionnelle)
   certifBioOrganisme  String?  @map("certif_bio_organisme") // ex "Ecocert FR-BIO-01"
+  numeroEde           String?  @map("numero_ede")
+  veterinaireSanitaire String? @map("veterinaire_sanitaire")
+  lieuDetentionPrincipal String? @map("lieu_detention_principal")
   // Mentions facture (par défaut, peuvent être surchargées)
   tauxPenalitesRetard String?  @map("taux_penalites_retard") // ex "3 × taux légal"
   indemniteRecouvrement Decimal @default(40) @map("indemnite_recouvrement") @db.Decimal(10, 2) // €

@@ -10,7 +10,8 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { createDepenseFromAchatAnimal } from '@/lib/auto-compta'
 import { animalSchema, isPlausibleAnimalDate } from '@/lib/validations/elevage-animal'
-import { isAssignableAnimalLot, isOwnedParcelle } from '@/lib/elevage/animal-lot'
+import { enregistrerChangementLot, isAssignableAnimalLot, isOwnedParcelle } from '@/lib/elevage/animal-lot'
+import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -145,8 +146,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const animal = await prisma.animal.create({
-      data: {
+    const animal = await prisma.$transaction(async (tx) => {
+      const created = await tx.animal.create({
+        data: {
         userId: session.user.id,
         especeAnimaleId,
         lotId: lotId ?? null,
@@ -174,10 +176,23 @@ export async function POST(request: NextRequest) {
         notes,
         parcelleGeoId: parcelleGeoId ?? null,
       },
-      include: {
-        especeAnimale: true,
-        lot: true,
-      },
+        include: {
+          especeAnimale: true,
+          lot: true,
+        },
+      })
+      await enregistrerChangementLot(
+        tx, session.user.id, created.id, null, created.lotId,
+        created.dateArrivee ?? created.createdAt, 'Affectation à la création de l’animal'
+      )
+      if (created.parcelleGeoId) await tx.mouvementCheptel.create({
+        data: {
+          userId: session.user.id, animalId: created.id,
+          parcelleAvantId: null, parcelleApresId: created.parcelleGeoId,
+          date: created.dateArrivee ?? created.createdAt, motif: 'Affectation initiale',
+        },
+      })
+      return created
     })
 
     // Auto-comptabilite : creer une depense si prixAchat > 0
@@ -211,7 +226,7 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { id, nom, race, sexe, statut, lotId, posX, posY, poidsActuel, couleur, notes, dateSortie, causeSortie, mereId, pereId, pereIdentifiant, identifiant, typeIdentifiant, nExploitationOrigine, nExploitationDestination, motifSortie, statutSanitaire, prixAchat, provenance, dateNaissance, dateArrivee, parcelleGeoId } = body
+    const { id, especeAnimaleId, nom, race, sexe, statut, lotId, posX, posY, poidsActuel, couleur, notes, dateSortie, causeSortie, mereId, pereId, pereIdentifiant, identifiant, typeIdentifiant, nExploitationOrigine, nExploitationDestination, motifSortie, statutSanitaire, prixAchat, provenance, dateNaissance, dateArrivee, parcelleGeoId } = body
 
     if (!id) {
       return NextResponse.json({ error: 'ID requis' }, { status: 400 })
@@ -225,13 +240,32 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Animal non trouvé' }, { status: 404 })
     }
 
+    // Ticket utilisateur 2026-07-22 — le formulaire envoyait bien la nouvelle
+    // espèce/type de production, mais PATCH l'ignorait silencieusement.
+    // Vérifier aussi que la nouvelle référence est visible avant de l'appliquer.
+    if (especeAnimaleId !== undefined) {
+      const espece = await prisma.especeAnimale.findFirst({
+        where: {
+          id: especeAnimaleId,
+          AND: [visibiliteReferentiel(session.user.id)],
+        },
+        select: { id: true },
+      })
+      if (!espece) {
+        return NextResponse.json({ error: 'Espèce animale invalide' }, { status: 400 })
+      }
+    }
+
+    const especeCible = especeAnimaleId ?? existing.especeAnimaleId
+
     // On ne (re)valide le lot que s'il CHANGE : un animal déjà rattaché à un lot
     // devenu inactif (terminé/réformé) doit rester éditable (poids, notes…) sans
     // renvoyer « Lot invalide » alors que l'utilisateur n'y a pas touché.
+    const lotCible = lotId === undefined ? existing.lotId : (lotId ? Number(lotId) : null)
     if (
-      lotId !== undefined && lotId !== null && lotId !== '' &&
-      Number(lotId) !== existing.lotId &&
-      !await isAssignableAnimalLot(session.user.id, lotId, existing.especeAnimaleId)
+      lotCible !== null &&
+      (lotCible !== existing.lotId || especeCible !== existing.especeAnimaleId) &&
+      !await isAssignableAnimalLot(session.user.id, lotCible, especeCible)
     ) {
       return NextResponse.json({ error: 'Lot invalide' }, { status: 400 })
     }
@@ -246,6 +280,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const updateData: any = {}
+    if (especeAnimaleId !== undefined) updateData.especeAnimaleId = especeAnimaleId
     if (parcelleGeoId !== undefined) updateData.parcelleGeoId = parcelleGeoId || null
     if (nom !== undefined) updateData.nom = nom
     if (race !== undefined) updateData.race = race
@@ -313,13 +348,28 @@ export async function PATCH(request: NextRequest) {
     if (motifSortie !== undefined) updateData.motifSortie = motifSortie ?? null
     if (statutSanitaire !== undefined) updateData.statutSanitaire = Array.isArray(statutSanitaire) ? statutSanitaire : []
 
-    const animal = await prisma.animal.update({
-      where: { id: parseInt(id) },
-      data: updateData,
-      include: {
-        especeAnimale: { select: { id: true, nom: true, type: true, couleur: true } },
-        lot: { select: { id: true, nom: true } },
-      },
+    const animal = await prisma.$transaction(async (tx) => {
+      const updated = await tx.animal.update({
+        where: { id: parseInt(id) },
+        data: updateData,
+        include: {
+          especeAnimale: { select: { id: true, nom: true, type: true, couleur: true } },
+          lot: { select: { id: true, nom: true } },
+        },
+      })
+      if (updateData.lotId !== undefined) {
+        await enregistrerChangementLot(tx, session.user.id, existing.id, existing.lotId, updated.lotId)
+      }
+      if (updateData.parcelleGeoId !== undefined && updated.parcelleGeoId !== existing.parcelleGeoId) {
+        await tx.mouvementCheptel.create({
+          data: {
+            userId: session.user.id, animalId: existing.id,
+            parcelleAvantId: existing.parcelleGeoId, parcelleApresId: updated.parcelleGeoId,
+            date: new Date(), motif: 'Modification de la fiche animal',
+          },
+        })
+      }
+      return updated
     })
 
     // Auto-comptabilite : resynchroniser la depense auto avec les valeurs finales

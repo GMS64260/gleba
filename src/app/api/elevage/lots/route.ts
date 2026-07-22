@@ -12,6 +12,7 @@ import prisma from '@/lib/prisma'
 import { lotSchema } from '@/lib/validations/elevage-lot'
 import { deleteAutoEntry, createDepenseFromLotAnimaux } from '@/lib/auto-compta'
 import { isPlausibleAnimalDate } from '@/lib/validations/elevage-animal'
+import { isOwnedParcelle } from '@/lib/elevage/animal-lot'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -240,14 +241,29 @@ export async function PATCH(request: NextRequest) {
       updateData.prixAchatTotal = p === null || Number.isNaN(p) ? null : p
     }
     if (notes !== undefined) updateData.notes = notes
+    if (
+      parcelleGeoId !== undefined && parcelleGeoId !== null && parcelleGeoId !== '' &&
+      parcelleGeoId !== existing.parcelleGeoId &&
+      !await isOwnedParcelle(session.user.id, parcelleGeoId)
+    ) return NextResponse.json({ error: 'Parcelle invalide' }, { status: 400 })
     if (parcelleGeoId !== undefined) updateData.parcelleGeoId = parcelleGeoId || null
 
-    const lot = await prisma.lotAnimaux.update({
-      where: { id: parseInt(id) },
-      data: updateData,
-      include: {
-        especeAnimale: true,
-      },
+    const lot = await prisma.$transaction(async (tx) => {
+      const updated = await tx.lotAnimaux.update({
+        where: { id: parseInt(id) },
+        data: updateData,
+        include: { especeAnimale: true },
+      })
+      if (updateData.parcelleGeoId !== undefined && updated.parcelleGeoId !== existing.parcelleGeoId) {
+        await tx.mouvementCheptel.create({
+          data: {
+            userId: session.user.id, lotId: existing.id,
+            parcelleAvantId: existing.parcelleGeoId, parcelleApresId: updated.parcelleGeoId,
+            date: new Date(), motif: 'Modification de la fiche lot',
+          },
+        })
+      }
+      return updated
     })
 
     // Resync de la dépense d'achat auto (prixAchatTotal/dateArrivée ont pu changer ;

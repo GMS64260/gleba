@@ -20,6 +20,8 @@ import {
   Leaf,
   Map as MapIcon,
   Bot,
+  ClipboardCheck,
+  Euro,
 } from "lucide-react"
 import { ChatPanel } from "@/components/chat/ChatPanel"
 import { CalendrierTab } from "@/components/elevage/CalendrierTab"
@@ -117,6 +119,24 @@ export default function ElevageDashboard() {
         accent="amber"
         actions={
           <>
+              <Link href="/elevage/tournee">
+                <Button variant="outline" size="sm" className="text-emerald-700 border-emerald-300 hover:bg-emerald-50">
+                  <ClipboardCheck className="h-4 w-4 mr-1" />
+                  <span className="hidden sm:inline">Tournée</span>
+                </Button>
+              </Link>
+              <Link href="/elevage/paturage">
+                <Button variant="outline" size="sm" className="text-green-700 border-green-300 hover:bg-green-50">
+                  <Leaf className="h-4 w-4 mr-1" />
+                  <span className="hidden sm:inline">Pâturage</span>
+                </Button>
+              </Link>
+              <Link href="/elevage/economie">
+                <Button variant="outline" size="sm" className="text-blue-700 border-blue-300 hover:bg-blue-50">
+                  <Euro className="h-4 w-4 mr-1" />
+                  <span className="hidden sm:inline">Économie</span>
+                </Button>
+              </Link>
               <Link href="/jardin/carte?usage=elevage">
                 <Button variant="outline" size="sm" className="text-amber-700 border-amber-300 hover:bg-amber-50">
                   <MapIcon className="h-4 w-4 mr-1" />

@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const type = searchParams.get('type')
 
-    const where: any = {}
+    const where: any = { OR: [{ ownerUserId: null }, { ownerUserId: userId }] }
     if (type) where.type = type
 
     // Fenêtre de 30 j pour estimer la consommation moyenne journalière (→ jours
@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
             select: { id: true, contact: true },
           },
           _count: {
-            select: { consommations: true },
+            select: { consommations: { where: { userId } } },
           },
           userStocks: {
             where: { userId },
@@ -53,13 +53,18 @@ export async function GET(request: NextRequest) {
         by: ['alimentId'],
         where: { userId, date: { gte: depuis } },
         _sum: { quantite: true },
+        _min: { date: true },
       }),
     ])
 
     const consoMoyJourParAliment = new Map<string, number>()
     for (const c of consoParAliment) {
       const total = Number(c._sum.quantite || 0)
-      if (total > 0) consoMoyJourParAliment.set(c.alimentId, total / FENETRE_J)
+      const premierJour = c._min.date
+      const joursObserves = premierJour
+        ? Math.min(FENETRE_J, Math.max(1, Math.ceil((Date.now() - premierJour.getTime()) / 86_400_000)))
+        : FENETRE_J
+      if (total > 0) consoMoyJourParAliment.set(c.alimentId, total / joursObserves)
     }
 
     // Fusionner les données de stock per-user avec les données de reference
@@ -95,6 +100,7 @@ export async function GET(request: NextRequest) {
         dateRupture,
         fournisseur: a.fournisseur,
         description: a.description,
+        origine: a.origine,
         _count: a._count,
       }
     })
@@ -157,7 +163,16 @@ export async function POST(request: NextRequest) {
     const parsedPrix = prix ? parseFloat(prix) : null
     const parsedStockMin = stockMin ? parseFloat(stockMin) : null
 
-    // Créer l'aliment (reference globale) + stock per-user en transaction
+    if (fournisseurId) {
+      const fournisseur = await prisma.fournisseur.findFirst({
+        where: { id: fournisseurId },
+        select: { id: true },
+      })
+      if (!fournisseur) return NextResponse.json({ error: 'Fournisseur introuvable' }, { status: 400 })
+    }
+
+    // Créer un aliment privé + stock per-user en transaction. Les aliments
+    // officiels restent administrés hors de cette route utilisateur.
     const [aliment] = await prisma.$transaction([
       prisma.aliment.create({
         data: {
@@ -174,6 +189,8 @@ export async function POST(request: NextRequest) {
           prix: parsedPrix,
           fournisseurId,
           description,
+          ownerUserId: userId,
+          origine: 'prive',
         },
         include: {
           fournisseur: true,

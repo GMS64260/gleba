@@ -29,7 +29,7 @@ async function animalPossede(userId: string, animalId: number): Promise<boolean>
 async function majPoidsActuel(tx: Prisma.TransactionClient, userId: string, animalId: number) {
   const derniere = await tx.pesee.findFirst({
     where: { userId, animalId },
-    orderBy: { date: 'desc' },
+    orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
     select: { poidsKg: true },
   })
   await tx.animal.updateMany({
@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
 
   const pesees = await prisma.pesee.findMany({
     where: { userId: session.user.id, animalId },
-    orderBy: { date: 'asc' },
+    orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
     select: { id: true, date: true, poidsKg: true, notes: true },
   })
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { besoinsChevre, bilanRation } from "../ration"
+import { besoinsChevre, besoinsMonogastrique, besoinsRuminant, bilanRation, bilanRationMonogastrique } from "../ration"
 
 describe("besoinsChevre", () => {
   it("calcule les besoins d'une chèvre de 60 kg à 3 L de lait", () => {
@@ -57,5 +57,22 @@ describe("bilanRation", () => {
     const bilan = bilanRation([], besoins)
     expect(bilan.ufl).toBe(0)
     expect(bilan.couvertureUFL).toBe(0)
+  })
+})
+
+describe("rations multi-espèces", () => {
+  it("dimensionne davantage une vache qu’une chèvre au même stade", () => {
+    const chevre = besoinsRuminant("caprin", { poidsVif: 60, litresLait: 3 })
+    const vache = besoinsRuminant("bovin", { poidsVif: 650, litresLait: 30 })
+    expect(vache.ufl).toBeGreaterThan(chevre.ufl)
+    expect(vache.pdi).toBeGreaterThan(chevre.pdi)
+  })
+
+  it("calcule énergie et protéines pour une ration porcine", () => {
+    const besoins = besoinsMonogastrique("porcin", 100)
+    const bilan = bilanRationMonogastrique([{ quantiteKg: 4, energie: 3200, proteines: 16, prix: 0.4 }], besoins)
+    expect(bilan.couvertureEnergie).toBe(100)
+    expect(bilan.couvertureProteines).toBe(100)
+    expect(bilan.cout).toBe(1.6)
   })
 })

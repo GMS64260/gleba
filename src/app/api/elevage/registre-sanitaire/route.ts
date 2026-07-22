@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
   const start = new Date(year, 0, 1)
   const end = new Date(year, 11, 31, 23, 59, 59)
 
-  const [soins, exploitation] = await Promise.all([
+  const [soins, exploitation, prophylaxies, pharmacie] = await Promise.all([
     prisma.soinAnimal.findMany({
       where: { userId: session.user.id, date: { gte: start, lte: end } },
       orderBy: { date: 'asc' },
@@ -33,6 +33,13 @@ export async function GET(request: NextRequest) {
       },
     }),
     prisma.exploitation.findUnique({ where: { userId: session.user.id } }),
+    prisma.prophylaxieElevage.findMany({
+      where: { userId: session.user.id, datePrevue: { gte: start, lte: end } },
+      orderBy: { datePrevue: 'asc' },
+    }),
+    prisma.stockMedicamentElevage.findMany({
+      where: { userId: session.user.id }, orderBy: { datePeremption: 'asc' },
+    }),
   ])
 
   const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 30 })
@@ -50,6 +57,8 @@ export async function GET(request: NextRequest) {
       const identExpl = identifiantLegalAffichage(exploitation)
       doc.text(`${exploitation.raisonSociale}${identExpl ? ` — ${identExpl.label} ${identExpl.valeur}` : ""}`, 30, 64)
       doc.text(`${exploitation.adresseSiege}, ${exploitation.codePostal} ${exploitation.ville}`, 30, 76)
+      if (exploitation.numeroEde) doc.text(`N° exploitation / EDE : ${exploitation.numeroEde}`, 360, 64)
+      if (exploitation.veterinaireSanitaire) doc.text(`Vétérinaire sanitaire : ${exploitation.veterinaireSanitaire}`, 360, 76, { width: 430 })
     }
     doc.fontSize(8).fillColor('#94a3b8').text('Conformité : Code rural art. L234-1 — conservation minimum 5 ans', 30, 96)
 
@@ -108,6 +117,29 @@ export async function GET(request: NextRequest) {
     if (soins.length === 0) {
       doc.text('Aucun soin enregistré pour cet exercice.', 30, y)
     }
+
+    doc.addPage({ size: 'A4', layout: 'landscape', margin: 30 })
+    y = 35
+    doc.font('Helvetica-Bold').fontSize(14).fillColor('#0f172a').text('Prophylaxies et contrôles', 30, y)
+    y += 24
+    doc.font('Helvetica').fontSize(8)
+    for (const p of prophylaxies) {
+      doc.text(`${p.datePrevue.toLocaleDateString('fr-FR')} · ${p.type} · ${p.statut} · ${p.organisme || '—'} · ${p.resultat || ''}`, 30, y, { width: 760 })
+      y += 14
+    }
+    if (!prophylaxies.length) { doc.text('Aucune prophylaxie enregistrée.', 30, y); y += 16 }
+
+    y += 12
+    doc.font('Helvetica-Bold').fontSize(14).text('Inventaire de la pharmacie', 30, y)
+    y += 24
+    doc.font('Helvetica').fontSize(8)
+    for (const s of pharmacie) {
+      const peremption = s.datePeremption ? s.datePeremption.toLocaleDateString('fr-FR') : 'non renseignée'
+      doc.text(`${s.produitId} · lot ${s.numeroLot} · ${s.quantite} ${s.unite} · péremption ${peremption} · ordonnance ${s.ordonnanceUrl ? 'oui' : 'non'}`, 30, y, { width: 760 })
+      y += 14
+      if (y > 540) { doc.addPage({ size: 'A4', layout: 'landscape', margin: 30 }); y = 35 }
+    }
+    if (!pharmacie.length) doc.text('Aucun stock de médicament enregistré.', 30, y)
     doc.end()
   })
 

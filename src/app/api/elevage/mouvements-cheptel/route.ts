@@ -21,7 +21,9 @@ const mouvementSchema = z
     motif: z.string().max(200).nullable().optional(),
     notes: z.string().max(2000).nullable().optional(),
   })
-  .refine((d) => d.animalId || d.lotId, { message: 'Renseignez animalId ou lotId.' })
+  .refine((d) => Boolean(d.animalId) !== Boolean(d.lotId), {
+    message: 'Renseignez un animal ou un lot, pas les deux.',
+  })
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -136,6 +138,24 @@ export async function DELETE(request: NextRequest) {
   const existing = await prisma.mouvementCheptel.findFirst({ where: { id, userId: session.user.id } })
   if (!existing) return NextResponse.json({ error: 'Mouvement non trouvé' }, { status: 404 })
 
-  await prisma.mouvementCheptel.delete({ where: { id } })
+  await prisma.$transaction(async (tx) => {
+    await tx.mouvementCheptel.delete({ where: { id } })
+    const precedent = await tx.mouvementCheptel.findFirst({
+      where: {
+        userId: session.user.id,
+        ...(existing.animalId ? { animalId: existing.animalId } : { lotId: existing.lotId }),
+      },
+      orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+      select: { parcelleApresId: true },
+    })
+    if (existing.animalId) await tx.animal.updateMany({
+      where: { id: existing.animalId, userId: session.user.id },
+      data: { parcelleGeoId: precedent?.parcelleApresId ?? null },
+    })
+    if (existing.lotId) await tx.lotAnimaux.updateMany({
+      where: { id: existing.lotId, userId: session.user.id },
+      data: { parcelleGeoId: precedent?.parcelleApresId ?? null },
+    })
+  })
   return NextResponse.json({ success: true })
 }

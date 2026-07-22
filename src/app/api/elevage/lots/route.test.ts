@@ -7,15 +7,21 @@ const mocks = vi.hoisted(() => ({
   lotFindFirst: vi.fn(),
   lotUpdate: vi.fn(),
   especeFindUnique: vi.fn(),
+  isOwnedParcelle: vi.fn(),
 }))
 
 vi.mock('@/lib/auth-utils', () => ({ requireAuthApi: mocks.requireAuthApi }))
+vi.mock('@/lib/elevage/animal-lot', () => ({ isOwnedParcelle: mocks.isOwnedParcelle }))
 vi.mock('@/lib/auto-compta', () => ({
   createDepenseFromLotAnimaux: mocks.createDepenseFromLotAnimaux,
   deleteAutoEntry: vi.fn(),
 }))
 vi.mock('@/lib/prisma', () => ({
   default: {
+    $transaction: (callback: (tx: unknown) => unknown) => callback({
+      lotAnimaux: { update: mocks.lotUpdate },
+      mouvementCheptel: { create: vi.fn() },
+    }),
     lotAnimaux: { findFirst: mocks.lotFindFirst, update: mocks.lotUpdate },
     especeAnimale: { findUnique: mocks.especeFindUnique },
   },
@@ -33,7 +39,7 @@ describe('PATCH /api/elevage/lots (édition complète + resync compta)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: 'user-1' } } })
-    mocks.lotFindFirst.mockResolvedValue({ id: 5, userId: 'user-1' })
+    mocks.lotFindFirst.mockResolvedValue({ id: 5, userId: 'user-1', parcelleGeoId: null })
     mocks.lotUpdate.mockResolvedValue({ id: 5, nom: 'Poules', prixAchatTotal: 0, dateArrivee: null })
   })
 

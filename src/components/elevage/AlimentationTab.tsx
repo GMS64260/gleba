@@ -17,8 +17,10 @@ import {
   Check,
   Trash2,
   Scale,
+  ClipboardCheck,
 } from "lucide-react"
 import { RationSubTab } from "./RationSubTab"
+import { SanitaireReglementaireSubTab } from "./SanitaireReglementaireSubTab"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -60,8 +62,8 @@ export function AlimentationTab() {
     const params = new URLSearchParams(window.location.search)
     const sub = params.get("sub")
     const animalId = params.get("animalId")
-    if (sub === "soins" || sub === "consommations" || sub === "stocks") {
-      setActiveSub(sub)
+    if (["soins", "consommations", "stocks", "ration", "registre"].includes(sub || "")) {
+      setActiveSub(sub!)
     }
     if (animalId) {
       // Implique l'onglet Soins même si `sub` n'est pas explicite.
@@ -89,6 +91,10 @@ export function AlimentationTab() {
           <Scale className="h-4 w-4" />
           Ration
         </TabsTrigger>
+        <TabsTrigger value="registre" className="flex items-center gap-1.5">
+          <ClipboardCheck className="h-4 w-4" />
+          Registre & pharmacie
+        </TabsTrigger>
       </TabsList>
 
       <TabsContent value="stocks">
@@ -102,6 +108,9 @@ export function AlimentationTab() {
       </TabsContent>
       <TabsContent value="ration">
         <RationSubTab />
+      </TabsContent>
+      <TabsContent value="registre">
+        <SanitaireReglementaireSubTab />
       </TabsContent>
     </Tabs>
   )
@@ -481,10 +490,12 @@ interface Consommation {
   notes: string | null
   aliment: { id: string; nom: string; type: string | null }
   lot: { id: number; nom: string | null } | null
+  animal: { id: number; nom: string | null; identifiant: string | null } | null
 }
 
 interface AlimentSimple { id: string; nom: string; type: string | null }
 interface LotSimple { id: number; nom: string | null; especeAnimale: { nom: string } }
+interface AnimalSimple { id: number; nom: string | null; identifiant: string | null; especeAnimale: { nom: string } }
 
 interface ConsoStats {
   totalKg: number
@@ -498,6 +509,7 @@ function ConsommationsSubTab() {
   const [consommations, setConsommations] = React.useState<Consommation[]>([])
   const [aliments, setAliments] = React.useState<AlimentSimple[]>([])
   const [lots, setLots] = React.useState<LotSimple[]>([])
+  const [animaux, setAnimaux] = React.useState<AnimalSimple[]>([])
   const [stats, setStats] = React.useState<ConsoStats | null>(null)
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
   const [filterDateDebut, setFilterDateDebut] = React.useState("")
@@ -512,19 +524,21 @@ function ConsommationsSubTab() {
   const [deletingConsoId, setDeletingConsoId] = React.useState<number | null>(null)
 
   const [formData, setFormData] = React.useState({
-    alimentId: "", lotId: "", date: todayLocalISO(), quantite: "", notes: "",
+    alimentId: "", cible: "tous", lotId: "", animalId: "", date: todayLocalISO(), quantite: "", notes: "",
   })
 
   const resetConsoForm = () => {
     setEditingConsoId(null)
-    setFormData({ alimentId: "", lotId: "", date: todayLocalISO(), quantite: "", notes: "" })
+    setFormData({ alimentId: "", cible: "tous", lotId: "", animalId: "", date: todayLocalISO(), quantite: "", notes: "" })
   }
 
   const handleEditConso = (c: Consommation) => {
     setEditingConsoId(c.id)
     setFormData({
       alimentId: c.aliment.id,
+      cible: c.animal ? "animal" : c.lot ? "lot" : "tous",
       lotId: c.lot?.id ? c.lot.id.toString() : "",
+      animalId: c.animal?.id ? c.animal.id.toString() : "",
       date: c.date.split('T')[0],
       quantite: c.quantite.toString(),
       notes: c.notes ?? "",
@@ -539,15 +553,17 @@ function ConsommationsSubTab() {
       if (filterDateDebut) url += `&dateDebut=${filterDateDebut}`
       if (filterDateFin) url += `&dateFin=${filterDateFin}`
 
-      const [consRes, alimRes, lotsRes] = await Promise.all([
+      const [consRes, alimRes, lotsRes, animauxRes] = await Promise.all([
         fetch(url),
         fetch("/api/elevage/aliments"),
         fetch("/api/elevage/lots?statut=actif"),
+        fetch("/api/elevage/animaux?statut=actif&limit=500"),
       ])
 
       if (consRes.ok) { const r = await consRes.json(); setConsommations(r.data); setStats(r.stats) }
       if (alimRes.ok) setAliments((await alimRes.json()).data)
       if (lotsRes.ok) setLots((await lotsRes.json()).data)
+      if (animauxRes.ok) setAnimaux((await animauxRes.json()).data)
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les données" })
     } finally {
@@ -563,6 +579,7 @@ function ConsommationsSubTab() {
       ...(isEdit ? { id: editingConsoId } : {}),
       alimentId: formData.alimentId,
       lotId: formData.lotId ? parseInt(formData.lotId) : null,
+      animalId: formData.animalId ? parseInt(formData.animalId) : null,
       date: formData.date,
       quantite: parseFloat(formData.quantite),
       notes: formData.notes || null,
@@ -709,22 +726,26 @@ function ConsommationsSubTab() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Lot (optionnel)</Label>
-                  {/* QA Julien 2026-05-15 — Bug #1 BLOQUANT : Radix
-                      interdit <SelectItem value=""> depuis sa v1, ce qui
-                      crashait la modale entière à l'ouverture. On utilise
-                      désormais la sentinelle "__all__" pour "Tous les
-                      animaux" et on la convertit en null au submit. */}
-                  <Select
-                    value={formData.lotId || "__all__"}
-                    onValueChange={(v) => setFormData(f => ({ ...f, lotId: v === "__all__" ? "" : v }))}
-                  >
-                    <SelectTrigger><SelectValue placeholder="Tous les animaux" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__all__">Tous les animaux</SelectItem>
-                      {lots.map(l => <SelectItem key={l.id} value={l.id.toString()}>{l.nom || `Lot #${l.id}`} ({l.especeAnimale.nom})</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                  <Label>Affectation</Label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {([['tous', 'Global'], ['lot', 'Lot'], ['animal', 'Animal']] as const).map(([value, label]) => (
+                      <Button key={value} type="button" size="sm" variant={formData.cible === value ? "default" : "outline"}
+                        onClick={() => setFormData(f => ({ ...f, cible: value, lotId: "", animalId: "" }))}>{label}</Button>
+                    ))}
+                  </div>
+                  {formData.cible === "lot" && (
+                    <Select value={formData.lotId || undefined} onValueChange={(v) => setFormData(f => ({ ...f, lotId: v }))}>
+                      <SelectTrigger><SelectValue placeholder="Sélectionner un lot" /></SelectTrigger>
+                      <SelectContent>{lots.map(l => <SelectItem key={l.id} value={l.id.toString()}>{l.nom || `Lot #${l.id}`} ({l.especeAnimale.nom})</SelectItem>)}</SelectContent>
+                    </Select>
+                  )}
+                  {formData.cible === "animal" && (
+                    <Select value={formData.animalId || undefined} onValueChange={(v) => setFormData(f => ({ ...f, animalId: v }))}>
+                      <SelectTrigger><SelectValue placeholder="Sélectionner un animal" /></SelectTrigger>
+                      <SelectContent>{animaux.map(a => <SelectItem key={a.id} value={a.id.toString()}>{a.nom || a.identifiant || `Animal #${a.id}`} ({a.especeAnimale.nom})</SelectItem>)}</SelectContent>
+                    </Select>
+                  )}
+                  <p className="text-xs text-muted-foreground">Une saisie globale sera ventilée par effectif dans l'analyse économique.</p>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2"><Label>Date</Label><Input type="date" value={formData.date} onChange={(e) => setFormData(f => ({ ...f, date: e.target.value }))} /></div>
@@ -753,7 +774,7 @@ function ConsommationsSubTab() {
                 <TableRow>
                   <TableHead>Date</TableHead>
                   <TableHead>Aliment</TableHead>
-                  <TableHead>Lot</TableHead>
+                  <TableHead>Affectation</TableHead>
                   <TableHead className="text-right">Quantité</TableHead>
                   <TableHead>Notes</TableHead>
                   <TableHead></TableHead>
@@ -764,7 +785,7 @@ function ConsommationsSubTab() {
                   <TableRow key={c.id}>
                     <TableCell>{new Date(c.date).toLocaleDateString("fr-FR")}</TableCell>
                     <TableCell className="font-medium">{c.aliment.nom}</TableCell>
-                    <TableCell>{c.lot?.nom || (c.lot ? `Lot #${c.lot.id}` : "-")}</TableCell>
+                    <TableCell>{c.animal ? (c.animal.nom || c.animal.identifiant || `Animal #${c.animal.id}`) : c.lot?.nom || (c.lot ? `Lot #${c.lot.id}` : "Global")}</TableCell>
                     <TableCell className="text-right font-bold">{c.quantite} kg</TableCell>
                     <TableCell className="text-muted-foreground text-sm max-w-[200px] truncate">{c.notes || "-"}</TableCell>
                     <TableCell>

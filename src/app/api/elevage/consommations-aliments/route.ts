@@ -20,6 +20,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const alimentId = searchParams.get('alimentId')
     const lotId = searchParams.get('lotId')
+    const animalId = searchParams.get('animalId')
     const dateDebut = searchParams.get('dateDebut')
     const dateFin = searchParams.get('dateFin')
     const limit = parseInt(searchParams.get('limit') || '100')
@@ -30,6 +31,7 @@ export async function GET(request: NextRequest) {
     const where: any = { userId, date: { gte: yearStart, lte: yearEnd } }
     if (alimentId) where.alimentId = alimentId
     if (lotId) where.lotId = parseInt(lotId)
+    if (animalId) where.animalId = parseInt(animalId)
     if (dateDebut || dateFin) {
       if (dateDebut) where.date.gte = new Date(dateDebut)
       if (dateFin) where.date.lte = new Date(dateFin)
@@ -45,6 +47,9 @@ export async function GET(request: NextRequest) {
         },
         lot: {
           select: { id: true, nom: true },
+        },
+        animal: {
+          select: { id: true, nom: true, identifiant: true },
         },
       },
     })
@@ -112,7 +117,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { alimentId, lotId, date, quantite, notes } = result.data
+    const { alimentId, lotId, animalId, date, quantite, notes } = result.data
     const overrideStock = (body as { overrideStock?: boolean })?.overrideStock === true
 
     // Review caprin 2026-07-21 — valider l'appartenance du lot (IDOR-lite) :
@@ -121,6 +126,10 @@ export async function POST(request: NextRequest) {
     if (lotId != null) {
       const lot = await prisma.lotAnimaux.findFirst({ where: { id: lotId, userId }, select: { id: true } })
       if (!lot) return NextResponse.json({ error: 'Lot introuvable dans votre cheptel.' }, { status: 400 })
+    }
+    if (animalId != null) {
+      const animal = await prisma.animal.findFirst({ where: { id: animalId, userId }, select: { id: true } })
+      if (!animal) return NextResponse.json({ error: 'Animal introuvable dans votre cheptel.' }, { status: 400 })
     }
 
     // Feedback Marc 2026-05-16 — V3 Bug 4 : on refusait pas une saisie
@@ -179,6 +188,7 @@ export async function POST(request: NextRequest) {
           userId,
           alimentId,
           lotId: lotId ?? null,
+          animalId: animalId ?? null,
           date,
           quantite,
           notes: notes ?? null,
@@ -186,6 +196,7 @@ export async function POST(request: NextRequest) {
         include: {
           aliment: { select: { id: true, nom: true, type: true } },
           lot: { select: { id: true, nom: true } },
+          animal: { select: { id: true, nom: true, identifiant: true } },
         },
       }),
       // Décrémenter le stock per-user
@@ -254,12 +265,16 @@ export async function PATCH(request: NextRequest) {
         { status: 400 }
       )
     }
-    const { alimentId, lotId, date, quantite, notes } = result.data
+    const { alimentId, lotId, animalId, date, quantite, notes } = result.data
 
     // Review caprin 2026-07-21 — valider l'appartenance du lot (cf. POST).
     if (lotId != null) {
       const lot = await prisma.lotAnimaux.findFirst({ where: { id: lotId, userId }, select: { id: true } })
       if (!lot) return NextResponse.json({ error: 'Lot introuvable dans votre cheptel.' }, { status: 400 })
+    }
+    if (animalId != null) {
+      const animal = await prisma.animal.findFirst({ where: { id: animalId, userId }, select: { id: true } })
+      if (!animal) return NextResponse.json({ error: 'Animal introuvable dans votre cheptel.' }, { status: 400 })
     }
 
     // Transaction interactive : on rend l'impact stock à l'ancien aliment
@@ -291,6 +306,7 @@ export async function PATCH(request: NextRequest) {
         data: {
           alimentId,
           lotId: lotId ?? null,
+          animalId: animalId ?? null,
           date,
           quantite,
           notes: notes ?? null,
@@ -298,6 +314,7 @@ export async function PATCH(request: NextRequest) {
         include: {
           aliment: { select: { id: true, nom: true, type: true } },
           lot: { select: { id: true, nom: true } },
+          animal: { select: { id: true, nom: true, identifiant: true } },
         },
       })
     })
