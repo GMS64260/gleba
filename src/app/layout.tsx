@@ -95,10 +95,9 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [
-      { url: "/icon-192.png?v=20260718", type: "image/png", sizes: "192x192" },
+      { url: "/icon-192.png", type: "image/png", sizes: "192x192" },
     ],
-    shortcut: "/icon-192.png?v=20260718",
-    apple: "/apple-icon.png?v=20260718",
+    apple: "/apple-icon.png",
   },
   manifest: "/manifest.json",
   category: "agriculture",

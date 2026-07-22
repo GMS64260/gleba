@@ -123,6 +123,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Revue élevage 2026-07-21 — validation tenant de `animalId` (seul `lotId`
+    // l'était). Sans ce contrôle, un `animalId` d'un autre compte créait un
+    // abattage cross-tenant et la réponse (include: animal) fuitait sa fiche.
+    if (animalId) {
+      const animal = await prisma.animal.findFirst({
+        where: { id: animalId, userId: session.user.id },
+        select: { id: true },
+      })
+      if (!animal) {
+        return NextResponse.json({ error: 'Animal introuvable' }, { status: 404 })
+      }
+    }
+
     // PROMPT 19B §8 — Blocage si soin en temps d'attente viande actif
     // POSTREVIEW Sprint 5 — Filtre `fait: true` ajouté : un soin prévu mais
     // non administré ne devrait pas bloquer ; le calcul `finAttenteViande`

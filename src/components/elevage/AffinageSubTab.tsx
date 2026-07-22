@@ -51,7 +51,8 @@ export function AffinageSubTab() {
   const [inclureEcoules, setInclureEcoules] = React.useState(false)
   const [loading, setLoading] = React.useState(true)
   const [sortie, setSortie] = React.useState<LotCave | null>(null)
-  const [form, setForm] = React.useState({ date: todayLocalISO(), type: "sortie_vente", nbPieces: "", poidsKg: "", notes: "" })
+  const [form, setForm] = React.useState({ date: todayLocalISO(), type: "sortie_vente", nbPieces: "", poidsKg: "", prixUnitaire: "", client: "", notes: "" })
+  const resetForm = () => setForm({ date: todayLocalISO(), type: "sortie_vente", nbPieces: "", poidsKg: "", prixUnitaire: "", client: "", notes: "" })
 
   const reload = React.useCallback(() => {
     setLoading(true)
@@ -69,15 +70,49 @@ export function AffinageSubTab() {
 
   const submitSortie = async () => {
     if (!sortie) return
+    const nbPieces = Number(form.nbPieces) || 0
+    const poidsKg = Number(form.poidsKg) || 0
+
+    // Une VENTE passe par l'endpoint ventes (type 'fromage') : il décrémente la
+    // cave, enregistre la recette en compta ET trace le lot — une seule action.
+    // Les autres sorties (perte/don/ajustement) restent de simples mouvements.
+    if (form.type === "sortie_vente") {
+      const prixUnitaire = Number(form.prixUnitaire)
+      if (!(prixUnitaire > 0)) { toast({ variant: "destructive", title: "Prix requis", description: "Saisissez un prix unitaire pour une vente." }); return }
+      // La vente porte sur UNE dimension : au poids (kg) OU à la pièce.
+      if (poidsKg > 0 && nbPieces > 0) { toast({ variant: "destructive", title: "Une seule unité", description: "Vendez soit au poids (kg), soit à la pièce — pas les deux." }); return }
+      const enKg = poidsKg > 0
+      const quantite = enKg ? poidsKg : nbPieces
+      if (!(quantite > 0)) { toast({ variant: "destructive", title: "Quantité requise", description: "Indiquez les pièces ou le poids vendus." }); return }
+      const res = await fetch("/api/elevage/ventes", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date: form.date,
+          type: "fromage",
+          description: `${sortie.typeFromage} — ${sortie.numeroLot}`,
+          quantite,
+          unite: enKg ? "kg" : "pièce",
+          prixUnitaire,
+          client: form.client || null,
+          lotFromageId: sortie.id,
+          paye: true,
+        }),
+      })
+      const j = await res.json()
+      if (!res.ok) { toast({ variant: "destructive", title: "Erreur", description: j.error }); return }
+      toast({ title: "Vente enregistrée", description: `${quantite} ${enKg ? "kg" : "pièce(s)"} · ${(quantite * prixUnitaire).toLocaleString("fr-FR")} €` })
+      setSortie(null); resetForm(); reload()
+      return
+    }
+
     const res = await fetch("/api/elevage/mouvements-fromage", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ lotFromageId: sortie.id, date: form.date, type: form.type, nbPieces: form.nbPieces || 0, poidsKg: form.poidsKg || 0, notes: form.notes || null }),
+      body: JSON.stringify({ lotFromageId: sortie.id, date: form.date, type: form.type, nbPieces, poidsKg, notes: form.notes || null }),
     })
     const j = await res.json()
     if (!res.ok) { toast({ variant: "destructive", title: "Erreur", description: j.error }); return }
     toast({ title: "Sortie enregistrée" })
-    setSortie(null); setForm({ date: todayLocalISO(), type: "sortie_vente", nbPieces: "", poidsKg: "", notes: "" })
-    reload()
+    setSortie(null); resetForm(); reload()
   }
 
   const dlcClass = (j: number | null) => (j == null ? "" : j < 0 ? "text-red-700 font-semibold" : j <= 7 ? "text-amber-700 font-semibold" : "text-slate-600")
@@ -148,7 +183,7 @@ export function AffinageSubTab() {
                     </td>
                     <td className="p-2 text-right">{l.valorisation != null ? `${l.valorisation.toLocaleString("fr-FR")} €` : "—"}</td>
                     <td className="p-2 text-right">
-                      <Button variant="outline" size="sm" onClick={() => setSortie(l)} disabled={l.stockPieces <= 0}>
+                      <Button variant="outline" size="sm" onClick={() => setSortie(l)} disabled={l.stockPieces <= 0 && l.stockKg <= 0}>
                         <ArrowDownToLine className="h-4 w-4 mr-1" />Sortie
                       </Button>
                     </td>
@@ -176,7 +211,21 @@ export function AffinageSubTab() {
               <div><Label>Pièces</Label><Input type="number" min="0" value={form.nbPieces} onChange={(e) => setForm((f) => ({ ...f, nbPieces: e.target.value }))} /></div>
               <div><Label>Poids (kg)</Label><Input type="number" step="0.01" min="0" value={form.poidsKg} onChange={(e) => setForm((f) => ({ ...f, poidsKg: e.target.value }))} /></div>
             </div>
-            <div><Label>Notes</Label><Input value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} /></div>
+            {form.type === "sortie_vente" ? (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div><Label>Prix unitaire (€)</Label><Input type="number" step="0.01" min="0" placeholder="par pièce ou par kg" value={form.prixUnitaire} onChange={(e) => setForm((f) => ({ ...f, prixUnitaire: e.target.value }))} /></div>
+                  <div><Label>Client (optionnel)</Label><Input value={form.client} onChange={(e) => setForm((f) => ({ ...f, client: e.target.value }))} /></div>
+                </div>
+                {Number(form.prixUnitaire) > 0 && (Number(form.nbPieces) > 0 || Number(form.poidsKg) > 0) && (
+                  <p className="text-xs text-emerald-700">
+                    Recette : {((Number(form.poidsKg) > 0 ? Number(form.poidsKg) : Number(form.nbPieces)) * Number(form.prixUnitaire)).toLocaleString("fr-FR")} € — enregistrée en comptabilité et déduite du stock de cave.
+                  </p>
+                )}
+              </>
+            ) : (
+              <div><Label>Notes</Label><Input value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} /></div>
+            )}
           </div>
           <div className="flex justify-end gap-2 mt-2">
             <Button variant="outline" onClick={() => setSortie(null)}>Annuler</Button>

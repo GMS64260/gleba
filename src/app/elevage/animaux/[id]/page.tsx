@@ -13,6 +13,8 @@ import { UserMenu } from "@/components/auth/UserMenu"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 import {
@@ -405,6 +407,9 @@ export default function AnimalDetailPage() {
               </Card>
             )}
 
+            {/* GAP P1 — Pesées & croissance (GMQ) */}
+            <PeseesCard animalId={animal.id} />
+
             {/* Timeline chronologique */}
             <Card>
               <CardHeader>
@@ -462,5 +467,89 @@ export default function AnimalDetailPage() {
         )}
       </main>
     </div>
+  )
+}
+
+// ============================================================
+// GAP P1 — Pesées & croissance (historique de poids + GMQ)
+// ============================================================
+type PeseeRow = { id: string; date: string; poidsKg: number; gmq: number | null; notes: string | null }
+
+function PeseesCard({ animalId }: { animalId: number }) {
+  const { toast } = useToast()
+  const [data, setData] = React.useState<PeseeRow[]>([])
+  const [gmqGlobal, setGmqGlobal] = React.useState<number | null>(null)
+  const [loading, setLoading] = React.useState(true)
+  const [date, setDate] = React.useState(() => new Date().toISOString().slice(0, 10))
+  const [poids, setPoids] = React.useState("")
+  const [saving, setSaving] = React.useState(false)
+
+  const reload = React.useCallback(() => {
+    setLoading(true)
+    fetch(`/api/elevage/pesees?animalId=${animalId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (j) { setData(j.data || []); setGmqGlobal(j.gmqGlobal ?? null) } })
+      .finally(() => setLoading(false))
+  }, [animalId])
+  React.useEffect(() => { reload() }, [reload])
+
+  const ajouter = async () => {
+    const p = parseFloat(poids)
+    if (!(p > 0)) { toast({ variant: "destructive", title: "Poids invalide" }); return }
+    setSaving(true)
+    const res = await fetch("/api/elevage/pesees", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ animalId, date, poidsKg: p }),
+    })
+    setSaving(false)
+    if (res.ok) { setPoids(""); toast({ title: "Pesée enregistrée" }); reload() }
+    else { const j = await res.json().catch(() => ({})); toast({ variant: "destructive", title: "Erreur", description: j.error }) }
+  }
+  const supprimer = async (id: string) => {
+    const res = await fetch(`/api/elevage/pesees?id=${id}`, { method: "DELETE" })
+    if (res.ok) { toast({ title: "Pesée supprimée" }); reload() }
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Weight className="h-4 w-4 text-slate-500" /> Pesées &amp; croissance
+          {gmqGlobal != null && (
+            <Badge variant="outline" className="ml-auto">GMQ global {gmqGlobal > 0 ? "+" : ""}{gmqGlobal} g/j</Badge>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex flex-wrap items-end gap-2">
+          <div><Label className="text-xs">Date</Label><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-9 w-40" /></div>
+          <div><Label className="text-xs">Poids (kg)</Label><Input type="number" step="0.1" min="0" value={poids} onChange={(e) => setPoids(e.target.value)} className="h-9 w-28" placeholder="0" /></div>
+          <Button size="sm" onClick={ajouter} disabled={saving}>Ajouter</Button>
+        </div>
+        {loading ? (
+          <Skeleton className="h-16 w-full" />
+        ) : data.length === 0 ? (
+          <p className="text-sm text-slate-500">Aucune pesée enregistrée. Ajoutez-en pour suivre la croissance (gain moyen quotidien).</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="border-b">
+                <tr><th className="p-1.5 text-left">Date</th><th className="p-1.5 text-right">Poids</th><th className="p-1.5 text-right">GMQ</th><th className="p-1.5"></th></tr>
+              </thead>
+              <tbody>
+                {[...data].reverse().map((p) => (
+                  <tr key={p.id} className="border-b hover:bg-slate-50">
+                    <td className="p-1.5">{new Date(p.date).toLocaleDateString("fr-FR")}</td>
+                    <td className="p-1.5 text-right font-medium">{p.poidsKg} kg</td>
+                    <td className="p-1.5 text-right text-slate-500">{p.gmq != null ? `${p.gmq > 0 ? "+" : ""}${p.gmq} g/j` : "—"}</td>
+                    <td className="p-1.5 text-right"><button onClick={() => supprimer(p.id)} className="text-red-500 hover:text-red-700" title="Supprimer">&times;</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }

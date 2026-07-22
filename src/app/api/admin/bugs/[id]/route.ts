@@ -3,6 +3,8 @@ import { requireAdminApi } from "@/lib/auth-utils"
 import prisma from "@/lib/prisma"
 import { z } from "zod"
 import type { BugStatus, BugPriority, Prisma } from "@prisma/client"
+import { feedbackResolvedEmail, sendMail } from "@/lib/mail"
+import { shouldSendResolutionEmail } from "@/lib/feedback-public"
 
 export const dynamic = "force-dynamic"
 
@@ -41,7 +43,11 @@ export async function PATCH(
 
   const existing = await prisma.bugReport.findUnique({
     where: { id },
-    select: { status: true },
+    select: {
+      status: true,
+      user: { select: { email: true, name: true } },
+      statusLogs: { where: { toStatus: "RESOLVED" }, select: { id: true }, take: 1 },
+    },
   })
   if (!existing) {
     return NextResponse.json({ error: "Bug introuvable" }, { status: 404 })
@@ -78,6 +84,15 @@ export async function PATCH(
         note: statusNote ?? null,
       },
     })
+  }
+
+  if (shouldSendResolutionEmail(existing.status, status, existing.statusLogs.length > 0)) {
+    const email = feedbackResolvedEmail(existing.user.name)
+    try {
+      await sendMail({ to: existing.user.email, subject: email.subject, html: email.html })
+    } catch (err) {
+      console.error("PATCH /api/admin/bugs resolution mail error:", err)
+    }
   }
 
   return NextResponse.json({ bug: updated })

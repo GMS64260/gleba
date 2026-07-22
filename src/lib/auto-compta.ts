@@ -8,6 +8,7 @@
  * Les ecritures auto sont identifiees par : auto=true, sourceType, sourceId
  */
 
+import type { Prisma } from '@prisma/client'
 import prisma from '@/lib/prisma'
 
 // ============================================================
@@ -39,16 +40,20 @@ export async function findAutoEntry(
 export async function deleteAutoEntry(
   sourceType: string,
   sourceId: number,
-  table: 'vente' | 'depense'
+  table: 'vente' | 'depense',
+  // Review caprin 2026-07-21 — `userId` OBLIGATOIRE quand `sourceId` n'est pas
+  // une PK globalement unique. Les sources historiques passent une PK
+  // auto-incrémentée (unique tous tenants confondus) → `userId` optionnel y est
+  // sans effet. Mais `paie_lait` utilise un sourceId synthétique (annee*100+mois)
+  // COMMUN à tous les utilisateurs : sans `userId`, le deleteMany effacerait les
+  // écritures des autres fermes (perte silencieuse de CA). Toujours scoper.
+  userId?: string
 ) {
+  const where = { sourceType, sourceId, auto: true, ...(userId ? { userId } : {}) }
   if (table === 'vente') {
-    return prisma.venteManuelle.deleteMany({
-      where: { sourceType, sourceId, auto: true },
-    })
+    return prisma.venteManuelle.deleteMany({ where })
   } else {
-    return prisma.depenseManuelle.deleteMany({
-      where: { sourceType, sourceId, auto: true },
-    })
+    return prisma.depenseManuelle.deleteMany({ where })
   }
 }
 
@@ -257,7 +262,13 @@ export async function createVenteFromVenteProduit(
   }
 
   const montantTTC = venteProduit.prixTotal
-  if (montantTTC <= 0) return null
+  if (montantTTC <= 0) {
+    // Revue élevage 2026-07-21 — purge de l'écriture auto précédente : une vente
+    // éditée à 0 € (don) laissait sinon un revenu fantôme en compta (le
+    // deleteMany plus bas n'était jamais atteint).
+    await deleteAutoEntry('vente_produit', venteProduit.id, 'vente')
+    return null
+  }
 
   const taux = venteProduit.tauxTVA ?? 5.5
   const { montantHT, montantTVA } = calculTVA(montantTTC, taux)
@@ -267,6 +278,7 @@ export async function createVenteFromVenteProduit(
   if (venteProduit.type === 'oeufs') categorie = 'oeufs'
   else if (venteProduit.type === 'viande') categorie = 'viande'
   else if (venteProduit.type === 'lait') categorie = 'lait'
+  else if (venteProduit.type === 'fromage') categorie = 'fromage'
   else if (venteProduit.type === 'animal_vivant') categorie = 'viande'
 
   return prisma.$transaction(async (tx) => {
@@ -295,6 +307,101 @@ export async function createVenteFromVenteProduit(
         auto: true,
       },
     })
+  })
+}
+
+/**
+ * Cree une VenteManuelle quand une PaieLait (chèque de la laiterie) est saisie.
+ *
+ * Le chèque de lait est le revenu n°1 d'un éleveur laitier livreur : sans cette
+ * écriture, la paie n'apparaissait NI dans le CA (getKpiCompta = Σ VenteManuelle
+ * + factures) NI dans les recettes, alors que tous ses coûts (alim, soins,
+ * achat) y figuraient → marge affichée massivement négative (review caprin
+ * 2026-07-21).
+ *
+ * sourceId synthétique = annee*100 + mois : PaieLait.id est un cuid alors que
+ * VenteManuelle.sourceId est un Int, et la paie est unique par (user, annee,
+ * mois) → l'upsert mensuel reste idempotent (deleteMany + create).
+ *
+ * TVA : la paie est saisie HT (montantHT). On applique 5,5 % comme pour toute
+ * vente de lait/produit laitier (VenteProduit type 'lait') pour rester cohérent
+ * avec le reste de la compta élevage.
+ */
+export async function createVenteFromPaieLait(
+  userId: string,
+  paie: {
+    annee: number
+    mois: number
+    montantHT: number
+    litres?: number | null
+    laiterie?: string | null
+    date?: Date | string | null
+  }
+) {
+  return prisma.$transaction((tx) => upsertVenteFromPaieLait(tx, userId, paie))
+}
+
+/** Variante transactionnelle, à utiliser quand la PaieLait est écrite dans la
+ * même transaction. Évite une paie validée sans sa recette comptable. */
+export async function upsertVenteFromPaieLait(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  paie: {
+    annee: number
+    mois: number
+    montantHT: number
+    litres?: number | null
+    laiterie?: string | null
+    date?: Date | string | null
+  }
+) {
+  const sourceId = paie.annee * 100 + paie.mois
+  const montantHT = Number(paie.montantHT)
+  if (!(montantHT > 0)) {
+    // Paie à 0 (ou négative après pénalités) : pas de revenu, on purge une
+    // éventuelle écriture précédente (mois ré-enregistré à 0). Scopé userId :
+    // le sourceId synthétique est partagé entre tenants.
+    await tx.venteManuelle.deleteMany({
+      where: { sourceType: 'paie_lait', sourceId, auto: true, userId },
+    })
+    return null
+  }
+
+  const taux = 5.5
+  const montantTVA = (montantHT * taux) / 100
+  const montantTTC = montantHT + montantTVA
+  const dateVente = paie.date ? new Date(paie.date) : new Date(paie.annee, paie.mois - 1, 1)
+  const litres = paie.litres != null ? Number(paie.litres) : null
+  const moisLabel = `${String(paie.mois).padStart(2, '0')}/${paie.annee}`
+
+  // Scopé userId : sourceId (annee*100+mois) est commun à tous les tenants.
+  await tx.venteManuelle.deleteMany({
+    where: { sourceType: 'paie_lait', sourceId, auto: true, userId },
+  })
+
+  return tx.venteManuelle.create({
+    data: {
+        userId,
+        date: dateVente,
+        categorie: 'lait',
+        description:
+          `Paie du lait ${moisLabel}` +
+          (paie.laiterie ? ` — ${paie.laiterie}` : '') +
+          (litres != null ? ` (${Math.round(litres)} L)` : ''),
+        quantite: litres,
+        unite: litres != null ? 'L' : null,
+        prixUnitaire: null,
+        tauxTVA: taux,
+        montantHT,
+        montantTVA,
+        montant: montantTTC,
+        clientNom: paie.laiterie || null,
+        module: 'elevage',
+        paye: true,
+        sourceType: 'paie_lait',
+        sourceId,
+        auto: true,
+    },
   })
 }
 

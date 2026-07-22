@@ -151,7 +151,9 @@ export async function calculerStockOeufs(userId: string): Promise<{
 
   // Total vendus (normalisation d'unité : douzaine -> x12)
   const ventes = await prisma.venteProduit.findMany({
-    where: { userId, type: 'oeufs' },
+    // Revue élevage 2026-07-21 — exclure les ventes annulées (soft-delete),
+    // sinon leurs œufs restent déduits du stock à perpétuité.
+    where: { userId, type: 'oeufs', annule: false },
     select: { quantite: true, unite: true },
   })
 

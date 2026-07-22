@@ -22,6 +22,6 @@ export async function GET(request: NextRequest) {
   const a = await prisma.animal.findFirst({ where: { id: animalId, userId: session.user.id }, select: { id: true } })
   if (!a) return NextResponse.json({ error: 'Animal non trouvé' }, { status: 404 })
 
-  const tree = await genealogie(prisma, animalId, Math.min(generations, 4))
+  const tree = await genealogie(prisma, animalId, Math.min(generations, 4), session.user.id)
   return NextResponse.json({ data: tree })
 }

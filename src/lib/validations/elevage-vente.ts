@@ -10,7 +10,7 @@ export const venteProduitSchema = z
   .object({
     date: z.coerce.date().optional(),
     // DEV1 T1 — Résilient à la casse.
-    type: caseInsensitiveEnum(['oeufs', 'viande', 'animal_vivant', 'lait', 'autre'] as const),
+    type: caseInsensitiveEnum(['oeufs', 'viande', 'animal_vivant', 'lait', 'fromage', 'autre'] as const),
     description: z.string().max(500).nullable().optional(),
     quantite: z.number().positive('La quantité doit être positive'),
     unite: z.string().min(1, 'Unité requise'),
@@ -20,6 +20,10 @@ export const venteProduitSchema = z
     paye: z.boolean().default(true),
     tauxTVA: z.number().min(0).max(100).default(5.5),
     animalId: z.number().int().nullable().optional(),
+    // Review caprin 2026-07-21 — vente de fromage : lien vers le lot de
+    // fabrication (traçabilité + décrément du stock de cave). Requis pour une
+    // vente de type 'fromage' (contrôlé en API).
+    lotFromageId: z.string().min(1).nullable().optional(),
     notes: z.string().max(5000).nullable().optional(),
   })
   .refine((d) => !(d.paye === true && d.prixUnitaire === 0), {

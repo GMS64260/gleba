@@ -10,7 +10,6 @@ import {
   Bot,
   RefreshCw,
   ListChecks,
-  Flower2,
   Carrot,
   type LucideIcon,
 } from "lucide-react";
@@ -22,7 +21,6 @@ const ALL_PAGES: Page[] = [
   { href: "/planification-maraichage", label: "Planification maraîchère", icon: Calendar },
   { href: "/rotation-cultures-maraichage", label: "Rotations de cultures", icon: RefreshCw },
   { href: "/itineraire-technique-maraichage", label: "Itinéraires techniques", icon: ListChecks },
-  { href: "/logiciel-jardin", label: "Logiciel de jardin", icon: Flower2 },
   { href: "/logiciel-potager", label: "Logiciel de potager", icon: Carrot },
   { href: "/logiciel-micro-ferme", label: "Logiciel pour micro-ferme", icon: Home },
   { href: "/logiciel-permaculture", label: "Logiciel de permaculture", icon: Layers },

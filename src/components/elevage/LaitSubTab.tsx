@@ -205,8 +205,9 @@ function PalmaresView() {
               Palmarès des chèvres
             </CardTitle>
             <CardDescription>
-              Classement par lactation (lait 305 j standardisé, pic, TB/TP) pour piloter réforme et renouvellement.
-              La lactation de référence est celle de l'année sélectionnée.
+              Classement par lactation (lait 305 j cumulé d'après vos traites saisies, pic, TB/TP) pour piloter réforme
+              et renouvellement. La lactation de référence est celle de l'année sélectionnée. En contrôle laitier
+              mensuel, le cumul reflète les traites enregistrées, pas une lactation standardisée interpolée.
             </CardDescription>
           </div>
           <div className="flex items-end gap-2">

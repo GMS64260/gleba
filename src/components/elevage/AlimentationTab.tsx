@@ -121,6 +121,9 @@ interface Aliment {
   stock: number | null
   stockMin: number | null
   dateStock: string | null
+  consoMoyJour?: number | null
+  joursAutonomie?: number | null
+  dateRupture?: string | null
   fournisseur: { id: string; contact: string | null } | null
   _count: { consommations: number }
 }
@@ -341,6 +344,7 @@ function StocksSubTab() {
                   <TableHead className="text-right">Prix/kg</TableHead>
                   <TableHead className="text-right">Stock</TableHead>
                   <TableHead className="text-right">Seuil min</TableHead>
+                  <TableHead className="text-right">Autonomie</TableHead>
                   <TableHead>MAJ</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
@@ -416,6 +420,19 @@ function StocksSubTab() {
                         )}
                       </TableCell>
                       <TableCell className="text-right text-muted-foreground">{a.stockMin !== null ? `${a.stockMin} kg` : '\u2014'}</TableCell>
+                      <TableCell className="text-right">
+                        {/* GAP P0 \u2014 autonomie estim\u00e9e au rythme moyen des 30 derniers jours */}
+                        {a.joursAutonomie != null ? (
+                          <span
+                            className={`text-sm font-medium ${a.joursAutonomie <= 7 ? 'text-red-700' : a.joursAutonomie <= 14 ? 'text-amber-700' : 'text-slate-600'}`}
+                            title={a.dateRupture ? `Rupture estim\u00e9e le ${new Date(a.dateRupture).toLocaleDateString('fr-FR')} (conso moy. ${a.consoMoyJour} kg/j)` : undefined}
+                          >
+                            {a.joursAutonomie} j
+                          </span>
+                        ) : (
+                          <span className="text-xs text-slate-300">{'\u2014'}</span>
+                        )}
+                      </TableCell>
                       <TableCell className="text-muted-foreground text-sm">{a.dateStock ? new Date(a.dateStock).toLocaleDateString('fr-FR') : '\u2014'}</TableCell>
                       <TableCell>
                         {stockEpuise ? (
@@ -427,7 +444,7 @@ function StocksSubTab() {
                     </TableRow>
                   )
                 })}
-                {aliments.length === 0 && <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Aucun aliment enregistré</TableCell></TableRow>}
+                {aliments.length === 0 && <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Aucun aliment enregistré</TableCell></TableRow>}
               </TableBody>
             </Table>
           )}
@@ -862,6 +879,8 @@ function SoinsSubTab({ initialAnimalId = null }: { initialAnimalId?: string | nu
     voie: "",
     motif: "",
     ordonnanceUrl: "",
+    veterinaire: "",
+    datePrevue: "",
     quantite: "", unite: "", cout: "", fait: true, notes: "",
   }
   const [formData, setFormData] = React.useState(EMPTY_SOIN_FORM)
@@ -886,6 +905,8 @@ function SoinsSubTab({ initialAnimalId = null }: { initialAnimalId?: string | nu
       voie: s.voie ?? "",
       motif: s.motif ?? "",
       ordonnanceUrl: s.ordonnanceUrl ?? "",
+      veterinaire: s.veterinaire ?? "",
+      datePrevue: s.datePrevue ? s.datePrevue.split('T')[0] : "",
       quantite: s.quantite ? s.quantite.toString() : "",
       unite: s.unite ?? "",
       cout: s.cout ? s.cout.toString() : "",
@@ -946,6 +967,8 @@ function SoinsSubTab({ initialAnimalId = null }: { initialAnimalId?: string | nu
         voie: formData.voie || null,
         motif: formData.motif || null,
         ordonnanceUrl: formData.ordonnanceUrl || null,
+        veterinaire: formData.veterinaire || null,
+        datePrevue: formData.datePrevue || null,
         quantite: formData.quantite ? parseFloat(formData.quantite) : null,
         unite: formData.unite || null,
         cout: formData.cout ? parseFloat(formData.cout) : null,
@@ -1107,9 +1130,15 @@ function SoinsSubTab({ initialAnimalId = null }: { initialAnimalId?: string | nu
                   <Input value={formData.motif} onChange={(e) => setFormData(f => ({ ...f, motif: e.target.value }))} placeholder="Indication, symptômes..." />
                 </div>
 
-                <div className="space-y-2">
-                  <Label>URL ordonnance (PDF)</Label>
-                  <Input value={formData.ordonnanceUrl} onChange={(e) => setFormData(f => ({ ...f, ordonnanceUrl: e.target.value }))} placeholder="https://..." />
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label>Vétérinaire</Label>
+                    <Input value={formData.veterinaire} onChange={(e) => setFormData(f => ({ ...f, veterinaire: e.target.value }))} placeholder="Nom (registre sanitaire)" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>URL ordonnance (PDF)</Label>
+                    <Input value={formData.ordonnanceUrl} onChange={(e) => setFormData(f => ({ ...f, ordonnanceUrl: e.target.value }))} placeholder="https://..." />
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
@@ -1119,9 +1148,15 @@ function SoinsSubTab({ initialAnimalId = null }: { initialAnimalId?: string | nu
 
                 <div className="space-y-2"><Label>Notes</Label><Textarea value={formData.notes} onChange={(e) => setFormData(f => ({ ...f, notes: e.target.value }))} rows={2} /></div>
 
-                <div className="flex items-center gap-2">
-                  <Checkbox id="fait" checked={formData.fait} onCheckedChange={(c) => setFormData(f => ({ ...f, fait: !!c }))} />
-                  <Label htmlFor="fait">Déjà effectué</Label>
+                <div className="grid grid-cols-2 gap-3 items-end">
+                  <div className="flex items-center gap-2">
+                    <Checkbox id="fait" checked={formData.fait} onCheckedChange={(c) => setFormData(f => ({ ...f, fait: !!c }))} />
+                    <Label htmlFor="fait">Déjà effectué</Label>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Rappel planifié (date)</Label>
+                    <Input type="date" value={formData.datePrevue} onChange={(e) => setFormData(f => ({ ...f, datePrevue: e.target.value }))} />
+                  </div>
                 </div>
                 <div className="flex justify-end gap-2 pt-2">
                   <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>

@@ -15,7 +15,6 @@ const defaultPaths = [
   "/logiciel-elevage-caprin",
   "/logiciel-permaculture",
   "/logiciel-micro-ferme",
-  "/logiciel-jardin",
   "/logiciel-potager",
   "/registre-phytosanitaire",
   "/assistant-ia-agricole",

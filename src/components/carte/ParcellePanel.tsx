@@ -27,6 +27,12 @@ interface ParcelleGeoData {
   couleur?: string | null
   notes?: string | null
   typeSol?: string | null
+  betail?: {
+    totalTetes: number
+    animauxIndividuels: number
+    lots: Array<{ id: number; nom: string | null; espece: string; quantiteActuelle: number }>
+    parEspece: Array<{ espece: string; count: number }>
+  } | null
 }
 
 interface ParcellePanelProps {
@@ -265,6 +271,45 @@ export default function ParcellePanel({
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* Bétail présent (cartographie élevage 2026-07-21) */}
+        {isEditMode && parcelle?.betail && parcelle.betail.totalTetes > 0 && (
+          <div className="space-y-3 pt-2 border-t">
+            <h3 className="text-sm font-medium text-amber-700 uppercase tracking-wide">
+              Bétail présent · {parcelle.betail.totalTetes} têtes
+            </h3>
+            <div className="flex flex-wrap gap-1.5">
+              {parcelle.betail.parEspece.map((e) => (
+                <span
+                  key={e.espece}
+                  className="rounded-full bg-amber-100 text-amber-800 px-2.5 py-1 text-xs font-medium"
+                >
+                  {e.count} {e.espece}
+                </span>
+              ))}
+            </div>
+            {parcelle.betail.lots.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Lots</p>
+                {parcelle.betail.lots.map((l) => (
+                  <Link
+                    key={l.id}
+                    href={`/elevage/lots/${l.id}`}
+                    className="flex justify-between text-sm hover:underline"
+                  >
+                    <span>{l.nom || `Lot #${l.id}`}</span>
+                    <span className="text-muted-foreground">{l.quantiteActuelle} · {l.espece}</span>
+                  </Link>
+                ))}
+              </div>
+            )}
+            {parcelle.betail.animauxIndividuels > 0 && (
+              <Link href="/elevage?tab=animaux" className="block text-sm text-amber-700 hover:underline">
+                {parcelle.betail.animauxIndividuels} animal(aux) en individuel →
+              </Link>
+            )}
           </div>
         )}
       </div>

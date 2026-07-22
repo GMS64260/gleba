@@ -10,6 +10,7 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { createDepenseFromAchatAnimal } from '@/lib/auto-compta'
 import { animalSchema, isPlausibleAnimalDate } from '@/lib/validations/elevage-animal'
+import { isAssignableAnimalLot, isOwnedParcelle } from '@/lib/elevage/animal-lot'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -108,6 +109,7 @@ export async function POST(request: NextRequest) {
       poidsActuel,
       couleur,
       notes,
+      parcelleGeoId,
     } = parsed.data
 
     // Vérifier que l'espece animale existe
@@ -121,17 +123,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Vérifier que le lot existe si spécifié
-    if (lotId) {
-      const lot = await prisma.lotAnimaux.findFirst({
-        where: { id: lotId, userId: session.user.id },
-      })
-      if (!lot) {
-        return NextResponse.json(
-          { error: `Lot #${lotId} introuvable` },
-          { status: 400 }
-        )
-      }
+    if (lotId != null && !await isAssignableAnimalLot(session.user.id, lotId, especeAnimaleId)) {
+      return NextResponse.json({ error: 'Lot invalide' }, { status: 400 })
+    }
+
+    if (parcelleGeoId != null && !await isOwnedParcelle(session.user.id, parcelleGeoId)) {
+      return NextResponse.json({ error: 'Parcelle invalide' }, { status: 400 })
     }
 
     // Audit élevage 2026-06-11 — validation tenant des parents (avant : un
@@ -175,6 +172,7 @@ export async function POST(request: NextRequest) {
         poidsActuel,
         couleur,
         notes,
+        parcelleGeoId: parcelleGeoId ?? null,
       },
       include: {
         especeAnimale: true,
@@ -213,7 +211,7 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { id, nom, race, sexe, statut, lotId, posX, posY, poidsActuel, couleur, notes, dateSortie, causeSortie, mereId, pereId, pereIdentifiant, identifiant, typeIdentifiant, nExploitationOrigine, nExploitationDestination, motifSortie, statutSanitaire, prixAchat, provenance, dateNaissance, dateArrivee } = body
+    const { id, nom, race, sexe, statut, lotId, posX, posY, poidsActuel, couleur, notes, dateSortie, causeSortie, mereId, pereId, pereIdentifiant, identifiant, typeIdentifiant, nExploitationOrigine, nExploitationDestination, motifSortie, statutSanitaire, prixAchat, provenance, dateNaissance, dateArrivee, parcelleGeoId } = body
 
     if (!id) {
       return NextResponse.json({ error: 'ID requis' }, { status: 400 })
@@ -227,7 +225,28 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Animal non trouvé' }, { status: 404 })
     }
 
+    // On ne (re)valide le lot que s'il CHANGE : un animal déjà rattaché à un lot
+    // devenu inactif (terminé/réformé) doit rester éditable (poids, notes…) sans
+    // renvoyer « Lot invalide » alors que l'utilisateur n'y a pas touché.
+    if (
+      lotId !== undefined && lotId !== null && lotId !== '' &&
+      Number(lotId) !== existing.lotId &&
+      !await isAssignableAnimalLot(session.user.id, lotId, existing.especeAnimaleId)
+    ) {
+      return NextResponse.json({ error: 'Lot invalide' }, { status: 400 })
+    }
+
+    // Cartographie élevage — parcelle validée propriétaire (null/'' ⇒ détache).
+    if (
+      parcelleGeoId !== undefined && parcelleGeoId !== null && parcelleGeoId !== '' &&
+      parcelleGeoId !== existing.parcelleGeoId &&
+      !await isOwnedParcelle(session.user.id, parcelleGeoId)
+    ) {
+      return NextResponse.json({ error: 'Parcelle invalide' }, { status: 400 })
+    }
+
     const updateData: any = {}
+    if (parcelleGeoId !== undefined) updateData.parcelleGeoId = parcelleGeoId || null
     if (nom !== undefined) updateData.nom = nom
     if (race !== undefined) updateData.race = race
     if (sexe !== undefined) updateData.sexe = sexe

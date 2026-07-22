@@ -9,6 +9,7 @@ import { z } from 'zod'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { montantPaie } from '@/lib/elevage/paie-lait'
+import { upsertVenteFromPaieLait } from '@/lib/auto-compta'
 
 const schema = z.object({
   annee: z.coerce.number().int(),
@@ -55,9 +56,10 @@ export async function POST(request: NextRequest) {
     const montant = montantPaie(d.litres, d.prixBaseMille, d.primeQualite, d.penalite)
     const userId = session.user.id
     // Upsert par mois (une paie par mois)
-    const paie = await prisma.paieLait.upsert({
-      where: { userId_annee_mois: { userId, annee: d.annee, mois: d.mois } },
-      update: {
+    const paie = await prisma.$transaction(async (tx) => {
+      const saved = await tx.paieLait.upsert({
+        where: { userId_annee_mois: { userId, annee: d.annee, mois: d.mois } },
+        update: {
         litres: d.litres,
         prixBaseMille: d.prixBaseMille,
         primeQualite: d.primeQualite,
@@ -66,7 +68,7 @@ export async function POST(request: NextRequest) {
         laiterie: d.laiterie ?? null,
         notes: d.notes ?? null,
       },
-      create: {
+        create: {
         userId,
         annee: d.annee,
         mois: d.mois,
@@ -77,8 +79,18 @@ export async function POST(request: NextRequest) {
         montantHT: montant,
         laiterie: d.laiterie ?? null,
         notes: d.notes ?? null,
-      },
+        },
+      })
+      await upsertVenteFromPaieLait(tx, userId, {
+        annee: d.annee,
+        mois: d.mois,
+        montantHT: montant,
+        litres: d.litres,
+        laiterie: d.laiterie ?? null,
+      })
+      return saved
     })
+
     return NextResponse.json({ data: paie }, { status: 201 })
   } catch (err) {
     console.error('POST /api/elevage/paies-lait error:', err)
@@ -94,6 +106,17 @@ export async function DELETE(request: NextRequest) {
   if (!id) return NextResponse.json({ error: 'ID requis' }, { status: 400 })
   const existing = await prisma.paieLait.findFirst({ where: { id, userId: session.user.id } })
   if (!existing) return NextResponse.json({ error: 'Paie introuvable' }, { status: 404 })
-  await prisma.paieLait.delete({ where: { id } })
+  await prisma.$transaction(async (tx) => {
+    await tx.paieLait.delete({ where: { id } })
+    await tx.venteManuelle.deleteMany({
+      where: {
+        sourceType: 'paie_lait',
+        sourceId: existing.annee * 100 + existing.mois,
+        auto: true,
+        userId: existing.userId,
+      },
+    })
+  })
+
   return NextResponse.json({ success: true })
 }

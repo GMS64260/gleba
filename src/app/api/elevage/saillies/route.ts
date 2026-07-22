@@ -172,9 +172,27 @@ export async function PATCH(request: NextRequest) {
 
     const existing = await prisma.saillie.findFirst({
       where: { id, userId: session.user.id },
-      include: { femelle: { include: { especeAnimale: true } } },
+      include: { femelle: { include: { especeAnimale: true } }, miseBas: { select: { id: true } } },
     })
     if (!existing) return NextResponse.json({ error: 'Saillie non trouvée' }, { status: 404 })
+
+    // Review caprin 2026-07-21 — garde d'intégrité du statut (symétrique du DELETE
+    // qui refuse déjà si une mise-bas est liée) : ne pas laisser l'UI mettre un
+    // statut incohérent avec une naissance réellement enregistrée.
+    if (updates.statut && updates.statut !== existing.statut) {
+      if (existing.miseBas && updates.statut !== 'Mise-bas réalisée') {
+        return NextResponse.json(
+          { error: 'Une mise-bas est enregistrée pour cette saillie : supprimez d\'abord la naissance pour changer le statut.' },
+          { status: 409 }
+        )
+      }
+      if (updates.statut === 'Mise-bas réalisée' && !existing.miseBas) {
+        return NextResponse.json(
+          { error: 'Enregistrez la mise-bas (onglet Reproduction → naissance) plutôt que de forcer ce statut.' },
+          { status: 400 }
+        )
+      }
+    }
 
     const data: any = { ...updates }
     if (updates.confirmationGestation && existing.statut === 'En attente') {

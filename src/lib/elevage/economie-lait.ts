@@ -23,6 +23,8 @@ export type IntrantsEconomieLait = {
   caLaitCru: number
   /** CA des ventes de fromage (€). */
   caFromage: number
+  /** Recette du lait livré à la laiterie (chèque de lait, HT) (€). */
+  caLaitLivre: number
   /** Coût alimentaire affecté au troupeau laitier (€). */
   coutAlimentaire: number
   /** Coût sanitaire (soins) affecté au troupeau laitier (€). */
@@ -57,7 +59,10 @@ const r2 = (v: number) => Math.round(v * 100) / 100
 const r3 = (v: number) => Math.round(v * 1000) / 1000
 
 export function indicateursEconomieLait(x: IntrantsEconomieLait): IndicateursEconomieLait {
-  const valorisation = x.caLaitCru + x.caFromage
+  // Valorisation = lait vendu cru + fromage + lait livré à la laiterie (paie).
+  // La paie était auparavant absente → une ferme 100 % livraison affichait 0 €
+  // de produit face à tous ses coûts (review caprin 2026-07-21).
+  const valorisation = x.caLaitCru + x.caFromage + x.caLaitLivre
   const coutTotal = x.coutAlimentaire + x.coutSanitaire
   const litres = x.litresProduits
 

@@ -43,6 +43,8 @@ const nextConfig = {
     return [
       // Roadmap GitHub historique → Community Voice (roadmap communautaire)
       { source: '/roadmap', destination: '/communaute', permanent: true },
+      // Cluster SEO jardin fusionné dans la page potager.
+      { source: '/logiciel-jardin', destination: '/logiciel-potager', permanent: true },
       // Maraîchage
       { source: '/cultures', destination: '/maraichage/cultures', permanent: true },
       { source: '/cultures/:path*', destination: '/maraichage/cultures/:path*', permanent: true },

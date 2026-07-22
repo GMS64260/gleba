@@ -39,7 +39,7 @@ export default auth((req) => {
     "/logiciel-elevage-ovin", "/logiciel-elevage-caprin",
     "/rotation-cultures-maraichage", "/itineraire-technique-maraichage",
     "/registre-phytosanitaire", "/referentiel",
-    "/logiciel-jardin", "/logiciel-potager",
+    "/logiciel-potager",
   ]
   // La home publique est traitée à part car `route + "/"` matcherait tout
   // avec une route égale à "/".

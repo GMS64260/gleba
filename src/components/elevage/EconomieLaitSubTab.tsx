@@ -19,11 +19,12 @@ type Economie = {
     litresProduits: number
     litresTransformes: number
     litresVendusCru: number
+    litresLivres: number
     litresEcartes: number
     kgFromage: number
   }
   couts: { alimentaire: number; sanitaire: number }
-  valorisation: { laitCru: number; fromage: number }
+  valorisation: { laitCru: number; laitLivre: number; fromage: number }
   indicateurs: {
     valorisation: number
     coutTotal: number
@@ -148,6 +149,7 @@ export function EconomieLaitSubTab({ year }: { year?: number } = {}) {
                   <Ligne label="Litres produits" value={`${data.production.litresProduits.toLocaleString("fr-FR")} L`} />
                   <Ligne label="Transformés en fromage" value={`${data.production.litresTransformes.toLocaleString("fr-FR")} L`} />
                   <Ligne label="Vendus en lait cru" value={`${data.production.litresVendusCru.toLocaleString("fr-FR")} L`} />
+                  <Ligne label="Livrés (laiterie)" value={`${data.production.litresLivres.toLocaleString("fr-FR")} L`} />
                   <Ligne label="Écartés (attente véto)" value={`${data.production.litresEcartes.toLocaleString("fr-FR")} L`} />
                   <Ligne label="Fromage fabriqué" value={`${data.production.kgFromage.toLocaleString("fr-FR")} kg`} strong />
                 </div>
@@ -157,6 +159,7 @@ export function EconomieLaitSubTab({ year }: { year?: number } = {}) {
                   </div>
                   <Ligne label="Ventes fromage" value={eur(data.valorisation.fromage)} />
                   <Ligne label="Ventes lait cru" value={eur(data.valorisation.laitCru)} />
+                  <Ligne label="Lait livré (laiterie)" value={eur(data.valorisation.laitLivre)} />
                   <Ligne label="Total" value={eur(i.valorisation)} strong />
                 </div>
                 <div className="rounded-lg border p-4">

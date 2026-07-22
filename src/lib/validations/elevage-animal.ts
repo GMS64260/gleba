@@ -36,6 +36,8 @@ export const animalSchema = z
     motifSortie: caseInsensitiveEnum(['Vente', 'Mort', 'Abattage', 'Réforme', 'Don'] as const).nullable().optional(),
     statutSanitaire: z.array(z.string()).optional().default([]),
     prixAchat: z.number().min(0).nullable().optional(),
+    // Cartographie élevage — parcelle de rattachement (bétail en individuel).
+    parcelleGeoId: z.string().nullable().optional(),
     statut: z.string().max(50).default('actif'),
     posX: z.number().nullable().optional(),
     posY: z.number().nullable().optional(),

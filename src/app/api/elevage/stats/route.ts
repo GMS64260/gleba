@@ -251,7 +251,7 @@ export async function GET(request: NextRequest) {
     )
     const especes = await prisma.especeAnimale.findMany({
       where: { id: { in: especeIds } },
-      select: { id: true, nom: true, couleur: true },
+      select: { id: true, nom: true, couleur: true, production: true, productions: true },
     })
 
     const especeMap = new Map(especes.map(e => [e.id, e]))
@@ -266,6 +266,24 @@ export async function GET(request: NextRequest) {
       if (n > 0) {
         animauxParTypeMerged.set(l.especeAnimaleId, (animauxParTypeMerged.get(l.especeAnimaleId) ?? 0) + n)
       }
+    }
+
+    // Review caprin 2026-07-21 — profil du CHEPTEL (pas de la production
+    // enregistrée) : sert à orienter l'UI (onglet Production par défaut). Un
+    // éleveur de chèvres qui n'a pas encore saisi de collecte doit quand même
+    // être reconnu comme laitier. On regarde les espèces réellement détenues.
+    const profil = { lait: false, oeufs: false, viande: false }
+    for (const [especeId, count] of animauxParTypeMerged) {
+      if (count <= 0) continue
+      const e = especeMap.get(especeId)
+      if (!e) continue
+      // Normalise la ligature « œ » → « oe » : sinon 'œufs'.includes('oeuf') est
+      // faux (U+0153) et une espèce dont la production ne serait qu'en multivalué
+      // 'Œufs' ne lèverait pas profil.oeufs.
+      const prods = [e.production, ...(e.productions || [])].map((p) => (p || '').toLowerCase().replace(/œ/g, 'oe'))
+      if (prods.some((p) => p.includes('lait') || p.includes('mixte'))) profil.lait = true
+      if (prods.some((p) => p.includes('oeuf') || p.includes('ponte') || p.includes('mixte'))) profil.oeufs = true
+      if (prods.some((p) => p.includes('viande'))) profil.viande = true
     }
 
     // Métriques calculées
@@ -413,6 +431,8 @@ export async function GET(request: NextRequest) {
         laitMoyenJourJ30,
         laitStockTransformable: Math.round(laitNonAffecteL * 100) / 100,
         nbCollectesAnnee: productionsLaitieres.nbCollectes,
+        // Profil du cheptel (pour l'UI : onglet Production par défaut, etc.)
+        profil,
       },
       // BUG #7 : la répartition par espèce additionne désormais les
       // animaux individuels + ceux comptés en LotAnimaux.quantiteActuelle.
