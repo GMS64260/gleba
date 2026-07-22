@@ -133,7 +133,11 @@ export type LactationSynthese = {
   jours: number
   /** Lait cumulé sur toute la lactation observée (litres). */
   laitTotal: number
-  /** Lait cumulé sur les 305 premiers jours (standard laitier), litres. */
+  /**
+   * Lait cumulé sur les 305 premiers jours de lactation, litres. NB : c'est le
+   * cumul des traites SAISIES dans la fenêtre, pas une lactation standardisée
+   * interpolée (à ne pas confondre en contrôle laitier mensuel).
+   */
   lait305: number
   nbTraites: number
   /** Moyenne journalière sur les jours réellement couverts par une traite (L/j). */

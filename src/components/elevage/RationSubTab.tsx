@@ -9,11 +9,13 @@
  */
 
 import * as React from "react"
-import { Scale, Info } from "lucide-react"
+import { Scale, Info, Save, FolderOpen, Trash2 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { useToast } from "@/hooks/use-toast"
 import { besoinsChevre, bilanRation, type StadeGestation, type LigneRation } from "@/lib/elevage/ration"
 
 type Aliment = {
@@ -26,6 +28,28 @@ type Aliment = {
   prix: number | null
 }
 
+type LotOption = { id: number; nom: string | null; especeAnimale?: { nom?: string } }
+type CompositionLigne = { alimentId: string; quantiteKg: number }
+type RationEnregistree = {
+  id: string
+  nom: string
+  lotId: number | null
+  stade: string
+  poidsVif: number
+  litresLait: number
+  tauxButyreux: number
+  stadeGestation: string
+  composition: CompositionLigne[]
+}
+
+const STADES = [
+  { v: "lactation", l: "Lactation" },
+  { v: "tarissement", l: "Tarissement" },
+  { v: "gestation", l: "Gestation" },
+  { v: "croissance", l: "Croissance" },
+  { v: "entretien", l: "Entretien" },
+]
+
 export function RationSubTab() {
   const [aliments, setAliments] = React.useState<Aliment[]>([])
   const [loading, setLoading] = React.useState(true)
@@ -34,13 +58,97 @@ export function RationSubTab() {
   const [tb, setTb] = React.useState(35)
   const [gestation, setGestation] = React.useState<StadeGestation>("aucune")
   const [quantites, setQuantites] = React.useState<Record<string, number>>({})
+  const { toast } = useToast()
+  // Persistance : plans enregistrés + cible/label du plan courant
+  const [lots, setLots] = React.useState<LotOption[]>([])
+  const [rations, setRations] = React.useState<RationEnregistree[]>([])
+  const [nom, setNom] = React.useState("")
+  const [lotId, setLotId] = React.useState("")
+  const [stade, setStade] = React.useState("lactation")
+  const [editingId, setEditingId] = React.useState<string | null>(null)
+  const [saving, setSaving] = React.useState(false)
+
+  const reloadRations = React.useCallback(() => {
+    fetch("/api/elevage/rations")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (j?.data) setRations(j.data) })
+      .catch(() => {})
+  }, [])
 
   React.useEffect(() => {
-    fetch("/api/elevage/aliments")
-      .then((r) => r.json())
-      .then((j) => setAliments(j.data || []))
+    Promise.all([
+      fetch("/api/elevage/aliments").then((r) => (r.ok ? r.json() : { data: [] })),
+      fetch("/api/elevage/lots?statut=actif").then((r) => (r.ok ? r.json() : { data: [] })),
+    ])
+      .then(([a, l]) => { setAliments(a.data || []); setLots(l.data || []) })
       .finally(() => setLoading(false))
-  }, [])
+    reloadRations()
+  }, [reloadRations])
+
+  const chargerRation = (r: RationEnregistree) => {
+    setEditingId(r.id)
+    setNom(r.nom)
+    setLotId(r.lotId ? String(r.lotId) : "")
+    setStade(r.stade || "lactation")
+    setPoids(r.poidsVif)
+    setLait(r.litresLait)
+    setTb(r.tauxButyreux)
+    setGestation((r.stadeGestation as StadeGestation) || "aucune")
+    const q: Record<string, number> = {}
+    for (const c of r.composition || []) q[c.alimentId] = c.quantiteKg
+    setQuantites(q)
+    toast({ title: "Ration chargée", description: r.nom })
+  }
+
+  const enregistrerRation = async () => {
+    if (!nom.trim()) { toast({ variant: "destructive", title: "Nom requis", description: "Donnez un nom au plan (ex. « Laitières en production »)." }); return }
+    setSaving(true)
+    const composition: CompositionLigne[] = aliments
+      .filter((a) => (quantites[a.id] || 0) > 0)
+      .map((a) => ({ alimentId: a.id, quantiteKg: quantites[a.id] }))
+    const payload = {
+      ...(editingId ? { id: editingId } : {}),
+      nom: nom.trim(),
+      lotId: lotId ? parseInt(lotId, 10) : null,
+      stade,
+      poidsVif: poids,
+      litresLait: lait,
+      tauxButyreux: tb,
+      stadeGestation: gestation,
+      composition,
+    }
+    try {
+      const res = await fetch("/api/elevage/rations", {
+        method: editingId ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      const j = await res.json()
+      if (!res.ok) { toast({ variant: "destructive", title: "Erreur", description: j.error || "Échec" }); return }
+      setEditingId(j.data?.id ?? editingId)
+      toast({ title: editingId ? "Ration mise à jour" : "Ration enregistrée", description: nom.trim() })
+      reloadRations()
+    } catch {
+      toast({ variant: "destructive", title: "Erreur", description: "Enregistrement impossible" })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const supprimerRation = async (r: RationEnregistree) => {
+    const res = await fetch(`/api/elevage/rations?id=${r.id}`, { method: "DELETE" })
+    if (res.ok) {
+      if (editingId === r.id) setEditingId(null)
+      toast({ title: "Ration supprimée" })
+      reloadRations()
+    } else {
+      toast({ variant: "destructive", title: "Erreur", description: "Suppression impossible" })
+    }
+  }
+
+  const nouvelleRation = () => {
+    setEditingId(null); setNom(""); setLotId(""); setStade("lactation"); setQuantites({})
+  }
 
   const besoins = React.useMemo(
     () => besoinsChevre({ poidsVif: poids, litresLait: lait, tauxButyreux: tb, stadeGestation: gestation }),
@@ -74,6 +182,37 @@ export function RationSubTab() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
+        {/* Plans de ration enregistrés */}
+        {rations.length > 0 && (
+          <div className="rounded-lg border p-3">
+            <div className="text-xs font-semibold text-slate-500 uppercase mb-2 flex items-center gap-1.5">
+              <FolderOpen className="h-3.5 w-3.5" /> Plans enregistrés
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {rations.map((r) => {
+                const lotNom = r.lotId ? (lots.find((l) => l.id === r.lotId)?.nom || `Lot #${r.lotId}`) : null
+                const stadeLabel = STADES.find((s) => s.v === r.stade)?.l || r.stade
+                return (
+                  <div
+                    key={r.id}
+                    className={`inline-flex items-center gap-1.5 rounded-full border pl-3 pr-1.5 py-1 text-xs ${
+                      editingId === r.id ? "border-emerald-400 bg-emerald-50" : "border-slate-200"
+                    }`}
+                  >
+                    <button className="font-medium text-slate-700 hover:text-emerald-700" onClick={() => chargerRation(r)} title="Charger ce plan">
+                      {r.nom}
+                    </button>
+                    <span className="text-slate-400">{stadeLabel}{lotNom ? ` · ${lotNom}` : ""}</span>
+                    <button onClick={() => supprimerRation(r)} className="text-slate-400 hover:text-red-600" title="Supprimer">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Profil animal */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div>
@@ -190,6 +329,31 @@ export function RationSubTab() {
             <div className="text-xs text-slate-500">Coût ration / jour</div>
             <div className="text-lg font-semibold">{bilan.cout.toFixed(2)} €</div>
             <div className="text-xs text-slate-400">{bilan.uel > 0 ? `${bilan.uel} UEL` : ""}</div>
+          </div>
+        </div>
+
+        {/* Enregistrer le plan */}
+        <div className="rounded-lg border p-3 space-y-2">
+          <div className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1.5">
+            <Save className="h-3.5 w-3.5" /> {editingId ? "Mettre à jour le plan" : "Enregistrer ce plan"}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+            <Input placeholder="Nom (ex. Laitières en prod.)" value={nom} onChange={(e) => setNom(e.target.value)} className="sm:col-span-2" />
+            <select className="h-10 rounded-md border border-slate-300 px-2 bg-white text-sm" value={lotId} onChange={(e) => setLotId(e.target.value)}>
+              <option value="">Sans lot</option>
+              {lots.map((l) => <option key={l.id} value={l.id}>{l.nom || `Lot #${l.id}`}</option>)}
+            </select>
+            <select className="h-10 rounded-md border border-slate-300 px-2 bg-white text-sm" value={stade} onChange={(e) => setStade(e.target.value)}>
+              {STADES.map((s) => <option key={s.v} value={s.v}>{s.l}</option>)}
+            </select>
+          </div>
+          <div className="flex items-center justify-end gap-2">
+            {editingId && (
+              <Button variant="outline" size="sm" onClick={nouvelleRation}>Nouveau</Button>
+            )}
+            <Button size="sm" onClick={enregistrerRation} disabled={saving}>
+              <Save className="h-4 w-4 mr-1" />{editingId ? "Mettre à jour" : "Enregistrer"}
+            </Button>
           </div>
         </div>
 

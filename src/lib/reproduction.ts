@@ -149,11 +149,16 @@ export interface GenealogyNode {
 export async function genealogie(
   tx: PrismaTx,
   animalId: number,
-  generations = 2
+  generations = 2,
+  // Review caprin 2026-07-21 — scoper au propriétaire à CHAQUE nœud : un
+  // mereId/pereId pointant (import malformé, FK croisée) vers l'animal d'un
+  // autre compte exposait sinon son nom/identifiant/race/naissance. `ancetres()`
+  // avait déjà été durci ; `genealogie()` avait été oubliée.
+  userId?: string
 ): Promise<GenealogyNode | null> {
   if (generations < 0) return null
-  const a = await tx.animal.findUnique({
-    where: { id: animalId },
+  const a = await tx.animal.findFirst({
+    where: userId ? { id: animalId, userId } : { id: animalId },
     select: {
       id: true,
       nom: true,
@@ -167,8 +172,8 @@ export async function genealogie(
   })
   if (!a) return null
   const [mere, pere] = await Promise.all([
-    a.mereId ? genealogie(tx, a.mereId, generations - 1) : Promise.resolve(null),
-    a.pereId ? genealogie(tx, a.pereId, generations - 1) : Promise.resolve(null),
+    a.mereId ? genealogie(tx, a.mereId, generations - 1, userId) : Promise.resolve(null),
+    a.pereId ? genealogie(tx, a.pereId, generations - 1, userId) : Promise.resolve(null),
   ])
   return {
     id: a.id,

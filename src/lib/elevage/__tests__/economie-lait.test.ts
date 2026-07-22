@@ -10,6 +10,7 @@ describe("indicateursEconomieLait", () => {
       litresEcartes: 0,
       caLaitCru: 2000, // 2000 L × 1 €/L
       caFromage: 16000,
+      caLaitLivre: 0,
       coutAlimentaire: 6000,
       coutSanitaire: 1000,
       kgFromage: 1000, // 8000 L → 1000 kg = 8 L/kg
@@ -39,6 +40,7 @@ describe("indicateursEconomieLait", () => {
       litresEcartes: 0,
       caLaitCru: 0,
       caFromage: 0,
+      caLaitLivre: 0,
       coutAlimentaire: 0,
       coutSanitaire: 0,
       kgFromage: 0,
@@ -57,11 +59,33 @@ describe("indicateursEconomieLait", () => {
       litresEcartes: 0,
       caLaitCru: 500,
       caFromage: 0,
+      caLaitLivre: 0,
       coutAlimentaire: 800,
       coutSanitaire: 100,
       kgFromage: 0,
     })
     expect(r.mca).toBe(-300)
     expect(r.marge).toBe(-400)
+  })
+
+  it("intègre le lait livré à la laiterie (paie) dans la valorisation et la marge", () => {
+    // Ferme 100 % livraison : aucune vente directe ni fromage, mais un chèque
+    // de lait. Avant le fix, valorisation = 0 et marge = −(coûts).
+    const r = indicateursEconomieLait({
+      litresProduits: 10000,
+      litresTransformes: 0,
+      litresVendusCru: 0,
+      litresEcartes: 0,
+      caLaitCru: 0,
+      caFromage: 0,
+      caLaitLivre: 4200, // chèque laiterie de l'année
+      coutAlimentaire: 2500,
+      coutSanitaire: 500,
+      kgFromage: 0,
+    })
+    expect(r.valorisation).toBe(4200)
+    expect(r.mca).toBe(1700) // 4200 − 2500
+    expect(r.marge).toBe(1200) // 4200 − 3000
+    expect(r.prixMoyenLitreValorise).toBe(0.42)
   })
 })

@@ -178,6 +178,15 @@ export async function POST(request: NextRequest) {
           where: { id: lotCible },
           data: { quantiteActuelle: { increment: vivants } },
         })
+        // Revue élevage 2026-07-21 — persister le lot RÉELLEMENT crédité (souvent
+        // celui de la mère au moment de la mise-bas). Sinon, si la mère change de
+        // lot ensuite, un DELETE/PATCH décrémenterait son lot COURANT (mauvais lot).
+        if (created.lotId !== lotCible) {
+          await tx.naissanceAnimale.update({
+            where: { id: created.id },
+            data: { lotId: lotCible },
+          })
+        }
       } else if (vivants > 0 && created.mere) {
         if (created.mere.especeAnimaleId) {
           const annee = (parsed.data.date ?? new Date()).getFullYear()

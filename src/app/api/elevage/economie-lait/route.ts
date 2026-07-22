@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
     const debut = new Date(annee, 0, 1)
     const fin = new Date(annee, 11, 31, 23, 59, 59)
 
-    const [animaux, lots, collectes, fabrications, ventes, consommations, soins] = await Promise.all([
+    const [animaux, lots, collectes, fabrications, ventes, consommations, soins, paies] = await Promise.all([
       prisma.animal.findMany({
         where: { userId, statut: 'actif' },
         select: { id: true, especeAnimale: { select: { production: true, productions: true } } },
@@ -72,6 +72,12 @@ export async function GET(request: NextRequest) {
       prisma.soinAnimal.findMany({
         where: { userId, fait: true, date: { gte: debut, lte: fin }, cout: { not: null } },
         select: { cout: true, animalId: true, lotId: true },
+      }),
+      // PROMPT 26 — paie du lait (lait livré à la laiterie), revenu majeur d'une
+      // ferme laitière livreuse, jusqu'ici absent de la valorisation.
+      prisma.paieLait.findMany({
+        where: { userId, annee },
+        select: { montantHT: true, litres: true },
       }),
     ])
 
@@ -109,6 +115,12 @@ export async function GET(request: NextRequest) {
       .filter((v) => (v.unite || '').toLowerCase().startsWith('l'))
       .reduce((s, v) => s + Number(v.quantite), 0)
 
+    // Lait livré à la laiterie (paie mensuelle). Exprimé en TTC (× 1,055) pour
+    // rester homogène avec caLaitCru/caFromage (issus de VenteProduit.prixTotal,
+    // traité en TTC) dans la valorisation — sinon la marge mélangeait HT et TTC.
+    const caLaitLivre = paies.reduce((s, p) => s + Number(p.montantHT), 0) * 1.055
+    const litresLivres = paies.reduce((s, p) => s + Number(p.litres), 0)
+
     // Coût alimentaire affecté
     let coutAlimentaire = 0
     for (const c of consommations) {
@@ -139,6 +151,7 @@ export async function GET(request: NextRequest) {
       litresEcartes,
       caLaitCru,
       caFromage,
+      caLaitLivre,
       coutAlimentaire,
       coutSanitaire,
       kgFromage,
@@ -180,6 +193,7 @@ export async function GET(request: NextRequest) {
         litresProduits: Math.round(litresProduits * 10) / 10,
         litresTransformes: Math.round(litresTransformes * 10) / 10,
         litresVendusCru: Math.round(litresVendusCru * 10) / 10,
+        litresLivres: Math.round(litresLivres * 10) / 10,
         litresEcartes: Math.round(litresEcartes * 10) / 10,
         kgFromage: Math.round(kgFromage * 100) / 100,
       },
@@ -189,6 +203,7 @@ export async function GET(request: NextRequest) {
       },
       valorisation: {
         laitCru: Math.round(caLaitCru * 100) / 100,
+        laitLivre: Math.round(caLaitLivre * 100) / 100,
         fromage: Math.round(caFromage * 100) / 100,
       },
       indicateurs: indic,

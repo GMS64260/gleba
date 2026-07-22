@@ -21,49 +21,83 @@ export async function GET(request: NextRequest) {
     const where: any = {}
     if (type) where.type = type
 
-    const aliments = await prisma.aliment.findMany({
-      where,
-      orderBy: { nom: 'asc' },
-      include: {
-        fournisseur: {
-          select: { id: true, contact: true },
-        },
-        _count: {
-          select: { consommations: true },
-        },
-        userStocks: {
-          where: { userId },
-          select: {
-            stock: true,
-            dateStock: true,
-            stockMin: true,
-            prix: true,
+    // Fenêtre de 30 j pour estimer la consommation moyenne journalière (→ jours
+    // d'autonomie). GAP P0 review caprin 2026-07-22.
+    const FENETRE_J = 30
+    const depuis = new Date(Date.now() - FENETRE_J * 86_400_000)
+
+    const [aliments, consoParAliment] = await Promise.all([
+      prisma.aliment.findMany({
+        where,
+        orderBy: { nom: 'asc' },
+        include: {
+          fournisseur: {
+            select: { id: true, contact: true },
+          },
+          _count: {
+            select: { consommations: true },
+          },
+          userStocks: {
+            where: { userId },
+            select: {
+              stock: true,
+              dateStock: true,
+              stockMin: true,
+              prix: true,
+            },
           },
         },
-      },
-    })
+      }),
+      // Consommation de l'utilisateur par aliment sur la fenêtre (scopé userId).
+      prisma.consommationAliment.groupBy({
+        by: ['alimentId'],
+        where: { userId, date: { gte: depuis } },
+        _sum: { quantite: true },
+      }),
+    ])
+
+    const consoMoyJourParAliment = new Map<string, number>()
+    for (const c of consoParAliment) {
+      const total = Number(c._sum.quantite || 0)
+      if (total > 0) consoMoyJourParAliment.set(c.alimentId, total / FENETRE_J)
+    }
 
     // Fusionner les données de stock per-user avec les données de reference
-    const alimentsWithUserStock = aliments.map(a => ({
-      id: a.id,
-      nom: a.nom,
-      type: a.type,
-      especesCibles: a.especesCibles,
-      proteines: a.proteines,
-      energie: a.energie,
-      // PROMPT 25 — valeurs alimentaires INRA pour le calcul de ration
-      ufl: a.ufl,
-      pdin: a.pdin,
-      pdie: a.pdie,
-      uel: a.uel,
-      prix: a.userStocks[0]?.prix ?? a.prix,
-      stock: a.userStocks[0]?.stock ?? null,
-      stockMin: a.userStocks[0]?.stockMin ?? a.stockMin,
-      dateStock: a.userStocks[0]?.dateStock ?? null,
-      fournisseur: a.fournisseur,
-      description: a.description,
-      _count: a._count,
-    }))
+    const alimentsWithUserStock = aliments.map(a => {
+      const stock = a.userStocks[0]?.stock ?? null
+      const consoMoyJour = consoMoyJourParAliment.get(a.id) ?? null
+      // Autonomie : jours restants au rythme moyen des 30 derniers jours + date
+      // de rupture estimée. null si pas de conso récente ou pas de stock.
+      const joursAutonomie =
+        stock != null && consoMoyJour != null && consoMoyJour > 0
+          ? Math.floor(stock / consoMoyJour)
+          : null
+      const dateRupture =
+        joursAutonomie != null ? new Date(Date.now() + joursAutonomie * 86_400_000).toISOString() : null
+      return {
+        id: a.id,
+        nom: a.nom,
+        type: a.type,
+        especesCibles: a.especesCibles,
+        proteines: a.proteines,
+        energie: a.energie,
+        // PROMPT 25 — valeurs alimentaires INRA pour le calcul de ration
+        ufl: a.ufl,
+        pdin: a.pdin,
+        pdie: a.pdie,
+        uel: a.uel,
+        prix: a.userStocks[0]?.prix ?? a.prix,
+        stock,
+        stockMin: a.userStocks[0]?.stockMin ?? a.stockMin,
+        dateStock: a.userStocks[0]?.dateStock ?? null,
+        consoMoyJour: consoMoyJour != null ? Math.round(consoMoyJour * 100) / 100 : null,
+        joursAutonomie,
+        dateRupture,
+        fournisseur: a.fournisseur,
+        description: a.description,
+        _count: a._count,
+      }
+    })
 
     // Aliments avec stock bas
     const alimentsStockBas = alimentsWithUserStock.filter(

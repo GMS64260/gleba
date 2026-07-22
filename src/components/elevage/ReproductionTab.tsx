@@ -1140,6 +1140,31 @@ function SailliesSubTab() {
     reload()
   }, [reload])
 
+  // Review caprin 2026-07-21 — confirmer l'issue d'une saillie depuis la liste.
+  // Sans ça, toute saillie restait « En attente » à vie → alertes mise-bas /
+  // tarissement, état physiologique « gestante » et taux de fertilité jamais
+  // déclenchés. Passer à « Gestante » horodate aussi la confirmation.
+  const STATUTS = ["En attente", "Gestante", "Non gestante", "Avortement", "Mise-bas réalisée"]
+  const changerStatut = async (s: SaillieRow, statut: string) => {
+    if (statut === s.statut) return
+    const body: Record<string, unknown> = { id: s.id, statut }
+    if (statut === "Gestante" && !s.confirmationGestation) {
+      body.confirmationGestation = new Date().toISOString()
+    }
+    const res = await fetch("/api/elevage/saillies", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+    if (res.ok) {
+      toast({ title: "Statut mis à jour", description: statut === "Gestante" ? "Gestation confirmée — alertes mise-bas et tarissement activées." : undefined })
+      reload()
+    } else {
+      const j = await res.json().catch(() => ({}))
+      toast({ variant: "destructive", title: "Erreur", description: j.error })
+    }
+  }
+
   // Alertes : mises-bas dans les 7 prochains jours, tarissements à programmer (≤14j)
   const now = new Date()
   const dans7j = new Date(now.getTime() + 7 * 86_400_000)
@@ -1255,16 +1280,20 @@ function SailliesSubTab() {
                         {s.dateTarissementPrevue ? new Date(s.dateTarissementPrevue).toLocaleDateString("fr-FR") : "—"}
                       </td>
                       <td className="p-2">
-                        <Badge
-                          variant="outline"
-                          className={
-                            s.statut === "Gestante" ? "bg-blue-50" :
-                            s.statut === "Mise-bas réalisée" ? "bg-green-50" :
-                            s.statut === "Avortement" ? "bg-red-50" : ""
-                          }
+                        <select
+                          className={`text-xs rounded border px-1.5 py-1 cursor-pointer ${
+                            s.statut === "Gestante" ? "bg-blue-50 border-blue-200 text-blue-800" :
+                            s.statut === "Mise-bas réalisée" ? "bg-green-50 border-green-200 text-green-800" :
+                            s.statut === "Avortement" ? "bg-red-50 border-red-200 text-red-800" :
+                            s.statut === "Non gestante" ? "bg-slate-50 border-slate-200 text-slate-600" :
+                            "bg-amber-50 border-amber-200 text-amber-800"
+                          }`}
+                          value={s.statut}
+                          onChange={(e) => changerStatut(s, e.target.value)}
+                          title="Confirmer l'issue de la saillie"
                         >
-                          {s.statut}
-                        </Badge>
+                          {STATUTS.map((st) => <option key={st} value={st}>{st}</option>)}
+                        </select>
                       </td>
                       <td className="p-2">
                         <div className="flex items-center gap-1">

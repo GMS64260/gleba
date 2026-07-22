@@ -5,6 +5,7 @@
  */
 
 import * as React from "react"
+import { useSession } from "next-auth/react"
 import {
   Egg,
   ShoppingCart,
@@ -54,9 +55,51 @@ import { todayLocalISO } from '@/lib/format-utils'
 
 // DEV2 Ticket #3 — `year` propagé depuis le selecteur d'année du module
 // pour que Dashboard et Production partagent la même fenêtre temporelle.
+
+const PROD_TAB_KEY = "gleba:elevage:production-tab"
+const PROD_TABS = ["oeufs", "lait", "ventes", "abattages", "economie"] as const
+
 export function ProductionTab({ year }: { year?: number } = {}) {
+  // Review caprin 2026-07-21 — l'onglet par défaut n'est plus « Œufs » en dur :
+  //  1. on respecte le dernier onglet choisi (mémorisé, localStorage) ;
+  //  2. au 1er passage, on ouvre selon le PROFIL du cheptel (un éleveur de
+  //     chèvres tombe sur « Lait », pas « Œufs »), même sans production saisie.
+  const [active, setActive] = React.useState<string>("oeufs")
+  const { data: session, status: sessionStatus } = useSession()
+  const productionTabKey = sessionStatus === "loading"
+    ? null
+    : `${PROD_TAB_KEY}:user:${session?.user?.id || "anonymous"}`
+
+  React.useEffect(() => {
+    if (!productionTabKey) return
+    let annule = false
+    const stored = window.localStorage.getItem(productionTabKey)
+    if (stored && (PROD_TABS as readonly string[]).includes(stored)) {
+      setActive(stored)
+      window.localStorage.setItem(productionTabKey, stored)
+      return
+    }
+    // Pas de préférence : défaut intelligent d'après le cheptel.
+    fetch("/api/elevage/stats")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (annule || !j?.stats?.profil) return
+        const p = j.stats.profil as { lait: boolean; oeufs: boolean; viande: boolean }
+        if (p.lait && !p.oeufs) setActive("lait")
+        else if (!p.oeufs && p.viande) setActive("ventes")
+        // sinon on garde « oeufs » (ateliers ponte ou profil mixte)
+      })
+      .catch(() => {})
+    return () => { annule = true }
+  }, [productionTabKey])
+
+  const handleChange = (v: string) => {
+    setActive(v)
+    if (productionTabKey) window.localStorage.setItem(productionTabKey, v)
+  }
+
   return (
-    <Tabs defaultValue="oeufs" className="space-y-4">
+    <Tabs value={active} onValueChange={handleChange} persist={false} className="space-y-4">
       <TabsList className="flex-wrap h-auto gap-y-1">
         <TabsTrigger value="oeufs" className="flex items-center gap-1.5">
           <Egg className="h-4 w-4" />
@@ -782,8 +825,11 @@ function VentesSubTab() {
         body: JSON.stringify(body),
       })
       if (!response.ok) throw new Error('Erreur')
+      const json = await response.json().catch(() => ({}))
       const total = parseFloat(formData.quantite) * parseFloat(formData.prixUnitaire)
       toast({ title: "Vente enregistrée", description: `${total.toFixed(2)} €` })
+      // Review caprin 2026-07-22 — alerte délai d'attente lait sur vente de lait cru.
+      if (json?.warning) toast({ variant: "destructive", title: "Attention lait", description: json.warning })
       setIsDialogOpen(false)
       setFormData({ date: todayLocalISO(), type: "oeufs", description: "", quantite: "", unite: "douzaine", prixUnitaire: "", client: "", paye: true, notes: "" })
       fetchData()

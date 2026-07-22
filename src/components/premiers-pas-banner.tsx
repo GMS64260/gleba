@@ -184,6 +184,7 @@ const CONFIGS: Record<ModuleKey, ModuleConfig> = {
       { key: "lot", url: "/api/elevage/lots?limit=1" },
       { key: "soin", url: "/api/elevage/soins?limit=1" },
       { key: "prod_oeufs", url: "/api/elevage/production-oeufs?limit=1" },
+      { key: "prod_lait", url: "/api/elevage/collectes-lait?limit=1" },
       { key: "saillie", url: "/api/elevage/saillies?limit=1" },
     ],
     buildSteps: (r) => [
@@ -217,7 +218,7 @@ const CONFIGS: Record<ModuleKey, ModuleConfig> = {
       {
         key: "production",
         label: "Saisir une production (œufs, lait, viande)",
-        done: hasData(r.prod_oeufs),
+        done: hasData(r.prod_oeufs) || hasData(r.prod_lait),
         href: "/elevage?tab=production",
         hint: "Suivi journalier ou hebdomadaire",
       },

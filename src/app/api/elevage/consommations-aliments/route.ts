@@ -115,6 +115,14 @@ export async function POST(request: NextRequest) {
     const { alimentId, lotId, date, quantite, notes } = result.data
     const overrideStock = (body as { overrideStock?: boolean })?.overrideStock === true
 
+    // Review caprin 2026-07-21 — valider l'appartenance du lot (IDOR-lite) :
+    // sans ça, une conso pouvait être affectée au lot d'un autre compte ou à un
+    // lot inexistant (les animaux, eux, validaient déjà via isAssignableAnimalLot).
+    if (lotId != null) {
+      const lot = await prisma.lotAnimaux.findFirst({ where: { id: lotId, userId }, select: { id: true } })
+      if (!lot) return NextResponse.json({ error: 'Lot introuvable dans votre cheptel.' }, { status: 400 })
+    }
+
     // Feedback Marc 2026-05-16 — V3 Bug 4 : on refusait pas une saisie
     // qui faisait basculer le stock en négatif, ce qui aboutissait à
     // -10/-20 kg en base. On garde la possibilité de forcer (via
@@ -247,6 +255,12 @@ export async function PATCH(request: NextRequest) {
       )
     }
     const { alimentId, lotId, date, quantite, notes } = result.data
+
+    // Review caprin 2026-07-21 — valider l'appartenance du lot (cf. POST).
+    if (lotId != null) {
+      const lot = await prisma.lotAnimaux.findFirst({ where: { id: lotId, userId }, select: { id: true } })
+      if (!lot) return NextResponse.json({ error: 'Lot introuvable dans votre cheptel.' }, { status: 400 })
+    }
 
     // Transaction interactive : on rend l'impact stock à l'ancien aliment
     // si changement, puis on applique le delta sur le nouvel.

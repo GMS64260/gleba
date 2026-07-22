@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { collecteLaitSchema, updateCollecteLaitSchema } from '@/lib/validations/lait'
+import { soinCouvrantCollecte } from '@/lib/elevage/attente-lait'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -25,6 +26,8 @@ export async function GET(request: NextRequest) {
   const to = searchParams.get('to')
   const animalId = searchParams.get('animalId')
   const lotId = searchParams.get('lotId')
+  const requestedLimit = Number.parseInt(searchParams.get('limit') || '', 10)
+  const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 1000) : undefined
 
   const where: any = { userId: session.user.id }
   if (from || to) {
@@ -38,6 +41,7 @@ export async function GET(request: NextRequest) {
   const collectes = await prisma.collecteLait.findMany({
     where,
     orderBy: [{ date: 'desc' }, { traite: 'asc' }],
+    take: limit,
     include: {
       animal: { select: { id: true, identifiant: true, nom: true } },
       lot: { select: { id: true, nom: true } },
@@ -88,29 +92,12 @@ export async function POST(request: NextRequest) {
     // Normalise la date au jour (00:00 UTC)
     const day = new Date(data.date)
     day.setUTCHours(0, 0, 0, 0)
-    // Fin du jour de collecte (exclusif) pour comparer les soins À LA
-    // GRANULARITÉ DU JOUR : un soin `fait` porte une date-heure complète
-    // (ex. 13:00), or la collecte est normalisée à 00:00. Avec `date: { lte: day }`
-    // un traitement de l'après-midi ne "couvrait" pas la traite du même jour →
-    // le lait du jour du traitement partait en circulation (audit 2026-07 #17,
-    // risque sanitaire). On écarte tout le jour du traitement (choix prudent).
-    const jourSuivant = new Date(day)
-    jourSuivant.setUTCDate(jourSuivant.getUTCDate() + 1)
-
-    // Audit élevage 2026-06-11 — écartement automatique : le POST /soins
-    // n'écarte que les collectes EXISTANTES à sa création ; une collecte
-    // saisie ensuite dans la fenêtre d'attente passait en circulation.
-    // On vérifie ici si un soin réalisé couvre la date de la collecte.
-    const soinCouvrant = await prisma.soinAnimal.findFirst({
-      where: {
-        userId: session.user.id,
-        fait: true,
-        finAttenteLait: { gte: day },
-        date: { lt: jourSuivant },
-        ...(data.animalId ? { animalId: data.animalId } : { lotId: data.lotId }),
-      },
-      select: { id: true, finAttenteLait: true, produit: true, type: true },
-    })
+    // Écartement automatique CROSS-GRANULARITÉ (review caprin 2026-07-22) :
+    // une collecte saisie dans la fenêtre d'attente d'un soin est écartée, que
+    // le soin porte sur le MÊME animal/lot OU sur l'animal↔son lot (soin de lot
+    // → collecte individuelle d'un membre, et inversement). Comparaison au jour
+    // (collecte à 00:00, soin horodaté). Cf. lib attente-lait.
+    const soinCouvrant = await soinCouvrantCollecte(prisma, session.user.id, data.animalId ?? null, data.lotId ?? null, day)
     const ecarte = (data.ecarteAttente ?? false) || soinCouvrant !== null
 
     // Upsert pour permettre "saisie identique à hier" / corrections
@@ -180,16 +167,8 @@ export async function PATCH(request: NextRequest) {
     if (updates.date && updates.ecarteAttente === undefined && (existing.animalId || existing.lotId)) {
       const day = new Date(updates.date)
       day.setUTCHours(0, 0, 0, 0)
-      const soinCouvrant = await prisma.soinAnimal.findFirst({
-        where: {
-          userId: session.user.id,
-          fait: true,
-          finAttenteLait: { gte: day },
-          date: { lte: day },
-          ...(existing.animalId ? { animalId: existing.animalId } : { lotId: existing.lotId }),
-        },
-        select: { id: true },
-      })
+      // Cross-granularité + comparaison au jour (cf. lib attente-lait).
+      const soinCouvrant = await soinCouvrantCollecte(prisma, session.user.id, existing.animalId, existing.lotId, day)
       data.ecarteAttente = soinCouvrant !== null
     }
 

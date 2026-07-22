@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
     const start = startStr ? new Date(startStr) : new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay() + 1)
     const end = endStr ? new Date(endStr) : new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000)
 
-    const [soins, productions, consommations, lotsActifs] = await Promise.all([
+    const [soins, productions, consommations, lotsActifs, animauxPondeurs] = await Promise.all([
       // Soins prevus ou faits dans la periode
       prisma.soinAnimal.findMany({
         where: {
@@ -81,6 +81,18 @@ export async function GET(request: NextRequest) {
           especeAnimale: {
             select: { ponteAnnuelle: true, production: true, nom: true },
           },
+        },
+      }),
+
+      // Review caprin 2026-07-21 — pondeuses gérées en ANIMAUX individuels (hors
+      // lot), pour un flag `aPonte` fondé sur le cheptel (indépendant de la
+      // semaine) : évite que le Calendrier masque les KPI œufs d'un aviculteur
+      // en individuel une semaine sans collecte saisie.
+      prisma.animal.count({
+        where: {
+          userId,
+          statut: 'actif',
+          especeAnimale: { production: { in: ['oeufs', 'mixte'] } },
         },
       }),
     ])
@@ -190,6 +202,12 @@ export async function GET(request: NextRequest) {
         nbLotsPondeuses: lotsActifs.filter(l =>
           l.especeAnimale.production === 'oeufs' || l.especeAnimale.production === 'mixte'
         ).length,
+        // Flag cheptel : au moins un atelier ponte (lot OU animal individuel).
+        // Indépendant de la semaine → l'UI n'a pas à masquer les KPI œufs faute
+        // de collecte sur la période consultée.
+        aPonte:
+          animauxPondeurs > 0 ||
+          lotsActifs.some(l => l.especeAnimale.production === 'oeufs' || l.especeAnimale.production === 'mixte'),
       },
     })
   } catch (error) {

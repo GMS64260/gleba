@@ -16,6 +16,10 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { createDepenseFromSoinAnimal, deleteAutoEntry } from '@/lib/auto-compta'
 import { soinSchema } from '@/lib/validations/elevage-soin'
+// Review caprin 2026-07-22 — écartement du lait recalculé depuis la vérité
+// (recompute-from-truth), cross-granularité individu↔lot et symétrique
+// POST/PATCH/DELETE. Cf. src/lib/elevage/attente-lait.ts.
+import { ciblesAffectees, resyncEcartementLait } from '@/lib/elevage/attente-lait'
 
 function addDays(d: Date, n: number): Date {
   const r = new Date(d)
@@ -23,23 +27,13 @@ function addDays(d: Date, n: number): Date {
   return r
 }
 
-async function appliquerEcartementLait(
-  tx: any,
-  userId: string,
-  animalId: number | null,
-  lotId: number | null,
-  dateDebut: Date,
-  dateFin: Date
-) {
-  if (!animalId && !lotId) return 0
-  const where: any = {
-    userId,
-    date: { gte: new Date(dateDebut.getTime() - 1), lte: dateFin },
-  }
-  if (animalId) where.animalId = animalId
-  if (lotId) where.lotId = lotId
-  const r = await tx.collecteLait.updateMany({ where, data: { ecarteAttente: true } })
-  return r.count
+// Fenêtre couverte par un soin (pour cibler le resync) : de sa date à la plus
+// lointaine de ses fins d'attente. Bornes filtrées des nulls.
+function fenetreSoin(...dates: (Date | null | undefined)[]): { min: Date; max: Date } | null {
+  const ds = dates.filter((x): x is Date => x != null)
+  if (ds.length === 0) return null
+  const t = ds.map((d) => d.getTime())
+  return { min: new Date(Math.min(...t)), max: new Date(Math.max(...t)) }
 }
 
 export async function GET(request: NextRequest) {
@@ -136,8 +130,11 @@ export async function POST(request: NextRequest) {
         if (!nomProduit) nomProduit = p.nom
       }
     }
-    const finLait = tempsLait > 0 ? addDays(dateSoin, tempsLait) : null
-    const finViande = tempsViande > 0 ? addDays(dateSoin, tempsViande) : null
+    // Un soin planifie n'est pas encore administre : on conserve le snapshot
+    // des delais du produit, mais la fenetre ne devient effective qu'au
+    // passage a `fait=true`.
+    const finLait = d.fait && tempsLait > 0 ? addDays(dateSoin, tempsLait) : null
+    const finViande = d.fait && tempsViande > 0 ? addDays(dateSoin, tempsViande) : null
 
     const result = await prisma.$transaction(async (tx) => {
       const soin = await tx.soinAnimal.create({
@@ -169,17 +166,11 @@ export async function POST(request: NextRequest) {
         include: { animal: true, lot: true, produitVeterinaire: true },
       })
 
-      // Écartement des collectes de lait dans la fenêtre (PROMPT 19B §7)
+      // Écartement des collectes (cross-granularité individu↔lot, recompute).
       let nbEcartees = 0
       if (finLait) {
-        nbEcartees = await appliquerEcartementLait(
-          tx,
-          session.user.id,
-          d.animalId ?? null,
-          d.lotId ?? null,
-          dateSoin,
-          finLait
-        )
+        const cibles = await ciblesAffectees(tx, session.user.id, d.animalId ?? null, d.lotId ?? null)
+        nbEcartees = await resyncEcartementLait(tx, session.user.id, cibles, dateSoin, finLait)
       }
       return { soin, nbEcartees }
     })
@@ -281,14 +272,16 @@ export async function PATCH(request: NextRequest) {
     // écartements lait faux).
     const dateChangee = updateData.date !== undefined &&
       new Date(updateData.date).getTime() !== existing.date.getTime()
-    if (dateChangee) {
-      const newDate = updateData.date as Date
-      updateData.finAttenteLait = existing.tempsAttenteLaitJ
+    const faitChange = updateData.fait !== undefined && updateData.fait !== existing.fait
+    if (dateChangee || faitChange) {
+      const newDate = (updateData.date as Date | undefined) ?? existing.date
+      const seraFait = (updateData.fait as boolean | undefined) ?? existing.fait
+      updateData.finAttenteLait = seraFait && existing.tempsAttenteLaitJ
         ? addDays(newDate, existing.tempsAttenteLaitJ)
-        : existing.finAttenteLait
-      updateData.finAttenteViande = existing.tempsAttenteViandeJ
+        : null
+      updateData.finAttenteViande = seraFait && existing.tempsAttenteViandeJ
         ? addDays(newDate, existing.tempsAttenteViandeJ)
-        : existing.finAttenteViande
+        : null
     }
 
     const soin = await prisma.$transaction(async (tx) => {
@@ -298,49 +291,21 @@ export async function PATCH(request: NextRequest) {
         include: { animal: true, lot: true, produitVeterinaire: true },
       })
 
-      // Ré-synchroniser l'écartement des collectes de lait si la fenêtre a
-      // bougé : réintégrer celles de l'ancienne fenêtre devenues hors
-      // couverture, écarter celles de la nouvelle.
-      if (dateChangee && existing.tempsAttenteLaitJ && (existing.animalId || existing.lotId)) {
-        const cibleWhere: any = existing.animalId
-          ? { animalId: existing.animalId }
-          : { lotId: existing.lotId }
-
-        const bornes = [existing.date, existing.finAttenteLait, updated.date, updated.finAttenteLait]
-          .filter((x): x is Date => x != null)
-        const minDate = new Date(Math.min(...bornes.map((b) => b.getTime())))
-        const maxDate = new Date(Math.max(...bornes.map((b) => b.getTime())))
-
-        const collectes = await tx.collecteLait.findMany({
-          where: {
-            userId: session.user.id,
-            ...cibleWhere,
-            date: { gte: minDate, lte: maxDate },
-          },
-          select: { id: true, date: true, ecarteAttente: true },
-        })
-        const autresSoins = await tx.soinAnimal.findMany({
-          where: {
-            userId: session.user.id,
-            id: { not: updated.id },
-            fait: true,
-            ...cibleWhere,
-            finAttenteLait: { not: null },
-          },
-          select: { date: true, finAttenteLait: true },
-        })
-        const couvertePar = (cDate: Date) =>
-          (updated.finAttenteLait != null && updated.date <= cDate && cDate <= updated.finAttenteLait) ||
-          autresSoins.some((s) => s.finAttenteLait != null && s.date <= cDate && cDate <= s.finAttenteLait)
-
-        const aEcarter = collectes.filter((c) => !c.ecarteAttente && couvertePar(c.date)).map((c) => c.id)
-        const aReintegrer = collectes.filter((c) => c.ecarteAttente && !couvertePar(c.date)).map((c) => c.id)
-        if (aEcarter.length > 0) {
-          await tx.collecteLait.updateMany({ where: { id: { in: aEcarter } }, data: { ecarteAttente: true } })
+      // Ré-synchroniser l'écartement des collectes si la date, le statut « fait »
+      // OU la cible (animal↔lot) a changé — recompute-from-truth sur l'union des
+      // anciennes ET nouvelles cibles (cross-granularité), symétrique par nature.
+      const cibleChangee =
+        (updateData.animalId !== undefined && updateData.animalId !== existing.animalId) ||
+        (updateData.lotId !== undefined && updateData.lotId !== existing.lotId)
+      if (dateChangee || faitChange || cibleChangee) {
+        const c1 = await ciblesAffectees(tx, session.user.id, existing.animalId, existing.lotId)
+        const c2 = await ciblesAffectees(tx, session.user.id, updated.animalId, updated.lotId)
+        const cibles = {
+          animalIds: [...new Set([...c1.animalIds, ...c2.animalIds])],
+          lotIds: [...new Set([...c1.lotIds, ...c2.lotIds])],
         }
-        if (aReintegrer.length > 0) {
-          await tx.collecteLait.updateMany({ where: { id: { in: aReintegrer } }, data: { ecarteAttente: false } })
-        }
+        const f = fenetreSoin(existing.date, existing.finAttenteLait, updated.date, updated.finAttenteLait)
+        if (f) await resyncEcartementLait(tx, session.user.id, cibles, f.min, f.max)
       }
 
       return updated
@@ -388,66 +353,17 @@ export async function DELETE(request: NextRequest) {
       console.error('Auto-compta cleanup error (soin_animal):', autoComptaError)
     }
 
-    // POSTREVIEW Sprint 5 — Réintégration collectes en RECOUVREMENT par collecte
-    // (avant : `lotId: null` matchait TOUS les soins d'animaux individuels via
-    // Prisma, ramenait des collectes à tort dans la moitié des cas).
-    //
-    // Stratégie : pour chaque collecte concernée par le soin supprimé, on
-    // re-vérifie si un AUTRE soin actif (fait=true) couvre cette collecte ; si
-    // aucun, on la réintègre (ecarteAttente=false).
+    // Réintégration recompute-from-truth : on supprime d'abord le soin, puis on
+    // recalcule l'écartement sur sa fenêtre et ses cibles (cross-granularité).
+    // Les collectes couvertes uniquement par ce soin redeviennent
+    // commercialisables ; celles couvertes par un autre soin restent écartées.
     await prisma.$transaction(async (tx) => {
-      if (existing.finAttenteLait) {
-        // Cibles strict : exactement le même animal OU le même lot (pas les deux à null)
-        const cibleWhere: any = {}
-        if (existing.animalId) cibleWhere.animalId = existing.animalId
-        else if (existing.lotId) cibleWhere.lotId = existing.lotId
-        else {
-          // Ni animal ni lot : pas de réintégration possible (cas anormal)
-          await tx.soinAnimal.delete({ where: { id: parseInt(id) } })
-          return
-        }
-
-        // Collectes potentiellement écartées par ce soin
-        const collectes = await tx.collecteLait.findMany({
-          where: {
-            userId: session.user.id,
-            ecarteAttente: true,
-            ...cibleWhere,
-            date: { gte: existing.date, lte: existing.finAttenteLait },
-          },
-          select: { id: true, date: true },
-        })
-
-        // Autres soins actifs sur la même cible (hors celui supprimé)
-        const autresSoins = await tx.soinAnimal.findMany({
-          where: {
-            userId: session.user.id,
-            id: { not: existing.id },
-            fait: true,
-            ...cibleWhere,
-            finAttenteLait: { not: null },
-          },
-          select: { date: true, finAttenteLait: true },
-        })
-
-        // Pour chaque collecte, réintègre si non couverte par un autre soin
-        const idsAReintegrer = collectes
-          .filter((c) => {
-            const couverte = autresSoins.some(
-              (s) => s.finAttenteLait && s.date <= c.date && c.date <= s.finAttenteLait
-            )
-            return !couverte
-          })
-          .map((c) => c.id)
-
-        if (idsAReintegrer.length > 0) {
-          await tx.collecteLait.updateMany({
-            where: { id: { in: idsAReintegrer } },
-            data: { ecarteAttente: false },
-          })
-        }
-      }
       await tx.soinAnimal.delete({ where: { id: parseInt(id) } })
+      if (existing.finAttenteLait) {
+        const cibles = await ciblesAffectees(tx, session.user.id, existing.animalId, existing.lotId)
+        const f = fenetreSoin(existing.date, existing.finAttenteLait)
+        if (f) await resyncEcartementLait(tx, session.user.id, cibles, f.min, f.max)
+      }
     })
 
     return NextResponse.json({ success: true })

@@ -1058,6 +1058,7 @@ model ParcelleGeo {
   objetsJardin    ObjetJardin[]
   arbres          Arbre[]
   lotsAnimaux     LotAnimaux[]
+  animaux         Animal[]
   campagnesPlantation CampagnePlantation[]
   // PROMPT 19A — mouvements entrants / sortants pour cette parcelle
   mouvementsAvant MouvementCheptel[] @relation("MouvementParcelleAvant")
@@ -1952,6 +1953,10 @@ model Animal {
   especeAnimale   EspeceAnimale  @relation(fields: [especeAnimaleId], references: [id], onDelete: Restrict)
   lotId           Int?           @map("lot_id") // Appartenance à un lot (optionnel)
   lot             LotAnimaux?    @relation(fields: [lotId], references: [id], onDelete: SetNull)
+  // Cartographie élevage — rattachement direct à une parcelle géoréférencée,
+  // pour le bétail géré en individuel (hors lot). Un lot porte sa propre parcelle.
+  parcelleGeoId   String?        @map("parcelle_geo_id")
+  parcelleGeo     ParcelleGeo?   @relation(fields: [parcelleGeoId], references: [id], onDelete: SetNull)
   identifiant     String?        @map("identifiant") // Identifiant principal (BDNI/IPG/SIRE/...)
   // PROMPT 19A — typage de l'identifiant pour validation regex et registre
   typeIdentifiant String?        @map("type_identifiant") // 'BDNI bovin'|'IPG ovin'|'IPG caprin'|'IPG porcin'|'SIRE équin'|'Bague volière'|'Boucle aux.'|'Puce RFID'|'Auxiliaire éleveur'
@@ -2017,6 +2022,7 @@ model Animal {
   @@index([lotId])
   @@index([mereId])
   @@index([pereId])
+  @@index([parcelleGeoId])
   @@map("animaux")
 }
 
@@ -2113,6 +2119,9 @@ model VenteProduit {
   // PROMPT 17 — traçabilité fromage : lien vers lot de fabrication
   lotFromageId  String?      @map("lot_fromage_id")
   lotFromage    LotFromage?  @relation(fields: [lotFromageId], references: [id], onDelete: SetNull)
+  // Review caprin 2026-07-21 — sortie(s) de cave générées par cette vente
+  // (décrément de stock), pour restaurer le stock à l'annulation.
+  mouvementsFromage MouvementFromage[]
   notes         String?      @map("notes")
   createdAt     DateTime     @default(now()) @map("created_at")
 
@@ -2545,12 +2554,67 @@ model MouvementFromage {
   type         String     @map("type") // 'sortie_vente' | 'sortie_perte' | 'sortie_don' | 'ajustement'
   nbPieces     Int        @default(0) @map("nb_pieces")
   poidsKg      Decimal    @default(0) @map("poids_kg") @db.Decimal(10, 3)
+  // Review caprin 2026-07-21 — sortie de cave issue d'une vente enregistrée
+  // (VenteProduit) : le lien permet de restaurer le stock si la vente est
+  // annulée, et unifie « vendre depuis la cave » = stock down + recette + trace.
+  venteProduitId Int?      @map("vente_produit_id")
+  venteProduit VenteProduit? @relation(fields: [venteProduitId], references: [id], onDelete: SetNull)
   notes        String?    @map("notes")
   createdAt    DateTime   @default(now()) @map("created_at")
 
   @@index([userId])
   @@index([lotFromageId])
+  @@index([venteProduitId])
   @@map("mouvements_fromage")
+}
+
+// ============================================================
+// GAP P0 — PLAN DE RATION PERSISTÉ (review caprin 2026-07-22)
+// ============================================================
+
+/// Ration enregistrée par lot / stade physiologique (transforme le calculateur
+/// jetable en plan vivant). On persiste le PROFIL (poids, lait, TB, gestation)
+/// et la COMPOSITION (aliments + quantités) ; besoins/apports/couverture/coût
+/// sont recalculés à l'affichage avec les valeurs INRA courantes des aliments.
+/// `userId`/`lotId`/`animalId` sont des scalaires (pas de FK) — l'appartenance
+/// est validée en API à l'écriture ; une référence devenue obsolète est inerte.
+model PlanRation {
+  id             String   @id @default(cuid())
+  userId         String   @map("user_id")
+  nom            String   @map("nom")
+  lotId          Int?     @map("lot_id")
+  animalId       Int?     @map("animal_id")
+  stade          String   @default("lactation") @map("stade") // stade physiologique visé
+  poidsVif       Float    @map("poids_vif")
+  litresLait     Float    @default(0) @map("litres_lait")
+  tauxButyreux   Float    @default(35) @map("taux_butyreux")
+  stadeGestation String   @default("aucune") @map("stade_gestation")
+  composition    Json     @map("composition") // [{ alimentId, quantiteKg }]
+  notes          String?  @map("notes")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@index([lotId])
+  @@map("plans_ration")
+}
+
+/// Pesée d'un animal (GAP P1 — historique de poids & GMQ, review 2026-07-22).
+/// Historise le poids pour suivre la croissance (GMQ = gain moyen quotidien) au
+/// lieu du seul `Animal.poidsActuel` écrasé. `userId`/`animalId` scalaires (pas
+/// de FK) ; appartenance validée en API.
+model Pesee {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  animalId  Int      @map("animal_id")
+  date      DateTime @map("date")
+  poidsKg   Float    @map("poids_kg")
+  notes     String?  @map("notes")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([animalId])
+  @@map("pesees")
 }
 
 // ============================================================

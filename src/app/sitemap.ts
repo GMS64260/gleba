@@ -43,7 +43,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     "/itineraire-technique-maraichage",
     "/logiciel-micro-ferme",
     "/logiciel-permaculture",
-    "/logiciel-jardin",
     "/logiciel-potager",
     "/logiciel-verger",
     "/logiciel-arboriculture",

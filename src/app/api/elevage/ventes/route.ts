@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { StockFromageError, verrouillerEtVerifierStockFromage } from '@/lib/elevage/stock-fromage'
 import { createVenteFromVenteProduit, deleteAutoEntry } from '@/lib/auto-compta'
 import { creerFacture, annulerFactureLiee } from '@/lib/facture-utils'
 import { venteProduitSchema } from '@/lib/validations/elevage-vente'
@@ -102,6 +103,49 @@ export async function POST(request: NextRequest) {
     const { date, type, description, quantite, unite, prixUnitaire, client, destinationId, paye, tauxTVA, notes } = parsed.data
     const prixTotal = quantite * prixUnitaire
 
+    // Review caprin 2026-07-21 — vente de fromage : une action unique doit
+    // décrémenter le stock de cave ET enregistrer la recette ET tracer le lot.
+    // On valide l'appartenance du lot + le stock disponible AVANT la transaction.
+    // La sortie de cave est dérivée de l'unité de vente : kg → poids, sinon pièces.
+    let fromageSortie: { lotFromageId: string; nbPieces: number; poidsKg: number } | null = null
+    if (type === 'fromage') {
+      const lotFromageId = parsed.data.lotFromageId
+      if (!lotFromageId) {
+        return NextResponse.json(
+          { error: 'Pour une vente de fromage, sélectionnez le lot de fabrication (traçabilité + stock de cave).' },
+          { status: 400 }
+        )
+      }
+      const lot = await prisma.lotFromage.findFirst({
+        where: { id: lotFromageId, userId: session.user.id },
+        include: { mouvements: { select: { nbPieces: true, poidsKg: true } } },
+      })
+      if (!lot) {
+        return NextResponse.json({ error: 'Lot de fromage introuvable dans votre cave.' }, { status: 400 })
+      }
+      const enKg = (unite || '').toLowerCase().startsWith('kg')
+      const nbPieces = enKg ? 0 : Math.round(quantite)
+      const poidsKg = enKg ? quantite : 0
+
+      const dejaSortiPieces = lot.mouvements.reduce((s, m) => s + m.nbPieces, 0)
+      const dejaSortiKg = lot.mouvements.reduce((s, m) => s + (Number(m.poidsKg) || 0), 0)
+      const restantPieces = lot.nbPieces - dejaSortiPieces
+      const restantKg = Number(lot.poidsTotalKg) - dejaSortiKg
+      if (nbPieces > restantPieces) {
+        return NextResponse.json(
+          { error: `Stock insuffisant : ${restantPieces} pièce(s) en cave, ${nbPieces} vendue(s).` },
+          { status: 409 }
+        )
+      }
+      if (poidsKg > restantKg + 1e-6) {
+        return NextResponse.json(
+          { error: `Stock insuffisant : ${Math.max(0, Math.round(restantKg * 1000) / 1000)} kg en cave, ${poidsKg} vendu(s).` },
+          { status: 409 }
+        )
+      }
+      fromageSortie = { lotFromageId, nbPieces, poidsKg }
+    }
+
     // Bug cmp8rzcjc (Marc 2026-05-16) — pour une vente d'animal vivant,
     // on exige que `animalId` référence un animal du cheptel de l'utilisateur
     // (statut actif), sinon on crée des ventes fantômes (ex: "Clochette"
@@ -147,6 +191,17 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await prisma.$transaction(async (tx) => {
+      // Contrôle autoritatif sous verrou : le pré-contrôle ci-dessus améliore le
+      // message, celui-ci empêche deux requêtes concurrentes de sur-vendre.
+      if (fromageSortie) {
+        await verrouillerEtVerifierStockFromage(
+          tx,
+          session.user.id,
+          fromageSortie.lotFromageId,
+          fromageSortie.nbPieces,
+          fromageSortie.poidsKg
+        )
+      }
       const vente = await tx.venteProduit.create({
         data: {
           userId: session.user.id,
@@ -165,6 +220,8 @@ export async function POST(request: NextRequest) {
           // Audit élevage 2026-06-11 — garder le lien vente→animal pour que
           // l'annulation puisse restaurer le statut de l'animal.
           animalId: type === 'animal_vivant' ? parsed.data.animalId ?? null : null,
+          // Review caprin 2026-07-21 — traçabilité fromage vente→lot.
+          lotFromageId: fromageSortie ? fromageSortie.lotFromageId : null,
         },
         include: {
           destination: true,
@@ -185,6 +242,38 @@ export async function POST(request: NextRequest) {
               causeSortie: 'Vente',
             },
           })
+        }
+      }
+
+      // Vente de fromage : sortie de cave liée (décrément de stock) + passage
+      // du lot à 'ecoule' dès qu'une des deux dimensions (pièces OU kg) est
+      // épuisée — même logique que POST /mouvements-fromage.
+      if (fromageSortie) {
+        await tx.mouvementFromage.create({
+          data: {
+            userId: session.user.id,
+            lotFromageId: fromageSortie.lotFromageId,
+            date: date || new Date(),
+            type: 'sortie_vente',
+            nbPieces: fromageSortie.nbPieces,
+            poidsKg: fromageSortie.poidsKg,
+            venteProduitId: vente.id,
+            notes: client ? `Vente ${client}` : null,
+          },
+        })
+        const lot = await tx.lotFromage.findUnique({
+          where: { id: fromageSortie.lotFromageId },
+          include: { mouvements: { select: { nbPieces: true, poidsKg: true } } },
+        })
+        if (lot) {
+          const sortiesPieces = lot.mouvements.reduce((s, m) => s + m.nbPieces, 0)
+          const sortiesKg = lot.mouvements.reduce((s, m) => s + (Number(m.poidsKg) || 0), 0)
+          if (
+            lot.etat !== 'ecoule' &&
+            (sortiesPieces >= lot.nbPieces || sortiesKg >= Number(lot.poidsTotalKg) - 1e-6)
+          ) {
+            await tx.lotFromage.update({ where: { id: lot.id }, data: { etat: 'ecoule' } })
+          }
         }
       }
 
@@ -209,8 +298,40 @@ export async function POST(request: NextRequest) {
       console.error('Auto-compta error (vente_produit):', autoComptaError)
     }
 
-    return NextResponse.json({ data: result }, { status: 201 })
+    // Review caprin 2026-07-22 — alerte (non bloquante) à la vente de LAIT CRU
+    // s'il existe un délai d'attente lait actif. La vente de lait cru n'étant pas
+    // liée à des animaux précis, on ne peut pas bloquer avec certitude : on
+    // avertit l'éleveur de vérifier l'origine du lait.
+    let warning: string | null = null
+    if (type === 'lait') {
+      const saleDate = date || new Date()
+      const attentes = await prisma.soinAnimal.findMany({
+        where: { userId: session.user.id, fait: true, finAttenteLait: { gte: saleDate } },
+        select: {
+          finAttenteLait: true,
+          animal: { select: { id: true, nom: true, identifiant: true } },
+          lot: { select: { id: true, nom: true } },
+        },
+        orderBy: { finAttenteLait: 'desc' },
+        take: 20,
+      })
+      if (attentes.length > 0) {
+        const cibles = attentes.map((a) =>
+          a.animal ? a.animal.nom || a.animal.identifiant || `#${a.animal.id}` : a.lot?.nom || `lot #${a.lot?.id}`
+        )
+        const apercu = [...new Set(cibles)].slice(0, 3).join(', ')
+        const finMax = attentes[0].finAttenteLait
+        warning =
+          `⚠ Délai d'attente lait actif sur ${attentes.length} traitement(s) (${apercu}${cibles.length > 3 ? '…' : ''}` +
+          `${finMax ? `, jusqu'au ${finMax.toLocaleDateString('fr-FR')}` : ''}). Vérifiez que ce lait n'en provient pas.`
+      }
+    }
+
+    return NextResponse.json({ data: result, warning }, { status: 201 })
   } catch (error) {
+    if (error instanceof StockFromageError) {
+      return NextResponse.json({ error: error.message }, { status: error.status })
+    }
     console.error('POST /api/elevage/ventes error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la création', details: "Erreur interne du serveur" },
@@ -275,6 +396,26 @@ export async function DELETE(request: NextRequest) {
           data: { statut: 'actif', dateSortie: null, causeSortie: null },
         })
       }
+
+      // Vente de fromage annulée : supprimer la (les) sortie(s) de cave liée(s)
+      // pour restaurer le stock, puis recalculer l'état du lot (un lot passé à
+      // 'ecoule' par cette vente redevient 'pret' s'il reste du stock).
+      if (existing.type === 'fromage' && existing.lotFromageId) {
+        await tx.mouvementFromage.deleteMany({
+          where: { venteProduitId: existing.id, userId: session.user.id },
+        })
+        const lot = await tx.lotFromage.findUnique({
+          where: { id: existing.lotFromageId },
+          include: { mouvements: { select: { nbPieces: true, poidsKg: true } } },
+        })
+        if (lot && lot.etat === 'ecoule') {
+          const sortiesPieces = lot.mouvements.reduce((s, m) => s + m.nbPieces, 0)
+          const sortiesKg = lot.mouvements.reduce((s, m) => s + (Number(m.poidsKg) || 0), 0)
+          if (sortiesPieces < lot.nbPieces && sortiesKg < Number(lot.poidsTotalKg) - 1e-6) {
+            await tx.lotFromage.update({ where: { id: lot.id }, data: { etat: 'pret' } })
+          }
+        }
+      }
     })
 
     return NextResponse.json({ success: true })
@@ -314,6 +455,24 @@ export async function PATCH(request: NextRequest) {
         { error: 'Vente annulée — modification impossible' },
         { status: 409 }
       )
+    }
+
+    // Review caprin 2026-07-21 — une vente de fromage est liée à une sortie de
+    // cave (MouvementFromage) créée au POST ; le PATCH ne resynchronise pas le
+    // stock. On interdit donc de changer la quantité/unité/type d'une vente
+    // fromage (annuler + resaisir pour rester cohérent). Prix/paye/client/notes
+    // restent modifiables (sans impact stock).
+    if (existing.lotFromageId) {
+      const changeStock =
+        (body.quantite !== undefined && Number(body.quantite) !== existing.quantite) ||
+        (body.unite !== undefined && body.unite !== existing.unite) ||
+        (body.type !== undefined && body.type !== existing.type)
+      if (changeStock) {
+        return NextResponse.json(
+          { error: 'Vente de fromage : la quantité/unité impacte le stock de cave. Annulez cette vente et resaisissez-la.' },
+          { status: 409 }
+        )
+      }
     }
 
     const updateData: any = {}
@@ -375,12 +534,22 @@ export async function PATCH(request: NextRequest) {
 
     // Transaction atomique : facture + update vente
     const vente = await prisma.$transaction(async (tx) => {
-      if (body.creerFacture && existing.prixTotal) {
+      // Revue élevage 2026-07-21 — la facture était construite sur les ANCIENNES
+      // valeurs (existing.*) même quand le même PATCH modifiait prix/quantité →
+      // document légal ≠ vente ≠ compta. On facture sur les valeurs FINALES.
+      const totalFinal = updateData.prixTotal ?? existing.prixTotal
+      if (body.creerFacture && totalFinal) {
+        const typeF = updateData.type ?? existing.type
+        const descF = updateData.description ?? existing.description
+        const qteF = updateData.quantite ?? existing.quantite
+        const uniteF = updateData.unite ?? existing.unite
+        const puF = updateData.prixUnitaire ?? existing.prixUnitaire
+        const dateF = updateData.date ?? existing.date
         // Audit #25 : `|| 5.5` transformait un taux 0 % explicite (exonéré) en
         // 5,5 %. On ne retombe sur 5,5 que si le taux est réellement absent.
-        const tva = existing.tauxTVA ?? 5.5
-        const totalHT = existing.prixTotal / (1 + tva / 100)
-        const totalTVA = existing.prixTotal - totalHT
+        const tva = updateData.tauxTVA ?? existing.tauxTVA ?? 5.5
+        const totalHT = totalFinal / (1 + tva / 100)
+        const totalTVA = totalFinal - totalHT
 
         const facture = await creerFacture(tx, {
           userId,
@@ -388,23 +557,23 @@ export async function PATCH(request: NextRequest) {
           type: 'facture',
           clientId: body.clientId || null,
           clientNom: existing.client || undefined,
-          date: existing.date,
-          objet: `Vente de ${existing.type} - ${existing.description || ''}`,
+          date: dateF,
+          objet: `Vente de ${typeF} - ${descF || ''}`,
           totalHT,
           totalTVA,
-          totalTTC: existing.prixTotal,
+          totalTTC: totalFinal,
           statut: 'payee',
           datePaiement: new Date(),
           modePaiement: body.modePaiement || 'especes',
           lignes: [{
-            description: `${existing.type} - ${existing.description || ''}`,
-            quantite: existing.quantite,
-            unite: existing.unite,
-            prixUnitaire: existing.prixUnitaire / (1 + tva / 100),
+            description: `${typeF} - ${descF || ''}`,
+            quantite: qteF,
+            unite: uniteF,
+            prixUnitaire: puF / (1 + tva / 100),
             tauxTVA: tva,
             montantHT: totalHT,
             montantTVA: totalTVA,
-            montantTTC: existing.prixTotal,
+            montantTTC: totalFinal,
           }],
         })
 

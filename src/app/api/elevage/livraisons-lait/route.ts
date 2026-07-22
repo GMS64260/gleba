@@ -4,21 +4,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { z } from 'zod'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
-
-const schema = z.object({
-  date: z.coerce.date(),
-  litres: z.coerce.number().positive(),
-  laiterie: z.string().max(200).nullable().optional(),
-  tb: z.coerce.number().nullable().optional(),
-  tp: z.coerce.number().nullable().optional(),
-  cellules: z.coerce.number().int().nullable().optional(),
-  germes: z.coerce.number().int().nullable().optional(),
-  lipolyse: z.coerce.number().nullable().optional(),
-  notes: z.string().max(2000).nullable().optional(),
-})
+import { livraisonLaitSchema } from '@/lib/validations/livraison-lait'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -42,7 +30,7 @@ export async function POST(request: NextRequest) {
   const { session, error } = await requireAuthApi()
   if (error) return error
   try {
-    const parsed = schema.safeParse(await request.json())
+    const parsed = livraisonLaitSchema.safeParse(await request.json())
     if (!parsed.success) {
       return NextResponse.json({ error: 'Données invalides', details: parsed.error.flatten() }, { status: 400 })
     }

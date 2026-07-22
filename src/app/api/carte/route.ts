@@ -46,7 +46,66 @@ export async function GET() {
       },
     })
 
-    return NextResponse.json(parcelles)
+    // Cartographie élevage — bétail présent par parcelle : lots rattachés
+    // (LotAnimaux.parcelleGeoId) + animaux gérés en individuel rattachés
+    // directement (Animal.parcelleGeoId). Actifs uniquement.
+    const userId = session!.user.id
+    const [lots, animauxIndiv] = await Promise.all([
+      prisma.lotAnimaux.findMany({
+        where: { userId, parcelleGeoId: { not: null }, statut: 'actif' },
+        select: { id: true, nom: true, parcelleGeoId: true, quantiteActuelle: true, especeAnimale: { select: { nom: true } } },
+      }),
+      prisma.animal.findMany({
+        where: { userId, parcelleGeoId: { not: null }, statut: 'actif' },
+        select: { parcelleGeoId: true, especeAnimale: { select: { nom: true } } },
+      }),
+    ])
+
+    type Agg = {
+      totalTetes: number
+      animauxIndividuels: number
+      lots: Array<{ id: number; nom: string | null; espece: string; quantiteActuelle: number }>
+      parEspece: Record<string, number>
+    }
+    const parParcelle = new Map<string, Agg>()
+    const ensure = (pid: string): Agg => {
+      let a = parParcelle.get(pid)
+      if (!a) { a = { totalTetes: 0, animauxIndividuels: 0, lots: [], parEspece: {} }; parParcelle.set(pid, a) }
+      return a
+    }
+    for (const l of lots) {
+      if (!l.parcelleGeoId) continue
+      const a = ensure(l.parcelleGeoId)
+      a.lots.push({ id: l.id, nom: l.nom, espece: l.especeAnimale.nom, quantiteActuelle: l.quantiteActuelle })
+      a.totalTetes += l.quantiteActuelle
+      a.parEspece[l.especeAnimale.nom] = (a.parEspece[l.especeAnimale.nom] ?? 0) + l.quantiteActuelle
+    }
+    for (const an of animauxIndiv) {
+      if (!an.parcelleGeoId) continue
+      const a = ensure(an.parcelleGeoId)
+      a.animauxIndividuels += 1
+      a.totalTetes += 1
+      a.parEspece[an.especeAnimale.nom] = (a.parEspece[an.especeAnimale.nom] ?? 0) + 1
+    }
+
+    const withBetail = parcelles.map((p) => {
+      const a = parParcelle.get(p.id)
+      return {
+        ...p,
+        betail: a
+          ? {
+              totalTetes: a.totalTetes,
+              animauxIndividuels: a.animauxIndividuels,
+              lots: a.lots,
+              parEspece: Object.entries(a.parEspece)
+                .map(([espece, count]) => ({ espece, count }))
+                .sort((x, y) => y.count - x.count),
+            }
+          : null,
+      }
+    })
+
+    return NextResponse.json(withBetail)
   } catch (err) {
     console.error('GET /api/carte error:', err)
     return NextResponse.json(

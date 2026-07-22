@@ -10,6 +10,7 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { createDepenseFromAchatAnimal, deleteAutoEntry } from '@/lib/auto-compta'
 import { isPlausibleAnimalDate } from '@/lib/validations/elevage-animal'
+import { isAssignableAnimalLot, isOwnedParcelle } from '@/lib/elevage/animal-lot'
 
 export async function GET(
   request: NextRequest,
@@ -178,7 +179,31 @@ export async function PUT(
       poidsActuel,
       couleur,
       notes,
+      parcelleGeoId,
     } = body
+
+    // On ne (re)valide le lot que s'il CHANGE : conserver un lot inchangé
+    // (même devenu inactif) ne doit pas bloquer l'édition de l'animal.
+    if (
+      lotId !== undefined && lotId !== null && lotId !== '' &&
+      Number(lotId) !== existing.lotId &&
+      !await isAssignableAnimalLot(
+        session.user.id,
+        lotId,
+        especeAnimaleId ?? existing.especeAnimaleId
+      )
+    ) {
+      return NextResponse.json({ error: 'Lot invalide' }, { status: 400 })
+    }
+
+    // Cartographie élevage — parcelle validée propriétaire (null/'' ⇒ détache).
+    if (
+      parcelleGeoId !== undefined && parcelleGeoId !== null && parcelleGeoId !== '' &&
+      parcelleGeoId !== existing.parcelleGeoId &&
+      !await isOwnedParcelle(session.user.id, parcelleGeoId)
+    ) {
+      return NextResponse.json({ error: 'Parcelle invalide' }, { status: 400 })
+    }
 
     // Bug éleveur 2026-07-21 — borne d'année sur les dates (évite "0204").
     for (const [raw, label] of [
@@ -216,6 +241,7 @@ export async function PUT(
         poidsActuel,
         couleur,
         notes,
+        parcelleGeoId: parcelleGeoId !== undefined ? (parcelleGeoId || null) : undefined,
       },
       include: {
         especeAnimale: true,

@@ -32,6 +32,7 @@ export async function GET(request: NextRequest) {
       recoltesPotager,
       ventesManuelles,
       commandesBoutique,
+      paiesLait,
     ] = await Promise.all([
       // VenteProduit (elevage)
       prisma.venteProduit.findMany({
@@ -128,6 +129,15 @@ export async function GET(request: NextRequest) {
           lignes: { select: { nom: true, quantite: true, unite: true } },
         },
       }),
+
+      // PaieLait (chèque laiterie) — revenu n°1 d'un éleveur laitier livreur.
+      // La recette est aussi comptée dans getKpiCompta via une VenteManuelle
+      // auto (sourceType 'paie_lait'), exclue de la liste plus bas → pas de
+      // double ligne. Ajoutée à la liste ici pour être visible en transactions.
+      prisma.paieLait.findMany({
+        where: { userId, annee: year },
+        orderBy: [{ mois: 'desc' }],
+      }),
     ])
 
     // Transformer en format unifié
@@ -167,7 +177,8 @@ export async function GET(request: NextRequest) {
         categorie: v.type === 'oeufs' ? 'Oeufs' :
                    v.type === 'viande' ? 'Viande' :
                    v.type === 'animal_vivant' ? 'Animal vivant' :
-                   v.type === 'lait' ? 'Lait' : 'Autre élevage',
+                   v.type === 'lait' ? 'Lait' :
+                   v.type === 'fromage' ? 'Fromage' : 'Autre élevage',
       })
     })
 
@@ -329,6 +340,31 @@ export async function GET(request: NextRequest) {
         client: c.clientNom,
         paye: true, // commande livrée = encaissée
         categorie: 'Boutique en ligne',
+      })
+    })
+
+    // PaieLait -> revenus. Affiché en TTC (montantHT × 1,055) pour rester
+    // homogène avec les autres lignes (VenteProduit.prixTotal = TTC) et avec le
+    // CA de getKpiCompta, qui compte la paie via sa VenteManuelle auto en TTC.
+    // Sinon `stats.total` (somme des lignes) divergeait du CA de la TVA.
+    paiesLait.forEach(p => {
+      const montantTTC = Number(p.montantHT) * 1.055
+      const litres = Number(p.litres)
+      revenues.push({
+        id: `paie-lait-${p.id}`,
+        source: 'PaieLait',
+        // sourceId synthétique aligné sur la VenteManuelle auto (annee*100+mois).
+        sourceId: p.annee * 100 + p.mois,
+        module: 'elevage',
+        date: new Date(year, p.mois - 1, 1).toISOString(),
+        description: `Paie du lait ${String(p.mois).padStart(2, '0')}/${p.annee}${p.laiterie ? ` — ${p.laiterie}` : ''}`,
+        quantite: litres || null,
+        unite: 'L',
+        prixUnitaire: litres > 0 ? Math.round((montantTTC / litres) * 100) / 100 : null,
+        montant: Math.round(montantTTC * 100) / 100,
+        client: p.laiterie ?? null,
+        paye: true,
+        categorie: 'Lait',
       })
     })
 

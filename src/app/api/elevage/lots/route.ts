@@ -11,6 +11,7 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { lotSchema } from '@/lib/validations/elevage-lot'
 import { deleteAutoEntry, createDepenseFromLotAnimaux } from '@/lib/auto-compta'
+import { isPlausibleAnimalDate } from '@/lib/validations/elevage-animal'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -188,7 +189,7 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { id, quantiteActuelle, statut, dateReforme, notes, parcelleGeoId } = body
+    const { id, nom, especeAnimaleId, dateArrivee, quantiteInitiale, quantiteActuelle, statut, dateReforme, provenance, prixAchatTotal, notes, parcelleGeoId } = body
 
     if (!id) {
       return NextResponse.json({ error: 'ID requis' }, { status: 400 })
@@ -203,9 +204,41 @@ export async function PATCH(request: NextRequest) {
     }
 
     const updateData: any = {}
-    if (quantiteActuelle !== undefined) updateData.quantiteActuelle = parseInt(quantiteActuelle)
+    // Revue élevage 2026-07-21 — le PATCH n'appliquait qu'un sous-ensemble de
+    // champs : nom / espèce / dateArrivée / quantité initiale / provenance /
+    // prixAchatTotal étaient ignorés en silence (200 trompeur), et la dépense
+    // d'achat auto n'était jamais resynchronisée. On applique tout + resync.
+    if (nom !== undefined) updateData.nom = nom || null
+    if (especeAnimaleId !== undefined && especeAnimaleId) {
+      const espece = await prisma.especeAnimale.findUnique({ where: { id: especeAnimaleId } })
+      if (!espece) return NextResponse.json({ error: `Espèce animale "${especeAnimaleId}" introuvable` }, { status: 400 })
+      updateData.especeAnimaleId = especeAnimaleId
+    }
+    if (dateArrivee !== undefined) {
+      if (!dateArrivee) updateData.dateArrivee = null
+      else {
+        const d = new Date(dateArrivee)
+        if (!isPlausibleAnimalDate(d)) {
+          return NextResponse.json({ error: `Date d'arrivée invalide (année attendue entre 1990 et ${new Date().getFullYear() + 1})` }, { status: 400 })
+        }
+        updateData.dateArrivee = d
+      }
+    }
+    if (quantiteInitiale !== undefined) {
+      const q = parseInt(quantiteInitiale)
+      if (!Number.isNaN(q)) updateData.quantiteInitiale = q
+    }
+    if (quantiteActuelle !== undefined) {
+      const q = parseInt(quantiteActuelle)
+      if (!Number.isNaN(q)) updateData.quantiteActuelle = q
+    }
     if (statut !== undefined) updateData.statut = statut
     if (dateReforme !== undefined) updateData.dateReforme = dateReforme ? new Date(dateReforme) : null
+    if (provenance !== undefined) updateData.provenance = provenance || null
+    if (prixAchatTotal !== undefined) {
+      const p = prixAchatTotal === null || prixAchatTotal === '' ? null : Number(prixAchatTotal)
+      updateData.prixAchatTotal = p === null || Number.isNaN(p) ? null : p
+    }
     if (notes !== undefined) updateData.notes = notes
     if (parcelleGeoId !== undefined) updateData.parcelleGeoId = parcelleGeoId || null
 
@@ -216,6 +249,14 @@ export async function PATCH(request: NextRequest) {
         especeAnimale: true,
       },
     })
+
+    // Resync de la dépense d'achat auto (prixAchatTotal/dateArrivée ont pu changer ;
+    // le helper supprime l'écriture si le prix retombe à 0/null).
+    try {
+      await createDepenseFromLotAnimaux(session.user.id, lot)
+    } catch (autoComptaError) {
+      console.error('Auto-compta error (achat_animal lot PATCH):', autoComptaError)
+    }
 
     return NextResponse.json({ data: lot })
   } catch (error) {

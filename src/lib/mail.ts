@@ -39,6 +39,22 @@ export async function sendMail({ to, subject, html, replyTo, headers }: SendMail
   })
 }
 
+export function feedbackResolvedEmail(name?: string | null) {
+  const displayName = name
+    ? ` ${name.replace(/[&<>"']/g, (character) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        "\"": "&quot;",
+        "'": "&#039;",
+      })[character]!)}`
+    : ""
+  return {
+    subject: "Gleba — Votre demande a été résolue",
+    html: `<!DOCTYPE html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#1e293b"><p>Bonjour${displayName},</p><p>Votre demande envoyée depuis Gleba est maintenant résolue.</p><p><a href="https://gleba.fr">Consulter mes demandes dans Gleba</a></p><p style="color:#64748b;font-size:13px">Cet email transactionnel ne contient pas le détail de votre demande.</p></body></html>`,
+  }
+}
+
 export function newUserNotificationEmail(user: { email: string; name?: string | null }) {
   const date = new Date().toLocaleString("fr-FR", { timeZone: "Europe/Paris" })
   return {
@@ -626,4 +642,3 @@ export function commandeStatutClientEmail(args: CommandeStatutEmailArgs) {
 </body></html>`,
   }
 }
-

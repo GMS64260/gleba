@@ -16,6 +16,7 @@ import {
   AlertTriangle,
   TrendingUp,
   Info,
+  CalendarClock,
 } from "lucide-react"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -71,7 +72,18 @@ interface TachesData {
     estimationOeufsJour: number
     estimationSource?: 'theorique' | 'historique' | 'mixte'
     nbLotsPondeuses: number
+    aPonte?: boolean
   }
+}
+
+type AgendaEcheance = {
+  id: string
+  kind: string
+  date: string | null
+  joursRestants: number | null
+  titre: string
+  detail?: string
+  gravite: 'info' | 'attention' | 'urgent'
 }
 
 const SOIN_TYPE_LABELS: Record<string, string> = {
@@ -129,6 +141,15 @@ export function CalendrierTab() {
   const [data, setData] = React.useState<TachesData | null>(null)
   // Bug cmp8smrwe — masquer les tâches déjà faites par défaut.
   const [showFaits, setShowFaits] = React.useState(false)
+  // GAP P0 — agenda unifié : échéances à venir (indépendantes de la semaine).
+  const [echeances, setEcheances] = React.useState<AgendaEcheance[]>([])
+
+  React.useEffect(() => {
+    fetch('/api/elevage/agenda?jours=21')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (j?.echeances) setEcheances(j.echeances) })
+      .catch(() => {})
+  }, [])
 
   const weekStart = React.useMemo(() => getWeekStart(weekOffset), [weekOffset])
   const weekEnd = React.useMemo(() => {
@@ -206,6 +227,17 @@ export function CalendrierTab() {
 
   const today = localDateKey(new Date())
 
+  // Review caprin 2026-07-21 — un éleveur sans pondeuses (ex. uniquement des
+  // chèvres) ne doit pas voir de KPI œufs : « Œufs collectés » et « Taux
+  // collecte » n'ont aucun sens et découragent (0 sur ~14 attendus). On
+  // n'affiche ces cartes que si l'élevage a une composante ponte réelle.
+  // Priorité au flag cheptel `aPonte` (lots + animaux individuels, indépendant
+  // de la semaine) ; repli sur les signaux hebdo si l'API ne le renvoie pas.
+  const hasPonte = !!data && (
+    data.stats.aPonte ??
+    (data.stats.nbLotsPondeuses > 0 || data.stats.totalOeufs > 0 || data.stats.estimationOeufsJour > 0)
+  )
+
   return (
     <div className="space-y-6">
       {/* Navigation semaine */}
@@ -233,6 +265,47 @@ export function CalendrierTab() {
         </div>
       </div>
 
+      {/* GAP P0 — Prochaines échéances (agenda unifié, indépendant de la semaine) */}
+      {echeances.length > 0 && (
+        <Card className="border-amber-200">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <CalendarClock className="h-4 w-4 text-amber-600" />
+              Prochaines échéances
+              <span className="text-xs font-normal text-slate-500">(21 jours)</span>
+              {echeances.filter((e) => e.gravite === "urgent").length > 0 && (
+                <Badge className="bg-red-100 text-red-700 border-red-200">
+                  {echeances.filter((e) => e.gravite === "urgent").length} urgent(s)
+                </Badge>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-1.5">
+              {echeances.slice(0, 15).map((e) => (
+                <li key={e.id} className="flex items-center gap-2 text-sm">
+                  <span
+                    className={`inline-block h-2 w-2 rounded-full shrink-0 ${
+                      e.gravite === "urgent" ? "bg-red-500" : e.gravite === "attention" ? "bg-amber-500" : "bg-slate-300"
+                    }`}
+                  />
+                  <span className="font-medium text-slate-700">{e.titre}</span>
+                  {e.detail && <span className="text-xs text-slate-500">— {e.detail}</span>}
+                  {e.date && (
+                    <span className="ml-auto text-xs text-slate-400 shrink-0">
+                      {new Date(e.date).toLocaleDateString("fr-FR")}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+            {echeances.length > 15 && (
+              <p className="text-xs text-slate-400 mt-2">+{echeances.length - 15} autre(s) échéance(s)…</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {isLoading ? (
         <div className="space-y-4">
           <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
@@ -252,6 +325,7 @@ export function CalendrierTab() {
                 <p className="text-xs text-blue-400 mt-0.5">{data.stats.soinsFaits} fait(s)</p>
               )}
             </div>
+            {hasPonte && (
             <div className="bg-yellow-50 rounded-lg p-3 text-center">
               <Egg className="h-5 w-5 mx-auto text-yellow-600 mb-1" />
               <p className="text-2xl font-bold text-yellow-700">{data.stats.totalOeufs}</p>
@@ -274,12 +348,13 @@ export function CalendrierTab() {
                 </p>
               )}
             </div>
+            )}
             <div className="bg-orange-50 rounded-lg p-3 text-center">
               <Package className="h-5 w-5 mx-auto text-orange-600 mb-1" />
               <p className="text-2xl font-bold text-orange-700">{data.stats.totalConsoKg} kg</p>
               <p className="text-xs text-orange-600">Aliments distribués</p>
             </div>
-            {(() => {
+            {hasPonte && (() => {
               // BUG #4 (audit Julien 15/05/2026) — Taux collecte semaine.
               // Avant : 999 œufs / (14 × 7) × 100 ≈ 1019 % affiché en vert.
               // Désormais on défend en profondeur :

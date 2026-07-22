@@ -6,12 +6,20 @@
  */
 
 import { useMemo, useCallback } from "react"
-import { GeoJSON, Tooltip } from "react-leaflet"
-import type { Layer, PathOptions, LeafletMouseEvent } from "leaflet"
+import { GeoJSON, Tooltip, Marker } from "react-leaflet"
+import L, { type Layer, type PathOptions, type LeafletMouseEvent } from "leaflet"
 import type { Feature, Geometry } from "geojson"
 
 // Couleur par defaut pour les parcelles sans couleur definie
 const DEFAULT_COULEUR = "#4ade80" // vert Tailwind green-400
+
+/** Bétail présent sur une parcelle (renvoyé par /api/carte). */
+export interface BetailParcelle {
+  totalTetes: number
+  animauxIndividuels: number
+  lots: Array<{ id: number; nom: string | null; espece: string; quantiteActuelle: number }>
+  parEspece: Array<{ espece: string; count: number }>
+}
 
 export interface ParcelleGeoData {
   id: string
@@ -25,6 +33,9 @@ export interface ParcelleGeoData {
   couleur?: string | null
   notes?: string | null
   typeSol?: string | null
+  centroidLat?: number | null
+  centroidLng?: number | null
+  betail?: BetailParcelle | null
 }
 
 interface ParcelleLayerProps {
@@ -117,26 +128,57 @@ function ParcelleFeature({
     [onSelect, parcelle]
   )
 
+  // Bétail présent : résumé pour le survol + pastille d'effectif au centroïde.
+  const betail = parcelle.betail
+  const hasBetail = !!betail && betail.totalTetes > 0
+  const betailResume = hasBetail
+    ? betail!.parEspece.map((e) => `${e.count} ${e.espece}`).join(", ")
+    : ""
+
+  // Pastille (divIcon) affichée en permanence sur les parcelles avec bétail,
+  // pour « voir son bétail » d'un coup d'œil sans survoler (cartographie 2026-07-21).
+  const betailIcon = useMemo(() => {
+    if (!hasBetail) return null
+    return L.divIcon({
+      className: "",
+      html: `<div style="background:#d97706;color:#fff;border:2px solid #fff;border-radius:9999px;padding:1px 8px;font-size:12px;font-weight:700;line-height:1.4;box-shadow:0 1px 3px rgba(0,0,0,.4);white-space:nowrap;">${betail!.totalTetes} têtes</div>`,
+      iconAnchor: [0, 0],
+    })
+  }, [hasBetail, betail])
+
   if (!feature) return null
 
   // Construction du texte du tooltip. `surface` est déjà en hectares
   // (schema : surface_ha) — l'ancienne division par 10000 affichait « 0.00 ha »
   // pour quasiment toutes les parcelles (audit 2026-07, #32).
-  const tooltipContent = parcelle.nom + (
-    parcelle.surface
-      ? ` - ${parcelle.surface.toFixed(2)} ha`
-      : ""
-  )
+  const tooltipContent =
+    parcelle.nom +
+    (parcelle.surface ? ` - ${parcelle.surface.toFixed(2)} ha` : "") +
+    (hasBetail ? ` · ${betail!.totalTetes} têtes (${betailResume})` : "")
+
+  const hasCentroid =
+    typeof parcelle.centroidLat === "number" && typeof parcelle.centroidLng === "number"
 
   return (
-    <GeoJSON
-      key={parcelle.id}
-      data={feature}
-      style={style}
-      onEachFeature={onEachFeature}
-    >
-      <Tooltip sticky>{tooltipContent}</Tooltip>
-    </GeoJSON>
+    <>
+      <GeoJSON
+        key={parcelle.id}
+        data={feature}
+        style={style}
+        onEachFeature={onEachFeature}
+      >
+        <Tooltip sticky>{tooltipContent}</Tooltip>
+      </GeoJSON>
+      {hasBetail && hasCentroid && betailIcon && (
+        <Marker
+          position={[parcelle.centroidLat!, parcelle.centroidLng!]}
+          icon={betailIcon}
+          eventHandlers={{ click: () => onSelect?.(parcelle) }}
+        >
+          <Tooltip direction="top">{`${parcelle.nom} · ${betailResume}`}</Tooltip>
+        </Marker>
+      )}
+    </>
   )
 }
 

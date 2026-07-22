@@ -175,8 +175,8 @@ export function LivraisonLaitSubTab() {
             <div><Label className="text-xs">Litres</Label><Input type="number" value={livForm.litres} onChange={(e) => setLivForm((f) => ({ ...f, litres: e.target.value }))} /></div>
             <div><Label className="text-xs">TB g/L</Label><Input type="number" step="0.1" value={livForm.tb} onChange={(e) => setLivForm((f) => ({ ...f, tb: e.target.value }))} /></div>
             <div><Label className="text-xs">TP g/L</Label><Input type="number" step="0.1" value={livForm.tp} onChange={(e) => setLivForm((f) => ({ ...f, tp: e.target.value }))} /></div>
-            <div><Label className="text-xs">Cellules</Label><Input type="number" value={livForm.cellules} onChange={(e) => setLivForm((f) => ({ ...f, cellules: e.target.value }))} /></div>
-            <div><Label className="text-xs">Germes</Label><Input type="number" value={livForm.germes} onChange={(e) => setLivForm((f) => ({ ...f, germes: e.target.value }))} /></div>
+            <div><Label className="text-xs">Cellules (×1000/mL)</Label><Input type="number" placeholder="ex. 650" value={livForm.cellules} onChange={(e) => setLivForm((f) => ({ ...f, cellules: e.target.value }))} /></div>
+            <div><Label className="text-xs">Germes (×1000/mL)</Label><Input type="number" placeholder="ex. 25" value={livForm.germes} onChange={(e) => setLivForm((f) => ({ ...f, germes: e.target.value }))} /></div>
             <div><Button size="sm" onClick={submitLiv}><Plus className="h-4 w-4 mr-1" />Ajouter</Button></div>
           </div>
           {livStats && <p className="text-xs text-slate-500">{livStats.nb} livraison(s) · {livStats.litresTotal.toLocaleString("fr-FR")} L livrés en {annee}</p>}

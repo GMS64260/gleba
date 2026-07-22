@@ -50,6 +50,7 @@ import {
 } from "@/components/ui/tooltip"
 import { useToast } from "@/hooks/use-toast"
 import { todayLocalISO } from '@/lib/format-utils'
+import { ImportAnimauxCsv } from './ImportAnimauxCsv'
 
 // ============================================================
 // Types
@@ -78,6 +79,7 @@ interface Animal {
     poidsAdulte: number | null
   }
   lot: { id: number; nom: string } | null
+  parcelleGeoId: string | null
   _count: {
     productionsOeufs: number
     soins: number
@@ -170,7 +172,7 @@ function AnimauxSubTab() {
     dateNaissance: "", dateArrivee: todayLocalISO(),
     provenance: "", nExploitationOrigine: "",
     prixAchat: "", poidsActuel: "", notes: "",
-    lotId: "",
+    lotId: "", parcelleGeoId: "",
   }
   const [formData, setFormData] = React.useState(EMPTY_ANIMAL_FORM)
 
@@ -196,6 +198,7 @@ function AnimauxSubTab() {
       poidsActuel: a.poidsActuel ? a.poidsActuel.toString() : "",
       notes: a.notes ?? "",
       lotId: a.lot?.id ? String(a.lot.id) : "",
+      parcelleGeoId: a.parcelleGeoId ?? "",
     })
     setIsDialogOpen(true)
   }
@@ -214,16 +217,20 @@ function AnimauxSubTab() {
   // éleveur 2026-07-21 (Cyril) : il n'existait aucune passerelle animal → lot
   // dans l'UI (ni sur la fiche animal, ni sur la page du lot).
   const [lotsActifs, setLotsActifs] = React.useState<Array<{ id: number; nom: string | null; especeAnimaleId: string }>>([])
+  // Parcelles géoréférencées, pour situer un animal sur la carte (cartographie
+  // élevage 2026-07-21 : rattachement direct animal → parcelle, hors lot).
+  const [parcellesList, setParcellesList] = React.useState<Array<{ id: string; nom: string }>>([])
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
     try {
       let url = '/api/elevage/animaux?'
       if (filterStatut !== 'all') url += `statut=${filterStatut}&`
 
-      const [animauxRes, especesRes, lotsRes] = await Promise.all([
+      const [animauxRes, especesRes, lotsRes, parcellesRes] = await Promise.all([
         fetch(url),
         fetch('/api/elevage/especes-animales'),
         fetch('/api/elevage/lots'),
+        fetch('/api/carte'),
       ])
 
       if (animauxRes.ok) setAnimaux((await animauxRes.json()).data)
@@ -234,6 +241,10 @@ function AnimauxSubTab() {
         const actifs = lots.filter((l) => l.statut === "actif")
         setLotsEspeceIds(actifs.map((l) => l.especeAnimaleId))
         setLotsActifs(actifs.map((l) => ({ id: l.id, nom: l.nom, especeAnimaleId: l.especeAnimaleId })))
+      }
+      if (parcellesRes.ok) {
+        const pj = await parcellesRes.json()
+        setParcellesList((Array.isArray(pj) ? pj : []).map((p: { id: string; nom: string }) => ({ id: p.id, nom: p.nom })))
       }
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les données" })
@@ -282,6 +293,7 @@ function AnimauxSubTab() {
         poidsActuel: toNum(formData.poidsActuel as unknown as string),
         dateNaissance: (formData as { dateNaissance?: string }).dateNaissance || null,
         lotId: formData.lotId ? parseInt(formData.lotId) : null,
+        parcelleGeoId: formData.parcelleGeoId || null,
       }
       // Bug testeur 2026-05-31 — un nouvel animal est TOUJOURS créé actif. On
       // force le statut côté payload de création pour qu'aucune valeur résiduelle
@@ -543,6 +555,11 @@ function AnimauxSubTab() {
         <Button variant="outline" size="sm" onClick={fetchData}>
           <RefreshCw className="h-4 w-4" />
         </Button>
+        <ImportAnimauxCsv
+          especes={especes}
+          existingIdentifiers={animaux.flatMap((animal) => animal.identifiant ? [animal.identifiant] : [])}
+          onImported={fetchData}
+        />
         <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) resetAnimalForm() }}>
           <DialogTrigger asChild>
             {/* Cause racine bug « animal créé corrompu » (#54 Étoile) : le bouton
@@ -656,6 +673,23 @@ function AnimauxSubTab() {
                           {l.nom || `Lot #${l.id}`}
                         </SelectItem>
                       ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {/* Cartographie élevage 2026-07-21 — situer l'animal sur une parcelle
+                  (visible ensuite dans « Bétail présent » sur la carte). */}
+              <div className="space-y-2">
+                <Label>Parcelle (optionnel)</Label>
+                <Select
+                  value={formData.parcelleGeoId || "__none__"}
+                  onValueChange={(v) => setFormData(f => ({ ...f, parcelleGeoId: v === "__none__" ? "" : v }))}
+                >
+                  <SelectTrigger><SelectValue placeholder="Aucune parcelle" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Aucune parcelle</SelectItem>
+                    {parcellesList.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>{p.nom}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

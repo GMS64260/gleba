@@ -20,7 +20,6 @@ function MarketingNav() {
   const businessLinks = [
     ["/logiciel-maraichage", "Maraîchage"],
     ["/logiciel-potager", "Potager"],
-    ["/logiciel-jardin", "Jardin"],
     ["/logiciel-arboriculture", "Arboriculture"],
     ["/logiciel-elevage", "Élevage"],
     ["/logiciel-permaculture", "Permaculture"],
@@ -74,9 +73,6 @@ function MarketingFooter() {
           </Link>
           <Link href="/logiciel-potager" className="hover:text-emerald-600 transition-colors">
             Potager
-          </Link>
-          <Link href="/logiciel-jardin" className="hover:text-emerald-600 transition-colors">
-            Jardin
           </Link>
           <Link href="/logiciel-verger" className="hover:text-emerald-600 transition-colors">
             Arboriculture

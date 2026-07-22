@@ -1,0 +1,87 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { NextRequest } from 'next/server'
+
+const mocks = vi.hoisted(() => ({
+  requireAuthApi: vi.fn(),
+  isAssignableAnimalLot: vi.fn(),
+  especeFindUnique: vi.fn(),
+  animalFindFirst: vi.fn(),
+  animalCreate: vi.fn(),
+  animalUpdate: vi.fn(),
+}))
+
+vi.mock('@/lib/auth-utils', () => ({ requireAuthApi: mocks.requireAuthApi }))
+vi.mock('@/lib/elevage/animal-lot', () => ({ isAssignableAnimalLot: mocks.isAssignableAnimalLot }))
+vi.mock('@/lib/auto-compta', () => ({ createDepenseFromAchatAnimal: vi.fn() }))
+vi.mock('@/lib/prisma', () => ({
+  default: {
+    especeAnimale: { findUnique: mocks.especeFindUnique },
+    animal: {
+      findFirst: mocks.animalFindFirst,
+      create: mocks.animalCreate,
+      update: mocks.animalUpdate,
+    },
+  },
+}))
+
+import { PATCH, POST } from './route'
+
+const request = (method: string, body: object) => new NextRequest('http://localhost/api/elevage/animaux', {
+  method,
+  body: JSON.stringify(body),
+  headers: { 'content-type': 'application/json' },
+})
+
+describe('affectation d’un lot via /api/elevage/animaux', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: 'user-1' } } })
+    mocks.especeFindUnique.mockResolvedValue({ id: 'ovin' })
+    mocks.animalFindFirst.mockResolvedValue({ id: 7, especeAnimaleId: 'ovin' })
+    mocks.animalCreate.mockResolvedValue({ id: 7, prixAchat: null })
+    mocks.animalUpdate.mockResolvedValue({ id: 7, prixAchat: null })
+  })
+
+  it.each([
+    ['POST', () => POST(request('POST', { especeAnimaleId: 'ovin', lotId: 42 }))],
+    ['PATCH', () => PATCH(request('PATCH', { id: 7, lotId: 42 }))],
+  ])('%s refuse avant écriture un lot non assignable avec une erreur non attribuable', async (_method, call) => {
+    mocks.isAssignableAnimalLot.mockResolvedValue(false)
+
+    const response = await call()
+
+    expect(response.status).toBe(400)
+    expect(await response.json()).toEqual({ error: 'Lot invalide' })
+    expect(mocks.animalCreate).not.toHaveBeenCalled()
+    expect(mocks.animalUpdate).not.toHaveBeenCalled()
+  })
+
+  it('POST accepte un lot assignable', async () => {
+    mocks.isAssignableAnimalLot.mockResolvedValue(true)
+
+    expect((await POST(request('POST', { especeAnimaleId: 'ovin', lotId: 42 }))).status).toBe(201)
+    expect(mocks.animalCreate).toHaveBeenCalled()
+  })
+
+  it('PATCH accepte un lot assignable et permet le détachement', async () => {
+    mocks.isAssignableAnimalLot.mockResolvedValue(true)
+    await PATCH(request('PATCH', { id: 7, lotId: 42 }))
+    expect(mocks.animalUpdate).toHaveBeenLastCalledWith(expect.objectContaining({ data: expect.objectContaining({ lotId: 42 }) }))
+
+    await PATCH(request('PATCH', { id: 7, lotId: null }))
+    expect(mocks.animalUpdate).toHaveBeenLastCalledWith(expect.objectContaining({ data: expect.objectContaining({ lotId: null }) }))
+  })
+
+  it('PATCH ne revalide pas un lot inchangé (animal déjà dans un lot devenu inactif)', async () => {
+    // L'animal est déjà rattaché au lot 42 ; ce lot n'est plus assignable
+    // (terminé). Rééditer l'animal sans changer de lot doit rester possible.
+    mocks.animalFindFirst.mockResolvedValue({ id: 7, especeAnimaleId: 'ovin', lotId: 42 })
+    mocks.isAssignableAnimalLot.mockResolvedValue(false)
+
+    const response = await PATCH(request('PATCH', { id: 7, lotId: 42, poidsActuel: 55 }))
+
+    expect(response.status).toBe(200)
+    expect(mocks.isAssignableAnimalLot).not.toHaveBeenCalled()
+    expect(mocks.animalUpdate).toHaveBeenCalled()
+  })
+})
