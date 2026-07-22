@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireAuthApi } from '@/lib/auth-utils'
-import { buildUblInvoice } from '@/lib/facture-ubl'
+import { buildUblInvoice, UblValidationError } from '@/lib/facture-ubl'
 import type { EmetteurSnapshot } from '@/lib/facture-utils'
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -24,7 +24,9 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   const emetteur = (facture.emetteurSnapshot as EmetteurSnapshot | null) || fallback
   if (!emetteur) return NextResponse.json({ error: "Configurez l'identité de l'exploitation avant l'export UBL" }, { status: 422 })
 
-  const xml = buildUblInvoice({
+  let xml: string
+  try {
+    xml = buildUblInvoice({
     number: facture.numero,
     issueDate: facture.date,
     dueDate: facture.dateEcheance,
@@ -63,7 +65,14 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     paymentReference: facture.numero,
     paymentIban: emetteur.rib,
     notes: facture.objet,
-  })
+    buyerReference: facture.client?.siret,
+    })
+  } catch (err) {
+    if (err instanceof UblValidationError) {
+      return NextResponse.json({ error: "Facture incomplète pour l’export UBL", details: err.issues }, { status: 422 })
+    }
+    throw err
+  }
 
   const filename = `${facture.numero.replace(/[^a-zA-Z0-9_-]/g, '_')}.ubl.xml`
   return new NextResponse(xml, {

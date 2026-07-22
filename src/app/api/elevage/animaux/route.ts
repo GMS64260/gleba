@@ -45,6 +45,7 @@ export async function GET(request: NextRequest) {
           // d'afficher un poids estimatif si poidsActuel n'est pas saisi.
           select: { id: true, nom: true, type: true, couleur: true, poidsAdulte: true },
         },
+        raceAnimale: { select: { id: true, nom: true } },
         lot: {
           select: { id: true, nom: true },
         },
@@ -92,6 +93,8 @@ export async function POST(request: NextRequest) {
       typeIdentifiant,
       nom,
       race,
+      raceAnimaleId,
+      orientationProduction,
       sexe,
       dateNaissance,
       dateArrivee,
@@ -124,6 +127,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const raceRef = raceAnimaleId ? await prisma.raceAnimale.findFirst({
+      where: { id: raceAnimaleId, especeAnimaleId, AND: [visibiliteReferentiel(session.user.id)] },
+      select: { id: true, nom: true },
+    }) : null
+    if (raceAnimaleId && !raceRef) return NextResponse.json({ error: 'Race incompatible ou inaccessible' }, { status: 400 })
+
     if (lotId != null && !await isAssignableAnimalLot(session.user.id, lotId, especeAnimaleId)) {
       return NextResponse.json({ error: 'Lot invalide' }, { status: 400 })
     }
@@ -155,7 +164,9 @@ export async function POST(request: NextRequest) {
         identifiant,
         typeIdentifiant: typeIdentifiant ?? null,
         nom,
-        race,
+        race: raceRef?.nom ?? race,
+        raceAnimaleId: raceRef?.id ?? null,
+        orientationProduction: orientationProduction ?? null,
         sexe,
         dateNaissance: dateNaissance ?? null,
         dateArrivee: dateArrivee ?? new Date(),
@@ -226,7 +237,7 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { id, especeAnimaleId, nom, race, sexe, statut, lotId, posX, posY, poidsActuel, couleur, notes, dateSortie, causeSortie, mereId, pereId, pereIdentifiant, identifiant, typeIdentifiant, nExploitationOrigine, nExploitationDestination, motifSortie, statutSanitaire, prixAchat, provenance, dateNaissance, dateArrivee, parcelleGeoId } = body
+    const { id, especeAnimaleId, nom, race, raceAnimaleId, orientationProduction, sexe, statut, lotId, posX, posY, poidsActuel, couleur, notes, dateSortie, causeSortie, mereId, pereId, pereIdentifiant, identifiant, typeIdentifiant, nExploitationOrigine, nExploitationDestination, motifSortie, statutSanitaire, prixAchat, provenance, dateNaissance, dateArrivee, parcelleGeoId } = body
 
     if (!id) {
       return NextResponse.json({ error: 'ID requis' }, { status: 400 })
@@ -257,6 +268,15 @@ export async function PATCH(request: NextRequest) {
     }
 
     const especeCible = especeAnimaleId ?? existing.especeAnimaleId
+    const orientations = new Set(['lait', 'viande', 'laine', 'mixte'])
+    if (orientationProduction !== undefined && orientationProduction !== null && !orientations.has(orientationProduction)) {
+      return NextResponse.json({ error: 'Orientation de production invalide' }, { status: 400 })
+    }
+    const raceRef = raceAnimaleId ? await prisma.raceAnimale.findFirst({
+      where: { id: raceAnimaleId, especeAnimaleId: especeCible, AND: [visibiliteReferentiel(session.user.id)] },
+      select: { id: true, nom: true },
+    }) : null
+    if (raceAnimaleId && !raceRef) return NextResponse.json({ error: 'Race incompatible ou inaccessible' }, { status: 400 })
 
     // On ne (re)valide le lot que s'il CHANGE : un animal déjà rattaché à un lot
     // devenu inactif (terminé/réformé) doit rester éditable (poids, notes…) sans
@@ -281,6 +301,11 @@ export async function PATCH(request: NextRequest) {
 
     const updateData: any = {}
     if (especeAnimaleId !== undefined) updateData.especeAnimaleId = especeAnimaleId
+    if (orientationProduction !== undefined) updateData.orientationProduction = orientationProduction || null
+    if (raceAnimaleId !== undefined) {
+      updateData.raceAnimaleId = raceRef?.id ?? null
+      updateData.race = raceRef?.nom ?? null
+    }
     if (parcelleGeoId !== undefined) updateData.parcelleGeoId = parcelleGeoId || null
     if (nom !== undefined) updateData.nom = nom
     if (race !== undefined) updateData.race = race
