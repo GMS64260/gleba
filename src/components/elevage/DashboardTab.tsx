@@ -20,6 +20,7 @@ import {
   ChevronRight,
   TrendingDown,
   ShieldAlert,
+  Download,
 } from "lucide-react"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -772,6 +773,11 @@ export function DashboardTab({ year }: DashboardTabProps) {
               <Badge variant="secondary">{soins.length}</Badge>
             )}
           </h2>
+          <Button asChild variant="outline" size="sm">
+            <a href={`/api/elevage/registre-sanitaire?year=${new Date().getFullYear()}`}>
+              <Download className="h-4 w-4 mr-1" />Télécharger tous les soins
+            </a>
+          </Button>
           {/* PROMPT 20a — Actions en masse sur les soins */}
           {soins.length >= 2 && (
             <BulkActions
