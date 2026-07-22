@@ -11,13 +11,80 @@
 import * as React from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
-import { ArrowLeft, CalendarClock, ChevronsRight, RotateCcw, RotateCw, Tags } from "lucide-react"
+import { ArrowLeft, CalendarClock, ChevronsRight, ExternalLink, RotateCcw, RotateCw, Tags, X } from "lucide-react"
 
 import { croissanceCulture, envergureArbreADate } from "@/lib/plan-croissance"
-import { Garden3DView, type Garden3DData, type Garden3DFond } from "@/components/garden/garden3d"
+import { Garden3DView, type Culture3D, type Garden3DData, type Garden3DFond, type Planche3D } from "@/components/garden/garden3d"
+import { PluviometriePlanche } from "@/components/meteo/PluviometriePlanche"
+import { cultureSelectionnee } from "@/components/garden/garden3d/detail"
 import { useFondPlan } from "@/hooks/use-fond-plan"
 
 const JOUR_MS = 24 * 3600 * 1000
+
+function formatDate(value?: string | null) {
+  if (!value) return "Non renseignée"
+  return new Date(value).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })
+}
+
+function CulturePanel({ planche, onClose }: { planche: Planche3D; onClose: () => void }) {
+  const [cultureId, setCultureId] = React.useState<number | null>(planche.cultures[0]?.id ?? null)
+  React.useEffect(() => setCultureId(planche.cultures[0]?.id ?? null), [planche.id, planche.cultures])
+  const culture: Culture3D | undefined = cultureSelectionnee(planche, cultureId)
+  const parcelleNom = planche.parcelleGeo?.nom || "Parcelle non renseignée"
+
+  return (
+    <aside className="absolute inset-x-0 bottom-0 z-20 max-h-[72dvh] overflow-y-auto overflow-x-hidden rounded-t-3xl bg-white shadow-2xl md:inset-y-0 md:left-auto md:right-0 md:max-h-none md:w-[24rem] md:rounded-none md:border-l">
+      <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b bg-white/95 px-5 py-4 backdrop-blur">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Détail de la planche</p>
+          <h2 className="truncate text-lg font-bold text-gray-900">{planche.nom || "Planche"}</h2>
+          <p className="truncate text-sm text-gray-500">Parcelle : {parcelleNom}</p>
+        </div>
+        <button type="button" onClick={onClose} aria-label="Fermer le détail" className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-gray-600 hover:bg-gray-100">
+          <X className="h-5 w-5" />
+        </button>
+      </div>
+
+      <div className="space-y-5 px-5 py-5 pb-8">
+        {planche.cultures.length > 1 && (
+          <div>
+            <label htmlFor="culture-3d" className="mb-1.5 block text-sm font-medium text-gray-700">Culture affichée</label>
+            <select id="culture-3d" value={culture?.id ?? ""} onChange={(event) => setCultureId(Number(event.target.value))} className="min-h-11 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm">
+              {planche.cultures.map((item) => <option key={item.id} value={item.id}>{item.espece?.nom || "Culture"}</option>)}
+            </select>
+          </div>
+        )}
+
+        {culture ? (
+          <section className="space-y-3" aria-label="Culture sélectionnée">
+            <div className="flex items-center gap-3">
+              <span className="h-3 w-3 rounded-full" style={{ background: culture.espece?.couleur || "#5c9134" }} />
+              <div>
+                <h3 className="font-semibold text-gray-900">{culture.espece?.nom || "Culture"}</h3>
+                <p className="text-sm font-medium text-emerald-700">Croissance : {Math.round(culture.croissance * 100)} %</p>
+              </div>
+            </div>
+            <dl className="grid grid-cols-2 gap-2 text-sm">
+              <div className="rounded-lg bg-gray-50 p-3"><dt className="text-gray-500">Semis</dt><dd className="mt-1 font-medium text-gray-800">{formatDate(culture.dateSemis)}</dd></div>
+              <div className="rounded-lg bg-gray-50 p-3"><dt className="text-gray-500">Plantation</dt><dd className="mt-1 font-medium text-gray-800">{formatDate(culture.datePlantation)}</dd></div>
+              <div className="rounded-lg bg-gray-50 p-3"><dt className="text-gray-500">Récolte prévue</dt><dd className="mt-1 font-medium text-gray-800">{formatDate(culture.dateRecolte)}</dd></div>
+              <div className="rounded-lg bg-gray-50 p-3"><dt className="text-gray-500">Rangs</dt><dd className="mt-1 font-medium text-gray-800">{culture.nbRangs ?? "Non renseigné"}</dd></div>
+            </dl>
+            <Link href={`/maraichage/cultures/${culture.id}`} className="inline-flex min-h-10 items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-50">
+              Ouvrir la fiche culture <ExternalLink className="h-4 w-4" />
+            </Link>
+          </section>
+        ) : <p className="rounded-lg bg-gray-50 p-3 text-sm italic text-gray-500">Aucune culture en cours sur cette planche.</p>}
+
+        <section className="border-t pt-5" aria-label="Pluviométrie de la parcelle">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Pluviométrie de la parcelle · mm</p>
+          <p className="mb-3 text-sm text-gray-700">{parcelleNom}</p>
+          <PluviometriePlanche plancheId={planche.id} typePlanche={planche.type} />
+        </section>
+      </div>
+    </aside>
+  )
+}
 
 export default function Jardin3DPage() {
   return (
@@ -40,6 +107,7 @@ function Jardin3DContent() {
   const [autoRotate, setAutoRotate] = React.useState(false)
   const [showLabels, setShowLabels] = React.useState(false)
   const [offsetDays, setOffsetDays] = React.useState(0)
+  const [selectedPlancheId, setSelectedPlancheId] = React.useState<string | null>(null)
 
   const { fond, loading: fondLoading } = useFondPlan(parcelleId)
   const [fond3D, setFond3D] = React.useState<Garden3DFond | null>(null)
@@ -121,6 +189,13 @@ function Jardin3DContent() {
     return { planches: planches as never, objets: raw.objets as never, arbres: arbres as never }
   }, [raw, dateAffichee, today])
 
+  // Conserver seulement l'identifiant : la planche sélectionnée doit toujours
+  // provenir des données recalculées par la barre temporelle.
+  const selectedPlanche = React.useMemo(
+    () => data?.planches.find((planche) => planche.id === selectedPlancheId) ?? null,
+    [data, selectedPlancheId]
+  )
+
   const isEmpty =
     data && data.planches.length === 0 && data.objets.length === 0 && data.arbres.length === 0 && !fond3D
 
@@ -185,7 +260,7 @@ function Jardin3DContent() {
         </div>
       ) : (
         <>
-          <Garden3DView data={data} fond={fond3D} autoRotate={autoRotate} showLabels={showLabels} />
+          <Garden3DView data={data} fond={fond3D} autoRotate={autoRotate} showLabels={showLabels} selectedPlancheId={selectedPlancheId} onSelectPlanche={(planche) => setSelectedPlancheId(planche.id)} />
 
           {/* Barre de temps */}
           <div className="pointer-events-none absolute inset-x-0 bottom-4 z-10 flex justify-center px-3">
@@ -224,11 +299,12 @@ function Jardin3DContent() {
                   title="Revenir à aujourd'hui"
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
-                  Aujourd'hui
+                  Aujourd&apos;hui
                 </button>
               )}
             </div>
           </div>
+          {selectedPlanche && <CulturePanel planche={selectedPlanche} onClose={() => setSelectedPlancheId(null)} />}
         </>
       )}
     </div>

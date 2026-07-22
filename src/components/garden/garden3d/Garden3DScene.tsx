@@ -119,7 +119,7 @@ interface BedField {
   proc?: { geo: GeoKind; foliage: ProcPlant[]; color: string; fruits?: { x: number; y: number; z: number; r: number }[]; fruitColor: string; seed: number }
 }
 
-function Bed({ p, showLabels, hovered, onHover }: { p: Planche3D; showLabels: boolean; hovered: boolean; onHover: (id: string | null) => void }) {
+function Bed({ p, showLabels, hovered, selected, onHover, onSelect }: { p: Planche3D; showLabels: boolean; hovered: boolean; selected: boolean; onHover: (id: string | null) => void; onSelect: (planche: Planche3D) => void }) {
   const L = p.largeur ?? 1
   const P = p.longueur ?? 1
   const cx = (p.posX ?? 0) + L / 2
@@ -176,7 +176,7 @@ function Bed({ p, showLabels, hovered, onHover }: { p: Planche3D; showLabels: bo
       {/* Cadre bois (léger surlignage au survol) */}
       <mesh position={[0, BED_H / 2, 0]} castShadow receiveShadow>
         <boxGeometry args={[L, BED_H, P]} />
-        <meshStandardMaterial color="#8a5a33" roughness={0.9} metalness={0} emissive="#e8a24a" emissiveIntensity={hovered ? 0.35 : 0} />
+        <meshStandardMaterial color="#8a5a33" roughness={0.9} metalness={0} emissive={selected ? "#10b981" : "#e8a24a"} emissiveIntensity={selected ? 0.65 : hovered ? 0.35 : 0} />
       </mesh>
       {/* Terreau */}
       <mesh position={[0, SOIL_TOP - 0.03, 0]} receiveShadow>
@@ -189,6 +189,7 @@ function Bed({ p, showLabels, hovered, onHover }: { p: Planche3D; showLabels: bo
         position={[0, 0.85, 0]}
         onPointerOver={(e) => { e.stopPropagation(); onHover(p.id); document.body.style.cursor = "pointer" }}
         onPointerOut={(e) => { e.stopPropagation(); onHover(null); document.body.style.cursor = "auto" }}
+        onClick={(e) => { e.stopPropagation(); onSelect(p) }}
       >
         <boxGeometry args={[L + 0.08, 1.7, P + 0.08]} />
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
@@ -403,9 +404,11 @@ export interface Garden3DSceneProps {
   fond?: Garden3DFond | null
   autoRotate?: boolean
   showLabels?: boolean
+  selectedPlancheId?: string | null
+  onSelectPlanche?: (planche: Planche3D) => void
 }
 
-export default function Garden3DScene({ data, fond, autoRotate = false, showLabels = false }: Garden3DSceneProps) {
+export default function Garden3DScene({ data, fond, autoRotate = false, showLabels = false, selectedPlancheId = null, onSelectPlanche }: Garden3DSceneProps) {
   const { cx, cz, size } = React.useMemo(() => computeLayout(data, fond), [data, fond])
   const [hoverBed, setHoverBed] = React.useState<string | null>(null)
   const sun: [number, number, number] = [size * 0.55, size * 0.6, size * 0.62]
@@ -462,7 +465,7 @@ export default function Garden3DScene({ data, fond, autoRotate = false, showLabe
         <group position={[-cx, 0, -cz]}>
           {fond && <Fond fond={fond} />}
           {data.planches.map((p) => (
-            <Bed key={`b-${p.id}`} p={p} showLabels={showLabels} hovered={hoverBed === p.id} onHover={setHoverBed} />
+            <Bed key={`b-${p.id}`} p={p} showLabels={showLabels} hovered={hoverBed === p.id} selected={selectedPlancheId === p.id} onHover={setHoverBed} onSelect={(planche) => onSelectPlanche?.(planche)} />
           ))}
           {data.objets.map((o) => (
             <Objet key={`o-${o.id}`} o={o} />
