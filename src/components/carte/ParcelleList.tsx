@@ -24,6 +24,7 @@ interface ParcelleListProps {
   selectedId: string | null
   onSelect: (parcelle: ParcelleGeoData) => void
   onFlyTo: (parcelle: ParcelleGeoData) => void
+  className?: string
 }
 
 // Labels lisibles pour les usages
@@ -45,6 +46,7 @@ export default function ParcelleList({
   selectedId,
   onSelect,
   onFlyTo,
+  className = '',
 }: ParcelleListProps) {
   // Formater la surface en hectares
   const formatSurface = (surface: number | null | undefined): string => {
@@ -53,7 +55,7 @@ export default function ParcelleList({
   }
 
   return (
-    <div className="w-64 bg-white shadow-lg h-full flex flex-col border-r">
+    <div className={`w-64 bg-white shadow-lg h-full flex flex-col border-r ${className}`}>
       {/* En-tete */}
       <div className="p-4 border-b">
         <div className="flex items-center gap-2">
