@@ -57,6 +57,8 @@ interface Naissance {
   nombreFemelles: number | null
   poidsTotal: number | null
   pereIdentifiant: string | null
+  identifiantsProvisoires: string | null
+  identifiantsDefinitifs: string | null
   notes: string | null
   mereId: number | null
   lotId: number | null
@@ -592,7 +594,7 @@ function NaissancesSubTab() {
   const [editingNaissId, setEditingNaissId] = React.useState<number | null>(null)
 
   const EMPTY_NAISS_FORM = {
-    mereId: "", lotId: "", pereIdentifiant: "",
+    mereId: "", lotId: "", pereIdentifiant: "", identifiantsProvisoires: "", identifiantsDefinitifs: "",
     date: todayLocalISO(),
     nombreNes: "", nombreVivants: "",
     nombreMales: "", nombreFemelles: "",
@@ -611,6 +613,8 @@ function NaissancesSubTab() {
       mereId: n.mereId ? n.mereId.toString() : "",
       lotId: n.lotId ? n.lotId.toString() : "",
       pereIdentifiant: n.pereIdentifiant ?? "",
+      identifiantsProvisoires: n.identifiantsProvisoires ?? "",
+      identifiantsDefinitifs: n.identifiantsDefinitifs ?? "",
       date: n.date.split('T')[0],
       nombreNes: n.nombreNes.toString(),
       nombreVivants: n.nombreVivants.toString(),
@@ -678,6 +682,8 @@ function NaissancesSubTab() {
         mereId: toIntOrNull(formData.mereId),
         lotId: toIntOrNull(formData.lotId),
         pereIdentifiant: formData.pereIdentifiant?.trim() || null,
+        identifiantsProvisoires: formData.identifiantsProvisoires?.trim() || null,
+        identifiantsDefinitifs: formData.identifiantsDefinitifs?.trim() || null,
         date: formData.date || undefined,
         nombreNes: toIntOrNull(formData.nombreNes) ?? 0,
         nombreVivants: toIntOrNull(formData.nombreVivants) ?? 0,
@@ -867,6 +873,10 @@ function NaissancesSubTab() {
                   </Select>
                 </div>
               </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-2"><Label>Boucles provisoires</Label><Input value={formData.identifiantsProvisoires} onChange={(e) => setFormData(f => ({ ...f, identifiantsProvisoires: e.target.value }))} placeholder="Une ou plusieurs, séparées par des virgules" /></div>
+                <div className="space-y-2"><Label>Boucles définitives</Label><Input value={formData.identifiantsDefinitifs} onChange={(e) => setFormData(f => ({ ...f, identifiantsDefinitifs: e.target.value }))} placeholder="À compléter lors de la pose" /></div>
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Date *</Label>
@@ -936,6 +946,7 @@ function NaissancesSubTab() {
                   <TableHead className="text-right">Vivants</TableHead>
                   <TableHead className="text-right">M / F</TableHead>
                   <TableHead className="text-right">Poids</TableHead>
+                  <TableHead>Boucles</TableHead>
                   <TableHead>Notes</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
@@ -958,6 +969,7 @@ function NaissancesSubTab() {
                       }
                     </TableCell>
                     <TableCell className="text-right">{n.poidsTotal ? `${n.poidsTotal} kg` : '-'}</TableCell>
+                    <TableCell className="text-xs"><div>{n.identifiantsProvisoires ? `Prov. ${n.identifiantsProvisoires}` : '—'}</div>{n.identifiantsDefinitifs && <div>Déf. {n.identifiantsDefinitifs}</div>}</TableCell>
                     <TableCell className="text-muted-foreground text-sm max-w-[150px] truncate">{n.notes || '-'}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
@@ -972,7 +984,7 @@ function NaissancesSubTab() {
                   </TableRow>
                 ))}
                 {naissances.length === 0 && (
-                  <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">Aucune naissance enregistrée</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={11} className="text-center py-8 text-muted-foreground">Aucune naissance enregistrée</TableCell></TableRow>
                 )}
               </TableBody>
             </Table>

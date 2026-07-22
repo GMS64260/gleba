@@ -74,6 +74,9 @@ interface Animal {
   nExploitationOrigine: string | null
   prixAchat: number | null
   notes: string | null
+  mereId: number | null
+  pereId: number | null
+  pereIdentifiant: string | null
   especeAnimale: {
     id: string
     nom: string
@@ -178,6 +181,7 @@ function AnimauxSubTab() {
     dateNaissance: "", dateArrivee: todayLocalISO(),
     provenance: "", nExploitationOrigine: "",
     prixAchat: "", poidsActuel: "", notes: "",
+    mereId: "", pereId: "", pereIdentifiant: "",
     lotId: "", parcelleGeoId: "",
   }
   const [formData, setFormData] = React.useState(EMPTY_ANIMAL_FORM)
@@ -205,6 +209,9 @@ function AnimauxSubTab() {
       prixAchat: a.prixAchat ? a.prixAchat.toString() : "",
       poidsActuel: a.poidsActuel ? a.poidsActuel.toString() : "",
       notes: a.notes ?? "",
+      mereId: a.mereId ? String(a.mereId) : "",
+      pereId: a.pereId ? String(a.pereId) : "",
+      pereIdentifiant: a.pereIdentifiant ?? "",
       lotId: a.lot?.id ? String(a.lot.id) : "",
       parcelleGeoId: a.parcelleGeoId ?? "",
     })
@@ -306,6 +313,9 @@ function AnimauxSubTab() {
         dateNaissance: (formData as { dateNaissance?: string }).dateNaissance || null,
         lotId: formData.lotId ? parseInt(formData.lotId) : null,
         parcelleGeoId: formData.parcelleGeoId || null,
+        mereId: formData.mereId ? parseInt(formData.mereId) : null,
+        pereId: formData.pereId ? parseInt(formData.pereId) : null,
+        pereIdentifiant: formData.pereIdentifiant || null,
       }
       // Bug testeur 2026-05-31 — un nouvel animal est TOUJOURS créé actif. On
       // force le statut côté payload de création pour qu'aucune valeur résiduelle
@@ -554,6 +564,9 @@ function AnimauxSubTab() {
         <div className="text-sm text-muted-foreground ml-auto">
           {filteredAnimaux.length} animal(aux)
         </div>
+        <a href="/api/elevage/inventaire-cheptel" target="_blank" rel="noreferrer">
+          <Button variant="outline" size="sm" title="Inventaire complet des animaux présents"><Archive className="h-4 w-4 mr-1" />Inventaire complet</Button>
+        </a>
         <a
           href={`/api/elevage/registre-elevage?year=${new Date().getFullYear()}`}
           target="_blank"
@@ -691,6 +704,17 @@ function AnimauxSubTab() {
                   <Label>Poids (kg)</Label>
                   <Input type="number" step="0.1" value={formData.poidsActuel} onChange={(e) => setFormData(f => ({ ...f, poidsActuel: e.target.value }))} />
                 </div>
+              </div>
+              <div className="space-y-3 rounded-md border p-3">
+                <div>
+                  <Label>Génétique / filiation</Label>
+                  <p className="text-xs text-muted-foreground">À renseigner aussi lors d’un achat si les parents sont connus.</p>
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="space-y-2"><Label>Mère dans le cheptel</Label><Select value={formData.mereId || "__none__"} onValueChange={(v) => setFormData(f => ({ ...f, mereId: v === "__none__" ? "" : v }))}><SelectTrigger><SelectValue placeholder="Non renseignée" /></SelectTrigger><SelectContent><SelectItem value="__none__">Non renseignée</SelectItem>{animaux.filter(a => a.id !== editingAnimalId && a.sexe === "femelle" && (!formData.especeAnimaleId || a.especeAnimale.id === formData.especeAnimaleId)).map(a => <SelectItem key={a.id} value={String(a.id)}>{a.nom || a.identifiant || `#${a.id}`}</SelectItem>)}</SelectContent></Select></div>
+                  <div className="space-y-2"><Label>Père dans le cheptel</Label><Select value={formData.pereId || "__none__"} onValueChange={(v) => setFormData(f => ({ ...f, pereId: v === "__none__" ? "" : v }))}><SelectTrigger><SelectValue placeholder="Non renseigné" /></SelectTrigger><SelectContent><SelectItem value="__none__">Non renseigné</SelectItem>{animaux.filter(a => a.id !== editingAnimalId && a.sexe === "male" && (!formData.especeAnimaleId || a.especeAnimale.id === formData.especeAnimaleId)).map(a => <SelectItem key={a.id} value={String(a.id)}>{a.nom || a.identifiant || `#${a.id}`}</SelectItem>)}</SelectContent></Select></div>
+                </div>
+                <div className="space-y-2"><Label>Père externe / référence génétique</Label><Input value={formData.pereIdentifiant} onChange={(e) => setFormData(f => ({ ...f, pereIdentifiant: e.target.value }))} placeholder="N° de boucle, nom, centre d’insémination…" /></div>
               </div>
               {/* Feedback éleveur 2026-07-21 — rattachement de l'animal à un lot
                   directement depuis sa fiche (il n'y avait aucun moyen de le faire). */}
