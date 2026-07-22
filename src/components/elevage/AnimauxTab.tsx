@@ -62,6 +62,9 @@ interface Animal {
   typeIdentifiant: string | null
   nom: string | null
   race: string | null
+  raceAnimaleId: string | null
+  raceAnimale: { id: string; nom: string } | null
+  orientationProduction: string | null
   sexe: string | null
   dateNaissance: string | null
   dateArrivee: string | null
@@ -113,6 +116,8 @@ interface EspeceAnimale {
   type: string
   production?: string | null
 }
+
+interface RaceAnimaleOption { id: string; nom: string; especeAnimaleId: string }
 
 const STATUT_COLORS: Record<string, string> = {
   actif: "bg-green-100 text-green-800",
@@ -169,7 +174,7 @@ function AnimauxSubTab() {
 
   const EMPTY_ANIMAL_FORM = {
     especeAnimaleId: "", identifiant: "", typeIdentifiant: "",
-    nom: "", race: "", sexe: "",
+    nom: "", raceAnimaleId: "", raceHistorique: "", orientationProduction: "", sexe: "",
     dateNaissance: "", dateArrivee: todayLocalISO(),
     provenance: "", nExploitationOrigine: "",
     prixAchat: "", poidsActuel: "", notes: "",
@@ -189,7 +194,9 @@ function AnimauxSubTab() {
       identifiant: a.identifiant ?? "",
       typeIdentifiant: a.typeIdentifiant ?? "",
       nom: a.nom ?? "",
-      race: a.race ?? "",
+      raceAnimaleId: a.raceAnimaleId ?? (a.race ? "__legacy__" : ""),
+      raceHistorique: a.raceAnimaleId ? "" : (a.race ?? ""),
+      orientationProduction: a.orientationProduction ?? "",
       sexe: a.sexe ?? "",
       dateNaissance: a.dateNaissance ? a.dateNaissance.split('T')[0] : "",
       dateArrivee: a.dateArrivee ? a.dateArrivee.split('T')[0] : todayLocalISO(),
@@ -218,6 +225,7 @@ function AnimauxSubTab() {
   // éleveur 2026-07-21 (Cyril) : il n'existait aucune passerelle animal → lot
   // dans l'UI (ni sur la fiche animal, ni sur la page du lot).
   const [lotsActifs, setLotsActifs] = React.useState<Array<{ id: number; nom: string | null; especeAnimaleId: string }>>([])
+  const [races, setRaces] = React.useState<RaceAnimaleOption[]>([])
   // Parcelles géoréférencées, pour situer un animal sur la carte (cartographie
   // élevage 2026-07-21 : rattachement direct animal → parcelle, hors lot).
   const [parcellesList, setParcellesList] = React.useState<Array<{ id: string; nom: string }>>([])
@@ -227,11 +235,12 @@ function AnimauxSubTab() {
       let url = '/api/elevage/animaux?'
       if (filterStatut !== 'all') url += `statut=${filterStatut}&`
 
-      const [animauxRes, especesRes, lotsRes, parcellesRes] = await Promise.all([
+      const [animauxRes, especesRes, lotsRes, parcellesRes, racesRes] = await Promise.all([
         fetch(url),
         fetch('/api/elevage/especes-animales'),
         fetch('/api/elevage/lots'),
         fetch('/api/carte'),
+        fetch('/api/elevage/races'),
       ])
 
       if (animauxRes.ok) setAnimaux((await animauxRes.json()).data)
@@ -247,6 +256,7 @@ function AnimauxSubTab() {
         const pj = await parcellesRes.json()
         setParcellesList((Array.isArray(pj) ? pj : []).map((p: { id: string; nom: string }) => ({ id: p.id, nom: p.nom })))
       }
+      if (racesRes.ok) setRaces((await racesRes.json()).data ?? [])
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les données" })
     } finally {
@@ -286,7 +296,8 @@ function AnimauxSubTab() {
         // texte vide est explicitement `null` (évite de stocker race='' qui
         // était lue comme « race non renseignée » alors que la saisie pouvait
         // être perdue en amont).
-        race: formData.race || null,
+        raceAnimaleId: formData.raceAnimaleId === "__legacy__" ? undefined : (formData.raceAnimaleId || null),
+        orientationProduction: formData.orientationProduction || null,
         sexe: formData.sexe || null,
         provenance: formData.provenance || null,
         nExploitationOrigine: formData.nExploitationOrigine || null,
@@ -580,20 +591,18 @@ function AnimauxSubTab() {
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label>Type d&apos;animal / production *</Label>
-                <Select value={formData.especeAnimaleId} onValueChange={(v) => setFormData(f => ({ ...f, especeAnimaleId: v }))}>
+                <Label>Profil animal *</Label>
+                <Select value={formData.especeAnimaleId} onValueChange={(v) => setFormData(f => ({ ...f, especeAnimaleId: v, raceAnimaleId: "" }))}>
                   <SelectTrigger><SelectValue placeholder="— Sélectionner une espèce —" /></SelectTrigger>
                   <SelectContent>
                     {especes.map(e => (
                       <SelectItem key={e.id} value={e.id}>
-                        {e.nom}{e.production ? ` — ${e.production}` : ""}
+                        {e.nom}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-muted-foreground">
-                  Choisissez ici l&apos;orientation du référentiel (lait, viande, laine…). La race précise se renseigne séparément ci-dessous.
-                </p>
+                <p className="text-xs text-muted-foreground">Catégorie de cheptel utilisée par les lots et les règles métier.</p>
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div className="space-y-2 sm:col-span-2">
@@ -626,11 +635,31 @@ function AnimauxSubTab() {
                   <Input value={formData.nExploitationOrigine} onChange={(e) => setFormData(f => ({ ...f, nExploitationOrigine: e.target.value }))} placeholder="(optionnel)" />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label>Race précise</Label>
-                  <Input value={formData.race} onChange={(e) => setFormData(f => ({ ...f, race: e.target.value }))} />
+                  <Label>Orientation de production</Label>
+                  <Select value={formData.orientationProduction || "__none__"} onValueChange={(v) => setFormData(f => ({ ...f, orientationProduction: v === "__none__" ? "" : v }))}>
+                    <SelectTrigger><SelectValue placeholder="À renseigner" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">À ressaisir / non renseignée</SelectItem>
+                      <SelectItem value="lait">Lait</SelectItem><SelectItem value="viande">Viande</SelectItem>
+                      <SelectItem value="laine">Laine</SelectItem><SelectItem value="mixte">Mixte</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
+                <div className="space-y-2">
+                  <Label>Race</Label>
+                  <Select value={formData.raceAnimaleId || "__none__"} onValueChange={(v) => setFormData(f => ({ ...f, raceAnimaleId: v === "__none__" ? "" : v }))}>
+                    <SelectTrigger><SelectValue placeholder="Race non renseignée" /></SelectTrigger>
+                    <SelectContent>
+                      {formData.raceAnimaleId === "__legacy__" && <SelectItem value="__legacy__">Historique à confirmer : {formData.raceHistorique}</SelectItem>}
+                      <SelectItem value="__none__">Race non renseignée</SelectItem>
+                      {races.filter((race) => race.especeAnimaleId === formData.especeAnimaleId).map((race) => <SelectItem key={race.id} value={race.id}>{race.nom}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Sexe</Label>
                   <Select value={formData.sexe} onValueChange={(v) => setFormData(f => ({ ...f, sexe: v }))}>

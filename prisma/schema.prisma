@@ -100,6 +100,7 @@ model User {
   analysesSol   AnalyseSol[]
   notes         Note[]
   arbres        Arbre[]
+  lotsArbres    LotArbres[]
 
   // Relations module arbres
   recoltesArbres    RecolteArbre[]
@@ -1062,6 +1063,7 @@ model ParcelleGeo {
   planches        Planche[]
   objetsJardin    ObjetJardin[]
   arbres          Arbre[]
+  lotsArbres      LotArbres[]
   lotsAnimaux     LotAnimaux[]
   animaux         Animal[]
   campagnesPlantation CampagnePlantation[]
@@ -1419,6 +1421,27 @@ model Arbre {
   @@index([zoneId])
   @@index([porteGreffeId])
   @@map("arbres")
+}
+
+/// Groupe agrégé d'arbres suivi par effectif, sans fiches individuelles.
+model LotArbres {
+  id              Int          @id @default(autoincrement())
+  userId          String       @map("user_id")
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  nom             String       @map("nom")
+  espece           String       @map("espece")
+  variete         String?      @map("variete")
+  effectif        Int          @map("effectif")
+  parcelleGeoId   String       @map("parcelle_geo_id")
+  parcelleGeo     ParcelleGeo  @relation(fields: [parcelleGeoId], references: [id], onDelete: Restrict)
+  datePlantation  DateTime?    @map("date_plantation")
+  notes           String?      @map("notes")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@index([parcelleGeoId])
+  @@map("lots_arbres")
 }
 
 // ============================================================
@@ -1972,6 +1995,7 @@ model Animal {
   race            String?        @map("race") // Race/variété (texte libre, rétro-compat)
   raceAnimaleId   String?        @map("race_animale_id") // FK référentiel RaceAnimale
   raceAnimale     RaceAnimale?   @relation(fields: [raceAnimaleId], references: [id], onDelete: SetNull)
+  orientationProduction String?  @map("orientation_production") // lait|viande|laine|mixte ; null = historique à ressaisir
   sexe            String?        @map("sexe") // "male", "femelle", "inconnu"
   dateNaissance   DateTime?      @map("date_naissance")
   dateArrivee     DateTime?      @map("date_arrivee")

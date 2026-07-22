@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   isAssignableAnimalLot: vi.fn(),
   especeFindUnique: vi.fn(),
   especeFindFirst: vi.fn(),
+  raceFindFirst: vi.fn(),
   animalFindFirst: vi.fn(),
   animalCreate: vi.fn(),
   animalUpdate: vi.fn(),
@@ -24,6 +25,7 @@ vi.mock('@/lib/prisma', () => ({
       animal: { create: mocks.animalCreate, update: mocks.animalUpdate },
     }),
     especeAnimale: { findUnique: mocks.especeFindUnique, findFirst: mocks.especeFindFirst },
+    raceAnimale: { findFirst: mocks.raceFindFirst },
     animal: {
       findFirst: mocks.animalFindFirst,
       create: mocks.animalCreate,
@@ -46,6 +48,7 @@ describe('affectation d’un lot via /api/elevage/animaux', () => {
     mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: 'user-1' } } })
     mocks.especeFindUnique.mockResolvedValue({ id: 'ovin' })
     mocks.especeFindFirst.mockResolvedValue({ id: 'brebis_solognote' })
+    mocks.raceFindFirst.mockResolvedValue({ id: 'race-lacaune', nom: 'Lacaune' })
     mocks.animalFindFirst.mockResolvedValue({ id: 7, especeAnimaleId: 'ovin' })
     mocks.animalCreate.mockResolvedValue({ id: 7, lotId: 42, prixAchat: null, createdAt: new Date(), dateArrivee: new Date() })
     mocks.animalUpdate.mockImplementation(async ({ data }) => ({ id: 7, lotId: data.lotId ?? 42, prixAchat: null }))
@@ -103,5 +106,27 @@ describe('affectation d’un lot via /api/elevage/animaux', () => {
     expect(mocks.animalUpdate).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ especeAnimaleId: 'brebis_solognote' }),
     }))
+  })
+
+  it('persiste séparément orientation et race validée', async () => {
+    const response = await PATCH(request('PATCH', { id: 7, orientationProduction: 'lait', raceAnimaleId: 'race-lacaune' }))
+    expect(response.status).toBe(200)
+    expect(mocks.raceFindFirst).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ especeAnimaleId: 'ovin' }) }))
+    expect(mocks.animalUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ orientationProduction: 'lait', raceAnimaleId: 'race-lacaune', race: 'Lacaune' }),
+    }))
+  })
+
+  it('refuse une orientation inconnue avant écriture', async () => {
+    const response = await PATCH(request('PATCH', { id: 7, orientationProduction: 'oeufs' }))
+    expect(response.status).toBe(400)
+    expect(mocks.animalUpdate).not.toHaveBeenCalled()
+  })
+
+  it('ne remappe ni n’efface une race historique quand le champ est omis', async () => {
+    await PATCH(request('PATCH', { id: 7, orientationProduction: 'laine' }))
+    const data = mocks.animalUpdate.mock.calls.at(-1)?.[0]?.data
+    expect(data).not.toHaveProperty('raceAnimaleId')
+    expect(data).not.toHaveProperty('race')
   })
 })

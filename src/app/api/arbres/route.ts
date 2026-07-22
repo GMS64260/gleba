@@ -159,6 +159,19 @@ export async function POST(request: NextRequest) {
       if (!parcelle) {
         return NextResponse.json({ error: "Parcelle non trouvée" }, { status: 404 })
       }
+      if (body.espece && await prisma.lotArbres.findFirst({
+        where: {
+          userId: session!.user.id,
+          parcelleGeoId: body.parcelleGeoId,
+          espece: { equals: String(body.espece).trim(), mode: "insensitive" },
+        },
+        select: { id: true },
+      })) {
+        return NextResponse.json(
+          { error: "Cette espèce est déjà suivie en lot agrégé sur la parcelle ; choisissez un seul mode de suivi" },
+          { status: 409 }
+        )
+      }
     }
 
     const arbre = await prisma.arbre.create({

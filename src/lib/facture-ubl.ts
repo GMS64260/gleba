@@ -37,6 +37,7 @@ export interface UblInvoiceData {
   paymentReference?: string | null
   paymentIban?: string | null
   notes?: string | null
+  buyerReference?: string | null
 }
 
 const UNIT_CODES: Record<string, string> = {
@@ -66,6 +67,40 @@ function unitCode(value?: string | null): string {
   return UNIT_CODES[(value || '').trim().toLocaleLowerCase('fr-FR')] || 'C62'
 }
 
+export class UblValidationError extends Error {
+  constructor(public readonly issues: string[]) {
+    super(issues.join(' ; '))
+  }
+}
+
+export function validateUblInvoice(invoice: UblInvoiceData): string[] {
+  const issues: string[] = []
+  if (!invoice.number.trim()) issues.push('Numéro de facture manquant')
+  if (!invoice.supplier.name?.trim()) issues.push('Raison sociale émetteur manquante')
+  if (!invoice.supplier.siret?.replace(/\D/g, '').match(/^\d{14}$/)) issues.push('SIRET émetteur invalide (14 chiffres requis)')
+  if (!invoice.customer.name?.trim()) issues.push('Nom du client manquant')
+  for (const [label, party] of [['émetteur', invoice.supplier], ['client', invoice.customer]] as const) {
+    if (!party.address?.street?.trim() || !party.address.city?.trim() || !party.address.postalCode?.trim()) issues.push(`Adresse complète ${label} manquante`)
+    const country = (party.address?.country || 'FR').trim().toUpperCase()
+    if (country !== 'FRANCE' && !/^[A-Z]{2}$/.test(country)) issues.push(`Code pays ${label} invalide (ISO alpha-2 requis)`)
+  }
+  if (!invoice.buyerReference?.trim()) issues.push('Référence acheteur obligatoire manquante')
+  if (invoice.lines.length === 0) issues.push('La facture ne contient aucune ligne')
+  for (const [index, line] of invoice.lines.entries()) {
+    if (!line.description.trim()) issues.push(`Description manquante ligne ${index + 1}`)
+    if (!Number.isFinite(line.quantity) || line.quantity <= 0) issues.push(`Quantité invalide ligne ${index + 1}`)
+    if (!Number.isFinite(line.netAmount) || !Number.isFinite(line.unitPrice) || !Number.isFinite(line.vatRate)) issues.push(`Montant ou TVA invalide ligne ${index + 1}`)
+    if (!UNIT_CODES[(line.unit || '').trim().toLocaleLowerCase('fr-FR')]) issues.push(`Unité non reconnue ligne ${index + 1}`)
+  }
+  const round = (value: number) => Math.round(value * 100) / 100
+  const net = round(invoice.lines.reduce((sum, line) => sum + line.netAmount, 0))
+  const vat = round(invoice.lines.reduce((sum, line) => sum + line.netAmount * line.vatRate / 100, 0))
+  if (net !== round(invoice.totalNet)) issues.push('Le total HT ne correspond pas aux lignes')
+  if (vat !== round(invoice.totalVat)) issues.push('Le total TVA ne correspond pas aux lignes')
+  if (round(invoice.totalNet + invoice.totalVat) !== round(invoice.totalGross)) issues.push('Le total TTC ne correspond pas à HT + TVA')
+  return issues
+}
+
 function partyXml(tag: 'AccountingSupplierParty' | 'AccountingCustomerParty', party: UblParty): string {
   const address = party.address
   const identifier = party.siret
@@ -84,6 +119,8 @@ function partyXml(tag: 'AccountingSupplierParty' | 'AccountingCustomerParty', pa
 
 /** UBL 2.1 / EN16931 : fichier structuré à faire valider et transmettre par une PA. */
 export function buildUblInvoice(invoice: UblInvoiceData): string {
+  const issues = validateUblInvoice(invoice)
+  if (issues.length) throw new UblValidationError(issues)
   const currency = invoice.currency || 'EUR'
   const taxByRate = new Map<number, { net: number; vat: number }>()
   for (const line of invoice.lines) {
@@ -101,5 +138,5 @@ export function buildUblInvoice(invoice: UblInvoiceData): string {
   const paymentMeans = invoice.paymentIban
     ? `<cac:PaymentMeans><cbc:PaymentMeansCode>58</cbc:PaymentMeansCode>${invoice.paymentReference ? `<cbc:PaymentID>${xml(invoice.paymentReference)}</cbc:PaymentID>` : ''}<cac:PayeeFinancialAccount><cbc:ID>${xml(invoice.paymentIban.replace(/\s/g, ''))}</cbc:ID></cac:PayeeFinancialAccount></cac:PaymentMeans>`
     : `<cac:PaymentMeans><cbc:PaymentMeansCode>1</cbc:PaymentMeansCode>${invoice.paymentReference ? `<cbc:PaymentID>${xml(invoice.paymentReference)}</cbc:PaymentID>` : ''}</cac:PaymentMeans>`
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"><cbc:CustomizationID>urn:cen.eu:en16931:2017</cbc:CustomizationID><cbc:ID>${xml(invoice.number)}</cbc:ID><cbc:IssueDate>${date(invoice.issueDate)}</cbc:IssueDate>${invoice.dueDate ? `<cbc:DueDate>${date(invoice.dueDate)}</cbc:DueDate>` : ''}<cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>${invoice.notes ? `<cbc:Note>${xml(invoice.notes)}</cbc:Note>` : ''}<cbc:DocumentCurrencyCode>${xml(currency)}</cbc:DocumentCurrencyCode>${partyXml('AccountingSupplierParty', invoice.supplier)}${partyXml('AccountingCustomerParty', invoice.customer)}${paymentMeans}<cac:TaxTotal><cbc:TaxAmount currencyID="${xml(currency)}">${amount(invoice.totalVat)}</cbc:TaxAmount>${taxSubtotals}</cac:TaxTotal><cac:LegalMonetaryTotal><cbc:LineExtensionAmount currencyID="${xml(currency)}">${amount(invoice.totalNet)}</cbc:LineExtensionAmount><cbc:TaxExclusiveAmount currencyID="${xml(currency)}">${amount(invoice.totalNet)}</cbc:TaxExclusiveAmount><cbc:TaxInclusiveAmount currencyID="${xml(currency)}">${amount(invoice.totalGross)}</cbc:TaxInclusiveAmount><cbc:PayableAmount currencyID="${xml(currency)}">${amount(invoice.totalGross)}</cbc:PayableAmount></cac:LegalMonetaryTotal>${lines}</Invoice>`
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"><cbc:CustomizationID>urn:cen.eu:en16931:2017</cbc:CustomizationID><cbc:ID>${xml(invoice.number)}</cbc:ID><cbc:IssueDate>${date(invoice.issueDate)}</cbc:IssueDate>${invoice.dueDate ? `<cbc:DueDate>${date(invoice.dueDate)}</cbc:DueDate>` : ''}<cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>${invoice.notes ? `<cbc:Note>${xml(invoice.notes)}</cbc:Note>` : ''}<cbc:DocumentCurrencyCode>${xml(currency)}</cbc:DocumentCurrencyCode><cbc:BuyerReference>${xml(invoice.buyerReference)}</cbc:BuyerReference>${partyXml('AccountingSupplierParty', invoice.supplier)}${partyXml('AccountingCustomerParty', invoice.customer)}${paymentMeans}<cac:TaxTotal><cbc:TaxAmount currencyID="${xml(currency)}">${amount(invoice.totalVat)}</cbc:TaxAmount>${taxSubtotals}</cac:TaxTotal><cac:LegalMonetaryTotal><cbc:LineExtensionAmount currencyID="${xml(currency)}">${amount(invoice.totalNet)}</cbc:LineExtensionAmount><cbc:TaxExclusiveAmount currencyID="${xml(currency)}">${amount(invoice.totalNet)}</cbc:TaxExclusiveAmount><cbc:TaxInclusiveAmount currencyID="${xml(currency)}">${amount(invoice.totalGross)}</cbc:TaxInclusiveAmount><cbc:PayableAmount currencyID="${xml(currency)}">${amount(invoice.totalGross)}</cbc:PayableAmount></cac:LegalMonetaryTotal>${lines}</Invoice>`
 }

@@ -11,6 +11,7 @@ import prisma from '@/lib/prisma'
 import { createDepenseFromAchatAnimal, deleteAutoEntry } from '@/lib/auto-compta'
 import { isPlausibleAnimalDate } from '@/lib/validations/elevage-animal'
 import { enregistrerChangementLot, isAssignableAnimalLot, isOwnedParcelle } from '@/lib/elevage/animal-lot'
+import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 
 export async function GET(
   request: NextRequest,
@@ -164,6 +165,8 @@ export async function PUT(
       identifiant,
       nom,
       race,
+      raceAnimaleId,
+      orientationProduction,
       sexe,
       dateNaissance,
       dateArrivee,
@@ -181,6 +184,16 @@ export async function PUT(
       notes,
       parcelleGeoId,
     } = body
+
+    const especeCible = especeAnimaleId ?? existing.especeAnimaleId
+    if (orientationProduction !== undefined && orientationProduction !== null && !['lait', 'viande', 'laine', 'mixte'].includes(orientationProduction)) {
+      return NextResponse.json({ error: 'Orientation de production invalide' }, { status: 400 })
+    }
+    const raceRef = raceAnimaleId ? await prisma.raceAnimale.findFirst({
+      where: { id: raceAnimaleId, especeAnimaleId: especeCible, AND: [visibiliteReferentiel(session.user.id)] },
+      select: { id: true, nom: true },
+    }) : null
+    if (raceAnimaleId && !raceRef) return NextResponse.json({ error: 'Race incompatible ou inaccessible' }, { status: 400 })
 
     // On ne (re)valide le lot que s'il CHANGE : conserver un lot inchangé
     // (même devenu inactif) ne doit pas bloquer l'édition de l'animal.
@@ -226,7 +239,9 @@ export async function PUT(
         lotId: lotId !== undefined ? (lotId ? parseInt(lotId) : null) : undefined,
         identifiant,
         nom,
-        race,
+        race: raceAnimaleId !== undefined ? (raceRef?.nom ?? null) : race,
+        raceAnimaleId: raceAnimaleId !== undefined ? (raceRef?.id ?? null) : undefined,
+        orientationProduction: orientationProduction !== undefined ? (orientationProduction || null) : undefined,
         sexe,
         dateNaissance: dateNaissance ? new Date(dateNaissance) : undefined,
         dateArrivee: dateArrivee ? new Date(dateArrivee) : undefined,

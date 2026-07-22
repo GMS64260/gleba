@@ -25,6 +25,8 @@ export const animalSchema = z
     typeIdentifiant: z.enum(TYPES_IDENTIFIANT).nullable().optional(),
     nom: z.string().max(100).nullable().optional(),
     race: z.string().max(100).nullable().optional(),
+    raceAnimaleId: z.string().nullable().optional(),
+    orientationProduction: z.enum(['lait', 'viande', 'laine', 'mixte']).nullable().optional(),
     sexe: z.string().max(20).nullable().optional(),
     dateNaissance: z.coerce.date().nullable().optional(),
     dateArrivee: z.coerce.date().optional(),

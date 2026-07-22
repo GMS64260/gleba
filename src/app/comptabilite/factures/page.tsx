@@ -238,7 +238,8 @@ export default function FacturesPage() {
       const res = await fetch(`/api/comptabilite/factures/${factureId}/ubl`, { credentials: "include" })
       if (!res.ok) {
         const payload = await res.json().catch(() => ({}))
-        toast({ variant: "destructive", title: "Export UBL impossible", description: payload.error || `Erreur ${res.status}` })
+        const details = Array.isArray(payload.details) ? payload.details.join(" · ") : ""
+        toast({ variant: "destructive", title: "Export UBL impossible", description: [payload.error || `Erreur ${res.status}`, details].filter(Boolean).join(" — ") })
         return
       }
       const url = URL.createObjectURL(await res.blob())
@@ -644,6 +645,9 @@ export default function FacturesPage() {
 
           {/* Onglet Factures émises */}
           <TabsContent value="emises">
+            <p className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+              L’export UBL produit un fichier structuré contrôlé avant téléchargement. Il ne constitue pas une transmission réglementaire : l’envoi doit passer par une plateforme agréée.
+            </p>
             <Card>
               <CardHeader>
                 <CardTitle>Factures émises {new Date().getFullYear()}</CardTitle>

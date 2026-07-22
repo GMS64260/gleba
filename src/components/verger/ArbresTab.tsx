@@ -97,6 +97,20 @@ interface ParcelleVerger {
   id: string
   nom: string
   usage?: string | null
+  couches?: string[]
+}
+
+const estParcelleVerger = (parcelle: ParcelleVerger) =>
+  parcelle.couches?.includes("VERGER") || parcelle.usage?.split(",").some((usage) => usage.trim().toLowerCase() === "verger")
+
+interface LotArbres {
+  id: number
+  nom: string
+  espece: string
+  variete: string | null
+  effectif: number
+  parcelleGeoId: string
+  parcelleGeo: { id: string; nom: string }
 }
 
 const CONDUITES_ARBRE = ["Gobelet", "Axe central", "Palmette", "Espalier", "Libre"] as const
@@ -234,6 +248,8 @@ export function ArbresTab() {
   const [varietesRef, setVarietesRef] = React.useState<VarieteRef[]>([])
   const [fournisseursRef, setFournisseursRef] = React.useState<string[]>([])
   const [parcelles, setParcelles] = React.useState<ParcelleVerger[]>([])
+  const [lotsArbres, setLotsArbres] = React.useState<LotArbres[]>([])
+  const [lotDrafts, setLotDrafts] = React.useState<Record<number, { effectif: string; parcelleGeoId: string }>>({})
   // Zone climatique de l'utilisateur (référentiel géographique) : sert à
   // avertir quand on plante un fruitier à besoin de froid en climat tropical.
   const [userZone, setUserZone] = React.useState<ZoneClimat | null>(null)
@@ -299,11 +315,13 @@ export function ArbresTab() {
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
     try {
-      const response = await fetch("/api/arbres")
-      if (!response.ok) throw new Error("Erreur")
-      const items = await response.json()
+      const [response, lotsResponse] = await Promise.all([fetch("/api/arbres"), fetch("/api/arbres/lots")])
+      if (!response.ok || !lotsResponse.ok) throw new Error("Erreur")
+      const [items, lots] = await Promise.all([response.json(), lotsResponse.json()])
       setData(items)
       setFilteredData(items)
+      setLotsArbres(lots)
+      setLotDrafts(Object.fromEntries((lots as LotArbres[]).map((lot) => [lot.id, { effectif: String(lot.effectif), parcelleGeoId: lot.parcelleGeoId }])))
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les arbres" })
     } finally {
@@ -342,7 +360,7 @@ export function ArbresTab() {
         .map((f: any) => f.id)
         .filter(Boolean)
       setFournisseursRef(fournisseurs)
-      setParcelles((Array.isArray(parcellesRes) ? parcellesRes : []).map((p: ParcelleVerger) => ({ id: p.id, nom: p.nom, usage: p.usage })))
+      setParcelles((Array.isArray(parcellesRes) ? parcellesRes : []).map((p: ParcelleVerger) => ({ id: p.id, nom: p.nom, usage: p.usage, couches: p.couches ?? [] })))
     })
   }, [])
 
@@ -514,31 +532,20 @@ export function ArbresTab() {
 
     try {
       if (batchMode) {
-        // PROMPT 10 — Création en lot : N arbres identiques, suffixés -01..-NN
         const n = parseInt(batchCount)
-        const pad = n >= 100 ? 3 : 2
-        let okCount = 0
-        let calendrierCount = 0
-        for (let i = 1; i <= n; i++) {
-          const suffix = String(i).padStart(pad, "0")
-          const nom = `${batchPrefix.trim()}-${suffix}`
-          const res = await fetch("/api/arbres", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(buildArbrePayload(nom)),
-          })
-          if (res.ok) {
-            const created = await res.json()
-            okCount += 1
-            if (created.calendrierGenere) calendrierCount += 1
-          }
+        const res = await fetch("/api/arbres/lots", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ nom: batchPrefix.trim(), espece: newArbre.espece, variete: newArbre.variete, effectif: n, parcelleGeoId: newArbre.parcelleGeoId, datePlantation: newArbre.datePlantation }),
+        })
+        const payload = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          toast({ title: "Création du lot impossible", description: payload.error, variant: "destructive" })
+          return
         }
         setShowDialog(false)
         resetForm()
-        toast({
-          title: `${okCount}/${n} arbres créés`,
-          description: calendrierCount > 0 ? `${calendrierCount} calendriers d'entretien générés` : undefined,
-        })
+        toast({ title: `Lot agrégé créé — ${n} arbres`, description: "Aucune fiche d’arbre individuelle n’a été générée." })
         fetchData()
         return
       }
@@ -655,6 +662,33 @@ export function ArbresTab() {
         searchPlaceholder="Rechercher un arbre..."
         emptyMessage="Aucun arbre trouvé."
       />
+
+      {lotsArbres.length > 0 && (
+        <section className="space-y-3 rounded-xl border border-emerald-200 bg-emerald-50/40 p-4" aria-label="Lots d’arbres agrégés">
+          <div><h3 className="font-semibold text-emerald-950">Lots agrégés</h3><p className="text-xs text-emerald-800">Effectifs suivis sans créer de fiches individuelles.</p></div>
+          <div className="grid gap-3 md:grid-cols-2">
+            {lotsArbres.map((lot) => {
+              const draft = lotDrafts[lot.id] ?? { effectif: String(lot.effectif), parcelleGeoId: lot.parcelleGeoId }
+              return <div key={lot.id} className="space-y-2 rounded-lg border bg-white p-3">
+                <p className="font-medium">{lot.nom} · {lot.espece}{lot.variete ? ` ${lot.variete}` : ""}</p>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <Input aria-label={`Effectif ${lot.nom}`} type="number" min="1" step="1" value={draft.effectif} onChange={(e) => setLotDrafts((all) => ({ ...all, [lot.id]: { ...draft, effectif: e.target.value } }))} />
+                  <Select value={draft.parcelleGeoId} onValueChange={(value) => setLotDrafts((all) => ({ ...all, [lot.id]: { ...draft, parcelleGeoId: value } }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>{parcelles.filter(estParcelleVerger).map((p) => <SelectItem key={p.id} value={p.id}>{p.nom}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <Button size="sm" variant="outline" onClick={async () => {
+                  const res = await fetch("/api/arbres/lots", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: lot.id, effectif: Number(draft.effectif), parcelleGeoId: draft.parcelleGeoId }) })
+                  const payload = await res.json().catch(() => ({}))
+                  if (!res.ok) return toast({ title: "Modification impossible", description: payload.error, variant: "destructive" })
+                  toast({ title: "Lot mis à jour" }); fetchData()
+                }}>Enregistrer le lot</Button>
+              </div>
+            })}
+          </div>
+        </section>
+      )}
 
       {/* Confirmation suppression avec dépendances + alternative d'archivage
           (bug feedback testeur 2026-05-25 cmplk9y7q — la suppression cascade
@@ -983,7 +1017,7 @@ export function ArbresTab() {
                 <SelectTrigger><SelectValue placeholder="Aucune parcelle" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none__">Aucune parcelle</SelectItem>
-                  {parcelles.map((p) => (
+                  {parcelles.filter(estParcelleVerger).map((p) => (
                     <SelectItem key={p.id} value={p.id}>
                       {p.nom}{p.usage ? ` — ${p.usage}` : ""}
                     </SelectItem>
@@ -991,7 +1025,7 @@ export function ArbresTab() {
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                En création multiple, les {batchCount || "N"} arbres seront tous rattachés à cette parcelle.
+                En mode lot agrégé, cet effectif sera rattaché à la parcelle sans créer d’arbres individuels.
               </p>
             </div>
 
