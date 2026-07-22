@@ -18,6 +18,8 @@ const TYPES_SOUS_ABRI = ['Serre', 'Tunnel', 'Châssis', 'Chassis']
 export interface PluviometriePlancheResponse {
   plancheId: string
   plancheNom: string
+  parcelleId: string | null
+  parcelleNom: string | null
   typePlanche: string | null
   sousAbri: boolean
   pluviometrie: {
@@ -53,6 +55,8 @@ export async function GET(request: NextRequest) {
         type: true,
         parcelleGeo: {
           select: {
+            id: true,
+            nom: true,
             centroidLat: true,
             centroidLng: true,
           },
@@ -71,31 +75,26 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         plancheId: planche.id,
         plancheNom: planche.nom,
+        parcelleId: planche.parcelleGeo?.id ?? null,
+        parcelleNom: planche.parcelleGeo?.nom ?? null,
         typePlanche: planche.type,
         sousAbri: true,
         pluviometrie: null,
       } satisfies PluviometriePlancheResponse)
     }
 
-    // Obtenir les coordonnées GPS
-    let lat = planche.parcelleGeo?.centroidLat
-    let lng = planche.parcelleGeo?.centroidLng
-
-    // Fallback : première parcelle cadastrale de l'utilisateur
-    if (!lat || !lng) {
-      const parcelleFallback = await prisma.parcelleGeo.findFirst({
-        where: { userId, centroidLat: { not: null }, centroidLng: { not: null } },
-        select: { centroidLat: true, centroidLng: true },
-        orderBy: { createdAt: 'desc' },
-      })
-      lat = parcelleFallback?.centroidLat ?? null
-      lng = parcelleFallback?.centroidLng ?? null
-    }
+    // La pluie est une donnée de la parcelle liée à la planche. Ne jamais
+    // emprunter les coordonnées d'une autre parcelle : cela attribuerait un
+    // contexte pluviométrique trompeur à la sélection.
+    const lat = planche.parcelleGeo?.centroidLat
+    const lng = planche.parcelleGeo?.centroidLng
 
     if (!lat || !lng) {
       return NextResponse.json({
         plancheId: planche.id,
         plancheNom: planche.nom,
+        parcelleId: planche.parcelleGeo?.id ?? null,
+        parcelleNom: planche.parcelleGeo?.nom ?? null,
         typePlanche: planche.type,
         sousAbri: false,
         pluviometrie: null,
@@ -163,6 +162,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       plancheId: planche.id,
       plancheNom: planche.nom,
+      parcelleId: planche.parcelleGeo?.id ?? null,
+      parcelleNom: planche.parcelleGeo?.nom ?? null,
       typePlanche: planche.type,
       sousAbri: false,
       pluviometrie: {

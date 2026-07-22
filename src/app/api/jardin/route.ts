@@ -39,6 +39,9 @@ export async function GET(request: NextRequest) {
         ilot: true,
         type: true,
         parcelleGeoId: true,
+        parcelleGeo: {
+          select: { id: true, nom: true }
+        },
         cultures: {
           // Audit #36 : « cultures en cours » = année courante ET non terminée.
           // L'ancien OR incluait les cultures terminées de l'année (annee=currentYear

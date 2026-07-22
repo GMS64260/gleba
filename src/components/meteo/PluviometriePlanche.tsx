@@ -122,17 +122,18 @@ function PluieBarChart({
   )
 }
 
-export function PluviometriePlanche({ plancheId, typePlanche }: Props) {
+export function PluviometriePlanche({ plancheId }: Props) {
   const [data, setData] = React.useState<PluviometriePlancheResponse | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
 
   React.useEffect(() => {
+    const controller = new AbortController()
     setLoading(true)
     setError(null)
     setData(null)
 
-    fetch(`/api/meteo/pluviometrie?plancheId=${encodeURIComponent(plancheId)}`)
+    fetch(`/api/meteo/pluviometrie?plancheId=${encodeURIComponent(plancheId)}`, { signal: controller.signal })
       .then(async r => {
         // Audit #58 : sans vérif r.ok, une 500 (Open-Meteo indisponible) était
         // affichée comme « Coordonnées GPS non renseignées » (message mensonger).
@@ -145,9 +146,11 @@ export function PluviometriePlanche({ plancheId, typePlanche }: Props) {
         setLoading(false)
       })
       .catch(() => {
+        if (controller.signal.aborted) return
         setError("Impossible de charger les données de pluie")
         setLoading(false)
       })
+    return () => controller.abort()
   }, [plancheId])
 
   if (loading) {
@@ -202,7 +205,7 @@ export function PluviometriePlanche({ plancheId, typePlanche }: Props) {
       {/* En-tête */}
       <div className="flex items-center gap-1.5 text-sm font-medium text-blue-700">
         <CloudRain className="h-4 w-4" />
-        Pluviométrie
+        Pluviométrie{data.parcelleNom ? ` · ${data.parcelleNom}` : ""}
       </div>
 
       {/* Stats résumées */}

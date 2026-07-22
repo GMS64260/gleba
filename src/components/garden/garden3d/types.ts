@@ -11,6 +11,10 @@ export interface Culture3D {
   espacement: number | null
   /** Fraction de croissance [0..1] à la date affichée (plan vivant). */
   croissance: number
+  dateSemis?: string | null
+  datePlantation?: string | null
+  dateRecolte?: string | null
+  finRecolte?: string | null
   itp: { espacementRangs: number | null; espacement: number | null } | null
   espece: {
     nom: string | null
@@ -29,6 +33,8 @@ export interface Planche3D {
   posY: number | null
   rotation2D: number | null
   type?: string | null
+  parcelleGeoId?: string | null
+  parcelleGeo?: { id: string; nom: string } | null
   cultures: Culture3D[]
 }
 

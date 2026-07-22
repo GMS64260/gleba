@@ -9,7 +9,7 @@
 import dynamic from "next/dynamic"
 import * as React from "react"
 
-import type { Garden3DData, Garden3DFond } from "./types"
+import type { Garden3DData, Garden3DFond, Planche3D } from "./types"
 
 const Garden3DScene = dynamic(() => import("./Garden3DScene"), {
   ssr: false,
@@ -28,14 +28,16 @@ export interface Garden3DViewProps {
   fond?: Garden3DFond | null
   autoRotate?: boolean
   showLabels?: boolean
+  selectedPlancheId?: string | null
+  onSelectPlanche?: (planche: Planche3D) => void
 }
 
-export function Garden3DView({ data, fond, autoRotate, showLabels }: Garden3DViewProps) {
+export function Garden3DView({ data, fond, autoRotate, showLabels, selectedPlancheId, onSelectPlanche }: Garden3DViewProps) {
   return (
     <div className="h-full w-full">
-      <Garden3DScene data={data} fond={fond} autoRotate={autoRotate} showLabels={showLabels} />
+      <Garden3DScene data={data} fond={fond} autoRotate={autoRotate} showLabels={showLabels} selectedPlancheId={selectedPlancheId} onSelectPlanche={onSelectPlanche} />
     </div>
   )
 }
 
-export type { Garden3DData, Garden3DFond } from "./types"
+export type { Garden3DData, Garden3DFond, Planche3D, Culture3D } from "./types"
