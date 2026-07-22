@@ -52,6 +52,9 @@ export async function GET(request: NextRequest) {
         mere: {
           select: { id: true, nom: true, identifiant: true },
         },
+        pere: {
+          select: { id: true, nom: true, identifiant: true },
+        },
         _count: {
           select: {
             productionsOeufs: true,

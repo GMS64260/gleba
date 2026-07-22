@@ -150,6 +150,8 @@ export async function POST(request: NextRequest) {
           mereId: parsed.data.mereId ?? null,
           lotId: parsed.data.lotId ?? null,
           pereIdentifiant: parsed.data.pereIdentifiant ?? null,
+          identifiantsProvisoires: parsed.data.identifiantsProvisoires ?? null,
+          identifiantsDefinitifs: parsed.data.identifiantsDefinitifs ?? null,
           date: parsed.data.date ?? new Date(),
           nombreNes: parsed.data.nombreNes,
           nombreVivants: parsed.data.nombreVivants,
@@ -195,8 +197,16 @@ export async function POST(request: NextRequest) {
             select: { nom: true },
           })
           const nomLot = `Petits ${espece?.nom ?? 'animaux'} ${annee}`
-          const lot = await tx.lotAnimaux.create({
-            data: {
+          const lotExistant = await tx.lotAnimaux.findFirst({
+            where: { userId, especeAnimaleId: created.mere.especeAnimaleId, nom: nomLot, statut: 'actif' },
+            orderBy: { id: 'asc' },
+          })
+          const lot = lotExistant
+            ? await tx.lotAnimaux.update({
+                where: { id: lotExistant.id },
+                data: { quantiteActuelle: { increment: vivants } },
+              })
+            : await tx.lotAnimaux.create({ data: {
               userId,
               especeAnimaleId: created.mere.especeAnimaleId,
               nom: nomLot,
@@ -205,8 +215,7 @@ export async function POST(request: NextRequest) {
               quantiteActuelle: vivants,
               provenance: 'Naissance interne',
               statut: 'actif',
-            },
-          })
+            } })
           // Audit élevage 2026-06-11 — relier la naissance au lot créé,
           // sinon le DELETE ne sait pas quel effectif décrémenter.
           await tx.naissanceAnimale.update({
@@ -310,6 +319,8 @@ export async function PATCH(request: NextRequest) {
           mereId: parsed.data.mereId ?? null,
           lotId: parsed.data.lotId ?? null,
           pereIdentifiant: parsed.data.pereIdentifiant ?? null,
+          identifiantsProvisoires: parsed.data.identifiantsProvisoires ?? null,
+          identifiantsDefinitifs: parsed.data.identifiantsDefinitifs ?? null,
           date: parsed.data.date ?? existing.date,
           nombreNes: parsed.data.nombreNes,
           nombreVivants: parsed.data.nombreVivants,

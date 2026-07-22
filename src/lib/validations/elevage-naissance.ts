@@ -5,6 +5,8 @@ export const naissanceSchema = z.object({
   // Rattachement direct à un lot (élevage en lot, ex. lapins) — cmpm79lql
   lotId: z.number().int().nullable().optional(),
   pereIdentifiant: z.string().max(100).nullable().optional(),
+  identifiantsProvisoires: z.string().max(1000).nullable().optional(),
+  identifiantsDefinitifs: z.string().max(1000).nullable().optional(),
   date: z.coerce.date().optional(),
   nombreNes: z.number().int().min(1, 'Nombre de nés ≥ 1'),
   nombreVivants: z.number().int().min(0),

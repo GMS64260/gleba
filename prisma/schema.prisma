@@ -2397,6 +2397,8 @@ model NaissanceAnimale {
   lotId         Int?        @map("lot_id")
   lot           LotAnimaux? @relation("LotNaissances", fields: [lotId], references: [id], onDelete: SetNull)
   pereIdentifiant String? @map("pere_identifiant") // Référence si père connu
+  identifiantsProvisoires String? @map("identifiants_provisoires") // Boucles de naissance, séparées par virgule
+  identifiantsDefinitifs String? @map("identifiants_definitifs") // Boucles officielles, séparées par virgule
   date          DateTime  @default(now()) @map("date")
   nombreNes     Int       @map("nombre_nes")
   nombreVivants Int       @map("nombre_vivants")

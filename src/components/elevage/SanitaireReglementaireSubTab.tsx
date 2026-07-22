@@ -77,6 +77,7 @@ export function SanitaireReglementaireSubTab() {
 
   return <div className="space-y-4">
     <div className="flex flex-wrap gap-2">
+      <Button asChild variant="outline"><a href="/api/elevage/inventaire-cheptel"><Download className="h-4 w-4 mr-2" />Inventaire complet du cheptel</a></Button>
       <Button asChild variant="outline"><a href={`/api/elevage/registre-sanitaire?year=${new Date().getFullYear()}`}><Download className="h-4 w-4 mr-2" />Registre sanitaire PDF</a></Button>
       <Button asChild variant="outline"><a href={`/api/elevage/registre-elevage?year=${new Date().getFullYear()}`}><Download className="h-4 w-4 mr-2" />Registre d’élevage PDF</a></Button>
     </div>
