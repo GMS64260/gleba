@@ -137,12 +137,9 @@ export async function POST(request: NextRequest) {
 
     // PROMPT 18 — si saillieId fourni, on lie la mise-bas à la saillie et on
     // bascule la saillie en statut "Mise-bas réalisée" dans la même transaction.
-    // Bug cmp8rub7p (Marc 2026-05-16) — les naissances n'étaient pas reportées
-    // sur l'effectif. Désormais : si la mère est rattachée à un lot, on
-    // incrémente le lot.quantiteActuelle du nombre de vivants ; sinon (et si
-    // l'espèce de la mère est connue), on crée un lot "Petits <Espèce>
-    // <année>" et on l'incrémente. Faute de fiche animale détaillée pour
-    // chaque petit (sexe/identifiant), on tient au moins le compteur d'effectif.
+    // Le rattachement des petits à un lot est un choix explicite. Une mise-bas
+    // ne doit ni créditer le lot de la mère, ni créer automatiquement un lot :
+    // l'éleveur peut choisir ici un lot annuel existant ou le faire plus tard.
     const naissance = await prisma.$transaction(async (tx) => {
       const created = await tx.naissanceAnimale.create({
         data: {
@@ -172,57 +169,12 @@ export async function POST(request: NextRequest) {
       }
 
       const vivants = parsed.data.nombreVivants
-      // Priorité au lot explicitement choisi (élevage en lot, cmpm79lql),
-      // sinon au lot de la mère, sinon création d'un lot "Petits ...".
-      const lotCible = parsed.data.lotId ?? created.mere?.lotId ?? null
+      const lotCible = parsed.data.lotId ?? null
       if (vivants > 0 && lotCible) {
         await tx.lotAnimaux.update({
           where: { id: lotCible },
           data: { quantiteActuelle: { increment: vivants } },
         })
-        // Revue élevage 2026-07-21 — persister le lot RÉELLEMENT crédité (souvent
-        // celui de la mère au moment de la mise-bas). Sinon, si la mère change de
-        // lot ensuite, un DELETE/PATCH décrémenterait son lot COURANT (mauvais lot).
-        if (created.lotId !== lotCible) {
-          await tx.naissanceAnimale.update({
-            where: { id: created.id },
-            data: { lotId: lotCible },
-          })
-        }
-      } else if (vivants > 0 && created.mere) {
-        if (created.mere.especeAnimaleId) {
-          const annee = (parsed.data.date ?? new Date()).getFullYear()
-          const espece = await tx.especeAnimale.findUnique({
-            where: { id: created.mere.especeAnimaleId },
-            select: { nom: true },
-          })
-          const nomLot = `Petits ${espece?.nom ?? 'animaux'} ${annee}`
-          const lotExistant = await tx.lotAnimaux.findFirst({
-            where: { userId, especeAnimaleId: created.mere.especeAnimaleId, nom: nomLot, statut: 'actif' },
-            orderBy: { id: 'asc' },
-          })
-          const lot = lotExistant
-            ? await tx.lotAnimaux.update({
-                where: { id: lotExistant.id },
-                data: { quantiteActuelle: { increment: vivants } },
-              })
-            : await tx.lotAnimaux.create({ data: {
-              userId,
-              especeAnimaleId: created.mere.especeAnimaleId,
-              nom: nomLot,
-              dateArrivee: parsed.data.date ?? new Date(),
-              quantiteInitiale: vivants,
-              quantiteActuelle: vivants,
-              provenance: 'Naissance interne',
-              statut: 'actif',
-            } })
-          // Audit élevage 2026-06-11 — relier la naissance au lot créé,
-          // sinon le DELETE ne sait pas quel effectif décrémenter.
-          await tx.naissanceAnimale.update({
-            where: { id: created.id },
-            data: { lotId: lot.id },
-          })
-        }
       }
 
       return created
@@ -266,14 +218,12 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Audit élevage 2026-06-11 — validation tenant des références modifiées.
-    let nouvelleMereLotId: number | null = null
     if (parsed.data.mereId) {
       const mere = await prisma.animal.findFirst({
         where: { id: parsed.data.mereId, userId },
-        select: { id: true, lotId: true },
+        select: { id: true },
       })
       if (!mere) return NextResponse.json({ error: 'Mère introuvable' }, { status: 404 })
-      nouvelleMereLotId = mere.lotId
     }
     if (parsed.data.lotId) {
       const lot = await prisma.lotAnimaux.findFirst({
@@ -286,8 +236,8 @@ export async function PATCH(request: NextRequest) {
     // Audit élevage 2026-06-11 — le POST crédite l'effectif du lot cible ;
     // l'édition doit suivre (avant : passer de 8 à 5 vivants ou changer de
     // lot laissait les compteurs de la création).
-    const ancienLot = existing.lotId ?? existing.mere?.lotId ?? null
-    const nouveauLot = parsed.data.lotId ?? nouvelleMereLotId ?? null
+    const ancienLot = existing.lotId
+    const nouveauLot = parsed.data.lotId ?? null
     const ancienVivants = existing.nombreVivants
     const nouveauVivants = parsed.data.nombreVivants
 
@@ -360,11 +310,9 @@ export async function DELETE(request: NextRequest) {
     // Bug cmp8rub7p — décrémenter l'effectif du lot crédité à la création
     // (POST). Le seuil min 0 évite les compteurs négatifs si l'utilisateur
     // a ajusté manuellement entre temps.
-    // Audit élevage 2026-06-11 — le POST crédite en priorité le lot
-    // EXPLICITE (naissance.lotId), pas celui de la mère : le DELETE doit
-    // décrémenter le même (avant : un lot explicite ≠ lot de la mère
-    // laissait l'explicite gonflé et vidait celui de la mère à tort).
-    const lotCredite = existing.lotId ?? existing.mere?.lotId ?? null
+    // Seul un lot explicitement choisi a été crédité : une naissance laissée
+    // sans lot ne doit jamais modifier l'effectif du lot courant de la mère.
+    const lotCredite = existing.lotId
     await prisma.$transaction(async (tx) => {
       if (lotCredite && existing.nombreVivants > 0) {
         const lot = await tx.lotAnimaux.findFirst({

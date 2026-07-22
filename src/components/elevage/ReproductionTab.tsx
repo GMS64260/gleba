@@ -860,9 +860,9 @@ function NaissancesSubTab() {
                     nominative, ex. lapins) — cmpm79lql. La portée est
                     alors comptée dans l'effectif du lot. */}
                 <div className="space-y-2">
-                  <Label>Lot (élevage en lot)</Label>
+                  <Label>Lot des petits (optionnel)</Label>
                   <Select value={formData.lotId} onValueChange={(v) => setFormData(f => ({ ...f, lotId: v }))}>
-                    <SelectTrigger><SelectValue placeholder="Aucun / via la mère" /></SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder="Aucun lot — rattacher plus tard" /></SelectTrigger>
                     <SelectContent>
                       {lots.map(l => (
                         <SelectItem key={l.id} value={l.id.toString()}>
@@ -871,6 +871,7 @@ function NaissancesSubTab() {
                       ))}
                     </SelectContent>
                   </Select>
+                  <p className="text-xs text-muted-foreground">Choisissez par exemple « Chevreaux 2026 ». Aucun lot n’est créé automatiquement.</p>
                 </div>
               </div>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
