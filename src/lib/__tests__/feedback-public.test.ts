@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { feedbackStatusLabels, publicFeedbackSelect, shouldSendResolutionEmail } from "../feedback-public"
+import { feedbackRef, feedbackStatusLabels, publicFeedbackSelect, shouldSendResolutionEmail } from "../feedback-public"
 
 describe("feedback public", () => {
   it("projette uniquement les champs publics", () => {
@@ -13,6 +13,14 @@ describe("feedback public", () => {
 
   it("traduit les trois états", () => {
     expect(feedbackStatusLabels).toEqual({ OPEN: "Reçue", IN_PROGRESS: "En cours", RESOLVED: "Résolue" })
+  })
+
+  it("dérive une référence de suivi stable et lisible depuis l'id", () => {
+    expect(feedbackRef("cmrz0slrg000lzh4faf7ziw06")).toBe("FB-7ZIW06")
+    // Stable : même id -> même référence.
+    expect(feedbackRef("cmrz0slrg000lzh4faf7ziw06")).toBe(feedbackRef("cmrz0slrg000lzh4faf7ziw06"))
+    // Toujours préfixée FB- et en majuscules.
+    expect(feedbackRef("abcdef123456")).toBe("FB-123456")
   })
 
   it("autorise au plus le premier email de résolution", () => {

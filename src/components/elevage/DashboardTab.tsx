@@ -18,9 +18,13 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   TrendingDown,
   ShieldAlert,
   Download,
+  Baby,
+  Search,
+  BarChart3,
 } from "lucide-react"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -152,6 +156,10 @@ export function DashboardTab({ year }: DashboardTabProps) {
   const [qualite, setQualite] = React.useState<QualiteLaitSummary | null>(null)
   // Délais d'attente lait/viande en cours (remise en vente)
   const [attentes, setAttentes] = React.useState<AttenteItem[]>([])
+  // Ticket cmrz0s7r8 — sur mobile, les graphiques repoussent le travail du jour
+  // sous plusieurs écrans. On les replie par défaut sur petit écran (bouton
+  // « Voir les indicateurs ») ; ils restent toujours visibles sur desktop (lg).
+  const [showGraphs, setShowGraphs] = React.useState(false)
 
   // Charger stats dashboard
   React.useEffect(() => {
@@ -354,6 +362,54 @@ export function DashboardTab({ year }: DashboardTabProps) {
         </Card>
       ) : data && (
         <>
+          {/* Bandeau « Aujourd'hui » — travail du jour + raccourcis en tête, pour
+              ne pas enterrer les actions sous les stats/graphes sur mobile
+              (ticket cmrz0s7r8). */}
+          {(() => {
+            const soinsRetard = soins.filter(
+              (s) => s.datePrevue && new Date(s.datePrevue) < new Date(new Date().toDateString())
+            ).length
+            const chip = "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium"
+            const action = "inline-flex items-center gap-1.5 rounded-md border px-3 py-2 text-sm font-medium hover:bg-slate-50 min-h-11"
+            return (
+              <div className="rounded-xl border bg-white p-3 sm:p-4 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="text-base font-semibold">Aujourd&apos;hui</h2>
+                  <span className="text-xs text-muted-foreground capitalize">
+                    {new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <a
+                    href="#soins-section"
+                    className={`${chip} ${soinsRetard > 0 ? "bg-red-50 text-red-700" : soins.length > 0 ? "bg-blue-50 text-blue-700" : "bg-slate-100 text-slate-600"}`}
+                  >
+                    <Stethoscope className="h-4 w-4" />
+                    {soins.length > 0 ? `${soins.length} soin(s) à faire` : "Aucun soin à faire"}
+                    {soinsRetard > 0 ? ` · ${soinsRetard} en retard` : ""}
+                  </a>
+                  {attentes.length > 0 && (
+                    <a href="#delais-section" className={`${chip} bg-amber-50 text-amber-800`}>
+                      <AlertTriangle className="h-4 w-4" />
+                      {attentes.length} délai(s) lait/viande
+                    </a>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Link href="/elevage?tab=alimentation&sub=soins" className={action}>
+                    <Stethoscope className="h-4 w-4 text-blue-600" />+ Soin
+                  </Link>
+                  <Link href="/elevage?tab=reproduction" className={action}>
+                    <Baby className="h-4 w-4 text-pink-600" />+ Naissance
+                  </Link>
+                  <Link href="/elevage?tab=animaux" className={action}>
+                    <Search className="h-4 w-4 text-slate-500" />Rechercher (boucle)
+                  </Link>
+                </div>
+              </div>
+            )
+          })()}
+
           {/* Ligne 1 : Stats principales avec tendances N-1 */}
           <div className="grid gap-3 grid-cols-2 lg:grid-cols-5">
             {/* BUG #8 (audit Julien 15/05/2026) — Avant : « 6 + 3 lots » faisait
@@ -706,8 +762,19 @@ export function DashboardTab({ year }: DashboardTabProps) {
             </div>
           )}
 
-          {/* Graphiques */}
-          <div className="grid gap-4 md:grid-cols-2">
+          {/* Graphiques — repliés par défaut sur mobile (ticket cmrz0s7r8),
+              toujours visibles sur desktop (lg). */}
+          <button
+            type="button"
+            onClick={() => setShowGraphs((v) => !v)}
+            aria-expanded={showGraphs}
+            className="lg:hidden inline-flex items-center gap-1.5 rounded-md border px-3 py-2 text-sm font-medium min-h-11"
+          >
+            {showGraphs ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+            <BarChart3 className="h-4 w-4 text-slate-500" />
+            {showGraphs ? "Masquer les indicateurs" : "Voir les indicateurs"}
+          </button>
+          <div className={`${showGraphs ? "grid" : "hidden"} lg:grid gap-4 md:grid-cols-2`}>
             <Card className="min-w-0">
               <CardHeader>
                 <CardTitle className="text-sm">Ventes par catégorie</CardTitle>
@@ -834,7 +901,7 @@ export function DashboardTab({ year }: DashboardTabProps) {
 
       {/* Délais d'attente — remise en vente (feedback éleveur 2026-07-24) */}
       {attentes.length > 0 && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-4">
+        <div id="delais-section" className="scroll-mt-24 rounded-xl border border-amber-200 bg-amber-50/60 p-4">
           <h2 className="text-lg font-semibold flex items-center gap-2 mb-1">
             <AlertTriangle className="h-5 w-5 text-amber-600" />
             Délais d&apos;attente — remise en vente
@@ -881,7 +948,7 @@ export function DashboardTab({ year }: DashboardTabProps) {
       )}
 
       {/* Soins à faire */}
-      <div>
+      <div id="soins-section" className="scroll-mt-24">
         <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
           <h2 className="text-lg font-semibold flex items-center gap-2">
             <Stethoscope className="h-5 w-5 text-blue-600" />

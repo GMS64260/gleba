@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react"
 import { confirmDialog, alertDialog } from "@/lib/global-dialog"
+import { feedbackRef } from "@/lib/feedback-public"
 import {
   Card,
   CardContent,
@@ -144,7 +145,7 @@ export function BugsDashboard({ initialBugs, stats }: Props) {
       if (filterPriority !== "all" && b.priority !== filterPriority) return false
       if (search) {
         const q = search.toLowerCase()
-        const hay = `${b.message} ${b.user.email} ${b.user.name ?? ""} ${b.url ?? ""}`.toLowerCase()
+        const hay = `${feedbackRef(b.id)} ${b.message} ${b.user.email} ${b.user.name ?? ""} ${b.url ?? ""}`.toLowerCase()
         if (!hay.includes(q)) return false
       }
       return true
@@ -264,7 +265,7 @@ export function BugsDashboard({ initialBugs, stats }: Props) {
           <div className="md:col-span-2 relative">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
             <Input
-              placeholder="Rechercher (message, email, URL)…"
+              placeholder="Rechercher (réf. FB-…, message, email, URL)…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-8"
@@ -384,6 +385,9 @@ function BugCard({
               {typeIcon(bug.type)}
               <span className="font-medium text-slate-900">
                 {TYPE_LABELS[bug.type]}
+              </span>
+              <span className="font-mono text-xs bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded" title="Référence de suivi (communiquée à l'utilisateur)">
+                {feedbackRef(bug.id)}
               </span>
               <span
                 className={`text-xs px-2 py-0.5 rounded-md ring-1 ${statusBadgeClass(bug.status)}`}
