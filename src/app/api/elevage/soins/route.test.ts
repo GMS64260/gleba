@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({
   requireAuthApi: vi.fn(), animalFindFirst: vi.fn(), produitFindUnique: vi.fn(),
   soinCreate: vi.fn(), soinFindFirst: vi.fn(), soinUpdate: vi.fn(),
   collecteUpdateMany: vi.fn(), collecteFindMany: vi.fn(), soinFindMany: vi.fn(),
-  animalFindMany: vi.fn(),
+  animalFindMany: vi.fn(), queryRaw: vi.fn(), executeRaw: vi.fn(),
 }))
 
 vi.mock('@/lib/auth-utils', () => ({ requireAuthApi: mocks.requireAuthApi }))
@@ -17,6 +17,8 @@ vi.mock('@/lib/prisma', () => {
     animal: { findFirst: mocks.animalFindFirst, findMany: mocks.animalFindMany },
     soinAnimal: { create: mocks.soinCreate, update: mocks.soinUpdate, findMany: mocks.soinFindMany },
     collecteLait: { updateMany: mocks.collecteUpdateMany, findMany: mocks.collecteFindMany },
+    $queryRaw: mocks.queryRaw,
+    $executeRaw: mocks.executeRaw,
   }
   return { default: {
     animal: { findFirst: mocks.animalFindFirst },
@@ -43,6 +45,8 @@ describe('soins planifies et temps attente lait', () => {
     mocks.soinFindMany.mockResolvedValue([])
     mocks.animalFindMany.mockResolvedValue([])
     mocks.collecteUpdateMany.mockResolvedValue({ count: 0 })
+    mocks.queryRaw.mockResolvedValue([])
+    mocks.executeRaw.mockResolvedValue(1)
   })
 
   it('ne demarre pas les temps attente pour un soin seulement planifie', async () => {

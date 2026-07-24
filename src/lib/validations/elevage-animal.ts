@@ -47,6 +47,8 @@ export const animalSchema = z
     // PROMPT 18 — Père relié au cheptel (FK) + fallback texte si père externe
     pereId: z.number().int().nullable().optional(),
     pereIdentifiant: z.string().max(100).nullable().optional(),
+    // PROMPT 28 — Mère externe / hors troupeau (fallback texte, ex. mère décédée)
+    mereIdentifiant: z.string().max(100).nullable().optional(),
     poidsActuel: z.number().min(0).nullable().optional(),
     couleur: z.string().max(50).nullable().optional(),
     // PROMPT 24 — lactation longue (trait sans tarir)

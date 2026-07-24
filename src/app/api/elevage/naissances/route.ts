@@ -41,6 +41,7 @@ export async function GET(request: NextRequest) {
             },
           },
           lot: { select: { id: true, nom: true, especeAnimale: { select: { nom: true } } } },
+          petits: { orderBy: { numero: 'asc' } },
         },
         orderBy: { date: 'desc' },
         take: limit,
@@ -177,7 +178,31 @@ export async function POST(request: NextRequest) {
         })
       }
 
-      return created
+      // PROMPT 29 — détail par petit (cabri)
+      if (parsed.data.petits && parsed.data.petits.length > 0) {
+        await tx.petitNaissance.createMany({
+          data: parsed.data.petits.map((p, i) => ({
+            userId,
+            naissanceId: created.id,
+            numero: i + 1,
+            sexe: p.sexe ?? null,
+            boucleProvisoire: p.boucleProvisoire ?? null,
+            boucleDefinitive: p.boucleDefinitive ?? null,
+            modeElevage: p.modeElevage ?? null,
+            poids: p.poids ?? null,
+            vivant: p.vivant ?? true,
+            notes: p.notes ?? null,
+          })),
+        })
+      }
+
+      return tx.naissanceAnimale.findUnique({
+        where: { id: created.id },
+        include: {
+          mere: { select: { id: true, nom: true, identifiant: true } },
+          petits: { orderBy: { numero: 'asc' } },
+        },
+      })
     })
 
     return NextResponse.json({ data: naissance }, { status: 201 })
@@ -263,7 +288,7 @@ export async function PATCH(request: NextRequest) {
         }
       }
 
-      return tx.naissanceAnimale.update({
+      await tx.naissanceAnimale.update({
         where: { id },
         data: {
           mereId: parsed.data.mereId ?? null,
@@ -279,7 +304,35 @@ export async function PATCH(request: NextRequest) {
           poidsTotal: parsed.data.poidsTotal ?? null,
           notes: parsed.data.notes ?? null,
         },
-        include: { mere: { select: { id: true, nom: true, identifiant: true } } },
+      })
+
+      // PROMPT 29 — remplacement du détail par petit si fourni (undefined = inchangé)
+      if (parsed.data.petits !== undefined) {
+        await tx.petitNaissance.deleteMany({ where: { naissanceId: id } })
+        if (parsed.data.petits.length > 0) {
+          await tx.petitNaissance.createMany({
+            data: parsed.data.petits.map((p, i) => ({
+              userId,
+              naissanceId: id,
+              numero: i + 1,
+              sexe: p.sexe ?? null,
+              boucleProvisoire: p.boucleProvisoire ?? null,
+              boucleDefinitive: p.boucleDefinitive ?? null,
+              modeElevage: p.modeElevage ?? null,
+              poids: p.poids ?? null,
+              vivant: p.vivant ?? true,
+              notes: p.notes ?? null,
+            })),
+          })
+        }
+      }
+
+      return tx.naissanceAnimale.findUnique({
+        where: { id },
+        include: {
+          mere: { select: { id: true, nom: true, identifiant: true } },
+          petits: { orderBy: { numero: 'asc' } },
+        },
       })
     })
     return NextResponse.json({ data: updated })

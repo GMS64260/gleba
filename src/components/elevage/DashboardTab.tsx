@@ -28,6 +28,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { BulkActions } from "@/components/calendrier/BulkActions"
+import { SoinDetailDialog } from "@/components/elevage/SoinDetailDialog"
 import { useToast } from "@/hooks/use-toast"
 import {
   ChartContainer,
@@ -103,12 +104,26 @@ interface QualiteLaitSummary {
   cellulesMoyennes: number | null
 }
 
+// Feedback éleveur 2026-07-24 — délais d'attente lait/viande (remise en vente)
+interface AttenteItem {
+  soinId: number
+  date: string
+  traitement: string
+  cible: { type: string; id: number | null; label: string }
+  lait: { finAttente: string; remiseVente: string } | null
+  viande: { finAttente: string; remiseVente: string } | null
+}
+
 interface SoinItem {
   id: number
+  injectionId?: string | null
+  numeroInjection?: number | null
   date: string
   type: string
   description: string | null
   produit: string | null
+  dose: string | null
+  voie: string | null
   cout: number | null
   fait: boolean
   datePrevue: string | null
@@ -135,6 +150,8 @@ export function DashboardTab({ year }: DashboardTabProps) {
   const [loadingSoins, setLoadingSoins] = React.useState(true)
   // PROMPT 20 — synthèse qualité du lait (cellules) sur 90 j
   const [qualite, setQualite] = React.useState<QualiteLaitSummary | null>(null)
+  // Délais d'attente lait/viande en cours (remise en vente)
+  const [attentes, setAttentes] = React.useState<AttenteItem[]>([])
 
   // Charger stats dashboard
   React.useEffect(() => {
@@ -159,10 +176,14 @@ export function DashboardTab({ year }: DashboardTabProps) {
   const fetchSoins = React.useCallback(async () => {
     setLoadingSoins(true)
     try {
-      const res = await fetch('/api/elevage/soins?fait=false&limit=20')
+      const debut = new Date()
+      debut.setDate(debut.getDate() - 30)
+      const fin = new Date()
+      fin.setDate(fin.getDate() + 30)
+      const res = await fetch(`/api/elevage/taches?start=${debut.toISOString()}&end=${fin.toISOString()}`)
       if (res.ok) {
         const result = await res.json()
-        setSoins(result.data || [])
+        setSoins((result.soins || []).filter((s: SoinItem) => !s.fait).slice(0, 20))
       }
     } catch {
       // silent
@@ -183,21 +204,34 @@ export function DashboardTab({ year }: DashboardTabProps) {
       .catch(() => {})
   }, [])
 
+  // Délais d'attente en cours (remise en vente lait/viande)
+  React.useEffect(() => {
+    fetch('/api/elevage/attentes')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (j?.data) setAttentes(j.data) })
+      .catch(() => {})
+  }, [])
+
   // PROMPT 20a — Bulk actions sur les soins
   const bulkSoinsDone = async () => {
-    const ids = soins.map((s) => s.id)
-    if (ids.length === 0) return
+    if (soins.length === 0) return
     setSoins([]) // optimistic
     try {
       // Audit #83 : on vérifie chaque res.ok — fetch ne rejette pas sur 4xx/5xx,
       // donc un échec passait pour un succès. Si une PATCH échoue, on recharge.
       const res = await Promise.all(
-        ids.map((id) =>
-          fetch('/api/elevage/soins', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id, fait: true, date: new Date().toISOString() }),
-          })
+        soins.map((soin) =>
+          soin.injectionId
+            ? fetch(`/api/elevage/soins/${soin.id}/injections`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ injectionId: soin.injectionId, statut: 'realisee', dateRealisee: new Date().toISOString() }),
+              })
+            : fetch('/api/elevage/soins', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: soin.id, fait: true, date: new Date().toISOString() }),
+              })
         )
       )
       const echecs = res.filter((r) => !r.ok).length
@@ -205,7 +239,7 @@ export function DashboardTab({ year }: DashboardTabProps) {
         toast({ variant: 'destructive', title: `${echecs} soin(s) non enregistré(s)`, description: 'Rechargement…' })
         fetchSoins()
       } else {
-        toast({ title: `${ids.length} soin(s) marqué(s) comme fait(s)` })
+        toast({ title: `${soins.length} soin(s) marqué(s) comme fait(s)` })
       }
     } catch {
       toast({ variant: 'destructive', title: 'Erreur, recharge en cours' })
@@ -245,6 +279,10 @@ export function DashboardTab({ year }: DashboardTabProps) {
     }
   }
 
+  // QA #5/#8 — un toucher OUVRE le détail (dose/voie) ; l'enregistrement passe
+  // par un bouton explicite, jamais par le simple tap sur la carte.
+  const [soinDetail, setSoinDetail] = React.useState<SoinItem | null>(null)
+
   // Toggle soin fait
   const toggleSoin = async (id: number, fait: boolean) => {
     try {
@@ -256,6 +294,26 @@ export function DashboardTab({ year }: DashboardTabProps) {
       if (!response.ok) throw new Error('Erreur')
       setSoins(prev => prev.filter(s => s.id !== id))
       toast({ title: "Soin marque comme fait !" })
+    } catch {
+      toast({ variant: "destructive", title: "Erreur" })
+    }
+  }
+
+  const validerSoinOuInjection = async (soin: SoinItem) => {
+    if (!soin.injectionId) return toggleSoin(soin.id, soin.fait)
+    try {
+      const response = await fetch(`/api/elevage/soins/${soin.id}/injections`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          injectionId: soin.injectionId,
+          statut: 'realisee',
+          dateRealisee: new Date().toISOString(),
+        }),
+      })
+      if (!response.ok) throw new Error('Erreur')
+      toast({ title: "Injection enregistrée" })
+      fetchSoins()
     } catch {
       toast({ variant: "destructive", title: "Erreur" })
     }
@@ -763,6 +821,54 @@ export function DashboardTab({ year }: DashboardTabProps) {
         </>
       )}
 
+      {/* Délais d'attente — remise en vente (feedback éleveur 2026-07-24) */}
+      {attentes.length > 0 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-4">
+          <h2 className="text-lg font-semibold flex items-center gap-2 mb-1">
+            <AlertTriangle className="h-5 w-5 text-amber-600" />
+            Délais d&apos;attente — remise en vente
+            <Badge variant="secondary">{attentes.length}</Badge>
+          </h2>
+          <p className="text-xs text-muted-foreground mb-3">
+            Lait et viande à ne pas commercialiser avant la date indiquée (temps d&apos;attente vétérinaire).
+          </p>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="border-b border-amber-200">
+                <tr>
+                  <th className="p-2 text-left">Animal / Lot</th>
+                  <th className="p-2 text-left">Traitement</th>
+                  <th className="p-2 text-left">🥛 Lait — remise en vente</th>
+                  <th className="p-2 text-left">🥩 Viande — remise en vente</th>
+                </tr>
+              </thead>
+              <tbody>
+                {attentes.map((a) => (
+                  <tr key={a.soinId} className="border-b border-amber-100">
+                    <td className="p-2 font-medium">{a.cible.label}</td>
+                    <td className="p-2 text-slate-600">{a.traitement}</td>
+                    <td className="p-2">
+                      {a.lait ? (
+                        <span className="text-blue-700 font-medium">le {new Date(a.lait.remiseVente).toLocaleDateString('fr-FR')}</span>
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
+                    </td>
+                    <td className="p-2">
+                      {a.viande ? (
+                        <span className="text-red-700 font-medium">le {new Date(a.viande.remiseVente).toLocaleDateString('fr-FR')}</span>
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* Soins à faire */}
       <div>
         <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
@@ -807,7 +913,7 @@ export function DashboardTab({ year }: DashboardTabProps) {
             {soins.map((soin) => (
               <button
                 key={soin.id}
-                onClick={() => toggleSoin(soin.id, soin.fait)}
+                onClick={() => setSoinDetail(soin)}
                 className="w-full flex items-center gap-3 p-3 rounded-lg border bg-white border-blue-200 hover:border-blue-400 hover:shadow-sm transition-all text-left"
               >
                 <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
@@ -853,6 +959,13 @@ export function DashboardTab({ year }: DashboardTabProps) {
           </div>
         )}
       </div>
+
+      <SoinDetailDialog
+        soin={soinDetail}
+        onClose={() => setSoinDetail(null)}
+        typeLabels={TYPE_LABELS}
+        onMarquerFait={async (s) => { await validerSoinOuInjection(s as SoinItem); setSoinDetail(null) }}
+      />
     </div>
   )
 }

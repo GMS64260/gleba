@@ -113,6 +113,7 @@ export async function POST(request: NextRequest) {
       mereId,
       pereId,
       pereIdentifiant,
+      mereIdentifiant,
       poidsActuel,
       couleur,
       notes,
@@ -185,6 +186,7 @@ export async function POST(request: NextRequest) {
         mereId: mereId ?? null,
         pereId: pereId ?? null,
         pereIdentifiant,
+        mereIdentifiant: mereIdentifiant ?? null,
         poidsActuel,
         couleur,
         notes,
@@ -240,7 +242,7 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { id, especeAnimaleId, nom, race, raceAnimaleId, orientationProduction, sexe, statut, lotId, posX, posY, poidsActuel, couleur, notes, dateSortie, causeSortie, mereId, pereId, pereIdentifiant, identifiant, typeIdentifiant, nExploitationOrigine, nExploitationDestination, motifSortie, statutSanitaire, prixAchat, provenance, dateNaissance, dateArrivee, parcelleGeoId } = body
+    const { id, especeAnimaleId, nom, race, raceAnimaleId, orientationProduction, sexe, statut, lotId, posX, posY, poidsActuel, couleur, notes, dateSortie, causeSortie, mereId, pereId, pereIdentifiant, mereIdentifiant, identifiant, typeIdentifiant, nExploitationOrigine, nExploitationDestination, motifSortie, statutSanitaire, prixAchat, provenance, dateNaissance, dateArrivee, parcelleGeoId } = body
 
     if (!id) {
       return NextResponse.json({ error: 'ID requis' }, { status: 400 })
@@ -369,6 +371,7 @@ export async function PATCH(request: NextRequest) {
       updateData[field] = d
     }
     if (pereIdentifiant !== undefined) updateData.pereIdentifiant = pereIdentifiant ?? null
+    if (mereIdentifiant !== undefined) updateData.mereIdentifiant = mereIdentifiant ?? null
     if (identifiant !== undefined) updateData.identifiant = identifiant ?? null
     if (typeIdentifiant !== undefined) updateData.typeIdentifiant = typeIdentifiant ?? null
     if (nExploitationOrigine !== undefined) updateData.nExploitationOrigine = nExploitationOrigine ?? null

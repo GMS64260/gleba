@@ -114,6 +114,8 @@ interface AnimalDetail {
     produit: string | null
     cout: number | null
     fait: boolean
+    finAttenteLait: string | null
+    finAttenteViande: string | null
   }[]
   abattages: {
     id: number
@@ -312,6 +314,35 @@ export default function AnimalDetailPage() {
                 </Link>
               </div>
             </div>
+
+            {/* Délai d'attente — remise en vente lait/viande (feedback éleveur 2026-07-24) */}
+            {(() => {
+              const auj = new Date(new Date().toDateString()).getTime()
+              const faits = animal.soins.filter((s) => s.fait)
+              const futurs = (arr: (string | null)[]) =>
+                arr.filter((d): d is string => !!d).map((d) => new Date(d).getTime()).filter((t) => t >= auj)
+              const laitTs = futurs(faits.map((s) => s.finAttenteLait))
+              const viandeTs = futurs(faits.map((s) => s.finAttenteViande))
+              if (laitTs.length === 0 && viandeTs.length === 0) return null
+              const remise = (ts: number) => {
+                const x = new Date(ts)
+                x.setDate(x.getDate() + 1)
+                return x.toLocaleDateString('fr-FR')
+              }
+              return (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm">
+                  <div className="font-semibold text-amber-800">⚠️ Délai d&apos;attente vétérinaire en cours</div>
+                  <div className="mt-1 text-amber-900 flex flex-wrap gap-x-6 gap-y-1">
+                    {laitTs.length > 0 && (
+                      <span>🥛 Lait vendable à partir du <b>{remise(Math.max(...laitTs))}</b></span>
+                    )}
+                    {viandeTs.length > 0 && (
+                      <span>🥩 Viande à partir du <b>{remise(Math.max(...viandeTs))}</b></span>
+                    )}
+                  </div>
+                </div>
+              )
+            })()}
 
             {/* Cards info */}
             <div className="grid gap-3 grid-cols-2 md:grid-cols-4">

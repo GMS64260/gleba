@@ -15,6 +15,7 @@ import {
   Trash2,
   Heart,
   Activity,
+  UserPlus,
 } from "lucide-react"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -36,6 +37,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
+import { AnimalCombobox } from "./AnimalCombobox"
 import {
   ChartContainer,
   ChartTooltip,
@@ -47,6 +49,28 @@ import { todayLocalISO } from '@/lib/format-utils'
 // ============================================================
 // Types
 // ============================================================
+
+interface PetitNaissance {
+  id?: string
+  numero?: number
+  sexe: "male" | "femelle" | null
+  boucleProvisoire: string | null
+  boucleDefinitive?: string | null
+  modeElevage: "sous_mere" | "biberon" | null
+  poids: number | null
+  vivant?: boolean
+  // PROMPT 31 — fiche animale générée pour ce petit (idempotence QA #4)
+  animalId?: number | null
+}
+
+// Ligne de saisie d'un cabri dans le formulaire (valeurs en chaîne)
+type PetitRow = {
+  sexe: string
+  boucleProvisoire: string
+  modeElevage: string
+  poids: string
+  vivant: boolean
+}
 
 interface Naissance {
   id: number
@@ -62,6 +86,7 @@ interface Naissance {
   notes: string | null
   mereId: number | null
   lotId: number | null
+  petits: PetitNaissance[]
   lot: { id: number; nom: string | null; especeAnimale?: { nom: string } } | null
   mere: {
     id: number
@@ -592,6 +617,12 @@ function NaissancesSubTab() {
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
   // QA 2026-05-15 — édition par ligne
   const [editingNaissId, setEditingNaissId] = React.useState<number | null>(null)
+  // Feedback La ferme des belles chèvres 2026-07-24 — création d'un lot des petits
+  // à la volée (sinon, sans lot actif, le champ « Lot des petits » restait vide
+  // et inutilisable).
+  const [creatingLot, setCreatingLot] = React.useState(false)
+  const [newLotName, setNewLotName] = React.useState("")
+  const [savingLot, setSavingLot] = React.useState(false)
 
   const EMPTY_NAISS_FORM = {
     mereId: "", lotId: "", pereIdentifiant: "", identifiantsProvisoires: "", identifiantsDefinitifs: "",
@@ -599,6 +630,8 @@ function NaissancesSubTab() {
     nombreNes: "", nombreVivants: "",
     nombreMales: "", nombreFemelles: "",
     poidsTotal: "", notes: "",
+    // PROMPT 29 — détail par cabri (optionnel)
+    petits: [] as PetitRow[],
   }
   const [formData, setFormData] = React.useState(EMPTY_NAISS_FORM)
 
@@ -622,8 +655,77 @@ function NaissancesSubTab() {
       nombreFemelles: n.nombreFemelles != null ? n.nombreFemelles.toString() : "",
       poidsTotal: n.poidsTotal != null ? n.poidsTotal.toString() : "",
       notes: n.notes ?? "",
+      petits: (n.petits ?? []).map((p) => ({
+        sexe: p.sexe ?? "",
+        boucleProvisoire: p.boucleProvisoire ?? "",
+        modeElevage: p.modeElevage ?? "",
+        poids: p.poids != null ? String(p.poids) : "",
+        vivant: p.vivant ?? true,
+      })),
     })
     setIsDialogOpen(true)
+  }
+
+  // PROMPT 29 — gestion des lignes de cabris + dérivation des agrégats
+  const aggregatsDepuisPetits = (petits: PetitRow[]) => {
+    const poids = petits.reduce((s, p) => s + (parseFloat(p.poids) || 0), 0)
+    return {
+      nombreNes: String(petits.length),
+      nombreVivants: String(petits.filter((p) => p.vivant).length),
+      nombreMales: String(petits.filter((p) => p.sexe === "male").length),
+      nombreFemelles: String(petits.filter((p) => p.sexe === "femelle").length),
+      poidsTotal: poids > 0 ? String(Math.round(poids * 1000) / 1000) : "",
+    }
+  }
+  const setPetits = (updater: (prev: PetitRow[]) => PetitRow[]) => {
+    setFormData((f) => {
+      const petits = updater(f.petits)
+      // Si le détail est renseigné, les compteurs en découlent.
+      return { ...f, petits, ...(petits.length > 0 ? aggregatsDepuisPetits(petits) : {}) }
+    })
+  }
+  const EMPTY_PETIT: PetitRow = { sexe: "", boucleProvisoire: "", modeElevage: "sous_mere", poids: "", vivant: true }
+  const ajouterPetit = () => setPetits((prev) => [...prev, { ...EMPTY_PETIT }])
+  const retirerPetit = (i: number) => setPetits((prev) => prev.filter((_, idx) => idx !== i))
+  const majPetit = (i: number, patch: Partial<PetitRow>) =>
+    setPetits((prev) => prev.map((p, idx) => (idx === i ? { ...p, ...patch } : p)))
+  const genererPetits = () => {
+    const n = parseInt(formData.nombreNes) || 0
+    if (n < 1) { toast({ variant: "destructive", title: "Renseignez d'abord le nombre de nés" }); return }
+    setPetits(() => Array.from({ length: n }, () => ({ ...EMPTY_PETIT })))
+  }
+
+  // Crée un lot des petits à la volée (ex. « Chevreaux 2026 ») et le sélectionne.
+  // L'espèce est reprise de la mère choisie ; la quantité initiale part du nombre
+  // de nés vivants saisi (≥ 1).
+  const createLotInline = async () => {
+    const nom = newLotName.trim()
+    if (!nom) { toast({ variant: "destructive", title: "Nom du lot requis" }); return }
+    const mere = femelles.find(f => String(f.id) === formData.mereId)
+    const especeAnimaleId = mere?.especeAnimale.id
+    if (!especeAnimaleId) {
+      toast({ variant: "destructive", title: "Sélectionnez d'abord la mère", description: "Le lot des petits reprend son espèce." })
+      return
+    }
+    setSavingLot(true)
+    try {
+      const quantite = Math.max(1, parseInt(formData.nombreVivants) || 0)
+      const res = await fetch('/api/elevage/lots', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ especeAnimaleId, nom, quantiteInitiale: quantite }),
+      })
+      const json = await res.json()
+      if (!res.ok) { toast({ variant: "destructive", title: "Erreur", description: json.error || "Création impossible" }); return }
+      const lot = json.data
+      setLots(prev => [...prev, { id: lot.id, nom: lot.nom, especeAnimale: { nom: lot.especeAnimale?.nom ?? mere.especeAnimale.nom } }])
+      setFormData(f => ({ ...f, lotId: String(lot.id) }))
+      setNewLotName("")
+      setCreatingLot(false)
+      toast({ title: "Lot créé", description: nom })
+    } finally {
+      setSavingLot(false)
+    }
   }
 
   const fetchData = React.useCallback(async () => {
@@ -691,6 +793,14 @@ function NaissancesSubTab() {
         nombreFemelles: toIntOrNull(formData.nombreFemelles),
         poidsTotal: toFloatOrNull(formData.poidsTotal),
         notes: formData.notes?.trim() || null,
+        // PROMPT 29 — détail par cabri (tableau vide = pas de détail / effacé en édition)
+        petits: formData.petits.map((p) => ({
+          sexe: p.sexe === "male" || p.sexe === "femelle" ? p.sexe : null,
+          boucleProvisoire: p.boucleProvisoire?.trim() || null,
+          modeElevage: p.modeElevage === "sous_mere" || p.modeElevage === "biberon" ? p.modeElevage : null,
+          poids: toFloatOrNull(p.poids),
+          vivant: p.vivant,
+        })),
       }
       const response = await fetch('/api/elevage/naissances', {
         method: isEdit ? 'PATCH' : 'POST',
@@ -741,6 +851,31 @@ function NaissancesSubTab() {
       }
     } catch {
       toast({ variant: "destructive", title: "Erreur" })
+    }
+  }
+
+  // QA #4 — Créer une fiche Animal nominative par petit vivant (idempotent).
+  const [creationFiches, setCreationFiches] = React.useState<number | null>(null)
+  const petitsSansFiche = (n: Naissance) =>
+    (n.petits ?? []).filter((p) => p.vivant !== false && p.animalId == null).length
+  const handleCreerFiches = async (n: Naissance) => {
+    const nb = petitsSansFiche(n)
+    if (nb === 0) return
+    if (!(await confirmDialog(`Créer ${nb} fiche(s) animale(s) à partir des petits de cette mise bas ?`))) return
+    setCreationFiches(n.id)
+    try {
+      const res = await fetch(`/api/elevage/naissances/${n.id}/fiches`, { method: 'POST' })
+      const p = await res.json().catch(() => null)
+      if (res.ok) {
+        toast({ title: `${p?.data?.created ?? nb} fiche(s) créée(s)`, description: "Retrouvez-les dans Animaux & Lots." })
+        fetchData()
+      } else {
+        toast({ variant: "destructive", title: "Erreur", description: p?.error || "Impossible de créer les fiches" })
+      }
+    } catch {
+      toast({ variant: "destructive", title: "Erreur" })
+    } finally {
+      setCreationFiches(null)
     }
   }
 
@@ -845,33 +980,56 @@ function NaissancesSubTab() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Mère</Label>
-                  <Select value={formData.mereId} onValueChange={(v) => setFormData(f => ({ ...f, mereId: v }))}>
-                    <SelectTrigger><SelectValue placeholder="Sélectionner la mère..." /></SelectTrigger>
-                    <SelectContent>
-                      {femelles.map(a => (
-                        <SelectItem key={a.id} value={a.id.toString()}>
-                          {a.nom || a.identifiant || `#${a.id}`} ({a.especeAnimale.nom})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <AnimalCombobox
+                    animaux={femelles}
+                    value={formData.mereId}
+                    onChange={(v) => setFormData(f => ({ ...f, mereId: v }))}
+                    placeholder="N° de boucle ou nom…"
+                    emptyLabel="Sélectionner la mère…"
+                  />
                 </div>
                 {/* Rattachement à un lot (élevage en lot sans mère
                     nominative, ex. lapins) — cmpm79lql. La portée est
                     alors comptée dans l'effectif du lot. */}
                 <div className="space-y-2">
                   <Label>Lot des petits (optionnel)</Label>
-                  <Select value={formData.lotId} onValueChange={(v) => setFormData(f => ({ ...f, lotId: v }))}>
-                    <SelectTrigger><SelectValue placeholder="Aucun lot — rattacher plus tard" /></SelectTrigger>
-                    <SelectContent>
-                      {lots.map(l => (
-                        <SelectItem key={l.id} value={l.id.toString()}>
-                          {l.nom || `Lot #${l.id}`} ({l.especeAnimale.nom})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">Choisissez par exemple « Chevreaux 2026 ». Aucun lot n’est créé automatiquement.</p>
+                  {creatingLot ? (
+                    <div className="flex gap-2">
+                      <Input
+                        autoFocus
+                        value={newLotName}
+                        onChange={(e) => setNewLotName(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); createLotInline() } }}
+                        placeholder="Nom du lot, ex. « Chevreaux 2026 »"
+                      />
+                      <Button type="button" size="sm" onClick={createLotInline} disabled={savingLot}>
+                        {savingLot ? "…" : "Créer"}
+                      </Button>
+                      <Button type="button" size="sm" variant="outline" onClick={() => { setCreatingLot(false); setNewLotName("") }}>
+                        Annuler
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <div className="flex-1">
+                        <Select value={formData.lotId || "__none__"} onValueChange={(v) => setFormData(f => ({ ...f, lotId: v === "__none__" ? "" : v }))}>
+                          <SelectTrigger><SelectValue placeholder="Aucun lot — rattacher plus tard" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">Aucun lot</SelectItem>
+                            {lots.map(l => (
+                              <SelectItem key={l.id} value={l.id.toString()}>
+                                {l.nom || `Lot #${l.id}`} ({l.especeAnimale.nom})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <Button type="button" size="sm" variant="outline" onClick={() => setCreatingLot(true)}>
+                        <Plus className="h-4 w-4 mr-1" />Nouveau
+                      </Button>
+                    </div>
+                  )}
+                  <p className="text-xs text-muted-foreground">Choisissez un lot existant (ex. « Chevreaux 2026 ») ou créez-en un ici. Aucun lot n’est créé automatiquement à l’enregistrement.</p>
                 </div>
               </div>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -912,6 +1070,81 @@ function NaissancesSubTab() {
                   <Input type="number" step="0.01" value={formData.poidsTotal} onChange={(e) => setFormData(f => ({ ...f, poidsTotal: e.target.value }))} />
                 </div>
               </div>
+
+              {/* PROMPT 29 — détail par cabri */}
+              <div className="space-y-2 border rounded-lg p-3 bg-slate-50/60">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <Label className="text-sm">Détail des cabris (optionnel)</Label>
+                  <div className="flex gap-2">
+                    {formData.nombreNes && formData.petits.length === 0 ? (
+                      <Button type="button" size="sm" variant="outline" onClick={genererPetits}>
+                        Générer {formData.nombreNes} ligne(s)
+                      </Button>
+                    ) : null}
+                    <Button type="button" size="sm" variant="outline" onClick={ajouterPetit}>
+                      <Plus className="h-4 w-4 mr-1" />Cabri
+                    </Button>
+                  </div>
+                </div>
+                {formData.petits.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    Une ligne par cabri : sexe, n° de boucle provisoire, élevé sous mère ou au biberon, poids. Les
+                    compteurs (nés/vivants/mâles/femelles) et le poids total se calculent automatiquement.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {formData.petits.map((p, i) => (
+                      <div key={i} className="grid grid-cols-12 gap-2 items-center">
+                        <span className="col-span-12 sm:col-span-1 text-xs font-semibold text-slate-600">Cabri {i + 1}</span>
+                        <select
+                          className="col-span-6 sm:col-span-2 h-9 rounded-md border border-slate-300 px-1 bg-white text-sm"
+                          value={p.sexe}
+                          onChange={(e) => majPetit(i, { sexe: e.target.value })}
+                        >
+                          <option value="">Sexe…</option>
+                          <option value="femelle">Femelle</option>
+                          <option value="male">Mâle</option>
+                        </select>
+                        <Input
+                          className="col-span-6 sm:col-span-3 h-9"
+                          value={p.boucleProvisoire}
+                          onChange={(e) => majPetit(i, { boucleProvisoire: e.target.value })}
+                          placeholder="Boucle provisoire"
+                        />
+                        <select
+                          className="col-span-6 sm:col-span-2 h-9 rounded-md border border-slate-300 px-1 bg-white text-sm"
+                          value={p.modeElevage}
+                          onChange={(e) => majPetit(i, { modeElevage: e.target.value })}
+                        >
+                          <option value="sous_mere">Sous mère</option>
+                          <option value="biberon">Biberon</option>
+                        </select>
+                        <Input
+                          className="col-span-4 sm:col-span-2 h-9"
+                          type="number"
+                          step="0.01"
+                          value={p.poids}
+                          onChange={(e) => majPetit(i, { poids: e.target.value })}
+                          placeholder="Poids"
+                        />
+                        <label className="col-span-6 sm:col-span-1 flex items-center gap-1 text-xs text-slate-600">
+                          <input type="checkbox" checked={p.vivant} onChange={(e) => majPetit(i, { vivant: e.target.checked })} />
+                          vivant
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => retirerPetit(i)}
+                          className="col-span-2 sm:col-span-1 flex justify-center text-slate-400 hover:text-red-600"
+                          title="Retirer ce cabri"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <div className="space-y-2">
                 <Label>Notes</Label>
                 <Textarea value={formData.notes} onChange={(e) => setFormData(f => ({ ...f, notes: e.target.value }))} rows={2} placeholder="Complications, observations..." />
@@ -957,7 +1190,16 @@ function NaissancesSubTab() {
                   <TableRow key={n.id}>
                     <TableCell>{new Date(n.date).toLocaleDateString('fr-FR')}</TableCell>
                     <TableCell className="font-medium">
-                      {n.mere ? (n.mere.nom || n.mere.identifiant || `#${n.mere.id}`) : '-'}
+                      {n.mere ? (
+                        <>
+                          {n.mere.identifiant
+                            ? <span className="font-mono">{n.mere.identifiant}</span>
+                            : (n.mere.nom || `#${n.mere.id}`)}
+                          {n.mere.identifiant && n.mere.nom && (
+                            <div className="text-xs font-normal text-muted-foreground">{n.mere.nom}</div>
+                          )}
+                        </>
+                      ) : '-'}
                     </TableCell>
                     <TableCell>{n.lot ? (n.lot.nom || `Lot #${n.lot.id}`) : '-'}</TableCell>
                     <TableCell>{n.mere?.especeAnimale.nom || n.lot?.especeAnimale?.nom || '-'}</TableCell>
@@ -970,10 +1212,40 @@ function NaissancesSubTab() {
                       }
                     </TableCell>
                     <TableCell className="text-right">{n.poidsTotal ? `${n.poidsTotal} kg` : '-'}</TableCell>
-                    <TableCell className="text-xs"><div>{n.identifiantsProvisoires ? `Prov. ${n.identifiantsProvisoires}` : '—'}</div>{n.identifiantsDefinitifs && <div>Déf. {n.identifiantsDefinitifs}</div>}</TableCell>
+                    <TableCell className="text-xs">
+                      {n.petits && n.petits.length > 0 ? (
+                        <div className="space-y-0.5">
+                          {n.petits.map((p, i) => (
+                            <div key={p.id ?? i} className="whitespace-nowrap">
+                              <span className="font-semibold">{p.sexe === 'male' ? '♂' : p.sexe === 'femelle' ? '♀' : '•'}</span>{' '}
+                              {p.boucleProvisoire ? <span className="font-mono">{p.boucleProvisoire}</span> : `Cabri ${p.numero ?? i + 1}`}
+                              {p.modeElevage ? <span className="text-muted-foreground"> · {p.modeElevage === 'biberon' ? 'bib' : 'ss mère'}</span> : ''}
+                              {p.poids != null ? <span className="text-muted-foreground"> · {p.poids} kg</span> : ''}
+                              {p.vivant === false ? <span className="text-red-600"> · mort-né</span> : ''}
+                              {p.animalId != null ? <span className="text-green-600"> · fiche ✓</span> : ''}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <><div>{n.identifiantsProvisoires ? `Prov. ${n.identifiantsProvisoires}` : '—'}</div>{n.identifiantsDefinitifs && <div>Déf. {n.identifiantsDefinitifs}</div>}</>
+                      )}
+                    </TableCell>
                     <TableCell className="text-muted-foreground text-sm max-w-[150px] truncate">{n.notes || '-'}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
+                        {petitsSansFiche(n) > 0 && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleCreerFiches(n)}
+                            disabled={creationFiches === n.id}
+                            title={`Créer ${petitsSansFiche(n)} fiche(s) des petits`}
+                            className="text-emerald-700 hover:text-emerald-900"
+                          >
+                            <UserPlus className="h-3.5 w-3.5 mr-1" />
+                            <span className="text-xs">Fiches ({petitsSansFiche(n)})</span>
+                          </Button>
+                        )}
                         <Button variant="ghost" size="sm" onClick={() => handleEditNaiss(n)} title="Modifier" className="text-slate-600 hover:text-slate-900">
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
@@ -1482,26 +1754,24 @@ function DialogSaillie(props: {
           </div>
           <div className="col-span-2">
             <Label>Femelle *</Label>
-            <select className="block h-10 w-full rounded-md border border-slate-300 px-2 bg-white" value={form.femelleId} onChange={(e) => setForm({ ...form, femelleId: parseInt(e.target.value) || 0 })}>
-              <option value="0">— Sélectionner —</option>
-              {femelles.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.nom || a.identifiant || `#${a.id}`} {a.race ? `(${a.race})` : ""}
-                </option>
-              ))}
-            </select>
+            <AnimalCombobox
+              animaux={femelles}
+              value={form.femelleId ? String(form.femelleId) : ""}
+              onChange={(v) => setForm({ ...form, femelleId: v ? parseInt(v) : 0 })}
+              placeholder="N° de boucle ou nom…"
+              emptyLabel="— Sélectionner —"
+            />
           </div>
           {form.type === "Monte naturelle" && (
             <div className="col-span-2">
               <Label>Mâle (cheptel)</Label>
-              <select className="block h-10 w-full rounded-md border border-slate-300 px-2 bg-white" value={form.maleId} onChange={(e) => setForm({ ...form, maleId: parseInt(e.target.value) || 0 })}>
-                <option value="0">— Aucun (saillie externe) —</option>
-                {males.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.nom || a.identifiant || `#${a.id}`} {a.race ? `(${a.race})` : ""}
-                  </option>
-                ))}
-              </select>
+              <AnimalCombobox
+                animaux={males}
+                value={form.maleId ? String(form.maleId) : ""}
+                onChange={(v) => setForm({ ...form, maleId: v ? parseInt(v) : 0 })}
+                placeholder="N° de boucle ou nom…"
+                emptyLabel="— Aucun (saillie externe) —"
+              />
             </div>
           )}
           {form.type === "IA" && (

@@ -6,6 +6,7 @@
 
 import * as React from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import {
   Bird,
   Plus,
@@ -22,6 +23,7 @@ import {
   FileText,
   Archive,
   CheckCircle2,
+  RotateCcw,
 } from "lucide-react"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -45,6 +47,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog"
 import { especeBaseId, especeBaseLabel, listEspecesBasePresentes } from "@/lib/elevage/espece-base"
+import { AnimalCombobox } from "./AnimalCombobox"
 import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from "@/components/ui/tooltip"
@@ -77,6 +80,7 @@ interface Animal {
   mereId: number | null
   pereId: number | null
   pereIdentifiant: string | null
+  mereIdentifiant: string | null
   especeAnimale: {
     id: string
     nom: string
@@ -165,6 +169,7 @@ export function AnimauxTab() {
 
 function AnimauxSubTab() {
   const { toast } = useToast()
+  const router = useRouter()
   const [isLoading, setIsLoading] = React.useState(true)
   const [animaux, setAnimaux] = React.useState<Animal[]>([])
   const [especes, setEspeces] = React.useState<EspeceAnimale[]>([])
@@ -181,7 +186,7 @@ function AnimauxSubTab() {
     dateNaissance: "", dateArrivee: todayLocalISO(),
     provenance: "", nExploitationOrigine: "",
     prixAchat: "", poidsActuel: "", notes: "",
-    mereId: "", pereId: "", pereIdentifiant: "",
+    mereId: "", pereId: "", pereIdentifiant: "", mereIdentifiant: "",
     lotId: "", parcelleGeoId: "",
   }
   const [formData, setFormData] = React.useState(EMPTY_ANIMAL_FORM)
@@ -212,11 +217,32 @@ function AnimauxSubTab() {
       mereId: a.mereId ? String(a.mereId) : "",
       pereId: a.pereId ? String(a.pereId) : "",
       pereIdentifiant: a.pereIdentifiant ?? "",
+      mereIdentifiant: a.mereIdentifiant ?? "",
       lotId: a.lot?.id ? String(a.lot.id) : "",
       parcelleGeoId: a.parcelleGeoId ?? "",
     })
     setIsDialogOpen(true)
   }
+
+  // Deep-link ?edit=<id> — QA #10 : le bouton « Modifier » de la fiche
+  // individuelle (/elevage/animaux/[id]) renvoie vers
+  // /elevage?tab=animaux&edit=<id>. On ouvre le même formulaire d'édition que
+  // le pinceau de la ligne, dès que la liste est chargée. Le ref empêche de
+  // rouvrir le dialog à chaque refetch.
+  const handledEditParamRef = React.useRef(false)
+  React.useEffect(() => {
+    if (handledEditParamRef.current || isLoading) return
+    const editId = new URLSearchParams(window.location.search).get("edit")
+    if (!editId) return
+    const target = animaux.find((a) => a.id === Number(editId))
+    if (!target) return
+    handleEditAnimal(target)
+    handledEditParamRef.current = true
+    // Retire le param via le routeur (pas l'History API brute) pour qu'un
+    // reload ne rouvre pas le dialog, sans désynchroniser l'App Router.
+    router.replace("/elevage?tab=animaux", { scroll: false })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading, animaux])
 
   // QA Julien 2026-05-15 — Bug #9 : on ne filtre plus serveur sur
   // l'espece+race exacte (Lacaune, Sussex…) mais sur l'espèce de base
@@ -316,6 +342,7 @@ function AnimauxSubTab() {
         mereId: formData.mereId ? parseInt(formData.mereId) : null,
         pereId: formData.pereId ? parseInt(formData.pereId) : null,
         pereIdentifiant: formData.pereIdentifiant || null,
+        mereIdentifiant: formData.mereIdentifiant || null,
       }
       // Bug testeur 2026-05-31 — un nouvel animal est TOUJOURS créé actif. On
       // force le statut côté payload de création pour qu'aucune valeur résiduelle
@@ -711,10 +738,29 @@ function AnimauxSubTab() {
                   <p className="text-xs text-muted-foreground">À renseigner aussi lors d’un achat si les parents sont connus.</p>
                 </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div className="space-y-2"><Label>Mère dans le cheptel</Label><Select value={formData.mereId || "__none__"} onValueChange={(v) => setFormData(f => ({ ...f, mereId: v === "__none__" ? "" : v }))}><SelectTrigger><SelectValue placeholder="Non renseignée" /></SelectTrigger><SelectContent><SelectItem value="__none__">Non renseignée</SelectItem>{animaux.filter(a => a.id !== editingAnimalId && a.sexe === "femelle" && (!formData.especeAnimaleId || a.especeAnimale.id === formData.especeAnimaleId)).map(a => <SelectItem key={a.id} value={String(a.id)}>{a.nom || a.identifiant || `#${a.id}`}</SelectItem>)}</SelectContent></Select></div>
-                  <div className="space-y-2"><Label>Père dans le cheptel</Label><Select value={formData.pereId || "__none__"} onValueChange={(v) => setFormData(f => ({ ...f, pereId: v === "__none__" ? "" : v }))}><SelectTrigger><SelectValue placeholder="Non renseigné" /></SelectTrigger><SelectContent><SelectItem value="__none__">Non renseigné</SelectItem>{animaux.filter(a => a.id !== editingAnimalId && a.sexe === "male" && (!formData.especeAnimaleId || a.especeAnimale.id === formData.especeAnimaleId)).map(a => <SelectItem key={a.id} value={String(a.id)}>{a.nom || a.identifiant || `#${a.id}`}</SelectItem>)}</SelectContent></Select></div>
+                  <div className="space-y-2">
+                    <Label>Mère dans le cheptel</Label>
+                    <AnimalCombobox
+                      animaux={animaux.filter(a => a.id !== editingAnimalId && a.sexe === "femelle" && (!formData.especeAnimaleId || a.especeAnimale.id === formData.especeAnimaleId))}
+                      value={formData.mereId}
+                      onChange={(v) => setFormData(f => ({ ...f, mereId: v }))}
+                      emptyLabel="Non renseignée"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Père dans le cheptel</Label>
+                    <AnimalCombobox
+                      animaux={animaux.filter(a => a.id !== editingAnimalId && a.sexe === "male" && (!formData.especeAnimaleId || a.especeAnimale.id === formData.especeAnimaleId))}
+                      value={formData.pereId}
+                      onChange={(v) => setFormData(f => ({ ...f, pereId: v }))}
+                      emptyLabel="Non renseigné"
+                    />
+                  </div>
                 </div>
-                <div className="space-y-2"><Label>Père externe / référence génétique</Label><Input value={formData.pereIdentifiant} onChange={(e) => setFormData(f => ({ ...f, pereIdentifiant: e.target.value }))} placeholder="N° de boucle, nom, centre d’insémination…" /></div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="space-y-2"><Label>Mère externe / hors troupeau</Label><Input value={formData.mereIdentifiant} onChange={(e) => setFormData(f => ({ ...f, mereIdentifiant: e.target.value }))} placeholder="N° de boucle (mère décédée, autre élevage…)" /></div>
+                  <div className="space-y-2"><Label>Père externe / référence génétique</Label><Input value={formData.pereIdentifiant} onChange={(e) => setFormData(f => ({ ...f, pereIdentifiant: e.target.value }))} placeholder="N° de boucle, nom, centre d’insémination…" /></div>
+                </div>
               </div>
               {/* Feedback éleveur 2026-07-21 — rattachement de l'animal à un lot
                   directement depuis sa fiche (il n'y avait aucun moyen de le faire). */}
@@ -1216,6 +1262,46 @@ function LotsSubTab() {
     }
   }
 
+  // Réactivation : annule une réforme/clôture (ex. lots créés par erreur puis
+  // réformés « pour les cacher »). Repasse le statut à 'actif'. Feedback éleveur 2026-07-24.
+  const handleReactiverLot = async (lot: Lot) => {
+    try {
+      const res = await fetch('/api/elevage/lots', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: lot.id, statut: 'actif', dateReforme: null }),
+      })
+      if (res.ok) {
+        toast({ title: "Lot réactivé" })
+        fetchData()
+      } else {
+        const p = await res.json().catch(() => null)
+        toast({ variant: "destructive", title: "Erreur", description: p?.error || "Impossible de réactiver le lot" })
+      }
+    } catch {
+      toast({ variant: "destructive", title: "Erreur", description: "Erreur réseau" })
+    }
+  }
+
+  // Suppression définitive d'un lot (ex. lot créé par erreur, sans animaux).
+  // L'API refuse (409) si le lot porte des animaux/abattages/productions et
+  // renvoie un message explicite. Feedback éleveur 2026-07-24.
+  const handleSupprimerLot = async (lot: Lot) => {
+    if (!(await confirmDialog(`Supprimer définitivement le lot ${lot.nom || `#${lot.id}`} ? Cette action est irréversible.`))) return
+    try {
+      const res = await fetch(`/api/elevage/lots?id=${lot.id}`, { method: 'DELETE' })
+      if (res.ok) {
+        toast({ title: "Lot supprimé" })
+        fetchData()
+      } else {
+        const p = await res.json().catch(() => null)
+        toast({ variant: "destructive", title: "Suppression impossible", description: p?.error || "Le lot est lié à des données." })
+      }
+    } catch {
+      toast({ variant: "destructive", title: "Erreur", description: "Erreur réseau" })
+    }
+  }
+
   // Clôture d'un lot : marqué « terminé » (lot vendu en bloc, fusionné, vidé…).
   const handleCloturerLot = async (lot: Lot) => {
     if (!(await confirmDialog(`Clôturer le lot ${lot.nom || `#${lot.id}`} ? Il sera marqué terminé.`))) return
@@ -1522,6 +1608,30 @@ function LotsSubTab() {
                               </Tooltip>
                             </>
                           )}
+                          {lot.statut !== 'actif' && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  onClick={() => handleReactiverLot(lot)}
+                                  className="p-1.5 rounded-md transition-colors bg-slate-100 text-slate-400 hover:bg-green-100 hover:text-green-700"
+                                >
+                                  <RotateCcw className="h-3.5 w-3.5" />
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent>Réactiver (repasser en actif)</TooltipContent>
+                            </Tooltip>
+                          )}
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <button
+                                onClick={() => handleSupprimerLot(lot)}
+                                className="p-1.5 rounded-md transition-colors bg-slate-100 text-slate-400 hover:bg-red-100 hover:text-red-700"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent>Supprimer le lot</TooltipContent>
+                          </Tooltip>
                         </TooltipProvider>
                       </div>
                     </TableCell>

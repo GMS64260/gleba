@@ -13,6 +13,7 @@ import { lotSchema } from '@/lib/validations/elevage-lot'
 import { deleteAutoEntry, createDepenseFromLotAnimaux } from '@/lib/auto-compta'
 import { isPlausibleAnimalDate } from '@/lib/validations/elevage-animal'
 import { isOwnedParcelle } from '@/lib/elevage/animal-lot'
+import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -47,71 +48,21 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    // Bug #18 — Pour chaque lot, comptabiliser les naissances rattachables
-    // (mère dans le lot) pour signaler les écarts non documentés entre
-    // `quantiteInitiale` et `quantiteActuelle`. Permet à l'UI d'afficher
-    // un badge "Écart non traçable" si quantité a gonflé sans naissance
-    // ni achat enregistrés.
-    const lotIds = lots.map(l => l.id)
-    const naissancesParLot = new Map<number, number>()
-    const abattagesParLot = new Map<number, number>()
-    if (lotIds.length > 0) {
-      const meresInLots = await prisma.animal.findMany({
-        where: { userId: session.user.id, lotId: { in: lotIds } },
-        select: { id: true, lotId: true },
-      })
-      const lotByMereId = new Map(meresInLots.map(m => [m.id, m.lotId]))
-      // Naissances rattachables au lot : soit directement (lotId), soit via
-      // la mère présente dans le lot. On attribue chaque naissance à UN seul
-      // lot (priorité au lotId explicite) pour éviter le double comptage.
-      const naissances = await prisma.naissanceAnimale.findMany({
-        where: {
-          userId: session.user.id,
-          OR: [
-            { lotId: { in: lotIds } },
-            { mereId: { in: meresInLots.map(m => m.id) } },
-          ],
-        },
-        select: { mereId: true, lotId: true, nombreVivants: true },
-      })
-      for (const n of naissances) {
-        const lotId = n.lotId ?? (n.mereId != null ? lotByMereId.get(n.mereId) ?? null : null)
-        if (!lotId) continue
-        naissancesParLot.set(lotId, (naissancesParLot.get(lotId) ?? 0) + n.nombreVivants)
-      }
-      // Bug feedback testeur 2026-05-26 (cmpmr3837, cmpm7cssg) — l'effectif
-      // "Actuel" stocké (quantiteActuelle) dérivait des mouvements réels :
-      // les 5 abattages du lot Lapins ne le décrémentaient pas (affiché 14
-      // au lieu de 2). On calcule un effectif AUTORITAIRE reconstitué à
-      // partir des mouvements traçables : initial + naissances − abattages.
-      const abattages = await prisma.abattage.groupBy({
-        by: ['lotId'],
-        where: { userId: session.user.id, lotId: { in: lotIds }, annule: false },
-        _sum: { quantite: true },
-      })
-      for (const a of abattages) {
-        if (a.lotId == null) continue
-        abattagesParLot.set(a.lotId, a._sum.quantite ?? 0)
-      }
-    }
+    // Bug #18 / bug cmpmr3837 — le compteur stocké `quantiteActuelle` dérive
+    // (abattages/mortalités non décrémentés : lot Lapins affiché 14 au lieu de
+    // 2). On reconstitue un effectif prudent (initial + naissances explicites −
+    // abattages, plafonné par le compteur stocké) via le helper partagé avec
+    // GET /stats, pour que les deux surfaces ne divergent plus.
+    const effectifs = await reconstituerEffectifsLots(session.user.id, lots)
 
     const enriched = lots.map(l => {
-      const naissances = naissancesParLot.get(l.id) ?? 0
-      const abattages = abattagesParLot.get(l.id) ?? 0
-      // Plafond traçable : un lot ne peut pas dépasser
-      // initial + naissances − abattages. Si le compteur stocké est
-      // au-dessus (abattages non décrémentés → bug cmpmr3837), on le
-      // ramène au plafond. S'il est en-dessous (mortalités/ventes
-      // individuelles non tracées par lot), on conserve la valeur
-      // stockée, plus basse donc plus prudente.
-      const plafond = Math.max(0, l.quantiteInitiale + naissances - abattages)
-      const effectifCalcule = Math.min(l.quantiteActuelle, plafond)
+      const e = effectifs.get(l.id)
       return {
         ...l,
-        naissancesVivantes: naissances,
-        abattagesTotal: abattages,
-        // Effectif reconstitué (source de vérité pour l'affichage).
-        effectifCalcule,
+        naissancesVivantes: e?.naissancesVivantes ?? 0,
+        abattagesTotal: e?.abattagesTotal ?? 0,
+        // Effectif reconstitué pour corriger les compteurs historiques dérivés.
+        effectifCalcule: e?.effectifCalcule ?? l.quantiteActuelle,
       }
     })
 

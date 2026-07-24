@@ -20,6 +20,7 @@ import {
   ClipboardCheck,
 } from "lucide-react"
 import { RationSubTab } from "./RationSubTab"
+import { AnimalCombobox } from "./AnimalCombobox"
 import { SanitaireReglementaireSubTab } from "./SanitaireReglementaireSubTab"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -740,10 +741,13 @@ function ConsommationsSubTab() {
                     </Select>
                   )}
                   {formData.cible === "animal" && (
-                    <Select value={formData.animalId || undefined} onValueChange={(v) => setFormData(f => ({ ...f, animalId: v }))}>
-                      <SelectTrigger><SelectValue placeholder="Sélectionner un animal" /></SelectTrigger>
-                      <SelectContent>{animaux.map(a => <SelectItem key={a.id} value={a.id.toString()}>{a.nom || a.identifiant || `Animal #${a.id}`} ({a.especeAnimale.nom})</SelectItem>)}</SelectContent>
-                    </Select>
+                    <AnimalCombobox
+                      animaux={animaux}
+                      value={formData.animalId}
+                      onChange={(v) => setFormData(f => ({ ...f, animalId: v }))}
+                      placeholder="N° de boucle ou nom…"
+                      emptyLabel="Sélectionner un animal"
+                    />
                   )}
                   <p className="text-xs text-muted-foreground">Une saisie globale sera ventilée par effectif dans l'analyse économique.</p>
                 </div>
@@ -864,11 +868,35 @@ interface Soin {
   fait: boolean
   notes: string | null
   animalId: number | null
+  // Délais d'attente (remise en vente) — présents sur un soin réalisé avec produit
+  tempsAttenteLaitJ: number | null
+  tempsAttenteViandeJ: number | null
+  finAttenteLait: string | null
+  finAttenteViande: string | null
+  // PROMPT 30 — traitement à plusieurs injections
+  nbInjections: number | null
+  intervalleInjectionsHeures: number | null
+  injections: {
+    id: string
+    numero: number
+    datePrevue: string
+    dateRealisee: string | null
+    statut: "a_faire" | "realisee" | "annulee"
+  }[]
   animal: { id: number; nom: string; identifiant: string } | null
   lot: { id: number; nom: string } | null
 }
 
 interface LotSoin { id: number; nom: string | null; quantiteActuelle: number }
+
+// Remise en vente = lendemain de la fin du délai d'attente (le jour de fin est
+// encore écarté). Retourne la date, ou null si pas de délai.
+function remiseEnVente(fin: string | null): Date | null {
+  if (!fin) return null
+  const d = new Date(fin)
+  d.setDate(d.getDate() + 1)
+  return d
+}
 
 const SOIN_TYPE_LABELS: Record<string, string> = {
   vaccination: "Vaccination",
@@ -903,6 +931,8 @@ function SoinsSubTab({ initialAnimalId = null }: { initialAnimalId?: string | nu
     veterinaire: "",
     datePrevue: "",
     quantite: "", unite: "", cout: "", fait: true, notes: "",
+    // PROMPT 30 — traitement à plusieurs injections
+    nbInjections: "1", intervalleInjectionsHeures: "24",
   }
   const [formData, setFormData] = React.useState(EMPTY_SOIN_FORM)
 
@@ -933,6 +963,8 @@ function SoinsSubTab({ initialAnimalId = null }: { initialAnimalId?: string | nu
       cout: s.cout ? s.cout.toString() : "",
       fait: s.fait,
       notes: s.notes ?? "",
+      nbInjections: s.nbInjections != null ? String(s.nbInjections) : "1",
+      intervalleInjectionsHeures: s.intervalleInjectionsHeures != null ? String(s.intervalleInjectionsHeures) : "24",
     })
     setIsDialogOpen(true)
   }
@@ -962,6 +994,24 @@ function SoinsSubTab({ initialAnimalId = null }: { initialAnimalId?: string | nu
   }, [filterFait, toast])
 
   React.useEffect(() => { fetchData() }, [fetchData])
+
+  const changerInjection = async (soinId: number, injectionId: string, statut: "a_faire" | "realisee" | "annulee") => {
+    try {
+      const res = await fetch(`/api/elevage/soins/${soinId}/injections`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ injectionId, statut, dateRealisee: statut === "realisee" ? new Date().toISOString() : null }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        throw new Error(body?.error || "Mise à jour impossible")
+      }
+      toast({ title: statut === "realisee" ? "Injection enregistrée" : statut === "annulee" ? "Injection annulée" : "Injection rouverte" })
+      fetchData()
+    } catch (error) {
+      toast({ variant: "destructive", title: "Erreur", description: error instanceof Error ? error.message : "Mise à jour impossible" })
+    }
+  }
 
   // Bug testeur 2026-05-31 — arrivée depuis « + Soin » d'une fiche animale :
   // on pré-ouvre le formulaire « Nouveau soin » ciblé sur cet animal. Ne se
@@ -995,6 +1045,12 @@ function SoinsSubTab({ initialAnimalId = null }: { initialAnimalId?: string | nu
         cout: formData.cout ? parseFloat(formData.cout) : null,
         fait: formData.fait,
         notes: formData.notes || null,
+        // PROMPT 30 — traitement à plusieurs injections
+        nbInjections: Math.max(1, parseInt(formData.nbInjections, 10) || 1),
+        intervalleInjectionsHeures:
+          (parseInt(formData.nbInjections, 10) || 1) > 1 && formData.intervalleInjectionsHeures
+            ? parseInt(formData.intervalleInjectionsHeures, 10)
+            : null,
       }
       if (formData.cible === "animal") payload.animalId = formData.animalId ? parseInt(formData.animalId) : null
       else payload.lotId = formData.lotId ? parseInt(formData.lotId) : null
@@ -1068,14 +1124,13 @@ function SoinsSubTab({ initialAnimalId = null }: { initialAnimalId?: string | nu
                     </Button>
                   </div>
                   {formData.cible === "animal" ? (
-                    <select className="w-full h-10 rounded-md border border-slate-300 px-2 bg-white text-sm" value={formData.animalId} onChange={(e) => setFormData(f => ({ ...f, animalId: e.target.value }))}>
-                      <option value="">— Sélectionner un animal —</option>
-                      {animaux.map(a => (
-                        <option key={a.id} value={a.id}>
-                          {a.nom || a.identifiant || `#${a.id}`}{a.especeAnimale?.nom ? ` (${a.especeAnimale.nom})` : ""}
-                        </option>
-                      ))}
-                    </select>
+                    <AnimalCombobox
+                      animaux={animaux}
+                      value={formData.animalId}
+                      onChange={(v) => setFormData(f => ({ ...f, animalId: v }))}
+                      placeholder="N° de boucle ou nom…"
+                      emptyLabel="— Sélectionner un animal —"
+                    />
                   ) : (
                     <select className="w-full h-10 rounded-md border border-slate-300 px-2 bg-white text-sm" value={formData.lotId} onChange={(e) => setFormData(f => ({ ...f, lotId: e.target.value }))}>
                       <option value="">— Sélectionner un lot —</option>
@@ -1123,6 +1178,54 @@ function SoinsSubTab({ initialAnimalId = null }: { initialAnimalId?: string | nu
                     ))}
                   </select>
                   <Input value={formData.produit} onChange={(e) => setFormData(f => ({ ...f, produit: e.target.value }))} placeholder="Libellé produit (si saisie libre)" />
+                  {(() => {
+                    const p = produits.find(x => x.id === formData.produitId)
+                    if (!p || (!p.tempsAttenteLaitJ && !p.tempsAttenteViandeJ) || !formData.date) return null
+                    // PROMPT 30 — l'attente court depuis la DERNIÈRE injection.
+                    const nb = Math.max(1, parseInt(formData.nbInjections, 10) || 1)
+                    const interH = parseInt(formData.intervalleInjectionsHeures, 10) || 0
+                    const base = new Date(formData.date)
+                    const derniere = nb > 1 && interH ? new Date(base.getTime() + (nb - 1) * interH * 3_600_000) : base
+                    const remise = (j: number) => { const d = new Date(derniere); d.setDate(d.getDate() + j + 1); return d.toLocaleDateString('fr-FR') }
+                    return (
+                      <div className="text-xs rounded-md bg-amber-50 border border-amber-200 p-2 text-amber-800">
+                        Remise en vente
+                        {p.tempsAttenteLaitJ ? <> · 🥛 lait le <b>{remise(p.tempsAttenteLaitJ)}</b></> : null}
+                        {p.tempsAttenteViandeJ ? <> · 🥩 viande le <b>{remise(p.tempsAttenteViandeJ)}</b></> : null}
+                        {nb > 1 ? <span className="text-amber-600"> (dès la {nb}ᵉ injection)</span> : null}
+                        {!formData.fait ? <span className="text-amber-600"> — actif dès que le soin sera « fait »</span> : null}
+                      </div>
+                    )
+                  })()}
+                </div>
+
+                {/* PROMPT 30 — protocole à plusieurs injections (ex. Pénijectyl J0/J1/J2) */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label>Nombre d&apos;injections</Label>
+                    <Input type="number" min="1" max="30" value={formData.nbInjections} onChange={(e) => setFormData(f => ({ ...f, nbInjections: e.target.value }))} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Intervalle entre injections</Label>
+                    <select
+                      className="w-full h-10 rounded-md border border-slate-300 px-2 bg-white text-sm disabled:opacity-50"
+                      value={formData.intervalleInjectionsHeures}
+                      disabled={(parseInt(formData.nbInjections, 10) || 1) <= 1}
+                      onChange={(e) => setFormData(f => ({ ...f, intervalleInjectionsHeures: e.target.value }))}
+                    >
+                      <option value="12">12 h</option>
+                      <option value="24">24 h (1 / jour)</option>
+                      <option value="48">48 h (1 / 2 jours)</option>
+                      <option value="72">72 h</option>
+                      <option value="168">1 semaine</option>
+                    </select>
+                  </div>
+                  {(parseInt(formData.nbInjections, 10) || 1) > 1 && (
+                    <p className="col-span-2 text-xs text-muted-foreground">
+                      {formData.nbInjections} injections espacées de {formData.intervalleInjectionsHeures} h — 1 seul traitement.
+                      Le délai d&apos;attente démarre à la dernière injection.
+                    </p>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-3 gap-3">
@@ -1203,6 +1306,7 @@ function SoinsSubTab({ initialAnimalId = null }: { initialAnimalId?: string | nu
                   <TableHead>Type</TableHead>
                   <TableHead>Lot/Animal</TableHead>
                   <TableHead>Produit</TableHead>
+                  <TableHead>Remise en vente</TableHead>
                   <TableHead className="text-right">Coût</TableHead>
                   <TableHead>Notes</TableHead>
                 </TableRow>
@@ -1258,13 +1362,54 @@ function SoinsSubTab({ initialAnimalId = null }: { initialAnimalId?: string | nu
                     </TableCell>
                     <TableCell><Badge variant="outline">{SOIN_TYPE_LABELS[soin.type] || soin.type}</Badge></TableCell>
                     <TableCell>{soin.lot?.nom || soin.animal?.nom || '-'}</TableCell>
-                    <TableCell>{soin.produit || '-'}</TableCell>
+                    <TableCell>
+                      <div>{soin.produit || '-'}</div>
+                      {soin.nbInjections != null && soin.nbInjections > 1 && (
+                        <Badge variant="outline" className="ml-1 text-[10px] bg-blue-50 text-blue-700 border-blue-200">
+                          ×{soin.nbInjections} inj.{soin.intervalleInjectionsHeures ? ` /${soin.intervalleInjectionsHeures}h` : ''}
+                        </Badge>
+                      )}
+                      {soin.injections?.length > 1 && (
+                        <div className="mt-1 space-y-1">
+                          {soin.injections.map((injection) => (
+                            <div key={injection.id} className="flex items-center gap-1 text-[11px] whitespace-nowrap">
+                              <span className={injection.statut === "realisee" ? "text-green-700" : injection.statut === "annulee" ? "text-slate-400 line-through" : "text-amber-700"}>
+                                #{injection.numero} · {new Date(injection.datePrevue).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}
+                              </span>
+                              {injection.statut === "a_faire" ? (
+                                <>
+                                  <Button type="button" variant="ghost" size="sm" className="h-6 px-1.5 text-[11px]" onClick={() => changerInjection(soin.id, injection.id, "realisee")}>Faite</Button>
+                                  <Button type="button" variant="ghost" size="sm" className="h-6 px-1.5 text-[11px]" onClick={() => changerInjection(soin.id, injection.id, "annulee")}>Annuler</Button>
+                                </>
+                              ) : (
+                                <Button type="button" variant="ghost" size="sm" className="h-6 px-1.5 text-[11px]" onClick={() => changerInjection(soin.id, injection.id, "a_faire")}>Rouvrir</Button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      {(() => {
+                        const rvLait = remiseEnVente(soin.finAttenteLait)
+                        const rvViande = remiseEnVente(soin.finAttenteViande)
+                        if (!rvLait && !rvViande) return <span className="text-slate-400">\u2014</span>
+                        const auj = new Date(new Date().toDateString())
+                        const cls = (d: Date | null) => (d && d > auj ? "text-amber-700 font-medium" : "text-slate-500")
+                        return (
+                          <div className="space-y-0.5 whitespace-nowrap">
+                            {rvLait && <div className={cls(rvLait)}>\ud83e\udd5b {rvLait.toLocaleDateString('fr-FR')}</div>}
+                            {rvViande && <div className={cls(rvViande)}>\ud83e\udd69 {rvViande.toLocaleDateString('fr-FR')}</div>}
+                          </div>
+                        )
+                      })()}
+                    </TableCell>
                     <TableCell className="text-right">{soin.cout ? `${soin.cout.toFixed(2)} \u20ac` : '-'}</TableCell>
                     <TableCell className="text-muted-foreground text-sm max-w-[200px] truncate">{soin.notes || '-'}</TableCell>
                   </TableRow>
                   )
                 })}
-                {soins.length === 0 && <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Aucun soin enregistré</TableCell></TableRow>}
+                {soins.length === 0 && <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Aucun soin enregistré</TableCell></TableRow>}
               </TableBody>
             </Table>
           )}

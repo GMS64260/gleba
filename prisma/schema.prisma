@@ -115,6 +115,7 @@ model User {
   abattages             Abattage[]
   consommationsAliments ConsommationAliment[]
   soinsAnimaux          SoinAnimal[]
+  injectionsSoins       InjectionSoin[]
   naissancesAnimales    NaissanceAnimale[]
   // PROMPT 17 — production laitière
   collectesLait         CollecteLait[]
@@ -130,6 +131,8 @@ model User {
   paiesLait             PaieLait[]
   // PROMPT 27 — mouvements de stock fromage (cave / affinage)
   mouvementsFromage     MouvementFromage[]
+  // PROMPT 29 — détail des petits de naissance (cabris)
+  petitsNaissance       PetitNaissance[]
   // PROMPT 19A — mouvements de cheptel
   mouvementsCheptel     MouvementCheptel[]
   contratsElevage       ContratElevage[]
@@ -2018,6 +2021,10 @@ model Animal {
   mereId          Int?           @map("mere_id")
   mere            Animal?        @relation("ParentEnfant", fields: [mereId], references: [id], onDelete: SetNull)
   enfants         Animal[]       @relation("ParentEnfant")
+  // PROMPT 28 — Mère externe / hors troupeau (fallback texte, ex. mère décédée
+  // ou d'un autre élevage) — symétrique de pereIdentifiant. Feedback éleveur
+  // caprin 2026-07-21 : pouvoir saisir le n° de boucle d'une mère absente de la liste.
+  mereIdentifiant String?        @map("mere_identifiant")
   // PROMPT 18 — Père relié au cheptel (FK) avec fallback texte si externe
   pereId          Int?           @map("pere_id")
   pere            Animal?        @relation("PereEnfant", fields: [pereId], references: [id], onDelete: SetNull)
@@ -2048,6 +2055,8 @@ model Animal {
   // Audit élevage 2026-06-11 — ventes d'animal vivant (restauration à l'annulation)
   ventesProduits   VenteProduit[]
   consommationsAliments ConsommationAliment[]
+  // PROMPT 31 — fiche générée depuis un petit de naissance (idempotence)
+  ficheNaissance   PetitNaissance? @relation("PetitFiche")
 
   @@index([userId])
   @@index([especeAnimaleId])
@@ -2240,10 +2249,15 @@ model SoinAnimal {
   voie        String?     @map("voie") // 'IM','SC','PO','Local','Autre'
   motif       String?     @map("motif") // Indication clinique
   ordonnanceUrl String?   @map("ordonnance_url") // PDF ordonnance archivée
+  // PROMPT 30 — un traitement = souvent plusieurs injections (ex. Pénijectyl J0/J1/J2).
+  // Feedback La ferme des belles chèvres 2026-07-24 : noter durée/répétition sur une
+  // même ligne. Le délai d'attente court depuis la DERNIÈRE injection.
+  nbInjections               Int  @default(1) @map("nb_injections")
+  intervalleInjectionsHeures Int? @map("intervalle_injections_heures") // heures entre 2 injections (24, 48…)
   // Temps d'attente snapshot au moment de l'application (en jours)
   tempsAttenteLaitJ   Int? @map("temps_attente_lait_j")
   tempsAttenteViandeJ Int? @map("temps_attente_viande_j")
-  // Dates calculées (date_soin + temps_attente)
+  // Dates calculées (dernière injection + temps_attente)
   finAttenteLait      DateTime? @map("fin_attente_lait")
   finAttenteViande    DateTime? @map("fin_attente_viande")
   quantite    Float?      @map("quantite")
@@ -2254,6 +2268,7 @@ model SoinAnimal {
   fait        Boolean     @default(true) @map("fait")
   notes       String?     @map("notes")
   createdAt   DateTime    @default(now()) @map("created_at")
+  injections  InjectionSoin[]
 
   @@index([userId])
   @@index([animalId])
@@ -2265,6 +2280,26 @@ model SoinAnimal {
   @@index([finAttenteViande])
   @@map("soins_animaux")
 }
+
+model InjectionSoin {
+  id            String      @id @default(cuid())
+  userId        String      @map("user_id")
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  soinId        Int         @map("soin_id")
+  soin          SoinAnimal  @relation(fields: [soinId], references: [id], onDelete: Cascade)
+  numero        Int         @map("numero")
+  datePrevue    DateTime    @map("date_prevue")
+  dateRealisee  DateTime?   @map("date_realisee")
+  statut        String      @default("a_faire") @map("statut")
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+
+  @@unique([soinId, numero])
+  @@index([userId, statut, datePrevue])
+  @@index([soinId])
+  @@map("injections_soins")
+}
+
 
 /// Séquence de numérotation continue pour les lots fromage (POSTREVIEW Sprint 5).
 /// Lock FOR UPDATE comme SequenceFacture pour éviter les doublons concurrents.
@@ -2409,6 +2444,8 @@ model NaissanceAnimale {
   // PROMPT 18 — lien vers la saillie d'origine pour calcul gestation
   saillieId     String?   @unique @map("saillie_id")
   saillie       Saillie?  @relation("SaillieMiseBas", fields: [saillieId], references: [id], onDelete: SetNull)
+  // PROMPT 29 — détail par petit (cabri) : sexe, boucle, mode d'élevage, poids
+  petits        PetitNaissance[]
   createdAt     DateTime  @default(now()) @map("created_at")
 
   @@index([userId])
@@ -2416,6 +2453,35 @@ model NaissanceAnimale {
   @@index([lotId])
   @@index([date])
   @@map("naissances_animales")
+}
+
+/// Détail d'un petit (cabri, agneau, lapereau…) au sein d'une mise-bas.
+/// Feedback La ferme des belles chèvres 2026-07-24 : saisir chaque petit
+/// individuellement (sexe, boucle provisoire, élevé sous mère ou au biberon,
+/// poids) au lieu d'une liste globale de boucles.
+model PetitNaissance {
+  id               String           @id @default(cuid())
+  userId           String           @map("user_id")
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  naissanceId      Int              @map("naissance_id")
+  naissance        NaissanceAnimale @relation(fields: [naissanceId], references: [id], onDelete: Cascade)
+  numero           Int              @map("numero") // Cabri 1, 2, 3…
+  sexe             String?          @map("sexe") // 'male' | 'femelle'
+  boucleProvisoire String?          @map("boucle_provisoire")
+  boucleDefinitive String?          @map("boucle_definitive")
+  modeElevage      String?          @map("mode_elevage") // 'sous_mere' | 'biberon'
+  poids            Float?           @map("poids") // kg à la naissance
+  vivant           Boolean          @default(true) @map("vivant")
+  notes            String?          @map("notes")
+  // PROMPT 31 — fiche individuelle générée depuis ce petit (idempotence :
+  // « Créer les fiches des petits » ne recrée pas un Animal déjà généré).
+  animalId         Int?             @unique @map("animal_id")
+  animal           Animal?          @relation("PetitFiche", fields: [animalId], references: [id], onDelete: SetNull)
+  createdAt        DateTime         @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([naissanceId])
+  @@map("petits_naissance")
 }
 
 // ============================================================

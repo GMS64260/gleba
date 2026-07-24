@@ -6,6 +6,7 @@
 
 import * as React from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -55,6 +56,7 @@ const availableYears = getAvailableYears()
 
 export default function ElevageDashboard() {
   const { data: session } = useSession()
+  const router = useRouter()
   const [selectedYear, setSelectedYear] = React.useState(currentYearNow)
   const [showChat, setShowChat] = React.useState(false)
   const [activeTab, setActiveTab] = React.useState<TabId>("calendrier")
@@ -84,14 +86,17 @@ export default function ElevageDashboard() {
     } else if (raw && ALIASES[raw]) {
       const canonical = ALIASES[raw]
       setActiveTab(canonical)
-      window.history.replaceState(null, "", `/elevage?tab=${canonical}`)
+      // Normalise l'alias via le routeur Next (et non l'History API brute :
+      // un replaceState(null,…) désynchronise l'arbre interne de l'App Router
+      // et casse les <Link> ultérieurs vers /elevage/animaux/[id] — bug QA #1).
+      router.replace(`/elevage?tab=${canonical}`, { scroll: false })
     }
-  }, [])
+  }, [router])
 
   const handleTabChange = React.useCallback((tab: TabId) => {
     setActiveTab(tab)
-    window.history.replaceState(null, "", `/elevage?tab=${tab}`)
-  }, [])
+    router.replace(`/elevage?tab=${tab}`, { scroll: false })
+  }, [router])
 
   if (!session) {
     return (

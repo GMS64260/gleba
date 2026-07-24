@@ -14,6 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { chargerAttentesConsolidees } from '@/lib/elevage/attentes-query'
 
 type Gravite = 'info' | 'attention' | 'urgent'
 type Echeance = {
@@ -57,7 +58,7 @@ export async function GET(request: NextRequest) {
     const now = new Date()
     const horizon = new Date(now.getTime() + horizonJours * 86_400_000)
 
-    const [gestantes, enAttente, soinsAttente, soinsPlanifies, stocksBas, medicaments, prophylaxies, tachesTerrain, echeancesAdmin] = await Promise.all([
+    const [gestantes, enAttente, attentesConsolidees, soinsPlanifies, stocksBas, medicaments, prophylaxies, tachesTerrain, echeancesAdmin] = await Promise.all([
       // Saillies gestantes : mise-bas + tarissement à venir
       prisma.saillie.findMany({
         where: { userId, statut: 'Gestante' },
@@ -77,21 +78,9 @@ export async function GET(request: NextRequest) {
           femelle: { select: { id: true, nom: true, identifiant: true } },
         },
       }),
-      // Soins faits avec délai d'attente encore actif (contrainte sanitaire)
-      prisma.soinAnimal.findMany({
-        where: {
-          userId,
-          fait: true,
-          OR: [{ finAttenteLait: { gte: now } }, { finAttenteViande: { gte: now } }],
-        },
-        select: {
-          id: true,
-          finAttenteLait: true,
-          finAttenteViande: true,
-          animal: { select: { id: true, nom: true, identifiant: true } },
-          lot: { select: { id: true, nom: true } },
-        },
-      }),
+      // Délais d'attente CONSOLIDÉS par (cible + traitement), ancrés sur la
+      // dernière injection — une seule échéance par traitement (QA #2/#9).
+      chargerAttentesConsolidees(userId, floorDay(now)),
       // Soins planifiés (non faits) à échéance ou en retard
       prisma.soinAnimal.findMany({
         where: { userId, fait: false, datePrevue: { not: null, lte: horizon } },
@@ -125,6 +114,31 @@ export async function GET(request: NextRequest) {
         select: { id: true, libelle: true, categorie: true, dateEcheance: true },
       }),
     ])
+    const injectionsPlanifiees = await prisma.$queryRaw<Array<{
+      id: string
+      soinId: number
+      numero: number
+      datePrevue: Date
+      produit: string | null
+      type: string
+      animalId: number | null
+      animalNom: string | null
+      animalIdentifiant: string | null
+      lotId: number | null
+      lotNom: string | null
+    }>>`
+      SELECT i.id, i.soin_id AS "soinId", i.numero, i.date_prevue AS "datePrevue",
+             s.produit, s.type, s.animal_id AS "animalId", a.nom AS "animalNom",
+             a.identifiant AS "animalIdentifiant", s.lot_id AS "lotId", l.nom AS "lotNom"
+      FROM injections_soins i
+      JOIN soins_animaux s ON s.id = i.soin_id
+      LEFT JOIN animaux a ON a.id = s.animal_id
+      LEFT JOIN lots_animaux l ON l.id = s.lot_id
+      WHERE i.user_id = ${userId}
+        AND i.statut = 'a_faire'
+        AND i.date_prevue <= ${horizon}
+      ORDER BY i.date_prevue
+    `
 
     const echeances: Echeance[] = []
 
@@ -177,29 +191,29 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    for (const s of soinsAttente) {
-      const cible = s.animal ? nomAnimal(s.animal) : s.lot ? (s.lot.nom || `Lot #${s.lot.id}`) : '—'
-      if (s.finAttenteLait && s.finAttenteLait >= now) {
-        const jr = jours(now, s.finAttenteLait)
+    for (const a of attentesConsolidees) {
+      const cible = a.cible.label
+      if (a.finAttenteLait && a.finAttenteLait >= now) {
+        const jr = jours(now, a.finAttenteLait)
         echeances.push({
-          id: `att-lait-${s.id}`,
+          id: `att-lait-${a.key}`,
           kind: 'attente_lait',
-          date: s.finAttenteLait.toISOString(),
+          date: a.finAttenteLait.toISOString(),
           joursRestants: jr,
           titre: `Lait non commercialisable — ${cible}`,
-          detail: `jusqu'au ${s.finAttenteLait.toLocaleDateString('fr-FR')}`,
+          detail: `jusqu'au ${a.finAttenteLait.toLocaleDateString('fr-FR')}`,
           gravite: 'urgent',
         })
       }
-      if (s.finAttenteViande && s.finAttenteViande >= now) {
-        const jr = jours(now, s.finAttenteViande)
+      if (a.finAttenteViande && a.finAttenteViande >= now) {
+        const jr = jours(now, a.finAttenteViande)
         echeances.push({
-          id: `att-viande-${s.id}`,
+          id: `att-viande-${a.key}`,
           kind: 'attente_viande',
-          date: s.finAttenteViande.toISOString(),
+          date: a.finAttenteViande.toISOString(),
           joursRestants: jr,
           titre: `Viande non commercialisable — ${cible}`,
-          detail: `jusqu'au ${s.finAttenteViande.toLocaleDateString('fr-FR')}`,
+          detail: `jusqu'au ${a.finAttenteViande.toLocaleDateString('fr-FR')}`,
           gravite: 'attention',
         })
       }
@@ -218,6 +232,21 @@ export async function GET(request: NextRequest) {
         titre: `${s.type} — ${cible}`,
         detail: retard ? `en retard de ${-jr} j` : `dans ${jr} j`,
         gravite: retard ? 'urgent' : 'info',
+      })
+    }
+    for (const injection of injectionsPlanifiees) {
+      const cible = injection.animalId
+        ? injection.animalIdentifiant || injection.animalNom || `#${injection.animalId}`
+        : injection.lotNom || (injection.lotId ? `Lot #${injection.lotId}` : 'Troupeau')
+      const jr = jours(now, injection.datePrevue)
+      echeances.push({
+        id: `injection-${injection.id}`,
+        kind: jr < 0 ? 'soin_retard' : 'soin_planifie',
+        date: injection.datePrevue.toISOString(),
+        joursRestants: jr,
+        titre: `Injection ${injection.numero} — ${cible}`,
+        detail: injection.produit || injection.type,
+        gravite: jr < 0 ? 'urgent' : jr <= 1 ? 'attention' : 'info',
       })
     }
 

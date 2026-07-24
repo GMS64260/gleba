@@ -9,6 +9,7 @@ import prisma from '@/lib/prisma'
 import { calculerStockOeufs } from '@/lib/stocks-helpers'
 import { tauxPonteSaisonnalise } from '@/lib/lait'
 import { tauxPonteAttenduPeriode } from '@/lib/elevage/taux-ponte'
+import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
 import {
   aUneActiviteOeufsDashboard,
   agregerProductionsLaitieresDashboard,
@@ -65,11 +66,12 @@ export async function GET(request: NextRequest) {
         _count: true,
       }),
 
-      // Lots actifs (count + somme effectifs pour BUG #8)
-      prisma.lotAnimaux.aggregate({
+      // Lots actifs — on récupère les lignes brutes pour reconstituer un
+      // effectif prudent reconstitué (le _sum de quantiteActuelle dérive : abattages
+      // non décrémentés, cf. bug cmpmr3837). Voir reconstituerEffectifsLots.
+      prisma.lotAnimaux.findMany({
         where: { userId, statut: 'actif' },
-        _count: true,
-        _sum: { quantiteActuelle: true },
+        select: { id: true, quantiteInitiale: true, quantiteActuelle: true },
       }),
 
       // Production œufs annee
@@ -391,8 +393,12 @@ export async function GET(request: NextRequest) {
     // contenaient 63 bêtes). Désormais on expose les deux compteurs et le
     // total cheptel pour que l'UI puisse afficher « 69 animaux · 6 individus
     // · 63 en lots (3 lots) ».
-    const animauxEnLots = lotsActifs._sum.quantiteActuelle ?? 0
-    const lotsActifsCount = lotsActifs._count
+    const effectifsLots = await reconstituerEffectifsLots(userId, lotsActifs)
+    const animauxEnLots = Array.from(effectifsLots.values()).reduce(
+      (sum, e) => sum + e.effectifCalcule,
+      0,
+    )
+    const lotsActifsCount = lotsActifs.length
     const animauxTotal = animauxActifs + animauxEnLots
 
     return NextResponse.json({
