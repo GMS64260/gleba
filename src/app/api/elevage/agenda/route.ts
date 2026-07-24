@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { chargerAttentesConsolidees } from '@/lib/elevage/attentes-query'
+import { remiseVente } from '@/lib/elevage/attentes'
 
 type Gravite = 'info' | 'attention' | 'urgent'
 type Echeance = {
@@ -191,29 +192,36 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Ticket QA caprin cmrz0q7ty (2026-07-24) — l'agenda affichait « jusqu'au
+    // {finAttente} » (dernier jour d'écart) alors que le dashboard et le registre
+    // Soins affichent « remise en vente le {finAttente + 1} » (1er jour autorisé).
+    // Les deux étaient corrects mais avec des points de référence opposés, d'où
+    // un décalage d'un jour perçu. On aligne l'agenda sur la convention canonique
+    // partagée : la date de remise en vente (`remiseVente`, déjà utilisée par
+    // /api/elevage/attentes).
     for (const a of attentesConsolidees) {
       const cible = a.cible.label
       if (a.finAttenteLait && a.finAttenteLait >= now) {
-        const jr = jours(now, a.finAttenteLait)
+        const rv = remiseVente(a.finAttenteLait)!
         echeances.push({
           id: `att-lait-${a.key}`,
           kind: 'attente_lait',
-          date: a.finAttenteLait.toISOString(),
-          joursRestants: jr,
+          date: rv.toISOString(),
+          joursRestants: jours(now, rv),
           titre: `Lait non commercialisable — ${cible}`,
-          detail: `jusqu'au ${a.finAttenteLait.toLocaleDateString('fr-FR')}`,
+          detail: `remise en vente le ${rv.toLocaleDateString('fr-FR')}`,
           gravite: 'urgent',
         })
       }
       if (a.finAttenteViande && a.finAttenteViande >= now) {
-        const jr = jours(now, a.finAttenteViande)
+        const rv = remiseVente(a.finAttenteViande)!
         echeances.push({
           id: `att-viande-${a.key}`,
           kind: 'attente_viande',
-          date: a.finAttenteViande.toISOString(),
-          joursRestants: jr,
+          date: rv.toISOString(),
+          joursRestants: jours(now, rv),
           titre: `Viande non commercialisable — ${cible}`,
-          detail: `jusqu'au ${a.finAttenteViande.toLocaleDateString('fr-FR')}`,
+          detail: `remise en vente le ${rv.toLocaleDateString('fr-FR')}`,
           gravite: 'attention',
         })
       }

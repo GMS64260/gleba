@@ -67,6 +67,10 @@ interface AnimalDetail {
   couleur: string | null
   notes: string | null
   pereIdentifiant: string | null
+  // PROMPT 28 / ticket QA cmrz0i5oj — mère externe (hors cheptel), symétrique de
+  // pereIdentifiant. Sans ce champ la fiche affichait « Mère inconnue » alors que
+  // la mère externe était bien enregistrée.
+  mereIdentifiant: string | null
   especeAnimale: {
     id: string
     nom: string
@@ -415,7 +419,11 @@ export default function AnimalDetailPage() {
                         {totalNes > 0 ? `${totalNes} né${totalNes > 1 ? 's' : ''}` : (enfantsRef > 0 ? '' : 'Aucune naissance enregistrée')}
                       </p>
                       <p className="text-xs text-muted-foreground mt-1">
-                        {animal.mere ? `Mère : ${animal.mere.nom || animal.mere.identifiant || `#${animal.mere.id}`}` : 'Mère inconnue'}
+                        {animal.mere
+                          ? `Mère : ${animal.mere.nom || animal.mere.identifiant || `#${animal.mere.id}`}`
+                          : animal.mereIdentifiant
+                            ? `Mère : ${animal.mereIdentifiant} (externe)`
+                            : 'Mère inconnue'}
                       </p>
                     </CardContent>
                   </Card>
@@ -424,7 +432,7 @@ export default function AnimalDetailPage() {
             </div>
 
             {/* Arbre genealogique */}
-            {(animal.mere || animal.pereIdentifiant || animal.enfants.length > 0) && (
+            {(animal.mere || animal.mereIdentifiant || animal.pereIdentifiant || animal.enfants.length > 0) && (
               <Card>
                 <CardHeader>
                   <CardTitle className="text-sm flex items-center gap-2">

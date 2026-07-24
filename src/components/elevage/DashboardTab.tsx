@@ -650,6 +650,17 @@ export function DashboardTab({ year }: DashboardTabProps) {
                   </Card>
                 ))}
               </div>
+            ) : data.stats.activiteOeufs ? (
+              // Ticket QA caprin cmrz0qrrb (2026-07-24) — un atelier qui ne produit
+              // que des œufs voyait « Aucune production enregistrée » ici alors que
+              // les cartes/graphe affichent la production d'œufs. Les œufs gardent
+              // leurs surfaces dédiées (cartes + graphe mensuel, cf. TIN-33) : on
+              // lève la contradiction avec un message explicite au lieu d'un « aucune ».
+              <Card>
+                <CardContent className="flex min-h-24 items-center justify-center py-4 text-center text-sm text-muted-foreground">
+                  La production d&apos;œufs est détaillée ci-dessus (cartes et graphique mensuel). Aucune autre production (lait, fromage, viande) enregistrée en {year}.
+                </CardContent>
+              </Card>
             ) : (
               <Card>
                 <CardContent className="flex min-h-24 items-center justify-center py-4 text-center text-sm text-muted-foreground">

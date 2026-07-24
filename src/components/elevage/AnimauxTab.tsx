@@ -239,13 +239,36 @@ function AnimauxSubTab() {
     if (handledEditParamRef.current || isLoading) return
     const editId = new URLSearchParams(window.location.search).get("edit")
     if (!editId) return
-    const target = animaux.find((a) => a.id === Number(editId))
-    if (!target) return
-    handleEditAnimal(target)
+    const numId = Number(editId)
+    if (Number.isNaN(numId)) return
     handledEditParamRef.current = true
     // Retire le param via le routeur (pas l'History API brute) pour qu'un
     // reload ne rouvre pas le dialog, sans désynchroniser l'App Router.
-    router.replace("/elevage?tab=animaux", { scroll: false })
+    const cleanupUrl = () => router.replace("/elevage?tab=animaux", { scroll: false })
+    const target = animaux.find((a) => a.id === numId)
+    if (target) {
+      handleEditAnimal(target)
+      cleanupUrl()
+      return
+    }
+    // Ticket QA cmrz0glc — depuis la fiche, « Modifier » tombait parfois sur une
+    // liste vide sans formulaire : l'animal n'est pas dans la liste chargée (filtre
+    // statut « actif » qui masque un animal vendu/mort/réformé, ou liste
+    // momentanément vide au chargement). On le récupère alors directement pour que
+    // le formulaire s'ouvre toujours.
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/elevage/animaux/${numId}`)
+        if (res.ok) {
+          const { data } = await res.json()
+          if (data) handleEditAnimal(data)
+        }
+      } catch {
+        /* silencieux : l'utilisateur peut rouvrir via le pinceau de la ligne */
+      } finally {
+        cleanupUrl()
+      }
+    })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading, animaux])
 
