@@ -16,7 +16,7 @@ import {
   Wrench,
   HeartPulse,
   Bot,
-  Trees,
+  Sprout,
   Wand2,
 } from "lucide-react"
 import { ChatPanel } from "@/components/chat/ChatPanel"
@@ -34,7 +34,7 @@ import { getAvailableYears } from "@/components/year-selector"
 
 const TABS = [
   { id: "calendrier", label: "Calendrier", icon: Calendar, shortLabel: "Calendrier" },
-  { id: "plantations", label: "Plantations", icon: Trees, shortLabel: "Plant." },
+  { id: "plantations", label: "Plantations", icon: Sprout, shortLabel: "Plant." },
   { id: "arbres", label: "Arbres", icon: TreeDeciduous, shortLabel: "Arbres" },
   { id: "productions", label: "Productions", icon: Apple, shortLabel: "Prod." },
   { id: "operations", label: "Opérations", icon: Wrench, shortLabel: "Oper." },
