@@ -132,8 +132,15 @@ const MOIS_LABELS = ['Jan', 'Fev', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aou', 'Se
 // ============================================================
 
 export function ReproductionTab() {
+  const params = new URLSearchParams(window.location.search)
+  const requestedSub = params.get("sub")
+  const initialSub = ["saillies", "naissances", "calculateur", "campagnes", "indicateurs"].includes(requestedSub || "")
+    ? requestedSub!
+    : "saillies"
+  const openNewBirth = params.get("action") === "nouvelle-naissance"
+
   return (
-    <Tabs defaultValue="saillies" className="space-y-4">
+    <Tabs defaultValue={initialSub} className="space-y-4">
       <TabsList className="flex-wrap h-auto gap-y-1">
         <TabsTrigger value="saillies" className="flex items-center gap-1.5">
           <Heart className="h-4 w-4" />
@@ -161,7 +168,7 @@ export function ReproductionTab() {
         <SailliesSubTab />
       </TabsContent>
       <TabsContent value="naissances">
-        <NaissancesSubTab />
+        <NaissancesSubTab initialOpen={openNewBirth} />
       </TabsContent>
       <TabsContent value="calculateur">
         <CalculateurSubTab />
@@ -606,7 +613,7 @@ function ReproTile({
 // Naissances
 // ============================================================
 
-function NaissancesSubTab() {
+function NaissancesSubTab({ initialOpen = false }: { initialOpen?: boolean }) {
   const { toast } = useToast()
   const [isLoading, setIsLoading] = React.useState(true)
   const [naissances, setNaissances] = React.useState<Naissance[]>([])
@@ -617,6 +624,13 @@ function NaissancesSubTab() {
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
   // QA 2026-05-15 — édition par ligne
   const [editingNaissId, setEditingNaissId] = React.useState<number | null>(null)
+  const initialOpenApplied = React.useRef(false)
+  React.useEffect(() => {
+    if (!initialOpen || initialOpenApplied.current) return
+    initialOpenApplied.current = true
+    setEditingNaissId(null)
+    setIsDialogOpen(true)
+  }, [initialOpen])
   // Feedback La ferme des belles chèvres 2026-07-24 — création d'un lot des petits
   // à la volée (sinon, sans lot actif, le champ « Lot des petits » restait vide
   // et inutilisable).

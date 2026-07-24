@@ -175,6 +175,7 @@ export function AnimauxTab() {
 function AnimauxSubTab() {
   const { toast } = useToast()
   const router = useRouter()
+  const searchInputRef = React.useRef<HTMLInputElement>(null)
   const [isLoading, setIsLoading] = React.useState(true)
   const [animaux, setAnimaux] = React.useState<Animal[]>([])
   const [especes, setEspeces] = React.useState<EspeceAnimale[]>([])
@@ -195,6 +196,12 @@ function AnimauxSubTab() {
     lotId: "", parcelleGeoId: "",
   }
   const [formData, setFormData] = React.useState(EMPTY_ANIMAL_FORM)
+
+  React.useEffect(() => {
+    const action = new URLSearchParams(window.location.search).get("action")
+    if (action !== "rechercher") return
+    searchInputRef.current?.focus()
+  }, [])
 
   const resetAnimalForm = () => {
     setEditingAnimalId(null)
@@ -588,6 +595,7 @@ function AnimauxSubTab() {
         <div className="relative">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
+            ref={searchInputRef}
             placeholder="Rechercher..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
