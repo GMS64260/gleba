@@ -298,7 +298,9 @@ export async function GET(request: NextRequest) {
     const poidsCarcasseTotal = abattagesAnnee._sum.poidsCarcasse || 0
     const activiteOeufs = aUneActiviteOeufsDashboard({
       animauxPondeursActifs,
-      lotsPondeursActifs: nbPondeuses,
+      // Le contrat produit parle d'un lot pondeur actif, indépendamment de son
+      // effectif courant. `lotsPondeusesDetail` contient aussi les lots à zéro.
+      lotsPondeursActifs: lotsPondeusesDetail.length,
       oeufsProduitsAnnee: nbOeufsAnnee,
     })
 
