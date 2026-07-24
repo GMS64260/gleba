@@ -63,7 +63,12 @@ export function ModuleTabBar({ tabs, activeTab, onTabChange, accent, actions }: 
             </SelectTrigger>
             <SelectContent>
               {tabs.map((tab) => (
-                <SelectItem key={tab.id} value={tab.id}>{tab.label}</SelectItem>
+                <SelectItem key={tab.id} value={tab.id}>
+                  <span className="flex items-center gap-2">
+                    <tab.icon className={`h-4 w-4 ${activeTab === tab.id ? a.icon : "text-slate-500"}`} />
+                    {tab.label}
+                  </span>
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
