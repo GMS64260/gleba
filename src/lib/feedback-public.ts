@@ -12,6 +12,16 @@ export const feedbackTypeLabels: Record<BugType, string> = {
   AUTRE: "Autre",
 }
 
+/**
+ * Identifiant de suivi lisible et stable d'un feedback, dérivé de son id (cuid).
+ * Ticket cmrz0slrg — permet à l'utilisateur et au support de référencer une
+ * demande sans ambiguïté (toast d'envoi, carte « Mes demandes », dashboard admin).
+ * Dérivé (aucune colonne ni migration) : stable par demande, court et copiable.
+ */
+export function feedbackRef(id: string): string {
+  return "FB-" + id.slice(-6).toUpperCase()
+}
+
 export const publicFeedbackSelect = {
   id: true,
   type: true,

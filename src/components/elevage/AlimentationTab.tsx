@@ -1298,6 +1298,9 @@ function SoinsSubTab({ initialAnimalId = null }: { initialAnimalId?: string | nu
           {isLoading ? (
             <div className="p-8 space-y-4">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
           ) : (
+            <>
+            {/* Desktop : tableau détaillé */}
+            <div className="hidden lg:block">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -1412,6 +1415,85 @@ function SoinsSubTab({ initialAnimalId = null }: { initialAnimalId?: string | nu
                 {soins.length === 0 && <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Aucun soin enregistré</TableCell></TableRow>}
               </TableBody>
             </Table>
+            </div>
+
+            {/* Mobile : cartes opérationnelles — évite le défilement horizontal du
+                tableau (dose/voie/boutons hors écran), une carte par soin avec
+                validation en un appui (ticket cmrz0tiph). */}
+            <div className="lg:hidden divide-y">
+              {soins.length === 0 ? (
+                <p className="text-center py-8 text-muted-foreground text-sm">Aucun soin enregistré</p>
+              ) : soins.map((soin) => {
+                const dateAffichee = soin.datePrevue ?? soin.date
+                const enRetard =
+                  !soin.fait && !!soin.datePrevue &&
+                  new Date(soin.datePrevue) < new Date(new Date().toDateString())
+                const auj = new Date(new Date().toDateString())
+                const rvLait = remiseEnVente(soin.finAttenteLait)
+                const rvViande = remiseEnVente(soin.finAttenteViande)
+                const cible = soin.lot?.nom || soin.animal?.nom || "—"
+                const boucle = soin.animal?.identifiant
+                const doseVoie = [soin.dose, soin.voie].filter(Boolean).join(" · ")
+                return (
+                  <div key={soin.id} className={`p-3 ${!soin.fait ? (enRetard ? "bg-red-50" : "bg-blue-50") : ""}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-medium">{cible}</span>
+                          {boucle && <span className="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded">{boucle}</span>}
+                          <Badge variant="outline" className="text-xs">{SOIN_TYPE_LABELS[soin.type] || soin.type}</Badge>
+                        </div>
+                        <div className="mt-1 text-sm">
+                          {soin.produit || "—"}
+                          {doseVoie && <span className="text-muted-foreground"> · {doseVoie}</span>}
+                          {soin.nbInjections != null && soin.nbInjections > 1 && (
+                            <Badge variant="outline" className="ml-1 text-[10px] bg-blue-50 text-blue-700 border-blue-200">
+                              ×{soin.nbInjections} inj.{soin.intervalleInjectionsHeures ? ` /${soin.intervalleInjectionsHeures}h` : ""}
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-0.5 shrink-0">
+                        <Button variant="ghost" size="sm" onClick={() => toggleFait(soin.id, soin.fait)} title={soin.fait ? "Marquer non fait" : "Marquer fait"} className={soin.fait ? "text-green-600" : "text-slate-400"}>
+                          <Check className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => handleEditSoin(soin)} title="Modifier" className="text-slate-600">
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                      <span className="text-muted-foreground">{new Date(dateAffichee).toLocaleDateString("fr-FR")}</span>
+                      {enRetard && <span className="font-medium text-red-700 uppercase tracking-wide">En retard</span>}
+                      {soin.cout ? <span className="text-muted-foreground">{soin.cout.toFixed(2)} €</span> : null}
+                      {rvLait && <span className={rvLait > auj ? "text-amber-700 font-medium" : "text-slate-500"}>🥛 {rvLait.toLocaleDateString("fr-FR")}</span>}
+                      {rvViande && <span className={rvViande > auj ? "text-amber-700 font-medium" : "text-slate-500"}>🥩 {rvViande.toLocaleDateString("fr-FR")}</span>}
+                    </div>
+                    {soin.injections?.length > 1 && (
+                      <div className="mt-2 space-y-1.5 rounded-md bg-white/70 p-2">
+                        {soin.injections.map((injection) => (
+                          <div key={injection.id} className="flex items-center justify-between gap-2 text-xs">
+                            <span className={injection.statut === "realisee" ? "text-green-700" : injection.statut === "annulee" ? "text-slate-400 line-through" : "text-amber-700"}>
+                              #{injection.numero} · {new Date(injection.datePrevue).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}
+                            </span>
+                            {injection.statut === "a_faire" ? (
+                              <div className="flex gap-1 shrink-0">
+                                <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onClick={() => changerInjection(soin.id, injection.id, "realisee")}>Injection faite</Button>
+                                <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-xs" onClick={() => changerInjection(soin.id, injection.id, "annulee")}>Annuler</Button>
+                              </div>
+                            ) : (
+                              <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-xs shrink-0" onClick={() => changerInjection(soin.id, injection.id, "a_faire")}>Rouvrir</Button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {soin.notes && <p className="mt-2 text-xs text-muted-foreground break-words">{soin.notes}</p>}
+                  </div>
+                )
+              })}
+            </div>
+            </>
           )}
         </CardContent>
       </Card>
