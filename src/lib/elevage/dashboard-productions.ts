@@ -141,17 +141,16 @@ export async function agregerVentesDashboard(
 }
 
 /**
- * Construit la synthèse multi-production du dashboard.
- * Les catégories sans production sont volontairement omises.
+ * Construit la synthèse multi-production générique du dashboard.
+ * Les œufs ont déjà leurs trois surfaces physiques dédiées (KPI production,
+ * stock et collecte mensuelle) : les répéter ici recréerait la redondance
+ * traitée par TIN-33.
  */
 export function construireProductionsDashboard(
   totaux: DashboardProductionTotals
 ): DashboardProduction[] {
   const productions: DashboardProduction[] = []
 
-  if (totaux.oeufs > 0) {
-    productions.push({ type: "oeufs", label: "Œufs", quantite: totaux.oeufs, unite: "œufs" })
-  }
   if (totaux.laitLitres > 0) {
     productions.push({ type: "lait", label: "Lait collecté", quantite: arrondir(totaux.laitLitres), unite: "L" })
   }

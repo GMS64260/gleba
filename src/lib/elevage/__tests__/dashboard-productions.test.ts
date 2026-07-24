@@ -68,7 +68,7 @@ describe("construireVentesDashboard", () => {
 })
 
 describe("construireProductionsDashboard", () => {
-  it("affiche simultanément chaque production avec son unité", () => {
+  it("affiche les productions génériques sans répéter les œufs dédiés", () => {
     expect(construireProductionsDashboard({
       oeufs: 240,
       laitLitres: 123.456,
@@ -76,7 +76,6 @@ describe("construireProductionsDashboard", () => {
       fromageKg: 9.876,
       viandeKg: 32.555,
     })).toEqual([
-      { type: "oeufs", label: "Œufs", quantite: 240, unite: "œufs" },
       { type: "lait", label: "Lait collecté", quantite: 123.46, unite: "L" },
       { type: "fromage", label: "Fromages fabriqués", quantite: 48, unite: "pièces", detail: "9.88 kg au total" },
       { type: "viande", label: "Viande (carcasse)", quantite: 32.56, unite: "kg" },
@@ -86,6 +85,16 @@ describe("construireProductionsDashboard", () => {
   it("omet les catégories absentes et renvoie un état vide exploitable", () => {
     expect(construireProductionsDashboard({
       oeufs: 0,
+      laitLitres: 0,
+      fromagePieces: 0,
+      fromageKg: 0,
+      viandeKg: 0,
+    })).toEqual([])
+  })
+
+  it("ne crée pas une quatrième représentation physique pour les œufs seuls", () => {
+    expect(construireProductionsDashboard({
+      oeufs: 240,
       laitLitres: 0,
       fromagePieces: 0,
       fromageKg: 0,
