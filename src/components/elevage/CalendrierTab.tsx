@@ -492,7 +492,7 @@ export function CalendrierTab() {
                     {/* Soins du jour */}
                     {soinsAffiches.map(soin => (
                       <button
-                        key={`soin-${soin.id}`}
+                        key={soin.injectionId ?? `soin-${soin.id}`}
                         onClick={() => setSoinDetail(soin)}
                         className={`w-full text-left p-1.5 rounded text-xs transition-all ${
                           soin.fait

@@ -53,6 +53,8 @@ interface LotDetail {
   quantiteInitiale: number
   quantiteActuelle: number
   effectifReel: number
+  animauxNominatifsActifs: number
+  effectifCollectif: number
   provenance: string | null
   prixAchatTotal: number | null
   notes: string | null
@@ -182,6 +184,9 @@ export default function LotDetailPage() {
                     </div>
                     <div className="text-xs text-muted-foreground mt-1">
                       sur {lot.quantiteInitiale} initiaux
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {lot.animauxNominatifsActifs} nominatif(s) · {lot.effectifCollectif} collectif(s)
                     </div>
                   </div>
                 </div>

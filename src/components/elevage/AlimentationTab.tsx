@@ -916,7 +916,7 @@ function SoinsSubTab({ initialAnimalId = null }: { initialAnimalId?: string | nu
   const [editingSoinId, setEditingSoinId] = React.useState<number | null>(null)
 
   const EMPTY_SOIN_FORM = {
-    cible: "lot" as "lot" | "animal",
+    cible: "animal" as "lot" | "animal",
     lotId: "",
     animalId: "",
     date: todayLocalISO(),

@@ -54,6 +54,11 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { todayLocalISO } from '@/lib/format-utils'
 import { ImportAnimauxCsv } from './ImportAnimauxCsv'
+import {
+  isValidIdentifiant,
+  placeholderIdentifiant,
+  type TypeIdentifiant,
+} from '@/lib/identification-animal'
 
 // ============================================================
 // Types
@@ -549,6 +554,10 @@ function AnimauxSubTab() {
     )
   })
 
+  const typeIdentifiant = (formData.typeIdentifiant || null) as TypeIdentifiant | null
+  const identifiantValide = isValidIdentifiant(formData.identifiant, typeIdentifiant)
+  const aideIdentifiant = placeholderIdentifiant(typeIdentifiant)
+
   return (
     <div className="space-y-4">
       {/* Filtres */}
@@ -647,7 +656,18 @@ function AnimauxSubTab() {
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div className="space-y-2 sm:col-span-2">
                   <Label>Identifiant principal</Label>
-                  <Input value={formData.identifiant} onChange={(e) => setFormData(f => ({ ...f, identifiant: e.target.value }))} placeholder="BDNI/IPG/SIRE..." />
+                  <Input
+                    value={formData.identifiant}
+                    onChange={(e) => setFormData(f => ({ ...f, identifiant: e.target.value }))}
+                    placeholder={aideIdentifiant || "BDNI/IPG/SIRE..."}
+                    aria-invalid={!identifiantValide}
+                    className={!identifiantValide ? "border-red-500 focus-visible:ring-red-500" : undefined}
+                  />
+                  {aideIdentifiant && (
+                    <p className={`text-xs ${identifiantValide ? "text-muted-foreground" : "text-red-600"}`}>
+                      {identifiantValide ? `Format attendu : ${aideIdentifiant}` : `Format invalide. Attendu : ${aideIdentifiant}`}
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label>Type</Label>

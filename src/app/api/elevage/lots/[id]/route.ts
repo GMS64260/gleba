@@ -13,6 +13,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -53,17 +54,19 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Lot introuvable' }, { status: 404 })
     }
 
-    // Effectif réel : count des animaux statut='actif' si le lot est
-    // nominatif (au moins 1 animal lié), sinon `quantiteActuelle` (lot
-    // anonyme type poulailler). Permet d'afficher un compteur fiable
-    // pour les deux modes.
+    // Un lot peut contenir à la fois un effectif collectif et des fiches
+    // nominatives. La présence d'une seule fiche ne doit donc pas remplacer le
+    // compteur du lot par `animauxActifs` (TIN-52).
     const animauxActifs = lot.animaux.filter((a) => a.statut === 'actif').length
-    const effectifReel = lot._count.animaux > 0 ? animauxActifs : lot.quantiteActuelle
+    const effectifs = await reconstituerEffectifsLots(session.user.id, [lot])
+    const effectifReel = effectifs.get(lot.id)?.effectifCalcule ?? lot.quantiteActuelle
 
     return NextResponse.json({
       data: {
         ...lot,
         effectifReel,
+        animauxNominatifsActifs: animauxActifs,
+        effectifCollectif: Math.max(0, effectifReel - animauxActifs),
       },
     })
   } catch (err) {
