@@ -1,5 +1,17 @@
 import { z } from 'zod'
 
+// PROMPT 29 — détail d'un petit (cabri) : sexe, boucle provisoire, mode
+// d'élevage (sous mère / biberon), poids.
+export const petitNaissanceSchema = z.object({
+  sexe: z.enum(['male', 'femelle']).nullable().optional(),
+  boucleProvisoire: z.string().max(100).nullable().optional(),
+  boucleDefinitive: z.string().max(100).nullable().optional(),
+  modeElevage: z.enum(['sous_mere', 'biberon']).nullable().optional(),
+  poids: z.number().min(0).nullable().optional(),
+  vivant: z.boolean().optional(),
+  notes: z.string().max(500).nullable().optional(),
+})
+
 export const naissanceSchema = z.object({
   mereId: z.number().int().nullable().optional(),
   // Rattachement direct à un lot (élevage en lot, ex. lapins) — cmpm79lql
@@ -16,6 +28,8 @@ export const naissanceSchema = z.object({
   notes: z.string().max(5000).nullable().optional(),
   // PROMPT 18 — lien optionnel vers la saillie d'origine
   saillieId: z.string().nullable().optional(),
+  // PROMPT 29 — détail par petit (optionnel). Si fourni, remplace le détail existant.
+  petits: z.array(petitNaissanceSchema).max(20).optional(),
 })
   // Cohérence : on ne peut pas avoir plus de vivants que de nés.
   .refine((d) => d.nombreVivants <= d.nombreNes, {

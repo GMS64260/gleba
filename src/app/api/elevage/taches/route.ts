@@ -96,6 +96,39 @@ export async function GET(request: NextRequest) {
         },
       }),
     ])
+    const injections = await prisma.$queryRaw<Array<{
+      injectionId: string
+      soinId: number
+      numero: number
+      datePrevue: Date
+      dateRealisee: Date | null
+      statut: string
+      type: string
+      description: string | null
+      produit: string | null
+      dose: string | null
+      voie: string | null
+      cout: number | null
+      animalId: number | null
+      animalNom: string | null
+      animalIdentifiant: string | null
+      lotId: number | null
+      lotNom: string | null
+    }>>`
+      SELECT i.id AS "injectionId", i.soin_id AS "soinId", i.numero,
+             i.date_prevue AS "datePrevue", i.date_realisee AS "dateRealisee", i.statut,
+             s.type, s.description, s.produit, s.dose, s.voie, s.cout,
+             s.animal_id AS "animalId", a.nom AS "animalNom", a.identifiant AS "animalIdentifiant",
+             s.lot_id AS "lotId", l.nom AS "lotNom"
+      FROM injections_soins i
+      JOIN soins_animaux s ON s.id = i.soin_id
+      LEFT JOIN animaux a ON a.id = s.animal_id
+      LEFT JOIN lots_animaux l ON l.id = s.lot_id
+      WHERE i.user_id = ${userId}
+        AND i.date_prevue >= ${start}
+        AND i.date_prevue <= ${end}
+      ORDER BY i.date_prevue
+    `
 
     // Stats de la periode
     const soinsFaits = soins.filter(s => s.fait).length
@@ -164,18 +197,45 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json({
-      soins: soins.map(s => ({
+      soins: [
+        ...soins
+          .filter((s) => !injections.some((i) => i.soinId === s.id))
+          .map(s => ({
         id: s.id,
         date: s.datePrevue || s.date,
         dateReelle: s.date,
+        datePrevue: s.datePrevue,
         type: s.type,
         description: s.description,
         produit: s.produit,
+        dose: s.dose,
+        voie: s.voie,
         cout: s.cout,
         fait: s.fait,
         animal: s.animal,
         lot: s.lot,
+        injectionId: null,
+        numeroInjection: null,
       })),
+        ...injections.map((i) => ({
+          id: i.soinId,
+          injectionId: i.injectionId,
+          numeroInjection: i.numero,
+          date: i.datePrevue,
+          dateReelle: i.dateRealisee ?? i.datePrevue,
+          datePrevue: i.datePrevue,
+          type: i.type,
+          description: i.description,
+          produit: i.produit,
+          dose: i.dose,
+          voie: i.voie,
+          cout: i.cout,
+          fait: i.statut === 'realisee',
+          statutInjection: i.statut,
+          animal: i.animalId ? { id: i.animalId, nom: i.animalNom, identifiant: i.animalIdentifiant } : null,
+          lot: i.lotId ? { id: i.lotId, nom: i.lotNom } : null,
+        })),
+      ],
       productions: productions.map(p => ({
         id: p.id,
         date: p.date,

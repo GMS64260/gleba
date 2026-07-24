@@ -12,10 +12,13 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { createDepenseFromSoinAnimal, deleteAutoEntry } from '@/lib/auto-compta'
-import { soinSchema } from '@/lib/validations/elevage-soin'
+import { soinPatchSchema, soinSchema } from '@/lib/validations/elevage-soin'
+import { calendrierInjections, derniereInjectionActive, ajouterJours } from '@/lib/elevage/injections'
+import { randomUUID } from 'node:crypto'
 // Review caprin 2026-07-22 — écartement du lait recalculé depuis la vérité
 // (recompute-from-truth), cross-granularité individu↔lot et symétrique
 // POST/PATCH/DELETE. Cf. src/lib/elevage/attente-lait.ts.
@@ -67,13 +70,28 @@ export async function GET(request: NextRequest) {
         produitVeterinaire: { select: { id: true, nom: true, substanceActive: true } },
       },
     })
+    const injections = soins.length > 0
+      ? await prisma.$queryRaw<Array<{ id: string; soinId: number; numero: number; datePrevue: Date; dateRealisee: Date | null; statut: string }>>`
+          SELECT id, soin_id AS "soinId", numero, date_prevue AS "datePrevue",
+                 date_realisee AS "dateRealisee", statut
+          FROM injections_soins
+          WHERE user_id = ${session.user.id} AND soin_id IN (${Prisma.join(soins.map((s) => s.id))})
+          ORDER BY soin_id, numero
+        `
+      : []
+    const injectionsParSoin = new Map<number, typeof injections>()
+    for (const injection of injections) {
+      const list = injectionsParSoin.get(injection.soinId) ?? []
+      list.push(injection)
+      injectionsParSoin.set(injection.soinId, list)
+    }
 
     const soinsAVenir = await prisma.soinAnimal.count({
       where: { userId: session.user.id, fait: false },
     })
 
     return NextResponse.json({
-      data: soins,
+      data: soins.map((soin) => ({ ...soin, injections: injectionsParSoin.get(soin.id) ?? [] })),
       stats: { soinsAVenir },
       meta: { year: annee, total: soins.length },
     })
@@ -130,11 +148,18 @@ export async function POST(request: NextRequest) {
         if (!nomProduit) nomProduit = p.nom
       }
     }
+    // PROMPT 30 — un traitement peut compter plusieurs injections (ex. J0/J1/J2).
+    // Le délai d'attente court depuis la DERNIÈRE injection.
+    const nbInjections = d.nbInjections ?? 1
+    const intervalleH = d.intervalleInjectionsHeures ?? null
+    const derniereInjection = nbInjections > 1 && intervalleH
+      ? new Date(dateSoin.getTime() + (nbInjections - 1) * intervalleH * 3_600_000)
+      : dateSoin
     // Un soin planifie n'est pas encore administre : on conserve le snapshot
     // des delais du produit, mais la fenetre ne devient effective qu'au
     // passage a `fait=true`.
-    const finLait = d.fait && tempsLait > 0 ? addDays(dateSoin, tempsLait) : null
-    const finViande = d.fait && tempsViande > 0 ? addDays(dateSoin, tempsViande) : null
+    const finLait = d.fait && tempsLait > 0 ? addDays(derniereInjection, tempsLait) : null
+    const finViande = d.fait && tempsViande > 0 ? addDays(derniereInjection, tempsViande) : null
 
     const result = await prisma.$transaction(async (tx) => {
       const soin = await tx.soinAnimal.create({
@@ -158,6 +183,8 @@ export async function POST(request: NextRequest) {
           datePrevue: d.datePrevue ?? null,
           fait: d.fait,
           notes: d.notes ?? null,
+          nbInjections,
+          intervalleInjectionsHeures: intervalleH,
           tempsAttenteLaitJ: tempsLait > 0 ? tempsLait : null,
           tempsAttenteViandeJ: tempsViande > 0 ? tempsViande : null,
           finAttenteLait: finLait,
@@ -165,6 +192,17 @@ export async function POST(request: NextRequest) {
         },
         include: { animal: true, lot: true, produitVeterinaire: true },
       })
+      const calendrier = calendrierInjections(dateSoin, nbInjections, intervalleH, d.fait)
+      for (const injection of calendrier) {
+        await tx.$executeRaw`
+          INSERT INTO injections_soins
+            (id, user_id, soin_id, numero, date_prevue, date_realisee, statut, created_at, updated_at)
+          VALUES
+            (${randomUUID()}, ${session.user.id}, ${soin.id}, ${injection.numero},
+             ${injection.datePrevue}, ${injection.dateRealisee ?? null}, ${injection.statut},
+             NOW(), NOW())
+        `
+      }
 
       // Écartement des collectes (cross-granularité individu↔lot, recompute).
       let nbEcartees = 0
@@ -210,13 +248,14 @@ export async function PATCH(request: NextRequest) {
   if (error) return error
 
   try {
-    const body = await request.json()
-    const { id, fait, date, notes, type, description, produit, quantite, unite, cout, datePrevue, veterinaire, animalId, lotId, dose, voie, motif, ordonnanceUrl } = body
-
-    if (!id) return NextResponse.json({ error: 'ID requis' }, { status: 400 })
+    const parsed = soinPatchSchema.safeParse(await request.json())
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Données invalides', details: parsed.error.flatten() }, { status: 400 })
+    }
+    const { id, fait, date, notes, type, description, produit, quantite, unite, cout, datePrevue, veterinaire, animalId, lotId, dose, voie, motif, ordonnanceUrl, nbInjections, intervalleInjectionsHeures } = parsed.data
 
     const existing = await prisma.soinAnimal.findFirst({
-      where: { id: parseInt(id), userId: session.user.id },
+      where: { id, userId: session.user.id },
     })
     if (!existing) return NextResponse.json({ error: 'Soin non trouvé' }, { status: 404 })
 
@@ -238,17 +277,20 @@ export async function PATCH(request: NextRequest) {
     if (type !== undefined) updateData.type = type
     if (description !== undefined) updateData.description = description
     if (produit !== undefined) updateData.produit = produit
-    if (quantite !== undefined) updateData.quantite = quantite ? parseFloat(quantite) : null
+    if (quantite !== undefined) updateData.quantite = quantite
     if (unite !== undefined) updateData.unite = unite
-    if (cout !== undefined) updateData.cout = cout ? parseFloat(cout) : null
+    if (cout !== undefined) updateData.cout = cout
     if (datePrevue !== undefined) updateData.datePrevue = datePrevue ? new Date(datePrevue) : null
     if (veterinaire !== undefined) updateData.veterinaire = veterinaire
-    if (animalId !== undefined) updateData.animalId = animalId ? parseInt(animalId) : null
-    if (lotId !== undefined) updateData.lotId = lotId ? parseInt(lotId) : null
+    if (animalId !== undefined) updateData.animalId = animalId
+    if (lotId !== undefined) updateData.lotId = lotId
     if (dose !== undefined) updateData.dose = dose
     if (voie !== undefined) updateData.voie = voie
     if (motif !== undefined) updateData.motif = motif
     if (ordonnanceUrl !== undefined) updateData.ordonnanceUrl = ordonnanceUrl || null
+    // PROMPT 30 — protocole à plusieurs injections
+    if (nbInjections !== undefined) updateData.nbInjections = nbInjections
+    if (intervalleInjectionsHeures !== undefined) updateData.intervalleInjectionsHeures = intervalleInjectionsHeures
 
     // Audit élevage 2026-06-11 — validation tenant des cibles modifiées.
     if (updateData.animalId) {
@@ -273,23 +315,97 @@ export async function PATCH(request: NextRequest) {
     const dateChangee = updateData.date !== undefined &&
       new Date(updateData.date).getTime() !== existing.date.getTime()
     const faitChange = updateData.fait !== undefined && updateData.fait !== existing.fait
-    if (dateChangee || faitChange) {
+    // PROMPT 30 — un changement du nombre d'injections/intervalle décale la
+    // dernière injection, donc les fenêtres d'attente.
+    const injectionsChangees =
+      (updateData.nbInjections !== undefined && updateData.nbInjections !== existing.nbInjections) ||
+      (updateData.intervalleInjectionsHeures !== undefined && updateData.intervalleInjectionsHeures !== existing.intervalleInjectionsHeures)
+    if (dateChangee || faitChange || injectionsChangees) {
       const newDate = (updateData.date as Date | undefined) ?? existing.date
       const seraFait = (updateData.fait as boolean | undefined) ?? existing.fait
+      const nbInj = (updateData.nbInjections as number | undefined) ?? existing.nbInjections ?? 1
+      const intervalleH = (updateData.intervalleInjectionsHeures as number | null | undefined) ?? existing.intervalleInjectionsHeures ?? null
+      const derniere = nbInj > 1 && intervalleH
+        ? new Date(newDate.getTime() + (nbInj - 1) * intervalleH * 3_600_000)
+        : newDate
       updateData.finAttenteLait = seraFait && existing.tempsAttenteLaitJ
-        ? addDays(newDate, existing.tempsAttenteLaitJ)
+        ? addDays(derniere, existing.tempsAttenteLaitJ)
         : null
       updateData.finAttenteViande = seraFait && existing.tempsAttenteViandeJ
-        ? addDays(newDate, existing.tempsAttenteViandeJ)
+        ? addDays(derniere, existing.tempsAttenteViandeJ)
         : null
     }
 
     const soin = await prisma.$transaction(async (tx) => {
       const updated = await tx.soinAnimal.update({
-        where: { id: parseInt(id) },
+        where: { id },
         data: updateData,
         include: { animal: true, lot: true, produitVeterinaire: true },
       })
+
+      const injectionsExistantes = await tx.$queryRaw<Array<{
+        id: string; numero: number; datePrevue: Date; dateRealisee: Date | null; statut: string
+      }>>`
+        SELECT id, numero, date_prevue AS "datePrevue", date_realisee AS "dateRealisee", statut
+        FROM injections_soins WHERE soin_id = ${id} AND user_id = ${session.user.id}
+        ORDER BY numero
+      `
+      if (injectionsChangees || dateChangee || faitChange || injectionsExistantes.length === 0) {
+        const nombre = updateData.nbInjections ?? existing.nbInjections
+        const intervalle = updateData.intervalleInjectionsHeures !== undefined
+          ? updateData.intervalleInjectionsHeures
+          : existing.intervalleInjectionsHeures
+        const debut = (updateData.date as Date | undefined) ?? existing.date
+        const calendrier = calendrierInjections(debut, nombre, intervalle, false)
+        const realisees = new Map(injectionsExistantes.filter((i) => i.statut === 'realisee').map((i) => [i.numero, i]))
+        await tx.$executeRaw`
+          DELETE FROM injections_soins
+          WHERE soin_id = ${id} AND numero > ${nombre} AND statut <> 'realisee'
+        `
+        for (const injection of calendrier) {
+          const realisee = realisees.get(injection.numero)
+          const marquerPremiereFaite = injection.numero === 1 && fait === true && !realisee
+          const rouvrirPremiere = injection.numero === 1 && fait === false && realisee
+          const statut = marquerPremiereFaite ? 'realisee' : rouvrirPremiere ? 'a_faire' : injection.statut
+          const dateRealisee = marquerPremiereFaite ? ((updateData.date as Date | undefined) ?? new Date()) : null
+          await tx.$executeRaw`
+            INSERT INTO injections_soins
+              (id, user_id, soin_id, numero, date_prevue, date_realisee, statut, created_at, updated_at)
+            VALUES
+              (${randomUUID()}, ${session.user.id}, ${id}, ${injection.numero}, ${injection.datePrevue},
+               ${dateRealisee}, ${statut}, NOW(), NOW())
+            ON CONFLICT (soin_id, numero) DO UPDATE SET
+              date_prevue = CASE WHEN injections_soins.statut = 'realisee' THEN injections_soins.date_prevue ELSE EXCLUDED.date_prevue END,
+              statut = CASE
+                WHEN ${marquerPremiereFaite} THEN 'realisee'
+                WHEN ${rouvrirPremiere} THEN 'a_faire'
+                ELSE injections_soins.statut
+              END,
+              date_realisee = CASE
+                WHEN ${marquerPremiereFaite} THEN ${dateRealisee}
+                WHEN ${rouvrirPremiere} THEN NULL
+                ELSE injections_soins.date_realisee
+              END,
+              updated_at = NOW()
+          `
+        }
+        const injections = await tx.$queryRaw<Array<{
+          numero: number; datePrevue: Date; dateRealisee: Date | null; statut: string
+        }>>`
+          SELECT numero, date_prevue AS "datePrevue", date_realisee AS "dateRealisee", statut
+          FROM injections_soins WHERE soin_id = ${id}
+        `
+        const derniere = derniereInjectionActive(injections)
+        const commence = injections.some((i) => i.statut === 'realisee')
+        await tx.soinAnimal.update({
+          where: { id },
+          data: {
+            fait: commence,
+            finAttenteLait: commence && derniere ? ajouterJours(derniere, existing.tempsAttenteLaitJ) : null,
+            finAttenteViande: commence && derniere ? ajouterJours(derniere, existing.tempsAttenteViandeJ) : null,
+          },
+        })
+      }
 
       // Ré-synchroniser l'écartement des collectes si la date, le statut « fait »
       // OU la cible (animal↔lot) a changé — recompute-from-truth sur l'union des
@@ -297,7 +413,7 @@ export async function PATCH(request: NextRequest) {
       const cibleChangee =
         (updateData.animalId !== undefined && updateData.animalId !== existing.animalId) ||
         (updateData.lotId !== undefined && updateData.lotId !== existing.lotId)
-      if (dateChangee || faitChange || cibleChangee) {
+      if (dateChangee || faitChange || cibleChangee || injectionsChangees) {
         const c1 = await ciblesAffectees(tx, session.user.id, existing.animalId, existing.lotId)
         const c2 = await ciblesAffectees(tx, session.user.id, updated.animalId, updated.lotId)
         const cibles = {

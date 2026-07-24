@@ -25,6 +25,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { useToast } from "@/hooks/use-toast"
+import { SoinDetailDialog } from "@/components/elevage/SoinDetailDialog"
 
 // ============================================================
 // Types
@@ -32,11 +33,16 @@ import { useToast } from "@/hooks/use-toast"
 
 interface SoinTask {
   id: number
+  injectionId?: string | null
+  numeroInjection?: number | null
   date: string
   dateReelle: string
+  datePrevue: string | null
   type: string
   description: string | null
   produit: string | null
+  dose: string | null
+  voie: string | null
   cout: number | null
   fait: boolean
   animal: { id: number; nom: string; identifiant: string } | null
@@ -186,6 +192,9 @@ export function CalendrierTab() {
 
   React.useEffect(() => { fetchData() }, [fetchData])
 
+  // QA #5/#8 — un toucher OUVRE le détail (pas de validation silencieuse).
+  const [soinDetail, setSoinDetail] = React.useState<SoinTask | null>(null)
+
   // Toggle soin fait
   const toggleSoin = async (id: number, fait: boolean) => {
     try {
@@ -196,6 +205,26 @@ export function CalendrierTab() {
       })
       if (!response.ok) throw new Error('Erreur')
       toast({ title: fait ? "Soin rouvert" : "Soin marque fait !" })
+      fetchData()
+    } catch {
+      toast({ variant: "destructive", title: "Erreur" })
+    }
+  }
+
+  const toggleInjection = async (soin: SoinTask, fait: boolean) => {
+    if (!soin.injectionId) return toggleSoin(soin.id, fait)
+    try {
+      const response = await fetch(`/api/elevage/soins/${soin.id}/injections`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          injectionId: soin.injectionId,
+          statut: fait ? 'a_faire' : 'realisee',
+          dateRealisee: fait ? null : new Date().toISOString(),
+        }),
+      })
+      if (!response.ok) throw new Error('Erreur')
+      toast({ title: fait ? "Injection rouverte" : "Injection enregistrée" })
       fetchData()
     } catch {
       toast({ variant: "destructive", title: "Erreur" })
@@ -464,7 +493,7 @@ export function CalendrierTab() {
                     {soinsAffiches.map(soin => (
                       <button
                         key={`soin-${soin.id}`}
-                        onClick={() => toggleSoin(soin.id, soin.fait)}
+                        onClick={() => setSoinDetail(soin)}
                         className={`w-full text-left p-1.5 rounded text-xs transition-all ${
                           soin.fait
                             ? 'bg-green-50 text-green-700 opacity-60 line-through'
@@ -581,6 +610,14 @@ export function CalendrierTab() {
           )}
         </>
       )}
+
+      <SoinDetailDialog
+        soin={soinDetail}
+        onClose={() => setSoinDetail(null)}
+        typeLabels={SOIN_TYPE_LABELS}
+        onMarquerFait={async (s) => { await toggleInjection(s as SoinTask, false); setSoinDetail(null) }}
+        onRouvrir={async (s) => { await toggleInjection(s as SoinTask, true); setSoinDetail(null) }}
+      />
     </div>
   )
 }

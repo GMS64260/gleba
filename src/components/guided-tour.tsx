@@ -122,9 +122,15 @@ export function GuidedTour({ storageKey, steps, autoStart = true, alwaysShow = f
         globalThis.__glebaTourRunning__ = false
       })
       instance.on("cancel", () => {
-        // Fermer la croix doit aussi masquer le tour pour la session courante,
-        // sinon le moindre refresh sur le compte démo le relance.
-        if (alwaysShow) {
+        // Fermer la croix doit persister le dismiss au même titre que
+        // « Terminer » — sinon le moindre refresh relance l'écran d'accueil
+        // (QA #3 : « Module Élevage » réapparaît à chaque rechargement).
+        // Compte normal → flag permanent localStorage ; compte démo → flag de
+        // session (réapparaît pour le prochain visiteur anonyme, pas au refresh).
+        // Réouverture volontaire via /aide → resetTour(storageKey).
+        if (!alwaysShow) {
+          localStorage.setItem(flagKey, new Date().toISOString())
+        } else {
           sessionStorage.setItem(sessionFlagKey, new Date().toISOString())
         }
         globalThis.__glebaTourRunning__ = false
