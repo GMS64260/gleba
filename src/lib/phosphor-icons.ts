@@ -5,7 +5,9 @@
  * `lucide-react`, redirigés ici par tsconfig. Cela garantit qu'un seul pack
  * d'icônes est rendu dans toute l'application et rend le test réversible.
  */
-export * from "@phosphor-icons/react"
+import type { Icon } from "@phosphor-icons/react"
+
+export * from "@phosphor-icons/react/ssr"
 
 export {
   Pulse as Activity,
@@ -127,6 +129,6 @@ export {
   Lightning as Zap,
   MagnifyingGlassPlus as ZoomIn,
   MagnifyingGlassMinus as ZoomOut,
-} from "@phosphor-icons/react"
+} from "@phosphor-icons/react/ssr"
 
-export type { Icon as LucideIcon } from "@phosphor-icons/react"
+export type LucideIcon = Icon
