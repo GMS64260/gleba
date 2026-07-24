@@ -6,7 +6,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useSession } from "next-auth/react"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -59,46 +59,57 @@ const currentYearNow = new Date().getFullYear()
 const availableYears = getAvailableYears()
 
 export default function ElevageDashboard() {
+  return (
+    <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center"><p>Chargement...</p></div>}>
+      <ElevageDashboardInner />
+    </React.Suspense>
+  )
+}
+
+function ElevageDashboardInner() {
   const { data: session } = useSession()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [selectedYear, setSelectedYear] = React.useState(currentYearNow)
   const [showChat, setShowChat] = React.useState(false)
-  const [activeTab, setActiveTab] = React.useState<TabId>("calendrier")
 
-  // Lire l'onglet depuis l'URL après le montage côté client.
+  // L'URL reste la source de vérité, y compris lors d'une navigation <Link>
+  // entre deux onglets de cette même page.
   // Bug feedback testeur 2026-05-26 (cmpmr87qh) — alias d'URL courants :
   // ?tab=aliments tombait sur le Calendrier (onglet par défaut) au lieu
   // d'Alimentation. On mappe les alias usuels vers l'id canonique.
+  const rawTab = searchParams.get("tab")
+  const ALIASES: Record<string, TabId> = {
+    aliments: "alimentation",
+    aliment: "alimentation",
+    animal: "animaux",
+    lots: "animaux",
+    oeufs: "production",
+    lait: "production",
+    ventes: "production",
+    espece: "especes",
+    especes_animales: "especes",
+    repro: "reproduction",
+  }
+  const validTabs: string[] = TABS.map(t => t.id)
+  const activeTab: TabId =
+    rawTab && validTabs.includes(rawTab)
+      ? rawTab as TabId
+      : rawTab && ALIASES[rawTab]
+        ? ALIASES[rawTab]
+        : "calendrier"
+
   React.useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    const raw = params.get("tab")
-    const ALIASES: Record<string, TabId> = {
-      aliments: "alimentation",
-      aliment: "alimentation",
-      animal: "animaux",
-      lots: "animaux",
-      oeufs: "production",
-      lait: "production",
-      ventes: "production",
-      espece: "especes",
-      especes_animales: "especes",
-      repro: "reproduction",
-    }
-    const valid: string[] = TABS.map(t => t.id)
-    if (raw && valid.includes(raw)) {
-      setActiveTab(raw as TabId)
-    } else if (raw && ALIASES[raw]) {
-      const canonical = ALIASES[raw]
-      setActiveTab(canonical)
+    if (rawTab && !validTabs.includes(rawTab) && ALIASES[rawTab]) {
+      const canonical = ALIASES[rawTab]
       // Normalise l'alias via le routeur Next (et non l'History API brute :
       // un replaceState(null,…) désynchronise l'arbre interne de l'App Router
       // et casse les <Link> ultérieurs vers /elevage/animaux/[id] — bug QA #1).
       router.replace(`/elevage?tab=${canonical}`, { scroll: false })
     }
-  }, [router])
+  }, [rawTab, router])
 
   const handleTabChange = React.useCallback((tab: TabId) => {
-    setActiveTab(tab)
     router.replace(`/elevage?tab=${tab}`, { scroll: false })
   }, [router])
 

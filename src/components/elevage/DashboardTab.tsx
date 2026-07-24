@@ -396,13 +396,13 @@ export function DashboardTab({ year }: DashboardTabProps) {
                   )}
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Link href="/elevage?tab=alimentation&sub=soins" className={action}>
+                  <Link href="/elevage?tab=alimentation&sub=soins&action=nouveau-soin" className={action}>
                     <Stethoscope className="h-4 w-4 text-blue-600" />+ Soin
                   </Link>
-                  <Link href="/elevage?tab=reproduction" className={action}>
+                  <Link href="/elevage?tab=reproduction&sub=naissances&action=nouvelle-naissance" className={action}>
                     <Baby className="h-4 w-4 text-pink-600" />+ Naissance
                   </Link>
-                  <Link href="/elevage?tab=animaux" className={action}>
+                  <Link href="/elevage?tab=animaux&action=rechercher" className={action}>
                     <Search className="h-4 w-4 text-slate-500" />Rechercher (boucle)
                   </Link>
                 </div>

@@ -58,11 +58,13 @@ export function AlimentationTab() {
   // soin) depuis l'URL au montage côté client.
   const [activeSub, setActiveSub] = React.useState<string>("stocks")
   const [soinAnimalId, setSoinAnimalId] = React.useState<string | null>(null)
+  const [ouvrirNouveauSoin, setOuvrirNouveauSoin] = React.useState(false)
 
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const sub = params.get("sub")
     const animalId = params.get("animalId")
+    const action = params.get("action")
     if (["soins", "consommations", "stocks", "ration", "registre"].includes(sub || "")) {
       setActiveSub(sub!)
     }
@@ -70,6 +72,10 @@ export function AlimentationTab() {
       // Implique l'onglet Soins même si `sub` n'est pas explicite.
       setActiveSub("soins")
       setSoinAnimalId(animalId)
+    }
+    if (action === "nouveau-soin") {
+      setActiveSub("soins")
+      setOuvrirNouveauSoin(true)
     }
   }, [])
 
@@ -105,7 +111,7 @@ export function AlimentationTab() {
         <ConsommationsSubTab />
       </TabsContent>
       <TabsContent value="soins">
-        <SoinsSubTab initialAnimalId={soinAnimalId} />
+        <SoinsSubTab initialAnimalId={soinAnimalId} initialOpen={ouvrirNouveauSoin} />
       </TabsContent>
       <TabsContent value="ration">
         <RationSubTab />
@@ -905,7 +911,7 @@ const SOIN_TYPE_LABELS: Record<string, string> = {
   autre: "Autre",
 }
 
-function SoinsSubTab({ initialAnimalId = null }: { initialAnimalId?: string | null }) {
+function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialAnimalId?: string | null; initialOpen?: boolean }) {
   const { toast } = useToast()
   const [isLoading, setIsLoading] = React.useState(true)
   const [soins, setSoins] = React.useState<Soin[]>([])
@@ -1024,6 +1030,14 @@ function SoinsSubTab({ initialAnimalId = null }: { initialAnimalId?: string | nu
     setFormData({ ...EMPTY_SOIN_FORM, cible: "animal", animalId: initialAnimalId })
     setIsDialogOpen(true)
   }, [initialAnimalId])
+
+  const initialOpenApplied = React.useRef(false)
+  React.useEffect(() => {
+    if (!initialOpen || initialOpenApplied.current) return
+    initialOpenApplied.current = true
+    resetSoinForm()
+    setIsDialogOpen(true)
+  }, [initialOpen])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
