@@ -24,6 +24,9 @@
     "paths": {
       "@/*": [
         "./src/*"
+      ],
+      "lucide-react": [
+        "./src/lib/phosphor-icons"
       ]
     },
     "target": "ES2017"
