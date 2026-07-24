@@ -27,6 +27,8 @@ interface AnimalForTree {
   identifiant: string | null
   sexe: string | null
   pereIdentifiant: string | null
+  // Mère externe / hors cheptel (fallback texte), symétrique de pereIdentifiant.
+  mereIdentifiant: string | null
   mere: (GenealogyNode & {
     mere: GenealogyNodeMinimal | null
   }) | null
@@ -122,10 +124,12 @@ function Connector({ vertical = false }: { vertical?: boolean }) {
 
 export function GenealogyTree({ animal }: { animal: AnimalForTree }) {
   const hasMere = !!animal.mere
+  // Mère externe : affichée en nœud texte quand aucune mère du cheptel n'est liée.
+  const hasMereExterne = !hasMere && !!animal.mereIdentifiant
   const hasGrandMere = !!animal.mere?.mere
   const hasPere = !!animal.pereIdentifiant
   const hasEnfants = animal.enfants.length > 0
-  const hasParents = hasMere || hasPere
+  const hasParents = hasMere || hasMereExterne || hasPere
 
   if (!hasParents && !hasEnfants) {
     return (
@@ -153,7 +157,10 @@ export function GenealogyTree({ animal }: { animal: AnimalForTree }) {
               {hasMere && (
                 <TreeNode node={animal.mere!} label="Mere" />
               )}
-              {hasMere && hasPere && <Connector />}
+              {hasMereExterne && (
+                <TreeNode isText text={animal.mereIdentifiant!} label="Mere" />
+              )}
+              {(hasMere || hasMereExterne) && hasPere && <Connector />}
               {hasPere && (
                 <TreeNode isText text={animal.pereIdentifiant!} label="Pere" />
               )}
