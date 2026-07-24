@@ -912,7 +912,7 @@ export function DashboardTab({ year }: DashboardTabProps) {
           <div className="space-y-2 max-h-[400px] overflow-y-auto">
             {soins.map((soin) => (
               <button
-                key={soin.id}
+                key={soin.injectionId ?? `soin-${soin.id}`}
                 onClick={() => setSoinDetail(soin)}
                 className="w-full flex items-center gap-3 p-3 rounded-lg border bg-white border-blue-200 hover:border-blue-400 hover:shadow-sm transition-all text-left"
               >
