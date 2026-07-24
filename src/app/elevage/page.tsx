@@ -13,12 +13,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { AppHeader } from "@/components/shell/AppHeader"
 import { ModuleTabBar } from "@/components/shell/ModuleTabBar"
 import {
-  Bird,
+  Baby,
   Calendar,
-  BarChart3,
-  Egg,
-  Package,
+  CalendarDays,
+  Dna,
+  HeartPulse,
   Leaf,
+  Milk,
+  PawPrint,
+  Shapes,
+  Wheat,
   Map as MapIcon,
   Bot,
   ClipboardCheck,
@@ -38,14 +42,14 @@ import { PremiersPasBanner } from "@/components/premiers-pas-banner"
 import { getAvailableYears } from "@/components/year-selector"
 
 const TABS = [
-  { id: "calendrier", label: "Calendrier", icon: Calendar, shortLabel: "Calendrier" },
-  { id: "dashboard", label: "Dashboard & Soins", icon: BarChart3, shortLabel: "Dashboard" },
-  { id: "animaux", label: "Animaux & Lots", icon: Bird, shortLabel: "Animaux" },
-  { id: "production", label: "Production", icon: Egg, shortLabel: "Production" },
-  { id: "reproduction", label: "Reproduction", icon: Bird, shortLabel: "Repro." },
-  { id: "alimentation", label: "Alimentation", icon: Package, shortLabel: "Aliment." },
-  { id: "especes", label: "Espèces", icon: Leaf, shortLabel: "Espèces" },
-  { id: "races", label: "Races", icon: Bird, shortLabel: "Races" },
+  { id: "calendrier", label: "Calendrier", icon: CalendarDays, shortLabel: "Calendrier" },
+  { id: "dashboard", label: "Dashboard & Soins", icon: HeartPulse, shortLabel: "Dashboard" },
+  { id: "animaux", label: "Animaux & Lots", icon: PawPrint, shortLabel: "Animaux" },
+  { id: "production", label: "Production", icon: Milk, shortLabel: "Production" },
+  { id: "reproduction", label: "Reproduction", icon: Baby, shortLabel: "Repro." },
+  { id: "alimentation", label: "Alimentation", icon: Wheat, shortLabel: "Aliment." },
+  { id: "especes", label: "Espèces", icon: Shapes, shortLabel: "Espèces" },
+  { id: "races", label: "Races", icon: Dna, shortLabel: "Races" },
 ] as const
 
 type TabId = (typeof TABS)[number]["id"]
