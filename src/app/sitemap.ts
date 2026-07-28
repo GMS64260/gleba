@@ -11,6 +11,16 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // Dates éditoriales réelles : ne pas annoncer artificiellement une mise à
   // jour à chaque génération du sitemap.
   const marketingUpdatedAt = new Date("2026-07-17");
+  const seoUpdatedAtByPath: Record<string, Date> = {
+    "/logiciel-potager": new Date("2026-07-25"),
+    "/logiciel-elevage": new Date("2026-07-25"),
+    "/logiciel-elevage-volailles": new Date("2026-07-25"),
+    "/logiciel-elevage-ovin": new Date("2026-07-25"),
+    "/logiciel-elevage-caprin": new Date("2026-07-25"),
+    "/logiciel-elevage-canin-felin": new Date("2026-07-25"),
+    "/logiciel-elevage-equin": new Date("2026-07-25"),
+    "/logiciel-elevage-nac": new Date("2026-07-25"),
+  };
 
   // Pages principales
   const corePages: MetadataRoute.Sitemap = [
@@ -50,12 +60,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     "/logiciel-elevage-volailles",
     "/logiciel-elevage-ovin",
     "/logiciel-elevage-caprin",
+    "/logiciel-elevage-canin-felin",
+    "/logiciel-elevage-equin",
+    "/logiciel-elevage-nac",
     "/registre-phytosanitaire",
     "/calendrier-semis",
     "/assistant-ia-agricole",
   ].map((path) => ({
     url: `${baseUrl}${path}`,
-    lastModified: marketingUpdatedAt,
+    lastModified: seoUpdatedAtByPath[path] ?? marketingUpdatedAt,
     changeFrequency: "monthly" as const,
     priority: 0.9,
   }));

@@ -43,10 +43,18 @@ declare global {
   var __glebaTourRunning__: boolean | undefined
 }
 
+// Interrupteur global — désactive TOUS les tours guidés Shepherd de Gleba
+// (élevage, maraîchage, cultures…), demande Guillaume 2026-07-24 : les popups
+// « censés guider » étaient jugés parasites. Repasser à `true` pour les
+// réactiver (le comportement historique, autostart + relance depuis /aide,
+// reprend tel quel).
+const GUIDED_TOURS_ENABLED = false
+
 export function GuidedTour({ storageKey, steps, autoStart = true, alwaysShow = false }: GuidedTourProps) {
   const pathname = usePathname()
 
   React.useEffect(() => {
+    if (!GUIDED_TOURS_ENABLED) return
     if (typeof window === "undefined") return
     if (globalThis.__glebaTourRunning__) return
     const flagKey = `gleba.tour.${storageKey}.done`

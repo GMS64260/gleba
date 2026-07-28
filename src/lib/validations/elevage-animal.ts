@@ -36,8 +36,13 @@ export const animalSchema = z
     nExploitationDestination: z.string().max(50).nullable().optional(),
     // DEV1 T1 — Résilient à la casse : 'vente', 'VENTE', 'Vente' → 'Vente'.
     motifSortie: caseInsensitiveEnum(['Vente', 'Mort', 'Abattage', 'Réforme', 'Don'] as const).nullable().optional(),
-    statutSanitaire: z.array(z.string()).optional().default([]),
+    statutSanitaire: z
+      .array(z.string().trim().min(1).max(200))
+      .max(20)
+      .optional()
+      .default([]),
     prixAchat: z.number().min(0).nullable().optional(),
+    prixAchatInclusDansLot: z.boolean().optional().default(false),
     // Cartographie élevage — parcelle de rattachement (bétail en individuel).
     parcelleGeoId: z.string().nullable().optional(),
     statut: z.string().max(50).default('actif'),

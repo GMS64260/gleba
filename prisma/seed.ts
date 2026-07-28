@@ -23,6 +23,14 @@ import {
 
 const prisma = new PrismaClient()
 
+function envValue(name: string, fallback: string): string {
+  const raw = (process.env[name] || fallback).trim()
+  const hasMatchingQuotes =
+    (raw.startsWith('"') && raw.endsWith('"')) ||
+    (raw.startsWith("'") && raw.endsWith("'"))
+  return hasMatchingQuotes ? raw.slice(1, -1) : raw
+}
+
 async function main() {
   const userId = "admin"
 
@@ -30,23 +38,45 @@ async function main() {
 
   // Créer les utilisateurs
   const bcrypt = await import("bcryptjs")
-  const hashedPasswordAdmin = await bcrypt.hash(process.env.ADMIN_PASSWORD || "changeme", 12)
-  const hashedPasswordDemo = await bcrypt.hash("demo", 12)
 
-  // Admin
-  await prisma.user.upsert({
-    where: { id: userId },
-    update: {},
-    create: {
-      id: userId,
-      email: process.env.ADMIN_EMAIL || "admin@gleba.local",
-      password: hashedPasswordAdmin,
-      name: process.env.ADMIN_NAME || "Administrateur",
-      role: "ADMIN",
-      active: true,
-    },
-  })
-  console.log(`✓ Utilisateur admin créé (email: ${process.env.ADMIN_EMAIL || "admin@gleba.local"}, password: ${process.env.ADMIN_PASSWORD || "changeme"})`)
+  // Admin : les installations historiques peuvent avoir un id différent de
+  // "admin". Chercher aussi par l'adresse configurée évite de créer un second
+  // administrateur à chaque seed. Docker --env-file peut en outre conserver
+  // des guillemets littéraux, que l'on retire avant toute comparaison.
+  const adminEmail = envValue("ADMIN_EMAIL", "admin@gleba.local").toLowerCase()
+  const adminName = envValue("ADMIN_NAME", "Administrateur")
+  const adminPassword = envValue("ADMIN_PASSWORD", "changeme")
+  const [adminById, adminByEmail] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, role: true },
+    }),
+    prisma.user.findUnique({
+      where: { email: adminEmail },
+      select: { id: true, role: true },
+    }),
+  ])
+
+  const existingAdmin = adminById ?? adminByEmail
+  if (existingAdmin) {
+    if (existingAdmin.role !== "ADMIN") {
+      throw new Error("Le compte configuré comme administrateur existe sans le rôle ADMIN")
+    }
+    console.log("✓ Utilisateur admin déjà présent")
+  } else {
+    const hashedPasswordAdmin = await bcrypt.hash(adminPassword, 12)
+    await prisma.user.create({
+      data: {
+        id: userId,
+        email: adminEmail,
+        password: hashedPasswordAdmin,
+        name: adminName,
+        role: "ADMIN",
+        active: true,
+      },
+    })
+    console.log("✓ Utilisateur admin créé")
+  }
 
   // Demo (utilisateur normal pour tests)
   const hashedPasswordDemoReal = await bcrypt.hash("demo2026", 12)
@@ -62,7 +92,7 @@ async function main() {
     },
   })
   const demoUserId = demoUser.id
-  console.log(`✓ Utilisateur demo créé (email: demo@gleba.fr, password: demo2026, id: ${demoUserId})`)
+  console.log("✓ Utilisateur démo déjà présent ou créé")
 
   // Familles — propage nomFr en cas de mise à jour pour rester aligné
   // avec la migration agronomique (audit Marc 2026-05-14).

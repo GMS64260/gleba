@@ -54,6 +54,7 @@ export {
   FileArrowDown as FileDown,
   FileCsv as FileSpreadsheet,
   Files as FileStack,
+  Flask as FlaskConical,
   Funnel as Filter,
   Flower as Flower2,
   GithubLogo as Github,

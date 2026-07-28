@@ -23,6 +23,7 @@ import {
   PartyPopper,
   Loader2,
   SkipForward,
+  PawPrint,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -30,6 +31,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
 import { CODES_TERRITOIRES, TERRITOIRES, getTerritoire, LABELS_REGIME_TVA } from "@/lib/territoires"
+import { ELEVAGE_MODES, ELEVAGE_MODE_IDS } from "@/lib/elevage-modes"
 
 const STEPS = ["Exploitation", "Modules", "Premier élément", "Import (optionnel)", "C'est parti !"]
 
@@ -49,6 +51,7 @@ interface OnboardingState {
   regimeTva: string
   // Étape 2
   modulesActifs: { maraichage: boolean; verger: boolean; elevage: boolean; comptabilite: boolean }
+  modesElevage: { compagnie: boolean; equin: boolean; nac: boolean }
   // Étape 3 — premiers éléments
   parcelleNom: string
   parcelleSurface: string
@@ -75,6 +78,7 @@ const empty: OnboardingState = {
   regimeFiscal: "micro-BA",
   regimeTva: "franchise-293b",
   modulesActifs: { maraichage: true, verger: false, elevage: false, comptabilite: true },
+  modesElevage: { compagnie: false, equin: false, nac: false },
   parcelleNom: "",
   parcelleSurface: "",
   parcelleSol: "limon",
@@ -143,18 +147,42 @@ export default function OnboardingPage() {
     }
   }
 
-  const saveModules = async () => {
+  // Ticket cms1t6dpn — « j'ai coché la gestion des arbres à l'onboarding mais
+  // le module ne s'est pas activé » : le PUT n'était jamais vérifié (une 401/500
+  // passait silencieusement) et le cache localStorage de useModules gardait
+  // l'ancien état 5 min → la nav ne montrait pas Verger. On vérifie désormais
+  // la réponse, on invalide le cache et on prévient les composants montés.
+  const persistModules = async (): Promise<boolean> => {
     const modules = Object.entries(s.modulesActifs)
       .filter(([, on]) => on)
       .map(([k]) => k)
+    const modes = Object.entries(s.modesElevage)
+      .filter(([, on]) => on)
+      .map(([k]) => k)
     try {
-      await fetch("/api/user/preferences", {
+      const res = await fetch("/api/user/preferences", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ modulesActifs: modules }),
+        // Les modes d'élevage ne sont conservés que si le module Élevage est actif.
+        body: JSON.stringify({ modulesActifs: modules, modesElevage: s.modulesActifs.elevage ? modes : [] }),
       })
+      if (!res.ok) return false
+      // Synchroniser le cache client de useModules (sinon TTL 5 min d'état périmé).
+      try {
+        localStorage.setItem("gleba_modules_actifs", JSON.stringify({ ts: Date.now(), modules }))
+        window.dispatchEvent(new Event("gleba:modules-changed"))
+      } catch { /* localStorage indisponible : refresh() rattrapera */ }
+      return true
     } catch {
-      // Silencieux, la pref est créée à la 1ère utilisation sinon
+      return false
+    }
+  }
+
+  const saveModules = async () => {
+    const ok = await persistModules()
+    if (!ok) {
+      toast({ variant: "destructive", title: "Modules non enregistrés", description: "Vérifiez votre connexion puis réessayez." })
+      return
     }
     next()
   }
@@ -180,6 +208,9 @@ export default function OnboardingPage() {
           /* non bloquant : l'utilisateur pourra créer sa planche ensuite */
         }
       }
+      // Ticket cms1t6dpn — repousser les modules à la finalisation : un choix
+      // modifié après l'étape 1 (ou un premier PUT échoué) était perdu.
+      await persistModules()
       // Audit #87 : si le marquage onboarding échoue, ne pas rediriger (sinon
       // l'utilisateur est renvoyé vers /onboarding en boucle par le middleware).
       const res = await fetch("/api/onboarding", { method: "POST" })
@@ -361,6 +392,37 @@ export default function OnboardingPage() {
                 )
               })}
             </CardContent>
+            {/* Modes d'élevage (optionnel) — apparaît si le module Élevage est activé. */}
+            {s.modulesActifs.elevage && (
+              <div className="px-6 pb-2">
+                <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-3">
+                  <div className="text-sm font-medium text-amber-900 flex items-center gap-2 mb-1">
+                    <PawPrint className="h-4 w-4" /> Modes d'élevage (optionnel)
+                  </div>
+                  <p className="text-xs text-amber-800 mb-2">
+                    Au-delà du cheptel de rente, activez d'autres familles d'animaux. Les écrans Élevage s'adaptent à chaque atelier.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {ELEVAGE_MODE_IDS.map((id) => {
+                      const on = s.modesElevage[id]
+                      return (
+                        <button
+                          key={id}
+                          type="button"
+                          onClick={() => set("modesElevage", { ...s.modesElevage, [id]: !on })}
+                          className={`px-3 py-1.5 rounded-full border text-sm transition-colors ${
+                            on ? "border-amber-400 bg-amber-100 text-amber-900 font-medium" : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+                          }`}
+                          title={ELEVAGE_MODES[id].description}
+                        >
+                          {ELEVAGE_MODES[id].label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="flex justify-between px-6 pb-6">
               <Button variant="outline" onClick={prev}>
                 <ChevronLeft className="h-4 w-4 mr-1" />

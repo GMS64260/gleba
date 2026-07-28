@@ -16,6 +16,11 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { collecteLaitSchema, updateCollecteLaitSchema } from '@/lib/validations/lait'
 import { soinCouvrantCollecte } from '@/lib/elevage/attente-lait'
+import {
+  estAnimalCollectableLait,
+  estLotCollectableLait,
+  plafondCollecteLait,
+} from '@/lib/elevage/cibles-collecte-lait'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -74,19 +79,69 @@ export async function POST(request: NextRequest) {
 
     // Audit élevage 2026-06-11 — validation tenant : l'animal/le lot
     // référencé doit appartenir au user (même règle que mouvements-cheptel).
+    let cible: {
+      type: 'animal' | 'lot'
+      nomEspece: string | null
+      effectif: number
+    } | null = null
     if (data.animalId) {
       const a = await prisma.animal.findFirst({
         where: { id: data.animalId, userId: session.user.id },
-        select: { id: true },
+        select: {
+          id: true,
+          sexe: true,
+          orientationProduction: true,
+          especeAnimale: {
+            select: { nom: true, production: true, productions: true },
+          },
+        },
       })
       if (!a) return NextResponse.json({ error: 'Animal introuvable' }, { status: 404 })
+      if (!estAnimalCollectableLait(a)) {
+        return NextResponse.json(
+          { error: 'La collecte de lait est réservée aux femelles d’un atelier laitier ou mixte.' },
+          { status: 422 },
+        )
+      }
+      cible = { type: 'animal', nomEspece: a.especeAnimale.nom, effectif: 1 }
     }
     if (data.lotId) {
       const l = await prisma.lotAnimaux.findFirst({
         where: { id: data.lotId, userId: session.user.id },
-        select: { id: true },
+        select: {
+          id: true,
+          quantiteActuelle: true,
+          especeAnimale: {
+            select: { nom: true, production: true, productions: true },
+          },
+        },
       })
       if (!l) return NextResponse.json({ error: 'Lot introuvable' }, { status: 404 })
+      if (!estLotCollectableLait(l)) {
+        return NextResponse.json(
+          { error: 'La collecte de lait est réservée aux lots d’un atelier laitier ou mixte.' },
+          { status: 422 },
+        )
+      }
+      cible = {
+        type: 'lot',
+        nomEspece: l.especeAnimale.nom,
+        effectif: Math.max(1, l.quantiteActuelle),
+      }
+    }
+
+    if (cible) {
+      const plafond = plafondCollecteLait(cible.nomEspece, cible.type, cible.effectif)
+      if (data.quantiteLitres > plafond && !data.confirmerVolumeInhabituel) {
+        return NextResponse.json(
+          {
+            error: `Volume inhabituel : ${data.quantiteLitres} L dépasse le plafond indicatif de ${plafond} L pour cette traite. Confirmez explicitement pour l’enregistrer.`,
+            code: 'VOLUME_LAIT_INHABITUEL',
+            details: { plafond, quantite: data.quantiteLitres, espece: cible.nomEspece },
+          },
+          { status: 422 },
+        )
+      }
     }
 
     // Normalise la date au jour (00:00 UTC)
@@ -160,16 +215,21 @@ export async function PATCH(request: NextRequest) {
     const existing = await prisma.collecteLait.findFirst({ where: { id, userId: session.user.id } })
     if (!existing) return NextResponse.json({ error: 'Collecte non trouvée' }, { status: 404 })
 
-    // Audit élevage 2026-06-11 — si la date change sans consigne explicite
-    // d'écartement, on réévalue la fenêtre d'attente à la nouvelle date
-    // (sinon déplacer une collecte hors/dans une fenêtre gardait l'ancien flag).
+    // Ticket cms1v9rj5 — règle métier : une collecte dont la date est couverte
+    // par la fenêtre [début soin .. fin_attente_lait] d'un soin actif DOIT être
+    // écartée. Tout PATCH sans consigne explicite ré-affirme donc la couverture
+    // à la date effective (nouvelle ou existante), pas seulement quand la date
+    // change. La ré-intégration (flag → false), elle, ne se fait que sur
+    // changement de date (audit 2026-06-11 : déplacer une collecte hors fenêtre
+    // gardait l'ancien flag) pour ne pas effacer un écartement manuel.
     const data: typeof updates & { ecarteAttente?: boolean } = { ...updates }
-    if (updates.date && updates.ecarteAttente === undefined && (existing.animalId || existing.lotId)) {
-      const day = new Date(updates.date)
+    if (updates.ecarteAttente === undefined && (existing.animalId || existing.lotId)) {
+      const day = new Date(updates.date ?? existing.date)
       day.setUTCHours(0, 0, 0, 0)
       // Cross-granularité + comparaison au jour (cf. lib attente-lait).
       const soinCouvrant = await soinCouvrantCollecte(prisma, session.user.id, existing.animalId, existing.lotId, day)
-      data.ecarteAttente = soinCouvrant !== null
+      if (soinCouvrant) data.ecarteAttente = true
+      else if (updates.date) data.ecarteAttente = false
     }
 
     const collecte = await prisma.collecteLait.update({ where: { id }, data })

@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { createDepenseFromConsommationAliment, deleteAutoEntry } from '@/lib/auto-compta'
+import { invalidateKpi } from '@/lib/kpi'
 import { consommationAlimentSchema } from '@/lib/validations/consommation-aliment'
 
 export async function GET(request: NextRequest) {
@@ -182,8 +183,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Transaction : créer la consommation + décrémenter le stock
-    const [consommation] = await prisma.$transaction([
-      prisma.consommationAliment.create({
+    const consommation = await prisma.$transaction(async (tx) => {
+      const created = await tx.consommationAliment.create({
         data: {
           userId,
           alimentId,
@@ -198,9 +199,9 @@ export async function POST(request: NextRequest) {
           lot: { select: { id: true, nom: true } },
           animal: { select: { id: true, nom: true, identifiant: true } },
         },
-      }),
+      })
       // Décrémenter le stock per-user
-      prisma.userStockAliment.upsert({
+      await tx.userStockAliment.upsert({
         where: { userId_alimentId: { userId, alimentId } },
         create: {
           userId,
@@ -212,20 +213,16 @@ export async function POST(request: NextRequest) {
           stock: { decrement: quantite },
           dateStock: new Date(),
         },
-      }),
-    ])
-
-    // Auto-comptabilite : creer la depense auto (valorisation au prix du stock)
-    try {
-      await createDepenseFromConsommationAliment(userId, {
-        id: consommation.id,
-        alimentId: consommation.alimentId,
-        quantite: consommation.quantite,
-        date: consommation.date,
       })
-    } catch (autoComptaError) {
-      console.error('Auto-compta error (consommation_aliment POST):', autoComptaError)
-    }
+      await createDepenseFromConsommationAliment(userId, {
+        id: created.id,
+        alimentId: created.alimentId,
+        quantite: created.quantite,
+        date: created.date,
+      }, tx)
+      return created
+    })
+    invalidateKpi(userId)
 
     return NextResponse.json({ data: consommation }, { status: 201 })
   } catch (error) {
@@ -301,7 +298,7 @@ export async function PATCH(request: NextRequest) {
           })
         }
       }
-      return tx.consommationAliment.update({
+      const result = await tx.consommationAliment.update({
         where: { id },
         data: {
           alimentId,
@@ -317,18 +314,15 @@ export async function PATCH(request: NextRequest) {
           animal: { select: { id: true, nom: true, identifiant: true } },
         },
       })
-    })
-    // Auto-comptabilite : resynchroniser la depense auto avec les valeurs finales
-    try {
       await createDepenseFromConsommationAliment(userId, {
-        id: updated.id,
-        alimentId: updated.alimentId,
-        quantite: updated.quantite,
-        date: updated.date,
-      })
-    } catch (autoComptaError) {
-      console.error('Auto-compta error (consommation_aliment PATCH):', autoComptaError)
-    }
+        id: result.id,
+        alimentId: result.alimentId,
+        quantite: result.quantite,
+        date: result.date,
+      }, tx)
+      return result
+    })
+    invalidateKpi(userId)
 
     return NextResponse.json({ data: updated })
   } catch (error) {
@@ -364,20 +358,14 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Consommation non trouvée' }, { status: 404 })
     }
 
-    // Supprimer les ecritures auto-compta liees
-    try {
-      await deleteAutoEntry('consommation_aliment', consId, 'depense')
-    } catch (autoComptaError) {
-      console.error('Auto-compta cleanup error (consommation_aliment):', autoComptaError)
-    }
-
     // Transaction : supprimer + ré-incrémenter le stock
-    await prisma.$transaction([
-      prisma.consommationAliment.delete({
+    await prisma.$transaction(async (tx) => {
+      await deleteAutoEntry('consommation_aliment', consId, 'depense', userId, tx)
+      await tx.consommationAliment.delete({
         where: { id: consId },
-      }),
+      })
       // Ré-incrémenter le stock per-user
-      prisma.userStockAliment.upsert({
+      await tx.userStockAliment.upsert({
         where: { userId_alimentId: { userId, alimentId: existing.alimentId } },
         create: {
           userId,
@@ -389,8 +377,9 @@ export async function DELETE(request: NextRequest) {
           stock: { increment: existing.quantite },
           dateStock: new Date(),
         },
-      }),
-    ])
+      })
+    })
+    invalidateKpi(userId)
 
     return NextResponse.json({ success: true })
   } catch (error) {

@@ -1,13 +1,13 @@
-# Compte démo Gleba — « Ferme du Bois Joli » (scénario v2, 2026-07-20)
+# Compte démo Gleba — « Ferme du Bois Joli » (scénario v2, 2026-07-26)
 
 > Fiche scénario pour démos commerciales, captures marketing et tests prospects.
 > Toutes les données de `demo@gleba.fr` doivent rester cohérentes avec ce document.
 > **Le scénario est l'autorité ; le code (`prisma/seed-demo.ts`) est l'implémentation.**
 
 Refonte v2 : jeu de données **complet et evergreen** couvrant tous les modules ayant
-évolué (plan 2D vivant, caprin laitier pro P20-P27, comptabilité régime réel + TVA +
-factures + FEC). Remplace le scénario figé « au 14 mai » devenu obsolète et pollué par
-les tests utilisateurs.
+évolué (plan 2D vivant, caprin laitier pro P20-P27, élevages de compagnie/équins/NAC,
+comptabilité régime réel + TVA + factures + FEC). Remplace le scénario figé « au
+14 mai » devenu obsolète et pollué par les tests utilisateurs.
 
 ---
 
@@ -44,6 +44,7 @@ Les cibles ci-dessous sont des ordres de grandeur pour un reseed en pleine saiso
 | **Certification** | AB — Ecocert FR-BIO-01 |
 | **Compte** | `demo@gleba.fr` / `demo2026` |
 | **Modules actifs** | maraîchage, verger, élevage, comptabilité (+ boutique) |
+| **Ateliers d’élevage actifs** | cheptel de rente, chiens & chats, équins, NAC |
 
 ---
 
@@ -118,6 +119,22 @@ Noyer (Franquette). `envergureAdulte` renseignée (projection houppier), `etat`,
 
 **Ventes élevage** : fromages, lait cru, œufs → `VenteProduit` (dont une facture restaurant + une cantine).
 
+### Ateliers chiens/chats, équins et NAC
+
+Les trois ateliers optionnels sont activés par la préférence `modesElevage` afin que
+le sélecteur **Cheptel / Chiens & chats / Équins / NAC** soit visible dès la connexion.
+
+| Atelier | Animaux / données de démonstration |
+|---|---|
+| **Chiens & chats** | Nala et Oslo (Golden retriever), Plume et Moka (Maine coon) ; identifiants I-CAD fictifs, LOF/LOOF, cotations et tests de santé |
+| **Reproduction canine** | portée récente de Nala reliée à une saillie, 4 chiots détaillés, dont 2 réservations avec acompte |
+| **Équins** | Étoile (jument Selle français) et Sirocco (hongre Connemara), identifiants SIRE fictifs, pedigree et examens AIE/radiographiques |
+| **NAC** | Pixel le furet, Noisette le lapin nain et Kiwi la calopsitte, avec identification ou bague lorsque pertinente et bilans sanitaires |
+
+Les identifiants, coordonnées d’acquéreurs et références de laboratoire sont
+entièrement fictifs. Les animaux sont saisis sans prix d’achat sur l’année courante,
+afin de ne pas modifier les invariants comptables du scénario.
+
 ---
 
 ## Comptabilité — régime réel simplifié + TVA + factures + FEC
@@ -169,6 +186,8 @@ découverte, œufs, fromages, confitures, légumes à l'unité), ~15 commandes r
 | 8 | Boutique : commandes livrées ⇒ CA compta ; non livrées = compteur | chaîne câblée |
 | 9 | Achats arbres en années passées (verger établi) ⇒ pas de fuite compta `Y` | cohérence |
 | 10 | Caprin : lait/collectes/cellules/palmarès/fromagerie/économie tous peuplés | vitrine pro |
+| 11 | Préférence `modesElevage` = compagnie + équin + NAC | ateliers visibles |
+| 12 | Chiens, chats, équins et NAC présents avec santé/pedigree ; portée canine et réservations peuplées | vitrine multi-filières |
 
 ---
 

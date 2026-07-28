@@ -34,6 +34,9 @@ import {
   Heart,
 } from "lucide-react"
 import { GenealogyTree } from "@/components/elevage/GenealogyTree"
+import { StatutsSanitairesAnimal } from "@/components/elevage/StatutsSanitairesAnimal"
+import { capacites } from "@/lib/elevage/filiere-ui"
+import { coerceFiliere } from "@/lib/elevage/filiere"
 
 const STATUT_COLORS: Record<string, string> = {
   actif: "bg-green-100 text-green-800",
@@ -62,6 +65,7 @@ interface AnimalDetail {
   dateSortie: string | null
   causeSortie: string | null
   provenance: string | null
+  statutSanitaire: string[]
   prixAchat: number | null
   poidsActuel: number | null
   couleur: string | null
@@ -75,6 +79,7 @@ interface AnimalDetail {
     id: string
     nom: string
     type: string
+    filiere: string | null
     couleur: string | null
     ponteAnnuelle: number | null
     poidsAdulte: number | null
@@ -87,6 +92,15 @@ interface AnimalDetail {
     identifiant: string | null
     sexe: string | null
     mere: { id: number; nom: string | null; identifiant: string | null } | null
+    pere: { id: number; nom: string | null; identifiant: string | null } | null
+  } | null
+  pere: {
+    id: number
+    nom: string | null
+    identifiant: string | null
+    sexe: string | null
+    mere: { id: number; nom: string | null; identifiant: string | null } | null
+    pere: { id: number; nom: string | null; identifiant: string | null } | null
   } | null
   enfants: {
     id: number
@@ -103,6 +117,17 @@ interface AnimalDetail {
     nombreVivants: number
     nombreMales: number | null
     nombreFemelles: number | null
+  }[]
+  // QA caprin cms1vhs9l — reproduction restituée sur la fiche
+  sailliesFemelle?: {
+    id: string
+    date: string
+    type: string
+    statut: string
+    dateMiseBasAttendue: string
+    dateTarissementPrevue: string | null
+    male: { id: number; nom: string | null; identifiant: string | null } | null
+    pereExterneRef: string | null
   }[]
   productionsOeufs: {
     id: number
@@ -133,7 +158,7 @@ interface AnimalDetail {
 // Timeline event type
 interface TimelineEvent {
   date: string
-  type: "soin" | "production" | "naissance" | "abattage"
+  type: "soin" | "production" | "naissance" | "abattage" | "saillie"
   icon: React.ComponentType<{ className?: string }>
   iconColor: string
   bgColor: string
@@ -189,6 +214,9 @@ export default function AnimalDetailPage() {
   // Construire timeline
   const buildTimeline = (a: AnimalDetail): TimelineEvent[] => {
     const events: TimelineEvent[] = []
+    // Surfaces de rente (ponte, abattage) masquées pour un animal de compagnie/
+    // équin/NAC (feedback Guillaume 2026-07-25).
+    const capsA = capacites(coerceFiliere(a.especeAnimale.filiere))
 
     a.soins.forEach(s => {
       events.push({
@@ -202,7 +230,7 @@ export default function AnimalDetailPage() {
       })
     })
 
-    a.productionsOeufs.forEach(p => {
+    if (capsA.ponte) a.productionsOeufs.forEach(p => {
       events.push({
         date: p.date,
         type: "production",
@@ -226,7 +254,23 @@ export default function AnimalDetailPage() {
       })
     })
 
-    a.abattages.forEach(ab => {
+    // QA caprin cms1vhs9l — les saillies font partie de l'histoire de l'animal.
+    a.sailliesFemelle?.forEach(s => {
+      events.push({
+        date: s.date,
+        type: "saillie",
+        icon: Heart,
+        iconColor: "text-rose-600",
+        bgColor: "bg-rose-100",
+        title: `${s.type} — ${s.statut}`,
+        detail: [
+          s.male ? (s.male.nom || s.male.identifiant) : s.pereExterneRef,
+          s.statut === "Gestante" ? `mise-bas attendue le ${new Date(s.dateMiseBasAttendue).toLocaleDateString("fr-FR")}` : null,
+        ].filter(Boolean).join(" - "),
+      })
+    })
+
+    if (capsA.abattage) a.abattages.forEach(ab => {
       events.push({
         date: ab.date,
         type: "abattage",
@@ -319,8 +363,9 @@ export default function AnimalDetailPage() {
               </div>
             </div>
 
-            {/* Délai d'attente — remise en vente lait/viande (feedback éleveur 2026-07-24) */}
-            {(() => {
+            {/* Délai d'attente — remise en vente lait/viande (feedback éleveur 2026-07-24).
+                Concept de rente : masqué pour compagnie/équin/NAC (2026-07-25). */}
+            {capacites(coerceFiliere(animal.especeAnimale.filiere)).delaisAttente && (() => {
               const auj = new Date(new Date().toDateString()).getTime()
               const faits = animal.soins.filter((s) => s.fait)
               const futurs = (arr: (string | null)[]) =>
@@ -347,6 +392,11 @@ export default function AnimalDetailPage() {
                 </div>
               )
             })()}
+
+            <StatutsSanitairesAnimal
+              animalId={animal.id}
+              legacyStatuses={animal.statutSanitaire}
+            />
 
             {/* Cards info */}
             <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
@@ -432,7 +482,7 @@ export default function AnimalDetailPage() {
             </div>
 
             {/* Arbre genealogique */}
-            {(animal.mere || animal.mereIdentifiant || animal.pereIdentifiant || animal.enfants.length > 0) && (
+            {(animal.mere || animal.mereIdentifiant || animal.pere || animal.pereIdentifiant || animal.enfants.length > 0) && (
               <Card>
                 <CardHeader>
                   <CardTitle className="text-sm flex items-center gap-2">
@@ -445,6 +495,75 @@ export default function AnimalDetailPage() {
                 </CardContent>
               </Card>
             )}
+
+            {/* QA caprin cms1vhs9l — reproduction en un coup d'oeil : gestation
+                en cours (mise-bas prévue + tarissement), saillies et mises-bas.
+                Avant : il fallait ouvrir 3 onglets pour reconstituer l'état. */}
+            {animal.sexe === 'femelle' && ((animal.sailliesFemelle?.length ?? 0) > 0 || animal.naissancesMere.length > 0) && (() => {
+              const saillies = animal.sailliesFemelle ?? []
+              const derniereMb = animal.naissancesMere[0] ? new Date(animal.naissancesMere[0].date).getTime() : null
+              const gestation = saillies.find((s) =>
+                s.statut === 'Gestante' && (derniereMb == null || new Date(s.date).getTime() > derniereMb))
+              return (
+                <Card className={gestation ? 'border-pink-300' : undefined}>
+                  <CardHeader>
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Heart className="h-4 w-4 text-rose-600" />
+                      Reproduction
+                      {gestation ? (
+                        <Badge className="bg-pink-100 text-pink-800 border-pink-300">Gestante</Badge>
+                      ) : animal.naissancesMere.length > 0 ? (
+                        <Badge variant="outline">{animal.naissancesMere.length} mise{animal.naissancesMere.length > 1 ? 's' : ''}-bas</Badge>
+                      ) : null}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {gestation && (
+                      <div className="rounded-md bg-pink-50 border border-pink-200 p-3 text-sm space-y-1">
+                        <p>
+                          <span className="font-medium">Mise-bas prévue le {new Date(gestation.dateMiseBasAttendue).toLocaleDateString('fr-FR')}</span>
+                          {' '}({gestation.type} du {new Date(gestation.date).toLocaleDateString('fr-FR')}
+                          {gestation.male ? ` avec ${gestation.male.nom || gestation.male.identifiant}` : gestation.pereExterneRef ? ` avec ${gestation.pereExterneRef}` : ''})
+                        </p>
+                        {gestation.dateTarissementPrevue && (
+                          <p className="text-pink-800">Tarissement à prévoir le {new Date(gestation.dateTarissementPrevue).toLocaleDateString('fr-FR')} (J-60)</p>
+                        )}
+                      </div>
+                    )}
+                    {saillies.length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold text-slate-500 uppercase mb-1">Saillies</p>
+                        <ul className="text-sm space-y-0.5">
+                          {saillies.slice(0, 6).map((s) => (
+                            <li key={s.id} className="flex flex-wrap items-center gap-x-2 text-slate-700">
+                              <span>{new Date(s.date).toLocaleDateString('fr-FR')}</span>
+                              <span className="text-slate-500">{s.type}</span>
+                              {(s.male || s.pereExterneRef) && (
+                                <span className="text-slate-500">{s.male ? (s.male.nom || s.male.identifiant) : s.pereExterneRef}</span>
+                              )}
+                              <Badge variant="outline" className="text-[10px]">{s.statut}</Badge>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {animal.naissancesMere.length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold text-slate-500 uppercase mb-1">Mises-bas</p>
+                        <ul className="text-sm space-y-0.5">
+                          {animal.naissancesMere.slice(0, 6).map((n) => (
+                            <li key={n.id} className="text-slate-700">
+                              {new Date(n.date).toLocaleDateString('fr-FR')} : {n.nombreNes} né{n.nombreNes > 1 ? 's' : ''}, {n.nombreVivants} vivant{n.nombreVivants > 1 ? 's' : ''}
+                              {n.nombreMales != null || n.nombreFemelles != null ? ` (${n.nombreMales || 0}M/${n.nombreFemelles || 0}F)` : ''}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )
+            })()}
 
             {/* GAP P1 — Pesées & croissance (GMQ) */}
             <PeseesCard animalId={animal.id} />

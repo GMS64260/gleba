@@ -10,6 +10,7 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { montantPaie } from '@/lib/elevage/paie-lait'
 import { upsertVenteFromPaieLait } from '@/lib/auto-compta'
+import { invalidateKpi } from '@/lib/kpi'
 
 const schema = z.object({
   annee: z.coerce.number().int(),
@@ -90,6 +91,7 @@ export async function POST(request: NextRequest) {
       })
       return saved
     })
+    invalidateKpi(userId)
 
     return NextResponse.json({ data: paie }, { status: 201 })
   } catch (err) {
@@ -117,6 +119,7 @@ export async function DELETE(request: NextRequest) {
       },
     })
   })
+  invalidateKpi(existing.userId)
 
   return NextResponse.json({ success: true })
 }

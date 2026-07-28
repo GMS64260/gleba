@@ -18,14 +18,13 @@ export async function GET() {
   const { session, error } = await requireAuthApi()
   if (error) return error
   const data = await prisma.stockMedicamentElevage.findMany({
-    where: { userId: session.user.id }, orderBy: [{ datePeremption: 'asc' }, { updatedAt: 'desc' }],
+    where: { userId: session.user.id },
+    orderBy: [{ datePeremption: 'asc' }, { updatedAt: 'desc' }],
+    include: {
+      produit: { select: { id: true, nom: true, amm: true } },
+    },
   })
-  const produits = await prisma.produitVeterinaire.findMany({
-    where: { id: { in: [...new Set(data.map((s) => s.produitId))] } },
-    select: { id: true, nom: true, amm: true },
-  })
-  const noms = new Map(produits.map((p) => [p.id, p]))
-  return NextResponse.json({ data: data.map((s) => ({ ...s, produit: noms.get(s.produitId) ?? null })) })
+  return NextResponse.json({ data })
 }
 
 export async function POST(request: NextRequest) {
@@ -49,7 +48,17 @@ export async function DELETE(request: NextRequest) {
   if (error) return error
   const id = new URL(request.url).searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'ID requis' }, { status: 400 })
-  const result = await prisma.stockMedicamentElevage.deleteMany({ where: { id, userId: session.user.id } })
-  if (!result.count) return NextResponse.json({ error: 'Stock introuvable' }, { status: 404 })
+  const stock = await prisma.stockMedicamentElevage.findFirst({
+    where: { id, userId: session.user.id },
+    include: { _count: { select: { soins: true } } },
+  })
+  if (!stock) return NextResponse.json({ error: 'Stock introuvable' }, { status: 404 })
+  if (stock._count.soins > 0) {
+    return NextResponse.json(
+      { error: "Ce lot est lié à des soins et doit rester dans la traçabilité réglementaire." },
+      { status: 409 },
+    )
+  }
+  await prisma.stockMedicamentElevage.delete({ where: { id } })
   return NextResponse.json({ success: true })
 }

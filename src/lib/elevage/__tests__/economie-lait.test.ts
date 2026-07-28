@@ -68,6 +68,57 @@ describe("indicateursEconomieLait", () => {
     expect(r.marge).toBe(-400)
   })
 
+  // Ticket cms1v9rj5 — les ratios au litre doivent porter sur le volume
+  // valorisable (produits − écartés), pas sur le volume produit brut.
+  it("rapporte les ratios au volume valorisable quand du lait est écarté", () => {
+    const r = indicateursEconomieLait({
+      litresProduits: 1000,
+      litresTransformes: 400,
+      litresVendusCru: 100,
+      litresEcartes: 200, // 200 L sous délai d'attente → volume valorisable 800 L
+      caLaitCru: 100,
+      caFromage: 800,
+      caLaitLivre: 0,
+      coutAlimentaire: 400,
+      coutSanitaire: 100,
+      kgFromage: 50,
+    })
+    expect(r.valorisation).toBe(900)
+    expect(r.coutTotal).toBe(500) // les coûts totaux ne changent pas
+    expect(r.mca).toBe(500) // 900 − 400
+    // Dénominateur 800 L (et non 1000) :
+    expect(r.mcaPour1000L).toBe(625) // 500 / 800 × 1000
+    expect(r.coutAlimentaireLitre).toBe(0.5) // 400 / 800
+    expect(r.coutRevientLitre).toBe(0.625) // 500 / 800
+    expect(r.prixMoyenLitreValorise).toBe(1.125) // 900 / 800
+    // Part transfo = 400 / 800 = 0,5 → coût kg fromage = 500 × 0,5 / 50
+    expect(r.coutRevientKgFromage).toBe(5)
+    // Le rendement fromager reste basé sur les litres transformés
+    expect(r.rendementFromager).toBe(0.125)
+    expect(r.litresParKgFromage).toBe(8)
+  })
+
+  it("renvoie null sur les ratios au litre quand tout le lait est écarté", () => {
+    const r = indicateursEconomieLait({
+      litresProduits: 120,
+      litresTransformes: 0,
+      litresVendusCru: 0,
+      litresEcartes: 120, // volume valorisable = 0
+      caLaitCru: 0,
+      caFromage: 0,
+      caLaitLivre: 0,
+      coutAlimentaire: 80,
+      coutSanitaire: 40,
+      kgFromage: 0,
+    })
+    expect(r.coutTotal).toBe(120)
+    expect(r.mcaPour1000L).toBeNull()
+    expect(r.coutAlimentaireLitre).toBeNull()
+    expect(r.coutRevientLitre).toBeNull()
+    expect(r.prixMoyenLitreValorise).toBeNull()
+    expect(r.coutRevientKgFromage).toBeNull()
+  })
+
   it("intègre le lait livré à la laiterie (paie) dans la valorisation et la marge", () => {
     // Ferme 100 % livraison : aucune vente directe ni fromage, mais un chèque
     // de lait. Avant le fix, valorisation = 0 et marge = −(coûts).

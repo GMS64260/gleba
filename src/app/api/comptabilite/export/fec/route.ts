@@ -73,14 +73,24 @@ export async function GET(request: NextRequest) {
     abattagesVendus,
   ] = await Promise.all([
     prisma.venteManuelle.findMany({
-      where: { userId, date: { gte: start, lte: end }, auto: { not: true } },
+      where: {
+        userId,
+        date: { gte: start, lte: end },
+        OR: [
+          { auto: { not: true } },
+          {
+            auto: true,
+            sourceType: { in: ['commande_boutique', 'paie_lait', 'reservation_elevage'] },
+          },
+        ],
+      },
       orderBy: { date: 'asc' },
     }),
     prisma.depenseManuelle.findMany({
       // Audit compta 2026-06 (lot 5) : SSOT dépenses = Σ DepenseManuelle AUTO
       // INCLUSES (aucune source brute de dépense n'est injectée par ailleurs,
       // contrairement aux ventes). Le FEC est ainsi aligné sur le KPI et la TVA.
-      where: { userId, date: { gte: start, lte: end } },
+      where: { userId, date: { gte: start, lte: end }, comptable: true },
       orderBy: { date: 'asc' },
     }),
     prisma.facture.findMany({
@@ -231,6 +241,7 @@ export async function GET(request: NextRequest) {
       case 'viande': return 'viande'
       case 'animal_vivant': return 'animaux_vivants'
       case 'lait': return 'produits_transformes'
+      case 'fromage': return 'produits_transformes'
       case 'autre':
       default: return 'autre'
     }

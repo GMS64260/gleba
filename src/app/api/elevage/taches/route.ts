@@ -24,6 +24,11 @@ export async function GET(request: NextRequest) {
     const start = startStr ? new Date(startStr) : new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay() + 1)
     const end = endStr ? new Date(endStr) : new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000)
 
+    // Scoping optionnel par filière d'atelier (modes d'élevage).
+    const filiere = searchParams.get('filiere')
+    const animLotFiliere = filiere ? { AND: [{ OR: [{ animal: { especeAnimale: { filiere } } }, { lot: { especeAnimale: { filiere } } }] }] } : {}
+    const lotFiliere = filiere ? { lot: { especeAnimale: { filiere } } } : {}
+
     const [soins, productions, consommations, lotsActifs, animauxPondeurs] = await Promise.all([
       // Soins prevus ou faits dans la periode
       prisma.soinAnimal.findMany({
@@ -33,6 +38,7 @@ export async function GET(request: NextRequest) {
             { datePrevue: { gte: start, lte: end } },
             { date: { gte: start, lte: end } },
           ],
+          ...animLotFiliere,
         },
         include: {
           animal: { select: { id: true, nom: true, identifiant: true } },
@@ -46,6 +52,7 @@ export async function GET(request: NextRequest) {
         where: {
           userId,
           date: { gte: start, lte: end },
+          ...lotFiliere,
         },
         include: {
           lot: { select: { id: true, nom: true } },
@@ -58,6 +65,7 @@ export async function GET(request: NextRequest) {
         where: {
           userId,
           date: { gte: start, lte: end },
+          ...lotFiliere,
         },
         include: {
           aliment: { select: { id: true, nom: true } },
@@ -96,6 +104,46 @@ export async function GET(request: NextRequest) {
         },
       }),
     ])
+
+    // QA caprin cms1vevyb — mises-bas prévues et tarissements des saillies
+    // gestantes dans la fenêtre affichée : le toast « alertes activées »
+    // promettait ces événements dans le calendrier, ils n'existaient nulle
+    // part. Servis depuis les saillies (aucune duplication de données).
+    const sailliesFenetre = await prisma.saillie.findMany({
+      where: {
+        userId,
+        statut: 'Gestante',
+        OR: [
+          { dateMiseBasAttendue: { gte: start, lte: end } },
+          { dateTarissementPrevue: { gte: start, lte: end } },
+        ],
+        ...(filiere ? { femelle: { especeAnimale: { filiere } } } : {}),
+      },
+      select: {
+        id: true,
+        dateMiseBasAttendue: true,
+        dateTarissementPrevue: true,
+        femelle: { select: { id: true, nom: true, identifiant: true } },
+      },
+    })
+    const reproduction = [
+      ...sailliesFenetre
+        .filter((s) => s.dateMiseBasAttendue && s.dateMiseBasAttendue >= start && s.dateMiseBasAttendue <= end)
+        .map((s) => ({
+          id: `mb-${s.id}`,
+          kind: 'mise_bas' as const,
+          date: s.dateMiseBasAttendue,
+          femelle: s.femelle,
+        })),
+      ...sailliesFenetre
+        .filter((s) => s.dateTarissementPrevue && s.dateTarissementPrevue >= start && s.dateTarissementPrevue <= end)
+        .map((s) => ({
+          id: `tar-${s.id}`,
+          kind: 'tarissement' as const,
+          date: s.dateTarissementPrevue as Date,
+          femelle: s.femelle,
+        })),
+    ]
     const injections = await prisma.$queryRaw<Array<{
       injectionId: string
       soinId: number
@@ -127,12 +175,23 @@ export async function GET(request: NextRequest) {
       WHERE i.user_id = ${userId}
         AND i.date_prevue >= ${start}
         AND i.date_prevue <= ${end}
+        AND (
+          ${filiere}::text IS NULL
+          OR a.espece_animale_id IN (SELECT espece_animale FROM especes_animales WHERE filiere = ${filiere})
+          OR l.espece_animale_id IN (SELECT espece_animale FROM especes_animales WHERE filiere = ${filiere})
+        )
       ORDER BY i.date_prevue
     `
 
-    // Stats de la periode
-    const soinsFaits = soins.filter(s => s.fait).length
-    const soinsTotal = soins.length
+    // Stats de la periode — QA caprin cms1v9e3a : compter les MÊMES objets
+    // que ceux affichés (injections incluses, soins parents dédoublonnés),
+    // sinon la carte « Soins à faire » contredit la liste juste en dessous.
+    const soinsSansInjections = soins.filter((s) => !injections.some((i) => i.soinId === s.id))
+    const injectionsActives = injections.filter((i) => i.statut !== 'annulee')
+    const soinsFaits =
+      soinsSansInjections.filter((s) => s.fait).length +
+      injectionsActives.filter((i) => i.statut === 'realisee').length
+    const soinsTotal = soinsSansInjections.length + injectionsActives.length
     const totalOeufs = productions.reduce((s, p) => s + p.quantite, 0)
     const totalConsoKg = consommations.reduce((s, c) => s + c.quantite, 0)
 
@@ -197,9 +256,14 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json({
+      reproduction: reproduction.map((r) => ({
+        id: r.id,
+        kind: r.kind,
+        date: r.date,
+        femelle: r.femelle,
+      })),
       soins: [
-        ...soins
-          .filter((s) => !injections.some((i) => i.soinId === s.id))
+        ...soinsSansInjections
           .map(s => ({
         id: s.id,
         date: s.datePrevue || s.date,

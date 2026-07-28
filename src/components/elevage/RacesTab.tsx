@@ -42,10 +42,14 @@ import {
   filtrerParOrigine,
   type FiltreOrigineValue,
 } from "@/components/referentiel/catalogue-communaute"
+import { useElevageModes } from "@/hooks/use-elevage-modes"
+import { type Filiere } from "@/lib/elevage/filiere"
+import { useFiliereSelection, filiereMatch } from "@/lib/elevage/filiere-context"
 
 interface EspeceAnimale {
   id: string
   nom: string
+  filiere?: string | null
 }
 
 interface Race {
@@ -63,6 +67,8 @@ export function RacesTab() {
   const { data: session } = useSession()
   const currentUserId = (session?.user as any)?.id as string | undefined
   const isAdmin = (session?.user as any)?.role === "ADMIN"
+  const { filieres } = useElevageModes()
+  const filiereSel = useFiliereSelection()
   const [especes, setEspeces] = React.useState<EspeceAnimale[]>([])
   const [races, setRaces] = React.useState<Race[]>([])
   const [filtre, setFiltre] = React.useState("all")
@@ -96,7 +102,15 @@ export function RacesTab() {
 
   const referentielActions = useReferentielActions("/api/elevage/races", reload, toast)
 
-  const parEspece = filtre === "all" ? races : races.filter((r) => r.especeAnimaleId === filtre)
+  // Référentiel restreint aux filières actives ET à l'atelier courant (comme
+  // EspecesTab) : un éleveur de rente ne voit pas les races canines/NAC, et
+  // l'atelier « Chiens & chats » n'affiche que chien/chat (feedback 2026-07-25).
+  const especesVisibles = especes.filter(
+    (e) => filieres.includes((e.filiere || "rente") as Filiere) && filiereMatch(filiereSel, e.filiere)
+  )
+  const especeIdsVisibles = new Set(especesVisibles.map((e) => e.id))
+  const racesVisibles = races.filter((r) => especeIdsVisibles.has(r.especeAnimaleId))
+  const parEspece = filtre === "all" ? racesVisibles : racesVisibles.filter((r) => r.especeAnimaleId === filtre)
   const filtered = filtrerParOrigine(parEspece, filtreOrigine, currentUserId)
 
   const ajouter = async () => {
@@ -144,7 +158,7 @@ export function RacesTab() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Toutes espèces</SelectItem>
-              {especes.map((e) => (
+              {especesVisibles.map((e) => (
                 <SelectItem key={e.id} value={e.id}>
                   {e.nom}
                 </SelectItem>
@@ -227,7 +241,7 @@ export function RacesTab() {
                   <SelectValue placeholder="Sélectionner une espèce" />
                 </SelectTrigger>
                 <SelectContent>
-                  {especes.map((e) => (
+                  {especesVisibles.map((e) => (
                     <SelectItem key={e.id} value={e.id}>
                       {e.nom}
                     </SelectItem>

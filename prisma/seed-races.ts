@@ -1,8 +1,14 @@
 /**
- * Seed du référentiel de races animales (idempotent).
- * Rattache un jeu de races françaises courantes à chaque EspeceAnimale existante,
- * selon sa catégorie déduite (volaille / bovin / ovin / caprin / lapin / porc).
- * Réexécutable sans doublon (upsert sur [especeAnimaleId, nom]).
+ * Seed du référentiel de races animales de RENTE (idempotent).
+ * Rattache un jeu de races françaises courantes à chaque EspeceAnimale de
+ * filière `rente`, selon sa catégorie déduite (volaille / bovin / ovin /
+ * caprin / lapin / porc). Réexécutable sans doublon (upsert sur
+ * [especeAnimaleId, nom]).
+ *
+ * Les filières compagnie/équin/NAC ont leur propre seed :
+ * `prisma/seed-races-compagnie.ts`. Sans ce filtre, la déduction par mots-clés
+ * contaminerait le catalogue NAC (« Cochon d'Inde » → races porcines,
+ * « Lapin nain » → races de lapin de chair).
  */
 
 import { PrismaClient } from '@prisma/client'
@@ -43,6 +49,7 @@ function categorieDe(esp: {
 
 async function main() {
   const especes = await prisma.especeAnimale.findMany({
+    where: { filiere: 'rente' },
     select: { id: true, nom: true, type: true, production: true, categorieReglementaire: true },
   })
 
@@ -59,7 +66,7 @@ async function main() {
       créées++
     }
   }
-  console.log(`✓ Seed races : ${créées} associations race↔espèce upsertées (${especes.length} espèces).`)
+  console.log(`✓ Seed races de rente : ${créées} associations race↔espèce upsertées (${especes.length} espèces de rente).`)
 }
 
 main()

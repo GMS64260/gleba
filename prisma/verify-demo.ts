@@ -90,6 +90,25 @@ async function main() {
   check("Territoire METROPOLE (FEC applicable)", exp?.territoire === "METROPOLE")
   check("Régime réel + TVA", exp?.regimeTva !== "franchise-293b", exp?.regimeTva || "")
 
+  // ── Modes d'élevage optionnels ──
+  const modesPref = await prisma.userPreference.findUnique({
+    where: { userId_key: { userId, key: "modesElevage" } },
+    select: { value: true },
+  })
+  let modesElevage: string[] = []
+  try {
+    const parsed = JSON.parse(modesPref?.value || "[]")
+    if (Array.isArray(parsed)) modesElevage = parsed.filter((mode): mode is string => typeof mode === "string")
+  } catch {
+    // Le contrôle ci-dessous signalera la préférence invalide.
+  }
+  const modesAttendus = ["compagnie", "equin", "nac"]
+  check(
+    "Ateliers chiens/chats, équins et NAC activés",
+    modesAttendus.every((mode) => modesElevage.includes(mode)),
+    `modes=${modesElevage.join(",") || "aucun"}`,
+  )
+
   // ── Volumes / modules peuplés ──
   const counts = {
     parcelles: await prisma.parcelleGeo.count({ where: { userId } }),
@@ -106,6 +125,13 @@ async function main() {
     saillies: await prisma.saillie.count({ where: { userId } }),
     campagnesRepro: await prisma.campagneReproduction.count({ where: { userId } }),
     naissances: await prisma.naissanceAnimale.count({ where: { userId } }),
+    petitsNaissance: await prisma.petitNaissance.count({ where: { userId } }),
+    reservationsElevage: await prisma.reservationElevage.count({ where: { userId } }),
+    testsSanteElevage: await prisma.testSanteElevage.count({ where: { userId } }),
+    pedigreesElevage: await prisma.pedigreeElevage.count({ where: { userId } }),
+    animauxCompagnie: await prisma.animal.count({ where: { userId, especeAnimale: { filiere: "compagnie" } } }),
+    animauxEquins: await prisma.animal.count({ where: { userId, especeAnimale: { filiere: "equin" } } }),
+    animauxNac: await prisma.animal.count({ where: { userId, especeAnimale: { filiere: "nac" } } }),
     ventesProduit: await prisma.venteProduit.count({ where: { userId } }),
     factures: await prisma.facture.count({ where: { userId } }),
     clients: await prisma.client.count({ where: { userId } }),
@@ -116,6 +142,11 @@ async function main() {
   check("Caprin : collectes lait peuplées (P20/P21)", counts.collectesLait > 200)
   check("Caprin : fromagerie peuplée (P27)", counts.lotsFromage >= 3)
   check("Caprin : campagne repro + saillies (P23/P24)", counts.campagnesRepro >= 1 && counts.saillies >= 4)
+  check("Compagnie : chiens et chats peuplés", counts.animauxCompagnie >= 4, `${counts.animauxCompagnie} animaux`)
+  check("Compagnie : portée détaillée + réservations", counts.petitsNaissance >= 4 && counts.reservationsElevage >= 2)
+  check("Équins : cheval et poney peuplés", counts.animauxEquins >= 2, `${counts.animauxEquins} animaux`)
+  check("NAC : plusieurs espèces peuplées", counts.animauxNac >= 3, `${counts.animauxNac} animaux`)
+  check("Sélection : santé et pedigrees peuplés", counts.testsSanteElevage >= 10 && counts.pedigreesElevage >= 6)
   check("Verger : arbres + récoltes fruits", counts.arbres >= 12 && counts.recoltesArbre >= 2)
   check("Compta : factures B2B", counts.factures >= 2)
   check("Boutique : commandes", counts.commandes >= 10)

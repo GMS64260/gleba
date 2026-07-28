@@ -20,24 +20,33 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const annee = parseInt(searchParams.get('annee') || `${new Date().getFullYear()}`, 10) || new Date().getFullYear()
     const userId = session.user.id
+    const filiere = searchParams.get('filiere')
+    const femFiliere = filiere ? { especeAnimale: { filiere } } : {}
+    const naissanceFiliere = filiere ? {
+      OR: [
+        { mere: { especeAnimale: { filiere } } },
+        { lot: { especeAnimale: { filiere } } },
+      ],
+    } : {}
+    const femelleFiliere = filiere ? { femelle: { especeAnimale: { filiere } } } : {}
     const debut = new Date(annee, 0, 1)
     const fin = new Date(annee, 11, 31, 23, 59, 59)
 
     const [sailliesAnnee, naissancesAnnee, naissancesAll, femelles] = await Promise.all([
       prisma.saillie.findMany({
-        where: { userId, date: { gte: debut, lte: fin } },
+        where: { userId, date: { gte: debut, lte: fin }, ...femelleFiliere },
         select: { femelleId: true, date: true, statut: true },
       }),
       prisma.naissanceAnimale.findMany({
-        where: { userId, date: { gte: debut, lte: fin } },
+        where: { userId, date: { gte: debut, lte: fin }, ...naissanceFiliere },
         select: { mereId: true, date: true, nombreNes: true, nombreVivants: true },
       }),
       prisma.naissanceAnimale.findMany({
-        where: { userId },
+        where: { userId, ...naissanceFiliere },
         select: { mereId: true, date: true, nombreNes: true, nombreVivants: true },
       }),
       prisma.animal.findMany({
-        where: { userId, sexe: 'femelle' },
+        where: { userId, sexe: 'femelle', ...femFiliere },
         select: { id: true, dateNaissance: true },
       }),
     ])

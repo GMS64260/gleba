@@ -43,10 +43,16 @@ async function main() {
     ["CollecteLait", () => dm(prisma.collecteLait.deleteMany({ where: { userId } }))],
     ["SequenceLotFromage", () => dm(prisma.sequenceLotFromage.deleteMany({ where: { userId } }))],
     ["LotFromage", () => dm(prisma.lotFromage.deleteMany({ where: { userId } }))],
-    // ── Élevage : reproduction ──────────────────────────────────────────
+    // ── Élevage : reproduction / sélection ─────────────────────────────
+    // Ces modèles portent des références scalaires sans FK : ils ne sont
+    // pas supprimés automatiquement avec l'animal ou la naissance.
+    ["ReservationElevage", () => dm(prisma.reservationElevage.deleteMany({ where: { userId } }))],
+    ["PetitNaissance", () => dm(prisma.petitNaissance.deleteMany({ where: { userId } }))],
     ["NaissanceAnimale", () => dm(prisma.naissanceAnimale.deleteMany({ where: { userId } }))],
     ["Saillie", () => dm(prisma.saillie.deleteMany({ where: { userId } }))],
     ["CampagneReproduction", () => dm(prisma.campagneReproduction.deleteMany({ where: { userId } }))],
+    ["TestSanteElevage", () => dm(prisma.testSanteElevage.deleteMany({ where: { userId } }))],
+    ["PedigreeElevage", () => dm(prisma.pedigreeElevage.deleteMany({ where: { userId } }))],
     // ── Élevage : suivi ─────────────────────────────────────────────────
     ["SoinAnimal", () => dm(prisma.soinAnimal.deleteMany({ where: { userId } }))],
     ["ConsommationAliment", () => dm(prisma.consommationAliment.deleteMany({ where: { userId } }))],
@@ -73,7 +79,7 @@ async function main() {
     ["Fertilisation", () => dm(prisma.fertilisation.deleteMany({ where: { userId } }))],
     ["Consommation", () => dm(prisma.consommation.deleteMany({ where: { userId } }))],
     ["IrrigationPlanifiee", () => dm(prisma.irrigationPlanifiee.deleteMany({ where: { userId } }))],
-    ["Recolte", () => dm(prisma.recolte.deleteMany({ where: { userId } }))],
+    ["Récolte", () => dm(prisma.recolte.deleteMany({ where: { userId } }))],
     ["Culture", () => dm(prisma.culture.deleteMany({ where: { userId } }))],
     ["AnalyseSol", () => dm(prisma.analyseSol.deleteMany({ where: { userId } }))],
     ["ObjetJardin", () => dm(prisma.objetJardin.deleteMany({ where: { userId } }))],
@@ -83,10 +89,10 @@ async function main() {
     ["ParcelleGeo", () => dm(prisma.parcelleGeo.deleteMany({ where: { userId } }))],
 
     // ── Stocks utilisateur ──────────────────────────────────────────────
-    ["UserStockVariete", () => dm(prisma.userStockVariete.deleteMany({ where: { userId } }))],
+    ["UserStockVariété", () => dm(prisma.userStockVariete.deleteMany({ where: { userId } }))],
     ["UserStockFertilisant", () => dm(prisma.userStockFertilisant.deleteMany({ where: { userId } }))],
     ["UserStockAliment", () => dm(prisma.userStockAliment.deleteMany({ where: { userId } }))],
-    ["UserStockEspece", () => dm(prisma.userStockEspece.deleteMany({ where: { userId } }))],
+    ["UserStockEspèce", () => dm(prisma.userStockEspece.deleteMany({ where: { userId } }))],
 
     // ── Traçabilité, IA, météo, préférences, exploitation ───────────────
     ["Intervention", () => dm(prisma.intervention.deleteMany({ where: { userId } }))],
@@ -98,9 +104,9 @@ async function main() {
 
     // ── Référentiel PERSO créé par les testeurs sur le compte démo ──────
     // (enfants d'abord : variétés/ITP référencent l'espèce)
-    ["Variete (perso)", () => dm(prisma.variete.deleteMany({ where: { userId } }))],
+    ["Variété (perso)", () => dm(prisma.variete.deleteMany({ where: { userId } }))],
     ["ITP (perso)", () => dm(prisma.iTP.deleteMany({ where: { userId } }))],
-    ["Espece (perso)", () => dm(prisma.espece.deleteMany({ where: { userId } }))],
+    ["Espèce (perso)", () => dm(prisma.espece.deleteMany({ where: { userId } }))],
     ["RaceAnimale (perso)", () => dm(prisma.raceAnimale.deleteMany({ where: { userId } }))],
     ["EspeceAnimale (perso)", () => dm(prisma.especeAnimale.deleteMany({ where: { userId } }))],
 

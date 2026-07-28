@@ -242,10 +242,22 @@ export async function PATCH(request: NextRequest) {
 
     const existing = await prisma.productionOeuf.findFirst({
       where: { id: parseInt(id), userId: session.user.id },
+      include: {
+        _count: { select: { mouvementsStock: true } },
+      },
     })
 
     if (!existing) {
       return NextResponse.json({ error: 'Production non trouvée' }, { status: 404 })
+    }
+    if (existing._count.mouvementsStock > 0) {
+      return NextResponse.json(
+        {
+          error: "Cette collecte possède des sorties de stock. Supprimez d'abord ses mouvements.",
+          code: "STOCK_OEUFS_MOUVEMENTS_EXISTANTS",
+        },
+        { status: 409 },
+      )
     }
 
     const updateData: any = {}

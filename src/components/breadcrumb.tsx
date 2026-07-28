@@ -118,7 +118,13 @@ export function Breadcrumb({ trailingLabel }: { trailingLabel?: string }) {
         </li>
         {segments.map((seg, i) => {
           const isLast = i === segments.length - 1
-          const href = "/" + segments.slice(0, i + 1).join("/")
+          const defaultHref = "/" + segments.slice(0, i + 1).join("/")
+          // La liste des lots vit dans un sous-onglet de la page Élevage,
+          // pas sur une page /elevage/lots autonome.
+          const href =
+            defaultHref === "/elevage/lots"
+              ? "/elevage?tab=animaux&sub=lots"
+              : defaultHref
           return (
             <React.Fragment key={i}>
               <li className="text-slate-300" aria-hidden>

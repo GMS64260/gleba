@@ -11,7 +11,7 @@
  */
 
 import * as React from "react"
-import { Milk, FileText, LineChart, Plus, Copy, Loader2, Download, Trash2, ShieldAlert, TrendingUp, TrendingDown, Minus, Trophy, Truck, Warehouse } from "lucide-react"
+import { Milk, FileText, LineChart, Plus, Copy, Loader2, Download, Trash2, ShieldAlert, TrendingUp, TrendingDown, Minus, Trophy, Truck, Warehouse, FlaskConical } from "lucide-react"
 import { LivraisonLaitSubTab } from "./LivraisonLaitSubTab"
 import { AffinageSubTab } from "./AffinageSubTab"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -31,9 +31,34 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
 import { todayLocalISO } from '@/lib/format-utils'
+import {
+  listerCiblesCollecteLait,
+  plafondCollecteLait,
+} from "@/lib/elevage/cibles-collecte-lait"
 
-type Animal = { id: number; nom: string | null; identifiant: string | null; especeAnimale?: { production?: string; nom?: string } }
-type Lot = { id: number; nom: string | null; especeAnimale?: { production?: string; nom?: string } }
+type Animal = {
+  id: number
+  nom: string | null
+  identifiant: string | null
+  sexe?: string | null
+  orientationProduction?: string | null
+  especeAnimale?: {
+    production?: string | null
+    productions?: string[]
+    nom?: string | null
+  }
+}
+type Lot = {
+  id: number
+  nom: string | null
+  quantiteActuelle?: number
+  effectifCalcule?: number
+  especeAnimale?: {
+    production?: string | null
+    productions?: string[]
+    nom?: string | null
+  }
+}
 type Collecte = {
   id: string
   date: string
@@ -41,6 +66,11 @@ type Collecte = {
   animalId: number | null
   lotId: number | null
   quantiteLitres: string | number
+  // Ticket cms1vbllb — analyses saisies depuis la grille (Dialog par case)
+  mgGpl: string | number | null
+  mpGpl: string | number | null
+  cellulesParMl: number | null
+  temperatureC: string | number | null
   ecarteAttente: boolean
   lotFromageId: string | null
   lotFromage: { id: string; numeroLot: string; typeFromage: string } | null
@@ -131,7 +161,7 @@ export function LaitSubTab() {
 }
 
 // ============================================================
-// Vue Palmarès — classement des chèvres par lactation (PROMPT 21)
+// Vue Palmarès — classement des animaux par lactation (PROMPT 21)
 // ============================================================
 
 type LactationSynthese = {
@@ -202,11 +232,11 @@ function PalmaresView() {
           <div>
             <CardTitle className="flex items-center gap-2">
               <Trophy className="h-5 w-5 text-amber-500" />
-              Palmarès des chèvres
+              Palmarès laitier
             </CardTitle>
             <CardDescription>
-              Classement par lactation (lait 305 j cumulé d'après vos traites saisies, pic, TB/TP) pour piloter réforme
-              et renouvellement. La lactation de référence est celle de l'année sélectionnée. En contrôle laitier
+              Classement des animaux ayant des collectes par lactation (lait 305 j cumulé d’après vos traites saisies, pic, TB/TP) pour piloter réforme
+              et renouvellement. La lactation de référence est celle de l’année sélectionnée. En contrôle laitier
               mensuel, le cumul reflète les traites enregistrées, pas une lactation standardisée interpolée.
             </CardDescription>
           </div>
@@ -229,7 +259,7 @@ function PalmaresView() {
         {stats && stats.nbChevres > 0 && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="rounded-lg border p-3">
-              <div className="text-xs text-slate-500">Chèvres suivies</div>
+              <div className="text-xs text-slate-500">Animaux classés</div>
               <div className="text-xl font-semibold">{stats.nbChevres}</div>
             </div>
             <div className="rounded-lg border p-3">
@@ -334,7 +364,7 @@ function PalmaresView() {
               </tbody>
             </table>
             <p className="text-xs text-slate-400 mt-2">
-              ▸ = lactation en cours (le lait 305 j n'est pas encore complet). TB/TP en g/L. « Lact. » = rang de lactation.
+              ▸ = lactation en cours (le lait 305 j n’est pas encore complet). TB/TP en g/L. « Lact. » = rang de lactation.
             </p>
           </div>
         )}
@@ -523,7 +553,7 @@ function QualiteView() {
                           {STATUT_LABEL[l.statut]}
                         </Badge>
                       ) : (
-                        <span className="text-xs text-slate-400">pas d'analyse</span>
+                        <span className="text-xs text-slate-400">pas d’analyse</span>
                       )}
                     </td>
                     <td className="p-2 text-right font-semibold">
@@ -585,13 +615,9 @@ function CollecteView() {
       fetch(`/api/elevage/collectes-lait?from=${from}&to=${to}`).then((r) => r.json()),
     ])
       .then(([a, l, c]) => {
-        const aList: Animal[] = (a.data || []).filter((x: Animal) =>
-          (x.especeAnimale?.production || "").toLowerCase().includes("lait") ||
-          (x.especeAnimale?.production || "").toLowerCase().includes("mixte")
-        )
-        const lList: Lot[] = (l.data || []).filter((x: Lot) =>
-          (x.especeAnimale?.production || "").toLowerCase().includes("lait") ||
-          (x.especeAnimale?.production || "").toLowerCase().includes("mixte")
+        const { animaux: aList, lots: lList } = listerCiblesCollecteLait<Animal, Lot>(
+          a.data,
+          l.data,
         )
         setAnimaux(aList)
         setLots(lList)
@@ -624,6 +650,15 @@ function CollecteView() {
 
   const saveCollecte = async (day: string, traite: "Matin" | "Soir", quantite: number) => {
     if (selectedId == null) return
+    const selected = (target === "animal" ? animaux : lots).find((item) => item.id === selectedId)
+    const effectif = target === "lot"
+      ? ((selected as Lot | undefined)?.effectifCalcule ?? (selected as Lot | undefined)?.quantiteActuelle ?? 1)
+      : 1
+    const plafond = plafondCollecteLait(selected?.especeAnimale?.nom, target, effectif)
+    const confirmerVolumeInhabituel = quantite > plafond
+    if (confirmerVolumeInhabituel) {
+      if (!window.confirm(`Volume inhabituel pour une traite (${quantite} L, plafond indicatif ${plafond} L). Confirmer ?`)) return
+    }
     const key = `${day}-${traite}`
     setSavingKey(key)
     try {
@@ -636,12 +671,19 @@ function CollecteView() {
           animalId: target === "animal" ? selectedId : null,
           lotId: target === "lot" ? selectedId : null,
           quantiteLitres: quantite,
+          confirmerVolumeInhabituel,
         }),
       })
       const json = await res.json()
       if (!res.ok) {
         toast({ variant: "destructive", title: "Erreur", description: json.error || "Échec de la saisie" })
       } else {
+        // Ticket cms1v9rj5 — le POST signale l'écartement automatique (délai
+        // d'attente vétérinaire) via `info` : sans ce toast, l'utilisateur ne
+        // savait pas que son lait venait d'être écarté.
+        if (json.info) {
+          toast({ title: "Lait écarté (délai d'attente)", description: json.info })
+        }
         reload()
       }
     } finally {
@@ -662,9 +704,6 @@ function CollecteView() {
     .filter((c) => c.traite === "Soir" && ((target === "animal" && c.animalId === selectedId) || (target === "lot" && c.lotId === selectedId)))
     .reduce((s, c) => s + Number(c.quantiteLitres), 0)
 
-  const selectedAnimal = animaux.find((a) => a.id === selectedId)
-  const selectedLot = lots.find((l) => l.id === selectedId)
-
   return (
     <Card>
       <CardHeader>
@@ -673,7 +712,7 @@ function CollecteView() {
           Calendrier de collecte
         </CardTitle>
         <CardDescription>
-          Saisie biquotidienne (Matin / Soir) sur 7 jours glissants. Cliquez sur une case pour saisir le volume, "Idem hier" recopie la valeur de la veille.
+          Saisie biquotidienne (Matin / Soir) sur 7 jours glissants. Cliquez sur une case pour saisir le volume, « Idem hier » recopie la valeur de la veille.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -707,7 +746,7 @@ function CollecteView() {
             </div>
           </div>
           <div className="min-w-[200px]">
-            <Label className="text-xs">{target === "animal" ? "Animal laitier" : "Lot laitier"}</Label>
+            <Label className="text-xs">{target === "animal" ? "Animal" : "Lot"}</Label>
             <select
               className="block h-9 w-full rounded-md border border-slate-300 px-2 bg-white"
               value={selectedId ?? ""}
@@ -715,7 +754,9 @@ function CollecteView() {
             >
               {(target === "animal" ? animaux : lots).map((x) => (
                 <option key={x.id} value={x.id}>
-                  {x.nom || (target === "animal" ? (x as Animal).identifiant : `Lot #${x.id}`) || "—"}
+                  {target === "animal"
+                    ? `${(x as Animal).nom || (x as Animal).identifiant || `Animal #${x.id}`}${(x as Animal).nom && (x as Animal).identifiant ? ` (${(x as Animal).identifiant})` : ""} · ${x.especeAnimale?.nom || "Espèce non renseignée"}`
+                    : `${x.nom || `Lot #${x.id}`} · ${x.especeAnimale?.nom || "Espèce non renseignée"}`}
                 </option>
               ))}
             </select>
@@ -731,8 +772,7 @@ function CollecteView() {
 
         {animaux.length === 0 && lots.length === 0 && (
           <div className="text-sm text-slate-500 bg-slate-50 p-4 rounded">
-            Aucun animal ou lot avec production "lait" ou "mixte" n'est encore enregistré.
-            Configurez la production sur l'espèce dans l'onglet Espèces.
+            Aucun animal ni lot actif n&apos;est encore enregistré dans le cheptel.
           </div>
         )}
 
@@ -803,7 +843,7 @@ function CollecteView() {
         <div className="flex flex-wrap gap-3 text-xs text-slate-600">
           <span className="inline-flex items-center gap-1">
             <span className="inline-block w-3 h-3 bg-amber-100 border border-amber-300 rounded-sm" />
-            Lait écarté (temps d'attente vétérinaire)
+            Lait écarté (temps d’attente vétérinaire)
           </span>
           <span className="inline-flex items-center gap-1">
             <span className="inline-block w-3 h-3 bg-emerald-100 border border-emerald-300 rounded-sm" />
@@ -842,7 +882,7 @@ function CellSaisie(props: {
           const n = parseFloat(v)
           if (!isNaN(n) && n !== props.value) props.onSave(n)
         }}
-        className="w-16 h-7 text-xs text-center rounded border border-slate-200"
+        className="h-11 w-20 touch-manipulation rounded border border-slate-300 text-center text-base sm:w-16 sm:text-sm"
         placeholder="—"
       />
       {props.value == null && (
@@ -850,7 +890,7 @@ function CellSaisie(props: {
           type="button"
           onClick={props.onIdemHier}
           title="Recopier la valeur d'hier"
-          className="text-[10px] text-slate-500 hover:text-slate-700"
+          className="inline-flex min-h-11 touch-manipulation items-center gap-1 px-2 text-xs text-slate-600 hover:text-slate-800"
         >
           <Copy className="inline h-2.5 w-2.5" /> hier
         </button>
@@ -1194,10 +1234,7 @@ function LactationView() {
     fetch("/api/elevage/animaux?statut=actif")
       .then((r) => r.json())
       .then(({ data }) => {
-        const list = (data || []).filter((a: Animal) =>
-          (a.especeAnimale?.production || "").toLowerCase().includes("lait") ||
-          (a.especeAnimale?.production || "").toLowerCase().includes("mixte")
-        )
+        const list: Animal[] = data || []
         setAnimaux(list)
         if (list.length > 0) setSelectedId(list[0].id)
       })
@@ -1242,7 +1279,7 @@ function LactationView() {
       </CardHeader>
       <CardContent className="space-y-4">
         <div>
-          <Label className="text-xs">Animal laitier</Label>
+          <Label className="text-xs">Animal</Label>
           <select
             className="block h-9 w-full max-w-sm rounded-md border border-slate-300 px-2 bg-white"
             value={selectedId ?? ""}
@@ -1250,7 +1287,7 @@ function LactationView() {
           >
             {animaux.map((a) => (
               <option key={a.id} value={a.id}>
-                {a.nom || a.identifiant || `#${a.id}`}
+                {a.nom || a.identifiant || `Animal #${a.id}`}{a.nom && a.identifiant ? ` (${a.identifiant})` : ""} · {a.especeAnimale?.nom || "Espèce non renseignée"}
               </option>
             ))}
           </select>

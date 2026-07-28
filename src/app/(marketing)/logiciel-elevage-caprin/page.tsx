@@ -2,20 +2,21 @@ import type { Metadata } from "next";
 import { BusinessLanding } from "@/components/seo/BusinessLanding";
 
 export const metadata: Metadata = {
-  title: "Logiciel d'élevage caprin — Chèvres, lait et reproduction",
-  description: "Gérez chèvres et boucs : identification, races, généalogie, saillies, chevreaux, soins, alimentation, collectes de lait et lots de fromage.",
+  title: "Logiciel d'élevage caprin — Chèvres, soins et lait",
+  description: "Gérez chèvres et boucs : boucles, lots, généalogie, mises bas détaillées, injections, délais d'attente, lait, fromages et registres avec Gleba.",
   alternates: { canonical: "https://gleba.fr/logiciel-elevage-caprin" },
-  openGraph: { title: "Logiciel de gestion d'élevage caprin — Gleba", description: "Troupeau caprin, reproduction, lait, soins et lots de fromage.", url: "https://gleba.fr/logiciel-elevage-caprin", type: "article" },
+  openGraph: { title: "Logiciel de gestion d'élevage caprin — Gleba", description: "Troupeau caprin, boucles, mises bas, soins tracés, lait, fromages et registres.", url: "https://gleba.fr/logiciel-elevage-caprin", type: "article" },
 };
 
 export default function Page() {
-  return <BusinessLanding breadcrumb="Logiciel d'élevage caprin" currentPath="/logiciel-elevage-caprin" eyebrow="Caprins · Lait · Reproduction" title="Suivez votre élevage caprin" highlightedTitle="du troupeau jusqu'aux collectes de lait" introduction="Gleba relie les chèvres, boucs et lots à la reproduction, aux naissances, aux soins, à l'alimentation et aux mouvements. Pour l'atelier laitier, les traites et les lots de fabrication fromagère disposent de données dédiées." proof="le référentiel de production contient notamment les chèvres Alpine, Poitevine, Saanen et du Rove ; les routes Collectes de lait, Lactation, Lots de fromage et Étiquette complètent les écrans communs du troupeau." screenshot={{ src: "/screenshots/gleba-gestion-troupeau.png", alt: "Chèvres Alpine suivies dans la liste des animaux de Gleba", caption: "Capture authentique du compte démo avec plusieurs chèvres Alpine identifiées et leur race." }} capabilities={[
-    { title: "Chèvres et lots", description: "Suivez chaque caprin identifié ou utilisez des lots avec espèce, race, effectif, statut et parcelle." },
+  return <BusinessLanding breadcrumb="Logiciel d'élevage caprin" currentPath="/logiciel-elevage-caprin" eyebrow="Boucles · Mises bas · Soins · Lait" title="Suivez votre élevage caprin" highlightedTitle="du troupeau jusqu'aux collectes de lait" introduction="Gleba relie chèvres, boucs et lots à l'identification, la reproduction, aux naissances détaillées, aux soins, à l'alimentation et aux mouvements. Pour l'atelier laitier, les traites, délais d'attente et lots de fabrication fromagère disposent de données dédiées." proof="la recherche fonctionne par numéro de boucle ou nom, chaque cabri d'une portée peut être décrit séparément, les injections sont acquittées une par une et les registres d'élevage, sanitaire et d'inventaire sont exportables depuis l'application." screenshot={{ src: "/screenshots/gleba-gestion-troupeau.png", alt: "Chèvres Alpine suivies dans la liste des animaux de Gleba", caption: "Capture authentique du compte démo avec plusieurs chèvres Alpine identifiées et leur race." }} capabilities={[
+    { title: "Boucles, chèvres et lots", description: "Recherchez un caprin par numéro de boucle ou nom, suivez-le individuellement ou rattachez-le à un lot actif." },
     { title: "Généalogie", description: "Rattachez les parents connus et conservez les liens utiles à la lecture de l'ascendance enregistrée." },
-    { title: "Saillies et mises bas", description: "Consignez type de monte, reproducteurs, confirmation, mise bas attendue, tarissement prévu et naissance liée." },
-    { title: "Soins et alimentation", description: "Enregistrez les soins, traitements, produits vétérinaires et distributions d'aliments du troupeau." },
-    { title: "Collectes de lait", description: "Saisissez date, traite, quantité, animal ou lot, analyses éventuelles et lait écarté pendant un délai d'attente." },
+    { title: "Saillies et mises bas", description: "Consignez monte, reproducteurs, confirmation, mise bas attendue et naissance ; détaillez chaque cabri avec sexe, boucles, mode d'élevage, poids et état." },
+    { title: "Traitements tracés", description: "Planifiez un protocole puis acquittez chaque injection séparément avec date, dose, voie, produit et vétérinaire." },
+    { title: "Collectes et délais d'attente", description: "Saisissez traite, litres et analyses ; Gleba écarte le lait concerné et affiche les dates prudentes de remise en vente." },
     { title: "Lots de fromage", description: "Créez un lot de fabrication avec numéro, date, type, lait utilisé, pièces, poids et étiquette générée." },
+    { title: "Documents d'élevage", description: "Exportez inventaire du cheptel, registre chronologique, registre sanitaire et suivi des produits vétérinaires saisis." },
   ]} workflowTitle="Relier le troupeau caprin à la production laitière" workflow={[
     { title: "Identifier", description: "Créez les chèvres, boucs et lots avec leurs races et informations réellement connues." },
     { title: "Suivre", description: "Saisissez reproduction, naissances, soins, alimentation, mouvements et traites." },
@@ -24,6 +25,9 @@ export default function Page() {
     { question: "Quelles races caprines sont déjà référencées ?", answer: "Le référentiel de production comprend notamment Alpine chamoisée, Poitevine, Saanen et chèvre du Rove. Le catalogue peut être enrichi dans Gleba." },
     { question: "Peut-on suivre les traites ?", answer: "Oui. Une collecte enregistre la date, le moment de traite, les litres et l'animal ou le lot. Des analyses facultatives et le lait écarté peuvent aussi être notés." },
     { question: "La fabrication fromagère est-elle présente ?", answer: "Oui. Gleba gère des lots de fromage et peut leur rattacher des collectes de lait, puis générer une étiquette à partir des données saisies." },
+    { question: "Peut-on détailler chaque chevreau d'une portée ?", answer: "Oui. Chaque petit peut avoir son sexe, ses boucles provisoire et définitive, son mode d'élevage, son poids et son état. Une fiche animale individuelle peut ensuite être créée pour les petits vivants." },
+    { question: "Les traitements à plusieurs injections sont-ils tracés ?", answer: "Oui. Les administrations d'un protocole sont suivies séparément. Les délais lait et viande sont recalculés à partir des injections réalisées et des informations du produit saisi." },
+    { question: "Quels documents peut-on exporter ?", answer: "Gleba génère notamment un inventaire du cheptel, un registre d'élevage et un registre sanitaire à partir des données enregistrées. Leur contenu reste à vérifier et compléter selon les obligations de l'exploitation." },
     { question: "Le logiciel se connecte-t-il à une machine à traire ?", answer: "Non. Les données sont saisies dans Gleba ; aucune connexion automatique à une machine à traire n'est actuellement proposée." },
   ]} />;
 }

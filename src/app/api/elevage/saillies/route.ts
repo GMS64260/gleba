@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
     orderBy: { date: 'desc' },
     include: {
       femelle: {
-        select: { id: true, nom: true, identifiant: true, race: true, especeAnimale: { select: { id: true, nom: true } } },
+        select: { id: true, nom: true, identifiant: true, race: true, especeAnimale: { select: { id: true, nom: true, filiere: true } } },
       },
       male: { select: { id: true, nom: true, identifiant: true, race: true } },
       miseBas: { select: { id: true, date: true, nombreNes: true, nombreVivants: true } },

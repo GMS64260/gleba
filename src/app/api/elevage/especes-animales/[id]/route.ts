@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { peutEditerReferentiel } from '@/lib/referentiel-communaute'
+import { coerceFiliere } from '@/lib/elevage/filiere'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -40,6 +41,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     const data: Record<string, unknown> = {}
     if (body.nom !== undefined) data.nom = body.nom
     if (body.type !== undefined) data.type = body.type
+    if (body.filiere !== undefined) data.filiere = coerceFiliere(body.filiere)
     if (body.production !== undefined) data.production = body.production
     if (body.categorieReglementaire !== undefined)
       data.categorieReglementaire = body.categorieReglementaire ?? null

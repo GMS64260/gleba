@@ -63,7 +63,7 @@ COPY --from=builder /app/package.json ./package.json
 # Le dossier des uploads (logos, bannières, photos, justificatifs) doit être
 # inscriptible par l'utilisateur `nextjs`. Le volume nommé monté ici hérite de
 # ces permissions à sa création.
-RUN mkdir -p ./public/uploads ./storage/justificatifs ./storage/plan-fonds \
+RUN mkdir -p ./public/uploads ./storage/justificatifs ./storage/plan-fonds ./storage/registres \
     && chown -R nextjs:nodejs ./public/uploads ./storage
 
 # Copier le build standalone

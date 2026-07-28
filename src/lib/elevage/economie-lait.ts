@@ -39,13 +39,13 @@ export type IndicateursEconomieLait = {
   marge: number
   /** Marge sur coût alimentaire (€) = valorisation − coût alimentaire. */
   mca: number
-  /** MCA ramenée à 1000 L de lait produit (€/1000 L). */
+  /** MCA ramenée à 1000 L de lait valorisable (produits − écartés) (€/1000 L). */
   mcaPour1000L: number | null
-  /** Coût alimentaire par litre produit (€/L). */
+  /** Coût alimentaire par litre valorisable (€/L). */
   coutAlimentaireLitre: number | null
-  /** Coût de revient par litre produit (alim + sanitaire) (€/L). */
+  /** Coût de revient par litre valorisable (alim + sanitaire) (€/L). */
   coutRevientLitre: number | null
-  /** Prix moyen du litre valorisé (€/L) = valorisation / litres produits. */
+  /** Prix moyen du litre valorisé (€/L) = valorisation / litres valorisables. */
   prixMoyenLitreValorise: number | null
   /** Rendement fromager global (kg fromage / L lait transformé). */
   rendementFromager: number | null
@@ -64,12 +64,18 @@ export function indicateursEconomieLait(x: IntrantsEconomieLait): IndicateursEco
   // de produit face à tous ses coûts (review caprin 2026-07-21).
   const valorisation = x.caLaitCru + x.caFromage + x.caLaitLivre
   const coutTotal = x.coutAlimentaire + x.coutSanitaire
-  const litres = x.litresProduits
+  // Ticket cms1v9rj5 — le lait écarté (temps d'attente vétérinaire) coûte à
+  // produire mais ne peut être ni vendu ni transformé : les ratios au litre
+  // portent sur le volume VALORISABLE (produits − écartés, borné à ≥ 0), sinon
+  // le coût de revient est sous-estimé et le prix du litre valorisé dilué.
+  // Les coûts totaux (alimentaire, sanitaire), eux, ne changent pas.
+  const litres = Math.max(0, x.litresProduits - x.litresEcartes)
 
   const mca = valorisation - x.coutAlimentaire
   const marge = valorisation - coutTotal
 
-  // Part des coûts imputable à la transformation (prorata des litres transformés)
+  // Part des coûts imputable à la transformation (prorata des litres transformés
+  // sur le volume valorisable — seul du lait non écarté part en fabrication)
   const partTransfo = litres > 0 ? Math.min(1, x.litresTransformes / litres) : 0
   const coutRevientKgFromage =
     x.kgFromage > 0 ? r2((coutTotal * partTransfo) / x.kgFromage) : null

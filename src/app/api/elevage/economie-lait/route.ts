@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
       }),
       prisma.collecteLait.findMany({
         where: { userId, date: { gte: debut, lte: fin } },
-        select: { quantiteLitres: true, ecarteAttente: true, lotFromageId: true },
+        select: { animalId: true, lotId: true, quantiteLitres: true, ecarteAttente: true, lotFromageId: true },
       }),
       prisma.lotFromage.findMany({
         where: { userId, dateFabrication: { gte: debut, lte: fin } },
@@ -88,6 +88,12 @@ export async function GET(request: NextRequest) {
     const lotsLaitiers = new Set(
       lots.filter((l) => estLaitier(l.especeAnimale?.production, l.especeAnimale?.productions)).map((l) => l.id)
     )
+    // Une collecte réellement saisie rend aussi sa cible laitière pour
+    // l'affectation économique, quelle que soit la configuration de l'espèce.
+    for (const collecte of collectes) {
+      if (collecte.animalId != null) animauxLaitiers.add(collecte.animalId)
+      if (collecte.lotId != null) lotsLaitiers.add(collecte.lotId)
+    }
 
     // Prorata têtes laitières (pour les charges globales sans lot ni animal)
     const tetesLaitieres =

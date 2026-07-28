@@ -17,6 +17,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const annee = searchParams.get('annee')
+    const filiere = searchParams.get('filiere')
     const limit = parseInt(searchParams.get('limit') || '100')
     const userId = session.user.id
 
@@ -25,6 +26,12 @@ export async function GET(request: NextRequest) {
       const start = new Date(parseInt(annee), 0, 1)
       const end = new Date(parseInt(annee), 11, 31, 23, 59, 59)
       where.date = { gte: start, lte: end }
+    }
+    if (filiere) {
+      where.OR = [
+        { mere: { especeAnimale: { filiere } } },
+        { lot: { especeAnimale: { filiere } } },
+      ]
     }
 
     const [naissances, stats] = await Promise.all([
@@ -37,10 +44,10 @@ export async function GET(request: NextRequest) {
               nom: true,
               identifiant: true,
               race: true,
-              especeAnimale: { select: { id: true, nom: true, dureeGestation: true, dureeCouvaison: true } },
+              especeAnimale: { select: { id: true, nom: true, filiere: true, dureeGestation: true, dureeCouvaison: true } },
             },
           },
-          lot: { select: { id: true, nom: true, especeAnimale: { select: { nom: true } } } },
+          lot: { select: { id: true, nom: true, especeAnimale: { select: { nom: true, filiere: true } } } },
           petits: { orderBy: { numero: 'asc' } },
         },
         orderBy: { date: 'desc' },
@@ -190,6 +197,7 @@ export async function POST(request: NextRequest) {
             boucleDefinitive: p.boucleDefinitive ?? null,
             modeElevage: p.modeElevage ?? null,
             poids: p.poids ?? null,
+            couleur: p.couleur ?? null,
             vivant: p.vivant ?? true,
             notes: p.notes ?? null,
           })),
@@ -320,6 +328,7 @@ export async function PATCH(request: NextRequest) {
               boucleDefinitive: p.boucleDefinitive ?? null,
               modeElevage: p.modeElevage ?? null,
               poids: p.poids ?? null,
+              couleur: p.couleur ?? null,
               vivant: p.vivant ?? true,
               notes: p.notes ?? null,
             })),

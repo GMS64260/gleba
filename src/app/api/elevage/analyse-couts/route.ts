@@ -33,7 +33,23 @@ export async function GET(request: NextRequest) {
       prisma.lotAnimaux.findMany({ where: { userId }, include: { especeAnimale: { select: { id: true, nom: true } } } }),
       prisma.animal.findMany({ where: { userId }, include: { especeAnimale: { select: { id: true, nom: true } } } }),
       prisma.soinAnimal.findMany({ where: { userId, fait: true, date: period }, select: { lotId: true, animalId: true, cout: true } }),
-      prisma.consommationAliment.findMany({ where: { userId, date: period }, include: { aliment: { select: { prix: true } }, lot: { select: { especeAnimaleId: true } }, animal: { select: { especeAnimaleId: true } } } }),
+      prisma.consommationAliment.findMany({
+        where: { userId, date: period },
+        include: {
+          aliment: {
+            select: {
+              prix: true,
+              userStocks: {
+                where: { userId },
+                select: { prix: true, coutUnitaire: true },
+                take: 1,
+              },
+            },
+          },
+          lot: { select: { especeAnimaleId: true } },
+          animal: { select: { especeAnimaleId: true } },
+        },
+      }),
       prisma.abattage.findMany({ where: { userId, annule: false, date: period }, select: { lotId: true, animalId: true, prixVente: true, poidsCarcasse: true, quantite: true } }),
       prisma.venteProduit.findMany({ where: { userId, annule: false, date: period }, select: { type: true, prixTotal: true, animalId: true } }),
       prisma.productionOeuf.findMany({ where: { userId, date: period }, select: { lotId: true, animalId: true, quantite: true } }),
@@ -65,12 +81,21 @@ export async function GET(request: NextRequest) {
     for (const animal of animals) {
       const a = getAtelier(animal.especeAnimale.id, animal.especeAnimale.nom)
       if (animal.statut === 'actif') a.effectif += 1
-      if (animal.dateArrivee && animal.dateArrivee >= start && animal.dateArrivee <= end) a.couts.achat += animal.prixAchat || 0
+      if (
+        !animal.prixAchatInclusDansLot
+        && animal.dateArrivee
+        && animal.dateArrivee >= start
+        && animal.dateArrivee <= end
+      ) a.couts.achat += animal.prixAchat || 0
     }
     for (const soin of soins) speciesFor(soin.lotId, soin.animalId).couts.soins += soin.cout || 0
     for (const c of consommations) {
       const a = c.animal ? getAtelier(c.animal.especeAnimaleId, animalById.get(c.animalId!)?.especeAnimale.nom || c.animal.especeAnimaleId) : c.lot ? getAtelier(c.lot.especeAnimaleId, lotById.get(c.lotId!)?.especeAnimale.nom || c.lot.especeAnimaleId) : getAtelier('non_affecte', 'Non affecté')
-      a.couts.alimentation += c.quantite * (c.aliment.prix || 0)
+      const prix = c.aliment.userStocks[0]?.coutUnitaire
+        ?? c.aliment.userStocks[0]?.prix
+        ?? c.aliment.prix
+        ?? 0
+      a.couts.alimentation += c.quantite * prix
     }
     for (const abattage of abattages) speciesFor(abattage.lotId, abattage.animalId).revenus.abattages += abattage.prixVente || 0
     for (const vente of ventes) {
@@ -81,7 +106,7 @@ export async function GET(request: NextRequest) {
 
     const lait = getAtelier('lait_non_ventile', 'Lait — espèce non renseignée')
     lait.production.litresLivres = livraisons.reduce((sum, l) => sum + Number(l.litres), 0)
-    lait.revenus.paiesLait = paies.reduce((sum, p) => sum + Number(p.montantHT), 0)
+    lait.revenus.paiesLait = paies.reduce((sum, p) => sum + Number(p.montantHT) * 1.055, 0)
 
     const rapprochementLait = Array.from({ length: 12 }, (_, index) => {
       const mois = index + 1

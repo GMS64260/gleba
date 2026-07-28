@@ -297,13 +297,22 @@ export async function GET(request: NextRequest) {
     // ============================================================
     // 3. ELEVAGE : Ventes produits + Abattages + Coûts alimentation + Soins
     // ============================================================
-    const [venteProduits, abattages, consoAliments, soins, depensesElevage] = await Promise.all([
+    const [venteProduits, abattages, revenusElevageSpeciaux, consoAliments, soins, depensesElevage] = await Promise.all([
       // Audit compta 2026-06 : exclure les ventes/abattages annulés
       prisma.venteProduit.findMany({
         where: { userId, date: dateRange, annule: false },
       }),
       prisma.abattage.findMany({
         where: { userId, date: dateRange, annule: false },
+      }),
+      prisma.venteManuelle.findMany({
+        where: {
+          userId,
+          date: dateRange,
+          auto: true,
+          sourceType: { in: ['paie_lait', 'reservation_elevage'] },
+        },
+        select: { montant: true },
       }),
       prisma.consommationAliment.findMany({
         where: { userId, date: dateRange },
@@ -320,7 +329,7 @@ export async function GET(request: NextRequest) {
         },
       }),
       prisma.soinAnimal.findMany({
-        where: { userId, date: dateRange },
+        where: { userId, date: dateRange, fait: true },
       }),
       prisma.depenseManuelle.findMany({
         // Lot 5 : consommations et soins ont désormais des écritures auto —
@@ -330,6 +339,7 @@ export async function GET(request: NextRequest) {
           userId,
           date: dateRange,
           module: 'elevage',
+          comptable: true,
           NOT: { auto: true, sourceType: { in: ['consommation_aliment', 'soin_animal'] } },
         },
       }),
@@ -337,6 +347,7 @@ export async function GET(request: NextRequest) {
 
     const elevageRevenus = venteProduits.reduce((sum, v) => sum + v.prixTotal, 0)
       + abattages.filter(a => a.destination === 'vente').reduce((sum, a) => sum + (a.prixVente || 0), 0)
+      + revenusElevageSpeciaux.reduce((sum, v) => sum + v.montant, 0)
     const elevageCoutAlim = consoAliments.reduce((sum, c) => {
       const prixUnitaire = c.aliment.userStocks?.[0]?.coutUnitaire ?? c.aliment.userStocks?.[0]?.prix ?? c.aliment.prix ?? 0
       return sum + c.quantite * prixUnitaire
@@ -357,6 +368,7 @@ export async function GET(request: NextRequest) {
           { module: null },
         ],
         auto: false, // Exclure les auto-générées (déjà comptées via interventions)
+        comptable: true,
       },
     })
     const coutsGeneraux = depensesGenerales.reduce((sum, d) => sum + d.montant, 0)

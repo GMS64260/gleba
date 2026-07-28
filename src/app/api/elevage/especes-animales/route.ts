@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { visibiliteReferentiel, attributionCreation } from '@/lib/referentiel-communaute'
+import { coerceFiliere } from '@/lib/elevage/filiere'
 
 export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
@@ -22,10 +23,12 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const type = searchParams.get('type') // volaille, mammifere_petit, mammifere_grand
     const production = searchParams.get('production') // oeufs, viande, mixte
+    const filiere = searchParams.get('filiere') // rente, compagnie, equin, nac
 
     const where: any = {}
     if (type) where.type = type
     if (production) where.production = production
+    if (filiere) where.filiere = filiere
 
     // Visibilité catalogue communautaire : Gleba officiel (userId null) +
     // communauté (partagé par un membre) + mes propres espèces perso. Jamais
@@ -99,6 +102,7 @@ export async function POST(request: NextRequest) {
       id,
       nom,
       type,
+      filiere,
       production,
       categorieReglementaire,
       productions,
@@ -114,9 +118,20 @@ export async function POST(request: NextRequest) {
       description,
     } = body
 
-    if (!id || !nom || !type || !production) {
+    if (!id || !nom || !type) {
       return NextResponse.json(
-        { error: 'ID, nom, type et production sont requis' },
+        { error: 'ID, nom et type sont requis' },
+        { status: 400 }
+      )
+    }
+
+    // Phase 0 « modes d'élevage » : la production est une donnée de rente.
+    // Hors rente (compagnie/équin/NAC) elle est facultative → valeur neutre.
+    const filiereVal = coerceFiliere(filiere)
+    const productionFinal = filiereVal === 'rente' ? production : (production || 'compagnie')
+    if (filiereVal === 'rente' && !productionFinal) {
+      return NextResponse.json(
+        { error: 'La production est requise pour une espèce de rente' },
         { status: 400 }
       )
     }
@@ -128,7 +143,8 @@ export async function POST(request: NextRequest) {
         id,
         nom,
         type,
-        production,
+        filiere: filiereVal,
+        production: productionFinal,
         categorieReglementaire: categorieReglementaire ?? null,
         productions: Array.isArray(productions) ? productions : [],
         dureeGestation,

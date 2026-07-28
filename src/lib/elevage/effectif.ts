@@ -26,6 +26,8 @@ export interface LotEffectifResult {
   abattagesTotal: number
   /** Effectif reconstitué — source de vérité pour l'affichage. */
   effectifCalcule: number
+  /** Fiches nominatives actives rattachées au lot (incluses dans effectifCalcule). */
+  nominatifsActifs: number
 }
 
 /**
@@ -97,6 +99,7 @@ export async function reconstituerEffectifsLots(
       naissancesVivantes: naissancesL,
       abattagesTotal: abattagesL,
       effectifCalcule,
+      nominatifsActifs: nominatifsL,
     })
   }
   return result

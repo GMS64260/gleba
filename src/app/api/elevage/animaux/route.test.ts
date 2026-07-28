@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   animalCreate: vi.fn(),
   animalUpdate: vi.fn(),
   enregistrerChangementLot: vi.fn(),
+  exploitationFindUnique: vi.fn(),
 }))
 
 vi.mock('@/lib/auth-utils', () => ({ requireAuthApi: mocks.requireAuthApi }))
@@ -26,6 +27,7 @@ vi.mock('@/lib/prisma', () => ({
     }),
     especeAnimale: { findUnique: mocks.especeFindUnique, findFirst: mocks.especeFindFirst },
     raceAnimale: { findFirst: mocks.raceFindFirst },
+    exploitation: { findUnique: mocks.exploitationFindUnique },
     animal: {
       findFirst: mocks.animalFindFirst,
       create: mocks.animalCreate,
@@ -50,8 +52,9 @@ describe('affectation d’un lot via /api/elevage/animaux', () => {
     mocks.especeFindFirst.mockResolvedValue({ id: 'brebis_solognote' })
     mocks.raceFindFirst.mockResolvedValue({ id: 'race-lacaune', nom: 'Lacaune' })
     mocks.animalFindFirst.mockResolvedValue({ id: 7, especeAnimaleId: 'ovin' })
-    mocks.animalCreate.mockResolvedValue({ id: 7, lotId: 42, prixAchat: null, createdAt: new Date(), dateArrivee: new Date() })
+    mocks.animalCreate.mockResolvedValue({ id: 7, lotId: 42, prixAchat: null, createdAt: new Date(), dateArrivee: new Date(), statutSanitaire: [] })
     mocks.animalUpdate.mockImplementation(async ({ data }) => ({ id: 7, lotId: data.lotId ?? 42, prixAchat: null }))
+    mocks.exploitationFindUnique.mockResolvedValue({ numeroEde: "EDE-TEST" })
   })
 
   it.each([

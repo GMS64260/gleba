@@ -11,6 +11,9 @@ import {
   RefreshCw,
   ListChecks,
   Carrot,
+  PawPrint,
+  Dog,
+  Rabbit,
   type LucideIcon,
 } from "lucide-react";
 
@@ -30,6 +33,9 @@ const ALL_PAGES: Page[] = [
   { href: "/logiciel-elevage-volailles", label: "Gestion d'élevage de volailles", icon: Egg },
   { href: "/logiciel-elevage-ovin", label: "Gestion d'élevage ovin", icon: Egg },
   { href: "/logiciel-elevage-caprin", label: "Gestion d'élevage caprin", icon: Egg },
+  { href: "/logiciel-elevage-canin-felin", label: "Élevage canin et félin", icon: Dog },
+  { href: "/logiciel-elevage-equin", label: "Gestion d'élevage équin", icon: PawPrint },
+  { href: "/logiciel-elevage-nac", label: "Gestion d'élevage NAC", icon: Rabbit },
   { href: "/calendrier-semis", label: "Calendrier de semis", icon: Calendar },
   { href: "/assistant-ia-agricole", label: "Assistant IA agricole", icon: Bot },
   { href: "/referentiel", label: "Référentiel agricole public", icon: Sprout },

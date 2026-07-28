@@ -72,9 +72,13 @@ services:
       # Images de fond du plan 2D (satellite/drone), même modèle que les
       # justificatifs : hors racine publique, route authentifiée propriétaire.
       - plan_fonds_data:/app/storage/plan-fonds
+      # Archives immuables des registres d'élevage complets (PDF, manifeste et
+      # annexes), servies uniquement après contrôle du propriétaire et du hash.
+      - registres_elevage_data:/app/storage/registres
 
 volumes:
   postgres_data:
   uploads_data:
   justificatifs_data:
   plan_fonds_data:
+  registres_elevage_data:

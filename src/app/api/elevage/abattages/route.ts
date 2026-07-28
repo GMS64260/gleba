@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { createVenteFromAbattage, deleteAutoEntry } from '@/lib/auto-compta'
+import { invalidateKpi } from '@/lib/kpi'
 import { creerFacture, annulerFactureLiee } from '@/lib/facture-utils'
 import { abattageSchema } from '@/lib/validations/elevage-abattage'
 
@@ -223,26 +224,19 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      await createVenteFromAbattage(session.user.id, {
+        id: newAbattage.id,
+        prixVente: newAbattage.prixVente,
+        date: newAbattage.date,
+        destination: newAbattage.destination,
+        quantite: newAbattage.quantite,
+        poidsCarcasse: newAbattage.poidsCarcasse,
+        animal: newAbattage.animal ? { nom: newAbattage.animal.nom } : null,
+        lot: newAbattage.lot ? { nom: newAbattage.lot.nom } : null,
+      }, tx)
       return newAbattage
     })
-
-    // Auto-comptabilite : creer une vente si destination = "vente"
-    try {
-      if (abattage.destination === 'vente' && abattage.prixVente) {
-        await createVenteFromAbattage(session.user.id, {
-          id: abattage.id,
-          prixVente: abattage.prixVente,
-          date: abattage.date,
-          destination: abattage.destination,
-          quantite: abattage.quantite,
-          poidsCarcasse: abattage.poidsCarcasse,
-          animal: abattage.animal ? { nom: abattage.animal.nom } : null,
-          lot: abattage.lot ? { nom: abattage.lot.nom } : null,
-        })
-      }
-    } catch (autoComptaError) {
-      console.error('Auto-compta error (abattage):', autoComptaError)
-    }
+    invalidateKpi(session.user.id)
 
     return NextResponse.json({ data: abattage }, { status: 201 })
   } catch (error) {
@@ -306,20 +300,11 @@ export async function PATCH(request: NextRequest) {
     if (prixVente !== undefined) updateData.prixVente = prixVente ? parseFloat(prixVente) : null
     if (notes !== undefined) updateData.notes = notes
 
-    // Dé-vente d'un abattage facturé (destination quitte « vente ») :
-    // la facture doit suivre, sinon le CA reste compté via la facture.
-    if (
+    const doitAnnulerFacture =
       existing.factureId &&
       destination !== undefined &&
       destination !== 'vente' &&
       existing.destination === 'vente'
-    ) {
-      const liee = await annulerFactureLiee(prisma, userId, existing.factureId)
-      if (!liee.ok) {
-        return NextResponse.json({ error: liee.raison }, { status: 409 })
-      }
-      updateData.factureId = null
-    }
 
     // Anti-double-facture : un abattage déjà facturé ne peut pas générer
     // une seconde facture (l'ancienne resterait comptée dans KPI/TVA/FEC).
@@ -331,7 +316,16 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Transaction atomique : facture + update abattage + ajustement lot
-    const abattage = await prisma.$transaction(async (tx) => {
+    const mutation = await prisma.$transaction(async (tx) => {
+      // Dé-vente d'un abattage facturé : facture, source et miroir doivent
+      // basculer ensemble. Une panne ne peut plus laisser une facture annulée
+      // alors que l'abattage reste encore compté comme vente.
+      if (doitAnnulerFacture && existing.factureId) {
+        const liee = await annulerFactureLiee(tx, userId, existing.factureId)
+        if (!liee.ok) return { ok: false as const, raison: liee.raison }
+        updateData.factureId = null
+      }
+
       // Créer une facture si demandé et si prixVente existe
       if (body.creerFacture && (updateData.prixVente || existing.prixVente)) {
         const prixTotalTTC = updateData.prixVente || existing.prixVente
@@ -395,7 +389,7 @@ export async function PATCH(request: NextRequest) {
         }
       }
 
-      return tx.abattage.update({
+      const updated = await tx.abattage.update({
         where: { id: parseInt(id) },
         data: updateData,
         include: {
@@ -403,32 +397,24 @@ export async function PATCH(request: NextRequest) {
           lot: { select: { id: true, nom: true } },
         },
       })
+      await createVenteFromAbattage(userId, {
+        id: updated.id,
+        prixVente: updated.prixVente,
+        date: updated.date,
+        destination: updated.destination,
+        quantite: updated.quantite,
+        poidsCarcasse: updated.poidsCarcasse,
+        animal: updated.animal ? { nom: updated.animal.nom } : null,
+        lot: updated.lot ? { nom: updated.lot.nom } : null,
+        factureId: updated.factureId,
+      }, tx)
+      return { ok: true as const, data: updated }
     })
-
-    // Auto-comptabilite : mettre a jour l'ecriture auto
-    try {
-      const finalDestination = updateData.destination || existing.destination
-      const finalPrixVente = updateData.prixVente !== undefined ? updateData.prixVente : existing.prixVente
-
-      if (finalDestination === 'vente' && finalPrixVente && finalPrixVente > 0) {
-        await createVenteFromAbattage(userId, {
-          id: parseInt(id),
-          prixVente: finalPrixVente,
-          date: abattage.date,
-          destination: finalDestination,
-          quantite: abattage.quantite,
-          poidsCarcasse: abattage.poidsCarcasse,
-          animal: abattage.animal ? { nom: abattage.animal.nom } : null,
-          lot: abattage.lot ? { nom: abattage.lot.nom } : null,
-          factureId: abattage.factureId,
-        })
-      } else {
-        // Destination n'est plus "vente" ou pas de prix -> supprimer l'auto entry
-        await deleteAutoEntry('abattage', parseInt(id), 'vente')
-      }
-    } catch (autoComptaError) {
-      console.error('Auto-compta error (abattage PATCH):', autoComptaError)
+    if (!mutation.ok) {
+      return NextResponse.json({ error: mutation.raison }, { status: 409 })
     }
+    const abattage = mutation.data
+    invalidateKpi(userId)
 
     return NextResponse.json({ data: abattage })
   } catch (error) {
@@ -464,26 +450,16 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Abattage déjà annulé' }, { status: 409 })
     }
 
-    // Symétrie annulation ↔ facture : sans ça la facture restait comptée
-    // (KPI/TVA/FEC) alors que l'abattage était annulé.
-    if (existing.factureId) {
-      const liee = await annulerFactureLiee(prisma, session.user.id, existing.factureId)
-      if (!liee.ok) {
-        return NextResponse.json({ error: liee.raison }, { status: 409 })
-      }
-    }
-
-    // Supprimer les ecritures auto-compta liees
-    try {
-      await deleteAutoEntry('abattage', parseInt(id), 'vente')
-    } catch (autoComptaError) {
-      console.error('Auto-compta cleanup error (abattage):', autoComptaError)
-    }
-
     // Audit élevage 2026-06-11 — l'annulation doit défaire les effets cheptel
     // du POST (symétrie déjà appliquée au stock aliment) : avant, annuler un
     // abattage laissait l'animal en statut 'abattu' et le lot décrémenté.
-    await prisma.$transaction(async (tx) => {
+    const annulation = await prisma.$transaction(async (tx) => {
+      if (existing.factureId) {
+        const liee = await annulerFactureLiee(tx, session.user.id, existing.factureId)
+        if (!liee.ok) return liee
+      }
+      await deleteAutoEntry('abattage', existing.id, 'vente', session.user.id, tx)
+
       // Soft-delete : marquer comme annule
       await tx.abattage.update({
         where: { id: existing.id },
@@ -517,7 +493,12 @@ export async function DELETE(request: NextRequest) {
           })
         }
       }
+      return { ok: true as const }
     })
+    if (!annulation.ok) {
+      return NextResponse.json({ error: annulation.raison }, { status: 409 })
+    }
+    invalidateKpi(session.user.id)
 
     return NextResponse.json({ success: true })
   } catch (error) {

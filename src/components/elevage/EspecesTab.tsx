@@ -43,11 +43,16 @@ import {
   filtrerParOrigine,
   type FiltreOrigineValue,
 } from "@/components/referentiel/catalogue-communaute"
+import { useElevageModes } from "@/hooks/use-elevage-modes"
+import { FILIERE_LABELS, type Filiere } from "@/lib/elevage/filiere"
+import { capacites } from "@/lib/elevage/filiere-ui"
+import { useFiliereSelection, filiereMatch } from "@/lib/elevage/filiere-context"
 
 interface EspeceAnimale {
   id: string
   nom: string
   type: string
+  filiere: string
   production: string
   dureeGestation: number | null
   dureeCouvaison: number | null
@@ -95,7 +100,7 @@ const ESPECE_TYPES = [
 ] as const
 
 const emptyForm = {
-  id: "", nom: "", type: "volaille", production: "viande",
+  id: "", nom: "", type: "volaille", filiere: "rente", production: "viande",
   dureeGestation: "", dureeCouvaison: "", dureeElevage: "",
   poidsAdulte: "", rendementCarcasse: "", ponteAnnuelle: "",
   consommationJour: "", prixAchat: "", couleur: "#F59E0B", description: "",
@@ -115,6 +120,10 @@ export function EspecesTab() {
   const [formData, setFormData] = React.useState(emptyForm)
   const [selectedType, setSelectedType] = React.useState("all")
   const [filtreOrigine, setFiltreOrigine] = React.useState<FiltreOrigineValue>("tout")
+  // Modes d'élevage actifs → filières sélectionnables (toujours 'rente' + optionnelles).
+  const { filieres } = useElevageModes()
+  const filiereSel = useFiliereSelection()
+  const prodRente = capacites((formData.filiere || "rente") as Filiere).productionRente
 
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
@@ -146,21 +155,29 @@ export function EspecesTab() {
   }, [selectedType, especes])
 
   // Filtre d'origine (Gleba / communauté / perso) appliqué par-dessus le filtre de type.
+  // On ne montre que les filières RÉELLEMENT actives pour l'utilisateur
+  // (rente + modes activés) : sans ça, les espèces compagnie/équin/NAC du
+  // catalogue officiel partagé pollueraient la liste d'un éleveur 100 % rente.
+  // Le sélecteur d'atelier restreint ensuite à l'intérieur de ce périmètre.
   const displayedEspeces = React.useMemo(
-    () => filtrerParOrigine(filteredEspeces, filtreOrigine, currentUserId),
-    [filteredEspeces, filtreOrigine, currentUserId]
+    () =>
+      filtrerParOrigine(filteredEspeces, filtreOrigine, currentUserId).filter(
+        (e) => filieres.includes((e.filiere || "rente") as Filiere) && filiereMatch(filiereSel, e.filiere)
+      ),
+    [filteredEspeces, filtreOrigine, currentUserId, filiereSel, filieres]
   )
 
   const openCreate = () => {
     setEditingId(null)
-    setFormData(emptyForm)
+    // Pré-remplit la filière avec celle sélectionnée en tête de module.
+    setFormData({ ...emptyForm, filiere: filiereSel !== "toutes" ? filiereSel : "rente" })
     setIsDialogOpen(true)
   }
 
   const openEdit = (e: EspeceAnimale) => {
     setEditingId(e.id)
     setFormData({
-      id: e.id, nom: e.nom, type: e.type, production: e.production,
+      id: e.id, nom: e.nom, type: e.type, filiere: e.filiere || "rente", production: e.production,
       dureeGestation: e.dureeGestation?.toString() || "",
       dureeCouvaison: e.dureeCouvaison?.toString() || "",
       dureeElevage: e.dureeElevage?.toString() || "",
@@ -181,7 +198,8 @@ export function EspecesTab() {
     try {
       const payload: any = {
         id: formData.id.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, ''),
-        nom: formData.nom, type: formData.type, production: formData.production,
+        nom: formData.nom, type: formData.type, filiere: formData.filiere,
+        production: capacites((formData.filiere || 'rente') as Filiere).productionRente ? formData.production : 'compagnie',
         couleur: formData.couleur || null, description: formData.description || null,
         // Bug cmp8sg697 — pas de gestation pour les volailles
         dureeGestation: formData.type === 'volaille'
@@ -209,7 +227,7 @@ export function EspecesTab() {
         throw new Error(err?.error || 'Erreur')
       }
 
-      toast({ title: isEdit ? "Espèce modifiée" : "Espèce créée", description: formData.nom })
+      toast({ title: isEdit ? "Profil modifié" : "Profil créé", description: formData.nom })
       setIsDialogOpen(false)
       setFormData(emptyForm)
       setEditingId(null)
@@ -297,7 +315,7 @@ export function EspecesTab() {
       </div>
 
       {/* Filtre par origine (catalogue Gleba / communauté / mes espèces) */}
-      <FiltreOrigine value={filtreOrigine} onChange={setFiltreOrigine} labelPerso="Mes espèces" />
+      <FiltreOrigine value={filtreOrigine} onChange={setFiltreOrigine} labelPerso="Mes profils" />
 
       {/* Table */}
       <Card>
@@ -309,7 +327,7 @@ export function EspecesTab() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Couleur</TableHead>
-                  <TableHead>Nom</TableHead>
+                  <TableHead>Profil d&apos;élevage</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Production</TableHead>
                   <TableHead className="text-right">Poids adulte</TableHead>
@@ -333,7 +351,7 @@ export function EspecesTab() {
                         {TYPE_LABELS[esp.type] || esp.type}
                       </Badge>
                     </TableCell>
-                    <TableCell>{PRODUCTION_LABELS[esp.production] || esp.production}</TableCell>
+                    <TableCell>{esp.filiere && esp.filiere !== 'rente' ? <span className="text-muted-foreground">—</span> : (PRODUCTION_LABELS[esp.production] || esp.production)}</TableCell>
                     <TableCell className="text-right">{esp.poidsAdulte ? `${esp.poidsAdulte} kg` : '-'}</TableCell>
                     <TableCell className="text-right">{esp.consommationJour ? `${esp.consommationJour} kg` : '-'}</TableCell>
                     <TableCell className="text-right">{esp.ponteAnnuelle || '-'}</TableCell>
@@ -372,7 +390,7 @@ export function EspecesTab() {
                   </TableRow>
                 ))}
                 {displayedEspeces.length === 0 && (
-                  <TableRow><TableCell colSpan={11} className="text-center py-8 text-muted-foreground">Aucune espèce configuree</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={11} className="text-center py-8 text-muted-foreground">Aucun profil d&apos;élevage configuré</TableCell></TableRow>
                 )}
               </TableBody>
             </Table>
@@ -384,9 +402,9 @@ export function EspecesTab() {
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="max-w-lg max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingId ? "Modifier l'espèce" : "Nouvelle espèce"}</DialogTitle>
+            <DialogTitle>{editingId ? "Modifier le profil d’élevage" : "Nouveau profil d’élevage"}</DialogTitle>
             <DialogDescription>
-              {editingId ? "Modifier les paramètres de cette espèce" : "Ajouter une espèce au referentiel"}
+              {editingId ? "Modifier ce couple espèce et orientation" : "Ajouter un couple espèce et orientation au référentiel"}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -412,6 +430,17 @@ export function EspecesTab() {
             </div>
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
+                <Label>Filière *</Label>
+                <Select value={formData.filiere} onValueChange={(v) => setFormData(f => ({ ...f, filiere: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {filieres.map((f) => (
+                      <SelectItem key={f} value={f}>{FILIERE_LABELS[f]}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
                 <Label>Type *</Label>
                 <Select value={formData.type} onValueChange={(v) => setFormData(f => ({ ...f, type: v }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
@@ -424,23 +453,28 @@ export function EspecesTab() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Production *</Label>
-                <Select value={formData.production} onValueChange={(v) => setFormData(f => ({ ...f, production: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="oeufs">Œufs</SelectItem>
-                    <SelectItem value="viande">Viande</SelectItem>
-                    <SelectItem value="lait">Lait</SelectItem>
-                    <SelectItem value="laine">Laine</SelectItem>
-                    <SelectItem value="mixte">Mixte</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
                 <Label>Couleur</Label>
                 <Input type="color" value={formData.couleur} onChange={(e) => setFormData(f => ({ ...f, couleur: e.target.value }))} className="h-10 p-1" />
               </div>
             </div>
+            {/* Production : notion de rente uniquement (masquée pour compagnie/équin/NAC) */}
+            {prodRente && (
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label>Production *</Label>
+                  <Select value={formData.production} onValueChange={(v) => setFormData(f => ({ ...f, production: v }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="oeufs">Œufs</SelectItem>
+                      <SelectItem value="viande">Viande</SelectItem>
+                      <SelectItem value="lait">Lait</SelectItem>
+                      <SelectItem value="laine">Laine</SelectItem>
+                      <SelectItem value="mixte">Mixte</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
             {/* Bug cmp8sg697 (Marc 2026-05-16) — Gestation est sans sens pour
                 une volaille (poule, oie...). On affiche selon le type :
                 volaille → Couvaison + Élevage ; mammifère → Gestation +
@@ -457,11 +491,11 @@ export function EspecesTab() {
             </div>
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2"><Label>Poids adulte (kg)</Label><Input type="number" min="0" step="0.1" value={formData.poidsAdulte} onChange={(e) => setFormData(f => ({ ...f, poidsAdulte: e.target.value }))} placeholder="3.5" /></div>
-              <div className="space-y-2"><Label>Rendement carc. (%)</Label><Input type="number" min="0" max="1" step="0.01" value={formData.rendementCarcasse} onChange={(e) => setFormData(f => ({ ...f, rendementCarcasse: e.target.value }))} placeholder="0.72" /></div>
-              <div className="space-y-2"><Label>Ponte/an</Label><Input type="number" min="0" value={formData.ponteAnnuelle} onChange={(e) => setFormData(f => ({ ...f, ponteAnnuelle: e.target.value }))} placeholder="280" /></div>
+              {prodRente && <div className="space-y-2"><Label>Rendement carc. (%)</Label><Input type="number" min="0" max="1" step="0.01" value={formData.rendementCarcasse} onChange={(e) => setFormData(f => ({ ...f, rendementCarcasse: e.target.value }))} placeholder="0.72" /></div>}
+              {prodRente && <div className="space-y-2"><Label>Ponte/an</Label><Input type="number" min="0" value={formData.ponteAnnuelle} onChange={(e) => setFormData(f => ({ ...f, ponteAnnuelle: e.target.value }))} placeholder="280" /></div>}
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2"><Label>Conso/jour (kg)</Label><Input type="number" min="0" step="0.01" value={formData.consommationJour} onChange={(e) => setFormData(f => ({ ...f, consommationJour: e.target.value }))} placeholder="0.12" /></div>
+              {prodRente && <div className="space-y-2"><Label>Conso/jour (kg)</Label><Input type="number" min="0" step="0.01" value={formData.consommationJour} onChange={(e) => setFormData(f => ({ ...f, consommationJour: e.target.value }))} placeholder="0.12" /></div>}
               <div className="space-y-2"><Label>Prix d'achat (&euro;)</Label><Input type="number" min="0" step="0.5" value={formData.prixAchat} onChange={(e) => setFormData(f => ({ ...f, prixAchat: e.target.value }))} placeholder="15" /></div>
             </div>
             {!isAdmin && (

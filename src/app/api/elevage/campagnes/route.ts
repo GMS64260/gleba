@@ -40,7 +40,7 @@ export async function GET() {
     where: { userId },
     orderBy: { dateDebut: 'desc' },
     include: {
-      especeAnimale: { select: { nom: true } },
+      especeAnimale: { select: { nom: true, filiere: true } },
       _count: { select: { saillies: true } },
       saillies: { select: { statut: true } },
     },
@@ -56,6 +56,7 @@ export async function GET() {
       typeConduite: c.typeConduite,
       espece: c.especeAnimale?.nom ?? null,
       especeAnimaleId: c.especeAnimaleId,
+      filiere: c.especeAnimale?.filiere ?? null,
       dateDebut: c.dateDebut,
       dateFin: c.dateFin,
       objectifMiseBas: c.objectifMiseBas,

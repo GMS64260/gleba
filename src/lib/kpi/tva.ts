@@ -115,7 +115,10 @@ export async function computeTvaPeriode(
         date: { gte: startDate, lte: endDate },
         OR: [
           { auto: { not: true } },
-          { auto: true, sourceType: 'commande_boutique' },
+          {
+            auto: true,
+            sourceType: { in: ['commande_boutique', 'paie_lait', 'reservation_elevage'] },
+          },
         ],
       },
     }),
@@ -127,7 +130,7 @@ export async function computeTvaPeriode(
     }),
     prisma.venteProduit.findMany({
       where: { userId, date: { gte: startDate, lte: endDate }, factureId: null, annule: false },
-      select: { prixTotal: true },
+      select: { prixTotal: true, tauxTVA: true },
     }),
     prisma.recolte.findMany({
       where: { userId, statut: 'vendu', dateVente: { gte: startDate, lte: endDate }, prixTotal: { not: null }, factureId: null },
@@ -154,7 +157,7 @@ export async function computeTvaPeriode(
   // les inférences directes sur les sources brutes sont supprimées (elles
   // doublonneraient les écritures auto).
   const depensesManuelles = await prisma.depenseManuelle.findMany({
-    where: { userId, date: { gte: startDate, lte: endDate } },
+    where: { userId, date: { gte: startDate, lte: endDate }, comptable: true },
   })
 
   // Buckets par taux (clés stables 0 / 2.1 / 5.5 / 10 / 20)
@@ -218,8 +221,9 @@ export async function computeTvaPeriode(
   // Sources brutes — TVA inférée
   for (const v of ventesElevage) {
     const ttc = v.prixTotal
-    const ht = ttc / 1.055
-    addC('5.5', ht, ttc - ht)
+    const taux = v.tauxTVA ?? 5.5
+    const ht = ttc / (1 + taux / 100)
+    addC(String(taux), ht, ttc - ht)
     nbInfereesCollectees++
     inferencesBreakdown.ventesElevage++
   }
