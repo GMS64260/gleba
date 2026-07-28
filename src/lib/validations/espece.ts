@@ -76,7 +76,7 @@ export const baseEspeceSchema = z.object({
   aPlanifier: z.boolean(),
   couleur: z.string().regex(/^#[0-9A-Fa-f]{6}$/, "Format couleur invalide (#RRGGBB)").nullable().optional(),
   description: z.string().max(5000).nullable().optional(),
-  // Nouveaux champs (parite Potaleger)
+  // Champs métier complémentaires
   categorie: z.string().max(50).nullable().optional(),
   niveau: z.string().max(20).nullable().optional(),
   densite: z.number().min(0).max(1000).nullable().optional(),

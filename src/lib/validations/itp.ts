@@ -25,7 +25,7 @@ export const baseITPSchema = z.object({
   nbRangs: z.number().int().min(1).max(20).nullable().optional(),
   espacement: z.number().min(1).max(200).nullable().optional(), // cm entre plants
   notes: z.string().max(5000).nullable().optional(),
-  // Nouveaux champs (parite Potaleger)
+  // Champs métier complémentaires
   typePlanche: z.string().max(50).nullable().optional(),
   decalageMax: z.number().int().min(0).max(52).nullable().optional(),
   espacementRangs: z.number().int().min(1).max(200).nullable().optional(), // cm entre rangs

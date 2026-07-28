@@ -557,7 +557,7 @@ model Espece {
   zonesAdaptees String? @map("zones_adaptees")
   besoinFroid   String? @map("besoin_froid")
 
-  // Nouveaux champs (parité Potaleger)
+  // Champs métier complémentaires
   categorie       String? @map("categorie") // Catégorie visuelle (emoji)
   niveau          String? @map("niveau") // Facile, Moyen, Difficile
   densite         Float?  @map("densite") // Plants/m²
@@ -909,7 +909,7 @@ model ITP {
   espacement        Float?  @map("espacement") // Espacement entre plants (cm)
   notes             String? @map("notes")
 
-  // Nouveaux champs (parité Potaleger)
+  // Champs métier complémentaires
   typePlanche     String? @map("type_planche") // Plein champ | Sous abri (Serre/Tunnel)
   decalageMax     Int?    @map("decal_max") // Semaines de flexibilité (0-52)
   espacementRangs Int?    @map("esp_rangs") // cm entre rangs
@@ -998,7 +998,7 @@ model Planche {
   parcelleGeo         ParcelleGeo? @relation(fields: [parcelleGeoId], references: [id], onDelete: SetNull)
   notes               String?      @map("notes")
 
-  // Nouveaux champs (parité Potaleger)
+  // Champs métier complémentaires
   type       String? @map("type") // Serre, Plein champ, Tunnel, Châssis
   irrigation String? @map("irrigation") // Goutte-à-goutte, Aspersion, Manuel, Aucun
   annee      Int?    @map("annee") // Année de référence pour rotation
@@ -1196,7 +1196,7 @@ model Culture {
   longueur   Float? @map("longueur") // mètres
   espacement Int?   @map("espacement") // cm entre plants
 
-  // Nouveaux champs (parité Potaleger)
+  // Champs métier complémentaires
   finRecolte         DateTime? @map("fin_recolte") // Date fin récolte
   aFaire             String?   @map("a_faire") // Tâches à faire
   dPlanif            String?   @map("d_planif") // Date de planification

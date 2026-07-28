@@ -1,6 +1,6 @@
 -- Certaines migrations de correction agronomique insèrent des relations ou
 -- des variétés avant que le seed applicatif ne soit exécuté. Les instances
--- historiques possédaient déjà ces entrées via l'import Potaléger ; une base
+-- historiques possédaient déjà ces entrées via l'import initial ; une base
 -- vide doit donc recevoir ici le minimum référentiel requis par les clés
 -- étrangères. Les migrations suivantes enrichissent ensuite ces lignes.
 
