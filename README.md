@@ -112,6 +112,10 @@ docker compose up -d
 - **Admin** : email `admin@gleba.local`, mot de passe `$ADMIN_PASSWORD` (défaut : `changeme` — **à changer dans `.env` avant le premier lancement**)
 - **Démo** : `demo@gleba.fr` / `demo2026`
 
+Les deux comptes bootstrap sont immédiatement utilisables, même sans serveur
+SMTP : leur adresse est marquée vérifiée par les seeds. La vérification par
+email reste obligatoire pour les comptes inscrits ensuite via l'application.
+
 **Référentiel agronomique chargé automatiquement :**
 - 135 espèces enrichies (rendements, besoins NPK, prix circuit court bio)
 - 154 ITPs (itinéraires techniques) avec espacements validés
@@ -282,7 +286,10 @@ sudo rm -rf .next
 sudo docker compose up -d --build app
 ```
 
-Les migrations Prisma sont appliquées automatiquement au démarrage via `prisma migrate deploy` — aucune perte de données.
+Les migrations Prisma sont appliquées automatiquement au démarrage via
+`prisma migrate deploy`, y compris sur une base PostGIS vide. Il ne faut pas
+remplacer cette commande par `prisma db push` : la chaîne versionnée contient
+aussi des contraintes, des rattrapages historiques et des données de référence.
 
 > ⚠️ **Si vous avez personnalisé le référentiel agronomique** (espèces, ITPs, variétés) directement en base, relisez les logs de démarrage après l'update : un éventuel script de migration de référentiel pourrait écraser ces valeurs. Le comportement est idempotent dans le cas standard.
 

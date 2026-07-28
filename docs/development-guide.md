@@ -28,9 +28,9 @@ cp .env.example .env
 # 4. Lancer PostgreSQL via Docker
 docker compose up -d db
 
-# 5. Générer le client Prisma + pousser le schéma
+# 5. Générer le client Prisma + appliquer les migrations
 npx prisma generate
-npx prisma db push
+npx prisma migrate deploy
 
 # 6. Seed de la base
 npx tsx prisma/seed.ts
@@ -54,6 +54,10 @@ npm run dev
 | `OLLAMA_MODEL` | Modèle Ollama | `nemotron-3-nano:30b` |
 | `SMTP_HOST/PORT/USER/PASS/FROM` | Configuration email | (optionnel) |
 
+Les comptes admin et démo créés par les seeds sont marqués vérifiés afin que
+leur connexion ne dépende pas d'un serveur SMTP. Les nouvelles inscriptions
+utilisateur conservent le parcours normal de vérification par email.
+
 ## Scripts npm
 
 | Commande | Description |
@@ -64,7 +68,7 @@ npm run dev
 | `npm run lint` | Linter ESLint |
 | `npm run db:generate` | Générer client Prisma |
 | `npm run db:migrate` | Lancer migrations Prisma |
-| `npm run db:push` | Push schéma sans migration |
+| `npm run db:push` | Synchronisation locale ponctuelle, à ne pas utiliser pour installer ou mettre à jour une instance |
 | `npm run db:seed` | Seed base de données |
 | `npm run db:studio` | Prisma Studio (GUI BDD) |
 | `npm run db:reset` | Reset complet BDD |
