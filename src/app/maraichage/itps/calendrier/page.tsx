@@ -2,7 +2,7 @@
 
 /**
  * Page Calendrier Gantt des ITPs
- * Vue annuelle type potaleger avec barres colorées par phase.
+ * Vue annuelle avec barres colorées par phase.
  *
  * Adaptation climatique : les dates de semis/plantation/récolte sont recalées
  * selon la zone climatique de l'exploitation (lib/calendrier-climat) + un réglage

@@ -1,6 +1,6 @@
 /**
  * Bibliotheque de calcul pour la planification des cultures
- * Logique metier basee sur potaleger_old
+ * Logique métier historique.
  */
 
 import prisma from '@/lib/prisma'

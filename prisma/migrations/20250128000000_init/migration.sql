@@ -1,4 +1,4 @@
--- Baseline du schéma Potaléger avant l'ajout de l'authentification.
+-- Baseline du schéma historique avant l'ajout de l'authentification.
 --
 -- Les premières versions de Gleba créaient ces tables avec `prisma db push`.
 -- Sans cette migration, une base vide échoue dès 20250129000000_add_auth,

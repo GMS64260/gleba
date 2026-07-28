@@ -1,7 +1,7 @@
 /**
- * Script d'import des données depuis Potaleger (SQLite)
- * Exécuter avec: npx tsx prisma/import-potaleger.ts [chemin_sqlite]
- * Par défaut: /home/guillaume/potamarc/Potaleger.sqlite3
+ * Script d'import depuis une ancienne base SQLite.
+ * Exécuter avec : npx tsx prisma/import-legacy-sqlite.ts <chemin_sqlite>
+ * Le chemin peut aussi être fourni avec LEGACY_SQLITE_PATH.
  */
 
 import { PrismaClient } from "@prisma/client"
@@ -9,10 +9,7 @@ import Database from "better-sqlite3"
 
 const prisma = new PrismaClient()
 
-// Chemin par défaut vers la base Potaleger
-const DEFAULT_SQLITE_PATH = "/home/guillaume/potamarc/Potaleger.sqlite3"
-
-async function importPotaleger(sqlitePath: string) {
+async function importLegacySqlite(sqlitePath: string) {
   console.log(`\n📂 Import depuis: ${sqlitePath}\n`)
 
   // Ouvrir la base SQLite
@@ -165,7 +162,7 @@ async function importPotaleger(sqlitePath: string) {
           categorie: e.Catégories || null,
           niveau: e.Niveau || null,
           densite: e.Densité || null,
-          // BUG-feedback Marc 2026-05-16 : Potaleger.Dose_semis est exprimé
+          // BUG-feedback Marc 2026-05-16 : la dose de la base source est exprimée
           // en « g pour 100 m² » mais lu tel quel en g/m² (×100 trop). On
           // n'écrase plus la valeur agronomique posée par les migrations.
           // doseSemis: e.Dose_semis || null,
@@ -193,7 +190,7 @@ async function importPotaleger(sqlitePath: string) {
           niveau: e.Niveau || null,
           densite: e.Densité || null,
           // BUG-feedback Marc 2026-05-16 : voir note ci-dessus, on ne pose
-          // pas la valeur Potaleger ; les migrations agronomiques
+          // pas la valeur de la base source ; les migrations agronomiques
           // initialiseront `dose_semis` à la valeur correcte.
           // doseSemis: e.Dose_semis || null,
           tauxGermination: e.FG || null,
@@ -387,7 +384,8 @@ async function importPotaleger(sqlitePath: string) {
     let assocCount = 0
     for (const [nom, details] of associationsMap) {
       // Bug #cmp8do6vd (2026-05-16) : déduire le type depuis le nom (convention
-      // Potaleger : `Truc !` = incompatibilité, `Truc +` ou nom simple = favorable).
+      // Convention historique : `Truc !` = incompatibilité,
+      // `Truc +` ou nom simple = favorable.
       // Sans ça, toutes les associations étaient `favorable` par défaut, et
       // les listes d'incompatibilités étaient affichées comme conseillées.
       const lower = nom.toLowerCase()
@@ -465,9 +463,16 @@ async function importPotaleger(sqlitePath: string) {
 }
 
 // Exécution
-const sqlitePath = process.argv[2] || DEFAULT_SQLITE_PATH
+const sqlitePath = process.argv[2] || process.env.LEGACY_SQLITE_PATH
 
-importPotaleger(sqlitePath)
+if (!sqlitePath) {
+  console.error(
+    "Usage : npx tsx prisma/import-legacy-sqlite.ts <chemin_sqlite>",
+  )
+  process.exit(1)
+}
+
+importLegacySqlite(sqlitePath)
   .catch((e) => {
     console.error("\n❌ Erreur:", e)
     process.exit(1)

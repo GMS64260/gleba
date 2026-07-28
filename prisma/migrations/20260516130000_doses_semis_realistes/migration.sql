@@ -2,9 +2,9 @@
 -- Feedback Marc 2026-05-16 — doses de semis irréalistes
 -- ============================================================
 -- Constat : Carotte 100 g/m² (×100 trop), Radis 80 g/m² (×6 trop), etc.
--- Cause : import-potaleger.ts a ré-écrasé les corrections agronomiques
+-- Cause : l'ancien import SQLite a ré-écrasé les corrections agronomiques
 -- précédentes (migrations 0240, 0241, 0350) en réimportant la table
--- Potaleger d'origine, dont les `Dose_semis` étaient en "g pour 100 m²"
+-- source d'origine, dont les `Dose_semis` étaient en "g pour 100 m²"
 -- importés tels quels en `g/m²`.
 --
 -- Cette migration ré-applique les doses agronomiques sourcées INRAE /

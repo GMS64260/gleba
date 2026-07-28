@@ -55,7 +55,7 @@ gleba/
 │   ├── seed-arbres-reference.ts    # Référentiel espèces arbres
 │   ├── seed-varietes-fruitiers.ts  # Variétés fruitières
 │   ├── seed-varietes-arbres.sql    # Variétés arbres SQL
-│   ├── import-potaleger.ts         # Import depuis Potaléger (migration historique)
+│   ├── import-legacy-sqlite.ts     # Import SQLite historique
 │   ├── migrate-stocks-to-users.ts  # Migration stocks multi-tenancy
 │   └── migration-planche-cuid.sql  # Migration planches vers CUID
 │

@@ -29,7 +29,7 @@ export const plancheSchema = z.object({
   planchesInfluencees: z.string().nullable().optional(),
   ilot: z.string().max(50).nullable().optional(),
   notes: z.string().max(5000).nullable().optional(),
-  // Nouveaux champs (parite Potaleger)
+  // Champs métier complémentaires
   type: z.string().max(50).nullable().optional(),
   irrigation: z.string().max(50).nullable().optional(),
   annee: z.number().int().min(2000).max(2100).nullable().optional(),

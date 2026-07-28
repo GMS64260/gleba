@@ -49,22 +49,42 @@ async function main() {
   const [adminById, adminByEmail] = await Promise.all([
     prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, role: true },
+      select: { id: true, email: true, role: true },
     }),
     prisma.user.findUnique({
       where: { email: adminEmail },
-      select: { id: true, role: true },
+      select: { id: true, email: true, role: true },
     }),
   ])
+
+  if (adminById && adminByEmail && adminById.id !== adminByEmail.id) {
+    throw new Error(
+      "Un autre compte utilise déjà l'adresse configurée pour l'administrateur",
+    )
+  }
 
   const existingAdmin = adminById ?? adminByEmail
   if (existingAdmin) {
     if (existingAdmin.role !== "ADMIN") {
       throw new Error("Le compte configuré comme administrateur existe sans le rôle ADMIN")
     }
+    const isMigrationPlaceholder = existingAdmin.email === "migration-admin@gleba.invalid"
+    const replacementPassword = isMigrationPlaceholder
+      ? await bcrypt.hash(adminPassword, 12)
+      : undefined
     await prisma.user.update({
       where: { id: existingAdmin.id },
-      data: { active: true, emailVerified: true },
+      data: {
+        active: true,
+        emailVerified: true,
+        ...(isMigrationPlaceholder
+          ? {
+              email: adminEmail,
+              name: adminName,
+              password: replacementPassword,
+            }
+          : {}),
+      },
     })
     console.log("✓ Utilisateur admin déjà présent")
   } else {
