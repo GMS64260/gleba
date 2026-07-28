@@ -23,6 +23,18 @@
 # production
 /build
 
+# Android / Google Play
+# Clé d'upload et mot de passe privés : ne jamais les versionner.
+/.android-signing/
+/android/gleba-twa/.gradle/
+/android/gleba-twa/build/
+/android/gleba-twa/app/build/
+/android/gleba-twa/assetlinks.json
+/android/gleba-twa/app-release-*.apk
+/android/gleba-twa/app-release-*.aab
+/android/gleba-twa/*.idsig
+/dist/android/
+
 # misc
 .DS_Store
 *.pem
@@ -113,3 +125,6 @@ et)
 /AGENTS.md
 /.claude/skills/codex-review/
 /.claude/skills/codex-review-diff/
+
+# La consultation admin fait partie du produit : ses sources doivent rester
+# versionnées avec auth.ts/layout.tsx afin qu'un clone propre compile.

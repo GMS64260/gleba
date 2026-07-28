@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "fr.gleba.app",
+      "sha256_cert_fingerprints": [
+        "66:8C:E9:34:6D:20:68:21:5D:4D:DC:3F:A7:00:AB:E7:F3:B5:CD:1A:12:82:D9:7C:BD:85:20:48:8A:F2:41:27"
+      ]
+    }
+  }
+]
