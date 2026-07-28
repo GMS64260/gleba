@@ -39,17 +39,18 @@ interface DemoMetrics {
     animaux: number
   }
   activity: {
-    totalLogins: number
-    logins7d: number
-    logins30d: number
-    lastLogin: string | null
+    activeDaysTotal: number
+    activeDays7d: number
+    activeDays30d: number
+    lastActiveDay: string | null
   }
 }
 
 interface GlobalMetrics {
   totalUsers: number
   activeUsers: number
-  totalLogins30d: number
+  activeUsers7d: number
+  activeUsers30d: number
   failedLogins30d: number
   totalCultures: number
   totalRecoltes: number
@@ -61,6 +62,7 @@ const REASON_LABELS: Record<string, string> = {
   not_found: "Compte inexistant",
   inactive: "Compte desactive",
   email_not_verified: "Email non verifie",
+  impersonation: "Consultation admin",
 }
 
 function formatDate(dateStr: string) {
@@ -70,6 +72,17 @@ function formatDate(dateStr: string) {
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+  })
+}
+
+// Les jours actifs sont des dates UTC sans heure : formater en UTC pour
+// ne pas glisser d'un jour selon le fuseau du navigateur.
+function formatDay(dateStr: string) {
+  return new Date(dateStr).toLocaleDateString("fr-FR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: "UTC",
   })
 }
 
@@ -285,16 +298,21 @@ function MetricsPanel() {
       {global && (
         <Card>
           <CardHeader>
-            <CardTitle>Metriques globales (30 jours)</CardTitle>
+            <CardTitle>Metriques globales</CardTitle>
+            <CardDescription>
+              Actifs = au moins une action dans l&apos;app ce jour-la (la session dure
+              30 jours, pas besoin de reconnexion). Hors admins et compte demo.
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
-              <Stat label="Connexions reussies" value={global.totalLogins30d} />
-              <Stat label="Connexions echouees" value={global.failedLogins30d} color="red" />
-              <Stat label="Utilisateurs actifs" value={global.activeUsers} />
+              <Stat label="Actifs (7j)" value={global.activeUsers7d} />
+              <Stat label="Actifs (30j)" value={global.activeUsers30d} />
+              <Stat label="Connexions echouees (30j)" value={global.failedLogins30d} color="red" />
+              <Stat label="Comptes actives" value={global.activeUsers} />
+              <Stat label="Total utilisateurs" value={global.totalUsers} />
               <Stat label="Total cultures" value={global.totalCultures} />
               <Stat label="Total récoltes" value={global.totalRecoltes} />
-              <Stat label="Total utilisateurs" value={global.totalUsers} />
             </div>
           </CardContent>
         </Card>
@@ -309,8 +327,8 @@ function MetricsPanel() {
               {demo.user && (
                 <>
                   Cree le {formatDate(demo.user.createdAt)}
-                  {demo.activity.lastLogin && (
-                    <> &middot; Derniere connexion : {formatDate(demo.activity.lastLogin)}</>
+                  {demo.activity.lastActiveDay && (
+                    <> &middot; Derniere activite : {formatDay(demo.activity.lastActiveDay)}</>
                   )}
                 </>
               )}
@@ -318,9 +336,9 @@ function MetricsPanel() {
           </CardHeader>
           <CardContent>
             <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
-              <Stat label="Connexions totales" value={demo.activity.totalLogins} />
-              <Stat label="Connexions (7j)" value={demo.activity.logins7d} />
-              <Stat label="Connexions (30j)" value={demo.activity.logins30d} />
+              <Stat label="Jours actifs (total)" value={demo.activity.activeDaysTotal} />
+              <Stat label="Jours actifs (7j)" value={demo.activity.activeDays7d} />
+              <Stat label="Jours actifs (30j)" value={demo.activity.activeDays30d} />
               <Stat label="Cultures" value={demo.data.cultures} />
               <Stat label="Planches" value={demo.data.planches} />
               <Stat label="Récoltes" value={demo.data.recoltes} />

@@ -9,6 +9,7 @@ import { GlobalSearch } from "@/components/global-search";
 import { OnboardingRedirect } from "@/components/onboarding-redirect";
 import { CookieBanner } from "@/components/CookieBanner";
 import { GlobalDialogHost } from "@/components/ui/global-dialog-host";
+import { ImpersonationBanner } from "@/components/admin/ImpersonationBanner";
 import { ChatBubble } from "@/components/chat/ChatBubble";
 
 
@@ -197,6 +198,7 @@ export default function RootLayout({
         className={`${inter.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable} font-sans antialiased`}
       >
         <SessionProvider>
+          <ImpersonationBanner />
           <OnboardingRedirect />
           {children}
           <ChatBubble />

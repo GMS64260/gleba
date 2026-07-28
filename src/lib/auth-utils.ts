@@ -24,7 +24,9 @@ export async function requireAuth() {
   if (!session?.user) {
     redirect("/login")
   }
-  touchActivity(session.user.id)
+  // Une consultation admin (lecture seule) ne doit pas compter comme activité
+  // de l'utilisateur consulté (stats d'usage).
+  if (!session.user.impersonatedBy) touchActivity(session.user.id)
   return session
 }
 
@@ -63,7 +65,8 @@ export async function requireAuthApi(request?: Request) {
       session: null,
     }
   }
-  touchActivity(session.user.id)
+  // Cf. requireAuth : pas de comptage d'activité pendant une consultation admin.
+  if (!session.user.impersonatedBy) touchActivity(session.user.id)
   return { error: null, session }
 }
 
