@@ -7,6 +7,10 @@ import Credentials from "next-auth/providers/credentials"
 import { PrismaAdapter } from "@auth/prisma-adapter"
 import bcrypt from "bcryptjs"
 import prisma from "./prisma"
+import {
+  consommerJetonImpersonation,
+  hashJeton,
+} from "./impersonation"
 
 /** Extrait l'IP réelle et le user-agent depuis les en-têtes (derrière Caddy) */
 function clientInfo(request?: Request): { ip: string | null; userAgent: string | null } {
@@ -101,12 +105,58 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         }
       },
     }),
+    // Consultation admin lecture seule : un jeton one-time émis par un admin
+    // ouvre une session (dans une fenêtre privée) comme l'utilisateur cible.
+    // La session porte `impersonatedBy` → le middleware impose la lecture seule.
+    Credentials({
+      id: "impersonation",
+      name: "impersonation",
+      credentials: { token: { label: "Token", type: "text" } },
+      async authorize(credentials, request) {
+        const raw = credentials?.token as string | undefined
+        if (!raw) return null
+        const info = clientInfo(request as Request | undefined)
+
+        const grant = await prisma.impersonationGrant.findUnique({
+          where: { tokenHash: await hashJeton(raw) },
+        })
+        // Jeton inconnu, déjà consommé (usage unique) ou expiré → refus.
+        if (!grant || grant.consumedAt || grant.expiresAt.getTime() < Date.now()) return null
+
+        const [admin, target] = await Promise.all([
+          prisma.user.findUnique({ where: { id: grant.adminId }, select: { role: true } }),
+          prisma.user.findUnique({
+            where: { id: grant.targetId },
+            select: { id: true, email: true, name: true, role: true, active: true },
+          }),
+        ])
+        // L'émetteur doit toujours être admin, la cible doit exister et être active.
+        if (admin?.role !== "ADMIN") return null
+        if (!target || !target.active) return null
+
+        // Usage unique atomique : une seule requête concurrente peut obtenir
+        // la transition consumedAt NULL → date courante.
+        const consomme = await consommerJetonImpersonation(prisma, grant.id)
+        if (!consomme) return null
+        logLogin(target.email, true, "impersonation", target.id, info)
+
+        return {
+          id: target.id,
+          email: target.email,
+          name: target.name,
+          role: target.role,
+          impersonatedBy: grant.adminId,
+        }
+      },
+    }),
   ],
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id
         token.role = user.role
+        // null (pas undefined) pour bien RÉINITIALISER sur une connexion normale.
+        token.impersonatedBy = (user as { impersonatedBy?: string | null }).impersonatedBy ?? null
       }
       return token
     },
@@ -114,6 +164,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       if (session.user) {
         session.user.id = token.id as string
         session.user.role = token.role as string
+        session.user.impersonatedBy = (token.impersonatedBy as string | null) ?? null
       }
       return session
     },
@@ -124,6 +175,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 declare module "next-auth" {
   interface User {
     role?: string
+    /** Id de l'admin qui consulte, si session d'impersonation (lecture seule). */
+    impersonatedBy?: string | null
   }
   interface Session {
     user: {
@@ -131,6 +184,7 @@ declare module "next-auth" {
       email: string
       name?: string | null
       role: string
+      impersonatedBy?: string | null
     }
   }
 }
@@ -139,5 +193,6 @@ declare module "@auth/core/jwt" {
   interface JWT {
     id?: string
     role?: string
+    impersonatedBy?: string | null
   }
 }

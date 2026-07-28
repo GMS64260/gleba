@@ -2,11 +2,18 @@
  * API Admin - Métriques d'utilisation
  * GET /api/admin/metrics?userId=xxx
  * Si pas de userId, retourne les métriques globales + compte démo
+ *
+ * L'activité est mesurée en jours actifs (table activity_days, cf.
+ * /api/admin/usage) : la session JWT dure 30 jours, donc compter les
+ * login_logs sous-estime — et l'impersonation admin y écrit des entrées
+ * success=true (reason='impersonation') qui ne sont pas de vraies connexions.
  */
 
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAdminApi } from "@/lib/auth-utils"
+
+const DEMO_EMAIL = "demo@gleba.fr"
 
 export async function GET(request: NextRequest) {
   const { error } = await requireAdminApi()
@@ -23,7 +30,7 @@ export async function GET(request: NextRequest) {
 
     // Sinon métriques globales + démo
     const demoUser = await prisma.user.findUnique({
-      where: { email: "demo@gleba.fr" },
+      where: { email: DEMO_EMAIL },
       select: { id: true },
     })
 
@@ -54,10 +61,10 @@ async function getUserMetrics(userId: string) {
     recoltes,
     arbres,
     animaux,
-    logins30d,
-    logins7d,
-    lastLogin,
-    totalLogins,
+    activeDays30d,
+    activeDays7d,
+    lastActiveDay,
+    activeDaysTotal,
   ] = await Promise.all([
     prisma.user.findUnique({
       where: { id: userId },
@@ -68,28 +75,28 @@ async function getUserMetrics(userId: string) {
     prisma.recolte.count({ where: { userId } }),
     prisma.arbre.count({ where: { userId } }),
     prisma.animal.count({ where: { userId } }),
-    prisma.loginLog.count({
-      where: { userId, success: true, createdAt: { gte: last30d } },
+    prisma.activityDay.count({
+      where: { userId, day: { gte: last30d } },
     }),
-    prisma.loginLog.count({
-      where: { userId, success: true, createdAt: { gte: last7d } },
+    prisma.activityDay.count({
+      where: { userId, day: { gte: last7d } },
     }),
-    prisma.loginLog.findFirst({
-      where: { userId, success: true },
-      orderBy: { createdAt: "desc" },
-      select: { createdAt: true },
+    prisma.activityDay.findFirst({
+      where: { userId },
+      orderBy: { day: "desc" },
+      select: { day: true },
     }),
-    prisma.loginLog.count({ where: { userId, success: true } }),
+    prisma.activityDay.count({ where: { userId } }),
   ])
 
   return {
     user,
     data: { cultures, planches, recoltes, arbres, animaux },
     activity: {
-      totalLogins,
-      logins7d,
-      logins30d,
-      lastLogin: lastLogin?.createdAt ?? null,
+      activeDaysTotal,
+      activeDays7d,
+      activeDays30d,
+      lastActiveDay: lastActiveDay?.day ?? null,
     },
   }
 }
@@ -97,20 +104,30 @@ async function getUserMetrics(userId: string) {
 async function getGlobalMetrics() {
   const now = new Date()
   const last30d = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+  const last7d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
 
   const [
     totalUsers,
     activeUsers,
-    totalLogins30d,
+    actifs,
     failedLogins30d,
     totalCultures,
     totalRecoltes,
   ] = await Promise.all([
     prisma.user.count(),
     prisma.user.count({ where: { active: true } }),
-    prisma.loginLog.count({
-      where: { success: true, createdAt: { gte: last30d } },
-    }),
+    // Utilisateurs distincts vus actifs, hors admins et compte démo
+    // (mêmes exclusions que /api/admin/usage)
+    prisma.$queryRaw<Array<{ activeUsers7d: number; activeUsers30d: number }>>`
+      SELECT
+        COUNT(DISTINCT a.user_id) FILTER (WHERE a.day >= ${last7d})::int AS "activeUsers7d",
+        COUNT(DISTINCT a.user_id)::int AS "activeUsers30d"
+      FROM activity_days a
+      JOIN users u ON u.id = a.user_id
+      WHERE a.day >= ${last30d}
+        AND u.role::text <> 'ADMIN'
+        AND u.email <> ${DEMO_EMAIL}
+    `,
     prisma.loginLog.count({
       where: { success: false, createdAt: { gte: last30d } },
     }),
@@ -121,7 +138,8 @@ async function getGlobalMetrics() {
   return {
     totalUsers,
     activeUsers,
-    totalLogins30d,
+    activeUsers7d: Number(actifs[0]?.activeUsers7d ?? 0),
+    activeUsers30d: Number(actifs[0]?.activeUsers30d ?? 0),
     failedLogins30d,
     totalCultures,
     totalRecoltes,
