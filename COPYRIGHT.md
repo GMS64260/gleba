@@ -2,7 +2,7 @@
 
 ## Propriété Intellectuelle
 
-**Gleba - Logiciel de gestion de potager et verger**
+**Gleba - Logiciel libre de gestion agricole**
 
 Copyright © 2024-2026 GMS64260 (Gleba Project)
 Tous droits réservés conformément à la licence AGPL-3.0

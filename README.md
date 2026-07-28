@@ -4,10 +4,10 @@
 
 # Gleba
 
-**🌱 Logiciel professionnel gratuit de gestion de potager et verger 🌳**
+**🌱 Logiciel libre de gestion agricole pour exploitations diversifiées 🌾**
 
 [![Licence AGPL-3.0](https://img.shields.io/badge/License-AGPL%203.0-green.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-1.0.0-blue.svg)](package.json)
+[![Version](https://img.shields.io/badge/Version-1.1.0-blue.svg)](package.json)
 [![MCP Server](https://img.shields.io/npm/v/gleba-mcp-server?label=MCP%20Server&color=orange)](https://www.npmjs.com/package/gleba-mcp-server)
 [![Next.js](https://img.shields.io/badge/Next.js-16-black)](https://nextjs.org/)
 [![Prisma](https://img.shields.io/badge/Prisma-5-2D3748)](https://www.prisma.io/)
@@ -21,48 +21,53 @@
 
 ## 📋 À propos
 
-**Gleba** est une application web professionnelle pour la **gestion complète de potagers et vergers**. Conçue pour les maraîchers, jardiniers amateurs et permaculteurs, elle combine planification intelligente, suivi de production et optimisation des ressources.
+**Gleba** est une application web de gestion agricole pour les maraîchers, arboriculteurs, éleveurs, micro-fermes, écolieux et jardins pédagogiques. Elle réunit dans un même outil la planification, le suivi terrain, la cartographie 2D/3D, les stocks, la météo, la traçabilité, la comptabilité, la boutique et l'assistance IA.
 
 ### 🎯 Mission
 
-Démocratiser l'accès aux outils professionnels de maraîchage. Une agriculture locale, biologique et raisonnée accessible à tous, **gratuitement et pour toujours**.
+Rendre les outils de pilotage agricole accessibles aux exploitations diversifiées. Une solution libre, auto-hébergeable et utilisable **gratuitement et sans limitation**.
 
 ### ✨ Pourquoi Gleba ?
 
 - ✅ **100% Gratuit** - Aucun abonnement, aucune limitation
 - ✅ **Open Source** - Code transparent, communauté active
 - ✅ **Données privées** - Auto-hébergeable, vos données vous appartiennent
-- ✅ **Agriculture bio** - Optimisé pour pratiques biologiques et permaculture
-- ✅ **Professionnel** - 135+ espèces, 154 ITPs, données FranceAgriMer 2026
+- ✅ **Exploitation diversifiée** - Maraîchage, verger, élevage et pilotage économique réunis
+- ✅ **Référentiels métier** - 135+ espèces, 154 ITPs et données agronomiques enrichies
 
 ---
 
 ## 🚀 Fonctionnalités
 
-### 🗓️ **Planification intelligente**
-- **Assistant maraîcher** - Wizard pas-à-pas pour débutants
-- **Calendrier interactif** - Semis, plantations, récoltes drag & drop
-- **Rotations** - Plans pluriannuels avec cycles automatiques
-- **ITPs** - Itinéraires techniques détaillés (espacements, durées)
-- **Prévisions** - Récoltes estimées par mois/semaine
+### 🥕 **Maraîchage**
+- **Planification** - Semis, plantations, récoltes prévues et besoins en plants
+- **Suivi cultural** - Cultures, récoltes, interventions, fertilisations et irrigations
+- **Référentiels** - Espèces, variétés, itinéraires techniques, associations et rotations
+- **Stocks** - Semences, plants, fertilisants et récoltes
 
-### 💧 **Gestion de l'eau**
-- **Irrigations planifiées** - Calendrier automatique selon besoins
-- **Tri par urgence** - Cultures critiques (>3j sans eau) en rouge
-- **Consommation estimée** - Litres/semaine par culture et îlot
-- **Historique** - Suivi des arrosages
+### 🗺️ **Parcelles et cartographie**
+- **Plan 2D** - Planches, arbres et objets aux dimensions réelles sur fond géoréférencé
+- **Vue 3D** - Visualisation du terrain et de la croissance des cultures dans le temps
+- **Suivi du sol** - Parcelles, analyses et historique des interventions
+- **Météo** - Conditions, prévisions, alertes et aide à l'irrigation
 
-### 📊 **Suivi de production**
-- **Récoltes** - Saisie quantités + **valorisation économique** (€/kg)
-- **Rendements** - Par planche, par espèce avec graphiques
-- **Stocks** - Semences, plants, fertilisants éditables en direct
-- **Dashboard** - Statistiques temps réel, comparaison années
+### 🌳 **Verger**
+- **Patrimoine arboré** - Arbres, lots, zones, variétés et porte-greffes
+- **Travaux** - Opérations, tâches, campagnes de plantation et suivi sanitaire
+- **Productions** - Récoltes fruitières, valorisation et production de bois
+- **Traçabilité** - Observations et traitements intégrés au registre phytosanitaire
 
-### 🗺️ **Plan du jardin 2D**
-- **Visualisation** - Planches, arbres, objets avec vraies dimensions
-- **Drag & drop** - Déplacement intuitif
-- **Sillons réalistes** - Espacements respectés selon culture
-- **Validation physique** - Empêche cultures impossibles (trop large/longue)
+### 🐄 **Élevage**
+- **Cheptel multi-espèces** - Fiches individuelles, lots, mouvements et pesées
+- **Santé et reproduction** - Soins, prophylaxies, traitements, saillies et naissances
+- **Productions** - Œufs, lait, fromage, alimentation, ventes et abattages
+- **Registre** - Suivi sanitaire, obligations réglementaires et archives vérifiables
+
+### 📊 **Gestion de l'exploitation**
+- **Comptabilité** - Clients, fournisseurs, factures, TVA, transactions et export FEC
+- **Pilotage** - Stocks valorisés, coûts de production, marges et tableaux de bord
+- **Boutique** - Catalogue, commandes et vente directe
+- **Assistant IA** - Questions en langage naturel et aide contextualisée selon la configuration
 
 ### 🌾 **Base de données enrichie**
 - **135 espèces** - Rendements, besoins NPK, prix marché bio
@@ -315,7 +320,7 @@ npx -y gleba-mcp-server
 ```
 
 **Exemples de commandes en langage naturel :**
-- *« Qu'est-ce que je dois faire au potager cette semaine ? »*
+- *« Qu'est-ce que je dois faire sur l'exploitation cette semaine ? »*
 - *« Enregistre 3kg de tomates récoltées sur la planche S4 »*
 - *« Combien d'oeufs mes poules ont pondu ce mois-ci ? »*
 - *« Quel est mon chiffre d'affaires ce mois-ci ? »*
@@ -332,11 +337,11 @@ npx -y gleba-mcp-server
 | UI | shadcn/ui + TailwindCSS | - |
 | Backend | Next.js API Routes | - |
 | ORM | Prisma | 5.22 |
-| Base de données | PostgreSQL | 16 |
+| Base de données | PostgreSQL + PostGIS | 16 |
 | Auth | NextAuth.js | 5 |
 | Container | Docker + Compose | - |
 | Charts | Recharts | - |
-| Icons | Lucide React | - |
+| Icônes | Phosphor Icons | - |
 
 ---
 
@@ -359,7 +364,6 @@ Voir [LICENSE](LICENSE) et [COPYRIGHT.md](COPYRIGHT.md) pour tous les détails.
 
 ## 🙏 Remerciements
 
-- **[Marc Pley](https://github.com/marcpley)** - [Potaléger](https://github.com/marcpley/potaleger), inspiration du projet
 - **ITAB** - Guides techniques maraîchage bio
 - **FranceAgriMer** - Données prix marché 2026
 - **shadcn/ui** - Composants React élégants
@@ -386,7 +390,7 @@ Ce terme évoque la connexion ancestrale entre l'homme et la terre qu'il cultive
 
 <div align="center">
 
-**Fait avec 🌱 pour les jardiniers**
+**Fait avec 🌱 pour celles et ceux qui font vivre la terre**
 
 [⬆ Retour en haut](#gleba)
 
