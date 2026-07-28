@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="public/gleba.png" alt="Gleba Logo" width="400"/>
+<img src="gleba.png" alt="Gleba Logo" width="400"/>
 
 # Gleba
 
@@ -13,7 +13,7 @@
 [![Prisma](https://img.shields.io/badge/Prisma-5-2D3748)](https://www.prisma.io/)
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED)](Dockerfile)
 
-[Démo](http://demo.gleba.fr) • [Auto-hébergement](#-auto-hébergement-debianubuntu) • [Sauvegarde](#-sauvegarde-et-restauration) • [Mise à jour](#-mise-à-jour) • [Contribuer](CONTRIBUTING.md)
+[Démo](https://gleba.fr/login?demo=1) • [Auto-hébergement](#-auto-hébergement-debianubuntu) • [Sauvegarde](#-sauvegarde-et-restauration) • [Mise à jour](#-mise-à-jour) • [Contribuer](CONTRIBUTING.md)
 
 </div>
 
@@ -81,7 +81,7 @@ Rendre les outils de pilotage agricole accessibles aux exploitations diversifié
 
 Testez Gleba sans installation :
 
-**URL :** http://demo.gleba.fr *(si disponible)*
+**URL :** https://gleba.fr/login?demo=1
 **Compte démo :**
 - Email: `demo@gleba.fr`
 - Mot de passe: `demo2026`
