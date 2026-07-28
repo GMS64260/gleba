@@ -88,7 +88,7 @@ async function computeKpiCompta(
     sumDepenseManuelle(userId, startOfYearN1, endOfYearN1),
     // BUG #2 — sous-totaux non payés (info, pas un filtre)
     prisma.depenseManuelle.aggregate({
-      where: { userId, date: { gte: startOfYear, lte: upperBound }, paye: false },
+      where: { userId, date: { gte: startOfYear, lte: upperBound }, paye: false, comptable: true },
       _sum: { montant: true },
       _count: true,
     }),
@@ -138,7 +138,7 @@ async function sumDepenseManuelle(
   end: Date
 ): Promise<number> {
   const r = await prisma.depenseManuelle.aggregate({
-    where: { userId, date: { gte: start, lte: end } },
+    where: { userId, date: { gte: start, lte: end }, comptable: true },
     _sum: { montant: true },
   })
   return r._sum.montant ?? 0

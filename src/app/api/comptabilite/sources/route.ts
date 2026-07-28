@@ -36,135 +36,72 @@ export async function GET(request: NextRequest) {
     const startOfYear = new Date(year, 0, 1)
     const endOfYear = new Date(year, 11, 31, 23, 59, 59)
 
-    const [
-      ventesElevage,
-      recoltesArbres,
-      venteBois,
-      venteAbattage,
-      recoltesPotager,
-      ventesManuelles,
-      commandesBoutique,
-    ] = await Promise.all([
-      prisma.venteProduit.findMany({
-        where: {
-          userId,
-          annule: { not: true },
-          date: { gte: startOfYear, lte: endOfYear },
-        },
-        select: { prixTotal: true },
-      }),
-      prisma.recolteArbre.findMany({
-        where: {
-          userId,
-          statut: 'vendu',
-          dateVente: { gte: startOfYear, lte: endOfYear },
-          prixKg: { not: null },
-        },
-        select: { quantite: true, prixKg: true },
-      }),
-      prisma.productionBois.findMany({
-        where: {
-          userId,
-          date: { gte: startOfYear, lte: endOfYear },
-          destination: 'vente',
-          prixVente: { not: null },
-        },
-        select: { prixVente: true },
-      }),
-      prisma.abattage.findMany({
-        where: {
-          userId,
-          annule: { not: true },
-          date: { gte: startOfYear, lte: endOfYear },
-          destination: 'vente',
-          prixVente: { not: null },
-        },
-        select: { prixVente: true },
-      }),
-      prisma.recolte.findMany({
-        where: {
-          userId,
-          statut: 'vendu',
-          dateVente: { gte: startOfYear, lte: endOfYear },
-          prixTotal: { not: null },
-        },
-        select: { prixTotal: true, quantite: true, prixKg: true },
-      }),
+    // Cette vue part directement de la SSOT comptable : chaque VenteManuelle
+    // et chaque facture valide apparaît une seule fois. Elle ne réagrège plus
+    // les sources brutes, ce qui élimine les doubles comptes des ventes facturées.
+    const [ventes, factures] = await Promise.all([
       prisma.venteManuelle.findMany({
+        where: { userId, date: { gte: startOfYear, lte: endOfYear } },
+        select: { montant: true, module: true, sourceType: true, auto: true },
+      }),
+      prisma.facture.findMany({
         where: {
           userId,
           date: { gte: startOfYear, lte: endOfYear },
-          auto: { not: true },
+          statut: { notIn: ['annulee', 'brouillon'] },
         },
-        select: { montant: true },
-      }),
-      prisma.commandeBoutique.findMany({
-        where: {
-          userId,
-          statut: 'livree',
-          createdAt: { gte: startOfYear, lte: endOfYear },
+        select: {
+          type: true,
+          totalTTC: true,
+          ventesProduits: { select: { id: true }, take: 1 },
+          abattages: { select: { id: true }, take: 1 },
+          recoltesArbres: { select: { id: true }, take: 1 },
+          productionsBois: { select: { id: true }, take: 1 },
+          commandesBoutique: { select: { id: true }, take: 1 },
         },
-        select: { total: true },
       }),
     ])
 
-    const sources: SourceBreakdown[] = [
-      {
-        module: 'potager',
-        source: 'Recolte',
-        label: 'Récoltes potager vendues',
-        count: recoltesPotager.length,
-        montant: recoltesPotager.reduce(
-          (s, r) => s + (r.prixTotal || (r.quantite * (r.prixKg || 0))),
-          0,
-        ),
-      },
-      {
-        module: 'verger',
-        source: 'RecolteArbre',
-        label: 'Récoltes de fruits vendues',
-        count: recoltesArbres.length,
-        montant: recoltesArbres.reduce(
-          (s, r) => s + r.quantite * (r.prixKg || 0),
-          0,
-        ),
-      },
-      {
-        module: 'verger',
-        source: 'ProductionBois',
-        label: 'Ventes de bois',
-        count: venteBois.length,
-        montant: venteBois.reduce((s, b) => s + (b.prixVente || 0), 0),
-      },
-      {
-        module: 'elevage',
-        source: 'VenteProduit',
-        label: 'Ventes produits élevage (œufs, lait, etc.)',
-        count: ventesElevage.length,
-        montant: ventesElevage.reduce((s, v) => s + v.prixTotal, 0),
-      },
-      {
-        module: 'elevage',
-        source: 'Abattage',
-        label: 'Ventes viande (abattages)',
-        count: venteAbattage.length,
-        montant: venteAbattage.reduce((s, a) => s + (a.prixVente || 0), 0),
-      },
-      {
-        module: 'boutique',
-        source: 'CommandeBoutique',
-        label: 'Commandes boutique livrées',
-        count: commandesBoutique.length,
-        montant: commandesBoutique.reduce((s, c) => s + c.total, 0),
-      },
-      {
-        module: 'autre',
-        source: 'VenteManuelle',
-        label: 'Saisies manuelles (hors auto)',
-        count: ventesManuelles.length,
-        montant: ventesManuelles.reduce((s, v) => s + v.montant, 0),
-      },
-    ]
+    const labels: Record<string, string> = {
+      vente_produit: 'Ventes produits élevage',
+      abattage: 'Ventes viande (abattages)',
+      paie_lait: 'Paies du lait',
+      reservation_elevage: 'Acomptes et cessions d’animaux',
+      commande_boutique: 'Commandes boutique',
+      recolte: 'Récoltes potager',
+      recolte_arbre: 'Récoltes de fruits',
+      production_bois: 'Ventes de bois',
+      manuel: 'Saisies manuelles',
+      facture: 'Factures',
+    }
+    const grouped = new Map<string, SourceBreakdown>()
+    const add = (module: string, source: string, montant: number) => {
+      const key = `${module}:${source}`
+      const current = grouped.get(key) ?? {
+        module,
+        source,
+        label: labels[source] ?? source,
+        count: 0,
+        montant: 0,
+      }
+      current.count += 1
+      current.montant += montant
+      grouped.set(key, current)
+    }
+    for (const vente of ventes) {
+      add(vente.module || 'autre', vente.auto ? (vente.sourceType || 'auto') : 'manuel', vente.montant)
+    }
+    for (const facture of factures) {
+      const module = facture.ventesProduits.length || facture.abattages.length
+        ? 'elevage'
+        : facture.recoltesArbres.length || facture.productionsBois.length
+          ? 'verger'
+          : facture.commandesBoutique.length
+            ? 'boutique'
+            : 'autre'
+      add(module, 'facture', facture.type === 'avoir' ? -facture.totalTTC : facture.totalTTC)
+    }
+    const sources = [...grouped.values()].sort((a, b) => b.montant - a.montant)
 
     const total = sources.reduce((s, x) => s + x.montant, 0)
 

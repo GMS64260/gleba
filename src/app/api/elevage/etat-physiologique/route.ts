@@ -10,17 +10,18 @@
 import { NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
-import { etatPhysiologique, LABELS_ETAT, type EtatPhysio } from '@/lib/elevage/etat-physiologique'
+import { etatPhysiologique, pariteFemelle, LABELS_ETAT, LABELS_PARITE } from '@/lib/elevage/etat-physiologique'
 
-export async function GET() {
+export async function GET(request: Request) {
   const { session, error } = await requireAuthApi()
   if (error) return error
 
   try {
     const userId = session.user.id
+    const filiere = new URL(request.url).searchParams.get('filiere')
 
     const femelles = await prisma.animal.findMany({
-      where: { userId, statut: 'actif', sexe: 'femelle' },
+      where: { userId, statut: 'actif', sexe: 'femelle', ...(filiere ? { especeAnimale: { filiere } } : {}) },
       select: { id: true, nom: true, identifiant: true, especeAnimale: { select: { nom: true } } },
     })
     const ids = femelles.map((f) => f.id)
@@ -45,11 +46,13 @@ export async function GET() {
     ])
 
     const derniereMiseBas = new Map<number, number>()
+    const nbMisesBas = new Map<number, number>()
     for (const n of naissances) {
       if (n.mereId == null) continue
       const t = new Date(n.date).getTime()
       const cur = derniereMiseBas.get(n.mereId)
       if (cur == null || t > cur) derniereMiseBas.set(n.mereId, t)
+      nbMisesBas.set(n.mereId, (nbMisesBas.get(n.mereId) ?? 0) + 1)
     }
     const gestanteApres = new Map<number, boolean>()
     for (const s of sailliesGestantes) {
@@ -69,6 +72,9 @@ export async function GET() {
         gestante: gestanteApres.get(f.id) === true,
         derniereCollecte: collecteMax.get(f.id) ?? null,
       })
+      // QA caprin cms1vgm9n — parité en dimension séparée : une chevrette
+      // gestante est « Gestante » (cycle) ET « Nullipare » (parité).
+      const parite = pariteFemelle(nbMisesBas.get(f.id) ?? 0)
       return {
         id: f.id,
         nom: f.nom,
@@ -76,13 +82,17 @@ export async function GET() {
         espece: f.especeAnimale?.nom ?? null,
         etat,
         label: LABELS_ETAT[etat],
+        parite,
+        labelParite: LABELS_PARITE[parite],
       }
     })
 
     const repartition: Record<string, number> = {}
     for (const d of data) repartition[d.etat] = (repartition[d.etat] || 0) + 1
+    const repartitionParite: Record<string, number> = {}
+    for (const d of data) repartitionParite[d.parite] = (repartitionParite[d.parite] || 0) + 1
 
-    return NextResponse.json({ data, repartition, labels: LABELS_ETAT })
+    return NextResponse.json({ data, repartition, labels: LABELS_ETAT, repartitionParite, labelsParite: LABELS_PARITE })
   } catch (err) {
     console.error('GET /api/elevage/etat-physiologique error:', err)
     return NextResponse.json({ error: 'Erreur interne du serveur' }, { status: 500 })

@@ -11,17 +11,23 @@ import { isAssignableAnimalLot } from '../animal-lot'
 describe('isAssignableAnimalLot', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('accepte uniquement un lot actif du même utilisateur et de la même espèce', async () => {
-    findFirst.mockResolvedValue({ id: 42 })
+  it('accepte un lot actif du même utilisateur et de la même espèce de base', async () => {
+    findFirst.mockResolvedValue({ id: 42, especeAnimaleId: 'chevre_alpine_chamoisee' })
 
-    await expect(isAssignableAnimalLot('user-1', 42, 'ovin')).resolves.toBe(true)
+    await expect(isAssignableAnimalLot('user-1', 42, 'chevre_laitiere')).resolves.toBe(true)
     expect(findFirst).toHaveBeenCalledWith({
-      where: { id: 42, userId: 'user-1', statut: 'actif', especeAnimaleId: 'ovin' },
-      select: { id: true },
+      where: { id: 42, userId: 'user-1', statut: 'actif' },
+      select: { id: true, especeAnimaleId: true },
     })
   })
 
-  it('refuse sans distinction un lot inexistant, tiers, terminé ou d’une autre espèce', async () => {
+  it('refuse un lot actif d’une autre espèce de base', async () => {
+    findFirst.mockResolvedValue({ id: 42, especeAnimaleId: 'brebis_solognote' })
+
+    await expect(isAssignableAnimalLot('user-1', 42, 'chevre_laitiere')).resolves.toBe(false)
+  })
+
+  it('refuse sans distinction un lot inexistant, tiers ou terminé', async () => {
     findFirst.mockResolvedValue(null)
 
     await expect(isAssignableAnimalLot('user-1', 42, 'ovin')).resolves.toBe(false)

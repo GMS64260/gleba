@@ -45,6 +45,7 @@ export async function GET(request: NextRequest) {
     where: {
       userId,
       categorie: "materiel",
+      comptable: true,
       date: { gte: startOfYear, lte: endOfYear },
     },
     _sum: { montant: true },
@@ -82,6 +83,7 @@ export async function GET(request: NextRequest) {
     where: {
       userId,
       paye: false,
+      comptable: true,
       date: { gte: startOfYear, lte: endOfYear },
     },
     _sum: { montant: true },

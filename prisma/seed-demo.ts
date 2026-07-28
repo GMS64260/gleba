@@ -26,6 +26,7 @@
 
 import { PrismaClient } from "@prisma/client"
 import * as bcrypt from "bcryptjs"
+import { ESPECES_COMPAGNIE } from "../src/lib/elevage/catalogue-compagnie"
 
 const prisma = new PrismaClient()
 
@@ -107,11 +108,13 @@ async function autoDepense(
   o: { date: Date; ttc: number; taux: number; categorie: string; module: string; description: string }
 ) {
   const s = splitTTC(o.ttc, o.taux)
+  const comptable = !["consommation_aliment", "soin_animal"].includes(sourceType)
   await prisma.depenseManuelle.create({
     data: {
       userId, date: o.date, categorie: o.categorie, description: o.description,
       tauxTVA: o.taux, montantHT: s.montantHT, montantTVA: s.montantTVA, montant: s.montant,
-      journal: "AC", module: o.module, paye: true, sourceType, sourceId, auto: true,
+      journal: "AC", module: o.module, paye: true, comptable, tvaInferee: true,
+      sourceType, sourceId, auto: true,
     },
   })
 }
@@ -154,6 +157,7 @@ async function ensureExploitation() {
 async function ensurePrefs() {
   const prefs: Array<[string, string]> = [
     ["modulesActifs", JSON.stringify(["maraichage", "verger", "elevage", "comptabilite"])],
+    ["modesElevage", JSON.stringify(["compagnie", "equin", "nac"])],
     ["onboarding_completed", "true"],
   ]
   for (const [key, value] of prefs) {
@@ -176,6 +180,31 @@ async function ensureEspecesAnimales() {
   for (const e of data) {
     // upsert sans écraser une éventuelle version communautaire officielle
     await prisma.especeAnimale.upsert({ where: { id: e.id }, update: e, create: e })
+  }
+
+  // Sous-ensemble du catalogue officiel nécessaire au scénario multi-filières.
+  // Le seed catalogue complet reste un prérequis de déploiement ; ce rattrapage
+  // rend néanmoins le compte démo autonome sur les espèces qu'il utilise.
+  const especesDemo = new Set(["chien", "chat", "cheval", "poney", "furet", "lapin_nain", "calopsitte"])
+  for (const e of ESPECES_COMPAGNIE.filter((espece) => especesDemo.has(espece.id))) {
+    await prisma.especeAnimale.upsert({
+      where: { id: e.id },
+      update: { filiere: e.filiere },
+      create: {
+        id: e.id,
+        nom: e.nom,
+        type: e.type,
+        filiere: e.filiere,
+        production: "compagnie",
+        categorieReglementaire: e.categorieReglementaire,
+        productions: [],
+        dureeGestation: e.dureeGestation ?? null,
+        dureeCouvaison: e.dureeCouvaison ?? null,
+        poidsAdulte: e.poidsAdulte ?? null,
+        couleur: e.couleur ?? null,
+        description: e.description ?? null,
+      },
+    })
   }
 }
 
@@ -512,6 +541,7 @@ async function seedElevage(parcelles: Record<string, string>) {
   const lotSolognote = await prisma.lotAnimaux.create({
     data: { userId, especeAnimaleId: "brebis_solognote", nom: `Solognote ${Y - 2}`, dateArrivee: dYMD(Y - 2, 4, 10), quantiteInitiale: 15, quantiteActuelle: 15, provenance: "Élevage Pluchard (45)", prixAchatTotal: 3300, statut: "actif", parcelleGeoId: pature, notes: "Troupeau de reproduction." },
   })
+  await autoDepense("achat_animal", lotSolognote.id, { date: dYMD(Y - 2, 4, 10), ttc: 3300, taux: 5.5, categorie: "achats", module: "elevage", description: `Achat lot Solognote ${Y - 2}` })
   await prisma.lotAnimaux.create({
     data: { userId, especeAnimaleId: "brebis_solognote", nom: `Agnelles ${Y}`, dateArrivee: dYMD(Y, 3, 20), quantiteInitiale: 10, quantiteActuelle: 10, provenance: "Naissances internes", statut: "actif", parcelleGeoId: pature, notes: "Renouvellement issu des naissances." },
   })
@@ -544,13 +574,15 @@ async function seedElevage(parcelles: Record<string, string>) {
         prixAchat: 350, statut: "actif", lactationLongue: p.lactationLongue,
       },
     })
+    await autoDepense("achat_animal_individuel", a.id, { date: dYMD(Y - 2, 6, 20), ttc: 350, taux: 5.5, categorie: "achats", module: "elevage", description: `Achat animal - ${p.nom}` })
     chevres.push({ id: a.id, nom: p.nom, p })
   }
   // Cochons (arrivés année passée → pas d'achat compté cette année)
   for (const c of [{ nom: "Grognon", sexe: "male" }, { nom: "Rosette", sexe: "femelle" }]) {
-    await prisma.animal.create({
+    const animal = await prisma.animal.create({
       data: { userId, especeAnimaleId: "cochon_gascon", nom: c.nom, race: "Gascon", identifiant: `FR85${c.nom === "Grognon" ? "9001" : "9002"}`, typeIdentifiant: "IPG porcin", sexe: c.sexe, dateNaissance: dYMD(Y - 1, 9, 15), dateArrivee: dYMD(Y - 1, 11, 5), provenance: "Ferme du Coteau (32)", prixAchat: 200, statut: "actif" },
     })
+    await autoDepense("achat_animal_individuel", animal.id, { date: dYMD(Y - 1, 11, 5), ttc: 200, taux: 5.5, categorie: "achats", module: "elevage", description: `Achat animal - ${c.nom}` })
   }
 
   // ── Œufs : production hebdo sur ~18 mois + ventes mensuelles ──
@@ -713,6 +745,225 @@ async function seedElevage(parcelles: Record<string, string>) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+//  ÉLEVAGES OPTIONNELS : COMPAGNIE, ÉQUIN, NAC
+// ═════════════════════════════════════════════════════════════════════════════
+
+async function seedElevagesOptionnels(parcelles: Record<string, string>) {
+  const pature = parcelles["Demo-P · Pâture"]
+
+  // ── Chiens et chats ──
+  const nala = await prisma.animal.create({
+    data: {
+      userId, especeAnimaleId: "chien", nom: "Nala", race: "Golden retriever",
+      identifiant: "250269610100001", typeIdentifiant: "Puce RFID", sexe: "femelle",
+      dateNaissance: dYMD(Y - 4, 3, 18), dateArrivee: dYMD(Y - 4, 5, 20),
+      provenance: "Élevage des Ajoncs", statut: "actif", poidsActuel: 29.4,
+      couleur: "Sable doré", notes: "Reproductrice confirmée LOF, caractère familial.",
+    },
+  })
+  const oslo = await prisma.animal.create({
+    data: {
+      userId, especeAnimaleId: "chien", nom: "Oslo", race: "Golden retriever",
+      identifiant: "250269610100002", typeIdentifiant: "Puce RFID", sexe: "male",
+      dateNaissance: dYMD(Y - 5, 7, 4), dateArrivee: dYMD(Y - 4, 1, 15),
+      provenance: "Élevage du Val Fleuri", statut: "actif", poidsActuel: 33.1,
+      couleur: "Crème", notes: "Étalon confirmé LOF.",
+    },
+  })
+  const plume = await prisma.animal.create({
+    data: {
+      userId, especeAnimaleId: "chat", nom: "Plume", race: "Maine coon",
+      identifiant: "250269610200001", typeIdentifiant: "Puce RFID", sexe: "femelle",
+      dateNaissance: dYMD(Y - 3, 9, 12), dateArrivee: dYMD(Y - 3, 12, 8),
+      provenance: "Chatterie de l'Orée", statut: "actif", poidsActuel: 6.2,
+      couleur: "Brown tabby", notes: "Reproductrice LOOF.",
+    },
+  })
+  const moka = await prisma.animal.create({
+    data: {
+      userId, especeAnimaleId: "chat", nom: "Moka", race: "Maine coon",
+      identifiant: "250269610200002", typeIdentifiant: "Puce RFID", sexe: "male",
+      dateNaissance: dYMD(Y - 4, 2, 2), dateArrivee: dYMD(Y - 3, 1, 20),
+      provenance: "Chatterie des Dunes", statut: "actif", poidsActuel: 8.4,
+      couleur: "Black silver", notes: "Étalon LOOF.",
+    },
+  })
+
+  for (const pedigree of [
+    { animalId: nala.id, numeroLof: `LOF-DEMO-${Y - 4}-001`, cotation: 4, titres: "Excellent régional" },
+    { animalId: oslo.id, numeroLof: `LOF-DEMO-${Y - 5}-002`, cotation: 3, titres: "Très bon national" },
+    { animalId: plume.id, numeroLof: `LOOF-DEMO-${Y - 3}-001`, cotation: 3, titres: "Excellent exposition" },
+    { animalId: moka.id, numeroLof: `LOOF-DEMO-${Y - 4}-002`, cotation: 2, titres: null },
+  ]) {
+    await prisma.pedigreeElevage.create({
+      data: {
+        userId, ...pedigree, confirmationLof: true,
+        dateConfirmation: dYMD(Y - 2, 6, 15),
+      },
+    })
+  }
+
+  for (const test of [
+    { animalId: nala.id, type: "dysplasie_hanche", resultat: "A", laboratoire: "Clinique vétérinaire Démo", reference: "DEMO-CAN-001" },
+    { animalId: nala.id, type: "oeil", resultat: "Indemne", laboratoire: "Clinique vétérinaire Démo", reference: "DEMO-CAN-002" },
+    { animalId: oslo.id, type: "adn_filiation", resultat: "Compatible", laboratoire: "Laboratoire génétique Démo", reference: "DEMO-ADN-001" },
+    { animalId: plume.id, type: "adn_maladie", resultat: "SMA/PKDef : indemne", laboratoire: "Laboratoire génétique Démo", reference: "DEMO-FEL-001" },
+    { animalId: moka.id, type: "oeil", resultat: "Indemne", laboratoire: "Clinique vétérinaire Démo", reference: "DEMO-FEL-002" },
+  ]) {
+    await prisma.testSanteElevage.create({
+      data: { userId, ...test, date: dAgo(80), notes: "Résultat fictif pour la démonstration." },
+    })
+  }
+
+  const dateNaissanceChiots = dAgo(42)
+  const saillieCanine = await prisma.saillie.create({
+    data: {
+      userId, date: dAgo(105), femelleId: nala.id, maleId: oslo.id,
+      type: "Monte naturelle", confirmationGestation: dAgo(78),
+      dateMiseBasAttendue: dateNaissanceChiots, statut: "Mise-bas réalisée",
+      notes: "Portée Golden retriever de démonstration.",
+    },
+  })
+  const porteeCanine = await prisma.naissanceAnimale.create({
+    data: {
+      userId, mereId: nala.id, pereIdentifiant: oslo.identifiant, date: dateNaissanceChiots,
+      nombreNes: 4, nombreVivants: 4, nombreMales: 2, nombreFemelles: 2,
+      poidsTotal: 1.78, notes: "Portée canine fictive, quatre chiots en bonne santé.",
+      saillieId: saillieCanine.id,
+    },
+  })
+  const chiots = []
+  for (const petit of [
+    { numero: 1, sexe: "femelle", poids: 0.43, couleur: "Sable", notes: "Collier rose" },
+    { numero: 2, sexe: "male", poids: 0.47, couleur: "Crème", notes: "Collier bleu" },
+    { numero: 3, sexe: "femelle", poids: 0.41, couleur: "Doré", notes: "Collier jaune" },
+    { numero: 4, sexe: "male", poids: 0.47, couleur: "Sable clair", notes: "Collier vert" },
+  ]) {
+    chiots.push(await prisma.petitNaissance.create({
+      data: { userId, naissanceId: porteeCanine.id, modeElevage: "sous_mere", vivant: true, ...petit },
+    }))
+  }
+  const reservations = [
+      {
+        userId, acquereurNom: "Famille Martin (démo)", acquereurEmail: "famille.martin@example.com",
+        acquereurTel: "06 00 00 00 01", naissanceId: porteeCanine.id,
+        petitNaissanceId: chiots[0].id, statut: "confirmee", acompte: 300, montant: 1400,
+        dateReservation: dAgo(18), dateLivraison: dAgo(-14), notes: "Choix du chiot confirmé après visite.",
+      },
+      {
+        userId, acquereurNom: "Claire Bernard (démo)", acquereurEmail: "claire.bernard@example.com",
+        acquereurTel: "06 00 00 00 02", naissanceId: porteeCanine.id,
+        petitNaissanceId: chiots[1].id, statut: "attente", acompte: 200, montant: 1400,
+        dateReservation: dAgo(10), dateLivraison: dAgo(-16), notes: "Délai de réflexion en cours.",
+      },
+  ]
+  for (const reservation of reservations) {
+    const saved = await prisma.reservationElevage.create({ data: reservation })
+    if ((saved.acompte || 0) > 0) {
+      const s = splitTTC(saved.acompte!, 5.5)
+      await prisma.venteManuelle.create({
+        data: {
+          userId,
+          date: saved.dateReservation,
+          categorie: "animal_vivant",
+          description: `Acompte réservation animal — ${saved.acquereurNom}`,
+          tauxTVA: 5.5,
+          montantHT: s.montantHT,
+          montantTVA: s.montantTVA,
+          montant: s.montant,
+          journal: "VE",
+          module: "elevage",
+          paye: true,
+          tvaInferee: true,
+          sourceType: "reservation_elevage",
+          sourceRef: `${saved.id}:acompte`,
+          auto: true,
+        },
+      })
+    }
+  }
+
+  // ── Équins ──
+  const etoile = await prisma.animal.create({
+    data: {
+      userId, especeAnimaleId: "cheval", nom: "Étoile du Bocage", race: "Selle français",
+      identifiant: "25000157A123456", typeIdentifiant: "SIRE équin", sexe: "femelle",
+      dateNaissance: dYMD(Y - 8, 4, 22), dateArrivee: dYMD(Y - 5, 9, 10),
+      provenance: "Haras du Bocage", statut: "actif", poidsActuel: 545,
+      couleur: "Bai", parcelleGeoId: pature, notes: "Jument de loisir et poulinière.",
+    },
+  })
+  const sirocco = await prisma.animal.create({
+    data: {
+      userId, especeAnimaleId: "poney", nom: "Sirocco", race: "Connemara",
+      identifiant: "25000158B654321", typeIdentifiant: "SIRE équin", sexe: "male",
+      dateNaissance: dYMD(Y - 10, 5, 6), dateArrivee: dYMD(Y - 6, 3, 18),
+      provenance: "Poney-club des Prés", statut: "actif", poidsActuel: 365,
+      couleur: "Gris", parcelleGeoId: pature, notes: "Hongre de randonnée.",
+    },
+  })
+  for (const pedigree of [
+    { animalId: etoile.id, numeroLof: "SIRE-DEMO-SF-001", cotation: 3, titres: "Label loisir sélection" },
+    { animalId: sirocco.id, numeroLof: "SIRE-DEMO-CO-002", cotation: 2, titres: "Qualification loisir" },
+  ]) {
+    await prisma.pedigreeElevage.create({
+      data: {
+        userId, ...pedigree, confirmationLof: true,
+        dateConfirmation: dYMD(Y - 4, 8, 20),
+      },
+    })
+  }
+  await prisma.testSanteElevage.createMany({
+    data: [
+      {
+        userId, animalId: etoile.id, type: "radio_osteochondrose", resultat: "Absence de lésion",
+        laboratoire: "Clinique équine Démo", reference: "DEMO-EQ-001", date: dAgo(120),
+        notes: "Examen radiographique fictif.",
+      },
+      {
+        userId, animalId: sirocco.id, type: "aie", resultat: "Négatif",
+        laboratoire: "Laboratoire départemental Démo", reference: "DEMO-EQ-002", date: dAgo(65),
+        notes: "Test AIE fictif.",
+      },
+    ],
+  })
+
+  // ── NAC ──
+  const nac = [
+    {
+      especeAnimaleId: "furet", nom: "Pixel", race: "Zibeline", identifiant: "250269610300001",
+      typeIdentifiant: "Puce RFID", sexe: "male", poidsActuel: 1.35, couleur: "Zibeline",
+      dateNaissance: dYMD(Y - 2, 5, 9), notes: "Furet vacciné, identifié I-CAD.",
+    },
+    {
+      especeAnimaleId: "lapin_nain", nom: "Noisette", race: "Nain bélier", identifiant: "NAC-DEMO-LN-001",
+      typeIdentifiant: "Auxiliaire éleveur", sexe: "femelle", poidsActuel: 1.62, couleur: "Fauve",
+      dateNaissance: dYMD(Y - 1, 8, 14), notes: "Vaccination myxomatose/VHD à jour.",
+    },
+    {
+      especeAnimaleId: "calopsitte", nom: "Kiwi", race: "Type sauvage", identifiant: `FR-UOF-${Y}-001`,
+      typeIdentifiant: "Bague volière", sexe: "femelle", poidsActuel: 0.095, couleur: "Gris perlé",
+      dateNaissance: dYMD(Y - 2, 6, 2), notes: "Bague fermée ; contrôle annuel conseillé.",
+    },
+  ]
+  for (const [index, animal] of nac.entries()) {
+    const row = await prisma.animal.create({
+      data: {
+        userId, ...animal, dateArrivee: dYMD(Y - 1, 10, 12),
+        provenance: "Élevage familial Démo", statut: "actif",
+      },
+    })
+    await prisma.testSanteElevage.create({
+      data: {
+        userId, animalId: row.id, type: "bilan_sante", resultat: "Aucune anomalie",
+        laboratoire: "Clinique NAC Démo", reference: `DEMO-NAC-00${index + 1}`,
+        date: dAgo(35 + index * 12), notes: "Bilan sanitaire fictif.",
+      },
+    })
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 //  BOUTIQUE EN LIGNE
 // ═════════════════════════════════════════════════════════════════════════════
 
@@ -785,7 +1036,7 @@ async function seedBoutique() {
 async function seedVentesMarche() {
   // AMAP hebdo (15 paniers × 20 €) + marché du samedi, du 1er janvier à aujourd'hui.
   const jan1 = dYMD(Y, 1, 1)
-  let d = new Date(jan1)
+  const d = new Date(jan1)
   let sem = 1
   while (d.getTime() <= NOW.getTime()) {
     // AMAP (mercredi)
@@ -943,6 +1194,7 @@ async function main() {
   await seedStocks(); console.log("  ✓ Stocks espèces")
   const verger = await seedArbres(parcelles); console.log("  ✓ Verger (arbres, opérations, récoltes fruits)")
   const elevage = await seedElevage(parcelles); console.log("  ✓ Élevage complet (poules, brebis, cochons, lapins, caprin laitier pro)")
+  await seedElevagesOptionnels(parcelles); console.log("  ✓ Élevages optionnels (chiens/chats, équins, NAC)")
   await seedBoutique(); console.log("  ✓ Boutique (produits + commandes)")
   await seedVentesMarche(); console.log("  ✓ AMAP & marché (YTD)")
   await seedDepenses(); console.log("  ✓ Dépenses de structure (YTD)")

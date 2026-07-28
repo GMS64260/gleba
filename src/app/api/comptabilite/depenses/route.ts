@@ -39,6 +39,7 @@ export async function GET(request: NextRequest) {
           userId,
           date: { gte: startOfYear, lte: endOfYear },
           cout: { not: null },
+          fait: true,
         },
         orderBy: { date: 'desc' },
         include: {
@@ -74,7 +75,7 @@ export async function GET(request: NextRequest) {
               prix: true,
               userStocks: {
                 where: { userId },
-                select: { prix: true },
+                select: { prix: true, coutUnitaire: true },
                 take: 1,
               },
             },
@@ -122,6 +123,7 @@ export async function GET(request: NextRequest) {
           userId,
           dateArrivee: { gte: startOfYear, lte: endOfYear },
           prixAchat: { not: null },
+          prixAchatInclusDansLot: false,
         },
         orderBy: { dateArrivee: 'desc' },
         include: {
@@ -169,6 +171,7 @@ export async function GET(request: NextRequest) {
       fournisseur: string | null
       paye: boolean | null
       categorie: string
+      comptable: boolean
     }
 
     const expenses: UnifiedExpense[] = []
@@ -191,6 +194,7 @@ export async function GET(request: NextRequest) {
         fournisseur: null,
         paye: null,
         categorie: 'Soins animaux',
+        comptable: false,
       })
     })
 
@@ -210,12 +214,15 @@ export async function GET(request: NextRequest) {
         fournisseur: null,
         paye: null,
         categorie: 'Opérations arbres',
+        comptable: false,
       })
     })
 
     // ConsommationAliment -> dépenses (prix per-user avec fallback global)
     consommationsAliments.forEach(c => {
-      const userPrix = c.aliment.userStocks?.[0]?.prix ?? c.aliment.prix
+      const userPrix = c.aliment.userStocks?.[0]?.coutUnitaire
+        ?? c.aliment.userStocks?.[0]?.prix
+        ?? c.aliment.prix
       const montant = c.quantite * (userPrix || 0)
       if (montant > 0) {
         expenses.push({
@@ -232,6 +239,7 @@ export async function GET(request: NextRequest) {
           fournisseur: null,
           paye: null,
           categorie: 'Aliments',
+          comptable: false,
         })
       }
     })
@@ -255,6 +263,7 @@ export async function GET(request: NextRequest) {
           fournisseur: null,
           paye: null,
           categorie: 'Fertilisation',
+          comptable: false,
         })
       }
     })
@@ -275,6 +284,7 @@ export async function GET(request: NextRequest) {
         fournisseur: l.provenance,
         paye: null,
         categorie: 'Achats animaux',
+        comptable: true,
       })
     })
 
@@ -294,6 +304,7 @@ export async function GET(request: NextRequest) {
         fournisseur: a.provenance,
         paye: null,
         categorie: 'Achats animaux',
+        comptable: true,
       })
     })
 
@@ -313,6 +324,7 @@ export async function GET(request: NextRequest) {
         fournisseur: a.fournisseur,
         paye: null,
         categorie: 'Achats arbres',
+        comptable: true,
       })
     })
 
@@ -335,6 +347,7 @@ export async function GET(request: NextRequest) {
                    d.categorie === 'carburant' ? 'Carburant' :
                    d.categorie === 'main_oeuvre' ? 'Main d\'oeuvre' :
                    d.categorie === 'abonnement' ? 'Abonnement' : 'Autre',
+        comptable: d.comptable,
       })
     })
 
@@ -351,17 +364,22 @@ export async function GET(request: NextRequest) {
     const limited = filtered.slice(0, limit)
 
     // Calculer les stats
+    const comptables = filtered.filter((e) => e.comptable)
     const stats = {
-      total: filtered.reduce((sum, e) => sum + e.montant, 0),
+      // Le total comptable n'additionne jamais une consommation interne à la
+      // facture d'achat qui a approvisionné le stock.
+      total: comptables.reduce((sum, e) => sum + e.montant, 0),
+      totalComptable: comptables.reduce((sum, e) => sum + e.montant, 0),
+      totalAnalytique: filtered.filter((e) => !e.comptable).reduce((sum, e) => sum + e.montant, 0),
       count: filtered.length,
       parModule: {
-        potager: filtered.filter(e => e.module === 'potager').reduce((sum, e) => sum + e.montant, 0),
-        verger: filtered.filter(e => e.module === 'verger').reduce((sum, e) => sum + e.montant, 0),
-        elevage: filtered.filter(e => e.module === 'elevage').reduce((sum, e) => sum + e.montant, 0),
-        autre: filtered.filter(e => e.module === 'autre').reduce((sum, e) => sum + e.montant, 0),
+        potager: comptables.filter(e => e.module === 'potager').reduce((sum, e) => sum + e.montant, 0),
+        verger: comptables.filter(e => e.module === 'verger').reduce((sum, e) => sum + e.montant, 0),
+        elevage: comptables.filter(e => e.module === 'elevage').reduce((sum, e) => sum + e.montant, 0),
+        autre: comptables.filter(e => e.module === 'autre').reduce((sum, e) => sum + e.montant, 0),
       },
       parCategorie: Object.entries(
-        filtered.reduce((acc, e) => {
+        comptables.reduce((acc, e) => {
           acc[e.categorie] = (acc[e.categorie] || 0) + e.montant
           return acc
         }, {} as Record<string, number>)

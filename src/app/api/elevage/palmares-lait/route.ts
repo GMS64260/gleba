@@ -1,8 +1,9 @@
 /**
- * API Palmarès lait par chèvre (PROMPT 21).
+ * API Palmarès lait par animal (PROMPT 21).
  * GET /api/elevage/palmares-lait?annee=2026
  *
- * Reconstitue les lactations de chaque femelle laitière (mise-bas → collectes)
+ * Reconstitue les lactations de chaque animal ayant des collectes
+ * (mise-bas éventuelle → collectes)
  * et renvoie la lactation de référence de l'année sélectionnée avec lait 305 j
  * standardisé, pic, moyenne journalière, TB/TP et cellules moyens, plus le rang
  * de lactation. Sert au tri pour les décisions de réforme / renouvellement.
@@ -14,12 +15,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { synthetiseLactations, type LactationSynthese } from '@/lib/lait'
-
-const estLaitier = (production?: string | null, productions?: string[] | null): boolean => {
-  const p = (production || '').toLowerCase()
-  if (p.includes('lait') || p.includes('mixte')) return true
-  return (productions || []).some((x) => x.toLowerCase().includes('lait'))
-}
 
 /** Choisit la lactation de référence pour l'année : celle qui chevauche l'année, la plus récente ; sinon la dernière connue. */
 function lactationReference(lactations: LactationSynthese[], annee: number): LactationSynthese | null {
@@ -51,17 +46,12 @@ export async function GET(request: NextRequest) {
         id: true,
         nom: true,
         identifiant: true,
-        sexe: true,
-        especeAnimale: { select: { nom: true, production: true, productions: true } },
+        especeAnimale: { select: { nom: true } },
       },
     })
-    // Femelles (ou sexe inconnu) laitières — on exclut les mâles, non traits.
-    const femelles = animaux.filter(
-      (a) =>
-        estLaitier(a.especeAnimale?.production, a.especeAnimale?.productions) &&
-        (a.sexe === 'femelle' || a.sexe == null || a.sexe === 'inconnu')
-    )
-    const ids = femelles.map((a) => a.id)
+    // Toute cible peut recevoir une collecte. Les animaux sans collecte sont
+    // éliminés plus bas et ne créent donc aucun bruit dans le palmarès.
+    const ids = animaux.map((a) => a.id)
     if (ids.length === 0) {
       return NextResponse.json({ data: [], stats: { nbChevres: 0, annee } })
     }
@@ -100,7 +90,7 @@ export async function GET(request: NextRequest) {
       collectesParAnimal.set(c.animalId, arr)
     }
 
-    const lignes = femelles
+    const lignes = animaux
       .map((a) => {
         const lactations = synthetiseLactations(
           naissancesParMere.get(a.id) || [],

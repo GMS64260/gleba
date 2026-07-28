@@ -27,6 +27,7 @@ export const soinFieldsSchema = z.object({
     produit: z.string().max(200).nullable().optional(),
     // PROMPT 19B — produit véto FK + métadonnées
     produitId: z.string().nullable().optional(),
+    stockMedicamentId: z.string().nullable().optional(),
     dose: z.string().max(100).nullable().optional(),
     voie: z.enum(VOIES_ADMIN).nullable().optional(),
     motif: z.string().max(500).nullable().optional(),
@@ -41,6 +42,10 @@ export const soinFieldsSchema = z.object({
     // PROMPT 30 — traitement à plusieurs injections (délai d'attente depuis la dernière)
     nbInjections: z.number().int().min(1).max(30).optional(),
     intervalleInjectionsHeures: z.number().int().min(1).max(2160).nullable().optional(),
+    // QA caprin cms1v5j14 — délais d'attente surchargeables par soin (ordonnance
+    // vétérinaire, usage hors AMM/cascade). null/absent = valeur du produit.
+    tempsAttenteLaitJ: z.number().int().min(0).max(365).nullable().optional(),
+    tempsAttenteViandeJ: z.number().int().min(0).max(365).nullable().optional(),
   })
 
 export const soinSchema = soinFieldsSchema

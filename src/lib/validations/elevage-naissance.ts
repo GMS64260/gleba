@@ -8,6 +8,7 @@ export const petitNaissanceSchema = z.object({
   boucleDefinitive: z.string().max(100).nullable().optional(),
   modeElevage: z.enum(['sous_mere', 'biberon']).nullable().optional(),
   poids: z.number().min(0).nullable().optional(),
+  couleur: z.string().max(60).nullable().optional(),
   vivant: z.boolean().optional(),
   notes: z.string().max(500).nullable().optional(),
 })

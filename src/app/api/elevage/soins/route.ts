@@ -16,6 +16,7 @@ import { Prisma } from '@prisma/client'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { createDepenseFromSoinAnimal, deleteAutoEntry } from '@/lib/auto-compta'
+import { invalidateKpi } from '@/lib/kpi'
 import { soinPatchSchema, soinSchema } from '@/lib/validations/elevage-soin'
 import { calendrierInjections, derniereInjectionActive, ajouterJours } from '@/lib/elevage/injections'
 import { randomUUID } from 'node:crypto'
@@ -23,12 +24,24 @@ import { randomUUID } from 'node:crypto'
 // (recompute-from-truth), cross-granularité individu↔lot et symétrique
 // POST/PATCH/DELETE. Cf. src/lib/elevage/attente-lait.ts.
 import { ciblesAffectees, resyncEcartementLait } from '@/lib/elevage/attente-lait'
+import {
+  PLANCHER_CASCADE_LAIT_J,
+  PLANCHER_CASCADE_VIANDE_J,
+  resoudreDelaisVeterinaires,
+  type EspecePourDelai,
+} from '@/lib/elevage/delais-veterinaires'
 
 function addDays(d: Date, n: number): Date {
   const r = new Date(d)
   r.setUTCDate(r.getUTCDate() + n)
   return r
 }
+
+const TYPES_MEDICAMENTEUX = new Set([
+  'Vaccination',
+  'Vermifuge',
+  'Traitement vétérinaire',
+])
 
 // Fenêtre couverte par un soin (pour cibler le resync) : de sa date à la plus
 // lointaine de ses fins d'attente. Bornes filtrées des nulls.
@@ -49,25 +62,49 @@ export async function GET(request: NextRequest) {
     const lotId = searchParams.get('lotId')
     const type = searchParams.get('type')
     const fait = searchParams.get('fait')
+    const rappels = searchParams.get('rappels') === '1'
+    const filiere = searchParams.get('filiere')
     const limit = parseInt(searchParams.get('limit') || '100')
     const annee = parseInt(searchParams.get('annee') || String(new Date().getFullYear()))
     const yearStart = new Date(annee, 0, 1)
     const yearEnd = new Date(annee, 11, 31, 23, 59, 59)
 
-    const where: any = { userId: session.user.id, date: { gte: yearStart, lte: yearEnd } }
+    // Le mode `rappels=1` sert aux dashboards opérationnels : il doit inclure
+    // tous les soins planifiés non réalisés, y compris un retard de l'année
+    // précédente ou une échéance de l'année suivante. Le GET historique garde
+    // son filtre annuel et sa pagination existants.
+    const where: any = rappels
+      ? { userId: session.user.id, fait: false, datePrevue: { not: null } }
+      : { userId: session.user.id, date: { gte: yearStart, lte: yearEnd } }
     if (animalId) where.animalId = parseInt(animalId)
     if (lotId) where.lotId = parseInt(lotId)
     if (type) where.type = type
     if (fait !== null && fait !== undefined) where.fait = fait === 'true'
+    if (filiere) {
+      where.OR = [
+        { animal: { especeAnimale: { filiere } } },
+        { lot: { especeAnimale: { filiere } } },
+      ]
+    }
 
     const soins = await prisma.soinAnimal.findMany({
       where,
       orderBy: [{ fait: 'asc' }, { datePrevue: 'asc' }, { date: 'desc' }],
-      take: limit,
+      ...(rappels ? {} : { take: limit }),
       include: {
-        animal: { select: { id: true, nom: true, identifiant: true } },
-        lot: { select: { id: true, nom: true } },
+        animal: { select: { id: true, nom: true, identifiant: true, especeAnimale: { select: { id: true, filiere: true } } } },
+        lot: { select: { id: true, nom: true, especeAnimale: { select: { id: true, filiere: true } } } },
         produitVeterinaire: { select: { id: true, nom: true, substanceActive: true } },
+        stockMedicament: {
+          select: {
+            id: true,
+            numeroLot: true,
+            datePeremption: true,
+            ordonnanceUrl: true,
+            quantite: true,
+            unite: true,
+          },
+        },
       },
     })
     const injections = soins.length > 0
@@ -121,31 +158,111 @@ export async function POST(request: NextRequest) {
     // Audit élevage 2026-06-11 — validation tenant : l'animal/le lot soigné
     // doit appartenir au user (sinon le soin référence — et la réponse
     // expose via include — la fiche d'un animal d'un autre compte).
+    let cibleEspece: EspecePourDelai | null = null
     if (d.animalId) {
       const a = await prisma.animal.findFirst({
         where: { id: d.animalId, userId: session.user.id },
-        select: { id: true },
+        select: {
+          id: true,
+          especeAnimale: {
+            select: { id: true, nom: true, categorieReglementaire: true },
+          },
+        },
       })
       if (!a) return NextResponse.json({ error: 'Animal introuvable' }, { status: 404 })
+      cibleEspece = a.especeAnimale
     }
     if (d.lotId) {
       const l = await prisma.lotAnimaux.findFirst({
         where: { id: d.lotId, userId: session.user.id },
-        select: { id: true },
+        select: {
+          id: true,
+          especeAnimale: {
+            select: { id: true, nom: true, categorieReglementaire: true },
+          },
+        },
       })
       if (!l) return NextResponse.json({ error: 'Lot introuvable' }, { status: 404 })
+      cibleEspece = l.especeAnimale
     }
 
     // Snapshot temps d'attente depuis le produit FK si renseigné
     let tempsLait = 0
     let tempsViande = 0
     let nomProduit = d.produit || null
+    let delaiAttenteSource: string | null = d.produitId ? 'referentiel_produit' : 'saisie_libre'
+    let produitHorsAmm = false
     if (d.produitId) {
-      const p = await prisma.produitVeterinaire.findUnique({ where: { id: d.produitId } })
-      if (p) {
-        tempsLait = p.tempsAttenteLaitJ
-        tempsViande = p.tempsAttenteViandeJ
-        if (!nomProduit) nomProduit = p.nom
+      const p = await prisma.produitVeterinaire.findUnique({
+        where: { id: d.produitId },
+        include: {
+          delaisParEspece: cibleEspece
+            ? { where: { especeAnimaleId: cibleEspece.id } }
+            : false,
+        },
+      })
+      if (!p) return NextResponse.json({ error: 'Produit vétérinaire introuvable' }, { status: 400 })
+      const resolus = resoudreDelaisVeterinaires(p, cibleEspece)
+      tempsLait = resolus.tempsAttenteLaitJ
+      tempsViande = resolus.tempsAttenteViandeJ
+      delaiAttenteSource = resolus.source
+      produitHorsAmm = !resolus.couvertAmm
+      if (!nomProduit) nomProduit = p.nom
+    }
+    const soinMedicamenteux = TYPES_MEDICAMENTEUX.has(d.type)
+    if (soinMedicamenteux && d.produitId && !d.stockMedicamentId) {
+      return NextResponse.json(
+        {
+          error: "Sélectionnez un lot de pharmacie pour ce médicament.",
+          code: "LOT_PHARMACIE_REQUIS",
+        },
+        { status: 422 },
+      )
+    }
+    const stockMedicament = d.stockMedicamentId
+      ? await prisma.stockMedicamentElevage.findFirst({
+          where: { id: d.stockMedicamentId, userId: session.user.id },
+        })
+      : null
+    if (d.stockMedicamentId && !stockMedicament) {
+      return NextResponse.json({ error: "Lot de pharmacie introuvable." }, { status: 404 })
+    }
+    if (stockMedicament && stockMedicament.produitId !== d.produitId) {
+      return NextResponse.json(
+        { error: "Le lot de pharmacie ne correspond pas au produit sélectionné." },
+        { status: 422 },
+      )
+    }
+    if (stockMedicament?.datePeremption && stockMedicament.datePeremption.getTime() < dateSoin.getTime()) {
+      return NextResponse.json(
+        { error: `Le lot ${stockMedicament.numeroLot} est périmé à la date du soin.` },
+        { status: 422 },
+      )
+    }
+    if (stockMedicament && (!d.quantite || d.quantite <= 0)) {
+      return NextResponse.json(
+        { error: `Renseignez la quantité prélevée en ${stockMedicament.unite}.` },
+        { status: 422 },
+      )
+    }
+    // QA caprin cms1v5j14 — délais surchargeables par soin : la valeur AMM du
+    // produit n'est qu'un défaut, l'ordonnance du vétérinaire prime (usage hors
+    // AMM/cascade : délais majorés). null = conserver la valeur du produit.
+    const defautLait = tempsLait
+    const defautViande = tempsViande
+    if (d.tempsAttenteLaitJ != null) {
+      tempsLait = produitHorsAmm
+        ? Math.max(PLANCHER_CASCADE_LAIT_J, d.tempsAttenteLaitJ)
+        : d.tempsAttenteLaitJ
+    }
+    if (d.tempsAttenteViandeJ != null) {
+      tempsViande = produitHorsAmm
+        ? Math.max(PLANCHER_CASCADE_VIANDE_J, d.tempsAttenteViandeJ)
+        : d.tempsAttenteViandeJ
+    }
+    if (d.tempsAttenteLaitJ != null || d.tempsAttenteViandeJ != null) {
+      if (tempsLait !== defautLait || tempsViande !== defautViande) {
+        delaiAttenteSource = 'prescription'
       }
     }
     // PROMPT 30 — un traitement peut compter plusieurs injections (ex. J0/J1/J2).
@@ -162,6 +279,20 @@ export async function POST(request: NextRequest) {
     const finViande = d.fait && tempsViande > 0 ? addDays(derniereInjection, tempsViande) : null
 
     const result = await prisma.$transaction(async (tx) => {
+      const quantitePrelevee = d.fait && stockMedicament ? d.quantite ?? 0 : 0
+      if (quantitePrelevee > 0) {
+        const decremente = await tx.stockMedicamentElevage.updateMany({
+          where: {
+            id: stockMedicament!.id,
+            userId: session.user.id,
+            quantite: { gte: quantitePrelevee },
+          },
+          data: { quantite: { decrement: quantitePrelevee } },
+        })
+        if (decremente.count !== 1) {
+          throw new Error(`STOCK_MEDICAMENT_INSUFFISANT:${stockMedicament!.quantite}`)
+        }
+      }
       const soin = await tx.soinAnimal.create({
         data: {
           userId: session.user.id,
@@ -172,10 +303,14 @@ export async function POST(request: NextRequest) {
           description: d.description ?? null,
           produit: nomProduit,
           produitId: d.produitId ?? null,
+          stockMedicamentId: stockMedicament?.id ?? null,
+          numeroLotMedicament: stockMedicament?.numeroLot ?? null,
+          peremptionMedicament: stockMedicament?.datePeremption ?? null,
+          quantitePreleveeStock: quantitePrelevee,
           dose: d.dose ?? null,
           voie: d.voie ?? null,
           motif: d.motif ?? null,
-          ordonnanceUrl: d.ordonnanceUrl || null,
+          ordonnanceUrl: d.ordonnanceUrl || stockMedicament?.ordonnanceUrl || null,
           quantite: d.quantite ?? null,
           unite: d.unite ?? null,
           cout: d.cout ?? null,
@@ -187,6 +322,7 @@ export async function POST(request: NextRequest) {
           intervalleInjectionsHeures: intervalleH,
           tempsAttenteLaitJ: tempsLait > 0 ? tempsLait : null,
           tempsAttenteViandeJ: tempsViande > 0 ? tempsViande : null,
+          delaiAttenteSource,
           finAttenteLait: finLait,
           finAttenteViande: finViande,
         },
@@ -210,23 +346,16 @@ export async function POST(request: NextRequest) {
         const cibles = await ciblesAffectees(tx, session.user.id, d.animalId ?? null, d.lotId ?? null)
         nbEcartees = await resyncEcartementLait(tx, session.user.id, cibles, dateSoin, finLait)
       }
+      await createDepenseFromSoinAnimal(session.user.id, {
+        id: soin.id,
+        type: soin.type,
+        cout: soin.cout,
+        date: soin.date,
+        fait: soin.fait,
+      }, tx)
       return { soin, nbEcartees }
     })
-
-    // Auto-comptabilite : creer une depense si cout > 0
-    if (result.soin.cout && result.soin.cout > 0) {
-      try {
-        await createDepenseFromSoinAnimal(session.user.id, {
-          id: result.soin.id,
-          type: result.soin.type,
-          cout: result.soin.cout,
-          date: result.soin.date,
-          fait: result.soin.fait,
-        })
-      } catch (autoComptaError) {
-        console.error('Auto-compta error (soin_animal POST):', autoComptaError)
-      }
-    }
+    invalidateKpi(session.user.id)
 
     return NextResponse.json(
       {
@@ -239,6 +368,13 @@ export async function POST(request: NextRequest) {
     )
   } catch (err) {
     console.error('POST /api/elevage/soins error:', err)
+    if (err instanceof Error && err.message.startsWith('STOCK_MEDICAMENT_INSUFFISANT:')) {
+      const disponible = err.message.split(':')[1]
+      return NextResponse.json(
+        { error: `Stock insuffisant : ${disponible} disponible(s).`, code: 'STOCK_MEDICAMENT_INSUFFISANT' },
+        { status: 422 },
+      )
+    }
     return NextResponse.json({ error: 'Erreur interne du serveur' }, { status: 500 })
   }
 }
@@ -252,7 +388,7 @@ export async function PATCH(request: NextRequest) {
     if (!parsed.success) {
       return NextResponse.json({ error: 'Données invalides', details: parsed.error.flatten() }, { status: 400 })
     }
-    const { id, fait, date, notes, type, description, produit, quantite, unite, cout, datePrevue, veterinaire, animalId, lotId, dose, voie, motif, ordonnanceUrl, nbInjections, intervalleInjectionsHeures } = parsed.data
+    const { id, fait, date, notes, type, description, produit, quantite, unite, cout, datePrevue, veterinaire, animalId, lotId, dose, voie, motif, ordonnanceUrl, nbInjections, intervalleInjectionsHeures, tempsAttenteLaitJ, tempsAttenteViandeJ, stockMedicamentId } = parsed.data
 
     const existing = await prisma.soinAnimal.findFirst({
       where: { id, userId: session.user.id },
@@ -288,9 +424,46 @@ export async function PATCH(request: NextRequest) {
     if (voie !== undefined) updateData.voie = voie
     if (motif !== undefined) updateData.motif = motif
     if (ordonnanceUrl !== undefined) updateData.ordonnanceUrl = ordonnanceUrl || null
+    if (stockMedicamentId !== undefined) updateData.stockMedicamentId = stockMedicamentId || null
     // PROMPT 30 — protocole à plusieurs injections
     if (nbInjections !== undefined) updateData.nbInjections = nbInjections
     if (intervalleInjectionsHeures !== undefined) updateData.intervalleInjectionsHeures = intervalleInjectionsHeures
+    // QA caprin cms1v5j14 — délais d'attente surchargeables (ordonnance véto)
+    if (tempsAttenteLaitJ !== undefined) updateData.tempsAttenteLaitJ = tempsAttenteLaitJ
+    if (tempsAttenteViandeJ !== undefined) updateData.tempsAttenteViandeJ = tempsAttenteViandeJ
+    if (tempsAttenteLaitJ !== undefined || tempsAttenteViandeJ !== undefined) {
+      updateData.delaiAttenteSource = 'prescription'
+    }
+    if (
+      existing.quantitePreleveeStock > 0 &&
+      (
+        (stockMedicamentId !== undefined && stockMedicamentId !== existing.stockMedicamentId) ||
+        (quantite !== undefined && quantite !== existing.quantite)
+      )
+    ) {
+      return NextResponse.json(
+        { error: "Le lot ou la quantité d'un soin déjà prélevé ne peut pas être modifié. Annulez d'abord le soin." },
+        { status: 409 },
+      )
+    }
+    const stockEffectifId = stockMedicamentId !== undefined
+      ? stockMedicamentId
+      : existing.stockMedicamentId
+    const stockEffectif = stockEffectifId
+      ? await prisma.stockMedicamentElevage.findFirst({
+          where: { id: stockEffectifId, userId: session.user.id },
+        })
+      : null
+    if (stockEffectifId && !stockEffectif) {
+      return NextResponse.json({ error: "Lot de pharmacie introuvable." }, { status: 404 })
+    }
+    if (stockEffectif && stockMedicamentId !== undefined) {
+      updateData.numeroLotMedicament = stockEffectif.numeroLot
+      updateData.peremptionMedicament = stockEffectif.datePeremption
+      if (!updateData.ordonnanceUrl && stockEffectif.ordonnanceUrl) {
+        updateData.ordonnanceUrl = stockEffectif.ordonnanceUrl
+      }
+    }
 
     // Audit élevage 2026-06-11 — validation tenant des cibles modifiées.
     if (updateData.animalId) {
@@ -320,7 +493,13 @@ export async function PATCH(request: NextRequest) {
     const injectionsChangees =
       (updateData.nbInjections !== undefined && updateData.nbInjections !== existing.nbInjections) ||
       (updateData.intervalleInjectionsHeures !== undefined && updateData.intervalleInjectionsHeures !== existing.intervalleInjectionsHeures)
-    if (dateChangee || faitChange || injectionsChangees) {
+    // QA caprin cms1v5j14 — un changement de délai d'attente recale les fenêtres.
+    const taChange =
+      (updateData.tempsAttenteLaitJ !== undefined && updateData.tempsAttenteLaitJ !== existing.tempsAttenteLaitJ) ||
+      (updateData.tempsAttenteViandeJ !== undefined && updateData.tempsAttenteViandeJ !== existing.tempsAttenteViandeJ)
+    const taLaitEffectif = updateData.tempsAttenteLaitJ !== undefined ? updateData.tempsAttenteLaitJ : existing.tempsAttenteLaitJ
+    const taViandeEffectif = updateData.tempsAttenteViandeJ !== undefined ? updateData.tempsAttenteViandeJ : existing.tempsAttenteViandeJ
+    if (dateChangee || faitChange || injectionsChangees || taChange) {
       const newDate = (updateData.date as Date | undefined) ?? existing.date
       const seraFait = (updateData.fait as boolean | undefined) ?? existing.fait
       const nbInj = (updateData.nbInjections as number | undefined) ?? existing.nbInjections ?? 1
@@ -328,20 +507,50 @@ export async function PATCH(request: NextRequest) {
       const derniere = nbInj > 1 && intervalleH
         ? new Date(newDate.getTime() + (nbInj - 1) * intervalleH * 3_600_000)
         : newDate
-      updateData.finAttenteLait = seraFait && existing.tempsAttenteLaitJ
-        ? addDays(derniere, existing.tempsAttenteLaitJ)
+      updateData.finAttenteLait = seraFait && taLaitEffectif
+        ? addDays(derniere, taLaitEffectif)
         : null
-      updateData.finAttenteViande = seraFait && existing.tempsAttenteViandeJ
-        ? addDays(derniere, existing.tempsAttenteViandeJ)
+      updateData.finAttenteViande = seraFait && taViandeEffectif
+        ? addDays(derniere, taViandeEffectif)
         : null
     }
 
     const soin = await prisma.$transaction(async (tx) => {
+      const devientRealise = fait === true && !existing.fait && existing.quantitePreleveeStock <= 0
+      const devientPlanifie = fait === false && existing.fait && existing.quantitePreleveeStock > 0
+      if (devientRealise && stockEffectif) {
+        const quantiteADecompter = quantite ?? existing.quantite ?? 0
+        if (quantiteADecompter <= 0) {
+          throw new Error(`QUANTITE_MEDICAMENT_REQUISE:${stockEffectif.unite}`)
+        }
+        if (stockEffectif.datePeremption && stockEffectif.datePeremption.getTime() < new Date(updateData.date ?? existing.date).getTime()) {
+          throw new Error(`LOT_MEDICAMENT_PERIME:${stockEffectif.numeroLot}`)
+        }
+        const decremente = await tx.stockMedicamentElevage.updateMany({
+          where: {
+            id: stockEffectif.id,
+            userId: session.user.id,
+            quantite: { gte: quantiteADecompter },
+          },
+          data: { quantite: { decrement: quantiteADecompter } },
+        })
+        if (decremente.count !== 1) {
+          throw new Error(`STOCK_MEDICAMENT_INSUFFISANT:${stockEffectif.quantite}`)
+        }
+        updateData.quantitePreleveeStock = quantiteADecompter
+      } else if (devientPlanifie && existing.stockMedicamentId) {
+        await tx.stockMedicamentElevage.update({
+          where: { id: existing.stockMedicamentId },
+          data: { quantite: { increment: existing.quantitePreleveeStock } },
+        })
+        updateData.quantitePreleveeStock = 0
+      }
       const updated = await tx.soinAnimal.update({
         where: { id },
         data: updateData,
         include: { animal: true, lot: true, produitVeterinaire: true },
       })
+      let finalSoin = updated
 
       const injectionsExistantes = await tx.$queryRaw<Array<{
         id: string; numero: number; datePrevue: Date; dateRealisee: Date | null; statut: string
@@ -350,7 +559,7 @@ export async function PATCH(request: NextRequest) {
         FROM injections_soins WHERE soin_id = ${id} AND user_id = ${session.user.id}
         ORDER BY numero
       `
-      if (injectionsChangees || dateChangee || faitChange || injectionsExistantes.length === 0) {
+      if (injectionsChangees || dateChangee || faitChange || taChange || injectionsExistantes.length === 0) {
         const nombre = updateData.nbInjections ?? existing.nbInjections
         const intervalle = updateData.intervalleInjectionsHeures !== undefined
           ? updateData.intervalleInjectionsHeures
@@ -397,13 +606,14 @@ export async function PATCH(request: NextRequest) {
         `
         const derniere = derniereInjectionActive(injections)
         const commence = injections.some((i) => i.statut === 'realisee')
-        await tx.soinAnimal.update({
+        finalSoin = await tx.soinAnimal.update({
           where: { id },
           data: {
             fait: commence,
-            finAttenteLait: commence && derniere ? ajouterJours(derniere, existing.tempsAttenteLaitJ) : null,
-            finAttenteViande: commence && derniere ? ajouterJours(derniere, existing.tempsAttenteViandeJ) : null,
+            finAttenteLait: commence && derniere ? ajouterJours(derniere, taLaitEffectif) : null,
+            finAttenteViande: commence && derniere ? ajouterJours(derniere, taViandeEffectif) : null,
           },
+          include: { animal: true, lot: true, produitVeterinaire: true },
         })
       }
 
@@ -413,7 +623,7 @@ export async function PATCH(request: NextRequest) {
       const cibleChangee =
         (updateData.animalId !== undefined && updateData.animalId !== existing.animalId) ||
         (updateData.lotId !== undefined && updateData.lotId !== existing.lotId)
-      if (dateChangee || faitChange || cibleChangee || injectionsChangees) {
+      if (dateChangee || faitChange || cibleChangee || injectionsChangees || taChange) {
         const c1 = await ciblesAffectees(tx, session.user.id, existing.animalId, existing.lotId)
         const c2 = await ciblesAffectees(tx, session.user.id, updated.animalId, updated.lotId)
         const cibles = {
@@ -424,26 +634,38 @@ export async function PATCH(request: NextRequest) {
         if (f) await resyncEcartementLait(tx, session.user.id, cibles, f.min, f.max)
       }
 
-      return updated
-    })
-
-    // Auto-comptabilite : resynchroniser la depense auto avec les valeurs finales
-    // (le helper supprime l'ecriture si cout devient null/0)
-    try {
       await createDepenseFromSoinAnimal(session.user.id, {
-        id: soin.id,
-        type: soin.type,
-        cout: soin.cout,
-        date: soin.date,
-        fait: soin.fait,
-      })
-    } catch (autoComptaError) {
-      console.error('Auto-compta error (soin_animal PATCH):', autoComptaError)
-    }
+        id: finalSoin.id,
+        type: finalSoin.type,
+        cout: finalSoin.cout,
+        date: finalSoin.date,
+        fait: finalSoin.fait,
+      }, tx)
+      return finalSoin
+    })
+    invalidateKpi(session.user.id)
 
     return NextResponse.json({ data: soin })
   } catch (error) {
     console.error('PATCH /api/elevage/soins error:', error)
+    if (error instanceof Error && error.message.startsWith('STOCK_MEDICAMENT_INSUFFISANT:')) {
+      return NextResponse.json(
+        { error: `Stock insuffisant : ${error.message.split(':')[1]} disponible(s).`, code: 'STOCK_MEDICAMENT_INSUFFISANT' },
+        { status: 422 },
+      )
+    }
+    if (error instanceof Error && error.message.startsWith('QUANTITE_MEDICAMENT_REQUISE:')) {
+      return NextResponse.json(
+        { error: `Renseignez la quantité prélevée en ${error.message.split(':')[1]}.` },
+        { status: 422 },
+      )
+    }
+    if (error instanceof Error && error.message.startsWith('LOT_MEDICAMENT_PERIME:')) {
+      return NextResponse.json(
+        { error: `Le lot ${error.message.split(':')[1]} est périmé à la date du soin.` },
+        { status: 422 },
+      )
+    }
     return NextResponse.json({ error: 'Erreur interne du serveur' }, { status: 500 })
   }
 }
@@ -462,18 +684,18 @@ export async function DELETE(request: NextRequest) {
     })
     if (!existing) return NextResponse.json({ error: 'Soin non trouvé' }, { status: 404 })
 
-    // Supprimer les ecritures auto-compta liees
-    try {
-      await deleteAutoEntry('soin_animal', parseInt(id), 'depense')
-    } catch (autoComptaError) {
-      console.error('Auto-compta cleanup error (soin_animal):', autoComptaError)
-    }
-
     // Réintégration recompute-from-truth : on supprime d'abord le soin, puis on
     // recalcule l'écartement sur sa fenêtre et ses cibles (cross-granularité).
     // Les collectes couvertes uniquement par ce soin redeviennent
     // commercialisables ; celles couvertes par un autre soin restent écartées.
     await prisma.$transaction(async (tx) => {
+      await deleteAutoEntry('soin_animal', existing.id, 'depense', session.user.id, tx)
+      if (existing.stockMedicamentId && existing.quantitePreleveeStock > 0) {
+        await tx.stockMedicamentElevage.update({
+          where: { id: existing.stockMedicamentId },
+          data: { quantite: { increment: existing.quantitePreleveeStock } },
+        })
+      }
       await tx.soinAnimal.delete({ where: { id: parseInt(id) } })
       if (existing.finAttenteLait) {
         const cibles = await ciblesAffectees(tx, session.user.id, existing.animalId, existing.lotId)
@@ -481,6 +703,7 @@ export async function DELETE(request: NextRequest) {
         if (f) await resyncEcartementLait(tx, session.user.id, cibles, f.min, f.max)
       }
     })
+    invalidateKpi(session.user.id)
 
     return NextResponse.json({ success: true })
   } catch (error) {

@@ -24,9 +24,19 @@ export const venteProduitSchema = z
     // fabrication (traçabilité + décrément du stock de cave). Requis pour une
     // vente de type 'fromage' (contrôlé en API).
     lotFromageId: z.string().min(1).nullable().optional(),
+    // Ticket cms1vqsqu — cession à titre gratuit (don / autoconsommation) :
+    // seule justification acceptée d'un prix à 0 € pour un animal vivant.
+    // Pas de colonne dédiée : l'API matérialise la convention « prixTotal 0 +
+    // notes préfixées [Cession gratuite] ».
+    cessionGratuite: z.boolean().optional().default(false),
+    // Ticket cms1vqsqu — marqueur posé par le formulaire Ventes (VentesSubTab)
+    // pour activer la validation stricte animal_vivant (prix > 0 ou cession
+    // gratuite, acquéreur requis). Les appelants historiques (ex : bouton
+    // « Vendre » de la fiche animal) ne l'envoient pas et restent fonctionnels.
+    validationVente: z.boolean().optional(),
     notes: z.string().max(5000).nullable().optional(),
   })
-  .refine((d) => !(d.paye === true && d.prixUnitaire === 0), {
+  .refine((d) => !(d.paye === true && d.prixUnitaire === 0 && !d.cessionGratuite), {
     message:
       'Une vente marquée "Payé" ne peut pas avoir un prix unitaire de 0 € (incohérent en comptabilité). Décochez "Payé" ou saisissez un prix.',
     path: ['prixUnitaire'],

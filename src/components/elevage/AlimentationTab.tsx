@@ -15,6 +15,7 @@ import {
   AlertTriangle,
   Calendar,
   Check,
+  Copy,
   Trash2,
   Scale,
   ClipboardCheck,
@@ -45,6 +46,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
 import { verifierPrixAliment, type CategorieAliment } from "@/lib/elevage/prix-aliment-seuils"
 import { todayLocalISO } from '@/lib/format-utils'
+import { useFiliereSelection, capacitesSelection, filiereMatch } from "@/lib/elevage/filiere-context"
 
 // ============================================================
 // Composant principal
@@ -59,6 +61,18 @@ export function AlimentationTab() {
   const [activeSub, setActiveSub] = React.useState<string>("stocks")
   const [soinAnimalId, setSoinAnimalId] = React.useState<string | null>(null)
   const [ouvrirNouveauSoin, setOuvrirNouveauSoin] = React.useState(false)
+  // Ration (UFL/PDIN) et Registre d'élevage/pharmacie réglementaire sont des
+  // outils de rente. Masqués pour un atelier compagnie/équin/NAC (feedback
+  // Guillaume 2026-07-25). cf. filiere-ui.ts
+  const caps = capacitesSelection(useFiliereSelection())
+
+  // Si l'atelier passe en non-rente alors qu'un onglet de rente est actif, on
+  // rebascule sur Soins pour ne pas afficher un panneau vide/hors sujet.
+  React.useEffect(() => {
+    if (!caps.productionRente && activeSub === "ration") {
+      setActiveSub("soins")
+    }
+  }, [caps.productionRente, activeSub])
 
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -94,10 +108,12 @@ export function AlimentationTab() {
           <Stethoscope className="h-4 w-4" />
           Soins
         </TabsTrigger>
-        <TabsTrigger value="ration" className="flex items-center gap-1.5">
-          <Scale className="h-4 w-4" />
-          Ration
-        </TabsTrigger>
+        {caps.productionRente && (
+          <TabsTrigger value="ration" className="flex items-center gap-1.5">
+            <Scale className="h-4 w-4" />
+            Ration
+          </TabsTrigger>
+        )}
         <TabsTrigger value="registre" className="flex items-center gap-1.5">
           <ClipboardCheck className="h-4 w-4" />
           Registre & pharmacie
@@ -113,9 +129,11 @@ export function AlimentationTab() {
       <TabsContent value="soins">
         <SoinsSubTab initialAnimalId={soinAnimalId} initialOpen={ouvrirNouveauSoin} />
       </TabsContent>
-      <TabsContent value="ration">
-        <RationSubTab />
-      </TabsContent>
+      {caps.productionRente && (
+        <TabsContent value="ration">
+          <RationSubTab />
+        </TabsContent>
+      )}
       <TabsContent value="registre">
         <SanitaireReglementaireSubTab />
       </TabsContent>
@@ -501,8 +519,8 @@ interface Consommation {
 }
 
 interface AlimentSimple { id: string; nom: string; type: string | null }
-interface LotSimple { id: number; nom: string | null; especeAnimale: { nom: string } }
-interface AnimalSimple { id: number; nom: string | null; identifiant: string | null; especeAnimale: { nom: string } }
+interface LotSimple { id: number; nom: string | null; especeAnimale: { nom: string; filiere?: string | null } }
+interface AnimalSimple { id: number; nom: string | null; identifiant: string | null; especeAnimale: { nom: string; filiere?: string | null } }
 
 interface ConsoStats {
   totalKg: number
@@ -512,11 +530,15 @@ interface ConsoStats {
 
 function ConsommationsSubTab() {
   const { toast } = useToast()
+  const filiereSel = useFiliereSelection()
   const [isLoading, setIsLoading] = React.useState(true)
   const [consommations, setConsommations] = React.useState<Consommation[]>([])
   const [aliments, setAliments] = React.useState<AlimentSimple[]>([])
   const [lots, setLots] = React.useState<LotSimple[]>([])
   const [animaux, setAnimaux] = React.useState<AnimalSimple[]>([])
+  // Cibles (lot/animal) proposées scopées à l'atelier courant.
+  const lotsCibles = lots.filter((l) => filiereMatch(filiereSel, l.especeAnimale?.filiere))
+  const animauxCibles = animaux.filter((a) => filiereMatch(filiereSel, a.especeAnimale?.filiere))
   const [stats, setStats] = React.useState<ConsoStats | null>(null)
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
   const [filterDateDebut, setFilterDateDebut] = React.useState("")
@@ -672,21 +694,44 @@ function ConsommationsSubTab() {
     }
   }
 
+  // Consommations visibles = ciblées sur un animal/lot de l'atelier courant ;
+  // les saisies globales (cheptel) restent en vue « Tous » / rente. Les KPI sont
+  // recalculés dessus pour ne pas afficher des aliments d'une autre filière.
+  const filiereLot = new Map(lots.map((l) => [l.id, l.especeAnimale?.filiere]))
+  const filiereAnimal = new Map(animaux.map((a) => [a.id, a.especeAnimale?.filiere]))
+  const consommationsVisibles = consommations.filter((c) => {
+    if (c.animal) return filiereMatch(filiereSel, filiereAnimal.get(c.animal.id))
+    if (c.lot) return filiereMatch(filiereSel, filiereLot.get(c.lot.id))
+    return filiereSel === "toutes" || filiereSel === "rente"
+  })
+  const statsView: ConsoStats | null = (() => {
+    if (filiereSel === "toutes") return stats
+    const parA = new Map<string, { alimentId: string; nom: string; totalKg: number; count: number }>()
+    let totalKg = 0
+    for (const c of consommationsVisibles) {
+      totalKg += c.quantite
+      const e = parA.get(c.aliment.id) ?? { alimentId: c.aliment.id, nom: c.aliment.nom, totalKg: 0, count: 0 }
+      e.totalKg += c.quantite; e.count += 1
+      parA.set(c.aliment.id, e)
+    }
+    return { totalKg, nbEnregistrements: consommationsVisibles.length, parAliment: [...parA.values()].sort((a, b) => b.totalKg - a.totalKg) }
+  })()
+
   return (
     <div className="space-y-4">
       {/* Stats */}
-      {stats && (
+      {statsView && (
         <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
           <Card>
             <CardHeader className="pb-1 pt-3 px-4">
               <CardDescription className="text-xs">Total consommé</CardDescription>
-              <CardTitle className="text-2xl">{stats.totalKg.toFixed(1)} kg</CardTitle>
+              <CardTitle className="text-2xl">{statsView.totalKg.toFixed(1)} kg</CardTitle>
             </CardHeader>
             <CardContent className="pb-3 px-4">
-              <p className="text-xs text-muted-foreground">{stats.nbEnregistrements} enregistrements</p>
+              <p className="text-xs text-muted-foreground">{statsView.nbEnregistrements} enregistrements</p>
             </CardContent>
           </Card>
-          {stats.parAliment.slice(0, 2).map((a) => (
+          {statsView.parAliment.slice(0, 2).map((a) => (
             <Card key={a.alimentId}>
               <CardHeader className="pb-1 pt-3 px-4">
                 <CardDescription className="text-xs">{a.nom}</CardDescription>
@@ -743,12 +788,12 @@ function ConsommationsSubTab() {
                   {formData.cible === "lot" && (
                     <Select value={formData.lotId || undefined} onValueChange={(v) => setFormData(f => ({ ...f, lotId: v }))}>
                       <SelectTrigger><SelectValue placeholder="Sélectionner un lot" /></SelectTrigger>
-                      <SelectContent>{lots.map(l => <SelectItem key={l.id} value={l.id.toString()}>{l.nom || `Lot #${l.id}`} ({l.especeAnimale.nom})</SelectItem>)}</SelectContent>
+                      <SelectContent>{lotsCibles.map(l => <SelectItem key={l.id} value={l.id.toString()}>{l.nom || `Lot #${l.id}`} ({l.especeAnimale.nom})</SelectItem>)}</SelectContent>
                     </Select>
                   )}
                   {formData.cible === "animal" && (
                     <AnimalCombobox
-                      animaux={animaux}
+                      animaux={animauxCibles}
                       value={formData.animalId}
                       onChange={(v) => setFormData(f => ({ ...f, animalId: v }))}
                       placeholder="N° de boucle ou nom…"
@@ -791,7 +836,7 @@ function ConsommationsSubTab() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {consommations.map((c) => (
+                {consommationsVisibles.map((c) => (
                   <TableRow key={c.id}>
                     <TableCell>{new Date(c.date).toLocaleDateString("fr-FR")}</TableCell>
                     <TableCell className="font-medium">{c.aliment.nom}</TableCell>
@@ -810,7 +855,7 @@ function ConsommationsSubTab() {
                     </TableCell>
                   </TableRow>
                 ))}
-                {consommations.length === 0 && (
+                {consommationsVisibles.length === 0 && (
                   <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Aucune consommation enregistrée</TableCell></TableRow>
                 )}
               </TableBody>
@@ -862,6 +907,9 @@ interface Soin {
   description: string | null
   produit: string | null
   produitId: string | null
+  stockMedicamentId: string | null
+  numeroLotMedicament: string | null
+  peremptionMedicament: string | null
   dose: string | null
   voie: string | null
   motif: string | null
@@ -889,11 +937,11 @@ interface Soin {
     dateRealisee: string | null
     statut: "a_faire" | "realisee" | "annulee"
   }[]
-  animal: { id: number; nom: string; identifiant: string } | null
-  lot: { id: number; nom: string } | null
+  animal: { id: number; nom: string; identifiant: string; especeAnimale?: { id: string; filiere: string | null } | null } | null
+  lot: { id: number; nom: string; especeAnimale?: { id: string; filiere: string | null } | null } | null
 }
 
-interface LotSoin { id: number; nom: string | null; quantiteActuelle: number }
+interface LotSoin { id: number; nom: string | null; quantiteActuelle: number; especeAnimale?: { id?: string; filiere?: string | null } | null }
 
 // Remise en vente = lendemain de la fin du délai d'attente (le jour de fin est
 // encore écarté). Retourne la date, ou null si pas de délai.
@@ -911,17 +959,34 @@ const SOIN_TYPE_LABELS: Record<string, string> = {
   autre: "Autre",
 }
 
-function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialAnimalId?: string | null; initialOpen?: boolean }) {
-  const { toast } = useToast()
-  const [isLoading, setIsLoading] = React.useState(true)
-  const [soins, setSoins] = React.useState<Soin[]>([])
-  const [lots, setLots] = React.useState<LotSoin[]>([])
-  const [isDialogOpen, setIsDialogOpen] = React.useState(false)
-  const [filterFait, setFilterFait] = React.useState<string>("all")
-  // QA 2026-05-15 — édition par ligne
-  const [editingSoinId, setEditingSoinId] = React.useState<number | null>(null)
+// QA caprin cms1vowbh — `fait` passe à true dès la 1re injection réalisée
+// (serveur), donc la coche verte mentait sur un protocole en cours. On dérive
+// l'état réel des injections : vert = protocole terminé, ambre = en cours.
+function etatProtocole(soin: Pick<Soin, "fait" | "injections">): "complet" | "en_cours" | "a_faire" {
+  const actives = (soin.injections ?? []).filter((i) => i.statut !== "annulee")
+  if (actives.length > 0) {
+    if (actives.every((i) => i.statut === "realisee")) return "complet"
+    if (actives.some((i) => i.statut === "realisee")) return "en_cours"
+    return "a_faire"
+  }
+  return soin.fait ? "complet" : "a_faire"
+}
 
-  const EMPTY_SOIN_FORM = {
+function classeCoche(etat: "complet" | "en_cours" | "a_faire"): string {
+  return etat === "complet" ? "text-green-600" : etat === "en_cours" ? "text-amber-500" : "text-slate-400"
+}
+
+function titreCoche(etat: "complet" | "en_cours" | "a_faire", soin: Pick<Soin, "injections">): string {
+  if (etat === "en_cours") {
+    const actives = (soin.injections ?? []).filter((i) => i.statut !== "annulee")
+    const faites = actives.filter((i) => i.statut === "realisee").length
+    return `Protocole en cours (${faites}/${actives.length} injections faites)`
+  }
+  return etat === "complet" ? "Marquer non fait" : "Marquer fait"
+}
+
+function soinFormVide() {
+  return {
     cible: "animal" as "lot" | "animal",
     lotId: "",
     animalId: "",
@@ -930,22 +995,48 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
     description: "",
     produit: "",
     produitId: "",
+    stockMedicamentId: "",
     dose: "",
     voie: "",
     motif: "",
     ordonnanceUrl: "",
     veterinaire: "",
     datePrevue: "",
-    quantite: "", unite: "", cout: "", fait: true, notes: "",
+    quantite: "",
+    unite: "",
+    cout: "",
+    fait: true,
+    notes: "",
     // PROMPT 30 — traitement à plusieurs injections
-    nbInjections: "1", intervalleInjectionsHeures: "24",
+    nbInjections: "1",
+    intervalleInjectionsHeures: "24",
+    // QA caprin cms1v5j14 — délais d'attente surchargeables (ordonnance véto,
+    // usage hors AMM/cascade). Pré-remplis depuis le produit, éditables.
+    tempsAttenteLaitJ: "",
+    tempsAttenteViandeJ: "",
   }
-  const [formData, setFormData] = React.useState(EMPTY_SOIN_FORM)
+}
 
-  const resetSoinForm = () => {
+function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialAnimalId?: string | null; initialOpen?: boolean }) {
+  const caps = capacitesSelection(useFiliereSelection())
+  const filiereSel = useFiliereSelection()
+  const { toast } = useToast()
+  const [isLoading, setIsLoading] = React.useState(true)
+  const [soins, setSoins] = React.useState<Soin[]>([])
+  // Scoping par filière de l'atelier sélectionné (via l'espèce de l'animal ou du lot).
+  const visibleSoins = soins.filter((s) => filiereMatch(filiereSel, s.animal?.especeAnimale?.filiere ?? s.lot?.especeAnimale?.filiere))
+  const [lots, setLots] = React.useState<LotSoin[]>([])
+  const [isDialogOpen, setIsDialogOpen] = React.useState(false)
+  const [filterFait, setFilterFait] = React.useState<string>("all")
+  // QA 2026-05-15 — édition par ligne
+  const [editingSoinId, setEditingSoinId] = React.useState<number | null>(null)
+
+  const [formData, setFormData] = React.useState(soinFormVide)
+
+  const resetSoinForm = React.useCallback(() => {
     setEditingSoinId(null)
-    setFormData(EMPTY_SOIN_FORM)
-  }
+    setFormData(soinFormVide())
+  }, [])
 
   const handleEditSoin = (s: Soin) => {
     setEditingSoinId(s.id)
@@ -958,6 +1049,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
       description: s.description ?? "",
       produit: s.produit ?? "",
       produitId: s.produitId ?? "",
+      stockMedicamentId: s.stockMedicamentId ?? "",
       dose: s.dose ?? "",
       voie: s.voie ?? "",
       motif: s.motif ?? "",
@@ -971,35 +1063,126 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
       notes: s.notes ?? "",
       nbInjections: s.nbInjections != null ? String(s.nbInjections) : "1",
       intervalleInjectionsHeures: s.intervalleInjectionsHeures != null ? String(s.intervalleInjectionsHeures) : "24",
+      tempsAttenteLaitJ: s.tempsAttenteLaitJ != null ? String(s.tempsAttenteLaitJ) : "",
+      tempsAttenteViandeJ: s.tempsAttenteViandeJ != null ? String(s.tempsAttenteViandeJ) : "",
     })
     setIsDialogOpen(true)
   }
-  const [animaux, setAnimaux] = React.useState<{ id: number; nom: string | null; identifiant: string | null; especeAnimale?: { nom?: string } }[]>([])
-  const [produits, setProduits] = React.useState<{ id: string; nom: string; substanceActive: string | null; tempsAttenteLaitJ: number; tempsAttenteViandeJ: number; autoriseAB: boolean }[]>([])
+
+  // cms1vau9l — mode rapide pour un traitement récurrent : reprend cible,
+  // produit, dose, voie, ordonnance, délais et protocole, mais crée un NOUVEAU
+  // soin daté du jour et jamais déjà marqué comme réalisé.
+  const dupliquerSoin = (s: Soin) => {
+    handleEditSoin(s)
+    setEditingSoinId(null)
+    setFormData((current) => ({
+      ...current,
+      date: todayLocalISO(),
+      datePrevue: todayLocalISO(),
+      fait: false,
+    }))
+    setIsDialogOpen(true)
+  }
+  const [animaux, setAnimaux] = React.useState<{ id: number; nom: string | null; identifiant: string | null; especeAnimale?: { id?: string; nom?: string; filiere?: string | null } }[]>([])
+  // Cibles proposées dans « Nouveau soin » scopées à l'atelier courant : on ne
+  // veut pas soigner une chèvre depuis l'atelier « Chiens & chats ».
+  const animauxCibles = animaux.filter((a) => filiereMatch(filiereSel, a.especeAnimale?.filiere))
+  const lotsCibles = lots.filter((l) => filiereMatch(filiereSel, l.especeAnimale?.filiere))
+  const [produits, setProduits] = React.useState<{
+    id: string
+    nom: string
+    substanceActive: string | null
+    tempsAttenteLaitJ: number
+    tempsAttenteViandeJ: number
+    autoriseAB: boolean
+    delaiAttenteSource?: "referentiel_espece" | "referentiel_produit" | "cascade"
+    couvertAmmPourEspece?: boolean
+  }[]>([])
+  const [stocksMedicaments, setStocksMedicaments] = React.useState<Array<{
+    id: string
+    produitId: string
+    numeroLot: string
+    quantite: number
+    unite: string
+    datePeremption: string | null
+    ordonnanceUrl: string | null
+  }>>([])
+
+  const especeIdSelectionnee = React.useMemo(() => {
+    if (formData.cible === "animal") {
+      return animaux.find((animal) => String(animal.id) === formData.animalId)?.especeAnimale?.id ?? null
+    }
+    return lots.find((lot) => String(lot.id) === formData.lotId)?.especeAnimale?.id ?? null
+  }, [animaux, formData.animalId, formData.cible, formData.lotId, lots])
 
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
     try {
       let url = '/api/elevage/soins?limit=100'
       if (filterFait !== 'all') url += `&fait=${filterFait}`
-      const [soinsRes, lotsRes, animauxRes, produitsRes] = await Promise.all([
+      const [soinsRes, lotsRes, animauxRes, stocksRes] = await Promise.all([
         fetch(url),
         fetch('/api/elevage/lots?statut=actif'),
         fetch('/api/elevage/animaux?statut=actif'),
-        fetch('/api/elevage/produits-veterinaires'),
+        fetch('/api/elevage/stock-medicaments'),
       ])
-      if (soinsRes.ok) setSoins((await soinsRes.json()).data)
-      if (lotsRes.ok) setLots((await lotsRes.json()).data)
-      if (animauxRes.ok) setAnimaux((await animauxRes.json()).data)
-      if (produitsRes.ok) setProduits((await produitsRes.json()).data)
-    } catch {
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les données" })
+      const echecs = [
+        [soinsRes, "soins"],
+        [lotsRes, "lots"],
+        [animauxRes, "animaux"],
+        [stocksRes, "pharmacie"],
+      ] as const
+      const premierEchec = echecs.find(([response]) => !response.ok)
+      if (premierEchec) {
+        const [response, ressource] = premierEchec
+        const payload = await response.json().catch(() => null)
+        throw new Error(`${ressource} : ${payload?.error || `HTTP ${response.status}`}`)
+      }
+      setSoins((await soinsRes.json()).data)
+      setLots((await lotsRes.json()).data)
+      setAnimaux((await animauxRes.json()).data)
+      setStocksMedicaments((await stocksRes.json()).data)
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Chargement incomplet",
+        description: `${error instanceof Error ? error.message : "ressource inconnue"}. Actualisez la vue ; les données déjà chargées restent affichées.`,
+      })
     } finally {
       setIsLoading(false)
     }
   }, [filterFait, toast])
 
   React.useEffect(() => { fetchData() }, [fetchData])
+
+  React.useEffect(() => {
+    const suffix = especeIdSelectionnee
+      ? `?especeId=${encodeURIComponent(especeIdSelectionnee)}`
+      : ""
+    fetch(`/api/elevage/produits-veterinaires${suffix}`)
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("catalogue")))
+      .then((payload) => {
+        const data = payload.data ?? []
+        setProduits(data)
+        setFormData((current) => {
+          if (!current.produitId) return current
+          const produit = data.find((item: { id: string }) => item.id === current.produitId)
+          if (!produit) return current
+          return {
+            ...current,
+            tempsAttenteLaitJ: String(produit.tempsAttenteLaitJ),
+            tempsAttenteViandeJ: String(produit.tempsAttenteViandeJ),
+          }
+        })
+      })
+      .catch(() => {
+        toast({
+          variant: "destructive",
+          title: "Référentiel vétérinaire indisponible",
+          description: "La saisie libre reste disponible ; réessayez avant d’utiliser un délai prérempli.",
+        })
+      })
+  }, [especeIdSelectionnee, toast])
 
   const changerInjection = async (soinId: number, injectionId: string, statut: "a_faire" | "realisee" | "annulee") => {
     try {
@@ -1027,7 +1210,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
     if (!initialAnimalId || initialAnimalApplied.current) return
     initialAnimalApplied.current = true
     setEditingSoinId(null)
-    setFormData({ ...EMPTY_SOIN_FORM, cible: "animal", animalId: initialAnimalId })
+    setFormData({ ...soinFormVide(), cible: "animal", animalId: initialAnimalId })
     setIsDialogOpen(true)
   }, [initialAnimalId])
 
@@ -1037,7 +1220,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
     initialOpenApplied.current = true
     resetSoinForm()
     setIsDialogOpen(true)
-  }, [initialOpen])
+  }, [initialOpen, resetSoinForm])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -1048,6 +1231,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
         description: formData.description || null,
         produit: formData.produit || null,
         produitId: formData.produitId || null,
+        stockMedicamentId: formData.stockMedicamentId || null,
         dose: formData.dose || null,
         voie: formData.voie || null,
         motif: formData.motif || null,
@@ -1065,6 +1249,10 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
           (parseInt(formData.nbInjections, 10) || 1) > 1 && formData.intervalleInjectionsHeures
             ? parseInt(formData.intervalleInjectionsHeures, 10)
             : null,
+        // QA caprin cms1v5j14 — délais d'attente saisis (défaut = produit,
+        // surcharge = prescription vétérinaire)
+        tempsAttenteLaitJ: formData.tempsAttenteLaitJ === "" ? null : Math.max(0, parseInt(formData.tempsAttenteLaitJ, 10) || 0),
+        tempsAttenteViandeJ: formData.tempsAttenteViandeJ === "" ? null : Math.max(0, parseInt(formData.tempsAttenteViandeJ, 10) || 0),
       }
       if (formData.cible === "animal") payload.animalId = formData.animalId ? parseInt(formData.animalId) : null
       else payload.lotId = formData.lotId ? parseInt(formData.lotId) : null
@@ -1139,16 +1327,16 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
                   </div>
                   {formData.cible === "animal" ? (
                     <AnimalCombobox
-                      animaux={animaux}
+                      animaux={animauxCibles}
                       value={formData.animalId}
                       onChange={(v) => setFormData(f => ({ ...f, animalId: v }))}
-                      placeholder="N° de boucle ou nom…"
+                      placeholder={caps.identificationPuce ? "N° de puce ou nom…" : "N° de boucle ou nom…"}
                       emptyLabel="— Sélectionner un animal —"
                     />
                   ) : (
                     <select className="w-full h-10 rounded-md border border-slate-300 px-2 bg-white text-sm" value={formData.lotId} onChange={(e) => setFormData(f => ({ ...f, lotId: e.target.value }))}>
                       <option value="">— Sélectionner un lot —</option>
-                      {lots.map(l => <option key={l.id} value={l.id}>{l.nom || `Lot #${l.id}`}</option>)}
+                      {lotsCibles.map(l => <option key={l.id} value={l.id}>{l.nom || `Lot #${l.id}`}</option>)}
                     </select>
                   )}
                 </div>
@@ -1156,18 +1344,21 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label>Type *</Label>
+                    {/* Actes communs à toutes les filières + actes de rente
+                        (tonte, parage, prophylaxie réglementaire, tarissement…)
+                        masqués pour compagnie/équin/NAC. */}
                     <select className="w-full h-10 rounded-md border border-slate-300 px-2 bg-white text-sm" value={formData.type} onChange={(e) => setFormData(f => ({ ...f, type: e.target.value }))}>
                       <option value="Vaccination">Vaccination</option>
                       <option value="Vermifuge">Vermifuge</option>
                       <option value="Traitement vétérinaire">Traitement vétérinaire</option>
-                      <option value="Tonte">Tonte</option>
-                      <option value="Parage onglons">Parage onglons</option>
                       <option value="Castration">Castration</option>
                       <option value="Identification">Identification</option>
-                      <option value="Prophylaxie obligatoire">Prophylaxie obligatoire</option>
-                      <option value="Coproscopie">Coproscopie</option>
-                      <option value="Mise en lutte">Mise en lutte</option>
-                      <option value="Tarissement">Tarissement</option>
+                      {caps.productionRente && <option value="Tonte">Tonte</option>}
+                      {caps.productionRente && <option value="Parage onglons">Parage onglons</option>}
+                      {caps.productionRente && <option value="Prophylaxie obligatoire">Prophylaxie obligatoire</option>}
+                      {caps.productionRente && <option value="Coproscopie">Coproscopie</option>}
+                      {caps.productionRente && <option value="Mise en lutte">Mise en lutte</option>}
+                      {caps.productionRente && <option value="Tarissement">Tarissement</option>}
                       <option value="Autre">Autre</option>
                     </select>
                   </div>
@@ -1177,41 +1368,138 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
                   </div>
                 </div>
 
-                {/* Produit vétérinaire */}
-                <div className="space-y-2">
-                  <Label>Produit vétérinaire (référentiel)</Label>
-                  <select className="w-full h-10 rounded-md border border-slate-300 px-2 bg-white text-sm" value={formData.produitId} onChange={(e) => {
-                    const p = produits.find(x => x.id === e.target.value)
-                    setFormData(f => ({ ...f, produitId: e.target.value, produit: p?.nom || f.produit }))
-                  }}>
-                    <option value="">— Aucun (saisie libre) —</option>
-                    {produits.map(p => (
-                      <option key={p.id} value={p.id}>
-                        {p.nom} {p.substanceActive ? `(${p.substanceActive})` : ""} — TA lait {p.tempsAttenteLaitJ}j / viande {p.tempsAttenteViandeJ}j{p.autoriseAB ? " ✓AB" : ""}
-                      </option>
-                    ))}
-                  </select>
-                  <Input value={formData.produit} onChange={(e) => setFormData(f => ({ ...f, produit: e.target.value }))} placeholder="Libellé produit (si saisie libre)" />
-                  {(() => {
-                    const p = produits.find(x => x.id === formData.produitId)
-                    if (!p || (!p.tempsAttenteLaitJ && !p.tempsAttenteViandeJ) || !formData.date) return null
-                    // PROMPT 30 — l'attente court depuis la DERNIÈRE injection.
-                    const nb = Math.max(1, parseInt(formData.nbInjections, 10) || 1)
-                    const interH = parseInt(formData.intervalleInjectionsHeures, 10) || 0
-                    const base = new Date(formData.date)
-                    const derniere = nb > 1 && interH ? new Date(base.getTime() + (nb - 1) * interH * 3_600_000) : base
-                    const remise = (j: number) => { const d = new Date(derniere); d.setDate(d.getDate() + j + 1); return d.toLocaleDateString('fr-FR') }
-                    return (
-                      <div className="text-xs rounded-md bg-amber-50 border border-amber-200 p-2 text-amber-800">
-                        Remise en vente
-                        {p.tempsAttenteLaitJ ? <> · 🥛 lait le <b>{remise(p.tempsAttenteLaitJ)}</b></> : null}
-                        {p.tempsAttenteViandeJ ? <> · 🥩 viande le <b>{remise(p.tempsAttenteViandeJ)}</b></> : null}
-                        {nb > 1 ? <span className="text-amber-600"> (dès la {nb}ᵉ injection)</span> : null}
-                        {!formData.fait ? <span className="text-amber-600"> — actif dès que le soin sera « fait »</span> : null}
+                {/* Produit / médicament. Le référentiel vétérinaire (délais
+                    d'attente lait/viande) ne concerne que la rente : le catalogue
+                    ne contient que des produits bovin/ovin/caprin/porcin/volaille.
+                    Pour un chien/chat/cheval/NAC on ne propose donc que la saisie
+                    libre — pas de produit ovin, pas de « remise en vente »
+                    (feedback Guillaume 2026-07-25). */}
+                {caps.delaisAttente ? (
+                  <div className="space-y-2">
+                    <Label>Produit vétérinaire (référentiel)</Label>
+                    <select className="w-full h-10 rounded-md border border-slate-300 px-2 bg-white text-sm" value={formData.produitId} onChange={(e) => {
+                      const p = produits.find(x => x.id === e.target.value)
+                      setFormData(f => ({
+                        ...f,
+                        produitId: e.target.value,
+                        stockMedicamentId: "",
+                        produit: p?.nom || f.produit,
+                        // Pré-remplissage des délais d'attente depuis le produit,
+                        // surchargeables ensuite (prescription vétérinaire).
+                        tempsAttenteLaitJ: p ? String(p.tempsAttenteLaitJ) : "",
+                        tempsAttenteViandeJ: p ? String(p.tempsAttenteViandeJ) : "",
+                      }))
+                    }}>
+                      <option value="">— Aucun (saisie libre) —</option>
+                      {produits.map(p => (
+                        <option key={p.id} value={p.id}>
+                          {p.nom} {p.substanceActive ? `(${p.substanceActive})` : ""} — TA lait {p.tempsAttenteLaitJ}j / viande {p.tempsAttenteViandeJ}j{p.delaiAttenteSource === "cascade" ? " · cascade" : ""}{p.autoriseAB ? " ✓AB" : ""}
+                        </option>
+                      ))}
+                    </select>
+                    {formData.produitId && ["Vaccination", "Vermifuge", "Traitement vétérinaire"].includes(formData.type) && (
+                      <div className="space-y-1">
+                        <Label className="text-xs">Lot de pharmacie *</Label>
+                        <select
+                          required
+                          className="w-full h-11 rounded-md border border-slate-300 px-2 bg-white text-sm"
+                          value={formData.stockMedicamentId}
+                          onChange={(event) => {
+                            const stock = stocksMedicaments.find((item) => item.id === event.target.value)
+                            setFormData((form) => ({
+                              ...form,
+                              stockMedicamentId: event.target.value,
+                              unite: stock?.unite || form.unite,
+                              ordonnanceUrl: form.ordonnanceUrl || stock?.ordonnanceUrl || "",
+                            }))
+                          }}
+                        >
+                          <option value="">— Sélectionner le lot administré —</option>
+                          {stocksMedicaments
+                            .filter((stock) => stock.produitId === formData.produitId)
+                            .map((stock) => {
+                              const perime = stock.datePeremption
+                                ? new Date(stock.datePeremption).getTime() < new Date(formData.date).getTime()
+                                : false
+                              return (
+                                <option key={stock.id} value={stock.id} disabled={perime || stock.quantite <= 0}>
+                                  Lot {stock.numeroLot} · {stock.quantite} {stock.unite}
+                                  {stock.datePeremption ? ` · péremption ${new Date(stock.datePeremption).toLocaleDateString("fr-FR")}` : ""}
+                                  {perime ? " · PÉRIMÉ" : stock.quantite <= 0 ? " · ÉPUISÉ" : ""}
+                                </option>
+                              )
+                            })}
+                        </select>
+                        {stocksMedicaments.every((stock) => stock.produitId !== formData.produitId || stock.quantite <= 0) && (
+                          <p className="text-xs text-amber-700">
+                            Aucun lot disponible. Ajoutez d&apos;abord le médicament dans Registre &amp; pharmacie.
+                          </p>
+                        )}
                       </div>
-                    )
-                  })()}
-                </div>
+                    )}
+                    <Input value={formData.produit} onChange={(e) => setFormData(f => ({ ...f, produit: e.target.value }))} placeholder="Libellé produit (si saisie libre)" />
+                    {/* QA caprin cms1v5j14 — TA surchargeables : la valeur AMM du
+                        produit n'est qu'un défaut. En usage hors AMM (cascade),
+                        le vétérinaire prescrit un délai majoré (minima 7 j lait /
+                        28 j viande) : l'éleveur doit pouvoir saisir l'ordonnance. */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Délai d&apos;attente lait (j)</Label>
+                        <Input type="number" min="0" max="365" value={formData.tempsAttenteLaitJ}
+                          onChange={(e) => setFormData(f => ({ ...f, tempsAttenteLaitJ: e.target.value }))}
+                          placeholder={formData.produitId ? "" : "—"} />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Délai d&apos;attente viande (j)</Label>
+                        <Input type="number" min="0" max="365" value={formData.tempsAttenteViandeJ}
+                          onChange={(e) => setFormData(f => ({ ...f, tempsAttenteViandeJ: e.target.value }))}
+                          placeholder={formData.produitId ? "" : "—"} />
+                      </div>
+                      {(() => {
+                        const p = produits.find(x => x.id === formData.produitId)
+                        const taLait = formData.tempsAttenteLaitJ === "" ? null : parseInt(formData.tempsAttenteLaitJ, 10)
+                        const taViande = formData.tempsAttenteViandeJ === "" ? null : parseInt(formData.tempsAttenteViandeJ, 10)
+                        const surcharge = p && ((taLait ?? 0) !== p.tempsAttenteLaitJ || (taViande ?? 0) !== p.tempsAttenteViandeJ)
+                        return (
+                          <p className="col-span-2 text-[11px] text-muted-foreground -mt-1">
+                            {p?.delaiAttenteSource === "cascade"
+                              ? "Espèce hors AMM : planchers cascade appliqués (7 j lait / 28 j viande). "
+                              : p?.delaiAttenteSource === "referentiel_espece"
+                                ? "Pré-remplis depuis la matrice produit × espèce. "
+                                : "Pré-remplis depuis le produit. "}
+                            Ajustez selon l&apos;ordonnance du vétérinaire.
+                            {surcharge ? <span className="text-amber-700 font-medium"> Valeur prescrite par le vétérinaire — reportée au registre.</span> : null}
+                          </p>
+                        )
+                      })()}
+                    </div>
+                    {(() => {
+                      const taLait = parseInt(formData.tempsAttenteLaitJ, 10) || 0
+                      const taViande = parseInt(formData.tempsAttenteViandeJ, 10) || 0
+                      if ((!taLait && !taViande) || !formData.date) return null
+                      // PROMPT 30 — l'attente court depuis la DERNIÈRE injection.
+                      const nb = Math.max(1, parseInt(formData.nbInjections, 10) || 1)
+                      const interH = parseInt(formData.intervalleInjectionsHeures, 10) || 0
+                      const base = new Date(formData.date)
+                      const derniere = nb > 1 && interH ? new Date(base.getTime() + (nb - 1) * interH * 3_600_000) : base
+                      const remise = (j: number) => { const d = new Date(derniere); d.setDate(d.getDate() + j + 1); return d.toLocaleDateString('fr-FR') }
+                      return (
+                        <div className="text-xs rounded-md bg-amber-50 border border-amber-200 p-2 text-amber-800">
+                          Remise en vente
+                          {taLait ? <> · lait le <b>{remise(taLait)}</b></> : null}
+                          {taViande ? <> · viande le <b>{remise(taViande)}</b></> : null}
+                          {nb > 1 ? <span className="text-amber-600"> (dès la {nb}ᵉ injection)</span> : null}
+                          {!formData.fait ? <span className="text-amber-600"> — actif dès que le soin sera « fait »</span> : null}
+                        </div>
+                      )
+                    })()}
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <Label>Produit / médicament</Label>
+                    <Input value={formData.produit} onChange={(e) => setFormData(f => ({ ...f, produit: e.target.value, produitId: "" }))} placeholder="Nom du vaccin, vermifuge, dosage…" />
+                  </div>
+                )}
 
                 {/* PROMPT 30 — protocole à plusieurs injections (ex. Pénijectyl J0/J1/J2) */}
                 <div className="grid grid-cols-2 gap-3">
@@ -1323,13 +1611,13 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
                   <TableHead>Type</TableHead>
                   <TableHead>Lot/Animal</TableHead>
                   <TableHead>Produit</TableHead>
-                  <TableHead>Remise en vente</TableHead>
+                  {caps.delaisAttente && <TableHead>Remise en vente</TableHead>}
                   <TableHead className="text-right">Coût</TableHead>
                   <TableHead>Notes</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {soins.map((soin) => {
+                {visibleSoins.map((soin) => {
                   // Bug feedback testeur 2026-05-26 (cmplp16kb) — afficher
                   // distinctement la date prévue et la date de réalisation
                   // pour ne pas perdre l'historique du planning. Badge "En
@@ -1355,11 +1643,14 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
                   <TableRow key={soin.id} className={!soin.fait ? (enRetard ? "bg-red-50" : "bg-blue-50") : ""}>
                     <TableCell>
                       <div className="flex items-center gap-0.5">
-                        <Button variant="ghost" size="sm" onClick={() => toggleFait(soin.id, soin.fait)} title={soin.fait ? "Marquer non fait" : "Marquer fait"} className={soin.fait ? "text-green-600" : "text-slate-400"}>
+                        <Button variant="ghost" size="sm" onClick={() => toggleFait(soin.id, soin.fait)} title={titreCoche(etatProtocole(soin), soin)} className={classeCoche(etatProtocole(soin))}>
                           <Check className="h-4 w-4" />
                         </Button>
                         <Button variant="ghost" size="sm" onClick={() => handleEditSoin(soin)} title="Modifier" className="text-slate-600 hover:text-slate-900">
                           <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => dupliquerSoin(soin)} title="Reprendre ce soin" className="text-blue-600 hover:text-blue-800">
+                          <Copy className="h-3.5 w-3.5" />
                         </Button>
                       </div>
                     </TableCell>
@@ -1406,27 +1697,34 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
                         </div>
                       )}
                     </TableCell>
+                    {caps.delaisAttente && (
                     <TableCell className="text-xs">
                       {(() => {
                         const rvLait = remiseEnVente(soin.finAttenteLait)
                         const rvViande = remiseEnVente(soin.finAttenteViande)
-                        if (!rvLait && !rvViande) return <span className="text-slate-400">\u2014</span>
+                        // QA caprin cms1v4sw4 : les \uXXXX en noeud texte JSX
+                        // s'affichaient bruts ; et un pictogramme ne doit jamais
+                        // porter seul une info de conformite -> libelles texte.
+                        if (!rvLait && !rvViande) return <span className="text-slate-400">{'\u2014'}</span>
                         const auj = new Date(new Date().toDateString())
                         const cls = (d: Date | null) => (d && d > auj ? "text-amber-700 font-medium" : "text-slate-500")
+                        const badge = (actif: boolean) =>
+                          `inline-block w-11 text-center rounded px-1 py-0.5 text-[10px] font-semibold uppercase tracking-wide mr-1 ${actif ? "bg-amber-100 text-amber-800 border border-amber-300" : "bg-slate-100 text-slate-500 border border-slate-200"}`
                         return (
                           <div className="space-y-0.5 whitespace-nowrap">
-                            {rvLait && <div className={cls(rvLait)}>\ud83e\udd5b {rvLait.toLocaleDateString('fr-FR')}</div>}
-                            {rvViande && <div className={cls(rvViande)}>\ud83e\udd69 {rvViande.toLocaleDateString('fr-FR')}</div>}
+                            {rvLait && <div className={cls(rvLait)}><span className={badge(rvLait > auj)}>Lait</span>{rvLait.toLocaleDateString('fr-FR')}</div>}
+                            {rvViande && <div className={cls(rvViande)}><span className={badge(rvViande > auj)}>Viande</span>{rvViande.toLocaleDateString('fr-FR')}</div>}
                           </div>
                         )
                       })()}
                     </TableCell>
+                    )}
                     <TableCell className="text-right">{soin.cout ? `${soin.cout.toFixed(2)} \u20ac` : '-'}</TableCell>
                     <TableCell className="text-muted-foreground text-sm max-w-[200px] truncate">{soin.notes || '-'}</TableCell>
                   </TableRow>
                   )
                 })}
-                {soins.length === 0 && <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Aucun soin enregistré</TableCell></TableRow>}
+                {visibleSoins.length === 0 && <TableRow><TableCell colSpan={caps.delaisAttente ? 8 : 7} className="text-center py-8 text-muted-foreground">Aucun soin enregistré</TableCell></TableRow>}
               </TableBody>
             </Table>
             </div>
@@ -1435,9 +1733,9 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
                 tableau (dose/voie/boutons hors écran), une carte par soin avec
                 validation en un appui (ticket cmrz0tiph). */}
             <div className="lg:hidden divide-y">
-              {soins.length === 0 ? (
+              {visibleSoins.length === 0 ? (
                 <p className="text-center py-8 text-muted-foreground text-sm">Aucun soin enregistré</p>
-              ) : soins.map((soin) => {
+              ) : visibleSoins.map((soin) => {
                 const dateAffichee = soin.datePrevue ?? soin.date
                 const enRetard =
                   !soin.fait && !!soin.datePrevue &&
@@ -1468,11 +1766,14 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
                         </div>
                       </div>
                       <div className="flex items-center gap-0.5 shrink-0">
-                        <Button variant="ghost" size="sm" onClick={() => toggleFait(soin.id, soin.fait)} title={soin.fait ? "Marquer non fait" : "Marquer fait"} className={soin.fait ? "text-green-600" : "text-slate-400"}>
+                        <Button variant="ghost" size="sm" onClick={() => toggleFait(soin.id, soin.fait)} title={titreCoche(etatProtocole(soin), soin)} className={classeCoche(etatProtocole(soin))}>
                           <Check className="h-4 w-4" />
                         </Button>
                         <Button variant="ghost" size="sm" onClick={() => handleEditSoin(soin)} title="Modifier" className="text-slate-600">
                           <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => dupliquerSoin(soin)} title="Reprendre ce soin" aria-label="Reprendre ce soin" className="text-blue-600">
+                          <Copy className="h-3.5 w-3.5" />
                         </Button>
                       </div>
                     </div>
@@ -1480,8 +1781,8 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
                       <span className="text-muted-foreground">{new Date(dateAffichee).toLocaleDateString("fr-FR")}</span>
                       {enRetard && <span className="font-medium text-red-700 uppercase tracking-wide">En retard</span>}
                       {soin.cout ? <span className="text-muted-foreground">{soin.cout.toFixed(2)} €</span> : null}
-                      {rvLait && <span className={rvLait > auj ? "text-amber-700 font-medium" : "text-slate-500"}>🥛 {rvLait.toLocaleDateString("fr-FR")}</span>}
-                      {rvViande && <span className={rvViande > auj ? "text-amber-700 font-medium" : "text-slate-500"}>🥩 {rvViande.toLocaleDateString("fr-FR")}</span>}
+                      {rvLait && <span className={rvLait > auj ? "text-amber-700 font-medium" : "text-slate-500"}>Lait : {rvLait.toLocaleDateString("fr-FR")}</span>}
+                      {rvViande && <span className={rvViande > auj ? "text-amber-700 font-medium" : "text-slate-500"}>Viande : {rvViande.toLocaleDateString("fr-FR")}</span>}
                     </div>
                     {soin.injections?.length > 1 && (
                       <div className="mt-2 space-y-1.5 rounded-md bg-white/70 p-2">

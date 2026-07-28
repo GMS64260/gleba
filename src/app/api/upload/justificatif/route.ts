@@ -22,7 +22,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { mkdir, writeFile } from "node:fs/promises"
 import path from "node:path"
-import { randomUUID } from "node:crypto"
+import { createHash, randomUUID } from "node:crypto"
 
 const MAX_BYTES = 10 * 1024 * 1024
 const ALLOWED_MIME: Record<string, string> = {
@@ -73,6 +73,7 @@ export async function POST(request: NextRequest) {
 
   const buffer = Buffer.from(await (file as Blob).arrayBuffer())
   await writeFile(path.join(dir, filename), buffer)
+  const empreinteSha256 = createHash("sha256").update(buffer).digest("hex")
 
   const url = `/api/upload/justificatif/${filename}`
   const originalName = (file as File).name || `justificatif.${ext}`
@@ -81,5 +82,6 @@ export async function POST(request: NextRequest) {
     url,
     filename: originalName,
     size,
+    empreinteSha256,
   })
 }

@@ -12,6 +12,7 @@ import { StockFromageError, verrouillerEtVerifierStockFromage } from '@/lib/elev
 import { createVenteFromVenteProduit, deleteAutoEntry } from '@/lib/auto-compta'
 import { creerFacture, annulerFactureLiee } from '@/lib/facture-utils'
 import { venteProduitSchema } from '@/lib/validations/elevage-vente'
+import { invalidateKpi } from '@/lib/kpi'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -100,8 +101,42 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { date, type, description, quantite, unite, prixUnitaire, client, destinationId, paye, tauxTVA, notes } = parsed.data
+    const { date, type, description, quantite, unite, prixUnitaire, client, destinationId, paye, tauxTVA, cessionGratuite } = parsed.data
+    let notes = parsed.data.notes ?? null
     const prixTotal = quantite * prixUnitaire
+
+    // Ticket cms1vqsqu — vente d'animal vivant à 0 € sans garde-fou.
+    // La validation stricte n'est appliquée QUE si le body porte le marqueur
+    // `validationVente: true` (posé par le formulaire Ventes) : le flux
+    // « Vendre » de la fiche animal (AnimauxTab) poste sans ce marqueur et ne
+    // doit pas casser ; ses lignes à 0 € sont couvertes par le badge
+    // « À qualifier » côté UI.
+    if (type === 'animal_vivant' && parsed.data.validationVente === true) {
+      if (!cessionGratuite && prixUnitaire <= 0) {
+        return NextResponse.json(
+          { error: 'Prix manquant pour une vente d\'animal vivant : saisissez un prix, ou cochez « Cession à titre gratuit » s\'il s\'agit d\'un don.' },
+          { status: 400 }
+        )
+      }
+      if (!client || !client.trim()) {
+        return NextResponse.json(
+          { error: 'Le nom de l\'acquéreur est requis pour la cession d\'un animal vivant (traçabilité).' },
+          { status: 400 }
+        )
+      }
+    }
+    if (cessionGratuite && prixUnitaire > 0) {
+      return NextResponse.json(
+        { error: 'Une cession à titre gratuit doit avoir un prix de 0 € — décochez « Cession à titre gratuit » ou mettez le prix à 0.' },
+        { status: 400 }
+      )
+    }
+    // Convention (pas de colonne cessionGratuite sur VenteProduit) : une
+    // cession gratuite est matérialisée par prixTotal 0 + notes préfixées.
+    const PREFIXE_CESSION = '[Cession gratuite]'
+    if (cessionGratuite && !(notes ?? '').startsWith(PREFIXE_CESSION)) {
+      notes = notes ? `${PREFIXE_CESSION} ${notes}` : PREFIXE_CESSION
+    }
 
     // Review caprin 2026-07-21 — vente de fromage : une action unique doit
     // décrémenter le stock de cave ET enregistrer la recette ET tracer le lot.
@@ -277,26 +312,23 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      await createVenteFromVenteProduit(session.user.id, {
+        id: vente.id,
+        type: vente.type,
+        description: vente.description,
+        prixTotal: vente.prixTotal,
+        quantite: vente.quantite,
+        unite: vente.unite,
+        prixUnitaire: vente.prixUnitaire,
+        client: vente.client,
+        date: vente.date,
+        tauxTVA: vente.tauxTVA,
+        paye: vente.paye,
+      }, tx)
+
       return vente
     })
-
-    // Auto-comptabilite : creer une vente manuelle
-    try {
-      await createVenteFromVenteProduit(session.user.id, {
-        id: result.id,
-        type: result.type,
-        description: result.description,
-        prixTotal: result.prixTotal,
-        quantite: result.quantite,
-        unite: result.unite,
-        prixUnitaire: result.prixUnitaire,
-        client: result.client,
-        date: result.date,
-        tauxTVA: result.tauxTVA,
-      })
-    } catch (autoComptaError) {
-      console.error('Auto-compta error (vente_produit):', autoComptaError)
-    }
+    invalidateKpi(session.user.id)
 
     // Review caprin 2026-07-22 — alerte (non bloquante) à la vente de LAIT CRU
     // s'il existe un délai d'attente lait actif. La vente de lait cru n'étant pas
@@ -364,26 +396,17 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Vente déjà annulée' }, { status: 409 })
     }
 
-    // Symétrie annulation ↔ facture : sans ça la facture restait comptée
-    // (KPI/TVA/FEC) alors que la vente était annulée.
-    if (existing.factureId) {
-      const liee = await annulerFactureLiee(prisma, session.user.id, existing.factureId)
-      if (!liee.ok) {
-        return NextResponse.json({ error: liee.raison }, { status: 409 })
-      }
-    }
-
-    // Supprimer les ecritures auto-compta liees
-    try {
-      await deleteAutoEntry('vente_produit', parseInt(id), 'vente')
-    } catch (autoComptaError) {
-      console.error('Auto-compta cleanup error (vente_produit):', autoComptaError)
-    }
-
     // Audit élevage 2026-06-11 — annuler une vente d'animal vivant doit
     // rendre l'animal au cheptel (il restait 'vendu' définitivement).
     // On ne restaure que si l'animal est toujours en statut 'vendu'.
-    await prisma.$transaction(async (tx) => {
+    const annulation = await prisma.$transaction(async (tx) => {
+      // Symétrie annulation ↔ facture + miroir dans la même transaction.
+      if (existing.factureId) {
+        const liee = await annulerFactureLiee(tx, session.user.id, existing.factureId)
+        if (!liee.ok) return liee
+      }
+      await deleteAutoEntry('vente_produit', existing.id, 'vente', session.user.id, tx)
+
       // Soft-delete : marquer comme annule au lieu de supprimer
       await tx.venteProduit.update({
         where: { id: existing.id },
@@ -416,7 +439,12 @@ export async function DELETE(request: NextRequest) {
           }
         }
       }
+      return { ok: true as const }
     })
+    if (!annulation.ok) {
+      return NextResponse.json({ error: annulation.raison }, { status: 409 })
+    }
+    invalidateKpi(session.user.id)
 
     return NextResponse.json({ success: true })
   } catch (error) {
@@ -512,9 +540,12 @@ export async function PATCH(request: NextRequest) {
       updateData.prixTotal = q * pu
     }
     // Cohérence compta : une vente "Payé" ne peut pas être à 0 € (cf POST).
+    // Ticket cms1vqsqu — exception : cession gratuite (convention notes
+    // préfixées « [Cession gratuite] », il n'y a rien à encaisser).
     const payeFinal = updateData.paye ?? existing.paye
     const prixTotalFinal = updateData.prixTotal ?? existing.prixTotal
-    if (payeFinal === true && prixTotalFinal === 0) {
+    const notesFinales = String((updateData.notes ?? existing.notes) ?? '')
+    if (payeFinal === true && prixTotalFinal === 0 && !notesFinales.startsWith('[Cession gratuite]')) {
       return NextResponse.json(
         { error: 'Une vente "Payé" ne peut pas être à 0 € — décochez "Payé" ou saisissez un prix.' },
         { status: 400 }
@@ -562,8 +593,8 @@ export async function PATCH(request: NextRequest) {
           totalHT,
           totalTVA,
           totalTTC: totalFinal,
-          statut: 'payee',
-          datePaiement: new Date(),
+          statut: payeFinal ? 'payee' : 'emise',
+          datePaiement: payeFinal ? new Date() : null,
           modePaiement: body.modePaiement || 'especes',
           lignes: [{
             description: `${typeF} - ${descF || ''}`,
@@ -580,33 +611,30 @@ export async function PATCH(request: NextRequest) {
         updateData.factureId = facture.id
       }
 
-      return tx.venteProduit.update({
+      const updated = await tx.venteProduit.update({
         where: { id: parseInt(id) },
         data: updateData,
         include: {
           destination: true,
         },
       })
-    })
-
-    // Auto-comptabilite : mettre a jour l'ecriture auto
-    try {
       await createVenteFromVenteProduit(userId, {
-        id: parseInt(id),
-        type: vente.type,
-        description: vente.description,
-        prixTotal: vente.prixTotal,
-        quantite: vente.quantite,
-        unite: vente.unite,
-        prixUnitaire: vente.prixUnitaire,
-        client: vente.client,
-        date: vente.date,
-        tauxTVA: vente.tauxTVA,
-        factureId: vente.factureId,
-      })
-    } catch (autoComptaError) {
-      console.error('Auto-compta error (vente_produit PATCH):', autoComptaError)
-    }
+        id: updated.id,
+        type: updated.type,
+        description: updated.description,
+        prixTotal: updated.prixTotal,
+        quantite: updated.quantite,
+        unite: updated.unite,
+        prixUnitaire: updated.prixUnitaire,
+        client: updated.client,
+        date: updated.date,
+        tauxTVA: updated.tauxTVA,
+        factureId: updated.factureId,
+        paye: updated.paye,
+      }, tx)
+      return updated
+    })
+    invalidateKpi(userId)
 
     return NextResponse.json({ data: vente })
   } catch (error) {

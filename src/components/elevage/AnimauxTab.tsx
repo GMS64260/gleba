@@ -6,7 +6,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import {
   Bird,
   Plus,
@@ -47,7 +47,12 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog"
 import { especeBaseId, especeBaseLabel, listEspecesBasePresentes } from "@/lib/elevage/espece-base"
+import { useFiliereSelection, filiereMatch } from "@/lib/elevage/filiere-context"
+import { coerceFiliere, type Filiere } from "@/lib/elevage/filiere"
+import { capacites } from "@/lib/elevage/filiere-ui"
+import { useElevageModes } from "@/hooks/use-elevage-modes"
 import { AnimalCombobox } from "./AnimalCombobox"
+import { RaceCombobox } from "./RaceCombobox"
 import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from "@/components/ui/tooltip"
@@ -80,7 +85,14 @@ interface Animal {
   poidsActuel: number | null
   provenance: string | null
   nExploitationOrigine: string | null
+  statutSanitaire: string[]
+  statutsSanitairesStructures: Array<{
+    id: string
+    statut: "indemne" | "en_cours" | "positif" | "inconnu"
+    maladie: { id: string; nom: string }
+  }>
   prixAchat: number | null
+  prixAchatInclusDansLot: boolean
   notes: string | null
   mereId: number | null
   pereId: number | null
@@ -90,6 +102,7 @@ interface Animal {
     id: string
     nom: string
     type: string
+    filiere: string | null
     couleur: string | null
     poidsAdulte: number | null
   }
@@ -113,7 +126,7 @@ interface Lot {
   notes: string | null
   statut: string
   parcelleGeo: { id: string; nom: string } | null
-  especeAnimale: { id: string; nom: string; type: string; couleur: string | null }
+  especeAnimale: { id: string; nom: string; type: string; filiere: string | null; couleur: string | null }
   _count: { animaux: number; productionsOeufs: number; soins: number }
 }
 
@@ -127,9 +140,16 @@ interface EspeceAnimale {
   nom: string
   type: string
   production?: string | null
+  filiere?: string | null
 }
 
-interface RaceAnimaleOption { id: string; nom: string; especeAnimaleId: string }
+interface RaceAnimaleOption {
+  id: string
+  nom: string
+  especeAnimaleId: string
+  origine?: string | null
+  aptitudes?: string[]
+}
 
 const STATUT_COLORS: Record<string, string> = {
   actif: "bg-green-100 text-green-800",
@@ -145,8 +165,20 @@ const STATUT_COLORS: Record<string, string> = {
 // ============================================================
 
 export function AnimauxTab() {
+  // QA caprin cms1vps0c / cms1vc12t — sous-onglet Animaux/Lots piloté par
+  // l'URL (?sub=lots). Lecture DANS un effet (jamais au render, cf. pattern
+  // AlimentationTab), avec useSearchParams en dépendance pour resynchroniser
+  // à chaque navigation interne (y compris le clic sur l'onglet déjà actif,
+  // qui réécrit une URL propre et doit ramener au sous-onglet par défaut).
+  const searchParams = useSearchParams()
+  const [activeSub, setActiveSub] = React.useState<string>("animaux")
+  React.useEffect(() => {
+    const sub = new URLSearchParams(window.location.search).get("sub")
+    setActiveSub(sub === "lots" ? "lots" : "animaux")
+  }, [searchParams])
+
   return (
-    <Tabs defaultValue="animaux" className="space-y-4">
+    <Tabs value={activeSub} onValueChange={setActiveSub} className="space-y-4">
       <TabsList className="h-auto flex-wrap">
         <TabsTrigger value="animaux" className="flex items-center gap-1.5">
           <Bird className="h-4 w-4" />
@@ -181,6 +213,8 @@ function AnimauxSubTab() {
   const [especes, setEspeces] = React.useState<EspeceAnimale[]>([])
   const [search, setSearch] = React.useState("")
   const [filterEspece, setFilterEspece] = React.useState<string>("all")
+  const filiereSel = useFiliereSelection()
+  const { filieres } = useElevageModes()
   const [filterStatut, setFilterStatut] = React.useState<string>("actif")
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
   // QA 2026-05-15 — édition par ligne pour les animaux
@@ -191,7 +225,8 @@ function AnimauxSubTab() {
     nom: "", raceAnimaleId: "", raceHistorique: "", orientationProduction: "", sexe: "",
     dateNaissance: "", dateArrivee: todayLocalISO(),
     provenance: "", nExploitationOrigine: "",
-    prixAchat: "", poidsActuel: "", notes: "",
+    statutSanitaire: "",
+    prixAchat: "", prixAchatInclusDansLot: false, poidsActuel: "", notes: "",
     mereId: "", pereId: "", pereIdentifiant: "", mereIdentifiant: "",
     lotId: "", parcelleGeoId: "",
   }
@@ -205,7 +240,12 @@ function AnimauxSubTab() {
 
   const resetAnimalForm = () => {
     setEditingAnimalId(null)
-    setFormData(EMPTY_ANIMAL_FORM)
+    // Quand l'atelier courant ne contient qu'une espèce possible, on la
+    // pré-sélectionne pour éviter tout choix ambigu ; sinon on laisse le
+    // placeholder (le Select ne propose de toute façon que cet atelier).
+    const defautEspece =
+      especesPourAtelier.length === 1 ? especesPourAtelier[0].id : ""
+    setFormData({ ...EMPTY_ANIMAL_FORM, especeAnimaleId: defautEspece })
   }
 
   const handleEditAnimal = (a: Animal) => {
@@ -223,7 +263,9 @@ function AnimauxSubTab() {
       dateArrivee: a.dateArrivee ? a.dateArrivee.split('T')[0] : todayLocalISO(),
       provenance: a.provenance ?? "",
       nExploitationOrigine: a.nExploitationOrigine ?? "",
+      statutSanitaire: a.statutSanitaire.join("\n"),
       prixAchat: a.prixAchat ? a.prixAchat.toString() : "",
+      prixAchatInclusDansLot: a.prixAchatInclusDansLot,
       poidsActuel: a.poidsActuel ? a.poidsActuel.toString() : "",
       notes: a.notes ?? "",
       mereId: a.mereId ? String(a.mereId) : "",
@@ -292,7 +334,7 @@ function AnimauxSubTab() {
   // Lots actifs, pour rattacher un animal à un lot depuis sa fiche. Feedback
   // éleveur 2026-07-21 (Cyril) : il n'existait aucune passerelle animal → lot
   // dans l'UI (ni sur la fiche animal, ni sur la page du lot).
-  const [lotsActifs, setLotsActifs] = React.useState<Array<{ id: number; nom: string | null; especeAnimaleId: string }>>([])
+  const [lotsActifs, setLotsActifs] = React.useState<Array<{ id: number; nom: string | null; especeAnimaleId: string; prixAchatTotal: number | null }>>([])
   const [races, setRaces] = React.useState<RaceAnimaleOption[]>([])
   // Parcelles géoréférencées, pour situer un animal sur la carte (cartographie
   // élevage 2026-07-21 : rattachement direct animal → parcelle, hors lot).
@@ -315,10 +357,10 @@ function AnimauxSubTab() {
       if (especesRes.ok) setEspeces((await especesRes.json()).data)
       if (lotsRes.ok) {
         const lotsJson = await lotsRes.json()
-        const lots: Array<{ id: number; nom: string | null; especeAnimaleId: string; statut: string }> = lotsJson.data ?? []
+        const lots: Array<{ id: number; nom: string | null; especeAnimaleId: string; statut: string; prixAchatTotal: number | null }> = lotsJson.data ?? []
         const actifs = lots.filter((l) => l.statut === "actif")
         setLotsEspeceIds(actifs.map((l) => l.especeAnimaleId))
-        setLotsActifs(actifs.map((l) => ({ id: l.id, nom: l.nom, especeAnimaleId: l.especeAnimaleId })))
+        setLotsActifs(actifs.map((l) => ({ id: l.id, nom: l.nom, especeAnimaleId: l.especeAnimaleId, prixAchatTotal: l.prixAchatTotal })))
       }
       if (parcellesRes.ok) {
         const pj = await parcellesRes.json()
@@ -369,6 +411,10 @@ function AnimauxSubTab() {
         sexe: formData.sexe || null,
         provenance: formData.provenance || null,
         nExploitationOrigine: formData.nExploitationOrigine || null,
+        statutSanitaire: formData.statutSanitaire
+          .split(/[\n,;]+/)
+          .map((value) => value.trim())
+          .filter(Boolean),
         prixAchat: toNum(formData.prixAchat as unknown as string),
         poidsActuel: toNum(formData.poidsActuel as unknown as string),
         dateNaissance: (formData as { dateNaissance?: string }).dateNaissance || null,
@@ -400,7 +446,15 @@ function AnimauxSubTab() {
           : payload?.error || "Impossible d'enregistrer"
         throw new Error(description)
       }
+      const payload = await response.json().catch(() => ({}))
       toast({ title: isEdit ? "Animal mis à jour" : "Animal créé" })
+      if (!isEdit && payload?.warning) {
+        toast({
+          variant: "destructive",
+          title: "Prérequis réglementaire à compléter",
+          description: payload.warning,
+        })
+      }
       setIsDialogOpen(false)
       resetAnimalForm()
       fetchData()
@@ -560,6 +614,44 @@ function AnimauxSubTab() {
     [animaux, lotsEspeceIds]
   )
 
+  // Phase 0 modes d'élevage — le référentiel contient désormais les espèces
+  // compagnie/équin/NAC (chien, cheval, pogona…). Un compte de rente qui n'a
+  // coché aucun mode ne doit pas les voir dans « Profil animal ». On conserve
+  // l'espèce déjà rattachée à l'animal en cours d'édition, sinon le Select
+  // s'afficherait vide sur une fiche existante (mode désactivé = masquer, pas
+  // casser). cf. docs/elevage-modes-phase0-spec.md §7
+  // Espèces proposées dans le formulaire : filières actives ET restreintes à
+  // l'atelier sélectionné (Cheptel / Chiens & chats / Équins / NAC). Sans ce
+  // second filtre, « Ajouter » depuis l'atelier « Chiens & chats » proposait
+  // encore les brebis, donnant l'impression d'ajouter un animal de cheptel
+  // (feedback Guillaume 2026-07-25).
+  const especesPourAtelier = React.useMemo(
+    () =>
+      especes.filter(
+        (e) =>
+          filieres.includes(coerceFiliere(e.filiere) as Filiere) &&
+          filiereMatch(filiereSel, e.filiere)
+      ),
+    [especes, filieres, filiereSel]
+  )
+  // On garde en plus l'espèce de l'animal en cours d'édition, même hors atelier
+  // courant, pour ne pas vider le Select d'une fiche existante.
+  const especesProposables = React.useMemo(() => {
+    if (
+      formData.especeAnimaleId &&
+      !especesPourAtelier.some((e) => e.id === formData.especeAnimaleId)
+    ) {
+      const courante = especes.find((e) => e.id === formData.especeAnimaleId)
+      if (courante) return [...especesPourAtelier, courante]
+    }
+    return especesPourAtelier
+  }, [especesPourAtelier, especes, formData.especeAnimaleId])
+
+  const racesDeLEspece = React.useMemo(
+    () => races.filter((race) => race.especeAnimaleId === formData.especeAnimaleId),
+    [races, formData.especeAnimaleId]
+  )
+
   // Bug feedback testeur 2026-05-26 (cmplpajvb) — la recherche était
   // sensible aux diacritiques : "bergere" sans accent → 0 résultat. On
   // normalise désormais en NFD + retrait des marques diacritiques pour
@@ -571,6 +663,7 @@ function AnimauxSubTab() {
       .replace(/[̀-ͯ]/g, "")
 
   const filteredAnimaux = animaux.filter(a => {
+    if (!filiereMatch(filiereSel, a.especeAnimale.filiere)) return false
     if (filterEspece !== 'all' && especeBaseId(a.especeAnimale.id) !== filterEspece) {
       return false
     }
@@ -587,6 +680,18 @@ function AnimauxSubTab() {
   const typeIdentifiant = (formData.typeIdentifiant || null) as TypeIdentifiant | null
   const identifiantValide = isValidIdentifiant(formData.identifiant, typeIdentifiant)
   const aideIdentifiant = placeholderIdentifiant(typeIdentifiant)
+
+  // Filière de l'espèce choisie dans le formulaire (fallback : atelier courant).
+  // Pilote le vocabulaire et les champs affichés : un chien/chat n'a ni « N°
+  // exploitation », ni « orientation de production », ni boucle IPG (feedback
+  // Guillaume 2026-07-25). cf. docs/elevage-modes-phase0-spec.md
+  const filiereForm: Filiere | null = React.useMemo(() => {
+    const e = especes.find((x) => x.id === formData.especeAnimaleId)
+    if (e) return coerceFiliere(e.filiere) as Filiere
+    return filiereSel !== "toutes" ? (filiereSel as Filiere) : null
+  }, [especes, formData.especeAnimaleId, filiereSel])
+  const estRente = filiereForm === null || filiereForm === "rente"
+  const estCompagnie = filiereForm === "compagnie"
 
   return (
     <div className="space-y-4">
@@ -671,18 +776,28 @@ function AnimauxSubTab() {
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label>Profil animal *</Label>
+                <Label>Profil d&apos;élevage *</Label>
                 <Select value={formData.especeAnimaleId} onValueChange={(v) => setFormData(f => ({ ...f, especeAnimaleId: v, raceAnimaleId: "" }))}>
                   <SelectTrigger><SelectValue placeholder="— Sélectionner une espèce —" /></SelectTrigger>
                   <SelectContent>
-                    {especes.map(e => (
+                    {especesProposables.map(e => (
                       <SelectItem key={e.id} value={e.id}>
                         {e.nom}
                       </SelectItem>
                     ))}
+                    {/* QA caprin cms1vdadf — garder visible la sélection courante
+                        même si la liste rechargée ne la contient pas/plus (sinon
+                        Radix retombe sur le placeholder, state pourtant intact). */}
+                    {formData.especeAnimaleId && !especesProposables.some(e => e.id === formData.especeAnimaleId) && (
+                      <SelectItem value={formData.especeAnimaleId}>
+                        {especes.find(e => e.id === formData.especeAnimaleId)?.nom ?? formData.especeAnimaleId}
+                      </SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-muted-foreground">Catégorie de cheptel utilisée par les lots et les règles métier.</p>
+                <p className="text-xs text-muted-foreground">
+                  Ce profil associe l&apos;espèce biologique et l&apos;orientation de production. La race est renseignée séparément.
+                </p>
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div className="space-y-2 sm:col-span-2">
@@ -690,7 +805,7 @@ function AnimauxSubTab() {
                   <Input
                     value={formData.identifiant}
                     onChange={(e) => setFormData(f => ({ ...f, identifiant: e.target.value }))}
-                    placeholder={aideIdentifiant || "BDNI/IPG/SIRE..."}
+                    placeholder={aideIdentifiant || (estRente ? "BDNI/IPG/SIRE..." : estCompagnie ? "N° de puce (I-CAD) / tatouage" : "N° de puce / SIRE...")}
                     aria-invalid={!identifiantValide}
                     className={!identifiantValide ? "border-red-500 focus-visible:ring-red-500" : undefined}
                   />
@@ -716,38 +831,43 @@ function AnimauxSubTab() {
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className={`grid gap-4 ${estRente ? "grid-cols-2" : "grid-cols-1"}`}>
                 <div className="space-y-2">
                   <Label>Nom (usuel)</Label>
                   <Input value={formData.nom} onChange={(e) => setFormData(f => ({ ...f, nom: e.target.value }))} />
                 </div>
-                <div className="space-y-2">
-                  <Label>N° exploitation origine</Label>
-                  <Input value={formData.nExploitationOrigine} onChange={(e) => setFormData(f => ({ ...f, nExploitationOrigine: e.target.value }))} placeholder="(optionnel)" />
-                </div>
+                {estRente && (
+                  <div className="space-y-2">
+                    <Label>N° exploitation origine</Label>
+                    <Input value={formData.nExploitationOrigine} onChange={(e) => setFormData(f => ({ ...f, nExploitationOrigine: e.target.value }))} placeholder="(optionnel)" />
+                  </div>
+                )}
               </div>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Orientation de production</Label>
-                  <Select value={formData.orientationProduction || "__none__"} onValueChange={(v) => setFormData(f => ({ ...f, orientationProduction: v === "__none__" ? "" : v }))}>
-                    <SelectTrigger><SelectValue placeholder="À renseigner" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">À ressaisir / non renseignée</SelectItem>
-                      <SelectItem value="lait">Lait</SelectItem><SelectItem value="viande">Viande</SelectItem>
-                      <SelectItem value="laine">Laine</SelectItem><SelectItem value="mixte">Mixte</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div className={`grid gap-4 ${estRente ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"}`}>
+                {estRente && (
+                  <div className="space-y-2">
+                    <Label>Orientation de production</Label>
+                    <Select value={formData.orientationProduction || "__none__"} onValueChange={(v) => setFormData(f => ({ ...f, orientationProduction: v === "__none__" ? "" : v }))}>
+                      <SelectTrigger><SelectValue placeholder="À renseigner" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">À ressaisir / non renseignée</SelectItem>
+                        <SelectItem value="lait">Lait</SelectItem><SelectItem value="viande">Viande</SelectItem>
+                        <SelectItem value="laine">Laine</SelectItem><SelectItem value="mixte">Mixte</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
                 <div className="space-y-2">
                   <Label>Race</Label>
-                  <Select value={formData.raceAnimaleId || "__none__"} onValueChange={(v) => setFormData(f => ({ ...f, raceAnimaleId: v === "__none__" ? "" : v }))}>
-                    <SelectTrigger><SelectValue placeholder="Race non renseignée" /></SelectTrigger>
-                    <SelectContent>
-                      {formData.raceAnimaleId === "__legacy__" && <SelectItem value="__legacy__">Historique à confirmer : {formData.raceHistorique}</SelectItem>}
-                      <SelectItem value="__none__">Race non renseignée</SelectItem>
-                      {races.filter((race) => race.especeAnimaleId === formData.especeAnimaleId).map((race) => <SelectItem key={race.id} value={race.id}>{race.nom}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                  {/* Référentiel enrichi (92 races canines, 52 félines…) : sélecteur
+                      recherchable plutôt qu'une liste déroulante à faire défiler. */}
+                  <RaceCombobox
+                    races={racesDeLEspece}
+                    value={formData.raceAnimaleId}
+                    onChange={(id) => setFormData(f => ({ ...f, raceAnimaleId: id }))}
+                    raceHistorique={formData.raceHistorique}
+                    disabled={!formData.especeAnimaleId}
+                  />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -776,7 +896,7 @@ function AnimauxSubTab() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Prix achat</Label>
-                  <Input type="number" step="0.01" value={formData.prixAchat} onChange={(e) => setFormData(f => ({ ...f, prixAchat: e.target.value }))} />
+                  <Input type="number" min="0" step="0.01" value={formData.prixAchat} onChange={(e) => setFormData(f => ({ ...f, prixAchat: e.target.value }))} />
                 </div>
                 <div className="space-y-2">
                   <Label>Poids (kg)</Label>
@@ -790,7 +910,7 @@ function AnimauxSubTab() {
                 </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="space-y-2">
-                    <Label>Mère dans le cheptel</Label>
+                    <Label>{estRente ? "Mère dans le cheptel" : "Mère (dans l’élevage)"}</Label>
                     <AnimalCombobox
                       animaux={animaux.filter(a => a.id !== editingAnimalId && a.sexe === "femelle" && (!formData.especeAnimaleId || a.especeAnimale.id === formData.especeAnimaleId))}
                       value={formData.mereId}
@@ -799,7 +919,7 @@ function AnimauxSubTab() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Père dans le cheptel</Label>
+                    <Label>{estRente ? "Père dans le cheptel" : "Père (dans l’élevage)"}</Label>
                     <AnimalCombobox
                       animaux={animaux.filter(a => a.id !== editingAnimalId && a.sexe === "male" && (!formData.especeAnimaleId || a.especeAnimale.id === formData.especeAnimaleId))}
                       value={formData.pereId}
@@ -809,8 +929,8 @@ function AnimauxSubTab() {
                   </div>
                 </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div className="space-y-2"><Label>Mère externe / hors troupeau</Label><Input value={formData.mereIdentifiant} onChange={(e) => setFormData(f => ({ ...f, mereIdentifiant: e.target.value }))} placeholder="N° de boucle (mère décédée, autre élevage…)" /></div>
-                  <div className="space-y-2"><Label>Père externe / référence génétique</Label><Input value={formData.pereIdentifiant} onChange={(e) => setFormData(f => ({ ...f, pereIdentifiant: e.target.value }))} placeholder="N° de boucle, nom, centre d’insémination…" /></div>
+                  <div className="space-y-2"><Label>Mère externe</Label><Input value={formData.mereIdentifiant} onChange={(e) => setFormData(f => ({ ...f, mereIdentifiant: e.target.value }))} placeholder={estRente ? "N° de boucle (mère décédée, autre élevage…)" : "N° LOF / puce, nom (autre élevage…)"} /></div>
+                  <div className="space-y-2"><Label>Père externe / référence génétique</Label><Input value={formData.pereIdentifiant} onChange={(e) => setFormData(f => ({ ...f, pereIdentifiant: e.target.value }))} placeholder={estRente ? "N° de boucle, nom, centre d’insémination…" : estCompagnie ? "N° LOF, nom de l’étalon…" : "N° de puce, nom, saillie externe…"} /></div>
                 </div>
               </div>
               {/* Feedback éleveur 2026-07-21 — rattachement de l'animal à un lot
@@ -824,8 +944,11 @@ function AnimauxSubTab() {
                   <SelectTrigger><SelectValue placeholder="Aucun lot" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__none__">Aucun lot</SelectItem>
+                    {/* QA caprin cms1viq3c — comparer l'ESPÈCE DE BASE (cf. Bug #9) :
+                        chevre_laitiere et chevre_alpine_chamoisee sont la même
+                        espèce, l'égalité stricte d'id profil masquait le lot. */}
                     {lotsActifs
-                      .filter((l) => !formData.especeAnimaleId || l.especeAnimaleId === formData.especeAnimaleId)
+                      .filter((l) => !formData.especeAnimaleId || especeBaseId(l.especeAnimaleId) === especeBaseId(formData.especeAnimaleId))
                       .map((l) => (
                         <SelectItem key={l.id} value={String(l.id)}>
                           {l.nom || `Lot #${l.id}`}
@@ -834,23 +957,62 @@ function AnimauxSubTab() {
                   </SelectContent>
                 </Select>
               </div>
-              {/* Cartographie élevage 2026-07-21 — situer l'animal sur une parcelle
-                  (visible ensuite dans « Bétail présent » sur la carte). */}
+              {formData.lotId && Number(formData.prixAchat || 0) > 0 && (
+                <label className="flex items-start gap-2 rounded-md border p-3 text-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={formData.prixAchatInclusDansLot}
+                    onChange={(e) => setFormData((f) => ({ ...f, prixAchatInclusDansLot: e.target.checked }))}
+                  />
+                  <span>
+                    Prix individuel inclus dans le prix total du lot
+                    <span className="block text-xs text-muted-foreground">
+                      Cochez cette case si ce montant est une ventilation informative : il ne sera pas compté une seconde fois.
+                    </span>
+                  </span>
+                </label>
+              )}
+              {/* Le modèle possédait déjà `statutSanitaire`, mais aucun écran ne
+                  permettait de le renseigner ni de le relire (cms1v8am6). Une
+                  ligne par qualification garde la saisie simple tout en
+                  permettant plusieurs statuts : CAEV, Visna-Maedi, tremblante,
+                  brucellose, paratuberculose, etc. */}
               <div className="space-y-2">
-                <Label>Parcelle (optionnel)</Label>
-                <Select
-                  value={formData.parcelleGeoId || "__none__"}
-                  onValueChange={(v) => setFormData(f => ({ ...f, parcelleGeoId: v === "__none__" ? "" : v }))}
-                >
-                  <SelectTrigger><SelectValue placeholder="Aucune parcelle" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">Aucune parcelle</SelectItem>
-                    {parcellesList.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>{p.nom}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label>Statuts sanitaires</Label>
+                <Textarea
+                  value={formData.statutSanitaire}
+                  onChange={(event) => setFormData((current) => ({
+                    ...current,
+                    statutSanitaire: event.target.value,
+                  }))}
+                  rows={3}
+                  placeholder={"Un statut par ligne, par ex. :\nCAEV : indemne (analyse 2026-07-20)\nTremblante : génotype ARR/ARR"}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Indiquez la maladie, le résultat et la date ou référence du contrôle. Laissez vide si le statut est inconnu.
+                </p>
               </div>
+              {/* Cartographie élevage 2026-07-21 — situer l'animal sur une parcelle
+                  (visible ensuite dans « Bétail présent » sur la carte). Sans objet
+                  pour un chien/chat : masqué en filière compagnie. */}
+              {!estCompagnie && (
+                <div className="space-y-2">
+                  <Label>Parcelle (optionnel)</Label>
+                  <Select
+                    value={formData.parcelleGeoId || "__none__"}
+                    onValueChange={(v) => setFormData(f => ({ ...f, parcelleGeoId: v === "__none__" ? "" : v }))}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Aucune parcelle" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Aucune parcelle</SelectItem>
+                      {parcellesList.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>{p.nom}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
                 <Button type="submit">
@@ -870,6 +1032,56 @@ function AnimauxSubTab() {
               {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
             </div>
           ) : (
+            <>
+            <div className="space-y-3 p-3 sm:hidden">
+              {filteredAnimaux.map((animal) => (
+                <article key={animal.id} className="rounded-lg border bg-white p-3 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h3 className="truncate font-semibold">
+                        {animal.nom || animal.identifiant || `Animal #${animal.id}`}
+                      </h3>
+                      <p className="text-sm text-muted-foreground">
+                        {animal.identifiant || "Identifiant non renseigné"} · {especeBaseLabel(animal.especeAnimale.id)}
+                        {animal.race ? ` · ${animal.race}` : ""}
+                      </p>
+                    </div>
+                    <Badge className={STATUT_COLORS[animal.statut] || ""}>{labelStatutAnimal(animal.statut)}</Badge>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {animal.statutsSanitairesStructures?.slice(0, 2).map((statut) => (
+                      <Badge
+                        key={statut.id}
+                        variant="outline"
+                        className={statut.statut === "positif" ? "border-red-200 bg-red-50 text-red-800" : statut.statut === "indemne" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-800"}
+                      >
+                        {statut.maladie.nom} · {statut.statut === "en_cours" ? "en cours" : statut.statut}
+                      </Badge>
+                    ))}
+                    {!animal.statutsSanitairesStructures?.length && (
+                      <Badge variant="outline" className="text-muted-foreground">Sanitaire inconnu</Badge>
+                    )}
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <Link
+                      href={`/elevage/animaux/${animal.id}#soins`}
+                      className="inline-flex min-h-11 items-center justify-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground"
+                    >
+                      <Stethoscope className="mr-2 h-4 w-4" />
+                      Fiche &amp; soins
+                    </Link>
+                    <Button className="min-h-11" variant="outline" onClick={() => handleEditAnimal(animal)}>
+                      <Pencil className="mr-2 h-4 w-4" />
+                      Modifier
+                    </Button>
+                  </div>
+                </article>
+              ))}
+              {filteredAnimaux.length === 0 && (
+                <p className="py-8 text-center text-muted-foreground">Aucun animal trouvé</p>
+              )}
+            </div>
+            <div className="hidden overflow-x-auto sm:block">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -879,6 +1091,7 @@ function AnimauxSubTab() {
                   <TableHead>Race</TableHead>
                   <TableHead>Sexe</TableHead>
                   <TableHead>Statut</TableHead>
+                  <TableHead>Sanitaire</TableHead>
                   <TableHead>Lot</TableHead>
                   <TableHead className="text-right">Poids</TableHead>
                   <TableHead></TableHead>
@@ -925,6 +1138,47 @@ function AnimauxSubTab() {
                     </TableCell>
                     <TableCell>
                       <Badge className={STATUT_COLORS[animal.statut] || ''}>{labelStatutAnimal(animal.statut)}</Badge>
+                    </TableCell>
+                    <TableCell className="max-w-[180px]">
+                      {animal.statutsSanitairesStructures?.length ? (
+                        <div className="flex flex-wrap gap-1">
+                          {animal.statutsSanitairesStructures.slice(0, 2).map((statut) => (
+                            <Badge
+                              key={statut.id}
+                              variant="outline"
+                              className={`max-w-[170px] truncate text-[10px] ${
+                                statut.statut === "positif"
+                                  ? "border-red-200 bg-red-50 text-red-800"
+                                  : statut.statut === "indemne"
+                                    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                                    : "border-amber-200 bg-amber-50 text-amber-800"
+                              }`}
+                            >
+                              {statut.maladie.nom} · {statut.statut === "en_cours" ? "en cours" : statut.statut}
+                            </Badge>
+                          ))}
+                          {animal.statutsSanitairesStructures.length > 2 && (
+                            <Badge variant="outline" className="text-[10px]">
+                              +{animal.statutsSanitairesStructures.length - 2}
+                            </Badge>
+                          )}
+                        </div>
+                      ) : animal.statutSanitaire.length ? (
+                        <div className="flex flex-wrap gap-1">
+                          {animal.statutSanitaire.slice(0, 2).map((statut) => (
+                            <Badge key={statut} variant="outline" className="max-w-[170px] truncate text-[10px]">
+                              {statut}
+                            </Badge>
+                          ))}
+                          {animal.statutSanitaire.length > 2 && (
+                            <Badge variant="outline" className="text-[10px]">
+                              +{animal.statutSanitaire.length - 2}
+                            </Badge>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Inconnu</span>
+                      )}
                     </TableCell>
                     <TableCell>{animal.lot?.nom || '-'}</TableCell>
                     <TableCell className="text-right">
@@ -981,17 +1235,22 @@ function AnimauxSubTab() {
                               </TooltipTrigger>
                               <TooltipContent>Vendre</TooltipContent>
                             </Tooltip>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <button
-                                  onClick={() => { setAbattageForm(f => ({ ...f, date: todayLocalISO(), poidsVif: animal.poidsActuel?.toString() || "" })); setAbattageDialog(animal) }}
-                                  className="p-1.5 rounded-md transition-colors bg-slate-100 text-slate-400 hover:bg-red-100 hover:text-red-600"
-                                >
-                                  <Scissors className="h-3.5 w-3.5" />
-                                </button>
-                              </TooltipTrigger>
-                              <TooltipContent>Abattage</TooltipContent>
-                            </Tooltip>
+                            {/* Abattage réservé aux filières de rente (viande) :
+                                sans objet — et illégal — pour un chien/chat de
+                                compagnie (feedback Guillaume 2026-07-25). */}
+                            {capacites(coerceFiliere(animal.especeAnimale.filiere)).abattage && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    onClick={() => { setAbattageForm(f => ({ ...f, date: todayLocalISO(), poidsVif: animal.poidsActuel?.toString() || "" })); setAbattageDialog(animal) }}
+                                    className="p-1.5 rounded-md transition-colors bg-slate-100 text-slate-400 hover:bg-red-100 hover:text-red-600"
+                                  >
+                                    <Scissors className="h-3.5 w-3.5" />
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent>Abattage</TooltipContent>
+                              </Tooltip>
+                            )}
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <button
@@ -1021,13 +1280,15 @@ function AnimauxSubTab() {
                 ))}
                 {filteredAnimaux.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                       Aucun animal trouvé
                     </TableCell>
                   </TableRow>
                 )}
               </TableBody>
             </Table>
+            </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -1220,6 +1481,8 @@ function LotsSubTab() {
   const { toast } = useToast()
   const [isLoading, setIsLoading] = React.useState(true)
   const [lots, setLots] = React.useState<Lot[]>([])
+  const filiereSel = useFiliereSelection()
+  const { filieres } = useElevageModes()
   const [especes, setEspeces] = React.useState<EspeceAnimale[]>([])
   const [parcelles, setParcelles] = React.useState<Parcelle[]>([])
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
@@ -1236,7 +1499,9 @@ function LotsSubTab() {
 
   const resetLotForm = () => {
     setEditingLotId(null)
-    setFormData(EMPTY_LOT_FORM)
+    const defautEspece =
+      especesPourAtelier.length === 1 ? especesPourAtelier[0].id : ""
+    setFormData({ ...EMPTY_LOT_FORM, especeAnimaleId: defautEspece })
   }
 
   const handleEditLot = (lot: Lot) => {
@@ -1394,6 +1659,28 @@ function LotsSubTab() {
 
   React.useEffect(() => { fetchData() }, [fetchData])
 
+  // Même règle que pour les animaux : filières actives ET restreintes à
+  // l'atelier sélectionné, en gardant l'espèce du lot édité (cf. §7 de la spec).
+  const especesPourAtelier = React.useMemo(
+    () =>
+      especes.filter(
+        (e) =>
+          filieres.includes(coerceFiliere(e.filiere) as Filiere) &&
+          filiereMatch(filiereSel, e.filiere)
+      ),
+    [especes, filieres, filiereSel]
+  )
+  const especesProposables = React.useMemo(() => {
+    if (
+      formData.especeAnimaleId &&
+      !especesPourAtelier.some((e) => e.id === formData.especeAnimaleId)
+    ) {
+      const courante = especes.find((e) => e.id === formData.especeAnimaleId)
+      if (courante) return [...especesPourAtelier, courante]
+    }
+    return especesPourAtelier
+  }, [especesPourAtelier, especes, formData.especeAnimaleId])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!formData.especeAnimaleId) {
@@ -1424,7 +1711,18 @@ function LotsSubTab() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
-      if (!response.ok) throw new Error('Erreur')
+      if (!response.ok) {
+        // QA caprin cms1vdadf — même pattern que le formulaire animal : on lit
+        // le corps de la 400 (zod flatten → details.fieldErrors, ou message
+        // custom) pour pointer le champ fautif au lieu d'un « Erreur » muet.
+        const errPayload = await response.json().catch(() => ({}))
+        const fieldErrors = errPayload?.details?.fieldErrors as Record<string, string[]> | undefined
+        const firstField = fieldErrors ? Object.entries(fieldErrors).find(([, v]) => v.length > 0) : null
+        const description = firstField
+          ? `${firstField[0]} : ${firstField[1][0]}`
+          : errPayload?.error || "Impossible d'enregistrer"
+        throw new Error(description)
+      }
       toast({
         title: isEdit ? "Lot mis à jour" : "Lot créé",
         description: isEdit ? undefined : `${formData.quantiteInitiale} animaux ajoutés`,
@@ -1432,8 +1730,12 @@ function LotsSubTab() {
       setIsDialogOpen(false)
       resetLotForm()
       fetchData()
-    } catch {
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible d'enregistrer" })
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Erreur",
+        description: err instanceof Error ? err.message : "Impossible d'enregistrer",
+      })
     }
   }
 
@@ -1461,11 +1763,20 @@ function LotsSubTab() {
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-2">
-                  <Label>Espèce *</Label>
+                  <Label>Profil d&apos;élevage *</Label>
                   <Select value={formData.especeAnimaleId} onValueChange={(v) => setFormData(f => ({ ...f, especeAnimaleId: v }))}>
                     <SelectTrigger><SelectValue placeholder="— Sélectionner une espèce —" /></SelectTrigger>
                     <SelectContent>
-                      {especes.map(e => <SelectItem key={e.id} value={e.id}>{e.nom}</SelectItem>)}
+                      {especesProposables.map(e => <SelectItem key={e.id} value={e.id}>{e.nom}</SelectItem>)}
+                      {/* QA caprin cms1vdadf — si la liste (rechargée en async) ne
+                          contient plus la valeur du state, Radix réaffiche le
+                          placeholder alors que la sélection est intacte : on garde
+                          un item pour la valeur courante. */}
+                      {formData.especeAnimaleId && !especesProposables.some(e => e.id === formData.especeAnimaleId) && (
+                        <SelectItem value={formData.especeAnimaleId}>
+                          {especes.find(e => e.id === formData.especeAnimaleId)?.nom ?? formData.especeAnimaleId}
+                        </SelectItem>
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -1486,7 +1797,7 @@ function LotsSubTab() {
                   </div>
                   <div className="space-y-2">
                     <Label>Prix total</Label>
-                    <Input type="number" step="0.01" value={formData.prixAchatTotal} onChange={(e) => setFormData(f => ({ ...f, prixAchatTotal: e.target.value }))} />
+                    <Input type="number" min="0" step="0.01" value={formData.prixAchatTotal} onChange={(e) => setFormData(f => ({ ...f, prixAchatTotal: e.target.value }))} />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
@@ -1522,6 +1833,42 @@ function LotsSubTab() {
           {isLoading ? (
             <div className="p-8 space-y-4">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
           ) : (
+            <>
+            <div className="space-y-3 p-3 sm:hidden">
+              {lots.filter((lot) => filiereMatch(filiereSel, lot.especeAnimale.filiere)).map((lot) => {
+                const lotCalcule = lot as typeof lot & { effectifCalcule?: number }
+                const effectif = lotCalcule.effectifCalcule ?? lot.quantiteActuelle
+                return (
+                  <article key={lot.id} className="rounded-lg border bg-white p-3 shadow-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h3 className="font-semibold">{lot.nom || `Lot #${lot.id}`}</h3>
+                        <p className="text-sm text-muted-foreground">
+                          {especeBaseLabel(lot.especeAnimale.id)} · {effectif} tête{effectif > 1 ? "s" : ""}
+                        </p>
+                      </div>
+                      <Badge className={STATUT_COLORS[lot.statut] || ""}>{labelStatutLot(lot.statut)}</Badge>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <Link
+                        href={`/elevage/lots/${lot.id}`}
+                        className="inline-flex min-h-11 items-center justify-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground"
+                      >
+                        Ouvrir le lot
+                      </Link>
+                      <Button className="min-h-11" variant="outline" onClick={() => handleEditLot(lot)}>
+                        <Pencil className="mr-2 h-4 w-4" />
+                        Modifier
+                      </Button>
+                    </div>
+                  </article>
+                )
+              })}
+              {lots.length === 0 && (
+                <p className="py-8 text-center text-muted-foreground">Aucun lot enregistré</p>
+              )}
+            </div>
+            <div className="hidden overflow-x-auto sm:block">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -1539,7 +1886,7 @@ function LotsSubTab() {
               <TableBody>
                 {/* QA Julien 2026-05-15 — Bug #11 : ligne lot cliquable
                     vers la fiche dédiée /elevage/lots/[id]. */}
-                {lots.map((lot) => (
+                {lots.filter((lot) => filiereMatch(filiereSel, lot.especeAnimale.filiere)).map((lot) => (
                   <TableRow
                     key={lot.id}
                     className="cursor-pointer hover:bg-muted/50"
@@ -1620,7 +1967,7 @@ function LotsSubTab() {
                             </TooltipTrigger>
                             <TooltipContent>Modifier le lot</TooltipContent>
                           </Tooltip>
-                          {lot.statut === 'actif' && lot.quantiteActuelle > 0 && (
+                          {lot.statut === 'actif' && lot.quantiteActuelle > 0 && capacites(coerceFiliere(lot.especeAnimale.filiere)).abattage && (
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <button
@@ -1693,6 +2040,8 @@ function LotsSubTab() {
                 )}
               </TableBody>
             </Table>
+            </div>
+            </>
           )}
         </CardContent>
       </Card>

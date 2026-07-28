@@ -42,6 +42,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
 import { oeufsAttendusJour } from "@/lib/elevage/taux-ponte"
@@ -179,6 +180,46 @@ interface StockOeufs {
   detail: { produits: number; casses: number; sales?: number; vendus: number }
 }
 
+interface MouvementStockOeufs {
+  id: string
+  date: string
+  type: string
+  quantite: number
+  notes: string | null
+}
+
+interface LotStockOeufs {
+  id: number
+  datePonte: string
+  lot: { id: number; nom: string | null } | null
+  calibre: string | null
+  quantiteInitiale: number
+  restant: number
+  limiteVente: string
+  dcr: string
+  statut: "commercialisable" | "a_consumer" | "perime"
+  mouvements: MouvementStockOeufs[]
+}
+
+interface StockTraceOeufs {
+  data: LotStockOeufs[]
+  stats: {
+    commercialisables: number
+    aConsommer: number
+    perimes: number
+    stockPhysique: number
+  }
+}
+
+// Ticket cms1vcc6f — taux de ponte remonté par /api/elevage/stats (observé
+// 7 j glissants + attendu saisonnier), affiché en KPI dans l'onglet Œufs.
+interface PonteStats {
+  tauxPonte: number | null
+  tauxPonteSaisonAttendu: number | null
+  tauxPonteRatio: number | null
+  nbPondeuses: number
+}
+
 function OeufsSubTab({ year }: { year?: number } = {}) {
   const effectiveYear = year ?? new Date().getFullYear()
   const { toast } = useToast()
@@ -187,7 +228,12 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
   const [lots, setLots] = React.useState<LotVolaille[]>([])
   const [stats, setStats] = React.useState<OeufsStats | null>(null)
   const [stockOeufs, setStockOeufs] = React.useState<StockOeufs | null>(null)
+  const [stockTrace, setStockTrace] = React.useState<StockTraceOeufs | null>(null)
+  // Ticket cms1vcc6f — KPI taux de ponte (même fetch stats que le stock).
+  const [ponte, setPonte] = React.useState<PonteStats | null>(null)
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
+  const [isSortieOpen, setIsSortieOpen] = React.useState(false)
+  const [isSubmittingSortie, setIsSubmittingSortie] = React.useState(false)
   // Bug feedback testeur 2026-05-26 (cmploo6ye) — anti double-submit pour
   // empêcher la création d'une 2e ligne fantôme par clic accidentel.
   const [isSubmittingProd, setIsSubmittingProd] = React.useState(false)
@@ -222,6 +268,13 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
     lotId: "", date: todayLocalISO(),
     quantite: "", casses: "0", sales: "0", calibre: "", notes: "",
   })
+  const [sortieForm, setSortieForm] = React.useState({
+    productionId: "",
+    type: "vente",
+    quantite: "",
+    date: todayLocalISO(),
+    notes: "",
+  })
 
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
@@ -232,10 +285,11 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
       // de la dropdown. Désormais on récupère TOUS les lots volaille de
       // l'utilisateur ; le tri remonte les actifs en premier, puis les
       // terminés/réformés avec un indicateur de statut visible.
-      const [prodRes, lotsRes, statsRes] = await Promise.all([
+      const [prodRes, lotsRes, statsRes, stockRes] = await Promise.all([
         fetch(`/api/elevage/production-oeufs?limit=500&annee=${effectiveYear}`),
         fetch('/api/elevage/lots'),
         fetch(`/api/elevage/stats?annee=${effectiveYear}`),
+        fetch('/api/elevage/stock-oeufs'),
       ])
 
       if (prodRes.ok) {
@@ -270,6 +324,17 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
             detail: result.stats.stockOeufsDetail || { produits: 0, casses: 0, vendus: 0 },
           })
         }
+        // Ticket cms1vcc6f — extraction du taux de ponte (déjà calculé par la
+        // route stats : observé 7 j, attendu saisonnier, ratio, effectif).
+        setPonte({
+          tauxPonte: result.stats?.tauxPonte ?? null,
+          tauxPonteSaisonAttendu: result.stats?.tauxPonteSaisonAttendu ?? null,
+          tauxPonteRatio: result.stats?.tauxPonteRatio ?? null,
+          nbPondeuses: result.stats?.nbPondeuses ?? 0,
+        })
+      }
+      if (stockRes.ok) {
+        setStockTrace(await stockRes.json())
       }
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les données" })
@@ -279,6 +344,11 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
   }, [toast, effectiveYear])
 
   React.useEffect(() => { fetchData() }, [fetchData])
+
+  React.useEffect(() => {
+    if (!isSortieOpen || sortieForm.productionId || !stockTrace?.data.length) return
+    setSortieForm((form) => ({ ...form, productionId: stockTrace.data[0].id.toString() }))
+  }, [isSortieOpen, sortieForm.productionId, stockTrace])
 
   // BUG #2 — encapsule l'appel POST pour pouvoir le rejouer avec
   // `overrideCoherence: true` quand l'éleveur confirme la saisie après
@@ -452,30 +522,90 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
     setProductions((prev) => prev.filter((p) => p.id !== id))
     try {
       const res = await fetch(`/api/elevage/production-oeufs?id=${id}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error('HTTP ' + res.status)
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.error || `HTTP ${res.status}`)
+      }
       toast({ title: "Collecte supprimée" })
       // Rafraîchit stats + stock en arrière-plan (sans bloquer l'UI)
       fetchData()
-    } catch {
+    } catch (error) {
       setProductions(previous)
-      toast({ variant: "destructive", title: "Erreur", description: "Suppression annulée" })
+      toast({
+        variant: "destructive",
+        title: "Suppression annulée",
+        description: error instanceof Error ? error.message : "Impossible de supprimer la collecte",
+      })
     } finally {
       setDeletingId(null)
     }
   }
 
+  const handleSortieSubmit = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (isSubmittingSortie) return
+    const productionId = Number(sortieForm.productionId)
+    const quantite = Number(sortieForm.quantite)
+    if (!Number.isInteger(productionId) || !Number.isInteger(quantite) || quantite <= 0) {
+      toast({ variant: "destructive", title: "Sortie incomplète", description: "Sélectionnez un lot et une quantité positive." })
+      return
+    }
+    setIsSubmittingSortie(true)
+    try {
+      const response = await fetch('/api/elevage/stock-oeufs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productionId,
+          type: sortieForm.type,
+          quantite,
+          date: sortieForm.date,
+          notes: sortieForm.notes || null,
+        }),
+      })
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(body.error || `Erreur HTTP ${response.status}`)
+      toast({ title: "Sortie enregistrée", description: `${quantite} œuf${quantite > 1 ? "s" : ""} déduit${quantite > 1 ? "s" : ""} du lot.` })
+      setIsSortieOpen(false)
+      setSortieForm({
+        productionId: "",
+        type: "vente",
+        quantite: "",
+        date: todayLocalISO(),
+        notes: "",
+      })
+      await fetchData()
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Sortie refusée",
+        description: error instanceof Error ? error.message : "Impossible d'enregistrer la sortie",
+      })
+    } finally {
+      setIsSubmittingSortie(false)
+    }
+  }
+
+  const statutStock = {
+    commercialisable: { label: "Vente autorisée", className: "bg-green-100 text-green-800" },
+    a_consumer: { label: "À consommer", className: "bg-amber-100 text-amber-800" },
+    perime: { label: "DCR dépassée", className: "bg-red-100 text-red-800" },
+  } as const
+
   return (
     <div className="space-y-4">
       {/* Stock disponible + Stats */}
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-5">
-        {stockOeufs && (
-          <Card className={`bg-gradient-to-br ${stockOeufs.stockNet < 24 ? "from-orange-500 to-orange-600" : "from-amber-500 to-amber-600"} text-white`}>
+        {(stockTrace || stockOeufs) && (
+          <Card className={`bg-gradient-to-br ${(stockTrace?.stats.commercialisables ?? stockOeufs?.stockNet ?? 0) < 24 ? "from-orange-500 to-orange-600" : "from-amber-500 to-amber-600"} text-white`}>
             <CardHeader className="pb-1 pt-3 px-4">
-              <CardDescription className="text-white/80 text-xs">Stock disponible</CardDescription>
-              <CardTitle className="text-2xl">{stockOeufs.stockNet}</CardTitle>
+              <CardDescription className="text-white/80 text-xs">Commercialisables</CardDescription>
+              <CardTitle className="text-2xl">{stockTrace?.stats.commercialisables ?? stockOeufs?.stockNet ?? 0}</CardTitle>
             </CardHeader>
             <CardContent className="pb-3 px-4">
-              <p className="text-xs text-white/80">œufs disponibles</p>
+              <p className="text-xs text-white/80">
+                {stockTrace ? `${stockTrace.stats.stockPhysique} en stock physique` : "œufs disponibles"}
+              </p>
             </CardContent>
           </Card>
         )}
@@ -509,6 +639,39 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
               </CardContent>
             </Card>
           </>
+        )}
+        {/* Ticket cms1vcc6f — KPI taux de ponte (7 j glissants) : occupait la
+            5e colonne libre de la grille. Couleur sur le ratio observé/attendu
+            (vert >= 0.7, ambre >= 0.5, rouge sinon — convention DashboardTab),
+            repli sur le taux absolu quand l'attendu saisonnier est inconnu. */}
+        {ponte && (ponte.nbPondeuses > 0 || ponte.tauxPonte != null) && (
+          <Card>
+            <CardHeader className="pb-1 pt-3 px-4">
+              <CardDescription className="text-xs">Taux de ponte</CardDescription>
+              <CardTitle
+                className={`text-2xl ${(() => {
+                  if (ponte.tauxPonte == null) return "text-muted-foreground"
+                  const ok = ponte.tauxPonteRatio != null
+                    ? ponte.tauxPonteRatio >= 0.7
+                    : ponte.tauxPonte >= 70
+                  const moyen = ponte.tauxPonteRatio != null
+                    ? ponte.tauxPonteRatio >= 0.5
+                    : ponte.tauxPonte >= 50
+                  return ok ? "text-green-600" : moyen ? "text-amber-600" : "text-red-600"
+                })()}`}
+              >
+                {ponte.tauxPonte != null ? `${ponte.tauxPonte} %` : '—'}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pb-3 px-4">
+              <p className="text-xs text-muted-foreground">
+                {[
+                  ponte.tauxPonteSaisonAttendu != null ? `attendu ~${ponte.tauxPonteSaisonAttendu} %` : null,
+                  ponte.nbPondeuses > 0 ? `${ponte.nbPondeuses} pondeuses` : null,
+                ].filter(Boolean).join(' · ') || '7 derniers jours'}
+              </p>
+            </CardContent>
+          </Card>
         )}
       </div>
 
@@ -609,7 +772,138 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
             </form>
           </DialogContent>
         </Dialog>
+        <Dialog open={isSortieOpen} onOpenChange={setIsSortieOpen}>
+          <DialogTrigger asChild>
+            <Button variant="outline" size="sm" disabled={!stockTrace?.data.length}>
+              <Package className="h-4 w-4 mr-1" />
+              Sortie de stock
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Sortie du stock d'œufs</DialogTitle>
+              <DialogDescription>Déduire une vente, consommation ou perte du lot de ponte exact.</DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleSortieSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label>Lot de ponte *</Label>
+                <Select
+                  value={sortieForm.productionId}
+                  onValueChange={(value) => setSortieForm((form) => ({ ...form, productionId: value }))}
+                >
+                  <SelectTrigger><SelectValue placeholder="Sélectionner un lot" /></SelectTrigger>
+                  <SelectContent>
+                    {stockTrace?.data.map((lot) => (
+                      <SelectItem key={lot.id} value={lot.id.toString()}>
+                        {new Date(lot.datePonte).toLocaleDateString("fr-FR")} · {lot.lot?.nom || `Collecte #${lot.id}`} · {lot.restant} restant(s)
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Type *</Label>
+                  <Select value={sortieForm.type} onValueChange={(value) => setSortieForm((form) => ({ ...form, type: value }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="vente">Vente</SelectItem>
+                      <SelectItem value="autoconsommation">Autoconsommation</SelectItem>
+                      <SelectItem value="don">Don</SelectItem>
+                      <SelectItem value="destruction">Destruction</SelectItem>
+                      <SelectItem value="casse">Casse</SelectItem>
+                      <SelectItem value="ajustement">Ajustement sortant</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Quantité *</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    value={sortieForm.quantite}
+                    onChange={(event) => setSortieForm((form) => ({ ...form, quantite: event.target.value }))}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Date *</Label>
+                <Input
+                  type="date"
+                  value={sortieForm.date}
+                  onChange={(event) => setSortieForm((form) => ({ ...form, date: event.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Notes</Label>
+                <Input
+                  value={sortieForm.notes}
+                  onChange={(event) => setSortieForm((form) => ({ ...form, notes: event.target.value }))}
+                  placeholder="Client, motif de destruction…"
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => setIsSortieOpen(false)} disabled={isSubmittingSortie}>Annuler</Button>
+                <Button type="submit" disabled={isSubmittingSortie}>
+                  {isSubmittingSortie ? "Enregistrement…" : "Enregistrer la sortie"}
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
+
+      {stockTrace && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Traçabilité du stock</CardTitle>
+            <CardDescription>
+              Vente jusqu'à J+21 · consommation jusqu'à la DCR J+28 · les plus urgents sont affichés en premier.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
+              <div className="rounded-md border p-2"><strong>{stockTrace.stats.commercialisables}</strong><br /><span className="text-muted-foreground">commercialisables</span></div>
+              <div className="rounded-md border p-2"><strong>{stockTrace.stats.aConsommer}</strong><br /><span className="text-muted-foreground">à consommer</span></div>
+              <div className="rounded-md border p-2"><strong>{stockTrace.stats.perimes}</strong><br /><span className="text-muted-foreground">DCR dépassée</span></div>
+              <div className="rounded-md border p-2"><strong>{stockTrace.stats.stockPhysique}</strong><br /><span className="text-muted-foreground">stock physique</span></div>
+            </div>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Ponte</TableHead>
+                    <TableHead>Lot</TableHead>
+                    <TableHead className="text-right">Restant</TableHead>
+                    <TableHead>Limite vente</TableHead>
+                    <TableHead>DCR</TableHead>
+                    <TableHead>État</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {stockTrace.data.map((lot) => (
+                    <TableRow key={lot.id}>
+                      <TableCell>{new Date(lot.datePonte).toLocaleDateString("fr-FR")}</TableCell>
+                      <TableCell>{lot.lot?.nom || `Collecte #${lot.id}`}</TableCell>
+                      <TableCell className="text-right font-semibold">{lot.restant}</TableCell>
+                      <TableCell>{new Date(lot.limiteVente).toLocaleDateString("fr-FR")}</TableCell>
+                      <TableCell>{new Date(lot.dcr).toLocaleDateString("fr-FR")}</TableCell>
+                      <TableCell>
+                        <Badge className={statutStock[lot.statut].className}>{statutStock[lot.statut].label}</Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {stockTrace.data.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={6} className="py-6 text-center text-muted-foreground">Aucun œuf restant en stock.</TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Table */}
       <Card>
@@ -741,6 +1035,12 @@ const TYPE_LABELS: Record<string, string> = {
   autre: "Autre",
 }
 
+// Ticket cms1vqsqu — convention « cession gratuite » (pas de colonne dédiée en
+// base) : prixTotal 0 + notes préfixées par ce marqueur (posé par l'API au POST).
+const PREFIXE_CESSION_GRATUITE = '[Cession gratuite]'
+const estCessionGratuite = (notes: string | null | undefined) =>
+  (notes ?? '').startsWith(PREFIXE_CESSION_GRATUITE)
+
 function VentesSubTab() {
   const { toast } = useToast()
   const [isLoading, setIsLoading] = React.useState(true)
@@ -754,11 +1054,13 @@ function VentesSubTab() {
     date: todayLocalISO(),
     type: "oeufs", description: "", quantite: "", unite: "douzaine",
     prixUnitaire: "", client: "", paye: true, notes: "",
+    // Ticket cms1vqsqu — don / autoconsommation d'un animal vivant.
+    cessionGratuite: false,
   })
 
   const resetForm = () => {
     setEditingId(null)
-    setFormData({ date: todayLocalISO(), type: "oeufs", description: "", quantite: "", unite: "douzaine", prixUnitaire: "", client: "", paye: true, notes: "" })
+    setFormData({ date: todayLocalISO(), type: "oeufs", description: "", quantite: "", unite: "douzaine", prixUnitaire: "", client: "", paye: true, notes: "", cessionGratuite: false })
   }
 
   const handleEdit = (v: Vente) => {
@@ -773,6 +1075,8 @@ function VentesSubTab() {
       client: v.client ?? "",
       paye: v.paye,
       notes: v.notes ?? "",
+      // Ticket cms1vqsqu — la case reflète la convention notes préfixées.
+      cessionGratuite: estCessionGratuite(v.notes),
     })
     setIsDialogOpen(true)
   }
@@ -805,8 +1109,39 @@ function VentesSubTab() {
       toast({ title: "Renseignez le prix unitaire", variant: "destructive" })
       return
     }
+    // Ticket cms1vqsqu — garde-fous animal vivant : un prix à 0 € n'est admis
+    // qu'en cession gratuite explicite, et l'acquéreur est requis (traçabilité).
+    if (formData.type === 'animal_vivant') {
+      if (!formData.cessionGratuite && parseFloat(formData.prixUnitaire) <= 0) {
+        toast({
+          variant: "destructive",
+          title: "Prix de vente manquant",
+          description: "Saisissez un prix, ou cochez « Cession à titre gratuit » s'il s'agit d'un don.",
+        })
+        return
+      }
+      if (!formData.client.trim()) {
+        toast({
+          variant: "destructive",
+          title: "Acquéreur requis",
+          description: "Le nom de l'acquéreur est requis pour la cession d'un animal vivant (traçabilité).",
+        })
+        return
+      }
+    }
     try {
       const isEdit = editingId !== null
+      // Ticket cms1vqsqu — en édition (PATCH), la convention notes préfixées
+      // est entretenue côté client (le préfixe n'est posé par l'API qu'au POST).
+      let notes = formData.notes || null
+      if (isEdit) {
+        const dejaPrefixe = estCessionGratuite(notes)
+        if (formData.cessionGratuite && !dejaPrefixe) {
+          notes = notes ? `${PREFIXE_CESSION_GRATUITE} ${notes}` : PREFIXE_CESSION_GRATUITE
+        } else if (!formData.cessionGratuite && dejaPrefixe) {
+          notes = (notes as string).slice(PREFIXE_CESSION_GRATUITE.length).trim() || null
+        }
+      }
       const body = {
         ...(isEdit ? { id: editingId } : {}),
         date: formData.date,
@@ -817,21 +1152,32 @@ function VentesSubTab() {
         prixUnitaire: formData.prixUnitaire ? parseFloat(formData.prixUnitaire) : 0,
         client: formData.client || null,
         paye: formData.paye,
-        notes: formData.notes || null,
+        notes,
+        // Ticket cms1vqsqu — cessionGratuite + marqueur `validationVente` qui
+        // active la validation stricte du POST (les appelants historiques sans
+        // ce marqueur ne sont pas cassés).
+        ...(isEdit ? {} : { cessionGratuite: formData.cessionGratuite, validationVente: true }),
       }
       const response = await fetch('/api/elevage/ventes', {
         method: isEdit ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
-      if (!response.ok) throw new Error('Erreur')
       const json = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        // Ticket cms1vqsqu — afficher le message précis de l'API (garde-fous).
+        toast({ variant: "destructive", title: "Erreur", description: json?.error || "Impossible d'enregistrer" })
+        return
+      }
       const total = parseFloat(formData.quantite) * parseFloat(formData.prixUnitaire)
-      toast({ title: "Vente enregistrée", description: `${total.toFixed(2)} €` })
+      toast({
+        title: "Vente enregistrée",
+        description: formData.cessionGratuite ? "Cession à titre gratuit" : `${total.toFixed(2)} €`,
+      })
       // Review caprin 2026-07-22 — alerte délai d'attente lait sur vente de lait cru.
       if (json?.warning) toast({ variant: "destructive", title: "Attention lait", description: json.warning })
       setIsDialogOpen(false)
-      setFormData({ date: todayLocalISO(), type: "oeufs", description: "", quantite: "", unite: "douzaine", prixUnitaire: "", client: "", paye: true, notes: "" })
+      resetForm()
       fetchData()
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible d'enregistrer" })
@@ -902,7 +1248,8 @@ function VentesSubTab() {
                 </div>
                 <div className="space-y-2">
                   <Label>Type *</Label>
-                  <Select value={formData.type} onValueChange={(v) => setFormData(f => ({ ...f, type: v }))}>
+                  {/* Ticket cms1vqsqu — quitter « Animal vivant » décoche la cession gratuite. */}
+                  <Select value={formData.type} onValueChange={(v) => setFormData(f => ({ ...f, type: v, cessionGratuite: v === 'animal_vivant' ? f.cessionGratuite : false }))}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="oeufs">Œufs</SelectItem>
@@ -936,9 +1283,28 @@ function VentesSubTab() {
                 </div>
                 <div className="space-y-2">
                   <Label>Prix unit. *</Label>
-                  <Input type="number" step="0.01" value={formData.prixUnitaire} onChange={(e) => setFormData(f => ({ ...f, prixUnitaire: e.target.value }))} placeholder="€" />
+                  {/* Ticket cms1vqsqu — prix verrouillé à 0 quand cession gratuite. */}
+                  <Input type="number" step="0.01" value={formData.prixUnitaire} onChange={(e) => setFormData(f => ({ ...f, prixUnitaire: e.target.value }))} placeholder={'€'} disabled={formData.cessionGratuite} />
                 </div>
               </div>
+              {/* Ticket cms1vqsqu — cession à titre gratuit (don / autoconsommation)
+                  pour un animal vivant : prix forcé à 0, acquéreur obligatoire. */}
+              {formData.type === 'animal_vivant' && (
+                <div className="flex items-start gap-2 rounded-lg border bg-slate-50 p-2.5">
+                  <Checkbox
+                    id="vente-cession-gratuite"
+                    checked={formData.cessionGratuite}
+                    onCheckedChange={(c) => setFormData(f => ({
+                      ...f,
+                      cessionGratuite: c === true,
+                      prixUnitaire: c === true ? "0" : "",
+                    }))}
+                  />
+                  <Label htmlFor="vente-cession-gratuite" className="text-sm font-normal leading-snug cursor-pointer">
+                    {'Cession à titre gratuit (don / autoconsommation)'}
+                  </Label>
+                </div>
+              )}
               {formData.quantite && formData.prixUnitaire && (
                 <div className="text-center py-2 bg-green-50 rounded-lg">
                   <span className="text-sm text-muted-foreground">Total: </span>
@@ -948,8 +1314,13 @@ function VentesSubTab() {
                 </div>
               )}
               <div className="space-y-2">
-                <Label>Client</Label>
-                <Input value={formData.client} onChange={(e) => setFormData(f => ({ ...f, client: e.target.value }))} placeholder="Nom du client (optionnel)" />
+                <Label>{formData.type === 'animal_vivant' ? 'Client (acquéreur) *' : 'Client'}</Label>
+                <Input
+                  value={formData.client}
+                  onChange={(e) => setFormData(f => ({ ...f, client: e.target.value }))}
+                  placeholder={formData.type === 'animal_vivant' ? "Nom de l'acquéreur (requis)" : "Nom du client (optionnel)"}
+                  aria-required={formData.type === 'animal_vivant'}
+                />
               </div>
               <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>

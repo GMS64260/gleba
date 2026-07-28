@@ -14,6 +14,8 @@ import { deleteAutoEntry, createDepenseFromLotAnimaux } from '@/lib/auto-compta'
 import { isPlausibleAnimalDate } from '@/lib/validations/elevage-animal'
 import { isOwnedParcelle } from '@/lib/elevage/animal-lot'
 import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
+import { createDepenseFromAchatAnimal } from '@/lib/auto-compta'
+import { invalidateKpi } from '@/lib/kpi'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -33,7 +35,15 @@ export async function GET(request: NextRequest) {
       orderBy: [{ statut: 'asc' }, { dateArrivee: 'desc' }],
       include: {
         especeAnimale: {
-          select: { id: true, nom: true, type: true, couleur: true },
+          select: {
+            id: true,
+            nom: true,
+            type: true,
+            filiere: true,
+            production: true,
+            productions: true,
+            couleur: true,
+          },
         },
         parcelleGeo: {
           select: { id: true, nom: true },
@@ -103,27 +113,44 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const lot = await prisma.lotAnimaux.create({
-      data: {
-        userId: session.user.id,
-        especeAnimaleId,
-        nom,
-        dateArrivee: dateArrivee ?? new Date(),
-        quantiteInitiale,
-        quantiteActuelle: quantiteInitiale,
-        provenance,
-        prixAchatTotal,
-        statut: 'actif',
-        notes,
-        parcelleGeoId: parcelleGeoId || null,
-      },
-      include: {
-        especeAnimale: true,
-      },
+    const lot = await prisma.$transaction(async (tx) => {
+      const created = await tx.lotAnimaux.create({
+        data: {
+          userId: session.user.id,
+          especeAnimaleId,
+          nom,
+          dateArrivee: dateArrivee ?? new Date(),
+          quantiteInitiale,
+          quantiteActuelle: quantiteInitiale,
+          provenance,
+          prixAchatTotal,
+          statut: 'actif',
+          notes,
+          parcelleGeoId: parcelleGeoId || null,
+        },
+        include: { especeAnimale: true },
+      })
+      // Ticket cms1v9ymn — un lot créé directement sur une parcelle n'avait
+      // aucun MouvementCheptel d'entrée : le module pâturage affichait la
+      // parcelle « Libre » faute de date d'entrée. On trace la mise en place
+      // initiale (symétrique du mouvement créé par le PATCH au changement de
+      // parcelle).
+      if (created.parcelleGeoId) {
+        await tx.mouvementCheptel.create({
+          data: {
+            userId: session.user.id,
+            lotId: created.id,
+            parcelleAvantId: null,
+            parcelleApresId: created.parcelleGeoId,
+            date: created.dateArrivee ?? new Date(),
+            motif: 'Mise en place du lot',
+          },
+        })
+      }
+      await createDepenseFromLotAnimaux(session.user.id, created, tx)
+      return created
     })
-
-    // Bug R28 : écriture comptable auto de l'achat du lot (KPI dépenses).
-    await createDepenseFromLotAnimaux(session.user.id, lot)
+    invalidateKpi(session.user.id)
 
     return NextResponse.json({ data: lot }, { status: 201 })
   } catch (error) {
@@ -178,18 +205,59 @@ export async function PATCH(request: NextRequest) {
     }
     if (quantiteInitiale !== undefined) {
       const q = parseInt(quantiteInitiale)
-      if (!Number.isNaN(q)) updateData.quantiteInitiale = q
+      if (Number.isNaN(q) || q < 0) {
+        return NextResponse.json({ error: 'Quantité initiale invalide' }, { status: 400 })
+      }
+      updateData.quantiteInitiale = q
     }
     if (quantiteActuelle !== undefined) {
       const q = parseInt(quantiteActuelle)
-      if (!Number.isNaN(q)) updateData.quantiteActuelle = q
+      if (Number.isNaN(q) || q < 0) {
+        return NextResponse.json({ error: 'Quantité actuelle invalide' }, { status: 400 })
+      }
+      updateData.quantiteActuelle = q
+    }
+    // Ticket cms1vdxcj — clôturer un lot (terminé/réformé) sans avoir tracé la
+    // sortie des animaux (vente, abattage, mortalité, transfert) laisse un
+    // registre incohérent : les têtes « disparaissent » sans mouvement. On
+    // refuse (409) tant que l'effectif reconstitué est > 0. Le body peut
+    // porter `forcerCloture: true` pour outrepasser explicitement (parcours
+    // historiques / régularisation d'un lot dont les sorties ne seront jamais
+    // saisies) — dans ce cas la clôture passe telle quelle.
+    if (
+      statut !== undefined &&
+      (statut === 'termine' || statut === 'reforme') &&
+      statut !== existing.statut &&
+      body.forcerCloture !== true
+    ) {
+      const effectifs = await reconstituerEffectifsLots(session.user.id, [{
+        id: existing.id,
+        // Si le même PATCH remet les quantités à jour, on clôture sur ces
+        // valeurs finales plutôt que sur l'état stocké.
+        quantiteInitiale: updateData.quantiteInitiale ?? existing.quantiteInitiale,
+        quantiteActuelle: updateData.quantiteActuelle ?? existing.quantiteActuelle,
+      }])
+      const effectifRestant = effectifs.get(existing.id)?.effectifCalcule ?? existing.quantiteActuelle
+      if (effectifRestant > 0) {
+        return NextResponse.json(
+          {
+            error: `Le lot compte encore ${effectifRestant} tête(s) : enregistrez d'abord leurs sorties (vente, abattage, mortalité ou transfert) pour un registre cohérent.`,
+            code: 'LOT_NON_SOLDE',
+            effectifRestant,
+          },
+          { status: 409 }
+        )
+      }
     }
     if (statut !== undefined) updateData.statut = statut
     if (dateReforme !== undefined) updateData.dateReforme = dateReforme ? new Date(dateReforme) : null
     if (provenance !== undefined) updateData.provenance = provenance || null
     if (prixAchatTotal !== undefined) {
       const p = prixAchatTotal === null || prixAchatTotal === '' ? null : Number(prixAchatTotal)
-      updateData.prixAchatTotal = p === null || Number.isNaN(p) ? null : p
+      if (p != null && (!Number.isFinite(p) || p < 0)) {
+        return NextResponse.json({ error: "Prix d'achat total invalide" }, { status: 400 })
+      }
+      updateData.prixAchatTotal = p
     }
     if (notes !== undefined) updateData.notes = notes
     if (
@@ -214,16 +282,36 @@ export async function PATCH(request: NextRequest) {
           },
         })
       }
+      await createDepenseFromLotAnimaux(session.user.id, updated, tx)
+
+      // Le prix du lot est la source comptable unique. Les prix individuels
+      // restent des ventilations informatives et retrouvent leur miroir si le
+      // prix total du lot est ensuite supprimé.
+      if (updateData.prixAchatTotal !== undefined) {
+        const animaux = await tx.animal.findMany({
+          where: { userId: session.user.id, lotId: updated.id, prixAchat: { gt: 0 } },
+        })
+        const inclus = Number(updated.prixAchatTotal || 0) > 0
+        if (animaux.length > 0) {
+          await tx.animal.updateMany({
+            where: { id: { in: animaux.map((a) => a.id) }, userId: session.user.id },
+            data: { prixAchatInclusDansLot: inclus },
+          })
+          for (const animal of animaux) {
+            await createDepenseFromAchatAnimal(session.user.id, {
+              id: animal.id,
+              nom: animal.nom,
+              identifiant: animal.identifiant,
+              prixAchat: animal.prixAchat,
+              dateArrivee: animal.dateArrivee,
+              prixAchatInclusDansLot: inclus,
+            }, tx)
+          }
+        }
+      }
       return updated
     })
-
-    // Resync de la dépense d'achat auto (prixAchatTotal/dateArrivée ont pu changer ;
-    // le helper supprime l'écriture si le prix retombe à 0/null).
-    try {
-      await createDepenseFromLotAnimaux(session.user.id, lot)
-    } catch (autoComptaError) {
-      console.error('Auto-compta error (achat_animal lot PATCH):', autoComptaError)
-    }
+    invalidateKpi(session.user.id)
 
     return NextResponse.json({ data: lot })
   } catch (error) {
@@ -276,47 +364,42 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    // Nettoyer les écritures auto-compta liées aux consommations d'aliments du lot
-    try {
+    await prisma.$transaction(async (tx) => {
       // Auto-compta : purger les écritures auto des consommations et soins du
       // lot AVANT leur suppression en masse (sinon les DepenseManuelle auto
       // resteraient orphelines).
       const [consosLot, soinsLot] = await Promise.all([
-        prisma.consommationAliment.findMany({
+        tx.consommationAliment.findMany({
           where: { lotId: parseInt(id), userId: session.user.id },
           select: { id: true },
         }),
-        prisma.soinAnimal.findMany({
+        tx.soinAnimal.findMany({
           where: { lotId: parseInt(id), userId: session.user.id },
           select: { id: true },
         }),
       ])
       if (consosLot.length > 0) {
-        await prisma.depenseManuelle.deleteMany({
-          where: { sourceType: 'consommation_aliment', sourceId: { in: consosLot.map((c) => c.id) }, auto: true },
+        await tx.depenseManuelle.deleteMany({
+          where: { userId: session.user.id, sourceType: 'consommation_aliment', sourceId: { in: consosLot.map((c) => c.id) }, auto: true },
         })
       }
       if (soinsLot.length > 0) {
-        await prisma.depenseManuelle.deleteMany({
-          where: { sourceType: 'soin_animal', sourceId: { in: soinsLot.map((s) => s.id) }, auto: true },
+        await tx.depenseManuelle.deleteMany({
+          where: { userId: session.user.id, sourceType: 'soin_animal', sourceId: { in: soinsLot.map((s) => s.id) }, auto: true },
         })
       }
 
-      await prisma.consommationAliment.deleteMany({
+      await tx.consommationAliment.deleteMany({
         where: { lotId: parseInt(id), userId: session.user.id },
       })
-      await prisma.soinAnimal.deleteMany({
+      await tx.soinAnimal.deleteMany({
         where: { lotId: parseInt(id), userId: session.user.id },
       })
       // Bug R28 : supprimer l'écriture comptable auto de l'achat du lot.
-      await deleteAutoEntry('achat_animal', parseInt(id), 'depense')
-    } catch (cleanupError) {
-      console.error('Cleanup error (lot DELETE):', cleanupError)
-    }
-
-    await prisma.lotAnimaux.delete({
-      where: { id: parseInt(id) },
+      await deleteAutoEntry('achat_animal', existing.id, 'depense', session.user.id, tx)
+      await tx.lotAnimaux.delete({ where: { id: existing.id } })
     })
+    invalidateKpi(session.user.id)
 
     return NextResponse.json({ success: true, deleted: parseInt(id) })
   } catch (error) {

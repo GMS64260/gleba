@@ -34,6 +34,7 @@ export async function GET(request: NextRequest) {
     // Stats animaux
     const [
       animauxActifs,
+      animauxHorsLot,
       animauxParType,
       lotsActifs,
       productionOeufsAnnee,
@@ -56,6 +57,13 @@ export async function GET(request: NextRequest) {
       // Animaux actifs
       prisma.animal.count({
         where: { userId, statut: 'actif' },
+      }),
+
+      // QA caprin cms1v227a — fiches actives SANS lot : les fiches rattachées
+      // à un lot sont déjà comprises dans l'effectif calculé des lots
+      // (reconstituerEffectifsLots), les additionner double-compterait.
+      prisma.animal.count({
+        where: { userId, statut: 'actif', lotId: null },
       }),
 
       // Animaux par type d'espece — individuels uniquement à ce stade,
@@ -401,11 +409,18 @@ export async function GET(request: NextRequest) {
       0,
     )
     const lotsActifsCount = lotsActifs.length
-    const animauxTotal = animauxActifs + animauxEnLots
+    // QA caprin cms1v227a / cms1vcvc5 — effectif physique réel : effectif des
+    // lots (fiches rattachées incluses) + fiches hors lot. Avant : animauxActifs
+    // + animauxEnLots comptait deux fois chaque fiche rattachée à un lot
+    // (+25 % d'effectif fantôme sur la démo, faux inventaire PAC/registre).
+    const animauxRattachesLots = animauxActifs - animauxHorsLot
+    const animauxTotal = animauxHorsLot + animauxEnLots
 
     return NextResponse.json({
       stats: {
         animauxActifs,
+        animauxHorsLot,
+        animauxRattachesLots,
         lotsActifs: lotsActifsCount,
         animauxEnLots,
         animauxTotal,

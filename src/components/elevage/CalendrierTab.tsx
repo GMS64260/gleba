@@ -25,6 +25,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { useToast } from "@/hooks/use-toast"
+import { useFiliereSelection, capacitesSelection } from "@/lib/elevage/filiere-context"
 import { SoinDetailDialog } from "@/components/elevage/SoinDetailDialog"
 
 // ============================================================
@@ -65,10 +66,18 @@ interface ConsoEntry {
   lot: { id: number; nom: string } | null
 }
 
+interface ReproEntry {
+  id: string
+  kind: 'mise_bas' | 'tarissement'
+  date: string
+  femelle: { id: number; nom: string | null; identifiant: string | null } | null
+}
+
 interface TachesData {
   soins: SoinTask[]
   productions: ProductionEntry[]
   consommations: ConsoEntry[]
+  reproduction?: ReproEntry[]
   stats: {
     soinsTotal: number
     soinsFaits: number
@@ -116,9 +125,22 @@ function getWeekStart(offset: number): Date {
   return start
 }
 
+// QA caprin cms1vlsa9 — l'année est indispensable : en caprin on navigue en
+// permanence à cheval sur deux années civiles (lutte octobre → mise-bas mars).
 function formatDateRange(start: Date, end: Date): string {
-  const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' }
-  return `${start.toLocaleDateString('fr-FR', opts)} - ${end.toLocaleDateString('fr-FR', opts)}`
+  const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short', year: 'numeric' }
+  const optsSansAnnee: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' }
+  const memeAnnee = start.getFullYear() === end.getFullYear()
+  return `${start.toLocaleDateString('fr-FR', memeAnnee ? optsSansAnnee : opts)} - ${end.toLocaleDateString('fr-FR', opts)}`
+}
+
+// QA caprin cms1vbkl4 — nom + boucle : reconnaissance rapide en bâtiment.
+function libelleCibleSoin(soin: Pick<SoinTask, 'animal' | 'lot'>): string {
+  if (soin.lot?.nom) return soin.lot.nom
+  const a = soin.animal
+  if (!a) return '-'
+  if (a.nom && a.identifiant) return `${a.nom} · ${a.identifiant}`
+  return a.nom || a.identifiant || '-'
 }
 
 function isSameDay(d1: Date, d2: Date): boolean {
@@ -142,6 +164,8 @@ function localDateKey(d: Date): string {
 
 export function CalendrierTab() {
   const { toast } = useToast()
+  const filiereSel = useFiliereSelection()
+  const caps = capacitesSelection(filiereSel)
   const [weekOffset, setWeekOffset] = React.useState(0)
   const [isLoading, setIsLoading] = React.useState(true)
   const [data, setData] = React.useState<TachesData | null>(null)
@@ -151,11 +175,12 @@ export function CalendrierTab() {
   const [echeances, setEcheances] = React.useState<AgendaEcheance[]>([])
 
   React.useEffect(() => {
-    fetch('/api/elevage/agenda?jours=21')
+    const fp = filiereSel !== "toutes" ? `&filiere=${filiereSel}` : ""
+    fetch(`/api/elevage/agenda?jours=21${fp}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => { if (j?.echeances) setEcheances(j.echeances) })
       .catch(() => {})
-  }, [])
+  }, [filiereSel])
 
   const weekStart = React.useMemo(() => getWeekStart(weekOffset), [weekOffset])
   const weekEnd = React.useMemo(() => {
@@ -178,7 +203,7 @@ export function CalendrierTab() {
     setIsLoading(true)
     try {
       const res = await fetch(
-        `/api/elevage/taches?start=${weekStart.toISOString()}&end=${weekEnd.toISOString()}`
+        `/api/elevage/taches?start=${weekStart.toISOString()}&end=${weekEnd.toISOString()}${filiereSel !== "toutes" ? `&filiere=${filiereSel}` : ""}`
       )
       if (res.ok) {
         setData(await res.json())
@@ -188,7 +213,7 @@ export function CalendrierTab() {
     } finally {
       setIsLoading(false)
     }
-  }, [weekStart, weekEnd])
+  }, [weekStart, weekEnd, filiereSel])
 
   React.useEffect(() => { fetchData() }, [fetchData])
 
@@ -233,10 +258,10 @@ export function CalendrierTab() {
 
   // Grouper evenements par jour
   const eventsByDay = React.useMemo(() => {
-    if (!data) return new Map<string, { soins: SoinTask[]; productions: ProductionEntry[]; consommations: ConsoEntry[] }>()
+    if (!data) return new Map<string, { soins: SoinTask[]; productions: ProductionEntry[]; consommations: ConsoEntry[]; reproduction: ReproEntry[] }>()
 
-    const map = new Map<string, { soins: SoinTask[]; productions: ProductionEntry[]; consommations: ConsoEntry[] }>()
-    weekDays.forEach(d => map.set(d.dateKey, { soins: [], productions: [], consommations: [] }))
+    const map = new Map<string, { soins: SoinTask[]; productions: ProductionEntry[]; consommations: ConsoEntry[]; reproduction: ReproEntry[] }>()
+    weekDays.forEach(d => map.set(d.dateKey, { soins: [], productions: [], consommations: [], reproduction: [] }))
 
     data.soins.forEach(s => {
       const key = localDateKey(new Date(s.date))
@@ -250,6 +275,11 @@ export function CalendrierTab() {
       const key = localDateKey(new Date(c.date))
       if (map.has(key)) map.get(key)!.consommations.push(c)
     })
+    // QA caprin cms1vevyb — mises-bas prévues et tarissements dans la grille.
+    data.reproduction?.forEach(r => {
+      const key = localDateKey(new Date(r.date))
+      if (map.has(key)) map.get(key)!.reproduction.push(r)
+    })
 
     return map
   }, [data, weekDays])
@@ -262,7 +292,7 @@ export function CalendrierTab() {
   // n'affiche ces cartes que si l'élevage a une composante ponte réelle.
   // Priorité au flag cheptel `aPonte` (lots + animaux individuels, indépendant
   // de la semaine) ; repli sur les signaux hebdo si l'API ne le renvoie pas.
-  const hasPonte = !!data && (
+  const hasPonte = caps.ponte && !!data && (
     data.stats.aPonte ??
     (data.stats.nbLotsPondeuses > 0 || data.stats.totalOeufs > 0 || data.stats.estimationOeufsJour > 0)
   )
@@ -349,10 +379,19 @@ export function CalendrierTab() {
             <div className="bg-blue-50 rounded-lg p-3 text-center">
               <Stethoscope className="h-5 w-5 mx-auto text-blue-600 mb-1" />
               <p className="text-2xl font-bold text-blue-700">{data.stats.soinsRestants}</p>
-              <p className="text-xs text-blue-600">Soins à faire</p>
+              {/* QA caprin cms1v9e3a — période explicite + retards antérieurs :
+                  « 1 soin à faire » sans mention de la semaine faisait rater
+                  les injections en retard visibles ailleurs. */}
+              <p className="text-xs text-blue-600">Soins à faire (semaine affichée)</p>
               {data.stats.soinsFaits > 0 && (
                 <p className="text-xs text-blue-400 mt-0.5">{data.stats.soinsFaits} fait(s)</p>
               )}
+              {(() => {
+                const retards = echeances.filter((e) => e.kind === 'soin_retard').length
+                return retards > 0 ? (
+                  <p className="text-xs font-medium text-red-600 mt-0.5">+ {retards} en retard — voir échéances</p>
+                ) : null
+              })()}
             </div>
             {hasPonte && (
             <div className="bg-yellow-50 rounded-lg p-3 text-center">
@@ -510,7 +549,7 @@ export function CalendrierTab() {
                           </span>
                         </div>
                         <p className="text-[10px] opacity-70 truncate ml-4">
-                          {soin.lot?.nom || soin.animal?.nom || ''}
+                          {libelleCibleSoin(soin)}
                         </p>
                       </button>
                     ))}
@@ -521,6 +560,24 @@ export function CalendrierTab() {
                         ✓ {soinsFaitsMasques} fait{soinsFaitsMasques > 1 ? 's' : ''}
                       </p>
                     )}
+
+                    {/* QA caprin cms1vevyb — mises-bas prévues & tarissements */}
+                    {dayEvents?.reproduction.map(r => (
+                      <div
+                        key={r.id}
+                        className={`w-full p-1.5 rounded text-xs ${r.kind === 'mise_bas' ? 'bg-pink-50 text-pink-700' : 'bg-purple-50 text-purple-700'}`}
+                      >
+                        <div className="flex items-center gap-1">
+                          <CalendarClock className={`h-3 w-3 flex-shrink-0 ${r.kind === 'mise_bas' ? 'text-pink-500' : 'text-purple-500'}`} />
+                          <span className="truncate font-medium">{r.kind === 'mise_bas' ? 'Mise-bas prévue' : 'Tarissement'}</span>
+                        </div>
+                        {r.femelle && (
+                          <p className="text-[10px] opacity-70 truncate ml-4">
+                            {r.femelle.nom && r.femelle.identifiant ? `${r.femelle.nom} · ${r.femelle.identifiant}` : r.femelle.nom || r.femelle.identifiant || ''}
+                          </p>
+                        )}
+                      </div>
+                    ))}
 
                     {/* Productions du jour */}
                     {dayEvents?.productions.map(prod => (
@@ -551,7 +608,7 @@ export function CalendrierTab() {
                     ))}
 
                     {/* Jour vide */}
-                    {(!dayEvents || (dayEvents.soins.length === 0 && dayEvents.productions.length === 0 && dayEvents.consommations.length === 0)) && (
+                    {(!dayEvents || (dayEvents.soins.length === 0 && dayEvents.productions.length === 0 && dayEvents.consommations.length === 0 && dayEvents.reproduction.length === 0)) && (
                       <p className="text-[10px] text-muted-foreground text-center py-2">-</p>
                     )}
                   </CardContent>
@@ -589,7 +646,7 @@ export function CalendrierTab() {
                             {SOIN_TYPE_LABELS[soin.type] || soin.type}
                           </Badge>
                           <span className="font-medium text-sm truncate">
-                            {soin.lot?.nom || soin.animal?.nom || '-'}
+                            {libelleCibleSoin(soin)}
                           </span>
                         </div>
                         {(soin.produit || soin.description) && (

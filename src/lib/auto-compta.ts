@@ -15,6 +15,15 @@ import prisma from '@/lib/prisma'
 // HELPERS
 // ============================================================
 
+type AutoComptaTx = Prisma.TransactionClient
+
+function inAutoComptaTransaction<T>(
+  tx: AutoComptaTx | undefined,
+  operation: (db: AutoComptaTx) => Promise<T>,
+): Promise<T> {
+  return tx ? operation(tx) : prisma.$transaction(operation)
+}
+
 /**
  * Recherche une ecriture auto existante pour eviter les doublons
  */
@@ -47,14 +56,28 @@ export async function deleteAutoEntry(
   // sans effet. Mais `paie_lait` utilise un sourceId synthétique (annee*100+mois)
   // COMMUN à tous les utilisateurs : sans `userId`, le deleteMany effacerait les
   // écritures des autres fermes (perte silencieuse de CA). Toujours scoper.
-  userId?: string
+  userId?: string,
+  tx?: AutoComptaTx,
 ) {
   const where = { sourceType, sourceId, auto: true, ...(userId ? { userId } : {}) }
   if (table === 'vente') {
-    return prisma.venteManuelle.deleteMany({ where })
+    return (tx ?? prisma).venteManuelle.deleteMany({ where })
   } else {
-    return prisma.depenseManuelle.deleteMany({ where })
+    return (tx ?? prisma).depenseManuelle.deleteMany({ where })
   }
+}
+
+export async function deleteAutoEntryByRef(
+  sourceType: string,
+  sourceRef: string,
+  table: 'vente' | 'depense',
+  userId: string,
+  tx?: AutoComptaTx,
+) {
+  const where = { sourceType, sourceRef, auto: true, userId }
+  return table === 'vente'
+    ? (tx ?? prisma).venteManuelle.deleteMany({ where })
+    : (tx ?? prisma).depenseManuelle.deleteMany({ where })
 }
 
 /**
@@ -145,16 +168,17 @@ export async function createDepenseFromLotAnimaux(
     nom?: string | null
     prixAchatTotal?: number | null
     dateArrivee?: Date | string | null
-  }
+  },
+  tx?: AutoComptaTx,
 ) {
   const montantTTC = lot.prixAchatTotal || 0
-  return prisma.$transaction(async (tx) => {
-    await tx.depenseManuelle.deleteMany({
-      where: { sourceType: 'achat_animal', sourceId: lot.id, auto: true },
+  return inAutoComptaTransaction(tx, async (db) => {
+    await db.depenseManuelle.deleteMany({
+      where: { userId, sourceType: 'achat_animal', sourceId: lot.id, auto: true },
     })
     if (montantTTC <= 0) return null
     const { montantHT, montantTVA } = calculTVA(montantTTC, 5.5)
-    return tx.depenseManuelle.create({
+    return db.depenseManuelle.create({
       data: {
         userId,
         date: lot.dateArrivee ? new Date(lot.dateArrivee) : new Date(),
@@ -167,6 +191,8 @@ export async function createDepenseFromLotAnimaux(
         journal: 'AC',
         module: 'elevage',
         paye: true,
+        comptable: true,
+        tvaInferee: true,
         sourceType: 'achat_animal',
         sourceId: lot.id,
         auto: true,
@@ -253,11 +279,13 @@ export async function createVenteFromVenteProduit(
     date?: Date | string | null
     tauxTVA?: number | null
     factureId?: number | null
-  }
+    paye?: boolean | null
+  },
+  tx?: AutoComptaTx,
 ) {
   // Vente facturée ⇒ comptée via la Facture, pas d'écriture auto (cf. kpi/compta.ts).
   if (venteProduit.factureId) {
-    await deleteAutoEntry('vente_produit', venteProduit.id, 'vente')
+    await deleteAutoEntry('vente_produit', venteProduit.id, 'vente', userId, tx)
     return null
   }
 
@@ -266,7 +294,7 @@ export async function createVenteFromVenteProduit(
     // Revue élevage 2026-07-21 — purge de l'écriture auto précédente : une vente
     // éditée à 0 € (don) laissait sinon un revenu fantôme en compta (le
     // deleteMany plus bas n'était jamais atteint).
-    await deleteAutoEntry('vente_produit', venteProduit.id, 'vente')
+    await deleteAutoEntry('vente_produit', venteProduit.id, 'vente', userId, tx)
     return null
   }
 
@@ -281,12 +309,12 @@ export async function createVenteFromVenteProduit(
   else if (venteProduit.type === 'fromage') categorie = 'fromage'
   else if (venteProduit.type === 'animal_vivant') categorie = 'viande'
 
-  return prisma.$transaction(async (tx) => {
-    await tx.venteManuelle.deleteMany({
-      where: { sourceType: 'vente_produit', sourceId: venteProduit.id, auto: true },
+  return inAutoComptaTransaction(tx, async (db) => {
+    await db.venteManuelle.deleteMany({
+      where: { userId, sourceType: 'vente_produit', sourceId: venteProduit.id, auto: true },
     })
 
-    return tx.venteManuelle.create({
+    return db.venteManuelle.create({
       data: {
         userId,
         date: venteProduit.date ? new Date(venteProduit.date) : new Date(),
@@ -301,7 +329,7 @@ export async function createVenteFromVenteProduit(
         montant: montantTTC,
         clientNom: venteProduit.client || null,
         module: 'elevage',
-        paye: true,
+        paye: venteProduit.paye ?? true,
         sourceType: 'vente_produit',
         sourceId: venteProduit.id,
         auto: true,
@@ -398,6 +426,7 @@ export async function upsertVenteFromPaieLait(
         clientNom: paie.laiterie || null,
         module: 'elevage',
         paye: true,
+        tvaInferee: true,
         sourceType: 'paie_lait',
         sourceId,
         auto: true,
@@ -421,18 +450,19 @@ export async function createVenteFromAbattage(
     lot?: { nom?: string | null } | null
     tauxTVA?: number | null
     factureId?: number | null
-  }
+  },
+  tx?: AutoComptaTx,
 ) {
   // Vente facturée ⇒ comptée via la Facture, pas d'écriture auto (cf. kpi/compta.ts).
   if (abattage.factureId) {
-    await deleteAutoEntry('abattage', abattage.id, 'vente')
+    await deleteAutoEntry('abattage', abattage.id, 'vente', userId, tx)
     return null
   }
 
   // Uniquement si destination = vente et qu'il y a un prix
   if (abattage.destination !== 'vente' || !abattage.prixVente || abattage.prixVente <= 0) {
     // Nettoyer toute ecriture auto residuelle
-    await deleteAutoEntry('abattage', abattage.id, 'vente')
+    await deleteAutoEntry('abattage', abattage.id, 'vente', userId, tx)
     return null
   }
 
@@ -442,12 +472,12 @@ export async function createVenteFromAbattage(
 
   const animalInfo = abattage.animal?.nom || abattage.lot?.nom || 'Abattage'
 
-  return prisma.$transaction(async (tx) => {
-    await tx.venteManuelle.deleteMany({
-      where: { sourceType: 'abattage', sourceId: abattage.id, auto: true },
+  return inAutoComptaTransaction(tx, async (db) => {
+    await db.venteManuelle.deleteMany({
+      where: { userId, sourceType: 'abattage', sourceId: abattage.id, auto: true },
     })
 
-    return tx.venteManuelle.create({
+    return db.venteManuelle.create({
       data: {
         userId,
         date: abattage.date ? new Date(abattage.date) : new Date(),
@@ -647,27 +677,28 @@ export async function createDepenseFromConsommationAliment(
     alimentId: string
     quantite: number
     date?: Date | string | null
-  }
+  },
+  tx?: AutoComptaTx,
 ) {
-  const aliment = await prisma.aliment.findUnique({
-    where: { id: consommation.alimentId },
-    select: {
-      nom: true,
-      prix: true,
-      userStocks: { where: { userId }, select: { prix: true, coutUnitaire: true }, take: 1 },
-    },
-  })
-  const prixUnitaire =
-    aliment?.userStocks?.[0]?.coutUnitaire ?? aliment?.userStocks?.[0]?.prix ?? aliment?.prix ?? 0
-  const montantTTC = consommation.quantite * prixUnitaire
+  return inAutoComptaTransaction(tx, async (db) => {
+    const aliment = await db.aliment.findUnique({
+      where: { id: consommation.alimentId },
+      select: {
+        nom: true,
+        prix: true,
+        userStocks: { where: { userId }, select: { prix: true, coutUnitaire: true }, take: 1 },
+      },
+    })
+    const prixUnitaire =
+      aliment?.userStocks?.[0]?.coutUnitaire ?? aliment?.userStocks?.[0]?.prix ?? aliment?.prix ?? 0
+    const montantTTC = consommation.quantite * prixUnitaire
 
-  return prisma.$transaction(async (tx) => {
-    await tx.depenseManuelle.deleteMany({
-      where: { sourceType: 'consommation_aliment', sourceId: consommation.id, auto: true },
+    await db.depenseManuelle.deleteMany({
+      where: { userId, sourceType: 'consommation_aliment', sourceId: consommation.id, auto: true },
     })
     if (montantTTC <= 0) return null
     const { montantHT, montantTVA } = calculTVA(montantTTC, 10)
-    return tx.depenseManuelle.create({
+    return db.depenseManuelle.create({
       data: {
         userId,
         date: consommation.date ? new Date(consommation.date) : new Date(),
@@ -680,6 +711,8 @@ export async function createDepenseFromConsommationAliment(
         journal: 'AC',
         module: 'elevage',
         paye: true,
+        comptable: false,
+        tvaInferee: true,
         sourceType: 'consommation_aliment',
         sourceId: consommation.id,
         auto: true,
@@ -700,17 +733,18 @@ export async function createDepenseFromSoinAnimal(
     cout?: number | null
     date?: Date | string | null
     fait?: boolean | null
-  }
+  },
+  tx?: AutoComptaTx,
 ) {
   // Un soin planifié (fait=false) n'est pas une dépense réelle.
   const montantTTC = soin.fait === false ? 0 : soin.cout || 0
-  return prisma.$transaction(async (tx) => {
-    await tx.depenseManuelle.deleteMany({
-      where: { sourceType: 'soin_animal', sourceId: soin.id, auto: true },
+  return inAutoComptaTransaction(tx, async (db) => {
+    await db.depenseManuelle.deleteMany({
+      where: { userId, sourceType: 'soin_animal', sourceId: soin.id, auto: true },
     })
     if (montantTTC <= 0) return null
     const { montantHT, montantTVA } = calculTVA(montantTTC, 20)
-    return tx.depenseManuelle.create({
+    return db.depenseManuelle.create({
       data: {
         userId,
         date: soin.date ? new Date(soin.date) : new Date(),
@@ -723,6 +757,8 @@ export async function createDepenseFromSoinAnimal(
         journal: 'AC',
         module: 'elevage',
         paye: true,
+        comptable: false,
+        tvaInferee: true,
         sourceType: 'soin_animal',
         sourceId: soin.id,
         auto: true,
@@ -744,16 +780,18 @@ export async function createDepenseFromAchatAnimal(
     identifiant?: string | null
     prixAchat?: number | null
     dateArrivee?: Date | string | null
-  }
+    prixAchatInclusDansLot?: boolean | null
+  },
+  tx?: AutoComptaTx,
 ) {
-  const montantTTC = animal.prixAchat || 0
-  return prisma.$transaction(async (tx) => {
-    await tx.depenseManuelle.deleteMany({
-      where: { sourceType: 'achat_animal_individuel', sourceId: animal.id, auto: true },
+  const montantTTC = animal.prixAchatInclusDansLot ? 0 : animal.prixAchat || 0
+  return inAutoComptaTransaction(tx, async (db) => {
+    await db.depenseManuelle.deleteMany({
+      where: { userId, sourceType: 'achat_animal_individuel', sourceId: animal.id, auto: true },
     })
     if (montantTTC <= 0) return null
     const { montantHT, montantTVA } = calculTVA(montantTTC, 5.5)
-    return tx.depenseManuelle.create({
+    return db.depenseManuelle.create({
       data: {
         userId,
         date: animal.dateArrivee ? new Date(animal.dateArrivee) : new Date(),
@@ -766,12 +804,113 @@ export async function createDepenseFromAchatAnimal(
         journal: 'AC',
         module: 'elevage',
         paye: true,
+        comptable: true,
+        tvaInferee: true,
         sourceType: 'achat_animal_individuel',
         sourceId: animal.id,
         auto: true,
       },
     })
   })
+}
+
+type ReservationComptaInput = {
+  id: string
+  statut: string
+  acompte?: number | null
+  montant?: number | null
+  dateReservation?: Date | string | null
+  dateLivraison?: Date | string | null
+  acquereurNom?: string | null
+}
+
+/**
+ * Une réservation porte une seule écriture évolutive :
+ * - avant livraison : acompte encaissé ;
+ * - à la livraison : prix total de cession, acompte compris ;
+ * - annulation : aucune recette.
+ */
+export async function upsertVenteFromReservationElevage(
+  tx: AutoComptaTx,
+  userId: string,
+  reservation: ReservationComptaInput,
+) {
+  await tx.venteManuelle.deleteMany({
+    where: {
+      userId,
+      sourceType: 'reservation_elevage',
+      sourceRef: { in: [`${reservation.id}:acompte`, `${reservation.id}:solde`] },
+      auto: true,
+    },
+  })
+
+  if (reservation.statut === 'annulee') return null
+  const acompte = Number(reservation.acompte || 0)
+  const total = Number(reservation.montant || 0)
+  const livree = reservation.statut === 'livree'
+  const taux = 5.5
+  const encaisse = livree && total > 0 ? Math.min(acompte, total) : acompte
+  const solde = livree && total > 0 ? Math.max(total - encaisse, 0) : 0
+  const rows: Array<{
+    sourceRef: string
+    montant: number
+    date: Date
+    description: string
+    paye: boolean
+  }> = []
+  if (encaisse > 0) {
+    rows.push({
+      sourceRef: `${reservation.id}:acompte`,
+      montant: encaisse,
+      date: new Date(reservation.dateReservation || new Date()),
+      description: `Acompte réservation animal${reservation.acquereurNom ? ` — ${reservation.acquereurNom}` : ''}`,
+      paye: true,
+    })
+  }
+  if (solde > 0) {
+    rows.push({
+      sourceRef: `${reservation.id}:solde`,
+      montant: solde,
+      date: new Date(reservation.dateLivraison || new Date()),
+      description: `Solde cession animal${reservation.acquereurNom ? ` — ${reservation.acquereurNom}` : ''}`,
+      paye: false,
+    })
+  }
+  if (rows.length === 0) return null
+
+  const created = []
+  for (const row of rows) {
+    const { montantHT, montantTVA } = calculTVA(row.montant, taux)
+    created.push(await tx.venteManuelle.create({
+      data: {
+        userId,
+        date: row.date,
+        categorie: 'animal_vivant',
+        description: row.description,
+        tauxTVA: taux,
+        montantHT,
+        montantTVA,
+        montant: row.montant,
+        clientNom: reservation.acquereurNom || null,
+        module: 'elevage',
+        paye: row.paye,
+        tvaInferee: true,
+        sourceType: 'reservation_elevage',
+        sourceRef: row.sourceRef,
+        auto: true,
+      },
+    }))
+  }
+  return created
+}
+
+export async function createVenteFromReservationElevage(
+  userId: string,
+  reservation: ReservationComptaInput,
+) {
+  return prisma.$transaction((tx) =>
+    upsertVenteFromReservationElevage(tx, userId, reservation),
+  )
 }
 
 /**

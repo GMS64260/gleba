@@ -38,6 +38,9 @@ type Echeance = {
   titre: string
   detail?: string
   gravite: Gravite
+  // QA caprin cms1v3fso — permet à la Tournée d'agir directement sur
+  // l'échéance (valider une injection, marquer un soin fait).
+  action?: { soinId?: number; injectionId?: string }
 }
 
 const DELAI_DIAGNOSTIC_J = 35 // une saillie « En attente » au-delà → diagnostic à faire
@@ -45,8 +48,13 @@ const DELAI_DIAGNOSTIC_J = 35 // une saillie « En attente » au-delà → diagn
 const jours = (from: Date, to: Date) =>
   Math.round((floorDay(to).getTime() - floorDay(from).getTime()) / 86_400_000)
 const floorDay = (d: Date) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
-const nomAnimal = (a: { nom: string | null; identifiant: string | null; id: number } | null | undefined) =>
-  a ? a.nom || a.identifiant || `#${a.id}` : '—'
+// QA caprin cms1vbkl4 — afficher nom ET boucle (« Cannelle · FR0041… ») :
+// en bâtiment on reconnaît l'animal par son nom, on vérifie par la boucle.
+const nomAnimal = (a: { nom: string | null; identifiant: string | null; id: number } | null | undefined) => {
+  if (!a) return '—'
+  if (a.nom && a.identifiant) return `${a.nom} · ${a.identifiant}`
+  return a.nom || a.identifiant || `#${a.id}`
+}
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -56,13 +64,21 @@ export async function GET(request: NextRequest) {
     const userId = session.user.id
     const { searchParams } = new URL(request.url)
     const horizonJours = Math.min(90, Math.max(1, parseInt(searchParams.get('jours') || '21', 10) || 21))
+    // Scoping par filière d'atelier (modes d'élevage) : ne cible que les
+    // échéances liées à un animal/lot de la filière. Les échéances non
+    // animales (stock aliments, médicaments, échéances admin) restent globales.
+    const filiere = searchParams.get('filiere')
+    const femFiliere = filiere ? { femelle: { especeAnimale: { filiere } } } : {}
+    const soinFiliere = filiere
+      ? { OR: [{ animal: { especeAnimale: { filiere } } }, { lot: { especeAnimale: { filiere } } }] }
+      : {}
     const now = new Date()
     const horizon = new Date(now.getTime() + horizonJours * 86_400_000)
 
     const [gestantes, enAttente, attentesConsolidees, soinsPlanifies, stocksBas, medicaments, prophylaxies, tachesTerrain, echeancesAdmin] = await Promise.all([
       // Saillies gestantes : mise-bas + tarissement à venir
       prisma.saillie.findMany({
-        where: { userId, statut: 'Gestante' },
+        where: { userId, statut: 'Gestante', ...femFiliere },
         select: {
           id: true,
           dateMiseBasAttendue: true,
@@ -72,7 +88,7 @@ export async function GET(request: NextRequest) {
       }),
       // Saillies en attente d'un diagnostic de gestation
       prisma.saillie.findMany({
-        where: { userId, statut: 'En attente' },
+        where: { userId, statut: 'En attente', ...femFiliere },
         select: {
           id: true,
           date: true,
@@ -81,10 +97,15 @@ export async function GET(request: NextRequest) {
       }),
       // Délais d'attente CONSOLIDÉS par (cible + traitement), ancrés sur la
       // dernière injection — une seule échéance par traitement (QA #2/#9).
-      chargerAttentesConsolidees(userId, floorDay(now)),
+      // Attentes lait/viande = notion de rente uniquement → exclues pour une
+      // filière compagnie/équin/NAC (sinon un délai « lait » de chèvre fuit
+      // dans le calendrier d'un atelier chiens).
+      (filiere && filiere !== 'rente')
+        ? Promise.resolve([] as Awaited<ReturnType<typeof chargerAttentesConsolidees>>)
+        : chargerAttentesConsolidees(userId, floorDay(now)),
       // Soins planifiés (non faits) à échéance ou en retard
       prisma.soinAnimal.findMany({
-        where: { userId, fait: false, datePrevue: { not: null, lte: horizon } },
+        where: { userId, fait: false, datePrevue: { not: null, lte: horizon }, ...soinFiliere },
         select: {
           id: true,
           type: true,
@@ -138,6 +159,11 @@ export async function GET(request: NextRequest) {
       WHERE i.user_id = ${userId}
         AND i.statut = 'a_faire'
         AND i.date_prevue <= ${horizon}
+        AND (
+          ${filiere}::text IS NULL
+          OR a.espece_animale_id IN (SELECT espece_animale FROM especes_animales WHERE filiere = ${filiere})
+          OR l.espece_animale_id IN (SELECT espece_animale FROM especes_animales WHERE filiere = ${filiere})
+        )
       ORDER BY i.date_prevue
     `
 
@@ -200,7 +226,11 @@ export async function GET(request: NextRequest) {
     // partagée : la date de remise en vente (`remiseVente`, déjà utilisée par
     // /api/elevage/attentes).
     for (const a of attentesConsolidees) {
-      const cible = a.cible.label
+      // QA caprin cms1vbkl4 — le label consolidé est la boucle ; on préfixe le
+      // nom quand il existe pour une reconnaissance immédiate.
+      const cible = a.cible.nom && a.cible.nom !== a.cible.label
+        ? `${a.cible.nom} · ${a.cible.label}`
+        : a.cible.label
       if (a.finAttenteLait && a.finAttenteLait >= now) {
         const rv = remiseVente(a.finAttenteLait)!
         echeances.push({
@@ -240,11 +270,14 @@ export async function GET(request: NextRequest) {
         titre: `${s.type} — ${cible}`,
         detail: retard ? `en retard de ${-jr} j` : `dans ${jr} j`,
         gravite: retard ? 'urgent' : 'info',
+        action: { soinId: s.id },
       })
     }
     for (const injection of injectionsPlanifiees) {
       const cible = injection.animalId
-        ? injection.animalIdentifiant || injection.animalNom || `#${injection.animalId}`
+        ? (injection.animalNom && injection.animalIdentifiant
+            ? `${injection.animalNom} · ${injection.animalIdentifiant}`
+            : injection.animalIdentifiant || injection.animalNom || `#${injection.animalId}`)
         : injection.lotNom || (injection.lotId ? `Lot #${injection.lotId}` : 'Troupeau')
       const jr = jours(now, injection.datePrevue)
       echeances.push({
@@ -255,6 +288,7 @@ export async function GET(request: NextRequest) {
         titre: `Injection ${injection.numero} — ${cible}`,
         detail: injection.produit || injection.type,
         gravite: jr < 0 ? 'urgent' : jr <= 1 ? 'attention' : 'info',
+        action: { soinId: injection.soinId, injectionId: injection.id },
       })
     }
 
@@ -311,13 +345,19 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // Tri : urgent d'abord, puis par date (les sans-date en fin), retards en tête.
+    // QA caprin cms1v9o67 — tri STRICTEMENT chronologique : retards en tête
+    // (joursRestants négatifs), puis échéances futures par date croissante.
+    // Avant, la gravité primait sur la date : une remise en vente lait du
+    // 20 août (« urgent ») passait devant une injection du 28 juillet
+    // (« info ») — risque de rater une injection d'antibiotique. La gravité
+    // ne sert plus que de départage à date égale.
     const rangGravite: Record<Gravite, number> = { urgent: 0, attention: 1, info: 2 }
     echeances.sort((a, b) => {
+      const ja = a.joursRestants ?? Number.POSITIVE_INFINITY
+      const jb = b.joursRestants ?? Number.POSITIVE_INFINITY
+      if (ja !== jb) return ja - jb
       if (rangGravite[a.gravite] !== rangGravite[b.gravite]) return rangGravite[a.gravite] - rangGravite[b.gravite]
-      if (a.joursRestants == null) return 1
-      if (b.joursRestants == null) return -1
-      return a.joursRestants - b.joursRestants
+      return (a.date ?? '').localeCompare(b.date ?? '')
     })
 
     const counts = {

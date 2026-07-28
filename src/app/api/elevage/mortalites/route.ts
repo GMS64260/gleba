@@ -4,8 +4,12 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+
+const currentYear = () => new Date().getUTCFullYear()
+const yearSchema = z.coerce.number().int().min(1990).max(currentYear() + 1)
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -13,17 +17,23 @@ export async function GET(request: NextRequest) {
 
   try {
     const { searchParams } = new URL(request.url)
-    const annee = parseInt(searchParams.get('annee') || new Date().getFullYear().toString())
+    const parsedYear = yearSchema.safeParse(
+      searchParams.get('annee') || String(currentYear()),
+    )
+    if (!parsedYear.success) {
+      return NextResponse.json({ error: 'Année invalide' }, { status: 400 })
+    }
+    const annee = parsedYear.data
     const userId = session.user.id
-    const startOfYear = new Date(annee, 0, 1)
-    const endOfYear = new Date(annee, 11, 31, 23, 59, 59)
+    const startOfYear = new Date(Date.UTC(annee, 0, 1))
+    const endOfYear = new Date(Date.UTC(annee + 1, 0, 1))
 
     // Animaux morts cette annee
     const mortalites = await prisma.animal.findMany({
       where: {
         userId,
         statut: 'mort',
-        dateSortie: { gte: startOfYear, lte: endOfYear },
+        dateSortie: { gte: startOfYear, lt: endOfYear },
       },
       select: {
         id: true,

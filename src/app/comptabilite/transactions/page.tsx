@@ -7,6 +7,7 @@
 
 import * as React from "react"
 import Link from "next/link"
+import { useRouter, useSearchParams } from "next/navigation"
 import { ArrowLeft, Receipt, RefreshCw, Filter, Plus, Sprout, TreeDeciduous, Bird, TrendingUp, TrendingDown, Store, Info, ChevronDown, ChevronUp } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -63,6 +64,9 @@ interface Transaction {
   fournisseur?: string | null
   paye: boolean | null
   categorie: string
+  // false = coût interne de production : visible ici mais non ajouté au FEC,
+  // à la TVA déductible ni au total comptable.
+  comptable?: boolean
 }
 
 const MODULE_ICONS: Record<string, React.ReactNode> = {
@@ -85,8 +89,35 @@ const MODULE_LABELS: Record<string, string> = {
 const moduleLabel = (m: string) => MODULE_LABELS[m] ?? (m.charAt(0).toUpperCase() + m.slice(1))
 
 export default function TransactionsPage() {
+  return (
+    <React.Suspense fallback={<div className="min-h-screen bg-slate-50" />}>
+      <TransactionsPageInner />
+    </React.Suspense>
+  )
+}
+
+const TRANSACTION_TABS = ["revenus", "depenses", "saisie"] as const
+type TransactionTab = (typeof TRANSACTION_TABS)[number]
+type ManualTransactionType = "vente" | "depense"
+
+function isTransactionTab(value: string | null): value is TransactionTab {
+  return value !== null && TRANSACTION_TABS.includes(value as TransactionTab)
+}
+
+function isManualTransactionType(value: string | null): value is ManualTransactionType {
+  return value === "vente" || value === "depense"
+}
+
+function TransactionsPageInner() {
   const { toast } = useToast()
-  const [activeTab, setActiveTab] = React.useState("revenus")
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const requestedTab = searchParams.get("tab")
+  const requestedType = searchParams.get("type")
+  const searchQuery = searchParams.toString()
+  const [activeTab, setActiveTab] = React.useState<TransactionTab>(
+    isTransactionTab(requestedTab) ? requestedTab : "revenus",
+  )
   const [isLoading, setIsLoading] = React.useState(true)
   const [revenus, setRevenus] = React.useState<Transaction[]>([])
   const [depenses, setDepenses] = React.useState<Transaction[]>([])
@@ -106,7 +137,9 @@ export default function TransactionsPage() {
   const [selectedModule, setSelectedModule] = React.useState<string>("all")
 
   // Form states for manual entry (DEV1 #3 — refonte conforme)
-  const [formType, setFormType] = React.useState<"vente" | "depense">("vente")
+  const [formType, setFormType] = React.useState<ManualTransactionType>(
+    isManualTransactionType(requestedType) ? requestedType : "vente",
+  )
   const [formData, setFormData] = React.useState({
     date: todayLocalISO(),
     categorie: "",
@@ -128,6 +161,30 @@ export default function TransactionsPage() {
     pjFilename: "",
   })
   const [pjUploading, setPjUploading] = React.useState(false)
+
+  // Les raccourcis et résultats de recherche peuvent ouvrir directement la
+  // saisie voulue. L'URL reste synchronisée aussi lors des clics dans la page.
+  React.useEffect(() => {
+    setActiveTab(isTransactionTab(requestedTab) ? requestedTab : "revenus")
+    if (isManualTransactionType(requestedType)) setFormType(requestedType)
+  }, [requestedTab, requestedType])
+
+  const handleTabChange = React.useCallback((value: string) => {
+    if (!isTransactionTab(value)) return
+    setActiveTab(value)
+    const params = new URLSearchParams(searchQuery)
+    params.set("tab", value)
+    if (value !== "saisie") params.delete("type")
+    router.replace(`/comptabilite/transactions?${params.toString()}`, { scroll: false })
+  }, [router, searchQuery])
+
+  const handleFormTypeChange = React.useCallback((value: ManualTransactionType) => {
+    setFormType(value)
+    const params = new URLSearchParams(searchQuery)
+    params.set("tab", "saisie")
+    params.set("type", value)
+    router.replace(`/comptabilite/transactions?${params.toString()}`, { scroll: false })
+  }, [router, searchQuery])
 
   // DEV1 #3 — Synchroniser le journal par défaut avec le type d'opération.
   React.useEffect(() => {
@@ -346,7 +403,7 @@ export default function TransactionsPage() {
       </header>
 
       <div className="container mx-auto px-4 py-6">
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <Tabs value={activeTab} onValueChange={handleTabChange}>
           <TabsList className="mb-6">
             <TabsTrigger value="revenus" className="flex items-center gap-2">
               <TrendingUp className="h-4 w-4" />
@@ -580,10 +637,17 @@ export default function TransactionsPage() {
           {/* Onglet Dépenses */}
           <TabsContent value="depenses">
             {statsDepenses && (
-              <div className="grid gap-4 md:grid-cols-4 mb-6">
+              <div className="grid gap-4 md:grid-cols-5 mb-6">
                 <Card className="bg-gradient-to-br from-red-500 to-red-600 text-white">
-                  <CardHeader className="pb-2"><CardTitle className="text-sm text-red-100">Total</CardTitle></CardHeader>
+                  <CardHeader className="pb-2"><CardTitle className="text-sm text-red-100">Total comptable</CardTitle></CardHeader>
                   <CardContent><p className="text-2xl font-bold">{formatEuro(statsDepenses.total)}</p></CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Coûts analytiques</CardTitle></CardHeader>
+                  <CardContent>
+                    <p className="text-xl font-bold text-amber-600">{formatEuro(statsDepenses.totalAnalytique || 0)}</p>
+                    <p className="text-xs text-muted-foreground">Non cumulés au total comptable</p>
+                  </CardContent>
                 </Card>
                 <Card>
                   <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Maraîchage</CardTitle></CardHeader>
@@ -631,7 +695,9 @@ export default function TransactionsPage() {
                             <TableCell className="text-right font-bold text-red-600">{formatEuro(d.montant)}</TableCell>
                             <TableCell>{d.fournisseur || '-'}</TableCell>
                             <TableCell>
-                              {d.paye === null ? (
+                              {d.comptable === false ? (
+                                <Badge className="bg-amber-100 text-amber-800">Analytique</Badge>
+                              ) : d.paye === null ? (
                                 <Badge variant="outline">N/A</Badge>
                               ) : d.paye ? (
                                 <Badge className="bg-green-100 text-green-800">Payé</Badge>
@@ -662,7 +728,7 @@ export default function TransactionsPage() {
                     <Button
                       variant={formType === "vente" ? "default" : "outline"}
                       size="sm"
-                      onClick={() => setFormType("vente")}
+                      onClick={() => handleFormTypeChange("vente")}
                       className={formType === "vente" ? "bg-green-600" : ""}
                     >
                       <TrendingUp className="h-4 w-4 mr-1" />
@@ -671,7 +737,7 @@ export default function TransactionsPage() {
                     <Button
                       variant={formType === "depense" ? "default" : "outline"}
                       size="sm"
-                      onClick={() => setFormType("depense")}
+                      onClick={() => handleFormTypeChange("depense")}
                       className={formType === "depense" ? "bg-red-600" : ""}
                     >
                       <TrendingDown className="h-4 w-4 mr-1" />

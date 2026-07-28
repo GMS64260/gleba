@@ -224,7 +224,7 @@ export function RationSubTab() {
 
         {/* Profil animal */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <div><Label className="text-xs">Profil espèce</Label><select className="block h-10 w-full rounded-md border border-slate-300 px-2 bg-white text-sm" value={profilEspece} onChange={e => setProfilEspece(e.target.value as ProfilEspeceRation)}>{['caprin','ovin','bovin','porcin','volaille','lapin'].map(p => <option value={p} key={p}>{p}</option>)}</select></div>
+          <div><Label className="text-xs">Catégorie nutritionnelle</Label><select className="block h-10 w-full rounded-md border border-slate-300 px-2 bg-white text-sm" value={profilEspece} onChange={e => setProfilEspece(e.target.value as ProfilEspeceRation)}>{['caprin','ovin','bovin','porcin','volaille','lapin'].map(p => <option value={p} key={p}>{p}</option>)}</select></div>
           {estRuminant && <div>
             <Label className="text-xs">Poids vif (kg)</Label>
             <Input type="number" min="10" value={poids} onChange={(e) => setPoids(parseFloat(e.target.value) || 0)} />

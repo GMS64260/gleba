@@ -14,6 +14,7 @@ export const collecteLaitSchema = z
     cellulesParMl: z.coerce.number().int().min(0).max(20000, { message: 'Cellules en milliers/mL (ex. 1250 pour 1 250 000). Une valeur brute (> 20 000) est probablement une erreur d’unité.' }).nullable().optional(),
     temperatureC: z.coerce.number().min(-10).max(50).nullable().optional(),
     ecarteAttente: z.boolean().optional().default(false),
+    confirmerVolumeInhabituel: z.boolean().optional().default(false),
     notes: z.string().max(2000).nullable().optional(),
     lotFromageId: z.string().nullable().optional(),
   })

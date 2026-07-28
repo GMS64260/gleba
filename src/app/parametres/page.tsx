@@ -6,7 +6,7 @@
 
 import * as React from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Settings, Save, Download, Upload, Loader2, ImageIcon, Trash2, Key, Copy, Check, RefreshCw, Bot, CloudSun, Layers, Building2 } from 'lucide-react'
+import { ArrowLeft, Settings, Save, Download, Upload, Loader2, ImageIcon, Trash2, Key, Copy, Check, RefreshCw, Bot, CloudSun, Layers, Building2, PawPrint } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
@@ -17,6 +17,8 @@ import { StationMeteoConfig } from '@/components/meteo'
 import { useToast } from '@/hooks/use-toast'
 import { useModules } from '@/hooks/use-modules'
 import { MODULES, MODULE_IDS, type ModuleId } from '@/lib/modules'
+import { useElevageModes } from '@/hooks/use-elevage-modes'
+import { ELEVAGE_MODES, ELEVAGE_MODE_IDS, type ElevageModeId } from '@/lib/elevage-modes'
 import { confirmDialog } from '@/lib/global-dialog'
 import { todayLocalISO } from '@/lib/format-utils'
 
@@ -516,6 +518,9 @@ export default function ParametresPage() {
 
         {/* Modules actifs */}
         <ModulesSection />
+
+        {/* Modes d'élevage (compagnie / équin / NAC) — affiché si le module Élevage est actif */}
+        <ElevageModesSection />
 
         {/* Bug cmp8snsxp (Marc 2026-05-16) — feature request multi-user/
             devise/unités. En attendant l'implémentation complète, on
@@ -1202,6 +1207,98 @@ function ModulesSection() {
         })}
         <p className="text-xs text-muted-foreground italic pt-2">
           💡 Astuce : un changement est visible immédiatement après rechargement de la page.
+        </p>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ============================================================
+// Section : Modes d'élevage (compagnie / équin / NAC)
+// ============================================================
+
+function ElevageModesSection() {
+  const { toast } = useToast()
+  // On ne propose les modes d'élevage que si le module Élevage est actif.
+  const { isActif: moduleActif, loading: modulesLoading } = useModules()
+  const { modes, save, loading } = useElevageModes()
+  const [saving, setSaving] = React.useState(false)
+
+  // Masqué tant que le module Élevage n'est pas activé (hors sujet sinon).
+  if (!modulesLoading && !moduleActif("elevage")) return null
+
+  const toggle = async (id: ElevageModeId, active: boolean) => {
+    // Liste vide autorisée : contrairement aux modules, désactiver tous les
+    // modes optionnels est un état valide (seule la filière `rente` reste).
+    const next = active ? [...modes, id] : modes.filter((m) => m !== id)
+    setSaving(true)
+    try {
+      const result = await save(next)
+      if (!result.ok) {
+        toast({
+          variant: "destructive",
+          title: "Échec de la sauvegarde des modes",
+          description: result.error || "Le changement a été annulé. Vérifiez votre connexion.",
+        })
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <PawPrint className="h-5 w-5 text-amber-600" />
+          Modes d&apos;élevage
+        </CardTitle>
+        <CardDescription>
+          Activez des familles d&apos;animaux supplémentaires. Les écrans Élevage s&apos;adaptent :
+          les données propres à l&apos;élevage de rente (lait, ponte, abattage, délais d&apos;attente)
+          sont masquées pour ces animaux. L&apos;élevage de rente reste toujours actif.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {loading ? (
+          ELEVAGE_MODE_IDS.map((id) => (
+            <div
+              key={id}
+              className="flex items-center justify-between gap-4 p-3 border rounded-lg animate-pulse"
+            >
+              <div className="flex-1 min-w-0 space-y-2">
+                <div className="h-4 w-32 bg-slate-200 rounded" />
+                <div className="h-3 w-48 bg-slate-100 rounded" />
+              </div>
+              <div className="h-5 w-9 bg-slate-200 rounded-full" />
+            </div>
+          ))
+        ) : ELEVAGE_MODE_IDS.map((id) => {
+          const def = ELEVAGE_MODES[id]
+          const active = modes.includes(id)
+          return (
+            <div
+              key={id}
+              className="flex items-center justify-between gap-4 p-3 border rounded-lg hover:bg-slate-50/50 transition-colors"
+            >
+              <div className="flex-1 min-w-0">
+                <Label htmlFor={`elevage-mode-${id}`} className="font-medium text-sm cursor-pointer">
+                  {def.label}
+                </Label>
+                <p className="text-xs text-muted-foreground mt-0.5">{def.description}</p>
+              </div>
+              <Switch
+                id={`elevage-mode-${id}`}
+                checked={active}
+                disabled={saving}
+                onCheckedChange={(checked) => toggle(id, checked)}
+                data-testid={`elevage-mode-toggle-${id}`}
+              />
+            </div>
+          )
+        })}
+        <p className="text-xs text-muted-foreground italic pt-2">
+          💡 Un changement est visible après rechargement de la page Élevage.
         </p>
       </CardContent>
     </Card>

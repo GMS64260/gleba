@@ -1,6 +1,7 @@
 import prisma from '@/lib/prisma'
 import { Prisma } from '@prisma/client'
 import { randomUUID } from 'node:crypto'
+import { especeBaseId } from '@/lib/elevage/espece-base'
 
 type Db = typeof prisma | Prisma.TransactionClient
 
@@ -17,12 +18,16 @@ export async function isAssignableAnimalLot(
       id: lotId,
       userId,
       statut: 'actif',
-      especeAnimaleId,
     },
-    select: { id: true },
+    select: { id: true, especeAnimaleId: true },
   })
 
-  return lot !== null
+  // Les profils « Chèvre laitière », « Chèvre Alpine chamoisée », etc.
+  // décrivent la même espèce biologique. L'UI propose déjà leurs lots en
+  // comparant l'espèce de base ; l'API doit appliquer exactement la même
+  // règle, sinon la création échoue après un choix pourtant affiché comme
+  // valide (tickets cms1v73hn / cms1viq3c).
+  return lot !== null && especeBaseId(lot.especeAnimaleId) === especeBaseId(especeAnimaleId)
 }
 
 /**

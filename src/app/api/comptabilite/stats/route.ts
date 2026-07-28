@@ -68,6 +68,8 @@ export async function GET(request: NextRequest) {
 
       // Viande vendue (Abattage avec destination=vente)
       venteAbattage,
+      // Revenus élevage sans source brute réinjectée (paie lait, réservations)
+      ventesElevageAutoSpeciales,
 
       // Récoltes potager vendues
       recoltesPotagerVendues,
@@ -112,7 +114,7 @@ export async function GET(request: NextRequest) {
       // Factures impayées (VenteProduit)
       facturesImpayeesElevage,
 
-      // Factures impayées (VenteManuelle)
+      // Factures impayées (saisies manuelles et sources sans vue brute)
       facturesImpayeesManuelles,
 
       // Stocks bas (Aliment)
@@ -188,6 +190,16 @@ export async function GET(request: NextRequest) {
         _sum: { prixVente: true },
       }),
 
+      prisma.venteManuelle.aggregate({
+        where: {
+          userId,
+          date: { gte: startOfYear, lte: endOfYear },
+          auto: true,
+          sourceType: { in: ['paie_lait', 'reservation_elevage'] },
+        },
+        _sum: { montant: true },
+      }),
+
       // Récoltes potager vendues
       prisma.recolte.findMany({
         where: {
@@ -221,6 +233,7 @@ export async function GET(request: NextRequest) {
           userId,
           date: { gte: startOfYear, lte: endOfYear },
           cout: { not: null },
+          fait: true,
         },
         _sum: { cout: true },
       }),
@@ -238,7 +251,18 @@ export async function GET(request: NextRequest) {
       // Consommation aliments (avec prix)
       prisma.consommationAliment.findMany({
         where: { userId, date: { gte: startOfYear, lte: endOfYear } },
-        include: { aliment: { select: { prix: true } } },
+        include: {
+          aliment: {
+            select: {
+              prix: true,
+              userStocks: {
+                where: { userId },
+                select: { prix: true, coutUnitaire: true },
+                take: 1,
+              },
+            },
+          },
+        },
       }),
 
       // Fertilisation (avec prix)
@@ -263,6 +287,7 @@ export async function GET(request: NextRequest) {
           userId,
           dateArrivee: { gte: startOfYear, lte: endOfYear },
           prixAchat: { not: null },
+          prixAchatInclusDansLot: false,
         },
         _sum: { prixAchat: true },
       }),
@@ -303,9 +328,18 @@ export async function GET(request: NextRequest) {
         _count: true,
       }),
 
-      // Factures impayées manuelles (exclure auto)
+      // Les miroirs VenteProduit sont déjà agrégés juste au-dessus. On ajoute
+      // uniquement les saisies manuelles et les sources auto sans vue brute
+      // d'impayé (solde de réservation, commande boutique).
       prisma.venteManuelle.aggregate({
-        where: { userId, paye: false, auto: { not: true } },
+        where: {
+          userId,
+          paye: false,
+          OR: [
+            { auto: { not: true } },
+            { auto: true, sourceType: { in: ['reservation_elevage', 'commande_boutique'] } },
+          ],
+        },
         _sum: { montant: true },
         _count: true,
       }),
@@ -361,7 +395,13 @@ export async function GET(request: NextRequest) {
 
     // Dépenses aliments (calculé)
     const depensesAliments = consommationsAliments.reduce(
-      (sum, c) => sum + (c.quantite * (c.aliment.prix || 0)),
+      (sum, c) => {
+        const prix = c.aliment.userStocks[0]?.coutUnitaire
+          ?? c.aliment.userStocks[0]?.prix
+          ?? c.aliment.prix
+          ?? 0
+        return sum + c.quantite * prix
+      },
       0
     )
 
@@ -378,7 +418,9 @@ export async function GET(request: NextRequest) {
 
     // Totaux
     const revenus = {
-      elevage: (ventesElevage._sum.prixTotal || 0) + (venteAbattage._sum.prixVente || 0),
+      elevage: (ventesElevage._sum.prixTotal || 0)
+        + (venteAbattage._sum.prixVente || 0)
+        + (ventesElevageAutoSpeciales._sum.montant || 0),
       verger: revenusFruits + (venteBois._sum.prixVente || 0),
       potager: revenusPotager + ventesManuellesPotager,
       autre: (ventesManuelles._sum.montant || 0) - ventesManuellesPotager,
@@ -429,6 +471,19 @@ export async function GET(request: NextRequest) {
       GROUP BY EXTRACT(MONTH FROM date)
     ` as { mois: number; total: number }[]
 
+    const revenusElevageSpeciauxParMois = await prisma.$queryRaw`
+      SELECT
+        EXTRACT(MONTH FROM date) as mois,
+        SUM(montant) as total
+      FROM ventes_manuelles
+      WHERE user_id = ${userId}
+        AND date >= ${startOfYear}
+        AND date <= ${endOfYear}
+        AND auto = true
+        AND source_type IN ('paie_lait', 'reservation_elevage')
+      GROUP BY EXTRACT(MONTH FROM date)
+    ` as { mois: number; total: number }[]
+
     const depensesManuParMois = await prisma.$queryRaw`
       SELECT
         EXTRACT(MONTH FROM date) as mois,
@@ -463,6 +518,7 @@ export async function GET(request: NextRequest) {
         AND date >= ${startOfYear}
         AND date <= ${endOfYear}
         AND cout IS NOT NULL
+        AND fait = true
       GROUP BY EXTRACT(MONTH FROM date)
     ` as { mois: number; total: number }[]
 
@@ -513,9 +569,11 @@ export async function GET(request: NextRequest) {
     const consommationAlimentsParMois = await prisma.$queryRaw`
       SELECT
         EXTRACT(MONTH FROM ca.date) as mois,
-        SUM(ca.quantite * COALESCE(a.prix, 0)) as total
+        SUM(ca.quantite * COALESCE(usa.cout_unitaire, usa.prix, a.prix, 0)) as total
       FROM consommations_aliments ca
       JOIN aliments a ON ca.aliment_id = a.aliment
+      LEFT JOIN user_stock_aliments usa
+        ON usa.user_id = ca.user_id AND usa.aliment_id = ca.aliment_id
       WHERE ca.user_id = ${userId}
         AND ca.date >= ${startOfYear}
         AND ca.date <= ${endOfYear}
@@ -557,13 +615,14 @@ export async function GET(request: NextRequest) {
       const rev4 = recoltesArbresParMois.find(r => Number(r.mois) === mois)?.total || 0
       const rev5 = venteBoisParMois.find(r => Number(r.mois) === mois)?.total || 0
       const rev6 = abattageParMois.find(r => Number(r.mois) === mois)?.total || 0
+      const rev7 = revenusElevageSpeciauxParMois.find(r => Number(r.mois) === mois)?.total || 0
       const dep1 = depensesManuParMois.find(d => Number(d.mois) === mois)?.total || 0
       const dep2 = soinsParMois.find(d => Number(d.mois) === mois)?.total || 0
       const dep3 = consommationAlimentsParMois.find(d => Number(d.mois) === mois)?.total || 0
       const dep4 = fertilisationParMois.find(d => Number(d.mois) === mois)?.total || 0
       const dep5 = operationsArbresParMois.find(d => Number(d.mois) === mois)?.total || 0
 
-      const revenus = Number(rev1) + Number(rev2) + Number(rev3) + Number(rev4) + Number(rev5) + Number(rev6)
+      const revenus = Number(rev1) + Number(rev2) + Number(rev3) + Number(rev4) + Number(rev5) + Number(rev6) + Number(rev7)
       const depenses = Number(dep1) + Number(dep2) + Number(dep3) + Number(dep4) + Number(dep5)
 
       return {
@@ -681,12 +740,35 @@ export async function GET(request: NextRequest) {
     ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 10)
 
     // Factures impayées detail
-    const facturesImpayeesDetail = await prisma.venteProduit.findMany({
-      where: { userId, paye: false, annule: false },
-      orderBy: { date: 'asc' },
-      take: 10,
-      select: { id: true, date: true, type: true, prixTotal: true, client: true },
-    })
+    const [facturesImpayeesDetail, ventesManuellesImpayeesDetail] = await Promise.all([
+      prisma.venteProduit.findMany({
+        where: { userId, paye: false, annule: false },
+        orderBy: { date: 'asc' },
+        take: 10,
+        select: { id: true, date: true, type: true, prixTotal: true, client: true },
+      }),
+      prisma.venteManuelle.findMany({
+        where: {
+          userId,
+          paye: false,
+          OR: [
+            { auto: { not: true } },
+            { auto: true, sourceType: { in: ['reservation_elevage', 'commande_boutique'] } },
+          ],
+        },
+        orderBy: { date: 'asc' },
+        take: 10,
+        select: {
+          id: true,
+          date: true,
+          categorie: true,
+          description: true,
+          montant: true,
+          clientNom: true,
+          sourceType: true,
+        },
+      }),
+    ])
 
     const facturesImpayees = [
       ...facturesImpayeesDetail.map(f => ({
@@ -697,7 +779,16 @@ export async function GET(request: NextRequest) {
         montant: f.prixTotal,
         source: 'vente_produit',
       })),
-    ]
+      ...ventesManuellesImpayeesDetail.map((f) => ({
+        id: f.id,
+        type: f.categorie,
+        date: f.date.toISOString(),
+        client: f.clientNom || 'Non renseigné',
+        montant: f.montant,
+        source: f.sourceType || 'vente_manuelle',
+        description: f.description,
+      })),
+    ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()).slice(0, 10)
 
     // Alertes stock (per-user)
     const alertesStockAliments = await prisma.userStockAliment.findMany({

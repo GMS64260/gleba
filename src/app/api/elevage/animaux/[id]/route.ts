@@ -11,7 +11,9 @@ import prisma from '@/lib/prisma'
 import { createDepenseFromAchatAnimal, deleteAutoEntry } from '@/lib/auto-compta'
 import { isPlausibleAnimalDate } from '@/lib/validations/elevage-animal'
 import { enregistrerChangementLot, isAssignableAnimalLot, isOwnedParcelle } from '@/lib/elevage/animal-lot'
+import { verifierLienParenteSansCycle } from '@/lib/elevage/genealogie-validation'
 import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
+import { invalidateKpi } from '@/lib/kpi'
 
 export async function GET(
   request: NextRequest,
@@ -33,6 +35,18 @@ export async function GET(
         mere: {
           select: { id: true, nom: true, identifiant: true, sexe: true, especeAnimaleId: true,
             mere: { select: { id: true, nom: true, identifiant: true, sexe: true } },
+            pere: { select: { id: true, nom: true, identifiant: true, sexe: true } },
+          },
+        },
+        pere: {
+          select: {
+            id: true,
+            nom: true,
+            identifiant: true,
+            sexe: true,
+            especeAnimaleId: true,
+            mere: { select: { id: true, nom: true, identifiant: true, sexe: true } },
+            pere: { select: { id: true, nom: true, identifiant: true, sexe: true } },
           },
         },
         enfants: {
@@ -40,7 +54,23 @@ export async function GET(
         },
         naissancesMere: {
           orderBy: { date: 'desc' },
-          take: 10,
+          take: 50,
+        },
+        // QA caprin cms1vhs9l — la fiche doit restituer la reproduction :
+        // gestation en cours, mise-bas prévue, tarissement, historique.
+        sailliesFemelle: {
+          orderBy: { date: 'desc' },
+          take: 30,
+          select: {
+            id: true,
+            date: true,
+            type: true,
+            statut: true,
+            dateMiseBasAttendue: true,
+            dateTarissementPrevue: true,
+            male: { select: { id: true, nom: true, identifiant: true } },
+            pereExterneRef: true,
+          },
         },
         productionsOeufs: {
           orderBy: { date: 'desc' },
@@ -100,19 +130,6 @@ export async function PATCH(
       include: { especeAnimale: true, lot: true },
     })
 
-    // Auto-comptabilite : resynchroniser la depense auto avec les valeurs finales
-    try {
-      await createDepenseFromAchatAnimal(session.user.id, {
-        id: animal.id,
-        nom: animal.nom,
-        identifiant: animal.identifiant,
-        prixAchat: animal.prixAchat,
-        dateArrivee: animal.dateArrivee,
-      })
-    } catch (autoComptaError) {
-      console.error('Auto-compta error (achat_animal_individuel PATCH):', autoComptaError)
-    }
-
     return NextResponse.json({ data: animal })
   } catch (error) {
     console.error('PATCH /api/elevage/animaux/[id] error:', error)
@@ -157,6 +174,26 @@ export async function PUT(
       if (!mere) {
         return NextResponse.json({ error: 'Animal mère introuvable' }, { status: 400 })
       }
+      const lienValide = await verifierLienParenteSansCycle({
+        animalId: existing.id,
+        parentId: mid,
+        chargerParents: (ids) => prisma.animal.findMany({
+          where: { userId: session.user.id, id: { in: ids } },
+          select: { id: true, mereId: true, pereId: true },
+        }),
+      })
+      if (!lienValide) {
+        return NextResponse.json(
+          { error: 'Parenté circulaire impossible : la mère proposée descend déjà de cet animal' },
+          { status: 400 },
+        )
+      }
+      if (existing.pereId && mid === existing.pereId) {
+        return NextResponse.json(
+          { error: 'La mère et le père doivent être deux animaux distincts' },
+          { status: 400 },
+        )
+      }
     }
 
     const {
@@ -172,6 +209,7 @@ export async function PUT(
       dateArrivee,
       provenance,
       prixAchat,
+      prixAchatInclusDansLot,
       statut,
       dateSortie,
       causeSortie,
@@ -185,6 +223,39 @@ export async function PUT(
       notes,
       parcelleGeoId,
     } = body
+
+    const prixFinal = prixAchat === undefined
+      ? existing.prixAchat
+      : prixAchat === null || prixAchat === ''
+        ? null
+        : Number(prixAchat)
+    if (prixFinal != null && (!Number.isFinite(prixFinal) || prixFinal < 0)) {
+      return NextResponse.json({ error: "Prix d'achat invalide" }, { status: 400 })
+    }
+    const lotCible = lotId === undefined ? existing.lotId : (lotId ? Number(lotId) : null)
+    let inclusFinal = prixAchatInclusDansLot === undefined
+      ? existing.prixAchatInclusDansLot
+      : Boolean(prixAchatInclusDansLot)
+    if (lotCible === null) inclusFinal = false
+    const lotAchatCible = lotCible != null && (Number(prixFinal || 0) > 0 || inclusFinal)
+      ? await prisma.lotAnimaux.findFirst({
+          where: { id: lotCible, userId: session.user.id },
+          select: { prixAchatTotal: true },
+        })
+      : null
+    const lotPorteAchat = Number(lotAchatCible?.prixAchatTotal || 0) > 0
+    if (inclusFinal && (!(Number(prixFinal || 0) > 0) || !lotPorteAchat)) {
+      return NextResponse.json(
+        { error: "Le prix ne peut être inclus dans le lot que si l'animal et le lot ont tous deux un prix d'achat." },
+        { status: 400 },
+      )
+    }
+    if (Number(prixFinal || 0) > 0 && lotPorteAchat && !inclusFinal) {
+      return NextResponse.json(
+        { error: "Ce lot possède déjà un prix d'achat total. Cochez « prix inclus dans le lot » ou retirez l'un des deux prix." },
+        { status: 400 },
+      )
+    }
 
     const especeCible = especeAnimaleId ?? existing.especeAnimaleId
     if (orientationProduction !== undefined && orientationProduction !== null && !['lait', 'viande', 'laine', 'mixte'].includes(orientationProduction)) {
@@ -247,7 +318,9 @@ export async function PUT(
         dateNaissance: dateNaissance ? new Date(dateNaissance) : undefined,
         dateArrivee: dateArrivee ? new Date(dateArrivee) : undefined,
         provenance,
-        prixAchat,
+        prixAchat: prixAchat !== undefined ? prixFinal : undefined,
+        prixAchatInclusDansLot:
+          prixAchatInclusDansLot !== undefined || lotId !== undefined ? inclusFinal : undefined,
         statut,
         dateSortie: dateSortie ? new Date(dateSortie) : undefined,
         causeSortie,
@@ -278,22 +351,17 @@ export async function PUT(
           },
         })
       }
+      await createDepenseFromAchatAnimal(session.user.id, {
+        id: updated.id,
+        nom: updated.nom,
+        identifiant: updated.identifiant,
+        prixAchat: updated.prixAchat,
+        dateArrivee: updated.dateArrivee,
+        prixAchatInclusDansLot: updated.prixAchatInclusDansLot,
+      }, tx)
       return updated
     })
-
-    // Auto-comptabilite : resynchroniser la depense auto avec les valeurs finales
-    // (le helper supprime l'ecriture si prixAchat devient null/0)
-    try {
-      await createDepenseFromAchatAnimal(session.user.id, {
-        id: animal.id,
-        nom: animal.nom,
-        identifiant: animal.identifiant,
-        prixAchat: animal.prixAchat,
-        dateArrivee: animal.dateArrivee,
-      })
-    } catch (autoComptaError) {
-      console.error('Auto-compta error (achat_animal_individuel PUT):', autoComptaError)
-    }
+    invalidateKpi(session.user.id)
 
     return NextResponse.json({ data: animal })
   } catch (error) {
@@ -323,16 +391,17 @@ export async function DELETE(
       return NextResponse.json({ error: 'Animal non trouvé' }, { status: 404 })
     }
 
-    // Supprimer les ecritures auto-compta liees
-    try {
-      await deleteAutoEntry('achat_animal_individuel', parseInt(id), 'depense')
-    } catch (autoComptaError) {
-      console.error('Auto-compta cleanup error (achat_animal_individuel):', autoComptaError)
-    }
-
-    await prisma.animal.delete({
-      where: { id: parseInt(id) },
+    await prisma.$transaction(async (tx) => {
+      await deleteAutoEntry(
+        'achat_animal_individuel',
+        existing.id,
+        'depense',
+        session.user.id,
+        tx,
+      )
+      await tx.animal.delete({ where: { id: existing.id } })
     })
+    invalidateKpi(session.user.id)
 
     return NextResponse.json({ success: true })
   } catch (error) {

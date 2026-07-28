@@ -31,6 +31,11 @@ interface AnimalForTree {
   mereIdentifiant: string | null
   mere: (GenealogyNode & {
     mere: GenealogyNodeMinimal | null
+    pere: GenealogyNodeMinimal | null
+  }) | null
+  pere: (GenealogyNode & {
+    mere: GenealogyNodeMinimal | null
+    pere: GenealogyNodeMinimal | null
   }) | null
   enfants: (GenealogyNode & {
     dateNaissance: string | null
@@ -126,10 +131,16 @@ export function GenealogyTree({ animal }: { animal: AnimalForTree }) {
   const hasMere = !!animal.mere
   // Mère externe : affichée en nœud texte quand aucune mère du cheptel n'est liée.
   const hasMereExterne = !hasMere && !!animal.mereIdentifiant
-  const hasGrandMere = !!animal.mere?.mere
-  const hasPere = !!animal.pereIdentifiant
+  const hasPere = !!animal.pere
+  const hasPereExterne = !hasPere && !!animal.pereIdentifiant
+  const grandsParents = [
+    animal.mere?.mere ? { node: animal.mere.mere, label: "Grand-mère maternelle" } : null,
+    animal.mere?.pere ? { node: animal.mere.pere, label: "Grand-père maternel" } : null,
+    animal.pere?.mere ? { node: animal.pere.mere, label: "Grand-mère paternelle" } : null,
+    animal.pere?.pere ? { node: animal.pere.pere, label: "Grand-père paternel" } : null,
+  ].filter((item): item is { node: GenealogyNodeMinimal; label: string } => item !== null)
   const hasEnfants = animal.enfants.length > 0
-  const hasParents = hasMere || hasMereExterne || hasPere
+  const hasParents = hasMere || hasMereExterne || hasPere || hasPereExterne
 
   if (!hasParents && !hasEnfants) {
     return (
@@ -142,10 +153,14 @@ export function GenealogyTree({ animal }: { animal: AnimalForTree }) {
   return (
     <div className="overflow-x-auto py-2">
       <div className="flex flex-col items-center gap-0 min-w-[300px]">
-        {/* Generation -2 : Grand-mere maternelle */}
-        {hasGrandMere && (
+        {/* Génération -2 : grands-parents maternels et paternels connus. */}
+        {grandsParents.length > 0 && (
           <>
-            <TreeNode node={animal.mere!.mere!} label="Grand-mere" />
+            <div className="flex items-end justify-center gap-2 flex-wrap">
+              {grandsParents.map(({ node, label }) => (
+                <TreeNode key={`${label}-${node.id}`} node={node} label={label} />
+              ))}
+            </div>
             <Connector vertical />
           </>
         )}
@@ -160,9 +175,12 @@ export function GenealogyTree({ animal }: { animal: AnimalForTree }) {
               {hasMereExterne && (
                 <TreeNode isText text={animal.mereIdentifiant!} label="Mere" />
               )}
-              {(hasMere || hasMereExterne) && hasPere && <Connector />}
+              {(hasMere || hasMereExterne) && (hasPere || hasPereExterne) && <Connector />}
               {hasPere && (
-                <TreeNode isText text={animal.pereIdentifiant!} label="Pere" />
+                <TreeNode node={animal.pere!} label="Père" />
+              )}
+              {hasPereExterne && (
+                <TreeNode isText text={animal.pereIdentifiant!} label="Père" />
               )}
             </div>
             <Connector vertical />

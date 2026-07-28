@@ -111,7 +111,7 @@ export async function GET(request: NextRequest) {
           date: { gte: startOfYear, lte: endOfYear },
           OR: [
             { auto: { not: true } },
-            { auto: true, sourceType: 'commande_boutique' },
+            { auto: true, sourceType: { in: ['commande_boutique', 'reservation_elevage'] } },
           ],
         },
         orderBy: { date: 'desc' },
@@ -298,6 +298,7 @@ export async function GET(request: NextRequest) {
         categorie: v.categorie === 'legumes' ? 'Légumes' :
                    v.categorie === 'fruits' ? 'Fruits' :
                    v.categorie === 'transformation' ? 'Transformation' :
+                   v.categorie === 'animal_vivant' ? 'Animaux vivants' :
                    v.categorie === 'service' ? 'Service' : 'Autre',
       })
     })

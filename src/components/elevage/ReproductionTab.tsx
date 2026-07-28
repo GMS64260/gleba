@@ -5,6 +5,7 @@
  */
 
 import * as React from "react"
+import { useSearchParams } from "next/navigation"
 import {
   Baby,
   Plus,
@@ -16,6 +17,8 @@ import {
   Heart,
   Activity,
   UserPlus,
+  CalendarClock,
+  Dna,
 } from "lucide-react"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -38,6 +41,11 @@ import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
 import { AnimalCombobox } from "./AnimalCombobox"
+import { useFiliereSelection, capacitesSelection, filiereMatch } from "@/lib/elevage/filiere-context"
+import { libellePetit } from "@/lib/elevage/espece-base"
+import { ReservationsSubTab } from "./ReservationsSubTab"
+import { SelectionSubTab } from "./SelectionSubTab"
+import { normaliserSousOnglet } from "@/lib/elevage/filiere-ui"
 import {
   ChartContainer,
   ChartTooltip,
@@ -58,6 +66,7 @@ interface PetitNaissance {
   boucleDefinitive?: string | null
   modeElevage: "sous_mere" | "biberon" | null
   poids: number | null
+  couleur?: string | null
   vivant?: boolean
   // PROMPT 31 — fiche animale générée pour ce petit (idempotence QA #4)
   animalId?: number | null
@@ -67,8 +76,10 @@ interface PetitNaissance {
 type PetitRow = {
   sexe: string
   boucleProvisoire: string
+  boucleDefinitive: string
   modeElevage: string
   poids: string
+  couleur: string
   vivant: boolean
 }
 
@@ -86,8 +97,9 @@ interface Naissance {
   notes: string | null
   mereId: number | null
   lotId: number | null
+  saillieId?: string | null
   petits: PetitNaissance[]
-  lot: { id: number; nom: string | null; especeAnimale?: { nom: string } } | null
+  lot: { id: number; nom: string | null; especeAnimale?: { nom: string; filiere?: string | null } } | null
   mere: {
     id: number
     nom: string | null
@@ -96,6 +108,7 @@ interface Naissance {
     especeAnimale: {
       id: string
       nom: string
+      filiere: string | null
       dureeGestation: number | null
       dureeCouvaison: number | null
     }
@@ -117,12 +130,25 @@ interface AnimalFemelle {
   nom: string | null
   identifiant: string | null
   race: string | null
+  dateNaissance?: string | null
   especeAnimale: {
     id: string
     nom: string
+    filiere: string | null
     dureeGestation: number | null
     dureeCouvaison: number | null
   }
+}
+
+// QA caprin cms1va1q7 — une femelle ne peut pas avoir mis bas avant d'avoir
+// vécu au moins une gestation complète de son espèce : les chevrettes de
+// 0-2 jours n'ont rien à faire dans la liste « Mère ». Fallback prudent
+// 60 j quand l'espèce ne renseigne pas de durée de gestation.
+function mereBiologiquementPossible(f: AnimalFemelle, dateMiseBas: Date): boolean {
+  if (!f.dateNaissance) return true // âge inconnu : ne pas exclure à tort
+  const ageJours = (dateMiseBas.getTime() - new Date(f.dateNaissance).getTime()) / 86_400_000
+  const minimum = f.especeAnimale.dureeGestation ?? 60
+  return ageJours >= minimum
 }
 
 const MOIS_LABELS = ['Jan', 'Fev', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aou', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -131,54 +157,122 @@ const MOIS_LABELS = ['Jan', 'Fev', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aou', 'Se
 // Composant principal
 // ============================================================
 
-export function ReproductionTab() {
-  const params = new URLSearchParams(window.location.search)
-  const requestedSub = params.get("sub")
-  const initialSub = ["saillies", "naissances", "calculateur", "campagnes", "indicateurs"].includes(requestedSub || "")
-    ? requestedSub!
-    : "saillies"
-  const openNewBirth = params.get("action") === "nouvelle-naissance"
+export function ReproductionTab({ year }: { year?: number } = {}) {
+  // QA caprin cms1v9baa / cms1vc12t — lire l'URL via useSearchParams (réactif
+  // aux navigations App Router), plus jamais window.location pendant le render :
+  // au premier render après un router.push, window.location portait encore
+  // l'ANCIENNE URL → sub=naissances ignoré, raccourci « + Naissance » cassé.
+  const searchParams = useSearchParams()
+  const requestedSub = searchParams.get("sub")
+  // Filière d'atelier : adapte les sous-onglets (compagnie/équin/NAC ≠ rente).
+  const filiereSel = useFiliereSelection()
+  const caps = capacitesSelection(filiereSel)
+  const compagnie = caps.dashboard === "compagnie"
+  const allowedSubs = [
+    "saillies",
+    "naissances",
+    "calculateur",
+    ...(!compagnie ? ["campagnes", "indicateurs"] : []),
+    ...(caps.reservations ? ["reservations"] : []),
+    ...(caps.selection ? ["selection"] : []),
+  ]
+  const initialSub = allowedSubs.includes(requestedSub || "") ? requestedSub! : "saillies"
+  const openNewBirth = searchParams.get("action") === "nouvelle-naissance"
+  const [activeSub, setActiveSub] = React.useState(initialSub)
+  const allowedSubsKey = allowedSubs.join("|")
+
+  // Deep-link : un changement de ?sub= dans l'URL (raccourci, lien partagé)
+  // bascule le sous-onglet, même après le montage.
+  React.useEffect(() => {
+    if (requestedSub && allowedSubs.includes(requestedSub)) setActiveSub(requestedSub)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedSub, allowedSubsKey])
+
+  React.useEffect(() => {
+    setActiveSub((current) => normaliserSousOnglet(current, allowedSubs, initialSub))
+    // allowedSubsKey représente précisément les capacités qui rendent les
+    // sous-onglets disponibles.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allowedSubsKey, initialSub])
 
   return (
-    <Tabs defaultValue={initialSub} className="space-y-4">
+    <Tabs value={activeSub} onValueChange={setActiveSub} className="space-y-4">
       <TabsList className="flex-wrap h-auto gap-y-1">
         <TabsTrigger value="saillies" className="flex items-center gap-1.5">
           <Heart className="h-4 w-4" />
-          Saillies
+          {compagnie ? "Accouplements" : "Saillies"}
         </TabsTrigger>
         <TabsTrigger value="naissances" className="flex items-center gap-1.5">
           <Baby className="h-4 w-4" />
-          Naissances
+          {compagnie ? "Portées" : "Naissances"}
         </TabsTrigger>
         <TabsTrigger value="calculateur" className="flex items-center gap-1.5">
           <Calculator className="h-4 w-4" />
           Calculateur
         </TabsTrigger>
+        {!compagnie && (
         <TabsTrigger value="campagnes" className="flex items-center gap-1.5">
           <Calendar className="h-4 w-4" />
           Campagnes
         </TabsTrigger>
+        )}
+        {!compagnie && (
         <TabsTrigger value="indicateurs" className="flex items-center gap-1.5">
           <Activity className="h-4 w-4" />
           Indicateurs
         </TabsTrigger>
+        )}
+        {(caps.reservations || caps.selection) && (
+          <>
+            {caps.reservations && (
+              <TabsTrigger value="reservations" className="flex items-center gap-1.5">
+                <CalendarClock className="h-4 w-4" />
+                Réservations
+              </TabsTrigger>
+            )}
+            {caps.selection && (
+              <TabsTrigger value="selection" className="flex items-center gap-1.5">
+                <Dna className="h-4 w-4" />
+                Sélection
+              </TabsTrigger>
+            )}
+          </>
+        )}
       </TabsList>
 
       <TabsContent value="saillies">
-        <SailliesSubTab />
+        <SailliesSubTab year={year} />
       </TabsContent>
       <TabsContent value="naissances">
-        <NaissancesSubTab initialOpen={openNewBirth} />
+        <NaissancesSubTab initialOpen={openNewBirth} year={year} />
       </TabsContent>
       <TabsContent value="calculateur">
         <CalculateurSubTab />
       </TabsContent>
+      {!compagnie && (
       <TabsContent value="campagnes">
         <CampagnesSubTab />
       </TabsContent>
+      )}
+      {!compagnie && (
       <TabsContent value="indicateurs">
         <IndicateursSubTab />
       </TabsContent>
+      )}
+      {(caps.reservations || caps.selection) && (
+        <>
+          {caps.reservations && (
+            <TabsContent value="reservations">
+              <ReservationsSubTab />
+            </TabsContent>
+          )}
+          {caps.selection && (
+            <TabsContent value="selection">
+              <SelectionSubTab />
+            </TabsContent>
+          )}
+        </>
+      )}
     </Tabs>
   )
 }
@@ -193,6 +287,7 @@ type Campagne = {
   typeConduite: string
   espece: string | null
   especeAnimaleId: string | null
+  filiere: string | null
   dateDebut: string
   dateFin: string | null
   objectifMiseBas: string | null
@@ -210,6 +305,7 @@ const TYPES_CONDUITE = [
 
 function CampagnesSubTab() {
   const { toast } = useToast()
+  const filiereSel = useFiliereSelection()
   const [campagnes, setCampagnes] = React.useState<Campagne[]>([])
   const [especes, setEspeces] = React.useState<{ id: string; nom: string }[]>([])
   const [loading, setLoading] = React.useState(true)
@@ -286,7 +382,7 @@ function CampagnesSubTab() {
             </CardTitle>
             <CardDescription>
               Planifiez les périodes de lutte (monte, désaisonnement, effet bouc) pour étaler les mises-bas et suivre la
-              réussite par groupe. Rattachez-y les saillies dans l'onglet Saillies.
+              réussite par groupe. Rattachez-y les saillies dans l’onglet Saillies.
             </CardDescription>
           </div>
           <Button onClick={() => setOpen(true)}>
@@ -317,7 +413,7 @@ function CampagnesSubTab() {
                 </tr>
               </thead>
               <tbody>
-                {campagnes.map((c) => (
+                {campagnes.filter((c) => filiereMatch(filiereSel, c.filiere)).map((c) => (
                   <tr key={c.id} className="border-b hover:bg-slate-50">
                     <td className="p-2 font-medium">
                       {c.nom}
@@ -442,19 +538,23 @@ function joursEnLisible(j: number | null): string {
 }
 
 type EtatTroupeau = {
-  data: { id: number; nom: string | null; identifiant: string | null; espece: string | null; etat: string; label: string }[]
+  data: { id: number; nom: string | null; identifiant: string | null; espece: string | null; etat: string; label: string; parite?: string; labelParite?: string }[]
   repartition: Record<string, number>
   labels: Record<string, string>
+  repartitionParite?: Record<string, number>
+  labelsParite?: Record<string, string>
 }
 const ETAT_COULEUR: Record<string, string> = {
   lactation: "bg-blue-100 text-blue-800 border-blue-200",
   lactation_gestante: "bg-violet-100 text-violet-800 border-violet-200",
+  gestante: "bg-pink-100 text-pink-800 border-pink-200",
   gestante_tarie: "bg-amber-100 text-amber-800 border-amber-200",
   vide: "bg-slate-100 text-slate-700 border-slate-200",
   nullipare: "bg-emerald-100 text-emerald-800 border-emerald-200",
 }
 
 function IndicateursSubTab() {
+  const filiereSel = useFiliereSelection()
   const [data, setData] = React.useState<ReproData | null>(null)
   const [etat, setEtat] = React.useState<EtatTroupeau | null>(null)
   const [loading, setLoading] = React.useState(true)
@@ -462,18 +562,20 @@ function IndicateursSubTab() {
 
   React.useEffect(() => {
     setLoading(true)
-    fetch(`/api/elevage/repro-indicateurs?annee=${annee}`)
+    const fp = filiereSel !== "toutes" ? `&filiere=${filiereSel}` : ""
+    fetch(`/api/elevage/repro-indicateurs?annee=${annee}${fp}`)
       .then((r) => r.json())
       .then(setData)
       .finally(() => setLoading(false))
-  }, [annee])
+  }, [annee, filiereSel])
 
   React.useEffect(() => {
-    fetch(`/api/elevage/etat-physiologique`)
+    const fp = filiereSel !== "toutes" ? `?filiere=${filiereSel}` : ""
+    fetch(`/api/elevage/etat-physiologique${fp}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => { if (j?.data) setEtat(j) })
       .catch(() => {})
-  }, [])
+  }, [filiereSel])
 
   const p = data?.periode
   const h = data?.historique
@@ -488,8 +590,8 @@ function IndicateursSubTab() {
               Indicateurs de reproduction
             </CardTitle>
             <CardDescription>
-              Fertilité, prolificité et mortinatalité sur l'année ; intervalle entre mises-bas (IVV) et âge au premier
-              part sur tout l'historique.
+              Fertilité, prolificité et mortinatalité sur l’année ; intervalle entre mises-bas (IVV) et âge au premier
+              part sur tout l’historique.
             </CardDescription>
           </div>
           <select
@@ -552,7 +654,10 @@ function IndicateursSubTab() {
             {etat && etat.data.length > 0 && (
               <div>
                 <div className="text-xs font-semibold text-slate-500 uppercase mb-2">État physiologique du troupeau</div>
-                <div className="flex flex-wrap gap-2 mb-3">
+                {/* QA caprin cms1vgm9n — deux dimensions : état du cycle
+                    (gestante / lactation / tarie / vide) + parité. Une
+                    chevrette gestante n'apparaît plus « Nullipare ». */}
+                <div className="flex flex-wrap gap-2 mb-1.5">
                   {Object.entries(etat.repartition)
                     .sort((a, b) => b[1] - a[1])
                     .map(([k, n]) => (
@@ -561,16 +666,29 @@ function IndicateursSubTab() {
                       </Badge>
                     ))}
                 </div>
+                {etat.repartitionParite && (
+                  <div className="flex flex-wrap gap-2 mb-3 items-center">
+                    <span className="text-[11px] text-slate-400 uppercase">Parité</span>
+                    {Object.entries(etat.repartitionParite)
+                      .sort((a, b) => b[1] - a[1])
+                      .map(([k, n]) => (
+                        <Badge key={k} variant="outline" className="bg-white text-slate-600 border-slate-200">
+                          {etat.labelsParite?.[k] || k} : {n}
+                        </Badge>
+                      ))}
+                  </div>
+                )}
                 <div className="overflow-x-auto">
                   <table className="min-w-full text-sm">
                     <tbody>
                       {etat.data.map((f) => (
                         <tr key={f.id} className="border-b">
-                          <td className="p-1.5 font-medium">{f.nom || f.identifiant || `#${f.id}`}</td>
+                          <td className="p-1.5 font-medium">{f.nom && f.identifiant ? `${f.nom} · ${f.identifiant}` : f.nom || f.identifiant || `#${f.id}`}</td>
                           <td className="p-1.5 text-slate-500 text-xs">{f.espece}</td>
                           <td className="p-1.5">
                             <Badge variant="outline" className={ETAT_COULEUR[f.etat] || ""}>{f.label}</Badge>
                           </td>
+                          <td className="p-1.5 text-xs text-slate-500">{f.labelParite || ""}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -613,14 +731,20 @@ function ReproTile({
 // Naissances
 // ============================================================
 
-function NaissancesSubTab({ initialOpen = false }: { initialOpen?: boolean }) {
+function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean; year?: number }) {
   const { toast } = useToast()
   const [isLoading, setIsLoading] = React.useState(true)
+  const filiereSel = useFiliereSelection()
   const [naissances, setNaissances] = React.useState<Naissance[]>([])
-  const [stats, setStats] = React.useState<NaissanceStats | null>(null)
   const [femelles, setFemelles] = React.useState<AnimalFemelle[]>([])
   // Lots actifs pour rattacher une portée (élevage en lot, cmpm79lql)
-  const [lots, setLots] = React.useState<{ id: number; nom: string | null; especeAnimale: { nom: string } }[]>([])
+  const [lots, setLots] = React.useState<{ id: number; nom: string | null; especeAnimale: { nom: string; filiere?: string | null } }[]>([])
+  // QA caprin cms1v6ctk — saillies rattachables (sans mise-bas déjà liée),
+  // proposées pour chaîner mise en lutte → saillie → gestation → mise-bas.
+  const [sailliesOuvertes, setSailliesOuvertes] = React.useState<{
+    id: string; femelleId: number; date: string; type: string; statut: string
+    dateMiseBasAttendue: string; maleLabel: string | null
+  }[]>([])
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
   // QA 2026-05-15 — édition par ligne
   const [editingNaissId, setEditingNaissId] = React.useState<number | null>(null)
@@ -644,10 +768,48 @@ function NaissancesSubTab({ initialOpen = false }: { initialOpen?: boolean }) {
     nombreNes: "", nombreVivants: "",
     nombreMales: "", nombreFemelles: "",
     poidsTotal: "", notes: "",
+    // QA caprin cms1v6ctk — saillie/IA d'origine (chaînage repro)
+    saillieId: "",
     // PROMPT 29 — détail par cabri (optionnel)
     petits: [] as PetitRow[],
   }
   const [formData, setFormData] = React.useState(EMPTY_NAISS_FORM)
+
+  // Mères et lots proposés scopés à l'atelier courant (pas de chèvre sous
+  // « Chiens & chats »). La résolution par id garde la liste complète.
+  // QA caprin cms1va1q7 — exclure les femelles biologiquement trop jeunes
+  // (nées il y a moins d'une gestation de leur espèce) ; la mère de la
+  // naissance en cours d'édition reste sélectionnable.
+  const dateMiseBasSaisie = formData.date ? new Date(formData.date) : new Date()
+  const femellesCibles = femelles.filter((f) =>
+    filiereMatch(filiereSel, f.especeAnimale.filiere) &&
+    (String(f.id) === formData.mereId || mereBiologiquementPossible(f, dateMiseBasSaisie)))
+  const lotsCibles = lots.filter((l) => filiereMatch(filiereSel, l.especeAnimale?.filiere))
+
+  // QA caprin cms1v6ctk — saillies proposables pour la mère choisie : encore
+  // ouvertes (En attente / Gestante), triées par proximité avec la date saisie.
+  const sailliesProposables = React.useMemo(() => {
+    const mereId = parseInt(formData.mereId, 10)
+    if (!Number.isFinite(mereId)) return []
+    const ref = formData.date ? new Date(formData.date).getTime() : Date.now()
+    return sailliesOuvertes
+      .filter((s) => s.femelleId === mereId)
+      .sort((a, b) =>
+        Math.abs(new Date(a.dateMiseBasAttendue).getTime() - ref) -
+        Math.abs(new Date(b.dateMiseBasAttendue).getTime() - ref))
+  }, [sailliesOuvertes, formData.mereId, formData.date])
+
+  // Pré-sélection automatique : saillie dont la mise-bas attendue est à ±15 j
+  // de la date saisie (création uniquement).
+  React.useEffect(() => {
+    if (editingNaissId !== null || formData.saillieId || sailliesProposables.length === 0) return
+    const ref = formData.date ? new Date(formData.date).getTime() : Date.now()
+    const best = sailliesProposables[0]
+    if (Math.abs(new Date(best.dateMiseBasAttendue).getTime() - ref) <= 15 * 86_400_000) {
+      setFormData((f) => (f.saillieId ? f : { ...f, saillieId: best.id }))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sailliesProposables, editingNaissId])
 
   const resetNaissForm = () => {
     setEditingNaissId(null)
@@ -669,11 +831,14 @@ function NaissancesSubTab({ initialOpen = false }: { initialOpen?: boolean }) {
       nombreFemelles: n.nombreFemelles != null ? n.nombreFemelles.toString() : "",
       poidsTotal: n.poidsTotal != null ? n.poidsTotal.toString() : "",
       notes: n.notes ?? "",
+      saillieId: n.saillieId ?? "",
       petits: (n.petits ?? []).map((p) => ({
         sexe: p.sexe ?? "",
         boucleProvisoire: p.boucleProvisoire ?? "",
+        boucleDefinitive: p.boucleDefinitive ?? "",
         modeElevage: p.modeElevage ?? "",
         poids: p.poids != null ? String(p.poids) : "",
+        couleur: p.couleur ?? "",
         vivant: p.vivant ?? true,
       })),
     })
@@ -698,7 +863,15 @@ function NaissancesSubTab({ initialOpen = false }: { initialOpen?: boolean }) {
       return { ...f, petits, ...(petits.length > 0 ? aggregatsDepuisPetits(petits) : {}) }
     })
   }
-  const EMPTY_PETIT: PetitRow = { sexe: "", boucleProvisoire: "", modeElevage: "sous_mere", poids: "", vivant: true }
+  const EMPTY_PETIT: PetitRow = {
+    sexe: "",
+    boucleProvisoire: "",
+    boucleDefinitive: "",
+    modeElevage: "sous_mere",
+    poids: "",
+    couleur: "",
+    vivant: true,
+  }
   const ajouterPetit = () => setPetits((prev) => [...prev, { ...EMPTY_PETIT }])
   const retirerPetit = (i: number) => setPetits((prev) => prev.filter((_, idx) => idx !== i))
   const majPetit = (i: number, patch: Partial<PetitRow>) =>
@@ -706,7 +879,13 @@ function NaissancesSubTab({ initialOpen = false }: { initialOpen?: boolean }) {
   const genererPetits = () => {
     const n = parseInt(formData.nombreNes) || 0
     if (n < 1) { toast({ variant: "destructive", title: "Renseignez d'abord le nombre de nés" }); return }
-    setPetits(() => Array.from({ length: n }, () => ({ ...EMPTY_PETIT })))
+    const provisoires = formData.identifiantsProvisoires.split(/[,;\n]+/).map((v) => v.trim()).filter(Boolean)
+    const definitifs = formData.identifiantsDefinitifs.split(/[,;\n]+/).map((v) => v.trim()).filter(Boolean)
+    setPetits(() => Array.from({ length: n }, (_, index) => ({
+      ...EMPTY_PETIT,
+      boucleProvisoire: provisoires[index] ?? "",
+      boucleDefinitive: definitifs[index] ?? "",
+    })))
   }
 
   // Crée un lot des petits à la volée (ex. « Chevreaux 2026 ») et le sélectionne.
@@ -745,16 +924,16 @@ function NaissancesSubTab({ initialOpen = false }: { initialOpen?: boolean }) {
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
     try {
-      const [naissRes, animauxRes, lotsRes] = await Promise.all([
+      const [naissRes, animauxRes, lotsRes, sailliesRes] = await Promise.all([
         fetch('/api/elevage/naissances'),
         fetch('/api/elevage/animaux?statut=actif&sexe=femelle'),
         fetch('/api/elevage/lots?statut=actif'),
+        fetch('/api/elevage/saillies'),
       ])
 
       if (naissRes.ok) {
         const result = await naissRes.json()
         setNaissances(result.data)
-        setStats(result.stats)
       }
       if (animauxRes.ok) {
         const result = await animauxRes.json()
@@ -763,6 +942,30 @@ function NaissancesSubTab({ initialOpen = false }: { initialOpen?: boolean }) {
       if (lotsRes.ok) {
         const result = await lotsRes.json()
         setLots(result.data || [])
+      }
+      if (sailliesRes.ok) {
+        // QA caprin cms1v6ctk — saillies encore rattachables : pas de mise-bas
+        // déjà liée et statut non clos.
+        const result = await sailliesRes.json()
+        type SaillieApi = {
+          id: string; date: string; type: string; statut: string
+          dateMiseBasAttendue: string
+          femelle: { id: number } | null
+          male: { nom: string | null; identifiant: string | null } | null
+          pereExterneRef?: string | null
+          miseBas: { id: number } | null
+        }
+        setSailliesOuvertes(((result.data || []) as SaillieApi[])
+          .filter((s) => !s.miseBas && (s.statut === 'En attente' || s.statut === 'Gestante') && s.femelle)
+          .map((s) => ({
+            id: s.id,
+            femelleId: s.femelle!.id,
+            date: s.date,
+            type: s.type,
+            statut: s.statut,
+            dateMiseBasAttendue: s.dateMiseBasAttendue,
+            maleLabel: s.male ? (s.male.nom || s.male.identifiant) : (s.pereExterneRef ?? null),
+          })))
       }
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les données" })
@@ -793,13 +996,22 @@ function NaissancesSubTab({ initialOpen = false }: { initialOpen?: boolean }) {
         const n = parseFloat(s)
         return Number.isFinite(n) ? n : null
       }
+      // cms1vadee — lorsque le détail par petit est utilisé, les listes
+      // agrégées sont dérivées des mêmes lignes : aucune double saisie des
+      // boucles et aucune divergence entre l'en-tête et les petits.
+      const identifiantsProvisoires = formData.petits.length
+        ? formData.petits.map((p) => p.boucleProvisoire.trim()).filter(Boolean).join(", ")
+        : formData.identifiantsProvisoires.trim()
+      const identifiantsDefinitifs = formData.petits.length
+        ? formData.petits.map((p) => p.boucleDefinitive.trim()).filter(Boolean).join(", ")
+        : formData.identifiantsDefinitifs.trim()
       const payload = {
         ...(isEdit ? { id: editingNaissId } : {}),
         mereId: toIntOrNull(formData.mereId),
         lotId: toIntOrNull(formData.lotId),
         pereIdentifiant: formData.pereIdentifiant?.trim() || null,
-        identifiantsProvisoires: formData.identifiantsProvisoires?.trim() || null,
-        identifiantsDefinitifs: formData.identifiantsDefinitifs?.trim() || null,
+        identifiantsProvisoires: identifiantsProvisoires || null,
+        identifiantsDefinitifs: identifiantsDefinitifs || null,
         date: formData.date || undefined,
         nombreNes: toIntOrNull(formData.nombreNes) ?? 0,
         nombreVivants: toIntOrNull(formData.nombreVivants) ?? 0,
@@ -807,12 +1019,17 @@ function NaissancesSubTab({ initialOpen = false }: { initialOpen?: boolean }) {
         nombreFemelles: toIntOrNull(formData.nombreFemelles),
         poidsTotal: toFloatOrNull(formData.poidsTotal),
         notes: formData.notes?.trim() || null,
+        // QA caprin cms1v6ctk — chaînage saillie → mise-bas (création : l'API
+        // solde la saillie en « Mise-bas réalisée » et débloque la fertilité)
+        ...(isEdit ? {} : { saillieId: formData.saillieId || null }),
         // PROMPT 29 — détail par cabri (tableau vide = pas de détail / effacé en édition)
         petits: formData.petits.map((p) => ({
           sexe: p.sexe === "male" || p.sexe === "femelle" ? p.sexe : null,
           boucleProvisoire: p.boucleProvisoire?.trim() || null,
+          boucleDefinitive: p.boucleDefinitive?.trim() || null,
           modeElevage: p.modeElevage === "sous_mere" || p.modeElevage === "biberon" ? p.modeElevage : null,
           poids: toFloatOrNull(p.poids),
+          couleur: p.couleur?.trim() || null,
           vivant: p.vivant,
         })),
       }
@@ -894,6 +1111,45 @@ function NaissancesSubTab({ initialOpen = false }: { initialOpen?: boolean }) {
   }
 
   // Preparer donnees graphique
+  // Vocabulaire dérivé de l'espèce de la mère (chiot/chaton/cabri…) + contexte filière.
+  const mereSel = femelles.find((f) => String(f.id) === formData.mereId)
+  const petitMots = libellePetit(mereSel?.especeAnimale?.id)
+  const capS = petitMots.s.charAt(0).toUpperCase() + petitMots.s.slice(1)
+  const capP = petitMots.p.charAt(0).toUpperCase() + petitMots.p.slice(1)
+  const compagnieNaiss = filiereSel !== "toutes" && filiereSel !== "rente"
+  const idProvLbl = compagnieNaiss ? "Identifiants provisoires" : "Boucles provisoires"
+  const idDefLbl = compagnieNaiss ? "Puce / identifiant définitif" : "Boucles définitives"
+
+  // Portées de l'atelier courant + KPIs recalculés dessus : les stats renvoyées
+  // par l'API sont globales à l'exploitation, elles fuiteraient les autres
+  // filières dans les tuiles (audit filière 2026-07-25).
+  // QA caprin cms1vlsa9 — le sélecteur d'année global filtre aussi les mises-bas.
+  const naissancesF = React.useMemo(
+    () => naissances.filter((n) =>
+      filiereMatch(filiereSel, n.mere?.especeAnimale?.filiere ?? n.lot?.especeAnimale?.filiere) &&
+      (year == null || new Date(n.date).getFullYear() === year)),
+    [naissances, filiereSel, year]
+  )
+  const stats = React.useMemo<NaissanceStats | null>(() => {
+    if (naissancesF.length === 0) return null
+    let totalNes = 0, totalVivants = 0, totalMales = 0, totalFemelles = 0
+    const parMois = Array.from({ length: 12 }, (_, i) => ({ mois: i + 1, nes: 0, vivants: 0 }))
+    for (const n of naissancesF) {
+      totalNes += n.nombreNes || 0
+      totalVivants += n.nombreVivants || 0
+      totalMales += n.nombreMales || 0
+      totalFemelles += n.nombreFemelles || 0
+      const m = new Date(n.date).getMonth()
+      if (m >= 0 && m < 12) { parMois[m].nes += n.nombreNes || 0; parMois[m].vivants += n.nombreVivants || 0 }
+    }
+    return {
+      totalNaissances: naissancesF.length,
+      totalNes, totalVivants, totalMales, totalFemelles,
+      tauxSurvie: totalNes > 0 ? Math.round((totalVivants / totalNes) * 100) : null,
+      parMois,
+    }
+  }, [naissancesF])
+
   const chartData = React.useMemo(() => {
     if (!stats?.parMois) return []
     return MOIS_LABELS.map((label, i) => ({
@@ -988,14 +1244,14 @@ function NaissancesSubTab({ initialOpen = false }: { initialOpen?: boolean }) {
           <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle>{editingNaissId ? "Modifier la naissance" : "Enregistrer une naissance"}</DialogTitle>
-              <DialogDescription>{editingNaissId ? `Édition de la naissance #${editingNaissId}` : "Mise bas ou éclosion"}</DialogDescription>
+              <DialogDescription>{editingNaissId ? `Édition de la naissance #${editingNaissId}` : (compagnieNaiss ? "Mise bas / portée" : "Mise bas ou éclosion")}</DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Mère</Label>
                   <AnimalCombobox
-                    animaux={femelles}
+                    animaux={femellesCibles}
                     value={formData.mereId}
                     onChange={(v) => setFormData(f => ({ ...f, mereId: v }))}
                     placeholder="N° de boucle ou nom…"
@@ -1014,7 +1270,7 @@ function NaissancesSubTab({ initialOpen = false }: { initialOpen?: boolean }) {
                         value={newLotName}
                         onChange={(e) => setNewLotName(e.target.value)}
                         onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); createLotInline() } }}
-                        placeholder="Nom du lot, ex. « Chevreaux 2026 »"
+                        placeholder={`Nom du lot, ex. « ${capP} 2026 »`}
                       />
                       <Button type="button" size="sm" onClick={createLotInline} disabled={savingLot}>
                         {savingLot ? "…" : "Créer"}
@@ -1030,7 +1286,7 @@ function NaissancesSubTab({ initialOpen = false }: { initialOpen?: boolean }) {
                           <SelectTrigger><SelectValue placeholder="Aucun lot — rattacher plus tard" /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="__none__">Aucun lot</SelectItem>
-                            {lots.map(l => (
+                            {lotsCibles.map(l => (
                               <SelectItem key={l.id} value={l.id.toString()}>
                                 {l.nom || `Lot #${l.id}`} ({l.especeAnimale.nom})
                               </SelectItem>
@@ -1043,13 +1299,19 @@ function NaissancesSubTab({ initialOpen = false }: { initialOpen?: boolean }) {
                       </Button>
                     </div>
                   )}
-                  <p className="text-xs text-muted-foreground">Choisissez un lot existant (ex. « Chevreaux 2026 ») ou créez-en un ici. Aucun lot n’est créé automatiquement à l’enregistrement.</p>
+                  <p className="text-xs text-muted-foreground">Choisissez un lot existant (ex. « {capP} 2026 ») ou créez-en un ici. Aucun lot n’est créé automatiquement à l’enregistrement.</p>
                 </div>
               </div>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="space-y-2"><Label>Boucles provisoires</Label><Input value={formData.identifiantsProvisoires} onChange={(e) => setFormData(f => ({ ...f, identifiantsProvisoires: e.target.value }))} placeholder="Une ou plusieurs, séparées par des virgules" /></div>
-                <div className="space-y-2"><Label>Boucles définitives</Label><Input value={formData.identifiantsDefinitifs} onChange={(e) => setFormData(f => ({ ...f, identifiantsDefinitifs: e.target.value }))} placeholder="À compléter lors de la pose" /></div>
-              </div>
+              {formData.petits.length === 0 ? (
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="space-y-2"><Label>{idProvLbl}</Label><Input value={formData.identifiantsProvisoires} onChange={(e) => setFormData(f => ({ ...f, identifiantsProvisoires: e.target.value }))} placeholder="Une ou plusieurs, séparées par des virgules" /></div>
+                  <div className="space-y-2"><Label>{idDefLbl}</Label><Input value={formData.identifiantsDefinitifs} onChange={(e) => setFormData(f => ({ ...f, identifiantsDefinitifs: e.target.value }))} placeholder="À compléter lors de la pose" /></div>
+                </div>
+              ) : (
+                <p className="rounded-md bg-blue-50 px-3 py-2 text-xs text-blue-800">
+                  Les listes de boucles sont calculées automatiquement depuis le détail de chaque {petitMots.s}.
+                </p>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Date *</Label>
@@ -1060,6 +1322,30 @@ function NaissancesSubTab({ initialOpen = false }: { initialOpen?: boolean }) {
                   <Input value={formData.pereIdentifiant} onChange={(e) => setFormData(f => ({ ...f, pereIdentifiant: e.target.value }))} placeholder="Optionnel" />
                 </div>
               </div>
+              {/* QA caprin cms1v6ctk — rattachement à la saillie/IA d'origine :
+                  solde la saillie (statut « Mise-bas réalisée ») et débloque
+                  fertilité / fécondité / IVMB. Création uniquement. */}
+              {editingNaissId === null && formData.mereId && sailliesProposables.length > 0 && (
+                <div className="space-y-2">
+                  <Label>Saillie / IA d&apos;origine</Label>
+                  <select
+                    className="w-full h-10 rounded-md border border-slate-300 px-2 bg-white text-sm"
+                    value={formData.saillieId}
+                    onChange={(e) => setFormData(f => ({ ...f, saillieId: e.target.value }))}
+                  >
+                    <option value="">— Aucune (saillie non enregistrée) —</option>
+                    {sailliesProposables.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {new Date(s.date).toLocaleDateString('fr-FR')} · {s.type}
+                        {s.maleLabel ? ` · ${s.maleLabel}` : ''} — mise-bas attendue {new Date(s.dateMiseBasAttendue).toLocaleDateString('fr-FR')}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-muted-foreground">
+                    Le rattachement clôt la saillie et alimente la fertilité (mises-bas / saillies).
+                  </p>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Nombre nés *</Label>
@@ -1088,7 +1374,7 @@ function NaissancesSubTab({ initialOpen = false }: { initialOpen?: boolean }) {
               {/* PROMPT 29 — détail par cabri */}
               <div className="space-y-2 border rounded-lg p-3 bg-slate-50/60">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <Label className="text-sm">Détail des cabris (optionnel)</Label>
+                  <Label className="text-sm">Détail des {petitMots.p} (optionnel)</Label>
                   <div className="flex gap-2">
                     {formData.nombreNes && formData.petits.length === 0 ? (
                       <Button type="button" size="sm" variant="outline" onClick={genererPetits}>
@@ -1096,20 +1382,20 @@ function NaissancesSubTab({ initialOpen = false }: { initialOpen?: boolean }) {
                       </Button>
                     ) : null}
                     <Button type="button" size="sm" variant="outline" onClick={ajouterPetit}>
-                      <Plus className="h-4 w-4 mr-1" />Cabri
+                      <Plus className="h-4 w-4 mr-1" />{capS}
                     </Button>
                   </div>
                 </div>
                 {formData.petits.length === 0 ? (
                   <p className="text-xs text-muted-foreground">
-                    Une ligne par cabri : sexe, n° de boucle provisoire, élevé sous mère ou au biberon, poids. Les
+                    Une ligne par {petitMots.s} : sexe, identifiant provisoire, élevé sous mère ou au biberon, poids. Les
                     compteurs (nés/vivants/mâles/femelles) et le poids total se calculent automatiquement.
                   </p>
                 ) : (
                   <div className="space-y-2">
                     {formData.petits.map((p, i) => (
                       <div key={i} className="grid grid-cols-12 gap-2 items-center">
-                        <span className="col-span-12 sm:col-span-1 text-xs font-semibold text-slate-600">Cabri {i + 1}</span>
+                        <span className="col-span-12 sm:col-span-1 text-xs font-semibold text-slate-600">{capS} {i + 1}</span>
                         <select
                           className="col-span-6 sm:col-span-2 h-9 rounded-md border border-slate-300 px-1 bg-white text-sm"
                           value={p.sexe}
@@ -1120,10 +1406,16 @@ function NaissancesSubTab({ initialOpen = false }: { initialOpen?: boolean }) {
                           <option value="male">Mâle</option>
                         </select>
                         <Input
-                          className="col-span-6 sm:col-span-3 h-9"
+                          className="col-span-6 sm:col-span-2 h-9"
                           value={p.boucleProvisoire}
                           onChange={(e) => majPetit(i, { boucleProvisoire: e.target.value })}
-                          placeholder="Boucle provisoire"
+                          placeholder={compagnieNaiss ? "Identifiant" : "Boucle provisoire"}
+                        />
+                        <Input
+                          className="col-span-6 sm:col-span-2 h-9"
+                          value={p.boucleDefinitive}
+                          onChange={(e) => majPetit(i, { boucleDefinitive: e.target.value })}
+                          placeholder={compagnieNaiss ? "Identifiant définitif" : "Boucle définitive"}
                         />
                         <select
                           className="col-span-6 sm:col-span-2 h-9 rounded-md border border-slate-300 px-1 bg-white text-sm"
@@ -1141,6 +1433,14 @@ function NaissancesSubTab({ initialOpen = false }: { initialOpen?: boolean }) {
                           onChange={(e) => majPetit(i, { poids: e.target.value })}
                           placeholder="Poids"
                         />
+                        {compagnieNaiss && (
+                          <Input
+                            className="col-span-6 sm:col-span-2 h-9"
+                            value={p.couleur}
+                            onChange={(e) => majPetit(i, { couleur: e.target.value })}
+                            placeholder="Robe"
+                          />
+                        )}
                         <label className="col-span-6 sm:col-span-1 flex items-center gap-1 text-xs text-slate-600">
                           <input type="checkbox" checked={p.vivant} onChange={(e) => majPetit(i, { vivant: e.target.checked })} />
                           vivant
@@ -1149,7 +1449,7 @@ function NaissancesSubTab({ initialOpen = false }: { initialOpen?: boolean }) {
                           type="button"
                           onClick={() => retirerPetit(i)}
                           className="col-span-2 sm:col-span-1 flex justify-center text-slate-400 hover:text-red-600"
-                          title="Retirer ce cabri"
+                          title={`Retirer ce ${petitMots.s}`}
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
@@ -1200,7 +1500,7 @@ function NaissancesSubTab({ initialOpen = false }: { initialOpen?: boolean }) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {naissances.map((n) => (
+                {naissancesF.map((n) => (
                   <TableRow key={n.id}>
                     <TableCell>{new Date(n.date).toLocaleDateString('fr-FR')}</TableCell>
                     <TableCell className="font-medium">
@@ -1241,7 +1541,19 @@ function NaissancesSubTab({ initialOpen = false }: { initialOpen?: boolean }) {
                           ))}
                         </div>
                       ) : (
-                        <><div>{n.identifiantsProvisoires ? `Prov. ${n.identifiantsProvisoires}` : '—'}</div>{n.identifiantsDefinitifs && <div>Déf. {n.identifiantsDefinitifs}</div>}</>
+                        <>
+                          <div>{n.identifiantsProvisoires ? `Prov. ${n.identifiantsProvisoires}` : '—'}</div>
+                          {n.identifiantsDefinitifs && <div>Déf. {n.identifiantsDefinitifs}</div>}
+                          {/* QA caprin cms1vliej — une mise-bas avec des vivants
+                              mais AUCUNE fiche ni détail des petits est un trou
+                              de traçabilité (pas de bouclage, pas de date de
+                              naissance individuelle) : on le signale. */}
+                          {!n.identifiantsProvisoires && !n.identifiantsDefinitifs && n.nombreVivants > 0 && (
+                            <Badge variant="outline" className="mt-0.5 bg-amber-50 text-amber-800 border-amber-300 text-[10px]">
+                              {n.nombreVivants} petit{n.nombreVivants > 1 ? 's' : ''} sans fiche ni boucle
+                            </Badge>
+                          )}
+                        </>
                       )}
                     </TableCell>
                     <TableCell className="text-muted-foreground text-sm max-w-[150px] truncate">{n.notes || '-'}</TableCell>
@@ -1270,7 +1582,7 @@ function NaissancesSubTab({ initialOpen = false }: { initialOpen?: boolean }) {
                     </TableCell>
                   </TableRow>
                 ))}
-                {naissances.length === 0 && (
+                {naissancesF.length === 0 && (
                   <TableRow><TableCell colSpan={11} className="text-center py-8 text-muted-foreground">Aucune naissance enregistrée</TableCell></TableRow>
                 )}
               </TableBody>
@@ -1324,7 +1636,7 @@ function CalculateurSubTab() {
             Calculateur de gestation / couvaison
           </CardTitle>
           <CardDescription>
-            Estimez la date de naissance en fonction de l'espèce et la date d'accouplement
+            Estimez la date de naissance en fonction de l’espèce et la date d’accouplement
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -1333,7 +1645,10 @@ function CalculateurSubTab() {
             <Select value={selectedEspece} onValueChange={setSelectedEspece}>
               <SelectTrigger><SelectValue placeholder="Sélectionner..." /></SelectTrigger>
               <SelectContent>
-                {especes.filter(e => e.dureeGestation || e.dureeCouvaison).map(e => (
+                {/* QA caprin cms1vo866 — n'offrir que les espèces dont la durée
+                    UTILE est connue (gestation pour mammifère, couvaison pour
+                    volaille) : les « (?j gestation) » ne produisaient rien. */}
+                {especes.filter(e => (e.type === 'volaille' ? e.dureeCouvaison : e.dureeGestation)).map(e => (
                   <SelectItem key={e.id} value={e.id}>
                     {e.nom} ({e.type === 'volaille' ? `${e.dureeCouvaison || '?'}j couvaison` : `${e.dureeGestation || '?'}j gestation`})
                   </SelectItem>
@@ -1343,7 +1658,7 @@ function CalculateurSubTab() {
           </div>
 
           <div className="space-y-2">
-            <Label>Date d'accouplement / mise en couveuse</Label>
+            <Label>Date d’accouplement / mise en couveuse</Label>
             <Input type="date" value={dateAccouplement} onChange={(e) => setDateAccouplement(e.target.value)} />
           </div>
 
@@ -1397,7 +1712,7 @@ interface SaillieRow {
   id: string
   date: string
   type: string
-  femelle: { id: number; nom: string | null; identifiant: string | null; race: string | null; especeAnimale: { id: string; nom: string } }
+  femelle: { id: number; nom: string | null; identifiant: string | null; race: string | null; especeAnimale: { id: string; nom: string; filiere: string | null } }
   male: { id: number; nom: string | null; identifiant: string | null; race: string | null } | null
   agentInseminateur: string | null
   semenceLot: string | null
@@ -1410,10 +1725,12 @@ interface SaillieRow {
   miseBas: { id: number; date: string; nombreNes: number; nombreVivants: number } | null
 }
 
-function SailliesSubTab() {
+function SailliesSubTab({ year }: { year?: number } = {}) {
   const { toast } = useToast()
+  const caps = capacitesSelection(useFiliereSelection())
+  const filiereSel = useFiliereSelection()
   const [saillies, setSaillies] = React.useState<SaillieRow[]>([])
-  const [animaux, setAnimaux] = React.useState<{ id: number; nom: string | null; identifiant: string | null; sexe: string | null; race: string | null }[]>([])
+  const [animaux, setAnimaux] = React.useState<{ id: number; nom: string | null; identifiant: string | null; sexe: string | null; race: string | null; especeAnimale?: { nom?: string | null; filiere?: string | null } | null }[]>([])
   const [loading, setLoading] = React.useState(true)
   const [open, setOpen] = React.useState(false)
   const [filtreStatut, setFiltreStatut] = React.useState<string>("")
@@ -1464,14 +1781,20 @@ function SailliesSubTab() {
     }
   }
 
+  // Filtrage par filière de l'atelier sélectionné (via l'espèce de la femelle).
+  // QA caprin cms1vlsa9 — le sélecteur d'année global filtre désormais la liste
+  // (année de la saillie). Sans année fournie : tout l'historique.
+  const visibleSaillies = saillies.filter((s) =>
+    filiereMatch(filiereSel, s.femelle.especeAnimale?.filiere) &&
+    (year == null || new Date(s.date).getFullYear() === year))
   // Alertes : mises-bas dans les 7 prochains jours, tarissements à programmer (≤14j)
   const now = new Date()
   const dans7j = new Date(now.getTime() + 7 * 86_400_000)
   const dans14j = new Date(now.getTime() + 14 * 86_400_000)
-  const misesBasImminentes = saillies.filter(
+  const misesBasImminentes = visibleSaillies.filter(
     (s) => s.statut === "Gestante" && new Date(s.dateMiseBasAttendue) <= dans7j && new Date(s.dateMiseBasAttendue) >= now
   )
-  const tarissementsAProgrammer = saillies.filter(
+  const tarissementsAProgrammer = visibleSaillies.filter(
     (s) =>
       s.statut === "Gestante" &&
       s.dateTarissementPrevue &&
@@ -1490,7 +1813,7 @@ function SailliesSubTab() {
                 {misesBasImminentes.map((s) => `${s.femelle.nom || s.femelle.identifiant || `#${s.femelle.id}`} (${new Date(s.dateMiseBasAttendue).toLocaleDateString("fr-FR")})`).join(", ")}
               </div>
             )}
-            {tarissementsAProgrammer.length > 0 && (
+            {caps.tarissement && tarissementsAProgrammer.length > 0 && (
               <div>
                 <strong>🥛 Tarissements à programmer (≤14 j) :</strong>{" "}
                 {tarissementsAProgrammer.map((s) => `${s.femelle.nom || s.femelle.identifiant || `#${s.femelle.id}`} (${new Date(s.dateTarissementPrevue!).toLocaleDateString("fr-FR")})`).join(", ")}
@@ -1509,7 +1832,7 @@ function SailliesSubTab() {
                 Saillies
               </CardTitle>
               <CardDescription>
-                Date de mise-bas attendue calculée automatiquement selon la durée de gestation de l'espèce.
+                Date de mise-bas attendue calculée automatiquement selon la durée de gestation de l’espèce.
                 Alerte consanguinité au moment de la création.
               </CardDescription>
             </div>
@@ -1526,8 +1849,10 @@ function SailliesSubTab() {
                 <option value="Mise-bas réalisée">Mise-bas réalisée</option>
                 <option value="Avortement">Avortement</option>
               </select>
+              {/* QA caprin cms1vlsa9 — le carnet PDF suit l'année sélectionnée
+                  (un carnet s'imprime pour le contrôle, pas l'année courante par défaut). */}
               <a
-                href={`/api/elevage/carnet-saillies?year=${new Date().getFullYear()}`}
+                href={`/api/elevage/carnet-saillies?year=${year ?? new Date().getFullYear()}${filiereSel !== "toutes" ? `&filiere=${filiereSel}` : ""}`}
                 target="_blank"
                 rel="noreferrer"
               >
@@ -1546,8 +1871,12 @@ function SailliesSubTab() {
         <CardContent>
           {loading ? (
             <Skeleton className="h-40 w-full" />
-          ) : saillies.length === 0 ? (
-            <div className="text-sm text-slate-500 bg-slate-50 p-4 rounded">Aucune saillie enregistrée.</div>
+          ) : visibleSaillies.length === 0 ? (
+            <div className="text-sm text-slate-500 bg-slate-50 p-4 rounded">
+              {saillies.length > 0 && year != null
+                ? `Aucune saillie en ${year} — changez l'année sélectionnée pour voir l'historique.`
+                : 'Aucune saillie enregistrée.'}
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
@@ -1558,13 +1887,13 @@ function SailliesSubTab() {
                     <th className="p-2 text-left">Femelle</th>
                     <th className="p-2 text-left">Mâle / IA</th>
                     <th className="p-2 text-left">Mise-bas att.</th>
-                    <th className="p-2 text-left">Tariss.</th>
+                    {caps.tarissement && <th className="p-2 text-left">Tariss.</th>}
                     <th className="p-2 text-left">Statut</th>
                     <th className="p-2"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {saillies.map((s) => (
+                  {visibleSaillies.map((s) => (
                     <tr key={s.id} className="border-b hover:bg-slate-50">
                       <td className="p-2">{new Date(s.date).toLocaleDateString("fr-FR")}</td>
                       <td className="p-2">{s.type}</td>
@@ -1575,9 +1904,11 @@ function SailliesSubTab() {
                           : s.pereExterneRef || (s.agentInseminateur ? `IA ${s.agentInseminateur}` : "—")}
                       </td>
                       <td className="p-2">{new Date(s.dateMiseBasAttendue).toLocaleDateString("fr-FR")}</td>
-                      <td className="p-2 text-xs">
-                        {s.dateTarissementPrevue ? new Date(s.dateTarissementPrevue).toLocaleDateString("fr-FR") : "—"}
-                      </td>
+                      {caps.tarissement && (
+                        <td className="p-2 text-xs">
+                          {s.dateTarissementPrevue ? new Date(s.dateTarissementPrevue).toLocaleDateString("fr-FR") : "—"}
+                        </td>
+                      )}
                       <td className="p-2">
                         <select
                           className={`text-xs rounded border px-1.5 py-1 cursor-pointer ${
@@ -1634,7 +1965,7 @@ function SailliesSubTab() {
       <DialogSaillie
         open={open}
         onOpenChange={(b) => { setOpen(b); if (!b) setEditingSaillie(null) }}
-        animaux={animaux}
+        animaux={animaux.filter((a) => filiereMatch(filiereSel, a.especeAnimale?.filiere))}
         onCreated={reload}
         editingSaillie={editingSaillie}
       />
@@ -1646,7 +1977,7 @@ function SailliesSubTab() {
 function DialogSaillie(props: {
   open: boolean
   onOpenChange: (b: boolean) => void
-  animaux: { id: number; nom: string | null; identifiant: string | null; sexe: string | null; race: string | null }[]
+  animaux: { id: number; nom: string | null; identifiant: string | null; sexe: string | null; race: string | null; especeAnimale?: { nom?: string | null; filiere?: string | null } | null }[]
   onCreated: () => void
   editingSaillie?: SaillieRow | null
 }) {
@@ -1750,7 +2081,7 @@ function DialogSaillie(props: {
         <DialogHeader>
           <DialogTitle>{isEdit ? `Modifier la saillie #${props.editingSaillie!.id}` : "Nouvelle saillie"}</DialogTitle>
           <DialogDescription>
-            La date de mise-bas attendue sera recalculée automatiquement selon l'espèce de la femelle.
+            La date de mise-bas attendue sera recalculée automatiquement selon l’espèce de la femelle.
           </DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-2 gap-3">
@@ -1763,7 +2094,7 @@ function DialogSaillie(props: {
             <select className="block h-10 w-full rounded-md border border-slate-300 px-2 bg-white" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
               <option value="Monte naturelle">Monte naturelle</option>
               <option value="IA">Insémination artificielle</option>
-              <option value="Transfert embryon">Transfert d'embryon</option>
+              <option value="Transfert embryon">Transfert d’embryon</option>
             </select>
           </div>
           <div className="col-span-2">
@@ -1803,7 +2134,8 @@ function DialogSaillie(props: {
           {form.type !== "Monte naturelle" && (
             <div className="col-span-2">
               <Label>Référence père externe (optionnel)</Label>
-              <Input value={form.pereExterneRef} onChange={(e) => setForm({ ...form, pereExterneRef: e.target.value })} placeholder="Nom, n° taureau, ..." />
+              {/* QA caprin cms1vlsa9 — libellé neutre : « n° taureau » pour une chèvre était absurde */}
+              <Input value={form.pereExterneRef} onChange={(e) => setForm({ ...form, pereExterneRef: e.target.value })} placeholder="Nom, n° du reproducteur, centre d'IA..." />
             </div>
           )}
           <div className="col-span-2">

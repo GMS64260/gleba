@@ -22,6 +22,41 @@ function atMidnightUTC(base: Date, addDays = 0): Date {
 }
 const iso = (s: string) => new Date(s + "T00:00:00.000Z")
 
+function splitTtc(ttc: number, taux: number) {
+  const montantHT = ttc / (1 + taux / 100)
+  return { montantHT, montantTVA: ttc - montantHT }
+}
+
+async function mirrorVente(userId: string, vente: {
+  id: number; date: Date; type: string; description: string | null; prixTotal: number; tauxTVA: number
+}) {
+  const { montantHT, montantTVA } = splitTtc(vente.prixTotal, vente.tauxTVA)
+  await prisma.venteManuelle.create({
+    data: {
+      userId, date: vente.date, categorie: vente.type === "lait" ? "lait" : "fromage",
+      description: vente.description || `Vente ${vente.type}`, tauxTVA: vente.tauxTVA,
+      montantHT, montantTVA, montant: vente.prixTotal, module: "elevage", paye: true,
+      sourceType: "vente_produit", sourceId: vente.id, auto: true,
+    },
+  })
+}
+
+async function mirrorConsommation(userId: string, consommation: {
+  id: number; date: Date; quantite: number; alimentId: string
+}, prixUnitaire: number) {
+  const montant = consommation.quantite * prixUnitaire
+  const { montantHT, montantTVA } = splitTtc(montant, 10)
+  await prisma.depenseManuelle.create({
+    data: {
+      userId, date: consommation.date, categorie: "alimentation",
+      description: `Consommation aliment - ${consommation.alimentId}`,
+      tauxTVA: 10, montantHT, montantTVA, montant, module: "elevage",
+      paye: true, comptable: false, tvaInferee: true,
+      sourceType: "consommation_aliment", sourceId: consommation.id, auto: true,
+    },
+  })
+}
+
 /** Courbe de lactation caprine réaliste (L/jour) : montée ~45 j puis déclin. */
 function litresJour(dim: number, peak: number): number {
   if (dim <= 3) return Math.round(peak * 0.5 * 100) / 100
@@ -200,12 +235,14 @@ async function main() {
   const nbTetes = chevres.length
   for (let m = 0; m < 7; m++) {
     const date = iso(`2026-0${m + 1}-05`)
-    await prisma.consommationAliment.create({
+    const foin = await prisma.consommationAliment.create({
       data: { userId, alimentId: "foin_prairie_demo", lotId: lot.id, date, quantite: Math.round(2.5 * 30 * nbTetes) },
     })
-    await prisma.consommationAliment.create({
+    await mirrorConsommation(userId, foin, 0.15)
+    const granules = await prisma.consommationAliment.create({
       data: { userId, alimentId: "granules_chevre_demo", lotId: lot.id, date, quantite: Math.round(1.0 * 30 * nbTetes) },
     })
+    await mirrorConsommation(userId, granules, 0.46)
   }
 
   // 6) Fabrications de fromage à partir de collectes non affectées
@@ -259,7 +296,7 @@ async function main() {
   for (const f of lotsFromageIds) {
     const kgVendus = Math.round(f.kg * 0.8 * 100) / 100
     if (kgVendus <= 0) continue
-    await prisma.venteProduit.create({
+    const vente = await prisma.venteProduit.create({
       data: {
         userId,
         date: iso("2026-07-05"),
@@ -275,14 +312,16 @@ async function main() {
         lotFromageId: f.id,
       },
     })
+    await mirrorVente(userId, vente)
   }
-  await prisma.venteProduit.create({
+  const venteLait = await prisma.venteProduit.create({
     data: {
       userId, date: iso("2026-06-15"), type: "lait", description: "Lait cru de chèvre",
       quantite: 120, unite: "L", prixUnitaire: 1.1, prixTotal: 132, client: "Fromagerie voisine",
       paye: true, tauxTVA: 5.5,
     },
   })
+  await mirrorVente(userId, venteLait)
 
   console.log(`✅ Seed caprin : ${nbNaiss} mises-bas, ${nbCollectes} collectes, ${lotsFromageIds.length} lots fromage, ventes créées.`)
 }

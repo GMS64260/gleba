@@ -39,7 +39,8 @@ export async function GET(request: NextRequest) {
     const userId = session.user.id
     const since = new Date(Date.now() - fenetre * 86_400_000)
 
-    // Animaux et lots laitiers actifs
+    // Animaux et lots actifs. Une analyse réellement saisie doit rester
+    // visible même si la production de l'espèce n'est pas classée « lait ».
     const [animaux, lots] = await Promise.all([
       prisma.animal.findMany({
         where: { userId, statut: 'actif' },
@@ -63,13 +64,6 @@ export async function GET(request: NextRequest) {
         },
       }),
     ])
-
-    const animauxLaitiers = animaux.filter((a) =>
-      estLaitier(a.especeAnimale?.production, a.especeAnimale?.productions)
-    )
-    const lotsLaitiers = lots.filter((l) =>
-      estLaitier(l.especeAnimale?.production, l.especeAnimale?.productions)
-    )
 
     // Collectes de la fenêtre portant au moins une analyse
     const collectes = await prisma.collecteLait.findMany({
@@ -108,7 +102,16 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const lignesAnimaux = animauxLaitiers.map((a) => {
+    const animauxSuivis = animaux.filter((a) =>
+      estLaitier(a.especeAnimale?.production, a.especeAnimale?.productions) ||
+      mesuresParAnimal.has(a.id)
+    )
+    const lotsSuivis = lots.filter((l) =>
+      estLaitier(l.especeAnimale?.production, l.especeAnimale?.productions) ||
+      mesuresParLot.has(l.id)
+    )
+
+    const lignesAnimaux = animauxSuivis.map((a) => {
       const cat = categorieCellules(a.especeAnimale?.categorieReglementaire)
       const analyse = analyseQualiteLait(mesuresParAnimal.get(a.id) || [], cat)
       return {
@@ -123,7 +126,7 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    const lignesLots = lotsLaitiers
+    const lignesLots = lotsSuivis
       .map((l) => {
         const cat = categorieCellules(l.especeAnimale?.categorieReglementaire)
         const analyse = analyseQualiteLait(mesuresParLot.get(l.id) || [], cat)

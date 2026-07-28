@@ -276,13 +276,13 @@ const CONFIGS: Record<ModuleKey, ModuleConfig> = {
         key: "vente",
         label: "Saisir une vente (marché, AMAP, particulier)",
         done: hasData(r.vente) && hasData(r.cli),
-        href: "/comptabilite/ventes-manuelles",
+        href: "/comptabilite/transactions?tab=saisie&type=vente",
       },
       {
         key: "depense",
         label: "Enregistrer une dépense (carburant, semences…)",
         done: hasData(r.dep),
-        href: "/comptabilite/depenses-manuelles",
+        href: "/comptabilite/transactions?tab=saisie&type=depense",
         hint: "Avec pièce justificative et TVA",
       },
       {

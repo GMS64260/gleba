@@ -11,12 +11,10 @@ import {
   Bird,
   Egg,
   TrendingUp,
-  Scissors,
   Stethoscope,
   AlertTriangle,
   Package,
   Check,
-  ChevronLeft,
   ChevronRight,
   ChevronDown,
   TrendingDown,
@@ -25,11 +23,15 @@ import {
   Baby,
   Search,
   BarChart3,
+  ClipboardCheck,
+  Settings,
 } from "lucide-react"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import { BulkActions } from "@/components/calendrier/BulkActions"
 import { SoinDetailDialog } from "@/components/elevage/SoinDetailDialog"
@@ -41,6 +43,7 @@ import {
 } from "@/components/ui/chart"
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts"
 import { kpiCardClass, kpiSubtleClass } from "@/lib/kpi-theme"
+import { useFiliereSelection, capacitesSelection } from "@/lib/elevage/filiere-context"
 
 interface DashboardTabProps {
   year: number
@@ -49,6 +52,8 @@ interface DashboardTabProps {
 interface DashboardData {
   stats: {
     animauxActifs: number
+    animauxHorsLot?: number
+    animauxRattachesLots?: number
     lotsActifs: number
     animauxEnLots?: number
     animauxTotal?: number
@@ -113,7 +118,7 @@ interface AttenteItem {
   soinId: number
   date: string
   traitement: string
-  cible: { type: string; id: number | null; label: string }
+  cible: { type: string; id: number | null; label: string; nom?: string | null }
   lait: { finAttente: string; remiseVente: string } | null
   viande: { finAttente: string; remiseVente: string } | null
 }
@@ -145,7 +150,24 @@ const TYPE_LABELS: Record<string, string> = {
   autre: "Autre",
 }
 
+const DASHBOARD_PREFS_KEY = "gleba:elevage:dashboard-preferences:v1"
+type DashboardPreferences = {
+  prioriteTerrain: boolean
+  oeufs: boolean
+  commercial: boolean
+  productions: boolean
+  graphiques: boolean
+}
+const DASHBOARD_PREFS_DEFAULT: DashboardPreferences = {
+  prioriteTerrain: false,
+  oeufs: true,
+  commercial: true,
+  productions: true,
+  graphiques: true,
+}
+
 export function DashboardTab({ year }: DashboardTabProps) {
+  const caps = capacitesSelection(useFiliereSelection())
   const { toast } = useToast()
   const [isLoading, setIsLoading] = React.useState(true)
   const [data, setData] = React.useState<DashboardData | null>(null)
@@ -160,6 +182,36 @@ export function DashboardTab({ year }: DashboardTabProps) {
   // sous plusieurs écrans. On les replie par défaut sur petit écran (bouton
   // « Voir les indicateurs ») ; ils restent toujours visibles sur desktop (lg).
   const [showGraphs, setShowGraphs] = React.useState(false)
+  const [preferences, setPreferences] = React.useState<DashboardPreferences>(DASHBOARD_PREFS_DEFAULT)
+
+  React.useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(DASHBOARD_PREFS_KEY)
+      if (stored) setPreferences({ ...DASHBOARD_PREFS_DEFAULT, ...JSON.parse(stored) })
+    } catch {
+      // Préférences locales facultatives : le dashboard reste utilisable.
+    }
+  }, [])
+
+  const modifierPreference = (key: keyof DashboardPreferences, value: boolean) => {
+    setPreferences((current) => {
+      const next = { ...current, [key]: value }
+      window.localStorage.setItem(DASHBOARD_PREFS_KEY, JSON.stringify(next))
+      return next
+    })
+  }
+
+  const appliquerPresetTerrain = () => {
+    const next: DashboardPreferences = {
+      prioriteTerrain: true,
+      oeufs: false,
+      commercial: false,
+      productions: false,
+      graphiques: false,
+    }
+    setPreferences(next)
+    window.localStorage.setItem(DASHBOARD_PREFS_KEY, JSON.stringify(next))
+  }
 
   // Charger stats dashboard
   React.useEffect(() => {
@@ -348,7 +400,7 @@ export function DashboardTab({ year }: DashboardTabProps) {
   }, [data])
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       {/* Mini-stats */}
       {isLoading ? (
         <div className="grid gap-3 grid-cols-2 lg:grid-cols-5">
@@ -372,12 +424,48 @@ export function DashboardTab({ year }: DashboardTabProps) {
             const chip = "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium"
             const action = "inline-flex items-center gap-1.5 rounded-md border px-3 py-2 text-sm font-medium hover:bg-slate-50 min-h-11"
             return (
-              <div className="rounded-xl border bg-white p-3 sm:p-4 space-y-3">
+              <div className={`rounded-xl border bg-white p-3 sm:p-4 space-y-3 ${preferences.prioriteTerrain ? "-order-3" : ""}`}>
                 <div className="flex items-center justify-between gap-2">
                   <h2 className="text-base font-semibold">Aujourd&apos;hui</h2>
-                  <span className="text-xs text-muted-foreground capitalize">
-                    {new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button variant="outline" size="sm" className="min-h-11 sm:min-h-0">
+                          <Settings className="mr-1 h-4 w-4" />
+                          Personnaliser
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="max-w-md">
+                        <DialogHeader>
+                          <DialogTitle>Personnaliser le dashboard</DialogTitle>
+                          <DialogDescription>Priorisez le travail quotidien et masquez les ateliers inutiles sur cet appareil.</DialogDescription>
+                        </DialogHeader>
+                        <Button type="button" variant="outline" onClick={appliquerPresetTerrain}>
+                          Appliquer le preset « terrain laitier »
+                        </Button>
+                        <div className="space-y-3">
+                          {([
+                            ["prioriteTerrain", "Soins et délais avant les indicateurs"],
+                            ["oeufs", "Cartes œufs"],
+                            ["commercial", "Ventes et abattages"],
+                            ["productions", "Synthèse des productions"],
+                            ["graphiques", "Graphiques annuels"],
+                          ] as const).map(([key, label]) => (
+                            <label key={key} className="flex min-h-11 items-center gap-3 rounded-md border px-3">
+                              <Checkbox
+                                checked={preferences[key]}
+                                onCheckedChange={(checked) => modifierPreference(key, checked === true)}
+                              />
+                              <span className="text-sm">{label}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                    <span className="hidden text-xs text-muted-foreground capitalize sm:inline">
+                      {new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}
+                    </span>
+                  </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <a
@@ -405,6 +493,9 @@ export function DashboardTab({ year }: DashboardTabProps) {
                   <Link href="/elevage?tab=animaux&action=rechercher" className={action}>
                     <Search className="h-4 w-4 text-slate-500" />Rechercher (boucle)
                   </Link>
+                  <Link href="/elevage?tab=alimentation&sub=registre" className={action}>
+                    <ClipboardCheck className="h-4 w-4 text-emerald-600" />Registres
+                  </Link>
                 </div>
               </div>
             )
@@ -417,8 +508,11 @@ export function DashboardTab({ year }: DashboardTabProps) {
                 le total cheptel en gros (individus + animaux en lots) + le
                 détail en sous-titre. Click = navigation vers Animaux & Lots. */}
             {(() => {
+              // QA caprin cms1v227a / cms1vcvc5 — effectif physique sans double
+              // comptage : lots (fiches rattachées incluses) + fiches hors lot.
               const total = data.stats.animauxTotal ?? data.stats.animauxActifs
-              const individus = data.stats.animauxActifs
+              const horsLot = data.stats.animauxHorsLot ?? data.stats.animauxActifs
+              const rattaches = data.stats.animauxRattachesLots ?? 0
               const enLots = data.stats.animauxEnLots ?? 0
               const nbLots = data.stats.lotsActifs
               // Bug cmp8rw40u (Marc 2026-05-16) — "2 lots" comptait les lots
@@ -429,11 +523,14 @@ export function DashboardTab({ year }: DashboardTabProps) {
                 total === 0
                   ? null
                   : enLots > 0
-                  ? `${individus} individu${individus > 1 ? 's' : ''} · ${enLots} en lot${enLots > 1 ? 's' : ''} (${nbLots} lot${nbLots > 1 ? 's' : ''} actif${nbLots > 1 ? 's' : ''})`
-                  : `${individus} individu${individus > 1 ? 's' : ''}`
+                  ? `${enLots} en lot${enLots > 1 ? 's' : ''} (${nbLots} lot${nbLots > 1 ? 's' : ''} actif${nbLots > 1 ? 's' : ''}) + ${horsLot} hors lot`
+                  : `${horsLot} individu${horsLot > 1 ? 's' : ''}`
+              const infoBulle = rattaches > 0
+                ? `Effectif = ${enLots} têtes dans les lots (dont ${rattaches} fiche${rattaches > 1 ? 's' : ''} nominative${rattaches > 1 ? 's' : ''} rattachée${rattaches > 1 ? 's' : ''}) + ${horsLot} fiche${horsLot > 1 ? 's' : ''} hors lot. Les fiches rattachées à un lot ne sont pas comptées deux fois.`
+                : undefined
               return (
                 <Link href="/elevage/animaux" className="block">
-                  <Card className={`${kpiCardClass("neutre")} hover:brightness-110 transition-[filter] cursor-pointer`}>
+                  <Card title={infoBulle} className={`${kpiCardClass("neutre")} hover:brightness-110 transition-[filter] cursor-pointer`}>
                     <CardHeader className="pb-1 pt-3 px-4">
                       <CardDescription className={`${kpiSubtleClass("neutre")} text-xs`}>Animaux actifs</CardDescription>
                       <CardTitle className="text-2xl">
@@ -452,7 +549,7 @@ export function DashboardTab({ year }: DashboardTabProps) {
               )
             })()}
 
-            {data.stats.activiteOeufs && <Card className={kpiCardClass("neutre")}>
+            {preferences.oeufs && data.stats.activiteOeufs && <Card className={kpiCardClass("neutre")}>
               <CardHeader className="pb-1 pt-3 px-4">
                 <CardDescription className={`${kpiSubtleClass("neutre")} text-xs flex items-center gap-1`}>
                   Production œufs
@@ -476,7 +573,7 @@ export function DashboardTab({ year }: DashboardTabProps) {
               </CardContent>
             </Card>}
 
-            {data.stats.activiteOeufs && <Card className={kpiCardClass(data.stats.stockOeufs < 24 ? "alerte" : "neutre")}>
+            {preferences.oeufs && data.stats.activiteOeufs && <Card className={kpiCardClass(data.stats.stockOeufs < 24 ? "alerte" : "neutre")}>
               <CardHeader className="pb-1 pt-3 px-4">
                 <CardDescription className={`text-xs ${kpiSubtleClass(data.stats.stockOeufs < 24 ? "alerte" : "neutre")}`}>Stock œufs</CardDescription>
                 <CardTitle className="text-2xl">{data.stats.stockOeufs}</CardTitle>
@@ -486,7 +583,7 @@ export function DashboardTab({ year }: DashboardTabProps) {
               </CardContent>
             </Card>}
 
-            <Card className={kpiCardClass("revenu")}>
+            {preferences.commercial && <Card className={kpiCardClass("revenu")}>
               <CardHeader className="pb-1 pt-3 px-4">
                 <CardDescription className={`${kpiSubtleClass("revenu")} text-xs flex items-center gap-1`}>
                   Ventes {year}
@@ -512,8 +609,9 @@ export function DashboardTab({ year }: DashboardTabProps) {
                   }
                 </p>
               </CardContent>
-            </Card>
+            </Card>}
 
+            {preferences.commercial && caps.abattage && (
             <Card className={kpiCardClass("neutre")}>
               <CardHeader className="pb-1 pt-3 px-4">
                 <CardDescription className={`${kpiSubtleClass("neutre")} text-xs`}>Abattages {year}</CardDescription>
@@ -532,6 +630,7 @@ export function DashboardTab({ year }: DashboardTabProps) {
                 </p>
               </CardContent>
             </Card>
+            )}
           </div>
 
           {/* Ligne 2 : Métriques de performance */}
@@ -683,7 +782,7 @@ export function DashboardTab({ year }: DashboardTabProps) {
           </div>
 
           {/* Synthèse de toutes les productions enregistrées sur la période. */}
-          <section aria-labelledby="productions-dashboard-title" className="space-y-3">
+          {preferences.productions && <section aria-labelledby="productions-dashboard-title" className="space-y-3">
             <div>
               <h2 id="productions-dashboard-title" className="text-lg font-semibold">Productions enregistrées</h2>
               <p className="text-sm text-muted-foreground">Année {year}</p>
@@ -724,7 +823,7 @@ export function DashboardTab({ year }: DashboardTabProps) {
                 </CardContent>
               </Card>
             )}
-          </section>
+          </section>}
 
           {/* Alertes */}
           {(data.stats.soinsAPlanifier > 0 || data.stats.alimentsStockBas > 0) && (
@@ -764,6 +863,7 @@ export function DashboardTab({ year }: DashboardTabProps) {
 
           {/* Graphiques — repliés par défaut sur mobile (ticket cmrz0s7r8),
               toujours visibles sur desktop (lg). */}
+          {preferences.graphiques && <>
           <button
             type="button"
             onClick={() => setShowGraphs((v) => !v)}
@@ -816,7 +916,7 @@ export function DashboardTab({ year }: DashboardTabProps) {
                 max(données) × 1.2 (jamais hardcodé), placeholder « Pas
                 encore de données » si l'année est vide plutôt qu'un
                 graphe blanc déconcertant. */}
-            {data.stats.activiteOeufs && <Card className="min-w-0">
+            {preferences.oeufs && data.stats.activiteOeufs && <Card className="min-w-0">
               <CardHeader>
                 <CardTitle className="text-sm">Production d&apos;œufs par mois</CardTitle>
                 <CardDescription>Année {year}</CardDescription>
@@ -896,12 +996,13 @@ export function DashboardTab({ year }: DashboardTabProps) {
               </CardContent>
             </Card>
           </div>
+          </>}
         </>
       )}
 
       {/* Délais d'attente — remise en vente (feedback éleveur 2026-07-24) */}
       {attentes.length > 0 && (
-        <div id="delais-section" className="scroll-mt-24 rounded-xl border border-amber-200 bg-amber-50/60 p-4">
+        <div id="delais-section" className={`scroll-mt-24 rounded-xl border border-amber-200 bg-amber-50/60 p-4 ${preferences.prioriteTerrain ? "-order-2" : ""}`}>
           <h2 className="text-lg font-semibold flex items-center gap-2 mb-1">
             <AlertTriangle className="h-5 w-5 text-amber-600" />
             Délais d&apos;attente — remise en vente
@@ -923,7 +1024,8 @@ export function DashboardTab({ year }: DashboardTabProps) {
               <tbody>
                 {attentes.map((a) => (
                   <tr key={a.soinId} className="border-b border-amber-100">
-                    <td className="p-2 font-medium">{a.cible.label}</td>
+                    {/* QA caprin cms1vbkl4 — nom + boucle, pas la boucle seule */}
+                    <td className="p-2 font-medium">{a.cible.nom && a.cible.nom !== a.cible.label ? `${a.cible.nom} · ${a.cible.label}` : a.cible.label}</td>
                     <td className="p-2 text-slate-600">{a.traitement}</td>
                     <td className="p-2">
                       {a.lait ? (
@@ -948,7 +1050,7 @@ export function DashboardTab({ year }: DashboardTabProps) {
       )}
 
       {/* Soins à faire */}
-      <div id="soins-section" className="scroll-mt-24">
+      <div id="soins-section" className={`scroll-mt-24 ${preferences.prioriteTerrain ? "-order-1" : ""}`}>
         <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
           <h2 className="text-lg font-semibold flex items-center gap-2">
             <Stethoscope className="h-5 w-5 text-blue-600" />
@@ -1003,7 +1105,7 @@ export function DashboardTab({ year }: DashboardTabProps) {
                       {TYPE_LABELS[soin.type] || soin.type}
                     </Badge>
                     <span className="font-medium text-sm truncate">
-                      {soin.lot?.nom || soin.animal?.nom || '-'}
+                      {soin.lot?.nom || (soin.animal?.nom && soin.animal?.identifiant ? `${soin.animal.nom} · ${soin.animal.identifiant}` : soin.animal?.nom || soin.animal?.identifiant) || '-'}
                     </span>
                   </div>
                   <div className="flex items-center gap-2 mt-0.5">
