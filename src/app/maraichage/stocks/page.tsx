@@ -79,6 +79,52 @@ interface StockData {
   recoltes: EspeceStock[]
 }
 
+type SearchableStockTab = "graines" | "plants" | "fertilisants" | "recoltes"
+
+function normalizeSearchValue(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("fr-FR")
+    .trim()
+}
+
+function matchesSearch(query: string, values: Array<string | null | undefined>) {
+  const normalizedQuery = normalizeSearchValue(query)
+  if (!normalizedQuery) return true
+
+  return values.some(
+    value => value != null && normalizeSearchValue(value).includes(normalizedQuery)
+  )
+}
+
+function StockSearchInput({
+  label,
+  value,
+  onChange,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+}) {
+  return (
+    <div className="relative mb-4 w-full max-w-sm">
+      <Search
+        className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+        aria-hidden="true"
+      />
+      <Input
+        type="search"
+        aria-label={`Rechercher dans ${label}`}
+        placeholder={`Rechercher dans ${label.toLocaleLowerCase("fr-FR")}...`}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="pl-9"
+      />
+    </div>
+  )
+}
+
 // Composant pour editer un stock inline
 function StockInput({
   value,
@@ -206,7 +252,12 @@ function StocksPageContent() {
     fertilisants: [],
     recoltes: [],
   })
-  const [search, setSearch] = React.useState("")
+  const [searches, setSearches] = React.useState<Record<SearchableStockTab, string>>({
+    graines: "",
+    plants: "",
+    fertilisants: "",
+    recoltes: "",
+  })
   const [pendingChanges, setPendingChanges] = React.useState<Map<string, any>>(new Map())
 
   const fetchData = React.useCallback(async () => {
@@ -315,33 +366,49 @@ function StocksPageContent() {
     return count
   }, [data])
 
-  // Filtrer par recherche
-  const filterBySearch = <T extends { id: string; especeId?: string }>(items: T[]) => {
-    if (!search) return items
-    const s = search.toLowerCase()
-    return items.filter(item =>
-      item.id.toLowerCase().includes(s) ||
-      (item.especeId && item.especeId.toLowerCase().includes(s))
-    )
-  }
+  const updateSearch = React.useCallback((tab: SearchableStockTab, value: string) => {
+    setSearches(current => ({ ...current, [tab]: value }))
+  }, [])
 
-  const filterFertilisants = (items: FertilisantStock[]) => {
-    if (!search) return items
-    const s = search.toLowerCase()
-    return items.filter(item =>
-      item.id.toLowerCase().includes(s) ||
-      (item.type && item.type.toLowerCase().includes(s))
-    )
-  }
+  const filteredGraines = React.useMemo(
+    () => data.graines.filter(item =>
+      matchesSearch(searches.graines, [
+        item.id,
+        item.varieteNom,
+        item.especeId,
+        item.especeNom,
+        item.fournisseurId,
+      ])
+    ),
+    [data.graines, searches.graines]
+  )
 
-  const filterRecoltes = (items: EspeceStock[]) => {
-    if (!search) return items
-    const s = search.toLowerCase()
-    return items.filter(item =>
-      item.id.toLowerCase().includes(s) ||
-      (item.familleId && item.familleId.toLowerCase().includes(s))
-    )
-  }
+  const filteredPlants = React.useMemo(
+    () => data.plants.filter(item =>
+      matchesSearch(searches.plants, [
+        item.id,
+        item.varieteNom,
+        item.especeId,
+        item.especeNom,
+        item.fournisseurId,
+      ])
+    ),
+    [data.plants, searches.plants]
+  )
+
+  const filteredFertilisants = React.useMemo(
+    () => data.fertilisants.filter(item =>
+      matchesSearch(searches.fertilisants, [item.id, item.type])
+    ),
+    [data.fertilisants, searches.fertilisants]
+  )
+
+  const filteredRecoltes = React.useMemo(
+    () => data.recoltes.filter(item =>
+      matchesSearch(searches.recoltes, [item.id, item.familleId])
+    ),
+    [data.recoltes, searches.recoltes]
+  )
 
   if (isLoading) {
     return (
@@ -385,15 +452,6 @@ function StocksPageContent() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Rechercher..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-8 w-[200px]"
-            />
-          </div>
           <Button variant="outline" size="sm" onClick={fetchData}>
             <RefreshCw className="h-4 w-4 mr-2" />
             Actualiser
@@ -418,17 +476,6 @@ function StocksPageContent() {
             </div>
           </div>
         )}
-
-        {/* Info édition */}
-        <div className="mb-4 p-4 bg-green-50 rounded-lg border border-green-200">
-          <p className="text-sm text-green-800 flex items-center gap-2">
-            <span>✏️</span>
-            <span>
-              <strong>Édition rapide :</strong> Cliquez sur les valeurs de stock pour les modifier directement.
-              Appuyez sur Entrée pour valider, Échap pour annuler.
-            </span>
-          </p>
-        </div>
 
         {/* Stats */}
         {isArbresMode ? (
@@ -555,6 +602,11 @@ function StocksPageContent() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
+                <StockSearchInput
+                  label="Semences"
+                  value={searches.graines}
+                  onChange={(value) => updateSearch("graines", value)}
+                />
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -567,7 +619,7 @@ function StocksPageContent() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filterBySearch(data.graines).map((v) => (
+                    {filteredGraines.map((v) => (
                       <TableRow key={v.id}>
                         <TableCell className="font-medium">{v.varieteNom ?? v.id}</TableCell>
                         <TableCell>{v.especeNom ?? v.especeId}</TableCell>
@@ -589,7 +641,7 @@ function StocksPageContent() {
                         </TableCell>
                       </TableRow>
                     ))}
-                    {filterBySearch(data.graines).length === 0 && (
+                    {filteredGraines.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                           Aucune semence en stock
@@ -612,6 +664,11 @@ function StocksPageContent() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
+                <StockSearchInput
+                  label="Plants"
+                  value={searches.plants}
+                  onChange={(value) => updateSearch("plants", value)}
+                />
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -623,7 +680,7 @@ function StocksPageContent() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filterBySearch(data.plants).map((v) => (
+                    {filteredPlants.map((v) => (
                       <TableRow key={v.id}>
                         <TableCell className="font-medium">{v.varieteNom ?? v.id}</TableCell>
                         <TableCell>{v.especeNom ?? v.especeId}</TableCell>
@@ -644,7 +701,7 @@ function StocksPageContent() {
                         </TableCell>
                       </TableRow>
                     ))}
-                    {filterBySearch(data.plants).length === 0 && (
+                    {filteredPlants.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
                           Aucun plant en stock
@@ -667,6 +724,11 @@ function StocksPageContent() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
+                <StockSearchInput
+                  label="Fertilisants"
+                  value={searches.fertilisants}
+                  onChange={(value) => updateSearch("fertilisants", value)}
+                />
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -678,7 +740,7 @@ function StocksPageContent() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filterFertilisants(data.fertilisants).map((f) => (
+                    {filteredFertilisants.map((f) => (
                       <TableRow key={f.id}>
                         <TableCell className="font-medium">{f.id}</TableCell>
                         <TableCell>{f.type || "-"}</TableCell>
@@ -699,7 +761,7 @@ function StocksPageContent() {
                         </TableCell>
                       </TableRow>
                     ))}
-                    {filterFertilisants(data.fertilisants).length === 0 && (
+                    {filteredFertilisants.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
                           Aucun fertilisant enregistre
@@ -722,6 +784,11 @@ function StocksPageContent() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
+                <StockSearchInput
+                  label="Récoltes"
+                  value={searches.recoltes}
+                  onChange={(value) => updateSearch("recoltes", value)}
+                />
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -732,7 +799,7 @@ function StocksPageContent() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filterRecoltes(data.recoltes).map((e) => (
+                    {filteredRecoltes.map((e) => (
                       <TableRow key={e.id}>
                         <TableCell className="font-medium">
                           <div className="flex items-center gap-2">
@@ -762,7 +829,7 @@ function StocksPageContent() {
                         </TableCell>
                       </TableRow>
                     ))}
-                    {filterRecoltes(data.recoltes).length === 0 && (
+                    {filteredRecoltes.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
                           Aucune récolte en stock
