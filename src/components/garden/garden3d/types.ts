@@ -56,6 +56,9 @@ export interface Arbre3D {
   type: string
   posX: number
   posY: number
+  gpsLat?: number | null
+  gpsLng?: number | null
+  parcelleGeoId?: string | null
   /** Envergure (diamètre, m) à la date affichée. */
   envergure: number
   couleur: string | null

@@ -7,7 +7,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
-import { ArrowLeft, Box, CalendarClock, ChevronDown, Download, Image as ImageIcon, Layers as LayersIcon, Map as MapIcon, Maximize2, Minimize2, RotateCcw, Ruler, Upload, ZoomIn, ZoomOut, Plus, Crosshair, Trash2, X, RotateCw, Copy } from "lucide-react"
+import { ArrowLeft, Box, CalendarClock, ChevronDown, Download, ExternalLink, Image as ImageIcon, Layers as LayersIcon, Map as MapIcon, Maximize2, Minimize2, RotateCcw, Ruler, Upload, ZoomIn, ZoomOut, Plus, Crosshair, Trash2, X, RotateCw, Copy } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -48,6 +48,7 @@ import {
 import { useFondPlan } from "@/hooks/use-fond-plan"
 import { calibrerFond, distance, formatDistance } from "@/lib/plan-fond-utils"
 import { croissanceCulture, envergureArbreADate } from "@/lib/plan-croissance"
+import { projeterGpsSurPlan, projeterPlanSurGps } from "@/lib/gps-plan-utils"
 
 // Palier 4 (perf) : dialogs lourds chargés à la demande, hors du bundle
 // initial de l'éditeur (le plus gros écran client de l'app).
@@ -64,6 +65,9 @@ import { useToast } from "@/hooks/use-toast"
 import { useSettings } from "@/hooks/use-settings"
 import { confirmDialog } from "@/lib/global-dialog"
 import { todayLocalISO } from '@/lib/format-utils'
+import { Textarea } from "@/components/ui/textarea"
+import { parcelleCompatibleVerger } from "@/lib/verger/lot-arbres"
+import { CONDUITES_ARBRE, ETATS_ARBRE } from "@/lib/verger/arbre-constants"
 
 interface PlancheWithCulture {
   id: string
@@ -127,15 +131,31 @@ interface Arbre {
   type: string
   espece: string | null
   variete: string | null
+  portGreffe: string | null
+  porteGreffeId: string | null
+  formeTaille: string | null
+  circonferenceCm: number | null
   fournisseur: string | null
   datePlantation: string | null
+  age: number | null
+  dateAchat: string | null
+  prixAchat: number | null
   posX: number
   posY: number
   envergure: number
   envergureAdulte: number | null
   especeEtalement: number | null
+  hauteur: number | null
+  etat: string | null
+  productif: boolean
+  anneeProduction: number | null
+  rendementMoyen: number | null
+  pollinisateur: string | null
   couleur: string | null
   notes: string | null
+  gpsLat: number | null
+  gpsLng: number | null
+  parcelleGeoId: string | null
 }
 
 const TYPES_OBJETS = [
@@ -159,6 +179,8 @@ interface ParcelleOption {
   id: string
   nom: string
   usage: string | null
+  couches: string[]
+  geometry: string
   plancheCount: number
 }
 
@@ -194,6 +216,12 @@ function JardinContent() {
   const [layers, setLayers] = React.useState<GardenLayers>(DEFAULT_LAYERS)
   const [reglesAssociations, setReglesAssociations] = React.useState<RegleAssociation[]>([])
   const [showFondDialog, setShowFondDialog] = React.useState(false)
+  const [fondDimensions, setFondDimensions] = React.useState<{ width: number; height: number } | null>(null)
+  const pendingGpsMovesRef = React.useRef(new Map<number, { startX: number; startY: number }>())
+  const [pendingGpsMovesCount, setPendingGpsMovesCount] = React.useState(0)
+  const arbresRef = React.useRef<Arbre[]>([])
+  const gpsMoveBlockedRef = React.useRef(new Set<number>())
+  arbresRef.current = arbres
   const [calibPoints, setCalibPoints] = React.useState<{ p1: { x: number; y: number }; p2: { x: number; y: number } } | null>(null)
   const [calibDistance, setCalibDistance] = React.useState("")
   const [exportingPng, setExportingPng] = React.useState(false)
@@ -404,6 +432,8 @@ function JardinContent() {
         id: p.id,
         nom: p.nom,
         usage: p.usage,
+        couches: p.couches ?? [],
+        geometry: p.geometry,
         plancheCount: p._count?.planches ?? 0,
       })))
     } catch {
@@ -455,6 +485,11 @@ function JardinContent() {
       .map(v => ({ value: v, label: v }))
   }, [arbres, arbreFournisseursRef])
 
+  const arbrePortGreffeOptions = React.useMemo(() => {
+    const valeurs = arbres.map(a => a.portGreffe).filter(Boolean) as string[]
+    return [...new Set(valeurs)].sort().map(v => ({ value: v, label: v }))
+  }, [arbres])
+
   // Charger planches et objets quand la parcelle change
   React.useEffect(() => {
     setIsLoading(true)
@@ -465,6 +500,162 @@ function JardinContent() {
   React.useEffect(() => {
     Promise.all([fetchArbres(), fetchEspeces(), fetchParcelles()])
   }, [fetchArbres, fetchEspeces, fetchParcelles])
+
+  // Le GPS et le plan utilisent deux repères indépendants : WGS84 pour le
+  // relevé terrain, mètres SVG pour l'éditeur. Une capture issue de la
+  // cartographie possède le contour de la parcelle en pixels image ; il sert
+  // de géoréférencement pour projeter les arbres exactement sur le fond.
+  React.useEffect(() => {
+    if (!fond?.image) {
+      setFondDimensions(null)
+      return
+    }
+    let cancelled = false
+    const image = new Image()
+    image.onload = () => {
+      if (!cancelled) {
+        setFondDimensions({ width: image.naturalWidth, height: image.naturalHeight })
+      }
+    }
+    image.onerror = () => {
+      if (!cancelled) setFondDimensions(null)
+    }
+    image.src = fond.image
+    return () => {
+      cancelled = true
+      image.onload = null
+      image.onerror = null
+    }
+  }, [fond?.image])
+
+  const selectedParcelle = React.useMemo(
+    () => parcelles.find((parcelle) => parcelle.id === selectedParcelleId) ?? null,
+    [parcelles, selectedParcelleId]
+  )
+  // Ne dépend volontairement pas de posX/posY : pendant un glisser-déposer,
+  // l'arbre suit le pointeur jusqu'à la confirmation de la nouvelle position
+  // GPS, sans déclencher un effet « aimant ».
+  const arbresGpsKey = React.useMemo(
+    () =>
+      arbres
+        .map((arbre) => `${arbre.id}:${arbre.parcelleGeoId ?? ""}:${arbre.gpsLat ?? ""}:${arbre.gpsLng ?? ""}`)
+        .join("|"),
+    [arbres]
+  )
+
+  React.useEffect(() => {
+    if (
+      !selectedParcelleId ||
+      selectedParcelleId === "none" ||
+      !selectedParcelle ||
+      !fond ||
+      fond.source !== "parcelle" ||
+      fond.parcelleKey !== selectedParcelleId ||
+      !fond.contour ||
+      !fondDimensions
+    ) {
+      return
+    }
+
+    setArbres((arbresCourants) => {
+      let modifie = false
+      const projetes = arbresCourants.map((arbre) => {
+        if (
+          arbre.parcelleGeoId !== selectedParcelleId ||
+          arbre.gpsLat == null ||
+          arbre.gpsLng == null
+        ) {
+          return arbre
+        }
+        const position = projeterGpsSurPlan({
+          gpsLat: arbre.gpsLat,
+          gpsLng: arbre.gpsLng,
+          geometryGeoJson: selectedParcelle.geometry,
+          contour: fond.contour!,
+          fond,
+          imageWidth: fondDimensions.width,
+          imageHeight: fondDimensions.height,
+        })
+        if (
+          !position ||
+          (Math.abs(position.x - arbre.posX) < 0.001 &&
+            Math.abs(position.y - arbre.posY) < 0.001)
+        ) {
+          return arbre
+        }
+        modifie = true
+        return { ...arbre, posX: position.x, posY: position.y }
+      })
+      return modifie ? projetes : arbresCourants
+    })
+  }, [
+    arbresGpsKey,
+    fond,
+    fondDimensions,
+    selectedParcelle,
+    selectedParcelleId,
+  ])
+
+  const arbresGpsProjetables = React.useMemo(() => {
+    if (
+      !selectedParcelleId ||
+      selectedParcelleId === "none" ||
+      !selectedParcelle ||
+      !fond ||
+      fond.source !== "parcelle" ||
+      fond.parcelleKey !== selectedParcelleId ||
+      !fond.contour ||
+      !fondDimensions
+    ) {
+      return 0
+    }
+    return arbres.filter(
+      (arbre) =>
+        arbre.parcelleGeoId === selectedParcelleId &&
+        arbre.gpsLat != null &&
+        arbre.gpsLng != null &&
+        projeterGpsSurPlan({
+          gpsLat: arbre.gpsLat,
+          gpsLng: arbre.gpsLng,
+          geometryGeoJson: selectedParcelle.geometry,
+          contour: fond.contour!,
+          fond,
+          imageWidth: fondDimensions.width,
+          imageHeight: fondDimensions.height,
+        }) !== null
+    ).length
+  }, [arbres, fond, fondDimensions, selectedParcelle, selectedParcelleId])
+
+  const convertirPositionPlanEnGps = React.useCallback(
+    (arbre: Arbre, x: number, y: number) => {
+      if (
+        arbre.gpsLat == null ||
+        arbre.gpsLng == null ||
+        !selectedParcelleId ||
+        selectedParcelleId === "none" ||
+        arbre.parcelleGeoId !== selectedParcelleId ||
+        !selectedParcelle ||
+        !fond ||
+        fond.source !== "parcelle" ||
+        fond.parcelleKey !== selectedParcelleId ||
+        !fond.contour ||
+        !fondDimensions
+      ) {
+        return null
+      }
+
+      return projeterPlanSurGps({
+        posX: x,
+        posY: y,
+        geometryGeoJson: selectedParcelle.geometry,
+        contour: fond.contour,
+        fond,
+        imageWidth: fondDimensions.width,
+        imageHeight: fondDimensions.height,
+      })
+    },
+    [fond, fondDimensions, selectedParcelle, selectedParcelleId]
+  )
 
   // Règles d'association (calque liaisons favorables/défavorables)
   React.useEffect(() => {
@@ -555,6 +746,16 @@ function JardinContent() {
   const selectedObjetData = objets.find(o => o.id === selectedObjet)
   const selectedArbreData = arbres.find(a => a.id === selectedArbre)
 
+  // Parcelles proposées pour rattacher l'arbre sélectionné (mêmes règles que
+  // la fiche /verger/[id] : compatibles verger + la parcelle déjà rattachée)
+  const parcellesVergerOptions = React.useMemo(
+    () =>
+      parcelles
+        .filter(p => parcelleCompatibleVerger(p) || p.id === selectedArbreData?.parcelleGeoId)
+        .sort((a, b) => a.nom.localeCompare(b.nom, "fr")),
+    [parcelles, selectedArbreData?.parcelleGeoId]
+  )
+
   // Déplacer une planche
   const handlePlancheMove = (id: string, x: number, y: number) => {
     setPlanches(prev => prev.map(p =>
@@ -573,14 +774,106 @@ function JardinContent() {
 
   // Déplacer un arbre
   const handleArbreMove = (id: number, x: number, y: number) => {
+    const arbre = arbresRef.current.find((item) => item.id === id)
+    if (!arbre) return
+
+    if (arbre.gpsLat != null && arbre.gpsLng != null) {
+      const gps = convertirPositionPlanEnGps(arbre, x, y)
+      if (!gps) {
+        if (!gpsMoveBlockedRef.current.has(id)) {
+          gpsMoveBlockedRef.current.add(id)
+          toast({
+            variant: "destructive",
+            title: "Déplacement GPS impossible",
+            description:
+              "Sélectionnez la parcelle et son fond cartographique géoréférencé avant de déplacer cet arbre.",
+          })
+        }
+        return
+      }
+
+      if (!pendingGpsMovesRef.current.has(id)) {
+        pendingGpsMovesRef.current.set(id, { startX: arbre.posX, startY: arbre.posY })
+        setPendingGpsMovesCount(pendingGpsMovesRef.current.size)
+      }
+      setArbres(prev => prev.map(a =>
+        a.id === id ? { ...a, posX: x, posY: y } : a
+      ))
+      return
+    }
+
     setArbres(prev => prev.map(a =>
       a.id === id ? { ...a, posX: x, posY: y } : a
     ))
     setHasChanges(true)
   }
 
+  const handleArbreMoveEnd = async (
+    id: number,
+    x: number,
+    y: number,
+    startX: number,
+    startY: number
+  ) => {
+    const pending = pendingGpsMovesRef.current.get(id)
+    if (!pending) return
+
+    const arbre = arbresRef.current.find((item) => item.id === id)
+    const gps = arbre ? convertirPositionPlanEnGps(arbre, x, y) : null
+    const nettoyerAttente = () => {
+      pendingGpsMovesRef.current.delete(id)
+      setPendingGpsMovesCount(pendingGpsMovesRef.current.size)
+    }
+    const restaurerPosition = () => {
+      const origine = pending ?? { startX, startY }
+      setArbres(prev => prev.map(a =>
+        a.id === id ? { ...a, posX: origine.startX, posY: origine.startY } : a
+      ))
+    }
+
+    if (!arbre || !gps) {
+      restaurerPosition()
+      nettoyerAttente()
+      toast({
+        variant: "destructive",
+        title: "Position non enregistrée",
+        description: "Ce point est hors de la zone cartographique géoréférencée.",
+      })
+      return
+    }
+
+    const confirme = await confirmDialog(
+      `Déplacer « ${arbre.nom} » sur le plan remplacera son relevé GPS par ${gps.gpsLat.toFixed(7)}, ${gps.gpsLng.toFixed(7)}. Confirmer cette nouvelle position réelle ?`,
+      {
+        title: "Modifier les coordonnées GPS",
+        confirmLabel: "Mettre à jour le GPS",
+        cancelLabel: "Annuler",
+        variant: "warning",
+      }
+    )
+
+    if (!confirme) {
+      restaurerPosition()
+      nettoyerAttente()
+      return
+    }
+
+    setArbres(prev => prev.map(a =>
+      a.id === id
+        ? { ...a, posX: x, posY: y, gpsLat: gps.gpsLat, gpsLng: gps.gpsLng }
+        : a
+    ))
+    nettoyerAttente()
+    setHasChanges(true)
+    toast({
+      title: "Position GPS mise à jour",
+      description: `${arbre.nom} restera aligné sur la carte, le plan 2D et la vue 3D.`,
+    })
+  }
+
   // Gestion de la selection
   const handleSelectionChange = React.useCallback((newSelection: SelectionItem[]) => {
+    gpsMoveBlockedRef.current.clear()
     setSelection(newSelection)
   }, [])
 
@@ -589,6 +882,11 @@ function JardinContent() {
     const selPlanches = new Set(selection.filter(s => s.type === 'planche').map(s => s.id as string))
     const selObjets = new Set(selection.filter(s => s.type === 'objet').map(s => s.id as number))
     const selArbres = new Set(selection.filter(s => s.type === 'arbre').map(s => s.id as number))
+    const arbresGps = new Set(
+      arbres
+        .filter(a => selArbres.has(a.id) && a.gpsLat != null && a.gpsLng != null)
+        .map(a => a.id)
+    )
 
     if (selPlanches.size > 0) {
       setPlanches(prev => prev.map(p =>
@@ -602,11 +900,24 @@ function JardinContent() {
     }
     if (selArbres.size > 0) {
       setArbres(prev => prev.map(a =>
-        selArbres.has(a.id) ? { ...a, posX: a.posX + dx, posY: a.posY + dy } : a
+        selArbres.has(a.id) && !arbresGps.has(a.id)
+          ? { ...a, posX: a.posX + dx, posY: a.posY + dy }
+          : a
       ))
     }
-    setHasChanges(true)
-  }, [selection])
+    if (arbresGps.size > 0 && gpsMoveBlockedRef.current.size === 0) {
+      arbresGps.forEach((id) => gpsMoveBlockedRef.current.add(id))
+      toastRef.current({
+        title: "Arbres GPS protégés",
+        description:
+          "Déplacez chaque arbre géolocalisé individuellement pour confirmer ses nouvelles coordonnées.",
+      })
+    }
+    const arbreSansGps = Array.from(selArbres).some((id) => !arbresGps.has(id))
+    if (selPlanches.size > 0 || selObjets.size > 0 || arbreSansGps) {
+      setHasChanges(true)
+    }
+  }, [selection, arbres])
 
   // Normalise un angle dans [0, 360). Le modulo JS garde le signe : une
   // rotation antihoraire (degrees < 0) produisait un angle négatif rejeté
@@ -637,6 +948,9 @@ function JardinContent() {
 
   // Sauvegarder les positions
   const handleSave = async () => {
+    // Une position GPS en cours de confirmation ne doit jamais être persistée
+    // avec l'ancien relevé terrain.
+    if (pendingGpsMovesRef.current.size > 0) return
     setSaving(true)
     try {
       const planchePromises = planches.map(p =>
@@ -679,13 +993,32 @@ function JardinContent() {
             type: a.type,
             espece: a.espece,
             variete: a.variete,
+            portGreffe: a.portGreffe,
+            porteGreffeId: a.porteGreffeId,
+            formeTaille: a.formeTaille,
+            circonferenceCm: a.circonferenceCm,
             fournisseur: a.fournisseur,
+            datePlantation: a.datePlantation,
+            age: a.age,
+            dateAchat: a.dateAchat,
+            prixAchat: a.prixAchat,
             posX: a.posX,
             posY: a.posY,
             envergure: a.envergure,
             envergureAdulte: a.envergureAdulte,
+            hauteur: a.hauteur,
+            etat: a.etat,
+            productif: a.productif,
+            anneeProduction: a.anneeProduction,
+            rendementMoyen: a.rendementMoyen,
+            pollinisateur: a.pollinisateur,
             couleur: a.couleur,
-            notes: a.notes
+            notes: a.notes,
+            gpsLat: a.gpsLat,
+            gpsLng: a.gpsLng,
+            // Envoyé explicitement : la sauvegarde du plan ne doit jamais
+            // déclencher l'auto-rattachement parcellaire côté API.
+            parcelleGeoId: a.parcelleGeoId
           })
         })
       )
@@ -718,7 +1051,7 @@ function JardinContent() {
 
   // Auto-save débounced (1s après le dernier changement)
   React.useEffect(() => {
-    if (!hasChanges || saving) return
+    if (!hasChanges || saving || pendingGpsMovesCount > 0) return
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current)
     autoSaveTimer.current = setTimeout(() => {
       handleSave()
@@ -727,7 +1060,7 @@ function JardinContent() {
       if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasChanges, planches, objets, arbres])
+  }, [hasChanges, planches, objets, arbres, pendingGpsMovesCount])
 
   // Réorganiser en grille
   const handleReset = () => {
@@ -1662,6 +1995,7 @@ function JardinContent() {
                     onPlancheMove={handlePlancheMove}
                     onObjetMove={handleObjetMove}
                     onArbreMove={handleArbreMove}
+                    onArbreMoveEnd={handleArbreMoveEnd}
                     scale={scale}
                     onScaleChange={setScale}
                     plancheColor={settings.plancheColor}
@@ -2120,6 +2454,116 @@ function JardinContent() {
                         </div>
                       </div>
 
+                      {/* Porte-greffe & conduite */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Porte-greffe</Label>
+                          <Combobox
+                            value={selectedArbreData.portGreffe || ""}
+                            onValueChange={(v) => {
+                              setArbres(prev => prev.map(a =>
+                                a.id === selectedArbre ? { ...a, portGreffe: v || null, porteGreffeId: null } : a
+                              ))
+                              setHasChanges(true)
+                            }}
+                            options={arbrePortGreffeOptions}
+                            placeholder="Ex: M26"
+                            className="h-8 text-sm"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Conduite</Label>
+                          <Select
+                            value={selectedArbreData.formeTaille || "_none"}
+                            onValueChange={(v) => {
+                              setArbres(prev => prev.map(a =>
+                                a.id === selectedArbre ? { ...a, formeTaille: v === "_none" ? null : v } : a
+                              ))
+                              setHasChanges(true)
+                            }}
+                          >
+                            <SelectTrigger className="h-8 text-sm">
+                              <SelectValue placeholder="—" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="_none">— Non défini</SelectItem>
+                              {CONDUITES_ARBRE.map(c => (
+                                <SelectItem key={c} value={c}>{c}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      {/* Parcelle du verger */}
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Parcelle du verger</Label>
+                        <Select
+                          value={selectedArbreData.parcelleGeoId || "__none__"}
+                          onValueChange={(v) => {
+                            setArbres(prev => prev.map(a =>
+                              a.id === selectedArbre ? { ...a, parcelleGeoId: v === "__none__" ? null : v } : a
+                            ))
+                            setHasChanges(true)
+                          }}
+                        >
+                          <SelectTrigger className="h-8 text-sm">
+                            <SelectValue placeholder="Aucune parcelle" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">Aucune parcelle</SelectItem>
+                            {parcellesVergerOptions.map(p => (
+                              <SelectItem key={p.id} value={p.id}>
+                                {p.nom}{p.usage ? ` — ${p.usage}` : ""}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {/* GPS : lecture seule ici — la modification passe par le
+                          déplacement sur le plan (avec confirmation) ou la fiche */}
+                      {selectedArbreData.gpsLat != null && selectedArbreData.gpsLng != null && (
+                        <p className="text-[11px] leading-snug text-muted-foreground">
+                          GPS : {selectedArbreData.gpsLat.toFixed(6)}, {selectedArbreData.gpsLng.toFixed(6)} —
+                          modifiable en déplaçant l&apos;arbre ou depuis la fiche complète.
+                        </p>
+                      )}
+
+                      {/* Plantation */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Date plantation</Label>
+                          <Input
+                            className="h-8 text-sm"
+                            type="date"
+                            value={selectedArbreData.datePlantation?.split("T")[0] || ""}
+                            onChange={(e) => {
+                              setArbres(prev => prev.map(a =>
+                                a.id === selectedArbre ? { ...a, datePlantation: e.target.value || null } : a
+                              ))
+                              setHasChanges(true)
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Âge plantation (ans)</Label>
+                          <Input
+                            className="h-8 text-sm"
+                            type="number"
+                            min="0"
+                            value={selectedArbreData.age ?? ""}
+                            onChange={(e) => {
+                              const val = e.target.value ? parseInt(e.target.value) : null
+                              setArbres(prev => prev.map(a =>
+                                a.id === selectedArbre ? { ...a, age: val } : a
+                              ))
+                              setHasChanges(true)
+                            }}
+                          />
+                        </div>
+                      </div>
+
                       {/* Fournisseur */}
                       <div>
                         <Label className="text-xs text-muted-foreground">Fournisseur</Label>
@@ -2135,6 +2579,41 @@ function JardinContent() {
                           placeholder="Ex: Pépinière locale"
                           className="h-8 text-sm"
                         />
+                      </div>
+
+                      {/* Achat */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Date d&apos;achat</Label>
+                          <Input
+                            className="h-8 text-sm"
+                            type="date"
+                            value={selectedArbreData.dateAchat?.split("T")[0] || ""}
+                            onChange={(e) => {
+                              setArbres(prev => prev.map(a =>
+                                a.id === selectedArbre ? { ...a, dateAchat: e.target.value || null } : a
+                              ))
+                              setHasChanges(true)
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Prix d&apos;achat (€)</Label>
+                          <Input
+                            className="h-8 text-sm"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={selectedArbreData.prixAchat ?? ""}
+                            onChange={(e) => {
+                              const val = e.target.value ? parseFloat(e.target.value) : null
+                              setArbres(prev => prev.map(a =>
+                                a.id === selectedArbre ? { ...a, prixAchat: val } : a
+                              ))
+                              setHasChanges(true)
+                            }}
+                          />
+                        </div>
                       </div>
 
                       {/* Envergure actuelle + projection adulte (cercle pointillé) */}
@@ -2180,6 +2659,145 @@ function JardinContent() {
                         </p>
                       </div>
 
+                      {/* Hauteur + circonférence */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Hauteur (m)</Label>
+                          <Input
+                            className="h-8 text-sm"
+                            type="number"
+                            step="0.1"
+                            min="0"
+                            value={selectedArbreData.hauteur ?? ""}
+                            onChange={(e) => {
+                              const val = e.target.value ? parseFloat(e.target.value) : null
+                              setArbres(prev => prev.map(a =>
+                                a.id === selectedArbre ? { ...a, hauteur: val } : a
+                              ))
+                              setHasChanges(true)
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Circonf. tronc (cm)</Label>
+                          <Input
+                            className="h-8 text-sm"
+                            type="number"
+                            step="0.1"
+                            min="0"
+                            value={selectedArbreData.circonferenceCm ?? ""}
+                            onChange={(e) => {
+                              const val = e.target.value ? parseFloat(e.target.value) : null
+                              setArbres(prev => prev.map(a =>
+                                a.id === selectedArbre ? { ...a, circonferenceCm: val } : a
+                              ))
+                              setHasChanges(true)
+                            }}
+                            placeholder="ex: 15"
+                          />
+                        </div>
+                      </div>
+
+                      {/* État + productif */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <Label className="text-xs text-muted-foreground">État</Label>
+                          <Select
+                            value={selectedArbreData.etat || ""}
+                            onValueChange={(v) => {
+                              setArbres(prev => prev.map(a =>
+                                a.id === selectedArbre ? { ...a, etat: v } : a
+                              ))
+                              setHasChanges(true)
+                            }}
+                          >
+                            <SelectTrigger className="h-8 text-sm">
+                              <SelectValue placeholder="—" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {ETATS_ARBRE.map(e => (
+                                <SelectItem key={e.value} value={e.value}>{e.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Productif</Label>
+                          <Select
+                            value={selectedArbreData.productif ? "oui" : "non"}
+                            onValueChange={(v) => {
+                              setArbres(prev => prev.map(a =>
+                                a.id === selectedArbre ? { ...a, productif: v === "oui" } : a
+                              ))
+                              setHasChanges(true)
+                            }}
+                          >
+                            <SelectTrigger className="h-8 text-sm">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="oui">Oui</SelectItem>
+                              <SelectItem value="non">Non</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      {/* Production */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <Label className="text-xs text-muted-foreground">1re année de prod.</Label>
+                          <Input
+                            className="h-8 text-sm"
+                            type="number"
+                            min="1900"
+                            max="2100"
+                            value={selectedArbreData.anneeProduction ?? ""}
+                            onChange={(e) => {
+                              const val = e.target.value ? parseInt(e.target.value) : null
+                              setArbres(prev => prev.map(a =>
+                                a.id === selectedArbre ? { ...a, anneeProduction: val } : a
+                              ))
+                              setHasChanges(true)
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Rendement (kg/an)</Label>
+                          <Input
+                            className="h-8 text-sm"
+                            type="number"
+                            step="0.1"
+                            min="0"
+                            value={selectedArbreData.rendementMoyen ?? ""}
+                            onChange={(e) => {
+                              const val = e.target.value ? parseFloat(e.target.value) : null
+                              setArbres(prev => prev.map(a =>
+                                a.id === selectedArbre ? { ...a, rendementMoyen: val } : a
+                              ))
+                              setHasChanges(true)
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Pollinisateur */}
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Variété pollinisatrice</Label>
+                        <Combobox
+                          value={selectedArbreData.pollinisateur || ""}
+                          onValueChange={(v) => {
+                            setArbres(prev => prev.map(a =>
+                              a.id === selectedArbre ? { ...a, pollinisateur: v || null } : a
+                            ))
+                            setHasChanges(true)
+                          }}
+                          options={arbreVarieteOptions}
+                          placeholder="Ex: Granny Smith"
+                          className="h-8 text-sm"
+                        />
+                      </div>
+
                       {/* Couleur personnalisee */}
                       <div>
                         <Label className="text-xs text-muted-foreground">Couleur</Label>
@@ -2214,8 +2832,9 @@ function JardinContent() {
                       {/* Notes */}
                       <div>
                         <Label className="text-xs text-muted-foreground">Notes</Label>
-                        <Input
-                          className="h-8 text-sm"
+                        <Textarea
+                          className="text-sm"
+                          rows={3}
                           value={selectedArbreData.notes || ""}
                           onChange={(e) => {
                             setArbres(prev => prev.map(a =>
@@ -2226,6 +2845,14 @@ function JardinContent() {
                           placeholder="Notes..."
                         />
                       </div>
+
+                      {/* Fiche complète : récoltes, opérations, GPS assisté… */}
+                      <Button variant="outline" size="sm" asChild className="w-full">
+                        <Link href={`/verger/${selectedArbreData.id}`}>
+                          <ExternalLink className="h-4 w-4 mr-2" />
+                          Fiche complète (récoltes, opérations…)
+                        </Link>
+                      </Button>
 
                       {/* Bouton supprimer */}
                     <Button variant="destructive" size="sm" onClick={handleDeleteArbre} className="w-full">
@@ -2359,8 +2986,9 @@ function JardinContent() {
               </CardHeader>
               <CardContent className="text-xs text-muted-foreground space-y-1">
                 <p>• Glissez un élément pour le déplacer</p>
+                <p>• Glissez le fond pour déplacer la vue</p>
                 <p>• Shift+clic pour multi-sélection</p>
-                <p>• Dessinez un rectangle pour sélectionner un groupe</p>
+                <p>• Maj+glissez pour sélectionner un groupe au rectangle</p>
                 <p>• Glissez un élément du groupe pour tout déplacer</p>
                 <p className="border-t pt-2 mt-2">
                   <span className="font-medium text-slate-700">Photo satellite en fond :</span>{" "}
@@ -2375,6 +3003,13 @@ function JardinContent() {
                   • Vous pouvez aussi importer votre propre image (photo de drone…) via le
                   bouton « Fond », puis caler l&apos;échelle en cliquant 2 repères connus.
                 </p>
+                {arbresGpsProjetables > 0 && (
+                  <p className="text-emerald-700">
+                    • {arbresGpsProjetables} arbre{arbresGpsProjetables > 1 ? "s" : ""} avec relevé GPS{" "}
+                    {arbresGpsProjetables > 1 ? "sont alignés" : "est aligné"} automatiquement sur
+                    le fond géoréférencé.
+                  </p>
+                )}
               </CardContent>
             </Card>
           </div>

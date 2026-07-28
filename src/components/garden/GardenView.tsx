@@ -381,6 +381,13 @@ interface GardenViewProps {
   onPlancheMove?: (id: string, x: number, y: number) => void
   onObjetMove?: (id: number, x: number, y: number) => void
   onArbreMove?: (id: number, x: number, y: number) => void
+  onArbreMoveEnd?: (
+    id: number,
+    x: number,
+    y: number,
+    startX: number,
+    startY: number
+  ) => void
   scale?: number // pixels per meter
   onScaleChange?: (scale: number) => void
   // Couleurs personnalisables
@@ -410,6 +417,7 @@ export function GardenView({
   onPlancheMove,
   onObjetMove,
   onArbreMove,
+  onArbreMoveEnd,
   scale = 50,
   onScaleChange,
   plancheColor = "#8B5A2B",
@@ -428,11 +436,25 @@ export function GardenView({
   const [marquee, setMarquee] = React.useState<{ startX: number; startY: number; currentX: number; currentY: number } | null>(null)
   const [offset, setOffset] = React.useState({ x: 0, y: 0 })
   const [hasMoved, setHasMoved] = React.useState(false)
+  const arbreDragRef = React.useRef<{
+    id: number
+    startX: number
+    startY: number
+    x: number
+    y: number
+  } | null>(null)
   const [viewBox, setViewBox] = React.useState({ x: -1, y: -1, w: 20, h: 15 })
   const [bgImageSize, setBgImageSize] = React.useState<{ width: number; height: number } | null>(null)
   const [containerSize, setContainerSize] = React.useState({ width: 0, height: 0 })
   const activePointers = React.useRef(new Map<number, { x: number; y: number }>())
   const pinchStart = React.useRef<{ distance: number; scale: number } | null>(null)
+
+  // Pan du plan : glisser sur le fond fait défiler le conteneur. La sélection
+  // rectangle (marquee) reste disponible via Maj+glisser. Le pan travaille en
+  // coordonnées écran, car le défilement change le mapping écran→SVG.
+  const scrollRef = React.useRef<HTMLDivElement>(null)
+  const panStart = React.useRef<{ clientX: number; clientY: number; scrollLeft: number; scrollTop: number } | null>(null)
+  const [panning, setPanning] = React.useState(false)
 
   // Outils mesure/calibration : points cliqués (monde, mètres) + survol live.
   // Le point n'est posé qu'au pointerup si le doigt/curseur n'a pas bougé,
@@ -618,6 +640,8 @@ export function GardenView({
       setDragging(null)
       setGroupDrag(null)
       setMarquee(null)
+      panStart.current = null
+      setPanning(false)
     }
   }
 
@@ -671,7 +695,16 @@ export function GardenView({
         if (objet) setOffset({ x: svgP.x - objet.posX, y: svgP.y - objet.posY })
       } else {
         const arbre = arbres.find(a => a.id === id)
-        if (arbre) setOffset({ x: svgP.x - arbre.posX, y: svgP.y - arbre.posY })
+        if (arbre) {
+          setOffset({ x: svgP.x - arbre.posX, y: svgP.y - arbre.posY })
+          arbreDragRef.current = {
+            id: arbre.id,
+            startX: arbre.posX,
+            startY: arbre.posY,
+            x: arbre.posX,
+            y: arbre.posY,
+          }
+        }
       }
       setDragging({ type, id })
     }
@@ -693,11 +726,24 @@ export function GardenView({
     // Only react to background clicks (not bubbled from items)
     if (e.target !== svgRef.current && !(e.target as Element)?.closest?.('rect[data-bg]')) return
 
-    const svgP = clientToSvg(e.clientX, e.clientY)
-    if (!svgP) return
-
     setHasMoved(false)
-    setMarquee({ startX: svgP.x, startY: svgP.y, currentX: svgP.x, currentY: svgP.y })
+
+    // Maj+glisser : sélection rectangle. Glisser simple : déplacement de la vue.
+    if (e.shiftKey) {
+      const svgP = clientToSvg(e.clientX, e.clientY)
+      if (!svgP) return
+      setMarquee({ startX: svgP.x, startY: svgP.y, currentX: svgP.x, currentY: svgP.y })
+      return
+    }
+
+    const scroller = scrollRef.current
+    panStart.current = {
+      clientX: e.clientX,
+      clientY: e.clientY,
+      scrollLeft: scroller?.scrollLeft ?? 0,
+      scrollTop: scroller?.scrollTop ?? 0,
+    }
+    setPanning(true)
   }
 
   const handlePointerMove = (e: React.PointerEvent) => {
@@ -721,6 +767,19 @@ export function GardenView({
     }
 
     if (!editable) return
+
+    // Pan du fond : défilement du conteneur en coordonnées écran
+    if (panStart.current) {
+      const dx = e.clientX - panStart.current.clientX
+      const dy = e.clientY - panStart.current.clientY
+      if (!hasMoved && Math.hypot(dx, dy) > 3) setHasMoved(true)
+      const scroller = scrollRef.current
+      if (scroller) {
+        scroller.scrollLeft = panStart.current.scrollLeft - dx
+        scroller.scrollTop = panStart.current.scrollTop - dy
+      }
+      return
+    }
 
     const svgP = clientToSvg(e.clientX, e.clientY)
     if (!svgP) return
@@ -783,11 +842,24 @@ export function GardenView({
         onObjetMove?.(dragging.id as number, newX, newY)
       } else if (dragging.type === 'arbre') {
         onArbreMove?.(dragging.id as number, newX, newY)
+        if (arbreDragRef.current?.id === dragging.id) {
+          arbreDragRef.current.x = newX
+          arbreDragRef.current.y = newY
+        }
       }
     }
   }
 
   const finishInteraction = () => {
+    // Fin du pan : un clic sans mouvement sur le fond désélectionne tout
+    if (panStart.current) {
+      if (!hasMoved) onSelectionChange?.([])
+      panStart.current = null
+      setPanning(false)
+      setHasMoved(false)
+      return
+    }
+
     // Marquee release: select items in rect
     if (marquee) {
       if (hasMoved) {
@@ -812,8 +884,20 @@ export function GardenView({
     // Single drag release: if didn't move, it was a click → select the item
     if (dragging && !hasMoved) {
       onSelectionChange?.([{ type: dragging.type, id: dragging.id }])
+    } else if (dragging?.type === 'arbre' && hasMoved) {
+      const mouvement = arbreDragRef.current
+      if (mouvement?.id === dragging.id) {
+        onArbreMoveEnd?.(
+          mouvement.id,
+          mouvement.x,
+          mouvement.y,
+          mouvement.startX,
+          mouvement.startY
+        )
+      }
     }
     setDragging(null)
+    arbreDragRef.current = null
     setHasMoved(false)
   }
 
@@ -895,13 +979,19 @@ export function GardenView({
 
   return (
     <div ref={containerRef} className="h-full w-full relative">
-      <div className="absolute inset-0 overflow-auto">
+      <div ref={scrollRef} className="absolute inset-0 overflow-auto">
       <svg
         ref={svgRef}
         width={svgWidth}
         height={svgHeight}
         viewBox={`${effectiveViewBox.x} ${effectiveViewBox.y} ${effectiveViewBox.w} ${effectiveViewBox.h}`}
-        className={toolActive || editable ? "cursor-crosshair touch-none select-none" : "touch-pan-x touch-pan-y"}
+        className={
+          toolActive
+            ? "cursor-crosshair touch-none select-none"
+            : editable
+              ? `${panning ? "cursor-grabbing" : "cursor-grab"} touch-none select-none`
+              : "touch-pan-x touch-pan-y"
+        }
         onPointerDown={handleSvgPointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}

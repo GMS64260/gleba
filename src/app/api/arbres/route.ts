@@ -11,6 +11,7 @@ import { findTreeCareProfile, generateCareOperations } from "@/lib/tree-care-cal
 import { zoneEffectiveUser } from "@/lib/terroir"
 import { adequationEspece } from "@/lib/adequation-zone"
 import { visibiliteReferentiel } from "@/lib/referentiel-communaute"
+import { trouverParcelleGpsProche } from "@/lib/parcelle-gps-utils"
 
 // Types d'arbres disponibles
 export const TYPES_ARBRES = [
@@ -140,6 +141,21 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const gpsLat =
+      body.gpsLat == null || body.gpsLat === "" ? null : Number(body.gpsLat)
+    const gpsLng =
+      body.gpsLng == null || body.gpsLng === "" ? null : Number(body.gpsLng)
+    if (
+      (gpsLat != null && (!Number.isFinite(gpsLat) || gpsLat < -90 || gpsLat > 90)) ||
+      (gpsLng != null && (!Number.isFinite(gpsLng) || gpsLng < -180 || gpsLng > 180)) ||
+      (gpsLat == null) !== (gpsLng == null)
+    ) {
+      return NextResponse.json(
+        { error: "Les coordonnées GPS sont invalides ou incomplètes" },
+        { status: 400 }
+      )
+    }
+
     // Isolation multi-tenant : la zone / parcelle référencée doit appartenir à l'utilisateur
     if (body.zoneId) {
       const zoneId = parseInt(body.zoneId)
@@ -152,26 +168,37 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Zone non trouvée" }, { status: 404 })
       }
     }
-    if (body.parcelleGeoId) {
+    let parcelleGeoId = body.parcelleGeoId || null
+    if (parcelleGeoId) {
       const parcelle = await prisma.parcelleGeo.findFirst({
-        where: { id: body.parcelleGeoId, userId: session!.user.id },
+        where: { id: parcelleGeoId, userId: session!.user.id },
       })
       if (!parcelle) {
         return NextResponse.json({ error: "Parcelle non trouvée" }, { status: 404 })
       }
-      if (body.espece && await prisma.lotArbres.findFirst({
+    } else if (gpsLat != null && gpsLng != null) {
+      const parcelles = await prisma.parcelleGeo.findMany({
+        where: { userId: session!.user.id },
+        select: { id: true, geometry: true },
+      })
+      parcelleGeoId = trouverParcelleGpsProche(parcelles, gpsLat, gpsLng)?.id ?? null
+    }
+    if (
+      parcelleGeoId &&
+      body.espece &&
+      await prisma.lotArbres.findFirst({
         where: {
           userId: session!.user.id,
-          parcelleGeoId: body.parcelleGeoId,
+          parcelleGeoId,
           espece: { equals: String(body.espece).trim(), mode: "insensitive" },
         },
         select: { id: true },
-      })) {
-        return NextResponse.json(
-          { error: "Cette espèce est déjà suivie en lot agrégé sur la parcelle ; choisissez un seul mode de suivi" },
-          { status: 409 }
-        )
-      }
+      })
+    ) {
+      return NextResponse.json(
+        { error: "Cette espèce est déjà suivie en lot agrégé sur la parcelle ; choisissez un seul mode de suivi" },
+        { status: 409 }
+      )
     }
 
     const arbre = await prisma.arbre.create({
@@ -217,12 +244,12 @@ export async function POST(request: NextRequest) {
         periodeRecolte: body.periodeRecolte || null,
         conservation: body.conservation || null,
         zoneId: body.zoneId ? parseInt(body.zoneId) : null,
-        parcelleGeoId: body.parcelleGeoId || null,
+        parcelleGeoId,
         // PROMPT 10 — porte-greffe FK + circonférence + GPS
         porteGreffeId: body.porteGreffeId || null,
         circonferenceCm: body.circonferenceCm != null ? parseFloat(body.circonferenceCm) : null,
-        gpsLat: body.gpsLat != null ? parseFloat(body.gpsLat) : null,
-        gpsLng: body.gpsLng != null ? parseFloat(body.gpsLng) : null,
+        gpsLat,
+        gpsLng,
       },
       include: {
         zone: { select: { id: true, nom: true } },

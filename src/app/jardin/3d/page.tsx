@@ -18,6 +18,7 @@ import { Garden3DView, type Culture3D, type Garden3DData, type Garden3DFond, typ
 import { PluviometriePlanche } from "@/components/meteo/PluviometriePlanche"
 import { cultureSelectionnee } from "@/components/garden/garden3d/detail"
 import { useFondPlan } from "@/hooks/use-fond-plan"
+import { projeterGpsSurPlan } from "@/lib/gps-plan-utils"
 
 const JOUR_MS = 24 * 3600 * 1000
 
@@ -102,6 +103,7 @@ function Jardin3DContent() {
     planches: Record<string, unknown>[]
     objets: Record<string, unknown>[]
     arbres: Record<string, unknown>[]
+    geometryParcelle: string | null
   } | null>(null)
   const [error, setError] = React.useState<string | null>(null)
   const [autoRotate, setAutoRotate] = React.useState(false)
@@ -143,25 +145,32 @@ function Jardin3DContent() {
     async function load() {
       try {
         const suffix = parcelleId ? `?parcelle=${encodeURIComponent(parcelleId)}` : "?parcelle=all"
-        const [rp, ro, ra] = await Promise.all([
+        const [rp, ro, ra, rc] = await Promise.all([
           fetch(`/api/jardin${suffix}`),
           fetch(`/api/objets-jardin${suffix}`),
           fetch(`/api/arbres${suffix}`),
+          fetch("/api/carte"),
         ])
-        if (rp.status === 401 || ro.status === 401 || ra.status === 401) {
+        if (rp.status === 401 || ro.status === 401 || ra.status === 401 || rc.status === 401) {
           setError("Session expirée — reconnectez-vous.")
           return
         }
-        const [planches, objets, arbres] = await Promise.all([
+        const [planches, objets, arbres, parcelles] = await Promise.all([
           rp.ok ? rp.json() : [],
           ro.ok ? ro.json() : [],
           ra.ok ? ra.json() : [],
+          rc.ok ? rc.json() : [],
         ])
         if (cancelled) return
+        const parcelle = (Array.isArray(parcelles) ? parcelles : []).find(
+          (item: { id?: unknown }) => item.id === parcelleId
+        ) as { geometry?: unknown } | undefined
         setRaw({
           planches: Array.isArray(planches) ? planches : [],
           objets: Array.isArray(objets) ? objets : [],
           arbres: Array.isArray(arbres) ? arbres : [],
+          geometryParcelle:
+            typeof parcelle?.geometry === "string" ? parcelle.geometry : null,
         })
       } catch {
         if (!cancelled) setError("Impossible de charger le plan du jardin.")
@@ -182,12 +191,41 @@ function Jardin3DContent() {
         .map((c: unknown) => ({ ...(c as object), croissance: croissanceCulture(c as never, dateAffichee) }))
         .filter((c: { croissance: number | null }) => c.croissance !== null),
     }))
-    const arbres = raw.arbres.map((a) => ({
-      ...(a as object),
-      envergure: envergureArbreADate(a as never, dateAffichee, today),
-    }))
+    const arbres = raw.arbres.map((a) => {
+      const arbre = a as {
+        gpsLat?: unknown
+        gpsLng?: unknown
+        posX?: unknown
+        posY?: unknown
+      }
+      const position =
+        raw.geometryParcelle &&
+        fond &&
+        fond3D &&
+        fond.source === "parcelle" &&
+        fond.parcelleKey === parcelleId &&
+        fond.contour &&
+        typeof arbre.gpsLat === "number" &&
+        typeof arbre.gpsLng === "number"
+          ? projeterGpsSurPlan({
+              gpsLat: arbre.gpsLat,
+              gpsLng: arbre.gpsLng,
+              geometryGeoJson: raw.geometryParcelle,
+              contour: fond.contour,
+              fond,
+              imageWidth: fond3D.imageWidth,
+              imageHeight: fond3D.imageHeight,
+            })
+          : null
+      return {
+        ...(a as object),
+        posX: position?.x ?? arbre.posX,
+        posY: position?.y ?? arbre.posY,
+        envergure: envergureArbreADate(a as never, dateAffichee, today),
+      }
+    })
     return { planches: planches as never, objets: raw.objets as never, arbres: arbres as never }
-  }, [raw, dateAffichee, today])
+  }, [raw, dateAffichee, today, fond, fond3D, parcelleId])
 
   // Conserver seulement l'identifiant : la planche sélectionnée doit toujours
   // provenir des données recalculées par la barre temporelle.
