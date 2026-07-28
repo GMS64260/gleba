@@ -40,7 +40,7 @@ export function Footer() {
               GitHub
             </a>
             <Link
-              href="/LICENSE"
+              href="/licence"
               className="text-muted-foreground hover:text-green-600 transition-colors"
             >
               Licence AGPL-3.0

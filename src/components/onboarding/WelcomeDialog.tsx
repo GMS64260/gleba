@@ -171,7 +171,7 @@ export function WelcomeDialog({ open, onOpenChange, onComplete }: WelcomeDialogP
             </dl>
             <div className="mt-3 text-right">
               <Link
-                href="/parametres#glossaire"
+                href="/glossaire"
                 className="text-xs text-emerald-700 hover:text-emerald-900 hover:underline inline-flex items-center gap-1"
                 onClick={() => onOpenChange(false)}
               >
