@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
+import { trouverParcelleGpsProche } from "@/lib/parcelle-gps-utils"
 
 interface Params {
   params: Promise<{ id: string }>
@@ -106,6 +107,77 @@ export async function PUT(request: NextRequest, { params }: Params) {
       }
     }
 
+    const gpsLat =
+      body.gpsLat !== undefined
+        ? body.gpsLat == null || body.gpsLat === ""
+          ? null
+          : Number(body.gpsLat)
+        : existing.gpsLat
+    const gpsLng =
+      body.gpsLng !== undefined
+        ? body.gpsLng == null || body.gpsLng === ""
+          ? null
+          : Number(body.gpsLng)
+        : existing.gpsLng
+    if (
+      (gpsLat != null && (!Number.isFinite(gpsLat) || gpsLat < -90 || gpsLat > 90)) ||
+      (gpsLng != null && (!Number.isFinite(gpsLng) || gpsLng < -180 || gpsLng > 180)) ||
+      (gpsLat == null) !== (gpsLng == null)
+    ) {
+      return NextResponse.json(
+        { error: "Les coordonnées GPS sont invalides ou incomplètes" },
+        { status: 400 }
+      )
+    }
+
+    let parcelleGeoId =
+      body.parcelleGeoId !== undefined ? (body.parcelleGeoId || null) : existing.parcelleGeoId
+    if (
+      body.parcelleGeoId === undefined &&
+      !existing.parcelleGeoId &&
+      (body.gpsLat !== undefined || body.gpsLng !== undefined) &&
+      gpsLat != null &&
+      gpsLng != null
+    ) {
+      const parcelles = await prisma.parcelleGeo.findMany({
+        where: { userId: session!.user.id },
+        select: { id: true, geometry: true },
+      })
+      parcelleGeoId = trouverParcelleGpsProche(parcelles, gpsLat, gpsLng)?.id ?? null
+    }
+    const espece =
+      body.espece !== undefined ? (String(body.espece).trim() || null) : existing.espece
+    const rattachementChange =
+      parcelleGeoId !== existing.parcelleGeoId ||
+      (espece ?? "").toLocaleLowerCase("fr") !==
+        (existing.espece ?? "").trim().toLocaleLowerCase("fr")
+
+    // Un même couple parcelle + espèce ne doit pas être suivi à la fois
+    // individuellement et dans un lot agrégé. On ne bloque que lorsqu'une
+    // réaffectation ou un changement d'espèce introduit le conflit, afin de
+    // laisser modifiables les éventuelles données historiques déjà incohérentes.
+    if (
+      rattachementChange &&
+      parcelleGeoId &&
+      espece &&
+      await prisma.lotArbres.findFirst({
+        where: {
+          userId: session!.user.id,
+          parcelleGeoId,
+          espece: { equals: espece, mode: "insensitive" },
+        },
+        select: { id: true },
+      })
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Cette espèce est déjà suivie en lot agrégé sur la parcelle ; choisissez un seul mode de suivi",
+        },
+        { status: 409 }
+      )
+    }
+
     const arbre = await prisma.arbre.update({
       where: { id: arbreId },
       data: {
@@ -120,12 +192,8 @@ export async function PUT(request: NextRequest, { params }: Params) {
         circonferenceCm: body.circonferenceCm !== undefined
           ? (body.circonferenceCm != null ? parseFloat(body.circonferenceCm) : null)
           : undefined,
-        gpsLat: body.gpsLat !== undefined
-          ? (body.gpsLat != null ? parseFloat(body.gpsLat) : null)
-          : undefined,
-        gpsLng: body.gpsLng !== undefined
-          ? (body.gpsLng != null ? parseFloat(body.gpsLng) : null)
-          : undefined,
+        gpsLat: body.gpsLat !== undefined ? gpsLat : undefined,
+        gpsLng: body.gpsLng !== undefined ? gpsLng : undefined,
         fournisseur: body.fournisseur,
         dateAchat: body.dateAchat !== undefined ? (body.dateAchat ? new Date(body.dateAchat) : null) : undefined,
         prixAchat: body.prixAchat !== undefined
@@ -168,7 +236,10 @@ export async function PUT(request: NextRequest, { params }: Params) {
         conservation: body.conservation !== undefined ? (body.conservation || null) : undefined,
         surfaceCanopee: body.surfaceCanopee !== undefined ? (body.surfaceCanopee ? parseFloat(body.surfaceCanopee) : null) : undefined,
         zoneId: body.zoneId !== undefined ? (body.zoneId ? parseInt(body.zoneId) : null) : undefined,
-        parcelleGeoId: body.parcelleGeoId !== undefined ? (body.parcelleGeoId || null) : undefined,
+        parcelleGeoId:
+          body.parcelleGeoId !== undefined || parcelleGeoId !== existing.parcelleGeoId
+            ? parcelleGeoId
+            : undefined,
         dateSuppression: body.dateSuppression !== undefined ? (body.dateSuppression ? new Date(body.dateSuppression) : null) : undefined,
         causeSuppression: body.causeSuppression !== undefined ? (body.causeSuppression || null) : undefined,
       },

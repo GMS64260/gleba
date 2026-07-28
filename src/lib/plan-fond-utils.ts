@@ -54,6 +54,36 @@ export function fondVersMonde(
   return { x: fond.offsetX + c.x + r.x, y: fond.offsetY + c.y + r.y }
 }
 
+/** Inverse de fondVersMonde : retrouve le pixel image sous un point du plan. */
+export function mondeVersFond(
+  pMonde: Point,
+  fond: FondReglages,
+  imageWidth: number,
+  imageHeight: number
+): Point | null {
+  const s = fond.scale
+  if (
+    !(s > 0) ||
+    !Number.isFinite(pMonde.x) ||
+    !Number.isFinite(pMonde.y) ||
+    !(imageWidth > 0) ||
+    !(imageHeight > 0)
+  ) {
+    return null
+  }
+
+  const theta = rad(fond.rotation)
+  const c = { x: (imageWidth * s) / 2, y: (imageHeight * s) / 2 }
+  const rel = rot(
+    {
+      x: pMonde.x - fond.offsetX - c.x,
+      y: pMonde.y - fond.offsetY - c.y,
+    },
+    -theta
+  )
+  return { x: (c.x + rel.x) / s, y: (c.y + rel.y) / s }
+}
+
 /**
  * Calibration 2 points : l'utilisateur clique deux repères sur le plan et
  * saisit la distance réelle qui les sépare. Retourne les nouveaux réglages

@@ -14,6 +14,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  calculerBboxCapture,
+  contourEnPixels,
+  dimensionsCaptureMetrique,
+  type PointGps,
+} from '@/lib/satellite-plan-utils'
 
 interface ParcelleGeoData {
   id: string
@@ -442,72 +448,6 @@ export default function ParcellePanel({
 }
 
 /**
- * Calcule le bounding box d'un polygone GeoJSON
- */
-function getBoundingBox(geojsonStr: string) {
-  try {
-    const geo = JSON.parse(geojsonStr)
-    const coords: [number, number][] =
-      geo.type === 'MultiPolygon'
-        ? geo.coordinates.flat(2)
-        : geo.coordinates[0]
-    let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity
-    for (const [lng, lat] of coords) {
-      if (lng < minLng) minLng = lng
-      if (lat < minLat) minLat = lat
-      if (lng > maxLng) maxLng = lng
-      if (lat > maxLat) maxLat = lat
-    }
-    // Marge de 5% pour ne pas coller aux bords
-    const dLng = (maxLng - minLng) * 0.05
-    const dLat = (maxLat - minLat) * 0.05
-    return {
-      lng1: minLng - dLng,
-      lat1: minLat - dLat,
-      lng2: maxLng + dLng,
-      lat2: maxLat + dLat,
-    }
-  } catch {
-    return null
-  }
-}
-
-/**
- * Projette le polygone de la parcelle dans les PIXELS de l'image capturée
- * (même bbox, même dimensions) : le contour reste collé à la photo sur le
- * plan 2D, même après recalibration ou rotation du fond.
- */
-function contourEnPixels(
-  geojsonStr: string,
-  bbox: { lng1: number; lat1: number; lng2: number; lat2: number },
-  width: number,
-  height: number
-): number[][][] | null {
-  try {
-    const geo = JSON.parse(geojsonStr)
-    const rings: [number, number][][] =
-      geo.type === 'MultiPolygon'
-        ? geo.coordinates.map((poly: [number, number][][]) => poly[0])
-        : geo.type === 'Polygon'
-          ? [geo.coordinates[0]]
-          : []
-    if (rings.length === 0) return null
-    const dLng = bbox.lng2 - bbox.lng1
-    const dLat = bbox.lat2 - bbox.lat1
-    if (dLng <= 0 || dLat <= 0) return null
-    // Le haut de l'image WMS = lat2 (nord) → py croît vers le sud
-    return rings.map(ring =>
-      ring.map(([lng, lat]) => [
-        Math.round(((lng - bbox.lng1) / dLng) * width * 100) / 100,
-        Math.round(((bbox.lat2 - lat) / dLat) * height * 100) / 100,
-      ])
-    )
-  } catch {
-    return null
-  }
-}
-
-/**
  * Bloc d'export de l'image satellite vers le plan 2D
  */
 function SatelliteExport({ geometry, parcelleId }: { geometry: string; parcelleId: string }) {
@@ -516,19 +456,34 @@ function SatelliteExport({ geometry, parcelleId }: { geometry: string; parcelleI
   const [erreur, setErreur] = useState<string | null>(null)
 
   const handleCapture = async () => {
-    const bbox = getBoundingBox(geometry)
-    if (!bbox) {
-      setErreur('Géométrie de parcelle illisible')
-      return
-    }
-
     setCapturing(true)
     setCaptured(false)
     setErreur(null)
 
     try {
+      // Une parcelle peut avoir des arbres relevés quelques mètres au-delà de
+      // son contour administratif. Ils doivent faire partie de l'étendue de
+      // l'orthophoto afin que 2D et 3D montrent leur vraie position.
+      const arbresRes = await fetch(`/api/arbres?parcelle=${encodeURIComponent(parcelleId)}`)
+      const arbres = arbresRes.ok ? await arbresRes.json() : []
+      const pointsGps: PointGps[] = (Array.isArray(arbres) ? arbres : [])
+        .filter(
+          (arbre: { gpsLat?: unknown; gpsLng?: unknown }) =>
+            typeof arbre.gpsLat === 'number' &&
+            Number.isFinite(arbre.gpsLat) &&
+            typeof arbre.gpsLng === 'number' &&
+            Number.isFinite(arbre.gpsLng)
+        )
+        .map((arbre: { gpsLat: number; gpsLng: number }) => ({
+          lat: arbre.gpsLat,
+          lng: arbre.gpsLng,
+        }))
+      const bbox = calculerBboxCapture(geometry, pointsGps)
+      const dimensions = bbox ? dimensionsCaptureMetrique(bbox) : null
+      if (!bbox || !dimensions) throw new Error('Géométrie de parcelle illisible')
+
       const res = await fetch(
-        `/api/carte/satellite?bbox=${bbox.lng1},${bbox.lat1},${bbox.lng2},${bbox.lat2}&width=1280&height=1024`
+        `/api/carte/satellite?bbox=${bbox.lng1},${bbox.lat1},${bbox.lng2},${bbox.lat2}&width=${dimensions.width}&height=${dimensions.height}`
       )
       if (!res.ok) throw new Error("Impossible de récupérer l'image satellite IGN")
 

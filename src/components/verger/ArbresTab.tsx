@@ -29,6 +29,7 @@ import { GpsMapPickerDialog } from "@/components/gps/GpsMapPickerDialog"
 import { ReleveGpsDialog } from "@/components/verger/ReleveGpsDialog"
 import { roundCoord } from "@/lib/geolocation"
 import { adequationEspece } from "@/lib/adequation-zone"
+import { CONDUITES_ARBRE } from "@/lib/verger/arbre-constants"
 import type { ZoneClimat } from "@/lib/terroir"
 import { Snowflake } from "lucide-react"
 
@@ -112,8 +113,6 @@ interface LotArbres {
   parcelleGeoId: string
   parcelleGeo: { id: string; nom: string }
 }
-
-const CONDUITES_ARBRE = ["Gobelet", "Axe central", "Palmette", "Espalier", "Libre"] as const
 
 interface EspeceRef {
   id: string

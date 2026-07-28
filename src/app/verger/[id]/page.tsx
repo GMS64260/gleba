@@ -19,6 +19,8 @@ import { useToast } from "@/hooks/use-toast"
 import { GpsPositionButton } from "@/components/gps/GpsPositionButton"
 import { GpsMapPickerDialog } from "@/components/gps/GpsMapPickerDialog"
 import { roundCoord } from "@/lib/geolocation"
+import { parcelleCompatibleVerger } from "@/lib/verger/lot-arbres"
+import { CONDUITES_ARBRE, ETATS_ARBRE as ETATS } from "@/lib/verger/arbre-constants"
 
 interface Arbre {
   id: number
@@ -45,6 +47,7 @@ interface Arbre {
   etat: string | null
   pollinisateur: string | null
   couleur: string | null
+  parcelleGeoId: string | null
   notes: string | null
   productif: boolean
   anneeProduction: number | null
@@ -59,8 +62,31 @@ interface Arbre {
   }
 }
 
-// Mêmes valeurs que ArbresTab (création) pour cohérence.
-const CONDUITES_ARBRE = ["Gobelet", "Axe central", "Palmette", "Espalier", "Libre"] as const
+interface ParcelleVerger {
+  id: string
+  nom: string
+  usage: string | null
+  couches: string[]
+}
+
+interface EspeceRef {
+  id: string
+  type: string
+}
+
+interface VarieteRef {
+  id: string
+  especeId: string
+}
+
+interface FournisseurRef {
+  id?: string | null
+}
+
+const TYPE_TO_REF: Record<string, string> = {
+  fruitier: "arbre_fruitier",
+  petit_fruit: "petit_fruit",
+}
 
 const TYPES_ARBRES = [
   { value: "fruitier", label: "Fruitier" },
@@ -70,13 +96,6 @@ const TYPES_ARBRES = [
   { value: "haie", label: "Haie" },
 ]
 
-const ETATS = [
-  { value: "excellent", label: "Excellent" },
-  { value: "bon", label: "Bon" },
-  { value: "moyen", label: "Moyen" },
-  { value: "mauvais", label: "Mauvais" },
-  { value: "mort", label: "Mort" },
-]
 
 export default function DetailArbrePage() {
   const { id } = useParams()
@@ -87,9 +106,11 @@ export default function DetailArbrePage() {
   const [loading, setLoading] = React.useState(true)
   const [saving, setSaving] = React.useState(false)
   const [suggestions, setSuggestions] = React.useState<{especes: string[], varietes: string[], fournisseurs: string[], portGreffes: string[]}>({especes: [], varietes: [], fournisseurs: [], portGreffes: []})
-  const [especesRef, setEspecesRef] = React.useState<{id: string, type: string}[]>([])
-  const [varietesRef, setVarietesRef] = React.useState<{id: string, especeId: string}[]>([])
+  const [especesRef, setEspecesRef] = React.useState<EspeceRef[]>([])
+  const [varietesRef, setVarietesRef] = React.useState<VarieteRef[]>([])
   const [fournisseursRef, setFournisseursRef] = React.useState<string[]>([])
+  const [parcelles, setParcelles] = React.useState<ParcelleVerger[]>([])
+  const [parcellesLoading, setParcellesLoading] = React.useState(true)
   // Bug #1 — Référentiel des porte-greffes compatibles avec l'espèce.
   const [portesGreffesRef, setPortesGreffesRef] = React.useState<Array<{ id: string; nom: string; vigueur: number | null; precocite: number | null }>>([])
   // Feedback LVBB40430 — saisie GPS assistée (géoloc directe + carte)
@@ -101,18 +122,24 @@ export default function DetailArbrePage() {
     // Suggestions issues des arbres déjà saisis
     fetch("/api/arbres").then(r => r.json()).then(data => {
       if (Array.isArray(data)) {
+        const arbres = data as Array<
+          Pick<
+            Arbre,
+            "id" | "nom" | "espece" | "variete" | "fournisseur" | "portGreffe" | "gpsLat" | "gpsLng"
+          >
+        >
         setSuggestions({
-          especes: [...new Set(data.map((a: any) => a.espece).filter(Boolean))].sort() as string[],
-          varietes: [...new Set(data.map((a: any) => a.variete).filter(Boolean))].sort() as string[],
-          fournisseurs: [...new Set(data.map((a: any) => a.fournisseur).filter(Boolean))].sort() as string[],
-          portGreffes: [...new Set(data.map((a: any) => a.portGreffe).filter(Boolean))].sort() as string[],
+          especes: [...new Set(arbres.map((a) => a.espece).filter(Boolean))].sort() as string[],
+          varietes: [...new Set(arbres.map((a) => a.variete).filter(Boolean))].sort() as string[],
+          fournisseurs: [...new Set(arbres.map((a) => a.fournisseur).filter(Boolean))].sort() as string[],
+          portGreffes: [...new Set(arbres.map((a) => a.portGreffe).filter(Boolean))].sort() as string[],
         })
         // Feedback LVBB40430 — les autres arbres géolocalisés servent de
         // repères sur le sélecteur carte.
         setAutresArbresGps(
-          data
-            .filter((a: any) => a.gpsLat != null && a.gpsLng != null && a.id !== Number(id))
-            .map((a: any) => ({ lat: a.gpsLat, lng: a.gpsLng, label: a.nom }))
+          arbres
+            .filter((a) => a.gpsLat != null && a.gpsLng != null && a.id !== Number(id))
+            .map((a) => ({ lat: a.gpsLat!, lng: a.gpsLng!, label: a.nom }))
         )
       }
     })
@@ -122,22 +149,35 @@ export default function DetailArbrePage() {
       fetch("/api/especes?type=all_arbres&pageSize=500").then(r => r.json()).catch(() => null),
       fetch("/api/varietes?pageSize=1000").then(r => r.json()).catch(() => null),
       fetch("/api/comptabilite/fournisseurs?actif=true").then(r => r.json()).catch(() => null),
-    ]).then(([especesRes, varietesRes, fournisseursRes]) => {
-      const especes = especesRes?.data || []
-      setEspecesRef(especes.map((e: any) => ({ id: e.id, type: e.type })))
-      const especesIds = new Set(especes.map((e: any) => e.id))
-      const varietes = (varietesRes?.data || [])
-        .filter((v: any) => especesIds.has(v.especeId))
-        .map((v: any) => ({ id: v.id, especeId: v.especeId }))
+      fetch("/api/carte").then(r => r.ok ? r.json() : []).catch(() => []),
+    ]).then(([especesRes, varietesRes, fournisseursRes, parcellesRes]) => {
+      const especes = (Array.isArray(especesRes?.data) ? especesRes.data : []) as EspeceRef[]
+      setEspecesRef(especes.map((e) => ({ id: e.id, type: e.type })))
+      const especesIds = new Set(especes.map((e) => e.id))
+      const varietes = (
+        (Array.isArray(varietesRes?.data) ? varietesRes.data : []) as VarieteRef[]
+      )
+        .filter((v) => especesIds.has(v.especeId))
+        .map((v) => ({ id: v.id, especeId: v.especeId }))
       setVarietesRef(varietes)
-      const fournisseurs = (fournisseursRes?.data || [])
-        .map((f: any) => f.id)
-        .filter(Boolean)
+      const fournisseurs = (
+        (Array.isArray(fournisseursRes?.data) ? fournisseursRes.data : []) as FournisseurRef[]
+      )
+        .map((f) => f.id)
+        .filter((fournisseur): fournisseur is string => Boolean(fournisseur))
       setFournisseursRef(fournisseurs)
+      setParcelles(
+        (Array.isArray(parcellesRes) ? parcellesRes : []).map((p: ParcelleVerger) => ({
+          id: p.id,
+          nom: p.nom,
+          usage: p.usage,
+          couches: p.couches ?? [],
+        }))
+      )
+    }).finally(() => {
+      setParcellesLoading(false)
     })
   }, [id])
-
-  const TYPE_TO_REF: Record<string, string> = { fruitier: "arbre_fruitier", petit_fruit: "petit_fruit" }
 
   const especeOptions = React.useMemo(() => {
     const refType = arbre ? TYPE_TO_REF[arbre.type] : null
@@ -147,7 +187,7 @@ export default function DetailArbrePage() {
     return [...new Set([...refEspeces, ...suggestions.especes])]
       .sort()
       .map(v => ({ value: v, label: v }))
-  }, [especesRef, suggestions.especes, arbre?.type])
+  }, [especesRef, suggestions.especes, arbre])
 
   const varieteOptions = React.useMemo(() => {
     const refVarietes = arbre?.espece
@@ -163,6 +203,17 @@ export default function DetailArbrePage() {
       .sort()
       .map(v => ({ value: v, label: v }))
   }, [fournisseursRef, suggestions.fournisseurs])
+
+  const parcellesVerger = React.useMemo(
+    () =>
+      parcelles
+        .filter(
+          (parcelle) =>
+            parcelleCompatibleVerger(parcelle) || parcelle.id === arbre?.parcelleGeoId
+        )
+        .sort((a, b) => a.nom.localeCompare(b.nom, "fr")),
+    [parcelles, arbre?.parcelleGeoId]
+  )
 
   React.useEffect(() => {
     const fetchArbre = async () => {
@@ -225,9 +276,16 @@ export default function DetailArbrePage() {
       })
 
       if (res.ok) {
+        const updated = await res.json()
+        setArbre((current) => current ? { ...current, ...updated } : current)
         toast({ title: "Arbre mis à jour" })
       } else {
-        toast({ title: "Erreur lors de la sauvegarde", variant: "destructive" })
+        const data = await res.json().catch(() => null)
+        toast({
+          title: "Erreur lors de la sauvegarde",
+          description: data?.error || "La modification n’a pas pu être enregistrée.",
+          variant: "destructive",
+        })
       }
     } catch (err) {
       console.error("Erreur sauvegarde:", err)
@@ -424,6 +482,44 @@ export default function DetailArbrePage() {
                   </div>
                 </div>
 
+                <div className="space-y-2 rounded-lg border border-emerald-200 bg-emerald-50/60 p-3">
+                  <Label>Parcelle du verger</Label>
+                  <Select
+                    value={arbre.parcelleGeoId || "__none__"}
+                    onValueChange={(value) =>
+                      setArbre({
+                        ...arbre,
+                        parcelleGeoId: value === "__none__" ? null : value,
+                      })
+                    }
+                    disabled={parcellesLoading}
+                  >
+                    <SelectTrigger>
+                      <SelectValue
+                        placeholder={parcellesLoading ? "Chargement…" : "Aucune parcelle"}
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Aucune parcelle</SelectItem>
+                      {parcellesVerger.map((parcelle) => (
+                        <SelectItem key={parcelle.id} value={parcelle.id}>
+                          {parcelle.nom}
+                          {parcelle.usage ? ` — ${parcelle.usage}` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Vous pouvez rattacher, déplacer ou retirer cet arbre d’une parcelle,
+                    puis enregistrer avec « Sauvegarder ».
+                  </p>
+                  {!parcellesLoading && parcellesVerger.length === 0 && (
+                    <p className="text-xs text-amber-700">
+                      Aucune parcelle catégorisée Verger n’est disponible dans votre plan.
+                    </p>
+                  )}
+                </div>
+
                 {/* Bug #1 — Conduite (formeTaille) + Circonférence + GPS lat/lng */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
@@ -559,7 +655,7 @@ export default function DetailArbrePage() {
                     />
                   </div>
                   <div>
-                    <Label>Date d'achat</Label>
+                    <Label>Date d’achat</Label>
                     <Input
                       type="date"
                       value={arbre.dateAchat?.split("T")[0] || ""}
@@ -567,7 +663,7 @@ export default function DetailArbrePage() {
                     />
                   </div>
                   <div>
-                    <Label>Prix d'achat (€)</Label>
+                    <Label>Prix d’achat (€)</Label>
                     <Input
                       type="number"
                       step="0.01"
