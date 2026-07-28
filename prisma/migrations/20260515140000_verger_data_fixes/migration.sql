@@ -22,7 +22,7 @@ UPDATE arbres
 -- === Bug #3 : récolte Golden mai → septembre (date plausible) ===
 UPDATE recoltes_arbres ra
    SET date = '2026-09-15'::timestamp,
-       notes = COALESCE(notes || E'\n', '') ||
+       notes = COALESCE(ra.notes || E'\n', '') ||
          'Date corrigée 2026-05-15 (audit Hélène) : saisie initiale 14/05 incohérente avec cycle Golden (récolte sept-oct).'
   FROM arbres a
  WHERE ra.arbre_id = a.id

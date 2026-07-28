@@ -62,6 +62,10 @@ async function main() {
     if (existingAdmin.role !== "ADMIN") {
       throw new Error("Le compte configuré comme administrateur existe sans le rôle ADMIN")
     }
+    await prisma.user.update({
+      where: { id: existingAdmin.id },
+      data: { active: true, emailVerified: true },
+    })
     console.log("✓ Utilisateur admin déjà présent")
   } else {
     const hashedPasswordAdmin = await bcrypt.hash(adminPassword, 12)
@@ -73,6 +77,7 @@ async function main() {
         name: adminName,
         role: "ADMIN",
         active: true,
+        emailVerified: true,
       },
     })
     console.log("✓ Utilisateur admin créé")
@@ -82,13 +87,14 @@ async function main() {
   const hashedPasswordDemoReal = await bcrypt.hash("demo2026", 12)
   const demoUser = await prisma.user.upsert({
     where: { email: "demo@gleba.fr" },
-    update: {},
+    update: { active: true, emailVerified: true },
     create: {
       email: "demo@gleba.fr",
       password: hashedPasswordDemoReal,
       name: "Compte Démo",
       role: "USER",
       active: true,
+      emailVerified: true,
     },
   })
   const demoUserId = demoUser.id

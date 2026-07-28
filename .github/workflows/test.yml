@@ -10,6 +10,19 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4-alpine
+        env:
+          POSTGRES_PASSWORD: gleba_test
+          POSTGRES_DB: gleba_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d gleba_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,6 +44,17 @@ jobs:
         env:
           # URL bidon : on n'a pas besoin de connexion DB pour `prisma generate`
           DATABASE_URL: "postgresql://x:x@localhost:5432/x"
+
+      - name: Validate fresh database bootstrap
+        run: |
+          npx prisma migrate deploy
+          npx tsx prisma/seed.ts
+          npx tsx scripts/verify-bootstrap.ts
+        env:
+          DATABASE_URL: "postgresql://postgres:gleba_test@localhost:5432/gleba_test"
+          ADMIN_EMAIL: "admin@example.test"
+          ADMIN_NAME: "Test Admin"
+          ADMIN_PASSWORD: "ci-only-password"
 
       - name: Lint quality gate
         run: npm run lint:ci -- --base "$LINT_BASE_SHA"
