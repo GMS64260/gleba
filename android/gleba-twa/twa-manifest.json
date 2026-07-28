@@ -1,0 +1,55 @@
+{
+  "packageId": "fr.gleba.app",
+  "host": "gleba.fr",
+  "name": "Gleba - Gestion agricole",
+  "launcherName": "GLEBA",
+  "display": "standalone",
+  "themeColor": "#16A34A",
+  "themeColorDark": "#000000",
+  "navigationColor": "#000000",
+  "navigationColorDark": "#000000",
+  "navigationDividerColor": "#000000",
+  "navigationDividerColorDark": "#000000",
+  "backgroundColor": "#FFFFFF",
+  "enableNotifications": true,
+  "startUrl": "/",
+  "iconUrl": "https://gleba.fr/icon-512.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "../../.android-signing/gleba-upload.keystore",
+    "alias": "gleba"
+  },
+  "appVersionName": "1.1.0",
+  "appVersionCode": 3,
+  "shortcuts": [],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://gleba.fr/manifest.json",
+  "fallbackType": "customtabs",
+  "features": {
+    "locationDelegation": {
+      "enabled": true
+    }
+  },
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "fullScopeUrl": "https://gleba.fr/",
+  "minSdkVersion": 21,
+  "orientation": "portrait-primary",
+  "fingerprints": [
+    {
+      "name": "Gleba upload key",
+      "value": "66:8C:E9:34:6D:20:68:21:5D:4D:DC:3F:A7:00:AB:E7:F3:B5:CD:1A:12:82:D9:7C:BD:85:20:48:8A:F2:41:27"
+    }
+  ],
+  "additionalTrustedOrigins": [],
+  "retainedBundles": [],
+  "protocolHandlers": [],
+  "fileHandlers": [],
+  "launchHandlerClientMode": "",
+  "displayOverride": [],
+  "appVersion": "1.1.0"
+}
