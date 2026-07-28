@@ -150,15 +150,15 @@ export default function AssociationsPage() {
 
   // Handlers
   const handleAdd = () => {
-    router.push("/associations/new")
+    router.push("/maraichage/associations/new")
   }
 
   const handleRowClick = (row: AssociationWithRelations) => {
-    router.push(`/associations/${row.id}`)
+    router.push(`/maraichage/associations/${row.id}`)
   }
 
   const handleEdit = (row: AssociationWithRelations) => {
-    router.push(`/associations/${row.id}`)
+    router.push(`/maraichage/associations/${row.id}`)
   }
 
   const handleDelete = async (row: AssociationWithRelations) => {

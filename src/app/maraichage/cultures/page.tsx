@@ -6,7 +6,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { ColumnDef } from "@tanstack/react-table"
 import { format } from "date-fns"
 import { fr } from "date-fns/locale"
@@ -256,7 +256,17 @@ function createColumns(
 }
 
 export default function CulturesPage() {
+  return (
+    <React.Suspense fallback={<div className="min-h-screen bg-slate-50" />}>
+      <CulturesPageInner />
+    </React.Suspense>
+  )
+}
+
+function CulturesPageInner() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const varieteId = searchParams.get("variete")
   const { toast } = useToast()
   const [data, setData] = React.useState<CultureWithRelations[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
@@ -342,6 +352,9 @@ export default function CulturesPage() {
       if (selectedEtat && selectedEtat !== 'all') {
         url += `&etat=${encodeURIComponent(selectedEtat)}`
       }
+      if (varieteId) {
+        url += `&variete=${encodeURIComponent(varieteId)}`
+      }
       const response = await fetch(url)
       if (!response.ok) throw new Error("Erreur lors du chargement")
       const result = await response.json()
@@ -356,11 +369,15 @@ export default function CulturesPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [pageIndex, selectedEtat, toast])
+  }, [pageIndex, selectedEtat, toast, varieteId])
 
   React.useEffect(() => {
     fetchData()
   }, [fetchData])
+
+  React.useEffect(() => {
+    setPageIndex(0)
+  }, [varieteId])
 
   // Reset page when etat changes
   const handleEtatChange = (etat: string) => {
@@ -370,15 +387,15 @@ export default function CulturesPage() {
 
   // Handlers
   const handleAdd = () => {
-    router.push("/cultures/new")
+    router.push("/maraichage/cultures/new")
   }
 
   const handleRowClick = (row: CultureWithRelations) => {
-    router.push(`/cultures/${row.id}`)
+    router.push(`/maraichage/cultures/${row.id}`)
   }
 
   const handleEdit = (row: CultureWithRelations) => {
-    router.push(`/cultures/${row.id}`)
+    router.push(`/maraichage/cultures/${row.id}`)
   }
 
   const handleDelete = async (row: CultureWithRelations) => {
@@ -447,6 +464,19 @@ export default function CulturesPage() {
           </Link>
         </div>
       </PageToolbar>
+
+      {varieteId && (
+        <div className="container mx-auto max-w-[1600px] px-4 pt-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+            <span>
+              Filtre variété : <strong>{varieteId}</strong>
+            </span>
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/maraichage/cultures">Afficher toutes les cultures</Link>
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Content */}
       <main className="container mx-auto px-4 py-6">

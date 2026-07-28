@@ -183,15 +183,15 @@ export default function PlanchesPage() {
 
   // Handlers
   const handleAdd = () => {
-    router.push("/planches/new")
+    router.push("/maraichage/planches/new")
   }
 
   const handleRowClick = (row: PlancheWithRelations) => {
-    router.push(`/planches/${encodeURIComponent(row.nom)}`)
+    router.push(`/maraichage/planches/${encodeURIComponent(row.nom)}`)
   }
 
   const handleEdit = (row: PlancheWithRelations) => {
-    router.push(`/planches/${encodeURIComponent(row.nom)}`)
+    router.push(`/maraichage/planches/${encodeURIComponent(row.nom)}`)
   }
 
   const handleDelete = async (row: PlancheWithRelations) => {

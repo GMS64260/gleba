@@ -127,7 +127,7 @@ export default function EditITPPage() {
           title: "Erreur",
           description: "Impossible de charger l'ITP",
         })
-        router.push("/itps")
+        router.push("/maraichage/itps")
       } finally {
         setIsLoading(false)
       }
@@ -153,7 +153,7 @@ export default function EditITPPage() {
         title: "ITP mis a jour",
         description: `L'ITP "${id}" a été modifié`,
       })
-      router.push("/itps")
+      router.push("/maraichage/itps")
     } catch (error) {
       toast({
         variant: "destructive",
@@ -192,7 +192,7 @@ export default function EditITPPage() {
         title: "ITP supprime",
         description: `L'ITP "${id}" a été supprimé`,
       })
-      router.push("/itps")
+      router.push("/maraichage/itps")
     } catch (error) {
       toast({
         variant: "destructive",

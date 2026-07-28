@@ -177,15 +177,15 @@ export default function RotationsPage() {
 
   // Handlers
   const handleAdd = () => {
-    router.push("/rotations/new")
+    router.push("/maraichage/rotations/new")
   }
 
   const handleRowClick = (row: RotationWithRelations) => {
-    router.push(`/rotations/${encodeURIComponent(row.id)}`)
+    router.push(`/maraichage/rotations/${encodeURIComponent(row.id)}`)
   }
 
   const handleEdit = (row: RotationWithRelations) => {
-    router.push(`/rotations/${encodeURIComponent(row.id)}`)
+    router.push(`/maraichage/rotations/${encodeURIComponent(row.id)}`)
   }
 
   const handleDelete = async (row: RotationWithRelations) => {

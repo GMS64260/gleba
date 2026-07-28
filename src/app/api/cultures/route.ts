@@ -35,6 +35,7 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search') || ''
     const annee = searchParams.get('annee')
     const especeId = searchParams.get('especeId')
+    const varieteId = searchParams.get('varieteId') || searchParams.get('variete')
     const plancheId = searchParams.get('plancheId')
     const etat = searchParams.get('etat') // Planifiée, Semée, Plantée, En recolte, Terminée
 
@@ -58,6 +59,10 @@ export async function GET(request: NextRequest) {
 
     if (especeId) {
       where.especeId = especeId
+    }
+
+    if (varieteId) {
+      where.varieteId = varieteId
     }
 
     if (plancheId) {

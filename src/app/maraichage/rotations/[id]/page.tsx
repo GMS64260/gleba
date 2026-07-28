@@ -142,7 +142,7 @@ export default function EditRotationPage() {
           title: "Erreur",
           description: "Impossible de charger la rotation",
         })
-        router.push("/rotations")
+        router.push("/maraichage/rotations")
       } finally {
         setIsLoading(false)
       }
@@ -249,7 +249,7 @@ export default function EditRotationPage() {
         title: "Rotation supprimée",
         description: `La rotation "${id}" a été supprimée`,
       })
-      router.push("/rotations")
+      router.push("/maraichage/rotations")
     } catch (error) {
       toast({
         variant: "destructive",

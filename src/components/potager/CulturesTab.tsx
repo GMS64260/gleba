@@ -387,10 +387,10 @@ export function CulturesTab({ year }: CulturesTabProps = {}) {
         pageIndex={pageIndex}
         pageSize={pageSize}
         onPaginationChange={(page) => setPageIndex(page)}
-        onAdd={() => router.push("/cultures/new")}
+        onAdd={() => router.push("/maraichage/cultures/new")}
         onRefresh={fetchData}
-        onRowClick={(row) => router.push(`/cultures/${row.id}`)}
-        onRowEdit={(row) => router.push(`/cultures/${row.id}`)}
+        onRowClick={(row) => router.push(`/maraichage/cultures/${row.id}`)}
+        onRowEdit={(row) => router.push(`/maraichage/cultures/${row.id}`)}
         onRowDelete={(row) => setCultureToDelete(row)}
         searchPlaceholder="Rechercher une culture..."
         emptyMessage="Aucune culture trouvée."

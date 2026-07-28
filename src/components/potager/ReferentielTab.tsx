@@ -241,10 +241,10 @@ export function ReferentielTab() {
         isLoading={isLoading}
         showPagination={true}
         pageSize={50}
-        onAdd={() => router.push("/especes/new")}
+        onAdd={() => router.push("/maraichage/especes/new")}
         onRefresh={fetchData}
-        onRowClick={(row) => router.push(`/especes/${encodeURIComponent(row.id)}`)}
-        onRowEdit={(row) => router.push(`/especes/${encodeURIComponent(row.id)}`)}
+        onRowClick={(row) => router.push(`/maraichage/especes/${encodeURIComponent(row.id)}`)}
+        onRowEdit={(row) => router.push(`/maraichage/especes/${encodeURIComponent(row.id)}`)}
         searchPlaceholder="Rechercher une espèce..."
         emptyMessage="Aucune espèce trouvée."
       />
