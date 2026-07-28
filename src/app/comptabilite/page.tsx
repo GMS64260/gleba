@@ -224,6 +224,7 @@ export default function DashboardComptabilite() {
   const { data: session } = useSession()
   const [selectedYear, setSelectedYear] = React.useState(new Date().getFullYear())
   const [showChat, setShowChat] = React.useState(false)
+  const [isChatExpanded, setIsChatExpanded] = React.useState(false)
   const [data, setData] = React.useState<ComptaStats | null>(null)
   const [loading, setLoading] = React.useState(true)
 
@@ -278,8 +279,23 @@ export default function DashboardComptabilite() {
       <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
       {/* Assistant IA */}
       {showChat && (
-        <div className="fixed bottom-2 left-4 right-4 z-50 h-[45vh] max-w-sm mx-auto rounded-xl border bg-background shadow-2xl flex flex-col overflow-hidden sm:mx-0 sm:left-auto sm:bottom-4 sm:right-4 sm:h-[540px] sm:w-[400px] sm:max-w-none sm:rounded-lg sm:border sm:shadow-xl">
-          <ChatPanel onClose={() => setShowChat(false)} section="compta" sectionLabel="Compta" />
+        <div
+          className={`fixed rounded-xl border bg-background shadow-2xl flex flex-col overflow-hidden transition-[width,height,inset] duration-200 ${
+            isChatExpanded
+              ? 'z-[70] inset-2 sm:inset-5 lg:inset-y-8 lg:left-1/2 lg:right-auto lg:w-[min(1100px,calc(100vw-4rem))] lg:-translate-x-1/2'
+              : 'z-50 bottom-2 left-4 right-4 h-[45vh] max-w-sm mx-auto sm:mx-0 sm:left-auto sm:bottom-4 sm:right-4 sm:h-[540px] sm:w-[400px] sm:max-w-none'
+          }`}
+        >
+          <ChatPanel
+            onClose={() => {
+              setShowChat(false)
+              setIsChatExpanded(false)
+            }}
+            section="compta"
+            sectionLabel="Compta"
+            isExpanded={isChatExpanded}
+            onToggleExpanded={() => setIsChatExpanded((current) => !current)}
+          />
         </div>
       )}
 

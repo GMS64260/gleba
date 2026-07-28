@@ -17,6 +17,8 @@ interface ChatPanelProps {
   onClose: () => void
   section?: string
   sectionLabel?: string
+  isExpanded?: boolean
+  onToggleExpanded?: () => void
 }
 
 export function ChatPanel(_props: ChatPanelProps): null {
