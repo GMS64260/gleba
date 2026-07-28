@@ -352,11 +352,11 @@ function EspecesPageContent() {
   }
 
   const handleRowClick = (row: EspeceWithRelations) => {
-    router.push(`/especes/${encodeURIComponent(row.id)}`)
+    router.push(`/maraichage/especes/${encodeURIComponent(row.id)}`)
   }
 
   const handleEdit = (row: EspeceWithRelations) => {
-    router.push(`/especes/${encodeURIComponent(row.id)}`)
+    router.push(`/maraichage/especes/${encodeURIComponent(row.id)}`)
   }
 
   // Catalogue communautaire : actions partagées (proposer/rendre privé, supprimer).

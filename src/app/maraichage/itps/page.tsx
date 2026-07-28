@@ -202,15 +202,15 @@ export default function ITPsPage() {
 
   // Handlers
   const handleAdd = () => {
-    router.push("/itps/new")
+    router.push("/maraichage/itps/new")
   }
 
   const handleRowClick = (row: ITPWithRelations) => {
-    router.push(`/itps/${encodeURIComponent(row.id)}`)
+    router.push(`/maraichage/itps/${encodeURIComponent(row.id)}`)
   }
 
   const handleEdit = (row: ITPWithRelations) => {
-    router.push(`/itps/${encodeURIComponent(row.id)}`)
+    router.push(`/maraichage/itps/${encodeURIComponent(row.id)}`)
   }
 
   const handleDelete = async (row: ITPWithRelations) => {

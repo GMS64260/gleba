@@ -114,7 +114,7 @@ export default function NewAssociationPage() {
         title: "Association créée",
         description: `L'association "${data.nom}" a été créée avec succès`,
       })
-      router.push("/associations")
+      router.push("/maraichage/associations")
     } catch (error) {
       toast({
         variant: "destructive",
@@ -384,7 +384,7 @@ export default function NewAssociationPage() {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => router.push("/associations")}
+                onClick={() => router.push("/maraichage/associations")}
               >
                 Annuler
               </Button>

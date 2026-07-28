@@ -232,7 +232,7 @@ export default function EditEspecePage() {
           title: "Erreur",
           description: error.message,
         })
-        router.push("/especes")
+        router.push("/maraichage/especes")
       })
   }, [especeId, form, router, toast, reloadVarietes])
 
@@ -254,7 +254,7 @@ export default function EditEspecePage() {
         title: "Espèce modifiée",
         description: `L'espece "${especeNom}" a été mise à jour`,
       })
-      router.push("/especes")
+      router.push("/maraichage/especes")
     } catch (error) {
       toast({
         variant: "destructive",
@@ -283,7 +283,7 @@ export default function EditEspecePage() {
         title: "Espèce supprimée",
         description: `L'espece "${especeNom}" a été supprimée`,
       })
-      router.push("/especes")
+      router.push("/maraichage/especes")
     } catch (error) {
       toast({
         variant: "destructive",

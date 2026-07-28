@@ -245,10 +245,10 @@ function PlanchesSubTab() {
         data={data}
         isLoading={isLoading}
         showPagination={false}
-        onAdd={() => router.push("/planches/new")}
+        onAdd={() => router.push("/maraichage/planches/new")}
         onRefresh={fetchData}
-        onRowClick={(row) => router.push(`/planches/${encodeURIComponent(row.nom)}`)}
-        onRowEdit={(row) => router.push(`/planches/${encodeURIComponent(row.nom)}`)}
+        onRowClick={(row) => router.push(`/maraichage/planches/${encodeURIComponent(row.nom)}`)}
+        onRowEdit={(row) => router.push(`/maraichage/planches/${encodeURIComponent(row.nom)}`)}
         onRowDelete={async (row) => {
           if (row._count.cultures > 0) {
             toast({
@@ -395,10 +395,10 @@ function RotationsSubTab() {
         data={data}
         isLoading={isLoading}
         showPagination={false}
-        onAdd={() => router.push("/rotations/new")}
+        onAdd={() => router.push("/maraichage/rotations/new")}
         onRefresh={fetchData}
-        onRowClick={(row) => router.push(`/rotations/${encodeURIComponent(row.id)}`)}
-        onRowEdit={(row) => router.push(`/rotations/${encodeURIComponent(row.id)}`)}
+        onRowClick={(row) => router.push(`/maraichage/rotations/${encodeURIComponent(row.id)}`)}
+        onRowEdit={(row) => router.push(`/maraichage/rotations/${encodeURIComponent(row.id)}`)}
         onRowDelete={async (row) => {
           if (row._count.planches > 0) {
             toast({
@@ -573,10 +573,10 @@ function AssociationsSubTab() {
         isLoading={isLoading}
         showPagination={true}
         pageSize={20}
-        onAdd={() => router.push("/associations/new")}
+        onAdd={() => router.push("/maraichage/associations/new")}
         onRefresh={fetchData}
-        onRowClick={(row) => router.push(`/associations/${row.id}`)}
-        onRowEdit={(row) => router.push(`/associations/${row.id}`)}
+        onRowClick={(row) => router.push(`/maraichage/associations/${row.id}`)}
+        onRowEdit={(row) => router.push(`/maraichage/associations/${row.id}`)}
         onRowDelete={async (row) => {
           if (!(await confirmDialog(`Supprimer "${row.nom}" ?`))) return
           try {

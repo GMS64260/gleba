@@ -137,7 +137,7 @@ export default function EditAssociationPage() {
           title: "Erreur",
           description: "Impossible de charger l'association",
         })
-        router.push("/associations")
+        router.push("/maraichage/associations")
       } finally {
         setIsLoading(false)
       }
@@ -168,7 +168,7 @@ export default function EditAssociationPage() {
         title: "Association mise à jour",
         description: `L'association "${data.nom}" a été modifiée avec succès`,
       })
-      router.push("/associations")
+      router.push("/maraichage/associations")
     } catch (error) {
       toast({
         variant: "destructive",
@@ -457,7 +457,7 @@ export default function EditAssociationPage() {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => router.push("/associations")}
+                onClick={() => router.push("/maraichage/associations")}
               >
                 Annuler
               </Button>

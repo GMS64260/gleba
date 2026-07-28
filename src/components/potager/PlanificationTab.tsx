@@ -433,10 +433,10 @@ function ItpsSubTab() {
         data={data}
         isLoading={isLoading}
         showPagination={false}
-        onAdd={() => router.push("/itps/new")}
+        onAdd={() => router.push("/maraichage/itps/new")}
         onRefresh={fetchData}
-        onRowClick={(row) => router.push(`/itps/${encodeURIComponent(row.id)}`)}
-        onRowEdit={(row) => router.push(`/itps/${encodeURIComponent(row.id)}`)}
+        onRowClick={(row) => router.push(`/maraichage/itps/${encodeURIComponent(row.id)}`)}
+        onRowEdit={(row) => router.push(`/maraichage/itps/${encodeURIComponent(row.id)}`)}
         searchPlaceholder="Rechercher un ITP..."
         emptyMessage={loadError ? "Erreur lors du chargement — cliquez sur Réessayer." : "Aucun ITP trouvé."}
       />

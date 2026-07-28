@@ -81,7 +81,7 @@ export default function EditRecoltePage() {
           title: "Erreur",
           description: error.message,
         })
-        router.push("/recoltes")
+        router.push("/maraichage/recoltes")
       })
   }, [recolteId, form, router, toast])
 
@@ -105,7 +105,7 @@ export default function EditRecoltePage() {
       toast({
         title: "Récolte modifiée",
       })
-      router.push("/recoltes")
+      router.push("/maraichage/recoltes")
     } catch (error) {
       toast({
         variant: "destructive",
@@ -133,7 +133,7 @@ export default function EditRecoltePage() {
       toast({
         title: "Récolte supprimée",
       })
-      router.push("/recoltes")
+      router.push("/maraichage/recoltes")
     } catch (error) {
       toast({
         variant: "destructive",

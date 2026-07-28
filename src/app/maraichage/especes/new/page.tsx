@@ -98,7 +98,7 @@ export default function NewEspecePage() {
         title: "Espèce créée",
         description: `L'espece "${data.id}" a été créée avec succès`,
       })
-      router.push("/especes")
+      router.push("/maraichage/especes")
     } catch (error) {
       toast({
         variant: "destructive",

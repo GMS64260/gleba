@@ -122,7 +122,7 @@ export default function NewPlanchePage() {
         title: "Planche créée",
         description: `La planche "${data.nom}" a été créée avec succès`,
       })
-      router.push("/planches")
+      router.push("/maraichage/planches")
     } catch (error) {
       toast({
         variant: "destructive",
