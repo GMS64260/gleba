@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { calculerStocksNet } from '@/lib/stocks-helpers'
+import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 
 export async function PATCH(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -108,9 +109,14 @@ export async function GET(request: NextRequest) {
       const userStocks = await prisma.userStockVariete.findMany({
         where: {
           userId,
-          ...(especeTypeFilter && {
-            variete: { espece: { type: especeTypeFilter } },
-          }),
+          variete: {
+            AND: [
+              visibiliteReferentiel(userId),
+              ...(especeTypeFilter
+                ? [{ espece: { type: especeTypeFilter } }]
+                : []),
+            ],
+          },
         },
         include: {
           variete: {
@@ -145,7 +151,14 @@ export async function GET(request: NextRequest) {
     // Aussi inclure les varietes sans stock per-user (pour l'affichage complet)
     const getAllVarietes = async () => {
       const varietes = await prisma.variete.findMany({
-        where: especeTypeFilter ? { espece: { type: especeTypeFilter } } : undefined,
+        where: {
+          AND: [
+            visibiliteReferentiel(userId),
+            ...(especeTypeFilter
+              ? [{ espece: { type: especeTypeFilter } }]
+              : []),
+          ],
+        },
         select: {
           id: true,
           nom: true,
