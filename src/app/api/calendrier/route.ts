@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi, getUserId } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { fetchOpenMeteoForecast, fetchOpenMeteoHistory } from '@/lib/meteo'
+import { grouperIrrigationsPlanifieesParPlancheEtJour } from '@/lib/irrigation-planche'
 
 export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
@@ -160,13 +161,12 @@ export async function GET(request: NextRequest) {
     const periodeExploitable = start <= horizonForecast
 
     if (periodeExploitable && irrigationsPlanifiees.length > 0) {
-      let hasDirectCoords = false
-      for (const irr of irrigationsPlanifiees) {
+      const manqueCoordonnees = irrigationsPlanifiees.some((irr) => {
         const lat = irr.culture.planche?.parcelleGeo?.centroidLat
         const lng = irr.culture.planche?.parcelleGeo?.centroidLng
-        if (lat && lng) { hasDirectCoords = true; break }
-      }
-      if (!hasDirectCoords) {
+        return !lat || !lng
+      })
+      if (manqueCoordonnees) {
         const userParcelle = await prisma.parcelleGeo.findFirst({
           where: { userId },
           select: { centroidLat: true, centroidLng: true },
@@ -269,7 +269,33 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // Formater les événements
+    const irrigationEvents = grouperIrrigationsPlanifieesParPlancheEtJour(
+      irrigationsPlanifiees.map(i => {
+        const meteo = getIrrigationMeteo(i)
+        return {
+          id: i.id,
+          type: 'irrigation' as const,
+          especeId: i.culture.especeId,
+          varieteId: i.culture.varieteId || null,
+          plancheId: i.culture.planche?.nom || null,
+          plancheName: i.culture.planche?.nom || null,
+          ilot: i.culture.planche?.ilot || null,
+          datePrevue: i.datePrevue.toISOString(),
+          date: i.datePrevue.toISOString(),
+          fait: i.fait,
+          couleur: i.culture.espece?.couleur || null,
+          especeNom: i.culture.espece?.nom ?? i.culture.especeId,
+          varieteNom: i.culture.variete?.nom ?? i.culture.varieteId ?? null,
+          cultureId: i.culture.id,
+          retardJours: 0,
+          pluiePrevue: meteo.pluiePrevue !== null ? Math.round(meteo.pluiePrevue * 10) / 10 : null,
+          probablementInutile: meteo.probablementInutile,
+        }
+      })
+    )
+
+    // Formater les événements. Les irrigations sont regroupées par planche
+    // et par jour pour éviter plusieurs alertes pour un même passage.
     const events = [
       ...culturesAvecSemis.map(c => ({
         id: c.id,
@@ -310,25 +336,7 @@ export async function GET(request: NextRequest) {
         especeNom: c.espece?.nom ?? c.especeId,
         varieteNom: c.variete?.nom ?? c.varieteId ?? null,
       })),
-      ...irrigationsPlanifiees.map(i => {
-        const meteo = getIrrigationMeteo(i)
-        return {
-          id: i.id,
-          type: 'irrigation' as const,
-          especeId: i.culture.especeId,
-          varieteId: i.culture.varieteId || null,
-          plancheName: i.culture.planche?.nom || null,
-          ilot: i.culture.planche?.ilot || null,
-          date: i.datePrevue.toISOString(),
-          fait: i.fait,
-          couleur: i.culture.espece?.couleur || null,
-          especeNom: i.culture.espece?.nom ?? i.culture.especeId,
-          varieteNom: i.culture.variete?.nom ?? i.culture.varieteId ?? null,
-          cultureId: i.culture.id,
-          pluiePrevue: meteo.pluiePrevue !== null ? Math.round(meteo.pluiePrevue * 10) / 10 : null,
-          probablementInutile: meteo.probablementInutile,
-        }
-      }),
+      ...irrigationEvents,
     ]
 
     // Trier par date
@@ -340,7 +348,7 @@ export async function GET(request: NextRequest) {
         semis: culturesAvecSemis.length,
         plantations: culturesAvecPlantation.length,
         recoltes: culturesAvecRecolte.length,
-        irrigations: irrigationsPlanifiees.length,
+        irrigations: irrigationEvents.length,
         total: events.length,
       },
     })

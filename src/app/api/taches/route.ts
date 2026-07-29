@@ -10,6 +10,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi, getUserId } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { fetchOpenMeteoForecast, fetchOpenMeteoHistory } from '@/lib/meteo'
+import {
+  grouperIrrigationsPlanifieesParPlancheEtJour,
+  irrigationEstDue,
+} from '@/lib/irrigation-planche'
 
 const CULTURE_SELECT = {
   id: true,
@@ -192,16 +196,17 @@ export async function GET(request: NextRequest) {
     // Coordonnées : d'abord depuis la parcelle de la planche, sinon fallback user
     let fallbackCoords: { lat: number; lng: number } | null = null
     if (allIrrigations.length > 0) {
-      // Chercher les coordonnées depuis les parcelles des planches
-      let hasDirectCoords = false
-      for (const irr of allIrrigations) {
+      // Charger un fallback dès qu'AU MOINS une planche n'a pas de
+      // coordonnées. L'ancien test ne le faisait que si aucune planche
+      // n'était géolocalisée : dans un lot mixte, toutes les planches non
+      // rattachées perdaient silencieusement l'intégration météo.
+      const manqueCoordonnees = allIrrigations.some((irr) => {
         const lat = irr.culture.planche?.parcelleGeo?.centroidLat
         const lng = irr.culture.planche?.parcelleGeo?.centroidLng
-        if (lat && lng) { hasDirectCoords = true; break }
-      }
+        return !lat || !lng
+      })
 
-      // Si aucune planche n'a de parcelle liée, fallback sur la première parcelle de l'utilisateur
-      if (!hasDirectCoords) {
+      if (manqueCoordonnees) {
         const userParcelle = await prisma.parcelleGeo.findFirst({
           where: { userId },
           select: { centroidLat: true, centroidLng: true },
@@ -342,8 +347,7 @@ export async function GET(request: NextRequest) {
     for (const irr of allIrrigations) {
       if (irr.fait) continue
       const meteo = getIrrigationMeteo(irr)
-      const joursAvant = Math.floor((irr.datePrevue.getTime() - Date.now()) / 86_400_000)
-      if (joursAvant <= 0 && meteo.probablementInutile) {
+      if (irrigationEstDue(irr.datePrevue) && meteo.probablementInutile) {
         autoValidIds.push(irr.id)
         irr.fait = true
       }
@@ -389,13 +393,16 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const irrigation = [
+    const irrigation = grouperIrrigationsPlanifieesParPlancheEtJour([
       ...irrigationsRetard.map(i => formatIrrigation(i, joursRetard(i.datePrevue, start))),
       ...irrigationsSemaine.map(i => formatIrrigation(i, 0)),
-    ]
+    ])
 
     const enRetardTotal =
-      semisRetard.length + plantationsRetard.length + recoltesRetard.length + irrigationsRetard.length
+      semisRetard.length +
+      plantationsRetard.length +
+      recoltesRetard.length +
+      irrigation.filter((item) => item.retardJours > 0 && !item.fait).length
 
     return NextResponse.json({
       semis,
@@ -409,7 +416,9 @@ export async function GET(request: NextRequest) {
         plantationsFaites: plantations.filter(p => p.fait).length,
         recoltesPrevues: recoltes.length,
         recoltesFaites: recoltes.filter(r => r.fait).length,
-        aIrriguer: irrigation.length,
+        aIrriguer: irrigation.filter(
+          (item) => !item.fait && !item.probablementInutile
+        ).length,
         enRetard: enRetardTotal,
       },
     })

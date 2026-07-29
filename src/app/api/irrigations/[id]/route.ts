@@ -8,6 +8,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireAuthApi, getUserId } from '@/lib/auth-utils'
+import { enregistrerArrosageCultures } from '@/lib/irrigation-recording'
+import type { Prisma } from '@prisma/client'
 
 // GET /api/irrigations/[id]
 export async function GET(
@@ -67,6 +69,11 @@ export async function PATCH(
     // Vérifier que l'irrigation appartient à l'utilisateur
     const existing = await prisma.irrigationPlanifiee.findFirst({
       where: { id, userId },
+      include: {
+        culture: {
+          select: { plancheId: true },
+        },
+      },
     })
 
     if (!existing) {
@@ -78,7 +85,7 @@ export async function PATCH(
 
     const { fait, dateEffective, datePrevue, notes } = body
 
-    const updateData: any = {}
+    const updateData: Prisma.IrrigationPlanifieeUpdateManyMutationInput = {}
 
     if (typeof fait === 'boolean') {
       updateData.fait = fait
@@ -100,9 +107,39 @@ export async function PATCH(
       updateData.notes = notes
     }
 
-    const irrigation = await prisma.irrigationPlanifiee.update({
-      where: { id },
+    // Une ligne du calendrier représente désormais un passage par planche et
+    // par jour. Répercuter la modification sur les anciennes lignes
+    // culture-par-culture évite qu'un doublon réapparaisse après un déplacement
+    // ou une validation.
+    const debutJour = new Date(existing.datePrevue)
+    debutJour.setHours(0, 0, 0, 0)
+    const finJour = new Date(existing.datePrevue)
+    finJour.setHours(23, 59, 59, 999)
+
+    const irrigationsDuPassage = existing.culture.plancheId
+      ? await prisma.irrigationPlanifiee.findMany({
+          where: {
+            userId,
+            datePrevue: { gte: debutJour, lte: finJour },
+            culture: {
+              plancheId: existing.culture.plancheId,
+            },
+          },
+          select: { id: true },
+        })
+      : [{ id }]
+    const irrigationIds = irrigationsDuPassage.map((item) => item.id)
+
+    await prisma.irrigationPlanifiee.updateMany({
+      where: {
+        userId,
+        id: { in: irrigationIds },
+      },
       data: updateData,
+    })
+
+    const irrigation = await prisma.irrigationPlanifiee.findUniqueOrThrow({
+      where: { id },
       include: {
         culture: {
           include: {
@@ -112,7 +149,22 @@ export async function PATCH(
       },
     })
 
-    return NextResponse.json(irrigation)
+    // Cocher une irrigation planifiée signifie qu'un passage réel a eu lieu.
+    // On réconcilie donc aussi la date du dernier arrosage, les éventuelles
+    // cultures voisines sur la même planche et les tâches dues en doublon.
+    const impactArrosage = fait === true
+      ? await enregistrerArrosageCultures({
+          userId,
+          cultureIds: [existing.cultureId],
+          dateEffective: irrigation.dateEffective ?? new Date(),
+        })
+      : null
+
+    return NextResponse.json({
+      ...irrigation,
+      irrigationIds,
+      impactArrosage,
+    })
   } catch (error) {
     console.error('PATCH /api/irrigations/[id] error:', error)
     return NextResponse.json(

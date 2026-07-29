@@ -15,7 +15,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi, getUserId } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
-import { irrigationCache, irrigationCacheKey } from '@/lib/irrigation-cache'
 import { fetchOpenMeteoForecast, fetchOpenMeteoHistory } from '@/lib/meteo'
 import type { MeteoJournaliere, MeteoPrevision } from '@/lib/meteo'
 import {
@@ -25,6 +24,8 @@ import {
   alerteSecheresse,
 } from '@/lib/soil-quality'
 import { cultureIrrigationDemarreeWhere } from '@/lib/irrigation-eligibility'
+import { enregistrerArrosageCultures } from '@/lib/irrigation-recording'
+import { surfaceCultureM2 } from '@/lib/culture-surface'
 
 // ── Types internes ──────────────────────────────────────────
 
@@ -510,9 +511,7 @@ export async function GET(request: NextRequest) {
       }
 
       // Surface
-      const surface = c.nbRangs && c.longueur && c.planche?.largeur
-        ? (c.nbRangs * c.longueur * c.planche.largeur)
-        : (c.planche?.surface || 0)
+      const surface = surfaceCultureM2(c)
 
       const besoinEau = c.espece?.besoinEau || 3
       const retentionEauSol = c.planche?.retentionEau || null
@@ -600,6 +599,21 @@ export async function GET(request: NextRequest) {
     }
 
     // 8. Stats
+    // Une planche multiculture est arrosée en un seul passage. Additionner
+    // les estimations de chaque culture ferait compter plusieurs fois la
+    // même surface ; le besoin le plus exigeant pilote donc la planche.
+    const consommationParPlanche = new Map<string, number>()
+    for (const culture of culturesAvecUrgence) {
+      const key = culture.plancheId ?? `culture:${culture.id}`
+      consommationParPlanche.set(
+        key,
+        Math.max(
+          consommationParPlanche.get(key) ?? 0,
+          culture.consommationEauSemaine
+        )
+      )
+    }
+
     const stats = {
       total: cultures.length,
       nbIlots: Object.keys(parIlot).length,
@@ -609,7 +623,9 @@ export async function GET(request: NextRequest) {
       jamaisArrose: culturesAvecUrgence.filter(c => c.joursSansEau === null).length,
       prochainesIrrigations7j: culturesAvecUrgence.reduce((s, c) => s + c.prochainesIrrigations, 0),
       irrigationsAutoValidees: irrigationsAutoValidees.length,
-      consommationTotaleEstimee: Math.round(culturesAvecUrgence.reduce((s, c) => s + c.consommationEauSemaine, 0)),
+      consommationTotaleEstimee: Math.round(
+        Array.from(consommationParPlanche.values()).reduce((s, litres) => s + litres, 0)
+      ),
       parTypeIrrigation: Object.entries(parTypeIrrigation).map(([type, cultures]) => ({
         type,
         count: cultures.length,
@@ -655,18 +671,18 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json()
     const { cultureId, cultureIds, aIrriguer, marquerArrosage } = body
 
-    // Arrosage multiple (groupe par îlot)
+    // Arrosage multiple (groupe par îlot). Chaque culture demandée étend la
+    // mise à jour à ses colocataires actifs sur la même planche.
     if (marquerArrosage && cultureIds && Array.isArray(cultureIds)) {
-      const now = new Date()
-      await prisma.culture.updateMany({
-        where: {
-          id: { in: cultureIds },
-          userId,
-        },
-        data: { derniereIrrigation: now },
+      const result = await enregistrerArrosageCultures({
+        userId,
+        cultureIds,
       })
-      irrigationCache.invalidateUser(userId)
-      return NextResponse.json({ success: true, date: now })
+      return NextResponse.json({
+        success: true,
+        ...result,
+        date: result.dateEffective,
+      })
     }
 
     // Arrosage simple ou toggle aIrriguer
@@ -677,11 +693,30 @@ export async function PATCH(request: NextRequest) {
       )
     }
 
-    // Vérifier que la culture appartient à l'utilisateur
+    // Noter l'arrosage
+    if (marquerArrosage) {
+      const result = await enregistrerArrosageCultures({
+        userId,
+        cultureIds: [cultureId],
+      })
+      if (result.culturesMisesAJour === 0) {
+        return NextResponse.json(
+          { error: 'Culture non trouvée' },
+          { status: 404 }
+        )
+      }
+      return NextResponse.json({
+        success: true,
+        ...result,
+        date: result.dateEffective,
+      })
+    }
+
+    // Toggle aIrriguer
     const culture = await prisma.culture.findFirst({
       where: { id: cultureId, userId },
+      select: { id: true },
     })
-
     if (!culture) {
       return NextResponse.json(
         { error: 'Culture non trouvée' },
@@ -689,20 +724,8 @@ export async function PATCH(request: NextRequest) {
       )
     }
 
-    // Noter l'arrosage
-    if (marquerArrosage) {
-      const now = new Date()
-      const updated = await prisma.culture.update({
-        where: { id: cultureId },
-        data: { derniereIrrigation: now },
-      })
-      irrigationCache.invalidateUser(userId)
-      return NextResponse.json({ success: true, data: updated, date: now })
-    }
-
-    // Toggle aIrriguer
     const updated = await prisma.culture.update({
-      where: { id: cultureId },
+      where: { id: culture.id },
       data: { aIrriguer },
     })
 

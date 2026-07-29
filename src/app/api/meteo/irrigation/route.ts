@@ -14,6 +14,7 @@ import { fetchEcowittData, fetchOpenMeteoForecast, fetchOpenMeteoHistory, fetchW
 import { adapterConseilSousAbri, genererRecommandationIrrigation } from '@/lib/meteo-agro'
 import { irrigationCache, irrigationCacheKey } from '@/lib/irrigation-cache'
 import { cultureIrrigationDemarreeWhere } from '@/lib/irrigation-eligibility'
+import { grouperRecommandationsParPlanche } from '@/lib/irrigation-planche'
 import type { MeteoJournaliere, MeteoPrevision } from '@/lib/meteo'
 import type { Prisma } from '@prisma/client'
 
@@ -78,6 +79,7 @@ export async function GET(request: NextRequest) {
         variete: { select: { nom: true } },
         planche: {
           select: {
+            id: true,
             nom: true,
             type: true,
             irrigation: true,
@@ -133,7 +135,7 @@ export async function GET(request: NextRequest) {
       parCoords.get(key)!.cultures.push(culture)
     }
 
-    const recommandations = []
+    const recommandationsCultures = []
 
     for (const [, group] of parCoords) {
       let historique7j: MeteoJournaliere[]
@@ -203,8 +205,9 @@ export async function GET(request: NextRequest) {
           reco.joursSansPluie = 0
         }
 
-        recommandations.push({
+        recommandationsCultures.push({
           ...reco,
+          plancheId: culture.planche!.id,
           varietyName: culture.variete?.nom ?? null,
           etatCulture: culture.plantationFaite ? 'Plantée' : 'Semée',
           derniereIrrigation: culture.derniereIrrigation?.toISOString() ?? null,
@@ -212,6 +215,11 @@ export async function GET(request: NextRequest) {
         })
       }
     }
+
+    // Une action d'arrosage concerne la planche entière. Sur une planche
+    // multiculture, une seule alerte est affichée et le besoin le plus
+    // exigeant pilote la recommandation.
+    const recommandations = grouperRecommandationsParPlanche(recommandationsCultures)
 
     // Trier par urgence
     const ordreUrgence = { critique: 0, haute: 1, moyenne: 2, faible: 3, aucune: 4 }
@@ -222,6 +230,7 @@ export async function GET(request: NextRequest) {
     const result = {
       recommandations,
       total: recommandations.length,
+      totalCultures: recommandationsCultures.length,
       urgentes: recommandations.filter(r => r.urgence === 'critique' || r.urgence === 'haute').length,
     }
 

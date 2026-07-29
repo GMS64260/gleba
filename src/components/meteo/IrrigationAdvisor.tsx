@@ -26,7 +26,10 @@ import { useToast } from "@/hooks/use-toast"
 
 interface RecommandationIrrigation {
   cultureId: number
+  cultureIds: number[]
+  cultureCount: number
   cultureName: string
+  plancheId: string
   plancheName: string
   urgence: "critique" | "haute" | "moyenne" | "faible" | "aucune"
   bilanHydrique7j: number
@@ -45,6 +48,7 @@ interface RecommandationIrrigation {
 interface IrrigationData {
   recommandations: RecommandationIrrigation[]
   total: number
+  totalCultures?: number
   urgentes: number
   cached: boolean
   cachedAt: string
@@ -66,6 +70,11 @@ interface NappeData {
   }
 }
 
+interface ParcelleMeteo {
+  centroidLat?: number | null
+  centroidLng?: number | null
+}
+
 interface IrrigationAdvisorProps {
   parcelleId?: string
   lat?: number
@@ -81,7 +90,7 @@ export function IrrigationAdvisor({ parcelleId, lat, lng }: IrrigationAdvisorPro
   const [error, setError] = React.useState<string | null>(null)
   const [showAll, setShowAll] = React.useState(false)
   const [nappeData, setNappeData] = React.useState<NappeData | null>(null)
-  const [savingCultureId, setSavingCultureId] = React.useState<number | null>(null)
+  const [savingPlancheId, setSavingPlancheId] = React.useState<string | null>(null)
 
   const fetchRecos = React.useCallback(async (forceRefresh = false) => {
     try {
@@ -97,27 +106,32 @@ export function IrrigationAdvisor({ parcelleId, lat, lng }: IrrigationAdvisorPro
       const res = await fetch(url)
       if (!res.ok) throw new Error("Erreur API")
       setData(await res.json())
-    } catch (e: any) {
-      setError(e.message)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Erreur API")
     } finally {
       setLoading(false)
       setRefreshing(false)
     }
   }, [parcelleId])
 
-  const marquerArrosee = React.useCallback(async (cultureId: number) => {
-    setSavingCultureId(cultureId)
+  const marquerArrosee = React.useCallback(async (reco: RecommandationIrrigation) => {
+    setSavingPlancheId(reco.plancheId)
     try {
       const response = await fetch("/api/cultures/irriguer", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cultureId, marquerArrosage: true }),
+        body: JSON.stringify({ cultureIds: reco.cultureIds, marquerArrosage: true }),
       })
       if (!response.ok) throw new Error("Impossible de noter l'arrosage")
       await fetchRecos(true)
+      window.dispatchEvent(new CustomEvent("gleba:irrigation-updated", {
+        detail: { source: "advisor" },
+      }))
       toast({
-        title: "Arrosage noté",
-        description: "La recommandation vient d’être recalculée.",
+        title: "Planche arrosée",
+        description: reco.cultureCount > 1
+          ? `${reco.cultureCount} cultures synchronisées et alertes recalculées.`
+          : "La recommandation vient d’être recalculée.",
       })
     } catch {
       toast({
@@ -126,12 +140,21 @@ export function IrrigationAdvisor({ parcelleId, lat, lng }: IrrigationAdvisorPro
         description: "Impossible de noter l’arrosage.",
       })
     } finally {
-      setSavingCultureId(null)
+      setSavingPlancheId(null)
     }
   }, [fetchRecos, toast])
 
   React.useEffect(() => {
     fetchRecos()
+  }, [fetchRecos])
+
+  React.useEffect(() => {
+    const handleIrrigationUpdated = (event: Event) => {
+      const source = (event as CustomEvent<{ source?: string }>).detail?.source
+      if (source !== "advisor") void fetchRecos(true)
+    }
+    window.addEventListener("gleba:irrigation-updated", handleIrrigationUpdated)
+    return () => window.removeEventListener("gleba:irrigation-updated", handleIrrigationUpdated)
   }, [fetchRecos])
 
   // Fetch donnees nappe phreatique
@@ -140,8 +163,12 @@ export function IrrigationAdvisor({ parcelleId, lat, lng }: IrrigationAdvisorPro
       fetch("/api/carte")
         .then((r) => r.json())
         .then((parcelles) => {
-          const arr = parcelles.data || parcelles || []
-          const first = arr.find((p: any) => p.centroidLat && p.centroidLng)
+          const arr: ParcelleMeteo[] = Array.isArray(parcelles?.data)
+            ? parcelles.data
+            : Array.isArray(parcelles)
+              ? parcelles
+              : []
+          const first = arr.find((p) => p.centroidLat && p.centroidLng)
           if (first) {
             fetch(`/api/meteo/nappe?lat=${first.centroidLat}&lng=${first.centroidLng}`)
               .then((r) => (r.ok ? r.json() : null))
@@ -316,9 +343,9 @@ export function IrrigationAdvisor({ parcelleId, lat, lng }: IrrigationAdvisorPro
       <div className="divide-y">
         {displayed.map((reco) => (
           <RecoRow
-            key={reco.cultureId}
+            key={reco.plancheId}
             reco={reco}
-            saving={savingCultureId === reco.cultureId}
+            saving={savingPlancheId === reco.plancheId}
             onWater={marquerArrosee}
           />
         ))}
@@ -357,7 +384,7 @@ function RecoRow({
 }: {
   reco: RecommandationIrrigation
   saving: boolean
-  onWater: (cultureId: number) => Promise<void>
+  onWater: (reco: RecommandationIrrigation) => Promise<void>
 }) {
   const [expanded, setExpanded] = React.useState(false)
 
@@ -413,9 +440,11 @@ function RecoRow({
               disabled={saving}
               onClick={(event) => {
                 event.stopPropagation()
-                void onWater(reco.cultureId)
+                void onWater(reco)
               }}
-              title="Noter l’arrosage d’aujourd’hui"
+              title={reco.cultureCount > 1
+                ? `Noter l'arrosage de toute la planche (${reco.cultureCount} cultures)`
+                : "Noter l’arrosage d’aujourd’hui"}
             >
               {saving
                 ? <Loader2 className="h-3.5 w-3.5 animate-spin" />

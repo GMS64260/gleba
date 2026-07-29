@@ -15,7 +15,6 @@ import {
   endOfWeek,
   addDays,
   isSameMonth,
-  isSameDay,
   isToday,
   addMonths,
   subMonths,
@@ -57,6 +56,7 @@ interface CalendarEvent {
   fait: boolean
   couleur: string | null
   cultureId?: number // Pour les irrigations, ID de la culture liée
+  cultureCount?: number
   pluiePrevue?: number | null
   probablementInutile?: boolean
 }
@@ -315,7 +315,7 @@ export function CalendarView({ year }: CalendarViewProps) {
                   onClick={goToToday}
                   className="h-8 px-2 text-xs"
             >
-              Aujourd'hui
+              Aujourd&apos;hui
             </Button>
             <Button variant="ghost" size="sm" onClick={nextMonth} className="h-8 w-8 p-0">
               <ChevronRight className="h-4 w-4" />

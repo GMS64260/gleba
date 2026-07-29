@@ -80,6 +80,7 @@ interface TacheItem {
 interface IrrigationItem {
   id: number
   cultureId: number
+  cultureCount?: number
   especeId: string
   especeNom?: string | null
   plancheId: string | null
@@ -179,6 +180,14 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
 
   React.useEffect(() => {
     fetchTaches()
+  }, [fetchTaches])
+
+  React.useEffect(() => {
+    const handleIrrigationUpdated = () => {
+      void fetchTaches()
+    }
+    window.addEventListener("gleba:irrigation-updated", handleIrrigationUpdated)
+    return () => window.removeEventListener("gleba:irrigation-updated", handleIrrigationUpdated)
   }, [fetchTaches])
 
   // Auto-générer les irrigations si aucune n'existe (une seule fois par session)
@@ -328,6 +337,9 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
         }
       })
       toast({ title: "Arrosage note !" })
+      window.dispatchEvent(new CustomEvent("gleba:irrigation-updated", {
+        detail: { source: "calendar-tasks" },
+      }))
     } catch {
       toast({ variant: "destructive", title: "Erreur" })
     }
@@ -778,6 +790,9 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                                 )}
                                 <span className={`font-medium truncate text-sm ${inutile ? "line-through text-muted-foreground" : ""}`}>
                                   {item.especeNom ?? item.especeId}
+                                  {item.cultureCount && item.cultureCount > 1
+                                    ? ` · ${item.cultureCount} cultures`
+                                    : ""}
                                 </span>
                               </div>
                               <div className="flex items-center gap-1.5 flex-shrink-0">
