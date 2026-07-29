@@ -275,6 +275,13 @@ export async function getCulturesPrevues(
     especeId?: string
     ilot?: string
     plancheId?: string
+    /**
+     * Les écrans d'inventaire et leurs compteurs doivent conserver toutes les
+     * cultures réellement créées, y compris celles déjà récoltées/terminées.
+     * Les calculs de besoins et de récoltes restantes gardent le filtre
+     * historique quand cette option est absente.
+     */
+    includeAllCultures?: boolean
   }
 ): Promise<CulturePrevue[]> {
   // Mode 1: Cultures basées sur rotations
@@ -310,6 +317,8 @@ export async function getCulturesPrevues(
           dateSemis: true,
           datePlantation: true,
           dateRecolte: true,
+          recolteFaite: true,
+          terminee: true,
         },
       },
     },
@@ -345,6 +354,18 @@ export async function getCulturesPrevues(
       const cultureExistante = planche.cultures.find(
         c => c.itpId === detail.itpId || c.especeId === detail.itp?.especeId
       )
+
+      // Une culture récoltée/terminée reste visible dans les écrans
+      // d'inventaire, mais ne doit plus alimenter les projections restantes.
+      // On la traite ici avant le fallback rotation pour ne pas recréer une
+      // suggestion fantôme sur une planche déjà occupée cette année.
+      if (
+        cultureExistante &&
+        !options?.includeAllCultures &&
+        (cultureExistante.recolteFaite || cultureExistante.terminee !== null)
+      ) {
+        continue
+      }
 
       // Bug R3/B (testeur) : ne pas injecter de culture « fantôme » à créer
       // quand la planche est DÉJÀ occupée par des cultures réelles cette
@@ -407,8 +428,10 @@ export async function getCulturesPrevues(
     where: {
       userId,
       annee,
-      terminee: null,
-      recolteFaite: false,
+      ...(!options?.includeAllCultures && {
+        terminee: null,
+        recolteFaite: false,
+      }),
       ...(options?.especeId && { especeId: options.especeId }),
       ...(options?.plancheId && { planche: { nom: options.plancheId } }),
       ...(options?.ilot && { planche: { ilot: options.ilot } }),
@@ -429,10 +452,11 @@ export async function getCulturesPrevues(
 
   // Ajouter les cultures directes qui ne sont pas déjà dans les prevues (via rotation)
   for (const culture of culturesDirectes) {
-    // Vérifier si déjà ajoutée via rotation
-    const dejaPresente = culturesPrevues.some(cp =>
-      cp.plancheId === culture.plancheId && cp.cultureId === culture.id
-    )
+    // `CulturePrevue.plancheId` contient le NOM affiché tandis que
+    // `Culture.plancheId` contient le cuid. Les comparer empêchait la
+    // déduplication et ajoutait une seconde ligne après création depuis une
+    // rotation. L'identifiant de culture est globalement unique et suffit.
+    const dejaPresente = culturesPrevues.some(cp => cp.cultureId === culture.id)
 
     if (!dejaPresente && culture.planche) {
       const surface = (culture.planche.longueur || 0) * (culture.planche.largeur || 0)
@@ -1190,7 +1214,9 @@ export async function creerCulturesBatch(
  * Statistiques de planification
  */
 export async function getStatsPlanification(userId: string, annee: number) {
-  const culturesPrevues = await getCulturesPrevues(userId, annee)
+  const culturesPrevues = await getCulturesPrevues(userId, annee, {
+    includeAllCultures: true,
+  })
   const recoltesPrevues = await getRecoltesPrevues(userId, annee, 'mois')
 
   // Bug #2 (testeur) — Le compteur « Cultures prévues » affichait 24 (longueur

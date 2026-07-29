@@ -11,6 +11,7 @@ import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { ArrowLeft, FileStack, CheckCircle2, Plus, Loader2 } from "lucide-react"
 import { formatSemaine } from "@/lib/assistant-helpers"
+import { updateDashboardSearchParams } from "@/lib/dashboard-navigation"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -58,9 +59,8 @@ function CreerCulturesContent() {
   const [isLoading, setIsLoading] = React.useState(true)
   const [isCreating, setIsCreating] = React.useState(false)
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
-  const [annee, setAnnee] = React.useState(
-    parseInt(searchParams.get("annee") || new Date().getFullYear().toString())
-  )
+  const anneeParam = parseInt(searchParams.get("annee") || "", 10)
+  const annee = Number.isNaN(anneeParam) ? new Date().getFullYear() : anneeParam
 
   const annees = React.useMemo(() => {
     const currentYear = new Date().getFullYear()
@@ -75,7 +75,7 @@ function CreerCulturesContent() {
       if (!response.ok) throw new Error("Erreur lors du chargement")
       const result = await response.json()
       setData(result.data)
-    } catch (error) {
+    } catch {
       toast({
         variant: "destructive",
         title: "Erreur",
@@ -89,6 +89,17 @@ function CreerCulturesContent() {
   React.useEffect(() => {
     fetchData()
   }, [fetchData])
+
+  const handleAnneeChange = React.useCallback(
+    (value: string) => {
+      const params = new URLSearchParams(searchParams.toString())
+      params.set("annee", value)
+      // Un filtre d'année ne doit pas encombrer l'historique, mais il doit
+      // rester dans le deep-link et survivre à un rechargement.
+      updateDashboardSearchParams(params, "replace")
+    },
+    [searchParams]
+  )
 
   // Cultures à créer (non existantes avec un ITP)
   const culturesACreer = data.filter(c => !c.existante && c.itpId)
@@ -187,7 +198,7 @@ function CreerCulturesContent() {
         <div className="flex items-center gap-4">
           <Select
             value={annee.toString()}
-            onValueChange={(value) => setAnnee(parseInt(value))}
+            onValueChange={handleAnneeChange}
           >
             <SelectTrigger className="w-[100px]">
               <SelectValue />

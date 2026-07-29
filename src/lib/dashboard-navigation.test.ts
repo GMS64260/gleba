@@ -84,4 +84,26 @@ describe("updateDashboardSearchParams", () => {
     expect(pushState).not.toHaveBeenCalled()
     expect(replaceState).not.toHaveBeenCalled()
   })
+
+  it("persiste le filtre d'année d'un écran direct sans perdre sa query", () => {
+    const replaceState = vi.fn()
+    vi.stubGlobal("window", {
+      location: {
+        pathname: "/maraichage/planification/creer-cultures",
+        search: "?annee=2026&source=rotation",
+        hash: "#liste",
+      },
+      history: { pushState: vi.fn(), replaceState },
+    })
+    const params = new URLSearchParams("annee=2026&source=rotation")
+    params.set("annee", "2027")
+
+    updateDashboardSearchParams(params, "replace")
+
+    expect(replaceState).toHaveBeenCalledWith(
+      null,
+      "",
+      "/maraichage/planification/creer-cultures?annee=2027&source=rotation#liste",
+    )
+  })
 })
