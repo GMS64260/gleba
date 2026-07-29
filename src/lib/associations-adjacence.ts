@@ -29,6 +29,8 @@ export type SuggestionCompagnon = {
 export type AdjacenceResult = {
   alertes: AlerteAdjacence[]
   suggestions: SuggestionCompagnon[]
+  /** Îlot de la planche cible, null si aucun n'est renseigné. */
+  ilot: string | null
   /** Planches considérées adjacentes (même îlot). */
   planchesVoisines: { id: string; nom: string }[]
 }
@@ -51,7 +53,7 @@ export async function checkAdjacence(
     select: { id: true, nom: true, ilot: true },
   })
   if (!planche || !planche.ilot) {
-    return { alertes: [], suggestions: [], planchesVoisines: [] }
+    return { alertes: [], suggestions: [], ilot: null, planchesVoisines: [] }
   }
 
   // Planches du même îlot (hors planche cible).
@@ -60,7 +62,7 @@ export async function checkAdjacence(
     select: { id: true, nom: true },
   })
   if (voisines.length === 0) {
-    return { alertes: [], suggestions: [], planchesVoisines: [] }
+    return { alertes: [], suggestions: [], ilot: planche.ilot, planchesVoisines: [] }
   }
 
   // Cultures actives sur les planches voisines.
@@ -147,6 +149,7 @@ export async function checkAdjacence(
   return {
     alertes,
     suggestions: dedupedSuggestions.slice(0, 5),
+    ilot: planche.ilot,
     planchesVoisines: voisines,
   }
 }

@@ -716,7 +716,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                 <CardHeader className="pb-2">
                   <CardTitle className="flex flex-wrap items-center gap-2 text-base">
                     <Droplets className="h-5 w-5 text-cyan-600" />
-                    A irriguer
+                    À irriguer
                     <div className="flex items-center gap-1.5 ml-auto">
                       {taches.irrigation.filter(i => i.retardJours > 0).length > 0 && (
                         <Badge variant="destructive" className="text-[10px] px-1.5 py-0">

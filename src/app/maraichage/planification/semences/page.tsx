@@ -37,6 +37,10 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
+import {
+  besoinGrainesSansMarge,
+  totalGrainesACommander,
+} from "@/lib/semences/calcul"
 
 interface BesoinSemence {
   especeId: string
@@ -158,8 +162,7 @@ function uniteLabel(u: BesoinSemence["uniteDose"]): string {
 
 // Besoin brut sans marge (réversion du calcul stocké côté API).
 function brutGraines(b: BesoinSemence): number {
-  if (!b.margeSecuritePct || b.margeSecuritePct <= 0) return b.grainesNecessaires
-  return b.grainesNecessaires / (1 + b.margeSecuritePct / 100)
+  return besoinGrainesSansMarge(b)
 }
 
 // Bug feedback testeur 2026-05-25 (cmplkcdec) — Pour les très petites
@@ -495,6 +498,10 @@ function SemencesContent() {
     ? totalGrainesPlantsMarge
     : totalGrainesPlantsBrut
   const margeCumulee = Math.max(0, totalGrainesMarge - totalGrainesBrut)
+  const totalACommanderAffiche = totalGrainesACommander(
+    [...graineDirecte, ...plantRepique],
+    appliquerMarge,
+  )
 
   return (
     <div>
@@ -645,7 +652,7 @@ function SemencesContent() {
               </CardHeader>
               <CardContent>
                 <p className="text-2xl font-bold">
-                  {stats.totalACommander.toFixed(0)} g
+                  {formatGrammes(totalACommanderAffiche)}
                   {stats.totalCaieuxACommander > 0 && (
                     <span className="text-base font-normal">
                       {" "}
