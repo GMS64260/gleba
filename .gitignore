@@ -65,7 +65,6 @@ CLAUDE.md.*
 
 # Confidential
 dl/
-audit/
 PROMPT_AI_ENRICHMENT.md
 
 # Junk: artefacts de redirection shell ratés (ex: `> et)` au lieu de `| cat`)

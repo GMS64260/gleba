@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { updateITPSchema } from '@/lib/validations'
-import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
+import { requireAuthApi } from '@/lib/auth-utils'
 import { peutEditerReferentiel, visibiliteReferentiel } from '@/lib/referentiel-communaute'
 
 type RouteParams = { params: Promise<{ id: string }> }
@@ -113,6 +113,16 @@ export async function PUT(
       )
     }
 
+    if (existing.sourceRecordId) {
+      return NextResponse.json(
+        {
+          error:
+            'Cette référence sourcée est protégée. Toute correction doit passer par le jeu de données et une migration auditable.',
+        },
+        { status: 409 }
+      )
+    }
+
     // Seul l'auteur d'un ITP perso (ou un admin) peut le modifier.
     if (!peutEditerReferentiel(existing, session!.user.id, isAdmin)) {
       return NextResponse.json(
@@ -211,6 +221,13 @@ export async function DELETE(
       return NextResponse.json(
         { error: `ITP "${id}" non trouvé` },
         { status: 404 }
+      )
+    }
+
+    if (itp.sourceRecordId) {
+      return NextResponse.json(
+        { error: 'Une référence sourcée ne peut pas être supprimée depuis l’interface.' },
+        { status: 409 }
       )
     }
 

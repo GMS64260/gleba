@@ -20,7 +20,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { GanttRow } from "@/components/itps/GanttRow"
 import { ItpEditDialog } from "@/components/itps/ItpEditDialog"
-import { itpApplicableAZone } from "@/lib/calendrier-climat"
+import { decalageItpPourZone, itpApplicableAZone } from "@/lib/calendrier-climat"
 import type { ZoneClimat } from "@/lib/terroir"
 
 interface ITPWithEspece {
@@ -35,9 +35,15 @@ interface ITPWithEspece {
   semaineSemis: number | null
   semainePlantation: number | null
   semaineRecolte: number | null
+  semaineImplantationDebut?: number | null
+  semaineImplantationFin?: number | null
+  semaineRecolteFin?: number | null
   dureeRecolte: number | null
   typePlanche: string | null
   zoneClimat?: string | null
+  implantation?: string | null
+  statutValidation?: string | null
+  sourceRecordId?: string | null
   notes: string | null
 }
 
@@ -74,7 +80,9 @@ export function ItpCalendarView() {
     async function fetchITPs() {
       setIsLoading(true)
       try {
-        const response = await fetch('/api/itps?pageSize=500')
+        const response = await fetch(
+          '/api/itps?pageSize=1000&applicable=1&sortBy=statutValidation&sortOrder=desc'
+        )
         if (response.ok) {
           const data = await response.json()
           setItps(data.data || data.itps || [])
@@ -101,6 +109,7 @@ export function ItpCalendarView() {
         const search = recherche.toLowerCase()
         return (
           itp.id.toLowerCase().includes(search) ||
+          itp.nom?.toLowerCase().includes(search) ||
           itp.especeId?.toLowerCase().includes(search) ||
           false
         )
@@ -189,7 +198,14 @@ export function ItpCalendarView() {
           )}
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border">
+        <div className="space-y-2">
+          {itpsFiltres.length > 150 && (
+            <p className="text-xs text-muted-foreground">
+              150 itinéraires affichés dans cette vue compacte sur {itpsFiltres.length}.
+              Utilisez la recherche pour cibler une espèce.
+            </p>
+          )}
+          <div className="overflow-x-auto rounded-lg border">
           <table className="w-full border-collapse text-sm">
             <thead>
               <tr className="border-b">
@@ -205,11 +221,17 @@ export function ItpCalendarView() {
               </tr>
             </thead>
             <tbody>
-              {itpsFiltres.map(itp => (
-                <GanttRow key={itp.id} itp={itp} onEdit={handleEdit} decalage={decalageZone} />
+              {itpsFiltres.slice(0, 150).map(itp => (
+                <GanttRow
+                  key={itp.id}
+                  itp={itp}
+                  onEdit={handleEdit}
+                  decalage={decalageItpPourZone(itp.zoneClimat, zone as ZoneClimat | null)}
+                />
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 

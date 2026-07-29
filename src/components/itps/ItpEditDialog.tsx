@@ -6,7 +6,8 @@
  */
 
 import * as React from "react"
-import { Save, X } from "lucide-react"
+import Link from "next/link"
+import { Save } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -41,8 +42,13 @@ interface ITPWithEspece {
   semaineSemis: number | null
   semainePlantation: number | null
   semaineRecolte: number | null
+  semaineImplantationDebut?: number | null
+  semaineImplantationFin?: number | null
+  semaineRecolteFin?: number | null
   dureeRecolte: number | null
   typePlanche: string | null
+  implantation?: string | null
+  sourceRecordId?: string | null
   notes: string | null
 }
 
@@ -75,6 +81,48 @@ export function ItpEditDialog({ itp, open, onOpenChange, onSaved }: ItpEditDialo
   }, [itp])
 
   if (!itp) return null
+
+  if (itp.sourceRecordId) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{itp.nom ?? itp.id}</DialogTitle>
+            <DialogDescription>
+              Référence documentée protégée : les fenêtres publiées ne sont pas modifiables
+              directement depuis le calendrier.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="rounded-md border p-3">
+              <p className="text-xs text-muted-foreground">Implantation</p>
+              <p className="mt-1 font-medium">
+                {itp.semaineImplantationDebut && itp.semaineImplantationFin
+                  ? `S${itp.semaineImplantationDebut}–S${itp.semaineImplantationFin}`
+                  : "Non renseignée"}
+              </p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs text-muted-foreground">Récolte</p>
+              <p className="mt-1 font-medium">
+                {itp.semaineRecolte && itp.semaineRecolteFin
+                  ? `S${itp.semaineRecolte}–S${itp.semaineRecolteFin}`
+                  : "Pluriannuelle ou non renseignée"}
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Fermer
+            </Button>
+            <Button asChild>
+              <Link href={`/maraichage/itps/${encodeURIComponent(itp.id)}`}>Voir la source</Link>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    )
+  }
 
   const handleSave = async () => {
     setIsSubmitting(true)

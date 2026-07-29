@@ -894,20 +894,26 @@ model Signalement {
 /// ITP - Itinéraires Techniques des Plantes
 model ITP {
   // id : officiel = nom lisible (rétro-compat FK) ; perso = cuid (id omis → @default(cuid())).
-  id                String  @id @default(cuid()) @map("it_plante")
-  nom               String? @map("nom") // Nom affiché ; = id pour l'officiel, saisi pour le perso
-  nomNormalise      String? @map("nom_normalise") // Clé de dédup perso (index partiel SQL user_id, nom_normalise)
-  especeId          String? @map("espece")
-  espece            Espece? @relation(fields: [especeId], references: [id], onDelete: SetNull)
-  semaineSemis      Int?    @map("s_semis") // Semaine semis (1-52)
-  semainePlantation Int?    @map("s_plantation") // Semaine plantation (1-52)
-  semaineRecolte    Int?    @map("s_recolte") // Semaine début récolte (1-52)
-  dureeRecolte      Int?    @map("d_recolte") // Durée récolte (semaines, 1-52)
-  dureePepiniere    Int?    @map("d_pepiniere") // Durée pépinière (jours)
-  dureeCulture      Int?    @map("d_culture") // Durée culture (jours)
-  nbRangs           Int?    @map("nb_rangs") // Nombre de rangs par planche
-  espacement        Float?  @map("espacement") // Espacement entre plants (cm)
-  notes             String? @map("notes")
+  id                       String  @id @default(cuid()) @map("it_plante")
+  nom                      String? @map("nom") // Nom affiché ; = id pour l'officiel, saisi pour le perso
+  nomNormalise             String? @map("nom_normalise") // Clé de dédup perso (index partiel SQL user_id, nom_normalise)
+  especeId                 String? @map("espece")
+  espece                   Espece? @relation(fields: [especeId], references: [id], onDelete: SetNull)
+  semaineSemis             Int?    @map("s_semis") // Semaine semis (1-52)
+  semainePlantation        Int?    @map("s_plantation") // Semaine plantation (1-52)
+  semaineRecolte           Int?    @map("s_recolte") // Semaine début récolte (1-52)
+  // Fenêtres documentées par la source. Les trois semaines historiques
+  // ci-dessus restent les repères de planification (début de fenêtre) et
+  // assurent la compatibilité avec les cultures déjà rattachées.
+  semaineImplantationDebut Int?    @map("s_implantation_debut")
+  semaineImplantationFin   Int?    @map("s_implantation_fin")
+  semaineRecolteFin        Int?    @map("s_recolte_fin")
+  dureeRecolte             Int?    @map("d_recolte") // Durée récolte (semaines, 1-52)
+  dureePepiniere           Int?    @map("d_pepiniere") // Durée pépinière (jours)
+  dureeCulture             Int?    @map("d_culture") // Durée culture (jours)
+  nbRangs                  Int?    @map("nb_rangs") // Nombre de rangs par planche
+  espacement               Float?  @map("espacement") // Espacement entre plants (cm)
+  notes                    String? @map("notes")
 
   // Champs métier complémentaires
   typePlanche     String? @map("type_planche") // Plein champ | Sous abri (Serre/Tunnel)
@@ -924,6 +930,20 @@ model ITP {
   commentaireAgronome String?   @map("commentaire_agronome")
   sourceReference     String?   @map("source_reference")
   derniereRevision    DateTime? @map("derniere_revision")
+
+  // Provenance structurée. `sourceRecordId` identifie de façon stable une
+  // ligne d'un jeu de données et permet un import idempotent sans dédupliquer
+  // approximativement sur le nom affiché.
+  implantation               String?  @map("implantation")
+  forcage                    Boolean? @map("forcage")
+  contexteClimatique         String?  @map("contexte_climatique")
+  sourceUrl                  String?  @map("source_url")
+  sourceRecordId             String?  @unique @map("source_record_id")
+  sourceVersion              String?  @map("source_version")
+  sourceLicence              String?  @map("source_licence")
+  statutValidation           String   @default("a_revoir") @map("statut_validation") // source_documentee | a_revoir | personnel
+  actif                      Boolean  @default(true) @map("actif")
+  delaiPremiereRecolteAnnees Int?     @map("delai_premiere_recolte_annees")
 
   // Référentiel communautaire (cf. src/lib/referentiel-communaute.ts). null = Gleba officiel.
   userId            String? @map("user_id")
@@ -944,6 +964,8 @@ model ITP {
 
   @@index([userId])
   @@index([zoneClimat])
+  @@index([actif, statutValidation])
+  @@index([especeId, actif])
   @@map("itps")
 }
 

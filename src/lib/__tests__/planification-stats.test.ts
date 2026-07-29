@@ -5,12 +5,19 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+const terroirMocks = vi.hoisted(() => ({
+  zoneEffectiveUser: vi.fn(),
+}))
+
 vi.mock('@/lib/prisma', () => ({
   default: {
     planche: { findMany: vi.fn().mockResolvedValue([]) },
     espece: { findMany: vi.fn().mockResolvedValue([]) },
     culture: { findMany: vi.fn() },
   },
+}))
+vi.mock('@/lib/terroir', () => ({
+  zoneEffectiveUser: terroirMocks.zoneEffectiveUser,
 }))
 
 import prisma from '@/lib/prisma'
@@ -31,6 +38,7 @@ const itpRotation = {
   dureeCulture: 120,
   nbRangs: 2,
   espacement: 80,
+  zoneClimat: null as string | null,
 }
 
 function plancheAvecCulture(culture: {
@@ -104,6 +112,7 @@ describe('getCulturesPrevues (inventaire annuel)', () => {
     mocked.planche.findMany.mockResolvedValue([])
     mocked.espece.findMany.mockResolvedValue([])
     mocked.culture.findMany.mockResolvedValue([])
+    terroirMocks.zoneEffectiveUser.mockResolvedValue(null)
   })
 
   it('dédoublonne une culture créée depuis une rotation malgré les deux formats de plancheId', async () => {
@@ -136,6 +145,25 @@ describe('getCulturesPrevues (inventaire annuel)', () => {
     expect(inventaire[0].cultureId).toBe(460)
     expect(projectionsRestantes).toHaveLength(0)
   })
+
+  it('recalibre les semaines théoriques du climat source vers la ferme', async () => {
+    terroirMocks.zoneEffectiveUser.mockResolvedValue('semi_continental')
+    const planche = plancheAvecCulture({ id: 900 })
+    planche.cultures = []
+    planche.rotation.details[0].itp = {
+      ...itpRotation,
+      zoneClimat: 'oceanique',
+    }
+    mocked.planche.findMany.mockResolvedValue([planche])
+
+    const cultures = await getCulturesPrevues('u1', 2027)
+
+    expect(cultures[0]).toMatchObject({
+      semaineSemis: 18,
+      semainePlantation: 22,
+      semaineRecolte: 38,
+    })
+  })
 })
 
 describe('getStatsPlanification (BUG-14 variétés DISTINCT)', () => {
@@ -144,6 +172,7 @@ describe('getStatsPlanification (BUG-14 variétés DISTINCT)', () => {
     mocked.planche.findMany.mockResolvedValue([])
     mocked.espece.findMany.mockResolvedValue([])
     mocked.culture.findMany.mockResolvedValue([])
+    terroirMocks.zoneEffectiveUser.mockResolvedValue(null)
   })
 
   it('renvoie nbVarietes=0 quand aucune culture', async () => {

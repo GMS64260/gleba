@@ -68,6 +68,15 @@ Le modèle `ITP` (cf. `prisma/schema.prisma`) expose désormais :
 | `commentaire_agronome` | Notes datées des révisions successives            |
 | `source_reference`     | Référence bibliographique                         |
 | `derniere_revision`    | Timestamp de la dernière revue d'agronome         |
+| `s_implantation_debut` | Début de la fenêtre d'implantation documentée      |
+| `s_implantation_fin`   | Fin de la fenêtre d'implantation documentée        |
+| `s_recolte_fin`        | Fin de la fenêtre de récolte documentée            |
+| `source_record_id`     | Identifiant stable de la ligne du jeu source       |
+| `source_url`           | URL pérenne ou DOI de la publication               |
+| `source_version`       | Version du jeu ou de la publication                |
+| `source_licence`       | Licence de réutilisation                           |
+| `statut_validation`    | `source_documentee`, `a_revoir` ou `personnel`     |
+| `actif`                | Visibilité du scénario dans les sélecteurs         |
 
 Le modèle `Variete` expose en plus `unifere_bifere` pour les figuiers, à
 renseigner sur les variétés bifères afin de déclencher la taille bifère

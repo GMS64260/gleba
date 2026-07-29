@@ -29,7 +29,11 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { GanttRow } from "@/components/itps/GanttRow"
 import { ItpEditDialog } from "@/components/itps/ItpEditDialog"
 import { SemisLunaireEncart } from "@/components/itps/SemisLunaireEncart"
-import { libelleDecalage, itpApplicableAZone } from "@/lib/calendrier-climat"
+import {
+  decalageItpPourZone,
+  libelleDecalage,
+  itpApplicableAZone,
+} from "@/lib/calendrier-climat"
 import type { ZoneClimat } from "@/lib/terroir"
 import { alertDialog } from "@/lib/global-dialog"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
@@ -48,10 +52,16 @@ interface ITPWithEspece {
   semaineSemis: number | null
   semainePlantation: number | null
   semaineRecolte: number | null
+  semaineImplantationDebut?: number | null
+  semaineImplantationFin?: number | null
+  semaineRecolteFin?: number | null
   dureeRecolte: number | null
   dureePepiniere?: number | null
   typePlanche: string | null
   zoneClimat?: string | null
+  implantation?: string | null
+  statutValidation?: string | null
+  sourceRecordId?: string | null
   notes: string | null
 }
 
@@ -95,6 +105,7 @@ export default function ITCalendrierPage() {
   const [recherche, setRecherche] = React.useState("")
   const [editingItp, setEditingItp] = React.useState<ITPWithEspece | null>(null)
   const [editDialogOpen, setEditDialogOpen] = React.useState(false)
+  const [pageIndex, setPageIndex] = React.useState(0)
 
   // Adaptation climatique
   const [climat, setClimat] = React.useState<ClimatPayload | null>(null)
@@ -110,7 +121,9 @@ export default function ITCalendrierPage() {
     async function fetchITPs() {
       setIsLoading(true)
       try {
-        const response = await fetch("/api/itps?pageSize=500")
+        const response = await fetch(
+          "/api/itps?pageSize=1000&applicable=1&sortBy=statutValidation&sortOrder=desc"
+        )
         if (response.ok) {
           const data = await response.json()
           setItps(data.data || data.itps || [])
@@ -201,6 +214,7 @@ export default function ITCalendrierPage() {
         const search = recherche.toLowerCase()
         return (
           itp.id.toLowerCase().includes(search) ||
+          itp.nom?.toLowerCase().includes(search) ||
           itp.especeId?.toLowerCase().includes(search) ||
           false
         )
@@ -209,6 +223,18 @@ export default function ITCalendrierPage() {
       return true
     })
   }, [itps, filtreTypePlanche, recherche, userADeLAbri, userADuPleinChamp, climat?.zone])
+
+  React.useEffect(() => {
+    setPageIndex(0)
+  }, [filtreTypePlanche, recherche, climat?.zone])
+
+  const ganttPageSize = 100
+  const ganttPageCount = Math.max(1, Math.ceil(itpsFiltres.length / ganttPageSize))
+  const safePageIndex = Math.min(pageIndex, ganttPageCount - 1)
+  const itpsAffiches = itpsFiltres.slice(
+    safePageIndex * ganttPageSize,
+    (safePageIndex + 1) * ganttPageSize
+  )
 
   const handleEdit = (itp: ITPWithEspece) => {
     setEditingItp(itp)
@@ -353,7 +379,11 @@ export default function ITCalendrierPage() {
         {/* Encart biodynamique */}
         {!isLoading && itps.length > 0 && (
           <div className="mb-4">
-            <SemisLunaireEncart itps={itps} decalage={decalageTotal} />
+            <SemisLunaireEncart
+              itps={itps}
+              zone={(climat?.zone ?? null) as ZoneClimat | null}
+              reglageFin={reglageFin}
+            />
           </div>
         )}
 
@@ -417,12 +447,39 @@ export default function ITCalendrierPage() {
         {/* Tableau Gantt */}
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <CardTitle>{itpsFiltres.length} itineraires</CardTitle>
-              <Button variant="outline" size="sm" disabled>
-                <Download className="h-4 w-4 mr-2" />
-                Export PDF
-              </Button>
+              <div className="flex items-center gap-2">
+                {itpsFiltres.length > ganttPageSize && (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={safePageIndex === 0}
+                      onClick={() => setPageIndex((page) => Math.max(0, page - 1))}
+                    >
+                      Précédent
+                    </Button>
+                    <span className="text-xs text-muted-foreground">
+                      Page {safePageIndex + 1}/{ganttPageCount}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={safePageIndex >= ganttPageCount - 1}
+                      onClick={() =>
+                        setPageIndex((page) => Math.min(ganttPageCount - 1, page + 1))
+                      }
+                    >
+                      Suivant
+                    </Button>
+                  </>
+                )}
+                <Button variant="outline" size="sm" disabled>
+                  <Download className="h-4 w-4 mr-2" />
+                  Export PDF
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent>
@@ -462,8 +519,18 @@ export default function ITCalendrierPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {itpsFiltres.map((itp) => (
-                      <GanttRow key={itp.id} itp={itp} onEdit={handleEdit} decalage={decalageTotal} />
+                    {itpsAffiches.map((itp) => (
+                      <GanttRow
+                        key={itp.id}
+                        itp={itp}
+                        onEdit={handleEdit}
+                        decalage={
+                          decalageItpPourZone(
+                            itp.zoneClimat,
+                            (climat?.zone ?? null) as ZoneClimat | null
+                          ) + reglageFin
+                        }
+                      />
                     ))}
                   </tbody>
                 </table>
@@ -478,7 +545,8 @@ export default function ITCalendrierPage() {
             <p className="text-sm text-blue-800">
               <strong>Comment lire ce calendrier :</strong> les barres montrent les périodes de semis
               (orange), croissance (vert) et récolte (violet). Les dates sont recalées selon votre zone
-              climatique{decalageTotal !== 0 ? " (décalage appliqué)" : ""} ; l&apos;itinéraire de référence
+              climatique, à partir du climat propre à chaque source
+              {reglageFin !== 0 ? " (réglage fin appliqué)" : ""} ; l&apos;itinéraire de référence
               reste inchangé. Cliquez sur une ligne pour le modifier.
             </p>
           </CardContent>

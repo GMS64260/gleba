@@ -59,7 +59,7 @@ export default function NewRotationPage() {
   React.useEffect(() => {
     async function loadItps() {
       try {
-        const response = await fetch("/api/itps?pageSize=500")
+        const response = await fetch("/api/itps?pageSize=1000&applicable=1&sortBy=statutValidation&sortOrder=desc")
         if (response.ok) {
           const data = await response.json()
           setItps(data.data)

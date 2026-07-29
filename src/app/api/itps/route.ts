@@ -8,12 +8,33 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { createITPSchema } from '@/lib/validations'
 import { Prisma } from '@prisma/client'
-import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
+import { requireAuthApi } from '@/lib/auth-utils'
 import { statsAvisPourRefs } from '@/lib/avis/stats-liste'
 import { visibiliteReferentiel, attributionCreation } from '@/lib/referentiel-communaute'
 import { cleanReferentielName, normalizeReferentielKey } from '@/lib/normalize'
-import { terroirDeUser } from '@/lib/terroir'
-import { zoneHorsReferenceMetropole } from '@/lib/calendrier-climat'
+import { zoneEffectiveUser } from '@/lib/terroir'
+import {
+  appliquerDecalageItp,
+  decalageItpPourZone,
+  zoneHorsReferenceMetropole,
+} from '@/lib/calendrier-climat'
+
+const SORT_FIELDS = new Set([
+  'id',
+  'nom',
+  'especeId',
+  'semaineSemis',
+  'semainePlantation',
+  'semaineRecolte',
+  'typePlanche',
+  'statutValidation',
+])
+
+function positiveInteger(value: string | null, fallback: number, max: number): number {
+  const parsed = Number.parseInt(value ?? '', 10)
+  if (!Number.isFinite(parsed) || parsed < 1) return fallback
+  return Math.min(parsed, max)
+}
 
 // GET /api/itps - Référentiel global (lecture)
 export async function GET(request: NextRequest) {
@@ -25,31 +46,73 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
 
     // Pagination
-    const page = parseInt(searchParams.get('page') || '1')
-    const pageSize = parseInt(searchParams.get('pageSize') || '50')
+    const page = positiveInteger(searchParams.get('page'), 1, 100_000)
+    const pageSize = positiveInteger(searchParams.get('pageSize'), 50, 1000)
     const skip = (page - 1) * pageSize
 
     // Tri
-    const sortBy = searchParams.get('sortBy') || 'id'
-    const sortOrder = searchParams.get('sortOrder') || 'asc'
+    const requestedSort = searchParams.get('sortBy') || 'id'
+    const sortBy = SORT_FIELDS.has(requestedSort) ? requestedSort : 'id'
+    const sortOrder = searchParams.get('sortOrder') === 'desc' ? 'desc' : 'asc'
 
     // Filtres
     const search = searchParams.get('search') || ''
     const especeId = searchParams.get('especeId')
+    const typePlanche = searchParams.get('typePlanche')
+    const statutValidation = searchParams.get('statutValidation')
+    const applicable = searchParams.get('applicable') === '1'
+    const calibrer = searchParams.get('calibre') === '1'
+    const userZone = applicable || calibrer
+      ? await zoneEffectiveUser(prisma, userId)
+      : null
 
     // Construction du where
-    const where: Prisma.ITPWhereInput = {}
+    const where: Prisma.ITPWhereInput = { actif: true }
 
     if (search) {
       where.OR = [
         { id: { contains: search, mode: 'insensitive' } },
+        { nom: { contains: search, mode: 'insensitive' } },
         { notes: { contains: search, mode: 'insensitive' } },
+        { sourceReference: { contains: search, mode: 'insensitive' } },
+        { contexteClimatique: { contains: search, mode: 'insensitive' } },
         { espece: { id: { contains: search, mode: 'insensitive' } } },
       ]
     }
 
     if (especeId) {
       where.especeId = especeId
+    }
+    if (typePlanche) {
+      where.typePlanche = typePlanche
+    }
+    if (statutValidation) {
+      where.statutValidation = statutValidation
+    }
+
+    if (applicable) {
+      if (zoneHorsReferenceMetropole(userZone)) {
+        where.zoneClimat = userZone
+      } else {
+        where.AND = [
+          {
+            OR: [
+              { zoneClimat: null },
+              {
+                zoneClimat: {
+                  in: [
+                    'mediterraneen',
+                    'oceanique',
+                    'oceanique_altere',
+                    'semi_continental',
+                    'montagnard',
+                  ],
+                },
+              },
+            ],
+          },
+        ]
+      }
     }
 
     // Visibilité catalogue communautaire : Gleba officiel (userId null) +
@@ -91,7 +154,23 @@ export async function GET(request: NextRequest) {
     const statsMap = includeAvis
       ? await statsAvisPourRefs(prisma, 'ITP', itps.map((i) => i.id))
       : null
-    const data = statsMap ? itps.map((i) => ({ ...i, avisStats: statsMap.get(i.id) })) : itps
+    let data = statsMap
+      ? itps.map((i) => ({ ...i, avisStats: statsMap.get(i.id) }))
+      : itps
+
+    // `calibre=1` sert aux écrans qui transforment directement les semaines en
+    // dates de culture. Le référentiel reste stocké dans son climat source ;
+    // seule la réponse est convertie vers la zone de l'exploitation.
+    if (calibrer) {
+      data = data.map((itp) => {
+        const decalage = decalageItpPourZone(itp.zoneClimat, userZone)
+        return {
+          ...appliquerDecalageItp(itp, decalage),
+          decalageClimatiqueApplique: decalage,
+          zoneClimatCible: userZone,
+        }
+      })
+    }
 
     return NextResponse.json({
       data,
@@ -206,14 +285,15 @@ export async function POST(request: NextRequest) {
     // Les ITP officiels (admin) gardent la valeur transmise (null par défaut).
     let zoneClimat = data.zoneClimat ?? null
     if (zoneClimat == null && !estOfficiel) {
-      const terroir = await terroirDeUser(prisma, session!.user.id)
-      if (zoneHorsReferenceMetropole(terroir.zoneClimat)) {
-        zoneClimat = terroir.zoneClimat
+      const zone = await zoneEffectiveUser(prisma, session!.user.id)
+      if (zoneHorsReferenceMetropole(zone)) {
+        zoneClimat = zone
       }
     }
 
     // Création : officiel → id = nom lisible ; perso → id omis → cuid (@default).
     const { id: _nomBrut, ...rest } = data
+    void _nomBrut
     const itp = await prisma.iTP.create({
       data: {
         ...rest,
@@ -221,6 +301,7 @@ export async function POST(request: NextRequest) {
         nom: nomSaisi,
         nomNormalise,
         zoneClimat,
+        statutValidation: estOfficiel ? 'a_revoir' : 'personnel',
         ...attrib,
       },
       include: {
