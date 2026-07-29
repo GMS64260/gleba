@@ -1030,11 +1030,21 @@ function soinFormVide() {
   }
 }
 
+function lotPharmacieFormVide() {
+  return {
+    numeroLot: "",
+    quantite: "",
+    unite: "mL",
+    datePeremption: "",
+    fournisseur: "",
+    ordonnanceUrl: "",
+  }
+}
+
 function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialAnimalId?: string | null; initialOpen?: boolean }) {
   const caps = capacitesSelection(useFiliereSelection())
   const filiereSel = useFiliereSelection()
   const { toast } = useToast()
-  const router = useRouter()
   const [isLoading, setIsLoading] = React.useState(true)
   const [soins, setSoins] = React.useState<Soin[]>([])
   // Scoping par filière de l'atelier sélectionné (via l'espèce de l'animal ou du lot).
@@ -1046,10 +1056,17 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
   const [editingSoinId, setEditingSoinId] = React.useState<number | null>(null)
 
   const [formData, setFormData] = React.useState(soinFormVide)
+  const [ajoutLotPharmacieOuvert, setAjoutLotPharmacieOuvert] = React.useState(false)
+  const [lotPharmacieForm, setLotPharmacieForm] = React.useState(lotPharmacieFormVide)
+  const [lotPharmacieError, setLotPharmacieError] = React.useState<string | null>(null)
+  const [isSavingLotPharmacie, setIsSavingLotPharmacie] = React.useState(false)
 
   const resetSoinForm = React.useCallback(() => {
     setEditingSoinId(null)
     setFormData(soinFormVide())
+    setAjoutLotPharmacieOuvert(false)
+    setLotPharmacieForm(lotPharmacieFormVide())
+    setLotPharmacieError(null)
   }, [])
 
   const handleEditSoin = (s: Soin) => {
@@ -1213,6 +1230,85 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
         })
       })
   }, [especeIdSelectionnee, toast])
+
+  const ajouterLotPharmacie = async () => {
+    const quantite = Number(lotPharmacieForm.quantite)
+    if (!formData.produitId) {
+      setLotPharmacieError("Sélectionnez d’abord un produit vétérinaire.")
+      return
+    }
+    if (!lotPharmacieForm.numeroLot.trim()) {
+      setLotPharmacieError("Le numéro de lot est requis.")
+      return
+    }
+    if (!Number.isFinite(quantite) || quantite <= 0) {
+      setLotPharmacieError("La quantité disponible doit être supérieure à zéro.")
+      return
+    }
+    if (!lotPharmacieForm.unite.trim()) {
+      setLotPharmacieError("L’unité de stock est requise.")
+      return
+    }
+
+    setIsSavingLotPharmacie(true)
+    setLotPharmacieError(null)
+    try {
+      const response = await fetch("/api/elevage/stock-medicaments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          produitId: formData.produitId,
+          numeroLot: lotPharmacieForm.numeroLot.trim(),
+          quantite,
+          unite: lotPharmacieForm.unite.trim(),
+          datePeremption: lotPharmacieForm.datePeremption || null,
+          fournisseur: lotPharmacieForm.fournisseur.trim() || null,
+          ordonnanceUrl: lotPharmacieForm.ordonnanceUrl.trim() || null,
+        }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok || !payload?.data) {
+        const fieldErrors = payload?.details?.fieldErrors as Record<string, string[]> | undefined
+        const firstFieldError = fieldErrors
+          ? Object.values(fieldErrors).find((messages) => messages.length > 0)?.[0]
+          : null
+        throw new Error(firstFieldError || payload?.error || "Impossible d’ajouter le lot de pharmacie.")
+      }
+
+      const stock = payload.data as {
+        id: string
+        produitId: string
+        numeroLot: string
+        quantite: number
+        unite: string
+        datePeremption: string | null
+        ordonnanceUrl: string | null
+      }
+      setStocksMedicaments((current) => [
+        stock,
+        ...current.filter((item) => item.id !== stock.id),
+      ])
+      setFormData((current) => ({
+        ...current,
+        stockMedicamentId: stock.id,
+        unite: stock.unite,
+        ordonnanceUrl: current.ordonnanceUrl || stock.ordonnanceUrl || "",
+      }))
+      setAjoutLotPharmacieOuvert(false)
+      setLotPharmacieForm(lotPharmacieFormVide())
+      toast({
+        title: "Lot de pharmacie ajouté",
+        description: `Le lot ${stock.numeroLot} est sélectionné ; votre brouillon de soin a été conservé.`,
+      })
+    } catch (error) {
+      const description =
+        error instanceof Error ? error.message : "Impossible d’ajouter le lot de pharmacie."
+      setLotPharmacieError(description)
+      toast({ variant: "destructive", title: "Lot non ajouté", description })
+    } finally {
+      setIsSavingLotPharmacie(false)
+    }
+  }
 
   const changerInjection = async (soinId: number, injectionId: string, statut: "a_faire" | "realisee" | "annulee") => {
     try {
@@ -1479,13 +1575,125 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
                               size="sm"
                               className="h-8 border-amber-300 bg-white text-amber-900 hover:bg-amber-100"
                               onClick={() => {
-                                setIsDialogOpen(false)
-                                router.push("/elevage?tab=alimentation&sub=registre", { scroll: false })
+                                setLotPharmacieError(null)
+                                setLotPharmacieForm((current) => ({
+                                  ...current,
+                                  unite: formData.unite || current.unite,
+                                  ordonnanceUrl: formData.ordonnanceUrl || current.ordonnanceUrl,
+                                }))
+                                setAjoutLotPharmacieOuvert((open) => !open)
                               }}
                             >
                               <Plus className="mr-1 h-3.5 w-3.5" />
-                              Ajouter un lot de pharmacie
+                              {ajoutLotPharmacieOuvert
+                                ? "Masquer l’ajout du lot"
+                                : "Ajouter le lot ici sans perdre le soin"}
                             </Button>
+                            {ajoutLotPharmacieOuvert && (
+                              <div className="space-y-2 rounded-md border border-amber-300 bg-white p-3">
+                                <p className="text-xs font-medium text-amber-900">
+                                  Ajoutez le stock administré : le soin, la dose et le protocole restent dans ce formulaire.
+                                </p>
+                                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                  <div className="space-y-1">
+                                    <Label className="text-xs">N° de lot *</Label>
+                                    <Input
+                                      value={lotPharmacieForm.numeroLot}
+                                      onChange={(event) => setLotPharmacieForm((current) => ({
+                                        ...current,
+                                        numeroLot: event.target.value,
+                                      }))}
+                                      placeholder="Lot fabricant"
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <Label className="text-xs">Péremption</Label>
+                                    <Input
+                                      type="date"
+                                      value={lotPharmacieForm.datePeremption}
+                                      onChange={(event) => setLotPharmacieForm((current) => ({
+                                        ...current,
+                                        datePeremption: event.target.value,
+                                      }))}
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <Label className="text-xs">Quantité disponible *</Label>
+                                    <Input
+                                      type="number"
+                                      min="0.01"
+                                      step="0.01"
+                                      value={lotPharmacieForm.quantite}
+                                      onChange={(event) => setLotPharmacieForm((current) => ({
+                                        ...current,
+                                        quantite: event.target.value,
+                                      }))}
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <Label className="text-xs">Unité *</Label>
+                                    <Input
+                                      value={lotPharmacieForm.unite}
+                                      onChange={(event) => setLotPharmacieForm((current) => ({
+                                        ...current,
+                                        unite: event.target.value,
+                                      }))}
+                                      placeholder="mL, doses…"
+                                    />
+                                  </div>
+                                  <div className="space-y-1 sm:col-span-2">
+                                    <Label className="text-xs">Fournisseur</Label>
+                                    <Input
+                                      value={lotPharmacieForm.fournisseur}
+                                      onChange={(event) => setLotPharmacieForm((current) => ({
+                                        ...current,
+                                        fournisseur: event.target.value,
+                                      }))}
+                                    />
+                                  </div>
+                                  <div className="space-y-1 sm:col-span-2">
+                                    <Label className="text-xs">URL ordonnance</Label>
+                                    <Input
+                                      value={lotPharmacieForm.ordonnanceUrl}
+                                      onChange={(event) => setLotPharmacieForm((current) => ({
+                                        ...current,
+                                        ordonnanceUrl: event.target.value,
+                                      }))}
+                                      placeholder="https://…"
+                                    />
+                                  </div>
+                                </div>
+                                {lotPharmacieError && (
+                                  <p role="alert" className="text-xs text-red-700">
+                                    {lotPharmacieError}
+                                  </p>
+                                )}
+                                <div className="flex flex-wrap justify-end gap-2">
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    disabled={isSavingLotPharmacie}
+                                    onClick={() => {
+                                      setAjoutLotPharmacieOuvert(false)
+                                      setLotPharmacieError(null)
+                                    }}
+                                  >
+                                    Annuler l’ajout
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    disabled={isSavingLotPharmacie}
+                                    onClick={ajouterLotPharmacie}
+                                  >
+                                    {isSavingLotPharmacie
+                                      ? "Ajout…"
+                                      : "Ajouter et sélectionner ce lot"}
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>

@@ -811,7 +811,7 @@ function AnimauxSubTab() {
               Ajouter
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-md">
+          <DialogContent className="w-[calc(100%-2rem)] max-h-[calc(100dvh-2rem)] max-w-md overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{editingAnimalId ? "Modifier l'animal" : "Nouvel animal"}</DialogTitle>
               <DialogDescription>{editingAnimalId ? `Édition de l'animal #${editingAnimalId}` : "Ajouter un animal individuel"}</DialogDescription>
@@ -1061,7 +1061,23 @@ function AnimauxSubTab() {
                   <p role="alert" className="mr-auto text-sm text-red-600">{animalSubmitError}</p>
                 )}
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSavingAnimal}>Annuler</Button>
-                <Button type="submit" disabled={isSavingAnimal}>
+                <Button
+                  type="submit"
+                  disabled={
+                    isSavingAnimal ||
+                    !formData.especeAnimaleId ||
+                    !identifiantValide
+                  }
+                  title={
+                    !formData.especeAnimaleId
+                      ? "Sélectionnez un profil d’élevage"
+                      : !identifiantValide
+                        ? aideIdentifiant
+                          ? `Corrigez l’identifiant : ${aideIdentifiant}`
+                          : "Corrigez l’identifiant"
+                        : undefined
+                  }
+                >
                   {isSavingAnimal ? "Enregistrement…" : editingAnimalId ? "Mettre à jour" : "Créer"}
                 </Button>
               </div>
