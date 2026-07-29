@@ -470,7 +470,7 @@ export function generateCareOperations(
   })
 }
 
-const MOIS_LABELS = ["Jan", "Fév", "Mar", "Avr", "Mai", "Jun", "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc"]
+const MOIS_LABELS = ["Janv.", "Févr.", "Mars", "Avr.", "Mai", "Juin", "Juil.", "Août", "Sept.", "Oct.", "Nov.", "Déc."]
 
 /** Familles Prunus : la taille hivernale favorise gommose et chancre. */
 const PRUNUS = ["cerisier", "prunier", "pêcher", "pecher", "abricotier", "amandier"]

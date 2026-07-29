@@ -39,7 +39,7 @@ const TYPE_LABELS: Record<string, string> = {
   autre: "Autre",
 }
 
-const MOIS = ["Jan", "Fév", "Mar", "Avr", "Mai", "Jun", "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc"]
+const MOIS = ["Janv.", "Févr.", "Mars", "Avr.", "Mai", "Juin", "Juil.", "Août", "Sept.", "Oct.", "Nov.", "Déc."]
 
 export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
