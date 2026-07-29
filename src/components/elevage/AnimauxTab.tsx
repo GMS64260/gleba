@@ -171,14 +171,25 @@ export function AnimauxTab() {
   // à chaque navigation interne (y compris le clic sur l'onglet déjà actif,
   // qui réécrit une URL propre et doit ramener au sous-onglet par défaut).
   const searchParams = useSearchParams()
+  const router = useRouter()
   const [activeSub, setActiveSub] = React.useState<string>("animaux")
   React.useEffect(() => {
-    const sub = new URLSearchParams(window.location.search).get("sub")
+    const sub = searchParams.get("sub")
     setActiveSub(sub === "lots" ? "lots" : "animaux")
   }, [searchParams])
 
+  const handleSubChange = React.useCallback((sub: string) => {
+    const nextSub = sub === "lots" ? "lots" : "animaux"
+    setActiveSub(nextSub)
+    const params = new URLSearchParams(searchParams.toString())
+    params.set("tab", "animaux")
+    if (nextSub === "lots") params.set("sub", "lots")
+    else params.delete("sub")
+    router.replace(`/elevage?${params.toString()}`, { scroll: false })
+  }, [router, searchParams])
+
   return (
-    <Tabs value={activeSub} onValueChange={setActiveSub} className="space-y-4">
+    <Tabs value={activeSub} onValueChange={handleSubChange} className="space-y-4">
       <TabsList className="h-auto flex-wrap">
         <TabsTrigger value="animaux" className="flex items-center gap-1.5">
           <Bird className="h-4 w-4" />

@@ -647,7 +647,7 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
         {ponte && (ponte.nbPondeuses > 0 || ponte.tauxPonte != null) && (
           <Card>
             <CardHeader className="pb-1 pt-3 px-4">
-              <CardDescription className="text-xs">Taux de ponte</CardDescription>
+              <CardDescription className="text-xs">Taux de ponte (7 j glissants)</CardDescription>
               <CardTitle
                 className={`text-2xl ${(() => {
                   if (ponte.tauxPonte == null) return "text-muted-foreground"
@@ -666,9 +666,10 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
             <CardContent className="pb-3 px-4">
               <p className="text-xs text-muted-foreground">
                 {[
+                  'moyenne sur 7 jours',
                   ponte.tauxPonteSaisonAttendu != null ? `attendu ~${ponte.tauxPonteSaisonAttendu} %` : null,
                   ponte.nbPondeuses > 0 ? `${ponte.nbPondeuses} pondeuses` : null,
-                ].filter(Boolean).join(' · ') || '7 derniers jours'}
+                ].filter(Boolean).join(' · ')}
               </p>
             </CardContent>
           </Card>
@@ -751,7 +752,7 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
                       <SelectItem value="petit">Petit</SelectItem>
                       <SelectItem value="moyen">Moyen</SelectItem>
                       <SelectItem value="gros">Gros</SelectItem>
-                      <SelectItem value="tres_gros">Tres gros</SelectItem>
+                      <SelectItem value="tres_gros">Très gros</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
