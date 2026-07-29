@@ -24,6 +24,7 @@ import {
   calculerConsommationEauAvecMeteo,
   alerteSecheresse,
 } from '@/lib/soil-quality'
+import { cultureIrrigationDemarreeWhere } from '@/lib/irrigation-eligibility'
 
 // ── Types internes ──────────────────────────────────────────
 
@@ -240,15 +241,20 @@ export async function GET(request: NextRequest) {
         userId,
         annee,
         terminee: null,
-        OR: [
-          { aIrriguer: true },
+        AND: [
+          cultureIrrigationDemarreeWhere,
           {
-            espece: {
-              OR: [
-                { besoinEau: { gte: 3 } },
-                { irrigation: 'Eleve' },
-              ],
-            },
+            OR: [
+              { aIrriguer: true },
+              {
+                espece: {
+                  OR: [
+                    { besoinEau: { gte: 3 } },
+                    { irrigation: 'Eleve' },
+                  ],
+                },
+              },
+            ],
           },
         ],
       },

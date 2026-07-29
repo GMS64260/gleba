@@ -11,8 +11,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireAuthApi, getUserId } from '@/lib/auth-utils'
 import { fetchEcowittData, fetchOpenMeteoForecast, fetchOpenMeteoHistory, fetchWundergroundData } from '@/lib/meteo'
-import { genererRecommandationIrrigation } from '@/lib/meteo-agro'
+import { adapterConseilSousAbri, genererRecommandationIrrigation } from '@/lib/meteo-agro'
 import { irrigationCache, irrigationCacheKey } from '@/lib/irrigation-cache'
+import { cultureIrrigationDemarreeWhere } from '@/lib/irrigation-eligibility'
 import type { MeteoJournaliere, MeteoPrevision } from '@/lib/meteo'
 import type { Prisma } from '@prisma/client'
 
@@ -62,6 +63,7 @@ export async function GET(request: NextRequest) {
     const whereClause: Prisma.CultureWhereInput = {
       userId,
       terminee: null,
+      AND: [cultureIrrigationDemarreeWhere],
       planche: parcelleId
         ? { is: { parcelleGeoId: parcelleId } }
         : { isNot: null },
@@ -71,12 +73,14 @@ export async function GET(request: NextRequest) {
       where: whereClause,
       include: {
         espece: {
-          select: { id: true, besoinEau: true },
+          select: { id: true, nom: true, besoinEau: true },
         },
+        variete: { select: { nom: true } },
         planche: {
           select: {
             nom: true,
             type: true,
+            irrigation: true,
             surface: true,
             retentionEau: true,
             typeSol: true,
@@ -179,7 +183,7 @@ export async function GET(request: NextRequest) {
           previsionsPourCalcul,
           {
             id: culture.id,
-            espece: culture.especeId,
+            espece: culture.espece.nom || culture.especeId,
             besoinEau: culture.espece.besoinEau ?? 3,
             dateSemis: culture.dateSemis,
             derniereIrrigation: culture.derniereIrrigation,
@@ -193,22 +197,19 @@ export async function GET(request: NextRequest) {
         )
 
         if (sousAbri) {
-          reco.conseilMessage = reco.conseilMessage
-            .replace(/\d+mm de pluie prévus[^.]*\./g, '')
-            .replace(/Pluie prevue le [^.]+\./g, '')
-            .replace(/\d+ jours sans pluie\./g, '')
-            .replace(/Déficit hydrique de [^.]+\./g, '')
-            .trim()
-          if (reco.conseilMessage && !reco.conseilMessage.endsWith('.')) {
-            reco.conseilMessage += '.'
-          }
-          reco.conseilMessage = `Sous abri — pas de pluie directe. ${reco.conseilMessage}`.trim()
+          reco.conseilMessage = adapterConseilSousAbri(reco.conseilMessage)
           reco.pluiePrevue48h = 0
           reco.prochainePluie = null
           reco.joursSansPluie = 0
         }
 
-        recommandations.push(reco)
+        recommandations.push({
+          ...reco,
+          varietyName: culture.variete?.nom ?? null,
+          etatCulture: culture.plantationFaite ? 'Plantée' : 'Semée',
+          derniereIrrigation: culture.derniereIrrigation?.toISOString() ?? null,
+          irrigationSysteme: culture.planche?.irrigation ?? null,
+        })
       }
     }
 

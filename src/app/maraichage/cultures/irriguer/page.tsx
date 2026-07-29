@@ -192,21 +192,7 @@ function CulturesIrriguerContent() {
         body: JSON.stringify({ cultureId, marquerArrosage: true }),
       })
       if (!response.ok) throw new Error("Erreur")
-      const result = await response.json()
-      const now = result.date
-
-      setData(prev => prev.map(c =>
-        c.id === cultureId ? { ...c, derniereIrrigation: now } : c
-      ))
-      setParIlot(prev => {
-        const n: Record<string, CultureIrriguer[]> = {}
-        for (const [ilot, cultures] of Object.entries(prev)) {
-          n[ilot] = cultures.map(c =>
-            c.id === cultureId ? { ...c, derniereIrrigation: now } : c
-          )
-        }
-        return n
-      })
+      await fetchData()
 
       toast({
         title: "Arrosage note",
@@ -233,21 +219,7 @@ function CulturesIrriguerContent() {
         body: JSON.stringify({ cultureIds, marquerArrosage: true }),
       })
       if (!response.ok) throw new Error("Erreur")
-      const result = await response.json()
-      const now = result.date
-
-      setData(prev => prev.map(c =>
-        cultureIds.includes(c.id) ? { ...c, derniereIrrigation: now } : c
-      ))
-      setParIlot(prev => {
-        const n: Record<string, CultureIrriguer[]> = {}
-        for (const [i, cultures] of Object.entries(prev)) {
-          n[i] = cultures.map(c =>
-            cultureIds.includes(c.id) ? { ...c, derniereIrrigation: now } : c
-          )
-        }
-        return n
-      })
+      await fetchData()
 
       toast({
         title: "Ilot arrose",
