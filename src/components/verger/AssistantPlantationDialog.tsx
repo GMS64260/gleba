@@ -634,7 +634,7 @@ export function AssistantPlantationDialog({ open, onOpenChange, onSuccess, prefi
                   placeholder="ex: 1.5"
                 />
                 <p className="text-xs text-muted-foreground mt-1">
-                  Pour une haie, 100 mètres linéaires ≈ 0,01 ha de reference. La surface sert au calcul de densité.
+                  Pour une haie, 100 mètres linéaires ≈ 0,01 ha de référence. La surface sert au calcul de densité.
                 </p>
               </div>
             </div>
@@ -846,11 +846,14 @@ export function AssistantPlantationDialog({ open, onOpenChange, onSuccess, prefi
                 <Label>Date prévue de plantation <span className="text-red-500">*</span></Label>
                 <Input
                   type="date"
+                  required
                   value={state.datePlantationPrevue}
                   onChange={(e) => update({ datePlantationPrevue: e.target.value })}
+                  onInput={(e) => update({ datePlantationPrevue: e.currentTarget.value })}
+                  onBlur={(e) => update({ datePlantationPrevue: e.currentTarget.value })}
                 />
                 <p className="text-xs text-muted-foreground mt-1">
-                  Le calendrier des etapes (préparation sol, plantation, regarnissage, dégagements) sera généré automatiquement à partir de cette date.
+                  Le calendrier des étapes (préparation sol, plantation, regarnissage, dégagements) sera généré automatiquement à partir de cette date.
                 </p>
               </div>
 
@@ -1010,7 +1013,7 @@ export function AssistantPlantationDialog({ open, onOpenChange, onSuccess, prefi
               <PartyPopper className="h-16 w-16 text-green-500 mx-auto" />
               <h3 className="text-xl font-semibold">Campagne créée !</h3>
               <p className="text-muted-foreground text-sm max-w-md mx-auto">
-                Votre campagne de plantation est enregistrée. Le calendrier des etapes a été généré automatiquement.
+                Votre campagne de plantation est enregistrée. Le calendrier des étapes a été généré automatiquement.
                 Vous pouvez maintenant suivre la progression et enregistrer vos observations de reprise.
               </p>
               <div className="flex items-center justify-center gap-2 pt-2">
