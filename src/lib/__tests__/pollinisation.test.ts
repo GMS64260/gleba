@@ -7,6 +7,7 @@ import {
   distanceMetres,
   DISTANCE_MAX_POLLINISATION_M,
   DISTANCE_ALERTE_POLLINISATION_M,
+  doitSignalerSansPollinisateur,
 } from "../pollinisation"
 
 describe("pollinisation", () => {
@@ -42,6 +43,30 @@ describe("pollinisation", () => {
     })
     it("permissif si inconnu", () => {
       expect(groupesCompatibles(null, "A")).toBe(true)
+    })
+  })
+
+  describe("doitSignalerSansPollinisateur", () => {
+    it("signale une variété anémophile sans pollinisateur variétal", () => {
+      expect(
+        doitSignalerSansPollinisateur({
+          autofertile: false,
+          nombrePollinisateursExplicites: 0,
+          hasPollinisateurDerive: false,
+          modePollinisation: "anémophile",
+        })
+      ).toBe(true)
+    })
+
+    it("ne signale pas un arbre avec un pollinisateur compatible", () => {
+      expect(
+        doitSignalerSansPollinisateur({
+          autofertile: false,
+          nombrePollinisateursExplicites: 1,
+          hasPollinisateurDerive: false,
+          modePollinisation: "anémophile",
+        })
+      ).toBe(false)
     })
   })
 

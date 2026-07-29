@@ -83,6 +83,23 @@ describe('getRecoltesAnneeAggregat', () => {
     expect(agg.projectionKg).toBe(30) // 10 × 3
   })
 
+  it('projette sur la longueur cultivée plutôt que sur la planche complète', async () => {
+    mocked.culture.findMany.mockResolvedValue([
+      {
+        dateRecolte: new Date(2027, 4, 17),
+        longueur: 10,
+        plancheId: 'p-radis',
+        especeId: 'radis',
+        planche: { surface: 18, largeur: 1.2, longueur: 15 },
+        espece: { id: 'radis', couleur: null, rendement: 1.5 },
+      },
+    ])
+
+    const agg = await getRecoltesAnneeAggregat('u1', 2027)
+
+    expect(agg.projectionKg).toBe(18)
+  })
+
   it('ignore une culture sans rendement (projection impossible)', async () => {
     mocked.culture.findMany.mockResolvedValue([
       {

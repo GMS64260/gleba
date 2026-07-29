@@ -149,7 +149,7 @@ function ElevageDashboardInner() {
   // /elevage?tab=<tab> : cliquer l'onglet DÉJÀ actif purge ainsi les params
   // résiduels (sub/action/edit) et resynchronise les sous-onglets contrôlés.
   const handleTabChange = React.useCallback((tab: TabId) => {
-    router.replace(`/elevage?tab=${tab}`, { scroll: false })
+    router.push(`/elevage?tab=${tab}`, { scroll: false })
   }, [router])
 
   if (!session) {

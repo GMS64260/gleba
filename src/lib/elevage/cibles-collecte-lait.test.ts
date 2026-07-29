@@ -12,6 +12,7 @@ describe("cibles de collecte de lait", () => {
       { id: 3, sexe: "femelle", especeAnimale: { nom: "Vache", production: "mixte" } },
       { id: 4, sexe: "male", especeAnimale: { nom: "Chèvre", production: "lait" } },
       { id: 5, sexe: "femelle", orientationProduction: "lait", especeAnimale: { nom: "Brebis", production: "viande" } },
+      { id: 6, sexe: "femelle", orientationProduction: "mixte", especeAnimale: { nom: "Poule pondeuse", production: "oeufs", productions: ["Oeufs"] } },
     ]
     const lots = [
       { id: 4, especeAnimale: { nom: "Ovins", production: "laine" } },

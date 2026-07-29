@@ -51,6 +51,7 @@ import {
   DASHBOARD_YEAR_STORAGE_KEY,
   resolveDashboardYear,
 } from "@/lib/dashboard-year"
+import { libelleItp } from "@/lib/itp-label"
 
 // Bug #1 — payload de violation renvoyé par POST /api/cultures (status 409).
 type RotationViolation = {
@@ -440,7 +441,7 @@ export default function NewCulturePage() {
                         <SelectContent>
                           {itps.map((itp) => (
                             <SelectItem key={itp.id} value={itp.id}>
-                              {itp.nom ?? itp.id}
+                              {libelleItp(itp.nom ?? itp.id)}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -528,7 +529,7 @@ export default function NewCulturePage() {
                   return (
                     <div className="flex items-center justify-between gap-2 text-xs text-slate-600 bg-blue-50 border border-blue-100 rounded p-2 mt-2">
                       <span>
-                        💡 Dates pré-remplies depuis l&apos;ITP <strong>{itp.nom ?? itp.id}</strong> (
+                        💡 Dates pré-remplies depuis l&apos;ITP <strong>{libelleItp(itp.nom ?? itp.id)}</strong> (
                         {[
                           itp.semaineSemis ? `${formatSemaine(itp.semaineSemis)} semis` : null,
                           itp.semainePlantation ? `${formatSemaine(itp.semainePlantation)} plantation` : null,

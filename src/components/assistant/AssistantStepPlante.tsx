@@ -46,6 +46,7 @@ import {
   getSemaineDepuisDate,
 } from "@/lib/assistant-helpers"
 import type { EspeceData, ITPData, VarieteData, CultureData } from "./AssistantDialog"
+import { libelleItp } from "@/lib/itp-label"
 
 // ---------------------------------------------------------------------------
 // Props
@@ -685,7 +686,7 @@ export function AssistantStepPlante({
                             <div className="flex items-center justify-between">
                               <CardTitle className="text-sm font-medium flex items-center gap-2">
                                 <Sprout className="h-4 w-4 text-green-600" />
-                                {itpItem.id}
+                                {libelleItp(itpItem.nom ?? itpItem.id)}
                                 {isSelected && (
                                   <Check className="h-4 w-4 text-green-600" />
                                 )}

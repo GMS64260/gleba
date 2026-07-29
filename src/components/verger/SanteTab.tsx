@@ -42,6 +42,7 @@ import { ZntFieldset } from "@/components/phyto/ZntFieldset"
 import { ExportPhytoButton } from "@/components/phyto/ExportPhytoButton"
 import { CuivreCounterCard } from "@/components/phyto/CuivreCounterCard"
 import { todayLocalISO } from '@/lib/format-utils'
+import { doitSignalerSansPollinisateur } from "@/lib/pollinisation"
 
 interface Arbre {
   id: number
@@ -88,11 +89,8 @@ interface PollinisationData {
   stats: { totalArbres: number; autofertiles: number; sansPollinisateur: number; anemophiles?: number; anemophilesSeuls?: number }
 }
 
-// Bug feedback testeur 2026-05-26 (cmploo5f8) — Le compteur "Sans
-// pollinisateur" du KPI excluait déjà les noyers (anémophiles), mais le
-// tableau "Associations de pollinisation" continuait à afficher "Aucun !"
-// pour eux, ce qui semblait incohérent. On filtre côté UI avec la même
-// règle pour afficher "Anémophile" à la place.
+// Le mode anémophile est affiché séparément du pollinisateur compatible :
+// le vent transporte le pollen, mais ne remplace pas une autre variété.
 function estAnemophileEspece(espece: string | null | undefined): boolean {
   if (!espece) return false
   const esp = espece.toLowerCase()
@@ -1638,6 +1636,7 @@ function PollinisationSubTab() {
                   <TableHead>Floraison</TableHead>
                   <TableHead>Groupe</TableHead>
                   <TableHead>Autofertile</TableHead>
+                  <TableHead>Mode</TableHead>
                   <TableHead>Pollinisateurs</TableHead>
                 </TableRow>
               </TableHeader>
@@ -1653,7 +1652,13 @@ function PollinisationSubTab() {
                   }
                   const isAutofertile = a.autofertileEffectif ?? arbre.autofertile
                   const hasDerive = a.hasPollinisateurDerive ?? false
-                  const sansPolli = !isAutofertile && arbre.pollinisateursCompat.length === 0 && !hasDerive
+                  const isAnemophile = estAnemophileEspece(arbre.espece)
+                  const sansPolli = doitSignalerSansPollinisateur({
+                    autofertile: isAutofertile,
+                    nombrePollinisateursExplicites: arbre.pollinisateursCompat.length,
+                    hasPollinisateurDerive: hasDerive,
+                    modePollinisation: isAnemophile ? "anémophile" : null,
+                  })
                   return (
                   <TableRow key={arbre.id} className={sansPolli ? "bg-red-50" : ""}>
                     <TableCell className="font-medium">{arbre.nom}</TableCell>
@@ -1675,6 +1680,15 @@ function PollinisationSubTab() {
                         </Badge>
                       ) : (
                         <Badge variant="outline">Non</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {isAnemophile ? (
+                        <Badge variant="outline" className="border-sky-200 text-sky-700">
+                          Anémophile
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
                       )}
                     </TableCell>
                     <TableCell>
@@ -1700,13 +1714,6 @@ function PollinisationSubTab() {
                         </div>
                       ) : isAutofertile ? (
                         <span className="text-sm text-muted-foreground">-</span>
-                      ) : estAnemophileEspece(arbre.espece) ? (
-                        <span
-                          className="text-xs text-sky-700"
-                          title="Espèce anémophile (pollinisation par le vent). Prévoir au moins 2 variétés différentes pour assurer la pollinisation croisée."
-                        >
-                          Anémophile
-                        </span>
                       ) : hasDerive ? (
                         <span className="text-xs text-amber-600" title="Pollinisateur dérivé automatiquement (même espèce, groupes compatibles)">À associer (auto)</span>
                       ) : (

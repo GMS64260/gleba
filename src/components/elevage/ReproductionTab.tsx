@@ -746,6 +746,8 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
     dateMiseBasAttendue: string; maleLabel: string | null
   }[]>([])
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
+  const [isSavingNaissance, setIsSavingNaissance] = React.useState(false)
+  const [naissanceSubmitError, setNaissanceSubmitError] = React.useState<string | null>(null)
   // QA 2026-05-15 — édition par ligne
   const [editingNaissId, setEditingNaissId] = React.useState<number | null>(null)
   const initialOpenApplied = React.useRef(false)
@@ -813,6 +815,7 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
 
   const resetNaissForm = () => {
     setEditingNaissId(null)
+    setNaissanceSubmitError(null)
     setFormData(EMPTY_NAISS_FORM)
   }
 
@@ -984,8 +987,24 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
 
   React.useEffect(() => { fetchData() }, [fetchData])
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    if (isSavingNaissance) return
+    const submitted = new FormData(e.currentTarget)
+    const submittedValue = (name: string, fallback: string) => {
+      const value = submitted.get(name)
+      return typeof value === "string" ? value : fallback
+    }
+    const submittedNombreNes = submittedValue("nombreNes", formData.nombreNes)
+    const submittedNombreVivants = submittedValue("nombreVivants", formData.nombreVivants)
+    if (submittedNombreNes === "" || submittedNombreVivants === "") {
+      const description = "Renseignez le nombre de nés et de vivants."
+      setNaissanceSubmitError(description)
+      toast({ variant: "destructive", title: "Données incomplètes", description })
+      return
+    }
+    setIsSavingNaissance(true)
+    setNaissanceSubmitError(null)
     try {
       const isEdit = editingNaissId !== null
       // Feedback Marc 2026-05-16 — Naissance : le formulaire stocke
@@ -1009,24 +1028,24 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
       // boucles et aucune divergence entre l'en-tête et les petits.
       const identifiantsProvisoires = formData.petits.length
         ? formData.petits.map((p) => p.boucleProvisoire.trim()).filter(Boolean).join(", ")
-        : formData.identifiantsProvisoires.trim()
+        : submittedValue("identifiantsProvisoires", formData.identifiantsProvisoires).trim()
       const identifiantsDefinitifs = formData.petits.length
         ? formData.petits.map((p) => p.boucleDefinitive.trim()).filter(Boolean).join(", ")
-        : formData.identifiantsDefinitifs.trim()
+        : submittedValue("identifiantsDefinitifs", formData.identifiantsDefinitifs).trim()
       const payload = {
         ...(isEdit ? { id: editingNaissId } : {}),
         mereId: toIntOrNull(formData.mereId),
         lotId: toIntOrNull(formData.lotId),
-        pereIdentifiant: formData.pereIdentifiant?.trim() || null,
+        pereIdentifiant: submittedValue("pereIdentifiant", formData.pereIdentifiant).trim() || null,
         identifiantsProvisoires: identifiantsProvisoires || null,
         identifiantsDefinitifs: identifiantsDefinitifs || null,
-        date: formData.date || undefined,
-        nombreNes: toIntOrNull(formData.nombreNes) ?? 0,
-        nombreVivants: toIntOrNull(formData.nombreVivants) ?? 0,
-        nombreMales: toIntOrNull(formData.nombreMales),
-        nombreFemelles: toIntOrNull(formData.nombreFemelles),
-        poidsTotal: toFloatOrNull(formData.poidsTotal),
-        notes: formData.notes?.trim() || null,
+        date: submittedValue("date", formData.date) || undefined,
+        nombreNes: toIntOrNull(submittedNombreNes) ?? 0,
+        nombreVivants: toIntOrNull(submittedNombreVivants) ?? 0,
+        nombreMales: toIntOrNull(submittedValue("nombreMales", formData.nombreMales)),
+        nombreFemelles: toIntOrNull(submittedValue("nombreFemelles", formData.nombreFemelles)),
+        poidsTotal: toFloatOrNull(submittedValue("poidsTotal", formData.poidsTotal)),
+        notes: submittedValue("notes", formData.notes).trim() || null,
         // QA caprin cms1v6ctk — chaînage saillie → mise-bas (création : l'API
         // solde la saillie en « Mise-bas réalisée » et débloque la fertilité)
         ...(isEdit ? {} : { saillieId: formData.saillieId || null }),
@@ -1069,11 +1088,15 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
       resetNaissForm()
       fetchData()
     } catch (err) {
+      const description = err instanceof Error ? err.message : "Impossible d'enregistrer"
+      setNaissanceSubmitError(description)
       toast({
         variant: "destructive",
         title: "Erreur",
-        description: err instanceof Error ? err.message : "Impossible d'enregistrer",
+        description,
       })
+    } finally {
+      setIsSavingNaissance(false)
     }
   }
 
@@ -1292,7 +1315,7 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
                     : libelleEvenementNaissance}
               </DialogDescription>
             </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} noValidate className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Mère</Label>
@@ -1350,8 +1373,8 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
               </div>
               {formData.petits.length === 0 ? (
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div className="space-y-2"><Label>{idProvLbl}</Label><Input value={formData.identifiantsProvisoires} onChange={(e) => setFormData(f => ({ ...f, identifiantsProvisoires: e.target.value }))} placeholder="Une ou plusieurs, séparées par des virgules" /></div>
-                  <div className="space-y-2"><Label>{idDefLbl}</Label><Input value={formData.identifiantsDefinitifs} onChange={(e) => setFormData(f => ({ ...f, identifiantsDefinitifs: e.target.value }))} placeholder="À compléter lors de la pose" /></div>
+                  <div className="space-y-2"><Label>{idProvLbl}</Label><Input name="identifiantsProvisoires" value={formData.identifiantsProvisoires} onChange={(e) => setFormData(f => ({ ...f, identifiantsProvisoires: e.target.value }))} placeholder="Une ou plusieurs, séparées par des virgules" /></div>
+                  <div className="space-y-2"><Label>{idDefLbl}</Label><Input name="identifiantsDefinitifs" value={formData.identifiantsDefinitifs} onChange={(e) => setFormData(f => ({ ...f, identifiantsDefinitifs: e.target.value }))} placeholder="À compléter lors de la pose" /></div>
                 </div>
               ) : (
                 <p className="rounded-md bg-blue-50 px-3 py-2 text-xs text-blue-800">
@@ -1361,11 +1384,11 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Date *</Label>
-                  <Input type="date" value={formData.date} onChange={(e) => setFormData(f => ({ ...f, date: e.target.value }))} />
+                  <Input name="date" type="date" value={formData.date} onChange={(e) => setFormData(f => ({ ...f, date: e.target.value }))} />
                 </div>
                 <div className="space-y-2">
                   <Label>Père (identifiant)</Label>
-                  <Input value={formData.pereIdentifiant} onChange={(e) => setFormData(f => ({ ...f, pereIdentifiant: e.target.value }))} placeholder="Optionnel" />
+                  <Input name="pereIdentifiant" value={formData.pereIdentifiant} onChange={(e) => setFormData(f => ({ ...f, pereIdentifiant: e.target.value }))} placeholder="Optionnel" />
                 </div>
               </div>
               {/* QA caprin cms1v6ctk — rattachement à la saillie/IA d'origine :
@@ -1395,25 +1418,25 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Nombre nés *</Label>
-                  <Input type="number" min="0" value={formData.nombreNes} onChange={(e) => setFormData(f => ({ ...f, nombreNes: e.target.value }))} />
+                  <Input name="nombreNes" type="number" min="0" value={formData.nombreNes} onChange={(e) => setFormData(f => ({ ...f, nombreNes: e.target.value }))} />
                 </div>
                 <div className="space-y-2">
                   <Label>Nombre vivants *</Label>
-                  <Input type="number" min="0" value={formData.nombreVivants} onChange={(e) => setFormData(f => ({ ...f, nombreVivants: e.target.value }))} />
+                  <Input name="nombreVivants" type="number" min="0" value={formData.nombreVivants} onChange={(e) => setFormData(f => ({ ...f, nombreVivants: e.target.value }))} />
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label>Mâles</Label>
-                  <Input type="number" min="0" value={formData.nombreMales} onChange={(e) => setFormData(f => ({ ...f, nombreMales: e.target.value }))} />
+                  <Input name="nombreMales" type="number" min="0" value={formData.nombreMales} onChange={(e) => setFormData(f => ({ ...f, nombreMales: e.target.value }))} />
                 </div>
                 <div className="space-y-2">
                   <Label>Femelles</Label>
-                  <Input type="number" min="0" value={formData.nombreFemelles} onChange={(e) => setFormData(f => ({ ...f, nombreFemelles: e.target.value }))} />
+                  <Input name="nombreFemelles" type="number" min="0" value={formData.nombreFemelles} onChange={(e) => setFormData(f => ({ ...f, nombreFemelles: e.target.value }))} />
                 </div>
                 <div className="space-y-2">
                   <Label>Poids total (kg)</Label>
-                  <Input type="number" step="0.01" value={formData.poidsTotal} onChange={(e) => setFormData(f => ({ ...f, poidsTotal: e.target.value }))} />
+                  <Input name="poidsTotal" type="number" step="0.01" value={formData.poidsTotal} onChange={(e) => setFormData(f => ({ ...f, poidsTotal: e.target.value }))} />
                 </div>
               </div>
 
@@ -1507,12 +1530,15 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
 
               <div className="space-y-2">
                 <Label>Notes</Label>
-                <Textarea value={formData.notes} onChange={(e) => setFormData(f => ({ ...f, notes: e.target.value }))} rows={2} placeholder="Complications, observations..." />
+                <Textarea name="notes" value={formData.notes} onChange={(e) => setFormData(f => ({ ...f, notes: e.target.value }))} rows={2} placeholder="Complications, observations..." />
               </div>
               <div className="flex justify-end gap-2 pt-4">
-                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
-                <Button type="submit" disabled={!formData.nombreNes || !formData.nombreVivants}>
-                  {editingNaissId ? "Mettre à jour" : "Enregistrer"}
+                {naissanceSubmitError && (
+                  <p role="alert" className="mr-auto text-sm text-red-600">{naissanceSubmitError}</p>
+                )}
+                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSavingNaissance}>Annuler</Button>
+                <Button type="submit" disabled={isSavingNaissance}>
+                  {isSavingNaissance ? "Enregistrement…" : editingNaissId ? "Mettre à jour" : "Enregistrer"}
                 </Button>
               </div>
             </form>
