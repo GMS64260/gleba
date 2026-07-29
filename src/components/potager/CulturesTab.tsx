@@ -251,6 +251,7 @@ export function CulturesTab({ year }: CulturesTabProps = {}) {
   const [selectedEtat, setSelectedEtat] = React.useState("all")
   const [pluieMap, setPluieMap] = React.useState<Map<string, PluviometrieBulkItem>>(new Map())
   const [cultureToDelete, setCultureToDelete] = React.useState<CultureWithRelations | null>(null)
+  const latestRequestRef = React.useRef(0)
   const pageSize = 50
 
   const handleQuickUpdate = React.useCallback(
@@ -300,6 +301,7 @@ export function CulturesTab({ year }: CulturesTabProps = {}) {
   }, [pluieMap])
 
   const fetchData = React.useCallback(async () => {
+    const requestId = ++latestRequestRef.current
     setIsLoading(true)
     try {
       let url = `/api/cultures?page=${pageIndex + 1}&pageSize=${pageSize}`
@@ -312,6 +314,11 @@ export function CulturesTab({ year }: CulturesTabProps = {}) {
       const response = await fetch(url)
       if (!response.ok) throw new Error("Erreur")
       const result = await response.json()
+      // Le dashboard restaure l'année persistée après le premier rendu. La
+      // requête de l'année courante peut alors finir après celle de l'année
+      // choisie et écraser ses résultats. Seule la réponse la plus récente
+      // est autorisée à modifier la table.
+      if (requestId !== latestRequestRef.current) return
       const cultures: CultureWithRelations[] = result.data
       setData(cultures)
       setPageCount(result.totalPages)
@@ -324,16 +331,22 @@ export function CulturesTab({ year }: CulturesTabProps = {}) {
         fetch(`/api/meteo/pluviometrie-bulk?ids=${plancheIds.join(',')}`)
           .then(r => r.json())
           .then((items: PluviometrieBulkItem[]) => {
+            if (requestId !== latestRequestRef.current) return
             const map = new Map<string, PluviometrieBulkItem>()
             items.forEach(item => map.set(item.plancheId, item))
             setPluieMap(map)
           })
           .catch(() => { /* silencieux */ })
+      } else {
+        setPluieMap(new Map())
       }
     } catch {
+      if (requestId !== latestRequestRef.current) return
       toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les cultures" })
     } finally {
-      setIsLoading(false)
+      if (requestId === latestRequestRef.current) {
+        setIsLoading(false)
+      }
     }
   }, [pageIndex, selectedEtat, year, toast])
 

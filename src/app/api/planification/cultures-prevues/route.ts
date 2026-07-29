@@ -26,6 +26,9 @@ export async function GET(request: NextRequest) {
       especeId,
       ilot,
       plancheId,
+      // Cette route alimente les listes et compteurs d'inventaire annuel :
+      // une culture « En récolte » ou terminée doit y rester visible.
+      includeAllCultures: true,
     })
 
     // Grouper selon le parametre
