@@ -39,6 +39,7 @@ export interface RecommandationIrrigation {
   conseilMessage: string
   prochainePluie: string | null // date ISO si pluie prévue
   joursSansPluie: number
+  joursDepuisIrrigation: number | null
 }
 
 export interface AlerteMeteo {
@@ -245,6 +246,16 @@ export function genererRecommandationIrrigation(
     }
   }
 
+  const joursDepuisIrrigation = culture.derniereIrrigation
+    ? Math.max(0, Math.floor((Date.now() - culture.derniereIrrigation.getTime()) / 86_400_000))
+    : null
+  // Un arrosage réellement noté est un apport d'eau au même titre qu'une
+  // pluie. Sans volume saisi on ne réécrit pas le bilan hydrique historique,
+  // mais on l'utilise au moins pour empêcher une fausse urgence immédiate.
+  const joursSansEau = joursDepuisIrrigation == null
+    ? joursSansPluie
+    : Math.min(joursSansPluie, joursDepuisIrrigation)
+
   // Pluie cumulée des 48h passées (hier + avant-hier + aujourd'hui)
   const pluie48hPassees = historique7j.slice(-2).reduce((s, d) => s + d.precipitation, 0) + pluieAujourdhui
 
@@ -281,11 +292,11 @@ export function genererRecommandationIrrigation(
     urgence = bilanProspectif > -5 ? 'faible' : 'moyenne'
   } else if (pluiePrevue48h >= 10 && bilanHydrique7j > -10) {
     urgence = 'faible'
-  } else if (deficit > 20 * facteurBesoin && joursSansPluie >= 5 && pluiePrevue48h < 5 && pluiePrevue5j < 8) {
+  } else if (deficit > 20 * facteurBesoin && joursSansEau >= 5 && pluiePrevue48h < 5 && pluiePrevue5j < 8) {
     urgence = 'critique'
-  } else if (deficit > 10 * facteurBesoin && joursSansPluie >= 3 && pluiePrevue48h < 8 && pluiePrevue5j < 10) {
+  } else if (deficit > 10 * facteurBesoin && joursSansEau >= 3 && pluiePrevue48h < 8 && pluiePrevue5j < 10) {
     urgence = 'haute'
-  } else if (deficit > 5 * facteurBesoin && joursSansPluie > 2) {
+  } else if (deficit > 5 * facteurBesoin && joursSansEau > 2) {
     urgence = 'moyenne'
   } else if (bilanHydrique7j < 0) {
     urgence = 'faible'
@@ -298,13 +309,13 @@ export function genererRecommandationIrrigation(
   // plantes peu exigeantes (engrais verts, laitue) des très exigeantes
   // (tomate, courgette).
   const ponderationBesoin = 0.4 + (culture.besoinEau - 1) * 0.3 // 0.4 → 1.6
-  const conseilQuantite = urgence === 'aucune' ? 0
+  const conseilQuantite = urgence === 'aucune' || joursDepuisIrrigation === 0 ? 0
     : Math.round(Math.max(deficit, etc7j / 7 * 2) * facteurSol * ponderationBesoin * 10) / 10
 
   // Message de conseil
   const conseilMessage = genererConseilMessage(
     urgence, bilanHydrique7j, pluiePrevue48h, pluiePrevue5j, prochainePluie,
-    conseilQuantite, joursSansPluie, planche.retentionEau
+    conseilQuantite, joursSansPluie, joursDepuisIrrigation, planche.retentionEau
   )
 
   return {
@@ -318,6 +329,7 @@ export function genererRecommandationIrrigation(
     conseilMessage,
     prochainePluie,
     joursSansPluie,
+    joursDepuisIrrigation,
   }
 }
 
@@ -329,8 +341,15 @@ function genererConseilMessage(
   prochainePluie: string | null,
   quantite: number,
   joursSansPluie: number,
+  joursDepuisIrrigation: number | null,
   retentionEau: string | null
 ): string {
+  if (joursDepuisIrrigation === 0) {
+    return bilan7j < 0
+      ? "Arrosage enregistré aujourd’hui. Le déficit météo des sept derniers jours reste à surveiller ; contrôlez l’humidité avant tout nouvel apport."
+      : "Arrosage enregistré aujourd’hui. Aucun apport supplémentaire n’est recommandé pour le moment."
+  }
+
   if (urgence === 'aucune') {
     if (pluie48h > 5) {
       return `Pas besoin d'arroser. ${Math.round(pluie48h)}mm de pluie prévus dans les 48h.`
@@ -378,6 +397,24 @@ function genererConseilMessage(
   }
 
   return parts.join(' ')
+}
+
+/**
+ * Sous serre ou tunnel, la pluie extérieure ne s'applique pas. On retire les
+ * fragments liés à cette pluie sans casser les décimales des déficits.
+ */
+export function adapterConseilSousAbri(message: string): string {
+  const conseil = message
+    .replace(/\d+(?:[.,]\d+)?mm de pluie prévus[^.]*\./gi, '')
+    .replace(/Pluie prevue le [^.]+\./gi, '')
+    .replace(/\d+ jours sans pluie\./gi, '')
+    .replace(/Déficit hydrique de \d+(?:[.,]\d+)?mm sur 7 jours\./gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+
+  return conseil
+    ? `Sous abri — pas de pluie directe. ${conseil}`
+    : 'Sous abri — pas de pluie directe.'
 }
 
 // ============================================================

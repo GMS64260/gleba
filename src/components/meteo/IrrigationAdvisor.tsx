@@ -15,7 +15,10 @@ import {
   TrendingDown,
   Minus,
   Info,
+  Droplet,
 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { useToast } from "@/hooks/use-toast"
 
 // ============================================================
 // TYPES
@@ -32,6 +35,11 @@ interface RecommandationIrrigation {
   conseilMessage: string
   prochainePluie: string | null
   joursSansPluie: number
+  joursDepuisIrrigation: number | null
+  varietyName: string | null
+  etatCulture: string
+  derniereIrrigation: string | null
+  irrigationSysteme: string | null
 }
 
 interface IrrigationData {
@@ -65,6 +73,7 @@ interface IrrigationAdvisorProps {
 }
 
 export function IrrigationAdvisor({ parcelleId, lat, lng }: IrrigationAdvisorProps) {
+  const { toast } = useToast()
   const [data, setData] = React.useState<IrrigationData | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [refreshing, setRefreshing] = React.useState(false)
@@ -72,6 +81,7 @@ export function IrrigationAdvisor({ parcelleId, lat, lng }: IrrigationAdvisorPro
   const [error, setError] = React.useState<string | null>(null)
   const [showAll, setShowAll] = React.useState(false)
   const [nappeData, setNappeData] = React.useState<NappeData | null>(null)
+  const [savingCultureId, setSavingCultureId] = React.useState<number | null>(null)
 
   const fetchRecos = React.useCallback(async (forceRefresh = false) => {
     try {
@@ -94,6 +104,31 @@ export function IrrigationAdvisor({ parcelleId, lat, lng }: IrrigationAdvisorPro
       setRefreshing(false)
     }
   }, [parcelleId])
+
+  const marquerArrosee = React.useCallback(async (cultureId: number) => {
+    setSavingCultureId(cultureId)
+    try {
+      const response = await fetch("/api/cultures/irriguer", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cultureId, marquerArrosage: true }),
+      })
+      if (!response.ok) throw new Error("Impossible de noter l'arrosage")
+      await fetchRecos(true)
+      toast({
+        title: "Arrosage noté",
+        description: "La recommandation vient d’être recalculée.",
+      })
+    } catch {
+      toast({
+        variant: "destructive",
+        title: "Erreur",
+        description: "Impossible de noter l’arrosage.",
+      })
+    } finally {
+      setSavingCultureId(null)
+    }
+  }, [fetchRecos, toast])
 
   React.useEffect(() => {
     fetchRecos()
@@ -274,9 +309,18 @@ export function IrrigationAdvisor({ parcelleId, lat, lng }: IrrigationAdvisorPro
       )}
 
       {/* Recommandations */}
+      <div className="border-b bg-blue-50/60 px-3 py-2 text-xs text-blue-900">
+        Les conseils tiennent compte des arrosages notés. Un équipement automatique
+        indique le système installé, pas qu&apos;un passage a réellement eu lieu.
+      </div>
       <div className="divide-y">
         {displayed.map((reco) => (
-          <RecoRow key={reco.cultureId} reco={reco} />
+          <RecoRow
+            key={reco.cultureId}
+            reco={reco}
+            saving={savingCultureId === reco.cultureId}
+            onWater={marquerArrosee}
+          />
         ))}
       </div>
 
@@ -306,7 +350,15 @@ export function IrrigationAdvisor({ parcelleId, lat, lng }: IrrigationAdvisorPro
 // LIGNE DE RECOMMANDATION
 // ============================================================
 
-function RecoRow({ reco }: { reco: RecommandationIrrigation }) {
+function RecoRow({
+  reco,
+  saving,
+  onWater,
+}: {
+  reco: RecommandationIrrigation
+  saving: boolean
+  onWater: (cultureId: number) => Promise<void>
+}) {
   const [expanded, setExpanded] = React.useState(false)
 
   const urgenceConfig = {
@@ -329,8 +381,13 @@ function RecoRow({ reco }: { reco: RecommandationIrrigation }) {
         <div className="flex items-center gap-2 min-w-0">
           <Icon className={`h-4 w-4 flex-shrink-0 ${config.text}`} />
           <div className="min-w-0">
-            <p className="text-sm font-medium truncate">{reco.cultureName}</p>
-            <p className="text-xs text-slate-400 truncate">{reco.plancheName}</p>
+            <p className="text-sm font-medium truncate">
+              {reco.cultureName}
+              {reco.varietyName ? ` · ${reco.varietyName}` : ""}
+            </p>
+            <p className="text-xs text-slate-400 truncate">
+              {reco.plancheName} · {reco.etatCulture}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
@@ -343,6 +400,29 @@ function RecoRow({ reco }: { reco: RecommandationIrrigation }) {
           <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${config.bg} ${config.text} border ${config.border}`}>
             {config.label}
           </span>
+          {reco.joursDepuisIrrigation === 0 ? (
+            <span className="hidden text-xs font-medium text-cyan-700 sm:inline">
+              Arrosée aujourd&apos;hui
+            </span>
+          ) : (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-7 px-2 text-xs text-cyan-700"
+              disabled={saving}
+              onClick={(event) => {
+                event.stopPropagation()
+                void onWater(reco.cultureId)
+              }}
+              title="Noter l’arrosage d’aujourd’hui"
+            >
+              {saving
+                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                : <Droplet className="h-3.5 w-3.5" />}
+              <span className="ml-1 hidden sm:inline">Noter</span>
+            </Button>
+          )}
         </div>
       </div>
 
@@ -353,6 +433,14 @@ function RecoRow({ reco }: { reco: RecommandationIrrigation }) {
             <span>Bilan 7j : {reco.bilanHydrique7j > 0 ? "+" : ""}{reco.bilanHydrique7j}mm</span>
             <span>{reco.joursSansPluie}j sans pluie</span>
             {reco.conseilQuantite > 0 && <span className="font-medium text-blue-600">{reco.conseilQuantite} L/m2</span>}
+          </div>
+          <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-slate-500">
+            {reco.derniereIrrigation && (
+              <span>
+                Dernier arrosage : {new Date(reco.derniereIrrigation).toLocaleDateString("fr-FR")}
+              </span>
+            )}
+            {reco.irrigationSysteme && <span>Équipement : {reco.irrigationSysteme}</span>}
           </div>
         </div>
       )}
