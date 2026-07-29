@@ -151,7 +151,7 @@ function mereBiologiquementPossible(f: AnimalFemelle, dateMiseBas: Date): boolea
   return ageJours >= minimum
 }
 
-const MOIS_LABELS = ['Jan', 'Fev', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aou', 'Sep', 'Oct', 'Nov', 'Dec']
+const MOIS_LABELS = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Août', 'Sep', 'Oct', 'Nov', 'Déc']
 
 // ============================================================
 // Composant principal

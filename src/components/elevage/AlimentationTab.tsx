@@ -5,6 +5,7 @@
  */
 
 import * as React from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import {
   Package,
   TrendingDown,
@@ -47,6 +48,7 @@ import { useToast } from "@/hooks/use-toast"
 import { verifierPrixAliment, type CategorieAliment } from "@/lib/elevage/prix-aliment-seuils"
 import { todayLocalISO } from '@/lib/format-utils'
 import { useFiliereSelection, capacitesSelection, filiereMatch } from "@/lib/elevage/filiere-context"
+import { stockMedicamentEstDisponible } from "@/lib/elevage/stock-medicament"
 
 // ============================================================
 // Composant principal
@@ -57,8 +59,10 @@ export function AlimentationTab() {
   // vers /elevage?tab=alimentation&sub=soins&animalId=29 mais on retombait
   // toujours sur l'onglet Stocks (defaultValue figé) et le formulaire ne
   // s'ouvrait pas. On lit `sub` (onglet) et `animalId` (pré-remplissage du
-  // soin) depuis l'URL au montage côté client.
+  // soin) depuis l'URL et on se resynchronise à chaque navigation interne.
   const [activeSub, setActiveSub] = React.useState<string>("stocks")
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const [soinAnimalId, setSoinAnimalId] = React.useState<string | null>(null)
   const [ouvrirNouveauSoin, setOuvrirNouveauSoin] = React.useState(false)
   // Ration (UFL/PDIN) et Registre d'élevage/pharmacie réglementaire sont des
@@ -75,10 +79,9 @@ export function AlimentationTab() {
   }, [caps.productionRente, activeSub])
 
   React.useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    const sub = params.get("sub")
-    const animalId = params.get("animalId")
-    const action = params.get("action")
+    const sub = searchParams.get("sub")
+    const animalId = searchParams.get("animalId")
+    const action = searchParams.get("action")
     if (["soins", "consommations", "stocks", "ration", "registre"].includes(sub || "")) {
       setActiveSub(sub!)
     }
@@ -91,10 +94,20 @@ export function AlimentationTab() {
       setActiveSub("soins")
       setOuvrirNouveauSoin(true)
     }
-  }, [])
+  }, [searchParams])
+
+  const handleSubChange = React.useCallback((sub: string) => {
+    setActiveSub(sub)
+    const params = new URLSearchParams(searchParams.toString())
+    params.set("tab", "alimentation")
+    params.set("sub", sub)
+    params.delete("animalId")
+    params.delete("action")
+    router.replace(`/elevage?${params.toString()}`, { scroll: false })
+  }, [router, searchParams])
 
   return (
-    <Tabs value={activeSub} onValueChange={setActiveSub} className="space-y-4">
+    <Tabs value={activeSub} onValueChange={handleSubChange} className="space-y-4">
       <TabsList className="flex-wrap h-auto gap-y-1">
         <TabsTrigger value="stocks" className="flex items-center gap-1.5">
           <Package className="h-4 w-4" />
@@ -1021,6 +1034,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
   const caps = capacitesSelection(useFiliereSelection())
   const filiereSel = useFiliereSelection()
   const { toast } = useToast()
+  const router = useRouter()
   const [isLoading, setIsLoading] = React.useState(true)
   const [soins, setSoins] = React.useState<Soin[]>([])
   // Scoping par filière de l'atelier sélectionné (via l'espèce de l'animal ou du lot).
@@ -1107,6 +1121,22 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
     datePeremption: string | null
     ordonnanceUrl: string | null
   }>>([])
+  const soinMedicamenteux = Boolean(
+    formData.produitId &&
+    ["Vaccination", "Vermifuge", "Traitement vétérinaire"].includes(formData.type),
+  )
+  const stocksProduitDisponibles = React.useMemo(
+    () => stocksMedicaments.filter(
+      (stock) =>
+        stock.produitId === formData.produitId &&
+        stockMedicamentEstDisponible(stock, formData.date),
+    ),
+    [formData.date, formData.produitId, stocksMedicaments],
+  )
+  const stockSelectionneDisponible = stocksProduitDisponibles.some(
+    (stock) => stock.id === formData.stockMedicamentId,
+  )
+  const lotPharmacieManquant = soinMedicamenteux && !stockSelectionneDisponible
 
   const especeIdSelectionnee = React.useMemo(() => {
     if (formData.cible === "animal") {
@@ -1224,6 +1254,14 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (lotPharmacieManquant) {
+      toast({
+        variant: "destructive",
+        title: "Lot de pharmacie requis",
+        description: "Ajoutez puis sélectionnez le lot réellement administré pour conserver la traçabilité du soin.",
+      })
+      return
+    }
     try {
       const payload: any = {
         date: formData.date,
@@ -1397,7 +1435,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
                         </option>
                       ))}
                     </select>
-                    {formData.produitId && ["Vaccination", "Vermifuge", "Traitement vétérinaire"].includes(formData.type) && (
+                    {soinMedicamenteux && (
                       <div className="space-y-1">
                         <Label className="text-xs">Lot de pharmacie *</Label>
                         <select
@@ -1430,10 +1468,25 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
                               )
                             })}
                         </select>
-                        {stocksMedicaments.every((stock) => stock.produitId !== formData.produitId || stock.quantite <= 0) && (
-                          <p className="text-xs text-amber-700">
-                            Aucun lot disponible. Ajoutez d&apos;abord le médicament dans Registre &amp; pharmacie.
-                          </p>
+                        {stocksProduitDisponibles.length === 0 && (
+                          <div className="space-y-2 rounded-md border border-amber-200 bg-amber-50 p-2">
+                            <p className="text-xs text-amber-800">
+                              Aucun lot disponible pour ce produit. Le soin ne peut pas être enregistré sans le lot réellement administré.
+                            </p>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-8 border-amber-300 bg-white text-amber-900 hover:bg-amber-100"
+                              onClick={() => {
+                                setIsDialogOpen(false)
+                                router.push("/elevage?tab=alimentation&sub=registre", { scroll: false })
+                              }}
+                            >
+                              <Plus className="mr-1 h-3.5 w-3.5" />
+                              Ajouter un lot de pharmacie
+                            </Button>
+                          </div>
                         )}
                       </div>
                     )}
@@ -1586,7 +1639,15 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
                 </div>
                 <div className="flex justify-end gap-2 pt-2">
                   <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
-                  <Button type="submit" disabled={formData.cible === "lot" ? !formData.lotId : !formData.animalId}>Enregistrer</Button>
+                  <Button
+                    type="submit"
+                    disabled={
+                      (formData.cible === "lot" ? !formData.lotId : !formData.animalId) ||
+                      lotPharmacieManquant
+                    }
+                  >
+                    Enregistrer
+                  </Button>
                 </div>
               </form>
             </DialogContent>
