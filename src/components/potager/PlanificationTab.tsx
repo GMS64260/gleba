@@ -31,6 +31,7 @@ import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DataTable } from "@/components/tables/DataTable"
 import { useToast } from "@/hooks/use-toast"
+import { updateDashboardSearchParams } from "@/lib/dashboard-navigation"
 
 // ============================================================
 // Types
@@ -121,7 +122,6 @@ interface PlanificationTabProps {
 const SUB_TABS = ["planification", "itps", "stocks"]
 
 export function PlanificationTab({ year }: PlanificationTabProps) {
-  const router = useRouter()
   const searchParams = useSearchParams()
 
   // Palier 2 (unification onglets) : le sous-onglet vit dans l'URL (?sub=),
@@ -137,9 +137,9 @@ export function PlanificationTab({ year }: PlanificationTabProps) {
         params.set("sub", value)
       }
       // replace : changer de sous-onglet ne doit pas empiler l'historique
-      router.replace(`/?${params.toString()}`, { scroll: false })
+      updateDashboardSearchParams(params, "replace")
     },
-    [searchParams, router]
+    [searchParams]
   )
 
   return (
