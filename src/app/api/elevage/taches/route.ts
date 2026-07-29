@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { oeufsAttendusJour } from '@/lib/elevage/taux-ponte'
+import { remiseVente } from '@/lib/elevage/attentes'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -148,6 +149,7 @@ export async function GET(request: NextRequest) {
       injectionId: string
       soinId: number
       numero: number
+      nombreInjections: number
       datePrevue: Date
       dateRealisee: Date | null
       statut: string
@@ -156,6 +158,8 @@ export async function GET(request: NextRequest) {
       produit: string | null
       dose: string | null
       voie: string | null
+      finAttenteLait: Date | null
+      finAttenteViande: Date | null
       cout: number | null
       animalId: number | null
       animalNom: string | null
@@ -164,8 +168,13 @@ export async function GET(request: NextRequest) {
       lotNom: string | null
     }>>`
       SELECT i.id AS "injectionId", i.soin_id AS "soinId", i.numero,
+             (
+               SELECT COUNT(*) FROM injections_soins protocole
+               WHERE protocole.soin_id = i.soin_id AND protocole.statut <> 'annulee'
+             )::int AS "nombreInjections",
              i.date_prevue AS "datePrevue", i.date_realisee AS "dateRealisee", i.statut,
              s.type, s.description, s.produit, s.dose, s.voie, s.cout,
+             s.fin_attente_lait AS "finAttenteLait", s.fin_attente_viande AS "finAttenteViande",
              s.animal_id AS "animalId", a.nom AS "animalNom", a.identifiant AS "animalIdentifiant",
              s.lot_id AS "lotId", l.nom AS "lotNom"
       FROM injections_soins i
@@ -280,11 +289,15 @@ export async function GET(request: NextRequest) {
         lot: s.lot,
         injectionId: null,
         numeroInjection: null,
+        nombreInjections: null,
+        remiseVenteLait: remiseVente(s.finAttenteLait),
+        remiseVenteViande: remiseVente(s.finAttenteViande),
       })),
         ...injections.map((i) => ({
           id: i.soinId,
           injectionId: i.injectionId,
           numeroInjection: i.numero,
+          nombreInjections: i.nombreInjections,
           date: i.datePrevue,
           dateReelle: i.dateRealisee ?? i.datePrevue,
           datePrevue: i.datePrevue,
@@ -296,6 +309,8 @@ export async function GET(request: NextRequest) {
           cout: i.cout,
           fait: i.statut === 'realisee',
           statutInjection: i.statut,
+          remiseVenteLait: remiseVente(i.finAttenteLait),
+          remiseVenteViande: remiseVente(i.finAttenteViande),
           animal: i.animalId ? { id: i.animalId, nom: i.animalNom, identifiant: i.animalIdentifiant } : null,
           lot: i.lotId ? { id: i.lotId, nom: i.lotNom } : null,
         })),

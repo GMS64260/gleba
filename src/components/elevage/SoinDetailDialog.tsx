@@ -26,12 +26,15 @@ export interface SoinDetailItem {
   id: number
   injectionId?: string | null
   numeroInjection?: number | null
+  nombreInjections?: number | null
   type: string
   date: string
   datePrevue?: string | null
   produit?: string | null
   dose?: string | null
   voie?: string | null
+  remiseVenteLait?: string | null
+  remiseVenteViande?: string | null
   description?: string | null
   cout?: number | null
   fait: boolean
@@ -110,7 +113,10 @@ export function SoinDetailDialog({
           {soin.numeroInjection != null && (
             <div className="flex justify-between gap-4">
               <span className="text-muted-foreground">Administration</span>
-              <span className="font-medium">Injection n°{soin.numeroInjection}</span>
+              <span className="font-medium">
+                Injection {soin.numeroInjection}
+                {soin.nombreInjections ? `/${soin.nombreInjections}` : ""}
+              </span>
             </div>
           )}
           {soin.produit && (
@@ -137,6 +143,27 @@ export function SoinDetailDialog({
                 <CalendarClock className="h-3.5 w-3.5" /> Rappel planifié
               </span>
               <span className="font-medium text-right">{rappel.toLocaleDateString("fr-FR")}</span>
+            </div>
+          )}
+          {(soin.remiseVenteLait || soin.remiseVenteViande) && (
+            <div className="space-y-1 border-t pt-2">
+              <p className="text-xs font-medium text-amber-800">Remise en vente après le traitement</p>
+              {soin.remiseVenteLait && (
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">Lait</span>
+                  <span className="font-medium">
+                    {new Date(soin.remiseVenteLait).toLocaleDateString("fr-FR")}
+                  </span>
+                </div>
+              )}
+              {soin.remiseVenteViande && (
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">Viande</span>
+                  <span className="font-medium">
+                    {new Date(soin.remiseVenteViande).toLocaleDateString("fr-FR")}
+                  </span>
+                </div>
+              )}
             </div>
           )}
           {soin.description && (
