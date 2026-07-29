@@ -35,6 +35,7 @@ import { useToast } from "@/hooks/use-toast"
 import { AvisDialog } from "@/components/avis/AvisDialog"
 import { AvisCell } from "@/components/avis/AvisCell"
 import type { AvisStatsListe } from "@/lib/avis/types"
+import { libelleForesterie } from "@/lib/verger/libelles-foresterie"
 
 const ESPECE_TYPES = [
   { value: "all", label: "Tous", icon: Leaf },
@@ -960,9 +961,13 @@ function EssencesForestieresReferentiel() {
     {
       accessorKey: "categorie",
       header: "Catégorie",
-      cell: ({ getValue }) => labelCategorie(getValue() as string),
+      cell: ({ getValue }) => libelleForesterie(getValue() as string),
     },
-    { accessorKey: "croissance", header: "Croissance" },
+    {
+      accessorKey: "croissance",
+      header: "Croissance",
+      cell: ({ getValue }) => libelleForesterie(getValue() as string),
+    },
     {
       accessorKey: "usages",
       header: "Usages",
@@ -972,7 +977,7 @@ function EssencesForestieresReferentiel() {
         return (
           <div className="flex flex-wrap gap-1">
             {arr.slice(0, 3).map((u) => (
-              <Badge key={u} variant="outline" className="text-[10px] py-0">{humaniseSlug(u)}</Badge>
+              <Badge key={u} variant="outline" className="text-[10px] py-0">{libelleForesterie(u)}</Badge>
             ))}
             {arr.length > 3 && <span className="text-xs text-muted-foreground">+{arr.length - 3}</span>}
           </div>

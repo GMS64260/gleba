@@ -43,6 +43,7 @@ import {
   type TypeFormation,
 } from "@/data/essences-forestieres"
 import { getAidesByType, NIVEAU_LIBELLE } from "@/data/aides-plantation"
+import { libelleForesterie } from "@/lib/verger/libelles-foresterie"
 
 const TYPES_PROJET: Array<{ value: TypeFormation; label: string; icon: React.ComponentType<{ className?: string }>; description: string }> = [
   { value: "forestier_futaie", label: "Futaie forestière", icon: Trees, description: "Bois d'œuvre, cycle long (50-150 ans). Ex : chêne, hêtre, douglas." },
@@ -688,7 +689,11 @@ export function AssistantPlantationDialog({ open, onOpenChange, onSuccess, prefi
                           )}
                         </div>
                         {e.nomLatin && <div className="text-xs text-muted-foreground italic">{e.nomLatin}</div>}
-                        {e.croissance && <Badge variant="outline" className="text-xs mt-1">{e.croissance}</Badge>}
+                        {e.croissance && (
+                          <Badge variant="outline" className="text-xs mt-1">
+                            {libelleForesterie(e.croissance)}
+                          </Badge>
+                        )}
                       </button>
                     )
                   })}
