@@ -6,6 +6,8 @@
 import prisma from '@/lib/prisma'
 import { calculerDateDepuisSemaine, dateSemaineChrono } from './assistant-helpers'
 import { alertesAssociations } from './associations-alertes'
+import { appliquerDecalageItp, decalageItpPourZone } from './calendrier-climat'
+import { zoneEffectiveUser } from './terroir'
 
 /**
  * Bug #4 — Si la planche n'a pas d'îlot explicite, dériver depuis le préfixe
@@ -284,6 +286,8 @@ export async function getCulturesPrevues(
     includeAllCultures?: boolean
   }
 ): Promise<CulturePrevue[]> {
+  const userZone = await zoneEffectiveUser(prisma, userId)
+
   // Mode 1: Cultures basées sur rotations
   const planches = await prisma.planche.findMany({
     where: {
@@ -378,10 +382,16 @@ export async function getCulturesPrevues(
       // Bug #1 : on applique ensuite `coherenceSemaines` pour éviter qu'un
       // fallback ITP (ex. semis théorique) casse l'ordre vis-à-vis d'une
       // date réelle (ex. plantation saisie sans semis → semis > plantation).
+      const itpCalibreM1 = detail.itp
+        ? appliquerDecalageItp(
+            detail.itp,
+            decalageItpPourZone(detail.itp.zoneClimat, userZone)
+          )
+        : null
       const semainesM1 = coherenceSemaines({
-        semaineSemis: cultureExistante?.dateSemis ? dateVersSemaine(cultureExistante.dateSemis, annee) : (detail.itp?.semaineSemis || null),
-        semainePlantation: cultureExistante?.datePlantation ? dateVersSemaine(cultureExistante.datePlantation, annee) : (detail.itp?.semainePlantation || null),
-        semaineRecolte: cultureExistante?.dateRecolte ? dateVersSemaine(cultureExistante.dateRecolte, annee) : (detail.itp?.semaineRecolte || null),
+        semaineSemis: cultureExistante?.dateSemis ? dateVersSemaine(cultureExistante.dateSemis, annee) : (itpCalibreM1?.semaineSemis || null),
+        semainePlantation: cultureExistante?.datePlantation ? dateVersSemaine(cultureExistante.datePlantation, annee) : (itpCalibreM1?.semainePlantation || null),
+        semaineRecolte: cultureExistante?.dateRecolte ? dateVersSemaine(cultureExistante.dateRecolte, annee) : (itpCalibreM1?.semaineRecolte || null),
         semisReel: !!cultureExistante?.dateSemis,
         plantationReelle: !!cultureExistante?.datePlantation,
         recolteReelle: !!cultureExistante?.dateRecolte,
@@ -467,14 +477,20 @@ export async function getCulturesPrevues(
       // Bug #1 : `coherenceSemaines` écarte le fallback ITP (ex. semis S16 pour
       // une PdT/tubercule) lorsqu'il devient postérieur à la plantation RÉELLE
       // (S15) — « plantation avant semis ».
+      const itpCalibreM2 = culture.itp
+        ? appliquerDecalageItp(
+            culture.itp,
+            decalageItpPourZone(culture.itp.zoneClimat, userZone)
+          )
+        : null
       const semainesM2 = coherenceSemaines({
-        semaineSemis: culture.dateSemis ? dateVersSemaine(culture.dateSemis, annee) : (culture.itp?.semaineSemis ?? null),
+        semaineSemis: culture.dateSemis ? dateVersSemaine(culture.dateSemis, annee) : (itpCalibreM2?.semaineSemis ?? null),
         semainePlantation: culture.datePlantation
           ? dateVersSemaine(culture.datePlantation, annee)
-          : (culture.itp?.semainePlantation ?? null),
+          : (itpCalibreM2?.semainePlantation ?? null),
         semaineRecolte: culture.dateRecolte
           ? dateVersSemaine(culture.dateRecolte, annee)
-          : (culture.itp?.semaineRecolte ?? null),
+          : (itpCalibreM2?.semaineRecolte ?? null),
         semisReel: !!culture.dateSemis,
         plantationReelle: !!culture.datePlantation,
         recolteReelle: !!culture.dateRecolte,
@@ -1074,6 +1090,7 @@ export async function creerCulturesBatch(
     include: { espece: true },
   })
   const itpMap = new Map(itps.map(itp => [itp.id, itp]))
+  const userZone = await zoneEffectiveUser(prisma, userId)
 
   // Resolve planche noms to cuid IDs
   const plancheNoms = [...new Set(cultures.map(c => c.plancheId))]
@@ -1090,6 +1107,10 @@ export async function creerCulturesBatch(
   for (const culture of cultures) {
     const itp = itpMap.get(culture.itpId)
     if (!itp || !itp.especeId) continue
+    const itpCalibre = appliquerDecalageItp(
+      itp,
+      decalageItpPourZone(itp.zoneClimat, userZone)
+    )
 
     // Resolve planche nom → cuid (appartenance vérifiée : nom OU id de l'user)
     const plancheCuidId = plancheNomToId.get(culture.plancheId)
@@ -1111,14 +1132,18 @@ export async function creerCulturesBatch(
     // Calculer les dates a partir des semaines
     const annee = culture.annee
     // Chronologie : récolte/plantation antérieures au semis tombent l'année suivante.
-    const dateSemis = itp.semaineSemis
-      ? calculerDateDepuisSemaine(annee, itp.semaineSemis)
+    const dateSemis = itpCalibre.semaineSemis
+      ? calculerDateDepuisSemaine(annee, itpCalibre.semaineSemis)
       : null
-    const datePlantation = itp.semainePlantation
-      ? dateSemaineChrono(annee, itp.semainePlantation, itp.semaineSemis)
+    const datePlantation = itpCalibre.semainePlantation
+      ? dateSemaineChrono(annee, itpCalibre.semainePlantation, itpCalibre.semaineSemis)
       : null
-    const dateRecolte = itp.semaineRecolte
-      ? dateSemaineChrono(annee, itp.semaineRecolte, itp.semainePlantation ?? itp.semaineSemis)
+    const dateRecolte = itpCalibre.semaineRecolte
+      ? dateSemaineChrono(
+          annee,
+          itpCalibre.semaineRecolte,
+          itpCalibre.semainePlantation ?? itpCalibre.semaineSemis
+        )
       : null
 
     // Creer la culture

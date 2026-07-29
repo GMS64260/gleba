@@ -25,9 +25,15 @@ interface ITPWithEspece {
   semaineSemis: number | null
   semainePlantation: number | null
   semaineRecolte: number | null
+  semaineImplantationDebut?: number | null
+  semaineImplantationFin?: number | null
+  semaineRecolteFin?: number | null
   dureeRecolte: number | null
   dureePepiniere?: number | null
   typePlanche: string | null
+  implantation?: string | null
+  statutValidation?: string | null
+  sourceRecordId?: string | null
   notes: string | null
 }
 
@@ -55,6 +61,10 @@ export function GanttRow({ itp: itpRef, onEdit, decalage = 0 }: GanttRowProps) {
   // que l'ail se plante en caïeux direct au sol — pas de phase pépinière.
   // On désambiguïse via `espece.modeSemis` et `itp.dureePepiniere`.
   const getTypeCulture = () => {
+    if (itp.implantation === 'Semis') return 'Semis direct'
+    if (itp.implantation === 'Plantation') return 'Plantation'
+    if (itp.implantation === 'Semis et implantation') return 'Semis et plantation'
+
     const mode = itp.espece?.modeSemis
     // Plantation directe pour les modes bulbe / bouture (ail, oignon caïeu,
     // pomme de terre, patate douce, kiwi, vigne…)
@@ -106,13 +116,56 @@ export function GanttRow({ itp: itpRef, onEdit, decalage = 0 }: GanttRowProps) {
   // Largeur en %, bornée pour ne pas déborder de l'axe 52 semaines (les cycles
   // qui débordent sur l'année suivante sont tronqués proprement à S52).
   const barre = (debut: number, dureeSemaines: number, color: string, label: string) => {
-    const start = (debut / 52) * 100
+    const start = ((debut - 1) / 52) * 100
     const width = Math.min(100 - start, Math.max(0, (dureeSemaines / 52) * 100))
     return { start, width, color, label }
   }
 
   const calculateBars = () => {
     const bars: { start: number; width: number; color: string; label: string }[] = []
+
+    const pushWindow = (debut: number, fin: number, color: string, label: string) => {
+      if (fin >= debut) {
+        bars.push(barre(debut, fin - debut + 1, color, label))
+        return
+      }
+      bars.push(barre(debut, 53 - debut, color, label))
+      bars.push(barre(1, fin, color, label))
+    }
+
+    // Jeu documenté : les bornes sont de vraies fenêtres de décision, pas une
+    // date unique artificielle. On les rend directement et on garde une bande
+    // de croissance indicative entre la fin d'implantation et la récolte.
+    if (itp.semaineImplantationDebut && itp.semaineImplantationFin) {
+      pushWindow(
+        itp.semaineImplantationDebut,
+        itp.semaineImplantationFin,
+        '#f59e0b',
+        itp.implantation ?? 'Implantation'
+      )
+      if (itp.semaineRecolte) {
+        const croissanceDebut = itp.semaineImplantationFin
+        const croissance = dureeSem(croissanceDebut, itp.semaineRecolte)
+        if (croissance > 0) {
+          const croissanceFin = itp.semaineRecolte === 1 ? 52 : itp.semaineRecolte - 1
+          pushWindow(
+            croissanceDebut,
+            croissanceFin,
+            '#4caf50',
+            'Croissance indicative'
+          )
+        }
+      }
+      if (itp.semaineRecolte && itp.semaineRecolteFin) {
+        pushWindow(
+          itp.semaineRecolte,
+          itp.semaineRecolteFin,
+          '#9c27b0',
+          'Fenêtre de récolte'
+        )
+      }
+      return bars
+    }
 
     // Cas pépinière : Semis (orange) puis Croissance (vert)
     if (itp.semaineSemis && itp.semainePlantation) {
@@ -181,6 +234,11 @@ export function GanttRow({ itp: itpRef, onEdit, decalage = 0 }: GanttRowProps) {
           {itp.typePlanche && (
             <div className="text-xs text-muted-foreground truncate">
               {itp.typePlanche}
+            </div>
+          )}
+          {itp.statutValidation === 'source_documentee' && (
+            <div className="text-[10px] font-medium text-emerald-700">
+              Source documentée
             </div>
           )}
         </div>

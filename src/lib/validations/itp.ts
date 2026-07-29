@@ -19,6 +19,9 @@ export const baseITPSchema = z.object({
   semaineSemis: z.number().int().min(1).max(52).nullable().optional(),
   semainePlantation: z.number().int().min(1).max(52).nullable().optional(),
   semaineRecolte: z.number().int().min(1).max(52).nullable().optional(),
+  semaineImplantationDebut: z.number().int().min(1).max(52).nullable().optional(),
+  semaineImplantationFin: z.number().int().min(1).max(52).nullable().optional(),
+  semaineRecolteFin: z.number().int().min(1).max(52).nullable().optional(),
   dureeRecolte: z.number().int().min(0).max(52).nullable().optional(),
   dureePepiniere: z.number().int().min(0).max(365).nullable().optional(),
   dureeCulture: z.number().int().min(0).max(365).nullable().optional(),
@@ -35,6 +38,15 @@ export const baseITPSchema = z.object({
   // métropolitain « moyen ». À la création côté serveur, un ITP perso hérite
   // par défaut de la zone de son auteur si celle-ci est une zone d'outre-mer.
   zoneClimat: z.enum(ZONES_CLIMAT).nullable().optional(),
+  implantation: z.string().max(100).nullable().optional(),
+  forcage: z.boolean().nullable().optional(),
+  contexteClimatique: z.string().max(200).nullable().optional(),
+  sourceReference: z.string().max(2000).nullable().optional(),
+  sourceUrl: z.string().url().max(2000).nullable().optional(),
+  sourceVersion: z.string().max(100).nullable().optional(),
+  sourceLicence: z.string().max(300).nullable().optional(),
+  commentaireAgronome: z.string().max(5000).nullable().optional(),
+  delaiPremiereRecolteAnnees: z.number().int().min(0).max(30).nullable().optional(),
 })
 
 // Schéma pour la création

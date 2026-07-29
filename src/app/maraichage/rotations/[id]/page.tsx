@@ -102,7 +102,7 @@ export default function EditRotationPage() {
     async function loadData() {
       try {
         const [itpsRes, rotationRes, planchesRes] = await Promise.all([
-          fetch("/api/itps?pageSize=500"),
+          fetch("/api/itps?pageSize=1000&applicable=1&sortBy=statutValidation&sortOrder=desc"),
           fetch(`/api/rotations/${encodeURIComponent(id)}`),
           fetch("/api/planches?pageSize=500"),
         ])

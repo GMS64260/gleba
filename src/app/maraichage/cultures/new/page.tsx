@@ -168,7 +168,7 @@ export default function NewCulturePage() {
     if (selectedEspece) {
       Promise.all([
         fetch(`/api/especes/${encodeURIComponent(selectedEspece)}`).then((r) => r.json()),
-        fetch(`/api/itps?especeId=${encodeURIComponent(selectedEspece)}&pageSize=500`).then((r) => r.json()),
+        fetch(`/api/itps?especeId=${encodeURIComponent(selectedEspece)}&pageSize=1000&applicable=1&calibre=1&sortBy=statutValidation&sortOrder=desc`).then((r) => r.json()),
       ])
         .then(([especeData, itpsData]) => {
           setVarietes(especeData.varietes || [])

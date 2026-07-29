@@ -11,7 +11,17 @@ import { useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
 import { formatSemaine } from "@/lib/assistant-helpers"
 import { ColumnDef } from "@tanstack/react-table"
-import { ArrowLeft, Route, Calendar, Ruler, Share2, Lock, Trash2 } from "lucide-react"
+import {
+  ArrowLeft,
+  Route,
+  Calendar,
+  Share2,
+  Lock,
+  Trash2,
+  ShieldCheck,
+  AlertTriangle,
+  ExternalLink,
+} from "lucide-react"
 
 import { DataTable } from "@/components/tables/DataTable"
 import { Button } from "@/components/ui/button"
@@ -36,6 +46,9 @@ interface ITPWithRelations {
   semaineSemis: number | null
   semainePlantation: number | null
   semaineRecolte: number | null
+  semaineImplantationDebut: number | null
+  semaineImplantationFin: number | null
+  semaineRecolteFin: number | null
   dureePepiniere: number | null
   dureeCulture: number | null
   nbRangs: number | null
@@ -43,6 +56,12 @@ interface ITPWithRelations {
   notes: string | null
   typePlanche: string | null
   modeDemarrage: string | null
+  implantation: string | null
+  forcage: boolean | null
+  zoneClimat: string | null
+  sourceReference: string | null
+  sourceUrl: string | null
+  statutValidation: string
   espece: {
     id: string
     nom: string | null
@@ -96,29 +115,34 @@ const columns: ColumnDef<ITPWithRelations>[] = [
     cell: ({ row }) => row.original.espece?.nom ?? row.original.espece?.id ?? "-",
   },
   {
-    accessorKey: "semaineSemis",
-    header: "Semis",
-    cell: ({ getValue }) => (
-      <Badge variant="outline" className="text-xs">
-        {formatSemaine(getValue() as number | null)}
-      </Badge>
-    ),
-  },
-  {
-    accessorKey: "semainePlantation",
-    header: "Plantation",
-    cell: ({ getValue }) => (
-      <Badge variant="outline" className="text-xs">
-        {formatSemaine(getValue() as number | null)}
-      </Badge>
-    ),
+    id: "implantationWindow",
+    header: "Implantation",
+    cell: ({ row }) => {
+      const itp = row.original
+      const start = itp.semaineImplantationDebut ?? itp.semainePlantation ?? itp.semaineSemis
+      return (
+        <div className="space-y-1">
+          <Badge variant="outline" className="text-xs">
+            {itp.semaineImplantationFin
+              ? `S${start}–S${itp.semaineImplantationFin}`
+              : formatSemaine(start)}
+          </Badge>
+          <p className="text-[11px] text-muted-foreground">
+            {itp.implantation ?? itp.modeDemarrage ?? "Non précisée"}
+            {itp.forcage ? " · forcé" : ""}
+          </p>
+        </div>
+      )
+    },
   },
   {
     accessorKey: "semaineRecolte",
     header: "Récolte",
-    cell: ({ getValue }) => (
+    cell: ({ row }) => (
       <Badge variant="secondary" className="text-xs">
-        {formatSemaine(getValue() as number | null)}
+        {row.original.semaineRecolteFin
+          ? `S${row.original.semaineRecolte}–S${row.original.semaineRecolteFin}`
+          : formatSemaine(row.original.semaineRecolte)}
       </Badge>
     ),
   },
@@ -139,17 +163,41 @@ const columns: ColumnDef<ITPWithRelations>[] = [
     },
   },
   {
-    accessorKey: "nbRangs",
-    header: "Rangs",
-    cell: ({ getValue }) => getValue() || "-",
-  },
-  {
-    accessorKey: "espacement",
-    // BUG #27 (audit Marc 2026-05-15) : « Esp 10 » ambigu (sur le rang
-    // ou entre les rangs ?). On précise « plant » pour matcher le
-    // libellé du formulaire d'édition (« Espacement plants »).
-    header: () => <span title="Espacement entre plants sur le rang (cm)">Esp. plant (cm)</span>,
-    cell: ({ getValue }) => getValue() || "-",
+    accessorKey: "statutValidation",
+    header: "Qualité",
+    cell: ({ row }) => {
+      const itp = row.original
+      if (itp.statutValidation === "source_documentee") {
+        return (
+          <div className="space-y-1">
+            <Badge className="gap-1 bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
+              <ShieldCheck className="h-3 w-3" />
+              Sourcé
+            </Badge>
+            {itp.sourceUrl && (
+              <a
+                href={itp.sourceUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1 text-[11px] text-emerald-700 hover:underline"
+                onClick={(event) => event.stopPropagation()}
+              >
+                INRAE <ExternalLink className="h-3 w-3" />
+              </a>
+            )}
+          </div>
+        )
+      }
+      if (itp.statutValidation === "personnel") {
+        return <Badge variant="outline">Personnel</Badge>
+      }
+      return (
+        <Badge variant="outline" className="gap-1 border-amber-300 bg-amber-50 text-amber-800">
+          <AlertTriangle className="h-3 w-3" />
+          À confirmer
+        </Badge>
+      )
+    },
   },
   {
     accessorKey: "_count.rotationsDetails",
@@ -167,25 +215,33 @@ export default function ITPsPage() {
   const router = useRouter()
   const { toast } = useToast()
   const { data: session } = useSession()
-  const currentUserId = (session?.user as any)?.id as string | undefined
+  const currentUserId = session?.user.id
   const [data, setData] = React.useState<ITPWithRelations[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [pageIndex, setPageIndex] = React.useState(0)
   const [pageCount, setPageCount] = React.useState(0)
   const [avisRef, setAvisRef] = React.useState<ITPWithRelations | null>(null)
+  const [search, setSearch] = React.useState("")
+  const deferredSearch = React.useDeferredValue(search)
   const pageSize = 50
 
   // Charger les données
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
     try {
-      const url = `/api/itps?page=${pageIndex + 1}&pageSize=${pageSize}&avis=1`
+      const params = new URLSearchParams({
+        page: String(pageIndex + 1),
+        pageSize: String(pageSize),
+        avis: "1",
+      })
+      if (deferredSearch.trim()) params.set("search", deferredSearch.trim())
+      const url = `/api/itps?${params.toString()}`
       const response = await fetch(url)
       if (!response.ok) throw new Error("Erreur lors du chargement")
       const result = await response.json()
       setData(result.data)
       setPageCount(result.totalPages)
-    } catch (error) {
+    } catch {
       toast({
         variant: "destructive",
         title: "Erreur",
@@ -194,7 +250,7 @@ export default function ITPsPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [pageIndex, toast])
+  }, [pageIndex, deferredSearch, toast])
 
   React.useEffect(() => {
     fetchData()
@@ -305,17 +361,17 @@ export default function ITPsPage() {
 
   // Export CSV
   const handleExport = () => {
-    const headers = ["ITP", "Espèce", "S.Semis", "S.Plantation", "S.Récolte", "Pépinière (j)", "Culture (j)", "Rangs", "Espacement (cm)"]
+    const headers = ["ITP", "Espèce", "Début implantation", "Fin implantation", "Début récolte", "Fin récolte", "Conduite", "Qualité", "Source"]
     const rows = data.map(i => [
       i.id,
       i.espece?.id || "",
-      i.semaineSemis?.toString() || "",
-      i.semainePlantation?.toString() || "",
+      (i.semaineImplantationDebut ?? i.semainePlantation ?? i.semaineSemis)?.toString() || "",
+      i.semaineImplantationFin?.toString() || "",
       i.semaineRecolte?.toString() || "",
-      i.dureePepiniere?.toString() || "",
-      i.dureeCulture?.toString() || "",
-      i.nbRangs?.toString() || "",
-      i.espacement?.toString() || "",
+      i.semaineRecolteFin?.toString() || "",
+      i.typePlanche || "",
+      i.statutValidation,
+      i.sourceReference || "",
     ])
 
     const csv = [headers, ...rows].map(r => r.join(";")).join("\n")
@@ -425,7 +481,7 @@ export default function ITPsPage() {
           <div className="flex items-start gap-3">
             <Calendar className="h-5 w-5 text-indigo-600 mt-0.5" />
             <div className="text-sm text-indigo-800">
-              <p className="font-medium">Qu'est-ce qu'un ITP ?</p>
+              <p className="font-medium">Qu&apos;est-ce qu&apos;un ITP ?</p>
               <p className="mt-1 text-indigo-700">
                 Un Itinéraire Technique de Plante définit le calendrier cultural : semaines de semis, plantation et recolte,
                 ainsi que les parametres de culture (nombre de rangs, espacement). Les ITPs sont utilises dans les rotations
@@ -443,6 +499,11 @@ export default function ITPsPage() {
           pageIndex={pageIndex}
           pageSize={pageSize}
           onPaginationChange={(page) => setPageIndex(page)}
+          onSearch={(value) => {
+            setSearch(value)
+            setPageIndex(0)
+          }}
+          searchValue={search}
           onAdd={handleAdd}
           onRefresh={fetchData}
           onExport={handleExport}

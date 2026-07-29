@@ -56,9 +56,10 @@ export function zoneHemisphereSud(zone: ZoneClimat | null | undefined): boolean 
  *   (itpZoneClimat === userZone). Les ITP métropolitains ne sont pas
  *   transposables (semaines calendaires inadaptées, hémisphère éventuellement
  *   inversé).
- * - Zone métropolitaine ou indéterminée → seuls les ITP du référentiel
- *   métropolitain (itpZoneClimat null). Les ITP tropicaux dédiés sont masqués
- *   (leurs semaines ne veulent rien dire en métropole).
+ * - Zone métropolitaine ou indéterminée → référentiel métropolitain générique
+ *   ET scénarios calés sur une zone métropolitaine. Le décalage entre le climat
+ *   source et la zone cible est calculé par `decalageItpPourZone`.
+ * - Les ITP tropicaux dédiés restent masqués en métropole.
  */
 export function itpApplicableAZone(
   itpZoneClimat: string | null | undefined,
@@ -67,7 +68,7 @@ export function itpApplicableAZone(
   if (zoneHorsReferenceMetropole(userZone)) {
     return itpZoneClimat === userZone
   }
-  return itpZoneClimat == null
+  return !zoneHorsReferenceMetropole(itpZoneClimat as ZoneClimat | null | undefined)
 }
 
 /**
@@ -134,6 +135,30 @@ export function decalageZone(zone: ZoneClimat | null | undefined): number {
 }
 
 /**
+ * Décalage à appliquer à un ITP pour le convertir de son climat de calage vers
+ * celui de l'exploitation.
+ *
+ * Un ITP historique sans zone est calé sur `oceanique_altere` (décalage 0).
+ * Un scénario INRAE Nord-Ouest calé sur `oceanique` vaut déjà -1 semaine :
+ * pour un utilisateur océanique il ne bouge donc pas ; pour un utilisateur
+ * semi-continental il est décalé de +2 semaines (-1 → +1).
+ *
+ * Les calendriers tropicaux sont dédiés et ne sont jamais transposés.
+ */
+export function decalageItpPourZone(
+  itpZoneClimat: string | null | undefined,
+  userZone: ZoneClimat | null | undefined
+): number {
+  if (!userZone || zoneHorsReferenceMetropole(userZone)) return 0
+  if (zoneHorsReferenceMetropole(itpZoneClimat as ZoneClimat | null | undefined)) return 0
+
+  const source = itpZoneClimat
+    ? decalageZone(itpZoneClimat as ZoneClimat)
+    : decalageZone('oceanique_altere')
+  return decalageZone(userZone) - source
+}
+
+/**
  * Décale une semaine ISO (1-52) d'un nombre de semaines, en restant dans
  * l'intervalle [1, 52] (modulo l'année). Retourne null si la semaine source
  * est nulle.
@@ -153,6 +178,9 @@ export interface ItpSemaines {
   semaineSemis?: number | null
   semainePlantation?: number | null
   semaineRecolte?: number | null
+  semaineImplantationDebut?: number | null
+  semaineImplantationFin?: number | null
+  semaineRecolteFin?: number | null
 }
 
 /**
@@ -167,6 +195,9 @@ export function appliquerDecalageItp<T extends ItpSemaines>(itp: T, decalage: nu
     semaineSemis: decalerSemaine(itp.semaineSemis, decalage),
     semainePlantation: decalerSemaine(itp.semainePlantation, decalage),
     semaineRecolte: decalerSemaine(itp.semaineRecolte, decalage),
+    semaineImplantationDebut: decalerSemaine(itp.semaineImplantationDebut, decalage),
+    semaineImplantationFin: decalerSemaine(itp.semaineImplantationFin, decalage),
+    semaineRecolteFin: decalerSemaine(itp.semaineRecolteFin, decalage),
   }
 }
 

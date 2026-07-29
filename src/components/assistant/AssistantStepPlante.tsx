@@ -258,7 +258,7 @@ export function AssistantStepPlante({
       setItpsError(null)
       try {
         const res = await fetch(
-          `/api/itps?especeId=${encodeURIComponent(especeId)}&pageSize=50`
+          `/api/itps?especeId=${encodeURIComponent(especeId)}&pageSize=1000&applicable=1&calibre=1&sortBy=statutValidation&sortOrder=desc`
         )
         if (!res.ok) throw new Error("Erreur lors du chargement des ITPs")
         const data = await res.json()

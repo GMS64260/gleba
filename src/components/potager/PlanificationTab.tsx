@@ -23,6 +23,9 @@ import {
   ArrowRight,
   CheckCircle2,
   ClipboardList,
+  ExternalLink,
+  ShieldCheck,
+  AlertTriangle,
 } from "lucide-react"
 
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -32,6 +35,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DataTable } from "@/components/tables/DataTable"
 import { useToast } from "@/hooks/use-toast"
 import { updateDashboardSearchParams } from "@/lib/dashboard-navigation"
+import { ZONE_CLIMAT_LABEL } from "@/lib/terroir"
 
 // ============================================================
 // Types
@@ -64,11 +68,21 @@ interface ITPWithRelations {
   semaineSemis: number | null
   semainePlantation: number | null
   semaineRecolte: number | null
+  semaineImplantationDebut: number | null
+  semaineImplantationFin: number | null
+  semaineRecolteFin: number | null
   dureePepiniere: number | null
   dureeCulture: number | null
   nbRangs: number | null
   espacement: number | null
   notes: string | null
+  typePlanche: string | null
+  implantation: string | null
+  forcage: boolean | null
+  zoneClimat: string | null
+  sourceReference: string | null
+  sourceUrl: string | null
+  statutValidation: string
   espece: {
     id: string
     nom: string | null
@@ -310,41 +324,81 @@ const itpColumns: ColumnDef<ITPWithRelations>[] = [
     cell: ({ row }) => row.original.espece?.nom ?? row.original.espece?.id ?? "-",
   },
   {
-    accessorKey: "semaineSemis",
-    header: "Semis",
-    cell: ({ getValue }) => (
-      <Badge variant="outline" className="text-xs">
-        {formatSemaine(getValue() as number | null)}
-      </Badge>
-    ),
+    id: "implantationWindow",
+    header: "Implantation",
+    cell: ({ row }) => {
+      const itp = row.original
+      const debut = itp.semaineImplantationDebut ?? itp.semainePlantation ?? itp.semaineSemis
+      const fin = itp.semaineImplantationFin
+      return (
+        <div className="space-y-1">
+          <Badge variant="outline" className="text-xs">
+            {fin ? `S${debut}–S${fin}` : formatSemaine(debut)}
+          </Badge>
+          <p className="text-[11px] text-muted-foreground">
+            {itp.implantation ?? (itp.semainePlantation ? "Plantation" : "Semis")}
+            {itp.forcage ? " · forcé" : ""}
+          </p>
+        </div>
+      )
+    },
   },
   {
-    accessorKey: "semainePlantation",
-    header: "Plantation",
-    cell: ({ getValue }) => (
-      <Badge variant="outline" className="text-xs">
-        {formatSemaine(getValue() as number | null)}
-      </Badge>
-    ),
-  },
-  {
-    accessorKey: "semaineRecolte",
+    id: "harvestWindow",
     header: "Récolte",
-    cell: ({ getValue }) => (
+    cell: ({ row }) => (
       <Badge variant="outline" className="text-xs">
-        {formatSemaine(getValue() as number | null)}
+        {row.original.semaineRecolteFin
+          ? `S${row.original.semaineRecolte}–S${row.original.semaineRecolteFin}`
+          : formatSemaine(row.original.semaineRecolte)}
       </Badge>
     ),
   },
   {
-    accessorKey: "nbRangs",
-    header: "Rangs",
-    cell: ({ getValue }) => getValue() || "-",
+    accessorKey: "typePlanche",
+    header: "Conduite",
+    cell: ({ row }) => (
+      <div className="text-xs">
+        <span>{row.original.typePlanche ?? "Non précisée"}</span>
+        {row.original.zoneClimat && (
+          <p className="mt-1 text-muted-foreground">
+            {ZONE_CLIMAT_LABEL[row.original.zoneClimat as keyof typeof ZONE_CLIMAT_LABEL] ??
+              row.original.zoneClimat}
+          </p>
+        )}
+      </div>
+    ),
   },
   {
-    accessorKey: "espacement",
-    header: "Esp. (cm)",
-    cell: ({ getValue }) => getValue() || "-",
+    accessorKey: "statutValidation",
+    header: "Qualité",
+    cell: ({ row }) =>
+      row.original.statutValidation === "source_documentee" ? (
+        <div className="space-y-1">
+          <Badge className="gap-1 bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
+            <ShieldCheck className="h-3 w-3" />
+            Sourcé
+          </Badge>
+          {row.original.sourceUrl && (
+            <a
+              href={row.original.sourceUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-1 text-[11px] text-emerald-700 hover:underline"
+              onClick={(event) => event.stopPropagation()}
+            >
+              INRAE <ExternalLink className="h-3 w-3" />
+            </a>
+          )}
+        </div>
+      ) : row.original.statutValidation === "personnel" ? (
+        <Badge variant="outline">Personnel</Badge>
+      ) : (
+        <Badge variant="outline" className="gap-1 border-amber-300 bg-amber-50 text-amber-800">
+          <AlertTriangle className="h-3 w-3" />
+          À confirmer
+        </Badge>
+      ),
   },
   {
     accessorKey: "_count.cultures",
@@ -358,6 +412,8 @@ function ItpsSubTab() {
   const { toast } = useToast()
   const [data, setData] = React.useState<ITPWithRelations[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
+  const [qualityFilter, setQualityFilter] = React.useState("all")
+  const [plancheFilter, setPlancheFilter] = React.useState("all")
 
   const [loadError, setLoadError] = React.useState<string | null>(null)
   // Bug feedback testeur 2026-05-26 (cmplonap8) — "Failed to fetch"
@@ -369,7 +425,7 @@ function ItpsSubTab() {
     setLoadError(null)
     const attempt = async (retriesLeft: number): Promise<void> => {
       try {
-        const response = await fetch("/api/itps?pageSize=200", { cache: "no-store" })
+        const response = await fetch("/api/itps?pageSize=1000&applicable=1&calibre=1", { cache: "no-store" })
         if (!response.ok) {
           // Feedback Marc 2026-05-16 — Bug 13 : on récupère le détail
           // d'erreur retourné par l'API pour ne pas afficher un toast
@@ -382,7 +438,24 @@ function ItpsSubTab() {
           throw new Error(msg)
         }
         const result = await response.json()
-        setData(Array.isArray(result) ? result : result.data || [])
+        const rows = (Array.isArray(result) ? result : result.data || []) as ITPWithRelations[]
+        const qualityRank: Record<string, number> = {
+          source_documentee: 0,
+          personnel: 1,
+          a_revoir: 2,
+        }
+        setData(
+          [...rows].sort(
+            (a, b) =>
+              (qualityRank[a.statutValidation] ?? 9) - (qualityRank[b.statutValidation] ?? 9) ||
+              (a.espece?.nom ?? a.especeId ?? "").localeCompare(
+                b.espece?.nom ?? b.especeId ?? "",
+                "fr"
+              ) ||
+              (a.semaineImplantationDebut ?? a.semaineSemis ?? 99) -
+                (b.semaineImplantationDebut ?? b.semaineSemis ?? 99)
+          )
+        )
       } catch (err) {
         const isNetworkErr =
           err instanceof TypeError ||
@@ -407,14 +480,63 @@ function ItpsSubTab() {
     fetchData()
   }, [fetchData])
 
+  const filteredData = React.useMemo(
+    () =>
+      data.filter((itp) => {
+        if (qualityFilter !== "all" && itp.statutValidation !== qualityFilter) return false
+        if (plancheFilter !== "all" && itp.typePlanche !== plancheFilter) return false
+        return true
+      }),
+    [data, qualityFilter, plancheFilter]
+  )
+
+  const documentedCount = data.filter(
+    (itp) => itp.statutValidation === "source_documentee"
+  ).length
+
   return (
     <div className="space-y-3">
-      <div className="p-3 bg-indigo-50 rounded-lg border border-indigo-200 text-sm text-indigo-800">
-        <p className="font-medium">Itinéraires Techniques</p>
-        <p className="mt-1 text-indigo-700">
-          Les ITPs définissent les paramètres de culture pour chaque espèce : espacement, dates de
-          semis/plantation/récolte, nombre de rangs.
-        </p>
+      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="font-semibold">Itinéraires techniques contextualisés</p>
+            <p className="mt-1 max-w-3xl text-emerald-800">
+              {documentedCount} scénarios documentés indiquent une vraie fenêtre
+              d&apos;implantation et de récolte. Les dates sont recalées depuis le climat de la
+              source vers celui de votre exploitation.
+            </p>
+          </div>
+          <Link
+            href="/maraichage/itps/calendrier"
+            className="inline-flex items-center gap-1.5 rounded-md border border-emerald-300 bg-white px-3 py-2 text-xs font-medium text-emerald-800 hover:bg-emerald-100"
+          >
+            <CalendarRange className="h-4 w-4" />
+            Voir le calendrier
+          </Link>
+        </div>
+      </div>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <Select value={qualityFilter} onValueChange={setQualityFilter}>
+          <SelectTrigger className="w-full bg-white sm:w-56">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Toutes les qualités</SelectItem>
+            <SelectItem value="source_documentee">Documentés par une source</SelectItem>
+            <SelectItem value="a_revoir">Repères à confirmer</SelectItem>
+            <SelectItem value="personnel">Mes itinéraires</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={plancheFilter} onValueChange={setPlancheFilter}>
+          <SelectTrigger className="w-full bg-white sm:w-48">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Toutes conduites</SelectItem>
+            <SelectItem value="Plein champ">Plein champ</SelectItem>
+            <SelectItem value="Sous abri">Sous abri</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
       {loadError && (
         <div className="p-3 bg-red-50 rounded-lg border border-red-200 text-sm text-red-800 flex items-center justify-between">
@@ -430,9 +552,9 @@ function ItpsSubTab() {
       )}
       <DataTable
         columns={itpColumns}
-        data={data}
+        data={filteredData}
         isLoading={isLoading}
-        showPagination={false}
+        pageSize={25}
         onAdd={() => router.push("/maraichage/itps/new")}
         onRefresh={fetchData}
         onRowClick={(row) => router.push(`/maraichage/itps/${encodeURIComponent(row.id)}`)}

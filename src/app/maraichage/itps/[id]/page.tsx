@@ -7,7 +7,8 @@
 import * as React from "react"
 import Link from "next/link"
 import { useRouter, useParams } from "next/navigation"
-import { ArrowLeft, Route, Save, Trash2 } from "lucide-react"
+import { ArrowLeft, Route, Save, Trash2, ExternalLink, ShieldCheck, AlertTriangle } from "lucide-react"
+import { useSession } from "next-auth/react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 
@@ -48,10 +49,14 @@ interface Espece {
 interface ITPData {
   id: string
   nom: string | null
+  userId: string | null
   especeId: string | null
   semaineSemis: number | null
   semainePlantation: number | null
   semaineRecolte: number | null
+  semaineImplantationDebut: number | null
+  semaineImplantationFin: number | null
+  semaineRecolteFin: number | null
   dureeRecolte: number | null
   dureePepiniere: number | null
   dureeCulture: number | null
@@ -63,6 +68,18 @@ interface ITPData {
   espacementRangs: number | null
   nbGrainesPlant: number | null
   doseSemis: number | null
+  implantation: string | null
+  forcage: boolean | null
+  contexteClimatique: string | null
+  sourceReference: string | null
+  sourceUrl: string | null
+  sourceRecordId: string | null
+  sourceVersion: string | null
+  sourceLicence: string | null
+  statutValidation: string
+  derniereRevision: string | null
+  commentaireAgronome: string | null
+  delaiPremiereRecolteAnnees: number | null
   espece: { id: string; famille: { id: string } | null } | null
   _count: { cultures: number; rotationsDetails: number }
 }
@@ -72,6 +89,7 @@ export default function EditITPPage() {
   const params = useParams()
   const id = decodeURIComponent(params.id as string)
   const { toast } = useToast()
+  const { data: session } = useSession()
 
   const [isLoading, setIsLoading] = React.useState(true)
   const [isSubmitting, setIsSubmitting] = React.useState(false)
@@ -109,6 +127,9 @@ export default function EditITPPage() {
           semaineSemis: itp.semaineSemis,
           semainePlantation: itp.semainePlantation,
           semaineRecolte: itp.semaineRecolte,
+          semaineImplantationDebut: itp.semaineImplantationDebut,
+          semaineImplantationFin: itp.semaineImplantationFin,
+          semaineRecolteFin: itp.semaineRecolteFin,
           dureeRecolte: itp.dureeRecolte,
           dureePepiniere: itp.dureePepiniere,
           dureeCulture: itp.dureeCulture,
@@ -120,8 +141,12 @@ export default function EditITPPage() {
           espacementRangs: itp.espacementRangs,
           nbGrainesPlant: itp.nbGrainesPlant,
           doseSemis: itp.doseSemis,
+          implantation: itp.implantation,
+          forcage: itp.forcage,
+          contexteClimatique: itp.contexteClimatique,
+          delaiPremiereRecolteAnnees: itp.delaiPremiereRecolteAnnees,
         })
-      } catch (error) {
+      } catch {
         toast({
           variant: "destructive",
           title: "Erreur",
@@ -193,7 +218,7 @@ export default function EditITPPage() {
         description: `L'ITP "${id}" a été supprimé`,
       })
       router.push("/maraichage/itps")
-    } catch (error) {
+    } catch {
       toast({
         variant: "destructive",
         title: "Erreur",
@@ -217,6 +242,12 @@ export default function EditITPPage() {
       </div>
     )
   }
+
+  const currentUserId = (session?.user as { id?: string } | undefined)?.id
+  const canEdit =
+    !itpData?.sourceRecordId &&
+    (session?.user?.role === "ADMIN" ||
+      (!!itpData?.userId && !!currentUserId && itpData.userId === currentUserId))
 
   return (
     <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
@@ -251,6 +282,74 @@ export default function EditITPPage() {
       <main className="container mx-auto px-4 py-6 max-w-3xl">
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            {itpData?.sourceReference && (
+              <Card
+                className={
+                  itpData.statutValidation === "source_documentee"
+                    ? "border-emerald-200 bg-emerald-50/50"
+                    : "border-amber-200 bg-amber-50/50"
+                }
+              >
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    {itpData.statutValidation === "source_documentee" ? (
+                      <ShieldCheck className="h-5 w-5 text-emerald-700" />
+                    ) : (
+                      <AlertTriangle className="h-5 w-5 text-amber-700" />
+                    )}
+                    Provenance agronomique
+                  </CardTitle>
+                  <CardDescription>
+                    {itpData.statutValidation === "source_documentee"
+                      ? "Scénario directement documenté par la source ci-dessous."
+                      : "Repère conservé, mais encore à confirmer par une source ligne par ligne."}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3 text-sm">
+                  <p>{itpData.sourceReference}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {itpData.contexteClimatique && (
+                      <Badge variant="outline">Climat source : {itpData.contexteClimatique}</Badge>
+                    )}
+                    {itpData.sourceVersion && (
+                      <Badge variant="outline">Version {itpData.sourceVersion}</Badge>
+                    )}
+                    {itpData.sourceLicence && (
+                      <Badge variant="outline">{itpData.sourceLicence}</Badge>
+                    )}
+                  </div>
+                  {itpData.sourceUrl && (
+                    <a
+                      href={itpData.sourceUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1.5 font-medium text-emerald-700 hover:underline"
+                    >
+                      Ouvrir la publication source
+                      <ExternalLink className="h-4 w-4" />
+                    </a>
+                  )}
+                  <div className="border-t pt-3 text-xs text-muted-foreground">
+                    {itpData.sourceRecordId && <p>Ligne stable : {itpData.sourceRecordId}</p>}
+                    {itpData.derniereRevision && (
+                      <p>
+                        Intégration révisée le{" "}
+                        {new Date(itpData.derniereRevision).toLocaleDateString("fr-FR")}
+                      </p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {!canEdit && (
+              <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-600">
+                Cette référence officielle est consultable mais non modifiable. Créez un ITP
+                personnel pour l&apos;adapter à votre ferme.
+              </div>
+            )}
+
+            <fieldset disabled={!canEdit} className="space-y-6 disabled:opacity-90">
             {/* Identification */}
             <Card>
               <CardHeader>
@@ -370,6 +469,81 @@ export default function EditITPPage() {
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="semaineImplantationDebut"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Début fenêtre d&apos;implantation</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={52}
+                            placeholder="1-52"
+                            {...field}
+                            value={field.value ?? ""}
+                            onChange={(e) =>
+                              field.onChange(e.target.value ? parseInt(e.target.value) : null)
+                            }
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="semaineImplantationFin"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Fin fenêtre d&apos;implantation</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={52}
+                            placeholder="1-52"
+                            {...field}
+                            value={field.value ?? ""}
+                            onChange={(e) =>
+                              field.onChange(e.target.value ? parseInt(e.target.value) : null)
+                            }
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="semaineRecolteFin"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Fin fenêtre de récolte</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={52}
+                            placeholder="1-52"
+                            {...field}
+                            value={field.value ?? ""}
+                            onChange={(e) =>
+                              field.onChange(e.target.value ? parseInt(e.target.value) : null)
+                            }
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          La semaine de récolte ci-dessus est le début de fenêtre.
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
                   <FormField
                     control={form.control}
                     name="dureeRecolte"
@@ -679,28 +853,33 @@ export default function EditITPPage() {
                 />
               </CardContent>
             </Card>
+            </fieldset>
 
             {/* Actions */}
             <div className="flex justify-between">
-              <Button
-                type="button"
-                variant="destructive"
-                onClick={handleDelete}
-                disabled={!itpData || itpData._count.cultures > 0 || itpData._count.rotationsDetails > 0}
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
-                Supprimer
-              </Button>
+              {canEdit ? (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={handleDelete}
+                  disabled={!itpData || itpData._count.cultures > 0 || itpData._count.rotationsDetails > 0}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Supprimer
+                </Button>
+              ) : <span />}
               <div className="flex gap-4">
                 <Link href="/maraichage/itps">
                   <Button variant="outline" type="button">
-                    Annuler
+                    {canEdit ? "Annuler" : "Retour"}
                   </Button>
                 </Link>
-                <Button type="submit" disabled={isSubmitting}>
-                  <Save className="h-4 w-4 mr-2" />
-                  {isSubmitting ? "Enregistrement..." : "Enregistrer"}
-                </Button>
+                {canEdit && (
+                  <Button type="submit" disabled={isSubmitting}>
+                    <Save className="h-4 w-4 mr-2" />
+                    {isSubmitting ? "Enregistrement..." : "Enregistrer"}
+                  </Button>
+                )}
               </div>
             </div>
           </form>

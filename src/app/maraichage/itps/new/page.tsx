@@ -14,6 +14,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Form,
@@ -72,10 +73,18 @@ export default function NewITPPage() {
       semaineSemis: null,
       semainePlantation: null,
       semaineRecolte: null,
+      semaineImplantationDebut: null,
+      semaineImplantationFin: null,
+      semaineRecolteFin: null,
       dureePepiniere: null,
       dureeCulture: null,
       nbRangs: null,
       espacement: null,
+      typePlanche: null,
+      implantation: null,
+      forcage: false,
+      sourceReference: null,
+      sourceUrl: null,
       notes: null,
     },
   })
@@ -145,7 +154,7 @@ export default function NewITPPage() {
                   name="id"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Nom de l'ITP *</FormLabel>
+                      <FormLabel>Nom de l&apos;ITP *</FormLabel>
                       <FormControl>
                         <Input placeholder="Ex: Tomate-precoce" {...field} />
                       </FormControl>
@@ -194,7 +203,8 @@ export default function NewITPPage() {
                 <CardTitle>Calendrier</CardTitle>
                 <CardDescription>Semaines de semis, plantation et récolte (1-52)</CardDescription>
               </CardHeader>
-              <CardContent className="grid grid-cols-3 gap-4">
+              <CardContent className="space-y-4">
+                <div className="grid gap-4 sm:grid-cols-3">
                 <FormField
                   control={form.control}
                   name="semaineSemis"
@@ -260,6 +270,152 @@ export default function NewITPPage() {
                     </FormItem>
                   )}
                 />
+                </div>
+
+                <div className="grid gap-4 border-t pt-4 sm:grid-cols-3">
+                  <FormField
+                    control={form.control}
+                    name="semaineImplantationDebut"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Début fenêtre implantation</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={52}
+                            placeholder="1-52"
+                            {...field}
+                            value={field.value ?? ""}
+                            onChange={(e) =>
+                              field.onChange(e.target.value ? parseInt(e.target.value) : null)
+                            }
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="semaineImplantationFin"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Fin fenêtre implantation</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={52}
+                            placeholder="1-52"
+                            {...field}
+                            value={field.value ?? ""}
+                            onChange={(e) =>
+                              field.onChange(e.target.value ? parseInt(e.target.value) : null)
+                            }
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="semaineRecolteFin"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Fin fenêtre récolte</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={52}
+                            placeholder="1-52"
+                            {...field}
+                            value={field.value ?? ""}
+                            onChange={(e) =>
+                              field.onChange(e.target.value ? parseInt(e.target.value) : null)
+                            }
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Conduite</CardTitle>
+                <CardDescription>Comment et où la culture est implantée</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-4 sm:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="implantation"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Mode d&apos;implantation</FormLabel>
+                      <Select
+                        value={field.value ?? "_none"}
+                        onValueChange={(value) => field.onChange(value === "_none" ? null : value)}
+                      >
+                        <FormControl>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="_none">Non précisé</SelectItem>
+                          <SelectItem value="Semis">Semis direct</SelectItem>
+                          <SelectItem value="Plantation">Plantation</SelectItem>
+                          <SelectItem value="Semis et implantation">Semis et plantation</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="typePlanche"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Milieu de culture</FormLabel>
+                      <Select
+                        value={field.value ?? "_none"}
+                        onValueChange={(value) => field.onChange(value === "_none" ? null : value)}
+                      >
+                        <FormControl>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="_none">Non précisé</SelectItem>
+                          <SelectItem value="Plein champ">Plein champ</SelectItem>
+                          <SelectItem value="Sous abri">Sous abri</SelectItem>
+                          <SelectItem value="Serre">Serre</SelectItem>
+                          <SelectItem value="Tunnel">Tunnel</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="forcage"
+                  render={({ field }) => (
+                    <FormItem className="flex items-center gap-3 rounded-md border p-3 sm:col-span-2">
+                      <FormControl>
+                        <Checkbox checked={field.value === true} onCheckedChange={field.onChange} />
+                      </FormControl>
+                      <div>
+                        <FormLabel>Culture forcée</FormLabel>
+                        <FormDescription>Protection ou chaleur pour avancer le cycle.</FormDescription>
+                      </div>
+                    </FormItem>
+                  )}
+                />
               </CardContent>
             </Card>
 
@@ -311,6 +467,53 @@ export default function NewITPPage() {
                         />
                       </FormControl>
                       <FormDescription>Entre plantation et fin</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Source</CardTitle>
+                <CardDescription>
+                  Facultatif — indiquez une publication vérifiable, jamais « web » ou « IA ».
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <FormField
+                  control={form.control}
+                  name="sourceReference"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Référence</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="Auteur, organisme, titre, édition ou page"
+                          {...field}
+                          value={field.value ?? ""}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="sourceUrl"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>URL ou DOI</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="url"
+                          placeholder="https://…"
+                          {...field}
+                          value={field.value ?? ""}
+                          onChange={(event) => field.onChange(event.target.value || null)}
+                        />
+                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}

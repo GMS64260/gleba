@@ -22,6 +22,14 @@ vi.mock('@/lib/prisma', () => ({
   },
 }))
 
+vi.mock('@/lib/terroir', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/terroir')>()
+  return {
+    ...actual,
+    zoneEffectiveUser: vi.fn().mockResolvedValue(null),
+  }
+})
+
 import prisma from '@/lib/prisma'
 import { getBesoinsSemences } from '../planification'
 

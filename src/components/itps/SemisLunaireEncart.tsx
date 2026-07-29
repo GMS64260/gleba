@@ -17,9 +17,11 @@ import { Badge } from "@/components/ui/badge"
 import {
   categorieLunaire,
   decalerSemaine,
+  decalageItpPourZone,
   CATEGORIE_LUNAIRE_LABEL,
   type CategorieLunaire,
 } from "@/lib/calendrier-climat"
+import type { ZoneClimat } from "@/lib/terroir"
 
 interface JourLunaire {
   date: string
@@ -35,11 +37,13 @@ interface ITPLite {
   especeId: string | null
   espece?: { id?: string; nom?: string | null; couleur?: string | null; famille?: { id?: string } | null } | null
   semaineSemis: number | null
+  zoneClimat?: string | null
 }
 
 interface Props {
   itps: ITPLite[]
-  decalage: number
+  zone: ZoneClimat | null
+  reglageFin?: number
   /** Nombre de semaines à anticiper (fenêtre de semis). */
   horizonSemaines?: number
 }
@@ -65,7 +69,12 @@ function distanceSemaine(courante: number, cible: number): number {
   return ((cible - courante) % 52 + 52) % 52
 }
 
-export function SemisLunaireEncart({ itps, decalage, horizonSemaines = 3 }: Props) {
+export function SemisLunaireEncart({
+  itps,
+  zone,
+  reglageFin = 0,
+  horizonSemaines = 3,
+}: Props) {
   const [jours, setJours] = React.useState<JourLunaire[]>([])
   const [loading, setLoading] = React.useState(true)
 
@@ -110,6 +119,7 @@ export function SemisLunaireEncart({ itps, decalage, horizonSemaines = 3 }: Prop
   const semisParCat = React.useMemo(() => {
     const map = new Map<CategorieLunaire, Set<string>>()
     for (const itp of itps) {
+      const decalage = decalageItpPourZone(itp.zoneClimat, zone) + reglageFin
       const sSemis = decalerSemaine(itp.semaineSemis, decalage)
       if (sSemis == null) continue
       const dist = distanceSemaine(semaineCourante, sSemis)
@@ -125,7 +135,7 @@ export function SemisLunaireEncart({ itps, decalage, horizonSemaines = 3 }: Prop
       map.get(cat)!.add(nom)
     }
     return map
-  }, [itps, decalage, semaineCourante, horizonSemaines])
+  }, [itps, zone, reglageFin, semaineCourante, horizonSemaines])
 
   // 2) Prochains jours lunaires favorables (>= aujourd'hui) par type.
   const prochainsJours = React.useMemo(() => {
@@ -161,7 +171,7 @@ export function SemisLunaireEncart({ itps, decalage, horizonSemaines = 3 }: Prop
         ) : categoriesActives.length === 0 ? (
           <p className="text-sm text-muted-foreground py-2">
             Aucun semis recommandé dans les {horizonSemaines} prochaines semaines
-            pour vos itinéraires{decalage !== 0 ? " (zone climatique prise en compte)" : ""}.
+            pour vos itinéraires{zone || reglageFin !== 0 ? " (zone climatique prise en compte)" : ""}.
           </p>
         ) : (
           <div className="space-y-2.5">
