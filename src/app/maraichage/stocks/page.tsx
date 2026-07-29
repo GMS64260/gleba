@@ -598,7 +598,7 @@ function StocksPageContent() {
               <CardHeader>
                 <CardTitle>Stock de semences</CardTitle>
                 <CardDescription>
-                  Cliquez sur une valeur pour la modifier. Les modifications sont sauvegardees automatiquement.
+                  Cliquez sur une valeur pour la modifier. Les modifications sont sauvegardées automatiquement.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -660,7 +660,7 @@ function StocksPageContent() {
               <CardHeader>
                 <CardTitle>Stock de plants</CardTitle>
                 <CardDescription>
-                  Cliquez sur une valeur pour la modifier. Les modifications sont sauvegardees automatiquement.
+                  Cliquez sur une valeur pour la modifier. Les modifications sont sauvegardées automatiquement.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -720,7 +720,7 @@ function StocksPageContent() {
               <CardHeader>
                 <CardTitle>Stock de fertilisants</CardTitle>
                 <CardDescription>
-                  Cliquez sur une valeur pour la modifier. Les modifications sont sauvegardees automatiquement.
+                  Cliquez sur une valeur pour la modifier. Les modifications sont sauvegardées automatiquement.
                 </CardDescription>
               </CardHeader>
               <CardContent>

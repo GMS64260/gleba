@@ -209,7 +209,7 @@ function GrainesTooltip({ b, appliquerMarge }: { b: BesoinSemence; appliquerMarg
           )}
           {b.tauxGerminationPct !== null && (
             <div className="mt-2 text-slate-300">
-              Marge dimensionnée sur le taux de germination réaliste de l'espèce&nbsp;: <strong>{b.tauxGerminationPct}%</strong>.
+              Marge dimensionnée sur le taux de germination réaliste de l&apos;espèce&nbsp;: <strong>{b.tauxGerminationPct}%</strong>.
             </div>
           )}
         </TooltipContent>
@@ -405,7 +405,7 @@ function SemencesContent() {
       const result = await response.json()
       setData(result.data)
       setStats(result.stats)
-    } catch (error) {
+    } catch {
       toast({
         variant: "destructive",
         title: "Erreur",
@@ -469,11 +469,31 @@ function SemencesContent() {
 
   // BUG-01 : total brut sommé ligne à ligne (chaque espèce peut avoir une
   // marge différente). Le serveur ne renvoie que le total majoré.
-  const totalGrainesBrut = data
-    .filter(b => b.mode === "graine_directe" || b.mode === "plant_repique")
-    .reduce((s, b) => s + brutGraines(b), 0)
-  const totalGrainesMarge = stats?.totalGraines ?? 0
+  const totalGrainesDirectesMarge = graineDirecte.reduce(
+    (s, b) => s + b.grainesNecessaires,
+    0,
+  )
+  const totalGrainesPlantsMarge = plantRepique.reduce(
+    (s, b) => s + b.grainesNecessaires,
+    0,
+  )
+  const totalGrainesDirectesBrut = graineDirecte.reduce(
+    (s, b) => s + brutGraines(b),
+    0,
+  )
+  const totalGrainesPlantsBrut = plantRepique.reduce(
+    (s, b) => s + brutGraines(b),
+    0,
+  )
+  const totalGrainesMarge = totalGrainesDirectesMarge + totalGrainesPlantsMarge
+  const totalGrainesBrut = totalGrainesDirectesBrut + totalGrainesPlantsBrut
   const grainesAffichees = appliquerMarge ? totalGrainesMarge : totalGrainesBrut
+  const grainesDirectesAffichees = appliquerMarge
+    ? totalGrainesDirectesMarge
+    : totalGrainesDirectesBrut
+  const grainesPlantsAffichees = appliquerMarge
+    ? totalGrainesPlantsMarge
+    : totalGrainesPlantsBrut
   const margeCumulee = Math.max(0, totalGrainesMarge - totalGrainesBrut)
 
   return (
@@ -583,10 +603,19 @@ function SemencesContent() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold">{grainesAffichees.toFixed(0)} g</p>
+                <p className="text-2xl font-bold">{formatGrammes(grainesAffichees)}</p>
+                <p className="text-xs text-muted-foreground">
+                  semis direct {formatGrammes(grainesDirectesAffichees)}
+                  {" · "}
+                  plants à produire {formatGrammes(grainesPlantsAffichees)}
+                </p>
                 {appliquerMarge && margeCumulee > 0 ? (
                   <p className="text-xs text-muted-foreground">
-                    dose×surface {totalGrainesBrut.toFixed(0)} g + marges {margeCumulee.toFixed(0)} g
+                    dose×surface {formatGrammes(totalGrainesBrut)}
+                    {" + "}
+                    marges {formatGrammes(margeCumulee)}
+                    {" = "}
+                    {formatGrammes(totalGrainesMarge)}
                   </p>
                 ) : (
                   <p className="text-xs text-muted-foreground">

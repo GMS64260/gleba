@@ -16,7 +16,6 @@ import { format } from "date-fns"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { Checkbox } from "@/components/ui/checkbox"
 import {
   Select,
   SelectContent,
@@ -48,6 +47,10 @@ import { estimerNombrePlantsStrict } from "@/lib/assistant-helpers"
 import { RotationAdviceCompact } from "@/components/planche"
 import { EspeceCombobox, type EspeceOption } from "@/components/especes/EspeceCombobox"
 import { AdjacenceAdvisor } from "@/components/cultures/AdjacenceAdvisor"
+import {
+  DASHBOARD_YEAR_STORAGE_KEY,
+  resolveDashboardYear,
+} from "@/lib/dashboard-year"
 
 // Bug #1 — payload de violation renvoyé par POST /api/cultures (status 409).
 type RotationViolation = {
@@ -119,6 +122,22 @@ export default function NewCulturePage() {
       notes: null,
     },
   })
+
+  React.useEffect(() => {
+    let storedYear: string | null = null
+    try {
+      storedYear = localStorage.getItem(DASHBOARD_YEAR_STORAGE_KEY)
+    } catch {
+      // Stockage indisponible : le deep-link ou l'année courante suffisent.
+    }
+
+    const queryYear = new URLSearchParams(window.location.search).get("annee")
+    form.setValue("annee", resolveDashboardYear({
+      queryValue: queryYear,
+      storedValue: storedYear,
+      fallbackYear: new Date().getFullYear(),
+    }))
+  }, [form])
 
   const selectedEspece = form.watch("especeId")
   const selectedPlanche = form.watch("plancheId")
@@ -509,7 +528,7 @@ export default function NewCulturePage() {
                   return (
                     <div className="flex items-center justify-between gap-2 text-xs text-slate-600 bg-blue-50 border border-blue-100 rounded p-2 mt-2">
                       <span>
-                        💡 Dates pré-remplies depuis l'ITP <strong>{itp.nom ?? itp.id}</strong> (
+                        💡 Dates pré-remplies depuis l&apos;ITP <strong>{itp.nom ?? itp.id}</strong> (
                         {[
                           itp.semaineSemis ? `${formatSemaine(itp.semaineSemis)} semis` : null,
                           itp.semainePlantation ? `${formatSemaine(itp.semainePlantation)} plantation` : null,

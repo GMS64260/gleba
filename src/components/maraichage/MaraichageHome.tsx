@@ -9,6 +9,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { AppHeader } from "@/components/shell/AppHeader"
 import { ModuleTabBar } from "@/components/shell/ModuleTabBar"
 import { updateDashboardSearchParams } from "@/lib/dashboard-navigation"
+import {
+  DASHBOARD_YEAR_STORAGE_KEY,
+  resolveDashboardYear,
+} from "@/lib/dashboard-year"
 import { WelcomeDialog } from "@/components/onboarding/WelcomeDialog"
 import {
   Sprout,
@@ -63,22 +67,28 @@ function HomeContent() {
   // l'année courante après F5). On le lit/écrit dans localStorage, sur le
   // même pattern que la compta (`gleba_compta_year`).
   const [selectedYear, setSelectedYear] = React.useState(currentYearNow)
+  const [isYearReady, setIsYearReady] = React.useState(false)
   React.useEffect(() => {
     try {
-      const stored = localStorage.getItem("gleba_dashboard_year")
-      if (stored) {
-        const y = parseInt(stored, 10)
-        if (!Number.isNaN(y) && availableYears.includes(y)) setSelectedYear(y)
-      }
+      setSelectedYear(resolveDashboardYear({
+        storedValue: localStorage.getItem(DASHBOARD_YEAR_STORAGE_KEY),
+        fallbackYear: currentYearNow,
+        allowedYears: availableYears,
+      }))
     } catch {
       // localStorage indisponible (mode privé, quota) — on garde le défaut
+    } finally {
+      // Les vues dépendantes de l'année ne sont montées qu'après restauration.
+      // Cela empêche une requête de l'année courante de finir plus tard et
+      // d'écraser les données de la saison mémorisée.
+      setIsYearReady(true)
     }
   }, [])
   const handleYearChange = React.useCallback((value: string) => {
     const y = parseInt(value, 10)
     setSelectedYear(y)
     try {
-      localStorage.setItem("gleba_dashboard_year", String(y))
+      localStorage.setItem(DASHBOARD_YEAR_STORAGE_KEY, String(y))
     } catch {
       // ignore
     }
@@ -270,11 +280,22 @@ function HomeContent() {
         {activeTab === "calendrier" && <TourMaraichage />}
         {/* PROMPT 22 + POSTREVIEW Sprint 6 — Bandeau "Premiers pas" Maraîchage */}
         {activeTab === "calendrier" && <PremiersPasBanner module="maraichage" />}
-        {activeTab === "calendrier" && <CalendrierTab year={selectedYear} />}
-        {activeTab === "cultures" && <CulturesTab year={selectedYear} />}
+        {!isYearReady && ["calendrier", "cultures", "planification", "referentiel"].includes(activeTab) && (
+          <div className="h-40 animate-pulse rounded-xl border bg-white/70" aria-label="Chargement de la saison" />
+        )}
+        {isYearReady && activeTab === "calendrier" && (
+          <CalendrierTab key={`calendrier-${selectedYear}`} year={selectedYear} />
+        )}
+        {isYearReady && activeTab === "cultures" && (
+          <CulturesTab key={`cultures-${selectedYear}`} year={selectedYear} />
+        )}
         {activeTab === "terrain" && <TerrainTab />}
-        {activeTab === "planification" && <PlanificationTab year={selectedYear} />}
-        {activeTab === "referentiel" && <ReferentielTab />}
+        {isYearReady && activeTab === "planification" && (
+          <PlanificationTab key={`planification-${selectedYear}`} year={selectedYear} />
+        )}
+        {isYearReady && activeTab === "referentiel" && (
+          <ReferentielTab key={`referentiel-${selectedYear}`} year={selectedYear} />
+        )}
       </main>
 
       {/* Footer */}
