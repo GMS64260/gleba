@@ -3,11 +3,12 @@
 import * as React from "react"
 import Link from "next/link"
 import { useSession } from "next-auth/react"
-import { useSearchParams, useRouter } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AppHeader } from "@/components/shell/AppHeader"
 import { ModuleTabBar } from "@/components/shell/ModuleTabBar"
+import { updateDashboardSearchParams } from "@/lib/dashboard-navigation"
 import { WelcomeDialog } from "@/components/onboarding/WelcomeDialog"
 import {
   Sprout,
@@ -15,11 +16,8 @@ import {
   BarChart3,
   Map as MapIcon,
   MapPin,
-  TreeDeciduous,
   Calendar,
   Leaf,
-  Bird,
-  Wallet,
   CloudRain,
   X,
 } from "lucide-react"
@@ -60,7 +58,6 @@ export function MaraichageHome() {
 function HomeContent() {
   const { data: session } = useSession()
   const searchParams = useSearchParams()
-  const router = useRouter()
   const [showWelcome, setShowWelcome] = React.useState(false)
   // BUG #9 — le choix d'année du dashboard n'était pas persisté (revenait à
   // l'année courante après F5). On le lit/écrit dans localStorage, sur le
@@ -114,10 +111,9 @@ function HomeContent() {
       } else {
         params.set("tab", tab)
       }
-      const query = params.toString()
-      router.push(query ? `/?${query}` : "/", { scroll: false })
+      updateDashboardSearchParams(params, "push")
     },
-    [searchParams, router]
+    [searchParams]
   )
 
   // Vérifier si l'utilisateur est nouveau
