@@ -165,7 +165,11 @@ const columns: ColumnDef<EspeceWithRelations>[] = [
   },
 ]
 
-export function ReferentielTab() {
+interface ReferentielTabProps {
+  year: number
+}
+
+export function ReferentielTab({ year }: ReferentielTabProps) {
   const router = useRouter()
   const { toast } = useToast()
   const { data: session } = useSession()
@@ -180,7 +184,7 @@ export function ReferentielTab() {
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
     try {
-      const response = await fetch("/api/especes?pageSize=500")
+      const response = await fetch(`/api/especes?pageSize=500&annee=${year}`)
       if (!response.ok) throw new Error("Erreur")
       const result = await response.json()
       const items = Array.isArray(result) ? result : result.data || []
@@ -191,7 +195,7 @@ export function ReferentielTab() {
     } finally {
       setIsLoading(false)
     }
-  }, [toast])
+  }, [toast, year])
 
   React.useEffect(() => {
     fetchData()

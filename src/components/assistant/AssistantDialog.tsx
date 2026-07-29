@@ -413,7 +413,7 @@ export function AssistantDialog({ open, onOpenChange }: AssistantDialogProps) {
             <DialogTitle>{getTitle()}</DialogTitle>
           </div>
           <DialogDescription className="sr-only">
-            Assistant pas-a-pas pour créer une culture
+            Assistant pas-à-pas pour créer une culture
           </DialogDescription>
 
           {/* Restored session banner */}

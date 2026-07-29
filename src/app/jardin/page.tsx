@@ -2893,7 +2893,7 @@ function JardinContent() {
             ) : (
               <Card>
                 <CardContent className="py-8 text-center text-sm text-muted-foreground">
-                  Cliquez sur un élément pour voir ses details
+                  Cliquez sur un élément pour voir ses détails
                 </CardContent>
               </Card>
             )}

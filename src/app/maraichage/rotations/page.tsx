@@ -15,6 +15,10 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
+import {
+  isRotationActiveNonApplied,
+  isRotationIncomplete,
+} from "@/lib/rotation-status"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 
 // Type pour les rotations avec relations
@@ -89,7 +93,7 @@ const columns: ColumnDef<RotationWithRelations>[] = [
           </Badge>
         )
       }
-      if (r.details.length === 0) {
+      if (isRotationIncomplete(r)) {
         return (
           <Badge variant="outline" className="border-orange-400 text-orange-700 bg-orange-50">
             <AlertTriangle className="h-3 w-3 mr-1" />
@@ -97,7 +101,7 @@ const columns: ColumnDef<RotationWithRelations>[] = [
           </Badge>
         )
       }
-      if (r._count.planches === 0) {
+      if (isRotationActiveNonApplied(r)) {
         return (
           <Badge variant="outline" className="border-amber-400 text-amber-800 bg-amber-50">
             <AlertTriangle className="h-3 w-3 mr-1" />
@@ -160,7 +164,7 @@ export default function RotationsPage() {
       const result = await response.json()
       setData(result.data)
       setPageCount(result.totalPages)
-    } catch (error) {
+    } catch {
       toast({
         variant: "destructive",
         title: "Erreur",
@@ -210,7 +214,7 @@ export default function RotationsPage() {
         description: `La rotation "${row.id}" a été supprimée`,
       })
       fetchData()
-    } catch (error) {
+    } catch {
       toast({
         variant: "destructive",
         title: "Erreur",
@@ -263,7 +267,9 @@ export default function RotationsPage() {
       <main className="container mx-auto px-4 py-6">
         {/* Bug #1 — Banner cohérence : rotations actives sans planche assignée */}
         {(() => {
-          const orphelines = data.filter((r) => r.active && r._count.planches === 0)
+          // Garder exactement le même périmètre que le badge du tableau :
+          // une rotation vide est « Incomplète », pas « Active non appliquée ».
+          const orphelines = data.filter(isRotationActiveNonApplied)
           if (orphelines.length === 0) return null
           const first = orphelines[0]
           return (
@@ -276,7 +282,7 @@ export default function RotationsPage() {
                     : `${orphelines.length} rotations actives mais non appliquées`}
                 </p>
                 <p className="mt-1 text-amber-800">
-                  Une rotation Active sans planche rattachée n'a aucun effet. Rattachez-la à au moins une planche depuis sa page d'édition.
+                  Une rotation active sans planche rattachée n&apos;a aucun effet. Rattachez-la à au moins une planche depuis sa page d&apos;édition.
                 </p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {orphelines.slice(0, 5).map((r) => (
@@ -310,11 +316,11 @@ export default function RotationsPage() {
           <div className="flex items-start gap-3">
             <RefreshCw className="h-5 w-5 text-orange-600 mt-0.5" />
             <div className="text-sm text-orange-800">
-              <p className="font-medium">Qu'est-ce qu'une rotation ?</p>
+              <p className="font-medium">Qu&apos;est-ce qu&apos;une rotation ?</p>
               <p className="mt-1 text-orange-700">
                 Une rotation définit la succession des cultures sur plusieurs années.
-                Chaque annee du cycle est associée a un ITP (Itinéraire Technique de Plante).
-                Assignez une rotation a vos planches pour planifier automatiquement les cultures futures.
+                Chaque année du cycle est associée à un ITP (Itinéraire Technique de Plante).
+                Assignez une rotation à vos planches pour planifier automatiquement les cultures futures.
               </p>
             </div>
           </div>

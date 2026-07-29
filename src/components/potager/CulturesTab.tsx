@@ -400,7 +400,11 @@ export function CulturesTab({ year }: CulturesTabProps = {}) {
         pageIndex={pageIndex}
         pageSize={pageSize}
         onPaginationChange={(page) => setPageIndex(page)}
-        onAdd={() => router.push("/maraichage/cultures/new")}
+        onAdd={() => router.push(
+          year
+            ? `/maraichage/cultures/new?annee=${year}`
+            : "/maraichage/cultures/new"
+        )}
         onRefresh={fetchData}
         onRowClick={(row) => router.push(`/maraichage/cultures/${row.id}`)}
         onRowEdit={(row) => router.push(`/maraichage/cultures/${row.id}`)}

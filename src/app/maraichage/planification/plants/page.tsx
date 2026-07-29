@@ -1,7 +1,7 @@
 "use client"
 
 /**
- * Page Plants necessaires
+ * Page Plants nécessaires
  */
 
 import * as React from "react"
@@ -98,7 +98,7 @@ const columns: ColumnDef<BesoinPlant>[] = [
   },
   {
     accessorKey: "aCommander",
-    header: "A commander",
+    header: "À commander",
     cell: ({ row }) => {
       const val = row.original.aCommander
       if (val <= 0) {
@@ -161,7 +161,7 @@ function PlantsContent() {
       const result = await response.json()
       setData(result.data)
       setStats(result.stats)
-    } catch (error) {
+    } catch {
       toast({
         variant: "destructive",
         title: "Erreur",
@@ -177,7 +177,7 @@ function PlantsContent() {
   }, [fetchData])
 
   const handleExport = () => {
-    const headers = ["Espèce", "Variété", "Semaine plantation", "Nb plants", "Stock", "A commander", "Planches"]
+    const headers = ["Espèce", "Variété", "Semaine plantation", "Nb plants", "Stock", "À commander", "Planches"]
     const rows = data.map(b => [
       b.especeNom ?? b.especeId,
       b.varieteNom ?? b.varieteId ?? "",
@@ -219,7 +219,7 @@ function PlantsContent() {
           <Link href="/maraichage/stocks">
             <Button variant="outline" size="sm">
               <Package className="h-4 w-4 mr-2" />
-              Gerer stocks
+              Gérer stocks
             </Button>
           </Link>
           <Select
@@ -270,7 +270,7 @@ function PlantsContent() {
             </Card>
             <Card className={stats.especesSansStock > 0 ? "border-red-200 bg-red-50" : ""}>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm text-muted-foreground">A commander</CardTitle>
+                <CardTitle className="text-sm text-muted-foreground">À commander</CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-2xl font-bold">{stats.totalACommander.toLocaleString()}</p>
@@ -285,8 +285,8 @@ function PlantsContent() {
         {/* Info */}
         <div className="mb-4 p-4 bg-cyan-50 rounded-lg border border-cyan-200">
           <p className="text-sm text-cyan-800">
-            Cette page liste les plants necessaires pour les cultures avec plantation (pas semis direct).
-            Le nombre de plants est calcule a partir de l'espacement et du nombre de rangs definis dans l'ITP.
+            Cette page liste les plants nécessaires pour les cultures avec plantation (pas semis direct).
+            Le nombre de plants est calculé à partir de l&apos;espacement et du nombre de rangs définis dans l&apos;ITP.
           </p>
         </div>
 
@@ -301,7 +301,7 @@ function PlantsContent() {
           onRefresh={fetchData}
           onExport={handleExport}
           searchPlaceholder="Rechercher..."
-          emptyMessage="Aucun besoin en plants calcule."
+          emptyMessage="Aucun besoin en plants calculé."
         />
       </main>
     </div>

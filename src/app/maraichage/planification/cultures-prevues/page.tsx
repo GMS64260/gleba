@@ -11,7 +11,7 @@ import { useSearchParams } from "next/navigation"
 import { formatSemaine } from "@/lib/assistant-helpers"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ColumnDef } from "@tanstack/react-table"
-import { ArrowLeft, Leaf, Calendar, CheckCircle2, XCircle, Info } from "lucide-react"
+import { ArrowLeft, Leaf, CheckCircle2, XCircle, Info } from "lucide-react"
 
 import { DataTable } from "@/components/tables/DataTable"
 import { Button } from "@/components/ui/button"
@@ -79,7 +79,7 @@ const columns: ColumnDef<CulturePrevue>[] = [
   },
   {
     accessorKey: "ilot",
-    header: "Ilot",
+    header: "Îlot",
     cell: ({ getValue }) => getValue() || "-",
   },
   {
@@ -112,7 +112,7 @@ const columns: ColumnDef<CulturePrevue>[] = [
   {
     accessorKey: "surface",
     header: "Surface",
-    cell: ({ getValue }) => `${(getValue() as number).toFixed(1)} m2`,
+    cell: ({ getValue }) => `${(getValue() as number).toFixed(1)} m²`,
   },
   {
     accessorKey: "existante",
@@ -162,7 +162,7 @@ function CulturesPrevuesContent() {
       const result = await response.json()
       setData(result.data)
       setStats(result.stats)
-    } catch (error) {
+    } catch {
       toast({
         variant: "destructive",
         title: "Erreur",
@@ -178,7 +178,7 @@ function CulturesPrevuesContent() {
   }, [fetchData])
 
   const handleExport = () => {
-    const headers = ["Espèce", "ITP", "Planche", "Ilot", "S.Semis", "S.Plantation", "S.Récolte", "Surface (m2)", "Statut"]
+    const headers = ["Espèce", "ITP", "Planche", "Îlot", "S.Semis", "S.Plantation", "S.Récolte", "Surface (m²)", "Statut"]
     const rows = data.map(c => [
       c.especeNom ?? c.especeId ?? "",
       c.itpNom ?? c.itpId ?? "",
@@ -188,7 +188,7 @@ function CulturesPrevuesContent() {
       c.semainePlantation?.toString() || "",
       c.semaineRecolte?.toString() || "",
       c.surface.toFixed(1),
-      c.existante ? "Créée" : "A créer",
+      c.existante ? "Créée" : "À créer",
     ])
 
     const csv = [headers, ...rows].map(r => r.join(";")).join("\n")
@@ -273,7 +273,7 @@ function CulturesPrevuesContent() {
             les cultures <span className="font-medium text-slate-700">prévues par vos rotations</span> mais
             pas encore créées. Le total peut donc dépasser celui de la liste <em>Cultures</em>, qui ne montre
             que les cultures réellement enregistrées. Une même planche peut apparaître deux fois (culture réelle
-            + étape de rotation) tant que la culture prévue n'a pas été créée.
+            + étape de rotation) tant que la culture prévue n&apos;a pas été créée.
           </p>
         </div>
 
@@ -288,7 +288,7 @@ function CulturesPrevuesContent() {
           onRefresh={fetchData}
           onExport={handleExport}
           searchPlaceholder="Rechercher..."
-          emptyMessage="Aucune culture prévue. Assignez des rotations a vos planches."
+          emptyMessage="Aucune culture prévue. Assignez des rotations à vos planches."
         />
       </main>
     </div>
