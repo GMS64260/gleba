@@ -140,17 +140,29 @@ export async function GET(request: NextRequest) {
       id: string
       soinId: number
       numero: number
+      nombreInjections: number
       datePrevue: Date
       produit: string | null
       type: string
+      dose: string | null
+      voie: string | null
+      finAttenteLait: Date | null
+      finAttenteViande: Date | null
       animalId: number | null
       animalNom: string | null
       animalIdentifiant: string | null
       lotId: number | null
       lotNom: string | null
     }>>`
-      SELECT i.id, i.soin_id AS "soinId", i.numero, i.date_prevue AS "datePrevue",
-             s.produit, s.type, s.animal_id AS "animalId", a.nom AS "animalNom",
+      SELECT i.id, i.soin_id AS "soinId", i.numero,
+             (
+               SELECT COUNT(*) FROM injections_soins protocole
+               WHERE protocole.soin_id = i.soin_id AND protocole.statut <> 'annulee'
+             )::int AS "nombreInjections",
+             i.date_prevue AS "datePrevue",
+             s.produit, s.type, s.dose, s.voie,
+             s.fin_attente_lait AS "finAttenteLait", s.fin_attente_viande AS "finAttenteViande",
+             s.animal_id AS "animalId", a.nom AS "animalNom",
              a.identifiant AS "animalIdentifiant", s.lot_id AS "lotId", l.nom AS "lotNom"
       FROM injections_soins i
       JOIN soins_animaux s ON s.id = i.soin_id
@@ -280,13 +292,24 @@ export async function GET(request: NextRequest) {
             : injection.animalIdentifiant || injection.animalNom || `#${injection.animalId}`)
         : injection.lotNom || (injection.lotId ? `Lot #${injection.lotId}` : 'Troupeau')
       const jr = jours(now, injection.datePrevue)
+      const details = [
+        injection.produit || injection.type,
+        injection.dose ? `dose ${injection.dose}` : null,
+        injection.voie ? `voie ${injection.voie}` : null,
+        injection.finAttenteLait
+          ? `lait : remise en vente ${remiseVente(injection.finAttenteLait)!.toLocaleDateString('fr-FR')}`
+          : null,
+        injection.finAttenteViande
+          ? `viande : remise en vente ${remiseVente(injection.finAttenteViande)!.toLocaleDateString('fr-FR')}`
+          : null,
+      ].filter(Boolean)
       echeances.push({
         id: `injection-${injection.id}`,
         kind: jr < 0 ? 'soin_retard' : 'soin_planifie',
         date: injection.datePrevue.toISOString(),
         joursRestants: jr,
-        titre: `Injection ${injection.numero} — ${cible}`,
-        detail: injection.produit || injection.type,
+        titre: `Injection ${injection.numero}/${injection.nombreInjections} — ${cible}`,
+        detail: details.join(' · '),
         gravite: jr < 0 ? 'urgent' : jr <= 1 ? 'attention' : 'info',
         action: { soinId: injection.soinId, injectionId: injection.id },
       })

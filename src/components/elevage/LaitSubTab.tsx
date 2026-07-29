@@ -43,6 +43,7 @@ type Animal = {
   identifiant: string | null
   sexe?: string | null
   orientationProduction?: string | null
+  lot?: { id: number; nom: string | null } | null
   especeAnimale?: {
     production?: string | null
     productions?: string[]
@@ -82,6 +83,11 @@ type Collecte = {
     motif: string | null
     finAttenteLait: string
   } | null
+}
+type AttenteLaitActive = {
+  traitement: string
+  cible: { type: "animal" | "lot"; id: number | null; label: string }
+  lait: { remiseVente: string } | null
 }
 type LotFromage = {
   id: string
@@ -606,9 +612,11 @@ function CollecteView() {
   const [animaux, setAnimaux] = React.useState<Animal[]>([])
   const [lots, setLots] = React.useState<Lot[]>([])
   const [collectes, setCollectes] = React.useState<Collecte[]>([])
+  const [attentesLait, setAttentesLait] = React.useState<AttenteLaitActive[]>([])
   const [endDate, setEndDate] = React.useState(todayIso())
   const [loading, setLoading] = React.useState(true)
   const [savingKey, setSavingKey] = React.useState<string | null>(null)
+  const [showMobileGrid, setShowMobileGrid] = React.useState(false)
   const [target, setTarget] = React.useState<"animal" | "lot">(cibleUrl)
   const [selectedId, setSelectedId] = React.useState<number | null>(Number.isFinite(idUrl) ? idUrl : null)
 
@@ -624,8 +632,9 @@ function CollecteView() {
       fetch("/api/elevage/animaux?statut=actif").then((r) => r.json()),
       fetch("/api/elevage/lots?statut=actif").then((r) => r.json()),
       fetch(`/api/elevage/collectes-lait?from=${from}&to=${to}`).then((r) => r.json()),
+      fetch("/api/elevage/attentes").then((r) => r.json()),
     ])
-      .then(([a, l, c]) => {
+      .then(([a, l, c, attentes]) => {
         const { animaux: aList, lots: lList } = listerCiblesCollecteLait<Animal, Lot>(
           a.data,
           l.data,
@@ -633,6 +642,7 @@ function CollecteView() {
         setAnimaux(aList)
         setLots(lList)
         setCollectes(c.data || [])
+        setAttentesLait(attentes.data || [])
         setSelectedId((current) => {
           const listeCourante = target === "animal" ? aList : lList
           if (current != null && listeCourante.some((item) => item.id === current)) return current
@@ -742,6 +752,18 @@ function CollecteView() {
     (total, collecte) => total + Number(collecte.quantiteLitres),
     0
   )
+  const today = todayIso()
+  const selectedAnimal =
+    target === "animal" ? animaux.find((animal) => animal.id === selectedId) : null
+  const attenteLaitSelectionnee = attentesLait.find((attente) =>
+    Boolean(attente.lait) && (
+      (target === "lot" && attente.cible.type === "lot" && attente.cible.id === selectedId) ||
+      (target === "animal" && (
+        (attente.cible.type === "animal" && attente.cible.id === selectedId) ||
+        (attente.cible.type === "lot" && attente.cible.id === selectedAnimal?.lot?.id)
+      ))
+    )
+  )
 
   return (
     <Card>
@@ -817,7 +839,69 @@ function CollecteView() {
 
         {/* Grille jours × traites */}
         {selectedId != null && (
-          <div className="overflow-x-auto">
+          <>
+          <section className="space-y-3 rounded-lg border border-blue-100 bg-blue-50/40 p-3 lg:hidden">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 className="font-semibold text-blue-950">Saisie rapide aujourd&apos;hui</h3>
+                <p className="break-words text-xs text-blue-800 [overflow-wrap:anywhere]">
+                  {target === "animal"
+                    ? selectedAnimal?.nom || selectedAnimal?.identifiant || `Animal #${selectedId}`
+                    : lots.find((lot) => lot.id === selectedId)?.nom || `Lot #${selectedId}`}
+                </p>
+              </div>
+              {endDate !== today && (
+                <Button type="button" size="sm" variant="outline" onClick={() => setEndDate(today)}>
+                  Revenir à aujourd&apos;hui
+                </Button>
+              )}
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="w-full"
+              onClick={() => setShowMobileGrid((visible) => !visible)}
+            >
+              {showMobileGrid ? "Masquer la grille 7 jours" : "Afficher la grille 7 jours"}
+            </Button>
+            {attenteLaitSelectionnee?.lait && (
+              <div className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
+                <strong>Lait à écarter</strong> · {attenteLaitSelectionnee.traitement} · remise en vente le{" "}
+                {new Date(attenteLaitSelectionnee.lait.remiseVente).toLocaleDateString("fr-FR")}
+              </div>
+            )}
+            {endDate === today && (
+              <div className="grid grid-cols-2 gap-3">
+                {(["Matin", "Soir"] as const).map((traite) => {
+                  const collecte = findCollecte(today, traite)
+                  const key = `${today}-${traite}`
+                  return (
+                    <div key={traite} className="rounded-md border bg-white p-2">
+                      <p className="mb-1 text-center text-sm font-medium">{traite}</p>
+                      <div className="flex justify-center">
+                        <CellSaisie
+                          value={collecte ? Number(collecte.quantiteLitres) : null}
+                          saving={savingKey === key}
+                          ecarte={collecte?.ecarteAttente}
+                          causeAttente={collecte?.causeAttente}
+                          affecte={collecte?.lotFromage != null}
+                          onSave={(value) => saveCollecte(today, traite, value)}
+                          onIdemHier={() => idemHier(today, traite)}
+                        />
+                      </div>
+                      {collecte?.ecarteAttente && (
+                        <p className="mt-1 text-center text-[11px] font-medium text-amber-800">
+                          Collecte écartée
+                        </p>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </section>
+          <div className={`${showMobileGrid ? "overflow-x-auto" : "hidden"} lg:block lg:overflow-x-auto`}>
             <table className="min-w-full text-sm">
               <thead>
                 <tr className="border-b">
@@ -877,6 +961,7 @@ function CollecteView() {
               </tbody>
             </table>
           </div>
+          </>
         )}
 
         {/* Légende */}

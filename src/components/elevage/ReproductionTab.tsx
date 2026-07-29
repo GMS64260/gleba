@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { Checkbox } from "@/components/ui/checkbox"
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
 import { AnimalCombobox } from "./AnimalCombobox"
@@ -748,6 +749,7 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
   const [isSavingNaissance, setIsSavingNaissance] = React.useState(false)
   const [naissanceSubmitError, setNaissanceSubmitError] = React.useState<string | null>(null)
+  const [creerFichesAnimales, setCreerFichesAnimales] = React.useState(true)
   // QA 2026-05-15 — édition par ligne
   const [editingNaissId, setEditingNaissId] = React.useState<number | null>(null)
   const initialOpenApplied = React.useRef(false)
@@ -816,6 +818,7 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
   const resetNaissForm = () => {
     setEditingNaissId(null)
     setNaissanceSubmitError(null)
+    setCreerFichesAnimales(true)
     setFormData(EMPTY_NAISS_FORM)
   }
 
@@ -1065,11 +1068,12 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
+      const responsePayload = await response.json().catch(() => null)
       if (!response.ok) {
         // Récupérer le détail d'erreur (Zod) pour informer précisément.
         let description = "Impossible d'enregistrer"
         try {
-          const err = await response.json()
+          const err = responsePayload
           if (err?.error) description = String(err.error)
           if (err?.details?.fieldErrors) {
             const firstField = Object.entries(err.details.fieldErrors)[0]
@@ -1080,9 +1084,39 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
         } catch { /* ignore */ }
         throw new Error(description)
       }
+      let fichesCreees = 0
+      let erreurFiches: string | null = null
+      if (
+        !isEdit &&
+        creerFichesAnimales &&
+        formData.petits.some((petit) => petit.vivant) &&
+        responsePayload?.data?.id
+      ) {
+        const fichesResponse = await fetch(
+          `/api/elevage/naissances/${responsePayload.data.id}/fiches`,
+          { method: "POST" },
+        )
+        const fichesPayload = await fichesResponse.json().catch(() => null)
+        if (fichesResponse.ok) {
+          fichesCreees = fichesPayload?.data?.created ?? 0
+        } else {
+          erreurFiches =
+            fichesPayload?.error ||
+            "La naissance est enregistrée, mais les fiches animales restent à créer."
+        }
+      }
       toast({
-        title: isEdit ? "Naissance mise à jour" : "Naissance enregistrée",
-        description: `${payload.nombreNes} né(s), ${payload.nombreVivants} vivant(s)`,
+        title: erreurFiches
+          ? "Naissance enregistrée — fiches à terminer"
+          : isEdit
+            ? "Naissance mise à jour"
+            : fichesCreees
+              ? "Naissance et fiches enregistrées"
+              : "Naissance enregistrée",
+        description: erreurFiches
+          ? `${erreurFiches} Utilisez le bouton « Créer les fiches » dans l’historique.`
+          : `${payload.nombreNes} né(s), ${payload.nombreVivants} vivant(s)${fichesCreees ? ` · ${fichesCreees} fiche(s) animale(s) créée(s)` : ""}`,
+        ...(erreurFiches ? { variant: "destructive" as const } : {}),
       })
       setIsDialogOpen(false)
       resetNaissForm()
@@ -1304,7 +1338,7 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
           <DialogTrigger asChild>
             <Button size="sm" onClick={() => setEditingNaissId(null)}><Plus className="h-4 w-4 mr-1" />Nouvelle naissance</Button>
           </DialogTrigger>
-          <DialogContent className="max-w-md">
+          <DialogContent className="w-[calc(100%-2rem)] max-h-[calc(100dvh-2rem)] max-w-md overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{editingNaissId ? "Modifier la naissance" : "Enregistrer une naissance"}</DialogTitle>
               <DialogDescription>
@@ -1532,6 +1566,22 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
                 <Label>Notes</Label>
                 <Textarea name="notes" value={formData.notes} onChange={(e) => setFormData(f => ({ ...f, notes: e.target.value }))} rows={2} placeholder="Complications, observations..." />
               </div>
+              {!editingNaissId && formData.petits.length > 0 && (
+                <label className="flex items-start gap-3 rounded-md border border-emerald-200 bg-emerald-50 p-3">
+                  <Checkbox
+                    checked={creerFichesAnimales}
+                    onCheckedChange={(checked) => setCreerFichesAnimales(checked === true)}
+                  />
+                  <span className="text-sm">
+                    <span className="block font-medium text-emerald-900">
+                      Créer les fiches animales à l&apos;enregistrement
+                    </span>
+                    <span className="block text-xs text-emerald-800">
+                      Une fiche active sera créée pour chaque ligne cochée « vivant ». Les morts-nés ne créent jamais de fiche.
+                    </span>
+                  </span>
+                </label>
+              )}
               <div className="flex justify-end gap-2 pt-4">
                 {naissanceSubmitError && (
                   <p role="alert" className="mr-auto text-sm text-red-600">{naissanceSubmitError}</p>
@@ -1624,7 +1674,7 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
                               naissance individuelle) : on le signale. */}
                           {!n.identifiantsProvisoires && !n.identifiantsDefinitifs && n.nombreVivants > 0 && (
                             <Badge variant="outline" className="mt-0.5 bg-amber-50 text-amber-800 border-amber-300 text-[10px]">
-                              {n.nombreVivants} petit{n.nombreVivants > 1 ? 's' : ''} sans fiche ni boucle
+                              Non créées : {n.nombreVivants} fiche{n.nombreVivants > 1 ? 's' : ''}
                             </Badge>
                           )}
                         </>

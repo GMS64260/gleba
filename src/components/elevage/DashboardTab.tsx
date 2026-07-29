@@ -131,12 +131,15 @@ interface SoinItem {
   id: number
   injectionId?: string | null
   numeroInjection?: number | null
+  nombreInjections?: number | null
   date: string
   type: string
   description: string | null
   produit: string | null
   dose: string | null
   voie: string | null
+  remiseVenteLait?: string | null
+  remiseVenteViande?: string | null
   cout: number | null
   fait: boolean
   datePrevue: string | null
@@ -541,11 +544,31 @@ export function DashboardTab({ year }: DashboardTabProps) {
                               <div key={key} className="rounded-md border bg-white p-2.5">
                                 <div className="flex flex-wrap items-start justify-between gap-2">
                                   <div className="min-w-0">
-                                    <p className="truncate text-sm font-medium">{cible}</p>
+                                    <p className="break-words text-sm font-medium [overflow-wrap:anywhere]">{cible}</p>
                                     <p className="text-xs text-muted-foreground">
-                                      {soin.numeroInjection ? `Injection n°${soin.numeroInjection}` : TYPE_LABELS[soin.type] || soin.type}
+                                      {soin.numeroInjection
+                                        ? `Injection ${soin.numeroInjection}/${soin.nombreInjections ?? "?"}`
+                                        : TYPE_LABELS[soin.type] || soin.type}
                                       {soin.produit ? ` · ${soin.produit}` : ""}
                                     </p>
+                                    {(soin.dose || soin.voie) && (
+                                      <p className="text-xs font-medium text-slate-700">
+                                        {soin.dose ? `Dose ${soin.dose}` : ""}
+                                        {soin.dose && soin.voie ? " · " : ""}
+                                        {soin.voie ? `Voie ${soin.voie}` : ""}
+                                      </p>
+                                    )}
+                                    {(soin.remiseVenteLait || soin.remiseVenteViande) && (
+                                      <p className="text-[11px] text-amber-700">
+                                        {soin.remiseVenteLait
+                                          ? `Lait ${new Date(soin.remiseVenteLait).toLocaleDateString("fr-FR")}`
+                                          : ""}
+                                        {soin.remiseVenteLait && soin.remiseVenteViande ? " · " : ""}
+                                        {soin.remiseVenteViande
+                                          ? `Viande ${new Date(soin.remiseVenteViande).toLocaleDateString("fr-FR")}`
+                                          : ""}
+                                      </p>
+                                    )}
                                   </div>
                                   <Badge variant={enRetard ? "destructive" : "outline"} className="shrink-0 text-[11px]">
                                     {datePriorite.toLocaleDateString("fr-FR")}
@@ -597,7 +620,7 @@ export function DashboardTab({ year }: DashboardTabProps) {
                               <div key={`${attente.soinId}-${attente.cible.type}-${attente.cible.id ?? "all"}`} className="rounded-md border bg-white p-2.5">
                                 <div className="flex flex-wrap items-start justify-between gap-2">
                                   <div className="min-w-0">
-                                    <p className="truncate text-sm font-medium">{cible}</p>
+                                    <p className="break-words text-sm font-medium [overflow-wrap:anywhere]">{cible}</p>
                                     <p className="text-xs text-muted-foreground">{attente.traitement}</p>
                                   </div>
                                   <div className="flex flex-wrap gap-1">
@@ -1250,13 +1273,23 @@ export function DashboardTab({ year }: DashboardTabProps) {
                     <Badge variant="outline" className="text-xs">
                       {TYPE_LABELS[soin.type] || soin.type}
                     </Badge>
-                    <span className="font-medium text-sm truncate">
+                    <span className="break-words text-sm font-medium [overflow-wrap:anywhere]">
                       {soin.lot?.nom || (soin.animal?.nom && soin.animal?.identifiant ? `${soin.animal.nom} · ${soin.animal.identifiant}` : soin.animal?.nom || soin.animal?.identifiant) || '-'}
                     </span>
                   </div>
                   <div className="flex items-center gap-2 mt-0.5">
+                    {soin.numeroInjection && (
+                      <span className="text-xs font-medium text-blue-700">
+                        Injection {soin.numeroInjection}/{soin.nombreInjections ?? "?"}
+                      </span>
+                    )}
                     {soin.produit && (
                       <span className="text-xs text-muted-foreground">{soin.produit}</span>
+                    )}
+                    {(soin.dose || soin.voie) && (
+                      <span className="text-xs text-muted-foreground">
+                        {[soin.dose && `dose ${soin.dose}`, soin.voie && `voie ${soin.voie}`].filter(Boolean).join(" · ")}
+                      </span>
                     )}
                     {soin.cout && (
                       <span className="text-xs text-muted-foreground">{soin.cout.toFixed(2)} &euro;</span>

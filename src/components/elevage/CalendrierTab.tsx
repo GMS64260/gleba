@@ -36,6 +36,7 @@ interface SoinTask {
   id: number
   injectionId?: string | null
   numeroInjection?: number | null
+  nombreInjections?: number | null
   date: string
   dateReelle: string
   datePrevue: string | null
@@ -44,6 +45,8 @@ interface SoinTask {
   produit: string | null
   dose: string | null
   voie: string | null
+  remiseVenteLait?: string | null
+  remiseVenteViande?: string | null
   cout: number | null
   fait: boolean
   animal: { id: number; nom: string; identifiant: string } | null
@@ -605,13 +608,32 @@ export function CalendrierTab() {
                             ? <Check className="h-3 w-3 text-green-500 flex-shrink-0" />
                             : <Stethoscope className="h-3 w-3 text-blue-500 flex-shrink-0" />
                           }
-                          <span className="truncate">
-                            {SOIN_TYPE_LABELS[soin.type] || soin.type}
+                          <span className="break-words [overflow-wrap:anywhere]">
+                            {soin.numeroInjection
+                              ? `Injection ${soin.numeroInjection}/${soin.nombreInjections ?? "?"}`
+                              : SOIN_TYPE_LABELS[soin.type] || soin.type}
+                            {soin.produit ? ` · ${soin.produit}` : ""}
                           </span>
                         </div>
-                        <p className="text-[10px] opacity-70 truncate ml-4">
+                        <p className="ml-4 break-words text-[10px] opacity-70 [overflow-wrap:anywhere]">
                           {libelleCibleSoin(soin)}
                         </p>
+                        {(soin.dose || soin.voie) && (
+                          <p className="ml-4 text-[10px] font-medium">
+                            {[soin.dose && `dose ${soin.dose}`, soin.voie && `voie ${soin.voie}`].filter(Boolean).join(" · ")}
+                          </p>
+                        )}
+                        {(soin.remiseVenteLait || soin.remiseVenteViande) && (
+                          <p className="ml-4 text-[10px] text-amber-700">
+                            {soin.remiseVenteLait
+                              ? `Lait ${new Date(soin.remiseVenteLait).toLocaleDateString("fr-FR")}`
+                              : ""}
+                            {soin.remiseVenteLait && soin.remiseVenteViande ? " · " : ""}
+                            {soin.remiseVenteViande
+                              ? `Viande ${new Date(soin.remiseVenteViande).toLocaleDateString("fr-FR")}`
+                              : ""}
+                          </p>
+                        )}
                       </button>
                     ))}
 
