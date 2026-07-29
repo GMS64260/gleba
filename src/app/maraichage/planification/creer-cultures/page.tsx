@@ -1,8 +1,8 @@
 "use client"
 
 /**
- * Page Creer les cultures
- * Permet de creer les cultures a partir du plan de rotation
+ * Page Créer les cultures
+ * Permet de créer les cultures à partir du plan de rotation
  */
 
 import * as React from "react"
@@ -90,7 +90,7 @@ function CreerCulturesContent() {
     fetchData()
   }, [fetchData])
 
-  // Cultures a creer (non existantes avec un ITP)
+  // Cultures à créer (non existantes avec un ITP)
   const culturesACreer = data.filter(c => !c.existante && c.itpId)
 
   // Generer un ID unique pour chaque culture
@@ -107,7 +107,7 @@ function CreerCulturesContent() {
     setSelectedIds(newSelected)
   }
 
-  // Selectionner tout
+  // Sélectionner tout
   const selectAll = () => {
     if (selectedIds.size === culturesACreer.length) {
       setSelectedIds(new Set())
@@ -116,13 +116,13 @@ function CreerCulturesContent() {
     }
   }
 
-  // Creer les cultures selectionnees
+  // Créer les cultures sélectionnées
   const handleCreate = async () => {
     if (selectedIds.size === 0) {
       toast({
         variant: "destructive",
         title: "Erreur",
-        description: "Selectionnez au moins une culture a créer",
+        description: "Sélectionnez au moins une culture à créer",
       })
       return
     }
@@ -145,13 +145,13 @@ function CreerCulturesContent() {
 
       if (!response.ok) {
         const error = await response.json()
-        throw new Error(error.error || "Erreur lors de la creation")
+        throw new Error(error.error || "Erreur lors de la création")
       }
 
       const result = await response.json()
       toast({
-        title: "Cultures creees",
-        description: `${result.created} culture(s) creee(s) avec succès`,
+        title: "Cultures créées",
+        description: `${result.created} culture(s) créée(s) avec succès`,
       })
 
       // Recharger les données
@@ -160,7 +160,7 @@ function CreerCulturesContent() {
       toast({
         variant: "destructive",
         title: "Erreur",
-        description: error instanceof Error ? error.message : "Erreur lors de la creation",
+        description: error instanceof Error ? error.message : "Erreur lors de la création",
       })
     } finally {
       setIsCreating(false)
@@ -226,7 +226,7 @@ function CreerCulturesContent() {
           </Card>
           <Card className={culturesACreer.length > 0 ? "border-teal-200 bg-teal-50" : ""}>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-muted-foreground">A créer</CardTitle>
+              <CardTitle className="text-sm text-muted-foreground">À créer</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-2xl font-bold text-teal-600">{culturesACreer.length}</p>
@@ -243,7 +243,7 @@ function CreerCulturesContent() {
                 onCheckedChange={selectAll}
               />
               <span className="text-sm">
-                {selectedIds.size} / {culturesACreer.length} selectionnee(s)
+                {selectedIds.size} / {culturesACreer.length} sélectionnée(s)
               </span>
             </div>
             <Button
@@ -255,7 +255,7 @@ function CreerCulturesContent() {
               ) : (
                 <Plus className="h-4 w-4 mr-2" />
               )}
-              Creer {selectedIds.size} culture(s)
+              Créer {selectedIds.size} culture(s)
             </Button>
           </div>
         )}
@@ -263,9 +263,9 @@ function CreerCulturesContent() {
         {/* Tableau */}
         <Card>
           <CardHeader>
-            <CardTitle>Cultures a créer</CardTitle>
+            <CardTitle>Cultures à créer</CardTitle>
             <CardDescription>
-              Selectionnez les cultures a créer a partir du plan de rotation
+              Sélectionnez les cultures à créer à partir du plan de rotation
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -276,11 +276,11 @@ function CreerCulturesContent() {
                 <CheckCircle2 className="h-12 w-12 mx-auto mb-4 text-green-600" />
                 <p className="text-lg font-medium">Toutes les cultures sont déjà créées</p>
                 <p className="mt-2">
-                  Ou aucune planche n'a de rotation assignee.
+                  Ou aucune planche n&apos;a de rotation assignée.
                 </p>
                 <Link href="/maraichage/planches" className="mt-4 inline-block">
                   <Button variant="outline">
-                    Gerer les planches
+                    Gérer les planches
                   </Button>
                 </Link>
               </div>
@@ -290,7 +290,7 @@ function CreerCulturesContent() {
                   <TableRow>
                     <TableHead className="w-[50px]"></TableHead>
                     <TableHead>Planche</TableHead>
-                    <TableHead>Ilot</TableHead>
+                    <TableHead>Îlot</TableHead>
                     <TableHead>Espèce</TableHead>
                     <TableHead>ITP</TableHead>
                     <TableHead>Semis</TableHead>
@@ -333,7 +333,7 @@ function CreerCulturesContent() {
                         <TableCell>{formatSemaine(c.semaineSemis)}</TableCell>
                         <TableCell>{formatSemaine(c.semainePlantation)}</TableCell>
                         <TableCell>{formatSemaine(c.semaineRecolte)}</TableCell>
-                        <TableCell>{c.surface.toFixed(1)} m2</TableCell>
+                        <TableCell>{c.surface.toFixed(1)} m²</TableCell>
                       </TableRow>
                     )
                   })}

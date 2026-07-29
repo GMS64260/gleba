@@ -15,8 +15,10 @@ export function updateDashboardSearchParams(
 ) {
   const query = params.toString()
   const url = `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`
+  const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`
 
   if (mode === "push") {
+    if (url === currentUrl) return
     window.history.pushState(null, "", url)
   } else {
     window.history.replaceState(null, "", url)
