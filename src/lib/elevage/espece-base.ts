@@ -71,8 +71,8 @@ const LIBELLES: Record<string, string> = {
 const LIBELLE_PETIT: Record<string, { s: string; p: string }> = {
   chien: { s: "chiot", p: "chiots" },
   chat: { s: "chaton", p: "chatons" },
-  chevre: { s: "cabri", p: "cabris" },
-  bouc: { s: "cabri", p: "cabris" },
+  chevre: { s: "chevreau / cabri", p: "chevreaux / cabris" },
+  bouc: { s: "chevreau / cabri", p: "chevreaux / cabris" },
   brebis: { s: "agneau", p: "agneaux" },
   belier: { s: "agneau", p: "agneaux" },
   agneau: { s: "agneau", p: "agneaux" },

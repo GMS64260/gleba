@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { soinCouvrantCollecte } from '../attente-lait'
+import { causesAttenteCollectes, soinCouvrantCollecte } from '../attente-lait'
 
 /**
  * Ticket cms1v9rj5 — repro QA : vermifuge Cydectine 0.1% Oral enregistré le
@@ -65,5 +65,48 @@ describe('soinCouvrantCollecte — cas du ticket cms1v9rj5', () => {
     const db = dbAvecSoins([parage])
     const r = await soinCouvrantCollecte(db as never, 'admin', ANIMAL_MYRTILLE, null, new Date('2026-07-26T00:00:00Z'))
     expect(r).toBeNull()
+  })
+})
+
+describe('causesAttenteCollectes — audit durable après rechargement', () => {
+  it('associe le traitement couvrant et sa date de fin à une collecte écartée', async () => {
+    const db = {
+      soinAnimal: {
+        findMany: vi.fn().mockResolvedValue([{
+          ...soinCydectine,
+          description: 'Traitement antiparasitaire',
+          motif: 'Strongles',
+        }]),
+      },
+      animal: { findMany: vi.fn().mockResolvedValue([{ id: ANIMAL_MYRTILLE, lotId: null }]) },
+      $queryRaw: vi.fn().mockResolvedValue([]),
+    }
+    const causes = await causesAttenteCollectes(db as never, 'admin', [{
+      id: 'collecte-1',
+      date: new Date('2026-07-27T00:00:00Z'),
+      animalId: ANIMAL_MYRTILLE,
+      lotId: null,
+      ecarteAttente: true,
+    }])
+
+    expect(causes.get('collecte-1')).toEqual({
+      traitement: 'Cydectine 0.1% Oral',
+      motif: 'Strongles',
+      finAttenteLait: new Date('2026-08-02T00:00:00Z'),
+    })
+  })
+
+  it('laisse sans cause automatique un écartement manuel', async () => {
+    const db = {
+      soinAnimal: { findMany: vi.fn().mockResolvedValue([]) },
+    }
+    const causes = await causesAttenteCollectes(db as never, 'admin', [{
+      id: 'collecte-manuelle',
+      date: new Date('2026-07-27T00:00:00Z'),
+      animalId: ANIMAL_MYRTILLE,
+      lotId: null,
+      ecarteAttente: true,
+    }])
+    expect(causes.size).toBe(0)
   })
 })

@@ -11,6 +11,7 @@
  */
 
 import * as React from "react"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { Milk, FileText, LineChart, Plus, Copy, Loader2, Download, Trash2, ShieldAlert, TrendingUp, TrendingDown, Minus, Trophy, Truck, Warehouse, FlaskConical } from "lucide-react"
 import { LivraisonLaitSubTab } from "./LivraisonLaitSubTab"
 import { AffinageSubTab } from "./AffinageSubTab"
@@ -76,6 +77,11 @@ type Collecte = {
   lotFromage: { id: string; numeroLot: string; typeFromage: string } | null
   animal: { id: number; nom: string | null; identifiant: string | null } | null
   lot: { id: number; nom: string | null } | null
+  causeAttente: {
+    traitement: string
+    motif: string | null
+    finAttenteLait: string
+  } | null
 }
 type LotFromage = {
   id: string
@@ -592,14 +598,19 @@ function QualiteView() {
 
 function CollecteView() {
   const { toast } = useToast()
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const cibleUrl = searchParams.get("laitCible") === "lot" ? "lot" : "animal"
+  const idUrl = Number.parseInt(searchParams.get("laitId") || "", 10)
   const [animaux, setAnimaux] = React.useState<Animal[]>([])
   const [lots, setLots] = React.useState<Lot[]>([])
   const [collectes, setCollectes] = React.useState<Collecte[]>([])
   const [endDate, setEndDate] = React.useState(todayIso())
   const [loading, setLoading] = React.useState(true)
   const [savingKey, setSavingKey] = React.useState<string | null>(null)
-  const [target, setTarget] = React.useState<"animal" | "lot">("animal")
-  const [selectedId, setSelectedId] = React.useState<number | null>(null)
+  const [target, setTarget] = React.useState<"animal" | "lot">(cibleUrl)
+  const [selectedId, setSelectedId] = React.useState<number | null>(Number.isFinite(idUrl) ? idUrl : null)
 
   const days = React.useMemo(() => {
     return Array.from({ length: 7 }, (_, i) => addDaysIso(endDate, -i)).reverse()
@@ -622,22 +633,39 @@ function CollecteView() {
         setAnimaux(aList)
         setLots(lList)
         setCollectes(c.data || [])
-        if (selectedId == null) {
-          if (aList.length > 0) {
-            setSelectedId(aList[0].id)
-            setTarget("animal")
-          } else if (lList.length > 0) {
-            setSelectedId(lList[0].id)
+        setSelectedId((current) => {
+          const listeCourante = target === "animal" ? aList : lList
+          if (current != null && listeCourante.some((item) => item.id === current)) return current
+          if (listeCourante.length > 0) return listeCourante[0].id
+          if (target === "animal" && lList.length > 0) {
             setTarget("lot")
+            return lList[0].id
           }
-        }
+          if (target === "lot" && aList.length > 0) {
+            setTarget("animal")
+            return aList[0].id
+          }
+          return null
+        })
       })
       .finally(() => setLoading(false))
-  }, [endDate, selectedId])
+  }, [endDate, target])
 
   React.useEffect(() => {
     reload()
   }, [reload])
+
+  // La cible de traite fait partie de l'URL : un rechargement, un favori ou
+  // un retour navigateur conserve l'animal/lot en cours au lieu de revenir au
+  // premier animal de la liste.
+  React.useEffect(() => {
+    if (selectedId == null) return
+    const params = new URLSearchParams(searchParams.toString())
+    if (params.get("laitCible") === target && params.get("laitId") === String(selectedId)) return
+    params.set("laitCible", target)
+    params.set("laitId", String(selectedId))
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false })
+  }, [pathname, router, searchParams, selectedId, target])
 
   const findCollecte = (day: string, traite: "Matin" | "Soir"): Collecte | undefined => {
     return collectes.find((c) => {
@@ -703,6 +731,17 @@ function CollecteView() {
   const totalSoir = collectes
     .filter((c) => c.traite === "Soir" && ((target === "animal" && c.animalId === selectedId) || (target === "lot" && c.lotId === selectedId)))
     .reduce((s, c) => s + Number(c.quantiteLitres), 0)
+  const collectesEcartees = collectes.filter((collecte) =>
+    collecte.ecarteAttente
+    && (
+      (target === "animal" && collecte.animalId === selectedId)
+      || (target === "lot" && collecte.lotId === selectedId)
+    )
+  )
+  const totalEcarte = collectesEcartees.reduce(
+    (total, collecte) => total + Number(collecte.quantiteLitres),
+    0
+  )
 
   return (
     <Card>
@@ -806,6 +845,7 @@ function CollecteView() {
                               value={c ? Number(c.quantiteLitres) : null}
                               saving={savingKey === key}
                               ecarte={c?.ecarteAttente}
+                              causeAttente={c?.causeAttente}
                               affecte={c?.lotFromage != null}
                               onSave={(v) => saveCollecte(d, traite, v)}
                               onIdemHier={() => idemHier(d, traite)}
@@ -850,6 +890,41 @@ function CollecteView() {
             Affecté à un lot fromage
           </span>
         </div>
+
+        {collectesEcartees.length > 0 && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="font-medium text-amber-900">Lait exclu sur la période</p>
+              <Badge className="border-amber-300 bg-amber-100 text-amber-900">
+                {totalEcarte.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} L
+              </Badge>
+            </div>
+            <ul className="mt-2 space-y-2">
+              {collectesEcartees.map((collecte) => (
+                <li key={collecte.id} className="rounded-md border border-amber-100 bg-white/80 p-2 text-sm">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="font-medium">
+                      {new Date(collecte.date).toLocaleDateString("fr-FR")} · {collecte.traite}
+                    </span>
+                    <span className="font-semibold text-amber-800">
+                      {Number(collecte.quantiteLitres).toLocaleString("fr-FR", { maximumFractionDigits: 2 })} L exclus
+                    </span>
+                  </div>
+                  {collecte.causeAttente ? (
+                    <p className="mt-1 text-xs text-slate-600">
+                      Traitement : <strong>{collecte.causeAttente.traitement}</strong>
+                      {collecte.causeAttente.motif ? ` · Motif : ${collecte.causeAttente.motif}` : ""}
+                      {" · "}délai lait jusqu&apos;au{" "}
+                      <strong>{new Date(collecte.causeAttente.finAttenteLait).toLocaleDateString("fr-FR")} inclus</strong>
+                    </p>
+                  ) : (
+                    <p className="mt-1 text-xs text-slate-600">Motif : écartement manuel.</p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </CardContent>
     </Card>
   )
@@ -859,6 +934,7 @@ function CellSaisie(props: {
   value: number | null
   saving: boolean
   ecarte?: boolean
+  causeAttente?: Collecte["causeAttente"]
   affecte?: boolean
   onSave: (v: number) => void
   onIdemHier: () => void
@@ -869,7 +945,16 @@ function CellSaisie(props: {
   }, [props.value])
   const bg = props.ecarte ? "bg-amber-50" : props.affecte ? "bg-emerald-50" : ""
   return (
-    <div className={`relative inline-flex flex-col items-center gap-0.5 p-1 rounded ${bg}`}>
+    <div
+      className={`relative inline-flex flex-col items-center gap-0.5 p-1 rounded ${bg}`}
+      title={
+        props.ecarte
+          ? props.causeAttente
+            ? `Lait exclu — ${props.causeAttente.traitement}, délai jusqu'au ${new Date(props.causeAttente.finAttenteLait).toLocaleDateString("fr-FR")} inclus`
+            : "Lait exclu manuellement"
+          : undefined
+      }
+    >
       <input
         type="number"
         step="0.1"

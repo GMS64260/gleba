@@ -170,10 +170,10 @@ export function GenealogyTree({ animal }: { animal: AnimalForTree }) {
           <>
             <div className="flex items-end justify-center gap-2">
               {hasMere && (
-                <TreeNode node={animal.mere!} label="Mere" />
+                <TreeNode node={animal.mere!} label="Mère" />
               )}
               {hasMereExterne && (
-                <TreeNode isText text={animal.mereIdentifiant!} label="Mere" />
+                <TreeNode isText text={animal.mereIdentifiant!} label="Mère" />
               )}
               {(hasMere || hasMereExterne) && (hasPere || hasPereExterne) && <Connector />}
               {hasPere && (

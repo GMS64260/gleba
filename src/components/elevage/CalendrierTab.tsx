@@ -101,6 +101,14 @@ type AgendaEcheance = {
   gravite: 'info' | 'attention' | 'urgent'
 }
 
+type AttenteActive = {
+  key: string
+  traitement: string
+  cible: { label: string; nom?: string | null }
+  lait: { remiseVente: string } | null
+  viande: { remiseVente: string } | null
+}
+
 const SOIN_TYPE_LABELS: Record<string, string> = {
   vaccination: "Vaccination",
   vermifuge: "Vermifuge",
@@ -173,12 +181,21 @@ export function CalendrierTab() {
   const [showFaits, setShowFaits] = React.useState(false)
   // GAP P0 — agenda unifié : échéances à venir (indépendantes de la semaine).
   const [echeances, setEcheances] = React.useState<AgendaEcheance[]>([])
+  // Évolution terrain 2026-07-29 — les délais viande dépassent souvent
+  // l'horizon de 21 jours de l'agenda. Ils restent donc affichés ici jusqu'à
+  // leur vraie date de remise en vente, sans aucune borne temporelle.
+  const [attentesActives, setAttentesActives] = React.useState<AttenteActive[]>([])
 
   React.useEffect(() => {
     const fp = filiereSel !== "toutes" ? `&filiere=${filiereSel}` : ""
-    fetch(`/api/elevage/agenda?jours=21${fp}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => { if (j?.echeances) setEcheances(j.echeances) })
+    Promise.all([
+      fetch(`/api/elevage/agenda?jours=21${fp}`).then((r) => (r.ok ? r.json() : null)),
+      fetch("/api/elevage/attentes").then((r) => (r.ok ? r.json() : null)),
+    ])
+      .then(([agenda, attentes]) => {
+        if (agenda?.echeances) setEcheances(agenda.echeances)
+        if (attentes?.data) setAttentesActives(attentes.data)
+      })
       .catch(() => {})
   }, [filiereSel])
 
@@ -323,6 +340,50 @@ export function CalendrierTab() {
           </Button>
         </div>
       </div>
+
+      {attentesActives.length > 0 && (
+        <Card className="border-red-200 bg-red-50/40">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <AlertTriangle className="h-4 w-4 text-red-600" />
+              Produits bloqués — délais vétérinaires actifs
+              <Badge variant="secondary">{attentesActives.length}</Badge>
+            </CardTitle>
+            <CardDescription>
+              Ce résumé reste visible au-delà des 21 jours de l&apos;agenda, jusqu&apos;à la remise en vente effective.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-2">
+              {attentesActives.map((attente) => {
+                const cible = attente.cible.nom && attente.cible.nom !== attente.cible.label
+                  ? `${attente.cible.nom} · ${attente.cible.label}`
+                  : attente.cible.label
+                return (
+                  <li key={attente.key} className="rounded-md border border-red-100 bg-white/80 p-2 text-sm">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className="font-medium">{cible}</span>
+                      <span className="text-xs text-muted-foreground">— {attente.traitement}</span>
+                    </div>
+                    <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                      {attente.lait && (
+                        <span className="font-medium text-blue-700">
+                          Remise en vente du lait le {new Date(attente.lait.remiseVente).toLocaleDateString("fr-FR")}
+                        </span>
+                      )}
+                      {attente.viande && (
+                        <span className="font-medium text-red-700">
+                          Remise en vente de la viande le {new Date(attente.viande.remiseVente).toLocaleDateString("fr-FR")}
+                        </span>
+                      )}
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
 
       {/* GAP P0 — Prochaines échéances (agenda unifié, indépendant de la semaine) */}
       {echeances.length > 0 && (

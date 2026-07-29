@@ -15,7 +15,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { collecteLaitSchema, updateCollecteLaitSchema } from '@/lib/validations/lait'
-import { soinCouvrantCollecte } from '@/lib/elevage/attente-lait'
+import { causesAttenteCollectes, soinCouvrantCollecte } from '@/lib/elevage/attente-lait'
 import {
   estAnimalCollectableLait,
   estLotCollectableLait,
@@ -53,6 +53,21 @@ export async function GET(request: NextRequest) {
       lotFromage: { select: { id: true, numeroLot: true, typeFromage: true } },
     },
   })
+  const causes = await causesAttenteCollectes(
+    prisma,
+    session.user.id,
+    collectes.map((collecte) => ({
+      id: collecte.id,
+      date: collecte.date,
+      animalId: collecte.animalId,
+      lotId: collecte.lotId,
+      ecarteAttente: collecte.ecarteAttente,
+    }))
+  )
+  const data = collectes.map((collecte) => ({
+    ...collecte,
+    causeAttente: causes.get(collecte.id) ?? null,
+  }))
 
   // Agrégats utiles
   const stats = {
@@ -62,7 +77,7 @@ export async function GET(request: NextRequest) {
     litresEcartes: collectes.filter((c) => c.ecarteAttente).reduce((s, c) => s + Number(c.quantiteLitres), 0),
   }
 
-  return NextResponse.json({ data: collectes, stats })
+  return NextResponse.json({ data, stats })
 }
 
 export async function POST(request: NextRequest) {

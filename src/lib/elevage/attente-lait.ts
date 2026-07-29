@@ -181,6 +181,105 @@ export async function resyncEcartementLait(
 
 type SoinCouvrant2 = { finAttenteLait: Date | null; produit: string | null; type: string }
 
+export type CauseAttenteCollecte = {
+  traitement: string
+  motif: string | null
+  finAttenteLait: Date
+}
+
+type CollectePourCause = CollecteCible & { id: string; ecarteAttente: boolean }
+
+/**
+ * Explique en une requête groupée pourquoi les collectes affichées sont
+ * écartées. Le booléen `ecarteAttente` reste persistant ; le motif est relu
+ * depuis le soin source, qui demeure la vérité réglementaire. Une collecte
+ * écartée manuellement n'a simplement pas de cause automatique associée.
+ */
+export async function causesAttenteCollectes(
+  db: Db,
+  userId: string,
+  collectes: CollectePourCause[]
+): Promise<Map<string, CauseAttenteCollecte>> {
+  const concernees = collectes.filter((collecte) => collecte.ecarteAttente)
+  const result = new Map<string, CauseAttenteCollecte>()
+  if (concernees.length === 0) return result
+
+  const dates = concernees.map((collecte) => floorDayUTC(collecte.date).getTime())
+  const debut = new Date(Math.min(...dates))
+  const fin = new Date(Math.max(...dates))
+  const finJour = new Date(fin.getTime() + 86_400_000)
+  const soins = await db.soinAnimal.findMany({
+    where: {
+      userId,
+      fait: true,
+      finAttenteLait: { not: null, gte: debut },
+      date: { lt: finJour },
+    },
+    select: {
+      date: true,
+      finAttenteLait: true,
+      animalId: true,
+      lotId: true,
+      produit: true,
+      type: true,
+      description: true,
+      motif: true,
+    },
+  })
+  if (soins.length === 0) return result
+
+  // En cas de traitements qui se chevauchent, le délai le plus contraignant
+  // (fin la plus lointaine) explique la date de libération effective.
+  soins.sort((a, b) =>
+    (b.finAttenteLait?.getTime() ?? 0) - (a.finAttenteLait?.getTime() ?? 0)
+    || b.date.getTime() - a.date.getTime()
+  )
+
+  const refs = new Set<number>()
+  for (const collecte of concernees) if (collecte.animalId != null) refs.add(collecte.animalId)
+  for (const soin of soins) if (soin.animalId != null) refs.add(soin.animalId)
+  const lotCourant = new Map<number, number | null>()
+  const historiques = new Map<number, AppartenanceDatee[]>()
+  if (refs.size > 0) {
+    const debutHistorique = new Date(Math.min(debut.getTime(), ...soins.map((soin) => soin.date.getTime())))
+    const [animaux, affectations] = await Promise.all([
+      db.animal.findMany({
+        where: { userId, id: { in: [...refs] } },
+        select: { id: true, lotId: true },
+      }),
+      db.$queryRaw<AppartenanceDatee[]>(Prisma.sql`
+        SELECT "animal_id" AS "animalId", "lot_id" AS "lotId",
+               "date_debut" AS "dateDebut", "date_fin" AS "dateFin"
+        FROM "historique_lots_animaux"
+        WHERE "user_id" = ${userId}
+          AND "animal_id" IN (${Prisma.join([...refs])})
+          AND "date_debut" < ${finJour}
+          AND ("date_fin" IS NULL OR "date_fin" > ${debutHistorique})
+        ORDER BY "date_debut" DESC
+      `),
+    ])
+    for (const animal of animaux) lotCourant.set(animal.id, animal.lotId)
+    for (const affectation of affectations) {
+      const lignes = historiques.get(affectation.animalId) ?? []
+      lignes.push(affectation)
+      historiques.set(affectation.animalId, lignes)
+    }
+  }
+
+  for (const collecte of concernees) {
+    const cible = { ...collecte, date: floorDayUTC(collecte.date) }
+    const soin = soins.find((item) => couvre(item, cible, historiques, lotCourant))
+    if (!soin?.finAttenteLait) continue
+    const traitement = soin.produit || soin.description || soin.type
+    result.set(collecte.id, {
+      traitement,
+      motif: soin.motif || (soin.description && soin.description !== traitement ? soin.description : null),
+      finAttenteLait: soin.finAttenteLait,
+    })
+  }
+  return result
+}
+
 /**
  * Retourne le soin actif COUVRANT une collecte (animalId/lotId, date) à sa
  * saisie — cross-granularité (même animal/lot, OU animal↔son lot) + comparaison
