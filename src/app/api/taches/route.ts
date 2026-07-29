@@ -56,7 +56,17 @@ export async function GET(request: NextRequest) {
     // aucun effet sur les tâches. On lit désormais `?year=` ; fallback
     // sur année courante si absent.
     const yearParam = searchParams.get('year')
-    const annee = yearParam ? parseInt(yearParam) : new Date().getFullYear()
+    const currentYear = new Date().getFullYear()
+    const annee = yearParam ? parseInt(yearParam, 10) : currentYear
+    if (!Number.isInteger(annee) || annee < 2000 || annee > 2100) {
+      return NextResponse.json({ error: 'Année invalide' }, { status: 400 })
+    }
+
+    // Les retards historiques restent utiles dans la saison courante (audit
+    // #49), mais ils ne doivent pas contaminer une saison passée ou future
+    // explicitement sélectionnée. Exemple : le calendrier 2027 ne doit pas
+    // afficher les tâches 2026 encore ouvertes.
+    const retardAnneeFilter = annee === currentYear ? {} : { annee }
 
     // ── Tâches de la semaine + tâches en retard (non faites, date passée) ──
 
@@ -74,10 +84,8 @@ export async function GET(request: NextRequest) {
       }),
       prisma.culture.findMany({
         where: {
-          // Audit #49 : pas de filtre `annee` sur les tâches EN RETARD — un
-          // retard reste un retard quelle que soit l'année (sinon les retards
-          // de l'année précédente étaient invisibles).
           userId,
+          ...retardAnneeFilter,
           semisFait: false,
           plantationFaite: false,
           recolteFaite: false,
@@ -98,10 +106,8 @@ export async function GET(request: NextRequest) {
       }),
       prisma.culture.findMany({
         where: {
-          // Audit #49 : pas de filtre `annee` sur les tâches EN RETARD — un
-          // retard reste un retard quelle que soit l'année (sinon les retards
-          // de l'année précédente étaient invisibles).
           userId,
+          ...retardAnneeFilter,
           plantationFaite: false,
           recolteFaite: false,
           terminee: null,
@@ -121,10 +127,8 @@ export async function GET(request: NextRequest) {
       }),
       prisma.culture.findMany({
         where: {
-          // Audit #49 : pas de filtre `annee` sur les tâches EN RETARD — un
-          // retard reste un retard quelle que soit l'année (sinon les retards
-          // de l'année précédente étaient invisibles).
           userId,
+          ...retardAnneeFilter,
           recolteFaite: false,
           terminee: null,
           dateRecolte: { lt: start, not: null },

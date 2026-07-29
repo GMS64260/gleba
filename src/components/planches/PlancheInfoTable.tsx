@@ -9,7 +9,7 @@ import * as React from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { InlineEditField } from "./InlineEditField"
-import { Droplets, Ruler, MapPin, Loader2, Satellite } from "lucide-react"
+import { Droplets, Ruler, MapPin, Loader2, Satellite, Pencil } from "lucide-react"
 import { alertDialog } from "@/lib/global-dialog"
 
 interface Planche {
@@ -144,6 +144,10 @@ export function PlancheInfoTable({ planche, onUpdate }: PlancheInfoTableProps) {
 
   return (
     <div className="space-y-4">
+      <div className="flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
+        <Pencil className="h-4 w-4 shrink-0" />
+        Cette fiche est modifiable : cliquez sur une valeur, puis validez avec Entrée ou la coche.
+      </div>
       {/* Dimensions */}
       <Card>
         <CardHeader>

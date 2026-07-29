@@ -198,7 +198,7 @@ export function VergerCalendarView({ year }: VergerCalendarViewProps) {
             Calendrier des opérations
             {monthOpsCount.total > 0 && (
               <Badge variant="secondary" className="text-xs">
-                {monthOpsCount.remaining} a faire / {monthOpsCount.total}
+                {monthOpsCount.remaining} à faire / {monthOpsCount.total}
               </Badge>
             )}
           </CardTitle>

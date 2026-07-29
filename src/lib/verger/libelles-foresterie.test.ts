@@ -8,6 +8,7 @@ describe("libelleForesterie", () => {
     ["biodiversite", "Biodiversité"],
     ["Biodiversite", "Biodiversité"],
     ["bois_oeuvre", "Bois d’œuvre"],
+    ["bois oeuvre", "Bois d’œuvre"],
     ["BRF", "BRF"],
   ])("transforme %s en libellé métier", (valeur, attendu) => {
     expect(libelleForesterie(valeur)).toBe(attendu)

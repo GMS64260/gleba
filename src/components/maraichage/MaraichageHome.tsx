@@ -113,6 +113,13 @@ function HomeContent() {
   const validTabs = TABS.map((t) => t.id)
   const activeTab: TabId = tabFromUrl && validTabs.includes(tabFromUrl) ? tabFromUrl : "calendrier"
 
+  // Compatibilité du deep-link historique `?tab=semer` : il désigne une
+  // action (l'assistant culture), pas un onglet. Un rechargement doit donc
+  // rouvrir l'assistant au lieu de retomber silencieusement sur Calendrier.
+  React.useEffect(() => {
+    if (searchParams.get("tab") === "semer") setShowAssistant(true)
+  }, [searchParams])
+
   const setActiveTab = React.useCallback(
     (tab: TabId) => {
       const params = new URLSearchParams(searchParams.toString())
@@ -122,6 +129,25 @@ function HomeContent() {
         params.set("tab", tab)
       }
       updateDashboardSearchParams(params, "push")
+    },
+    [searchParams]
+  )
+
+  const handleSemer = React.useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString())
+    params.set("tab", "semer")
+    updateDashboardSearchParams(params, "push")
+    setShowAssistant(true)
+  }, [searchParams])
+
+  const handleAssistantOpenChange = React.useCallback(
+    (open: boolean) => {
+      setShowAssistant(open)
+      if (!open && searchParams.get("tab") === "semer") {
+        const params = new URLSearchParams(searchParams.toString())
+        params.delete("tab")
+        updateDashboardSearchParams(params, "replace")
+      }
     },
     [searchParams]
   )
@@ -159,7 +185,7 @@ function HomeContent() {
       />
 
       {/* Assistant culture */}
-      <AssistantDialog open={showAssistant} onOpenChange={setShowAssistant} />
+      <AssistantDialog open={showAssistant} onOpenChange={handleAssistantOpenChange} />
 
       {/* Assistant IA */}
       {showChat && (
@@ -203,7 +229,7 @@ function HomeContent() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setShowAssistant(true)}
+              onClick={handleSemer}
               className="text-emerald-700 border-emerald-300 hover:bg-emerald-50"
               title="Assistant culture"
             >

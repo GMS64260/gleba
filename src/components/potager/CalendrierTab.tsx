@@ -125,13 +125,17 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
   const [harvestQuantity, setHarvestQuantity] = React.useState("")
   const [harvestLoading, setHarvestLoading] = React.useState(false)
   const { weekStart, weekEnd } = React.useMemo(() => {
-    const base = new Date()
+    // Une saison passée/future conserve le mois et le jour courants, mais
+    // dans l'année choisie. Sinon `year=2027` interrogeait encore une semaine
+    // datée de 2026 et mélangeait la notion de saison avec le calendrier réel.
+    const now = new Date()
+    const base = new Date(year, now.getMonth(), now.getDate())
     const current = addWeeks(base, weekOffset)
     return {
       weekStart: startOfWeek(current, { weekStartsOn: 1 }),
       weekEnd: endOfWeek(current, { weekStartsOn: 1 }),
     }
-  }, [weekOffset])
+  }, [weekOffset, year])
 
   // Charger stats dashboard
   React.useEffect(() => {

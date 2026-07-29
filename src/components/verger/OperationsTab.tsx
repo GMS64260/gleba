@@ -28,6 +28,7 @@ import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
 import { WeatherFieldset, EMPTY_WEATHER, type WeatherData } from "@/components/phyto/WeatherFieldset"
 import { MaterielFieldset } from "@/components/phyto/MaterielFieldset"
+import { libelleOperationArbre } from "@/lib/verger/operation-label"
 
 const FILTER_STATES = [
   { value: "all", label: "Toutes", icon: Wrench },
@@ -138,16 +139,7 @@ function createColumns(
       cell: ({ getValue }) => {
         // Bug #17 — mapping code → label accentué (les codes en DB sont
         // sans accents pour rester compatibles avec les seeds historiques).
-        const code = (getValue() as string) ?? ""
-        const labels: Record<string, string> = {
-          taille: "Taille",
-          traitement: "Traitement",
-          fertilisation: "Fertilisation",
-          recolte: "Récolte",
-          greffe: "Greffe",
-          autre: "Autre",
-        }
-        const label = labels[code.toLowerCase()] ?? code
+        const label = libelleOperationArbre((getValue() as string) ?? "")
         return (
           <Badge variant="outline" className="text-xs capitalize">
             {label}
@@ -308,10 +300,26 @@ export function OperationsTab() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    const submitted = new FormData(e.currentTarget as HTMLFormElement)
+    // Certains agents/navigateurs remplissent input[type=date] juste avant le
+    // submit sans déclencher l'état React. Le DOM soumis est la source finale.
+    const submittedDate = String(submitted.get("date") || "").trim()
+    const submittedDatePrevue = String(submitted.get("datePrevue") || "").trim()
+    const date = submittedDate || newOperation.date
+    const datePrevue = submittedDatePrevue || newOperation.datePrevue
+
     // Famille C — au lieu d'un bouton grisé muet, on valide explicitement
     // l'arbre requis avec un message clair.
     if (!newOperation.arbreId) {
       toast({ title: "Sélectionnez un arbre", variant: "destructive" })
+      return
+    }
+    if (!newOperation.fait && !datePrevue) {
+      toast({
+        title: "Date prévue requise",
+        description: "Une opération à faire doit avoir une date de planification.",
+        variant: "destructive",
+      })
       return
     }
     // Bug feedback testeur 2026-05-26 (cmpmqugqr) — un traitement phyto sans
@@ -330,14 +338,17 @@ export function OperationsTab() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           arbreId: parseInt(newOperation.arbreId),
-          date: newOperation.date,
+          // `date` est non nullable en base. Pour une tâche à faire, on y
+          // conserve aussi la date prévue afin que les anciens écrans restent
+          // cohérents, tout en gardant `datePrevue` explicite.
+          date: newOperation.fait ? (date || format(new Date(), "yyyy-MM-dd")) : datePrevue,
           type: newOperation.type,
           description: newOperation.description || null,
           produit: newOperation.produit || null,
           quantite: newOperation.quantite ? parseFloat(newOperation.quantite) : null,
           unite: newOperation.unite || null,
           cout: newOperation.cout ? parseFloat(newOperation.cout) : null,
-          datePrevue: newOperation.datePrevue || null,
+          datePrevue: datePrevue || null,
           fait: newOperation.fait,
           notes:
             [
@@ -475,6 +486,7 @@ export function OperationsTab() {
               <div>
                 <Label>Date réalisation</Label>
                 <Input
+                  name="date"
                   type="date"
                   value={newOperation.date}
                   onChange={(e) => setNewOperation({ ...newOperation, date: e.target.value })}
@@ -483,6 +495,7 @@ export function OperationsTab() {
               <div>
                 <Label>Date prévue</Label>
                 <Input
+                  name="datePrevue"
                   type="date"
                   value={newOperation.datePrevue}
                   onChange={(e) => setNewOperation({ ...newOperation, datePrevue: e.target.value })}

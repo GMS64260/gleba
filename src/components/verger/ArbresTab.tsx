@@ -238,7 +238,6 @@ export function ArbresTab() {
   const router = useRouter()
   const { toast } = useToast()
   const [data, setData] = React.useState<Arbre[]>([])
-  const [filteredData, setFilteredData] = React.useState<Arbre[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [selectedType, setSelectedType] = React.useState("all")
   const [showDialog, setShowDialog] = React.useState(false)
@@ -314,14 +313,37 @@ export function ArbresTab() {
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
     try {
-      const [response, lotsResponse] = await Promise.all([fetch("/api/arbres"), fetch("/api/arbres/lots")])
-      if (!response.ok || !lotsResponse.ok) throw new Error("Erreur")
-      const [items, lots] = await Promise.all([response.json(), lotsResponse.json()])
-      setData(items)
-      setFilteredData(items)
-      setLotsArbres(lots)
-      setLotDrafts(Object.fromEntries((lots as LotArbres[]).map((lot) => [lot.id, { effectif: String(lot.effectif), parcelleGeoId: lot.parcelleGeoId }])))
+      // La liste individuelle est la donnée principale. Une erreur du module
+      // optionnel « lots » ne doit jamais vider les arbres déjà chargés.
+      const [arbresResult, lotsResult] = await Promise.allSettled([
+        fetch("/api/arbres").then(async (response) => {
+          if (!response.ok) throw new Error(`arbres:${response.status}`)
+          return response.json()
+        }),
+        fetch("/api/arbres/lots").then(async (response) => {
+          if (!response.ok) throw new Error(`lots:${response.status}`)
+          return response.json()
+        }),
+      ])
+
+      if (arbresResult.status !== "fulfilled" || !Array.isArray(arbresResult.value)) {
+        throw new Error("Impossible de charger les arbres")
+      }
+      setData(arbresResult.value)
+
+      if (lotsResult.status === "fulfilled" && Array.isArray(lotsResult.value)) {
+        const lots = lotsResult.value as LotArbres[]
+        setLotsArbres(lots)
+        setLotDrafts(Object.fromEntries(lots.map((lot) => [
+          lot.id,
+          { effectif: String(lot.effectif), parcelleGeoId: lot.parcelleGeoId },
+        ])))
+      } else {
+        setLotsArbres([])
+        setLotDrafts({})
+      }
     } catch {
+      setData([])
       toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les arbres" })
     } finally {
       setIsLoading(false)
@@ -363,7 +385,7 @@ export function ArbresTab() {
     })
   }, [])
 
-  React.useEffect(() => {
+  const filteredData = React.useMemo(() => {
     let filtered = data
     if (selectedType !== "all") {
       filtered = filtered.filter((a) => a.type === selectedType)
@@ -374,7 +396,7 @@ export function ArbresTab() {
     } else if (filtreCompletude === "sansGps") {
       filtered = filtered.filter((a) => a.gpsLat == null || a.gpsLng == null)
     }
-    setFilteredData(filtered)
+    return filtered
   }, [selectedType, data, filtreCompletude])
 
   // PROMPT 10 — Charger les porte-greffes adaptés à l'espèce courante du formulaire.

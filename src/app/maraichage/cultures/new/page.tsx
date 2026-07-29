@@ -155,14 +155,25 @@ export default function NewCulturePage() {
       fetch("/api/planches?pageSize=500").then((r) => r.json()),
     ])
       .then(([especesData, planchesData]) => {
+        const loadedPlanches = planchesData.data || []
         setEspeces(especesData.data || [])
-        setPlanches(planchesData.data || [])
+        setPlanches(loadedPlanches)
+
+        // Le raccourci « + Nouvelle culture » d'une fiche planche transmet
+        // son identifiant dans l'URL. On ne l'appliquait jamais au formulaire.
+        const requestedPlancheId = new URLSearchParams(window.location.search).get("plancheId")
+        if (
+          requestedPlancheId &&
+          loadedPlanches.some((planche: { id: string }) => planche.id === requestedPlancheId)
+        ) {
+          form.setValue("plancheId", requestedPlancheId, { shouldDirty: false })
+        }
       })
       .catch(() => {
         setEspeces([])
         setPlanches([])
       })
-  }, [])
+  }, [form])
 
   // Charger les varietes et ITPs quand l'espece change
   React.useEffect(() => {

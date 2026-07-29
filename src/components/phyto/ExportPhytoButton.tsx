@@ -14,7 +14,7 @@
 
 import * as React from "react"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -94,9 +94,14 @@ export function ExportPhytoButton({ format }: ExportPhytoButtonProps) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="h-7 text-xs gap-1">
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 text-xs gap-1"
+          title={`Configurer puis télécharger le registre ${label}`}
+        >
           <Icon className="h-3 w-3" />
-          {label}
+          {label}…
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-md">
@@ -105,6 +110,9 @@ export function ExportPhytoButton({ format }: ExportPhytoButtonProps) {
             <Icon className="h-4 w-4" />
             Export registre phyto ({label})
           </DialogTitle>
+          <DialogDescription>
+            Choisissez la période et les filtres, puis lancez le téléchargement.
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
