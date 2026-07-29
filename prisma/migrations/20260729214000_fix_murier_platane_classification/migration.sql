@@ -5,6 +5,5 @@
 UPDATE "especes"
 SET
   "type" = 'ornement',
-  "rendement" = NULL,
-  "unite_rendement" = NULL
+  "rendement" = NULL
 WHERE "espece" = 'Mûrier platane';
