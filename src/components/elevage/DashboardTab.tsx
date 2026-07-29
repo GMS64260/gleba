@@ -44,6 +44,10 @@ import {
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts"
 import { kpiCardClass, kpiSubtleClass } from "@/lib/kpi-theme"
 import { useFiliereSelection, capacitesSelection } from "@/lib/elevage/filiere-context"
+import {
+  attentesSanitairesPrioritaires,
+  soinsSanitairesPrioritaires,
+} from "@/lib/elevage/dashboard-priorites"
 
 interface DashboardTabProps {
   year: number
@@ -178,11 +182,20 @@ export function DashboardTab({ year }: DashboardTabProps) {
   const [qualite, setQualite] = React.useState<QualiteLaitSummary | null>(null)
   // Délais d'attente lait/viande en cours (remise en vente)
   const [attentes, setAttentes] = React.useState<AttenteItem[]>([])
+  const [validationRapide, setValidationRapide] = React.useState<string | null>(null)
   // Ticket cmrz0s7r8 — sur mobile, les graphiques repoussent le travail du jour
   // sous plusieurs écrans. On les replie par défaut sur petit écran (bouton
   // « Voir les indicateurs ») ; ils restent toujours visibles sur desktop (lg).
   const [showGraphs, setShowGraphs] = React.useState(false)
   const [preferences, setPreferences] = React.useState<DashboardPreferences>(DASHBOARD_PREFS_DEFAULT)
+  const soinsPrioritaires = React.useMemo(
+    () => soinsSanitairesPrioritaires(soins),
+    [soins],
+  )
+  const attentesPrioritaires = React.useMemo(
+    () => attentesSanitairesPrioritaires(attentes),
+    [attentes],
+  )
 
   React.useEffect(() => {
     try {
@@ -379,6 +392,16 @@ export function DashboardTab({ year }: DashboardTabProps) {
     }
   }
 
+  const validerPriorite = async (soin: SoinItem) => {
+    const key = soin.injectionId ?? `soin-${soin.id}`
+    setValidationRapide(key)
+    try {
+      await validerSoinOuInjection(soin)
+    } finally {
+      setValidationRapide(null)
+    }
+  }
+
   // Preparer donnees graphique production oeufs par mois
   // Feedback Marc 2026-05-16 — V4 Bug 3 : la requête $queryRaw renvoie
   // `mois` typé `Prisma.Decimal` (sérialisé en string dans certains cas)
@@ -483,6 +506,129 @@ export function DashboardTab({ year }: DashboardTabProps) {
                     </a>
                   )}
                 </div>
+                {(soinsPrioritaires.length > 0 || attentesPrioritaires.length > 0) && (
+                  <section aria-labelledby="priorites-sanitaires-title" className="rounded-lg border border-red-100 bg-red-50/40 p-3">
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                      <h3 id="priorites-sanitaires-title" className="flex items-center gap-2 text-sm font-semibold text-red-900">
+                        <ShieldAlert className="h-4 w-4" />
+                        Priorités sanitaires
+                      </h3>
+                      <Link href="/elevage?tab=alimentation&sub=registre" className="text-xs font-medium text-emerald-700 hover:underline">
+                        Ouvrir le registre
+                      </Link>
+                    </div>
+                    <div className="grid gap-3 lg:grid-cols-2">
+                      {soinsPrioritaires.length > 0 && (
+                        <div className="space-y-2">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            3 prochains soins maximum
+                          </p>
+                          {soinsPrioritaires.map((soin) => {
+                            const key = soin.injectionId ?? `soin-${soin.id}`
+                            const cible = soin.lot?.nom
+                              || (soin.animal?.nom && soin.animal?.identifiant
+                                ? `${soin.animal.nom} · ${soin.animal.identifiant}`
+                                : soin.animal?.nom || soin.animal?.identifiant)
+                              || "Troupeau"
+                            const cibleHref = soin.animal?.id
+                              ? `/elevage/animaux/${soin.animal.id}`
+                              : soin.lot?.id
+                                ? `/elevage/lots/${soin.lot.id}`
+                                : null
+                            const datePriorite = new Date(soin.datePrevue ?? soin.date)
+                            const enRetard = datePriorite < new Date(new Date().toDateString())
+                            return (
+                              <div key={key} className="rounded-md border bg-white p-2.5">
+                                <div className="flex flex-wrap items-start justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <p className="truncate text-sm font-medium">{cible}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                      {soin.numeroInjection ? `Injection n°${soin.numeroInjection}` : TYPE_LABELS[soin.type] || soin.type}
+                                      {soin.produit ? ` · ${soin.produit}` : ""}
+                                    </p>
+                                  </div>
+                                  <Badge variant={enRetard ? "destructive" : "outline"} className="shrink-0 text-[11px]">
+                                    {datePriorite.toLocaleDateString("fr-FR")}
+                                  </Badge>
+                                </div>
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    className="h-8"
+                                    disabled={validationRapide === key}
+                                    onClick={() => validerPriorite(soin)}
+                                  >
+                                    <Check className="mr-1 h-3.5 w-3.5" />
+                                    {validationRapide === key
+                                      ? "Enregistrement…"
+                                      : soin.injectionId
+                                        ? "Injection faite"
+                                        : "Soin fait"}
+                                  </Button>
+                                  {cibleHref && (
+                                    <Button asChild size="sm" variant="outline" className="h-8">
+                                      <Link href={cibleHref}>
+                                        {soin.animal?.id ? "Fiche animal" : "Fiche lot"}
+                                      </Link>
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                      {attentesPrioritaires.length > 0 && (
+                        <div className="space-y-2">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            Prochaines remises en vente
+                          </p>
+                          {attentesPrioritaires.map((attente) => {
+                            const cible = attente.cible.nom && attente.cible.nom !== attente.cible.label
+                              ? `${attente.cible.nom} · ${attente.cible.label}`
+                              : attente.cible.label
+                            const cibleHref = attente.cible.id == null
+                              ? null
+                              : attente.cible.type === "animal"
+                                ? `/elevage/animaux/${attente.cible.id}`
+                                : `/elevage/lots/${attente.cible.id}`
+                            return (
+                              <div key={`${attente.soinId}-${attente.cible.type}-${attente.cible.id ?? "all"}`} className="rounded-md border bg-white p-2.5">
+                                <div className="flex flex-wrap items-start justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <p className="truncate text-sm font-medium">{cible}</p>
+                                    <p className="text-xs text-muted-foreground">{attente.traitement}</p>
+                                  </div>
+                                  <div className="flex flex-wrap gap-1">
+                                    {attente.lait && (
+                                      <Badge variant="outline" className="border-blue-200 text-[11px] text-blue-700">
+                                        Lait {new Date(attente.lait.remiseVente).toLocaleDateString("fr-FR")}
+                                      </Badge>
+                                    )}
+                                    {attente.viande && (
+                                      <Badge variant="outline" className="border-red-200 text-[11px] text-red-700">
+                                        Viande {new Date(attente.viande.remiseVente).toLocaleDateString("fr-FR")}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </div>
+                                {cibleHref && (
+                                  <Button asChild size="sm" variant="ghost" className="mt-1 h-7 px-1 text-xs">
+                                    <Link href={cibleHref}>
+                                      Ouvrir {attente.cible.type === "animal" ? "la fiche animal" : "le lot"}
+                                      <ChevronRight className="ml-1 h-3.5 w-3.5" />
+                                    </Link>
+                                  </Button>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </section>
+                )}
                 <div className="flex flex-wrap gap-2">
                   <Link href="/elevage?tab=alimentation&sub=soins&action=nouveau-soin" className={action}>
                     <Stethoscope className="h-4 w-4 text-blue-600" />+ Soin
