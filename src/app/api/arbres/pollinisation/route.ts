@@ -7,6 +7,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
+import {
+  doitSignalerSansPollinisateur,
+  isAutofertileFallback,
+} from "@/lib/pollinisation"
 
 export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
@@ -86,18 +90,9 @@ export async function GET(request: NextRequest) {
     // Bug cmp8sk552 (Marc 2026-05-16) — fallback variétés auto-fertiles
     // (Mirabelle de Nancy, Reine-Claude d'Oullins, Framboisier…) qui
     // restaient classées "Sans pollinisateur" car flag autofertile=false.
-    const { isAutofertileFallback } = await import('@/lib/pollinisation')
     const estAutofertile = (a: typeof arbres[number]) =>
       a.autofertile || isAutofertileFallback(a.variete)
 
-    // Bug feedback testeur 2026-05-25 (cmplk71ec) — Les espèces anémophiles
-    // (pollinisation par le vent, pas par les insectes) ne suivent pas la
-    // même logique que les fruitiers entomophiles : un couple de
-    // Franquettes ne se pollinise pas bien à cause de la protogynie
-    // (heterodichogamie), mais l'alerte "sans pollinisateur compatible"
-    // qui sert à signaler un cerisier seul est inadaptée pour eux.
-    // On les exclut de l'alerte pour ne pas diluer le signal "vrais"
-    // problèmes (cerisier isolé, etc.).
     const estAnemophile = (a: typeof arbres[number]) => {
       const esp = (a.espece || "").toLowerCase()
       return (
@@ -134,16 +129,18 @@ export async function GET(request: NextRequest) {
       if (candidats.length) compatibilitesDerivees.set(a.id, candidats)
     }
 
-    // Alertes: arbres non autofertiles sans pollinisateur compatible
-    // (ni explicite, ni dérivé). Les espèces anémophiles sont exclues
-    // (cf. cmplk71ec — alerte cerisier diluée par les noyers).
+    // Bug cms67gg8m (2026-07-29) — « anémophile » décrit le transport
+    // du pollen, pas la présence d'une variété compatible. Les noyers
+    // Franquette sans autre variété doivent donc apparaître dans ce KPI.
     const alertes = arbres
       .filter(
         (a) =>
-          !estAutofertile(a) &&
-          !estAnemophile(a) &&
-          a.pollinisateursCompat.length === 0 &&
-          !compatibilitesDerivees.has(a.id)
+          doitSignalerSansPollinisateur({
+            autofertile: estAutofertile(a),
+            nombrePollinisateursExplicites: a.pollinisateursCompat.length,
+            hasPollinisateurDerive: compatibilitesDerivees.has(a.id),
+            modePollinisation: estAnemophile(a) ? "anémophile" : null,
+          })
       )
       .map((a) => ({
         id: a.id,

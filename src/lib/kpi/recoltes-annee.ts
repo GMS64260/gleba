@@ -17,6 +17,7 @@
  */
 
 import prisma from '@/lib/prisma'
+import { surfaceCultureM2 } from '@/lib/culture-surface'
 
 export interface RecoltesParEspece {
   especeId: string
@@ -80,6 +81,7 @@ export async function getRecoltesAnneeAggregat(
       // Note DEV2 : Culture.dateRecolte (pas .semaineRecolte qui
       // n'existe pas sur le modèle Culture — seulement sur ITP/Variete).
       dateRecolte: true,
+      longueur: true,
       plancheId: true,
       especeId: true,
       planche: { select: { surface: true, largeur: true, longueur: true } },
@@ -113,11 +115,7 @@ export async function getRecoltesAnneeAggregat(
   // Projection
   for (const c of cultures) {
     if (!c.especeId || !c.espece?.rendement) continue
-    const surface =
-      c.planche?.surface ??
-      (c.planche?.largeur && c.planche?.longueur
-        ? c.planche.largeur * c.planche.longueur
-        : 0)
+    const surface = surfaceCultureM2(c)
     if (surface <= 0) continue
     const quantite = surface * c.espece.rendement
     // Note DEV2 : dérive le mois (0..11) depuis Culture.dateRecolte si

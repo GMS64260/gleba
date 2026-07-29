@@ -164,6 +164,27 @@ describe('getCulturesPrevues (inventaire annuel)', () => {
       semaineRecolte: 38,
     })
   })
+
+  it('utilise les semaines ISO des dates réelles et la portion cultivée', async () => {
+    const culture = cultureDirecte(862)
+    culture.longueur = 10
+    culture.nbRangs = 3
+    culture.espacement = 11
+    culture.dateSemis = new Date('2027-03-21T23:00:00.000Z')
+    culture.dateRecolte = new Date('2027-05-16T22:00:00.000Z')
+    culture.planche.longueur = 15
+    culture.planche.surface = 18
+    mocked.culture.findMany.mockResolvedValue([culture])
+
+    const [prevue] = await getCulturesPrevues('u1', 2027)
+
+    expect(prevue).toMatchObject({
+      semaineSemis: 12,
+      semaineRecolte: 20,
+      surface: 12,
+      cultureLongueur: 10,
+    })
+  })
 })
 
 describe('getStatsPlanification (BUG-14 variétés DISTINCT)', () => {

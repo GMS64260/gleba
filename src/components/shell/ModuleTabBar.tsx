@@ -85,6 +85,7 @@ export function ModuleTabBar({ tabs, activeTab, onTabChange, accent, actions }: 
               const isActive = activeTab === tab.id
               return (
                 <button
+                  type="button"
                   key={tab.id}
                   onClick={() => onTabChange(tab.id)}
                   className={`flex items-center gap-1.5 px-3 lg:px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${

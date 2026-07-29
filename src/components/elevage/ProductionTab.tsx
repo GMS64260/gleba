@@ -237,6 +237,7 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
   // Bug feedback testeur 2026-05-26 (cmploo6ye) — anti double-submit pour
   // empêcher la création d'une 2e ligne fantôme par clic accidentel.
   const [isSubmittingProd, setIsSubmittingProd] = React.useState(false)
+  const [productionSubmitError, setProductionSubmitError] = React.useState<string | null>(null)
   // QA Julien 2026-05-15 — Bug #6 : id en cours de suppression (null = pas de modale)
   const [deletingId, setDeletingId] = React.useState<number | null>(null)
   // QA 2026-05-15 — édition par bouton ✏️ : id de la production en
@@ -391,27 +392,38 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
   // Reset complet quand on ferme le dialog
   const resetForm = () => {
     setEditingId(null)
+    setProductionSubmitError(null)
     setFormData({ lotId: formData.lotId, date: todayLocalISO(), quantite: "", casses: "0", sales: "0", calibre: "", notes: "" })
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (isSubmittingProd) return
+    const submitted = new FormData(e.currentTarget)
+    const submittedValue = (name: string, fallback: string) => {
+      const value = submitted.get(name)
+      return typeof value === "string" ? value : fallback
+    }
+    const submittedDate = submittedValue("date", formData.date)
+    const submittedQuantite = submittedValue("quantite", formData.quantite)
+    const submittedCasses = submittedValue("casses", formData.casses)
+    const submittedSales = submittedValue("sales", formData.sales)
     if (!formData.lotId) {
       toast({ title: "Sélectionnez un lot", variant: "destructive" })
       return
     }
-    if (!formData.quantite) {
+    if (!submittedQuantite) {
       toast({ title: "Renseignez le nombre d'œufs", variant: "destructive" })
       return
     }
     setIsSubmittingProd(true)
+    setProductionSubmitError(null)
     const payload = {
       lotId: formData.lotId ? parseInt(formData.lotId) : null,
-      date: formData.date,
-      quantite: formData.quantite ? parseInt(formData.quantite) : 0,
-      casses: formData.casses ? parseInt(formData.casses) : 0,
-      sales: formData.sales ? parseInt(formData.sales) : 0,
+      date: submittedDate,
+      quantite: submittedQuantite ? parseInt(submittedQuantite) : 0,
+      casses: submittedCasses ? parseInt(submittedCasses) : 0,
+      sales: submittedSales ? parseInt(submittedSales) : 0,
       calibre: formData.calibre || null,
       notes: formData.notes || null,
     }
@@ -470,8 +482,10 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
       setIsDialogOpen(false)
       resetForm()
       fetchData()
-    } catch {
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible d'enregistrer" })
+    } catch (error) {
+      const description = error instanceof Error ? error.message : "Impossible d'enregistrer"
+      setProductionSubmitError(description)
+      toast({ variant: "destructive", title: "Erreur", description })
     } finally {
       setIsSubmittingProd(false)
     }
@@ -708,11 +722,11 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Date</Label>
-                  <Input type="date" value={formData.date} onChange={(e) => setFormData(f => ({ ...f, date: e.target.value }))} />
+                  <Input name="date" type="date" value={formData.date} onChange={(e) => setFormData(f => ({ ...f, date: e.target.value }))} />
                 </div>
                 <div className="space-y-2">
                   <Label>Nombre d'œufs *</Label>
-                  <Input type="number" min="0" value={formData.quantite} onChange={(e) => setFormData(f => ({ ...f, quantite: e.target.value }))} placeholder="0" className="text-2xl font-bold text-center" />
+                  <Input name="quantite" type="number" min="0" value={formData.quantite} onChange={(e) => setFormData(f => ({ ...f, quantite: e.target.value }))} placeholder="0" className="text-2xl font-bold text-center" />
                 </div>
               </div>
               {/* Bug feedback testeur 2026-05-26 (cmpm7bxyu) — prévision
@@ -738,11 +752,11 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <div className="space-y-2">
                   <Label>Casses</Label>
-                  <Input type="number" min="0" value={formData.casses} onChange={(e) => setFormData(f => ({ ...f, casses: e.target.value }))} />
+                  <Input name="casses" type="number" min="0" value={formData.casses} onChange={(e) => setFormData(f => ({ ...f, casses: e.target.value }))} />
                 </div>
                 <div className="space-y-2">
                   <Label>Œufs souillés</Label>
-                  <Input type="number" min="0" value={formData.sales} onChange={(e) => setFormData(f => ({ ...f, sales: e.target.value }))} />
+                  <Input name="sales" type="number" min="0" value={formData.sales} onChange={(e) => setFormData(f => ({ ...f, sales: e.target.value }))} />
                 </div>
                 <div className="space-y-2">
                   <Label>Calibre</Label>
@@ -758,6 +772,9 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
                 </div>
               </div>
               <div className="flex justify-end gap-2 pt-4">
+                {productionSubmitError && (
+                  <p role="alert" className="mr-auto text-sm text-red-600">{productionSubmitError}</p>
+                )}
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmittingProd}>Annuler</Button>
                 {/* Bug feedback testeur 2026-05-26 (cmploo6ye) — désactiver
                     le bouton pendant l'envoi pour éviter un double POST qui

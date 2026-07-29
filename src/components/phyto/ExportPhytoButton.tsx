@@ -70,10 +70,19 @@ export function ExportPhytoButton({ format }: ExportPhytoButtonProps) {
       const url = URL.createObjectURL(blob)
       const link = document.createElement("a")
       link.href = url
-      link.download = `registre-phyto-${from}_${to}.${format}`
+      const disposition = res.headers.get("content-disposition")
+      const filename = disposition?.match(/filename="?([^"]+)"?/i)?.[1]
+      link.download = filename || `registre-phyto-${from}_${to}.${format}`
+      link.style.display = "none"
+      document.body.appendChild(link)
       link.click()
-      URL.revokeObjectURL(url)
+      link.remove()
+      // Chrome peut annuler un téléchargement si l'URL blob est révoquée dans
+      // la même tâche que le clic synthétique.
+      window.setTimeout(() => URL.revokeObjectURL(url), 1_000)
       setOpen(false)
+    } catch {
+      await alertDialog("Erreur export : le téléchargement n’a pas pu démarrer.")
     } finally {
       setDownloading(false)
     }

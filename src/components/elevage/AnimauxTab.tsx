@@ -232,6 +232,8 @@ function AnimauxSubTab() {
   const { filieres } = useElevageModes()
   const [filterStatut, setFilterStatut] = React.useState<string>("actif")
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
+  const [isSavingAnimal, setIsSavingAnimal] = React.useState(false)
+  const [animalSubmitError, setAnimalSubmitError] = React.useState<string | null>(null)
   // QA 2026-05-15 — édition par ligne pour les animaux
   const [editingAnimalId, setEditingAnimalId] = React.useState<number | null>(null)
 
@@ -255,6 +257,7 @@ function AnimauxSubTab() {
 
   const resetAnimalForm = () => {
     setEditingAnimalId(null)
+    setAnimalSubmitError(null)
     // Quand l'atelier courant ne contient qu'une espèce possible, on la
     // pré-sélectionne pour éviter tout choix ambigu ; sinon on laisse le
     // placeholder (le Select ne propose de toute façon que cet atelier).
@@ -391,10 +394,28 @@ function AnimauxSubTab() {
 
   React.useEffect(() => { fetchData() }, [fetchData])
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    const submitted = new FormData(e.currentTarget)
+    const identifiantSoumis =
+      typeof submitted.get("identifiant") === "string"
+        ? String(submitted.get("identifiant")).trim()
+        : formData.identifiant
+    const typeIdentifiantSoumis =
+      (typeof submitted.get("typeIdentifiant") === "string"
+        ? String(submitted.get("typeIdentifiant")) || null
+        : formData.typeIdentifiant || null) as TypeIdentifiant | null
     if (!formData.especeAnimaleId) {
       toast({ title: "Sélectionnez une espèce", variant: "destructive" })
+      return
+    }
+    if (!isValidIdentifiant(identifiantSoumis, typeIdentifiantSoumis)) {
+      const aideIdentifiantSoumis = placeholderIdentifiant(typeIdentifiantSoumis)
+      const description = aideIdentifiantSoumis
+        ? `Identifiant invalide. Format attendu : ${aideIdentifiantSoumis}`
+        : "Identifiant invalide"
+      setAnimalSubmitError(description)
+      toast({ title: "Identifiant invalide", description, variant: "destructive" })
       return
     }
     // Bug cmp8sagud (Marc 2026-05-16) — Toast générique "Impossible
@@ -406,6 +427,8 @@ function AnimauxSubTab() {
     // champs numériques (prixAchat, poidsActuel) étaient envoyés en
     // string et rejetés par Zod, et typeIdentifiant="" ne match aucun
     // enum. On nettoie le payload avant envoi.
+    setIsSavingAnimal(true)
+    setAnimalSubmitError(null)
     try {
       const isEdit = editingAnimalId !== null
       const toNum = (v: string): number | null => {
@@ -415,8 +438,8 @@ function AnimauxSubTab() {
       }
       const cleaned = {
         ...formData,
-        typeIdentifiant: formData.typeIdentifiant || null,
-        identifiant: formData.identifiant || null,
+        typeIdentifiant: typeIdentifiantSoumis,
+        identifiant: identifiantSoumis || null,
         // Bug testeur 2026-05-31 — on n'envoie plus de chaînes vides : un champ
         // texte vide est explicitement `null` (évite de stocker race='' qui
         // était lue comme « race non renseignée » alors que la saisie pouvait
@@ -474,11 +497,15 @@ function AnimauxSubTab() {
       resetAnimalForm()
       fetchData()
     } catch (err) {
+      const description = err instanceof Error ? err.message : "Impossible d'enregistrer"
+      setAnimalSubmitError(description)
       toast({
         variant: "destructive",
         title: "Erreur",
-        description: err instanceof Error ? err.message : "Impossible d'enregistrer",
+        description,
       })
+    } finally {
+      setIsSavingAnimal(false)
     }
   }
 
@@ -789,7 +816,7 @@ function AnimauxSubTab() {
               <DialogTitle>{editingAnimalId ? "Modifier l'animal" : "Nouvel animal"}</DialogTitle>
               <DialogDescription>{editingAnimalId ? `Édition de l'animal #${editingAnimalId}` : "Ajouter un animal individuel"}</DialogDescription>
             </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} noValidate className="space-y-4">
               <div className="space-y-2">
                 <Label>Profil d&apos;élevage *</Label>
                 <Select value={formData.especeAnimaleId} onValueChange={(v) => setFormData(f => ({ ...f, especeAnimaleId: v, raceAnimaleId: "" }))}>
@@ -818,6 +845,7 @@ function AnimauxSubTab() {
                 <div className="space-y-2 sm:col-span-2">
                   <Label>Identifiant principal</Label>
                   <Input
+                    name="identifiant"
                     value={formData.identifiant}
                     onChange={(e) => setFormData(f => ({ ...f, identifiant: e.target.value }))}
                     placeholder={aideIdentifiant || (estRente ? "BDNI/IPG/SIRE..." : estCompagnie ? "N° de puce (I-CAD) / tatouage" : "N° de puce / SIRE...")}
@@ -832,7 +860,7 @@ function AnimauxSubTab() {
                 </div>
                 <div className="space-y-2">
                   <Label>Type</Label>
-                  <select className="w-full h-10 rounded-md border border-slate-300 px-2 bg-white text-sm" value={formData.typeIdentifiant} onChange={(e) => setFormData(f => ({ ...f, typeIdentifiant: e.target.value }))}>
+                  <select name="typeIdentifiant" className="w-full h-10 rounded-md border border-slate-300 px-2 bg-white text-sm" value={formData.typeIdentifiant} onChange={(e) => setFormData(f => ({ ...f, typeIdentifiant: e.target.value }))}>
                     <option value="">— Non typé —</option>
                     <option value="BDNI bovin">BDNI bovin</option>
                     <option value="IPG ovin">IPG ovin</option>
@@ -1029,9 +1057,12 @@ function AnimauxSubTab() {
                 </div>
               )}
               <div className="flex justify-end gap-2 pt-4">
-                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
-                <Button type="submit">
-                  {editingAnimalId ? "Mettre à jour" : "Créer"}
+                {animalSubmitError && (
+                  <p role="alert" className="mr-auto text-sm text-red-600">{animalSubmitError}</p>
+                )}
+                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSavingAnimal}>Annuler</Button>
+                <Button type="submit" disabled={isSavingAnimal}>
+                  {isSavingAnimal ? "Enregistrement…" : editingAnimalId ? "Mettre à jour" : "Créer"}
                 </Button>
               </div>
             </form>

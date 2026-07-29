@@ -149,6 +149,25 @@ describe('getKpiMaraichage', () => {
     expect(kpi.surfaceCultiveeM2).toBe(50)
   })
 
+  it('compte la portion de planche réellement allouée à une culture', async () => {
+    mocked.culture.findMany.mockResolvedValue([
+      {
+        id: 862,
+        plancheId: 'p-radis',
+        longueur: 10,
+        semisFait: false,
+        plantationFaite: false,
+        recolteFaite: false,
+        terminee: null,
+        planche: { surface: 18, largeur: 1.2, longueur: 15 },
+      },
+    ])
+
+    const kpi = await getKpiMaraichage('user-radis', 2027, new Date('2026-07-29'))
+
+    expect(kpi.surfacePlanifieeM2).toBe(12)
+  })
+
   it('mémoïse le calcul (deuxième appel = 0 requête supplémentaire)', async () => {
     await getKpiMaraichage('user-mem', 2026, new Date('2026-05-14'))
     const callsAfterFirst = mocked.recolte.aggregate.mock.calls.length

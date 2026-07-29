@@ -91,6 +91,25 @@ export function isAutofertileFallback(variete: string | null | undefined): boole
   return VARIETES_AUTOFERTILES_PATTERNS.some((p) => n.includes(p))
 }
 
+/**
+ * Le mode de transport du pollen ne remplace jamais un pollinisateur
+ * variétal compatible. Une espèce anémophile (noyer, noisetier...) doit
+ * donc être signalée comme les autres si elle n'est pas autofertile et
+ * qu'aucun pollinisateur explicite ou dérivé n'est disponible.
+ */
+export function doitSignalerSansPollinisateur({
+  autofertile,
+  nombrePollinisateursExplicites,
+  hasPollinisateurDerive,
+}: {
+  autofertile: boolean
+  nombrePollinisateursExplicites: number
+  hasPollinisateurDerive: boolean
+  modePollinisation?: string | null
+}): boolean {
+  return !autofertile && nombrePollinisateursExplicites === 0 && !hasPollinisateurDerive
+}
+
 /** Distance max recommandée pour pollinisation efficace (mètres). */
 export const DISTANCE_MAX_POLLINISATION_M = 30
 

@@ -34,11 +34,20 @@ export function estProductionLaitiere(
   espece: EspeceLaitiere | null | undefined,
   orientation?: string | null,
 ): boolean {
-  const valeurs = [
-    orientation,
+  const productionsProfil = [
     espece?.production,
     ...(espece?.productions ?? []),
   ].map(normaliser)
+  // Une orientation individuelle ne peut pas transformer un profil
+  // explicitement avicole/compagnie en animal laitier. C'était le cas d'une
+  // poule saisie « mixte », ensuite proposée par défaut dans la traite.
+  if (productionsProfil.some((value) => value === "lait" || value === "mixte")) {
+    return true
+  }
+  if (productionsProfil.some((value) => value === "oeufs" || value === "compagnie")) {
+    return false
+  }
+  const valeurs = [orientation, ...productionsProfil].map(normaliser)
   return valeurs.some((value) => value === "lait" || value === "mixte")
 }
 

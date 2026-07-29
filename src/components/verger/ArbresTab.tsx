@@ -480,7 +480,7 @@ export function ArbresTab() {
     setNewArbreGpsAccuracy(null)
   }
 
-  const buildArbrePayload = (overrideNom?: string) => ({
+  const buildArbrePayload = (overrideNom?: string, overrideDatePlantation?: string) => ({
     nom: overrideNom ?? newArbre.nom,
     type: newArbre.type,
     espece: newArbre.espece || null,
@@ -488,7 +488,7 @@ export function ArbresTab() {
     fournisseur: newArbre.fournisseur || null,
     dateAchat: newArbre.dateAchat || null,
     prixAchat: newArbre.prixAchat || null,
-    datePlantation: newArbre.datePlantation || null,
+    datePlantation: overrideDatePlantation || newArbre.datePlantation || null,
     etat: newArbre.etat,
     // PROMPT 10
     porteGreffeId: newArbre.porteGreffeId || null,
@@ -506,6 +506,12 @@ export function ArbresTab() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    // Source de secours : certains navigateurs/agents remplissent
+    // `input[type=date]` juste avant le submit, alors que la mise à jour React
+    // contrôlée n'est pas encore visible dans la closure courante.
+    const datePlantation =
+      String(new FormData(e.currentTarget as HTMLFormElement).get("datePlantation") || "").trim()
+      || newArbre.datePlantation
     if (!newArbre.nom.trim() && !batchMode) {
       toast({ title: "Le nom est requis", variant: "destructive" })
       return
@@ -513,7 +519,7 @@ export function ArbresTab() {
     // Bug #2 — Date plantation requise (audit Marc 2026-05-14 : sans elle,
     // le calendrier d'entretien, la pyramide d'âge et les aides PCAE/HVE
     // ne fonctionnent pas).
-    if (!newArbre.datePlantation) {
+    if (!datePlantation) {
       toast({
         title: "Date de plantation requise",
         description: "Renseignez la date de plantation pour activer le calendrier d'entretien et les calculs d'âge.",
@@ -535,7 +541,7 @@ export function ArbresTab() {
         const res = await fetch("/api/arbres/lots", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ nom: batchPrefix.trim(), espece: newArbre.espece, variete: newArbre.variete, effectif: n, parcelleGeoId: newArbre.parcelleGeoId, datePlantation: newArbre.datePlantation }),
+          body: JSON.stringify({ nom: batchPrefix.trim(), espece: newArbre.espece, variete: newArbre.variete, effectif: n, parcelleGeoId: newArbre.parcelleGeoId, datePlantation }),
         })
         const payload = await res.json().catch(() => ({}))
         if (!res.ok) {
@@ -552,7 +558,7 @@ export function ArbresTab() {
       const res = await fetch("/api/arbres", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(buildArbrePayload()),
+        body: JSON.stringify(buildArbrePayload(undefined, datePlantation)),
       })
 
       if (res.ok) {
@@ -850,9 +856,13 @@ export function ArbresTab() {
               <Label>Date de plantation *</Label>
               <Input
                 type="date"
+                name="datePlantation"
                 required
                 value={newArbre.datePlantation}
-                onChange={(e) => setNewArbre({ ...newArbre, datePlantation: e.target.value })}
+                onChange={(e) => {
+                  const value = e.currentTarget.value
+                  setNewArbre((current) => ({ ...current, datePlantation: value }))
+                }}
               />
             </div>
 

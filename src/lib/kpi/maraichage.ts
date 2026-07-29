@@ -15,6 +15,7 @@
  */
 
 import prisma from '@/lib/prisma'
+import { surfaceCultureM2 } from '@/lib/culture-surface'
 import type { KPIMaraichage } from './types'
 import { shiftToPrevYear } from './types'
 import { asOfDayKey, memoize } from './cache'
@@ -69,6 +70,7 @@ async function computeKpiMaraichage(
       select: {
         id: true,
         plancheId: true,
+        longueur: true,
         semisFait: true,
         plantationFaite: true,
         recolteFaite: true,
@@ -123,26 +125,51 @@ async function computeKpiMaraichage(
     }),
   ])
 
-  // Surface planifiée : on dédoublonne par planche (une même planche peut
-  // accueillir plusieurs cultures dans l'année).
-  const surfacePlanifieePlanches = new Map<string, number>()
-  const surfaceCultiveePlanches = new Map<string, number>()
+  // Surface planifiée : somme des portions réellement allouées, plafonnée à
+  // la capacité de la planche. Une culture de 10 m sur une planche de 15 m
+  // compte donc 10 m, tandis que deux successions plein format ne doublent pas
+  // artificiellement la surface physique.
+  type SurfacePlanche = { allouee: number; capacite: number }
+  const surfacePlanifieePlanches = new Map<string, SurfacePlanche>()
+  const surfaceCultiveePlanches = new Map<string, SurfacePlanche>()
+  const ajouterSurface = (
+    map: Map<string, SurfacePlanche>,
+    plancheId: string,
+    culture: {
+      longueur?: number | null
+      planche?: { surface?: number | null; largeur?: number | null; longueur?: number | null } | null
+    },
+  ) => {
+    const planche = culture.planche
+    const capacite = Number(planche?.surface ?? 0) > 0
+      ? Number(planche?.surface)
+      : Number(planche?.largeur ?? 0) * Number(planche?.longueur ?? 0)
+    const courant = map.get(plancheId) ?? { allouee: 0, capacite }
+    courant.allouee += surfaceCultureM2(culture)
+    courant.capacite = Math.max(courant.capacite, capacite)
+    map.set(plancheId, courant)
+  }
   for (const c of culturesAnnee) {
     if (!c.plancheId) continue
-    // Ticket #4 — fallback dérivé si la colonne surface est null
-    const p = c.planche
-    const surface = p?.surface
-      ?? (p?.largeur && p?.longueur ? p.largeur * p.longueur : 0)
-    surfacePlanifieePlanches.set(c.plancheId, surface)
+    ajouterSurface(surfacePlanifieePlanches, c.plancheId, c)
     const active =
       c.terminee === null &&
       (c.semisFait || c.plantationFaite || c.recolteFaite)
     if (active) {
-      surfaceCultiveePlanches.set(c.plancheId, surface)
+      ajouterSurface(surfaceCultiveePlanches, c.plancheId, c)
     }
   }
-  const surfacePlanifieeM2 = sumValues(surfacePlanifieePlanches)
-  const surfaceCultiveeM2 = sumValues(surfaceCultiveePlanches)
+  const sommeSurfaces = (map: Map<string, SurfacePlanche>) => {
+    let total = 0
+    for (const value of map.values()) {
+      total += value.capacite > 0
+        ? Math.min(value.allouee, value.capacite)
+        : value.allouee
+    }
+    return total
+  }
+  const surfacePlanifieeM2 = sommeSurfaces(surfacePlanifieePlanches)
+  const surfaceCultiveeM2 = sommeSurfaces(surfaceCultiveePlanches)
 
   return {
     year,
@@ -162,12 +189,6 @@ async function computeKpiMaraichage(
       }, 0)
     ),
   }
-}
-
-function sumValues(map: Map<string, number>): number {
-  let total = 0
-  for (const v of map.values()) total += v
-  return total
 }
 
 function round1(n: number): number {

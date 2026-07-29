@@ -345,6 +345,14 @@ export async function GET(request: NextRequest) {
       })
     }
 
+    // Le contrat `jours=21` s'applique aussi aux sources qui calculent leur
+    // propre fenêtre (notamment les délais lait/viande). Sans ce filtre final,
+    // une remise en vente à J+28 apparaissait dans « Prochaines échéances
+    // (21 jours) » et gonflait le compteur d'urgences.
+    const echeancesDansHorizon = echeances.filter(
+      (e) => e.joursRestants == null || e.joursRestants <= horizonJours,
+    )
+
     // QA caprin cms1v9o67 — tri STRICTEMENT chronologique : retards en tête
     // (joursRestants négatifs), puis échéances futures par date croissante.
     // Avant, la gravité primait sur la date : une remise en vente lait du
@@ -352,7 +360,7 @@ export async function GET(request: NextRequest) {
     // (« info ») — risque de rater une injection d'antibiotique. La gravité
     // ne sert plus que de départage à date égale.
     const rangGravite: Record<Gravite, number> = { urgent: 0, attention: 1, info: 2 }
-    echeances.sort((a, b) => {
+    echeancesDansHorizon.sort((a, b) => {
       const ja = a.joursRestants ?? Number.POSITIVE_INFINITY
       const jb = b.joursRestants ?? Number.POSITIVE_INFINITY
       if (ja !== jb) return ja - jb
@@ -361,20 +369,20 @@ export async function GET(request: NextRequest) {
     })
 
     const counts = {
-      total: echeances.length,
-      urgent: echeances.filter((e) => e.gravite === 'urgent').length,
-      misesBas: echeances.filter((e) => e.kind === 'mise_bas').length,
-      tarissements: echeances.filter((e) => e.kind === 'tarissement').length,
-      attentes: echeances.filter((e) => e.kind === 'attente_lait' || e.kind === 'attente_viande').length,
-      soins: echeances.filter((e) => e.kind === 'soin_planifie' || e.kind === 'soin_retard').length,
-      diagnostics: echeances.filter((e) => e.kind === 'diagnostic_gestation').length,
-      stock: echeances.filter((e) => e.kind === 'stock_aliment').length,
-      sanitaireReglementaire: echeances.filter((e) => e.kind === 'medicament_peremption' || e.kind === 'prophylaxie').length,
-      tachesTerrain: echeances.filter((e) => e.kind === 'tache_terrain').length,
-      administratif: echeances.filter((e) => e.kind === 'administratif').length,
+      total: echeancesDansHorizon.length,
+      urgent: echeancesDansHorizon.filter((e) => e.gravite === 'urgent').length,
+      misesBas: echeancesDansHorizon.filter((e) => e.kind === 'mise_bas').length,
+      tarissements: echeancesDansHorizon.filter((e) => e.kind === 'tarissement').length,
+      attentes: echeancesDansHorizon.filter((e) => e.kind === 'attente_lait' || e.kind === 'attente_viande').length,
+      soins: echeancesDansHorizon.filter((e) => e.kind === 'soin_planifie' || e.kind === 'soin_retard').length,
+      diagnostics: echeancesDansHorizon.filter((e) => e.kind === 'diagnostic_gestation').length,
+      stock: echeancesDansHorizon.filter((e) => e.kind === 'stock_aliment').length,
+      sanitaireReglementaire: echeancesDansHorizon.filter((e) => e.kind === 'medicament_peremption' || e.kind === 'prophylaxie').length,
+      tachesTerrain: echeancesDansHorizon.filter((e) => e.kind === 'tache_terrain').length,
+      administratif: echeancesDansHorizon.filter((e) => e.kind === 'administratif').length,
     }
 
-    return NextResponse.json({ echeances, counts, horizonJours })
+    return NextResponse.json({ echeances: echeancesDansHorizon, counts, horizonJours })
   } catch (err) {
     console.error('GET /api/elevage/agenda error:', err)
     return NextResponse.json({ error: 'Erreur interne du serveur' }, { status: 500 })

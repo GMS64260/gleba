@@ -13,6 +13,11 @@ import { createVenteFromVenteProduit, deleteAutoEntry } from '@/lib/auto-compta'
 import { creerFacture, annulerFactureLiee } from '@/lib/facture-utils'
 import { venteProduitSchema } from '@/lib/validations/elevage-vente'
 import { invalidateKpi } from '@/lib/kpi'
+import {
+  StockOeufsVenteError,
+  supprimerStockOeufsVente,
+  synchroniserStockOeufsVente,
+} from '@/lib/elevage/stock-oeufs-vente'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -263,6 +268,16 @@ export async function POST(request: NextRequest) {
         },
       })
 
+      if (type === 'oeufs') {
+        await synchroniserStockOeufsVente(tx, {
+          userId: session.user.id,
+          venteId: vente.id,
+          date: vente.date,
+          quantite: vente.quantite,
+          unite: vente.unite,
+        })
+      }
+
       // Si vente d'animal vivant, mettre à jour le statut de l'animal
       if (type === 'animal_vivant' && parsed.data.animalId) {
         const animal = await tx.animal.findFirst({
@@ -361,6 +376,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ data: result, warning }, { status: 201 })
   } catch (error) {
+    if (error instanceof StockOeufsVenteError) {
+      return NextResponse.json({ error: error.message }, { status: error.status })
+    }
     if (error instanceof StockFromageError) {
       return NextResponse.json({ error: error.message }, { status: error.status })
     }
@@ -412,6 +430,9 @@ export async function DELETE(request: NextRequest) {
         where: { id: existing.id },
         data: { annule: true, dateAnnulation: new Date() },
       })
+      if (existing.type === 'oeufs') {
+        await supprimerStockOeufsVente(tx, session.user.id, existing.id)
+      }
 
       if (existing.type === 'animal_vivant' && existing.animalId) {
         await tx.animal.updateMany({
@@ -448,6 +469,9 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true })
   } catch (error) {
+    if (error instanceof StockOeufsVenteError) {
+      return NextResponse.json({ error: error.message }, { status: error.status })
+    }
     console.error('DELETE /api/elevage/ventes error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la suppression', details: "Erreur interne du serveur" },
@@ -618,6 +642,17 @@ export async function PATCH(request: NextRequest) {
           destination: true,
         },
       })
+      if (updated.type === 'oeufs') {
+        await synchroniserStockOeufsVente(tx, {
+          userId,
+          venteId: updated.id,
+          date: updated.date,
+          quantite: updated.quantite,
+          unite: updated.unite,
+        })
+      } else if (existing.type === 'oeufs') {
+        await supprimerStockOeufsVente(tx, userId, existing.id)
+      }
       await createVenteFromVenteProduit(userId, {
         id: updated.id,
         type: updated.type,
@@ -638,6 +673,9 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ data: vente })
   } catch (error) {
+    if (error instanceof StockOeufsVenteError) {
+      return NextResponse.json({ error: error.message }, { status: error.status })
+    }
     console.error('PATCH /api/elevage/ventes error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la modification', details: "Erreur interne du serveur" },

@@ -45,7 +45,8 @@ const mocked = prisma as unknown as {
 function cultureDirecte(
   id: number,
   especeId: string,
-  planche: { nom: string; longueur: number; largeur: number }
+  planche: { nom: string; longueur: number; largeur: number },
+  culture?: { longueur?: number | null; nbRangs?: number | null; espacement?: number | null },
 ) {
   return {
     id,
@@ -68,9 +69,9 @@ function cultureDirecte(
     dateSemis: null,
     datePlantation: null,
     dateRecolte: null,
-    nbRangs: null,
-    espacement: null,
-    longueur: null,
+    nbRangs: culture?.nbRangs ?? null,
+    espacement: culture?.espacement ?? null,
+    longueur: culture?.longueur ?? null,
   }
 }
 
@@ -145,5 +146,34 @@ describe('getBesoinsSemences (BUG-21 prorata multi-cultures)', () => {
     const besoins = await getBesoinsSemences('u1', 2026)
     const carotte = besoins.find(b => b.especeId === 'carotte')
     expect(carotte?.surfaceTotale).toBe(50) // 30 + 20
+  })
+
+  it('calcule les plants sur la longueur réellement cultivée, pas sur toute la planche', async () => {
+    mocked.culture.findMany.mockResolvedValue([
+      cultureDirecte(
+        862,
+        'radis',
+        { nom: 'Marc-Test-0729', longueur: 15, largeur: 1.2 },
+        { longueur: 10, nbRangs: 3, espacement: 11 },
+      ),
+    ])
+    mocked.espece.findMany.mockResolvedValue([
+      {
+        id: 'radis',
+        couleur: null,
+        modeSemis: 'graine_directe',
+        doseSemis: 2,
+        uniteDose: 'g_m2',
+        tauxGermination: 80,
+        margeSecuritePct: 0,
+        densite: null,
+        famille: null,
+      },
+    ])
+
+    const [radis] = await getBesoinsSemences('u1', 2027)
+
+    expect(radis.surfaceTotale).toBe(12)
+    expect(radis.nbPlants).toBe(270)
   })
 })

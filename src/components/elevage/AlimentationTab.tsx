@@ -1349,13 +1349,13 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
           <Button variant="outline" size="sm" onClick={fetchData}><RefreshCw className="h-4 w-4" /></Button>
           <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) resetSoinForm() }}>
             <DialogTrigger asChild><Button size="sm" onClick={() => setEditingSoinId(null)}><Plus className="h-4 w-4 mr-1" />Nouveau soin</Button></DialogTrigger>
-            <DialogContent className="max-w-md">
+            <DialogContent className="w-[calc(100%-2rem)] max-w-md p-4 sm:p-6">
               <DialogHeader><DialogTitle>{editingSoinId ? "Modifier le soin" : "Enregistrer un soin"}</DialogTitle><DialogDescription>{editingSoinId ? `Édition du soin #${editingSoinId}` : "Vaccination, vermifuge, traitement..."}</DialogDescription></DialogHeader>
-              <form onSubmit={handleSubmit} className="space-y-3 max-h-[70dvh] overflow-y-auto pr-2">
+              <form onSubmit={handleSubmit} className="space-y-3 max-h-[70dvh] overflow-y-auto sm:pr-2">
                 {/* Cible : animal ou lot */}
                 <div className="space-y-2">
                   <Label>Cible *</Label>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <Button type="button" size="sm" variant={formData.cible === "animal" ? "default" : "outline"} onClick={() => setFormData(f => ({ ...f, cible: "animal", lotId: "" }))}>
                       Animal individuel
                     </Button>
@@ -1379,7 +1379,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
                   )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Type *</Label>
                     {/* Actes communs à toutes les filières + actes de rente
@@ -1495,7 +1495,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
                         produit n'est qu'un défaut. En usage hors AMM (cascade),
                         le vétérinaire prescrit un délai majoré (minima 7 j lait /
                         28 j viande) : l'éleveur doit pouvoir saisir l'ordonnance. */}
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div className="space-y-1">
                         <Label className="text-xs">Délai d&apos;attente lait (j)</Label>
                         <Input type="number" min="0" max="365" value={formData.tempsAttenteLaitJ}
@@ -1514,7 +1514,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
                         const taViande = formData.tempsAttenteViandeJ === "" ? null : parseInt(formData.tempsAttenteViandeJ, 10)
                         const surcharge = p && ((taLait ?? 0) !== p.tempsAttenteLaitJ || (taViande ?? 0) !== p.tempsAttenteViandeJ)
                         return (
-                          <p className="col-span-2 text-[11px] text-muted-foreground -mt-1">
+                          <p className="sm:col-span-2 text-[11px] text-muted-foreground -mt-1">
                             {p?.delaiAttenteSource === "cascade"
                               ? "Espèce hors AMM : planchers cascade appliqués (7 j lait / 28 j viande). "
                               : p?.delaiAttenteSource === "referentiel_espece"
@@ -1555,7 +1555,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
                 )}
 
                 {/* PROMPT 30 — protocole à plusieurs injections (ex. Pénijectyl J0/J1/J2) */}
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Nombre d&apos;injections</Label>
                     <Input type="number" min="1" max="30" value={formData.nbInjections} onChange={(e) => setFormData(f => ({ ...f, nbInjections: e.target.value }))} />
@@ -1576,14 +1576,14 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
                     </select>
                   </div>
                   {(parseInt(formData.nbInjections, 10) || 1) > 1 && (
-                    <p className="col-span-2 text-xs text-muted-foreground">
+                    <p className="sm:col-span-2 text-xs text-muted-foreground">
                       {formData.nbInjections} injections espacées de {formData.intervalleInjectionsHeures} h — 1 seul traitement.
                       Le délai d&apos;attente démarre à la dernière injection.
                     </p>
                   )}
                 </div>
 
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <div className="space-y-2"><Label>Dose</Label><Input value={formData.dose} onChange={(e) => setFormData(f => ({ ...f, dose: e.target.value }))} placeholder="2 ml/10 kg" /></div>
                   <div className="space-y-2">
                     <Label>Voie</Label>
@@ -1609,7 +1609,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
                   <Input value={formData.motif} onChange={(e) => setFormData(f => ({ ...f, motif: e.target.value }))} placeholder="Indication, symptômes..." />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Vétérinaire</Label>
                     <Input value={formData.veterinaire} onChange={(e) => setFormData(f => ({ ...f, veterinaire: e.target.value }))} placeholder="Nom (registre sanitaire)" />
@@ -1620,14 +1620,14 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="space-y-2"><Label>Quantité</Label><Input type="number" step="0.01" value={formData.quantite} onChange={(e) => setFormData(f => ({ ...f, quantite: e.target.value }))} /></div>
                   <div className="space-y-2"><Label>Unité</Label><Input value={formData.unite} onChange={(e) => setFormData(f => ({ ...f, unite: e.target.value }))} placeholder="mL, doses..." /></div>
                 </div>
 
                 <div className="space-y-2"><Label>Notes</Label><Textarea value={formData.notes} onChange={(e) => setFormData(f => ({ ...f, notes: e.target.value }))} rows={2} /></div>
 
-                <div className="grid grid-cols-2 gap-3 items-end">
+                <div className="grid grid-cols-1 gap-3 items-end sm:grid-cols-2">
                   <div className="flex items-center gap-2">
                     <Checkbox id="fait" checked={formData.fait} onCheckedChange={(c) => setFormData(f => ({ ...f, fait: !!c }))} />
                     <Label htmlFor="fait">Déjà effectué</Label>

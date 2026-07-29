@@ -38,6 +38,7 @@ import { confirmDialog } from "@/lib/global-dialog"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 import { updateCultureSchema, type UpdateCultureInput } from "@/lib/validations"
 import { estimerNombrePlantsStrict } from "@/lib/assistant-helpers"
+import { libelleItp } from "@/lib/itp-label"
 
 // Convertir un numéro de semaine (1-52) en date pour une annee donnée
 function weekToDate(year: number, week: number): Date {
@@ -468,7 +469,7 @@ export default function EditCulturePage() {
                         <SelectContent>
                           {itps.map((itp) => (
                             <SelectItem key={itp.id} value={itp.id}>
-                              {itp.nom ?? itp.id}
+                              {libelleItp(itp.nom ?? itp.id)}
                             </SelectItem>
                           ))}
                         </SelectContent>

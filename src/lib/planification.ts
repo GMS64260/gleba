@@ -4,6 +4,7 @@
  */
 
 import prisma from '@/lib/prisma'
+import { getISOWeek, getISOWeekYear } from 'date-fns'
 import { calculerDateDepuisSemaine, dateSemaineChrono } from './assistant-helpers'
 import { alertesAssociations } from './associations-alertes'
 import { appliquerDecalageItp, decalageItpPourZone } from './calendrier-climat'
@@ -31,6 +32,8 @@ export interface CulturePrevue {
   plancheLongueur: number | null
   plancheLargeur: number | null
   plancheSurface: number | null
+  /** Portion de longueur réellement allouée à la culture, si saisie. */
+  cultureLongueur: number | null
   ilot: string | null
   rotationId: string | null
   rotationAnnee: number // Annee dans le cycle (1, 2, 3...)
@@ -187,10 +190,12 @@ function dateVersSemaine(d: Date, anneeAttendue?: number): number | null {
   // Bug (testeur) : une récolte en janvier 2027 (carotte conservation) ne doit pas
   // apparaître en semaine 2 du calendrier 2026. Si la date n'est pas dans l'année
   // affichée, on retourne null (la culture sera exclue de cette vue annuelle).
-  if (anneeAttendue != null && d.getFullYear() !== anneeAttendue) return null
-  const start = new Date(d.getFullYear(), 0, 1)
-  const diff = (d.getTime() - start.getTime()) / 86_400_000
-  return Math.min(53, Math.max(1, Math.ceil((diff + start.getDay() + 1) / 7)))
+  // Les dates issues d'un <input type="date"> peuvent être persistées à
+  // 23:00 UTC la veille (minuit Europe/Paris). Le passage à midi UTC conserve
+  // le jour civil choisi, quel que soit le décalage usuel du navigateur.
+  const jourCivil = new Date(d.getTime() + 12 * 3_600_000)
+  if (anneeAttendue != null && getISOWeekYear(jourCivil) !== anneeAttendue) return null
+  return getISOWeek(jourCivil)
 }
 
 const MOIS_NOMS = [
@@ -321,6 +326,9 @@ export async function getCulturesPrevues(
           dateSemis: true,
           datePlantation: true,
           dateRecolte: true,
+          longueur: true,
+          nbRangs: true,
+          espacement: true,
           recolteFaite: true,
           terminee: true,
         },
@@ -351,8 +359,6 @@ export async function getCulturesPrevues(
       if (options?.especeId && detail.itp?.especeId !== options.especeId) {
         continue
       }
-
-      const surface = (planche.longueur || 0) * (planche.largeur || 0)
 
       // Verifier si une culture existe deja
       const cultureExistante = planche.cultures.find(
@@ -396,12 +402,18 @@ export async function getCulturesPrevues(
         plantationReelle: !!cultureExistante?.datePlantation,
         recolteReelle: !!cultureExistante?.dateRecolte,
       })
+      const surfacePlanche = (planche.longueur || 0) * (planche.largeur || 0)
+      const surface =
+        cultureExistante?.longueur && planche.largeur
+          ? cultureExistante.longueur * planche.largeur
+          : surfacePlanche
 
       culturesPrevues.push({
         plancheId: planche.nom,
         plancheLongueur: planche.longueur,
         plancheLargeur: planche.largeur,
         plancheSurface: planche.surface,
+        cultureLongueur: cultureExistante?.longueur ?? null,
         ilot: deriveIlot(planche.ilot, planche.nom),
         rotationId: planche.rotationId,
         rotationAnnee: detail.annee,
@@ -414,8 +426,8 @@ export async function getCulturesPrevues(
         semainePlantation: semainesM1.semainePlantation,
         semaineRecolte: semainesM1.semaineRecolte,
         dureeCulture: detail.itp?.dureeCulture || null,
-        nbRangs: detail.itp?.nbRangs || null,
-        espacement: detail.itp?.espacement || null,
+        nbRangs: cultureExistante?.nbRangs || detail.itp?.nbRangs || null,
+        espacement: cultureExistante?.espacement || detail.itp?.espacement || null,
         surface,
         existante: !!cultureExistante,
         cultureId: cultureExistante?.id || null,
@@ -469,7 +481,7 @@ export async function getCulturesPrevues(
     const dejaPresente = culturesPrevues.some(cp => cp.cultureId === culture.id)
 
     if (!dejaPresente && culture.planche) {
-      const surface = (culture.planche.longueur || 0) * (culture.planche.largeur || 0)
+      const surfacePlanche = (culture.planche.longueur || 0) * (culture.planche.largeur || 0)
 
       // Bug R19/R26 : la DATE RÉELLE saisie sur la culture prime sur la semaine
       // théorique de l'ITP (sinon 2 cultures en succession affichent la même
@@ -501,6 +513,7 @@ export async function getCulturesPrevues(
         plancheLongueur: culture.planche.longueur,
         plancheLargeur: culture.planche.largeur,
         plancheSurface: culture.planche.surface,
+        cultureLongueur: culture.longueur,
         ilot: deriveIlot(culture.planche.ilot, culture.planche.nom),
         rotationId: culture.planche.rotationId,
         rotationAnnee: 0, // Pas de rotation
@@ -515,9 +528,9 @@ export async function getCulturesPrevues(
         dureeCulture: culture.itp?.dureeCulture || null,
         nbRangs: culture.nbRangs || culture.itp?.nbRangs || null,
         espacement: culture.espacement || culture.itp?.espacement || null,
-        surface: culture.longueur && culture.planche.largeur && culture.nbRangs
-          ? (culture.longueur * culture.planche.largeur * culture.nbRangs) / (culture.nbRangs || 1)
-          : surface,
+        surface: culture.longueur && culture.planche.largeur
+          ? culture.longueur * culture.planche.largeur
+          : surfacePlanche,
         existante: true, // Culture déjà créée
         cultureId: culture.id,
       })
@@ -711,8 +724,13 @@ export async function getBesoinsSemences(
     const fb = itpFallbackSemences.get(culture.especeId)
     const nbRangs = culture.nbRangs ?? fb?.nbRangs ?? null
     const espacement = culture.espacement ?? fb?.espacement ?? null
+    const longueurEffective =
+      culture.cultureLongueur ??
+      (culture.plancheLargeur && culture.surface > 0
+        ? culture.surface / culture.plancheLargeur
+        : culture.plancheLongueur)
     let nbPlants = calculerNbPlants(
-      culture.plancheLongueur,
+      longueurEffective,
       culture.plancheLargeur,
       nbRangs,
       espacement
@@ -884,8 +902,13 @@ export async function getBesoinsPlants(
     const fb = itpFallback.get(culture.especeId)
     const nbRangs = culture.nbRangs ?? fb?.nbRangs ?? null
     const espacement = culture.espacement ?? fb?.espacement ?? null
+    const longueurEffective =
+      culture.cultureLongueur ??
+      (culture.plancheLargeur && culture.surface > 0
+        ? culture.surface / culture.plancheLargeur
+        : culture.plancheLongueur)
     let nbPlantsBrut = calculerNbPlants(
-      culture.plancheLongueur,
+      longueurEffective,
       culture.plancheLargeur,
       nbRangs,
       espacement
