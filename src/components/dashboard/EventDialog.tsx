@@ -38,6 +38,7 @@ interface CalendarEvent {
   fait: boolean
   couleur: string | null
   cultureId?: number // Pour les irrigations, ID de la culture liée
+  cultureCount?: number
 }
 
 interface EventDialogProps {
@@ -197,6 +198,11 @@ export function EventDialog({ event, open, onOpenChange, onUpdate }: EventDialog
           : `${config.label} marqué comme effectué`,
       })
 
+      if (event.type === "irrigation") {
+        window.dispatchEvent(new CustomEvent("gleba:irrigation-updated", {
+          detail: { source: "calendar-dialog" },
+        }))
+      }
       onUpdate()
       onOpenChange(false)
     } catch {

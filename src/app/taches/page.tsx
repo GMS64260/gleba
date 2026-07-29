@@ -323,6 +323,9 @@ function TachesContent() {
         title: "Arrosage noté !",
         description: noteStr || "Irrigation standard",
       })
+      window.dispatchEvent(new CustomEvent("gleba:irrigation-updated", {
+        detail: { source: "tasks-page" },
+      }))
       setPendingAction(null)
     } catch {
       toast({
