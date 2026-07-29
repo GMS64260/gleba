@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
               especeAnimale: { select: { id: true, nom: true, filiere: true, dureeGestation: true, dureeCouvaison: true } },
             },
           },
-          lot: { select: { id: true, nom: true, especeAnimale: { select: { nom: true, filiere: true } } } },
+          lot: { select: { id: true, nom: true, especeAnimale: { select: { id: true, nom: true, filiere: true } } } },
           petits: { orderBy: { numero: 'asc' } },
         },
         orderBy: { date: 'desc' },

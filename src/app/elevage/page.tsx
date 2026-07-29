@@ -54,7 +54,7 @@ const TABS = [
   { id: "animaux", label: "Animaux & Lots", icon: PawPrint, shortLabel: "Animaux" },
   { id: "production", label: "Production", icon: Milk, shortLabel: "Production" },
   { id: "reproduction", label: "Reproduction", icon: Baby, shortLabel: "Repro." },
-  { id: "alimentation", label: "Alimentation", icon: Wheat, shortLabel: "Aliment." },
+  { id: "alimentation", label: "Alimentation & Soins", icon: Wheat, shortLabel: "Soins" },
   { id: "especes", label: "Profils d’élevage", icon: Shapes, shortLabel: "Profils" },
   { id: "races", label: "Races", icon: Dna, shortLabel: "Races" },
 ] as const

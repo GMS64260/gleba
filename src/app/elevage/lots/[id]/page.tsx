@@ -23,6 +23,9 @@ import {
   Map as MapIcon,
   Settings,
   Users,
+  Wallet,
+  TrendingDown,
+  TrendingUp,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -57,10 +60,19 @@ interface LotDetail {
   effectifCollectif: number
   provenance: string | null
   prixAchatTotal: number | null
+  prixAchatParAnimal: number | null
   notes: string | null
   especeAnimale: { id: string; nom: string; type: string; couleur: string | null }
   parcelleGeo: { id: string; nom: string } | null
   animaux: AnimalLite[]
+  mouvementsEconomiques: Array<{
+    id: string
+    date: string
+    type: "depense" | "recette"
+    libelle: string
+    montant: number
+  }>
+  totauxEconomiques: { depenses: number; recettes: number }
   _count: { animaux: number; productionsOeufs: number; soins: number }
 }
 
@@ -70,6 +82,8 @@ const STATUT_COLORS: Record<string, string> = {
   abattu: "bg-amber-100 text-amber-800",
   mort: "bg-red-100 text-red-800",
 }
+
+const euro = new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" })
 
 export default function LotDetailPage() {
   const params = useParams()
@@ -191,12 +205,81 @@ export default function LotDetailPage() {
                   </div>
                 </div>
               </CardHeader>
-              {(lot.provenance || lot.notes) && (
-                <CardContent className="pt-0 space-y-1 text-sm">
-                  {lot.provenance && <p><span className="text-muted-foreground">Provenance :</span> {lot.provenance}</p>}
-                  {lot.notes && <p className="text-muted-foreground italic">{lot.notes}</p>}
-                </CardContent>
-              )}
+              <CardContent className="pt-0 space-y-1 text-sm">
+                <p>
+                  <span className="text-muted-foreground">Provenance :</span>{" "}
+                  {lot.provenance || "Non renseignée"}
+                </p>
+                {lot.notes && <p className="text-muted-foreground italic">{lot.notes}</p>}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Wallet className="h-5 w-5 text-blue-600" />
+                    Économie du lot
+                  </CardTitle>
+                  <Button asChild variant="outline" size="sm">
+                    <Link href="/elevage/economie">Voir l&apos;analyse globale</Link>
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="rounded-lg border bg-slate-50 p-3">
+                    <p className="text-xs text-muted-foreground">Prix d&apos;achat total</p>
+                    <p className="text-xl font-semibold">
+                      {lot.prixAchatTotal != null ? euro.format(lot.prixAchatTotal) : "Non renseigné"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border bg-slate-50 p-3">
+                    <p className="text-xs text-muted-foreground">Prix par animal à l&apos;achat</p>
+                    <p className="text-xl font-semibold">
+                      {lot.prixAchatParAnimal != null ? euro.format(lot.prixAchatParAnimal) : "Non calculable"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">sur {lot.quantiteInitiale} animal(aux) initiaux</p>
+                  </div>
+                  <div className="rounded-lg border bg-red-50 p-3">
+                    <p className="flex items-center gap-1 text-xs text-red-700">
+                      <TrendingDown className="h-3.5 w-3.5" />
+                      Dépenses liées
+                    </p>
+                    <p className="text-xl font-semibold text-red-700">{euro.format(lot.totauxEconomiques.depenses)}</p>
+                  </div>
+                  <div className="rounded-lg border bg-emerald-50 p-3">
+                    <p className="flex items-center gap-1 text-xs text-emerald-700">
+                      <TrendingUp className="h-3.5 w-3.5" />
+                      Recettes liées
+                    </p>
+                    <p className="text-xl font-semibold text-emerald-700">{euro.format(lot.totauxEconomiques.recettes)}</p>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border">
+                  <div className="border-b px-3 py-2 text-sm font-medium">Mouvements économiques</div>
+                  {lot.mouvementsEconomiques.length === 0 ? (
+                    <p className="p-4 text-sm text-muted-foreground">
+                      Aucun mouvement comptable lié à ce lot.
+                    </p>
+                  ) : (
+                    <ul className="divide-y">
+                      {lot.mouvementsEconomiques.map((mouvement) => (
+                        <li key={mouvement.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm">
+                          <span className="w-24 text-xs text-muted-foreground">
+                            {new Date(mouvement.date).toLocaleDateString("fr-FR")}
+                          </span>
+                          <span className="min-w-0 flex-1">{mouvement.libelle}</span>
+                          <span className={`font-semibold ${mouvement.type === "recette" ? "text-emerald-700" : "text-red-700"}`}>
+                            {mouvement.type === "recette" ? "+" : "−"} {euro.format(mouvement.montant)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </CardContent>
             </Card>
 
             {/* Animaux du lot */}

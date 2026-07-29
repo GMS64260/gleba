@@ -99,7 +99,7 @@ interface Naissance {
   lotId: number | null
   saillieId?: string | null
   petits: PetitNaissance[]
-  lot: { id: number; nom: string | null; especeAnimale?: { nom: string; filiere?: string | null } } | null
+  lot: { id: number; nom: string | null; especeAnimale?: { id: string; nom: string; filiere?: string | null } } | null
   mere: {
     id: number
     nom: string | null
@@ -738,7 +738,7 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
   const [naissances, setNaissances] = React.useState<Naissance[]>([])
   const [femelles, setFemelles] = React.useState<AnimalFemelle[]>([])
   // Lots actifs pour rattacher une portée (élevage en lot, cmpm79lql)
-  const [lots, setLots] = React.useState<{ id: number; nom: string | null; especeAnimale: { nom: string; filiere?: string | null } }[]>([])
+  const [lots, setLots] = React.useState<{ id: number; nom: string | null; especeAnimale: { id: string; nom: string; filiere?: string | null } }[]>([])
   // QA caprin cms1v6ctk — saillies rattachables (sans mise-bas déjà liée),
   // proposées pour chaîner mise en lutte → saillie → gestation → mise-bas.
   const [sailliesOuvertes, setSailliesOuvertes] = React.useState<{
@@ -911,7 +911,15 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
       const json = await res.json()
       if (!res.ok) { toast({ variant: "destructive", title: "Erreur", description: json.error || "Création impossible" }); return }
       const lot = json.data
-      setLots(prev => [...prev, { id: lot.id, nom: lot.nom, especeAnimale: { nom: lot.especeAnimale?.nom ?? mere.especeAnimale.nom } }])
+      setLots(prev => [...prev, {
+        id: lot.id,
+        nom: lot.nom,
+        especeAnimale: {
+          id: lot.especeAnimale?.id ?? mere.especeAnimale.id,
+          nom: lot.especeAnimale?.nom ?? mere.especeAnimale.nom,
+          filiere: lot.especeAnimale?.filiere ?? mere.especeAnimale.filiere,
+        },
+      }])
       setFormData(f => ({ ...f, lotId: String(lot.id) }))
       setNewLotName("")
       setCreatingLot(false)
@@ -1092,7 +1100,7 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
   const handleCreerFiches = async (n: Naissance) => {
     const nb = petitsSansFiche(n)
     if (nb === 0) return
-    if (!(await confirmDialog(`Créer ${nb} fiche(s) animale(s) à partir des petits de cette mise bas ?`))) return
+    if (!(await confirmDialog(`Créer ${nb} fiche(s) animale(s) à partir des petits de cette mise bas ? Chaque fiche sera ensuite disponible dans « Animaux & Lots ».`))) return
     setCreationFiches(n.id)
     try {
       const res = await fetch(`/api/elevage/naissances/${n.id}/fiches`, { method: 'POST' })
@@ -1113,12 +1121,18 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
   // Preparer donnees graphique
   // Vocabulaire dérivé de l'espèce de la mère (chiot/chaton/cabri…) + contexte filière.
   const mereSel = femelles.find((f) => String(f.id) === formData.mereId)
-  const petitMots = libellePetit(mereSel?.especeAnimale?.id)
+  const lotSel = lots.find((l) => String(l.id) === formData.lotId)
+  const petitMots = libellePetit(mereSel?.especeAnimale?.id ?? lotSel?.especeAnimale?.id)
   const capS = petitMots.s.charAt(0).toUpperCase() + petitMots.s.slice(1)
   const capP = petitMots.p.charAt(0).toUpperCase() + petitMots.p.slice(1)
   const compagnieNaiss = filiereSel !== "toutes" && filiereSel !== "rente"
   const idProvLbl = compagnieNaiss ? "Identifiants provisoires" : "Boucles provisoires"
   const idDefLbl = compagnieNaiss ? "Puce / identifiant définitif" : "Boucles définitives"
+  const libelleEvenementNaissance = mereSel?.especeAnimale.dureeCouvaison != null
+    ? "Éclosion"
+    : mereSel || lotSel
+      ? "Mise bas"
+      : "Mise bas / naissance"
 
   // Portées de l'atelier courant + KPIs recalculés dessus : les stats renvoyées
   // par l'API sont globales à l'exploitation, elles fuiteraient les autres
@@ -1149,6 +1163,15 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
       parMois,
     }
   }, [naissancesF])
+  const naissancesIncluentEclosions = naissancesF.some((n) => {
+    if (n.mere?.especeAnimale.dureeCouvaison != null) return true
+    const petit = libellePetit(n.mere?.especeAnimale.id ?? n.lot?.especeAnimale?.id).s
+    return ["poussin", "caneton", "oison", "dindonneau"].includes(petit)
+  })
+  const nbFichesPetitsACreer = naissancesF.reduce(
+    (total, naissance) => total + petitsSansFiche(naissance),
+    0
+  )
 
   const chartData = React.useMemo(() => {
     if (!stats?.parMois) return []
@@ -1170,7 +1193,9 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
               <CardTitle className="text-2xl">{stats.totalNaissances}</CardTitle>
             </CardHeader>
             <CardContent className="pb-3 px-4">
-              <p className="text-xs text-pink-100">mises bas / éclosions</p>
+              <p className="text-xs text-pink-100">
+                {naissancesIncluentEclosions ? "mises bas / éclosions" : "mises bas"}
+              </p>
             </CardContent>
           </Card>
           <Card>
@@ -1204,6 +1229,21 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
               </CardTitle>
             </CardHeader>
           </Card>
+        </div>
+      )}
+
+      {nbFichesPetitsACreer > 0 && (
+        <div className="flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm">
+          <UserPlus className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" />
+          <div>
+            <p className="font-medium text-emerald-900">
+              {nbFichesPetitsACreer} nouveau-né{nbFichesPetitsACreer > 1 ? "s" : ""} sans fiche animale
+            </p>
+            <p className="text-emerald-800">
+              Une naissance multiple n&apos;ajoute pas silencieusement les animaux au cheptel.
+              Utilisez « Créer les fiches » sur la naissance concernée pour générer une fiche par petit vivant.
+            </p>
+          </div>
         </div>
       )}
 
@@ -1244,7 +1284,13 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
           <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle>{editingNaissId ? "Modifier la naissance" : "Enregistrer une naissance"}</DialogTitle>
-              <DialogDescription>{editingNaissId ? `Édition de la naissance #${editingNaissId}` : (compagnieNaiss ? "Mise bas / portée" : "Mise bas ou éclosion")}</DialogDescription>
+              <DialogDescription>
+                {editingNaissId
+                  ? `Édition de la naissance #${editingNaissId}`
+                  : compagnieNaiss
+                    ? "Mise bas / portée"
+                    : libelleEvenementNaissance}
+              </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
@@ -1532,7 +1578,9 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
                           {n.petits.map((p, i) => (
                             <div key={p.id ?? i} className="whitespace-nowrap">
                               <span className="font-semibold">{p.sexe === 'male' ? '♂' : p.sexe === 'femelle' ? '♀' : '•'}</span>{' '}
-                              {p.boucleProvisoire ? <span className="font-mono">{p.boucleProvisoire}</span> : `Cabri ${p.numero ?? i + 1}`}
+                              {p.boucleProvisoire
+                                ? <span className="font-mono">{p.boucleProvisoire}</span>
+                                : `${libellePetit(n.mere?.especeAnimale?.id ?? n.lot?.especeAnimale?.id).s} ${p.numero ?? i + 1}`}
                               {p.modeElevage ? <span className="text-muted-foreground"> · {p.modeElevage === 'biberon' ? 'bib' : 'ss mère'}</span> : ''}
                               {p.poids != null ? <span className="text-muted-foreground"> · {p.poids} kg</span> : ''}
                               {p.vivant === false ? <span className="text-red-600"> · mort-né</span> : ''}
@@ -1565,11 +1613,12 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
                             size="sm"
                             onClick={() => handleCreerFiches(n)}
                             disabled={creationFiches === n.id}
-                            title={`Créer ${petitsSansFiche(n)} fiche(s) des petits`}
+                            title={`Créer ${petitsSansFiche(n)} fiche(s) animale(s) et les retrouver dans Animaux & Lots`}
+                            aria-label={`Créer ${petitsSansFiche(n)} fiche(s) animale(s) pour les petits de cette naissance`}
                             className="text-emerald-700 hover:text-emerald-900"
                           >
                             <UserPlus className="h-3.5 w-3.5 mr-1" />
-                            <span className="text-xs">Fiches ({petitsSansFiche(n)})</span>
+                            <span className="text-xs">Créer les fiches ({petitsSansFiche(n)})</span>
                           </Button>
                         )}
                         <Button variant="ghost" size="sm" onClick={() => handleEditNaiss(n)} title="Modifier" className="text-slate-600 hover:text-slate-900">

@@ -24,6 +24,7 @@ import {
   Archive,
   CheckCircle2,
   RotateCcw,
+  MoreHorizontal,
 } from "lucide-react"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -46,6 +47,9 @@ import {
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog"
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { especeBaseId, especeBaseLabel, listEspecesBasePresentes } from "@/lib/elevage/espece-base"
 import { useFiliereSelection, filiereMatch } from "@/lib/elevage/filiere-context"
 import { coerceFiliere, type Filiere } from "@/lib/elevage/filiere"
@@ -1044,7 +1048,7 @@ function AnimauxSubTab() {
             </div>
           ) : (
             <>
-            <div className="space-y-3 p-3 sm:hidden">
+            <div className="space-y-3 p-3 lg:hidden">
               {filteredAnimaux.map((animal) => (
                 <article key={animal.id} className="rounded-lg border bg-white p-3 shadow-sm">
                   <div className="flex items-start justify-between gap-3">
@@ -1069,22 +1073,86 @@ function AnimauxSubTab() {
                         {statut.maladie.nom} · {statut.statut === "en_cours" ? "en cours" : statut.statut}
                       </Badge>
                     ))}
-                    {!animal.statutsSanitairesStructures?.length && (
+                    {!animal.statutsSanitairesStructures?.length && animal.statutSanitaire.slice(0, 2).map((statut) => (
+                      <Badge key={statut} variant="outline">{statut}</Badge>
+                    ))}
+                    {!animal.statutsSanitairesStructures?.length && !animal.statutSanitaire.length && (
                       <Badge variant="outline" className="text-muted-foreground">Sanitaire inconnu</Badge>
                     )}
                   </div>
-                  <div className="mt-3 grid grid-cols-2 gap-2">
+                  <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 rounded-md bg-slate-50 p-2 text-sm">
+                    <div>
+                      <dt className="text-xs text-muted-foreground">Lot</dt>
+                      <dd className="truncate font-medium">{animal.lot?.nom || "Aucun lot"}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-muted-foreground">Poids</dt>
+                      <dd className="font-medium">
+                        {animal.poidsActuel
+                          ? `${animal.poidsActuel} kg`
+                          : animal.especeAnimale.poidsAdulte
+                            ? `≈ ${animal.especeAnimale.poidsAdulte} kg (adulte)`
+                            : "Non renseigné"}
+                      </dd>
+                    </div>
+                  </dl>
+                  <div className="mt-3 grid grid-cols-3 gap-2">
                     <Link
                       href={`/elevage/animaux/${animal.id}#soins`}
                       className="inline-flex min-h-11 items-center justify-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground"
                     >
                       <Stethoscope className="mr-2 h-4 w-4" />
-                      Fiche &amp; soins
+                      Soins
                     </Link>
                     <Button className="min-h-11" variant="outline" onClick={() => handleEditAnimal(animal)}>
-                      <Pencil className="mr-2 h-4 w-4" />
+                      <Pencil className="mr-1 h-4 w-4" />
                       Modifier
                     </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button className="min-h-11" variant="outline">
+                          <MoreHorizontal className="mr-1 h-4 w-4" />
+                          Plus
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem asChild>
+                          <Link href={`/elevage/animaux/${animal.id}`}>Voir la fiche complète</Link>
+                        </DropdownMenuItem>
+                        {animal.statut === "actif" ? (
+                          <>
+                            <DropdownMenuItem onClick={() => {
+                              setVenteForm((form) => ({ ...form, date: todayLocalISO() }))
+                              setVenteDialog(animal)
+                            }}>
+                              Vendre
+                            </DropdownMenuItem>
+                            {capacites(coerceFiliere(animal.especeAnimale.filiere)).abattage && (
+                              <DropdownMenuItem onClick={() => {
+                                setAbattageForm((form) => ({
+                                  ...form,
+                                  date: todayLocalISO(),
+                                  poidsVif: animal.poidsActuel?.toString() || "",
+                                }))
+                                setAbattageDialog(animal)
+                              }}>
+                                Enregistrer un abattage
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem onClick={() => {
+                              setMortForm((form) => ({ ...form, date: todayLocalISO() }))
+                              setMortDialog(animal)
+                            }}>
+                              Enregistrer un décès
+                            </DropdownMenuItem>
+                          </>
+                        ) : (
+                          <DropdownMenuItem className="text-red-600" onClick={() => handleDelete(animal)}>
+                            Supprimer
+                          </DropdownMenuItem>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </article>
               ))}
@@ -1092,7 +1160,7 @@ function AnimauxSubTab() {
                 <p className="py-8 text-center text-muted-foreground">Aucun animal trouvé</p>
               )}
             </div>
-            <div className="hidden overflow-x-auto sm:block">
+            <div className="hidden overflow-x-auto lg:block">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -1770,7 +1838,13 @@ function LotsSubTab() {
             <DialogContent className="max-w-md">
               <DialogHeader>
                 <DialogTitle>{editingLotId ? "Modifier le lot" : "Créer un lot"}</DialogTitle>
-                <DialogDescription>{editingLotId ? `Édition du lot #${editingLotId}` : "Groupe d'animaux (volailles, etc.)"}</DialogDescription>
+                <DialogDescription>
+                  {editingLotId
+                    ? `Édition du lot #${editingLotId}`
+                    : filiereSel === "rente"
+                      ? "Lot de chèvres / cabris ou autres animaux d’élevage"
+                      : "Lot / groupe d’animaux"}
+                </DialogDescription>
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-2">

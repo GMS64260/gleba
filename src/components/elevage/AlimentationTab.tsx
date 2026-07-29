@@ -119,7 +119,7 @@ export function AlimentationTab() {
         </TabsTrigger>
         <TabsTrigger value="soins" className="flex items-center gap-1.5">
           <Stethoscope className="h-4 w-4" />
-          Soins
+          Soins / sanitaire
         </TabsTrigger>
         {caps.productionRente && (
           <TabsTrigger value="ration" className="flex items-center gap-1.5">
@@ -129,7 +129,7 @@ export function AlimentationTab() {
         )}
         <TabsTrigger value="registre" className="flex items-center gap-1.5">
           <ClipboardCheck className="h-4 w-4" />
-          Registre & pharmacie
+          Registre sanitaire & pharmacie
         </TabsTrigger>
       </TabsList>
 
