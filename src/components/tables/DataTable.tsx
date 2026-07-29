@@ -70,6 +70,7 @@ interface DataTableProps<TData, TValue> {
   onRowClick?: (row: TData) => void
   onRowEdit?: (row: TData) => void
   onRowDelete?: (row: TData) => void
+  rowEditLabel?: string
   // Personnalisation
   title?: string
   searchPlaceholder?: string
@@ -95,6 +96,7 @@ export function DataTable<TData, TValue>({
   onRowClick,
   onRowEdit,
   onRowDelete,
+  rowEditLabel = "Modifier",
   title,
   searchPlaceholder = "Rechercher...",
   emptyMessage = "Aucun résultat.",
@@ -130,7 +132,8 @@ export function DataTable<TData, TValue>({
                 size="sm"
                 className="h-8 w-8 p-0 hover:bg-blue-100 hover:text-blue-600"
                 onClick={() => onRowEdit(row.original)}
-                title="Modifier"
+                title={rowEditLabel}
+                aria-label={rowEditLabel}
               >
                 <Pencil className="h-4 w-4" />
               </Button>
@@ -154,7 +157,7 @@ export function DataTable<TData, TValue>({
     }
 
     return [...columns, actionsColumn]
-  }, [columns, onRowEdit, onRowDelete])
+  }, [columns, onRowEdit, onRowDelete, rowEditLabel])
 
   const table = useReactTable({
     data,

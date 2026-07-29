@@ -127,19 +127,39 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const fait = body.fait !== undefined ? Boolean(body.fait) : true
+    const datePrevue = body.datePrevue ? new Date(body.datePrevue) : null
+    if (datePrevue && Number.isNaN(datePrevue.getTime())) {
+      return NextResponse.json({ error: "Date prévue invalide" }, { status: 400 })
+    }
+    if (!fait && !datePrevue) {
+      return NextResponse.json(
+        { error: "La date prévue est requise pour une opération à faire" },
+        { status: 400 }
+      )
+    }
+    const date = !fait && datePrevue
+      ? datePrevue
+      : body.date
+        ? new Date(body.date)
+        : new Date()
+    if (Number.isNaN(date.getTime())) {
+      return NextResponse.json({ error: "Date de réalisation invalide" }, { status: 400 })
+    }
+
     const operation = await prisma.operationArbre.create({
       data: {
         userId,
         arbreId: body.arbreId,
-        date: body.date ? new Date(body.date) : new Date(),
+        date,
         type: body.type,
         description: body.description || null,
         produit: body.produit || null,
         quantite: body.quantite || null,
         unite: body.unite || null,
         cout: body.cout != null ? parseFloat(body.cout) : null,
-        datePrevue: body.datePrevue ? new Date(body.datePrevue) : null,
-        fait: body.fait !== undefined ? body.fait : true,
+        datePrevue,
+        fait,
         notes: body.notes || null,
         dureeMinutes: body.dureeMinutes ? parseInt(body.dureeMinutes) : null,
         nbPersonnes: body.nbPersonnes ? parseInt(body.nbPersonnes) : undefined,

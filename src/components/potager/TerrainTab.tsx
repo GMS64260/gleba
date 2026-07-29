@@ -22,6 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
 import { EditableSelectCell } from "@/components/planches/EditableSelectCell"
+import { associationDetailTitle } from "@/lib/association-display"
 
 // ============================================================
 // Types
@@ -67,6 +68,7 @@ interface AssociationWithRelations {
   nom: string
   description: string | null
   notes: string | null
+  type: "favorable" | "incompatible" | "neutre"
   details: {
     id: number
     especeId: string | null
@@ -92,7 +94,7 @@ const TYPES_SOL = [
 const RETENTION_EAU = [
   { value: "Faible", label: "Faible", icon: "" },
   { value: "Moyenne", label: "Moyenne", icon: "" },
-  { value: "Elevee", label: "Elevee", icon: "" },
+  { value: "Elevee", label: "Élevée", icon: "" },
 ]
 
 // ============================================================
@@ -162,7 +164,7 @@ function PlanchesSubTab() {
         header: "Planche",
         cell: ({ getValue }) => <span className="font-medium">{getValue() as string}</span>,
       },
-      { accessorKey: "ilot", header: "Ilot", cell: ({ getValue }) => getValue() || "-" },
+      { accessorKey: "ilot", header: "Îlot", cell: ({ getValue }) => getValue() || "-" },
       {
         accessorKey: "largeur",
         header: "Largeur (m)",
@@ -181,7 +183,7 @@ function PlanchesSubTab() {
       },
       {
         accessorKey: "surface",
-        header: "Surface (m2)",
+        header: "Surface (m²)",
         cell: ({ getValue }) => {
           const val = getValue() as number | null
           return val ? val.toFixed(1) : "-"
@@ -209,7 +211,7 @@ function PlanchesSubTab() {
       },
       {
         accessorKey: "retentionEau",
-        header: "Retention",
+        header: "Rétention",
         cell: ({ row }) => (
           <EditableSelectCell
             plancheId={row.original.nom}
@@ -249,6 +251,7 @@ function PlanchesSubTab() {
         onRefresh={fetchData}
         onRowClick={(row) => router.push(`/maraichage/planches/${encodeURIComponent(row.nom)}`)}
         onRowEdit={(row) => router.push(`/maraichage/planches/${encodeURIComponent(row.nom)}`)}
+        rowEditLabel="Voir et modifier"
         onRowDelete={async (row) => {
           if (row._count.cultures > 0) {
             toast({
@@ -386,7 +389,7 @@ function RotationsSubTab() {
       <div className="p-3 bg-orange-50 rounded-lg border border-orange-200 text-sm text-orange-800">
         <p className="font-medium">Rotations des cultures</p>
         <p className="mt-1 text-orange-700">
-          Définissez la succession des cultures sur plusieurs années. Assignez une rotation a vos
+          Définissez la succession des cultures sur plusieurs années. Assignez une rotation à vos
           planches pour planifier automatiquement.
         </p>
       </div>
@@ -446,7 +449,7 @@ const associationColumns: ColumnDef<AssociationWithRelations>[] = [
   },
   {
     accessorKey: "details",
-    header: "Especes/Familles",
+    header: "Espèces/Familles",
     cell: ({ row }) => {
       const details = row.original.details
       if (!details || details.length === 0)
@@ -456,13 +459,14 @@ const associationColumns: ColumnDef<AssociationWithRelations>[] = [
           {details.slice(0, 5).map((d, i) => {
             const name = d.especeId || d.familleId || d.groupe || "?"
             const color = d.espece?.couleur || d.famille?.couleur || "#888"
+            const incompatible = row.original.type === "incompatible"
             return (
               <Badge
                 key={i}
-                variant={d.requise ? "default" : "outline"}
+                variant={incompatible ? "destructive" : d.requise ? "default" : "outline"}
                 className="text-xs"
-                style={{ borderColor: color }}
-                title={d.requise ? 'Association requise' : 'Association favorable'}
+                style={incompatible ? undefined : { borderColor: color }}
+                title={associationDetailTitle(row.original.type, d.requise)}
               >
                 {/* BUG #24 : « * » remplacée par « ★ » plus lisible et
                     cohérente avec la légende. */}
@@ -558,6 +562,10 @@ function AssociationsSubTab() {
               <li>
                 <Badge variant="outline" className="text-[10px] mr-1">contour seul</Badge>
                 association favorable mais facultative
+              </li>
+              <li>
+                <Badge variant="destructive" className="text-[10px] mr-1">rouge</Badge>
+                association incompatible à éviter
               </li>
               <li>
                 <Badge variant="secondary" className="text-[10px] mr-1">+N</Badge>

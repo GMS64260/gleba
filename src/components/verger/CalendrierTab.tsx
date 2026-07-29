@@ -39,6 +39,7 @@ import { useToast } from "@/hooks/use-toast"
 import { VergerCalendarView } from "./VergerCalendarView"
 import { TreeCareGantt } from "./TreeCareGantt"
 import { kpiCardClass, kpiSubtleClass } from "@/lib/kpi-theme"
+import { libelleOperationArbre } from "@/lib/verger/operation-label"
 
 interface DashboardArbresData {
   stats: {
@@ -612,7 +613,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                     <div>
                       <p className="font-medium">{op.arbre.nom}</p>
                       <p className="text-sm text-muted-foreground capitalize">
-                        {op.type} — prévu le{" "}
+                        {libelleOperationArbre(op.type)} — prévu le{" "}
                         {op.datePrevue
                           ? new Date(op.datePrevue).toLocaleDateString("fr-FR")
                           : "non défini"}
@@ -655,7 +656,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                     <div>
                       <p className="font-medium">{op.arbre.nom}</p>
                       <p className="text-sm text-muted-foreground capitalize">
-                        {op.type}
+                        {libelleOperationArbre(op.type)}
                         {op.datePrevue && (
                           <> — prévu le {new Date(op.datePrevue).toLocaleDateString("fr-FR")}</>
                         )}

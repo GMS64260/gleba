@@ -866,7 +866,7 @@ function EssencesReferentiel() {
         return (
           <div className="flex flex-wrap gap-1">
             {arr.slice(0, 3).map((r) => (
-              <Badge key={r} variant="outline" className="text-[10px] py-0">{r}</Badge>
+              <Badge key={r} variant="outline" className="text-[10px] py-0">{libelleForesterie(r)}</Badge>
             ))}
             {arr.length > 3 && <span className="text-xs text-muted-foreground">+{arr.length - 3}</span>}
           </div>
