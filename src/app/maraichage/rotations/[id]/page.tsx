@@ -497,7 +497,7 @@ export default function EditRotationPage() {
                             </Badge>
                           )}
                           <Link
-                            href={`/maraichage/planches/${encodeURIComponent(p.id)}`}
+                            href={`/maraichage/planches/${encodeURIComponent(p.nom)}`}
                             className="ml-auto text-xs text-blue-600 hover:underline"
                             onClick={(e) => e.stopPropagation()}
                           >

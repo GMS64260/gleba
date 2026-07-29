@@ -10,7 +10,7 @@ describe("updateDashboardSearchParams", () => {
     const pushState = vi.fn()
     const replaceState = vi.fn()
     vi.stubGlobal("window", {
-      location: { pathname: "/", hash: "" },
+      location: { pathname: "/", search: "", hash: "" },
       history: { pushState, replaceState },
     })
 
@@ -31,7 +31,11 @@ describe("updateDashboardSearchParams", () => {
     const pushState = vi.fn()
     const replaceState = vi.fn()
     vi.stubGlobal("window", {
-      location: { pathname: "/dashboard", hash: "#contenu" },
+      location: {
+        pathname: "/dashboard",
+        search: "?tab=planification&sub=itps",
+        hash: "#contenu",
+      },
       history: { pushState, replaceState },
     })
 
@@ -51,12 +55,33 @@ describe("updateDashboardSearchParams", () => {
   it("retire proprement toute query en revenant au calendrier", () => {
     const pushState = vi.fn()
     vi.stubGlobal("window", {
-      location: { pathname: "/", hash: "" },
+      location: { pathname: "/", search: "?tab=planification", hash: "" },
       history: { pushState, replaceState: vi.fn() },
     })
 
     updateDashboardSearchParams(new URLSearchParams(), "push")
 
     expect(pushState).toHaveBeenCalledWith(null, "", "/")
+  })
+
+  it("n'ajoute pas d'entrée quand l'onglet principal est déjà actif", () => {
+    const pushState = vi.fn()
+    const replaceState = vi.fn()
+    vi.stubGlobal("window", {
+      location: {
+        pathname: "/",
+        search: "?tab=planification&sub=itps",
+        hash: "",
+      },
+      history: { pushState, replaceState },
+    })
+
+    updateDashboardSearchParams(
+      new URLSearchParams("tab=planification&sub=itps"),
+      "push",
+    )
+
+    expect(pushState).not.toHaveBeenCalled()
+    expect(replaceState).not.toHaveBeenCalled()
   })
 })
