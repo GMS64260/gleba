@@ -13,16 +13,6 @@ import { fr } from "date-fns/locale"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectSeparator,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useToast } from "@/hooks/use-toast"
@@ -43,12 +33,11 @@ interface Culture {
   totalRecolte: number
 }
 
-/** Vérifie si une culture est prête à récolter (dateRecolte dans ±14 jours) */
-function estPreteARecolter(culture: Culture): boolean {
+/** Vérifie si une culture est prête à récolter (dateRecolte dans ±14 jours). */
+function estPreteARecolter(culture: Culture, reference = new Date()): boolean {
   if (!culture.dateRecolte) return false
   const dateRecolte = new Date(culture.dateRecolte)
-  const aujourdHui = new Date()
-  const diff = differenceInDays(dateRecolte, aujourdHui)
+  const diff = differenceInDays(dateRecolte, reference)
   return diff >= -14 && diff <= 14
 }
 
@@ -57,6 +46,20 @@ function formaterDateRecolte(dateStr: string | null): string {
   if (!dateStr) return ""
   const date = new Date(dateStr)
   return format(date, "d MMM", { locale: fr })
+}
+
+function libelleCulture(culture: Culture): string {
+  const espece = culture.espece.nom ?? culture.espece.id
+  const variete = culture.variete
+    ? ` - ${culture.variete.nom ?? culture.variete.id}`
+    : ""
+  const planche = culture.planche
+    ? ` (${culture.planche.nom || culture.planche.id})`
+    : ""
+  const recolte = culture.dateRecolte
+    ? ` · ${formaterDateRecolte(culture.dateRecolte)}`
+    : ""
+  return `#${culture.id} · ${espece}${variete}${planche}${recolte}`
 }
 
 export default function SaisieRecoltePage() {
@@ -265,73 +268,44 @@ export default function SaisieRecoltePage() {
               {/* Culture */}
               <div>
                 <label className="text-sm font-medium">Culture *</label>
-                <Select value={selectedCulture} onValueChange={setSelectedCulture}>
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Sélectionner une culture" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(() => {
-                      const pretes = cultures.filter(estPreteARecolter)
-                      const autres = cultures.filter((c) => !estPreteARecolter(c))
-                      return (
-                        <>
-                          {pretes.length > 0 && (
-                            <SelectGroup>
-                              <SelectLabel className="text-green-700 flex items-center gap-1.5">
-                                <span className="inline-block h-2 w-2 rounded-full bg-green-500" />
-                                {`Prêtes à récolter (${pretes.length})`}
-                              </SelectLabel>
-                              {pretes.map((c) => (
-                                <SelectItem key={c.id} value={c.id.toString()}>
-                                  <span className="flex items-center gap-2">
-                                    <span className="inline-block h-2 w-2 rounded-full bg-green-500 shrink-0" />
-                                    <span>
-                                      {c.espece.nom ?? c.espece.id}
-                                      {c.variete && ` - ${c.variete.nom ?? c.variete.id}`}
-                                      {c.planche && ` (${c.planche.nom || c.planche.id})`}
-                                    </span>
-                                    {c.dateRecolte && (
-                                      <span className="ml-auto text-xs text-green-600 font-medium shrink-0">
-                                        {formaterDateRecolte(c.dateRecolte)}
-                                      </span>
-                                    )}
-                                  </span>
-                                </SelectItem>
-                              ))}
-                            </SelectGroup>
-                          )}
-                          {pretes.length > 0 && autres.length > 0 && (
-                            <SelectSeparator />
-                          )}
-                          {autres.length > 0 && (
-                            <SelectGroup>
-                              <SelectLabel className="text-muted-foreground">
-                                Autres cultures
-                              </SelectLabel>
-                              {autres.map((c) => (
-                                <SelectItem key={c.id} value={c.id.toString()}>
-                                  <span className="flex items-center gap-2">
-                                    <span className="inline-block h-2 w-2 rounded-full bg-slate-300 shrink-0" />
-                                    <span>
-                                      {c.espece.nom ?? c.espece.id}
-                                      {c.variete && ` - ${c.variete.nom ?? c.variete.id}`}
-                                      {c.planche && ` (${c.planche.nom || c.planche.id})`}
-                                    </span>
-                                    {c.dateRecolte && (
-                                      <span className="ml-auto text-xs text-muted-foreground shrink-0">
-                                        {formaterDateRecolte(c.dateRecolte)}
-                                      </span>
-                                    )}
-                                  </span>
-                                </SelectItem>
-                              ))}
-                            </SelectGroup>
-                          )}
-                        </>
-                      )
-                    })()}
-                  </SelectContent>
-                </Select>
+                {(() => {
+                  // Un select natif garde une sélection fiable, y compris
+                  // avec une longue liste et les navigateurs mobiles. Le
+                  // regroupement se base sur la date saisie dans le formulaire
+                  // plutôt que sur la date du jour.
+                  const reference = date
+                    ? new Date(`${date}T12:00:00`)
+                    : new Date()
+                  const pretes = cultures.filter((c) => estPreteARecolter(c, reference))
+                  const autres = cultures.filter((c) => !estPreteARecolter(c, reference))
+                  return (
+                    <select
+                      value={selectedCulture}
+                      onChange={(event) => setSelectedCulture(event.target.value)}
+                      className="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                    >
+                      <option value="">Sélectionner une culture</option>
+                      {pretes.length > 0 && (
+                        <optgroup label={`Prêtes à récolter (${pretes.length})`}>
+                          {pretes.map((culture) => (
+                            <option key={culture.id} value={culture.id.toString()}>
+                              {libelleCulture(culture)}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                      {autres.length > 0 && (
+                        <optgroup label="Autres cultures">
+                          {autres.map((culture) => (
+                            <option key={culture.id} value={culture.id.toString()}>
+                              {libelleCulture(culture)}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                    </select>
+                  )
+                })()}
                 {selectedCultureData && (
                   <div className="mt-1 space-y-1">
                     <p className="text-sm text-muted-foreground">

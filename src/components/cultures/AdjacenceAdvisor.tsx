@@ -26,6 +26,7 @@ type SuggestionCompagnon = {
 type Result = {
   alertes: AlerteAdjacence[]
   suggestions: SuggestionCompagnon[]
+  ilot: string | null
   planchesVoisines: { id: string; nom: string }[]
 }
 
@@ -74,7 +75,9 @@ export function AdjacenceAdvisor({
   if (data.planchesVoisines.length === 0) {
     return (
       <div className="rounded-md border bg-slate-50 p-3 text-xs text-muted-foreground">
-        Aucune planche voisine référencée (cette planche n'a pas d'îlot défini).
+        {data.ilot
+          ? <>Aucune autre planche n’est référencée dans l’îlot « {data.ilot} ».</>
+          : <>Cette planche n’a pas d’îlot défini&nbsp;: le voisinage ne peut pas être analysé.</>}
       </div>
     )
   }

@@ -61,7 +61,37 @@ export interface BesoinSemenceResult {
   statut: StatutSemence
 }
 
+export interface BesoinGrainesAffichable {
+  grainesNecessaires: number
+  margeSecuritePct: number
+  stockActuel: number
+}
+
 const DEFAULT_MARGE = 15
+
+/**
+ * Reconstitue le besoin brut à partir du besoin majoré renvoyé par l'API.
+ * Le sélecteur d'affichage de la page Semences utilise ce même calcul pour
+ * les lignes, les totaux et la quantité restant à commander.
+ */
+export function besoinGrainesSansMarge(besoin: BesoinGrainesAffichable): number {
+  if (!besoin.margeSecuritePct || besoin.margeSecuritePct <= 0) {
+    return besoin.grainesNecessaires
+  }
+  return besoin.grainesNecessaires / (1 + besoin.margeSecuritePct / 100)
+}
+
+export function totalGrainesACommander(
+  besoins: BesoinGrainesAffichable[],
+  appliquerMarge: boolean,
+): number {
+  return besoins.reduce((total, besoin) => {
+    const necessaire = appliquerMarge
+      ? besoin.grainesNecessaires
+      : besoinGrainesSansMarge(besoin)
+    return total + Math.max(0, necessaire - besoin.stockActuel)
+  }, 0)
+}
 
 /**
  * Graines par gramme indicatives par espèce (≈ 1000 / PMG en g), pour les

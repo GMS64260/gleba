@@ -134,6 +134,8 @@ function createColumns(
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
+                    type="button"
+                    aria-label={`${culture.semisFait ? 'Annuler' : 'Marquer'} le semis fait — confirmation requise`}
                     onClick={(e) => {
                       e.stopPropagation()
                       onQuickUpdate(culture.id, 'semisFait', !culture.semisFait)
@@ -148,7 +150,7 @@ function createColumns(
                   </button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  {culture.semisFait ? 'Semis fait ✓' : 'Marquer semis fait'}
+                  {culture.semisFait ? 'Annuler le semis fait' : 'Marquer semis fait'} (confirmation)
                 </TooltipContent>
               </Tooltip>
 
@@ -156,6 +158,8 @@ function createColumns(
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
+                    type="button"
+                    aria-label={`${culture.plantationFaite ? 'Annuler' : 'Marquer'} la plantation faite — confirmation requise`}
                     onClick={(e) => {
                       e.stopPropagation()
                       onQuickUpdate(culture.id, 'plantationFaite', !culture.plantationFaite)
@@ -170,7 +174,7 @@ function createColumns(
                   </button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  {culture.plantationFaite ? 'Plantation faite ✓' : 'Marquer plantation faite'}
+                  {culture.plantationFaite ? 'Annuler la plantation faite' : 'Marquer plantation faite'} (confirmation)
                 </TooltipContent>
               </Tooltip>
 
@@ -178,6 +182,8 @@ function createColumns(
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
+                    type="button"
+                    aria-label={`${culture.recolteFaite ? 'Annuler' : 'Marquer'} la récolte faite — confirmation requise`}
                     onClick={(e) => {
                       e.stopPropagation()
                       onQuickUpdate(culture.id, 'recolteFaite', !culture.recolteFaite)
@@ -192,7 +198,7 @@ function createColumns(
                   </button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  {culture.recolteFaite ? 'Récolte faite ✓' : 'Marquer récolte faite'}
+                  {culture.recolteFaite ? 'Annuler la récolte faite' : 'Marquer récolte faite'} (confirmation)
                 </TooltipContent>
               </Tooltip>
             </div>
