@@ -15,14 +15,14 @@ export async function chargerAttentesConsolidees(
       userId,
       OR: [
         // Injections administrées dont la fenêtre est encore active.
-        { fait: true, OR: [{ finAttenteLait: { gte: today } }, { finAttenteViande: { gte: today } }] },
+        { fait: true, OR: [{ finAttenteLait: { gte: today } }, { finAttenteViande: { gte: today } }, { finAttenteOeufs: { gte: today } }] },
         // Injections planifiées à venir d'un produit à délai d'attente : elles
         // repoussent l'ancre de la fenêtre du traitement (dernière injection).
         {
           fait: false,
           AND: [
             { OR: [{ datePrevue: { gte: today } }, { date: { gte: today } }] },
-            { OR: [{ tempsAttenteLaitJ: { gt: 0 } }, { tempsAttenteViandeJ: { gt: 0 } }] },
+            { OR: [{ tempsAttenteLaitJ: { gt: 0 } }, { tempsAttenteViandeJ: { gt: 0 } }, { tempsAttenteOeufsJ: { gt: 0 } }] },
           ],
         },
       ],
@@ -39,6 +39,7 @@ export async function chargerAttentesConsolidees(
       fait: true,
       tempsAttenteLaitJ: true,
       tempsAttenteViandeJ: true,
+      tempsAttenteOeufsJ: true,
       nbInjections: true,
       intervalleInjectionsHeures: true,
       animal: { select: { id: true, nom: true, identifiant: true } },
@@ -59,6 +60,7 @@ export async function chargerAttentesConsolidees(
     fait: s.fait,
     tempsAttenteLaitJ: s.tempsAttenteLaitJ,
     tempsAttenteViandeJ: s.tempsAttenteViandeJ,
+    tempsAttenteOeufsJ: s.tempsAttenteOeufsJ,
     nbInjections: s.nbInjections,
     intervalleInjectionsHeures: s.intervalleInjectionsHeures,
     cibleLabel: s.animal

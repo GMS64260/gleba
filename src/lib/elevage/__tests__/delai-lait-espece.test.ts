@@ -41,3 +41,41 @@ describe("estEspeceSansDelaiLait", () => {
     expect(estEspeceSansDelaiLait({ nom: "Chèvre", production: "Lait" })).toBe(false)
   })
 })
+
+/**
+ * Report du délai vers les œufs (QA 2026-07-30, 2e passage). Neutraliser le
+ * délai lait d'une pondeuse ne suffisait pas : l'éleveur saisissait 5 jours et
+ * ne voyait plus aucun délai. La règle appliquée par l'API des soins est
+ * reproduite ici pour la verrouiller.
+ */
+function reporterDelaiVersOeufs(
+  espece: Parameters<typeof estEspeceSansDelaiLait>[0],
+  tempsLait: number,
+  tempsOeufs: number,
+): { tempsLait: number; tempsOeufs: number } {
+  if (tempsLait > 0 && estEspeceSansDelaiLait(espece)) {
+    return { tempsLait: 0, tempsOeufs: tempsOeufs === 0 ? tempsLait : tempsOeufs }
+  }
+  return { tempsLait, tempsOeufs }
+}
+
+describe("report du délai lait vers les œufs", () => {
+  const pondeuse = { nom: "Poule pondeuse", type: "volaille", production: "oeufs" }
+
+  it("transforme un délai lait saisi sur des pondeuses en délai œufs", () => {
+    expect(reporterDelaiVersOeufs(pondeuse, 5, 0)).toEqual({ tempsLait: 0, tempsOeufs: 5 })
+  })
+
+  it("n'écrase jamais un délai œufs déjà renseigné", () => {
+    expect(reporterDelaiVersOeufs(pondeuse, 4, 7)).toEqual({ tempsLait: 0, tempsOeufs: 7 })
+  })
+
+  it("laisse intact le délai lait d'une chèvre", () => {
+    const chevre = { nom: "Chèvre Alpine", type: "mammifere_petit", production: "lait" }
+    expect(reporterDelaiVersOeufs(chevre, 3, 0)).toEqual({ tempsLait: 3, tempsOeufs: 0 })
+  })
+
+  it("ne crée pas de délai œufs quand aucun délai lait n'est saisi", () => {
+    expect(reporterDelaiVersOeufs(pondeuse, 0, 0)).toEqual({ tempsLait: 0, tempsOeufs: 0 })
+  })
+})

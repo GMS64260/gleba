@@ -46,6 +46,8 @@ export const soinFieldsSchema = z.object({
     // vétérinaire, usage hors AMM/cascade). null/absent = valeur du produit.
     tempsAttenteLaitJ: z.number().int().min(0).max(365).nullable().optional(),
     tempsAttenteViandeJ: z.number().int().min(0).max(365).nullable().optional(),
+    // QA 2026-07-30 — Délai de retrait sur les œufs (volailles pondeuses).
+    tempsAttenteOeufsJ: z.number().int().min(0).max(365).nullable().optional(),
   })
 
 export const soinSchema = soinFieldsSchema

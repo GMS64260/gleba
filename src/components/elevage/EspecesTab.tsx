@@ -133,6 +133,8 @@ export function EspecesTab() {
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
   // Une fois l'identifiant saisi à la main, le champ Nom ne l'écrase plus.
   const [idModifieManuellement, setIdModifieManuellement] = React.useState(false)
+  const [especeSubmitError, setEspeceSubmitError] = React.useState<string | null>(null)
+  const [isSavingEspece, setIsSavingEspece] = React.useState(false)
   const [editingId, setEditingId] = React.useState<string | null>(null)
   const [formData, setFormData] = React.useState(emptyForm)
   const [selectedType, setSelectedType] = React.useState("all")
@@ -187,6 +189,7 @@ export function EspecesTab() {
   const openCreate = () => {
     setEditingId(null)
     setIdModifieManuellement(false)
+    setEspeceSubmitError(null)
     // Pré-remplit la filière avec celle sélectionnée en tête de module.
     setFormData({ ...emptyForm, filiere: filiereSel !== "toutes" ? filiereSel : "rente" })
     setIsDialogOpen(true)
@@ -194,6 +197,7 @@ export function EspecesTab() {
 
   const openEdit = (e: EspeceAnimale) => {
     setEditingId(e.id)
+    setEspeceSubmitError(null)
     setFormData({
       id: e.id, nom: e.nom, type: e.type, filiere: e.filiere || "rente", production: e.production,
       dureeGestation: e.dureeGestation?.toString() || "",
@@ -213,6 +217,8 @@ export function EspecesTab() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setEspeceSubmitError(null)
+    setIsSavingEspece(true)
     try {
       const payload: any = {
         id: normaliserIdentifiantEspece(formData.id),
@@ -251,7 +257,13 @@ export function EspecesTab() {
       setEditingId(null)
       fetchData()
     } catch (error: any) {
-      toast({ variant: "destructive", title: "Erreur", description: error.message || "Impossible de sauvegarder" })
+      const message = error.message || "Impossible de sauvegarder"
+      // Le message reste dans le formulaire : un toast seul disparaît et laisse
+      // croire à une saisie perdue.
+      setEspeceSubmitError(message)
+      toast({ variant: "destructive", title: "Erreur", description: message })
+    } finally {
+      setIsSavingEspece(false)
     }
   }
 
@@ -543,10 +555,32 @@ export function EspecesTab() {
                 officiel</strong>. Elle n&apos;apparaîtra pas sous « Mes profils ».
               </p>
             ) : null}
-            <div className="flex justify-end gap-2 pt-4">
-              <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
-              <Button type="submit" disabled={!formData.nom || !formData.id}>
-                {editingId ? "Enregistrer" : "Créer"}
+            {/* QA 2026-07-30 — Deux créations successives (caille, escargot) ont
+                été rapportées « perdues » alors qu'aucune requête n'a atteint le
+                serveur : le bouton était en bas d'un formulaire long dans un
+                dialogue défilant, et rien n'expliquait sa désactivation. Même
+                traitement que le dialogue « Ajouter un animal » : pied de
+                formulaire collant, motif de blocage explicite, erreur inline. */}
+            <div className="sticky bottom-0 -mx-6 mt-4 flex flex-wrap items-center justify-end gap-2 border-t bg-background px-6 py-3">
+              {especeSubmitError && (
+                <p role="alert" className="mr-auto text-sm text-red-600">{especeSubmitError}</p>
+              )}
+              {!especeSubmitError && (!formData.nom || !formData.id) && (
+                <p className="mr-auto text-sm text-muted-foreground">
+                  Renseignez le nom pour activer la création.
+                </p>
+              )}
+              <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSavingEspece}>Annuler</Button>
+              <Button
+                type="submit"
+                disabled={isSavingEspece || !formData.nom || !formData.id}
+                title={!formData.nom
+                  ? "Renseignez le nom de l'espèce"
+                  : !formData.id
+                    ? "Renseignez l'identifiant technique"
+                    : undefined}
+              >
+                {isSavingEspece ? "Enregistrement…" : editingId ? "Enregistrer" : "Créer"}
               </Button>
             </div>
           </form>

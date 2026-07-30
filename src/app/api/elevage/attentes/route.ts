@@ -45,6 +45,10 @@ export async function GET() {
       viande: a.finAttenteViande
         ? { finAttente: a.finAttenteViande.toISOString(), remiseVente: remiseVente(a.finAttenteViande)!.toISOString() }
         : null,
+      // QA 2026-07-30 — Délai de retrait des œufs (volailles pondeuses).
+      oeufs: a.finAttenteOeufs
+        ? { finAttente: a.finAttenteOeufs.toISOString(), remiseVente: remiseVente(a.finAttenteOeufs)!.toISOString() }
+        : null,
     }))
 
     // Dates de remise en vente les plus proches (utile pour un résumé)

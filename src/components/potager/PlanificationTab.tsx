@@ -500,10 +500,15 @@ function ItpsSubTab() {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="font-semibold">Itinéraires techniques contextualisés</p>
+            {/* QA 2026-07-30 — « 525 scénarios documentés » se lisait comme le
+                total de la table, qui en affiche 647 : les deux compteurs
+                paraissaient se contredire alors qu'ils mesurent des périmètres
+                différents. On annonce désormais le rapport. */}
             <p className="mt-1 max-w-3xl text-emerald-800">
-              {documentedCount} scénarios documentés indiquent une vraie fenêtre
-              d&apos;implantation et de récolte. Les dates sont recalées depuis le climat de la
-              source vers celui de votre exploitation.
+              {documentedCount} des {data.length} itinéraires reposent sur une source documentée,
+              indiquant une vraie fenêtre d&apos;implantation et de récolte ; les autres restent
+              listés dans le tableau. Les dates sont recalées depuis le climat de la source vers
+              celui de votre exploitation.
             </p>
           </div>
           <Link

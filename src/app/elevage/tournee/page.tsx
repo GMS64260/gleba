@@ -31,7 +31,7 @@ type EcheanceAgenda = {
   gravite: 'info' | 'attention' | 'urgent'
   action?: { soinId?: number; injectionId?: string }
 }
-const KINDS_TOURNEE = new Set(['soin_retard', 'soin_planifie', 'mise_bas', 'tarissement', 'attente_lait', 'attente_viande', 'prophylaxie', 'diagnostic_gestation'])
+const KINDS_TOURNEE = new Set(['soin_retard', 'soin_planifie', 'mise_bas', 'tarissement', 'attente_lait', 'attente_oeufs', 'attente_viande', 'prophylaxie', 'diagnostic_gestation'])
 
 export default function TourneePage() {
   const { toast } = useToast()
