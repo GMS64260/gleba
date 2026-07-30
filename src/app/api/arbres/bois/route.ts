@@ -129,6 +129,20 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // QA 2026-07-30 — Une production d'élagage ou d'abattage était acceptée sans
+    // arbre : la ligne partait orpheline, avec un numéro de lot dégradé et une
+    // colonne « Arbre » vide, sans rien signaler à l'opérateur. L'arbre est la
+    // clé de traçabilité de ces deux opérations.
+    if (!arbre && (body.type === "elagage" || body.type === "abattage")) {
+      return NextResponse.json(
+        {
+          error: "Sélectionnez l'arbre concerné : une production d'élagage ou d'abattage doit rester tracée jusqu'à l'arbre.",
+          code: "ARBRE_REQUIS",
+        },
+        { status: 422 }
+      )
+    }
+
     const dateProd = body.date ? new Date(body.date) : new Date()
 
     // DEV3 #4 — Conversion automatique stère ↔ m³ plein

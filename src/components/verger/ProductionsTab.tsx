@@ -954,6 +954,16 @@ function ProductionBoisSubTab() {
       if (arbresRes.ok) {
         const allArbres = await arbresRes.json()
         setArbres(allArbres.filter((a: Arbre) => a.type === "forestier" || a.type === "haie"))
+      } else {
+        // QA 2026-07-30 — L'échec était silencieux : le sélecteur d'arbre
+        // restait vide, indiscernable d'une liste sans arbre éligible, et la
+        // production partait sans rattachement.
+        setArbres([])
+        toast({
+          variant: "destructive",
+          title: "Arbres indisponibles",
+          description: "La liste des arbres n'a pas pu être chargée : le rattachement d'une production sera impossible.",
+        })
       }
       if (clientsRes.ok) {
         const data = await clientsRes.json()
@@ -1343,13 +1353,20 @@ function ProductionBoisSubTab() {
               </div>
             </div>
             <div>
-              <Label>Arbre (optionnel)</Label>
+              {/* QA 2026-07-30 — L'arbre est la clé de traçabilité d'un élagage
+                  ou d'un abattage : le libellé « optionnel » et une liste vide
+                  silencieuse laissaient créer des lignes orphelines. */}
+              <Label>
+                Arbre{newProduction.type === "elagage" || newProduction.type === "abattage"
+                  ? <span className="text-red-600"> *</span>
+                  : " (optionnel)"}
+              </Label>
               <Select
                 value={newProduction.arbreId}
                 onValueChange={(v) => setNewProduction({ ...newProduction, arbreId: v })}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Aucun arbre spécifique" />
+                  <SelectValue placeholder={arbres.length === 0 ? "Aucun arbre forestier ou de haie" : "Aucun arbre spécifique"} />
                 </SelectTrigger>
                 <SelectContent>
                   {arbres.map((a) => (
@@ -1359,6 +1376,11 @@ function ProductionBoisSubTab() {
                   ))}
                 </SelectContent>
               </Select>
+              {arbres.length === 0 && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Aucun arbre de type forestier ou haie n&apos;est disponible : créez-en un pour tracer la production.
+                </p>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>

@@ -22,6 +22,8 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { visibiliteReferentiel } from "@/lib/referentiel-communaute"
+import { adequationEspece } from "@/lib/adequation-zone"
+import { zoneEffectiveUser } from "@/lib/terroir"
 import {
   getEssencesByType,
   type TypeFormation,
@@ -70,6 +72,8 @@ export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
   if (error) return error
   const userId = session!.user.id
+  // Zone climatique de l'exploitation, résolue une fois pour le filtre d'adéquation.
+  const userZone = await zoneEffectiveUser(prisma, userId)
 
   const { searchParams } = new URL(request.url)
   const type = searchParams.get("type") as TypeFormation | null
@@ -131,11 +135,26 @@ export async function GET(request: NextRequest) {
       select: {
         id: true,
         nomLatin: true,
+        // QA 2026-07-30 — L'assistant proposait Ananas, Vanille, Cocotier,
+        // Bananier… en « Verger fruitier » métropolitain : le référentiel
+        // outre-mer livré en juillet a ajouté ces espèces avec leurs zones
+        // d'adéquation, mais cette route était la seule à ne pas les lire.
+        zonesAdaptees: true,
+        besoinFroid: true,
         _count: { select: { portesGreffe: true } },
       },
       orderBy: { id: "asc" },
     })
     for (const f of fruitiers) {
+      // Une espèce sans zone renseignée reste proposée (statut « inconnue ») :
+      // seules celles explicitement inadaptées à la zone de l'exploitation sont
+      // écartées, donc zéro régression sur le catalogue métropolitain.
+      const adequation = adequationEspece({
+        zonesAdaptees: f.zonesAdaptees,
+        besoinFroid: f.besoinFroid,
+        userZone,
+      })
+      if (adequation.statut === "peu_adaptee") continue
       out.push({
         source: "fruitier",
         id: `fruitier::${f.id}`,
