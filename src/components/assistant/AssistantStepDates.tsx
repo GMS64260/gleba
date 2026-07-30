@@ -68,11 +68,21 @@ interface AssistantStepDatesProps {
   selectedPlancheId: string | null
   mode: string
   onCultureChange: (updates: Partial<CultureData>) => void
+  /**
+   * QA 2026-07-30 — Le mode de saisie était un état local. Ce composant étant
+   * démonté à chaque sortie de l'étape, tout retour sur le planning repartait
+   * en « calculé » et écrasait les dates saisies. Il est désormais porté par
+   * l'état de l'assistant, donc persisté.
+   */
+  dateMode?: DateMode
+  onDateModeChange?: (mode: DateMode) => void
 }
 
 export function AssistantStepDates({
   espece,
   itp: itpProp,
+  dateMode: dateModeProp,
+  onDateModeChange,
   culture,
   planche,
   selectedPlancheId,
@@ -83,7 +93,12 @@ export function AssistantStepDates({
   const itp = itpProp || culture.itp
 
   // --- Local state ---
-  const [dateMode, setDateMode] = React.useState<DateMode>("calculated")
+  const [dateModeLocal, setDateModeLocal] = React.useState<DateMode>("calculated")
+  const dateMode = dateModeProp ?? dateModeLocal
+  const setDateMode = (next: DateMode) => {
+    setDateModeLocal(next)
+    onDateModeChange?.(next)
+  }
   const [nbRangsModifie, setNbRangsModifie] = React.useState(false)
   const [espacementModifie, setEspacementModifie] = React.useState(false)
 
@@ -121,14 +136,21 @@ export function AssistantStepDates({
   }, [itp, annee, culture.decalage])
 
   // Push calculated dates to parent when in calculated mode
+  //
+  // QA 2026-07-30 — Sans ITP sélectionné, `datesCalculees` vaut {null,null,null}
+  // et cet effet écrasait les trois dates saisies à la main. Comme `dateMode`
+  // est un état local et que ce composant est démonté à chaque sortie de
+  // l'étape, un simple retour sur le planning repartait en mode « calculé » et
+  // vidait la saisie sans aucun signe. On n'écrase donc jamais depuis un ITP
+  // absent.
   React.useEffect(() => {
-    if (dateMode !== "calculated") return
+    if (dateMode !== "calculated" || !itp) return
     onCultureChange({
       dateSemis: datesCalculees.dateSemis,
       datePlantation: datesCalculees.datePlantation,
       dateRecolte: datesCalculees.dateRecolte,
     })
-  }, [datesCalculees, dateMode]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [datesCalculees, dateMode, itp]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Date mode toggle ---
   const handleDateModeChange = (newMode: DateMode) => {
@@ -139,8 +161,9 @@ export function AssistantStepDates({
       setManualSemis(culture.dateSemis ? format(culture.dateSemis, "yyyy-MM-dd") : "")
       setManualPlantation(culture.datePlantation ? format(culture.datePlantation, "yyyy-MM-dd") : "")
       setManualRecolte(culture.dateRecolte ? format(culture.dateRecolte, "yyyy-MM-dd") : "")
-    } else {
-      // Switching to calculated: recalculate from ITP
+    } else if (itp) {
+      // Switching to calculated: recalculate from ITP. Sans ITP il n'y a rien à
+      // recalculer — on conserve les dates déjà saisies plutôt que de les vider.
       onCultureChange({
         dateSemis: datesCalculees.dateSemis,
         datePlantation: datesCalculees.datePlantation,
@@ -164,7 +187,11 @@ export function AssistantStepDates({
         setManualRecolte(value)
         break
     }
-    const date = value ? new Date(value + "T00:00:00") : null
+    // QA 2026-07-30 — « T00:00:00 » est interprété en heure locale, puis
+    // sérialisé en UTC à l'envoi : une date saisie au 05/08 partait au
+    // 04/08T22:00Z en Europe/Paris, soit un jour de moins à l'affichage. On
+    // ancre donc la date à midi UTC, comme les dates calculées depuis un ITP.
+    const date = value ? new Date(`${value}T12:00:00.000Z`) : null
     onCultureChange({ [field]: date })
   }
 

@@ -43,6 +43,11 @@ export const createInterventionSchema = z.object({
   surfaceTraitee: numInput(),
   dar: intInput(),
   delaiReentree: intInput(),
+  // QA 2026-07-30 — La ZNT (zone non traitée, distance aux points d'eau) est une
+  // donnée réglementaire : les colonnes existaient en base et l'export du
+  // registre les restituait déjà, mais rien ne les acceptait en écriture.
+  zntDistanceM: intInput(),
+  zntRespectee: z.boolean().nullable().optional(),
   conditionsMeteo: z.string().max(200).nullable().optional(),
   // Intrant
   intrantNom: z.string().max(200).nullable().optional(),
