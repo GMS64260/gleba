@@ -49,6 +49,7 @@ import { useFondPlan } from "@/hooks/use-fond-plan"
 import { calibrerFond, distance, formatDistance } from "@/lib/plan-fond-utils"
 import { croissanceCulture, envergureArbreADate } from "@/lib/plan-croissance"
 import { projeterGpsSurPlan, projeterPlanSurGps } from "@/lib/gps-plan-utils"
+import { partitionnerArbresPourSauvegarde } from "@/lib/plan-sauvegarde"
 
 // Palier 4 (perf) : dialogs lourds chargés à la demande, hors du bundle
 // initial de l'éditeur (le plus gros écran client de l'app).
@@ -380,6 +381,22 @@ function JardinContent() {
     }
   }, [selectedParcelleId])
 
+  /**
+   * QA 2026-07-30 — Une attente de confirmation GPS ne doit pas survivre au
+   * changement de parcelle ni au démontage : l'arbre concerné n'est plus à
+   * l'écran, sa confirmation ne peut plus être tranchée, et le compteur
+   * resterait affiché sans action possible.
+   */
+  React.useEffect(() => {
+    const purger = () => {
+      if (pendingGpsMovesRef.current.size === 0) return
+      pendingGpsMovesRef.current.clear()
+      setPendingGpsMovesCount(0)
+    }
+    purger()
+    return purger
+  }, [selectedParcelleId])
+
   // Charger les especes pour la création de cultures
   const fetchEspeces = React.useCallback(async () => {
     try {
@@ -596,7 +613,15 @@ function JardinContent() {
     selectedParcelleId,
   ])
 
-  const arbresGpsProjetables = React.useMemo(() => {
+  /**
+   * QA 2026-07-30 — On comptait seulement les arbres alignables. Un arbre dont
+   * le relevé GPS tombe hors de la parcelle affichée n'est pas projetable : il
+   * était dessiné à l'origine du plan sans le moindre avertissement, ce qui
+   * invitait à le déplacer… et donc à écraser son relevé terrain par une
+   * position fictive. On distingue désormais les deux populations.
+   */
+  const statsArbresGps = React.useMemo(() => {
+    const inerte = { projetables: 0, nonProjetables: 0 }
     if (
       !selectedParcelleId ||
       selectedParcelleId === "none" ||
@@ -607,24 +632,35 @@ function JardinContent() {
       !fond.contour ||
       !fondDimensions
     ) {
-      return 0
+      return inerte
     }
-    return arbres.filter(
-      (arbre) =>
-        arbre.parcelleGeoId === selectedParcelleId &&
-        arbre.gpsLat != null &&
-        arbre.gpsLng != null &&
-        projeterGpsSurPlan({
-          gpsLat: arbre.gpsLat,
-          gpsLng: arbre.gpsLng,
-          geometryGeoJson: selectedParcelle.geometry,
-          contour: fond.contour!,
-          fond,
-          imageWidth: fondDimensions.width,
-          imageHeight: fondDimensions.height,
-        }) !== null
-    ).length
+    let projetables = 0
+    let nonProjetables = 0
+    for (const arbre of arbres) {
+      if (
+        arbre.parcelleGeoId !== selectedParcelleId ||
+        arbre.gpsLat == null ||
+        arbre.gpsLng == null
+      ) {
+        continue
+      }
+      const projection = projeterGpsSurPlan({
+        gpsLat: arbre.gpsLat,
+        gpsLng: arbre.gpsLng,
+        geometryGeoJson: selectedParcelle.geometry,
+        contour: fond.contour!,
+        fond,
+        imageWidth: fondDimensions.width,
+        imageHeight: fondDimensions.height,
+      })
+      if (projection !== null) projetables += 1
+      else nonProjetables += 1
+    }
+    return { projetables, nonProjetables }
   }, [arbres, fond, fondDimensions, selectedParcelle, selectedParcelleId])
+
+  const arbresGpsProjetables = statsArbresGps.projetables
+  const arbresGpsHorsCadre = statsArbresGps.nonProjetables
 
   const convertirPositionPlanEnGps = React.useCallback(
     (arbre: Arbre, x: number, y: number) => {
@@ -948,9 +984,13 @@ function JardinContent() {
 
   // Sauvegarder les positions
   const handleSave = async () => {
-    // Une position GPS en cours de confirmation ne doit jamais être persistée
-    // avec l'ancien relevé terrain.
-    if (pendingGpsMovesRef.current.size > 0) return
+    // QA 2026-07-30 — Une position GPS en attente de confirmation ne doit pas
+    // être persistée, mais le verrou portait sur TOUTE la sauvegarde : une
+    // modale abandonnée sans réponse rendait planches, objets et tous les
+    // autres arbres non sauvegardables, silencieusement et sans issue (il n'y a
+    // pas de bouton « Enregistrer » manuel). Cf. src/lib/plan-sauvegarde.ts.
+    const { aEcrire: arbresAEcrire, differes: arbresDifferes } =
+      partitionnerArbresPourSauvegarde(arbres, pendingGpsMovesRef.current.keys())
     setSaving(true)
     try {
       const planchePromises = planches.map(p =>
@@ -984,7 +1024,7 @@ function JardinContent() {
         })
       )
 
-      const arbrePromises = arbres.map(a =>
+      const arbrePromises = arbresAEcrire.map(a =>
         fetch(`/api/arbres/${a.id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -1028,7 +1068,9 @@ function JardinContent() {
       if (results.every(r => r.ok)) {
         toast({
           title: "Plan sauvegardé",
-          description: "Les positions ont été enregistrées"
+          description: arbresDifferes.length > 0
+            ? `Positions enregistrées. ${arbresDifferes.length} arbre${arbresDifferes.length > 1 ? "s" : ""} en attente de confirmation GPS ${arbresDifferes.length > 1 ? "n'ont" : "n'a"} pas été déplacé${arbresDifferes.length > 1 ? "s" : ""}.`
+            : "Les positions ont été enregistrées"
         })
         setHasChanges(false)
       } else {
@@ -1051,7 +1093,10 @@ function JardinContent() {
 
   // Auto-save débounced (1s après le dernier changement)
   React.useEffect(() => {
-    if (!hasChanges || saving || pendingGpsMovesCount > 0) return
+    // `pendingGpsMovesCount` ne bloque plus l'auto-save (cf. handleSave) : il
+    // reste dans les dépendances pour relancer une sauvegarde dès qu'une
+    // confirmation est tranchée.
+    if (!hasChanges || saving) return
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current)
     autoSaveTimer.current = setTimeout(() => {
       handleSave()
@@ -1803,6 +1848,14 @@ function JardinContent() {
             {saving && (
               <span className="text-xs text-muted-foreground animate-pulse">Sauvegarde...</span>
             )}
+            {pendingGpsMovesCount > 0 && (
+              <span
+                className="rounded-md bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800"
+                title="Confirmez ou annulez le déplacement pour enregistrer la nouvelle position GPS."
+              >
+                {pendingGpsMovesCount} position GPS à confirmer
+              </span>
+            )}
           </div>
 
           <div className="flex w-full flex-wrap items-center gap-2 xl:hidden">
@@ -1906,6 +1959,11 @@ function JardinContent() {
 
             {saving && (
               <span className="w-full text-xs text-muted-foreground animate-pulse">Sauvegarde...</span>
+            )}
+            {pendingGpsMovesCount > 0 && (
+              <span className="w-full rounded-md bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
+                {pendingGpsMovesCount} position GPS à confirmer
+              </span>
             )}
           </div>
         </div>
@@ -3008,6 +3066,14 @@ function JardinContent() {
                     • {arbresGpsProjetables} arbre{arbresGpsProjetables > 1 ? "s" : ""} avec relevé GPS{" "}
                     {arbresGpsProjetables > 1 ? "sont alignés" : "est aligné"} automatiquement sur
                     le fond géoréférencé.
+                  </p>
+                )}
+                {arbresGpsHorsCadre > 0 && (
+                  <p className="text-amber-700">
+                    • {arbresGpsHorsCadre} arbre{arbresGpsHorsCadre > 1 ? "s" : ""} {arbresGpsHorsCadre > 1 ? "ont" : "a"} un
+                    relevé GPS situé hors de cette parcelle : {arbresGpsHorsCadre > 1 ? "leur position" : "sa position"} sur
+                    le plan n&apos;est pas significative. Corrigez le relevé depuis la fiche de l&apos;arbre plutôt
+                    qu&apos;en le déplaçant ici, ce qui écraserait les coordonnées réelles.
                   </p>
                 )}
               </CardContent>
