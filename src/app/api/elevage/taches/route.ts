@@ -159,6 +159,7 @@ export async function GET(request: NextRequest) {
       dose: string | null
       voie: string | null
       finAttenteLait: Date | null
+      finAttenteOeufs: Date | null
       finAttenteViande: Date | null
       cout: number | null
       animalId: number | null
@@ -175,6 +176,7 @@ export async function GET(request: NextRequest) {
              i.date_prevue AS "datePrevue", i.date_realisee AS "dateRealisee", i.statut,
              s.type, s.description, s.produit, s.dose, s.voie, s.cout,
              s.fin_attente_lait AS "finAttenteLait", s.fin_attente_viande AS "finAttenteViande",
+             s.fin_attente_oeufs AS "finAttenteOeufs",
              s.animal_id AS "animalId", a.nom AS "animalNom", a.identifiant AS "animalIdentifiant",
              s.lot_id AS "lotId", l.nom AS "lotNom"
       FROM injections_soins i
@@ -291,6 +293,7 @@ export async function GET(request: NextRequest) {
         numeroInjection: null,
         nombreInjections: null,
         remiseVenteLait: remiseVente(s.finAttenteLait),
+        remiseVenteOeufs: remiseVente(s.finAttenteOeufs),
         remiseVenteViande: remiseVente(s.finAttenteViande),
       })),
         ...injections.map((i) => ({
@@ -310,6 +313,7 @@ export async function GET(request: NextRequest) {
           fait: i.statut === 'realisee',
           statutInjection: i.statut,
           remiseVenteLait: remiseVente(i.finAttenteLait),
+          remiseVenteOeufs: remiseVente(i.finAttenteOeufs),
           remiseVenteViande: remiseVente(i.finAttenteViande),
           animal: i.animalId ? { id: i.animalId, nom: i.animalNom, identifiant: i.animalIdentifiant } : null,
           lot: i.lotId ? { id: i.lotId, nom: i.lotNom } : null,

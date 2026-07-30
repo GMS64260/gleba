@@ -242,7 +242,7 @@ export function PluviometriePlanche({ plancheId }: Props) {
         </div>
       ) : (
         <div className="text-xs text-muted-foreground italic">
-          Aucune pluie significative (≥ 5 mm) prevue dans les 7 jours
+          Aucune pluie significative (≥ 5 mm) prévue dans les 7 jours
         </div>
       )}
 

@@ -28,6 +28,7 @@ import { estEspeceSansDelaiLait } from '@/lib/elevage/cibles-collecte-lait'
 import {
   PLANCHER_CASCADE_LAIT_J,
   PLANCHER_CASCADE_VIANDE_J,
+  PLANCHER_CASCADE_OEUFS_J,
   resoudreDelaisVeterinaires,
   type EspecePourDelai,
 } from '@/lib/elevage/delais-veterinaires'
@@ -190,6 +191,7 @@ export async function POST(request: NextRequest) {
     // Snapshot temps d'attente depuis le produit FK si renseigné
     let tempsLait = 0
     let tempsViande = 0
+    let tempsOeufs = 0
     let nomProduit = d.produit || null
     let delaiAttenteSource: string | null = d.produitId ? 'referentiel_produit' : 'saisie_libre'
     let produitHorsAmm = false
@@ -206,6 +208,7 @@ export async function POST(request: NextRequest) {
       const resolus = resoudreDelaisVeterinaires(p, cibleEspece)
       tempsLait = resolus.tempsAttenteLaitJ
       tempsViande = resolus.tempsAttenteViandeJ
+      tempsOeufs = resolus.tempsAttenteOeufsJ
       delaiAttenteSource = resolus.source
       produitHorsAmm = !resolus.couvertAmm
       if (!nomProduit) nomProduit = p.nom
@@ -261,6 +264,11 @@ export async function POST(request: NextRequest) {
         ? Math.max(PLANCHER_CASCADE_VIANDE_J, d.tempsAttenteViandeJ)
         : d.tempsAttenteViandeJ
     }
+    if (d.tempsAttenteOeufsJ != null) {
+      tempsOeufs = produitHorsAmm
+        ? Math.max(PLANCHER_CASCADE_OEUFS_J, d.tempsAttenteOeufsJ)
+        : d.tempsAttenteOeufsJ
+    }
     if (d.tempsAttenteLaitJ != null || d.tempsAttenteViandeJ != null) {
       if (tempsLait !== defautLait || tempsViande !== defautViande) {
         delaiAttenteSource = 'prescription'
@@ -273,6 +281,12 @@ export async function POST(request: NextRequest) {
     // pas encore au schéma : on neutralise donc le délai lait plutôt que
     // d'afficher une date de retrait trompeuse.
     if (tempsLait > 0 && estEspeceSansDelaiLait(cibleEspece)) {
+      // QA 2026-07-30 (2e passage) — Neutraliser le délai lait ne suffisait pas :
+      // l'éleveur saisissait 5 j pour ses pondeuses et ne voyait plus AUCUN
+      // délai. Sur une espèce avicole, un délai « lait » saisi ou hérité de la
+      // matrice AMM est en réalité un délai œufs : on le reporte au lieu de
+      // le perdre, sans jamais écraser une valeur œufs explicite.
+      if (tempsOeufs === 0) tempsOeufs = tempsLait
       tempsLait = 0
     }
     // PROMPT 30 — un traitement peut compter plusieurs injections (ex. J0/J1/J2).
@@ -287,6 +301,7 @@ export async function POST(request: NextRequest) {
     // passage a `fait=true`.
     const finLait = d.fait && tempsLait > 0 ? addDays(derniereInjection, tempsLait) : null
     const finViande = d.fait && tempsViande > 0 ? addDays(derniereInjection, tempsViande) : null
+    const finOeufs = d.fait && tempsOeufs > 0 ? addDays(derniereInjection, tempsOeufs) : null
 
     const result = await prisma.$transaction(async (tx) => {
       const quantitePrelevee = d.fait && stockMedicament ? d.quantite ?? 0 : 0
@@ -332,9 +347,11 @@ export async function POST(request: NextRequest) {
           intervalleInjectionsHeures: intervalleH,
           tempsAttenteLaitJ: tempsLait > 0 ? tempsLait : null,
           tempsAttenteViandeJ: tempsViande > 0 ? tempsViande : null,
+          tempsAttenteOeufsJ: tempsOeufs > 0 ? tempsOeufs : null,
           delaiAttenteSource,
           finAttenteLait: finLait,
           finAttenteViande: finViande,
+          finAttenteOeufs: finOeufs,
         },
         include: { animal: true, lot: true, produitVeterinaire: true },
       })
@@ -506,9 +523,11 @@ export async function PATCH(request: NextRequest) {
     // QA caprin cms1v5j14 — un changement de délai d'attente recale les fenêtres.
     const taChange =
       (updateData.tempsAttenteLaitJ !== undefined && updateData.tempsAttenteLaitJ !== existing.tempsAttenteLaitJ) ||
-      (updateData.tempsAttenteViandeJ !== undefined && updateData.tempsAttenteViandeJ !== existing.tempsAttenteViandeJ)
+      (updateData.tempsAttenteViandeJ !== undefined && updateData.tempsAttenteViandeJ !== existing.tempsAttenteViandeJ) ||
+      (updateData.tempsAttenteOeufsJ !== undefined && updateData.tempsAttenteOeufsJ !== existing.tempsAttenteOeufsJ)
     const taLaitEffectif = updateData.tempsAttenteLaitJ !== undefined ? updateData.tempsAttenteLaitJ : existing.tempsAttenteLaitJ
     const taViandeEffectif = updateData.tempsAttenteViandeJ !== undefined ? updateData.tempsAttenteViandeJ : existing.tempsAttenteViandeJ
+    const taOeufsEffectif = updateData.tempsAttenteOeufsJ !== undefined ? updateData.tempsAttenteOeufsJ : existing.tempsAttenteOeufsJ
     if (dateChangee || faitChange || injectionsChangees || taChange) {
       const newDate = (updateData.date as Date | undefined) ?? existing.date
       const seraFait = (updateData.fait as boolean | undefined) ?? existing.fait
@@ -522,6 +541,9 @@ export async function PATCH(request: NextRequest) {
         : null
       updateData.finAttenteViande = seraFait && taViandeEffectif
         ? addDays(derniere, taViandeEffectif)
+        : null
+      updateData.finAttenteOeufs = seraFait && taOeufsEffectif
+        ? addDays(derniere, taOeufsEffectif)
         : null
     }
 

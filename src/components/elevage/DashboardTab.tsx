@@ -44,6 +44,7 @@ import {
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts"
 import { kpiCardClass, kpiSubtleClass } from "@/lib/kpi-theme"
 import { useFiliereSelection, capacitesSelection } from "@/lib/elevage/filiere-context"
+import { formatRemisesEnVente } from "@/lib/elevage/remise-vente-label"
 import {
   attentesSanitairesPrioritaires,
   soinsSanitairesPrioritaires,
@@ -139,6 +140,7 @@ interface SoinItem {
   dose: string | null
   voie: string | null
   remiseVenteLait?: string | null
+  remiseVenteOeufs?: string | null
   remiseVenteViande?: string | null
   cout: number | null
   fait: boolean
@@ -558,15 +560,9 @@ export function DashboardTab({ year }: DashboardTabProps) {
                                         {soin.voie ? `Voie ${soin.voie}` : ""}
                                       </p>
                                     )}
-                                    {(soin.remiseVenteLait || soin.remiseVenteViande) && (
+                                    {formatRemisesEnVente({ lait: soin.remiseVenteLait, oeufs: soin.remiseVenteOeufs, viande: soin.remiseVenteViande }) && (
                                       <p className="text-[11px] text-amber-700">
-                                        {soin.remiseVenteLait
-                                          ? `Lait ${new Date(soin.remiseVenteLait).toLocaleDateString("fr-FR")}`
-                                          : ""}
-                                        {soin.remiseVenteLait && soin.remiseVenteViande ? " · " : ""}
-                                        {soin.remiseVenteViande
-                                          ? `Viande ${new Date(soin.remiseVenteViande).toLocaleDateString("fr-FR")}`
-                                          : ""}
+                                        {formatRemisesEnVente({ lait: soin.remiseVenteLait, oeufs: soin.remiseVenteOeufs, viande: soin.remiseVenteViande })}
                                       </p>
                                     )}
                                   </div>

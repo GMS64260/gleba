@@ -937,6 +937,7 @@ interface Soin {
   animalId: number | null
   // Délais d'attente (remise en vente) — présents sur un soin réalisé avec produit
   tempsAttenteLaitJ: number | null
+  tempsAttenteOeufsJ?: number | null
   tempsAttenteViandeJ: number | null
   finAttenteLait: string | null
   finAttenteViande: string | null
@@ -1026,6 +1027,7 @@ function soinFormVide() {
     // QA caprin cms1v5j14 — délais d'attente surchargeables (ordonnance véto,
     // usage hors AMM/cascade). Pré-remplis depuis le produit, éditables.
     tempsAttenteLaitJ: "",
+    tempsAttenteOeufsJ: "",
     tempsAttenteViandeJ: "",
   }
 }
@@ -1095,6 +1097,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
       nbInjections: s.nbInjections != null ? String(s.nbInjections) : "1",
       intervalleInjectionsHeures: s.intervalleInjectionsHeures != null ? String(s.intervalleInjectionsHeures) : "24",
       tempsAttenteLaitJ: s.tempsAttenteLaitJ != null ? String(s.tempsAttenteLaitJ) : "",
+      tempsAttenteOeufsJ: s.tempsAttenteOeufsJ != null ? String(s.tempsAttenteOeufsJ) : "",
       tempsAttenteViandeJ: s.tempsAttenteViandeJ != null ? String(s.tempsAttenteViandeJ) : "",
     })
     setIsDialogOpen(true)
@@ -1124,6 +1127,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
     nom: string
     substanceActive: string | null
     tempsAttenteLaitJ: number
+    tempsAttenteOeufsJ?: number
     tempsAttenteViandeJ: number
     autoriseAB: boolean
     delaiAttenteSource?: "referentiel_espece" | "referentiel_produit" | "cascade"
@@ -1218,6 +1222,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
           return {
             ...current,
             tempsAttenteLaitJ: String(produit.tempsAttenteLaitJ),
+            tempsAttenteOeufsJ: produit.tempsAttenteOeufsJ ? String(produit.tempsAttenteOeufsJ) : "",
             tempsAttenteViandeJ: String(produit.tempsAttenteViandeJ),
           }
         })
@@ -1386,6 +1391,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
         // QA caprin cms1v5j14 — délais d'attente saisis (défaut = produit,
         // surcharge = prescription vétérinaire)
         tempsAttenteLaitJ: formData.tempsAttenteLaitJ === "" ? null : Math.max(0, parseInt(formData.tempsAttenteLaitJ, 10) || 0),
+        tempsAttenteOeufsJ: formData.tempsAttenteOeufsJ === "" ? null : Math.max(0, parseInt(formData.tempsAttenteOeufsJ, 10) || 0),
         tempsAttenteViandeJ: formData.tempsAttenteViandeJ === "" ? null : Math.max(0, parseInt(formData.tempsAttenteViandeJ, 10) || 0),
       }
       if (formData.cible === "animal") payload.animalId = formData.animalId ? parseInt(formData.animalId) : null
@@ -1521,6 +1527,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
                         // Pré-remplissage des délais d'attente depuis le produit,
                         // surchargeables ensuite (prescription vétérinaire).
                         tempsAttenteLaitJ: p ? String(p.tempsAttenteLaitJ) : "",
+                        tempsAttenteOeufsJ: p?.tempsAttenteOeufsJ ? String(p.tempsAttenteOeufsJ) : "",
                         tempsAttenteViandeJ: p ? String(p.tempsAttenteViandeJ) : "",
                       }))
                     }}>
@@ -1705,7 +1712,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
                         28 j viande) : l'éleveur doit pouvoir saisir l'ordonnance. */}
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div className="space-y-1">
-                        <Label className="text-xs">Délai d&apos;attente lait (j)</Label>
+                        <Label className="text-xs">Délai d&apos;attente lait (j) — espèces laitières</Label>
                         <Input type="number" min="0" max="365" value={formData.tempsAttenteLaitJ}
                           onChange={(e) => setFormData(f => ({ ...f, tempsAttenteLaitJ: e.target.value }))}
                           placeholder={formData.produitId ? "" : "—"} />
@@ -1714,6 +1721,17 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
                         <Label className="text-xs">Délai d&apos;attente viande (j)</Label>
                         <Input type="number" min="0" max="365" value={formData.tempsAttenteViandeJ}
                           onChange={(e) => setFormData(f => ({ ...f, tempsAttenteViandeJ: e.target.value }))}
+                          placeholder={formData.produitId ? "" : "—"} />
+                      </div>
+                      {/* QA 2026-07-30 — Les volailles ont un délai de retrait
+                          sur les œufs, absent du formulaire : l'éleveur saisissait
+                          son délai dans « lait », affiché comme une remise en
+                          vente du lait. Sur une espèce non laitière, l'API
+                          reporte automatiquement un délai lait saisi ici. */}
+                      <div className="space-y-1 sm:col-span-2">
+                        <Label className="text-xs">Délai d&apos;attente œufs (j) — volailles pondeuses</Label>
+                        <Input type="number" min="0" max="365" value={formData.tempsAttenteOeufsJ}
+                          onChange={(e) => setFormData(f => ({ ...f, tempsAttenteOeufsJ: e.target.value }))}
                           placeholder={formData.produitId ? "" : "—"} />
                       </div>
                       {(() => {

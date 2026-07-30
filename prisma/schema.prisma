@@ -2345,12 +2345,17 @@ model SoinAnimal {
   // Temps d'attente snapshot au moment de l'application (en jours)
   tempsAttenteLaitJ          Int?                    @map("temps_attente_lait_j")
   tempsAttenteViandeJ        Int?                    @map("temps_attente_viande_j")
+  // QA 2026-07-30 — Les volailles ont un délai de retrait sur les ŒUFS, que le
+  // modèle ne portait pas : la matrice AMM déclinait un délai « lait » sur des
+  // pondeuses, affiché comme une date de remise en vente du lait.
+  tempsAttenteOeufsJ         Int?                    @map("temps_attente_oeufs_j")
   // Origine du snapshot : referentiel_produit, referentiel_espece, cascade ou
   // prescription. Indispensable pour expliquer le délai dans le registre.
   delaiAttenteSource         String?                 @map("delai_attente_source")
   // Dates calculées (dernière injection + temps_attente)
   finAttenteLait             DateTime?               @map("fin_attente_lait")
   finAttenteViande           DateTime?               @map("fin_attente_viande")
+  finAttenteOeufs            DateTime?               @map("fin_attente_oeufs")
   quantite                   Float?                  @map("quantite")
   unite                      String?                 @map("unite")
   cout                       Float?                  @map("cout") // €
@@ -2370,6 +2375,7 @@ model SoinAnimal {
   @@index([stockMedicamentId])
   @@index([finAttenteLait])
   @@index([finAttenteViande])
+  @@index([finAttenteOeufs])
   @@map("soins_animaux")
 }
 
@@ -2420,6 +2426,7 @@ model ProduitVeterinaire {
   especesCibles         String[] @default([]) @map("especes_cibles")
   tempsAttenteLaitJ     Int      @default(0) @map("temps_attente_lait_j")
   tempsAttenteViandeJ   Int      @default(0) @map("temps_attente_viande_j")
+  tempsAttenteOeufsJ    Int      @default(0) @map("temps_attente_oeufs_j")
   ordonnanceObligatoire Boolean  @default(true) @map("ordonnance_obligatoire")
   autoriseAB            Boolean  @default(false) @map("autorise_ab")
   voiesAdmin            String[] @default([]) @map("voies_admin") // ['IM','SC','PO']
@@ -2448,6 +2455,7 @@ model ProduitVeterinaireEspece {
   especeAnimale       EspeceAnimale      @relation(fields: [especeAnimaleId], references: [id], onDelete: Cascade)
   tempsAttenteLaitJ   Int                @default(0) @map("temps_attente_lait_j")
   tempsAttenteViandeJ Int                @default(0) @map("temps_attente_viande_j")
+  tempsAttenteOeufsJ  Int                @default(0) @map("temps_attente_oeufs_j")
   couvertAmm          Boolean            @default(true) @map("couvert_amm")
   source              String?            @map("source")
   createdAt           DateTime           @default(now()) @map("created_at")

@@ -25,6 +25,7 @@ type Echeance = {
     | 'tarissement'
     | 'diagnostic_gestation'
     | 'attente_lait'
+    | 'attente_oeufs'
     | 'attente_viande'
     | 'soin_planifie'
     | 'soin_retard'
@@ -147,6 +148,7 @@ export async function GET(request: NextRequest) {
       dose: string | null
       voie: string | null
       finAttenteLait: Date | null
+      finAttenteOeufs: Date | null
       finAttenteViande: Date | null
       animalId: number | null
       animalNom: string | null
@@ -162,6 +164,7 @@ export async function GET(request: NextRequest) {
              i.date_prevue AS "datePrevue",
              s.produit, s.type, s.dose, s.voie,
              s.fin_attente_lait AS "finAttenteLait", s.fin_attente_viande AS "finAttenteViande",
+             s.fin_attente_oeufs AS "finAttenteOeufs",
              s.animal_id AS "animalId", a.nom AS "animalNom",
              a.identifiant AS "animalIdentifiant", s.lot_id AS "lotId", l.nom AS "lotNom"
       FROM injections_soins i
@@ -255,6 +258,20 @@ export async function GET(request: NextRequest) {
           gravite: 'urgent',
         })
       }
+      // QA 2026-07-30 — Retrait des œufs : sans cette échéance, un traitement
+      // sur des pondeuses n'apparaissait nulle part dans l'agenda.
+      if (a.finAttenteOeufs && a.finAttenteOeufs >= now) {
+        const rv = remiseVente(a.finAttenteOeufs)!
+        echeances.push({
+          id: `att-oeufs-${a.key}`,
+          kind: 'attente_oeufs',
+          date: rv.toISOString(),
+          joursRestants: jours(now, rv),
+          titre: `Œufs non commercialisables — ${cible}`,
+          detail: `remise en vente le ${rv.toLocaleDateString('fr-FR')}`,
+          gravite: 'urgent',
+        })
+      }
       if (a.finAttenteViande && a.finAttenteViande >= now) {
         const rv = remiseVente(a.finAttenteViande)!
         echeances.push({
@@ -298,6 +315,9 @@ export async function GET(request: NextRequest) {
         injection.voie ? `voie ${injection.voie}` : null,
         injection.finAttenteLait
           ? `lait : remise en vente ${remiseVente(injection.finAttenteLait)!.toLocaleDateString('fr-FR')}`
+          : null,
+        injection.finAttenteOeufs
+          ? `œufs : remise en vente ${remiseVente(injection.finAttenteOeufs)!.toLocaleDateString('fr-FR')}`
           : null,
         injection.finAttenteViande
           ? `viande : remise en vente ${remiseVente(injection.finAttenteViande)!.toLocaleDateString('fr-FR')}`

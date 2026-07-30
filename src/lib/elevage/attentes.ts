@@ -28,6 +28,7 @@ export interface SoinAttenteRow {
   fait: boolean
   tempsAttenteLaitJ: number | null
   tempsAttenteViandeJ: number | null
+  tempsAttenteOeufsJ?: number | null
   nbInjections: number | null
   intervalleInjectionsHeures: number | null
   /** Libellés pré-résolus (côté requête) pour éviter un 2ᵉ round-trip. */
@@ -49,6 +50,12 @@ export interface AttenteConsolidee {
   finAttenteLait: Date | null
   /** Fin d'attente viande (dernière injection + délai viande), ou null. */
   finAttenteViande: Date | null
+  /**
+   * Fin d'attente œufs (QA 2026-07-30). Les volailles ont un délai de retrait
+   * sur les œufs, que le modèle ne portait pas : la matrice AMM déclinait un
+   * délai « lait » sur des pondeuses.
+   */
+  finAttenteOeufs: Date | null
 }
 
 function floorDayUTC(d: Date): Date {
@@ -151,12 +158,15 @@ export function consoliderAttentes(soins: SoinAttenteRow[], today: Date): Attent
 
     const tempsLait = Math.max(0, ...membres.map((m) => m.tempsAttenteLaitJ ?? 0))
     const tempsViande = Math.max(0, ...membres.map((m) => m.tempsAttenteViandeJ ?? 0))
+    const tempsOeufs = Math.max(0, ...membres.map((m) => m.tempsAttenteOeufsJ ?? 0))
     const finLait = tempsLait > 0 ? addDays(ancre, tempsLait) : null
     const finViande = tempsViande > 0 ? addDays(ancre, tempsViande) : null
+    const finOeufs = tempsOeufs > 0 ? addDays(ancre, tempsOeufs) : null
 
     const laitActif = finLait != null && floorDayUTC(finLait).getTime() >= t0
     const viandeActif = finViande != null && floorDayUTC(finViande).getTime() >= t0
-    if (!laitActif && !viandeActif) continue
+    const oeufsActif = finOeufs != null && floorDayUTC(finOeufs).getTime() >= t0
+    if (!laitActif && !viandeActif && !oeufsActif) continue
 
     const rep = membres[0]
     const c = cibleOf(rep)
@@ -168,13 +178,14 @@ export function consoliderAttentes(soins: SoinAttenteRow[], today: Date): Attent
       derniereInjection: ancre,
       finAttenteLait: laitActif ? finLait : null,
       finAttenteViande: viandeActif ? finViande : null,
+      finAttenteOeufs: oeufsActif ? finOeufs : null,
     })
   }
 
   // Tri : échéance lait la plus proche d'abord, puis viande.
   result.sort((a, b) => {
-    const ax = (a.finAttenteLait ?? a.finAttenteViande)!.getTime()
-    const bx = (b.finAttenteLait ?? b.finAttenteViande)!.getTime()
+    const ax = (a.finAttenteLait ?? a.finAttenteOeufs ?? a.finAttenteViande)!.getTime()
+    const bx = (b.finAttenteLait ?? b.finAttenteOeufs ?? b.finAttenteViande)!.getTime()
     return ax - bx
   })
   return result

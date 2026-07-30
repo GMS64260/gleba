@@ -34,6 +34,7 @@ export interface SoinDetailItem {
   dose?: string | null
   voie?: string | null
   remiseVenteLait?: string | null
+  remiseVenteOeufs?: string | null
   remiseVenteViande?: string | null
   description?: string | null
   cout?: number | null
@@ -145,7 +146,7 @@ export function SoinDetailDialog({
               <span className="font-medium text-right">{rappel.toLocaleDateString("fr-FR")}</span>
             </div>
           )}
-          {(soin.remiseVenteLait || soin.remiseVenteViande) && (
+          {(soin.remiseVenteLait || soin.remiseVenteOeufs || soin.remiseVenteViande) && (
             <div className="space-y-1 border-t pt-2">
               <p className="text-xs font-medium text-amber-800">Remise en vente après le traitement</p>
               {soin.remiseVenteLait && (
@@ -153,6 +154,14 @@ export function SoinDetailDialog({
                   <span className="text-muted-foreground">Lait</span>
                   <span className="font-medium">
                     {new Date(soin.remiseVenteLait).toLocaleDateString("fr-FR")}
+                  </span>
+                </div>
+              )}
+              {soin.remiseVenteOeufs && (
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">Œufs</span>
+                  <span className="font-medium">
+                    {new Date(soin.remiseVenteOeufs).toLocaleDateString("fr-FR")}
                   </span>
                 </div>
               )}
