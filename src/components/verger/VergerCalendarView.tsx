@@ -494,7 +494,7 @@ export function VergerCalendarView({ year }: VergerCalendarViewProps) {
                             Fait
                           </Badge>
                         ) : (
-                          <Badge variant="outline">A faire</Badge>
+                          <Badge variant="outline">À faire</Badge>
                         )}
                       </div>
                     )
