@@ -124,6 +124,8 @@ export interface AssistantState {
   culture: CultureData
   cultureId: number | null
   plancheId: string | null
+  /** Mode de saisie des dates de l'étape planning, persisté avec l'état. */
+  dateMode: 'calculated' | 'manual'
 }
 
 const INITIAL_STATE: AssistantState = {
@@ -141,6 +143,7 @@ const INITIAL_STATE: AssistantState = {
   },
   cultureId: null,
   plancheId: null,
+  dateMode: 'calculated',
 }
 
 const STORAGE_KEY = 'gleba-assistant-state'
@@ -531,6 +534,8 @@ export function AssistantDialog({ open, onOpenChange }: AssistantDialogProps) {
                 selectedPlancheId={state.selectedPlancheId || state.planche.id || null}
                 mode={state.mode || ''}
                 onCultureChange={updateCulture}
+                dateMode={state.dateMode ?? 'calculated'}
+                onDateModeChange={(dateMode) => setState((prev) => ({ ...prev, dateMode }))}
               />
             )}
 

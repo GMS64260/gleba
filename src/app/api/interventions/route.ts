@@ -490,6 +490,10 @@ export async function POST(request: NextRequest) {
         ventKmh: d.ventKmh ?? null,
         hygrometriePct: d.hygrometriePct ?? null,
         produitPhytoId: d.produitPhytoId ?? null,
+        // QA 2026-07-30 — ZNT : colonnes déjà présentes en base et restituées par
+        // l'export du registre, mais jamais écrites par cette route.
+        zntDistanceM: d.zntDistanceM ?? null,
+        zntRespectee: d.zntRespectee ?? null,
       },
     })
 
@@ -587,6 +591,8 @@ export async function PATCH(request: NextRequest) {
     if (updates.dar !== undefined) data.dar = updates.dar ? parseInt(updates.dar) : null
     if (updates.delaiReentree !== undefined) data.delaiReentree = updates.delaiReentree ? parseInt(updates.delaiReentree) : null
     if (updates.conditionsMeteo !== undefined) data.conditionsMeteo = updates.conditionsMeteo || null
+    if (updates.zntDistanceM !== undefined) data.zntDistanceM = updates.zntDistanceM ? parseInt(updates.zntDistanceM) : null
+    if (updates.zntRespectee !== undefined) data.zntRespectee = updates.zntRespectee ?? null
     // Intrant
     if (updates.intrantNom !== undefined) data.intrantNom = updates.intrantNom || null
     if (updates.intrantQuantite !== undefined) data.intrantQuantite = updates.intrantQuantite ? parseFloat(updates.intrantQuantite) : null

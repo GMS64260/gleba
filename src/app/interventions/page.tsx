@@ -30,6 +30,8 @@ import { UserMenu } from "@/components/auth/UserMenu"
 
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
+import { libelleCulture } from "@/lib/cultures/label"
+import { ZntFieldset } from "@/components/phyto/ZntFieldset"
 import { todayLocalISO } from '@/lib/format-utils'
 import {
   Sprout,
@@ -72,6 +74,8 @@ interface Intervention {
   datePrevue: string | null
   fait: boolean
   produitPhyto: string | null
+  zntDistanceM?: number | null
+  zntRespectee?: boolean | null
   numAMM: string | null
   cibleTraitement: string | null
   doseAppliquee: number | null
@@ -101,11 +105,20 @@ interface Stats {
   planifiees: number
 }
 
+/**
+ * QA 2026-07-30 — Ce type déclarait `nom`, `variete` et `plancheNom` en chaînes
+ * alors que /api/cultures renvoie les enregistrements Prisma bruts : `espece`,
+ * `variete` et `planche` sont des objets. Le sélecteur affichait donc
+ * « [object Object] ». Le libellé passe par `libelleCulture`.
+ */
 interface Culture {
   id: number
-  nom: string
-  variete?: string
-  plancheNom?: string
+  espece?: { id?: string | null; nom?: string | null } | string | null
+  especeId?: string | null
+  variete?: { id?: string | null; nom?: string | null } | string | null
+  varieteId?: string | null
+  planche?: { id?: string | null; nom?: string | null } | null
+  plancheId?: string | null
 }
 
 interface Planche {
@@ -235,6 +248,8 @@ export default function InterventionsPage() {
     surfaceTraitee: "",
     dar: "",
     conditionsMeteo: "",
+    zntDistanceM: null as number | null,
+    zntRespectee: null as boolean | null,
     // Intrants
     intrantNom: "",
     intrantQuantite: "",
@@ -366,6 +381,8 @@ export default function InterventionsPage() {
       surfaceTraitee: form.surfaceTraitee,
       dar: form.dar,
       conditionsMeteo: form.conditionsMeteo,
+      zntDistanceM: form.zntDistanceM,
+      zntRespectee: form.zntRespectee,
       // Intrant
       intrantNom: form.intrantNom,
       intrantQuantite: form.intrantQuantite,
@@ -469,6 +486,8 @@ export default function InterventionsPage() {
       surfaceTraitee: intervention.surfaceTraitee?.toString() || "",
       dar: intervention.dar?.toString() || "",
       conditionsMeteo: intervention.conditionsMeteo || "",
+      zntDistanceM: intervention.zntDistanceM ?? null,
+      zntRespectee: intervention.zntRespectee ?? null,
       intrantNom: intervention.intrantNom || "",
       intrantQuantite: intervention.intrantQuantite?.toString() || "",
       intrantUnite: intervention.intrantUnite || "kg",
@@ -715,7 +734,7 @@ export default function InterventionsPage() {
                         <option value="">-- Aucune --</option>
                         {cultures.map((c) => (
                           <option key={c.id} value={c.id}>
-                            {c.nom}{c.variete ? ` (${c.variete})` : ""}{c.plancheNom ? ` - ${c.plancheNom}` : ""}
+                            {libelleCulture(c)}
                           </option>
                         ))}
                       </select>
@@ -883,6 +902,17 @@ export default function InterventionsPage() {
                           />
                         </div>
                       </div>
+                      {/* QA 2026-07-30 — La ZNT (distance aux points d'eau) est
+                          une donnée réglementaire attendue au même titre que
+                          l'AMM et le DAR. Les colonnes existaient en base et
+                          l'export du registre les restituait déjà, mais aucun
+                          champ ne permettait de les saisir. Fieldset partagé
+                          avec le module Verger. */}
+                      <ZntFieldset
+                        distanceM={form.zntDistanceM}
+                        respectee={form.zntRespectee}
+                        onChange={(next) => setForm({ ...form, zntDistanceM: next.distanceM, zntRespectee: next.respectee })}
+                      />
                       {/* PROMPT 11 LOT B/D — Justification du traitement (obligatoire en PBI). */}
                       <div>
                         <Label>Justification du traitement</Label>
@@ -1184,7 +1214,7 @@ export default function InterventionsPage() {
                         ? cultures.find((c) => c.id === intervention.cultureId)
                         : null
                       const cultureLabel = intervention.cultureNom
-                        || (culture ? `${culture.nom}${culture.variete ? ` (${culture.variete})` : ""}` : null)
+                        || (culture ? libelleCulture(culture) : null)
                       const plancheLabel = intervention.plancheNom || intervention.plancheId || null
 
                       return (

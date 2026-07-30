@@ -14,6 +14,7 @@ import { ArrowLeft, BarChart3, Package, ShoppingCart, Euro, Trash2, AlertTriangl
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -149,7 +150,13 @@ export default function RecoltesPage() {
   // Filtrer par statut
   const stockRecoltes = data.filter(r => !r.statut || r.statut === "en_stock")
   const venduRecoltes = data.filter(r => r.statut === "vendu")
-  const perteRecoltes = data.filter(r => r.statut === "perte" || r.statut === "consomme")
+  // QA 2026-07-30 — L'auto-consommation était rangée avec les pertes : le KPI
+  // annonçait « Pertes 0,8 kg » pour une récolte simplement consommée à la
+  // ferme. Ce sont deux notions de gestion différentes ; la distinction existe
+  // déjà en base (statut « consomme » vs « perte »).
+  const perteRecoltes = data.filter(r => r.statut === "perte")
+  const consoPersoRecoltes = data.filter(r => r.statut === "consomme")
+  const sortiesRecoltes = [...perteRecoltes, ...consoPersoRecoltes]
 
   const clientOptions = React.useMemo(() =>
     clients.map(c => ({ value: c.nom, label: c.nom })),
@@ -467,6 +474,11 @@ export default function RecoltesPage() {
               <p className="text-2xl font-bold text-orange-800">
                 {perteRecoltes.reduce((sum, r) => sum + r.quantite, 0).toFixed(1)} kg
               </p>
+              {consoPersoRecoltes.length > 0 && (
+                <p className="mt-1 text-xs text-orange-700/80">
+                  dont conso perso à part : {consoPersoRecoltes.reduce((sum, r) => sum + r.quantite, 0).toFixed(1)} kg
+                </p>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -485,7 +497,7 @@ export default function RecoltesPage() {
             </TabsTrigger>
             <TabsTrigger value="perte" className="flex items-center gap-2">
               <AlertTriangle className="h-4 w-4" />
-              Pertes ({perteRecoltes.length})
+              Sorties ({sortiesRecoltes.length})
             </TabsTrigger>
           </TabsList>
 
@@ -663,16 +675,17 @@ export default function RecoltesPage() {
           <TabsContent value="perte">
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Pertes / Consommation perso</CardTitle>
+                <CardTitle className="text-base">Sorties de stock</CardTitle>
               </CardHeader>
               <CardContent>
-                {perteRecoltes.length === 0 ? (
-                  <p className="text-muted-foreground">Aucune perte enregistrée</p>
+                {sortiesRecoltes.length === 0 ? (
+                  <p className="text-muted-foreground">Aucune perte ni consommation personnelle enregistrée</p>
                 ) : (
                   <Table>
                     <TableHeader>
                       <TableRow>
                         <TableHead>Date récolte</TableHead>
+                        <TableHead>Type</TableHead>
                         <TableHead>Espèce</TableHead>
                         <TableHead>Variété</TableHead>
                         <TableHead className="text-right">Quantité</TableHead>
@@ -680,12 +693,19 @@ export default function RecoltesPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {perteRecoltes.map((r) => (
+                      {sortiesRecoltes.map((r) => (
                         <TableRow key={r.id}>
                           <TableCell>{format(new Date(r.date), "dd/MM/yyyy", { locale: fr })}</TableCell>
+                          <TableCell>
+                            {r.statut === "perte" ? (
+                              <Badge variant="outline" className="border-orange-300 text-orange-700">Perte</Badge>
+                            ) : (
+                              <Badge variant="outline" className="border-sky-300 text-sky-700">Conso perso</Badge>
+                            )}
+                          </TableCell>
                           <TableCell>{r.especeId}</TableCell>
                           <TableCell>{r.culture?.variete?.nom ?? r.culture?.variete?.id ?? "-"}</TableCell>
-                          <TableCell className="text-right text-orange-600">{r.quantite.toFixed(2)} kg</TableCell>
+                          <TableCell className={`text-right ${r.statut === "perte" ? "text-orange-600" : "text-sky-700"}`}>{r.quantite.toFixed(2)} kg</TableCell>
                           <TableCell className="text-muted-foreground">{r.notes || "-"}</TableCell>
                         </TableRow>
                       ))}
