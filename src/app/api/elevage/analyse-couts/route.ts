@@ -10,8 +10,11 @@ type Atelier = {
   effectif: number
   couts: { achat: number; soins: number; alimentation: number; total: number }
   revenus: { ventes: number; abattages: number; paiesLait: number; total: number }
-  production: { oeufs: number; litresLivres: number }
+  production: { oeufs: number; litresLivres: number; kgCarcasse: number }
   marge: number
+  // Coûts unitaires par atelier, `null` quand la production correspondante
+  // est nulle (un coût divisé par zéro n'est pas un indicateur).
+  metriques: { coutParOeuf: number | null; coutParKgCarcasse: number | null; coutParLitre: number | null }
 }
 
 export async function GET(request: NextRequest) {
@@ -63,7 +66,7 @@ export async function GET(request: NextRequest) {
     const getAtelier = (code: string, libelle: string) => {
       let atelier = ateliers.get(code)
       if (!atelier) {
-        atelier = { code, libelle, effectif: 0, couts: { achat: 0, soins: 0, alimentation: 0, total: 0 }, revenus: { ventes: 0, abattages: 0, paiesLait: 0, total: 0 }, production: { oeufs: 0, litresLivres: 0 }, marge: 0 }
+        atelier = { code, libelle, effectif: 0, couts: { achat: 0, soins: 0, alimentation: 0, total: 0 }, revenus: { ventes: 0, abattages: 0, paiesLait: 0, total: 0 }, production: { oeufs: 0, litresLivres: 0, kgCarcasse: 0 }, marge: 0, metriques: { coutParOeuf: null, coutParKgCarcasse: null, coutParLitre: null } }
         ateliers.set(code, atelier)
       }
       return atelier
@@ -97,7 +100,11 @@ export async function GET(request: NextRequest) {
         ?? 0
       a.couts.alimentation += c.quantite * prix
     }
-    for (const abattage of abattages) speciesFor(abattage.lotId, abattage.animalId).revenus.abattages += abattage.prixVente || 0
+    for (const abattage of abattages) {
+      const a = speciesFor(abattage.lotId, abattage.animalId)
+      a.revenus.abattages += abattage.prixVente || 0
+      a.production.kgCarcasse += abattage.poidsCarcasse || 0
+    }
     for (const vente of ventes) {
       const a = vente.animalId != null ? speciesFor(null, vente.animalId) : getAtelier(`vente_${vente.type}`, `Ventes ${vente.type.replaceAll('_', ' ')}`)
       a.revenus.ventes += vente.prixTotal
@@ -130,7 +137,17 @@ export async function GET(request: NextRequest) {
       a.couts.achat = round(a.couts.achat); a.couts.soins = round(a.couts.soins); a.couts.alimentation = round(a.couts.alimentation)
       a.revenus.ventes = round(a.revenus.ventes); a.revenus.abattages = round(a.revenus.abattages); a.revenus.paiesLait = round(a.revenus.paiesLait)
       a.production.oeufs = round(a.production.oeufs); a.production.litresLivres = round(a.production.litresLivres)
+      a.production.kgCarcasse = round(a.production.kgCarcasse)
       a.marge = round(a.revenus.total - a.couts.total)
+      // Le coût unitaire garde 3 décimales : un œuf coûte quelques centimes,
+      // l'arrondi au centime écraserait l'indicateur.
+      const unitaire = (production: number) =>
+        production > 0 ? Math.round((a.couts.total / production) * 1000) / 1000 : null
+      a.metriques = {
+        coutParOeuf: unitaire(a.production.oeufs),
+        coutParKgCarcasse: unitaire(a.production.kgCarcasse),
+        coutParLitre: unitaire(a.production.litresLivres),
+      }
     }
 
     // Contrat historique : conserver `data` par lot pour les consommateurs existants.
@@ -146,7 +163,7 @@ export async function GET(request: NextRequest) {
       const totalOeufs = productionsOeufs.filter(p => p.lotId === lot.id).reduce((sum, p) => sum + p.quantite, 0)
       return { lotId: lot.id, lotNom: lot.nom || `Lot #${lot.id}`, espece: lot.especeAnimale.nom, quantiteActuelle: lot.quantiteActuelle, quantiteInitiale: lot.quantiteInitiale, statut: lot.statut, couts: { achat: round(coutAchat), soins: round(coutSoins), alimentation: round(coutAlimentation), total: round(total) }, revenus: { ventes: round(revenus) }, marge: round(revenus - total), metriques: { coutParAnimal: round(lot.quantiteActuelle ? total / lot.quantiteActuelle : 0), coutParOeuf: totalOeufs ? round(total / totalOeufs) : null, totalOeufs, totalConsoKg: round(lotConso.reduce((sum, c) => sum + c.quantite, 0)), poidsCarcasse: round(lotAbattages.reduce((sum, a) => sum + (a.poidsCarcasse || 0), 0)), nbAbattages: lotAbattages.reduce((sum, a) => sum + a.quantite, 0), nbSoins: lotSoins.length } }
     })
-    const atelierList = [...ateliers.values()].filter(a => a.effectif || a.couts.total || a.revenus.total || a.production.oeufs || a.production.litresLivres)
+    const atelierList = [...ateliers.values()].filter(a => a.effectif || a.couts.total || a.revenus.total || a.production.oeufs || a.production.litresLivres || a.production.kgCarcasse)
     const totalCouts = atelierList.reduce((sum, a) => sum + a.couts.total, 0)
     const totalRevenus = atelierList.reduce((sum, a) => sum + a.revenus.total, 0)
 
@@ -159,6 +176,7 @@ export async function GET(request: NextRequest) {
         achats: "Comptés uniquement si la date d'arrivée est dans l'année sélectionnée.",
         affectation: "Lot/animal affecté directement ; saisies globales et ventes sans cible conservées dans un atelier explicite non ventilé.",
         lait: "Les paies et livraisons sont rapprochées au mois mais non attribuées à une espèce faute de lien dans la saisie.",
+        coutsUnitaires: "Coût unitaire = coûts totaux de l'atelier divisés par sa production de l'année (œufs, kg de carcasse, litres livrés). Affiché seulement si la production est non nulle.",
       },
     })
   } catch (cause) {

@@ -85,6 +85,7 @@ interface Arbre {
   // PROMPT 10 — fiche complète
   portGreffe?: string | null
   porteGreffeId?: string | null
+  porteGreffeRef?: { id: string; nom: string; vigueur?: number | null } | null
   gpsLat?: number | null
   gpsLng?: number | null
   _count?: {
@@ -166,9 +167,12 @@ function makeColumns(onGenererCalendrier: (arbre: Arbre) => void): ColumnDef<Arb
       // QA Hélène 2026-05-15 — Bug #7 : colonne Porte-greffe ajoutée
       // au menu Colonnes. Le filtre "Sans porte-greffe" existait déjà
       // mais la donnée n'était pas affichable depuis la liste.
-      accessorKey: "portGreffe",
+      // QA 2026-07-30 — On lit d'abord le référentiel (seul renseigné depuis la
+      // refonte), puis le texte libre historique pour les arbres anciens.
+      id: "portGreffe",
+      accessorFn: (arbre) => arbre.porteGreffeRef?.nom ?? arbre.portGreffe ?? null,
       header: "Porte-greffe",
-      cell: ({ getValue }) => (getValue() as string) || "-",
+      cell: ({ getValue }) => (getValue() as string | null) || "-",
     },
     {
       accessorKey: "datePlantation",

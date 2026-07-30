@@ -20,6 +20,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { StationMeteoConfig } from "@/components/meteo/StationMeteoConfig"
+import { updateDashboardSearchParams } from "@/lib/dashboard-navigation"
 
 interface ParcelleMeteo {
   id: string
@@ -53,7 +54,17 @@ export default function MeteoPage() {
           .filter((p) => p.centroidLat && p.centroidLng)
           .map((p) => ({ id: p.id, nom: p.nom, centroidLat: p.centroidLat as number, centroidLng: p.centroidLng as number }))
         setParcelles(avecCoords)
-        if (avecCoords.length > 0) setSelectedId(avecCoords[0].id)
+        // QA 2026-07-30 — Le choix de parcelle n'était qu'un état React : après
+        // un rechargement on repartait sur la première parcelle, et les
+        // conseils d'irrigation changeaient de périmètre sans action de
+        // l'utilisateur. On restaure d'abord la parcelle demandée par l'URL.
+        if (avecCoords.length > 0) {
+          const demandee = new URLSearchParams(window.location.search).get("parcelleId")
+          const retenue = demandee && avecCoords.some((p) => p.id === demandee)
+            ? demandee
+            : avecCoords[0].id
+          setSelectedId(retenue)
+        }
         if (stationRes.ok) setStations((await stationRes.json()).data || [])
       } catch {
         // silencieux — l'état vide guide l'utilisateur
@@ -63,6 +74,13 @@ export default function MeteoPage() {
     }
     load()
   }, [])
+
+  const selectionnerParcelle = (id: string) => {
+    setSelectedId(id)
+    const params = new URLSearchParams(window.location.search)
+    params.set("parcelleId", id)
+    updateDashboardSearchParams(params, "replace")
+  }
 
   const parcelle = parcelles.find((p) => p.id === selectedId) ?? null
   const activeStation = stations.find((s) => s.active)
@@ -95,7 +113,7 @@ export default function MeteoPage() {
         </div>
         <div className="flex items-center gap-2">
           {parcelles.length > 1 && selectedId && (
-            <Select value={selectedId} onValueChange={setSelectedId}>
+            <Select value={selectedId} onValueChange={selectionnerParcelle}>
               <SelectTrigger className="w-[190px] h-8">
                 <MapPin className="h-3.5 w-3.5 mr-1 text-muted-foreground" />
                 <SelectValue />

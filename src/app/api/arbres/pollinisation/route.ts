@@ -197,11 +197,26 @@ export async function GET(request: NextRequest) {
     // n'en signalait que 4. On expose pour chaque arbre les flags
     // effectifs (autofertile + dérivés) calculés ici, pour que la table
     // s'aligne sur les compteurs.
-    const arbresEnrichis = arbres.map((a) => ({
-      ...a,
-      autofertileEffectif: estAutofertile(a),
-      hasPollinisateurDerive: compatibilitesDerivees.has(a.id),
-    }))
+    // QA 2026-07-30 — La colonne Groupe affichait « - » pour 49 arbres dont la
+    // variété porte pourtant un groupe au référentiel : le repli variété
+    // n'était utilisé que pour dériver les paires compatibles, jamais exposé.
+    // Le groupe propre à l'arbre reste prioritaire (une migration de 2026-05 a
+    // rempli des valeurs qui peuvent différer du référentiel).
+    const arbresEnrichis = arbres.map((a) => {
+      const groupeReferentiel = varieteMap.get(a.variete ?? '')?.groupePollinisation ?? null
+      const groupeEffectif = a.groupePollinisation ?? groupeReferentiel
+      return {
+        ...a,
+        autofertileEffectif: estAutofertile(a),
+        hasPollinisateurDerive: compatibilitesDerivees.has(a.id),
+        groupePollinisationEffectif: groupeEffectif,
+        groupePollinisationSource: a.groupePollinisation
+          ? ('arbre' as const)
+          : groupeReferentiel
+            ? ('referentiel' as const)
+            : null,
+      }
+    })
 
     return NextResponse.json({
       arbres: arbresEnrichis,

@@ -107,6 +107,21 @@ const emptyForm = {
   partageCommunaute: false,
 }
 
+/**
+ * QA 2026-07-30 — L'identifiant dérivé du nom perdait les séparateurs : « Caille
+ * QA 300726-79575 » donnait `caille_qa_30072679575` (tiret supprimé au lieu
+ * d'être converti). Les suites de caractères non alphanumériques deviennent un
+ * seul « _ », sans souligné en tête ni en fin.
+ */
+function normaliserIdentifiantEspece(valeur: string): string {
+  return valeur
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+}
+
 export function EspecesTab() {
   const { toast } = useToast()
   const { data: session } = useSession()
@@ -116,6 +131,8 @@ export function EspecesTab() {
   const [especes, setEspeces] = React.useState<EspeceAnimale[]>([])
   const [filteredEspeces, setFilteredEspeces] = React.useState<EspeceAnimale[]>([])
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
+  // Une fois l'identifiant saisi à la main, le champ Nom ne l'écrase plus.
+  const [idModifieManuellement, setIdModifieManuellement] = React.useState(false)
   const [editingId, setEditingId] = React.useState<string | null>(null)
   const [formData, setFormData] = React.useState(emptyForm)
   const [selectedType, setSelectedType] = React.useState("all")
@@ -169,6 +186,7 @@ export function EspecesTab() {
 
   const openCreate = () => {
     setEditingId(null)
+    setIdModifieManuellement(false)
     // Pré-remplit la filière avec celle sélectionnée en tête de module.
     setFormData({ ...emptyForm, filiere: filiereSel !== "toutes" ? filiereSel : "rente" })
     setIsDialogOpen(true)
@@ -197,7 +215,7 @@ export function EspecesTab() {
     e.preventDefault()
     try {
       const payload: any = {
-        id: formData.id.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, ''),
+        id: normaliserIdentifiantEspece(formData.id),
         nom: formData.nom, type: formData.type, filiere: formData.filiere,
         production: capacites((formData.filiere || 'rente') as Filiere).productionRente ? formData.production : 'compagnie',
         couleur: formData.couleur || null, description: formData.description || null,
@@ -417,7 +435,7 @@ export function EspecesTab() {
                     const nom = e.target.value
                     setFormData(f => ({
                       ...f, nom,
-                      ...(editingId ? {} : { id: nom.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '') }),
+                      ...(editingId || idModifieManuellement ? {} : { id: normaliserIdentifiantEspece(nom) }),
                     }))
                   }}
                   placeholder="Poule pondeuse"
@@ -425,7 +443,16 @@ export function EspecesTab() {
               </div>
               <div className="space-y-2">
                 <Label>Identifiant</Label>
-                <Input value={formData.id} onChange={(e) => setFormData(f => ({ ...f, id: e.target.value }))} placeholder="poule_pondeuse" disabled={editingId !== null} className="font-mono text-sm" />
+                <Input
+                  value={formData.id}
+                  onChange={(e) => {
+                    setIdModifieManuellement(true)
+                    setFormData(f => ({ ...f, id: e.target.value }))
+                  }}
+                  placeholder="poule_pondeuse"
+                  disabled={editingId !== null}
+                  className="font-mono text-sm"
+                />
               </div>
             </div>
             <div className="grid grid-cols-3 gap-4">
@@ -498,7 +525,7 @@ export function EspecesTab() {
               {prodRente && <div className="space-y-2"><Label>Conso/jour (kg)</Label><Input type="number" min="0" step="0.01" value={formData.consommationJour} onChange={(e) => setFormData(f => ({ ...f, consommationJour: e.target.value }))} placeholder="0.12" /></div>}
               <div className="space-y-2"><Label>Prix d'achat (&euro;)</Label><Input type="number" min="0" step="0.5" value={formData.prixAchat} onChange={(e) => setFormData(f => ({ ...f, prixAchat: e.target.value }))} placeholder="15" /></div>
             </div>
-            {!isAdmin && (
+            {!isAdmin ? (
               <label className="flex items-center gap-2 text-sm text-slate-600">
                 <Checkbox
                   checked={formData.partageCommunaute}
@@ -506,7 +533,16 @@ export function EspecesTab() {
                 />
                 Proposer à la communauté Gleba
               </label>
-            )}
+            ) : !editingId ? (
+              /* QA 2026-07-30 — Une création par un compte admin rejoint le
+                 catalogue Gleba officiel (userId null) et n'apparaît donc jamais
+                 sous « Mes profils » : sans cette mention, l'enregistrement
+                 semblait perdu. */
+              <p className="rounded-md bg-amber-50 p-2 text-sm text-amber-800">
+                Compte administrateur : cette espèce rejoindra le <strong>catalogue Gleba
+                officiel</strong>. Elle n&apos;apparaîtra pas sous « Mes profils ».
+              </p>
+            ) : null}
             <div className="flex justify-end gap-2 pt-4">
               <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
               <Button type="submit" disabled={!formData.nom || !formData.id}>

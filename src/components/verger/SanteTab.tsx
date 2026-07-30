@@ -81,6 +81,8 @@ interface PollinisationData {
     variete: string | null
     floraison: string | null
     groupePollinisation: string | null
+    groupePollinisationEffectif?: string | null
+    groupePollinisationSource?: "arbre" | "referentiel" | null
     autofertile: boolean
     pollinisateursCompat: { id: number; arbrePollinisateur: { id: number; nom: string; espece: string | null; variete: string | null } }[]
   }[]
@@ -1669,8 +1671,16 @@ function PollinisationSubTab() {
                       ) : "-"}
                     </TableCell>
                     <TableCell>
-                      {arbre.groupePollinisation ? (
-                        <Badge className="bg-lime-100 text-lime-700">{arbre.groupePollinisation}</Badge>
+                      {(arbre.groupePollinisationEffectif ?? arbre.groupePollinisation) ? (
+                        <Badge
+                          className="bg-lime-100 text-lime-700"
+                          title={arbre.groupePollinisationSource === "referentiel"
+                            ? "Groupe déduit de la variété au référentiel"
+                            : undefined}
+                        >
+                          {arbre.groupePollinisationEffectif ?? arbre.groupePollinisation}
+                          {arbre.groupePollinisationSource === "referentiel" ? " *" : ""}
+                        </Badge>
                       ) : "-"}
                     </TableCell>
                     <TableCell>

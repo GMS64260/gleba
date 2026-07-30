@@ -62,6 +62,11 @@ export async function GET(request: NextRequest) {
       where,
       include: {
         zone: { select: { id: true, nom: true } },
+        // QA 2026-07-30 — La liste affichait « - » en Porte-greffe pour 35
+        // arbres : depuis le passage au référentiel, la création n'écrit que
+        // `porteGreffeId` et la colonne texte historique reste vide. La
+        // relation était déclarée au schéma mais jointe nulle part.
+        porteGreffeRef: { select: { id: true, nom: true, vigueur: true } },
         _count: {
           select: {
             recoltesArbres: true,
