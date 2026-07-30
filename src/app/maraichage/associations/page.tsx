@@ -16,12 +16,14 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
+import { associationDetailTitle } from "@/lib/association-display"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 
 // Type pour les associations avec relations
 interface AssociationWithRelations {
   id: string
   nom: string
+  type: string
   description: string | null
   notes: string | null
   details: {
@@ -52,7 +54,7 @@ const columns: ColumnDef<AssociationWithRelations>[] = [
   },
   {
     accessorKey: "details",
-    header: "Especes/Familles",
+    header: "Espèces/Familles",
     cell: ({ row }) => {
       const details = row.original.details
       if (!details || details.length === 0) {
@@ -64,12 +66,14 @@ const columns: ColumnDef<AssociationWithRelations>[] = [
           {details.slice(0, 5).map((d, i) => {
             const name = d.especeId || d.familleId || d.groupe || "?"
             const color = d.espece?.couleur || d.famille?.couleur || "#888"
+            const incompatible = row.original.type === "incompatible"
             return (
               <Badge
                 key={i}
-                variant={d.requise ? "default" : "outline"}
+                variant={incompatible ? "destructive" : d.requise ? "default" : "outline"}
                 className="text-xs"
-                style={{ borderColor: color }}
+                style={incompatible ? undefined : { borderColor: color }}
+                title={associationDetailTitle(row.original.type, d.requise)}
               >
                 {d.requise && "★ "}
                 {name}
@@ -236,7 +240,8 @@ export default function AssociationsPage() {
               <p className="mt-1 text-pink-700">
                 Les associations de plantes (compagnonnage) définissent quelles espèces ou familles
                 se bénéficient mutuellement lorsqu'elles sont cultivées à proximité.
-                Une association <strong>requise</strong> (★) indique une dépendance forte.
+                Une association <strong>requise</strong> (★) indique une dépendance forte ;
+                un badge <strong>rouge</strong> signale une association incompatible à éviter.
               </p>
             </div>
           </div>

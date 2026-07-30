@@ -306,6 +306,7 @@ export default function PlanchesPage() {
           onRefresh={fetchData}
           onRowClick={handleRowClick}
           onRowEdit={handleEdit}
+          rowEditLabel="Voir et modifier"
           onRowDelete={handleDelete}
           searchPlaceholder="Rechercher une planche..."
           emptyMessage="Aucune planche trouvée. Cliquez sur Ajouter pour créer la première."
