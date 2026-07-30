@@ -9,11 +9,22 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
-type Atelier = { code: string; libelle: string; effectif: number; couts: { total: number }; revenus: { total: number }; marge: number; production: { oeufs: number; litresLivres: number } }
+type Atelier = { code: string; libelle: string; effectif: number; couts: { total: number }; revenus: { total: number }; marge: number; production: { oeufs: number; litresLivres: number; kgCarcasse: number }; metriques: { coutParOeuf: number | null; coutParKgCarcasse: number | null; coutParLitre: number | null } }
 type Rapprochement = { mois: number; litresLivres: number; litresPayes: number; ecartLitres: number; montantHT: number; statut: string }
 type Analyse = { ateliers: Atelier[]; rapprochementLait: Rapprochement[]; stats: { totalCouts: number; totalRevenus: number; margeGlobale: number }; methode: Record<string, string> }
 type Administration = { contrats: { id: string; client: string; production: string; dateFin: string | null; actif: boolean }[]; echeances: { id: string; libelle: string; categorie: string; dateEcheance: string; statut: string }[] }
 const euro = new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" })
+// Les coûts unitaires (œuf, kg de carcasse, litre) valent quelques centimes :
+// trois décimales sont nécessaires pour que l'indicateur reste lisible.
+const euroUnitaire = new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 3 })
+const coutUnitaire = (atelier: Atelier) => {
+  const { coutParOeuf, coutParKgCarcasse, coutParLitre } = atelier.metriques
+  const parts: string[] = []
+  if (coutParOeuf != null) parts.push(`${euroUnitaire.format(coutParOeuf)} / œuf`)
+  if (coutParKgCarcasse != null) parts.push(`${euroUnitaire.format(coutParKgCarcasse)} / kg carcasse`)
+  if (coutParLitre != null) parts.push(`${euroUnitaire.format(coutParLitre)} / L`)
+  return parts.length ? parts.join(" · ") : "—"
+}
 const mois = ["Jan.", "Fév.", "Mars", "Avr.", "Mai", "Juin", "Juil.", "Août", "Sept.", "Oct.", "Nov.", "Déc."]
 
 export default function EconomieElevagePage() {
@@ -51,7 +62,7 @@ export default function EconomieElevagePage() {
           <Card><CardHeader><CardTitle className="text-sm">Revenus</CardTitle></CardHeader><CardContent className="text-2xl font-bold">{euro.format(analyse.stats.totalRevenus)}</CardContent></Card>
           <Card><CardHeader><CardTitle className="text-sm">Marge</CardTitle></CardHeader><CardContent className={`text-2xl font-bold ${analyse.stats.margeGlobale < 0 ? "text-red-600" : "text-emerald-700"}`}>{euro.format(analyse.stats.margeGlobale)}</CardContent></Card>
         </div>
-        <Card><CardHeader><CardTitle>Ateliers</CardTitle></CardHeader><CardContent className="p-0"><Table><TableHeader><TableRow><TableHead>Atelier</TableHead><TableHead className="text-right">Effectif</TableHead><TableHead className="text-right">Coûts</TableHead><TableHead className="text-right">Revenus</TableHead><TableHead className="text-right">Marge</TableHead></TableRow></TableHeader><TableBody>{analyse.ateliers.map(a => <TableRow key={a.code}><TableCell className="font-medium">{a.libelle}</TableCell><TableCell className="text-right">{a.effectif || "—"}</TableCell><TableCell className="text-right">{euro.format(a.couts.total)}</TableCell><TableCell className="text-right">{euro.format(a.revenus.total)}</TableCell><TableCell className={`text-right font-semibold ${a.marge < 0 ? "text-red-600" : "text-emerald-700"}`}>{euro.format(a.marge)}</TableCell></TableRow>)}</TableBody></Table></CardContent></Card>
+        <Card><CardHeader><CardTitle>Ateliers</CardTitle></CardHeader><CardContent className="p-0"><Table><TableHeader><TableRow><TableHead>Atelier</TableHead><TableHead className="text-right">Effectif</TableHead><TableHead className="text-right">Coûts</TableHead><TableHead className="text-right">Revenus</TableHead><TableHead className="text-right">Marge</TableHead><TableHead className="text-right">Coût unitaire</TableHead></TableRow></TableHeader><TableBody>{analyse.ateliers.map(a => <TableRow key={a.code}><TableCell className="font-medium">{a.libelle}</TableCell><TableCell className="text-right">{a.effectif || "—"}</TableCell><TableCell className="text-right">{euro.format(a.couts.total)}</TableCell><TableCell className="text-right">{euro.format(a.revenus.total)}</TableCell><TableCell className={`text-right font-semibold ${a.marge < 0 ? "text-red-600" : "text-emerald-700"}`}>{euro.format(a.marge)}</TableCell><TableCell className="text-right whitespace-nowrap text-sm text-muted-foreground">{coutUnitaire(a)}</TableCell></TableRow>)}</TableBody></Table></CardContent></Card>
         <Card><CardHeader><CardTitle>Rapprochement livraisons / paies du lait</CardTitle></CardHeader><CardContent className="p-0"><Table><TableHeader><TableRow><TableHead>Mois</TableHead><TableHead className="text-right">Livré</TableHead><TableHead className="text-right">Payé</TableHead><TableHead className="text-right">Écart</TableHead><TableHead className="text-right">Montant HT</TableHead><TableHead>Contrôle</TableHead></TableRow></TableHeader><TableBody>{analyse.rapprochementLait.filter(r => r.litresLivres || r.litresPayes).map(r => <TableRow key={r.mois}><TableCell>{mois[r.mois - 1]}</TableCell><TableCell className="text-right">{r.litresLivres} L</TableCell><TableCell className="text-right">{r.litresPayes} L</TableCell><TableCell className="text-right">{r.ecartLitres} L</TableCell><TableCell className="text-right">{euro.format(r.montantHT)}</TableCell><TableCell>{r.statut === "ok" ? <span className="text-emerald-700 flex gap-1"><CheckCircle2 className="h-4 w-4" />OK</span> : <span className="text-amber-700 flex gap-1"><AlertTriangle className="h-4 w-4" />À vérifier</span>}</TableCell></TableRow>)}</TableBody></Table></CardContent></Card>
         <Card><CardHeader><CardTitle>Méthode de calcul</CardTitle></CardHeader><CardContent className="space-y-1 text-sm text-muted-foreground">{Object.values(analyse.methode).map(text => <p key={text}>• {text}</p>)}</CardContent></Card>
         <div className="grid gap-4 lg:grid-cols-2">

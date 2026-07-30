@@ -12,6 +12,11 @@ type EspeceLaitiere = {
   productions?: readonly string[] | null
 }
 
+type EspeceDelaiLait = EspeceLaitiere & {
+  type?: string | null
+  categorieReglementaire?: string | null
+}
+
 type CibleAnimalLait = {
   sexe?: string | null
   orientationProduction?: string | null
@@ -49,6 +54,30 @@ export function estProductionLaitiere(
   }
   const valeurs = [orientation, ...productionsProfil].map(normaliser)
   return valeurs.some((value) => value === "lait" || value === "mixte")
+}
+
+/**
+ * QA 2026-07-30 — Un traitement sur un lot de pondeuses affichait un délai
+ * d'attente « lait » (la matrice AMM décline le délai lait sur toutes les
+ * espèces couvertes, volailles incluses).
+ *
+ * Un délai de retrait manquant est un risque sanitaire, un délai superflu ne
+ * l'est pas : cette fonction ne répond `true` que sur **preuve** que l'espèce
+ * ne produit pas de lait. Espèce inconnue ou profil incomplet ⇒ `false`, le
+ * délai est conservé. `estProductionLaitiere` ne peut pas servir ici : elle
+ * accepte les profils « mixte », dont des poules et des canards.
+ *
+ * Un délai « œufs » distinct reste à créer (aucune dimension œufs au schéma).
+ */
+export function estEspeceSansDelaiLait(
+  espece: EspeceDelaiLait | null | undefined,
+): boolean {
+  if (!espece) return false
+  if (normaliser(espece.type) === "volaille") return true
+  if (normaliser(espece.categorieReglementaire).startsWith("volaille")) return true
+  const productions = [espece.production, ...(espece.productions ?? [])].map(normaliser)
+  if (productions.some((value) => value === "lait" || value === "mixte")) return false
+  return productions.some((value) => value === "oeufs" || value === "compagnie")
 }
 
 export function estAnimalCollectableLait(animal: CibleAnimalLait): boolean {

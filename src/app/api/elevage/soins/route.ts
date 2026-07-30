@@ -24,6 +24,7 @@ import { randomUUID } from 'node:crypto'
 // (recompute-from-truth), cross-granularité individu↔lot et symétrique
 // POST/PATCH/DELETE. Cf. src/lib/elevage/attente-lait.ts.
 import { ciblesAffectees, resyncEcartementLait } from '@/lib/elevage/attente-lait'
+import { estEspeceSansDelaiLait } from '@/lib/elevage/cibles-collecte-lait'
 import {
   PLANCHER_CASCADE_LAIT_J,
   PLANCHER_CASCADE_VIANDE_J,
@@ -165,7 +166,7 @@ export async function POST(request: NextRequest) {
         select: {
           id: true,
           especeAnimale: {
-            select: { id: true, nom: true, categorieReglementaire: true },
+            select: { id: true, nom: true, categorieReglementaire: true, type: true, production: true, productions: true },
           },
         },
       })
@@ -178,7 +179,7 @@ export async function POST(request: NextRequest) {
         select: {
           id: true,
           especeAnimale: {
-            select: { id: true, nom: true, categorieReglementaire: true },
+            select: { id: true, nom: true, categorieReglementaire: true, type: true, production: true, productions: true },
           },
         },
       })
@@ -264,6 +265,15 @@ export async function POST(request: NextRequest) {
       if (tempsLait !== defautLait || tempsViande !== defautViande) {
         delaiAttenteSource = 'prescription'
       }
+    }
+    // QA 2026-07-30 — Un traitement sur un lot de pondeuses affichait « LAIT
+    // 03/08 » : ni le formulaire ni cette route ne vérifiaient que l'espèce
+    // ciblée produit du lait, et la matrice AMM décline le délai lait sur
+    // toutes les espèces couvertes, volailles incluses. Un délai œufs n'existe
+    // pas encore au schéma : on neutralise donc le délai lait plutôt que
+    // d'afficher une date de retrait trompeuse.
+    if (tempsLait > 0 && estEspeceSansDelaiLait(cibleEspece)) {
+      tempsLait = 0
     }
     // PROMPT 30 — un traitement peut compter plusieurs injections (ex. J0/J1/J2).
     // Le délai d'attente court depuis la DERNIÈRE injection.

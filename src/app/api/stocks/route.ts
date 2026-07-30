@@ -10,6 +10,20 @@ import prisma from '@/lib/prisma'
 import { calculerStocksNet } from '@/lib/stocks-helpers'
 import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 
+/**
+ * QA 2026-07-30 — L'onglet Stocks > Récoltes n'affichait aucune ligne pour une
+ * espèce récoltée le jour même : la liste ne retenait que les espèces
+ * `conservation = true` (3 en référentiel) ou déjà inventoriées manuellement.
+ * Depuis la refonte stock 2026-07, une récolte n'incrémente plus l'inventaire ;
+ * elle n'entrait donc dans aucune des deux conditions. On retient désormais
+ * aussi toute espèce ayant au moins une récolte en stock.
+ */
+const especesAvecStock = (userId: string) => [
+  { conservation: true },
+  { userStocks: { some: { userId, inventaire: { not: null } } } },
+  { recoltes: { some: { userId, statut: 'en_stock' } } },
+]
+
 export async function PATCH(request: NextRequest) {
   const { session, error } = await requireAuthApi()
   if (error) return error
@@ -231,10 +245,7 @@ export async function GET(request: NextRequest) {
             : especeType === 'legumes'
             ? { type: { in: ['legume', 'aromatique', 'engrais_vert'] } }
             : {}),
-          OR: [
-            { conservation: true },
-            { userStocks: { some: { userId, inventaire: { not: null } } } },
-          ],
+          OR: especesAvecStock(userId),
         },
         select: {
           id: true,
@@ -264,7 +275,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Retourner tous les types
-    const [varietes, fertilisants, especes] = await Promise.all([
+    const [varietes, fertilisants, especes, netsTousTypes] = await Promise.all([
       getAllVarietes(),
       prisma.fertilisant.findMany({
         select: {
@@ -280,12 +291,7 @@ export async function GET(request: NextRequest) {
       prisma.espece.findMany({
         where: {
           AND: [
-            {
-              OR: [
-                { conservation: true },
-                { userStocks: { some: { userId, inventaire: { not: null } } } },
-              ],
-            },
+            { OR: especesAvecStock(userId) },
             especeType === 'arbres'
               ? { type: { in: ['arbre_fruitier', 'petit_fruit'] } }
               : especeType === 'legumes'
@@ -304,6 +310,10 @@ export async function GET(request: NextRequest) {
         },
         orderBy: { id: 'asc' },
       }),
+      // Même stock net que la branche `type === 'recoltes'` : l'onglet Récoltes
+      // consomme cette réponse agrégée et affichait donc « - » là où la vue
+      // dédiée affichait la bonne quantité.
+      calculerStocksNet(userId),
     ])
 
     return NextResponse.json({
@@ -319,7 +329,7 @@ export async function GET(request: NextRequest) {
       recoltes: especes.map(e => ({
         id: e.id,
         familleId: e.familleId,
-        inventaire: e.userStocks[0]?.inventaire ?? null,
+        inventaire: netsTousTypes[e.id]?.stockNet ?? e.userStocks[0]?.inventaire ?? null,
         dateInventaire: e.userStocks[0]?.dateInventaire ?? null,
         couleur: e.couleur,
       })),

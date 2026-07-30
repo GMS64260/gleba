@@ -595,12 +595,20 @@ function EspecesReferentiel() {
                   </div>
                 )}
 
-                {/* Lien vers fiche complète */}
-                <div className="pt-2 border-t">
+                {/* QA 2026-07-30 — Le bouton « Ouvrir la fiche complète »
+                    laissait croire à une fiche verger : il ouvre en réalité le
+                    formulaire d'édition du référentiel botanique, partagé avec
+                    le maraîchage. On annonce désormais la destination au lieu
+                    de faire sortir l'utilisateur du module par surprise. */}
+                <div className="pt-2 border-t space-y-2">
+                  <p className="text-xs text-muted-foreground">
+                    Le référentiel botanique est commun à tous les modules : l&apos;édition de
+                    cette espèce se fait depuis Maraîchage.
+                  </p>
                   <Link href={`/maraichage/especes/${encodeURIComponent(detail.id)}`}>
                     <Button variant="outline" size="sm" className="w-full gap-2">
                       <ExternalLink className="h-3.5 w-3.5" />
-                      Ouvrir la fiche complète
+                      Modifier l&apos;espèce (module Maraîchage)
                     </Button>
                   </Link>
                 </div>

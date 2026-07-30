@@ -44,6 +44,11 @@ export async function GET() {
           },
         },
       },
+      // QA 2026-07-30 — Sans tri, l'ordre des parcelles n'était pas garanti :
+      // les écrans qui retiennent « la première parcelle » par défaut (météo,
+      // conseils d'irrigation) pouvaient changer de périmètre d'un chargement
+      // à l'autre.
+      orderBy: { nom: "asc" },
     })
 
     // Cartographie élevage — bétail présent par parcelle : lots rattachés
