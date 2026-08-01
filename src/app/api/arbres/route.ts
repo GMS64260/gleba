@@ -62,6 +62,9 @@ export async function GET(request: NextRequest) {
       where,
       include: {
         zone: { select: { id: true, nom: true } },
+        // Retour utilisateur 2026-07-27 — sans la parcelle dans la liste,
+        // impossible de repérer les arbres orphelins à rattacher.
+        parcelleGeo: { select: { id: true, nom: true } },
         // QA 2026-07-30 — La liste affichait « - » en Porte-greffe pour 35
         // arbres : depuis le passage au référentiel, la création n'écrit que
         // `porteGreffeId` et la colonne texte historique reste vide. La
@@ -268,15 +271,23 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // Auto-génération du calendrier d'entretien si espece connue
+    // Auto-génération du calendrier d'entretien si espece connue.
+    // Plancher = aujourd'hui : un arbre créé en juillet ne doit pas naître
+    // avec les opérations de mars déjà « en retard » (elles reviendront au
+    // cycle suivant). On transmet aussi la variété pour caler la récolte.
     let calendrierGenere = false
     if (arbre.espece) {
       const profile = findTreeCareProfile(arbre.espece)
       if (profile) {
-        const currentYear = new Date().getFullYear()
-        const operations = generateCareOperations(profile, currentYear, arbre.id, session!.user.id)
-        await prisma.operationArbre.createMany({ data: operations })
-        calendrierGenere = true
+        const now = new Date()
+        const debutJour = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+        const operations = generateCareOperations(
+          profile, now.getFullYear(), arbre.id, session!.user.id, arbre.variete, debutJour,
+        )
+        if (operations.length > 0) {
+          await prisma.operationArbre.createMany({ data: operations })
+        }
+        calendrierGenere = operations.length > 0
       }
     }
 

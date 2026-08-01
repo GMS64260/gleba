@@ -50,6 +50,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Checkbox } from "@/components/ui/checkbox"
 
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[]
@@ -78,6 +79,12 @@ interface DataTableProps<TData, TValue> {
   showColumnToggle?: boolean
   showSearch?: boolean
   showPagination?: boolean
+  // Sélection multiple (opt-in) : ajoute une colonne de cases à cocher et une
+  // barre d'actions groupées au-dessus du tableau quand au moins une ligne est
+  // sélectionnée. `bulkActions` reçoit les lignes sélectionnées (sur l'ensemble
+  // des pages du jeu filtré) et un rappel pour vider la sélection.
+  enableRowSelection?: boolean
+  bulkActions?: (selectedRows: TData[], clearSelection: () => void) => React.ReactNode
 }
 
 export function DataTable<TData, TValue>({
@@ -103,6 +110,8 @@ export function DataTable<TData, TValue>({
   showColumnToggle = true,
   showSearch = true,
   showPagination = true,
+  enableRowSelection = false,
+  bulkActions,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>([])
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
@@ -118,7 +127,39 @@ export function DataTable<TData, TValue>({
 
   // Ajouter une colonne d'actions si des handlers sont fournis
   const columnsWithActions = React.useMemo(() => {
-    if (!onRowEdit && !onRowDelete) return columns
+    const withSelection: ColumnDef<TData, TValue>[] = enableRowSelection
+      ? [
+          {
+            id: "select",
+            header: ({ table }) => (
+              <div onClick={(e) => e.stopPropagation()}>
+                <Checkbox
+                  checked={
+                    table.getIsAllRowsSelected() ||
+                    (table.getIsSomeRowsSelected() && "indeterminate")
+                  }
+                  onCheckedChange={(value) => table.toggleAllRowsSelected(!!value)}
+                  aria-label="Tout sélectionner (résultats filtrés)"
+                />
+              </div>
+            ),
+            cell: ({ row }) => (
+              <div onClick={(e) => e.stopPropagation()}>
+                <Checkbox
+                  checked={row.getIsSelected()}
+                  onCheckedChange={(value) => row.toggleSelected(!!value)}
+                  aria-label="Sélectionner la ligne"
+                />
+              </div>
+            ),
+            enableSorting: false,
+            enableHiding: false,
+          },
+          ...columns,
+        ]
+      : columns
+
+    if (!onRowEdit && !onRowDelete) return withSelection
 
     const actionsColumn: ColumnDef<TData, TValue> = {
       id: "actions",
@@ -156,8 +197,8 @@ export function DataTable<TData, TValue>({
       enableHiding: false,
     }
 
-    return [...columns, actionsColumn]
-  }, [columns, onRowEdit, onRowDelete, rowEditLabel])
+    return [...withSelection, actionsColumn]
+  }, [columns, onRowEdit, onRowDelete, rowEditLabel, enableRowSelection])
 
   const table = useReactTable({
     data,
@@ -271,6 +312,22 @@ export function DataTable<TData, TValue>({
           )}
         </div>
       </div>
+
+      {/* Barre d'actions groupées (sélection multiple) */}
+      {enableRowSelection &&
+        bulkActions &&
+        table.getSelectedRowModel().rows.length > 0 && (
+          <div className="flex flex-wrap items-center gap-3 rounded-md border bg-muted/50 px-3 py-2">
+            <span className="text-sm font-medium">
+              {table.getSelectedRowModel().rows.length}{" "}
+              {table.getSelectedRowModel().rows.length > 1 ? "sélectionnés" : "sélectionné"}
+            </span>
+            {bulkActions(
+              table.getSelectedRowModel().rows.map((row) => row.original),
+              () => table.resetRowSelection(),
+            )}
+          </div>
+        )}
 
       {/* Table */}
       <div className="rounded-md border">

@@ -88,6 +88,10 @@ interface Arbre {
   porteGreffeRef?: { id: string; nom: string; vigueur?: number | null } | null
   gpsLat?: number | null
   gpsLng?: number | null
+  // Retour utilisateur 2026-07-27 — rattachement parcellaire visible et
+  // corrigeable en masse depuis la liste.
+  parcelleGeoId?: string | null
+  parcelleGeo?: { id: string; nom: string } | null
   _count?: {
     recoltesArbres: number
     operationsArbres: number
@@ -183,6 +187,17 @@ function makeColumns(onGenererCalendrier: (arbre: Arbre) => void): ColumnDef<Arb
       },
     },
     {
+      // Retour utilisateur 2026-07-27 — sans cette colonne, impossible de
+      // repérer d'un coup d'œil les arbres non rattachés à une parcelle.
+      id: "parcelle",
+      accessorFn: (arbre) => arbre.parcelleGeo?.nom ?? null,
+      header: "Parcelle",
+      cell: ({ getValue }) => {
+        const nom = getValue() as string | null
+        return nom || <span className="text-muted-foreground">—</span>
+      },
+    },
+    {
       accessorKey: "etat",
       header: "État",
       cell: ({ getValue }) => {
@@ -260,7 +275,10 @@ export function ArbresTab() {
     Array<{ id: string; nom: string; vigueur: number; precocite: number }>
   >([])
   // PROMPT 10 — filtres "fiche incomplète"
-  const [filtreCompletude, setFiltreCompletude] = React.useState<"all" | "sansPorteGreffe" | "sansGps">("all")
+  const [filtreCompletude, setFiltreCompletude] = React.useState<"all" | "sansPorteGreffe" | "sansGps" | "sansParcelle">("all")
+  // Retour utilisateur 2026-07-27 — rattachement en masse à une parcelle
+  const [bulkParcelleId, setBulkParcelleId] = React.useState("")
+  const [bulkSaving, setBulkSaving] = React.useState(false)
   // Feedback LVBB40430 — saisie GPS assistée (géoloc, carte, relevé en série)
   const [mapPickerOpen, setMapPickerOpen] = React.useState(false)
   const [releveGpsOpen, setReleveGpsOpen] = React.useState(false)
@@ -354,6 +372,48 @@ export function ArbresTab() {
     }
   }, [toast])
 
+  // Retour utilisateur 2026-07-27 — rattacher N arbres sélectionnés à une
+  // parcelle en un appel, au lieu de N passages par la fiche arbre.
+  const handleBulkParcelle = React.useCallback(
+    async (rows: Arbre[], clearSelection: () => void) => {
+      if (!bulkParcelleId) return
+      setBulkSaving(true)
+      try {
+        const res = await fetch("/api/arbres/bulk-parcelle", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            arbreIds: rows.map((a) => a.id),
+            parcelleGeoId: bulkParcelleId === "__detacher__" ? null : bulkParcelleId,
+          }),
+        })
+        const payload = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          toast({ title: "Rattachement impossible", description: payload.error, variant: "destructive" })
+          return
+        }
+        const morceaux: string[] = [`${payload.updated} arbre(s) mis à jour`]
+        if (payload.conflits?.length) {
+          morceaux.push(
+            `${payload.conflits.length} refusé(s) : espèce déjà suivie en lot agrégé sur cette parcelle`,
+          )
+        }
+        toast({
+          title: bulkParcelleId === "__detacher__" ? "Arbres détachés" : "Arbres rattachés",
+          description: [payload.avertissement, morceaux.join(" · ")].filter(Boolean).join(" "),
+        })
+        clearSelection()
+        setBulkParcelleId("")
+        fetchData()
+      } catch {
+        toast({ title: "Erreur", variant: "destructive" })
+      } finally {
+        setBulkSaving(false)
+      }
+    },
+    [bulkParcelleId, fetchData, toast],
+  )
+
   React.useEffect(() => {
     fetchData()
   }, [fetchData])
@@ -399,6 +459,8 @@ export function ArbresTab() {
       filtered = filtered.filter((a) => !a.porteGreffeId && !a.portGreffe)
     } else if (filtreCompletude === "sansGps") {
       filtered = filtered.filter((a) => a.gpsLat == null || a.gpsLng == null)
+    } else if (filtreCompletude === "sansParcelle") {
+      filtered = filtered.filter((a) => !a.parcelleGeoId)
     }
     return filtered
   }, [selectedType, data, filtreCompletude])
@@ -639,6 +701,18 @@ export function ArbresTab() {
         >
           Sans GPS
         </Button>
+        {/* Retour utilisateur 2026-07-27 — repérer les arbres orphelins, puis
+            les rattacher en masse via la sélection multiple du tableau. */}
+        <Button
+          variant={filtreCompletude === "sansParcelle" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setFiltreCompletude("sansParcelle")}
+        >
+          Sans parcelle{(() => {
+            const n = data.filter((a) => !a.parcelleGeoId).length
+            return n > 0 ? ` (${n})` : ""
+          })()}
+        </Button>
         {/* Feedback LVBB40430 — géolocaliser les arbres en enchaînant, sans
             recopier de coordonnées depuis une autre application. */}
         <Button
@@ -692,6 +766,35 @@ export function ArbresTab() {
         onRowDelete={(row) => setArbreToDelete(row)}
         searchPlaceholder="Rechercher un arbre..."
         emptyMessage="Aucun arbre trouvé."
+        enableRowSelection
+        bulkActions={(rows, clearSelection) => (
+          <div className="flex flex-wrap items-center gap-2">
+            <Select value={bulkParcelleId} onValueChange={setBulkParcelleId}>
+              <SelectTrigger className="h-8 w-[240px]" aria-label="Parcelle de rattachement">
+                <SelectValue placeholder="Choisir une parcelle…" />
+              </SelectTrigger>
+              <SelectContent>
+                {/* Toutes les parcelles sont proposées : une parcelle sans la
+                    couche VERGER reste rattachable (signalée « hors verger »),
+                    sinon les utilisateurs qui en ont le plus besoin ne voient
+                    aucune option (cause racine du blocage utilisateur). */}
+                {parcelles.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.nom}{!estParcelleVerger(p) ? " (hors verger)" : ""}
+                  </SelectItem>
+                ))}
+                <SelectItem value="__detacher__">Aucune parcelle (détacher)</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              size="sm"
+              disabled={!bulkParcelleId || bulkSaving}
+              onClick={() => handleBulkParcelle(rows, clearSelection)}
+            >
+              {bulkSaving ? "Rattachement…" : "Rattacher"}
+            </Button>
+          </div>
+        )}
       />
 
       {lotsArbres.length > 0 && (

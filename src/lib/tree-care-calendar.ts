@@ -426,18 +426,24 @@ function normaliseVarieteForMatch(v: string | null | undefined): string {
 /**
  * Génère les opérations d'entretien pour une annee donnée
  * Retourne les données prêtes pour prisma.operationArbre.createMany()
+ *
+ * `from` : plancher optionnel — les opérations dont l'échéance tombe avant
+ * cette date sont omises. Un arbre créé en juillet ne doit pas naître avec
+ * la taille du 15/03 « en retard de 137 jours » (retour utilisateur 2026-07-31 :
+ * un compte de 10 jours noyé sous 100 retards artificiels dans le briefing).
  */
 export function generateCareOperations(
   profile: TreeCareProfile,
   year: number,
   arbreId: number,
   userId: string,
-  variete?: string | null
+  variete?: string | null,
+  from?: Date | null
 ) {
   const varieteKey = normaliseVarieteForMatch(variete)
   const tardiveMois = VARIETES_RECOLTE_TARDIVE[varieteKey]
 
-  return profile.operations.map((op) => {
+  return profile.operations.flatMap((op) => {
     let moisCible = op.moisDebut
     if (op.type === "recolte") {
       if (tardiveMois && tardiveMois >= op.moisDebut && tardiveMois <= op.moisFin + 1) {
@@ -452,7 +458,8 @@ export function generateCareOperations(
       }
     }
     const dateCible = new Date(year, moisCible - 1, 15)
-    return {
+    if (from && dateCible < from) return []
+    return [{
       userId,
       arbreId,
       type: op.type,
@@ -466,7 +473,7 @@ export function generateCareOperations(
       recurrence: op.recurrence,
       saisonRecommandee: op.saisonRecommandee,
       notes: "auto:calendrier",
-    }
+    }]
   })
 }
 

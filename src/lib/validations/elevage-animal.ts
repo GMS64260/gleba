@@ -16,6 +16,10 @@ export function isPlausibleAnimalDate(d: Date | null | undefined): boolean {
   return y >= 1990 && y <= new Date().getFullYear() + 1
 }
 
+// Source unique des orientations de production valides (Animal.orientationProduction).
+export const ORIENTATIONS_PRODUCTION = ['lait', 'viande', 'laine', 'mixte'] as const
+export type OrientationProduction = (typeof ORIENTATIONS_PRODUCTION)[number]
+
 export const animalSchema = z
   .object({
     especeAnimaleId: z.string().min(1, 'Espèce animale requise'),
@@ -26,7 +30,7 @@ export const animalSchema = z
     nom: z.string().max(100).nullable().optional(),
     race: z.string().max(100).nullable().optional(),
     raceAnimaleId: z.string().nullable().optional(),
-    orientationProduction: z.enum(['lait', 'viande', 'laine', 'mixte']).nullable().optional(),
+    orientationProduction: z.enum(ORIENTATIONS_PRODUCTION).nullable().optional(),
     sexe: z.string().max(20).nullable().optional(),
     dateNaissance: z.coerce.date().nullable().optional(),
     dateArrivee: z.coerce.date().optional(),

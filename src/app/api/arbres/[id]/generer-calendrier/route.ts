@@ -46,7 +46,18 @@ export async function POST(
     }
 
     const body = await request.json().catch(() => ({}))
-    const year = body.year || new Date().getFullYear()
+    const currentYear = new Date().getFullYear()
+    const year = body.year || currentYear
+
+    // Plancher anti-retards artificiels : sur l'année courante (défaut), ne pas
+    // recréer les opérations dont l'échéance est déjà passée — elles naîtraient
+    // « en retard » (retour utilisateur 2026-07-31). Une année explicitement
+    // demandée via body.year reste générée en entier (rattrapage historique).
+    let from: Date | null = null
+    if (!body.year || body.year === currentYear) {
+      const now = new Date()
+      from = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    }
 
     // Supprimer les anciennes opérations auto-générées pour cette annee
     const startOfYear = new Date(year, 0, 1)
@@ -66,8 +77,10 @@ export async function POST(
 
     // QA Hélène 2026-05-15 — Bug #10 : passer la variété pour caler la
     // date de récolte sur les cultivars tardifs connus.
-    const operations = generateCareOperations(profile, year, arbreId, session!.user.id, arbre.variete)
-    await prisma.operationArbre.createMany({ data: operations })
+    const operations = generateCareOperations(profile, year, arbreId, session!.user.id, arbre.variete, from)
+    if (operations.length > 0) {
+      await prisma.operationArbre.createMany({ data: operations })
+    }
 
     return NextResponse.json({
       count: operations.length,

@@ -454,6 +454,13 @@ function AnimauxSubTab() {
           .map((value) => value.trim())
           .filter(Boolean),
         prixAchat: toNum(formData.prixAchat as unknown as string),
+        // Ticket éleveur 2026-07-21 (résidu) — quand le prix repasse à 0/vide, la
+        // case « inclus dans le lot » disparaît de l'UI mais sa valeur résiduelle
+        // `true` partait quand même : l'API répondait 400 sans issue possible.
+        prixAchatInclusDansLot:
+          (toNum(formData.prixAchat as unknown as string) ?? 0) > 0
+            ? formData.prixAchatInclusDansLot
+            : false,
         poidsActuel: toNum(formData.poidsActuel as unknown as string),
         dateNaissance: (formData as { dateNaissance?: string }).dateNaissance || null,
         lotId: formData.lotId ? parseInt(formData.lotId) : null,
@@ -939,7 +946,24 @@ function AnimauxSubTab() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Prix achat</Label>
-                  <Input type="number" min="0" step="0.01" value={formData.prixAchat} onChange={(e) => setFormData(f => ({ ...f, prixAchat: e.target.value }))} />
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formData.prixAchat}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      // Prix remis à 0/vide ⇒ « inclus dans le lot » n'a plus de sens
+                      // et sa case disparaît : on le décoche pour ne pas envoyer une
+                      // valeur résiduelle que l'API refuse (400 insoluble).
+                      const prixPositif = parseFloat(v) > 0
+                      setFormData(f => ({
+                        ...f,
+                        prixAchat: v,
+                        prixAchatInclusDansLot: prixPositif ? f.prixAchatInclusDansLot : false,
+                      }))
+                    }}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Poids (kg)</Label>
