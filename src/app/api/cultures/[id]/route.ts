@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
-import { updateCultureSchema } from '@/lib/validations'
+import { updateCultureSchema, normalizeCultureDateFields } from '@/lib/validations'
 import { validateCultureDates } from '@/lib/validations/date-validation'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { irrigationCache } from '@/lib/irrigation-cache'
@@ -117,6 +117,18 @@ export async function PUT(
       )
     }
 
+    // Bug utilisateur 2026-08-02 — un champ date édité arrive en « YYYY-MM-DD »
+    // (input type=date) alors que Prisma exige un DateTime ISO complet : le
+    // PUT répondait 500 (« premature end of input ») et l'édition était
+    // silencieusement perdue (10 tentatives en échec chez un nouvel inscrit).
+    const champDateInvalide = normalizeCultureDateFields(validationResult.data)
+    if (champDateInvalide) {
+      return NextResponse.json(
+        { error: `Date invalide pour ${champDateInvalide}` },
+        { status: 400 }
+      )
+    }
+
     // Vérifier existence et propriété
     const existing = await prisma.culture.findUnique({
       where: {
@@ -153,6 +165,14 @@ export async function PUT(
           itp,
           annee,
         })
+        // Même refus qu'à la création : les erreurs de chronologie n'étaient
+        // pas même journalisées ici, seules les alertes remontaient.
+        if (!v.valid) {
+          return NextResponse.json(
+            { error: v.errors.join(' '), errors: v.errors },
+            { status: 400 }
+          )
+        }
         dateWarnings.push(...v.warnings)
       } catch (e) {
         console.warn('Date validation PUT skipped:', e)
@@ -258,9 +278,21 @@ export async function PATCH(
     const updateData: Record<string, unknown> = {}
     for (const field of allowedFields) {
       if (field in body) {
-        // Convertir les chaînes ISO en Date pour les champs DateTime
-        if (dateFields.includes(field) && body[field]) {
-          updateData[field] = new Date(body[field])
+        // Convertir les chaînes ISO en Date pour les champs DateTime.
+        // '' vaut effacement (sinon Prisma reçoit une chaîne vide et jette).
+        if (dateFields.includes(field)) {
+          if (body[field]) {
+            const parsed = new Date(body[field])
+            if (Number.isNaN(parsed.getTime())) {
+              return NextResponse.json(
+                { error: `Date invalide pour ${field}` },
+                { status: 400 }
+              )
+            }
+            updateData[field] = parsed
+          } else {
+            updateData[field] = null
+          }
         } else {
           updateData[field] = body[field]
         }

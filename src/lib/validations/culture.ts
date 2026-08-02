@@ -35,3 +35,29 @@ export const updateCultureSchema = cultureSchema.partial()
 export type CultureInput = z.infer<typeof cultureSchema>
 export type CreateCultureInput = z.infer<typeof createCultureSchema>
 export type UpdateCultureInput = z.infer<typeof updateCultureSchema>
+
+/**
+ * Normalise en place les champs date d'un payload culture validé par zod.
+ *
+ * Bug utilisateur 2026-08-02 — le schéma accepte toute chaîne, mais Prisma
+ * exige un DateTime ISO complet : un champ édité via un input type=date
+ * (« YYYY-MM-DD ») faisait échouer le PUT en 500 et l'édition était perdue.
+ * '' vaut effacement (⇒ null). Retourne le nom du premier champ dont la
+ * chaîne n'est pas une date lisible, ou null si tout est normalisé.
+ */
+export function normalizeCultureDateFields(
+  data: Partial<Record<'dateSemis' | 'datePlantation' | 'dateRecolte', string | Date | null>>,
+): string | null {
+  for (const field of ['dateSemis', 'datePlantation', 'dateRecolte'] as const) {
+    const value = data[field]
+    if (typeof value !== 'string') continue
+    if (value.trim() === '') {
+      data[field] = null
+      continue
+    }
+    const parsed = new Date(value)
+    if (Number.isNaN(parsed.getTime())) return field
+    data[field] = parsed
+  }
+  return null
+}
