@@ -7,7 +7,7 @@ import prisma from "@/lib/prisma"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
-import { Users, UserPlus, Shield, Activity, Database, MessageSquare, Bug, TrendingUp, Flag } from "lucide-react"
+import { Users, UserPlus, Shield, Activity, Database, MessageSquare, Bug, TrendingUp, Flag, ShieldAlert } from "lucide-react"
 import { AdminTabs } from "@/components/admin/AdminTabs"
 
 export default async function AdminPage() {
@@ -180,6 +180,26 @@ export default async function AdminPage() {
                 <Button variant="outline" className="w-full">
                   <Bug className="mr-2 h-4 w-4" />
                   Dashboard bugs
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ShieldAlert className="h-5 w-5 text-red-600" />
+                Erreurs serveur
+              </CardTitle>
+              <CardDescription>
+                Erreurs 500 subies en silence par les utilisateurs (journal global)
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link href="/admin/erreurs">
+                <Button variant="outline" className="w-full">
+                  <ShieldAlert className="mr-2 h-4 w-4" />
+                  Journal des erreurs
                 </Button>
               </Link>
             </CardContent>

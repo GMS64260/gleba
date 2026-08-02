@@ -62,7 +62,7 @@ enum MediaReferentielStatut {
 model User {
   id                   String    @id @default(cuid())
   email                String    @unique
-  password             String // bcrypt hash
+  password             String? // bcrypt hash — null pour un compte créé via Google (OAuth) qui n'a jamais défini de mot de passe local
   name                 String?
   role                 Role      @default(USER)
   active               Boolean   @default(true)
@@ -85,8 +85,9 @@ model User {
   createdAt            DateTime  @default(now()) @map("created_at")
   updatedAt            DateTime  @updatedAt @map("updated_at")
 
-  // NextAuth sessions
+  // NextAuth sessions + comptes OAuth (Google)
   sessions Session[]
+  accounts Account[]
 
   // Relations avec données utilisateur
   planches              Planche[]
@@ -111,6 +112,8 @@ model User {
   animaux               Animal[]
   lotsAnimaux           LotAnimaux[]
   productionsOeufs      ProductionOeuf[]
+  productionsRuche      ProductionRuche[]
+  mouvementsStockRuche  MouvementStockRuche[]
   ventesProduits        VenteProduit[]
   abattages             Abattage[]
   consommationsAliments ConsommationAliment[]
@@ -410,6 +413,24 @@ model BugStatusLog {
   @@map("bug_status_logs")
 }
 
+/// Journal des erreurs serveur capturées globalement : console.error des
+/// routes API (via le patch installé par instrumentation.ts) et erreurs non
+/// attrapées (via onRequestError). Né du 2026-08-02 : un utilisateur a subi
+/// 10 erreurs 500 en silence, découvertes par hasard dans les logs docker —
+/// perdus au redéploiement suivant. Alimente /admin/erreurs et l'alerte
+/// email throttlée. Rétention ~30 jours (purge opportuniste à l'insertion).
+model ApiError {
+  id        Int      @id @default(autoincrement())
+  source    String // "console" | "uncaught"
+  route     String? // ex: "PUT /api/cultures/[id]"
+  message   String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@index([route])
+  @@map("api_errors")
+}
+
 /// Sessions NextAuth
 model Session {
   id           String   @id @default(cuid())
@@ -419,6 +440,31 @@ model Session {
   expires      DateTime
 
   @@map("sessions")
+}
+
+/// Comptes OAuth Auth.js (connexion Google) : une ligne par identité externe
+/// liée à un utilisateur. Les noms de champs snake_case des tokens sont imposés
+/// par l'adapter Prisma d'Auth.js — ne pas les renommer.
+model Account {
+  id                String   @id @default(cuid())
+  userId            String   @map("user_id")
+  type              String
+  provider          String
+  providerAccountId String   @map("provider_account_id")
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@map("accounts")
 }
 
 // ============================================================
@@ -2102,6 +2148,7 @@ model Animal {
 
   // Relations
   productionsOeufs            ProductionOeuf[]
+  productionsRuche            ProductionRuche[]
   soins                       SoinAnimal[]
   abattages                   Abattage[]
   naissancesMere              NaissanceAnimale[]               @relation("NaissanceMere")
@@ -2154,6 +2201,7 @@ model LotAnimaux {
   // Relations
   animaux                     Animal[]
   productionsOeufs            ProductionOeuf[]
+  productionsRuche            ProductionRuche[]
   soins                       SoinAnimal[]
   abattages                   Abattage[]
   consommations               ConsommationAliment[]
@@ -2215,40 +2263,94 @@ model MouvementStockOeuf {
   @@map("mouvements_stock_oeufs")
 }
 
+/// Récoltes des produits de la ruche.
+/// Une ligne décrit une entrée physique, consommée par des mouvements FIFO.
+model ProductionRuche {
+  id              Int                   @id @default(autoincrement())
+  userId          String                @map("user_id")
+  user            User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lotId           Int?                  @map("lot_id")
+  lot             LotAnimaux?           @relation(fields: [lotId], references: [id], onDelete: SetNull)
+  // QA cmsbtlka1 — une ruche gérée en animal individuel (hors lot) doit pouvoir
+  // recevoir ses récoltes. XOR souple avec lotId (les deux restent optionnels).
+  animalId        Int?                  @map("animal_id")
+  animal          Animal?               @relation(fields: [animalId], references: [id], onDelete: SetNull)
+  date            DateTime              @default(now()) @map("date")
+  produit         String                @map("produit") // miel|cire|propolis|pollen|gelee_royale|autre
+  quantite        Float                 @map("quantite")
+  unite           String                @map("unite") // kg|g
+  numeroLot       String?               @map("numero_lot")
+  notes           String?               @map("notes")
+  createdAt       DateTime              @default(now()) @map("created_at")
+  updatedAt       DateTime              @updatedAt @map("updated_at")
+  mouvementsStock MouvementStockRuche[]
+
+  @@index([userId, date])
+  @@index([userId, produit])
+  @@index([lotId])
+  @@index([animalId])
+  @@map("productions_ruche")
+}
+
+/// Sortie physique d'une récolte de la ruche. Les ventes sont liées à leur
+/// VenteProduit ; les autres sorties peuvent être corrigées sans toucher à la compta.
+model MouvementStockRuche {
+  id             String          @id @default(cuid())
+  userId         String          @map("user_id")
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productionId   Int             @map("production_id")
+  production     ProductionRuche @relation(fields: [productionId], references: [id], onDelete: Restrict)
+  venteProduitId Int?            @map("vente_produit_id")
+  venteProduit   VenteProduit?   @relation(fields: [venteProduitId], references: [id], onDelete: Cascade)
+  operationId    String          @map("operation_id")
+  date           DateTime        @default(now()) @map("date")
+  type           String          @map("type") // vente|autoconsommation|don|destruction
+  quantite       Float           @map("quantite") // Toujours dans l'unité de la récolte source
+  notes          String?         @map("notes")
+  createdAt      DateTime        @default(now()) @map("created_at")
+
+  @@index([userId, date])
+  @@index([productionId])
+  @@index([venteProduitId])
+  @@index([userId, operationId])
+  @@map("mouvements_stock_ruche")
+}
+
 /// Ventes de produits (œufs, viande, animaux vivants)
 model VenteProduit {
-  id                Int                @id @default(autoincrement())
-  userId            String             @map("user_id")
-  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  date              DateTime           @default(now()) @map("date")
-  type              String             @map("type") // "oeufs", "viande", "animal_vivant", "lait", "autre"
-  description       String?            @map("description") // Ex: "Poulet fermier", "Œufs plein air"
-  quantite          Float              @map("quantite")
-  unite             String             @map("unite") // "unite", "douzaine", "kg", "L"
-  prixUnitaire      Float              @map("prix_unitaire")
-  prixTotal         Float              @map("prix_total")
-  client            String?            @map("client") // Nom du client
-  destinationId     String?            @map("destination")
-  destination       Destination?       @relation(fields: [destinationId], references: [id], onDelete: SetNull)
-  factureId         Int?               @map("facture_id")
-  facture           Facture?           @relation("VenteProduitFacture", fields: [factureId], references: [id])
-  paye              Boolean            @default(true) @map("paye")
-  annule            Boolean            @default(false) @map("annule")
-  dateAnnulation    DateTime?          @map("date_annulation")
+  id                   Int                   @id @default(autoincrement())
+  userId               String                @map("user_id")
+  user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date                 DateTime              @default(now()) @map("date")
+  type                 String                @map("type") // "oeufs", "viande", "animal_vivant", "lait", "fromage", produits de la ruche, "autre"
+  description          String?               @map("description") // Ex: "Poulet fermier", "Œufs plein air"
+  quantite             Float                 @map("quantite")
+  unite                String                @map("unite") // "unite", "douzaine", "kg", "L"
+  prixUnitaire         Float                 @map("prix_unitaire")
+  prixTotal            Float                 @map("prix_total")
+  client               String?               @map("client") // Nom du client
+  destinationId        String?               @map("destination")
+  destination          Destination?          @relation(fields: [destinationId], references: [id], onDelete: SetNull)
+  factureId            Int?                  @map("facture_id")
+  facture              Facture?              @relation("VenteProduitFacture", fields: [factureId], references: [id])
+  paye                 Boolean               @default(true) @map("paye")
+  annule               Boolean               @default(false) @map("annule")
+  dateAnnulation       DateTime?             @map("date_annulation")
   // Audit élevage 2026-06-11 — lien vers l'animal pour une vente
   // animal_vivant : sans lui, l'annulation ne peut pas restaurer le statut
   // de l'animal (il restait 'vendu' définitivement).
-  animalId          Int?               @map("animal_id")
-  animal            Animal?            @relation(fields: [animalId], references: [id], onDelete: SetNull)
-  tauxTVA           Float              @default(5.5) @map("taux_tva")
+  animalId             Int?                  @map("animal_id")
+  animal               Animal?               @relation(fields: [animalId], references: [id], onDelete: SetNull)
+  tauxTVA              Float                 @default(5.5) @map("taux_tva")
   // PROMPT 17 — traçabilité fromage : lien vers lot de fabrication
-  lotFromageId      String?            @map("lot_fromage_id")
-  lotFromage        LotFromage?        @relation(fields: [lotFromageId], references: [id], onDelete: SetNull)
+  lotFromageId         String?               @map("lot_fromage_id")
+  lotFromage           LotFromage?           @relation(fields: [lotFromageId], references: [id], onDelete: SetNull)
   // Review caprin 2026-07-21 — sortie(s) de cave générées par cette vente
   // (décrément de stock), pour restaurer le stock à l'annulation.
-  mouvementsFromage MouvementFromage[]
-  notes             String?            @map("notes")
-  createdAt         DateTime           @default(now()) @map("created_at")
+  mouvementsFromage    MouvementFromage[]
+  mouvementsStockRuche MouvementStockRuche[]
+  notes                String?               @map("notes")
+  createdAt            DateTime              @default(now()) @map("created_at")
 
   @@index([userId])
   @@index([type])
