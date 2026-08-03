@@ -50,9 +50,11 @@ export async function POST(
     const year = body.year || currentYear
 
     // Plancher anti-retards artificiels : sur l'année courante (défaut), ne pas
-    // recréer les opérations dont l'échéance est déjà passée — elles naîtraient
-    // « en retard » (retour utilisateur 2026-07-31). Une année explicitement
-    // demandée via body.year reste générée en entier (rattrapage historique).
+    // recréer les opérations dont la FENÊTRE est déjà refermée — elles
+    // naîtraient irréalisables (retour utilisateur 2026-07-31). Une fenêtre
+    // encore ouverte est bien créée, même si sa date conseillée est passée. Une
+    // année explicitement demandée via body.year reste générée en entier
+    // (rattrapage historique).
     let from: Date | null = null
     if (!body.year || body.year === currentYear) {
       const now = new Date()
@@ -71,6 +73,9 @@ export async function POST(
         // On ne supprime que les opérations non faites : les ops
         // auto-générées déjà réalisées sont de l'historique à préserver.
         fait: false,
+        // Une fenêtre soldée explicitement ne doit pas être ressuscitée par une
+        // régénération : l'utilisateur a acté qu'il ne la ferait pas cette année.
+        abandonneeLe: null,
         datePrevue: { gte: startOfYear, lte: endOfYear },
       },
     })

@@ -12,6 +12,8 @@ import { zoneEffectiveUser } from "@/lib/terroir"
 import { adequationEspece } from "@/lib/adequation-zone"
 import { visibiliteReferentiel } from "@/lib/referentiel-communaute"
 import { trouverParcelleGpsProche } from "@/lib/parcelle-gps-utils"
+import { messageErreurCoordonnees } from "@/lib/geolocation"
+import { normaliserLibelle } from "@/lib/libelle-libre"
 
 // Types d'arbres disponibles
 export const TYPES_ARBRES = [
@@ -153,15 +155,11 @@ export async function POST(request: NextRequest) {
       body.gpsLat == null || body.gpsLat === "" ? null : Number(body.gpsLat)
     const gpsLng =
       body.gpsLng == null || body.gpsLng === "" ? null : Number(body.gpsLng)
-    if (
-      (gpsLat != null && (!Number.isFinite(gpsLat) || gpsLat < -90 || gpsLat > 90)) ||
-      (gpsLng != null && (!Number.isFinite(gpsLng) || gpsLng < -180 || gpsLng > 180)) ||
-      (gpsLat == null) !== (gpsLng == null)
-    ) {
-      return NextResponse.json(
-        { error: "Les coordonnées GPS sont invalides ou incomplètes" },
-        { status: 400 }
-      )
+    // Même message circonstancié qu'au PUT : nommer le champ et la valeur plutôt
+    // qu'un « invalides » que l'utilisateur ne peut pas relier à sa saisie.
+    const erreurGps = messageErreurCoordonnees(gpsLat, gpsLng)
+    if (erreurGps) {
+      return NextResponse.json({ error: erreurGps }, { status: 400 })
     }
 
     // Isolation multi-tenant : la zone / parcelle référencée doit appartenir à l'utilisateur
@@ -214,10 +212,15 @@ export async function POST(request: NextRequest) {
         userId: session!.user.id,
         nom: body.nom.trim(),
         type: body.type,
-        espece: body.espece || null,
-        variete: body.variete || null,
-        portGreffe: body.portGreffe || null,
-        fournisseur: body.fournisseur || null,
+        // Normaliser les libellés libres (2026-08-03) : deux arbres portaient
+        // l'espèce « Cerisier » avec une espace finale, ce qui créait une
+        // seconde ligne d'espèce dans le diagramme d'entretien et les
+        // regroupements. Une espace invisible ne doit jamais fabriquer une
+        // espèce distincte.
+        espece: normaliserLibelle(body.espece),
+        variete: normaliserLibelle(body.variete),
+        portGreffe: normaliserLibelle(body.portGreffe),
+        fournisseur: normaliserLibelle(body.fournisseur),
         dateAchat: body.dateAchat ? new Date(body.dateAchat) : null,
         prixAchat: body.prixAchat ? parseFloat(body.prixAchat) : null,
         datePlantation: body.datePlantation ? new Date(body.datePlantation) : null,

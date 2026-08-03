@@ -129,6 +129,46 @@ export function distancePointParcelleMetres(params: {
   return Number.isFinite(distanceMin) ? distanceMin : null
 }
 
+/**
+ * Faut-il inférer la parcelle depuis les coordonnées ?
+ *
+ * Corrigé le 2026-08-03. La garde d'origine était « le payload ne mentionne pas
+ * `parcelleGeoId` », ce qui rendait l'inférence inatteignable depuis la fiche
+ * arbre : cet écran renvoie l'objet complet, donc le champ y est toujours
+ * présent, à null quand l'arbre n'a pas de parcelle. Un compte de production
+ * avait ainsi 13 arbres géolocalisés — 10 à moins de 25 m d'une parcelle
+ * cartographiée — et aucun rattaché.
+ *
+ * La bonne question n'est pas « le champ est-il absent » mais « l'utilisateur
+ * a-t-il fait un geste délibéré » : on n'infère que sur de NOUVELLES coordonnées,
+ * quand l'arbre n'a pas déjà de parcelle et qu'aucune n'a été choisie. Un
+ * « aucune parcelle » explicite sur un arbre déjà géolocalisé est donc respecté,
+ * puisque sa position ne change pas.
+ */
+export function doitInfererParcelle(params: {
+  parcelleChoisie: string | null
+  parcelleExistante: string | null
+  coordonneesFournies: boolean
+  lat: number | null
+  lng: number | null
+  latExistante: number | null
+  lngExistante: number | null
+}): boolean {
+  const {
+    parcelleChoisie,
+    parcelleExistante,
+    coordonneesFournies,
+    lat,
+    lng,
+    latExistante,
+    lngExistante,
+  } = params
+  if (parcelleChoisie || parcelleExistante) return false
+  if (!coordonneesFournies) return false
+  if (lat == null || lng == null) return false
+  return lat !== latExistante || lng !== lngExistante
+}
+
 export function trouverParcelleGpsProche<T extends ParcelleGps>(
   parcelles: T[],
   lat: number,

@@ -38,12 +38,17 @@ export async function GET(request: NextRequest) {
       orderBy: { datePrevue: "asc" },
     })
 
-    // Opérations en retard (avant start, non faites)
+    // Opérations réellement en attente avant la période : fenêtre saisonnière
+    // encore ouverte, ou échéance ferme dépassée. Une fenêtre refermée n'est pas
+    // du retard, c'est un rendez-vous manqué pour la saison (cf.
+    // `src/lib/operation-arbre-statut.ts`).
     const operationsRetard = await prisma.operationArbre.findMany({
       where: {
         userId,
         fait: false,
+        abandonneeLe: null,
         datePrevue: { lt: startDate },
+        OR: [{ dateLimite: null }, { dateLimite: { gte: startDate } }],
       },
       include: {
         arbre: {

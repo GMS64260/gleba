@@ -29,6 +29,7 @@ import { confirmDialog } from "@/lib/global-dialog"
 import { WeatherFieldset, EMPTY_WEATHER, type WeatherData } from "@/components/phyto/WeatherFieldset"
 import { MaterielFieldset } from "@/components/phyto/MaterielFieldset"
 import { libelleOperationArbre } from "@/lib/verger/operation-label"
+import { statutOperationArbre } from "@/lib/operation-arbre-statut"
 
 const FILTER_STATES = [
   { value: "all", label: "Toutes", icon: Wrench },
@@ -63,6 +64,9 @@ interface OperationArbre {
   unite: string | null
   cout: number | null
   datePrevue: string | null
+  fenetreDebut: string | null
+  dateLimite: string | null
+  abandonneeLe: string | null
   fait: boolean
   notes: string | null
   arbre: Arbre
@@ -106,22 +110,33 @@ function createColumns(
         // Bug feedback testeur 2026-05-26 (cmplp0rb) — Ajout du badge "En
         // retard" pour les opérations non faites dont datePrevue est
         // dépassée.
+        // Fenêtre saisonnière (2026-08-03) : le badge suit désormais la règle
+        // partagée. Une opération générée dont la fenêtre est ouverte n'est pas
+        // en retard, et une fenêtre refermée est un rendez-vous manqué pour la
+        // saison, pas un retard qui s'aggrave chaque jour.
         const op = row.original
         const effective = !op.fait && op.datePrevue ? op.datePrevue : op.date
         const label = new Date(effective).toLocaleDateString("fr-FR")
-        const today = new Date()
-        today.setHours(0, 0, 0, 0)
-        const enRetard =
-          !op.fait && !!op.datePrevue && new Date(op.datePrevue) < today
+        const statut = statutOperationArbre(op)
         return (
           <span className={!op.fait ? "text-slate-600" : ""}>
             {label}
-            {!op.fait && op.datePrevue && !enRetard ? (
+            {statut === "a_venir" || statut === "a_faire" ? (
               <span className="ml-1 text-[10px] text-slate-400">(prévu)</span>
             ) : null}
-            {enRetard ? (
+            {statut === "en_retard" ? (
               <Badge className="ml-1 bg-red-100 text-red-700 text-[10px] border border-red-300" variant="outline">
                 En retard
+              </Badge>
+            ) : null}
+            {statut === "fenetre_depassee" ? (
+              <Badge className="ml-1 bg-amber-100 text-amber-800 text-[10px] border border-amber-300" variant="outline">
+                Fenêtre dépassée
+              </Badge>
+            ) : null}
+            {statut === "soldee" ? (
+              <Badge className="ml-1 bg-slate-100 text-slate-600 text-[10px] border border-slate-300" variant="outline">
+                Soldée
               </Badge>
             ) : null}
           </span>

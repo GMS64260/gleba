@@ -8,7 +8,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
-import { trouverParcelleGpsProche } from "@/lib/parcelle-gps-utils"
+import { doitInfererParcelle, trouverParcelleGpsProche } from "@/lib/parcelle-gps-utils"
+import { messageErreurCoordonnees } from "@/lib/geolocation"
+import { normaliserLibelle } from "@/lib/libelle-libre"
 
 interface Params {
   params: Promise<{ id: string }>
@@ -119,23 +121,31 @@ export async function PUT(request: NextRequest, { params }: Params) {
           ? null
           : Number(body.gpsLng)
         : existing.gpsLng
-    if (
-      (gpsLat != null && (!Number.isFinite(gpsLat) || gpsLat < -90 || gpsLat > 90)) ||
-      (gpsLng != null && (!Number.isFinite(gpsLng) || gpsLng < -180 || gpsLng > 180)) ||
-      (gpsLat == null) !== (gpsLng == null)
-    ) {
-      return NextResponse.json(
-        { error: "Les coordonnées GPS sont invalides ou incomplètes" },
-        { status: 400 }
-      )
+    // Message circonstancié (2026-08-03) : deux fiches de production étaient
+    // devenues insauvegardables parce que le formulaire renvoyait une longitude
+    // héritée hors bornes (point décimal perdu à la saisie, avant l'ajout du
+    // garde-fou). L'utilisateur recevait « coordonnées invalides » en modifiant
+    // un tout autre champ, sans moyen de comprendre ni de corriger.
+    const erreurGps = messageErreurCoordonnees(gpsLat, gpsLng)
+    if (erreurGps) {
+      return NextResponse.json({ error: erreurGps }, { status: 400 })
     }
 
     let parcelleGeoId =
       body.parcelleGeoId !== undefined ? (body.parcelleGeoId || null) : existing.parcelleGeoId
+
+    // Rattachement GPS → parcelle : règle et justification dans
+    // `doitInfererParcelle` (`src/lib/parcelle-gps-utils.ts`).
     if (
-      body.parcelleGeoId === undefined &&
-      !existing.parcelleGeoId &&
-      (body.gpsLat !== undefined || body.gpsLng !== undefined) &&
+      doitInfererParcelle({
+        parcelleChoisie: parcelleGeoId,
+        parcelleExistante: existing.parcelleGeoId,
+        coordonneesFournies: body.gpsLat !== undefined || body.gpsLng !== undefined,
+        lat: gpsLat,
+        lng: gpsLng,
+        latExistante: existing.gpsLat,
+        lngExistante: existing.gpsLng,
+      }) &&
       gpsLat != null &&
       gpsLng != null
     ) {
@@ -183,9 +193,13 @@ export async function PUT(request: NextRequest, { params }: Params) {
       data: {
         nom: body.nom,
         type: body.type,
-        espece: body.espece,
-        variete: body.variete,
-        portGreffe: body.portGreffe,
+        // Libellés libres normalisés à l'écriture (cf. `normaliserLibelle`) :
+        // une espace de bordure créait une espèce en double dans les
+        // regroupements. `undefined` reste `undefined` : un payload partiel ne
+        // doit rien effacer.
+        espece: normaliserLibelle(body.espece),
+        variete: normaliserLibelle(body.variete),
+        portGreffe: normaliserLibelle(body.portGreffe),
         // Bug #1 — Le PUT ignorait porte-greffe structuré + circonférence + GPS,
         // d'où le bug "fiche détail vide" alors que la création persistait bien.
         porteGreffeId: body.porteGreffeId !== undefined ? (body.porteGreffeId || null) : undefined,
@@ -194,7 +208,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
           : undefined,
         gpsLat: body.gpsLat !== undefined ? gpsLat : undefined,
         gpsLng: body.gpsLng !== undefined ? gpsLng : undefined,
-        fournisseur: body.fournisseur,
+        fournisseur: normaliserLibelle(body.fournisseur),
         dateAchat: body.dateAchat !== undefined ? (body.dateAchat ? new Date(body.dateAchat) : null) : undefined,
         prixAchat: body.prixAchat !== undefined
           ? (body.prixAchat != null && body.prixAchat !== "" ? parseFloat(body.prixAchat) : null)

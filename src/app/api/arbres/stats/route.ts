@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
+import { debutDeJour as startOfToday } from "@/lib/operation-arbre-statut"
 
 export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
@@ -213,12 +214,18 @@ export async function GET(request: NextRequest) {
         couleur: destinationColors[d.destination || ""] || "#9ca3af",
       }))
 
-    // Opérations en attente
+    // Opérations en attente : seulement ce qui est réellement faisable. Une
+    // fenêtre saisonnière refermée ou soldée n'est plus du travail en attente
+    // (cf. `src/lib/operation-arbre-statut.ts`) — la compter gonflait le KPI de
+    // 125 tâches hors saison sur un verger de 86 arbres (constat 2026-08-03).
+    const maintenant = new Date()
     const operationsEnAttente = await prisma.operationArbre.count({
       where: {
         userId,
         fait: false,
-        datePrevue: { lte: new Date() },
+        abandonneeLe: null,
+        datePrevue: { lte: maintenant },
+        OR: [{ dateLimite: null }, { dateLimite: { gte: startOfToday(maintenant) } }],
       },
     })
 

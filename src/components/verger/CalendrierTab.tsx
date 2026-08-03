@@ -31,15 +31,25 @@ import {
   Apple,
   Axe,
   Wrench,
-  AlertTriangle,
   ClipboardCheck,
   Check,
+  Archive,
+  CalendarClock,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { VergerCalendarView } from "./VergerCalendarView"
 import { TreeCareGantt } from "./TreeCareGantt"
 import { kpiCardClass, kpiSubtleClass } from "@/lib/kpi-theme"
 import { libelleOperationArbre } from "@/lib/verger/operation-label"
+import {
+  debutDeJour,
+  libelleCourtOperation,
+  libelleFenetre,
+  statutOperationArbre,
+  type StatutOperationArbre,
+} from "@/lib/operation-arbre-statut"
 
 interface DashboardArbresData {
   stats: {
@@ -93,23 +103,213 @@ interface OperationArbre {
   id: number
   arbreId: number
   type: string
+  description: string | null
   datePrevue: string | null
+  fenetreDebut: string | null
+  dateLimite: string | null
+  abandonneeLe: string | null
   fait: boolean
   arbre: { id: number; nom: string; type: string }
+}
+
+/**
+ * Un lot d'opérations identiques portant sur plusieurs arbres. Le générateur
+ * crée la même « taille en vert » sur tous les pommiers d'un verger : les
+ * afficher une par une produisait 79 lignes indiscernables (constat de
+ * production du 2026-08-03). On les présente comme un seul geste agricole.
+ */
+interface LotOperations {
+  cle: string
+  libelle: string
+  type: string
+  fenetre: string | null
+  /** Fin de fenêtre la plus proche du lot : porte l'urgence réelle. */
+  echeance: Date | null
+  operations: OperationArbre[]
 }
 
 interface CalendrierTabProps {
   year: number
 }
 
+/** Au-delà, on renvoie vers l'onglet Opérations plutôt que de dérouler 80 lignes. */
+const MAX_ARBRES_DEPLIES = 25
+
+interface LotCardProps {
+  lot: LotOperations
+  variante: "a_faire" | "a_venir" | "depassee"
+  deplie: boolean
+  onToggle: () => void
+  enCours: string | null
+  onTraiterLot: (lot: LotOperations, action: "fait" | "solder") => void
+  onMarquerFait: (operation: OperationArbre) => void
+}
+
+/**
+ * Une ligne = un geste agricole sur N arbres, avec l'action qui va avec.
+ * L'utilisateur pense « je taille en vert mes pommiers », pas « je valide 33
+ * opérations » : le lot est l'unité de travail, l'arbre le détail.
+ */
+function LotCard({
+  lot,
+  variante,
+  deplie,
+  onToggle,
+  enCours,
+  onTraiterLot,
+  onMarquerFait,
+}: LotCardProps) {
+  const nb = lot.operations.length
+  const occupe = enCours !== null
+  const fond =
+    variante === "depassee"
+      ? "bg-amber-50 border-amber-100"
+      : variante === "a_faire"
+        ? "bg-lime-50 border-lime-100"
+        : "bg-slate-50 border-slate-100"
+
+  return (
+    <div className={`rounded-lg border ${fond}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2 p-3">
+        <button
+          type="button"
+          onClick={onToggle}
+          className="flex min-w-0 flex-1 items-start gap-2 text-left"
+          aria-expanded={deplie}
+        >
+          {deplie ? (
+            <ChevronDown className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+          ) : (
+            <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+          )}
+          <span className="min-w-0">
+            <span className="block font-medium">{lot.libelle}</span>
+            <span className="block text-sm text-muted-foreground">
+              {libelleOperationArbre(lot.type)} · {nb} {nb > 1 ? "arbres" : "arbre"}
+              {lot.fenetre ? ` · fenêtre ${lot.fenetre}` : ""}
+              {!lot.fenetre && lot.echeance
+                ? ` · prévu le ${lot.echeance.toLocaleDateString("fr-FR")}`
+                : ""}
+            </span>
+          </span>
+        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          {variante === "depassee" ? (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={occupe}
+              className="text-amber-800 border-amber-300 hover:bg-amber-100"
+              onClick={() => onTraiterLot(lot, "solder")}
+            >
+              <Archive className="h-4 w-4 mr-1" />
+              {enCours === `${lot.cle}:solder` ? "…" : "Solder"}
+            </Button>
+          ) : null}
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={occupe}
+            className="text-green-700 border-green-200 hover:bg-green-50"
+            onClick={() => onTraiterLot(lot, "fait")}
+          >
+            <Check className="h-4 w-4 mr-1" />
+            {enCours === `${lot.cle}:fait`
+              ? "…"
+              : nb > 1
+                ? `Fait sur les ${nb}`
+                : "Fait"}
+          </Button>
+        </div>
+      </div>
+
+      {deplie && (
+        <div className="border-t bg-white/60 px-3 py-2">
+          <ul className="divide-y">
+            {lot.operations.slice(0, MAX_ARBRES_DEPLIES).map((operation) => (
+              <li key={operation.id} className="flex items-center justify-between gap-2 py-1.5">
+                <Link
+                  href={`/verger/${operation.arbre.id}`}
+                  className="min-w-0 truncate text-sm hover:underline"
+                >
+                  {operation.arbre.nom}
+                </Link>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 shrink-0 px-2 text-green-700 hover:bg-green-50"
+                  disabled={occupe}
+                  onClick={() => onMarquerFait(operation)}
+                >
+                  <Check className="h-4 w-4" />
+                </Button>
+              </li>
+            ))}
+          </ul>
+          {nb > MAX_ARBRES_DEPLIES && (
+            <p className="pt-2 text-xs text-muted-foreground">
+              et {nb - MAX_ARBRES_DEPLIES} autres —{" "}
+              <Link href="/verger?tab=operations" className="underline">
+                voir toutes les opérations
+              </Link>
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Regroupe des opérations par geste agricole, du plus urgent au moins urgent. */
+function regrouperOperations(operations: OperationArbre[]): LotOperations[] {
+  const lots = new Map<string, LotOperations>()
+
+  for (const operation of operations) {
+    const libelle = libelleCourtOperation(operation.description)
+    const cle = `${operation.type}|${libelle}`
+    const echeance = operation.dateLimite
+      ? new Date(operation.dateLimite)
+      : operation.datePrevue
+        ? new Date(operation.datePrevue)
+        : null
+
+    const existant = lots.get(cle)
+    if (existant) {
+      existant.operations.push(operation)
+      if (echeance && (!existant.echeance || echeance < existant.echeance)) {
+        existant.echeance = echeance
+      }
+      continue
+    }
+
+    lots.set(cle, {
+      cle,
+      libelle,
+      type: operation.type,
+      fenetre: libelleFenetre(operation.fenetreDebut, operation.dateLimite),
+      echeance,
+      operations: [operation],
+    })
+  }
+
+  return [...lots.values()].sort((a, b) => {
+    if (a.echeance && b.echeance) return a.echeance.getTime() - b.echeance.getTime()
+    if (a.echeance) return -1
+    if (b.echeance) return 1
+    return b.operations.length - a.operations.length
+  })
+}
+
 export function CalendrierTab({ year }: CalendrierTabProps) {
   const { toast } = useToast()
   const [data, setData] = React.useState<DashboardArbresData | null>(null)
   const [loading, setLoading] = React.useState(true)
-  const [operationsEnRetard, setOperationsEnRetard] = React.useState<OperationArbre[]>([])
-  const [operationsAVenir, setOperationsAVenir] = React.useState<OperationArbre[]>([])
+  const [operations, setOperations] = React.useState<OperationArbre[]>([])
   const [arbresAttention, setArbresAttention] = React.useState<{ id: number; nom: string; type: string; etat: string }[]>([])
   const [especesUtilisateur, setEspecesUtilisateur] = React.useState<string[]>([])
+  const [lotsDeplies, setLotsDeplies] = React.useState<Record<string, boolean>>({})
+  const [fenetresDepasseesDepliees, setFenetresDepasseesDepliees] = React.useState(false)
+  const [enCours, setEnCours] = React.useState<string | null>(null)
 
   React.useEffect(() => {
     async function fetchData() {
@@ -127,16 +327,10 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
 
         if (opsRes.ok) {
           const ops: OperationArbre[] = await opsRes.json()
-          // Minuit local : une op prévue aujourd'hui n'est pas « en retard »
-          // (même normalisation que OperationsTab).
-          const today = new Date()
-          today.setHours(0, 0, 0, 0)
-          setOperationsEnRetard(
-            ops.filter((op) => op.datePrevue && new Date(op.datePrevue) < today)
-          )
-          setOperationsAVenir(
-            ops.filter((op) => !op.datePrevue || new Date(op.datePrevue) >= today)
-          )
+          // Le tri par statut est dérivé (voir `statutOperationArbre`) : une
+          // fenêtre encore ouverte reste à faire, une fenêtre refermée n'est pas
+          // un retard, une opération soldée disparaît des listes d'action.
+          setOperations(ops)
         }
 
         if (arbresRes.ok) {
@@ -156,6 +350,112 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
     }
     fetchData()
   }, [year, toast])
+
+  // Trois lots, dérivés d'une seule règle de statut partagée avec le briefing
+  // et les autres écrans. `aujourdhui` est figé au rendu : recalculer minuit à
+  // chaque itération ferait basculer un lot au passage de la journée.
+  const { lotsAFaire, lotsAVenir, lotsDepasses, compteurs } = React.useMemo(() => {
+    const aujourdhui = debutDeJour()
+    const parStatut = new Map<StatutOperationArbre, OperationArbre[]>()
+    for (const operation of operations) {
+      const statut = statutOperationArbre(operation, aujourdhui)
+      const bucket = parStatut.get(statut)
+      if (bucket) bucket.push(operation)
+      else parStatut.set(statut, [operation])
+    }
+    const aFaire = [
+      ...(parStatut.get("a_faire") ?? []),
+      ...(parStatut.get("en_retard") ?? []),
+    ]
+    const aVenir = parStatut.get("a_venir") ?? []
+    const depassees = parStatut.get("fenetre_depassee") ?? []
+    return {
+      lotsAFaire: regrouperOperations(aFaire),
+      lotsAVenir: regrouperOperations(aVenir),
+      lotsDepasses: regrouperOperations(depassees),
+      compteurs: {
+        aFaire: aFaire.length,
+        aVenir: aVenir.length,
+        depassees: depassees.length,
+      },
+    }
+  }, [operations])
+
+  /**
+   * Un seul geste pour un lot entier. `fait` enregistre la réalisation,
+   * `solder` acte qu'une fenêtre refermée ne sera pas rattrapée cette saison.
+   */
+  const traiterLot = React.useCallback(
+    async (lot: LotOperations, action: "fait" | "solder") => {
+      const ids = lot.operations.map((operation) => operation.id)
+      setEnCours(`${lot.cle}:${action}`)
+      try {
+        const res = await fetch("/api/arbres/operations/bulk", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids, action }),
+        })
+        if (!res.ok) {
+          const payload = await res.json().catch(() => null)
+          throw new Error(payload?.error || "échec")
+        }
+        const { count } = await res.json()
+        const traites = new Set(ids)
+        setOperations((prev) => prev.filter((operation) => !traites.has(operation.id)))
+        toast({
+          title:
+            action === "fait"
+              ? `${count} ${count > 1 ? "opérations validées" : "opération validée"}`
+              : `${count} ${count > 1 ? "opérations soldées" : "opération soldée"}`,
+          description:
+            action === "solder"
+              ? "Conservées comme non réalisées cette saison ; elles reviendront à la prochaine fenêtre."
+              : undefined,
+        })
+      } catch (err) {
+        toast({
+          variant: "destructive",
+          title: "Traitement impossible",
+          description: err instanceof Error ? err.message : undefined,
+        })
+      } finally {
+        setEnCours(null)
+      }
+    },
+    [toast]
+  )
+
+  const solderToutesFenetresDepassees = React.useCallback(async () => {
+    const ids = lotsDepasses.flatMap((lot) => lot.operations.map((operation) => operation.id))
+    if (ids.length === 0) return
+    setEnCours("tout-solder")
+    try {
+      const res = await fetch("/api/arbres/operations/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids, action: "solder" }),
+      })
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null)
+        throw new Error(payload?.error || "échec")
+      }
+      const { count } = await res.json()
+      const traites = new Set(ids)
+      setOperations((prev) => prev.filter((operation) => !traites.has(operation.id)))
+      toast({
+        title: `${count} ${count > 1 ? "opérations soldées" : "opération soldée"}`,
+        description: "Les fenêtres de cette saison sont closes ; le calendrier repart propre.",
+      })
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Traitement impossible",
+        description: err instanceof Error ? err.message : undefined,
+      })
+    } finally {
+      setEnCours(null)
+    }
+  }, [lotsDepasses, toast])
 
   // Feedback Marc 2026-05-16 — V4 Bug 5 : afficher "+0% vs 2025"
   // quand 2025 = 0 kg est trompeur (Maraîchage affichait "Pas de
@@ -180,9 +480,10 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
         body: JSON.stringify({ fait: true, date: new Date().toISOString() }),
       })
       if (res.ok) {
-        setOperationsEnRetard((prev) => prev.filter((o) => o.id !== op.id))
-        setOperationsAVenir((prev) => prev.filter((o) => o.id !== op.id))
+        setOperations((prev) => prev.filter((o) => o.id !== op.id))
         toast({ title: "Fait !" })
+      } else {
+        toast({ variant: "destructive", title: "Validation impossible" })
       }
     } catch {
       toast({ variant: "destructive", title: "Erreur" })
@@ -590,92 +891,139 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
         </Card>
       </div>
 
-      {/* Taches */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Operations en retard */}
-        <Card className="border-red-200">
+      {/* Tâches d'entretien — regroupées par geste agricole, pas par ligne de
+          base. Un verger de 86 arbres produit des lots de dizaines d'opérations
+          identiques : la liste plate demandait un appui par arbre. */}
+      <div className="space-y-6">
+        <Card className="border-lime-200">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2 text-red-700">
-              <AlertTriangle className="h-4 w-4" />
-              En retard ({operationsEnRetard.length})
+            <CardTitle className="text-base flex items-center gap-2 text-lime-800">
+              <ClipboardCheck className="h-4 w-4 text-lime-600" />
+              À faire maintenant ({compteurs.aFaire})
             </CardTitle>
+            <CardDescription>
+              Opérations dont la fenêtre est ouverte aujourd’hui, la plus urgente en premier.
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            {operationsEnRetard.length === 0 ? (
-              <p className="text-muted-foreground text-sm">Aucune opération en retard</p>
+            {lotsAFaire.length === 0 ? (
+              <p className="text-muted-foreground text-sm">
+                Rien à faire aujourd’hui au verger.
+              </p>
             ) : (
-              <div className="space-y-3">
-                {operationsEnRetard.map((op) => (
-                  <div
-                    key={op.id}
-                    className="flex items-center justify-between p-3 bg-red-50 rounded-lg border border-red-100"
-                  >
-                    <div>
-                      <p className="font-medium">{op.arbre.nom}</p>
-                      <p className="text-sm text-muted-foreground capitalize">
-                        {libelleOperationArbre(op.type)} — prévu le{" "}
-                        {op.datePrevue
-                          ? new Date(op.datePrevue).toLocaleDateString("fr-FR")
-                          : "non défini"}
-                      </p>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleMarkDone(op)}
-                      className="text-green-600 border-green-200 hover:bg-green-50"
-                    >
-                      <Check className="h-4 w-4 mr-1" />
-                      Fait
-                    </Button>
-                  </div>
+              <div className="space-y-2">
+                {lotsAFaire.map((lot) => (
+                  <LotCard
+                    key={lot.cle}
+                    lot={lot}
+                    variante="a_faire"
+                    deplie={!!lotsDeplies[lot.cle]}
+                    onToggle={() =>
+                      setLotsDeplies((prev) => ({ ...prev, [lot.cle]: !prev[lot.cle] }))
+                    }
+                    enCours={enCours}
+                    onTraiterLot={traiterLot}
+                    onMarquerFait={handleMarkDone}
+                  />
                 ))}
               </div>
             )}
           </CardContent>
         </Card>
 
-        {/* Operations a venir */}
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
-              <ClipboardCheck className="h-4 w-4 text-lime-600" />
-              À faire ({operationsAVenir.length})
+              <CalendarClock className="h-4 w-4 text-slate-500" />
+              À venir ({compteurs.aVenir})
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {operationsAVenir.length === 0 ? (
+            {lotsAVenir.length === 0 ? (
               <p className="text-muted-foreground text-sm">Aucune opération planifiée</p>
             ) : (
-              <div className="space-y-3">
-                {operationsAVenir.map((op) => (
-                  <div
-                    key={op.id}
-                    className="flex items-center justify-between p-3 bg-slate-50 rounded-lg"
-                  >
-                    <div>
-                      <p className="font-medium">{op.arbre.nom}</p>
-                      <p className="text-sm text-muted-foreground capitalize">
-                        {libelleOperationArbre(op.type)}
-                        {op.datePrevue && (
-                          <> — prévu le {new Date(op.datePrevue).toLocaleDateString("fr-FR")}</>
-                        )}
-                      </p>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleMarkDone(op)}
-                    >
-                      <Check className="h-4 w-4 mr-1" />
-                      Fait
-                    </Button>
-                  </div>
+              <div className="space-y-2">
+                {lotsAVenir.map((lot) => (
+                  <LotCard
+                    key={lot.cle}
+                    lot={lot}
+                    variante="a_venir"
+                    deplie={!!lotsDeplies[lot.cle]}
+                    onToggle={() =>
+                      setLotsDeplies((prev) => ({ ...prev, [lot.cle]: !prev[lot.cle] }))
+                    }
+                    enCours={enCours}
+                    onTraiterLot={traiterLot}
+                    onMarquerFait={handleMarkDone}
+                  />
                 ))}
               </div>
             )}
           </CardContent>
         </Card>
+
+        {/* Hors saison : masqué du flux de travail. Une opération dont la fenêtre
+            est refermée n'est plus faisable cette année — l'afficher parmi les
+            tâches était la principale source d'incohérence (125 lignes « en
+            retard » impossibles à honorer). On la sort donc des listes, sans
+            l'effacer : une ligne sobre permet de solder la saison et de garder
+            la trace de ce qui n'a pas été fait. */}
+        {compteurs.depassees > 0 && (
+          <div className="rounded-lg border border-dashed bg-muted/30 px-3 py-2 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-muted-foreground">
+                {compteurs.depassees}{" "}
+                {compteurs.depassees > 1 ? "opérations sont hors saison" : "opération est hors saison"}{" "}
+                et ne {compteurs.depassees > 1 ? "sont" : "est"} plus réalisable
+                {compteurs.depassees > 1 ? "s" : ""} cette année. Masquée
+                {compteurs.depassees > 1 ? "s" : ""} des tâches ; elle
+                {compteurs.depassees > 1 ? "s reviendront" : " reviendra"} à la prochaine fenêtre.
+              </p>
+              <div className="flex shrink-0 items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground"
+                  onClick={() => setFenetresDepasseesDepliees((prev) => !prev)}
+                >
+                  {fenetresDepasseesDepliees ? (
+                    <ChevronDown className="h-4 w-4 mr-1" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 mr-1" />
+                  )}
+                  Détail
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={enCours !== null}
+                  onClick={solderToutesFenetresDepassees}
+                >
+                  <Archive className="h-4 w-4 mr-1" />
+                  {enCours === "tout-solder" ? "Traitement…" : "Solder la saison"}
+                </Button>
+              </div>
+            </div>
+            {fenetresDepasseesDepliees && (
+              <div className="mt-2 space-y-2">
+                {lotsDepasses.map((lot) => (
+                  <LotCard
+                    key={lot.cle}
+                    lot={lot}
+                    variante="depassee"
+                    deplie={!!lotsDeplies[lot.cle]}
+                    onToggle={() =>
+                      setLotsDeplies((prev) => ({ ...prev, [lot.cle]: !prev[lot.cle] }))
+                    }
+                    enCours={enCours}
+                    onTraiterLot={traiterLot}
+                    onMarquerFait={handleMarkDone}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Arbres a surveiller */}

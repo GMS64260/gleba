@@ -17,7 +17,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { roundCoord } from "@/lib/geolocation"
+import { latitudeValide, longitudeValide, roundCoord } from "@/lib/geolocation"
 import type { GpsContextPoint } from "./GpsMapPickerMap"
 
 const GpsMapPickerMap = dynamic(() => import("./GpsMapPickerMap"), {
@@ -40,6 +40,21 @@ interface GpsMapPickerDialogProps {
 const FRANCE_CENTER: [number, number] = [46.6, 2.3]
 const FRANCE_ZOOM = 6
 
+/**
+ * Médiane plutôt que moyenne (2026-08-03). Le centrage se calculait sur la
+ * moyenne arithmétique des arbres déjà géolocalisés : deux lignes portant une
+ * longitude héritée hors bornes (-563888 au lieu de -0.563888) tiraient la
+ * moyenne à -86 752, et la carte s'ouvrait à des centaines de kilomètres du
+ * verger. La médiane rend le centrage insensible à ces valeurs isolées.
+ */
+function mediane(values: number[]): number {
+  const tries = [...values].sort((a, b) => a - b)
+  const milieu = Math.floor(tries.length / 2)
+  return tries.length % 2 === 1
+    ? tries[milieu]
+    : (tries[milieu - 1] + tries[milieu]) / 2
+}
+
 export function GpsMapPickerDialog({
   open,
   onOpenChange,
@@ -59,19 +74,27 @@ export function GpsMapPickerDialog({
       setView(null)
       return
     }
-    // Number.isFinite écarte un éventuel NaN issu d'une saisie manuelle vide.
-    const lat0 = typeof initialLat === "number" && Number.isFinite(initialLat) ? initialLat : null
-    const lng0 = typeof initialLng === "number" && Number.isFinite(initialLng) ? initialLng : null
+    // Les bornes écartent un NaN de saisie vide comme une valeur héritée hors
+    // limites : on retombe alors sur les repères puis les parcelles, plutôt que
+    // d'ouvrir la carte sur une position impossible.
+    const lat0 =
+      typeof initialLat === "number" && latitudeValide(initialLat) ? initialLat : null
+    const lng0 =
+      typeof initialLng === "number" && longitudeValide(initialLng) ? initialLng : null
     if (lat0 != null && lng0 != null) {
       setValue({ lat: lat0, lng: lng0 })
       setView({ center: [lat0, lng0], zoom: 19 })
       return
     }
     setValue(null)
-    if (contextPoints.length > 0) {
-      const lat = contextPoints.reduce((s, p) => s + p.lat, 0) / contextPoints.length
-      const lng = contextPoints.reduce((s, p) => s + p.lng, 0) / contextPoints.length
-      setView({ center: [lat, lng], zoom: 18 })
+    const reperes = contextPoints.filter(
+      (p) => latitudeValide(p.lat) && longitudeValide(p.lng)
+    )
+    if (reperes.length > 0) {
+      setView({
+        center: [mediane(reperes.map((p) => p.lat)), mediane(reperes.map((p) => p.lng))],
+        zoom: 18,
+      })
       return
     }
     let cancelled = false

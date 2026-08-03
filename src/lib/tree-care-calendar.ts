@@ -1,6 +1,17 @@
 /**
- * Base de données des calendriers d'entretien des arbres
- * Données phénologiques intégrées pour ~15 especes courantes
+ * Base de données des calendriers d'entretien des arbres.
+ *
+ * Fenêtres phénologiques indicatives pour un climat tempéré français : elles
+ * situent la saison de l'opération, pas une date à respecter au jour près, et
+ * demandent un ajustement au terroir. Références des profils historiques :
+ * INRAE, CTIFL, ITAB.
+ *
+ * Couverture mesurée le 2026-08-03 sur les espèces réellement plantées en
+ * production : 29 profils pour 23 espèces plantées, dont une seule non couverte
+ * (le chêne, arbre forestier sans conduite fruitière — volontairement hors
+ * périmètre, l'API répond alors explicitement). Les alias acceptent aussi le nom
+ * du FRUIT, parce que les utilisateurs saisissent « Poire » ou « Brugnonnier »
+ * là où le référentiel attend « Poirier » ou « Pêcher ».
  */
 
 export interface TreeCareOperation {
@@ -24,7 +35,7 @@ export interface TreeCareProfile {
 export const TREE_CARE_PROFILES: TreeCareProfile[] = [
   {
     espece: "Pommier",
-    aliases: ["Malus", "pommier domestique", "apple"],
+    aliases: ["Malus", "pommier domestique", "apple", "pomme"],
     type: "fruitier",
     operations: [
       { type: "taille", label: "Taille de formation/fructification", description: "Supprimer gourmands, bois mort, aérer le centre", moisDebut: 1, moisFin: 3, priorite: "haute", recurrence: "annuelle", saisonRecommandee: "hiver" },
@@ -53,7 +64,7 @@ export const TREE_CARE_PROFILES: TreeCareProfile[] = [
   },
   {
     espece: "Poirier",
-    aliases: ["Pyrus", "poirier commun"],
+    aliases: ["Pyrus", "poirier commun", "poire"],
     type: "fruitier",
     operations: [
       { type: "taille", label: "Taille de fructification", description: "Raccourcir les rameaux, supprimer bois mort", moisDebut: 1, moisFin: 3, priorite: "haute", recurrence: "annuelle", saisonRecommandee: "hiver" },
@@ -65,7 +76,7 @@ export const TREE_CARE_PROFILES: TreeCareProfile[] = [
   },
   {
     espece: "Cerisier",
-    aliases: ["Prunus cerasus", "Prunus avium", "cerisier doux", "cerisier acide", "griottier"],
+    aliases: ["Prunus cerasus", "Prunus avium", "cerisier doux", "cerisier acide", "griottier", "cerise"],
     type: "fruitier",
     operations: [
       // Bug #3 audit Marc 2026-05-14 — Prunus : taille principale APRÈS la
@@ -81,7 +92,7 @@ export const TREE_CARE_PROFILES: TreeCareProfile[] = [
   },
   {
     espece: "Prunier",
-    aliases: ["Prunus domestica", "prunier domestique", "quetschier", "mirabellier", "reine-claude"],
+    aliases: ["Prunus domestica", "prunier domestique", "quetschier", "mirabellier", "reine-claude", "prune", "quetsche", "mirabelle"],
     type: "fruitier",
     operations: [
       // PROMPT 05 — Audit Verger : les Prunus se taillent APRÈS la récolte
@@ -96,7 +107,7 @@ export const TREE_CARE_PROFILES: TreeCareProfile[] = [
   },
   {
     espece: "Pêcher",
-    aliases: ["Prunus persica", "pêcher commun", "nectarinier"],
+    aliases: ["Prunus persica", "pêcher commun", "nectarinier", "brugnonnier", "brugnon", "pêche", "nectarine"],
     type: "fruitier",
     operations: [
       // PROMPT 05 — Prunus : taille principale APRÈS récolte (juillet-août).
@@ -113,7 +124,7 @@ export const TREE_CARE_PROFILES: TreeCareProfile[] = [
   },
   {
     espece: "Abricotier",
-    aliases: ["Prunus armeniaca"],
+    aliases: ["Prunus armeniaca", "abricot"],
     type: "fruitier",
     operations: [
       { type: "taille", label: "Taille légère après récolte", description: "Taille douce, l'abricotier cicatrise mal", moisDebut: 8, moisFin: 9, priorite: "haute", recurrence: "annuelle", saisonRecommandee: "ete" },
@@ -125,7 +136,7 @@ export const TREE_CARE_PROFILES: TreeCareProfile[] = [
   },
   {
     espece: "Olivier",
-    aliases: ["Olea europaea", "olivier commun"],
+    aliases: ["Olea europaea", "olivier commun", "olive"],
     type: "fruitier",
     operations: [
       { type: "taille", label: "Taille de fructification", description: "Aérer le centre, raccourcir les branches trop longues", moisDebut: 3, moisFin: 4, priorite: "haute", recurrence: "annuelle", saisonRecommandee: "printemps" },
@@ -137,7 +148,7 @@ export const TREE_CARE_PROFILES: TreeCareProfile[] = [
   },
   {
     espece: "Figuier",
-    aliases: ["Ficus carica", "figuier commun"],
+    aliases: ["Ficus carica", "figuier commun", "figue"],
     type: "fruitier",
     operations: [
       { type: "taille", label: "Taille de formation (hiver)", description: "Supprimer bois mort et branches qui se croisent. Pour les variétés UNIFÈRES uniquement.", moisDebut: 2, moisFin: 3, priorite: "haute", recurrence: "annuelle", saisonRecommandee: "hiver" },
@@ -152,7 +163,7 @@ export const TREE_CARE_PROFILES: TreeCareProfile[] = [
   },
   {
     espece: "Noyer",
-    aliases: ["Juglans regia", "noyer commun"],
+    aliases: ["Juglans regia", "noyer commun", "noix"],
     type: "fruitier",
     operations: [
       { type: "taille", label: "Taille de nettoyage", description: "Supprimer bois mort uniquement, taille minimale", moisDebut: 9, moisFin: 10, priorite: "basse", recurrence: "annuelle", saisonRecommandee: "automne" },
@@ -162,7 +173,7 @@ export const TREE_CARE_PROFILES: TreeCareProfile[] = [
   },
   {
     espece: "Châtaignier",
-    aliases: ["Castanea sativa", "chataignier"],
+    aliases: ["Castanea sativa", "chataignier", "châtaigne", "marron"],
     type: "fruitier",
     operations: [
       { type: "taille", label: "Taille d'entretien", description: "Supprimer branches mortes et rejets de souche", moisDebut: 1, moisFin: 2, priorite: "moyenne", recurrence: "annuelle", saisonRecommandee: "hiver" },
@@ -220,7 +231,7 @@ export const TREE_CARE_PROFILES: TreeCareProfile[] = [
   },
   {
     espece: "Groseillier",
-    aliases: ["Ribes", "groseillier à grappes", "groseillier à maquereau"],
+    aliases: ["Ribes", "groseillier à grappes", "groseillier à maquereau", "groseille"],
     type: "petit_fruit",
     operations: [
       { type: "taille", label: "Taille de rajeunissement", description: "Supprimer 1/3 des vieux bois chaque année", moisDebut: 1, moisFin: 2, priorite: "haute", recurrence: "annuelle", saisonRecommandee: "hiver" },
@@ -244,7 +255,7 @@ export const TREE_CARE_PROFILES: TreeCareProfile[] = [
   },
   {
     espece: "Cognassier",
-    aliases: ["Cydonia oblonga", "cognassier commun"],
+    aliases: ["Cydonia oblonga", "cognassier commun", "coing"],
     type: "fruitier",
     operations: [
       { type: "taille", label: "Taille de fructification (hiver)", description: "Pomacée : aérer le centre, supprimer bois mort", moisDebut: 1, moisFin: 2, priorite: "haute", recurrence: "annuelle", saisonRecommandee: "hiver" },
@@ -256,7 +267,7 @@ export const TREE_CARE_PROFILES: TreeCareProfile[] = [
   },
   {
     espece: "Néflier",
-    aliases: ["Mespilus germanica", "neflier du japon", "Eriobotrya japonica", "bibassier"],
+    aliases: ["Mespilus germanica", "neflier du japon", "Eriobotrya japonica", "bibassier", "nèfle"],
     type: "fruitier",
     operations: [
       { type: "taille", label: "Taille de formation (hiver)", description: "Pomacée : taille légère, supprimer bois mort", moisDebut: 1, moisFin: 2, priorite: "moyenne", recurrence: "annuelle", saisonRecommandee: "hiver" },
@@ -267,7 +278,7 @@ export const TREE_CARE_PROFILES: TreeCareProfile[] = [
   },
   {
     espece: "Amandier",
-    aliases: ["Prunus dulcis", "Prunus amygdalus"],
+    aliases: ["Prunus dulcis", "Prunus amygdalus", "amande"],
     type: "fruitier",
     operations: [
       // Prunus → pas de taille hivernale.
@@ -291,7 +302,7 @@ export const TREE_CARE_PROFILES: TreeCareProfile[] = [
   },
   {
     espece: "Grenadier",
-    aliases: ["Punica granatum"],
+    aliases: ["Punica granatum", "grenade"],
     type: "fruitier",
     operations: [
       { type: "taille", label: "Taille douce printanière", description: "Supprimer rejets et bois mort, aérer le centre", moisDebut: 3, moisFin: 4, priorite: "moyenne", recurrence: "annuelle", saisonRecommandee: "printemps" },
@@ -351,6 +362,47 @@ export const TREE_CARE_PROFILES: TreeCareProfile[] = [
       { type: "traitement", label: "Décoction de prêle", description: "Préventif anti-oïdium et taches sur feuilles", moisDebut: 4, moisFin: 6, priorite: "moyenne", recurrence: "annuelle", saisonRecommandee: "printemps" },
       { type: "recolte", label: "Récolte des fraises (non-remontants)", description: "Récolte tous les 1-2 jours en pleine production", moisDebut: 5, moisFin: 7, priorite: "haute", recurrence: "annuelle", saisonRecommandee: "ete" },
       { type: "recolte", label: "Récolte des fraises (remontants)", description: "Pour variétés remontantes : récolte également jusqu'aux premières gelées", moisDebut: 8, moisFin: 10, priorite: "moyenne", recurrence: "annuelle", saisonRecommandee: "automne" },
+    ],
+  },
+  // Trous de couverture comblés le 2026-08-03, mesurés sur les espèces
+  // réellement plantées en production : 6 espèces sur 23 n'avaient aucun
+  // calendrier, dont Feijoa avec 9 arbres sur un même compte. Fenêtres pour
+  // climat tempéré français (façade atlantique / Sud-Ouest) : à ajuster selon
+  // le terroir, comme les autres profils.
+  {
+    espece: "Feijoa",
+    aliases: ["Acca sellowiana", "goyavier du Brésil", "goyavier de Montevideo", "feijoas"],
+    type: "fruitier",
+    operations: [
+      { type: "taille", label: "Taille de formation et nettoyage", description: "Fin d'hiver, avant le départ de végétation : bois mort, branches enchevêtrées, aération du centre. Le feijoa fructifie sur la pousse de l'année, éviter la taille sévère", moisDebut: 2, moisFin: 3, priorite: "moyenne", recurrence: "annuelle", saisonRecommandee: "hiver" },
+      { type: "fertilisation", label: "Apport de compost", description: "Compost mûr au pied ; sol frais, drainé et plutôt acide à neutre", moisDebut: 3, moisFin: 4, priorite: "moyenne", recurrence: "annuelle", saisonRecommandee: "printemps" },
+      { type: "autre", label: "Paillage et arrosages d'été", description: "Sensible à la sécheresse pendant la nouaison et le grossissement : pailler et maintenir le sol frais, sinon les fruits coulent", moisDebut: 6, moisFin: 8, priorite: "haute", recurrence: "annuelle", saisonRecommandee: "ete" },
+      { type: "recolte", label: "Récolte des feijoas", description: "Les fruits mûrs tombent d'eux-mêmes : ramassage tous les 1-2 jours plutôt que cueillette sur l'arbre. Maturité à la souplesse et au parfum", moisDebut: 10, moisFin: 11, priorite: "haute", recurrence: "annuelle", saisonRecommandee: "automne" },
+    ],
+  },
+  {
+    espece: "Noisetier",
+    aliases: ["Corylus avellana", "noisette", "coudrier"],
+    type: "fruitier",
+    operations: [
+      { type: "taille", label: "Taille d'entretien (hiver)", description: "Conduite en cépée ou en gobelet : supprimer bois mort et branches vers l'intérieur, aérer pour limiter l'humidité", moisDebut: 12, moisFin: 2, priorite: "moyenne", recurrence: "annuelle", saisonRecommandee: "hiver" },
+      { type: "autre", label: "Suppression des drageons", description: "Le noisetier drageonne fortement : supprimer les rejets au ras pour concentrer la vigueur sur les charpentières", moisDebut: 4, moisFin: 6, priorite: "moyenne", recurrence: "annuelle", saisonRecommandee: "printemps" },
+      { type: "traitement", label: "Surveillance du balanin", description: "Balanin de la noisette : ramasser et détruire les noisettes tombées prématurément, travail superficiel du sol sous la frondaison pour perturber les larves", moisDebut: 5, moisFin: 6, priorite: "moyenne", recurrence: "annuelle", saisonRecommandee: "printemps" },
+      { type: "recolte", label: "Récolte des noisettes", description: "Ramassage au sol quand les noisettes se détachent de l'involucre ; séchage à l'air avant conservation", moisDebut: 8, moisFin: 9, priorite: "haute", recurrence: "annuelle", saisonRecommandee: "ete" },
+    ],
+  },
+  {
+    espece: "Rhubarbe",
+    aliases: ["Rheum", "Rheum rhabarbarum", "Rheum × hybridum"],
+    // Vivace potagère, pas un arbre : elle apparaît au verger parce que les
+    // utilisateurs y rangent leurs vivaces pérennes. Le type ne sert qu'à
+    // l'affichage.
+    type: "vivace",
+    operations: [
+      { type: "fertilisation", label: "Apport de compost", description: "Très gourmande : compost mûr ou fumier décomposé à la sortie de l'hiver, avant le départ des bourgeons", moisDebut: 2, moisFin: 3, priorite: "haute", recurrence: "annuelle", saisonRecommandee: "printemps" },
+      { type: "recolte", label: "Récolte des pétioles", description: "Tirer le pétiole en le tordant plutôt que le couper ; ne jamais prélever plus d'un tiers de la touffe à la fois. Les feuilles ne se consomment pas (acide oxalique)", moisDebut: 4, moisFin: 6, priorite: "haute", recurrence: "annuelle", saisonRecommandee: "printemps" },
+      { type: "autre", label: "Suppression des hampes florales", description: "Couper la hampe dès son apparition : la montée à graines épuise la souche et arrête la production de pétioles", moisDebut: 5, moisFin: 7, priorite: "haute", recurrence: "annuelle", saisonRecommandee: "ete" },
+      { type: "autre", label: "Nettoyage automnal", description: "Supprimer les feuilles desséchées et pailler la souche pour l'hiver", moisDebut: 10, moisFin: 11, priorite: "basse", recurrence: "annuelle", saisonRecommandee: "automne" },
     ],
   },
 ]
@@ -423,14 +475,87 @@ function normaliseVarieteForMatch(v: string | null | undefined): string {
     .trim()
 }
 
+/** Dernier jour du mois `mois` (1-12) de l'année `year`. */
+function finDeMois(year: number, mois: number): Date {
+  return new Date(year, mois, 0)
+}
+
+/**
+ * Fenêtre pendant laquelle une opération est réellement faisable, et mois
+ * d'ancrage de la date conseillée.
+ *
+ * Une opération d'entretien n'a pas d'échéance : elle a une saison. Le
+ * générateur écrasait `moisDebut`..`moisFin` en une date pivot au 15 du mois,
+ * ce qui produisait deux défauts en production (constatés le 2026-08-03 sur un
+ * verger de 86 arbres) : 79 tâches à la même date, et un basculement collectif
+ * en « retard » dès le lendemain alors que la fenêtre restait ouverte six
+ * semaines. On conserve désormais les deux bornes.
+ *
+ * Exporté : le script de reprise des lignes historiques rejoue exactement la
+ * même règle (`scripts/backfill-fenetres-operations-arbres.ts`).
+ */
+export function fenetreOperationCare(
+  op: Pick<TreeCareOperation, "type" | "moisDebut" | "moisFin">,
+  year: number,
+  variete?: string | null
+): { debut: Date; fin: Date; moisAncrage: number; anneeAncrage: number } {
+  const chevauche = op.moisDebut > op.moisFin
+  const debut = new Date(year, op.moisDebut - 1, 1)
+  const fin = finDeMois(chevauche ? year + 1 : year, op.moisFin)
+
+  let moisAncrage = op.moisDebut
+  if (op.type === "recolte") {
+    const tardiveMois = VARIETES_RECOLTE_TARDIVE[normaliseVarieteForMatch(variete)]
+    if (tardiveMois && tardiveMois >= op.moisDebut && tardiveMois <= op.moisFin + 1) {
+      moisAncrage = tardiveMois
+    } else if (chevauche) {
+      // Fenêtre à cheval sur l'année (ex. agrumes nov → mars) : milieu
+      // calculé modulo 12, sinon (11+3)/2 = juillet.
+      moisAncrage = ((Math.floor((op.moisDebut + op.moisFin + 12) / 2) - 1) % 12) + 1
+    } else {
+      // Milieu de la fenêtre de récolte plutôt que le tout début
+      moisAncrage = Math.floor((op.moisDebut + op.moisFin) / 2)
+    }
+  }
+
+  // Sur une fenêtre à cheval, un mois d'ancrage antérieur au mois de début
+  // appartient à l'année suivante : la récolte des agrumes ancrée en janvier
+  // pour une fenêtre nov→mars est celle de janvier N+1, pas de janvier N (elle
+  // précédait sinon l'ouverture de sa propre fenêtre).
+  const anneeAncrage = chevauche && moisAncrage < op.moisDebut ? year + 1 : year
+
+  return { debut, fin, moisAncrage, anneeAncrage }
+}
+
+/**
+ * Date conseillée à l'intérieur de la fenêtre, étalée de façon déterministe
+ * par arbre.
+ *
+ * Un verger réel comporte des dizaines d'arbres de la même espèce : les caler
+ * tous au même jour crée une charge impossible puis un mur de retards. On
+ * répartit sur le mois d'ancrage à partir de l'identifiant de l'arbre —
+ * déterministe, donc stable d'une régénération à l'autre, et sans dépendre
+ * d'un aléa.
+ */
+function dateConseillee(
+  fenetre: { moisAncrage: number; anneeAncrage: number },
+  arbreId: number
+): Date {
+  const joursDansMois = finDeMois(fenetre.anneeAncrage, fenetre.moisAncrage).getDate()
+  const decalage = ((arbreId % joursDansMois) + joursDansMois) % joursDansMois
+  return new Date(fenetre.anneeAncrage, fenetre.moisAncrage - 1, 1 + decalage)
+}
+
 /**
  * Génère les opérations d'entretien pour une annee donnée
  * Retourne les données prêtes pour prisma.operationArbre.createMany()
  *
- * `from` : plancher optionnel — les opérations dont l'échéance tombe avant
- * cette date sont omises. Un arbre créé en juillet ne doit pas naître avec
- * la taille du 15/03 « en retard de 137 jours » (retour utilisateur 2026-07-31 :
+ * `from` : plancher optionnel. Une opération dont la FENÊTRE est déjà refermée
+ * n'est pas créée — elle naîtrait irréalisable (retour utilisateur 2026-07-31 :
  * un compte de 10 jours noyé sous 100 retards artificiels dans le briefing).
+ * En revanche une fenêtre encore ouverte est créée même si sa date conseillée
+ * est passée : c'est du travail réellement faisable, la date conseillée est
+ * simplement ramenée au plancher.
  */
 export function generateCareOperations(
   profile: TreeCareProfile,
@@ -440,25 +565,13 @@ export function generateCareOperations(
   variete?: string | null,
   from?: Date | null
 ) {
-  const varieteKey = normaliseVarieteForMatch(variete)
-  const tardiveMois = VARIETES_RECOLTE_TARDIVE[varieteKey]
-
   return profile.operations.flatMap((op) => {
-    let moisCible = op.moisDebut
-    if (op.type === "recolte") {
-      if (tardiveMois && tardiveMois >= op.moisDebut && tardiveMois <= op.moisFin + 1) {
-        moisCible = tardiveMois
-      } else if (op.moisDebut > op.moisFin) {
-        // Fenêtre à cheval sur l'année (ex. agrumes nov → mars) : milieu
-        // calculé modulo 12, sinon (11+3)/2 = juillet.
-        moisCible = ((Math.floor((op.moisDebut + op.moisFin + 12) / 2) - 1) % 12) + 1
-      } else {
-        // Milieu de la fenêtre de récolte plutôt que le tout début
-        moisCible = Math.floor((op.moisDebut + op.moisFin) / 2)
-      }
-    }
-    const dateCible = new Date(year, moisCible - 1, 15)
-    if (from && dateCible < from) return []
+    const fenetre = fenetreOperationCare(op, year, variete)
+    if (from && fenetre.fin < from) return []
+
+    let dateCible = dateConseillee(fenetre, arbreId)
+    if (from && dateCible < from) dateCible = from
+
     return [{
       userId,
       arbreId,
@@ -469,6 +582,8 @@ export function generateCareOperations(
       // d'un arbre apparaissaient au jour du seed dans la liste.
       date: dateCible,
       datePrevue: dateCible,
+      fenetreDebut: fenetre.debut,
+      dateLimite: fenetre.fin,
       fait: false,
       recurrence: op.recurrence,
       saisonRecommandee: op.saisonRecommandee,

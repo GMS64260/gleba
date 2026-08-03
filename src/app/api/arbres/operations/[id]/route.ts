@@ -94,6 +94,14 @@ export async function PUT(request: NextRequest, { params }: Params) {
         unite: body.unite,
         cout: body.cout !== undefined ? (body.cout != null ? parseFloat(body.cout) : null) : undefined,
         datePrevue: body.datePrevue !== undefined ? (body.datePrevue ? new Date(body.datePrevue) : null) : undefined,
+        // Solde d'une fenêtre fermée sans réalisation, ou réouverture (null).
+        // Valider une opération la déssolde : « fait » l'emporte sur « pas fait ».
+        abandonneeLe:
+          body.fait === true
+            ? null
+            : body.abandonneeLe !== undefined
+              ? (body.abandonneeLe ? new Date(body.abandonneeLe) : null)
+              : undefined,
         fait: body.fait,
         notes: body.notes,
         dureeMinutes: body.dureeMinutes !== undefined ? (body.dureeMinutes ? parseInt(body.dureeMinutes) : null) : undefined,

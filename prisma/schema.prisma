@@ -1650,6 +1650,20 @@ model OperationArbre {
   unite             String?   @map("unite") // L, kg, etc.
   cout              Float?    @map("cout") // Coût en €
   datePrevue        DateTime? @map("date_prevue") // Date planifiée (si tâche future)
+  // Fenêtre saisonnière (2026-08-03) : une opération d'entretien générée est
+  // faisable sur une PÉRIODE (« taille en vert, juin-juillet »), pas à une date
+  // fixe. Avant, le générateur écrasait la fenêtre en une date pivot au 15 du
+  // mois : les 86 arbres d'un verger tombaient le même jour et devenaient tous
+  // « en retard » ensemble le 16, alors que l'opération restait faisable.
+  // `datePrevue` reste la date conseillée (étalée dans la fenêtre) ; ces deux
+  // bornes portent la réalité agronomique. Null = échéance ferme (saisie
+  // manuelle), comportement historique conservé.
+  fenetreDebut      DateTime? @map("fenetre_debut")
+  dateLimite        DateTime? @map("date_limite")
+  // Solde explicite d'une fenêtre fermée sans réalisation : ce n'est ni un
+  // « fait » (l'opération n'a pas eu lieu) ni un retard perpétuel. Conserve la
+  // trace de ce qui n'a pas été fait cette saison.
+  abandonneeLe      DateTime? @map("abandonnee_le")
   fait              Boolean   @default(true) @map("fait")
   dureeMinutes      Int?      @map("duree_minutes")
   nbPersonnes       Int?      @default(1) @map("nb_personnes")
@@ -1674,6 +1688,7 @@ model OperationArbre {
   @@index([type])
   @@index([fait])
   @@index([datePrevue])
+  @@index([dateLimite])
   @@map("operations_arbres")
 }
 
