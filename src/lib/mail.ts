@@ -4,6 +4,15 @@
 
 import nodemailer from "nodemailer"
 
+/**
+ * URL publique de l'instance (dérivée de NEXTAUTH_URL, bascule propre en
+ * auto-hébergement). Utilisée pour les liens d'activation / reset de mot de
+ * passe. Sans NEXTAUTH_URL, on retombe sur l'hôte public historique.
+ */
+const APP_URL = (process.env.NEXTAUTH_URL || "https://gleba.fr").replace(/\/$/, "")
+
+export { APP_URL }
+
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
   port: Number(process.env.SMTP_PORT) || 587,
@@ -118,7 +127,7 @@ export function newUserNotificationEmail(user: { email: string; name?: string | 
 
 export function verifyEmailEmail(name: string | null, token: string) {
   const displayName = name || "nouveau membre"
-  const verifyUrl = `https://gleba.fr/api/auth/verify?token=${token}`
+  const verifyUrl = `${APP_URL}/api/auth/verify?token=${token}`
   return {
     subject: "Gleba — Confirmez votre adresse email",
     html: `<!DOCTYPE html>
@@ -291,7 +300,7 @@ export function commandeBoutiqueEmail(args: CommandeBoutiqueEmailArgs) {
 
 export function passwordResetEmail(name: string | null, token: string) {
   const displayName = name || "utilisateur"
-  const resetUrl = `https://gleba.fr/reset-password?token=${token}`
+  const resetUrl = `${APP_URL}/reset-password?token=${token}`
   return {
     subject: "Gleba — Réinitialisation de votre mot de passe",
     html: `<!DOCTYPE html>

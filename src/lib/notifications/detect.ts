@@ -1,0 +1,176 @@
+/**
+ * Détection PURE des conditions à risque (météo + irrigation).
+ *
+ * Consomme les données déjà fetchées par `@/lib/meteo` (fetchOpenMeteoForecast,
+ * fetchOpenMeteoHistory) — aucune duplication des appels API ici.
+ *
+ * Seuils calibrés pour des NOTIFICATIONS par email (donc volontairement plus
+ * exigeants que les alertes in-app de `meteo-agro.genererAlertesMeteo` :
+ * un email pour 19 km/h de vent serait du spam) :
+ *   - gel         : tempMin <= 0 °C
+ *   - canicule    : tempMax >= 35 °C
+ *   - vent fort   : windSpeedMax >= 50 km/h
+ *   - pluie abondante : precipitation >= 20 mm/jour
+ *   - orage       : code WMO courant 95/96/99 (orage, grêle)
+ */
+
+import type { MeteoActuelle, MeteoPrevision } from "@/lib/meteo"
+import type { AlerteMeteoNotification } from "./types"
+
+export const SEUILS_METEO = {
+  gel: { tempMin: 0, danger: -3 },
+  canicule: { tempMax: 35, danger: 40 },
+  ventFort: { vitesse: 50, danger: 70 },
+  pluieAbondante: { mm: 20, danger: 40 },
+  codesOrage: [95, 96, 99] as readonly number[],
+} as const
+
+/** Code WMO d'un orage avec grêle (danger). */
+const CODES_GRÊLE = [96, 99]
+
+function todayIso(): string {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
+    now.getDate()
+  ).padStart(2, "0")}`
+}
+
+/**
+ * Détecte les alertes météo notifiables sur l'horizon demandé (défaut : tous
+ * les jours de la prévision). En temps réel on limite à 48 h ; le résumé du
+ * matin utilise la journée courante.
+ */
+export function detecterAlertesMeteo(
+  previsions: MeteoPrevision[],
+  current: MeteoActuelle | null = null,
+  options: { horizonJours?: number } = {}
+): AlerteMeteoNotification[] {
+  const horizon = options.horizonJours ?? previsions.length
+  const alertes: AlerteMeteoNotification[] = []
+
+  for (let i = 0; i < Math.min(horizon, previsions.length); i++) {
+    const jour = previsions[i]
+    if (!jour) continue
+
+    // ── Gel ──
+    if (jour.tempMin <= SEUILS_METEO.gel.tempMin) {
+      alertes.push({
+        type: "gel",
+        date: jour.date,
+        niveau: jour.tempMin <= SEUILS_METEO.gel.danger ? "danger" : "attention",
+        message: `Risque de gel : ${jour.tempMin}°C prévu`,
+        details:
+          jour.tempMin <= SEUILS_METEO.gel.danger
+            ? "Gel sévère annoncé. Protéger les cultures sensibles (voile d'hivernage, paillage, tunnel). Risque fort pour les semis récents et les arbres en floraison."
+            : "Gel léger possible. Surveiller les cultures non protégées et les semis récents ; un voile de protection peut suffire.",
+        key: `gel:${jour.date}`,
+      })
+    }
+
+    // ── Canicule ──
+    if (jour.tempMax >= SEUILS_METEO.canicule.tempMax) {
+      alertes.push({
+        type: "canicule",
+        date: jour.date,
+        niveau: jour.tempMax >= SEUILS_METEO.canicule.danger ? "danger" : "attention",
+        message: `Canicule : ${jour.tempMax}°C prévu`,
+        details:
+          "Augmenter la fréquence d'irrigation, ombrer les cultures sensibles (salades, épinards). Arroser tôt le matin ou le soir pour limiter l'évaporation.",
+        key: `canicule:${jour.date}`,
+      })
+    }
+
+    // ── Vent fort ──
+    if (jour.windSpeedMax >= SEUILS_METEO.ventFort.vitesse) {
+      alertes.push({
+        type: "vent",
+        date: jour.date,
+        niveau: jour.windSpeedMax >= SEUILS_METEO.ventFort.danger ? "danger" : "attention",
+        message: `Vent fort : ${Math.round(jour.windSpeedMax)} km/h attendu`,
+        details:
+          "Éviter tout traitement phytosanitaire (interdit au-delà de 19 km/h). Brise-vent et tuteurage à vérifier ; reporter les semis en plein vent si possible.",
+        key: `vent:${jour.date}`,
+      })
+    }
+
+    // ── Pluie abondante ──
+    if (jour.precipitation >= SEUILS_METEO.pluieAbondante.mm) {
+      alertes.push({
+        type: "pluie",
+        date: jour.date,
+        niveau: jour.precipitation >= SEUILS_METEO.pluieAbondante.danger ? "danger" : "attention",
+        message: `Pluie abondante : ${jour.precipitation} mm prévus`,
+        details:
+          "Reporter les semis et plantations si possible ; surveiller l'engorgement des planches et la sensibilité des jeunes plants. L'irrigation des prochains jours sera probablement inutile.",
+        key: `pluie:${jour.date}`,
+      })
+    }
+  }
+
+  // ── Orage (conditions actuelles, code WMO) ──
+  if (current && SEUILS_METEO.codesOrage.includes(current.weatherCode)) {
+    const avecGrêle = CODES_GRÊLE.includes(current.weatherCode)
+    alertes.push({
+      type: "orage",
+      date: todayIso(),
+      niveau: avecGrêle ? "danger" : "attention",
+      message: `Orage${avecGrêle ? " avec grêle" : ""} en cours : ${current.weatherDescription}`,
+      details: avecGrêle
+        ? "Risque de grêle : mettre à l'abri les plants les plus précieux, fermer les tunnels. Débrancher les équipements électriques sensibles."
+        : "Orage à proximité : couvrir les semis sensibles si possible ; rester attentif aux rafales.",
+      key: `orage:${todayIso()}`,
+    })
+  }
+
+  return alertes
+}
+
+export const SEUILS_IRRIGATION_INUTILE = {
+  pluiePrevue: 5, // mm prévus le jour J → irrigation inutile
+  pluieRecente: 5, // mm cumulés sur 3 j
+  joursCouverture: 3,
+} as const
+
+/**
+ * Décide si une irrigation planifiée est probablement inutile (même heuristique
+ * que la route /api/calendrier, factorisée pour être testable et réutilisée
+ * par les alertes temps réel).
+ */
+export function deciderIrrigationInutile(opts: {
+  pluiePrevue: number | null
+  pluieRecente3j: number
+  joursAvant: number
+}): boolean {
+  const { pluiePrevue, pluieRecente3j, joursAvant } = opts
+  const inutileParPluieRecente =
+    pluieRecente3j >= SEUILS_IRRIGATION_INUTILE.pluieRecente &&
+    joursAvant <= SEUILS_IRRIGATION_INUTILE.joursCouverture
+  const inutileParPrevision =
+    pluiePrevue !== null && pluiePrevue >= SEUILS_IRRIGATION_INUTILE.pluiePrevue
+  return inutileParPluieRecente || inutileParPrevision
+}
+
+/** Date locale du serveur (fuseau TZ, ex. Europe/Paris) au format YYYY-MM-DD. */
+export function dateLocaleIso(date: Date = new Date()): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
+
+/** Début de journée locale (minuit) sous forme de Date. */
+export function debutDeJournee(date: Date = new Date()): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate())
+}
+
+/** Fin de journée locale (minuit + 1 jour). */
+export function finDeJournee(date: Date = new Date()): Date {
+  const start = debutDeJournee(date)
+  return new Date(start.getFullYear(), start.getMonth(), start.getDate() + 1)
+}
+
+export function formatDateFr(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number)
+  if (!y || !m || !d) return iso
+  return `${String(d).padStart(2, "0")}/${String(m).padStart(2, "0")}/${y}`
+}
