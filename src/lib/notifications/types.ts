@@ -47,7 +47,11 @@ export interface ResumeQuotidien {
 }
 
 /** Types d'alertes urgentes (temps réel). */
-export type TypeAlerteUrgente = "irrigation-inutile" | "association-incompatible" | "tache-retard"
+export type TypeAlerteUrgente =
+  | "irrigation-inutile"
+  | "association-incompatible"
+  | "tache-retard"
+  | "recolte-mure" // Issue #16 : maturité calculée (date semis/plantation + durée culture ITP)
 
 export interface AlerteUrgente {
   type: TypeAlerteUrgente

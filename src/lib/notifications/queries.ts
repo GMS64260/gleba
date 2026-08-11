@@ -12,6 +12,7 @@ import { fetchOpenMeteoForecast, fetchOpenMeteoHistory } from "@/lib/meteo"
 import { grouperIrrigationsPlanifieesParPlancheEtJour } from "@/lib/irrigation-planche"
 import { alertesAssociations } from "@/lib/associations-alertes"
 import {
+  calculerRecoltesMures,
   dateLocaleIso,
   debutDeJournee,
   deciderIrrigationInutile,
@@ -156,6 +157,7 @@ const CULTURE_SELECT = {
   espece: { select: { couleur: true, nom: true } },
   variete: { select: { nom: true } },
   planche: { select: { nom: true, ilot: true, parcelleGeo: { select: { centroidLat: true, centroidLng: true } } } },
+  itp: { select: { dureeCulture: true } },
 } as const
 
 interface CultureAvecPlanche {
@@ -168,6 +170,7 @@ interface CultureAvecPlanche {
   espece: { couleur: string | null; nom: string | null } | null
   variete: { nom: string | null } | null
   planche: { nom: string | null; ilot: string | null } | null
+  itp: { dureeCulture: number | null } | null
 }
 
 function cultureVersTache(
@@ -198,7 +201,7 @@ export async function chargerTachesDuJour(userId: string): Promise<TacheJour[]> 
   const start = debutDeJournee()
   const end = finDeJournee()
 
-  const [semis, plantations, recoltes, irrigations, coords] = await Promise.all([
+  const [semis, plantations, recoltes, culturesMures, irrigations, coords] = await Promise.all([
     prisma.culture.findMany({
       where: { userId, dateSemis: { gte: start, lte: end } },
       select: CULTURE_SELECT,
@@ -209,6 +212,19 @@ export async function chargerTachesDuJour(userId: string): Promise<TacheJour[]> 
     }),
     prisma.culture.findMany({
       where: { userId, dateRecolte: { gte: start, lte: end } },
+      select: CULTURE_SELECT,
+    }),
+    // Récoltes mûres du jour : cultures sans dateRecolte planifiée dont la
+    // maturité calculée (semis/plantation + durée culture ITP) tombe aujourd'hui
+    // ou date de quelques jours (rappel quotidien jusqu'à récolte).
+    prisma.culture.findMany({
+      where: {
+        userId,
+        recolteFaite: false,
+        terminee: null,
+        dateRecolte: null,
+        OR: [{ dateSemis: { not: null } }, { datePlantation: { not: null } }],
+      },
       select: CULTURE_SELECT,
     }),
     prisma.irrigationPlanifiee.findMany({
@@ -242,6 +258,35 @@ export async function chargerTachesDuJour(userId: string): Promise<TacheJour[]> 
     ),
     ...recoltes.map((c) => cultureVersTache(c as CultureAvecPlanche, "recolte", c.dateRecolte as Date)),
   ]
+
+  // Récoltes mûres du jour (maturité calculée, sans dateRecolte planifiée).
+  const muresJour = calculerRecoltesMures(
+    culturesMures.map((c) => ({
+      id: c.id,
+      dateSemis: c.dateSemis,
+      datePlantation: c.datePlantation,
+      recolteFaite: c.recolteFaite,
+      dureeCultureJours: c.itp?.dureeCulture ?? null,
+      especeNom: c.espece?.nom ?? c.especeId,
+      plancheNom: c.planche?.nom ?? null,
+    })),
+    new Date(),
+    // Fenêtre résumé : mûre aujourd'hui ou depuis 3 j max (rappel, pas de spam).
+    { avanceJours: 0, depassementJours: 3 }
+  )
+  for (const recolte of muresJour) {
+    taches.push({
+      id: recolte.cultureId,
+      type: "recolte",
+      especeNom: recolte.especeNom,
+      varieteNom: null,
+      plancheName: recolte.plancheNom ?? null,
+      ilot: null,
+      date: start.toISOString(),
+      fait: false,
+      couleur: null,
+    })
+  }
 
   if (irrigations.length === 0) return taches
 
@@ -487,12 +532,71 @@ async function detecterTachesEnRetard(userId: string): Promise<AlerteUrgente[]> 
   return urgentes
 }
 
+/**
+ * Cultures dont la maturité CALCULÉE (date semis/plantation + durée culture
+ * de l'ITP) est atteinte ou imminente et pas encore récoltées (issue #16).
+ * Uniquement les cultures SANS dateRecolte planifiée : celles qui en ont une
+ * sont déjà couvertes par le calendrier (tâches du jour) et l'alerte
+ * tache-retard. La maturité calculée supplée donc l'absence de planification.
+ */
+async function detecterRecoltesMures(userId: string): Promise<AlerteUrgente[]> {
+  const cultures = await prisma.culture.findMany({
+    where: {
+      userId,
+      recolteFaite: false,
+      terminee: null,
+      dateRecolte: null,
+      OR: [{ dateSemis: { not: null } }, { datePlantation: { not: null } }],
+    },
+    select: {
+      id: true,
+      especeId: true,
+      dateSemis: true,
+      datePlantation: true,
+      espece: { select: { nom: true } },
+      planche: { select: { nom: true } },
+      itp: { select: { dureeCulture: true } },
+    },
+  })
+
+  const mures = calculerRecoltesMures(
+    cultures.map((culture) => ({
+      id: culture.id,
+      dateSemis: culture.dateSemis,
+      datePlantation: culture.datePlantation,
+      recolteFaite: false,
+      dureeCultureJours: culture.itp?.dureeCulture ?? null,
+      especeNom: culture.espece?.nom ?? culture.especeId,
+      plancheNom: culture.planche?.nom ?? null,
+    }))
+  )
+
+  return mures.map((recolte) => {
+    const localisation = recolte.plancheNom ? ` de la planche ${recolte.plancheNom}` : ""
+    const quand =
+      recolte.joursRestants > 0
+        ? `mûre dans ${recolte.joursRestants} jour${recolte.joursRestants > 1 ? "s" : ""}`
+        : recolte.joursRestants === 0
+          ? "mûre aujourd'hui"
+          : `mûre depuis ${-recolte.joursRestants} jour${-recolte.joursRestants > 1 ? "s" : ""}`
+    return {
+      type: "recolte-mure" as const,
+      titre: recolte.plancheNom
+        ? `${recolte.especeNom} (planche ${recolte.plancheNom})`
+        : recolte.especeNom,
+      message: `La culture de ${recolte.especeNom}${localisation} est ${quand} (durée de culture ${recolte.dureeJours} j depuis le semis/plantation). Pensez à récolter.`,
+      key: `recolte-mure:${recolte.cultureId}:${recolte.dateMaturite}`,
+    }
+  })
+}
+
 /** Toutes les alertes urgentes détectables pour un utilisateur. */
 export async function detecterAlertesUrgentes(userId: string): Promise<AlerteUrgente[]> {
-  const [irrigations, associations, retards] = await Promise.all([
+  const [irrigations, associations, retards, recoltes] = await Promise.all([
     detecterIrrigationsInutiles(userId),
     detecterAssociationsIncompatibles(userId),
     detecterTachesEnRetard(userId),
+    detecterRecoltesMures(userId),
   ])
-  return [...irrigations, ...associations, ...retards]
+  return [...irrigations, ...associations, ...retards, ...recoltes]
 }

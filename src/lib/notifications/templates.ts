@@ -183,12 +183,17 @@ export function alerteUrgenteEmail(
   user: DestinataireNotification,
   alerte: AlerteUrgente
 ): { subject: string; html: string } {
+  // Issue #16 : une récolte mûre est un rappel agréable (accent ambre), pas
+  // une action critique (accent rouge) — l'objet change aussi.
+  const estRecolteMure = alerte.type === "recolte-mure"
   return {
-    subject: `[Gleba] Action urgente : ${alerte.titre}`,
+    subject: estRecolteMure
+      ? `[Gleba] Récoltes mûres : ${alerte.titre}`
+      : `[Gleba] Action urgente : ${alerte.titre}`,
     html: layoutNotification({
-      headerTitle: `Action urgente`,
+      headerTitle: estRecolteMure ? "Récoltes mûres" : "Action urgente",
       headerSubtitle: alerte.titre,
-      accent: "red",
+      accent: estRecolteMure ? "amber" : "red",
       content: `
         <p style="margin:0 0 16px;font-size:15px;color:#1e293b;line-height:1.6;">
           ${escapeHtml(alerte.message)}

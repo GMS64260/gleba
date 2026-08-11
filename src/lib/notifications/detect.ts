@@ -15,6 +15,7 @@
  */
 
 import type { MeteoActuelle, MeteoPrevision } from "@/lib/meteo"
+import { DUREE_CULTURE_DEFAUT } from "@/lib/plan-croissance"
 import type { AlerteMeteoNotification, TypeAlerteMeteo } from "./types"
 
 export const SEUILS_METEO = {
@@ -216,4 +217,106 @@ export function indicationHoraireAlerte(type: TypeAlerteMeteo): string {
     case "orage":
       return "Orage possible à proximité immédiate."
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Récoltes mûres (issue #16) — maturité calculée depuis le début du cycle
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Fenêtre de déclenchement d'une alerte « récolte mûre » : on prévient à
+ * J-3 avant la maturité calculée (date semis/plantation + durée culture ITP).
+ */
+export const FENETRE_RECOLTE_MURE_AVANCE_JOURS = 3
+
+/**
+ * Tolérance de dépassement après la maturité (scans manqués, week-end).
+ * Au-delà, la culture est soit déjà récoltée, soit oubliée — pas de spam.
+ */
+export const FENETRE_RECOLTE_MURE_DEPASSEMENT_JOURS = 2
+
+/** Durée de culture (jours) par défaut quand l'ITP de la culture ne la donne pas. */
+export const DUREE_CULTURE_FALLBACK_JOURS = DUREE_CULTURE_DEFAUT
+
+const JOUR_MS = 86_400_000
+
+/** Culture potentiellement mûre (données déjà jointes depuis la base). */
+export interface CultureRecolteInput {
+  id: number
+  dateSemis: Date | string | null
+  datePlantation: Date | string | null
+  /** true → culture déjà récoltée : jamais notifiable. */
+  recolteFaite: boolean
+  /** Durée de culture en jours de l'ITP rattaché (null → DUREE_CULTURE_FALLBACK_JOURS). */
+  dureeCultureJours: number | null
+  especeNom: string
+  plancheNom: string | null
+}
+
+/** Culture détectée comme mûre ou imminente. */
+export interface RecolteMure {
+  cultureId: number
+  especeNom: string
+  plancheNom: string | null
+  /** Date de maturité calculée (YYYY-MM-DD, fuseau local). */
+  dateMaturite: string
+  /** Jours restants avant maturité (0 = aujourd'hui, négatif = déjà dépassée). */
+  joursRestants: number
+  /** Durée de culture utilisée pour le calcul (jours). */
+  dureeJours: number
+}
+
+function debutJour(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate())
+}
+
+/**
+ * Calcule, parmi des cultures actives, celles dont la maturité est atteinte
+ * ou imminente. Maturité = date de mise en place (plantation préférée au
+ * semis) + durée de culture (ITP de la culture, sinon défaut 90 j).
+ *
+ * Fenêtre par défaut : [J-3 avant maturité … J+2 après] — voir constantes.
+ * Les cultures déjà récoltées sont exclues ; le résultat est trié des plus
+ * urgentes aux moins urgentes.
+ *
+ * Fonction PURE : testable sans Prisma (utilisée par queries.ts pour les
+ * alertes temps réel ET le résumé quotidien).
+ */
+export function calculerRecoltesMures(
+  cultures: CultureRecolteInput[],
+  aujourdHui: Date = new Date(),
+  options: { avanceJours?: number; depassementJours?: number; dureeDefautJours?: number } = {}
+): RecolteMure[] {
+  const avance = options.avanceJours ?? FENETRE_RECOLTE_MURE_AVANCE_JOURS
+  const depassement = options.depassementJours ?? FENETRE_RECOLTE_MURE_DEPASSEMENT_JOURS
+  const dureeDefaut = options.dureeDefautJours ?? DUREE_CULTURE_FALLBACK_JOURS
+
+  const reference = debutJour(aujourdHui).getTime()
+  const mures: RecolteMure[] = []
+
+  for (const culture of cultures) {
+    if (culture.recolteFaite) continue
+    const debut = culture.datePlantation ?? culture.dateSemis
+    if (!debut) continue
+    const debutDate = debut instanceof Date ? debut : new Date(debut)
+    if (Number.isNaN(debutDate.getTime())) continue
+
+    const dureeJours = culture.dureeCultureJours ?? dureeDefaut
+    if (!Number.isFinite(dureeJours) || dureeJours <= 0) continue
+
+    const maturite = new Date(debutDate.getTime() + dureeJours * JOUR_MS)
+    const joursRestants = Math.round((debutJour(maturite).getTime() - reference) / JOUR_MS)
+    if (joursRestants > avance || joursRestants < -depassement) continue
+
+    mures.push({
+      cultureId: culture.id,
+      especeNom: culture.especeNom,
+      plancheNom: culture.plancheNom,
+      dateMaturite: dateLocaleIso(maturite),
+      joursRestants,
+      dureeJours,
+    })
+  }
+
+  return mures.sort((a, b) => a.joursRestants - b.joursRestants)
 }
