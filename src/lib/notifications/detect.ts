@@ -15,7 +15,7 @@
  */
 
 import type { MeteoActuelle, MeteoPrevision } from "@/lib/meteo"
-import type { AlerteMeteoNotification } from "./types"
+import type { AlerteMeteoNotification, TypeAlerteMeteo } from "./types"
 
 export const SEUILS_METEO = {
   gel: { tempMin: 0, danger: -3 },
@@ -173,4 +173,47 @@ export function formatDateFr(iso: string): string {
   const [y, m, d] = iso.split("-").map(Number)
   if (!y || !m || !d) return iso
   return `${String(d).padStart(2, "0")}/${String(m).padStart(2, "0")}/${y}`
+}
+
+/** Jour de la semaine + date en français (ex. « jeudi 13 août »). */
+const FORMATTEUR_DATE_LONGUE = new Intl.DateTimeFormat("fr-FR", {
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+})
+
+/**
+ * Temporalité lisible d'une alerte météo pour le corps de l'email :
+ *   - « Aujourd'hui (jeudi 13 août) » si la date est le jour courant,
+ *   - « Demain (vendredi 14 août) » si c'est le lendemain,
+ *   - « le samedi 15 août » sinon.
+ * `reference` ne sert qu'aux tests (rend la fonction déterministe).
+ */
+export function formaterTemporaliteAlerte(dateIso: string, reference: Date = new Date()): string {
+  const [y, m, d] = dateIso.split("-").map(Number)
+  if (!y || !m || !d) return dateIso
+  const date = new Date(y, m - 1, d)
+  const diffJours = Math.round(
+    (debutDeJournee(date).getTime() - debutDeJournee(reference).getTime()) / 86400000
+  )
+  const label = FORMATTEUR_DATE_LONGUE.format(date)
+  if (diffJours === 0) return `Aujourd'hui (${label})`
+  if (diffJours === 1) return `Demain (${label})`
+  return `le ${label}`
+}
+
+/** Indication informative du moment de la journée concerné (petite ligne de l'email). */
+export function indicationHoraireAlerte(type: TypeAlerteMeteo): string {
+  switch (type) {
+    case "gel":
+      return "Risque de gel en fin de nuit / au lever du jour."
+    case "canicule":
+      return "Température maximale attendue en début d'après-midi."
+    case "vent":
+      return "Rafales les plus fortes attendues l'après-midi."
+    case "pluie":
+      return "Précipitations concentrées sur la journée."
+    case "orage":
+      return "Orage possible à proximité immédiate."
+  }
 }

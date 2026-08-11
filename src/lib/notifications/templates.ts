@@ -4,7 +4,7 @@
  */
 
 import { APP_URL, escapeHtml } from "@/lib/mail"
-import { formatDateFr } from "./detect"
+import { formatDateFr, formaterTemporaliteAlerte, indicationHoraireAlerte } from "./detect"
 import { labelAlerteMeteoCourt, labelTypeTache, nombreTachesAFaire } from "./resume"
 import type { AlerteMeteoNotification, AlerteUrgente, DestinataireNotification, ResumeQuotidien } from "./types"
 
@@ -154,6 +154,12 @@ export function alerteMeteoEmail(
       headerSubtitle: alerte.niveau === "danger" ? "Niveau danger" : "Niveau attention",
       accent: alerte.niveau === "danger" ? "red" : "amber",
       content: `
+        <p style="margin:0 0 6px;font-size:14px;color:#1e293b;">
+          <strong>Quand :</strong> ${escapeHtml(formaterTemporaliteAlerte(alerte.date))}
+        </p>
+        <p style="margin:0 0 14px;font-size:13px;color:#64748b;font-style:italic;">
+          ${escapeHtml(indicationHoraireAlerte(alerte.type))}
+        </p>
         <p style="margin:0 0 16px;font-size:15px;color:#1e293b;line-height:1.6;">
           ${escapeHtml(alerte.message)}.
         </p>

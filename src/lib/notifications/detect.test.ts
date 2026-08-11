@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest"
-import { deciderIrrigationInutile, detecterAlertesMeteo } from "./detect"
+import {
+  deciderIrrigationInutile,
+  detecterAlertesMeteo,
+  formaterTemporaliteAlerte,
+  indicationHoraireAlerte,
+} from "./detect"
 import type { MeteoActuelle, MeteoPrevision } from "@/lib/meteo"
 
 function jour(overrides: Partial<MeteoPrevision> & { date: string }): MeteoPrevision {
@@ -94,6 +99,37 @@ describe("detecterAlertesMeteo", () => {
     const alertes = detecterAlertesMeteo(previsions, null, { horizonJours: 2 })
     expect(alertes.filter((a) => a.type === "canicule")).toHaveLength(1)
     expect(alertes[0].date).toBe("2026-08-11")
+  })
+})
+
+describe("formaterTemporaliteAlerte", () => {
+  // Jeudi 13 août 2026 — référence fixe pour des tests déterministes.
+  const reference = new Date(2026, 7, 13)
+
+  it("indique « Aujourd'hui » avec le jour et la date en français", () => {
+    expect(formaterTemporaliteAlerte("2026-08-13", reference)).toBe("Aujourd'hui (jeudi 13 août)")
+  })
+
+  it("indique « Demain » pour le lendemain", () => {
+    expect(formaterTemporaliteAlerte("2026-08-14", reference)).toBe("Demain (vendredi 14 août)")
+  })
+
+  it("indique « le <jour> » au-delà de J+1", () => {
+    expect(formaterTemporaliteAlerte("2026-08-15", reference)).toBe("le samedi 15 août")
+  })
+
+  it("retourne la date brute si le format est invalide", () => {
+    expect(formaterTemporaliteAlerte("invalide", reference)).toBe("invalide")
+  })
+})
+
+describe("indicationHoraireAlerte", () => {
+  it("fournit une indication de moment pour chaque type d'alerte", () => {
+    expect(indicationHoraireAlerte("gel")).toMatch(/fin de nuit/)
+    expect(indicationHoraireAlerte("canicule")).toMatch(/début d'après-midi/)
+    expect(indicationHoraireAlerte("vent")).toMatch(/l'après-midi/)
+    expect(indicationHoraireAlerte("pluie")).toMatch(/journée/)
+    expect(indicationHoraireAlerte("orage")).toMatch(/proximité immédiate/)
   })
 })
 

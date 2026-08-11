@@ -15,6 +15,14 @@ function hierIso(): string {
   return `${hier.getFullYear()}-${m}-${d}`
 }
 
+function demainIso(): string {
+  const demain = new Date()
+  demain.setDate(demain.getDate() + 1)
+  const m = String(demain.getMonth() + 1).padStart(2, "0")
+  const d = String(demain.getDate()).padStart(2, "0")
+  return `${demain.getFullYear()}-${m}-${d}`
+}
+
 describe("store anti-redondance", () => {
   beforeEach(() => {
     resetStorePourTests()
@@ -26,14 +34,16 @@ describe("store anti-redondance", () => {
   })
 
   it("bloque une seconde notification de la même alerte active", () => {
-    marquerAlerteEnvoyee("u1:gel:2026-08-10", { until: "2026-08-10" })
-    expect(alerteDejaEnvoyee("u1:gel:2026-08-10")).toBe(true)
+    const demain = demainIso()
+    marquerAlerteEnvoyee(`u1:gel:${demain}`, { until: demain })
+    expect(alerteDejaEnvoyee(`u1:gel:${demain}`)).toBe(true)
   })
 
   it("l'anti-redondance est scellée par utilisateur", () => {
-    marquerAlerteEnvoyee("u1:gel:2026-08-10", { until: "2026-08-10" })
+    const demain = demainIso()
+    marquerAlerteEnvoyee(`u1:gel:${demain}`, { until: demain })
     // L'utilisateur 2 dans la même région doit bien être notifié
-    expect(alerteDejaEnvoyee("u2:gel:2026-08-10")).toBe(false)
+    expect(alerteDejaEnvoyee(`u2:gel:${demain}`)).toBe(false)
   })
 
   it("libère l'alerte une fois sa date passée (re-notification possible)", () => {
