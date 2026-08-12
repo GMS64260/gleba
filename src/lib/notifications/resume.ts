@@ -5,13 +5,19 @@
  */
 
 import { dateLocaleIso } from "./detect"
-import type { AlerteMeteoNotification, ResumeQuotidien, TacheJour, TypeTache } from "./types"
+import type {
+  AlerteMeteoNotification,
+  ResumeQuotidien,
+  TacheItpSemaine,
+  TacheJour,
+  TypeTache,
+} from "./types"
 
 /** Trie les tâches par date puis par type, et les alertes par date. */
 export function construireResume(
   taches: TacheJour[],
   alertes: AlerteMeteoNotification[],
-  options: { date?: string } = {}
+  options: { date?: string; tachesItpSemaine?: TacheItpSemaine[] } = {}
 ): ResumeQuotidien {
   return {
     date: options.date ?? dateLocaleIso(),
@@ -21,6 +27,7 @@ export function construireResume(
         ordreTypeTache(a.type) - ordreTypeTache(b.type)
     ),
     alertesMeteo: [...alertes].sort((a, b) => a.date.localeCompare(b.date)),
+    tachesItpSemaine: options.tachesItpSemaine,
   }
 }
 

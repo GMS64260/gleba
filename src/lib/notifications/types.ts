@@ -44,6 +44,30 @@ export interface ResumeQuotidien {
   date: string
   taches: TacheJour[]
   alertesMeteo: AlerteMeteoNotification[]
+  /** Tâches ITP de la semaine courante (issue #16), absentes si aucune. */
+  tachesItpSemaine?: TacheItpSemaine[]
+}
+
+/** Type d'opération d'un itinéraire technique (ITP). */
+export type TypeOperationItp = "semis" | "plantation" | "recolte"
+
+/**
+ * Tâche « cette semaine » dérivée du calendrier ITP d'une culture active
+ * (issue #16) : semis, plantation ou récolte dont la fenêtre couvre la
+ * semaine civile courante (lundi → dimanche).
+ */
+export interface TacheItpSemaine {
+  cultureId: number
+  type: TypeOperationItp
+  especeNom: string
+  varieteNom: string | null
+  plancheName: string | null
+  ilot: string | null
+  /** Date cible de l'opération (YYYY-MM-DD, lundi de la semaine de l'op). */
+  date: string
+  /** Numéro de semaine ISO concernée (1-53). */
+  semaine: number
+  couleur: string | null
 }
 
 /** Types d'alertes urgentes (temps réel). */
@@ -52,6 +76,7 @@ export type TypeAlerteUrgente =
   | "association-incompatible"
   | "tache-retard"
   | "recolte-mure" // Issue #16 : maturité calculée (date semis/plantation + durée culture ITP)
+  | "tache-itp-semaine" // Issue #16 : opérations ITP prévues sur la semaine courante
 
 export interface AlerteUrgente {
   type: TypeAlerteUrgente

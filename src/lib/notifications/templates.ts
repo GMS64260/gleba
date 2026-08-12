@@ -6,7 +6,13 @@
 import { APP_URL, escapeHtml } from "@/lib/mail"
 import { formatDateFr, formaterTemporaliteAlerte, indicationHoraireAlerte } from "./detect"
 import { labelAlerteMeteoCourt, labelTypeTache, nombreTachesAFaire } from "./resume"
-import type { AlerteMeteoNotification, AlerteUrgente, DestinataireNotification, ResumeQuotidien } from "./types"
+import type {
+  AlerteMeteoNotification,
+  AlerteUrgente,
+  DestinataireNotification,
+  ResumeQuotidien,
+  TacheItpSemaine,
+} from "./types"
 
 function layoutNotification(options: {
   headerTitle: string
@@ -75,6 +81,21 @@ function tacheLigne(tache: ResumeQuotidien["taches"][number]): string {
   </tr>`
 }
 
+function tacheItpLigne(tache: TacheItpSemaine): string {
+  const localisation = tache.plancheName
+    ? ` — ${escapeHtml(tache.plancheName)}${tache.ilot ? ` (ilot ${escapeHtml(tache.ilot)})` : ""}`
+    : ""
+  const variete = tache.varieteNom ? ` <span style="color:#64748b">(${escapeHtml(tache.varieteNom)})</span>` : ""
+  return `<tr>
+    <td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;font-size:14px;color:#1e293b;">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${escapeHtml(tache.couleur ?? "#94a3b8")};margin-right:8px;"></span>
+      <strong>${escapeHtml(tache.especeNom)}</strong>${variete}${localisation}
+    </td>
+    <td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;font-size:12px;color:#475569;text-align:right;">${escapeHtml(labelTypeTache(tache.type))}</td>
+    <td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;font-size:13px;color:#475569;text-align:right;">${formatDateFr(tache.date)}</td>
+  </tr>`
+}
+
 export function resumeQuotidienEmail(
   user: DestinataireNotification,
   resume: ResumeQuotidien
@@ -95,6 +116,15 @@ export function resumeQuotidienEmail(
       <div style="background:#f8fafc;border-radius:10px;padding:16px 20px;border-left:3px solid #0d9488;">
         <p style="margin:0;font-size:14px;color:#475569;">Rien de prévu aujourd'hui sur le calendrier.</p>
       </div>`)
+  }
+
+  if (resume.tachesItpSemaine && resume.tachesItpSemaine.length > 0) {
+    const lignes = resume.tachesItpSemaine.map(tacheItpLigne).join("")
+    sections.push(`
+      <h2 style="margin:24px 0 12px;font-size:16px;font-weight:600;color:#1e293b;">Cette semaine</h2>
+      <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;border-collapse:collapse;">
+        ${lignes}
+      </table>`)
   }
 
   if (resume.alertesMeteo.length > 0) {
@@ -183,17 +213,22 @@ export function alerteUrgenteEmail(
   user: DestinataireNotification,
   alerte: AlerteUrgente
 ): { subject: string; html: string } {
-  // Issue #16 : une récolte mûre est un rappel agréable (accent ambre), pas
-  // une action critique (accent rouge) — l'objet change aussi.
+  // Issue #16 : une récolte mûre ou une tâche ITP de la semaine est un rappel
+  // agréable (accent ambre), pas une action critique (accent rouge) — l'objet
+  // change aussi.
   const estRecolteMure = alerte.type === "recolte-mure"
+  const estTacheItpSemaine = alerte.type === "tache-itp-semaine"
+  const doux = estRecolteMure || estTacheItpSemaine
   return {
-    subject: estRecolteMure
-      ? `[Gleba] Récoltes mûres : ${alerte.titre}`
-      : `[Gleba] Action urgente : ${alerte.titre}`,
+    subject: estTacheItpSemaine
+      ? `[Gleba] Cette semaine : ${alerte.titre}`
+      : estRecolteMure
+        ? `[Gleba] Récoltes mûres : ${alerte.titre}`
+        : `[Gleba] Action urgente : ${alerte.titre}`,
     html: layoutNotification({
-      headerTitle: estRecolteMure ? "Récoltes mûres" : "Action urgente",
+      headerTitle: estTacheItpSemaine ? "Tâches de la semaine" : estRecolteMure ? "Récoltes mûres" : "Action urgente",
       headerSubtitle: alerte.titre,
-      accent: estRecolteMure ? "amber" : "red",
+      accent: doux ? "amber" : "red",
       content: `
         <p style="margin:0 0 16px;font-size:15px;color:#1e293b;line-height:1.6;">
           ${escapeHtml(alerte.message)}

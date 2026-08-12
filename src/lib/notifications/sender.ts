@@ -10,6 +10,7 @@
 import { sendMail } from "@/lib/mail"
 import {
   chargerTachesDuJour,
+  chargerTachesItpSemaine,
   detecterAlertesUrgentes,
   getDestinatairesNotifications,
   getCoordsUtilisateur,
@@ -135,11 +136,12 @@ export async function envoyerResumeQuotidien(): Promise<number> {
   let total = 0
   for (const user of users) {
     try {
-      const [taches, alertesMeteo] = await Promise.all([
+      const [taches, alertesMeteo, tachesItpSemaine] = await Promise.all([
         chargerTachesDuJour(user.id),
         recupererAlertesMeteoJour(user.id),
+        chargerTachesItpSemaine(user.id),
       ])
-      const resume = construireResume(taches, alertesMeteo)
+      const resume = construireResume(taches, alertesMeteo, { tachesItpSemaine })
       const { subject, html } = resumeQuotidienEmail(user, resume)
       await sendMail({ to: user.email, subject, html })
       total++

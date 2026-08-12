@@ -11,6 +11,9 @@ import prisma from "@/lib/prisma"
 import { fetchOpenMeteoForecast, fetchOpenMeteoHistory } from "@/lib/meteo"
 import { grouperIrrigationsPlanifieesParPlancheEtJour } from "@/lib/irrigation-planche"
 import { alertesAssociations } from "@/lib/associations-alertes"
+import { zoneEffectiveUser } from "@/lib/terroir"
+import type { ZoneClimat } from "@/lib/terroir"
+import { itpApplicableAZone } from "@/lib/calendrier-climat"
 import {
   calculerRecoltesMures,
   dateLocaleIso,
@@ -20,10 +23,13 @@ import {
   finDeJournee,
   formatDateFr,
 } from "./detect"
+import { semaineCourante, tachesItpSemainePourCultures } from "./itp-semaine"
+import type { CultureItpInput, ItpSemaineInput } from "./itp-semaine"
 import type {
   AlerteMeteoNotification,
   AlerteUrgente,
   DestinataireNotification,
+  TacheItpSemaine,
   TacheJour,
 } from "./types"
 
@@ -590,13 +596,183 @@ async function detecterRecoltesMures(userId: string): Promise<AlerteUrgente[]> {
   })
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Tâches ITP de la semaine (issue #16)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Champs ITP nécessaires au calcul des opérations hebdomadaires. */
+const CULTURE_ITP_SELECT = {
+  id: true,
+  especeId: true,
+  annee: true,
+  semisFait: true,
+  plantationFaite: true,
+  recolteFaite: true,
+  espece: {
+    select: {
+      nom: true,
+      couleur: true,
+      // ITP de l'espèce (repli quand la culture n'a pas d'ITP direct).
+      itps: {
+        select: {
+          id: true,
+          actif: true,
+          zoneClimat: true,
+          semaineSemis: true,
+          semainePlantation: true,
+          semaineRecolte: true,
+          semaineRecolteFin: true,
+          dureeRecolte: true,
+        },
+      },
+    },
+  },
+  variete: { select: { nom: true } },
+  planche: { select: { nom: true, ilot: true } },
+  itp: {
+    select: {
+      id: true,
+      actif: true,
+      zoneClimat: true,
+      semaineSemis: true,
+      semainePlantation: true,
+      semaineRecolte: true,
+      semaineRecolteFin: true,
+      dureeRecolte: true,
+    },
+  },
+} as const
+
+interface ItpCandidat {
+  id: string
+  actif: boolean
+  zoneClimat: ZoneClimat | null
+  semaineSemis: number | null
+  semainePlantation: number | null
+  semaineRecolte: number | null
+  semaineRecolteFin: number | null
+  dureeRecolte: number | null
+}
+
+/**
+ * Meilleur ITP de référence d'une espèce (repli quand la culture n'a pas
+ * d'ITP direct) : actif, applicable à la zone de l'utilisateur, de préférence
+ * calé sur SA zone, sinon générique (zoneClimat null), puis le plus complet
+ * (champs semis/plantation/récolte renseignés) ; départage déterministe par id.
+ */
+function meilleurItpEspece(itps: ItpCandidat[], userZone: ZoneClimat | null): ItpCandidat | null {
+  const candidats = itps.filter(
+    (itp) =>
+      itp.actif &&
+      itpApplicableAZone(itp.zoneClimat, userZone) &&
+      (itp.semaineSemis != null || itp.semainePlantation != null || itp.semaineRecolte != null)
+  )
+  if (candidats.length === 0) return null
+
+  const zones = candidats.filter((itp) => itp.zoneClimat === userZone)
+  const generiques = candidats.filter((itp) => itp.zoneClimat == null)
+  const pool = zones.length > 0 ? zones : generiques.length > 0 ? generiques : candidats
+
+  const completude = (itp: ItpCandidat): number =>
+    [itp.semaineSemis, itp.semainePlantation, itp.semaineRecolte].filter((v) => v != null).length
+  return [...pool].sort(
+    (a, b) => completude(b) - completude(a) || a.id.localeCompare(b.id)
+  )[0]
+}
+
+/**
+ * Tâches ITP de la semaine courante (lundi → dimanche) pour un utilisateur :
+ * opérations (semis/plantation/récolte) du calendrier ITP de ses cultures
+ * actives dont la fenêtre couvre la semaine. Non faites uniquement.
+ */
+export async function chargerTachesItpSemaine(
+  userId: string,
+  aujourdHui?: Date
+): Promise<TacheItpSemaine[]> {
+  const [userZone, cultures] = await Promise.all([
+    zoneEffectiveUser(prisma, userId),
+    prisma.culture.findMany({
+      // Cultures actives : cycle non terminé (NULL = en cours, 'v' = vivace
+      // continue). 'x' (terminée) et 'NS' sont exclues.
+      where: { userId, OR: [{ terminee: null }, { terminee: "v" }] },
+      select: CULTURE_ITP_SELECT,
+    }),
+  ])
+
+  const inputs: CultureItpInput[] = cultures.map((culture) => ({
+    id: culture.id,
+    especeId: culture.especeId,
+    annee: culture.annee,
+    semisFait: culture.semisFait,
+    plantationFaite: culture.plantationFaite,
+    recolteFaite: culture.recolteFaite,
+    couleur: culture.espece?.couleur ?? null,
+    especeNom: culture.espece?.nom ?? null,
+    varieteNom: culture.variete?.nom ?? null,
+    plancheName: culture.planche?.nom ?? null,
+    ilot: culture.planche?.ilot ?? null,
+    itp: (culture.itp ??
+      meilleurItpEspece((culture.espece?.itps ?? []) as ItpCandidat[], userZone)) as ItpSemaineInput |
+      null,
+  }))
+
+  return tachesItpSemainePourCultures(inputs, { userZone, aujourdHui })
+}
+
+/** Verbe d'action pour le message de l'alerte dédiée. */
+const VERBE_PAR_TYPE: Record<TacheItpSemaine["type"], string> = {
+  semis: "Semer",
+  plantation: "Planter",
+  recolte: "Récolter",
+}
+
+/**
+ * Alerte dédiée « tâches ITP de la semaine » : UN email par utilisateur et par
+ * semaine — la clé `tache-itp-semaine:YYYY-Sww` (anti-redondance store) change
+ * chaque lundi, donc l'alerte ne repart qu'une fois par semaine, quel que soit
+ * le nombre de scans. Résume les opérations ITP de la semaine sur les cultures
+ * actives ; le détail vit dans le résumé quotidien.
+ */
+async function detecterTachesItpSemaine(userId: string): Promise<AlerteUrgente[]> {
+  const taches = await chargerTachesItpSemaine(userId)
+  if (taches.length === 0) return []
+
+  const semaine = semaineCourante()
+  const types: TacheItpSemaine["type"][] = ["semis", "plantation", "recolte"]
+  const detail = types
+    .map((type) => taches.filter((tache) => tache.type === type))
+    .filter((liste) => liste.length > 0)
+    // Garde-fou anti-spam : on résume, le détail complet vit dans le résumé quotidien.
+    .map((liste) => {
+      const verbe = VERBE_PAR_TYPE[liste[0].type]
+      const libelles = liste
+        .slice(0, 12)
+        .map((tache) =>
+          tache.plancheName ? `${tache.especeNom} (planche ${tache.plancheName})` : tache.especeNom
+        )
+      const reste = liste.length - libelles.length
+      return `${verbe} ${libelles.join(", ")}${reste > 0 ? `… et ${reste} autre${reste > 1 ? "s" : ""}` : ""}`
+    })
+    .join(" ; ")
+
+  return [
+    {
+      type: "tache-itp-semaine",
+      titre: `semaine S${semaine.semaine}`,
+      message: `Cette semaine (du ${formatDateFr(semaine.debutIso)} au ${formatDateFr(semaine.finIso)}) : ${detail}.`,
+      key: `tache-itp-semaine:${semaine.annee}-S${semaine.semaine}`,
+    },
+  ]
+}
+
 /** Toutes les alertes urgentes détectables pour un utilisateur. */
 export async function detecterAlertesUrgentes(userId: string): Promise<AlerteUrgente[]> {
-  const [irrigations, associations, retards, recoltes] = await Promise.all([
+  const [irrigations, associations, retards, recoltes, itpSemaine] = await Promise.all([
     detecterIrrigationsInutiles(userId),
     detecterAssociationsIncompatibles(userId),
     detecterTachesEnRetard(userId),
     detecterRecoltesMures(userId),
+    detecterTachesItpSemaine(userId),
   ])
-  return [...irrigations, ...associations, ...retards, ...recoltes]
+  return [...irrigations, ...associations, ...retards, ...recoltes, ...itpSemaine]
 }
