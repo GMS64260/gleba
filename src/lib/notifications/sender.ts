@@ -12,6 +12,7 @@ import {
   chargerStocksBas,
   chargerTachesDuJour,
   chargerTachesItpSemaine,
+  chargerPrefsNotif,
   detecterAlertesUrgentes,
   getDestinatairesNotifications,
   getCoordsUtilisateur,
@@ -26,10 +27,21 @@ import { detecterAlertesMeteo } from "./detect"
 import { construireResume } from "./resume"
 import { alerteMeteoEmail, alerteUrgenteEmail, resumeQuotidienEmail } from "./templates"
 import type { AlerteMeteoNotification, DestinataireNotification } from "./types"
+import { DEFAULT_NOTIF_PREFS, typeAlerteEstActivee, type NotifPrefs } from "./prefs"
 import { fetchOpenMeteoForecast } from "@/lib/meteo"
 
 /** Nombre maximal d'emails envoyés par utilisateur et par scan (anti-spam). */
 const MAX_EMAILS_PAR_UTILISATEUR = 15
+
+/** Charge les préférences sans laisser une erreur de lecture bloquer l'envoi. */
+async function chargerPrefsNotifAvecFallback(user: DestinataireNotification): Promise<NotifPrefs> {
+  try {
+    return await chargerPrefsNotif(user.id)
+  } catch (error) {
+    console.warn(`[notifications] Préférences indisponibles pour ${user.email}:`, error)
+    return { ...DEFAULT_NOTIF_PREFS }
+  }
+}
 
 /** Les notifications sont-elles activées ? (défaut : oui si SMTP configuré). */
 export function notificationsEnabled(): boolean {
@@ -48,6 +60,8 @@ export async function envoyerAlertesMeteoTempsReel(): Promise<number> {
   let total = 0
   for (const user of users) {
     try {
+      const prefs = await chargerPrefsNotifAvecFallback(user)
+      if (!prefs.meteo) continue
       total += await traiterMeteoUtilisateur(user)
     } catch (error) {
       console.error(`[notifications] Scan météo échoué pour ${user.email}:`, error)
@@ -104,7 +118,10 @@ export async function envoyerAlertesUrgentes(): Promise<number> {
   let total = 0
   for (const user of users) {
     try {
-      const urgentes = await detecterAlertesUrgentes(user.id)
+      const prefs = await chargerPrefsNotifAvecFallback(user)
+      const urgentes = (await detecterAlertesUrgentes(user.id)).filter((alerte) =>
+        typeAlerteEstActivee(alerte.type, prefs)
+      )
       let envoyees = 0
       for (const alerte of urgentes) {
         if (envoyees >= MAX_EMAILS_PAR_UTILISATEUR) {
@@ -137,6 +154,8 @@ export async function envoyerResumeQuotidien(): Promise<number> {
   let total = 0
   for (const user of users) {
     try {
+      const prefs = await chargerPrefsNotifAvecFallback(user)
+      if (!prefs.resume) continue
       const [taches, alertesMeteo, tachesItpSemaine, stocksBas] = await Promise.all([
         chargerTachesDuJour(user.id),
         recupererAlertesMeteoJour(user.id),

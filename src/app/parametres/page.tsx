@@ -6,7 +6,7 @@
 
 import * as React from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Settings, Save, Download, Upload, Loader2, ImageIcon, Trash2, Key, Copy, Check, RefreshCw, Bot, CloudSun, Layers, Building2, PawPrint } from 'lucide-react'
+import { ArrowLeft, Settings, Save, Download, Upload, Loader2, ImageIcon, Trash2, Key, Copy, Check, RefreshCw, Bot, CloudSun, Layers, Building2, PawPrint, Bell } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
@@ -21,6 +21,7 @@ import { useElevageModes } from '@/hooks/use-elevage-modes'
 import { ELEVAGE_MODES, ELEVAGE_MODE_IDS, type ElevageModeId } from '@/lib/elevage-modes'
 import { confirmDialog } from '@/lib/global-dialog'
 import { todayLocalISO } from '@/lib/format-utils'
+import { DEFAULT_NOTIF_PREFS, parseNotifPrefs, type NotifPrefs } from '@/lib/notifications/prefs'
 
 // Clé localStorage pour les parametres
 const SETTINGS_KEY = 'gleba_settings'
@@ -518,6 +519,9 @@ export default function ParametresPage() {
 
         {/* Modules actifs */}
         <ModulesSection />
+
+        {/* Préférences des emails métier */}
+        <NotificationsSection />
 
         {/* Modes d'élevage (compagnie / équin / NAC) — affiché si le module Élevage est actif */}
         <ElevageModesSection />
@@ -1207,6 +1211,133 @@ function ModulesSection() {
         })}
         <p className="text-xs text-muted-foreground italic pt-2">
           💡 Astuce : un changement est visible immédiatement après rechargement de la page.
+        </p>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ============================================================
+// Section : Notifications par email
+// ============================================================
+
+const notifPreferenceRows: Array<{
+  key: keyof NotifPrefs
+  label: string
+  description: string
+}> = [
+  { key: 'meteo', label: 'Alertes météo', description: 'Conditions météo dangereuses à venir.' },
+  { key: 'resume', label: 'Résumé quotidien', description: 'Synthèse du jour et des actions à réaliser.' },
+  { key: 'stocks', label: 'Stocks bas', description: 'Stocks passés sous leur seuil minimum.' },
+  { key: 'itpSemaine', label: 'Tâches ITP de la semaine', description: 'Opérations prévues cette semaine selon vos ITP.' },
+  { key: 'recoltes', label: 'Récoltes mûres', description: 'Cultures arrivées à maturité.' },
+  { key: 'irrigations', label: 'Irrigations', description: 'Rappels et passages probablement inutiles.' },
+  { key: 'autresUrgentes', label: 'Autres actions urgentes', description: 'Retards et associations incompatibles.' },
+]
+
+function NotificationsSection() {
+  const { toast } = useToast()
+  const [prefs, setPrefs] = React.useState<NotifPrefs>({ ...DEFAULT_NOTIF_PREFS })
+  const [loading, setLoading] = React.useState(true)
+  const [saving, setSaving] = React.useState(false)
+
+  React.useEffect(() => {
+    let cancelled = false
+    const hydrate = async () => {
+      try {
+        const response = await fetch('/api/user/preferences', { cache: 'no-store' })
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        const data = await response.json()
+        if (!cancelled) setPrefs(parseNotifPrefs(data?.notifPrefs))
+      } catch {
+        if (!cancelled) {
+          setPrefs({ ...DEFAULT_NOTIF_PREFS })
+          toast({
+            variant: 'destructive',
+            title: 'Préférences non chargées',
+            description: 'Les notifications restent activées par défaut.',
+          })
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    hydrate()
+    return () => { cancelled = true }
+  }, [toast])
+
+  const toggle = async (key: keyof NotifPrefs, active: boolean) => {
+    const previous = prefs
+    const next = { ...prefs, [key]: active }
+    setPrefs(next)
+    setSaving(true)
+    try {
+      const response = await fetch('/api/user/preferences', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notifPrefs: next }),
+      })
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      toast({ title: 'Préférences de notifications enregistrées' })
+    } catch {
+      setPrefs(previous)
+      toast({
+        variant: 'destructive',
+        title: 'Échec de la sauvegarde',
+        description: 'Le changement a été annulé. Vérifiez votre connexion.',
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Bell className="h-5 w-5 text-emerald-600" />
+          Notifications par email
+        </CardTitle>
+        <CardDescription>
+          Choisissez les types de notifications métier que vous souhaitez recevoir par email.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {loading ? (
+          notifPreferenceRows.map((row) => (
+            <div
+              key={row.key}
+              className="flex items-center justify-between gap-4 p-3 border rounded-lg animate-pulse"
+            >
+              <div className="flex-1 min-w-0 space-y-2">
+                <div className="h-4 w-40 bg-slate-200 rounded" />
+                <div className="h-3 w-64 bg-slate-100 rounded" />
+              </div>
+              <div className="h-5 w-9 bg-slate-200 rounded-full" />
+            </div>
+          ))
+        ) : notifPreferenceRows.map((row) => (
+          <div
+            key={row.key}
+            className="flex items-center justify-between gap-4 p-3 border rounded-lg hover:bg-slate-50/50 transition-colors"
+          >
+            <div className="flex-1 min-w-0">
+              <Label htmlFor={`notif-${row.key}`} className="font-medium text-sm cursor-pointer">
+                {row.label}
+              </Label>
+              <p className="text-xs text-muted-foreground mt-0.5">{row.description}</p>
+            </div>
+            <Switch
+              id={`notif-${row.key}`}
+              checked={prefs[row.key]}
+              disabled={saving}
+              onCheckedChange={(checked) => toggle(row.key, checked)}
+              data-testid={`notif-toggle-${row.key}`}
+            />
+          </div>
+        ))}
+        <p className="text-xs text-muted-foreground italic pt-2">
+          Ces réglages s'appliquent aux emails envoyés par Gleba. Les emails transactionnels (mot de passe, vérification) ne sont pas concernés.
         </p>
       </CardContent>
     </Card>

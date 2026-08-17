@@ -45,6 +45,7 @@ import type {
   StockFertilisantInput,
   StockVarieteInput,
 } from "./detect"
+import { DEFAULT_NOTIF_PREFS, parseNotifPrefs, type NotifPrefs } from "./prefs"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Destinataires
@@ -65,6 +66,21 @@ export async function getDestinatairesNotifications(): Promise<DestinataireNotif
   return users
     .filter((user) => user.email && EMAIL_VALIDE.test(user.email))
     .map((user) => ({ id: user.id, email: user.email as string, name: user.name }))
+}
+
+/** Charge les préférences de notifications d'un utilisateur. */
+export async function chargerPrefsNotif(userId: string): Promise<NotifPrefs> {
+  const preference = await prisma.userPreference.findUnique({
+    where: { userId_key: { userId, key: "notifPrefs" } },
+    select: { value: true },
+  })
+  if (!preference) return { ...DEFAULT_NOTIF_PREFS }
+
+  try {
+    return parseNotifPrefs(JSON.parse(preference.value))
+  } catch {
+    return { ...DEFAULT_NOTIF_PREFS }
+  }
 }
 
 /** Coordonnées (lat/lng) dédupliquées des parcelles géoréférencées. */
