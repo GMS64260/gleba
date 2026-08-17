@@ -1477,7 +1477,7 @@ function NotificationsSection() {
           )}
         </div>
         <p className="text-xs text-muted-foreground italic pt-2">
-          Ces réglages s'appliquent aux emails envoyés par Gleba. Les emails transactionnels (mot de passe, vérification) ne sont pas concernés.
+          Ces réglages s&apos;appliquent aux emails envoyés par Gleba. Les emails transactionnels (mot de passe, vérification) ne sont pas concernés.
         </p>
       </CardContent>
     </Card>

@@ -486,7 +486,6 @@ export function detecterStocksVarietesBas(
     // Plants
     if (stock.stockMinPlants != null && stock.stockMinPlants > 0 && stock.stockPlants != null) {
       if (stock.stockPlants < stock.stockMinPlants) {
-        const unite = stock.uniteStock === "plants" || stock.uniteStock === "pieces" ? "plants" : "plants"
         bas.push({
           type: "variete",
           stockId: stock.id,
