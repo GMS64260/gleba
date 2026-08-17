@@ -22,6 +22,23 @@ const resume: ResumeQuotidien = {
   ],
 }
 
+describe("template irrigation rappel", () => {
+  it("utilise un objet et un accent ambre avec le CTA calendrier", () => {
+    const email = alerteUrgenteEmail(user, {
+      type: "irrigation-rappel",
+      titre: "Tomate — planche S4",
+      message: "L'irrigation prévue le 12/08/2026 n'a pas été marquée comme faite.",
+      key: "irrigation-rappel:42:2026-08-13",
+    })
+
+    expect(email.subject).toBe("[Gleba] Irrigation à faire : Tomate — planche S4")
+    expect(email.html).toContain("Irrigation à faire")
+    expect(email.html).toContain("linear-gradient(135deg,#b45309,#f59e0b)")
+    expect(email.html).toContain('href="https://gleba.fr/calendrier"')
+    expect(email.html).toContain("Voir le calendrier →")
+  })
+})
+
 describe("templates stocks bas", () => {
   it("affiche la liste et le lien de réapprovisionnement dans le résumé", () => {
     const email = resumeQuotidienEmail(user, resume)

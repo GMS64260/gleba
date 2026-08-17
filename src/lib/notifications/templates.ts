@@ -241,23 +241,28 @@ export function alerteUrgenteEmail(
   const estRecolteMure = alerte.type === "recolte-mure"
   const estTacheItpSemaine = alerte.type === "tache-itp-semaine"
   const estStockBas = alerte.type === "stock-bas"
-  const doux = estRecolteMure || estTacheItpSemaine
+  const estIrrigationRappel = alerte.type === "irrigation-rappel"
+  const doux = estRecolteMure || estTacheItpSemaine || estIrrigationRappel
   return {
-    subject: estTacheItpSemaine
-      ? `[Gleba] Cette semaine : ${alerte.titre}`
-      : estRecolteMure
-        ? `[Gleba] Récoltes mûres : ${alerte.titre}`
-        : estStockBas
-          ? `[Gleba] Stock critique : ${alerte.titre}`
-          : `[Gleba] Action urgente : ${alerte.titre}`,
-    html: layoutNotification({
-      headerTitle: estTacheItpSemaine
-        ? "Tâches de la semaine"
+    subject: estIrrigationRappel
+      ? `[Gleba] Irrigation à faire : ${alerte.titre}`
+      : estTacheItpSemaine
+        ? `[Gleba] Cette semaine : ${alerte.titre}`
         : estRecolteMure
-          ? "Récoltes mûres"
+          ? `[Gleba] Récoltes mûres : ${alerte.titre}`
           : estStockBas
-            ? "Stock critique"
-            : "Action urgente",
+            ? `[Gleba] Stock critique : ${alerte.titre}`
+            : `[Gleba] Action urgente : ${alerte.titre}`,
+    html: layoutNotification({
+      headerTitle: estIrrigationRappel
+        ? "Irrigation à faire"
+        : estTacheItpSemaine
+          ? "Tâches de la semaine"
+          : estRecolteMure
+            ? "Récoltes mûres"
+            : estStockBas
+              ? "Stock critique"
+              : "Action urgente",
       headerSubtitle: alerte.titre,
       accent: doux ? "amber" : "red",
       content: `
@@ -268,7 +273,7 @@ export function alerteUrgenteEmail(
           <tr>
             <td style="background:linear-gradient(135deg,#059669,#0d9488);border-radius:10px;">
               <a href="${estStockBas ? `${APP_URL}/comptabilite/stocks` : `${APP_URL}/calendrier`}" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;">
-                ${estStockBas ? "Gérer les stocks →" : "Gérer dans Gleba →"}
+                ${estIrrigationRappel ? "Voir le calendrier →" : estStockBas ? "Gérer les stocks →" : "Gérer dans Gleba →"}
               </a>
             </td>
           </tr>

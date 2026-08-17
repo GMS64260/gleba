@@ -15,7 +15,9 @@ import { zoneEffectiveUser } from "@/lib/terroir"
 import type { ZoneClimat } from "@/lib/terroir"
 import { itpApplicableAZone } from "@/lib/calendrier-climat"
 import {
+  calculerRappelsIrrigationsEnRetard,
   calculerRecoltesMures,
+  coordKey,
   dateLocaleIso,
   debutDeJournee,
   deciderIrrigationInutile,
@@ -181,10 +183,6 @@ export async function chargerStocksBas(userId: string): Promise<StockBasDetecte[
 export interface MeteoParCoord {
   precipParCoordEtJour: Map<string, Map<string, number>>
   pluieRecente3jParCoord: Map<string, number>
-}
-
-function coordKey(lat: number, lng: number): string {
-  return `${Math.round(lat * 100)}_${Math.round(lng * 100)}`
 }
 
 /** Précipitations prévues par jour + pluie cumulée sur 3 j, par coordonnée. */
@@ -559,6 +557,51 @@ async function detecterIrrigationsInutiles(userId: string): Promise<AlerteUrgent
   return urgentes
 }
 
+/** Irrigations échues non faites, hors passages probablement couverts par la pluie. */
+async function detecterIrrigationsEnRetard(userId: string): Promise<AlerteUrgente[]> {
+  const [irrigations, coords] = await Promise.all([
+    prisma.irrigationPlanifiee.findMany({
+      where: { userId, fait: false, datePrevue: { lte: finDeJournee() } },
+      orderBy: { datePrevue: "asc" },
+      include: {
+        culture: {
+          select: {
+            especeId: true,
+            varieteId: true,
+            espece: { select: { nom: true } },
+            variete: { select: { nom: true } },
+            planche: {
+              select: {
+                nom: true,
+                parcelleGeo: { select: { centroidLat: true, centroidLng: true } },
+              },
+            },
+          },
+        },
+      },
+    }),
+    getCoordsUtilisateur(userId),
+  ])
+  if (irrigations.length === 0) return []
+
+  const meteo = await fetchMeteoParCoord(coords)
+  const fallback = coords[0]
+  return calculerRappelsIrrigationsEnRetard(
+    irrigations.map((irrigation) => ({
+      id: irrigation.id,
+      fait: irrigation.fait,
+      datePrevue: irrigation.datePrevue,
+      especeNom: irrigation.culture.espece?.nom ?? irrigation.culture.especeId,
+      varieteNom: irrigation.culture.variete?.nom ?? irrigation.culture.varieteId ?? null,
+      plancheNom: irrigation.culture.planche?.nom ?? null,
+      lat: irrigation.culture.planche?.parcelleGeo?.centroidLat ?? null,
+      lng: irrigation.culture.planche?.parcelleGeo?.centroidLng ?? null,
+    })),
+    meteo,
+    { fallbackCoord: fallback }
+  )
+}
+
 /** Associations défavorables (incompatibles) sur les planches actives. */
 async function detecterAssociationsIncompatibles(userId: string): Promise<AlerteUrgente[]> {
   const planches = await prisma.planche.findMany({
@@ -880,13 +923,22 @@ async function detecterTachesItpSemaine(userId: string): Promise<AlerteUrgente[]
 
 /** Toutes les alertes urgentes détectables pour un utilisateur. */
 export async function detecterAlertesUrgentes(userId: string): Promise<AlerteUrgente[]> {
-  const [irrigations, associations, retards, recoltes, itpSemaine, stocksCritiques] = await Promise.all([
+  const [irrigations, irrigationsEnRetard, associations, retards, recoltes, itpSemaine, stocksCritiques] = await Promise.all([
     detecterIrrigationsInutiles(userId),
+    detecterIrrigationsEnRetard(userId),
     detecterAssociationsIncompatibles(userId),
     detecterTachesEnRetard(userId),
     detecterRecoltesMures(userId),
     detecterTachesItpSemaine(userId),
     detecterStocksCritiques(userId),
   ])
-  return [...irrigations, ...associations, ...retards, ...recoltes, ...itpSemaine, ...stocksCritiques]
+  return [
+    ...irrigations,
+    ...irrigationsEnRetard,
+    ...associations,
+    ...retards,
+    ...recoltes,
+    ...itpSemaine,
+    ...stocksCritiques,
+  ]
 }

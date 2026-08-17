@@ -75,6 +75,8 @@ export interface TacheItpSemaine {
 /** Types d'alertes urgentes (temps réel). */
 export type TypeAlerteUrgente =
   | "irrigation-inutile"
+  /** Issue #16 : irrigation planifiée non effectuée. */
+  | "irrigation-rappel"
   | "association-incompatible"
   | "tache-retard"
   | "recolte-mure" // Issue #16 : maturité calculée (date semis/plantation + durée culture ITP)
