@@ -46,6 +46,8 @@ export interface ResumeQuotidien {
   alertesMeteo: AlerteMeteoNotification[]
   /** Tâches ITP de la semaine courante (issue #16), absentes si aucune. */
   tachesItpSemaine?: TacheItpSemaine[]
+  /** Stocks sous seuil minimum (issue #16), absents si aucun. */
+  stocksBas?: StockBas[]
 }
 
 /** Type d'opération d'un itinéraire technique (ITP). */
@@ -77,6 +79,7 @@ export type TypeAlerteUrgente =
   | "tache-retard"
   | "recolte-mure" // Issue #16 : maturité calculée (date semis/plantation + durée culture ITP)
   | "tache-itp-semaine" // Issue #16 : opérations ITP prévues sur la semaine courante
+  | "stock-bas" // Issue #16 : stock passé sous le seuil minimum
 
 export interface AlerteUrgente {
   type: TypeAlerteUrgente
@@ -87,6 +90,30 @@ export interface AlerteUrgente {
    * Clé stable anti-redondance propre à l'action
    * (ex. `retard:semis:1234`). Préfixée par l'id utilisateur dans le store.
    */
+  key: string
+}
+
+/** Type de stock concerné par une alerte stock bas. */
+export type TypeStockBas = "variete" | "fertilisant" | "aliment"
+
+/** Stock détecté sous son seuil minimum. */
+export interface StockBas {
+  type: TypeStockBas
+  /** ID de l'entrée de stock (UserStockVariete.id, UserStockFertilisant.id, UserStockAliment.id). */
+  stockId: number
+  /** Nom de l'élément (variété, fertilisant, aliment). */
+  nom: string
+  /** Unité du stock (g, plants, kg, L). */
+  unite: string
+  /** Quantité actuelle en stock. */
+  quantite: number
+  /** Seuil minimum défini. */
+  seuilMin: number
+  /** Pourcentage du seuil atteint (ex. 0.5 = 50% du seuil). */
+  ratio: number
+  /** Localisation optionnelle (planche, ilot, etc.). */
+  localisation?: string
+  /** Clé stable anti-redondance (ex. `stock-bas:variete:123:50`). */
   key: string
 }
 

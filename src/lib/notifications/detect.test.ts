@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest"
 import {
   deciderIrrigationInutile,
   detecterAlertesMeteo,
+  detecterStocksAlimentsBas,
+  detecterStocksFertilisantsBas,
+  detecterStocksVarietesBas,
   formaterTemporaliteAlerte,
   indicationHoraireAlerte,
 } from "./detect"
@@ -130,6 +133,66 @@ describe("indicationHoraireAlerte", () => {
     expect(indicationHoraireAlerte("vent")).toMatch(/l'après-midi/)
     expect(indicationHoraireAlerte("pluie")).toMatch(/journée/)
     expect(indicationHoraireAlerte("orage")).toMatch(/proximité immédiate/)
+  })
+})
+
+describe("détection des stocks bas", () => {
+  it("détecte les graines et plants sous leur seuil, y compris un stock nul", () => {
+    const stocks = detecterStocksVarietesBas([
+      {
+        id: 1,
+        varieteId: "carotte",
+        varieteNom: "Carotte nantaise",
+        stockGraines: 40,
+        stockPlants: 0,
+        stockMinGraines: 100,
+        stockMinPlants: 5,
+        uniteStock: "g",
+      },
+    ])
+
+    expect(stocks).toHaveLength(2)
+    expect(stocks.map((stock) => stock.ratio)).toEqual([0, 0.4])
+    expect(stocks[0].quantite).toBe(0)
+  })
+
+  it("ignore une quantité égale ou supérieure au seuil et un seuil nul ou absent", () => {
+    const stocks = detecterStocksVarietesBas([
+      {
+        id: 1,
+        varieteId: "tomate",
+        varieteNom: "Tomate",
+        stockGraines: 100,
+        stockPlants: 10,
+        stockMinGraines: 100,
+        stockMinPlants: 0,
+        uniteStock: null,
+      },
+      {
+        id: 2,
+        varieteId: "laitue",
+        varieteNom: "Laitue",
+        stockGraines: 0,
+        stockPlants: null,
+        stockMinGraines: null,
+        stockMinPlants: null,
+        uniteStock: null,
+      },
+    ])
+
+    expect(stocks).toEqual([])
+  })
+
+  it("détecte les fertilisants et aliments sous seuil", () => {
+    const fertilisants = detecterStocksFertilisantsBas([
+      { id: 1, fertilisantId: "compost", fertilisantNom: "compost", stock: 2, stockMin: 5 },
+    ])
+    const aliments = detecterStocksAlimentsBas([
+      { id: 2, alimentId: "foin", alimentNom: "Foin", stock: 4, stockMin: 10 },
+    ])
+
+    expect(fertilisants[0].ratio).toBe(0.4)
+    expect(aliments[0].ratio).toBe(0.4)
   })
 })
 

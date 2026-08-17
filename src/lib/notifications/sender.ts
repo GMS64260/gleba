@@ -9,6 +9,7 @@
 
 import { sendMail } from "@/lib/mail"
 import {
+  chargerStocksBas,
   chargerTachesDuJour,
   chargerTachesItpSemaine,
   detecterAlertesUrgentes,
@@ -136,12 +137,13 @@ export async function envoyerResumeQuotidien(): Promise<number> {
   let total = 0
   for (const user of users) {
     try {
-      const [taches, alertesMeteo, tachesItpSemaine] = await Promise.all([
+      const [taches, alertesMeteo, tachesItpSemaine, stocksBas] = await Promise.all([
         chargerTachesDuJour(user.id),
         recupererAlertesMeteoJour(user.id),
         chargerTachesItpSemaine(user.id),
+        chargerStocksBas(user.id),
       ])
-      const resume = construireResume(taches, alertesMeteo, { tachesItpSemaine })
+      const resume = construireResume(taches, alertesMeteo, { tachesItpSemaine, stocksBas })
       const { subject, html } = resumeQuotidienEmail(user, resume)
       await sendMail({ to: user.email, subject, html })
       total++

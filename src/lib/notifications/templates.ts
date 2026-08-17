@@ -4,7 +4,12 @@
  */
 
 import { APP_URL, escapeHtml } from "@/lib/mail"
-import { formatDateFr, formaterTemporaliteAlerte, indicationHoraireAlerte } from "./detect"
+import {
+  formatDateFr,
+  formaterStockBas,
+  formaterTemporaliteAlerte,
+  indicationHoraireAlerte,
+} from "./detect"
 import { labelAlerteMeteoCourt, labelTypeTache, nombreTachesAFaire } from "./resume"
 import type {
   AlerteMeteoNotification,
@@ -127,6 +132,23 @@ export function resumeQuotidienEmail(
       </table>`)
   }
 
+  if (resume.stocksBas && resume.stocksBas.length > 0) {
+    const lignes = resume.stocksBas
+      .map(
+        (stock) =>
+          `<li style="padding:8px 0;color:#1e293b;font-size:14px;">${escapeHtml(formaterStockBas(stock))}</li>`
+      )
+      .join("")
+    sections.push(`
+      <h2 style="margin:24px 0 12px;font-size:16px;font-weight:600;color:#1e293b;">Stocks bas</h2>
+      <div style="background:#fffbeb;border-radius:10px;padding:12px 16px;border-left:3px solid #f59e0b;">
+        <ul style="margin:0;padding-left:20px;">${lignes}</ul>
+        <a href="${APP_URL}/comptabilite/stocks" style="display:inline-block;margin-top:8px;color:#b45309;font-size:13px;font-weight:600;text-decoration:none;">
+          Voir les stocks et réapprovisionner →
+        </a>
+      </div>`)
+  }
+
   if (resume.alertesMeteo.length > 0) {
     const alertesHtml = resume.alertesMeteo
       .map(
@@ -218,15 +240,24 @@ export function alerteUrgenteEmail(
   // change aussi.
   const estRecolteMure = alerte.type === "recolte-mure"
   const estTacheItpSemaine = alerte.type === "tache-itp-semaine"
+  const estStockBas = alerte.type === "stock-bas"
   const doux = estRecolteMure || estTacheItpSemaine
   return {
     subject: estTacheItpSemaine
       ? `[Gleba] Cette semaine : ${alerte.titre}`
       : estRecolteMure
         ? `[Gleba] Récoltes mûres : ${alerte.titre}`
-        : `[Gleba] Action urgente : ${alerte.titre}`,
+        : estStockBas
+          ? `[Gleba] Stock critique : ${alerte.titre}`
+          : `[Gleba] Action urgente : ${alerte.titre}`,
     html: layoutNotification({
-      headerTitle: estTacheItpSemaine ? "Tâches de la semaine" : estRecolteMure ? "Récoltes mûres" : "Action urgente",
+      headerTitle: estTacheItpSemaine
+        ? "Tâches de la semaine"
+        : estRecolteMure
+          ? "Récoltes mûres"
+          : estStockBas
+            ? "Stock critique"
+            : "Action urgente",
       headerSubtitle: alerte.titre,
       accent: doux ? "amber" : "red",
       content: `
@@ -236,8 +267,8 @@ export function alerteUrgenteEmail(
         <table cellpadding="0" cellspacing="0" style="margin:24px 0 0;">
           <tr>
             <td style="background:linear-gradient(135deg,#059669,#0d9488);border-radius:10px;">
-              <a href="${APP_URL}/calendrier" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;">
-                Gérer dans Gleba →
+              <a href="${estStockBas ? `${APP_URL}/comptabilite/stocks` : `${APP_URL}/calendrier`}" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;">
+                ${estStockBas ? "Gérer les stocks →" : "Gérer dans Gleba →"}
               </a>
             </td>
           </tr>

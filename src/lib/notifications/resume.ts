@@ -8,6 +8,7 @@ import { dateLocaleIso } from "./detect"
 import type {
   AlerteMeteoNotification,
   ResumeQuotidien,
+  StockBas,
   TacheItpSemaine,
   TacheJour,
   TypeTache,
@@ -17,8 +18,11 @@ import type {
 export function construireResume(
   taches: TacheJour[],
   alertes: AlerteMeteoNotification[],
-  options: { date?: string; tachesItpSemaine?: TacheItpSemaine[] } = {}
+  options: { date?: string; tachesItpSemaine?: TacheItpSemaine[]; stocksBas?: StockBas[] } = {}
 ): ResumeQuotidien {
+  const stocksBas = options.stocksBas?.length
+    ? [...options.stocksBas].sort((a, b) => a.ratio - b.ratio)
+    : undefined
   return {
     date: options.date ?? dateLocaleIso(),
     taches: [...taches].sort(
@@ -28,6 +32,7 @@ export function construireResume(
     ),
     alertesMeteo: [...alertes].sort((a, b) => a.date.localeCompare(b.date)),
     tachesItpSemaine: options.tachesItpSemaine,
+    stocksBas,
   }
 }
 

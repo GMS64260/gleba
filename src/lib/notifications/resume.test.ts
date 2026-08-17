@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { construireResume, grouperTachesParType, nombreTachesAFaire } from "./resume"
 import { getMeteoIntervalMinutes, getResumeCronExpression, parseHeureResume } from "./config"
-import type { TacheJour } from "./types"
+import type { StockBas, TacheJour } from "./types"
 
 const tacheSemis: TacheJour = {
   id: 1,
@@ -60,6 +60,17 @@ describe("construireResume", () => {
       { type: "gel", date: "2026-08-10", niveau: "attention", message: "x", details: "y", key: "gel:2026-08-10" },
     ])
     expect(resume.alertesMeteo.map((a) => a.date)).toEqual(["2026-08-10", "2026-08-12"])
+  })
+
+  it("inclut les stocks bas non vides dans l'ordre de criticité", () => {
+    const stocks: StockBas[] = [
+      { type: "variete", stockId: 1, nom: "Tomate", unite: "g", quantite: 40, seuilMin: 100, ratio: 0.4, key: "stock-bas:variete:1" },
+      { type: "aliment", stockId: 2, nom: "Foin", unite: "kg", quantite: 0, seuilMin: 10, ratio: 0, key: "stock-bas:aliment:2" },
+    ]
+    const resume = construireResume([], [], { stocksBas: stocks })
+    expect(resume.stocksBas?.map((stock) => stock.nom)).toEqual(["Foin", "Tomate"])
+
+    expect(construireResume([], []).stocksBas).toBeUndefined()
   })
 })
 

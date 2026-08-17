@@ -320,3 +320,167 @@ export function calculerRecoltesMures(
 
   return mures.sort((a, b) => a.joursRestants - b.joursRestants)
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Stocks bas (issue #16) — détection pure
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Entrée de stock variété pour la détection. */
+export interface StockVarieteInput {
+  id: number
+  varieteId: string
+  varieteNom: string
+  stockGraines: number | null
+  stockPlants: number | null
+  stockMinGraines: number | null
+  stockMinPlants: number | null
+  uniteStock: string | null
+}
+
+/** Entrée de stock fertilisant pour la détection. */
+export interface StockFertilisantInput {
+  id: number
+  fertilisantId: string
+  fertilisantNom: string
+  stock: number | null
+  stockMin: number | null
+}
+
+/** Entrée de stock aliment pour la détection. */
+export interface StockAlimentInput {
+  id: number
+  alimentId: string
+  alimentNom: string
+  stock: number | null
+  stockMin: number | null
+}
+
+/** Stock bas détecté (structure interne pour la détection pure). */
+export interface StockBasDetecte {
+  type: "variete" | "fertilisant" | "aliment"
+  stockId: number
+  nom: string
+  unite: string
+  quantite: number
+  seuilMin: number
+  ratio: number // quantite / seuilMin
+  localisation?: string
+  /** Clé stable : `stock-bas:<type>:<stockId>:<seuilMin>` */
+  key: string
+}
+
+/**
+ * Détecte les stocks de variétés passés sous leur seuil minimum.
+ * Ne considère que les stocks ayant un seuil défini (stockMinGraines ou stockMinPlants > 0)
+ * et une quantité actuelle strictement inférieure au seuil.
+ */
+export function detecterStocksVarietesBas(
+  stocks: StockVarieteInput[]
+): StockBasDetecte[] {
+  const bas: StockBasDetecte[] = []
+  for (const stock of stocks) {
+    // Graines
+    if (stock.stockMinGraines != null && stock.stockMinGraines > 0 && stock.stockGraines != null) {
+      if (stock.stockGraines < stock.stockMinGraines) {
+        const unite = stock.uniteStock || "g"
+        bas.push({
+          type: "variete",
+          stockId: stock.id,
+          nom: stock.varieteNom,
+          unite,
+          quantite: stock.stockGraines,
+          seuilMin: stock.stockMinGraines,
+          ratio: stock.stockGraines / stock.stockMinGraines,
+          key: `stock-bas:variete:${stock.id}:${stock.stockMinGraines}:graines`,
+        })
+      }
+    }
+    // Plants
+    if (stock.stockMinPlants != null && stock.stockMinPlants > 0 && stock.stockPlants != null) {
+      if (stock.stockPlants < stock.stockMinPlants) {
+        const unite = stock.uniteStock === "plants" || stock.uniteStock === "pieces" ? "plants" : "plants"
+        bas.push({
+          type: "variete",
+          stockId: stock.id,
+          nom: stock.varieteNom,
+          unite: "plants",
+          quantite: stock.stockPlants,
+          seuilMin: stock.stockMinPlants,
+          ratio: stock.stockPlants / stock.stockMinPlants,
+          key: `stock-bas:variete:${stock.id}:${stock.stockMinPlants}:plants`,
+        })
+      }
+    }
+  }
+  return bas.sort((a, b) => a.ratio - b.ratio) // les plus critiques d'abord
+}
+
+/**
+ * Détecte les stocks de fertilisants passés sous leur seuil minimum.
+ */
+export function detecterStocksFertilisantsBas(
+  stocks: StockFertilisantInput[]
+): StockBasDetecte[] {
+  const bas: StockBasDetecte[] = []
+  for (const stock of stocks) {
+    if (stock.stockMin != null && stock.stockMin > 0 && stock.stock != null) {
+      if (stock.stock < stock.stockMin) {
+        bas.push({
+          type: "fertilisant",
+          stockId: stock.id,
+          nom: stock.fertilisantNom,
+          unite: "kg/L",
+          quantite: stock.stock,
+          seuilMin: stock.stockMin,
+          ratio: stock.stock / stock.stockMin,
+          key: `stock-bas:fertilisant:${stock.id}:${stock.stockMin}`,
+        })
+      }
+    }
+  }
+  return bas.sort((a, b) => a.ratio - b.ratio)
+}
+
+/**
+ * Détecte les stocks d'aliments passés sous leur seuil minimum.
+ */
+export function detecterStocksAlimentsBas(
+  stocks: StockAlimentInput[]
+): StockBasDetecte[] {
+  const bas: StockBasDetecte[] = []
+  for (const stock of stocks) {
+    if (stock.stockMin != null && stock.stockMin > 0 && stock.stock != null) {
+      if (stock.stock < stock.stockMin) {
+        bas.push({
+          type: "aliment",
+          stockId: stock.id,
+          nom: stock.alimentNom,
+          unite: "kg",
+          quantite: stock.stock,
+          seuilMin: stock.stockMin,
+          ratio: stock.stock / stock.stockMin,
+          key: `stock-bas:aliment:${stock.id}:${stock.stockMin}`,
+        })
+      }
+    }
+  }
+  return bas.sort((a, b) => a.ratio - b.ratio)
+}
+
+/**
+ * Fusionne et trie tous les stocks bas détectés (tous types confondus).
+ * Les plus critiques (ratio le plus bas) en premier.
+ */
+export function fusionnerStocksBas(...listes: StockBasDetecte[][]): StockBasDetecte[] {
+  const tous = listes.flat()
+  return tous.sort((a, b) => a.ratio - b.ratio)
+}
+
+/**
+ * Formate un stock bas pour l'affichage dans l'email/résumé.
+ */
+export function formaterStockBas(stock: StockBasDetecte): string {
+  const pct = Math.round(stock.ratio * 100)
+  return `${stock.nom} : ${stock.quantite} ${stock.unite} (seuil ${stock.seuilMin} ${stock.unite}, ${pct}%)`
+}
+

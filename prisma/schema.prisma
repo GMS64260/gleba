@@ -3405,6 +3405,9 @@ model UserStockVariete {
   // DEV2 #6 — coût unitaire d'entrée pour PMP/FIFO/dernier prix
   coutUnitaire Float?    @map("cout_unitaire")
   dateStock    DateTime? @map("date_stock")
+  // Seuil minimum d'alerte (réapprovisionnement conseillé)
+  stockMinGraines Float? @map("stock_min_graines")
+  stockMinPlants  Int?    @map("stock_min_plants")
 
   @@unique([userId, varieteId])
   @@index([userId])
@@ -3424,6 +3427,8 @@ model UserStockFertilisant {
   prix          Float?      @map("prix") // €/kg (prix per-user, déprécié, voir coutUnitaire)
   // DEV2 #6
   coutUnitaire  Float?      @map("cout_unitaire")
+  // Seuil minimum d'alerte (réapprovisionnement conseillé)
+  stockMin      Float?      @map("stock_min")
 
   @@unique([userId, fertilisantId])
   @@index([userId])

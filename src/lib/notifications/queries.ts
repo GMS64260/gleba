@@ -20,8 +20,13 @@ import {
   debutDeJournee,
   deciderIrrigationInutile,
   detecterAlertesMeteo,
+  detecterStocksAlimentsBas,
+  detecterStocksFertilisantsBas,
+  detecterStocksVarietesBas,
   finDeJournee,
   formatDateFr,
+  formaterStockBas,
+  fusionnerStocksBas,
 } from "./detect"
 import { semaineCourante, tachesItpSemainePourCultures } from "./itp-semaine"
 import type { CultureItpInput, ItpSemaineInput } from "./itp-semaine"
@@ -32,6 +37,12 @@ import type {
   TacheItpSemaine,
   TacheJour,
 } from "./types"
+import type {
+  StockAlimentInput,
+  StockBasDetecte,
+  StockFertilisantInput,
+  StockVarieteInput,
+} from "./detect"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Destinataires
@@ -74,6 +85,93 @@ export async function getCoordsUtilisateur(
     coords.push({ lat, lng })
   }
   return coords
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Stocks bas — données par utilisateur + détection
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface StocksPourDetection {
+  varietes: StockVarieteInput[]
+  fertilisants: StockFertilisantInput[]
+  aliments: StockAlimentInput[]
+}
+
+/** Charge les stocks utilisateur nécessaires à la détection des seuils bas. */
+export async function fetchStocksPourDetection(userId: string): Promise<StocksPourDetection> {
+  const [varietes, fertilisants, aliments] = await Promise.all([
+    prisma.userStockVariete.findMany({
+      where: { userId },
+      select: {
+        id: true,
+        varieteId: true,
+        stockGraines: true,
+        stockPlants: true,
+        stockMinGraines: true,
+        stockMinPlants: true,
+        uniteStock: true,
+        variete: { select: { nom: true } },
+      },
+    }),
+    prisma.userStockFertilisant.findMany({
+      where: { userId },
+      select: {
+        id: true,
+        fertilisantId: true,
+        stock: true,
+        stockMin: true,
+      },
+    }),
+    prisma.userStockAliment.findMany({
+      where: { userId },
+      select: {
+        id: true,
+        alimentId: true,
+        stock: true,
+        stockMin: true,
+        aliment: { select: { nom: true } },
+      },
+    }),
+  ])
+
+  return {
+    varietes: varietes.map((stock) => ({
+      id: stock.id,
+      varieteId: stock.varieteId,
+      varieteNom: stock.variete.nom ?? stock.varieteId,
+      stockGraines: stock.stockGraines,
+      stockPlants: stock.stockPlants,
+      stockMinGraines: stock.stockMinGraines,
+      stockMinPlants: stock.stockMinPlants,
+      uniteStock: stock.uniteStock,
+    })),
+    fertilisants: fertilisants.map((stock) => ({
+      id: stock.id,
+      fertilisantId: stock.fertilisantId,
+      // Le référentiel Fertilisant n'a pas de champ nom : l'identifiant est
+      // actuellement le seul libellé stable disponible.
+      fertilisantNom: stock.fertilisantId,
+      stock: stock.stock,
+      stockMin: stock.stockMin,
+    })),
+    aliments: aliments.map((stock) => ({
+      id: stock.id,
+      alimentId: stock.alimentId,
+      alimentNom: stock.aliment.nom,
+      stock: stock.stock,
+      stockMin: stock.stockMin,
+    })),
+  }
+}
+
+/** Retourne les stocks sous seuil, tous types confondus et triés par criticité. */
+export async function chargerStocksBas(userId: string): Promise<StockBasDetecte[]> {
+  const stocks = await fetchStocksPourDetection(userId)
+  return fusionnerStocksBas(
+    detecterStocksVarietesBas(stocks.varietes),
+    detecterStocksFertilisantsBas(stocks.fertilisants),
+    detecterStocksAlimentsBas(stocks.aliments)
+  )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -356,6 +454,21 @@ export async function chargerTachesDuJour(userId: string): Promise<TacheJour[]> 
 // ─────────────────────────────────────────────────────────────────────────────
 // Alertes urgentes (temps réel)
 // ─────────────────────────────────────────────────────────────────────────────
+
+const RATIO_STOCK_CRITIQUE = 0.5
+
+/** Stocks à moins de la moitié du seuil minimum. */
+async function detecterStocksCritiques(userId: string): Promise<AlerteUrgente[]> {
+  const stocks = await chargerStocksBas(userId)
+  return stocks
+    .filter((stock) => stock.ratio < RATIO_STOCK_CRITIQUE)
+    .map((stock) => ({
+      type: "stock-bas" as const,
+      titre: `stock critique : ${stock.nom}`,
+      message: `${formaterStockBas(stock)}. Réapprovisionnement recommandé.`,
+      key: stock.key,
+    }))
+}
 
 /** Irrigation(s) du jour probablement inutiles (pluie récente/prévue). */
 async function detecterIrrigationsInutiles(userId: string): Promise<AlerteUrgente[]> {
@@ -767,12 +880,13 @@ async function detecterTachesItpSemaine(userId: string): Promise<AlerteUrgente[]
 
 /** Toutes les alertes urgentes détectables pour un utilisateur. */
 export async function detecterAlertesUrgentes(userId: string): Promise<AlerteUrgente[]> {
-  const [irrigations, associations, retards, recoltes, itpSemaine] = await Promise.all([
+  const [irrigations, associations, retards, recoltes, itpSemaine, stocksCritiques] = await Promise.all([
     detecterIrrigationsInutiles(userId),
     detecterAssociationsIncompatibles(userId),
     detecterTachesEnRetard(userId),
     detecterRecoltesMures(userId),
     detecterTachesItpSemaine(userId),
+    detecterStocksCritiques(userId),
   ])
-  return [...irrigations, ...associations, ...retards, ...recoltes, ...itpSemaine]
+  return [...irrigations, ...associations, ...retards, ...recoltes, ...itpSemaine, ...stocksCritiques]
 }
