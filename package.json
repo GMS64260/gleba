@@ -80,6 +80,7 @@
     "tailwind-merge": "^3.4.0",
     "tailwindcss-animate": "^1.0.7",
     "three": "^0.169.0",
+    "web-push": "^3.6.7",
     "zod": "^4.3.6"
   },
   "devDependencies": {
@@ -91,6 +92,7 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@types/three": "^0.169.0",
+    "@types/web-push": "^3.6.4",
     "better-sqlite3": "^12.6.2",
     "eslint": "^8",
     "eslint-config-next": "14.2.18",

@@ -1235,11 +1235,53 @@ const notifPreferenceRows: Array<{
   { key: 'autresUrgentes', label: 'Autres actions urgentes', description: 'Retards et associations incompatibles.' },
 ]
 
+type PushEtat = 'chargement' | 'actif' | 'inactif' | 'non-supporte' | 'refuse'
+
+function convertirCleVapid(cle: string): ArrayBuffer {
+  const padding = '='.repeat((4 - (cle.length % 4)) % 4)
+  const base64 = (cle + padding).replace(/-/g, '+').replace(/_/g, '/')
+  const rawData = window.atob(base64)
+  const bytes = Uint8Array.from(rawData, (character) => character.charCodeAt(0))
+  return bytes.buffer as ArrayBuffer
+}
+
+async function obtenirRegistrationPush(): Promise<ServiceWorkerRegistration> {
+  const scope = '/notifications-push/'
+  const existing = await navigator.serviceWorker.getRegistration(scope)
+  return existing || navigator.serviceWorker.register('/sw-notifications.js', { scope })
+}
+
 function NotificationsSection() {
   const { toast } = useToast()
   const [prefs, setPrefs] = React.useState<NotifPrefs>({ ...DEFAULT_NOTIF_PREFS })
   const [loading, setLoading] = React.useState(true)
   const [saving, setSaving] = React.useState(false)
+  const [pushEtat, setPushEtat] = React.useState<PushEtat>('chargement')
+  const [pushLoading, setPushLoading] = React.useState(false)
+
+  React.useEffect(() => {
+    const supporte =
+      'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window
+    if (!supporte) {
+      setPushEtat('non-supporte')
+      return
+    }
+    if (Notification.permission === 'denied') {
+      setPushEtat('refuse')
+      return
+    }
+
+    let cancelled = false
+    obtenirRegistrationPush()
+      .then((registration) => registration.pushManager.getSubscription())
+      .then((subscription) => {
+        if (!cancelled) setPushEtat(subscription ? 'actif' : 'inactif')
+      })
+      .catch(() => {
+        if (!cancelled) setPushEtat('inactif')
+      })
+    return () => { cancelled = true }
+  }, [])
 
   React.useEffect(() => {
     let cancelled = false
@@ -1265,6 +1307,76 @@ function NotificationsSection() {
     hydrate()
     return () => { cancelled = true }
   }, [toast])
+
+  const activerPush = async () => {
+    setPushLoading(true)
+    try {
+      const permission = await Notification.requestPermission()
+      if (permission !== 'granted') {
+        setPushEtat(permission === 'denied' ? 'refuse' : 'inactif')
+        toast({
+          variant: 'destructive',
+          title: 'Notifications push non autorisées',
+          description: 'Autorisez les notifications dans les réglages du navigateur.',
+        })
+        return
+      }
+
+      const keyResponse = await fetch('/api/notifications/push/vapid-public-key', { cache: 'no-store' })
+      const keyData = await keyResponse.json().catch(() => null)
+      if (!keyResponse.ok || typeof keyData?.publicKey !== 'string') {
+        throw new Error(keyData?.error || 'Clé push indisponible')
+      }
+
+      const registration = await obtenirRegistrationPush()
+      const subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: convertirCleVapid(keyData.publicKey),
+      })
+      const subscribeResponse = await fetch('/api/notifications/push/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(subscription),
+      })
+      if (!subscribeResponse.ok) throw new Error('Enregistrement push refusé par le serveur')
+
+      setPushEtat('actif')
+      toast({ title: 'Notifications push activées', description: 'Ce navigateur recevra vos alertes Gleba.' })
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Activation impossible',
+        description: error instanceof Error ? error.message : 'Impossible d’activer les notifications push.',
+      })
+    } finally {
+      setPushLoading(false)
+    }
+  }
+
+  const desactiverPush = async () => {
+    setPushLoading(true)
+    try {
+      const registration = await obtenirRegistrationPush()
+      const subscription = await registration.pushManager.getSubscription()
+      const response = await fetch('/api/notifications/push/subscribe', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: subscription ? JSON.stringify({ endpoint: subscription.endpoint }) : undefined,
+      })
+      if (!response.ok) throw new Error('Désactivation refusée par le serveur')
+      await subscription?.unsubscribe()
+      setPushEtat('inactif')
+      toast({ title: 'Notifications push désactivées' })
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Désactivation impossible',
+        description: error instanceof Error ? error.message : 'Impossible de désactiver les notifications push.',
+      })
+    } finally {
+      setPushLoading(false)
+    }
+  }
 
   const toggle = async (key: keyof NotifPrefs, active: boolean) => {
     const previous = prefs
@@ -1296,10 +1408,10 @@ function NotificationsSection() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Bell className="h-5 w-5 text-emerald-600" />
-          Notifications par email
+          Notifications
         </CardTitle>
         <CardDescription>
-          Choisissez les types de notifications métier que vous souhaitez recevoir par email.
+          Choisissez les types de notifications métier que vous souhaitez recevoir par email ou par push.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -1336,6 +1448,34 @@ function NotificationsSection() {
             />
           </div>
         ))}
+        <div className="border-t pt-4 mt-4 space-y-3">
+          <div>
+            <h4 className="text-sm font-medium text-slate-900">Notifications push (navigateur)</h4>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Recevez les alertes urgentes directement dans ce navigateur.
+            </p>
+          </div>
+          {pushEtat === 'chargement' && <p className="text-sm text-muted-foreground">Vérification du support…</p>}
+          {pushEtat === 'non-supporte' && (
+            <p className="text-sm text-muted-foreground">Les notifications push ne sont pas supportées par ce navigateur.</p>
+          )}
+          {pushEtat === 'refuse' && (
+            <p className="text-sm text-amber-700">Les notifications sont refusées. Autorisez-les dans les réglages du navigateur.</p>
+          )}
+          {pushEtat === 'actif' && (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-emerald-700">Push activées sur ce navigateur</p>
+              <Button variant="outline" onClick={desactiverPush} disabled={pushLoading}>
+                {pushLoading ? 'Désactivation…' : 'Désactiver'}
+              </Button>
+            </div>
+          )}
+          {pushEtat === 'inactif' && (
+            <Button onClick={activerPush} disabled={pushLoading}>
+              {pushLoading ? 'Activation…' : 'Activer les notifications push'}
+            </Button>
+          )}
+        </div>
         <p className="text-xs text-muted-foreground italic pt-2">
           Ces réglages s'appliquent aux emails envoyés par Gleba. Les emails transactionnels (mot de passe, vérification) ne sont pas concernés.
         </p>

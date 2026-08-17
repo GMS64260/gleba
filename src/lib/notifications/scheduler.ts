@@ -14,6 +14,7 @@
 import cron from "node-cron"
 import { getMeteoIntervalMinutes, getResumeCronExpression } from "./config"
 import { envoyerAlertesMeteoTempsReel, envoyerAlertesUrgentes, envoyerResumeQuotidien, notificationsEnabled } from "./sender"
+import { pushConfigure } from "@/lib/push"
 
 let initialized = false
 
@@ -58,6 +59,10 @@ export function initNotifScheduler(): void {
         "[notifications] Désactivées — définir SMTP_HOST/SMTP_USER (ou NOTIF_ENABLED=true après configuration SMTP)"
       )
       return
+    }
+
+    if (!pushConfigure()) {
+      console.log("[notifications] Push désactivé — définir VAPID_PUBLIC_KEY et VAPID_PRIVATE_KEY")
     }
 
     const intervalMinutes = getMeteoIntervalMinutes()

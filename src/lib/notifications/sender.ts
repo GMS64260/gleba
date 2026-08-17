@@ -29,6 +29,10 @@ import { alerteMeteoEmail, alerteUrgenteEmail, resumeQuotidienEmail } from "./te
 import type { AlerteMeteoNotification, DestinataireNotification } from "./types"
 import { DEFAULT_NOTIF_PREFS, typeAlerteEstActivee, type NotifPrefs } from "./prefs"
 import { fetchOpenMeteoForecast } from "@/lib/meteo"
+import {
+  construirePayloadAlerteUrgente,
+  envoyerPushUtilisateur,
+} from "@/lib/push"
 
 /** Nombre maximal d'emails envoyés par utilisateur et par scan (anti-spam). */
 const MAX_EMAILS_PAR_UTILISATEUR = 15
@@ -130,13 +134,27 @@ export async function envoyerAlertesUrgentes(): Promise<number> {
         }
         const cle = `${user.id}:${alerte.key}`
         if (alerteDejaEnvoyee(cle)) continue
+        let emailEnvoye = false
         try {
           const { subject, html } = alerteUrgenteEmail(user, alerte)
           await sendMail({ to: user.email, subject, html })
-          marquerAlerteEnvoyee(cle)
-          envoyees++
+          emailEnvoye = true
         } catch (error) {
           console.error(`[notifications] Envoi alerte urgente échoué pour ${user.email}:`, error)
+        }
+
+        try {
+          await envoyerPushUtilisateur(user.id, construirePayloadAlerteUrgente(alerte))
+        } catch (error) {
+          // Une panne push ne doit jamais empêcher la livraison email ni le scan.
+          console.error(`[notifications] Envoi push urgent échoué pour ${user.email}:`, error)
+        }
+
+        // L'alerte est scellée dès que l'email a été livré ; une subscription
+        // push morte ou indisponible ne doit pas provoquer un doublon email.
+        if (emailEnvoye) {
+          marquerAlerteEnvoyee(cle)
+          envoyees++
         }
       }
       total += envoyees

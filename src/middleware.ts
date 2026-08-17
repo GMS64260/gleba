@@ -68,6 +68,7 @@ export default auth((req) => {
   // DEV2 #2 — Consentement cookies doit pouvoir être enregistré
   // pour les visiteurs anonymes (avant connexion).
   const isCookieConsentApi = pathname === "/api/cookie-consent"
+  const isPushVapidApi = pathname === "/api/notifications/push/vapid-public-key"
 
   // Boutiques publiques : /boutique/[slug] (pas /boutique seul qui est admin)
   // et /api/boutique/public/*
@@ -93,7 +94,7 @@ export default auth((req) => {
   }
 
   // Si route publique ou API auth/MCP/feedback, laisser passer
-  if (isPublicRoute || isAuthApi || isMcpApi || isFeedbackTokenApi || isUnsubscribeApi || isCookieConsentApi || isPublicBoutiquePage || isPublicBoutiqueApi || isPublicApi) {
+  if (isPublicRoute || isAuthApi || isMcpApi || isFeedbackTokenApi || isUnsubscribeApi || isCookieConsentApi || isPushVapidApi || isPublicBoutiquePage || isPublicBoutiqueApi || isPublicApi) {
     // Si connecté et sur login, rediriger vers home
     if (isLoggedIn && (pathname === "/login" || pathname === "/register")) {
       return NextResponse.redirect(new URL("/", req.nextUrl))

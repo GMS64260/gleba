@@ -11,6 +11,7 @@ import { CookieBanner } from "@/components/CookieBanner";
 import { GlobalDialogHost } from "@/components/ui/global-dialog-host";
 import { ImpersonationBanner } from "@/components/admin/ImpersonationBanner";
 import { ChatBubble } from "@/components/chat/ChatBubble";
+import { PushRegister } from "@/components/notifications/push-register";
 
 
 const spaceGrotesk = Space_Grotesk({
@@ -208,6 +209,7 @@ export default function RootLayout({
           <FeedbackWidget />
           {/* DEV2 #2 — Bandeau cookies RGPD/CNIL */}
           <CookieBanner />
+          <PushRegister />
         </SessionProvider>
       </body>
     </html>
