@@ -88,6 +88,7 @@ model User {
   // NextAuth sessions + comptes OAuth (Google)
   sessions Session[]
   accounts Account[]
+  pushSubscriptions PushSubscription[]
 
   // Relations avec données utilisateur
   planches              Planche[]
@@ -244,6 +245,21 @@ model User {
   stocksMedicamentsElevage         StockMedicamentElevage[]
 
   @@map("users")
+}
+
+/// Abonnement push navigateur d'un utilisateur.
+model PushSubscription {
+  id        Int      @id @default(autoincrement())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique @db.Text
+  p256dh    String   @db.Text
+  auth      String   @db.Text
+  userAgent String?  @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@map("push_subscriptions")
 }
 
 /// DEV2 audit Larcher - P0 #2
@@ -3522,6 +3538,9 @@ model UserStockVariete {
   // DEV2 #6 — coût unitaire d'entrée pour PMP/FIFO/dernier prix
   coutUnitaire Float?    @map("cout_unitaire")
   dateStock    DateTime? @map("date_stock")
+  // Seuil minimum d'alerte (réapprovisionnement conseillé)
+  stockMinGraines Float? @map("stock_min_graines")
+  stockMinPlants  Int?    @map("stock_min_plants")
 
   @@unique([userId, varieteId])
   @@index([userId])
@@ -3541,6 +3560,8 @@ model UserStockFertilisant {
   prix          Float?      @map("prix") // €/kg (prix per-user, déprécié, voir coutUnitaire)
   // DEV2 #6
   coutUnitaire  Float?      @map("cout_unitaire")
+  // Seuil minimum d'alerte (réapprovisionnement conseillé)
+  stockMin      Float?      @map("stock_min")
 
   @@unique([userId, fertilisantId])
   @@index([userId])

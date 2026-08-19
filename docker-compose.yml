@@ -53,6 +53,13 @@ services:
       SMTP_PASS: ${SMTP_PASS:-}
       SMTP_FROM: ${SMTP_FROM:-}
       FEEDBACK_EMAIL: ${FEEDBACK_EMAIL:-}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-}
+      # Notifications métier par email (cron interne : résumé + alertes temps réel)
+      NOTIF_ENABLED: ${NOTIF_ENABLED:-true}
+      NOTIF_RESUME_HEURE: ${NOTIF_RESUME_HEURE:-07:00}
+      NOTIF_METEO_INTERVAL_MIN: ${NOTIF_METEO_INTERVAL_MIN:-30}
       # Audit compta 2026-06 : les bornes d'exercice comptable sont calculées
       # en heure locale du serveur — en UTC, une vente saisie le 1er janvier
       # 00h30 (heure de Paris) tombait dans l'exercice précédent.

@@ -6,7 +6,7 @@
 
 import * as React from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Settings, Save, Download, Upload, Loader2, ImageIcon, Trash2, Key, Copy, Check, RefreshCw, Bot, CloudSun, Layers, Building2, PawPrint } from 'lucide-react'
+import { ArrowLeft, Settings, Save, Download, Upload, Loader2, ImageIcon, Trash2, Key, Copy, Check, RefreshCw, Bot, CloudSun, Layers, Building2, PawPrint, Bell } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
@@ -21,6 +21,7 @@ import { useElevageModes } from '@/hooks/use-elevage-modes'
 import { ELEVAGE_MODES, ELEVAGE_MODE_IDS, type ElevageModeId } from '@/lib/elevage-modes'
 import { confirmDialog } from '@/lib/global-dialog'
 import { todayLocalISO } from '@/lib/format-utils'
+import { DEFAULT_NOTIF_PREFS, parseNotifPrefs, type NotifPrefs } from '@/lib/notifications/prefs'
 
 // Clé localStorage pour les parametres
 const SETTINGS_KEY = 'gleba_settings'
@@ -518,6 +519,9 @@ export default function ParametresPage() {
 
         {/* Modules actifs */}
         <ModulesSection />
+
+        {/* Préférences des emails métier */}
+        <NotificationsSection />
 
         {/* Modes d'élevage (compagnie / équin / NAC) — affiché si le module Élevage est actif */}
         <ElevageModesSection />
@@ -1207,6 +1211,273 @@ function ModulesSection() {
         })}
         <p className="text-xs text-muted-foreground italic pt-2">
           💡 Astuce : un changement est visible immédiatement après rechargement de la page.
+        </p>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ============================================================
+// Section : Notifications par email
+// ============================================================
+
+const notifPreferenceRows: Array<{
+  key: keyof NotifPrefs
+  label: string
+  description: string
+}> = [
+  { key: 'meteo', label: 'Alertes météo', description: 'Conditions météo dangereuses à venir.' },
+  { key: 'resume', label: 'Résumé quotidien', description: 'Synthèse du jour et des actions à réaliser.' },
+  { key: 'stocks', label: 'Stocks bas', description: 'Stocks passés sous leur seuil minimum.' },
+  { key: 'itpSemaine', label: 'Tâches ITP de la semaine', description: 'Opérations prévues cette semaine selon vos ITP.' },
+  { key: 'recoltes', label: 'Récoltes mûres', description: 'Cultures arrivées à maturité.' },
+  { key: 'irrigations', label: 'Irrigations', description: 'Rappels et passages probablement inutiles.' },
+  { key: 'autresUrgentes', label: 'Autres actions urgentes', description: 'Retards et associations incompatibles.' },
+]
+
+type PushEtat = 'chargement' | 'actif' | 'inactif' | 'non-supporte' | 'refuse'
+
+function convertirCleVapid(cle: string): ArrayBuffer {
+  const padding = '='.repeat((4 - (cle.length % 4)) % 4)
+  const base64 = (cle + padding).replace(/-/g, '+').replace(/_/g, '/')
+  const rawData = window.atob(base64)
+  const bytes = Uint8Array.from(rawData, (character) => character.charCodeAt(0))
+  return bytes.buffer as ArrayBuffer
+}
+
+async function obtenirRegistrationPush(): Promise<ServiceWorkerRegistration> {
+  const scope = '/notifications-push/'
+  const existing = await navigator.serviceWorker.getRegistration(scope)
+  return existing || navigator.serviceWorker.register('/sw-notifications.js', { scope })
+}
+
+function NotificationsSection() {
+  const { toast } = useToast()
+  const [prefs, setPrefs] = React.useState<NotifPrefs>({ ...DEFAULT_NOTIF_PREFS })
+  const [loading, setLoading] = React.useState(true)
+  const [saving, setSaving] = React.useState(false)
+  const [pushEtat, setPushEtat] = React.useState<PushEtat>('chargement')
+  const [pushLoading, setPushLoading] = React.useState(false)
+
+  React.useEffect(() => {
+    const supporte =
+      'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window
+    if (!supporte) {
+      setPushEtat('non-supporte')
+      return
+    }
+    if (Notification.permission === 'denied') {
+      setPushEtat('refuse')
+      return
+    }
+
+    let cancelled = false
+    obtenirRegistrationPush()
+      .then((registration) => registration.pushManager.getSubscription())
+      .then((subscription) => {
+        if (!cancelled) setPushEtat(subscription ? 'actif' : 'inactif')
+      })
+      .catch(() => {
+        if (!cancelled) setPushEtat('inactif')
+      })
+    return () => { cancelled = true }
+  }, [])
+
+  React.useEffect(() => {
+    let cancelled = false
+    const hydrate = async () => {
+      try {
+        const response = await fetch('/api/user/preferences', { cache: 'no-store' })
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        const data = await response.json()
+        if (!cancelled) setPrefs(parseNotifPrefs(data?.notifPrefs))
+      } catch {
+        if (!cancelled) {
+          setPrefs({ ...DEFAULT_NOTIF_PREFS })
+          toast({
+            variant: 'destructive',
+            title: 'Préférences non chargées',
+            description: 'Les notifications restent activées par défaut.',
+          })
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    hydrate()
+    return () => { cancelled = true }
+  }, [toast])
+
+  const activerPush = async () => {
+    setPushLoading(true)
+    try {
+      const permission = await Notification.requestPermission()
+      if (permission !== 'granted') {
+        setPushEtat(permission === 'denied' ? 'refuse' : 'inactif')
+        toast({
+          variant: 'destructive',
+          title: 'Notifications push non autorisées',
+          description: 'Autorisez les notifications dans les réglages du navigateur.',
+        })
+        return
+      }
+
+      const keyResponse = await fetch('/api/notifications/push/vapid-public-key', { cache: 'no-store' })
+      const keyData = await keyResponse.json().catch(() => null)
+      if (!keyResponse.ok || typeof keyData?.publicKey !== 'string') {
+        throw new Error(keyData?.error || 'Clé push indisponible')
+      }
+
+      const registration = await obtenirRegistrationPush()
+      const subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: convertirCleVapid(keyData.publicKey),
+      })
+      const subscribeResponse = await fetch('/api/notifications/push/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(subscription),
+      })
+      if (!subscribeResponse.ok) throw new Error('Enregistrement push refusé par le serveur')
+
+      setPushEtat('actif')
+      toast({ title: 'Notifications push activées', description: 'Ce navigateur recevra vos alertes Gleba.' })
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Activation impossible',
+        description: error instanceof Error ? error.message : 'Impossible d’activer les notifications push.',
+      })
+    } finally {
+      setPushLoading(false)
+    }
+  }
+
+  const desactiverPush = async () => {
+    setPushLoading(true)
+    try {
+      const registration = await obtenirRegistrationPush()
+      const subscription = await registration.pushManager.getSubscription()
+      const response = await fetch('/api/notifications/push/subscribe', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: subscription ? JSON.stringify({ endpoint: subscription.endpoint }) : undefined,
+      })
+      if (!response.ok) throw new Error('Désactivation refusée par le serveur')
+      await subscription?.unsubscribe()
+      setPushEtat('inactif')
+      toast({ title: 'Notifications push désactivées' })
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Désactivation impossible',
+        description: error instanceof Error ? error.message : 'Impossible de désactiver les notifications push.',
+      })
+    } finally {
+      setPushLoading(false)
+    }
+  }
+
+  const toggle = async (key: keyof NotifPrefs, active: boolean) => {
+    const previous = prefs
+    const next = { ...prefs, [key]: active }
+    setPrefs(next)
+    setSaving(true)
+    try {
+      const response = await fetch('/api/user/preferences', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notifPrefs: next }),
+      })
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      toast({ title: 'Préférences de notifications enregistrées' })
+    } catch {
+      setPrefs(previous)
+      toast({
+        variant: 'destructive',
+        title: 'Échec de la sauvegarde',
+        description: 'Le changement a été annulé. Vérifiez votre connexion.',
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Bell className="h-5 w-5 text-emerald-600" />
+          Notifications
+        </CardTitle>
+        <CardDescription>
+          Choisissez les types de notifications métier que vous souhaitez recevoir par email ou par push.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {loading ? (
+          notifPreferenceRows.map((row) => (
+            <div
+              key={row.key}
+              className="flex items-center justify-between gap-4 p-3 border rounded-lg animate-pulse"
+            >
+              <div className="flex-1 min-w-0 space-y-2">
+                <div className="h-4 w-40 bg-slate-200 rounded" />
+                <div className="h-3 w-64 bg-slate-100 rounded" />
+              </div>
+              <div className="h-5 w-9 bg-slate-200 rounded-full" />
+            </div>
+          ))
+        ) : notifPreferenceRows.map((row) => (
+          <div
+            key={row.key}
+            className="flex items-center justify-between gap-4 p-3 border rounded-lg hover:bg-slate-50/50 transition-colors"
+          >
+            <div className="flex-1 min-w-0">
+              <Label htmlFor={`notif-${row.key}`} className="font-medium text-sm cursor-pointer">
+                {row.label}
+              </Label>
+              <p className="text-xs text-muted-foreground mt-0.5">{row.description}</p>
+            </div>
+            <Switch
+              id={`notif-${row.key}`}
+              checked={prefs[row.key]}
+              disabled={saving}
+              onCheckedChange={(checked) => toggle(row.key, checked)}
+              data-testid={`notif-toggle-${row.key}`}
+            />
+          </div>
+        ))}
+        <div className="border-t pt-4 mt-4 space-y-3">
+          <div>
+            <h4 className="text-sm font-medium text-slate-900">Notifications push (navigateur)</h4>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Recevez les alertes urgentes directement dans ce navigateur.
+            </p>
+          </div>
+          {pushEtat === 'chargement' && <p className="text-sm text-muted-foreground">Vérification du support…</p>}
+          {pushEtat === 'non-supporte' && (
+            <p className="text-sm text-muted-foreground">Les notifications push ne sont pas supportées par ce navigateur.</p>
+          )}
+          {pushEtat === 'refuse' && (
+            <p className="text-sm text-amber-700">Les notifications sont refusées. Autorisez-les dans les réglages du navigateur.</p>
+          )}
+          {pushEtat === 'actif' && (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-emerald-700">Push activées sur ce navigateur</p>
+              <Button variant="outline" onClick={desactiverPush} disabled={pushLoading}>
+                {pushLoading ? 'Désactivation…' : 'Désactiver'}
+              </Button>
+            </div>
+          )}
+          {pushEtat === 'inactif' && (
+            <Button onClick={activerPush} disabled={pushLoading}>
+              {pushLoading ? 'Activation…' : 'Activer les notifications push'}
+            </Button>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground italic pt-2">
+          Ces réglages s&apos;appliquent aux emails envoyés par Gleba. Les emails transactionnels (mot de passe, vérification) ne sont pas concernés.
         </p>
       </CardContent>
     </Card>

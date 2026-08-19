@@ -13,7 +13,7 @@ const JOUR_MS = 24 * 3600 * 1000
 const AN_MS = 365.25 * JOUR_MS
 
 /** Durée de croissance par défaut quand l'ITP ne la donne pas (jours). */
-const DUREE_CULTURE_DEFAUT = 90
+export const DUREE_CULTURE_DEFAUT = 90
 /** Durée de récolte par défaut après maturité (semaines). */
 const DUREE_RECOLTE_DEFAUT_SEMAINES = 6
 /** Taille relative minimale d'un jeune plant (reste visible dès la plantation). */
