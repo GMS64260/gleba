@@ -12,6 +12,7 @@
 
 import * as React from "react"
 import Link from "next/link"
+import { useSession } from "next-auth/react"
 import { ArrowLeft, Filter, Download, Snowflake, MapPin, Loader2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -29,41 +30,12 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { GanttRow } from "@/components/itps/GanttRow"
 import { ItpEditDialog } from "@/components/itps/ItpEditDialog"
 import { SemisLunaireEncart } from "@/components/itps/SemisLunaireEncart"
-import {
-  decalageItpPourZone,
-  libelleDecalage,
-  itpApplicableAZone,
-} from "@/lib/calendrier-climat"
+import { decalageItpPourLecteur, itpApplicableAZone } from "@/lib/calendrier-climat"
 import type { ZoneClimat } from "@/lib/terroir"
+import { normalizeReferentielKey } from "@/lib/normalize"
+import type { ItpVue } from "@/components/itps/types"
 import { alertDialog } from "@/lib/global-dialog"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
-
-interface ITPWithEspece {
-  id: string
-  nom: string | null
-  especeId: string | null
-  espece?: {
-    id: string
-    nom: string | null
-    couleur: string | null
-    modeSemis?: string | null
-    famille?: { id?: string } | null
-  } | null
-  semaineSemis: number | null
-  semainePlantation: number | null
-  semaineRecolte: number | null
-  semaineImplantationDebut?: number | null
-  semaineImplantationFin?: number | null
-  semaineRecolteFin?: number | null
-  dureeRecolte: number | null
-  dureePepiniere?: number | null
-  typePlanche: string | null
-  zoneClimat?: string | null
-  implantation?: string | null
-  statutValidation?: string | null
-  sourceRecordId?: string | null
-  notes: string | null
-}
 
 interface ZoneOption {
   value: string
@@ -99,11 +71,13 @@ function libelleSemaine(semaine: number | null): string {
 }
 
 export default function ITCalendrierPage() {
-  const [itps, setItps] = React.useState<ITPWithEspece[]>([])
+  const { data: session } = useSession()
+  const currentUserId = (session?.user as { id?: string } | undefined)?.id ?? null
+  const [itps, setItps] = React.useState<ItpVue[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [filtreTypePlanche, setFiltreTypePlanche] = React.useState("all")
   const [recherche, setRecherche] = React.useState("")
-  const [editingItp, setEditingItp] = React.useState<ITPWithEspece | null>(null)
+  const [editingItp, setEditingItp] = React.useState<ItpVue | null>(null)
   const [editDialogOpen, setEditDialogOpen] = React.useState(false)
   const [pageIndex, setPageIndex] = React.useState(0)
 
@@ -122,7 +96,7 @@ export default function ITCalendrierPage() {
       setIsLoading(true)
       try {
         const response = await fetch(
-          "/api/itps?pageSize=1000&applicable=1&sortBy=statutValidation&sortOrder=desc"
+          "/api/itps?pageSize=1000&applicable=1&sortBy=confiance"
         )
         if (response.ok) {
           const data = await response.json()
@@ -164,8 +138,6 @@ export default function ITCalendrierPage() {
   // métropolitaine), les ITP sont déjà calés sur les saisons locales : aucun
   // décalage de zone, seul le réglage fin reste actif.
   const horsReference = climat?.horsReference ?? false
-  const decalageZone = horsReference ? 0 : (climat?.decalage ?? 0)
-  const decalageTotal = decalageZone + reglageFin
 
   const changerZone = async (value: string) => {
     setSavingZone(true)
@@ -209,15 +181,15 @@ export default function ITCalendrierPage() {
         return false
       }
 
-      // Filtre recherche
-      if (recherche) {
-        const search = recherche.toLowerCase()
-        return (
-          itp.id.toLowerCase().includes(search) ||
-          itp.nom?.toLowerCase().includes(search) ||
-          itp.especeId?.toLowerCase().includes(search) ||
-          false
-        )
+      // Filtre recherche. Insensible aux accents et à la ponctuation, comme la
+      // recherche serveur de la liste ITP (QA cmswxyuoi) : chercher
+      // « TEST-Marc » doit trouver « TEST Marc », et « mache » trouver « mâche ».
+      if (recherche.trim()) {
+        const cle = normalizeReferentielKey(recherche)
+        if (!cle) return true
+        return [itp.id, itp.nom, itp.especeId, itp.espece?.nom]
+          .filter(Boolean)
+          .some((champ) => normalizeReferentielKey(String(champ)).includes(cle))
       }
 
       return true
@@ -236,12 +208,12 @@ export default function ITCalendrierPage() {
     (safePageIndex + 1) * ganttPageSize
   )
 
-  const handleEdit = (itp: ITPWithEspece) => {
+  const handleEdit = (itp: ItpVue) => {
     setEditingItp(itp)
     setEditDialogOpen(true)
   }
 
-  const handleSaved = (updated: ITPWithEspece) => {
+  const handleSaved = (updated: ItpVue) => {
     setItps((prev) => prev.map((itp) => (itp.id === updated.id ? updated : itp)))
   }
 
@@ -318,7 +290,8 @@ export default function ITCalendrierPage() {
                   ) : (
                     <>
                       {climat!.source === "auto" ? "Détectée automatiquement" : "Choix manuel"} :{" "}
-                      <strong>{climat!.label}</strong> — dates {libelleDecalage(decalageZone)}.
+                      <strong>{climat!.label}</strong> — chaque itinéraire est transposé depuis son
+                      propre climat de calage vers le vôtre, ligne par ligne.
                     </>
                   )}
                 </p>
@@ -352,10 +325,10 @@ export default function ITCalendrierPage() {
 
             {/* Badge décalage total + gelées */}
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-              {decalageTotal !== 0 && (
+              {reglageFin !== 0 && (
                 <Badge className="bg-emerald-600 hover:bg-emerald-600">
-                  Dates ajustées : {decalageTotal > 0 ? "+" : "−"}
-                  {Math.abs(decalageTotal)} semaine{Math.abs(decalageTotal) > 1 ? "s" : ""}
+                  Réglage fin appliqué en plus du calage de zone : {reglageFin > 0 ? "+" : "−"}
+                  {Math.abs(reglageFin)} semaine{Math.abs(reglageFin) > 1 ? "s" : ""}
                 </Badge>
               )}
               {!zoneInconnue && climat && (climat.dernieresGelees || climat.premieresGelees) && (
@@ -382,6 +355,7 @@ export default function ITCalendrierPage() {
             <SemisLunaireEncart
               itps={itps}
               zone={(climat?.zone ?? null) as ZoneClimat | null}
+              lecteurId={currentUserId}
               reglageFin={reglageFin}
             />
           </div>
@@ -525,9 +499,10 @@ export default function ITCalendrierPage() {
                         itp={itp}
                         onEdit={handleEdit}
                         decalage={
-                          decalageItpPourZone(
-                            itp.zoneClimat,
-                            (climat?.zone ?? null) as ZoneClimat | null
+                          decalageItpPourLecteur(
+                            itp,
+                            (climat?.zone ?? null) as ZoneClimat | null,
+                            currentUserId
                           ) + reglageFin
                         }
                       />
@@ -556,6 +531,15 @@ export default function ITCalendrierPage() {
       {/* Dialog d'édition */}
       <ItpEditDialog
         itp={editingItp}
+        decalage={
+          editingItp
+            ? decalageItpPourLecteur(
+                editingItp,
+                (climat?.zone ?? null) as ZoneClimat | null,
+                currentUserId
+              ) + reglageFin
+            : 0
+        }
         open={editDialogOpen}
         onOpenChange={setEditDialogOpen}
         onSaved={handleSaved}

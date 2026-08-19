@@ -11,13 +11,16 @@ import { Prisma } from '@prisma/client'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { statsAvisPourRefs } from '@/lib/avis/stats-liste'
 import { visibiliteReferentiel, attributionCreation } from '@/lib/referentiel-communaute'
-import { displayReferentielName, normalizeReferentielKey } from '@/lib/normalize'
-import { zoneEffectiveUser } from '@/lib/terroir'
+import { normalizeReferentielKey } from '@/lib/normalize'
 import {
-  appliquerDecalageItp,
-  decalageItpPourZone,
-  zoneHorsReferenceMetropole,
-} from '@/lib/calendrier-climat'
+  conflitNomItp,
+  doublonVisibleItp,
+  messageConflitNomItp,
+  nomItpDepuisSaisie,
+} from '@/lib/itp-nom'
+import { zoneEffectiveUser } from '@/lib/terroir'
+import { appliquerDecalageItp, decalageItpPourLecteur } from '@/lib/calendrier-climat'
+import { whereItpApplicable, whereItpUtilisable } from '@/lib/itp-acces'
 
 const SORT_FIELDS = new Set([
   'id',
@@ -28,7 +31,27 @@ const SORT_FIELDS = new Set([
   'semaineRecolte',
   'typePlanche',
   'statutValidation',
+  'confiance',
 ])
+
+/**
+ * Ordre de confiance du catalogue : références sourcées d'abord, puis le
+ * catalogue Gleba officiel, puis les contributions de membres.
+ *
+ * Les huit sélecteurs d'ITP de l'application demandaient
+ * `sortBy=statutValidation&sortOrder=desc`, un tri ALPHABÉTIQUE sur les valeurs
+ * `source_documentee` / `personnel` / `a_revoir` : l'itinéraire personnel d'un
+ * membre, partagé à la communauté, passait donc devant les 218 références
+ * officielles « à confirmer », en tête de liste et sans rien qui le signale.
+ * L'ordre voulu n'est pas exprimable sur cette colonne : on le tire de deux
+ * colonnes qui le portent réellement.
+ */
+const ORDRE_CONFIANCE: Prisma.ITPOrderByWithRelationInput[] = [
+  { sourceRecordId: { sort: 'asc', nulls: 'last' } },
+  { userId: { sort: 'asc', nulls: 'first' } },
+  { statutValidation: 'desc' },
+  { id: 'asc' },
+]
 
 function positiveInteger(value: string | null, fallback: number, max: number): number {
   const parsed = Number.parseInt(value ?? '', 10)
@@ -67,22 +90,27 @@ export async function GET(request: NextRequest) {
       : null
 
     // Construction du where
-    const where: Prisma.ITPWhereInput = { actif: true }
+    const where: Prisma.ITPWhereInput = {}
 
     if (search) {
+      // QA cmswxyuoi — la recherche était sensible à la ponctuation : chercher
+      // « TEST-Marc-Phacelie-v7 » ne trouvait pas « TEST Marc Phacelie v7 »
+      // (et réciproquement). La colonne `nomNormalise` existe précisément pour
+      // comparer sans tiret, underscore, accent ni casse : on l'interroge avec
+      // la même normalisation appliquée à la saisie.
+      // Une saisie qui se réduit à de la ponctuation (« - ») donne une clé VIDE,
+      // et `contains: ''` rend tout le catalogue : on n'ajoute alors pas ce
+      // critère.
+      const cleNormalisee = normalizeReferentielKey(search)
       where.OR = [
         { id: { contains: search, mode: 'insensitive' } },
         { nom: { contains: search, mode: 'insensitive' } },
-        // QA cmswxyuoi — la recherche était sensible à la ponctuation : chercher
-        // « TEST-Marc-Phacelie-v7 » ne trouvait pas « TEST Marc Phacelie v7 »
-        // (et réciproquement). La colonne `nomNormalise` existe précisément pour
-        // comparer sans tiret, underscore, accent ni casse : on l'interroge avec
-        // la même normalisation appliquée à la saisie.
-        { nomNormalise: { contains: normalizeReferentielKey(search) } },
+        ...(cleNormalisee ? [{ nomNormalise: { contains: cleNormalisee } }] : []),
         { notes: { contains: search, mode: 'insensitive' } },
         { sourceReference: { contains: search, mode: 'insensitive' } },
         { contexteClimatique: { contains: search, mode: 'insensitive' } },
         { espece: { id: { contains: search, mode: 'insensitive' } } },
+        { espece: { nom: { contains: search, mode: 'insensitive' } } },
       ]
     }
 
@@ -97,35 +125,14 @@ export async function GET(request: NextRequest) {
     }
 
     if (applicable) {
-      if (zoneHorsReferenceMetropole(userZone)) {
-        where.zoneClimat = userZone
-      } else {
-        where.AND = [
-          {
-            OR: [
-              { zoneClimat: null },
-              {
-                zoneClimat: {
-                  in: [
-                    'mediterraneen',
-                    'oceanique',
-                    'oceanique_altere',
-                    'semi_continental',
-                    'montagnard',
-                  ],
-                },
-              },
-            ],
-          },
-        ]
-      }
+      where.AND = [whereItpApplicable(userZone)]
     }
 
     // Visibilité catalogue communautaire : Gleba officiel (userId null) +
     // communauté (partagé par un membre) + mes propres ITP perso. Jamais le
     // perso privé d'un autre. On combine avec les filtres existants via AND.
     const whereVisible: Prisma.ITPWhereInput = {
-      AND: [where, visibiliteReferentiel(userId)],
+      AND: [where, whereItpUtilisable(userId)],
     }
 
     // Audit Marc 2026-05-14 — Bug 13 : "ITP Tomate hâtive serre · 3
@@ -148,7 +155,7 @@ export async function GET(request: NextRequest) {
             },
           },
         },
-        orderBy: { [sortBy]: sortOrder },
+        orderBy: sortBy === 'confiance' ? ORDRE_CONFIANCE : { [sortBy]: sortOrder },
         skip,
         take: pageSize,
       }),
@@ -169,12 +176,13 @@ export async function GET(request: NextRequest) {
     // seule la réponse est convertie vers la zone de l'exploitation.
     if (calibrer) {
       data = data.map((itp) => {
-        // QA cmsqmujo9 — stock historique : un ITP perso sans zone de calage
-        // appartient à quelqu'un qui a saisi ses semaines dans SON climat.
-        // Quand son auteur le lit, aucun décalage ; le référentiel officiel
-        // (userId null) garde la transposition de zone.
-        const estPersoDeLAuteur = itp.userId === userId && itp.zoneClimat == null
-        const decalage = estPersoDeLAuteur ? 0 : decalageItpPourZone(itp.zoneClimat, userZone)
+        // QA cmsqmujo9 — un ITP perso sans zone de calage appartient à quelqu'un
+        // qui a saisi ses semaines dans SON climat : aucun décalage pour son
+        // auteur. Cette exception vit désormais dans `decalageItpPourLecteur`,
+        // partagée avec la planification, les notifications et les calendriers,
+        // qui l'ignoraient tous (le même ITP n'avait pas les mêmes semaines
+        // selon l'écran).
+        const decalage = decalageItpPourLecteur(itp, userZone, userId)
         return {
           ...appliquerDecalageItp(itp, decalage),
           decalageClimatiqueApplique: decalage,
@@ -228,44 +236,21 @@ export async function POST(request: NextRequest) {
     // seule la clé de dédup normalise la ponctuation. Avant, un nom
     // « TEST-Marc-Phacelie-v7 » était stocké « TEST Marc Phacelie v7 » et
     // devenait introuvable par le nom tapé.
-    const nomSaisi = displayReferentielName(data.id)
-    const nomNormalise = normalizeReferentielKey(nomSaisi)
+    const { nom: nomSaisi, nomNormalise } = nomItpDepuisSaisie(data.id)
     const attrib = attributionCreation(isAdmin, session!.user.id, body.partageCommunaute === true)
     const estOfficiel = attrib.userId === null
 
-    if (estOfficiel) {
-      // Catalogue Gleba : l'id reste le nom lisible (rétro-compat). Unicité globale
-      // exacte + "mou" (nom normalisé), par parité avec les espèces — review #6.
-      const existing = await prisma.iTP.findUnique({ where: { id: nomSaisi } })
-      if (existing) {
-        return NextResponse.json({ error: `L'ITP "${nomSaisi}" existe déjà` }, { status: 409 })
-      }
-      const officiels = await prisma.iTP.findMany({
-        where: { userId: null },
-        select: { id: true, nomNormalise: true },
-      })
-      const conflit = officiels.find((i) => (i.nomNormalise ?? normalizeReferentielKey(i.id)) === nomNormalise)
-      if (conflit) {
-        return NextResponse.json(
-          {
-            error: `Un itinéraire similaire existe déjà : "${conflit.id}". Si c'est le même, utilisez-le ; sinon, choisissez un nom plus distinctif.`,
-            conflit: conflit.id,
-          },
-          { status: 409 }
-        )
-      }
-    } else {
-      // Perso : dédup bornée à MES ITP (index unique partiel user_id, nom_normalise).
-      const conflit = await prisma.iTP.findFirst({
-        where: { userId: attrib.userId, nomNormalise },
-        select: { id: true, nom: true },
-      })
-      if (conflit) {
-        return NextResponse.json(
-          { error: `Vous avez déjà un itinéraire « ${conflit.nom ?? conflit.id} » dans votre catalogue.`, conflit: conflit.id },
-          { status: 409 }
-        )
-      }
+    // Dédup : même règle qu'au renommage (cf. src/lib/itp-nom.ts).
+    const conflit = await conflitNomItp(prisma, {
+      nom: nomSaisi,
+      nomNormalise,
+      proprietaireId: attrib.userId,
+    })
+    if (conflit) {
+      return NextResponse.json(
+        { error: messageConflitNomItp(conflit, estOfficiel), conflit: conflit.id },
+        { status: 409 }
+      )
     }
 
     // Vérifier que l'espece existe si fournie + cohérence du type de culture
@@ -330,7 +315,23 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    return NextResponse.json(itp, { status: 201 })
+    // Doublon non bloquant : un itinéraire du même nom existe déjà dans le
+    // catalogue visible, hors du périmètre d'unicité contrôlé plus haut.
+    const doublon = await doublonVisibleItp(prisma, {
+      nomNormalise,
+      lecteurId: session!.user.id,
+      exclureId: itp.id,
+    })
+
+    return NextResponse.json(
+      {
+        ...itp,
+        ...(doublon
+          ? { doublonPotentiel: { id: doublon.id, nom: doublon.nom ?? doublon.id } }
+          : {}),
+      },
+      { status: 201 }
+    )
   } catch (error) {
     console.error('POST /api/itps error:', error)
     return NextResponse.json(

@@ -7,6 +7,7 @@
  */
 
 import * as React from "react"
+import { useSession } from "next-auth/react"
 import { Filter, MapPin } from "lucide-react"
 
 import { Input } from "@/components/ui/input"
@@ -20,41 +21,20 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { GanttRow } from "@/components/itps/GanttRow"
 import { ItpEditDialog } from "@/components/itps/ItpEditDialog"
-import { decalageItpPourZone, itpApplicableAZone } from "@/lib/calendrier-climat"
+import { decalageItpPourLecteur, itpApplicableAZone } from "@/lib/calendrier-climat"
+import type { ItpVue } from "@/components/itps/types"
 import type { ZoneClimat } from "@/lib/terroir"
-
-interface ITPWithEspece {
-  id: string
-  nom: string | null
-  especeId: string | null
-  espece?: {
-    id: string
-    nom: string | null
-    couleur: string | null
-  } | null
-  semaineSemis: number | null
-  semainePlantation: number | null
-  semaineRecolte: number | null
-  semaineImplantationDebut?: number | null
-  semaineImplantationFin?: number | null
-  semaineRecolteFin?: number | null
-  dureeRecolte: number | null
-  typePlanche: string | null
-  zoneClimat?: string | null
-  implantation?: string | null
-  statutValidation?: string | null
-  sourceRecordId?: string | null
-  notes: string | null
-}
 
 const MOIS_COURTS = ["Jan", "Fév", "Mar", "Avr", "Mai", "Jun", "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc"]
 
 export function ItpCalendarView() {
-  const [itps, setItps] = React.useState<ITPWithEspece[]>([])
+  const { data: session } = useSession()
+  const currentUserId = (session?.user as { id?: string } | undefined)?.id ?? null
+  const [itps, setItps] = React.useState<ItpVue[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [filtreTypePlanche, setFiltreTypePlanche] = React.useState('all')
   const [recherche, setRecherche] = React.useState('')
-  const [editingItp, setEditingItp] = React.useState<ITPWithEspece | null>(null)
+  const [editingItp, setEditingItp] = React.useState<ItpVue | null>(null)
   const [editDialogOpen, setEditDialogOpen] = React.useState(false)
   // Décalage climatique (zone de l'exploitation) appliqué aux barres.
   const [decalageZone, setDecalageZone] = React.useState(0)
@@ -81,7 +61,7 @@ export function ItpCalendarView() {
       setIsLoading(true)
       try {
         const response = await fetch(
-          '/api/itps?pageSize=1000&applicable=1&sortBy=statutValidation&sortOrder=desc'
+          '/api/itps?pageSize=1000&applicable=1&sortBy=confiance'
         )
         if (response.ok) {
           const data = await response.json()
@@ -118,12 +98,20 @@ export function ItpCalendarView() {
     })
   }, [itps, filtreTypePlanche, recherche, zone])
 
-  const handleEdit = (itp: ITPWithEspece) => {
+  const conduitesDisponibles = React.useMemo(
+    () =>
+      Array.from(new Set(itps.map((i) => i.typePlanche).filter(Boolean) as string[])).sort((a, b) =>
+        a.localeCompare(b, "fr")
+      ),
+    [itps]
+  )
+
+  const handleEdit = (itp: ItpVue) => {
     setEditingItp(itp)
     setEditDialogOpen(true)
   }
 
-  const handleSaved = (updated: ITPWithEspece) => {
+  const handleSaved = (updated: ItpVue) => {
     setItps(prev => prev.map(itp => itp.id === updated.id ? updated : itp))
   }
 
@@ -146,9 +134,15 @@ export function ItpCalendarView() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Tous types</SelectItem>
-            <SelectItem value="Serre">Serre</SelectItem>
-            <SelectItem value="Plein champ">Plein champ</SelectItem>
-            <SelectItem value="Tunnel">Tunnel</SelectItem>
+            {/* Ces options étaient écrites en dur : « Serre » et « Tunnel » ne
+                correspondaient à AUCUNE ligne du référentiel (la frise se vidait),
+                et « Sous abri », porté par 212 itinéraires, n'était pas proposé.
+                On dérive la liste des conduites réellement présentes. */}
+            {conduitesDisponibles.map((t) => (
+              <SelectItem key={t} value={t}>
+                {t}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
@@ -226,7 +220,7 @@ export function ItpCalendarView() {
                   key={itp.id}
                   itp={itp}
                   onEdit={handleEdit}
-                  decalage={decalageItpPourZone(itp.zoneClimat, zone as ZoneClimat | null)}
+                  decalage={decalageItpPourLecteur(itp, zone as ZoneClimat | null, currentUserId)}
                 />
               ))}
             </tbody>
@@ -238,6 +232,11 @@ export function ItpCalendarView() {
       {/* Dialog d'édition */}
       <ItpEditDialog
         itp={editingItp}
+        decalage={
+          editingItp
+            ? decalageItpPourLecteur(editingItp, zone as ZoneClimat | null, currentUserId)
+            : 0
+        }
         open={editDialogOpen}
         onOpenChange={setEditDialogOpen}
         onSaved={handleSaved}

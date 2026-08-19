@@ -52,8 +52,20 @@ export const baseITPSchema = z.object({
 // Schéma pour la création
 export const createITPSchema = baseITPSchema
 
-// Schéma pour la mise à jour (tous les champs optionnels sauf id)
-export const updateITPSchema = baseITPSchema.partial().omit({ id: true })
+/**
+ * Schéma de mise à jour. L'`id` technique n'est jamais modifiable (c'est la clé
+ * étrangère des cultures et des rotations), mais le LIBELLÉ doit l'être : sans
+ * lui, une faute de saisie était définitive et l'ITP « TEST Marc Phacelie v7 »,
+ * dont le nom avait été écrasé avant le correctif QA cmswxyuoi, restait
+ * incorrigible depuis l'interface. Le serveur recalcule `nomNormalise` et
+ * revérifie l'unicité — un nom reste un affichage, jamais une clé.
+ */
+export const updateITPSchema = baseITPSchema
+  .partial()
+  .omit({ id: true })
+  .extend({
+    nom: z.string().min(1, 'Le nom de l\'ITP est requis').max(100).optional(),
+  })
 
 // Types inférés
 export type ITPInput = z.infer<typeof baseITPSchema>

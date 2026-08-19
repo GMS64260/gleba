@@ -15,6 +15,9 @@ import { invalidateKpi } from '@/lib/kpi'
 import { checkRotationViolation } from '@/lib/rotation-check'
 import { estEtatCulture, etatCulture, whereEtatCulture } from '@/lib/cultures/etat'
 import { etendrePlanArrosage } from '@/lib/irrigation-scheduler'
+import { whereItpUtilisable } from '@/lib/itp-acces'
+import { appliquerDecalageItp, decalageItpPourLecteur } from '@/lib/calendrier-climat'
+import { zoneEffectiveUser } from '@/lib/terroir'
 
 // GET /api/cultures
 export async function GET(request: NextRequest) {
@@ -201,12 +204,20 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Récupérer l'ITP si fourni (pour validation dates et calcul stock)
+    // Récupérer l'ITP si fourni (pour validation dates et calcul stock).
+    //
+    // La lecture était un `findUnique` nu : n'importe quel identifiant faisait
+    // l'affaire, y compris l'itinéraire PRIVÉ d'un autre membre (que la réponse
+    // aurait ensuite exposé via `include: { itp }`) ou un itinéraire retiré du
+    // service. La règle appliquée partout ailleurs dans le référentiel —
+    // visible ET actif — vaut aussi pour ce chemin d'écriture.
     let itp = null
     if (data.itpId) {
-      itp = await prisma.iTP.findUnique({
-        where: { id: data.itpId },
+      itp = await prisma.iTP.findFirst({
+        where: { AND: [{ id: data.itpId }, whereItpUtilisable(session!.user.id)] },
         select: {
+          userId: true,
+          zoneClimat: true,
           semaineSemis: true,
           semainePlantation: true,
           semaineRecolte: true,
@@ -215,7 +226,32 @@ export async function POST(request: NextRequest) {
           doseSemis: true,
         },
       })
+      if (!itp) {
+        return NextResponse.json(
+          {
+            error: `L'itinéraire technique « ${data.itpId} » n'est pas disponible : introuvable, privé, ou retiré du service.`,
+          },
+          { status: 400 }
+        )
+      }
     }
+
+    // Les dates proposées par les formulaires sont calculées sur les semaines
+    // TRANSPOSÉES vers la zone de l'exploitation (`/api/itps?calibre=1`). Les
+    // comparer aux semaines brutes de la source produisait un écart mécanique
+    // pouvant franchir la tolérance de ±28 jours, donc un avertissement
+    // « hors fenêtre ITP » sur des dates que l'application venait elle-même de
+    // préremplir. On valide dans le même référentiel que celui affiché.
+    const itpCalibre = itp
+      ? appliquerDecalageItp(
+          itp,
+          decalageItpPourLecteur(
+            itp,
+            await zoneEffectiveUser(prisma, session!.user.id),
+            session!.user.id
+          )
+        )
+      : null
 
     // Audit Marc 2026-05-14 — Bug 04 : remonter les warnings dates/ITP
     // au client (non bloquant). Le client peut alors afficher un toast
@@ -228,7 +264,7 @@ export async function POST(request: NextRequest) {
           dateSemis: data.dateSemis,
           datePlantation: data.datePlantation,
           dateRecolte: data.dateRecolte,
-          itp,
+          itp: itpCalibre,
           annee,
         })
 
@@ -311,14 +347,10 @@ export async function POST(request: NextRequest) {
         // 30 cm de repli refusait en 400 des créations parfaitement légitimes
         // (4 rangs de radis sur une planche de 80 cm). Sans donnée, on prévient
         // au lieu de refuser.
-        let espacementRangs: number | null = null
-        if (data.itpId) {
-          const itp = await prisma.iTP.findUnique({
-            where: { id: data.itpId },
-            select: { espacementRangs: true },
-          })
-          espacementRangs = itp?.espacementRangs ?? null
-        }
+        // L'ITP a déjà été lu plus haut sous la règle « visible et actif » : le
+        // relire sans cette règle rouvrait la porte qu'on vient de fermer, et
+        // faisait une requête de plus pour la même donnée.
+        const espacementRangs: number | null = itp?.espacementRangs ?? null
 
         // Cultures existantes avec leur espacement.
         // QA cmsp5927v — l'occupation était calculée sur TOUTES les cultures non
@@ -401,16 +433,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Vérifier que les foreign keys existent avant création
-    if (data.itpId) {
-      const itpExists = await prisma.iTP.findUnique({ where: { id: data.itpId } })
-      if (!itpExists) {
-        console.error(`❌ ITP not found: ${data.itpId}`)
-        return NextResponse.json(
-          { error: `ITP "${data.itpId}" introuvable dans la base` },
-          { status: 400 }
-        )
-      }
-    }
+    // `itp` a déjà été résolu plus haut sous la règle « visible et actif » :
+    // une seconde lecture sans cette règle réintroduirait la faille corrigée.
 
     if (data.plancheId) {
       const plancheExists = await prisma.planche.findUnique({

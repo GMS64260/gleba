@@ -26,12 +26,12 @@ describe("notifications push", () => {
   })
 
   it.each([
-    ["irrigation-inutile", "/calendrier"],
-    ["irrigation-rappel", "/calendrier"],
-    ["association-incompatible", "/calendrier"],
-    ["tache-retard", "/calendrier"],
-    ["recolte-mure", "/calendrier"],
-    ["tache-itp-semaine", "/calendrier"],
+    ["irrigation-inutile", "/taches"],
+    ["irrigation-rappel", "/taches"],
+    ["association-incompatible", "/taches"],
+    ["tache-retard", "/taches"],
+    ["recolte-mure", "/taches"],
+    ["tache-itp-semaine", "/taches"],
     ["stock-bas", "/comptabilite/stocks"],
   ] as const)("construit le payload pour %s", (type, chemin) => {
     const alerte: AlerteUrgente = {

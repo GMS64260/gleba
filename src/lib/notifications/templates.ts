@@ -19,6 +19,16 @@ import type {
   TacheItpSemaine,
 } from "./types"
 
+/**
+ * Écran d'atterrissage des rappels de tâches.
+ *
+ * Les emails et les notifications push pointaient `/calendrier`, une route qui
+ * n'existe pas : le bouton du résumé quotidien et le clic sur toute alerte
+ * urgente — dont « tâches ITP de la semaine » — tombaient en 404. L'écran des
+ * tâches est celui qui porte réellement ces rappels.
+ */
+export const CHEMIN_TACHES = "/taches"
+
 function layoutNotification(options: {
   headerTitle: string
   headerSubtitle?: string
@@ -191,8 +201,8 @@ export function resumeQuotidienEmail(
         <table cellpadding="0" cellspacing="0" style="margin:24px 0 0;">
           <tr>
             <td style="background:linear-gradient(135deg,#059669,#0d9488);border-radius:10px;">
-              <a href="${APP_URL}/calendrier" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;">
-                Voir le calendrier →
+              <a href="${APP_URL}${CHEMIN_TACHES}" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;">
+                Voir mes tâches →
               </a>
             </td>
           </tr>
@@ -281,8 +291,8 @@ export function alerteUrgenteEmail(
         <table cellpadding="0" cellspacing="0" style="margin:24px 0 0;">
           <tr>
             <td style="background:linear-gradient(135deg,#059669,#0d9488);border-radius:10px;">
-              <a href="${estStockBas ? `${APP_URL}/comptabilite/stocks` : `${APP_URL}/calendrier`}" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;">
-                ${estIrrigationRappel ? "Voir le calendrier →" : estStockBas ? "Gérer les stocks →" : "Gérer dans Gleba →"}
+              <a href="${estStockBas ? `${APP_URL}/comptabilite/stocks` : `${APP_URL}${CHEMIN_TACHES}`}" style="display:inline-block;padding:12px 28px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;">
+                ${estIrrigationRappel ? "Voir mes tâches →" : estStockBas ? "Gérer les stocks →" : "Gérer dans Gleba →"}
               </a>
             </td>
           </tr>

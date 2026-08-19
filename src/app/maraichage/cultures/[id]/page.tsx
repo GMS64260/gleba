@@ -5,6 +5,7 @@
  */
 
 import * as React from "react"
+import { useSession } from "next-auth/react"
 import Link from "next/link"
 import { useRouter, useParams } from "next/navigation"
 import { ArrowLeft, Sprout, Save, SprayCan, Trash2 } from "lucide-react"
@@ -38,12 +39,16 @@ import { confirmDialog } from "@/lib/global-dialog"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 import { cultureUpdateFormSchema, type UpdateCultureInput } from "@/lib/validations"
 import { estimerNombrePlantsStrict } from "@/lib/assistant-helpers"
-import { libelleItp } from "@/lib/itp-label"
+import { nomAffichableItpAvecFenetre } from "@/lib/itp-label"
+import { badgeOrigine } from "@/lib/referentiel-communaute"
 import { datesDepuisItp, recolteApresDebut } from "@/lib/cultures/dates-itp"
 
 interface ITPData {
   id: string
   nom: string | null
+  // null = catalogue Gleba officiel ; renseigné = libellé saisi par un membre,
+  // que `nomAffichableItp` rend alors tel quel (QA cmswxyuoi).
+  userId: string | null
   especeId: string | null
   semaineSemis: number | null
   semainePlantation: number | null
@@ -52,7 +57,10 @@ interface ITPData {
   // semaine de plantation : leur fenêtre d'implantation est le seul jalon
   // de début de cycle exploitable.
   semaineImplantationDebut: number | null
+  semaineImplantationFin: number | null
   dureeCulture: number | null
+  /** Arbres fruitiers : années entre plantation et première récolte. */
+  delaiPremiereRecolteAnnees: number | null
   dureeRecolte: number | null
   nbRangs: number | null
   espacement: number | null
@@ -60,6 +68,8 @@ interface ITPData {
 }
 
 export default function EditCulturePage() {
+  const { data: session } = useSession()
+  const currentUserId = (session?.user as { id?: string } | undefined)?.id ?? null
   const router = useRouter()
   const params = useParams()
   const cultureId = params.id as string
@@ -180,7 +190,7 @@ export default function EditCulturePage() {
     if (selectedEspece) {
       Promise.all([
         fetch(`/api/especes/${encodeURIComponent(selectedEspece)}`).then((r) => r.json()),
-        fetch(`/api/itps?especeId=${encodeURIComponent(selectedEspece)}&pageSize=1000&applicable=1&calibre=1&sortBy=statutValidation&sortOrder=desc`).then((r) => r.json()),
+        fetch(`/api/itps?especeId=${encodeURIComponent(selectedEspece)}&pageSize=1000&applicable=1&calibre=1&sortBy=confiance`).then((r) => r.json()),
       ])
         .then(([especeData, itpsData]) => {
           setVarietes(especeData.varietes || [])
@@ -520,7 +530,20 @@ export default function EditCulturePage() {
                         <SelectContent>
                           {itps.map((itp) => (
                             <SelectItem key={itp.id} value={itp.id}>
-                              {libelleItp(itp.nom ?? itp.id)}
+                              <span className="flex items-center gap-2">
+                                {nomAffichableItpAvecFenetre(itp)}
+                                {/* Origine dite dans la liste elle-même : sans
+                                    elle, la contribution d'un membre ne se
+                                    distinguait pas d'une référence du catalogue. */}
+                                {(() => {
+                                  const badge = badgeOrigine(itp, currentUserId)
+                                  return badge ? (
+                                    <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${badge.cls}`}>
+                                      {badge.label}
+                                    </span>
+                                  ) : null
+                                })()}
+                              </span>
                             </SelectItem>
                           ))}
                         </SelectContent>

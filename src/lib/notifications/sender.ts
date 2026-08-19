@@ -216,11 +216,15 @@ export async function envoyerResumeQuotidien(): Promise<number> {
     try {
       const prefs = await chargerPrefsNotifAvecFallback(user)
       if (!prefs.resume) continue
+      // Le résumé embarquait les blocs « Cette semaine » (tâches ITP) et
+      // « Stocks bas » quel que soit l'état de leurs cases dans /parametres :
+      // décocher « Tâches ITP de la semaine » n'avait aucun effet ici, seulement
+      // sur l'alerte dédiée. On respecte la préférence des deux côtés.
       const [taches, alertesMeteo, tachesItpSemaine, stocksBas] = await Promise.all([
         chargerTachesDuJour(user.id),
         recupererAlertesMeteoJour(user.id),
-        chargerTachesItpSemaine(user.id),
-        chargerStocksBas(user.id),
+        prefs.itpSemaine ? chargerTachesItpSemaine(user.id) : Promise.resolve([]),
+        prefs.stocks ? chargerStocksBas(user.id) : Promise.resolve([]),
       ])
       const resume = construireResume(taches, alertesMeteo, { tachesItpSemaine, stocksBas })
       const { user: destinataire, headers } = await avecDesabonnement(user)

@@ -37,6 +37,10 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
 import { updateITPSchema, type UpdateITPInput, ITP_TYPE_PLANCHE } from "@/lib/validations/itp"
+import { decalageItpPourLecteur, decalerSemaine, labelZone } from "@/lib/calendrier-climat"
+import { nomAffichableItp } from "@/lib/itp-label"
+import { badgeOrigine, origineReferentiel } from "@/lib/referentiel-communaute"
+import type { ZoneClimat } from "@/lib/terroir"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 
 interface Espece {
@@ -75,6 +79,8 @@ interface ITPData {
   sourceUrl: string | null
   sourceRecordId: string | null
   sourceVersion: string | null
+  actif: boolean
+  zoneClimat: string | null
   sourceLicence: string | null
   statutValidation: string
   derniereRevision: string | null
@@ -94,6 +100,9 @@ export default function EditITPPage() {
   const [isLoading, setIsLoading] = React.useState(true)
   const [isSubmitting, setIsSubmitting] = React.useState(false)
   const [especes, setEspeces] = React.useState<Espece[]>([])
+  // Zone de l'exploitation : sert à dire, sous les semaines de la source, ce
+  // que la planification appliquera réellement (une seule vérité, énoncée).
+  const [zoneUser, setZoneUser] = React.useState<ZoneClimat | null>(null)
   const [itpData, setItpData] = React.useState<ITPData | null>(null)
 
   const form = useForm<UpdateITPInput>({
@@ -104,10 +113,16 @@ export default function EditITPPage() {
   React.useEffect(() => {
     async function loadData() {
       try {
-        const [especesRes, itpRes] = await Promise.all([
+        const [especesRes, itpRes, climatRes] = await Promise.all([
           fetch("/api/especes?pageSize=500"),
           fetch(`/api/itps/${encodeURIComponent(id)}`),
+          fetch("/api/calendrier-climat"),
         ])
+
+        if (climatRes.ok) {
+          const climat = await climatRes.json()
+          setZoneUser((climat?.zone ?? null) as ZoneClimat | null)
+        }
 
         if (especesRes.ok) {
           const especesData = await especesRes.json()
@@ -123,6 +138,7 @@ export default function EditITPPage() {
 
         // Remplir le formulaire
         form.reset({
+          nom: itp.nom ?? itp.id,
           especeId: itp.especeId,
           semaineSemis: itp.semaineSemis,
           semainePlantation: itp.semainePlantation,
@@ -186,9 +202,18 @@ export default function EditITPPage() {
         throw new Error(error.error || "Erreur lors de la mise a jour")
       }
 
+      const maj = await response.json().catch(() => null)
+      const doublon = maj?.doublonPotentiel as { id: string; nom: string } | undefined
+      // On nomme l'itinéraire, pas son identifiant technique : pour un ITP
+      // personnel, `id` est un cuid opaque qui ne dit rien à personne.
+      const libelle = payload.nom ?? itpData?.nom ?? id
       toast({
-        title: "ITP mis a jour",
-        description: `L'ITP "${id}" a été modifié`,
+        title: "Itinéraire mis à jour",
+        description:
+          `« ${libelle} » a été modifié.` +
+          (doublon
+            ? ` Attention : « ${doublon.nom} » porte désormais le même nom dans le catalogue visible.`
+            : ""),
       })
       router.push("/maraichage/itps")
     } catch (error) {
@@ -256,6 +281,9 @@ export default function EditITPPage() {
   }
 
   const currentUserId = (session?.user as { id?: string } | undefined)?.id
+  const decalageAffiche = itpData
+    ? decalageItpPourLecteur(itpData, zoneUser, currentUserId ?? null)
+    : 0
   const canEdit =
     !itpData?.sourceRecordId &&
     (session?.user?.role === "ADMIN" ||
@@ -275,7 +303,16 @@ export default function EditITPPage() {
           </Link>
           <div className="flex items-center gap-2">
             <Route className="h-6 w-6 text-indigo-600" />
-            <h1 className="text-xl font-bold">{itpData?.nom ?? id}</h1>
+            <h1 className="text-xl font-bold">{itpData ? nomAffichableItp(itpData) : id}</h1>
+            {itpData &&
+              (() => {
+                const badge = badgeOrigine(itpData, currentUserId)
+                return badge ? (
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${badge.cls}`}>
+                    {badge.label}
+                  </span>
+                ) : null
+              })()}
           </div>
         </div>
         {itpData && (
@@ -354,10 +391,26 @@ export default function EditITPPage() {
               </Card>
             )}
 
-            {!canEdit && (
+            {itpData && !itpData.actif && (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                <p className="font-medium">Itinéraire retiré du service</p>
+                <p className="mt-1">
+                  Les semaines publiées par la source sortent de l&apos;intervalle ISO 1–52 : cet
+                  itinéraire est conservé pour audit mais n&apos;est plus proposé à la planification
+                  ni à la création d&apos;une culture.
+                </p>
+              </div>
+            )}
+
+            {!canEdit && itpData && (
               <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-600">
-                Cette référence officielle est consultable mais non modifiable. Créez un ITP
-                personnel pour l&apos;adapter à votre ferme.
+                {/* Le message annonçait « Cette référence officielle » pour TOUT
+                    itinéraire non modifiable — donc aussi pour la contribution
+                    d'un autre membre, présentée au lecteur comme une référence
+                    du catalogue. */}
+                {origineReferentiel(itpData, currentUserId) === 'communaute'
+                  ? "Itinéraire proposé par un membre de la communauté : consultable, non vérifié par Gleba et non modifiable ici. Créez votre propre itinéraire pour l'adapter à votre ferme."
+                  : "Référence du catalogue Gleba : consultable mais non modifiable. Créez un ITP personnel pour l'adapter à votre ferme."}
               </div>
             )}
 
@@ -366,13 +419,38 @@ export default function EditITPPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Identification</CardTitle>
-                <CardDescription>Espèce associée</CardDescription>
+                <CardDescription>Nom affiché et espèce associée</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="p-3 bg-slate-100 rounded-md">
-                  <span className="text-sm text-slate-500">Identifiant: </span>
+                  <span className="text-sm text-slate-500">Identifiant technique : </span>
                   <span className="font-medium">{id}</span>
                 </div>
+
+                {/* Le nom est un affichage, pas une clé : il reste corrigeable
+                    sans toucher à l'identifiant, qui porte les cultures et les
+                    rotations déjà rattachées. */}
+                <FormField
+                  control={form.control}
+                  name="nom"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Nom</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="Nom de l'itinéraire"
+                          {...field}
+                          value={field.value ?? ""}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        Tel qu&apos;il apparaîtra partout dans l&apos;application. Corriger le nom ne
+                        casse aucune culture ni aucune rotation.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
                 <FormField
                   control={form.control}
@@ -410,7 +488,32 @@ export default function EditITPPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Calendrier</CardTitle>
-                <CardDescription>Semaines de semis, plantation et récolte (1-52)</CardDescription>
+                <CardDescription>
+                  Semaines de semis, plantation et récolte (1-52), telles que les donne la source
+                  {itpData?.zoneClimat ? ` (climat de calage : ${labelZone(itpData.zoneClimat as ZoneClimat)})` : ""}
+                </CardDescription>
+                {decalageAffiche !== 0 && (
+                  <p className="mt-2 rounded-md bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+                    Dans votre zone ({labelZone(zoneUser)}), la planification et la création
+                    d&apos;une culture utilisent{" "}
+                    {[
+                      itpData?.semaineSemis
+                        ? `semis S${decalerSemaine(itpData.semaineSemis, decalageAffiche)}`
+                        : null,
+                      itpData?.semainePlantation
+                        ? `plantation S${decalerSemaine(itpData.semainePlantation, decalageAffiche)}`
+                        : null,
+                      itpData?.semaineRecolte
+                        ? `récolte S${decalerSemaine(itpData.semaineRecolte, decalageAffiche)}`
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}{" "}
+                    ({decalageAffiche > 0 ? "+" : "−"}
+                    {Math.abs(decalageAffiche)} semaine
+                    {Math.abs(decalageAffiche) > 1 ? "s" : ""}).
+                  </p>
+                )}
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-3 gap-4">

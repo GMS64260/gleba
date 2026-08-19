@@ -25,10 +25,10 @@
  */
 
 import { addDays, getISOWeek, getISOWeekYear, startOfWeek } from "date-fns"
-import { calculerDateDepuisSemaine, dateSemaineChrono } from "@/lib/assistant-helpers"
+import { calculerDateDepuisSemaine, semaineAbsolue } from "@/lib/assistant-helpers"
 import {
   appliquerDecalageItp,
-  decalageItpPourZone,
+  decalageItpPourLecteur,
   itpApplicableAZone,
 } from "@/lib/calendrier-climat"
 import type { ZoneClimat } from "@/lib/terroir"
@@ -83,6 +83,8 @@ export function semaineCourante(reference: Date = new Date()): SemaineCourante {
 /** Champs d'un ITP utiles au calcul des opérations hebdomadaires. */
 export interface ItpSemaineInput {
   id: string
+  /** null = catalogue officiel ; renseigné = ITP personnel d'un membre. */
+  userId?: string | null
   zoneClimat: ZoneClimat | null
   semaineSemis?: number | null
   semainePlantation?: number | null
@@ -124,20 +126,31 @@ export function operationsItp(
     ops.push({ type: "semis", debut, fin: new Date(debut.getTime() + 6 * JOUR_MS) })
   }
 
+  // Cascade en semaines ABSOLUES : chaque jalon sert de référence au suivant sous
+  // sa forme reportée (> 52 si l'étape est passée à l'année suivante). Passer la
+  // semaine bornée 1–52 perdait le report et ramenait la récolte avant la
+  // plantation.
+  const semisAbsolu = decale.semaineSemis != null ? semaineAbsolue(decale.semaineSemis) : null
+  let plantationAbsolue: number | null = null
   if (decale.semainePlantation != null) {
-    const debut = dateSemaineChrono(annee, decale.semainePlantation, decale.semaineSemis ?? null)
+    plantationAbsolue = semaineAbsolue(decale.semainePlantation, semisAbsolu)
+    const debut = calculerDateDepuisSemaine(annee, plantationAbsolue)
     ops.push({ type: "plantation", debut, fin: new Date(debut.getTime() + 6 * JOUR_MS) })
   }
 
   if (decale.semaineRecolte != null) {
-    const debut = dateSemaineChrono(
+    const debut = calculerDateDepuisSemaine(
       annee,
-      decale.semaineRecolte,
-      decale.semainePlantation ?? decale.semaineSemis ?? null
+      semaineAbsolue(decale.semaineRecolte, plantationAbsolue ?? semisAbsolu)
     )
+    // Fenêtre de récolte à cheval sur le 31 décembre : « S50 → S3 » vaut 6
+    // semaines, pas une. La soustraction nue rendait un nombre négatif ramené à 1
+    // par le Math.max, alors que le calendrier ITP, lui, dessine bien les deux
+    // barres (GanttRow). 41 itinéraires sont dans ce cas, 59 après calage
+    // climatique.
     const nbSemaines =
       decale.semaineRecolteFin != null
-        ? Math.max(1, decale.semaineRecolteFin - decale.semaineRecolte + 1)
+        ? ((decale.semaineRecolteFin - decale.semaineRecolte + 52) % 52) + 1
         : decale.dureeRecolte != null
           ? Math.max(1, decale.dureeRecolte)
           : 1
@@ -203,7 +216,7 @@ const ORDRE_TYPE: Record<TypeOperationItp, number> = { semis: 0, plantation: 1, 
  */
 export function tachesItpSemainePourCultures(
   cultures: CultureItpInput[],
-  options: { userZone?: ZoneClimat | null; aujourdHui?: Date } = {}
+  options: { userZone?: ZoneClimat | null; lecteurId?: string | null; aujourdHui?: Date } = {}
 ): TacheItpSemaine[] {
   const cible = semaineCourante(options.aujourdHui ?? new Date())
   const taches: TacheItpSemaine[] = []
@@ -216,7 +229,14 @@ export function tachesItpSemainePourCultures(
     if (!itpApplicableAZone(itp.zoneClimat, options.userZone ?? null)) continue
 
     const anneeCulture = culture.annee ?? cible.annee
-    const decalageZone = decalageItpPourZone(itp.zoneClimat, options.userZone ?? null)
+    // Calage du LECTEUR : même règle que la liste ITP, la planification et les
+    // calendriers. `decalageItpPourZone` seul déplaçait les semaines qu'un
+    // membre avait saisies dans son propre climat (QA cmsqmujo9).
+    const decalageZone = decalageItpPourLecteur(
+      itp,
+      options.userZone ?? null,
+      options.lecteurId ?? null
+    )
 
     for (const op of operationsItpDansSemaine(itp, cible, { anneeCulture, decalageZone })) {
       if (culture[FAIT_PAR_TYPE[op.type]]) continue

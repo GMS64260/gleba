@@ -4,6 +4,7 @@
  */
 
 import { PrismaClient } from "@prisma/client"
+import { normalizeReferentielKey } from '../src/lib/normalize'
 import {
   familles,
   fournisseurs,
@@ -194,6 +195,12 @@ async function main() {
       update: {},
       create: {
         id: itp.id,
+        // Le libellé et sa clé de dédup, sans quoi l'entrée est affichée par son
+        // identifiant brut et échappe à la recherche normalisée. La migration
+        // `catalogue_cle_technique` avait rempli les lignes EXISTANTES ; ce seed,
+        // rejoué à chaque démarrage du conteneur, créait sans ces colonnes.
+        nom: itp.id,
+        nomNormalise: normalizeReferentielKey(itp.id),
         especeId: itp.especeId || null,
         semaineSemis: itp.semaineSemis || null,
         semainePlantation: itp.semainePlantation || null,

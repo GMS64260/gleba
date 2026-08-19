@@ -23,7 +23,7 @@ const resume: ResumeQuotidien = {
 }
 
 describe("template irrigation rappel", () => {
-  it("utilise un objet et un accent ambre avec le CTA calendrier", () => {
+  it("utilise un objet et un accent ambre, et renvoie vers un écran qui existe", () => {
     const email = alerteUrgenteEmail(user, {
       type: "irrigation-rappel",
       titre: "Tomate — planche S4",
@@ -34,8 +34,10 @@ describe("template irrigation rappel", () => {
     expect(email.subject).toBe("[Gleba] Irrigation à faire : Tomate — planche S4")
     expect(email.html).toContain("Irrigation à faire")
     expect(email.html).toContain("linear-gradient(135deg,#b45309,#f59e0b)")
-    expect(email.html).toContain('href="https://gleba.fr/calendrier"')
-    expect(email.html).toContain("Voir le calendrier →")
+    // `/calendrier` n'a jamais existé : le lien tombait en 404.
+    expect(email.html).toContain('href="https://gleba.fr/taches"')
+    expect(email.html).toContain("Voir mes tâches →")
+    expect(email.html).not.toContain('href="https://gleba.fr/calendrier"')
   })
 })
 

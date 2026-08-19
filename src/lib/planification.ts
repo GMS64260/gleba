@@ -6,8 +6,9 @@
 import prisma from '@/lib/prisma'
 import { getISOWeek, getISOWeekYear } from 'date-fns'
 import { calculerDateDepuisSemaine, dateSemaineChrono } from './assistant-helpers'
+import { whereItpUtilisable } from './itp-acces'
 import { alertesAssociations } from './associations-alertes'
-import { appliquerDecalageItp, decalageItpPourZone } from './calendrier-climat'
+import { appliquerDecalageItp, decalageItpPourLecteur } from './calendrier-climat'
 import { semaineSemisEffective } from './cultures/dates-itp'
 import type { StatutSemence } from './semences/calcul'
 import { zoneEffectiveUser } from './terroir'
@@ -438,7 +439,7 @@ export async function getCulturesPrevues(
       const itpCalibreM1 = detail.itp
         ? appliquerDecalageItp(
             detail.itp,
-            decalageItpPourZone(detail.itp.zoneClimat, userZone)
+            decalageItpPourLecteur(detail.itp, userZone, userId)
           )
         : null
       const semainesM1 = coherenceSemaines({
@@ -550,7 +551,7 @@ export async function getCulturesPrevues(
       const itpCalibreM2 = culture.itp
         ? appliquerDecalageItp(
             culture.itp,
-            decalageItpPourZone(culture.itp.zoneClimat, userZone)
+            decalageItpPourLecteur(culture.itp, userZone, userId)
           )
         : null
       const semainesM2 = coherenceSemaines({
@@ -1237,13 +1238,26 @@ export async function getAssociations(
 export async function creerCulturesBatch(
   userId: string,
   cultures: { plancheId: string; itpId: string; annee: number; varieteId?: string }[]
-): Promise<{ created: number; cultures: { id: number; plancheId: string; especeId: string }[] }> {
+): Promise<{
+  created: number
+  cultures: { id: number; plancheId: string; especeId: string }[]
+  ignorees: { plancheId: string; itpId: string; motif: string }[]
+}> {
   const results: { id: number; plancheId: string; especeId: string }[] = []
+  // Quatre motifs faisaient jusqu'ici disparaître une ligne en silence : la
+  // réponse annonçait « 3 cultures créées » sur 5 demandées sans dire lesquelles
+  // ni pourquoi. Même famille que la QA cmsw8wni8 (2 cultures absentes du
+  // total) : on n'écarte plus rien sans le nommer.
+  const ignorees: { plancheId: string; itpId: string; motif: string }[] = []
 
   // Recuperer les ITPs pour avoir les infos necessaires
   const itpIds = [...new Set(cultures.map(c => c.itpId))]
+  // Le correctif IDOR de 2026-07 avait borné la résolution des PLANCHES à
+  // celles de l'utilisateur (cf. plus bas) mais laissé l'ITP en accès libre :
+  // n'importe quel identifiant faisait l'affaire, y compris l'itinéraire privé
+  // d'un autre membre ou un itinéraire retiré du service.
   const itps = await prisma.iTP.findMany({
-    where: { id: { in: itpIds } },
+    where: { AND: [{ id: { in: itpIds } }, whereItpUtilisable(userId)] },
     include: { espece: true },
   })
   const itpMap = new Map(itps.map(itp => [itp.id, itp]))
@@ -1263,16 +1277,38 @@ export async function creerCulturesBatch(
 
   for (const culture of cultures) {
     const itp = itpMap.get(culture.itpId)
-    if (!itp || !itp.especeId) continue
+    if (!itp) {
+      ignorees.push({
+        plancheId: culture.plancheId,
+        itpId: culture.itpId,
+        motif: "itinéraire introuvable, privé ou retiré du service",
+      })
+      continue
+    }
+    if (!itp.especeId) {
+      ignorees.push({
+        plancheId: culture.plancheId,
+        itpId: culture.itpId,
+        motif: "itinéraire sans espèce rattachée",
+      })
+      continue
+    }
     const itpCalibre = appliquerDecalageItp(
       itp,
-      decalageItpPourZone(itp.zoneClimat, userZone)
+      decalageItpPourLecteur(itp, userZone, userId)
     )
 
     // Resolve planche nom → cuid (appartenance vérifiée : nom OU id de l'user)
     const plancheCuidId = plancheNomToId.get(culture.plancheId)
       ?? (plancheIdsUser.has(culture.plancheId) ? culture.plancheId : null)
-    if (!plancheCuidId) continue // planche inconnue pour cet utilisateur → on ignore
+    if (!plancheCuidId) {
+      ignorees.push({
+        plancheId: culture.plancheId,
+        itpId: culture.itpId,
+        motif: "planche inconnue dans votre exploitation",
+      })
+      continue
+    }
 
     // Verifier si la culture existe deja
     const existing = await prisma.culture.findFirst({
@@ -1284,7 +1320,14 @@ export async function creerCulturesBatch(
       },
     })
 
-    if (existing) continue
+    if (existing) {
+      ignorees.push({
+        plancheId: culture.plancheId,
+        itpId: culture.itpId,
+        motif: `déjà une culture de ${itp.especeId} sur cette planche en ${culture.annee}`,
+      })
+      continue
+    }
 
     // Calculer les dates a partir des semaines
     const annee = culture.annee
@@ -1398,6 +1441,7 @@ export async function creerCulturesBatch(
   return {
     created: results.length,
     cultures: results,
+    ignorees,
   }
 }
 

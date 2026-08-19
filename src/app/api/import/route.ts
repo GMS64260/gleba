@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
+import { nomItpDepuisSaisie } from '@/lib/itp-nom'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { normalizeVarieteName } from '@/lib/normalize'
 import { invalidateKpi } from '@/lib/kpi'
@@ -74,6 +75,8 @@ interface ImportData {
   }>
   itps?: Array<{
     id: string
+    /** Libellé exporté ; à défaut l'identifiant fait office de nom. */
+    nom?: string | null
     especeId?: string | null
     semaineSemis?: number | null
     semainePlantation?: number | null
@@ -495,9 +498,20 @@ export async function POST(request: NextRequest) {
           if (!especeExists) continue
         }
 
+        // Le libellé et sa clé de dédup accompagnent la création : sans eux,
+        // l'ITP importé s'affiche par son identifiant technique et sort de la
+        // recherche normalisée. À la mise à jour, on ne réécrit le nom que si le
+        // fichier en fournit un — l'import ne doit pas écraser un libellé
+        // corrigé depuis l'interface.
+        const nomImporte =
+          typeof item.nom === 'string' && item.nom.trim() ? item.nom : item.id
+        const nomItp = nomItpDepuisSaisie(nomImporte)
         await tx.iTP.upsert({
           where: { id: item.id },
           update: {
+            ...(typeof item.nom === 'string' && item.nom.trim()
+              ? { nom: nomItp.nom, nomNormalise: nomItp.nomNormalise }
+              : {}),
             especeId: item.especeId,
             semaineSemis: item.semaineSemis,
             semainePlantation: item.semainePlantation,
@@ -516,6 +530,8 @@ export async function POST(request: NextRequest) {
           },
           create: {
             id: item.id,
+            nom: nomItp.nom,
+            nomNormalise: nomItp.nomNormalise,
             especeId: item.especeId,
             semaineSemis: item.semaineSemis,
             semainePlantation: item.semainePlantation,

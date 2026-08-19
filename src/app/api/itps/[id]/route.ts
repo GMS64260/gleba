@@ -10,6 +10,12 @@ import prisma from '@/lib/prisma'
 import { updateITPSchema } from '@/lib/validations'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { peutEditerReferentiel, visibiliteReferentiel } from '@/lib/referentiel-communaute'
+import {
+  conflitNomItp,
+  doublonVisibleItp,
+  messageConflitNomItp,
+  nomItpDepuisSaisie,
+} from '@/lib/itp-nom'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -48,7 +54,9 @@ export async function GET(
     // Évite un toast d'erreur frustrant quand le user devine l'URL.
     if (!itp) {
       itp = await prisma.iTP.findFirst({
-        where: { AND: [{ especeId: id }, visibiliteReferentiel(userId)] },
+        // Le repli ne doit pas ramener un itinéraire retiré du service : il
+        // serait proposé comme s'il faisait référence.
+        where: { AND: [{ especeId: id }, { actif: true }, visibiliteReferentiel(userId)] },
         include: {
           espece: { include: { famille: true } },
           _count: {
@@ -168,11 +176,45 @@ export async function PUT(
       }
     }
 
+    // Renommage. Le libellé est conservé tel que saisi, la clé de dédup est
+    // recalculée dans le même mouvement, et l'unicité est revérifiée dans le
+    // périmètre qui s'applique (QA cmswxyuoi). Sans cela, `nomNormalise`
+    // aurait divergé du nom affiché dès le premier renommage : recherche
+    // normalisée en échec et doublons acceptés.
+    let renommage: { nom: string; nomNormalise: string } | null = null
+    let cleModifiee = false
+    if (data.nom !== undefined) {
+      const propose = nomItpDepuisSaisie(data.nom)
+      if (!propose.nom) {
+        return NextResponse.json(
+          { error: "Le nom de l'ITP ne peut pas être vide." },
+          { status: 400 }
+        )
+      }
+      cleModifiee = propose.nomNormalise !== (existing.nomNormalise ?? '')
+      if (cleModifiee) {
+        const conflit = await conflitNomItp(prisma, {
+          nom: propose.nom,
+          nomNormalise: propose.nomNormalise,
+          proprietaireId: existing.userId,
+          exclureId: id,
+        })
+        if (conflit) {
+          return NextResponse.json(
+            { error: messageConflitNomItp(conflit, existing.userId === null), conflit: conflit.id },
+            { status: 409 }
+          )
+        }
+      }
+      renommage = propose
+    }
+
     // Mise à jour (l'auteur d'un perso peut basculer « proposer à la communauté »).
     const itp = await prisma.iTP.update({
       where: { id },
       data: {
         ...data,
+        ...(renommage ?? {}),
         ...(existing.userId && body.partageCommunaute !== undefined
           ? { partageCommunaute: body.partageCommunaute === true }
           : {}),
@@ -182,7 +224,24 @@ export async function PUT(
       },
     })
 
-    return NextResponse.json(itp)
+    // Renommage vers un nom déjà porté ailleurs dans le catalogue visible :
+    // signalé, jamais bloqué (le périmètre d'unicité, lui, est déjà garanti).
+    // Uniquement si le nom a réellement changé : rappeler un homonyme
+    // préexistant à chaque enregistrement de la fiche serait du bruit.
+    const doublon = renommage && cleModifiee
+      ? await doublonVisibleItp(prisma, {
+          nomNormalise: renommage.nomNormalise,
+          lecteurId: session!.user.id,
+          exclureId: id,
+        })
+      : null
+
+    return NextResponse.json({
+      ...itp,
+      ...(doublon
+        ? { doublonPotentiel: { id: doublon.id, nom: doublon.nom ?? doublon.id } }
+        : {}),
+    })
   } catch (error) {
     console.error('PUT /api/itps/[id] error:', error)
     return NextResponse.json(
@@ -204,7 +263,11 @@ export async function DELETE(
   try {
     const { id } = await params
 
-    // Vérifier existence et dépendances
+    // Dépendances : le total TOUS COMPTES protège l'intégrité (un ITP partagé
+    // peut porter les cultures d'autres membres), mais la liste n'affiche que le
+    // compteur du compte courant. Un refus « car il est utilisé » sur un
+    // écran qui affiche « 0 culture » est incompréhensible : on distingue donc
+    // les deux dans le message.
     const itp = await prisma.iTP.findUnique({
       where: { id },
       include: {
@@ -216,6 +279,9 @@ export async function DELETE(
         },
       },
     })
+    const culturesDuCompte = itp
+      ? await prisma.culture.count({ where: { itpId: id, userId: session!.user.id } })
+      : 0
 
     if (!itp) {
       return NextResponse.json(
@@ -241,13 +307,25 @@ export async function DELETE(
 
     // Vérifier si des cultures ou rotations sont liées
     if (itp._count.cultures > 0 || itp._count.rotationsDetails > 0) {
+      const culturesAilleurs = itp._count.cultures - culturesDuCompte
+      const parties = [
+        culturesDuCompte > 0 ? `${culturesDuCompte} de vos cultures` : null,
+        culturesAilleurs > 0
+          ? `${culturesAilleurs} culture(s) d'autres membres de la communauté`
+          : null,
+        itp._count.rotationsDetails > 0
+          ? `${itp._count.rotationsDetails} étape(s) de rotation`
+          : null,
+      ].filter(Boolean)
       return NextResponse.json(
         {
-          error: `Impossible de supprimer l'ITP "${id}" car il est utilisé`,
+          error: `Impossible de supprimer cet itinéraire : il est utilisé par ${parties.join(', ')}.`,
           details: {
             cultures: itp._count.cultures,
+            culturesDuCompte,
+            culturesAutresMembres: culturesAilleurs,
             rotations: itp._count.rotationsDetails,
-          }
+          },
         },
         { status: 409 }
       )

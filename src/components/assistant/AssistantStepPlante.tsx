@@ -46,7 +46,7 @@ import {
   getSemaineDepuisDate,
 } from "@/lib/assistant-helpers"
 import type { EspeceData, ITPData, VarieteData, CultureData } from "./AssistantDialog"
-import { libelleItp } from "@/lib/itp-label"
+import { nomAffichableItp } from "@/lib/itp-label"
 
 // ---------------------------------------------------------------------------
 // Props
@@ -259,7 +259,7 @@ export function AssistantStepPlante({
       setItpsError(null)
       try {
         const res = await fetch(
-          `/api/itps?especeId=${encodeURIComponent(especeId)}&pageSize=1000&applicable=1&calibre=1&sortBy=statutValidation&sortOrder=desc`
+          `/api/itps?especeId=${encodeURIComponent(especeId)}&pageSize=1000&applicable=1&calibre=1&sortBy=confiance`
         )
         if (!res.ok) throw new Error("Erreur lors du chargement des ITPs")
         const data = await res.json()
@@ -692,7 +692,7 @@ export function AssistantStepPlante({
                             <div className="flex items-center justify-between">
                               <CardTitle className="text-sm font-medium flex items-center gap-2">
                                 <Sprout className="h-4 w-4 text-green-600" />
-                                {libelleItp(itpItem.nom ?? itpItem.id)}
+                                {nomAffichableItp(itpItem)}
                                 {isSelected && (
                                   <Check className="h-4 w-4 text-green-600" />
                                 )}

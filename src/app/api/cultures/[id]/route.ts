@@ -16,6 +16,9 @@ import { invalidateKpi } from '@/lib/kpi'
 import { etatCulture } from '@/lib/cultures/etat'
 import { CHAMP_DATE_ETAPE, dateExecutionARecaler } from '@/lib/cultures/execution'
 import type { ChampDateEtape, ChampEtape } from '@/lib/cultures/execution'
+import { whereItpUtilisable } from '@/lib/itp-acces'
+import { appliquerDecalageItp, decalageItpPourLecteur } from '@/lib/calendrier-climat'
+import { zoneEffectiveUser } from '@/lib/terroir'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -140,18 +143,57 @@ export async function PUT(
       )
     }
 
+    const data = validationResult.data
+
+    // Changer l'ITP d'une culture est une écriture : l'itinéraire visé doit être
+    // visible par ce membre ET encore en service, comme à la création. Sans ce
+    // contrôle, l'édition rattachait une culture à l'itinéraire privé d'un autre
+    // compte, que la réponse `include: { itp }` renvoyait ensuite.
+    if (data.itpId && data.itpId !== existing.itpId) {
+      const cible = await prisma.iTP.findFirst({
+        where: { AND: [{ id: data.itpId }, whereItpUtilisable(session!.user.id)] },
+        select: { id: true },
+      })
+      if (!cible) {
+        return NextResponse.json(
+          {
+            error: `L'itinéraire technique « ${data.itpId} » n'est pas disponible : introuvable, privé, ou retiré du service.`,
+          },
+          { status: 400 }
+        )
+      }
+    }
+
     // Audit Marc 2026-05-14 — Bug 04 : valider les dates contre l'ITP en
     // modification également (warnings non bloquants remontés au client).
     const dateWarnings: string[] = []
-    const data = validationResult.data
     if (data.dateSemis || data.datePlantation || data.dateRecolte) {
       try {
         const itpId = data.itpId ?? existing.itpId
-        const itp = itpId
-          ? await prisma.iTP.findUnique({
-              where: { id: itpId },
-              select: { semaineSemis: true, semainePlantation: true, semaineRecolte: true },
+        const itpBrut = itpId
+          ? await prisma.iTP.findFirst({
+              where: { AND: [{ id: itpId }, whereItpUtilisable(session!.user.id)] },
+              select: {
+                userId: true,
+                zoneClimat: true,
+                semaineSemis: true,
+                semainePlantation: true,
+                semaineRecolte: true,
+              },
             })
+          : null
+        // Même référentiel que celui affiché : semaines transposées vers la zone
+        // de l'exploitation, sinon l'écart de calage franchit la tolérance et
+        // fabrique un avertissement sur des dates que l'écran a préremplies.
+        const itp = itpBrut
+          ? appliquerDecalageItp(
+              itpBrut,
+              decalageItpPourLecteur(
+                itpBrut,
+                await zoneEffectiveUser(prisma, session!.user.id),
+                session!.user.id
+              )
+            )
           : null
         const annee = data.annee ?? existing.annee ?? new Date().getFullYear()
         const v = validateCultureDates({

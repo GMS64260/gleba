@@ -49,6 +49,11 @@ export async function POST(request: NextRequest) {
       success: true,
       created: result.created,
       cultures: result.cultures,
+      // Lignes demandées mais non créées, avec leur motif : sans elles, l'écran
+      // annonçait un nombre de créations inférieur à la demande sans expliquer
+      // l'écart.
+      ignorees: result.ignorees,
+      demandees: cultures.length,
     }, { status: 201 })
   } catch (error) {
     console.error('POST /api/planification/creer-cultures error:', error)

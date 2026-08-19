@@ -5,6 +5,7 @@
  */
 
 import * as React from "react"
+import { useSession } from "next-auth/react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, Sprout, Save } from "lucide-react"
@@ -51,7 +52,8 @@ import {
   DASHBOARD_YEAR_STORAGE_KEY,
   resolveDashboardYear,
 } from "@/lib/dashboard-year"
-import { libelleItp } from "@/lib/itp-label"
+import { nomAffichableItp, nomAffichableItpAvecFenetre } from "@/lib/itp-label"
+import { badgeOrigine } from "@/lib/referentiel-communaute"
 import { datesDepuisItp, recolteApresDebut, semaineSemisEffective } from "@/lib/cultures/dates-itp"
 
 // Bug #1 — payload de violation renvoyé par POST /api/cultures (status 409).
@@ -66,6 +68,9 @@ type RotationViolation = {
 interface ITPData {
   id: string
   nom: string | null
+  // null = catalogue Gleba officiel ; renseigné = libellé saisi par un membre,
+  // que `nomAffichableItp` rend alors tel quel (QA cmswxyuoi).
+  userId: string | null
   especeId: string | null
   semaineSemis: number | null
   semainePlantation: number | null
@@ -74,7 +79,10 @@ interface ITPData {
   // n'ont ni semaine de semis ni semaine de plantation : leur fenêtre
   // d'implantation est le seul jalon de début de cycle exploitable.
   semaineImplantationDebut: number | null
+  semaineImplantationFin: number | null
   dureeCulture: number | null
+  /** Arbres fruitiers : années entre plantation et première récolte. */
+  delaiPremiereRecolteAnnees: number | null
   dureeRecolte: number | null
   nbRangs: number | null
   espacement: number | null
@@ -82,6 +90,8 @@ interface ITPData {
 }
 
 export default function NewCulturePage() {
+  const { data: session } = useSession()
+  const currentUserId = (session?.user as { id?: string } | undefined)?.id ?? null
   const router = useRouter()
   const { toast } = useToast()
   // Bug #12 — charger aussi le type d'espèce pour le combobox filtrable.
@@ -223,7 +233,7 @@ export default function NewCulturePage() {
     if (selectedEspece) {
       Promise.all([
         fetch(`/api/especes/${encodeURIComponent(selectedEspece)}`).then((r) => r.json()),
-        fetch(`/api/itps?especeId=${encodeURIComponent(selectedEspece)}&pageSize=1000&applicable=1&calibre=1&sortBy=statutValidation&sortOrder=desc`).then((r) => r.json()),
+        fetch(`/api/itps?especeId=${encodeURIComponent(selectedEspece)}&pageSize=1000&applicable=1&calibre=1&sortBy=confiance`).then((r) => r.json()),
       ])
         .then(([especeData, itpsData]) => {
           setVarietes(especeData.varietes || [])
@@ -553,7 +563,20 @@ export default function NewCulturePage() {
                         <SelectContent>
                           {itps.map((itp) => (
                             <SelectItem key={itp.id} value={itp.id}>
-                              {libelleItp(itp.nom ?? itp.id)}
+                              <span className="flex items-center gap-2">
+                                {nomAffichableItpAvecFenetre(itp)}
+                                {/* Origine dite dans la liste elle-même : sans
+                                    elle, la contribution d'un membre ne se
+                                    distinguait pas d'une référence du catalogue. */}
+                                {(() => {
+                                  const badge = badgeOrigine(itp, currentUserId)
+                                  return badge ? (
+                                    <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${badge.cls}`}>
+                                      {badge.label}
+                                    </span>
+                                  ) : null
+                                })()}
+                              </span>
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -644,7 +667,7 @@ export default function NewCulturePage() {
                   return (
                     <div className="flex items-center justify-between gap-2 text-xs text-slate-600 bg-blue-50 border border-blue-100 rounded p-2 mt-2">
                       <span>
-                        💡 Dates pré-remplies depuis l&apos;ITP <strong>{libelleItp(itp.nom ?? itp.id)}</strong> (
+                        💡 Dates pré-remplies depuis l&apos;ITP <strong>{nomAffichableItp(itp)}</strong> (
                         {[
                           itp.semaineSemis ? `${formatSemaine(itp.semaineSemis)} semis` : null,
                           // QA cmsfxvbab — ITP sans jalon semis/plantation : la

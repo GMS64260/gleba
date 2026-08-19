@@ -1,5 +1,6 @@
 import webpush from "web-push"
 import { APP_URL } from "./mail"
+import { CHEMIN_TACHES } from "./notifications/templates"
 import prisma from "./prisma"
 import type { AlerteUrgente } from "./notifications/types"
 
@@ -33,7 +34,7 @@ export function construirePayloadAlerteUrgente(alerte: AlerteUrgente): PushPaylo
   return {
     title: alerte.titre,
     body: alerte.message,
-    url: `${APP_URL}${alerte.type === "stock-bas" ? "/comptabilite/stocks" : "/calendrier"}`,
+    url: `${APP_URL}${alerte.type === "stock-bas" ? "/comptabilite/stocks" : CHEMIN_TACHES}`,
     tag: alerte.key,
   }
 }

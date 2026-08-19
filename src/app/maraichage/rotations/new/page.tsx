@@ -34,13 +34,20 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
+import { nomAffichableItpAvecFenetre } from "@/lib/itp-label"
 import { createRotationSchema, type CreateRotationInput } from "@/lib/validations"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 
 interface ITP {
   id: string
   nom: string | null
+  // Origine : le libellé d'un membre est rendu tel quel (cf. nomAffichableItp).
+  userId: string | null
   especeId: string | null
+  semaineImplantationDebut: number | null
+  semaineImplantationFin: number | null
+  semaineSemis: number | null
+  semainePlantation: number | null
   espece: {
     id: string
     nom: string | null
@@ -60,7 +67,7 @@ export default function NewRotationPage() {
   React.useEffect(() => {
     async function loadItps() {
       try {
-        const response = await fetch("/api/itps?pageSize=1000&applicable=1&sortBy=statutValidation&sortOrder=desc")
+        const response = await fetch("/api/itps?pageSize=1000&applicable=1&sortBy=confiance")
         if (response.ok) {
           const data = await response.json()
           setItps(data.data)
@@ -270,7 +277,7 @@ export default function NewRotationPage() {
                                         style={{ backgroundColor: itp.espece.couleur }}
                                       />
                                     )}
-                                    {itp.nom ?? itp.id}
+                                    {nomAffichableItpAvecFenetre(itp)}
                                     {itp.espece && (
                                       <span className="text-muted-foreground">
                                         ({itp.espece.nom ?? itp.espece.id})

@@ -119,17 +119,28 @@ export default function NewITPPage() {
         throw new Error(error.error || "Erreur lors de la creation")
       }
 
+      const cree = await response.json().catch(() => null)
+      const doublon = cree?.doublonPotentiel as { id: string; nom: string } | undefined
+
       // Ticket cmsx5zgno (QA 2026-08-17) — un ITP créé sans espèce ne le disait
       // pas : le message de succès était identique, et l'absence ne se voyait
       // qu'en revenant à la liste, où la colonne Espèce affiche « - ». Le
       // serveur refuse une espèce inconnue (400), donc un ITP « sans espèce »
       // signifie toujours qu'aucun choix n'est parvenu au serveur : autant
       // l'annoncer là où l'utilisateur peut encore agir.
+      // Le doublon est signalé, jamais bloqué : un itinéraire personnel peut
+      // légitimement porter le nom d'un itinéraire du catalogue. Le taire
+      // laissait le référentiel commun se remplir de quasi-doublons.
+      const mentionDoublon = doublon
+        ? ` Attention : « ${doublon.nom} » existe déjà dans le catalogue visible — vérifiez que vous ne le dupliquez pas.`
+        : ""
       toast({
         title: "ITP créé",
-        description: payload.especeId
-          ? `« ${data.id} » — espèce : ${payload.especeId}.`
-          : `« ${data.id} » — aucune espèce rattachée. Ouvrez la fiche pour en choisir une : sans espèce, l'ITP ne sera pas proposé à la création d'une culture.`,
+        description:
+          (payload.especeId
+            ? `« ${data.id} » — espèce : ${payload.especeId}.`
+            : `« ${data.id} » — aucune espèce rattachée. Ouvrez la fiche pour en choisir une : sans espèce, l'ITP ne sera pas proposé à la création d'une culture.`) +
+          mentionDoublon,
       })
       router.push("/maraichage/itps")
     } catch (error) {

@@ -9,6 +9,7 @@ import prisma from '@/lib/prisma'
 import { createRotationSchema } from '@/lib/validations'
 import { Prisma } from '@prisma/client'
 import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
+import { etapesRotationInvalides, messageEtapesInvalides } from '@/lib/rotations/itp-etapes'
 
 // GET /api/rotations
 export async function GET(request: NextRequest) {
@@ -110,7 +111,7 @@ export async function GET(request: NextRequest) {
 
 // POST /api/rotations
 export async function POST(request: NextRequest) {
-  const { error } = await requireAdminApi()
+  const { error, session } = await requireAdminApi()
   if (error) return error
 
   try {
@@ -126,6 +127,17 @@ export async function POST(request: NextRequest) {
     }
 
     const { details, ...rotationData } = validationResult.data
+
+    // Chaque étape doit pointer un itinéraire réellement exploitable : sans ce
+    // contrôle, un identifiant inexistant tombait en 500 (violation de clé
+    // étrangère) et un itinéraire retiré du service entrait dans le plan.
+    const etapesInvalides = await etapesRotationInvalides(prisma, session!.user.id, details)
+    if (etapesInvalides.length > 0) {
+      return NextResponse.json(
+        { error: messageEtapesInvalides(etapesInvalides), etapes: etapesInvalides },
+        { status: 400 }
+      )
+    }
 
     // Verifier si la rotation existe deja
     const existing = await prisma.rotation.findUnique({

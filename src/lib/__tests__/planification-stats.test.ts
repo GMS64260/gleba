@@ -16,7 +16,11 @@ vi.mock('@/lib/prisma', () => ({
     culture: { findMany: vi.fn() },
   },
 }))
-vi.mock('@/lib/terroir', () => ({
+// Mock partiel : `calendrier-climat` dérive ZONES_METROPOLE de ZONES_CLIMAT au
+// chargement, et `itp-acces` s'en sert. Un mock qui ne rend que
+// `zoneEffectiveUser` cassait l'import de tout le module.
+vi.mock('@/lib/terroir', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/terroir')>()),
   zoneEffectiveUser: terroirMocks.zoneEffectiveUser,
 }))
 

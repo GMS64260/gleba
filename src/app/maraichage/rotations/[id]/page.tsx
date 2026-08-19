@@ -35,6 +35,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
+import { nomAffichableItpAvecFenetre } from "@/lib/itp-label"
 import { confirmDialog } from "@/lib/global-dialog"
 import { updateRotationSchema, type UpdateRotationInput } from "@/lib/validations"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
@@ -42,7 +43,13 @@ import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 interface ITP {
   id: string
   nom: string | null
+  // Origine : le libellé d'un membre est rendu tel quel (cf. nomAffichableItp).
+  userId: string | null
   especeId: string | null
+  semaineImplantationDebut: number | null
+  semaineImplantationFin: number | null
+  semaineSemis: number | null
+  semainePlantation: number | null
   espece: {
     id: string
     nom: string | null
@@ -102,7 +109,7 @@ export default function EditRotationPage() {
     async function loadData() {
       try {
         const [itpsRes, rotationRes, planchesRes] = await Promise.all([
-          fetch("/api/itps?pageSize=1000&applicable=1&sortBy=statutValidation&sortOrder=desc"),
+          fetch("/api/itps?pageSize=1000&applicable=1&sortBy=confiance"),
           fetch(`/api/rotations/${encodeURIComponent(id)}`),
           fetch("/api/planches?pageSize=500"),
         ])
@@ -408,7 +415,7 @@ export default function EditRotationPage() {
                                         style={{ backgroundColor: itp.espece.couleur }}
                                       />
                                     )}
-                                    {itp.nom ?? itp.id}
+                                    {nomAffichableItpAvecFenetre(itp)}
                                     {itp.espece && (
                                       <span className="text-muted-foreground">
                                         ({itp.espece.nom ?? itp.espece.id})

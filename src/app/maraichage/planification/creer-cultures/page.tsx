@@ -156,10 +156,29 @@ function CreerCulturesContent() {
       }
 
       const result = await response.json()
-      toast({
-        title: "Cultures créées",
-        description: `${result.created} culture(s) créée(s) avec succès`,
-      })
+      // Le serveur écarte silencieusement une ligne dont l'itinéraire n'est plus
+      // utilisable, dont la planche n'est pas la vôtre, ou déjà couverte par une
+      // culture existante. On disait « 3 créées » sans dire que 5 étaient
+      // demandées : l'écart est désormais nommé, motif par motif.
+      const ignorees: { plancheId: string; itpId: string; motif: string }[] = result.ignorees ?? []
+      if (ignorees.length > 0) {
+        const motifs = [...new Set(ignorees.map((i) => i.motif))].join(" ; ")
+        toast({
+          variant: result.created > 0 ? "default" : "destructive",
+          title:
+            result.created > 0
+              ? `${result.created} culture(s) créée(s), ${ignorees.length} écartée(s)`
+              : "Aucune culture créée",
+          description: `Planches concernées : ${ignorees
+            .map((i) => i.plancheId)
+            .join(", ")}. Motif : ${motifs}.`,
+        })
+      } else {
+        toast({
+          title: "Cultures créées",
+          description: `${result.created} culture(s) créée(s) avec succès`,
+        })
+      }
 
       // Recharger les données
       fetchData()

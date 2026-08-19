@@ -111,7 +111,14 @@ const OUTREMER_ZONE: Record<string, ZoneClimat> = {
 export function zoneClimatiqueDepuisCodePostal(codePostal?: string | null): ZoneClimat | null {
   if (!codePostal) return null
   const cp = codePostal.trim()
-  if (!/^\d{2}/.test(cp)) return null
+  // Un code postal français fait CINQ chiffres. Accepter un préfixe (`/^\d{2}/`)
+  // faisait dériver une zone avec aplomb depuis une saisie tronquée : « 200 »
+  // devenait la Corse (méditerranéen, semis deux semaines plus tôt), « 2424 »
+  // la Dordogne alors que le code réel commençait probablement par un zéro
+  // perdu. Toute la calibration des ITP dépend de cette zone : mieux vaut
+  // « non déterminée » — qui n'applique aucun décalage et le dit — qu'une zone
+  // fausse et silencieuse. En prod, 4 exploitations sur 23 étaient concernées.
+  if (!/^\d{5}$/.test(cp)) return null
   if (cp.startsWith('97') || cp.startsWith('98')) return OUTREMER_ZONE[cp.slice(0, 3)] ?? null
   if (cp.startsWith('20')) return 'mediterraneen' // Corse (2A/2B)
   return DEPT_ZONE[cp.slice(0, 2)] ?? null

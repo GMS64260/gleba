@@ -32,6 +32,10 @@ import { AvisDialog } from "@/components/avis/AvisDialog"
 import { AvisCell } from "@/components/avis/AvisCell"
 import type { AvisStatsListe } from "@/lib/avis/types"
 import { badgeOrigine } from "@/lib/referentiel-communaute"
+import { libelleImplantationItp, nomAffichableItp } from "@/lib/itp-label"
+import { dureeCycleItpJours } from "@/lib/cultures/dates-itp"
+import { itpApplicableAZone } from "@/lib/calendrier-climat"
+import type { ZoneClimat } from "@/lib/terroir"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 
 // Type pour les ITPs avec relations
@@ -51,6 +55,7 @@ interface ITPWithRelations {
   semaineRecolteFin: number | null
   dureePepiniere: number | null
   dureeCulture: number | null
+  delaiPremiereRecolteAnnees: number | null
   nbRangs: number | null
   espacement: number | null
   notes: string | null
@@ -73,30 +78,27 @@ interface ITPWithRelations {
 }
 
 // PROMPT 05 — Audit agronomique : ne plus exposer les identifiants techniques
-// (ex. "ITP-AIL-01") en liste. On construit un libellé lisible à partir de
-// l'espèce, du mode de démarrage et du type de planche. L'identifiant reste
-// utilisé en BDD et sert d'ancre d'URL.
-function formatItpLabel(itp: ITPWithRelations): string {
-  const id = itp.id
-  // Officiel : l'id lisible EST le nom (fallback `nom` si besoin), sauf les
-  // identifiants techniques historiques "ITP-..." reconstruits depuis l'espèce.
-  // Perso : l'id est un cuid opaque → on affiche `nom`.
-  if (!/^ITP-/i.test(id)) return itp.nom ?? id
-  const espece = itp.espece?.nom ?? itp.espece?.id ?? itp.especeId ?? 'ITP'
-  const mode = itp.modeDemarrage ?? itp.typePlanche ?? 'plein champ'
-  return `${espece} — ${mode.toLowerCase()}`
-}
+// (ex. "ITP-AIL-01") en liste. La règle d'affichage d'un nom d'ITP est unique et
+// partagée (src/lib/itp-label.ts) : elle rend tel quel le libellé saisi par un
+// membre et ne « lisibilise » que les slugs du catalogue officiel.
+const formatItpLabel = (itp: ITPWithRelations): string => nomAffichableItp(itp)
 
 // Formatage semaine
 
 // Colonnes du tableau
-const columns: ColumnDef<ITPWithRelations>[] = [
+function colonnes(zoneUser: ZoneClimat | null): ColumnDef<ITPWithRelations>[] {
+  return [
   {
     accessorKey: "id",
     header: "ITP",
     cell: ({ row }) => {
       const itp = row.original
       const couleur = itp.espece?.couleur || itp.espece?.famille?.couleur || '#888888'
+      // Le catalogue liste TOUT le référentiel communautaire, y compris les
+      // itinéraires tropicaux dédiés. La création d'une culture, elle, ne
+      // propose que ceux applicables à la zone de l'exploitation : sans mention,
+      // l'utilisateur cherchait en vain un itinéraire vu ici.
+      const horsZone = !itpApplicableAZone(itp.zoneClimat, zoneUser)
       // L'identifiant interne reste accessible via `title` (debug, support).
       return (
         <div className="flex items-center gap-2" title={itp.id}>
@@ -105,6 +107,15 @@ const columns: ColumnDef<ITPWithRelations>[] = [
             style={{ backgroundColor: couleur }}
           />
           <span className="font-medium">{formatItpLabel(itp)}</span>
+          {horsZone && (
+            <Badge
+              variant="outline"
+              className="border-slate-300 text-[10px] text-slate-500"
+              title="Itinéraire calé sur une autre zone climatique : il n'est pas proposé à la création d'une culture dans votre exploitation."
+            >
+              hors zone
+            </Badge>
+          )}
         </div>
       )
     },
@@ -128,7 +139,7 @@ const columns: ColumnDef<ITPWithRelations>[] = [
               : formatSemaine(start)}
           </Badge>
           <p className="text-[11px] text-muted-foreground">
-            {itp.implantation ?? itp.modeDemarrage ?? "Non précisée"}
+            {libelleImplantationItp(itp)}
             {itp.forcage ? " · forcé" : ""}
           </p>
         </div>
@@ -157,9 +168,22 @@ const columns: ColumnDef<ITPWithRelations>[] = [
   {
     accessorKey: "dureeCulture",
     header: "Culture",
-    cell: ({ getValue }) => {
-      const val = getValue() as number | null
-      return val ? `${val}j` : "-"
+    // La colonne affichait `dureeCulture` brut alors que les dates d'une culture
+    // sont déduites de l'écart de semaines : 589 lignes portent deux durées
+    // différentes, et l'écran annonçait celle qui ne sert pas. On affiche la
+    // durée effectivement appliquée (`dureeCycleItpJours`, source unique), et on
+    // nomme la valeur déclarée quand elle diverge.
+    cell: ({ row }) => {
+      const itp = row.original
+      const effective = dureeCycleItpJours(itp)
+      if (!effective) return itp.dureeCulture ? `${itp.dureeCulture}j` : "-"
+      const declaree = itp.dureeCulture
+      const diverge = declaree != null && declaree > 0 && declaree !== effective
+      return (
+        <span title={diverge ? `Durée déclarée sur la fiche : ${declaree} j` : undefined}>
+          {effective}j{diverge ? " *" : ""}
+        </span>
+      )
     },
   },
   {
@@ -209,7 +233,8 @@ const columns: ColumnDef<ITPWithRelations>[] = [
     header: "Cultures",
     cell: ({ getValue }) => getValue() || 0,
   },
-]
+  ]
+}
 
 export default function ITPsPage() {
   const router = useRouter()
@@ -222,6 +247,7 @@ export default function ITPsPage() {
   const [pageCount, setPageCount] = React.useState(0)
   const [avisRef, setAvisRef] = React.useState<ITPWithRelations | null>(null)
   const [search, setSearch] = React.useState("")
+  const [zoneUser, setZoneUser] = React.useState<ZoneClimat | null>(null)
   const deferredSearch = React.useDeferredValue(search)
   const pageSize = 50
 
@@ -229,10 +255,15 @@ export default function ITPsPage() {
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
     try {
+      // `calibre=1` : les semaines renvoyées sont celles de VOTRE zone, comme
+      // dans Planification, le calendrier et le formulaire de culture. Sans ce
+      // paramètre, cet écran affichait les semaines du climat source et le même
+      // ITP n'avait pas les mêmes dates d'un écran à l'autre (QA cmsqmujo9).
       const params = new URLSearchParams({
         page: String(pageIndex + 1),
         pageSize: String(pageSize),
         avis: "1",
+        calibre: "1",
       })
       if (deferredSearch.trim()) params.set("search", deferredSearch.trim())
       const url = `/api/itps?${params.toString()}`
@@ -255,6 +286,13 @@ export default function ITPsPage() {
   React.useEffect(() => {
     fetchData()
   }, [fetchData])
+
+  React.useEffect(() => {
+    fetch("/api/calendrier-climat")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => d && setZoneUser((d.zone ?? null) as ZoneClimat | null))
+      .catch(() => {})
+  }, [])
 
   // Handlers
   const handleAdd = () => {
@@ -360,19 +398,39 @@ export default function ITPsPage() {
   }
 
   // Export CSV
-  const handleExport = () => {
-    const headers = ["ITP", "Espèce", "Début implantation", "Fin implantation", "Début récolte", "Fin récolte", "Conduite", "Qualité", "Source"]
-    const rows = data.map(i => [
+  //
+  // L'export ne portait que la PAGE affichée (50 lignes sur 773) sous un nom de
+  // fichier qui promettait le catalogue. On récupère l'ensemble du périmètre
+  // courant — recherche comprise — avant d'écrire le fichier, et on exporte le
+  // nom lisible en plus de l'identifiant technique.
+  const handleExport = async () => {
+    let lignes = data
+    try {
+      const params = new URLSearchParams({ page: "1", pageSize: "1000", calibre: "1" })
+      if (deferredSearch.trim()) params.set("search", deferredSearch.trim())
+      const res = await fetch(`/api/itps?${params.toString()}`)
+      if (res.ok) {
+        const tout = await res.json()
+        if (Array.isArray(tout?.data)) lignes = tout.data as ITPWithRelations[]
+      }
+    } catch {
+      // Réseau indisponible : on exporte au moins ce qui est à l'écran.
+    }
+
+    const headers = ["ITP", "Identifiant technique", "Espèce", "Début implantation", "Fin implantation", "Début récolte", "Fin récolte", "Conduite", "Qualité", "Zone de calage", "Source"]
+    const rows = lignes.map(i => [
+      formatItpLabel(i),
       i.id,
-      i.espece?.id || "",
+      i.espece?.nom || i.espece?.id || "",
       (i.semaineImplantationDebut ?? i.semainePlantation ?? i.semaineSemis)?.toString() || "",
       i.semaineImplantationFin?.toString() || "",
       i.semaineRecolte?.toString() || "",
       i.semaineRecolteFin?.toString() || "",
       i.typePlanche || "",
       i.statutValidation,
+      i.zoneClimat || "",
       i.sourceReference || "",
-    ])
+    ].map(champ => /[";\n]/.test(champ) ? `"${champ.replace(/"/g, '""')}"` : champ))
 
     const csv = [headers, ...rows].map(r => r.join(";")).join("\n")
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
@@ -386,7 +444,7 @@ export default function ITPsPage() {
 
   const columnsAvecAvis = React.useMemo<ColumnDef<ITPWithRelations>[]>(
     () => [
-      ...columns,
+      ...colonnes(zoneUser),
       {
         id: "avis",
         header: "Avis",
@@ -445,7 +503,7 @@ export default function ITPsPage() {
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [currentUserId]
+    [currentUserId, zoneUser]
   )
 
   return (
@@ -483,9 +541,14 @@ export default function ITPsPage() {
             <div className="text-sm text-indigo-800">
               <p className="font-medium">Qu&apos;est-ce qu&apos;un ITP ?</p>
               <p className="mt-1 text-indigo-700">
-                Un Itinéraire Technique de Plante définit le calendrier cultural : semaines de semis, plantation et recolte,
-                ainsi que les parametres de culture (nombre de rangs, espacement). Les ITPs sont utilises dans les rotations
+                Un Itinéraire Technique de Plante définit le calendrier cultural : semaines de semis, plantation et récolte,
+                ainsi que les paramètres de culture (nombre de rangs, espacement). Les ITP sont utilisés dans les rotations
                 pour planifier automatiquement les cultures.
+              </p>
+              <p className="mt-1 text-indigo-700">
+                Les semaines affichées sont recalées depuis le climat de calage de chaque itinéraire vers celui de votre
+                exploitation — ce sont donc les mêmes que dans la planification et la création d&apos;une culture. La fiche
+                d&apos;un itinéraire montre, elle, les semaines de sa source.
               </p>
             </div>
           </div>

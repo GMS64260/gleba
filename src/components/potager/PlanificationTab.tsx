@@ -36,6 +36,7 @@ import { DataTable } from "@/components/tables/DataTable"
 import { useToast } from "@/hooks/use-toast"
 import { updateDashboardSearchParams } from "@/lib/dashboard-navigation"
 import { ZONE_CLIMAT_LABEL } from "@/lib/terroir"
+import { libelleImplantationItp, nomAffichableItp } from "@/lib/itp-label"
 
 // ============================================================
 // Types
@@ -64,6 +65,8 @@ interface Stats {
 interface ITPWithRelations {
   id: string
   nom: string | null
+  // Origine : décide du libellé (celui d'un membre est rendu tel quel).
+  userId: string | null
   especeId: string | null
   semaineSemis: number | null
   semainePlantation: number | null
@@ -305,7 +308,12 @@ function PlanificationSubTab({ year }: { year: number }) {
 
 const itpColumns: ColumnDef<ITPWithRelations>[] = [
   {
-    accessorKey: "id",
+    // Le filtre du DataTable porte sur la valeur de l'accesseur, pas sur ce que
+    // rend la cellule : indexé sur `id`, il ne trouvait rien du nom affiché —
+    // un ITP perso, dont l'identifiant est un cuid opaque, était introuvable
+    // dans son propre tableau. On indexe le libellé ET l'identifiant.
+    id: "itp",
+    accessorFn: (row) => `${nomAffichableItp(row)} ${row.id}`,
     header: "ITP",
     cell: ({ row }) => {
       const itp = row.original
@@ -313,13 +321,14 @@ const itpColumns: ColumnDef<ITPWithRelations>[] = [
       return (
         <div className="flex items-center gap-2">
           <div className="w-3 h-3 rounded-full" style={{ backgroundColor: couleur }} />
-          <span className="font-medium">{itp.nom ?? itp.id}</span>
+          <span className="font-medium">{nomAffichableItp(itp)}</span>
         </div>
       )
     },
   },
   {
-    accessorKey: "espece.id",
+    id: "espece",
+    accessorFn: (row) => row.espece?.nom ?? row.espece?.id ?? "",
     header: "Espèce",
     cell: ({ row }) => row.original.espece?.nom ?? row.original.espece?.id ?? "-",
   },
@@ -336,7 +345,7 @@ const itpColumns: ColumnDef<ITPWithRelations>[] = [
             {fin ? `S${debut}–S${fin}` : formatSemaine(debut)}
           </Badge>
           <p className="text-[11px] text-muted-foreground">
-            {itp.implantation ?? (itp.semainePlantation ? "Plantation" : "Semis")}
+            {libelleImplantationItp(itp)}
             {itp.forcage ? " · forcé" : ""}
           </p>
         </div>

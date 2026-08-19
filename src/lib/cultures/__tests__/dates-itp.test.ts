@@ -1,3 +1,4 @@
+import { getISOWeek } from "date-fns"
 import { describe, expect, it } from "vitest"
 
 import {
@@ -171,5 +172,76 @@ describe("datesDepuisItp", () => {
         }
       }
     }
+  })
+})
+
+describe("cultures pluriannuelles", () => {
+  // « Avocatier — antilles » : plantation S25, récolte S26, durée 1 095 j. Les
+  // semaines décrivent la SAISON de récolte, pas le cycle : l'écart d'une
+  // semaine proposait une récolte d'avocats sept jours après la plantation,
+  // sous une fiche annonçant « Cycle : 1095 jours ».
+  const AVOCATIER = {
+    semainePlantation: 25,
+    semaineRecolte: 26,
+    dureeCulture: 1095,
+    delaiPremiereRecolteAnnees: 3,
+  }
+
+  it("place la première récolte à sa semaine, N années plus tard", () => {
+    const d = datesDepuisItp(2026, AVOCATIER)
+    expect(d.datePlantation!.getFullYear()).toBe(2026)
+    expect(d.dateRecolte!.getFullYear()).toBe(2029)
+    // Semaine de récolte préservée : le calendrier local reste juste.
+    expect(getISOWeek(d.dateRecolte!)).toBe(26)
+  })
+
+  it("déduit le délai de la durée de culture quand il n'est pas déclaré", () => {
+    const { delaiPremiereRecolteAnnees: _ignore, ...sansDelai } = AVOCATIER
+    void _ignore
+    expect(datesDepuisItp(2026, sansDelai).dateRecolte!.getFullYear()).toBe(2029)
+    expect(dureeCycleItpJours(sansDelai)).toBe(dureeCycleItpJours(AVOCATIER))
+  })
+
+  /**
+   * L'invariant qui compte : la durée annoncée par `dureeCycleItpJours` et la
+   * date posée par `datesDepuisItp` doivent décrire le MÊME cycle. Sur les 4 ITP
+   * dont la durée déclarée tombe entre 366 et 912 jours (ananas, bananier
+   * plantain), rendre la durée déclarée telle quelle les désaccordait de
+   * plusieurs mois.
+   */
+  it.each([
+    ['Avocatier — antilles', { semainePlantation: 25, semaineRecolte: 26, dureeCulture: 1095 }],
+    ['Cocotier — austral', { semainePlantation: 46, semaineRecolte: 44, dureeCulture: 2555 }],
+    ['Ananas — antilles', { semainePlantation: 24, semaineRecolte: 26, dureeCulture: 600 }],
+    ['Ananas — austral', { semainePlantation: 42, semaineRecolte: 49, dureeCulture: 510 }],
+    ['Bananier plantain — antilles', { semainePlantation: 24, semaineRecolte: 28, dureeCulture: 390 }],
+  ])('accorde la durée et la date de récolte sur %s', (_nom, itp) => {
+    const d = datesDepuisItp(2026, itp)
+    const joursReels = Math.round(
+      (d.dateRecolte!.getTime() - d.datePlantation!.getTime()) / 86_400_000
+    )
+    const duree = dureeCycleItpJours(itp)!
+    // Tolérance : l'année à 365 jours du calcul contre les bissextiles réelles.
+    expect(Math.abs(duree - joursReels)).toBeLessThanOrEqual(8)
+  })
+
+  it('reste au-dessus de la durée déclarée par la source', () => {
+    expect(dureeCycleItpJours({ semainePlantation: 25, semaineRecolte: 26, dureeCulture: 1095 })).toBeGreaterThanOrEqual(1095)
+  })
+
+  it("recale la récolte sur la durée pluriannuelle quand la plantation bouge", () => {
+    const recolte = recolteApresDebut(new Date("2026-03-15T00:00:00"), AVOCATIER)
+    expect(recolte!.getFullYear()).toBe(2029)
+  })
+
+  it("ne change rien pour une culture annuelle", () => {
+    const d = datesDepuisItp(2026, {
+      semaineSemis: 10,
+      semaineRecolte: 30,
+      dureeCulture: 140,
+    })
+    expect(d.dateSemis!.getFullYear()).toBe(2026)
+    expect(d.dateRecolte!.getFullYear()).toBe(2026)
+    expect(dureeCycleItpJours({ semaineSemis: 10, semaineRecolte: 30, dureeCulture: 140 })).toBe(140)
   })
 })

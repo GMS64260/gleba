@@ -31,6 +31,7 @@
 
 import { Prisma } from "@prisma/client"
 import prisma from "@/lib/prisma"
+import { visibiliteReferentiel } from "@/lib/referentiel-communaute"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Configuration
@@ -115,6 +116,12 @@ interface ModelMeta {
   /** clés étrangères (champ scalaire → modèle cible) */
   rels: RelMeta[]
   hasUserId: boolean
+  /**
+   * Référentiel COMMUNAUTAIRE : porte `userId` ET `partageCommunaute`, donc une
+   * partie de ses lignes appartient à d'autres membres. Déduit du schéma, jamais
+   * recopié dans une liste.
+   */
+  estCommunautaire: boolean
   klass: ModelClass
 }
 
@@ -189,6 +196,13 @@ function buildManifest(): Map<string, ModelMeta> {
       scalarFields,
       rels,
       hasUserId,
+      // Référentiel COMMUNAUTAIRE : porte à la fois `userId` et
+      // `partageCommunaute`, donc une partie de ses lignes appartient à d'autres
+      // membres et n'est pas visible de tous. Déduit du schéma plutôt que
+      // recopié dans une liste — une liste oubliée est exactement ce qui a
+      // laissé les espèces, variétés et ITP privés de la communauté partir dans
+      // la sauvegarde de n'importe quel compte.
+      estCommunautaire: hasUserId && scalarFieldNames.has("partageCommunaute"),
       klass,
     })
   }
@@ -217,10 +231,14 @@ export async function exportAccount(userId: string, appVersion = "1.0.0"): Promi
   const data: Record<string, Row[]> = {}
   const stats: Record<string, number> = {}
 
-  // 1) Référentiels : tout
+  // 1) Référentiels : tout, SAUF le privé d'autrui dans les référentiels
+  //    communautaires (cf. REFERENTIAL_COMMUNAUTAIRE).
   for (const meta of manifest.values()) {
     if (meta.klass !== "referential") continue
-    const rows = (await (prisma as any)[meta.delegate].findMany()) as Row[]
+    const where = meta.estCommunautaire ? visibiliteReferentiel(userId) : undefined
+    const rows = (await (prisma as any)[meta.delegate].findMany(
+      where ? { where } : undefined
+    )) as Row[]
     data[meta.name] = rows
     stats[meta.name] = rows.length
   }

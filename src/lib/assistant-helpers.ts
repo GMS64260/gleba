@@ -46,11 +46,26 @@ export function dateSemaineChrono(
   semaine: number,
   semaineReference?: number | null
 ): Date {
+  return calculerDateDepuisSemaine(annee, semaineAbsolue(semaine, semaineReference))
+}
+
+/**
+ * Semaine reportée d'année en année tant qu'elle précède sa référence, rendue en
+ * valeur ABSOLUE (donc éventuellement > 52).
+ *
+ * C'est la valeur qu'il faut passer comme référence à l'étape SUIVANTE de la
+ * cascade : `dateSemaineChrono` ne compare qu'à sa référence, aussi lui donner
+ * une semaine déjà reportée sous sa forme bornée 1–52 perdait le report. Dans les
+ * notifications, un semis en S40 reportait bien la plantation en S5 de l'année
+ * suivante (S57 absolue), puis la récolte de S45 était comparée à S5 au lieu de
+ * S57 et retombait sur l'année de départ — récolte annoncée avant la plantation.
+ */
+export function semaineAbsolue(semaine: number, semaineReference?: number | null): number {
   let s = Math.max(Math.round(semaine), 1)
   if (semaineReference != null) {
     while (s < semaineReference) s += 52
   }
-  return calculerDateDepuisSemaine(annee, s)
+  return s
 }
 
 /**

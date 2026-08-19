@@ -10,36 +10,12 @@ import * as React from "react"
 import { Badge } from "@/components/ui/badge"
 import { Pencil } from "lucide-react"
 import { appliquerDecalageItp } from "@/lib/calendrier-climat"
-
-interface ITPWithEspece {
-  id: string
-  nom: string | null
-  especeId: string | null
-  espece?: {
-    id: string
-    nom: string | null
-    couleur: string | null
-    /** BUG #15 — mode_semis pour différencier pépinière vs caïeux/bulbe direct */
-    modeSemis?: string | null
-  } | null
-  semaineSemis: number | null
-  semainePlantation: number | null
-  semaineRecolte: number | null
-  semaineImplantationDebut?: number | null
-  semaineImplantationFin?: number | null
-  semaineRecolteFin?: number | null
-  dureeRecolte: number | null
-  dureePepiniere?: number | null
-  typePlanche: string | null
-  implantation?: string | null
-  statutValidation?: string | null
-  sourceRecordId?: string | null
-  notes: string | null
-}
+import { nomAffichableItp } from "@/lib/itp-label"
+import type { ItpVue } from "./types"
 
 interface GanttRowProps {
-  itp: ITPWithEspece
-  onEdit?: (itp: ITPWithEspece) => void
+  itp: ItpVue
+  onEdit?: (itp: ItpVue) => void
   /**
    * Décalage en semaines appliqué aux dates de semis/plantation/récolte pour
    * l'affichage (zone climatique + réglage fin précoce/tardif). L'ITP de
@@ -87,10 +63,15 @@ export function GanttRow({ itp: itpRef, onEdit, decalage = 0 }: GanttRowProps) {
     if (!itp.semaineSemis && itp.semainePlantation && itp.semaineRecolte) {
       return 'Plant'
     }
-    // Fallback : si semis + plantation + récolte mais pas de pépinière
-    // explicite, c'est une plantation directe (caïeux/bulbe le plus
-    // probable, à confirmer côté Espèce).
+    // Le repli annonçait « Plantation directe » dès que semis, plantation et
+    // récolte étaient renseignés sans durée de pépinière — or 33 ITP seulement
+    // sur 769 portent une durée de pépinière, si bien que 36 itinéraires
+    // d'espèces qui se REPIQUENT (laitue, poireau, tomate, chou, melon, basilic)
+    // étaient étiquetés « plantation directe », l'inverse de leur conduite.
+    // L'espèce sait, elle : on lui demande avant de deviner.
     if (itp.semaineSemis && itp.semainePlantation && itp.semaineRecolte) {
+      if (itp.espece?.typeCultureSemis === 'pepiniere_puis_repiquage') return 'Pépinière'
+      if (itp.espece?.typeCultureSemis === 'semis_direct') return 'Semis direct'
       return 'Plantation directe'
     }
     return '?'
@@ -164,6 +145,25 @@ export function GanttRow({ itp: itpRef, onEdit, decalage = 0 }: GanttRowProps) {
           'Fenêtre de récolte'
         )
       }
+      // Semis en pépinière ANTÉRIEUR à la fenêtre d'implantation : cette branche
+      // rendait la fenêtre puis sortait, si bien que les 14 itinéraires dont le
+      // semis précède l'implantation (zinnia S13 pour une implantation S18–S22,
+      // muflier S8 pour S14–S18, giroflée S32 pour S40–S44…) n'affichaient aucune
+      // barre de semis — alors que la planification, elle, part bien du semis
+      // (`semaineSemisEffective`).
+      if (
+        itp.semaineSemis &&
+        itp.semaineSemis !== itp.semaineImplantationDebut &&
+        dureeSem(itp.semaineSemis, itp.semaineImplantationDebut) > 0 &&
+        dureeSem(itp.semaineSemis, itp.semaineImplantationDebut) < 26
+      ) {
+        pushWindow(
+          itp.semaineSemis,
+          itp.semaineImplantationDebut === 1 ? 52 : itp.semaineImplantationDebut - 1,
+          '#ff9800',
+          'Semis en pépinière'
+        )
+      }
       return bars
     }
 
@@ -214,7 +214,7 @@ export function GanttRow({ itp: itpRef, onEdit, decalage = 0 }: GanttRowProps) {
             />
           )}
           <div className="min-w-0 flex-1">
-            <div className="font-medium text-sm truncate">{itp.nom ?? itp.id}</div>
+            <div className="font-medium text-sm truncate">{nomAffichableItp(itp)}</div>
             {itp.especeId && (
               <div className="text-xs text-muted-foreground truncate">{itp.espece?.nom ?? itp.espece?.id ?? itp.especeId}</div>
             )}

@@ -31,6 +31,7 @@ import {
   fusionnerStocksBas,
 } from "./detect"
 import { semaineCourante, tachesItpSemainePourCultures } from "./itp-semaine"
+import { visibiliteReferentiel } from "@/lib/referentiel-communaute"
 import type { CultureItpInput, ItpSemaineInput } from "./itp-semaine"
 import type {
   AlerteMeteoNotification,
@@ -773,51 +774,55 @@ async function detecterRecoltesMures(userId: string): Promise<AlerteUrgente[]> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Champs ITP nécessaires au calcul des opérations hebdomadaires. */
-const CULTURE_ITP_SELECT = {
+const ITP_TACHE_SELECT = {
   id: true,
-  especeId: true,
-  annee: true,
-  semisFait: true,
-  plantationFaite: true,
-  recolteFaite: true,
-  espece: {
-    select: {
-      nom: true,
-      couleur: true,
-      // ITP de l'espèce (repli quand la culture n'a pas d'ITP direct).
-      itps: {
-        select: {
-          id: true,
-          actif: true,
-          zoneClimat: true,
-          semaineSemis: true,
-          semainePlantation: true,
-          semaineRecolte: true,
-          semaineRecolteFin: true,
-          dureeRecolte: true,
+  actif: true,
+  // Origine : sert au calage climatique du LECTEUR (un ITP perso sans zone
+  // décrit la pratique de son auteur dans son climat — aucun décalage pour lui).
+  userId: true,
+  zoneClimat: true,
+  semaineSemis: true,
+  semainePlantation: true,
+  semaineRecolte: true,
+  semaineRecolteFin: true,
+  dureeRecolte: true,
+} as const
+
+/**
+ * Le repli « meilleur ITP de l'espèce » chargeait TOUS les ITP de l'espèce,
+ * sans filtre de visibilité : l'itinéraire PRIVÉ d'un autre membre pouvait
+ * gagner le départage (il est trié par complétude) et piloter les tâches de la
+ * semaine. On borne la relation à ce que cet utilisateur a le droit de voir, et
+ * aux itinéraires encore en service.
+ */
+const cultureItpSelect = (userId: string) =>
+  ({
+    id: true,
+    especeId: true,
+    annee: true,
+    semisFait: true,
+    plantationFaite: true,
+    recolteFaite: true,
+    espece: {
+      select: {
+        nom: true,
+        couleur: true,
+        // ITP de l'espèce (repli quand la culture n'a pas d'ITP direct).
+        itps: {
+          where: { actif: true, OR: visibiliteReferentiel(userId).OR },
+          select: ITP_TACHE_SELECT,
         },
       },
     },
-  },
-  variete: { select: { nom: true } },
-  planche: { select: { nom: true, ilot: true } },
-  itp: {
-    select: {
-      id: true,
-      actif: true,
-      zoneClimat: true,
-      semaineSemis: true,
-      semainePlantation: true,
-      semaineRecolte: true,
-      semaineRecolteFin: true,
-      dureeRecolte: true,
-    },
-  },
-} as const
+    variete: { select: { nom: true } },
+    planche: { select: { nom: true, ilot: true } },
+    itp: { select: ITP_TACHE_SELECT },
+  }) as const
 
 interface ItpCandidat {
   id: string
   actif: boolean
+  userId: string | null
   zoneClimat: ZoneClimat | null
   semaineSemis: number | null
   semainePlantation: number | null
@@ -867,7 +872,7 @@ export async function chargerTachesItpSemaine(
       // Cultures actives : cycle non terminé (NULL = en cours, 'v' = vivace
       // continue). 'x' (terminée) et 'NS' sont exclues.
       where: { userId, OR: [{ terminee: null }, { terminee: "v" }] },
-      select: CULTURE_ITP_SELECT,
+      select: cultureItpSelect(userId),
     }),
   ])
 
@@ -888,7 +893,7 @@ export async function chargerTachesItpSemaine(
       null,
   }))
 
-  return tachesItpSemainePourCultures(inputs, { userZone, aujourdHui })
+  return tachesItpSemainePourCultures(inputs, { userZone, lecteurId: userId, aujourdHui })
 }
 
 /** Verbe d'action pour le message de l'alerte dédiée. */

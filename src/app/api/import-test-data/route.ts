@@ -7,6 +7,7 @@ import { NextResponse } from "next/server"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { refusSiPasProprietaire } from "@/lib/exploitation/garde-session"
 import prisma from "@/lib/prisma"
+import { normalizeReferentielKey } from "@/lib/normalize"
 import { productifParDefaut } from "@/lib/tree-care-calendar"
 import {
   familles,
@@ -128,6 +129,9 @@ export async function POST() {
         update: {},
         create: {
           id: itp.id,
+          // Même règle que le seed et /api/import : libellé + clé de dédup.
+          nom: itp.id,
+          nomNormalise: normalizeReferentielKey(itp.id),
           especeId: itp.especeId || null,
           semaineSemis: itp.semaineSemis || null,
           semainePlantation: itp.semainePlantation || null,

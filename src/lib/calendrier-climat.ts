@@ -17,7 +17,7 @@
  */
 
 import type { ZoneClimat } from './terroir'
-import { ZONE_CLIMAT_LABEL } from './terroir'
+import { ZONE_CLIMAT_LABEL, ZONES_CLIMAT } from './terroir'
 
 export type CategorieLunaire = 'feuille' | 'fruit' | 'racine' | 'fleur'
 
@@ -44,6 +44,15 @@ export const ZONES_HEMISPHERE_SUD: readonly ZoneClimat[] = ['tropical_austral'] 
 export function zoneHorsReferenceMetropole(zone: ZoneClimat | null | undefined): boolean {
   return zone != null && ZONES_HORS_REFERENCE_METROPOLE.includes(zone)
 }
+
+/**
+ * Zones dont le calendrier SE dérive du référentiel métropolitain par décalage.
+ * Calculée par différence pour qu'aucun appelant n'ait à recopier la liste :
+ * `/api/itps?applicable=1` le faisait, et la copie divergeait de la règle.
+ */
+export const ZONES_METROPOLE: readonly ZoneClimat[] = ZONES_CLIMAT.filter(
+  (z) => !ZONES_HORS_REFERENCE_METROPOLE.includes(z)
+)
 
 /** Vrai si la zone est dans l'hémisphère sud (saisons inversées). */
 export function zoneHemisphereSud(zone: ZoneClimat | null | undefined): boolean {
@@ -156,6 +165,31 @@ export function decalageItpPourZone(
     ? decalageZone(itpZoneClimat as ZoneClimat)
     : decalageZone('oceanique_altere')
   return decalageZone(userZone) - source
+}
+
+/**
+ * Décalage à appliquer pour un LECTEUR donné — c'est la règle complète, celle
+ * que doivent utiliser tous les écrans et tous les calculs.
+ *
+ * Elle ajoute au calage source→cible l'exception de l'auteur : les semaines
+ * d'un ITP personnel décrivent la pratique de son auteur DANS SON climat. Tant
+ * qu'aucune zone de calage n'est enregistrée sur cet ITP, le transposer pour son
+ * auteur reviendrait à déplacer ses propres semaines (QA cmsqmujo9 : S10 saisi
+ * relu S9, sans un mot).
+ *
+ * Cette exception n'existait que dans `GET /api/itps?calibre=1` : la
+ * planification, la création de cultures, les notifications et les calendriers
+ * l'ignoraient, donc le même ITP n'avait pas les mêmes semaines selon l'écran.
+ */
+export function decalageItpPourLecteur(
+  itp: { zoneClimat?: string | null; userId?: string | null },
+  userZone: ZoneClimat | null | undefined,
+  lecteurId: string | null | undefined
+): number {
+  if (itp.userId != null && lecteurId != null && itp.userId === lecteurId && itp.zoneClimat == null) {
+    return 0
+  }
+  return decalageItpPourZone(itp.zoneClimat, userZone)
 }
 
 /**

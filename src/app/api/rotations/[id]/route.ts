@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { updateRotationSchema } from '@/lib/validations'
 import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
+import { etapesRotationInvalides, messageEtapesInvalides } from '@/lib/rotations/itp-etapes'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -83,7 +84,7 @@ export async function PUT(
   request: NextRequest,
   { params }: RouteParams
 ) {
-  const { error } = await requireAdminApi()
+  const { error, session } = await requireAdminApi()
   if (error) return error
 
   try {
@@ -112,6 +113,16 @@ export async function PUT(
     }
 
     const { details, ...rotationData } = validationResult.data
+
+    // Même contrôle qu'à la création : une étape ne peut pointer qu'un
+    // itinéraire exploitable (cf. src/lib/rotations/itp-etapes.ts).
+    const etapesInvalides = await etapesRotationInvalides(prisma, session!.user.id, details)
+    if (etapesInvalides.length > 0) {
+      return NextResponse.json(
+        { error: messageEtapesInvalides(etapesInvalides), etapes: etapesInvalides },
+        { status: 400 }
+      )
+    }
 
     // PROMPT DEV 2 Bug #1 — Cross-check si `active` passe à true sans envoyer
     // `details`. Le superRefine du schema valide uniquement le payload reçu :

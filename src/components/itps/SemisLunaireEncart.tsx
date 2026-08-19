@@ -17,7 +17,7 @@ import { Badge } from "@/components/ui/badge"
 import {
   categorieLunaire,
   decalerSemaine,
-  decalageItpPourZone,
+  decalageItpPourLecteur,
   CATEGORIE_LUNAIRE_LABEL,
   type CategorieLunaire,
 } from "@/lib/calendrier-climat"
@@ -34,6 +34,7 @@ interface JourLunaire {
 interface ITPLite {
   id: string
   nom?: string | null
+  userId?: string | null
   especeId: string | null
   espece?: { id?: string; nom?: string | null; couleur?: string | null; famille?: { id?: string } | null } | null
   semaineSemis: number | null
@@ -43,6 +44,8 @@ interface ITPLite {
 interface Props {
   itps: ITPLite[]
   zone: ZoneClimat | null
+  /** Lecteur courant : un ITP perso sans zone n'est pas décalé pour son auteur. */
+  lecteurId?: string | null
   reglageFin?: number
   /** Nombre de semaines à anticiper (fenêtre de semis). */
   horizonSemaines?: number
@@ -72,6 +75,7 @@ function distanceSemaine(courante: number, cible: number): number {
 export function SemisLunaireEncart({
   itps,
   zone,
+  lecteurId = null,
   reglageFin = 0,
   horizonSemaines = 3,
 }: Props) {
@@ -119,7 +123,7 @@ export function SemisLunaireEncart({
   const semisParCat = React.useMemo(() => {
     const map = new Map<CategorieLunaire, Set<string>>()
     for (const itp of itps) {
-      const decalage = decalageItpPourZone(itp.zoneClimat, zone) + reglageFin
+      const decalage = decalageItpPourLecteur(itp, zone, lecteurId ?? null) + reglageFin
       const sSemis = decalerSemaine(itp.semaineSemis, decalage)
       if (sSemis == null) continue
       const dist = distanceSemaine(semaineCourante, sSemis)
@@ -135,7 +139,7 @@ export function SemisLunaireEncart({
       map.get(cat)!.add(nom)
     }
     return map
-  }, [itps, zone, reglageFin, semaineCourante, horizonSemaines])
+  }, [itps, zone, lecteurId, reglageFin, semaineCourante, horizonSemaines])
 
   // 2) Prochains jours lunaires favorables (>= aujourd'hui) par type.
   const prochainsJours = React.useMemo(() => {

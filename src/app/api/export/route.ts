@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireAuthApi } from '@/lib/auth-utils'
+import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 
 export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
@@ -17,9 +18,17 @@ export async function GET(request: NextRequest) {
     const format = searchParams.get('format') || 'json'
     const userId = session!.user.id
 
+    // Référentiels communautaires : on n'exporte que ce que CET utilisateur a le
+    // droit de voir. Les `findMany` étaient nus sous un commentaire « partagés
+    // entre tous les utilisateurs » qui n'est vrai que du catalogue officiel :
+    // les espèces, variétés et ITP PRIVÉS des autres membres partaient dans le
+    // fichier téléchargé, avec leur `user_id`. La règle est la même que celle
+    // des écrans (src/lib/referentiel-communaute.ts).
+    const visible = visibiliteReferentiel(userId)
+
     // Récupérer toutes les données
     const [
-      // Référentiels globaux (partagés entre tous les utilisateurs)
+      // Référentiels communautaires (catalogue officiel + partagés + les miens)
       familles,
       fournisseurs,
       especes,
@@ -42,9 +51,9 @@ export async function GET(request: NextRequest) {
       // Référentiels globaux
       prisma.famille.findMany({ orderBy: { id: 'asc' } }),
       prisma.fournisseur.findMany({ orderBy: { id: 'asc' } }),
-      prisma.espece.findMany({ orderBy: { id: 'asc' } }),
-      prisma.variete.findMany({ orderBy: { id: 'asc' } }),
-      prisma.iTP.findMany({ orderBy: { id: 'asc' } }),
+      prisma.espece.findMany({ where: visible, orderBy: { id: 'asc' } }),
+      prisma.variete.findMany({ where: visible, orderBy: { id: 'asc' } }),
+      prisma.iTP.findMany({ where: visible, orderBy: { id: 'asc' } }),
       prisma.rotation.findMany({ orderBy: { id: 'asc' } }),
       prisma.rotationDetail.findMany({ orderBy: { id: 'asc' } }),
       prisma.fertilisant.findMany({ orderBy: { id: 'asc' } }),

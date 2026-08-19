@@ -32,11 +32,13 @@ import {
   type NouvelleEspecePerso,
 } from "@/components/especes/NouvelleEspecePersoDialog"
 import { datesDepuisItp, recolteApresDebut } from "@/lib/cultures/dates-itp"
+import { nomAffichableItpAvecFenetre } from "@/lib/itp-label"
 import { validateCultureDates } from "@/lib/validations/date-validation"
 
 interface ITPData {
   id: string
   nom: string | null
+  userId: string | null
   especeId: string | null
   semaineSemis: number | null
   semainePlantation: number | null
@@ -44,7 +46,10 @@ interface ITPData {
   // QA cmsfxvbab — jalon de début de cycle des ITP « implantation seule »
   // (ni semis ni plantation), cf. semaineSemisEffective.
   semaineImplantationDebut: number | null
+  semaineImplantationFin: number | null
   dureeCulture: number | null
+  /** Arbres fruitiers : années entre plantation et première récolte. */
+  delaiPremiereRecolteAnnees: number | null
   nbRangs: number | null
   espacement: number | null
 }
@@ -168,7 +173,7 @@ export function NewCultureDialog({ open, onOpenChange, plancheId, plancheNom, pl
     }
     Promise.all([
       fetch(`/api/especes/${encodeURIComponent(especeId)}`).then(r => r.json()),
-      fetch(`/api/itps?especeId=${encodeURIComponent(especeId)}&pageSize=1000&applicable=1&calibre=1&sortBy=statutValidation&sortOrder=desc`).then(r => r.json()),
+      fetch(`/api/itps?especeId=${encodeURIComponent(especeId)}&pageSize=1000&applicable=1&calibre=1&sortBy=confiance`).then(r => r.json()),
     ]).then(([especeData, itpsData]) => {
       setVarietes(especeData.varietes || [])
       const loaded = itpsData.data || []
@@ -395,7 +400,7 @@ export function NewCultureDialog({ open, onOpenChange, plancheId, plancheNom, pl
                 </SelectTrigger>
                 <SelectContent>
                   {itps.map(itp => (
-                    <SelectItem key={itp.id} value={itp.id}>{itp.nom ?? itp.id}</SelectItem>
+                    <SelectItem key={itp.id} value={itp.id}>{nomAffichableItpAvecFenetre(itp)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

@@ -31,6 +31,7 @@ import {
 } from "@/lib/assistant-helpers"
 import type { AssistantState } from "./AssistantDialog"
 import { useToast } from "@/hooks/use-toast"
+import { nomAffichableItp } from "@/lib/itp-label"
 
 interface AssistantStepRecapProps {
   state: AssistantState
@@ -51,7 +52,7 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
     suffisant: boolean
     stockActuel: number
     besoin: number
-    unite: string // 'g' ou 'plants'
+    unite: string // 'g' | 'plants' | 'graines-non-converti'
   } | null>(null)
 
   const { planche, culture, espece, itp, variete } = state
@@ -82,14 +83,30 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
     const modeGraines = grainesParPlant > 0 && stockGraines > 0
 
     if (modeGraines) {
-      // Verif en grammes de graines
-      const besoin = nbPlants * grainesParPlant
-      setStockCheck({
-        suffisant: stockGraines >= besoin,
-        stockActuel: stockGraines,
-        besoin,
-        unite: 'g',
-      })
+      // Le stock est en GRAMMES, le besoin en NOMBRE DE GRAINES : les comparer
+      // directement annonçait « Stock actuel: 40g - Besoin estime: 1600g » pour
+      // 800 plants à 2 graines, soit un manque imaginaire (1 600 graines de chou
+      // à 300 graines/g pèsent 5,3 g). On convertit quand la variété donne son
+      // nombre de graines par gramme ; sinon on compte en graines et on le dit,
+      // plutôt que d'afficher une unité fausse.
+      const grainesNecessaires = nbPlants * grainesParPlant
+      const grainesParGramme = variete.nbGrainesG ?? null
+      if (grainesParGramme && grainesParGramme > 0) {
+        const besoin = grainesNecessaires / grainesParGramme
+        setStockCheck({
+          suffisant: stockGraines >= besoin,
+          stockActuel: stockGraines,
+          besoin,
+          unite: 'g',
+        })
+      } else {
+        setStockCheck({
+          suffisant: false,
+          stockActuel: stockGraines,
+          besoin: grainesNecessaires,
+          unite: 'graines-non-converti',
+        })
+      }
     } else if (stockPlants > 0 || stockGraines === 0) {
       // Verif en nombre de plants/caieux/bulbes
       setStockCheck({
@@ -99,13 +116,24 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
         unite: 'plants',
       })
     } else {
-      // Fallback graines sans nbGrainesPlant connu → besoin = nbPlants (1 graine/plant)
-      setStockCheck({
-        suffisant: stockGraines >= nbPlants,
-        stockActuel: stockGraines,
-        besoin: nbPlants,
-        unite: 'g',
-      })
+      // Repli sans graines/plant connu : une graine par plant, donc un NOMBRE de
+      // graines — pas des grammes.
+      const grainesParGramme = variete.nbGrainesG ?? null
+      setStockCheck(
+        grainesParGramme && grainesParGramme > 0
+          ? {
+              suffisant: stockGraines >= nbPlants / grainesParGramme,
+              stockActuel: stockGraines,
+              besoin: nbPlants / grainesParGramme,
+              unite: 'g',
+            }
+          : {
+              suffisant: false,
+              stockActuel: stockGraines,
+              besoin: nbPlants,
+              unite: 'graines-non-converti',
+            }
+      )
     }
   }, [variete, nbPlants, itp?.nbGrainesPlant, culture.itp?.nbGrainesPlant])
 
@@ -242,7 +270,7 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
 
   // Display helpers
   const especeId = espece?.nom ?? espece?.id ?? culture.especeId ?? '-'
-  const itpId = itp?.nom ?? itp?.id ?? culture.itpId ?? '-'
+  const itpId = itp ? nomAffichableItp(itp) : (culture.itpId ?? '-')
   const varieteId = variete?.nom ?? variete?.id ?? culture.varieteId ?? 'Non definie'
   const especeRef = espece || culture.espece
 
@@ -356,11 +384,31 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
 
       {/* Alerte stock insuffisant */}
       {stockCheck && !stockCheck.suffisant && (
-        <Alert variant="destructive">
+        <Alert variant={stockCheck.unite === 'graines-non-converti' ? 'default' : 'destructive'}>
           <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Stock insuffisant</AlertTitle>
+          <AlertTitle>
+            {stockCheck.unite === 'graines-non-converti'
+              ? 'Stock non vérifiable'
+              : 'Stock insuffisant'}
+          </AlertTitle>
           <AlertDescription>
-            Stock actuel: {stockCheck.stockActuel}{stockCheck.unite === 'g' ? 'g' : ' plants'} - Besoin estime: {stockCheck.besoin.toFixed(0)}{stockCheck.unite === 'g' ? 'g' : ' plants'}
+            {stockCheck.unite === 'graines-non-converti' ? (
+              <>
+                Stock actuel : {stockCheck.stockActuel} g de semences. Besoin estimé :{" "}
+                {stockCheck.besoin.toFixed(0)} graines — le nombre de graines par gramme
+                n&apos;est pas renseigné sur cette variété, la comparaison n&apos;est donc pas
+                possible.
+              </>
+            ) : (
+              <>
+                Stock actuel : {stockCheck.stockActuel}
+                {stockCheck.unite === 'g' ? ' g' : ' plants'} — besoin estimé :{" "}
+                {stockCheck.unite === 'g'
+                  ? stockCheck.besoin.toFixed(stockCheck.besoin < 10 ? 1 : 0)
+                  : stockCheck.besoin.toFixed(0)}
+                {stockCheck.unite === 'g' ? ' g' : ' plants'}
+              </>
+            )}
           </AlertDescription>
         </Alert>
       )}

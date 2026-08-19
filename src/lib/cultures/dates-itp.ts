@@ -30,6 +30,10 @@ export type SemainesItp = {
   semainePlantation?: number | null
   semaineRecolte?: number | null
   semaineImplantationDebut?: number | null
+  /** Durée du cycle en jours. > 365 = culture pluriannuelle (arbre fruitier). */
+  dureeCulture?: number | null
+  /** Années entre la plantation et la première récolte, quand elle est connue. */
+  delaiPremiereRecolteAnnees?: number | null
 }
 
 export type DatesCycle = {
@@ -40,6 +44,30 @@ export type DatesCycle = {
 
 /** Nombre maximum de reports d'un an : un cycle ne s'étale pas au-delà. */
 const REPORTS_MAX = 2
+
+/**
+ * Années à attendre entre l'implantation et la première récolte.
+ *
+ * Pour une culture annuelle : 0, les semaines de l'ITP suffisent. Pour un arbre
+ * fruitier, les semaines ne décrivent PAS le cycle mais la SAISON de récolte :
+ * « Avocatier — antilles » porte plantation S25 et récolte S26 avec une durée de
+ * culture de 1 095 jours. Prendre l'écart de semaines au pied de la lettre
+ * proposait une récolte d'avocats sept jours après la plantation — et la fiche
+ * du même itinéraire annonçait « Cycle : 1095 jours » juste à côté. 40 ITP
+ * d'outre-mer sont dans ce cas (cocotier 2 555 j, letchi 1 825 j, manguier
+ * 1 460 j…).
+ *
+ * Le délai déclaré fait foi ; à défaut on le déduit de la durée de culture.
+ */
+function anneesAvantRecolte(itp: SemainesItp): number {
+  if (itp.delaiPremiereRecolteAnnees != null && itp.delaiPremiereRecolteAnnees > 0) {
+    return itp.delaiPremiereRecolteAnnees
+  }
+  if (itp.dureeCulture != null && itp.dureeCulture > 365) {
+    return Math.round(itp.dureeCulture / 365)
+  }
+  return 0
+}
 
 /**
  * Place une étape à la semaine donnée, en la repoussant d'année en année tant
@@ -83,14 +111,38 @@ export function semaineSemisEffective(itp: SemainesItp): number | null {
  * héritée de l'ancrage ITP semaine 40). Cette durée est la référence unique
  * des trois formulaires ET de la reprise de données — ne pas la recopier.
  */
-export function dureeCycleItpJours(
-  itp: SemainesItp & { dureeCulture?: number | null }
-): number | null {
+/**
+ * Écart, en jours, entre l'ancrage du cycle et la semaine de récolte, modulo
+ * l'année (une récolte en janvier pour une plantation d'août vaut 21 semaines,
+ * pas −31).
+ */
+function ecartAncrageRecolteJours(itp: SemainesItp): number | null {
   const ancrage = itp.semainePlantation ?? semaineSemisEffective(itp)
-  if (itp.semaineRecolte && ancrage) {
-    const jours = ((((itp.semaineRecolte - ancrage) % 52) + 52) % 52) * 7
-    if (jours > 0) return jours
+  if (!itp.semaineRecolte || !ancrage) return null
+  return ((((itp.semaineRecolte - ancrage) % 52) + 52) % 52) * 7
+}
+
+export function dureeCycleItpJours(itp: SemainesItp): number | null {
+  // Pluriannuel : N années PLUS la position de la récolte dans l'année. Rendre
+  // la seule durée déclarée (1 095 j pour l'avocatier) désaccordait ce helper de
+  // `datesDepuisItp`, qui pose la récolte à sa semaine N années plus tard : sur
+  // « Ananas — antilles » (600 j déclarés, S24 → S26, donc 2 ans), la création
+  // d'une culture et le recalage après édition de la date de plantation ne
+  // donnaient pas la même récolte. Une seule arithmétique pour les deux.
+  const annees = anneesAvantRecolte(itp)
+  const ancrage = itp.semainePlantation ?? semaineSemisEffective(itp)
+  if (annees > 0) {
+    // Écart SIGNÉ ici : le passage d'année est déjà porté par `annees`. Le
+    // cocotier (plantation S46, récolte S44, 7 ans) récolte deux semaines AVANT
+    // sa semaine de plantation, sept ans plus tard — ajouter 50 semaines de
+    // modulo par-dessus les 7 ans le décalait d'un an entier.
+    const decalageSemaines =
+      itp.semaineRecolte != null && ancrage != null ? itp.semaineRecolte - ancrage : 0
+    return annees * 365 + decalageSemaines * 7
   }
+
+  const ecart = ecartAncrageRecolteJours(itp)
+  if (ecart && ecart > 0) return ecart
   if (itp.dureeCulture && itp.dureeCulture > 0) return itp.dureeCulture
   return null
 }
@@ -99,10 +151,7 @@ export function dureeCycleItpJours(
  * Récolte recalée sur le début réel du cycle (plantation, sinon semis), en
  * préservant la durée du cycle ITP. Null si l'ITP ne permet aucun calcul.
  */
-export function recolteApresDebut(
-  debut: Date,
-  itp: SemainesItp & { dureeCulture?: number | null }
-): Date | null {
+export function recolteApresDebut(debut: Date, itp: SemainesItp): Date | null {
   const duree = dureeCycleItpJours(itp)
   if (!duree) return null
   const recolte = new Date(debut)
@@ -122,9 +171,11 @@ export function datesDepuisItp(annee: number, itp: SemainesItp): DatesCycle {
     ? jalonApres(annee, itp.semainePlantation, dateSemis)
     : null
 
+  // Pluriannuel : la récolte tombe à sa semaine, mais N années plus tard.
   const ancre = datePlantation ?? dateSemis
+  const anneeRecolte = annee + anneesAvantRecolte(itp)
   const dateRecolte = itp.semaineRecolte
-    ? jalonApres(annee, itp.semaineRecolte, ancre)
+    ? jalonApres(anneeRecolte, itp.semaineRecolte, ancre)
     : null
 
   return { dateSemis, datePlantation, dateRecolte }

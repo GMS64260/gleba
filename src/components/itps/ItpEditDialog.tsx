@@ -7,6 +7,7 @@
 
 import * as React from "react"
 import Link from "next/link"
+import { useSession } from "next-auth/react"
 import { Save } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -29,38 +30,33 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
-
-interface ITPWithEspece {
-  id: string
-  nom: string | null
-  especeId: string | null
-  espece?: {
-    id: string
-    nom: string | null
-    couleur: string | null
-  } | null
-  semaineSemis: number | null
-  semainePlantation: number | null
-  semaineRecolte: number | null
-  semaineImplantationDebut?: number | null
-  semaineImplantationFin?: number | null
-  semaineRecolteFin?: number | null
-  dureeRecolte: number | null
-  typePlanche: string | null
-  implantation?: string | null
-  sourceRecordId?: string | null
-  notes: string | null
-}
+import { nomAffichableItp } from "@/lib/itp-label"
+import { decalerSemaine } from "@/lib/calendrier-climat"
+import type { ItpVue } from "./types"
 
 interface ItpEditDialogProps {
-  itp: ITPWithEspece | null
+  itp: ItpVue | null
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSaved: (updated: ITPWithEspece) => void
+  onSaved: (updated: ItpVue) => void
+  /**
+   * Décalage appliqué par l'écran appelant pour l'affichage (calage climatique
+   * du lecteur + réglage fin). Le dialog édite les semaines DE LA SOURCE : sans
+   * cette information, les barres du calendrier et les champs du dialog
+   * affichaient deux semaines différentes pour le même itinéraire, sans un mot.
+   */
+  decalage?: number
 }
 
-export function ItpEditDialog({ itp, open, onOpenChange, onSaved }: ItpEditDialogProps) {
+export function ItpEditDialog({
+  itp,
+  open,
+  onOpenChange,
+  onSaved,
+  decalage = 0,
+}: ItpEditDialogProps) {
   const { toast } = useToast()
+  const { data: session } = useSession()
   const [isSubmitting, setIsSubmitting] = React.useState(false)
 
   const [semaineSemis, setSemaineSemis] = React.useState<number | null>(null)
@@ -82,24 +78,50 @@ export function ItpEditDialog({ itp, open, onOpenChange, onSaved }: ItpEditDialo
 
   if (!itp) return null
 
-  if (itp.sourceRecordId) {
+  // Même règle que la fiche ITP (/maraichage/itps/[id]) : seul l'auteur d'un ITP
+  // personnel — ou un admin — peut le modifier, et jamais une référence sourcée.
+  // Ce dialog ne la connaissait pas : les 241 itinéraires officiels non sourcés
+  // s'ouvraient en édition pour n'importe quel membre, avec un 403 au moment
+  // d'enregistrer. On montre désormais la même consultation en lecture seule.
+  const currentUserId = (session?.user as { id?: string } | undefined)?.id
+  const canEdit =
+    !itp.sourceRecordId &&
+    (session?.user?.role === "ADMIN" ||
+      (!!itp.userId && !!currentUserId && itp.userId === currentUserId))
+
+  if (!canEdit) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{itp.nom ?? itp.id}</DialogTitle>
+            <DialogTitle>{nomAffichableItp(itp)}</DialogTitle>
             <DialogDescription>
-              Référence documentée protégée : les fenêtres publiées ne sont pas modifiables
-              directement depuis le calendrier.
+              {itp.sourceRecordId
+                ? "Référence documentée protégée : les fenêtres publiées ne sont pas modifiables directement depuis le calendrier."
+                : "Itinéraire du catalogue Gleba : consultable, non modifiable. Créez un ITP personnel pour l'adapter à votre ferme."}
             </DialogDescription>
           </DialogHeader>
+          {decalage !== 0 && (
+            <p className="rounded-md bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+              Semaines de la source. Dans votre zone, le calendrier les décale de{" "}
+              {decalage > 0 ? "+" : "−"}
+              {Math.abs(decalage)} semaine{Math.abs(decalage) > 1 ? "s" : ""}.
+            </p>
+          )}
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div className="rounded-md border p-3">
               <p className="text-xs text-muted-foreground">Implantation</p>
               <p className="mt-1 font-medium">
                 {itp.semaineImplantationDebut && itp.semaineImplantationFin
                   ? `S${itp.semaineImplantationDebut}–S${itp.semaineImplantationFin}`
-                  : "Non renseignée"}
+                  : itp.semaineSemis || itp.semainePlantation
+                    ? [
+                        itp.semaineSemis ? `semis S${itp.semaineSemis}` : null,
+                        itp.semainePlantation ? `plantation S${itp.semainePlantation}` : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")
+                    : "Non renseignée"}
               </p>
             </div>
             <div className="rounded-md border p-3">
@@ -107,7 +129,9 @@ export function ItpEditDialog({ itp, open, onOpenChange, onSaved }: ItpEditDialo
               <p className="mt-1 font-medium">
                 {itp.semaineRecolte && itp.semaineRecolteFin
                   ? `S${itp.semaineRecolte}–S${itp.semaineRecolteFin}`
-                  : "Pluriannuelle ou non renseignée"}
+                  : itp.semaineRecolte
+                    ? `S${itp.semaineRecolte}`
+                    : "Pluriannuelle ou non renseignée"}
               </p>
             </div>
           </div>
@@ -116,7 +140,9 @@ export function ItpEditDialog({ itp, open, onOpenChange, onSaved }: ItpEditDialo
               Fermer
             </Button>
             <Button asChild>
-              <Link href={`/maraichage/itps/${encodeURIComponent(itp.id)}`}>Voir la source</Link>
+              <Link href={`/maraichage/itps/${encodeURIComponent(itp.id)}`}>
+                {itp.sourceRecordId ? "Voir la source" : "Voir la fiche"}
+              </Link>
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -150,7 +176,7 @@ export function ItpEditDialog({ itp, open, onOpenChange, onSaved }: ItpEditDialo
 
       toast({
         title: "ITP mis à jour",
-        description: `"${itp.nom ?? itp.id}" modifié avec succès`,
+        description: `« ${nomAffichableItp(itp)} » modifié avec succès`,
       })
 
       onSaved({
@@ -173,6 +199,24 @@ export function ItpEditDialog({ itp, open, onOpenChange, onSaved }: ItpEditDialo
       setIsSubmitting(false)
     }
   }
+
+  // Rappel du calage, quand l'écran appelant décale l'affichage.
+  const rappelCalage =
+    decalage !== 0 ? (
+      <p className="rounded-md bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+        Ces semaines sont celles de la source. Dans votre zone, le calendrier et la planification
+        les décalent de {decalage > 0 ? "+" : "−"}
+        {Math.abs(decalage)} semaine{Math.abs(decalage) > 1 ? "s" : ""}
+        {[
+          semaineSemis ? ` — semis S${decalerSemaine(semaineSemis, decalage)}` : null,
+          semainePlantation ? `, plantation S${decalerSemaine(semainePlantation, decalage)}` : null,
+          semaineRecolte ? `, récolte S${decalerSemaine(semaineRecolte, decalage)}` : null,
+        ]
+          .filter(Boolean)
+          .join("")}
+        .
+      </p>
+    ) : null
 
   const parseWeek = (value: string): number | null => {
     if (!value) return null
@@ -199,7 +243,7 @@ export function ItpEditDialog({ itp, open, onOpenChange, onSaved }: ItpEditDialo
                 style={{ backgroundColor: itp.espece.couleur }}
               />
             )}
-            {itp.nom ?? itp.id}
+            {nomAffichableItp(itp)}
           </DialogTitle>
           <DialogDescription className="flex items-center gap-2">
             {itp.especeId && <span>{itp.espece?.nom ?? itp.espece?.id ?? itp.especeId}</span>}
@@ -210,6 +254,7 @@ export function ItpEditDialog({ itp, open, onOpenChange, onSaved }: ItpEditDialo
         </DialogHeader>
 
         <div className="space-y-4 py-2">
+          {rappelCalage}
           {/* Semaines */}
           <div className="grid grid-cols-3 gap-3">
             <div className="space-y-1.5">

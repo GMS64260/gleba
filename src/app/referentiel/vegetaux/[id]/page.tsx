@@ -9,6 +9,8 @@ import { PhotoContributionForm } from "@/components/referentiel/PhotoContributio
 import prisma from "@/lib/prisma";
 import { ZONE_CLIMAT_LABEL, type ZoneClimat } from "@/lib/terroir";
 import { nomPublic, originePublique, visibiliteEnfantPublic, visibiliteReferentielPublic } from "@/lib/referentiel-public";
+import { nomAffichableItp } from "@/lib/itp-label";
+import { dureeCycleItpJours } from "@/lib/cultures/dates-itp";
 
 export const dynamic = "force-dynamic";
 
@@ -29,8 +31,13 @@ async function getEspece(id: string) {
         take: 24,
       },
       itps: {
-        where: visibiliteEnfantPublic(),
-        select: { id: true, nom: true, userId: true, zoneClimat: true, typePlanche: true, modeDemarrage: true, semaineSemis: true, semainePlantation: true, semaineRecolte: true, dureeCulture: true, espacement: true, sourceReference: true },
+        // `actif: false` = scénario dont les semaines publiées sortent de
+        // l'intervalle ISO 1–52, conservé pour audit. Il n'était filtré que dans
+        // `GET /api/itps` : la page publique le référençait, libellé « source »
+        // compris, avec des semaines que la base a ramenées dans 1–52 — donc un
+        // titre qui contredit ses propres valeurs.
+        where: { AND: [{ actif: true }, visibiliteEnfantPublic()] },
+        select: { id: true, nom: true, userId: true, zoneClimat: true, typePlanche: true, modeDemarrage: true, semaineSemis: true, semainePlantation: true, semaineRecolte: true, semaineImplantationDebut: true, dureeCulture: true, delaiPremiereRecolteAnnees: true, statutValidation: true, espacement: true, sourceReference: true },
         orderBy: [{ zoneClimat: "asc" }, { nom: "asc" }],
         take: 24,
       },
@@ -52,6 +59,60 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const description = espece.description || `Fiche agricole de ${name} : variétés, exigences et itinéraires techniques selon le terroir.`;
   const url = `https://gleba.fr/referentiel/vegetaux/${encodeURIComponent(espece.id)}`;
   return { title: `${name} — Variétés, culture et terroirs`, description, alternates: { canonical: url }, openGraph: { title: `${name} — Référentiel Gleba`, description, url, type: "article" } };
+}
+
+/**
+ * Qualité de la référence, dite au visiteur.
+ *
+ * La page publiait côte à côte les scénarios sourcés (INRAE, DOI) et les 122
+ * entrées historiques dont 80 sont une grille arithmétique (+4 / +8 semaines,
+ * durée de culture uniformément à 84 jours) : neuf cartes de poireau dont
+ * quatre annoncent une récolte mi-mai. Le statut existait déjà en base
+ * (« a_revoir » sur les 122) mais n'était ni sélectionné ni affiché : rien ne
+ * distinguait une référence documentée d'un repère à confirmer.
+ */
+function QualiteBadge({ statut }: { statut: string }) {
+  if (statut === "source_documentee") {
+    return (
+      <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-800">
+        Source documentée
+      </span>
+    );
+  }
+  if (statut === "personnel") {
+    return (
+      <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
+        Contribution d&apos;un membre
+      </span>
+    );
+  }
+  return (
+    <span className="rounded-full bg-slate-200 px-2 py-1 text-xs font-medium text-slate-700">
+      Repère à confirmer
+    </span>
+  );
+}
+
+/**
+ * Durée du cycle réellement appliquée par la planification, et non la colonne
+ * `dureeCulture` brute : 589 itinéraires portent les deux valeurs et elles
+ * divergent. Pour un arbre fruitier, on annonce le délai en années plutôt qu'un
+ * nombre de jours qui ne parle à personne.
+ */
+function cycleLisible(itp: {
+  semaineSemis: number | null;
+  semainePlantation: number | null;
+  semaineRecolte: number | null;
+  semaineImplantationDebut: number | null;
+  dureeCulture: number | null;
+  delaiPremiereRecolteAnnees: number | null;
+}): string {
+  const annees = itp.delaiPremiereRecolteAnnees;
+  if (annees && annees > 0) {
+    return `première récolte au bout de ${annees} an${annees > 1 ? "s" : ""}`;
+  }
+  const jours = dureeCycleItpJours(itp);
+  return jours ? `${jours} jours` : "Non précisé";
 }
 
 export default async function FicheVegetalPage({ params }: PageProps) {
@@ -106,7 +167,7 @@ export default async function FicheVegetalPage({ params }: PageProps) {
         <section className="mt-10">
           <h2 className="text-2xl font-bold text-slate-900">Itinéraires techniques par contexte</h2>
           <p className="mt-1 text-sm text-slate-500">Ces calendriers sont des références contextualisées, pas des garanties de réussite.</p>
-          {espece.itps.length ? <div className="mt-4 grid gap-4 md:grid-cols-2">{espece.itps.map((itp) => <div key={itp.id} className="rounded-2xl border border-slate-200 bg-white p-5"><div className="flex flex-wrap items-start justify-between gap-2"><h3 className="font-semibold text-slate-900">{nomPublic(itp)}</h3><span className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-600">{itp.zoneClimat ? zoneLabel(itp.zoneClimat) : "Référence générale"}</span></div><dl className="mt-4 grid grid-cols-2 gap-3 text-sm"><MiniFact label="Conduite" value={itp.typePlanche || "Non précisée"} /><MiniFact label="Démarrage" value={itp.modeDemarrage || "Non précisé"} /><MiniFact label="Semis" value={week(itp.semaineSemis)} /><MiniFact label="Plantation" value={week(itp.semainePlantation)} /><MiniFact label="Récolte" value={week(itp.semaineRecolte)} /><MiniFact label="Cycle" value={itp.dureeCulture ? `${itp.dureeCulture} jours` : "Non précisé"} /></dl>{itp.sourceReference && <p className="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-500">Source déclarée : {itp.sourceReference}</p>}</div>)}</div> : <Empty>Les itinéraires contextualisés de ce végétal restent à documenter.</Empty>}
+          {espece.itps.length ? <div className="mt-4 grid gap-4 md:grid-cols-2">{espece.itps.map((itp) => <div key={itp.id} className="rounded-2xl border border-slate-200 bg-white p-5"><div className="flex flex-wrap items-start justify-between gap-2"><h3 className="font-semibold text-slate-900">{nomAffichableItp(itp)}</h3><div className="flex flex-wrap items-center gap-2"><QualiteBadge statut={itp.statutValidation} /><span className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-600">{itp.zoneClimat ? zoneLabel(itp.zoneClimat) : "Référence générale"}</span></div></div><dl className="mt-4 grid grid-cols-2 gap-3 text-sm"><MiniFact label="Conduite" value={itp.typePlanche || "Non précisée"} /><MiniFact label="Démarrage" value={itp.modeDemarrage || "Non précisé"} /><MiniFact label="Semis" value={week(itp.semaineSemis)} /><MiniFact label="Plantation" value={week(itp.semainePlantation)} /><MiniFact label="Récolte" value={week(itp.semaineRecolte)} /><MiniFact label="Cycle" value={cycleLisible(itp)} /></dl>{itp.sourceReference && <p className="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-500">Source déclarée : {itp.sourceReference}</p>}</div>)}</div> : <Empty>Les itinéraires contextualisés de ce végétal restent à documenter.</Empty>}
         </section>
 
         <section className="mt-10">
