@@ -16,6 +16,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { requireAuthApi } from "@/lib/auth-utils"
+import { refusSiPasProprietaire } from "@/lib/exploitation/garde-session"
 import { importAccount, isValidExportPayload } from "@/lib/account-transfer"
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50 Mo
@@ -23,6 +24,9 @@ const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50 Mo
 export async function POST(request: NextRequest) {
   const { error, session } = await requireAuthApi(request)
   if (error) return error
+  // Un import réécrit TOUTE l'exploitation : geste de propriétaire.
+  const refus = refusSiPasProprietaire(session)
+  if (refus) return refus
 
   try {
     const { searchParams } = new URL(request.url)

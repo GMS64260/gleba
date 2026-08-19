@@ -14,7 +14,8 @@
 import { NextRequest, NextResponse } from "next/server"
 
 import prisma from "@/lib/prisma"
-import { requireAuthApi, getUserId, verifyPassword } from "@/lib/auth-utils"
+import { requireAuthApi, verifyPassword } from "@/lib/auth-utils"
+import { getActeurId } from "@/lib/exploitation/garde-session"
 import {
   reprendreReferentielCommunaute,
   supprimerFichiersUtilisateur,
@@ -34,7 +35,8 @@ export async function GET() {
 
   try {
     const user = await prisma.user.findUnique({
-      where: { id: getUserId(session) },
+      // Identité de la PERSONNE connectée, pas de l'exploitation visitée.
+      where: { id: getActeurId(session) },
       select: { password: true },
     })
     if (!user) {
@@ -61,7 +63,9 @@ export async function DELETE(request: NextRequest) {
   if (rateLimitError) return rateLimitError
 
   try {
-    const userId = getUserId(session)
+    // Supprimer SON compte : l'acteur. Un membre invité ne doit jamais
+    // pouvoir détruire l'exploitation qui l'accueille.
+    const userId = getActeurId(session)
 
     // Une session de consultation admin est en lecture seule : l'admin ne doit
     // pas pouvoir supprimer le compte du membre qu'il dépanne.

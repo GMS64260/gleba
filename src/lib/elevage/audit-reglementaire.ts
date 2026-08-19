@@ -79,9 +79,18 @@ export async function journaliserEvenementReglementaire(
   })
 }
 
+/**
+ * Qui a réellement agi, pour le journal réglementaire.
+ *
+ * Ordre voulu : un admin en consultation d'abord (c'est lui qui manipule), puis
+ * la PERSONNE connectée (`acteurId`, qui diffère de `id` quand elle travaille
+ * dans l'exploitation de quelqu'un d'autre), et enfin `id` pour un compte sans
+ * adhésion, où acteur et exploitation sont confondus.
+ */
 export function acteurReglementaire(user: {
   id: string
+  acteurId?: string
   impersonatedBy?: string | null
 }): string {
-  return user.impersonatedBy || user.id
+  return user.impersonatedBy || user.acteurId || user.id
 }

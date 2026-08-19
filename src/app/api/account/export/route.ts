@@ -10,6 +10,7 @@
 
 import { NextResponse } from "next/server"
 import { requireAuthApi } from "@/lib/auth-utils"
+import { refusSiPasProprietaire } from "@/lib/exploitation/garde-session"
 import { exportAccount } from "@/lib/account-transfer"
 
 const APP_VERSION = process.env.npm_package_version || "1.1.0"
@@ -17,6 +18,9 @@ const APP_VERSION = process.env.npm_package_version || "1.1.0"
 export async function GET(request: Request) {
   const { error, session } = await requireAuthApi(request)
   if (error) return error
+  // Un export emporte TOUTE l'exploitation : geste de propriétaire.
+  const refus = refusSiPasProprietaire(session)
+  if (refus) return refus
 
   try {
     const result = await exportAccount(session!.user.id, APP_VERSION)

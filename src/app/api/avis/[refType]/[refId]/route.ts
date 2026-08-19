@@ -12,6 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireAuthApi } from '@/lib/auth-utils'
+import { getActeurId, getUserId } from '@/lib/exploitation/garde-session'
 import { terroirDeUser } from '@/lib/terroir'
 import { AVIS_REF_TYPES, type AvisRefType, type AvisNotable } from '@/lib/avis/types'
 import { criteresKeys } from '@/lib/avis/criteres'
@@ -57,7 +58,7 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
     const refType = parseRefType(rawType)
     if (!refType) return NextResponse.json({ error: 'Type invalide' }, { status: 400 })
     const refId = decodeURIComponent(rawId)
-    const userId = session!.user.id
+    const userId = getActeurId(session)
 
     const avis = await prisma.avis.findMany({
       where: { refType, refId },
@@ -109,7 +110,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const refType = parseRefType(rawType)
     if (!refType) return NextResponse.json({ error: 'Type invalide' }, { status: 400 })
     const refId = decodeURIComponent(rawId)
-    const userId = session!.user.id
+    // Auteur de l'avis : la personne. Le contexte de terroir joint à l'avis
+    // reste celui de l'EXPLOITATION où la variété a été cultivée.
+    const userId = getActeurId(session)
+    const tenantId = getUserId(session)
 
     if (!(await refExiste(refType, refId))) {
       return NextResponse.json({ error: 'Objet introuvable' }, { status: 404 })
@@ -120,7 +124,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Données invalides', details: parsed.error.flatten() }, { status: 400 })
     }
 
-    const terroir = await terroirDeUser(prisma, userId)
+    const terroir = await terroirDeUser(prisma, tenantId)
     const payload = {
       reprend: parsed.data.reprend ?? null,
       notes: parsed.data.notes ?? {},
@@ -158,7 +162,7 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams) {
     const refType = parseRefType(rawType)
     if (!refType) return NextResponse.json({ error: 'Type invalide' }, { status: 400 })
     const refId = decodeURIComponent(rawId)
-    await prisma.avis.deleteMany({ where: { refType, refId, userId: session!.user.id } })
+    await prisma.avis.deleteMany({ where: { refType, refId, userId: getActeurId(session) } })
     return NextResponse.json({ data: { ok: true } })
   } catch (err) {
     console.error('DELETE /api/avis error:', err)

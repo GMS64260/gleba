@@ -6,6 +6,7 @@
 
 import { NextResponse } from "next/server"
 import { requireAuthApi } from "@/lib/auth-utils"
+import { getActeurId } from "@/lib/exploitation/garde-session"
 import { evolutionSchema, EVOLUTION_STATUTS, EVOLUTION_CATEGORIES } from "@/lib/validations/evolution"
 import prisma from "@/lib/prisma"
 import type { Prisma } from "@prisma/client"
@@ -34,7 +35,7 @@ export async function GET(request: Request) {
     include: {
       user: { select: { id: true, name: true, email: true } },
       _count: { select: { votes: true } },
-      votes: { where: { userId: session!.user.id }, select: { id: true } },
+      votes: { where: { userId: getActeurId(session) }, select: { id: true } },
     },
     orderBy:
       tri === "recent"
@@ -56,7 +57,7 @@ export async function GET(request: Request) {
     author: {
       id: e.user.id,
       name: e.user.name || e.user.email.split("@")[0],
-      isMe: e.user.id === session!.user.id,
+      isMe: e.user.id === getActeurId(session),
     },
   }))
 
@@ -86,12 +87,12 @@ export async function POST(request: Request) {
 
   const evolution = await prisma.evolution.create({
     data: {
-      userId: session!.user.id,
+      userId: getActeurId(session),
       titre,
       description,
       categorie,
       // L'auteur vote automatiquement pour sa propre demande
-      votes: { create: { userId: session!.user.id } },
+      votes: { create: { userId: getActeurId(session) } },
     },
     select: { id: true },
   })

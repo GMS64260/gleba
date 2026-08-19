@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { requireAuthApi } from "@/lib/auth-utils";
+import { requireAuthApi } from "@/lib/auth-utils"
+import { getActeurId } from "@/lib/exploitation/garde-session";
 import { stockerImageReferentiel, supprimerImagesStockees, verifierTailleImage } from "@/lib/media-storage";
 import { visibiliteReferentielPublic } from "@/lib/referentiel-public";
 import { contributionMediaSchema } from "@/lib/validations/media-referentiel";
@@ -47,7 +48,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         citation: `${parsed.data.auteur} / Gleba, CC BY 4.0`,
         organe: parsed.data.organe,
         description: parsed.data.description || null,
-        contributeurId: session!.user.id,
+        contributeurId: getActeurId(session),
       },
       select: { id: true, statut: true },
     });

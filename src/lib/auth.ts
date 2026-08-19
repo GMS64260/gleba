@@ -326,11 +326,26 @@ declare module "next-auth" {
   }
   interface Session {
     user: {
+      /**
+       * TENANT : exploitation dont on lit et écrit les données. Pour une session
+       * rendue par `requireAuth`/`requireAuthApi`, c'est l'id du PROPRIÉTAIRE de
+       * l'exploitation, qui peut différer de la personne connectée (cf.
+       * `src/lib/exploitation/roles.ts`). Sur une session brute (`auth()`),
+       * c'est l'acteur.
+       */
       id: string
       email: string
       name?: string | null
       role: string
       impersonatedBy?: string | null
+      /** ACTEUR : personne réellement connectée. Identité et attribution. */
+      acteurId?: string
+      /** Rôle de l'acteur dans l'exploitation courante. */
+      roleExploitation?: "PROPRIETAIRE" | "MEMBRE" | "CONSULTATION"
+      /** Modules autorisés ; `null` = aucune restriction. */
+      modulesExploitation?: string[] | null
+      estProprietaireExploitation?: boolean
+      peutEcrireExploitation?: boolean
     }
   }
 }

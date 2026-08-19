@@ -6,6 +6,7 @@
 
 import { NextResponse } from "next/server"
 import { requireAuthApi } from "@/lib/auth-utils"
+import { getActeurId } from "@/lib/exploitation/garde-session"
 import prisma from "@/lib/prisma"
 
 export const dynamic = "force-dynamic"
@@ -18,7 +19,7 @@ export async function POST(
   if (error) return error
 
   const { id } = await params
-  const userId = session!.user.id
+  const userId = getActeurId(session)
 
   const evolution = await prisma.evolution.findUnique({
     where: { id },

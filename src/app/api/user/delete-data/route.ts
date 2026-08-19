@@ -5,11 +5,15 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
-import { requireAuthApi, getUserId } from '@/lib/auth-utils'
+import { requireAuthApi } from '@/lib/auth-utils'
+import { getUserId, refusSiPasProprietaire } from '@/lib/exploitation/garde-session'
 
 export async function DELETE(request: NextRequest) {
   const { error, session } = await requireAuthApi()
   if (error) return error
+  // Vider l'exploitation n'est jamais le geste d'un compte invité.
+  const refus = refusSiPasProprietaire(session)
+  if (refus) return refus
 
   try {
     const userId = getUserId(session)

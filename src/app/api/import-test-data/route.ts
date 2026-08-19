@@ -4,7 +4,8 @@
  */
 
 import { NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
+import { requireAuthApi } from "@/lib/auth-utils"
+import { refusSiPasProprietaire } from "@/lib/exploitation/garde-session"
 import prisma from "@/lib/prisma"
 import { productifParDefaut } from "@/lib/tree-care-calendar"
 import {
@@ -26,10 +27,12 @@ import {
 
 export async function POST() {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Non authentifié" }, { status: 401 })
-    }
+    // Les données d'exemple sont chargées DANS l'exploitation courante, et
+    // seul son propriétaire peut le faire.
+    const { error, session } = await requireAuthApi()
+    if (error) return error
+    const refus = refusSiPasProprietaire(session)
+    if (refus) return refus
 
     const userId = session.user.id
 
@@ -328,10 +331,12 @@ export async function POST() {
 // GET pour vérifier si l'utilisateur peut importer
 export async function GET() {
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Non authentifié" }, { status: 401 })
-    }
+    // Les données d'exemple sont chargées DANS l'exploitation courante, et
+    // seul son propriétaire peut le faire.
+    const { error, session } = await requireAuthApi()
+    if (error) return error
+    const refus = refusSiPasProprietaire(session)
+    if (refus) return refus
 
     const userId = session.user.id
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
+import { getActeurId } from "@/lib/exploitation/garde-session"
 
 export const dynamic = "force-dynamic"
 
@@ -44,13 +45,13 @@ export async function POST(request: NextRequest) {
   await prisma.pushSubscription.upsert({
     where: { endpoint: body.endpoint },
     update: {
-      userId: session!.user.id,
+      userId: getActeurId(session),
       p256dh: body.keys.p256dh,
       auth: body.keys.auth,
       userAgent: request.headers.get("user-agent")?.slice(0, 2048) ?? null,
     },
     create: {
-      userId: session!.user.id,
+      userId: getActeurId(session),
       endpoint: body.endpoint,
       p256dh: body.keys.p256dh,
       auth: body.keys.auth,
@@ -83,7 +84,8 @@ export async function DELETE(request: NextRequest) {
   }
 
   await prisma.pushSubscription.deleteMany({
-    where: { userId: session!.user.id, ...(endpoint ? { endpoint } : {}) },
+    // Un abonnement push appartient au navigateur d'une PERSONNE.
+    where: { userId: getActeurId(session), ...(endpoint ? { endpoint } : {}) },
   })
 
   return NextResponse.json({ ok: true })

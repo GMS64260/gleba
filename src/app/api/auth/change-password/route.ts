@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi, hashPassword, verifyPassword } from "@/lib/auth-utils"
+import { getActeurId } from "@/lib/exploitation/garde-session"
 import { checkRateLimit, getClientIP } from "@/lib/rate-limit"
 
 const MIN_PASSWORD_LENGTH = 12
@@ -57,7 +58,9 @@ export async function POST(request: NextRequest) {
     }
 
     const user = await prisma.user.findUnique({
-      where: { id: session!.user.id },
+      // La PERSONNE connectée : un membre change son mot de passe, pas
+      // celui du propriétaire de l'exploitation.
+      where: { id: getActeurId(session) },
       select: { id: true, password: true },
     })
     if (!user) {

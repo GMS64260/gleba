@@ -6,6 +6,7 @@
 
 import { NextResponse } from "next/server"
 import { requireAuthApi } from "@/lib/auth-utils"
+import { getActeurId } from "@/lib/exploitation/garde-session"
 import { evolutionUpdateSchema } from "@/lib/validations/evolution"
 import prisma from "@/lib/prisma"
 import type { Prisma } from "@prisma/client"
@@ -76,7 +77,7 @@ export async function DELETE(
   }
 
   const isAdmin = session!.user.role === "ADMIN"
-  const isAuthor = evolution.userId === session!.user.id
+  const isAuthor = evolution.userId === getActeurId(session)
   if (!isAdmin && !isAuthor) {
     return NextResponse.json({ error: "Accès interdit" }, { status: 403 })
   }

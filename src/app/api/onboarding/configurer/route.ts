@@ -21,6 +21,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import prisma from '@/lib/prisma'
 import { requireAuthApi } from '@/lib/auth-utils'
+import { refusSiLectureSeule } from '@/lib/exploitation/garde-session'
 import { ZONES_CLIMAT, type ZoneClimat } from '@/lib/terroir'
 import { estCentroidExemple } from '@/lib/localisation-exemple'
 import { normaliserLibelle } from '@/lib/libelle-libre'
@@ -91,6 +92,8 @@ const payloadSchema = z.discriminatedUnion('etape', [
 export async function POST(request: NextRequest) {
   const { session, error } = await requireAuthApi()
   if (error) return error
+  const refus = refusSiLectureSeule(session)
+  if (refus) return refus
   const userId = session!.user.id
 
   try {

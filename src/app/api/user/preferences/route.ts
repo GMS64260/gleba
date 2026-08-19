@@ -13,6 +13,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
+import { getActeurId } from "@/lib/exploitation/garde-session"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -24,7 +25,9 @@ export async function GET() {
   if (error) return error
 
   const prefs = await prisma.userPreference.findMany({
-    where: { userId: session!.user.id },
+    // Préférences de la PERSONNE (thème, notifications, modules visibles) :
+    // un membre ne lit ni n'écrase celles du propriétaire.
+    where: { userId: getActeurId(session) },
   })
 
   // Sérialise en objet { key: value, ... }
@@ -44,7 +47,7 @@ export async function PUT(request: NextRequest) {
   const { error, session } = await requireAuthApi()
   if (error) return error
 
-  const userId = session!.user.id
+  const userId = getActeurId(session)
   const body = await request.json()
 
   if (!body || typeof body !== "object") {

@@ -21,6 +21,16 @@ enum Role {
   USER
 }
 
+/// Rôle d'un compte invité DANS l'exploitation d'un autre compte.
+/// Le propriétaire n'a pas de ligne d'adhésion : il est propriétaire par défaut
+/// de sa propre exploitation. Trois rôles seulement (décision 2026-08-19) :
+/// propriétaire (implicite), MEMBRE (écriture sur les modules autorisés) et
+/// CONSULTATION (lecture seule, ex. comptable ou technicien).
+enum RoleMembreExploitation {
+  MEMBRE
+  CONSULTATION
+}
+
 enum CoucheActivite {
   MARAICHAGE
   VERGER
@@ -252,7 +262,54 @@ model User {
   mouvementsStockOeufs             MouvementStockOeuf[]
   stocksMedicamentsElevage         StockMedicamentElevage[]
 
+  // Exploitation partagée — les comptes invités DANS mon exploitation, et
+  // l'adhésion éventuelle de MON compte à l'exploitation de quelqu'un d'autre.
+  membresExploitation MembreExploitation[] @relation("MembresDeMonExploitation")
+  adhesionExploitation MembreExploitation? @relation("AdhesionDeMonCompte")
+
   @@map("users")
+}
+
+/// Adhésion d'un compte à l'exploitation d'un AUTRE compte (chantier P1
+/// « exploitation professionnelle partagée », lot 1 du 2026-08-19).
+///
+/// Invariant de cloisonnement : `userId` reste PARTOUT dans le métier la clé de
+/// l'exploitation (le *tenant*), et vaut l'id du propriétaire. Cette table dit
+/// seulement quelles PERSONNES (les *acteurs*) ont le droit d'agir dans
+/// l'exploitation d'un propriétaire, et à quel titre. Aucune donnée métier n'est
+/// rattachée ici. Cf. `src/lib/exploitation/roles.ts` et [[Technique]].
+///
+/// `userId` est unique : un compte n'appartient qu'à une seule exploitation à la
+/// fois, sinon la résolution du tenant serait ambiguë. Une ligne révoquée garde
+/// la place ; une nouvelle invitation acceptée réécrit la ligne du compte.
+/// Le jeton d'invitation n'est jamais stocké en clair, seulement son SHA-256
+/// (même règle que `impersonation_grants`).
+model MembreExploitation {
+  id             String                 @id @default(cuid())
+  /// Propriétaire de l'exploitation = tenant. C'est cet id qui vaut `userId`
+  /// dans toutes les tables métier.
+  proprietaireId String                 @map("proprietaire_id")
+  proprietaire   User                   @relation("MembresDeMonExploitation", fields: [proprietaireId], references: [id], onDelete: Cascade)
+  /// Adresse invitée, en minuscules. Sert de clé d'invitation avant qu'un
+  /// compte n'existe ou n'accepte.
+  email          String                 @map("email")
+  /// Compte invité, renseigné à l'acceptation. Null = invitation en attente.
+  userId         String?                @unique @map("user_id")
+  user           User?                  @relation("AdhesionDeMonCompte", fields: [userId], references: [id], onDelete: Cascade)
+  role           RoleMembreExploitation @default(MEMBRE) @map("role")
+  /// Modules autorisés (cf. `src/lib/modules.ts`). Tableau vide = tous les
+  /// modules de l'exploitation, sans restriction supplémentaire.
+  modules        String[]               @default([]) @map("modules")
+  tokenHash      String?                @unique @map("token_hash")
+  tokenExpiresAt DateTime?              @map("token_expires_at")
+  accepteLe      DateTime?              @map("accepte_le")
+  revoqueLe      DateTime?              @map("revoque_le")
+  createdAt      DateTime               @default(now()) @map("created_at")
+  updatedAt      DateTime               @updatedAt @map("updated_at")
+
+  @@unique([proprietaireId, email])
+  @@index([proprietaireId, revoqueLe])
+  @@map("membres_exploitation")
 }
 
 /// Abonnement push navigateur d'un utilisateur.

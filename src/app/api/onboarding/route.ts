@@ -9,6 +9,7 @@
 
 import { NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
+import { refusSiLectureSeule } from '@/lib/exploitation/garde-session'
 import prisma from '@/lib/prisma'
 
 const KEY = 'onboarding_completed'
@@ -26,6 +27,8 @@ export async function GET() {
 export async function POST() {
   const { session, error } = await requireAuthApi()
   if (error) return error
+  const refus = refusSiLectureSeule(session)
+  if (refus) return refus
 
   await prisma.userPreference.upsert({
     where: { userId_key: { userId: session.user.id, key: KEY } },

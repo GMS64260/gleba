@@ -7,13 +7,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireAuthApi } from '@/lib/auth-utils'
+import { getActeurId } from '@/lib/exploitation/garde-session'
 import { AVIS_REF_TYPES, type AvisRefType } from '@/lib/avis/types'
 import { resolveEntreesSignalees } from '@/lib/signalements'
 
 export async function POST(request: NextRequest) {
   const { error, session } = await requireAuthApi()
   if (error) return error
-  const userId = session!.user.id
+  // Auteur du signalement : la personne, pas l'exploitation.
+  const userId = getActeurId(session)
 
   try {
     const body = await request.json()
