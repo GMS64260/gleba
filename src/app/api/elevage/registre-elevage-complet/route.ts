@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto"
 import { mkdir, unlink, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { requireAuthApi } from "@/lib/auth-utils"
+import { refusSiLectureSeule } from "@/lib/exploitation/garde-session"
 import { reconstituerEffectifsLots } from "@/lib/elevage/effectif"
 import prisma from "@/lib/prisma"
 import {
@@ -60,6 +61,11 @@ type LigneMouvement = {
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
   if (error) return error
+  // Cette route ARCHIVE le registre (pièce sur volume + empreinte en base) :
+  // c'est un acte d'écriture, refusé proprement à un compte en consultation
+  // plutôt que de laisser un fichier orphelin.
+  const refus = refusSiLectureSeule(session)
+  if (refus) return refus
 
   const params = new URL(request.url).searchParams
   const rawYear = params.get("year") ?? String(currentYear())

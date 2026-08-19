@@ -10,6 +10,7 @@ import { OnboardingRedirect } from "@/components/onboarding-redirect";
 import { CookieBanner } from "@/components/CookieBanner";
 import { GlobalDialogHost } from "@/components/ui/global-dialog-host";
 import { ImpersonationBanner } from "@/components/admin/ImpersonationBanner";
+import { BandeauExploitation } from "@/components/exploitation/BandeauExploitation";
 import { ChatBubble } from "@/components/chat/ChatBubble";
 import { PushRegister } from "@/components/notifications/push-register";
 
@@ -201,6 +202,7 @@ export default function RootLayout({
       >
         <SessionProvider>
           <ImpersonationBanner />
+          <BandeauExploitation />
           <OnboardingRedirect />
           {children}
           <ChatBubble />

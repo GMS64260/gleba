@@ -9,7 +9,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuthApi, getUserId } from '@/lib/auth-utils'
+import { requireAuthApi } from '@/lib/auth-utils'
+import { getUserId, refusSiLectureSeule } from '@/lib/exploitation/garde-session'
 import prisma from '@/lib/prisma'
 import { enregistrerArrosageCultures } from '@/lib/irrigation-recording'
 import { computeConseilIrrigation } from '@/lib/irrigation-conseil'
@@ -41,6 +42,8 @@ export async function GET(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   const { error, session } = await requireAuthApi()
   if (error) return error
+  const refus = refusSiLectureSeule(session)
+  if (refus) return refus
 
   try {
     const userId = getUserId(session)

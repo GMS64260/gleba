@@ -584,20 +584,27 @@ export default function ParametresPage() {
           <CardHeader>
             <CardTitle>Équipe, devise et unités</CardTitle>
             <CardDescription>
-              Configuration multi-utilisateurs, devise et système d&apos;unités
+              Comptes rattachés à l&apos;exploitation, devise et système d&apos;unités
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4">
+              <div>
+                <p className="text-sm font-medium">Comptes de l&apos;exploitation</p>
+                <p className="text-xs text-muted-foreground">
+                  Invitez un associé, un salarié, un comptable ou un technicien. Deux rôles :
+                  saisie ou consultation en lecture seule.
+                </p>
+              </div>
+              <Button variant="outline" asChild>
+                <Link href="/parametres/equipe">Gérer l&apos;équipe</Link>
+              </Button>
+            </div>
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
               <p className="text-sm text-amber-900 font-medium mb-2">
                 À venir — feature sur la roadmap
               </p>
               <ul className="text-xs text-amber-800 space-y-1 list-disc pl-4">
-                <li>
-                  <strong>Multi-utilisateurs</strong> : invitez votre équipe
-                  (employé, saisonnier, comptable) avec rôles et droits par
-                  module — Q3 2026.
-                </li>
                 <li>
                   <strong>Devise</strong> : EUR par défaut ; CHF, USD à la
                   demande. Contactez-nous si besoin urgent.

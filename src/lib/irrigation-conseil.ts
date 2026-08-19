@@ -15,6 +15,7 @@
  */
 
 import prisma from '@/lib/prisma'
+import { ecritureAutoriseeMaintenant } from '@/lib/exploitation/garde-ecriture'
 import { fetchOpenMeteoForecast, fetchOpenMeteoHistory } from '@/lib/meteo'
 import type { MeteoJournaliere, MeteoPrevision } from '@/lib/meteo'
 import {
@@ -474,7 +475,7 @@ export async function computeConseilIrrigation(userId: string, annee: number) {
   }
 
   // Batch auto-validation en DB
-  if (irrigationsAutoValidees.length > 0) {
+  if (irrigationsAutoValidees.length > 0 && ecritureAutoriseeMaintenant()) {
     await prisma.irrigationPlanifiee.updateMany({
       where: {
         id: { in: irrigationsAutoValidees },

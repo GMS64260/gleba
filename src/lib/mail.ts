@@ -298,6 +298,75 @@ export function commandeBoutiqueEmail(args: CommandeBoutiqueEmailArgs) {
   }
 }
 
+export function invitationExploitationEmail(args: {
+  nomExploitation: string
+  nomProprietaire: string | null
+  emailProprietaire: string
+  role: "MEMBRE" | "CONSULTATION"
+  token: string
+}) {
+  const url = `${APP_URL}/invitation/${args.token}`
+  const invitant = args.nomProprietaire || args.emailProprietaire
+  const droits =
+    args.role === "CONSULTATION"
+      ? "Vous pourrez consulter les données de l'exploitation, sans rien modifier."
+      : "Vous pourrez consulter et saisir les données de l'exploitation."
+  return {
+    subject: `Gleba — ${invitant} vous invite à rejoindre ${args.nomExploitation}`,
+    html: `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;padding:40px 20px;">
+    <tr><td align="center">
+      <table width="480" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+        <tr>
+          <td style="background:linear-gradient(135deg,#065f46,#0d9488);padding:32px 40px;text-align:center;">
+            <h1 style="margin:0;font-size:28px;font-weight:300;color:#ffffff;letter-spacing:-0.5px;">Gleba</h1>
+            <p style="margin:8px 0 0;font-size:13px;color:#a7f3d0;letter-spacing:0.1em;text-transform:uppercase;">Gestion agricole</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:36px 40px;">
+            <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#1e293b;">
+              Invitation à rejoindre ${escapeHtml(args.nomExploitation)}
+            </h2>
+            <p style="margin:0 0 20px;font-size:15px;color:#64748b;line-height:1.6;">
+              ${escapeHtml(invitant)} (${escapeHtml(args.emailProprietaire)}) vous invite à travailler sur son exploitation dans Gleba. ${droits}
+            </p>
+            <table cellpadding="0" cellspacing="0" style="margin:28px 0;">
+              <tr>
+                <td style="background:linear-gradient(135deg,#059669,#0d9488);border-radius:10px;">
+                  <a href="${url}" style="display:inline-block;padding:14px 32px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;">
+                    Voir l'invitation
+                  </a>
+                </td>
+              </tr>
+            </table>
+            <p style="margin:0 0 8px;font-size:13px;color:#94a3b8;">
+              Ce lien est valable 7 jours. Si vous n'avez pas de compte Gleba, créez-en un avec cette adresse email, puis rouvrez ce lien. Si cette invitation ne vous concerne pas, ignorez ce message.
+            </p>
+            <p style="margin:0;font-size:12px;color:#cbd5e1;word-break:break-all;">
+              ${url}
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:20px 40px 28px;border-top:1px solid #f1f5f9;">
+            <p style="margin:0;font-size:12px;color:#94a3b8;text-align:center;">
+              Gleba — Logiciel libre de gestion agricole<br>
+              <a href="https://gleba.fr" style="color:#10b981;text-decoration:none;">gleba.fr</a> · <a href="mailto:contact@gleba.fr" style="color:#10b981;text-decoration:none;">contact@gleba.fr</a>
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`,
+  }
+}
+
 export function passwordResetEmail(name: string | null, token: string) {
   const displayName = name || "utilisateur"
   const resetUrl = `${APP_URL}/reset-password?token=${token}`
