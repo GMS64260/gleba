@@ -45,8 +45,12 @@ yarn-debug.log*
 yarn-error.log*
 
 # local env files
-.env
-.env*.local
+# Motif large VOLONTAIREMENT : `.env` et `.env*.local` seuls laissaient passer
+# `.env.bak-*`, `.env.save`, `.env.production`… c'est-à-dire des fichiers de
+# SECRETS dans un dépôt public. Constaté le 2026-08-19 avec une sauvegarde de
+# `.env` prise avant une bascule, qu'un `git add -A` aurait publiée.
+.env*
+!.env.example
 
 # vercel
 .vercel
