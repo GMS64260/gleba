@@ -157,3 +157,9 @@ et)
 # Artefacts générés (régénérables, bruit de diff)
 /docs/project-scan-report.json
 /docs/source-tree-analysis.md
+
+# Support commercial et visuels de travail : gardés sur la machine, hors dépôt.
+# Le deck expose le modèle tarifaire, il n'a rien à faire dans le code ; l'image
+# générée pesait 6,5 Mo dans chaque clone sans être référencée nulle part.
+/gleba-pro.pptx
+/Gemini_Generated_Image_*.png
