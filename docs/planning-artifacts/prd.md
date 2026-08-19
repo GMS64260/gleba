@@ -7,7 +7,6 @@ inputDocuments:
   - docs/data-models.md
   - docs/api-contracts.md
   - docs/component-inventory.md
-  - docs/source-tree-analysis.md
   - docs/development-guide.md
   - docs/deployment-guide.md
   - docs/brainstorming/brainstorming-session-2026-03-13-001.md

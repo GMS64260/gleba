@@ -61,6 +61,5 @@
 - [API Contracts](./api-contracts.md) — Documentation de tous les endpoints
 - [Data Models](./data-models.md) — Schéma complet de la base de données
 - [Component Inventory](./component-inventory.md) — Inventaire des 95 composants UI
-- [Source Tree Analysis](./source-tree-analysis.md) — Arbre source annoté
 - [Development Guide](./development-guide.md) — Guide de développement local
 - [Deployment Guide](./deployment-guide.md) — Guide de déploiement Docker + Caddy

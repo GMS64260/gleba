@@ -26,7 +26,6 @@
 
 - [Project Overview](./project-overview.md) — Résumé du projet et fonctionnalités
 - [Architecture](./architecture.md) — Pattern architectural, stack technique, flux de requête
-- [Source Tree Analysis](./source-tree-analysis.md) — Arbre source complet annoté
 - [API Contracts](./api-contracts.md) — 70+ endpoints documentés par module
 - [Data Models](./data-models.md) — 51 modèles Prisma, enums, relations
 - [Component Inventory](./component-inventory.md) — 95 composants React par domaine
@@ -36,11 +35,13 @@
 ## Documentation existante
 
 - [README.md](../README.md) — Présentation du projet, mission, fonctionnalités
-- [CLAUDE.md](../CLAUDE.md) — Instructions Claude Code (procédures de déploiement)
+- [CONTRIBUTING.md](../CONTRIBUTING.md) — Comment contribuer
 - [COPYRIGHT.md](../COPYRIGHT.md) — Licence AGPL-3.0 (GMS64260, 2024-2026)
-- [PLAN_METEO.md](../PLAN_METEO.md) — Plan d'implémentation du module météo
-- [PROMPT_AI_ENRICHMENT.md](../PROMPT_AI_ENRICHMENT.md) — Instructions enrichissement IA des données CSV
-- [MCP Server README](../mcp-server/README.md) — Documentation des 39 outils MCP
+
+Certains documents cités par les versions précédentes de cet index ne sont pas
+publiés : instructions d'agent, plans de travail internes et analyses générées
+restent sur la machine de développement. Les liens correspondants ont été retirés
+plutôt que laissés morts.
 
 ## Getting Started
 

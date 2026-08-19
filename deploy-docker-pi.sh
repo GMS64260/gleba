@@ -2,7 +2,7 @@
 # Déploiement Docker sur Raspberry Pi 4
 set -e
 
-PI_HOST="192.168.1.4"
+PI_HOST="${PI_HOST:-raspberrypi.local}"
 PI_USER="admin"
 DEPLOY_DIR="gleba"
 
@@ -53,7 +53,7 @@ ssh ${PI_USER}@${PI_HOST} << ENDSSH
 
   echo ""
   echo "✅ Gleba déployé !"
-  echo "📍 http://192.168.1.4:3000"
+  echo "📍 http://${PI_HOST}:3000"
   echo ""
   echo "Logs (Ctrl+C pour quitter):"
   docker-compose logs -f

@@ -146,3 +146,14 @@ et)
 # Rebut de travail (sauvegardes d'éditeur, page 3D retirée du site)
 /.dl-retire/
 *.bak-vc3
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Outillage d'agent : reste sur le VPS, jamais dans le dépôt public.
+# Complète l'intention déjà déclarée plus haut, qui n'excluait que 3 chemins.
+# ─────────────────────────────────────────────────────────────────────────────
+/_bmad/
+/.claude/
+
+# Artefacts générés (régénérables, bruit de diff)
+/docs/project-scan-report.json
+/docs/source-tree-analysis.md

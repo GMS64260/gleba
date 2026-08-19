@@ -2,7 +2,7 @@
 # Déploiement Docker sur Pi avec build pré-compilé
 set -e
 
-PI_HOST="192.168.1.4"
+PI_HOST="${PI_HOST:-raspberrypi.local}"
 PI_USER="admin"
 DEPLOY_DIR="gleba"
 
