@@ -15,7 +15,6 @@
  */
 
 import prisma from '@/lib/prisma'
-import { ecritureAutoriseeMaintenant } from '@/lib/exploitation/garde-ecriture'
 import { fetchOpenMeteoForecast, fetchOpenMeteoHistory } from '@/lib/meteo'
 import type { MeteoJournaliere, MeteoPrevision } from '@/lib/meteo'
 import {
@@ -230,7 +229,15 @@ function urgenceFallback(
 
 export type ConseilIrrigation = Awaited<ReturnType<typeof computeConseilIrrigation>>
 
-export async function computeConseilIrrigation(userId: string, annee: number) {
+/**
+ * `persisterAutoValidation` : un acteur en LECTURE SEULE obtient le même
+ * conseil, sans qu'aucune irrigation ne soit clôturée en base pour lui.
+ */
+export async function computeConseilIrrigation(
+  userId: string,
+  annee: number,
+  persisterAutoValidation = true,
+) {
   // 1. Récupérer cultures actives avec planches + coordonnées parcelle
   const cultures = await prisma.culture.findMany({
     where: {
@@ -475,7 +482,7 @@ export async function computeConseilIrrigation(userId: string, annee: number) {
   }
 
   // Batch auto-validation en DB
-  if (irrigationsAutoValidees.length > 0 && ecritureAutoriseeMaintenant()) {
+  if (irrigationsAutoValidees.length > 0 && persisterAutoValidation) {
     await prisma.irrigationPlanifiee.updateMany({
       where: {
         id: { in: irrigationsAutoValidees },

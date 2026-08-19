@@ -13,7 +13,6 @@
  */
 
 import prisma from '@/lib/prisma'
-import { ecritureAutoriseeMaintenant } from '@/lib/exploitation/garde-ecriture'
 import { fetchOpenMeteoForecast, fetchOpenMeteoHistory } from '@/lib/meteo'
 import {
   grouperIrrigationsPlanifieesParPlancheEtJour,
@@ -209,7 +208,7 @@ export async function getTachesPotager(
   const idsPerimes = new Set(
     idsAExpirer([...irrigationsSemaineBrutes, ...irrigationsRetardBrutes], referencePeremption)
   )
-  if (persistAutoValidation && idsPerimes.size > 0 && ecritureAutoriseeMaintenant()) {
+  if (persistAutoValidation && idsPerimes.size > 0) {
     await prisma.irrigationPlanifiee.updateMany({
       where: { id: { in: Array.from(idsPerimes) } },
       data: { perimee: true },
@@ -376,7 +375,7 @@ export async function getTachesPotager(
       irr.fait = true
     }
   }
-  if (persistAutoValidation && autoValidIds.length > 0 && ecritureAutoriseeMaintenant()) {
+  if (persistAutoValidation && autoValidIds.length > 0) {
     await prisma.irrigationPlanifiee.updateMany({
       where: { id: { in: autoValidIds } },
       data: { fait: true, notes: 'Auto-validée (pluie suffisante)' },

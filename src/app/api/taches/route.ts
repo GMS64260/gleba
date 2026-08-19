@@ -45,7 +45,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Année invalide' }, { status: 400 })
     }
 
-    const data = await getTachesPotager(userId, { start, end, annee })
+    // Un compte en consultation voit la péremption et l'auto-validation
+    // calculées, mais rien n'est écrit en base pour lui.
+    const data = await getTachesPotager(userId, {
+      start,
+      end,
+      annee,
+      persistAutoValidation: session!.user.peutEcrireExploitation !== false,
+    })
     return NextResponse.json(data)
   } catch (error) {
     console.error('GET /api/taches error:', error)

@@ -7,6 +7,10 @@ import {
   estSurfaceAdministration,
   motifInterdictionConsultation,
 } from "@/lib/impersonation-policy"
+import {
+  EN_TETE_MUTATION,
+  valeurEnteteMutation,
+} from "@/lib/exploitation/entete-mutation"
 import { NextResponse } from "next/server"
 
 export default auth((req) => {
@@ -17,8 +21,19 @@ export default auth((req) => {
   // La racine reste une landing statique pour les visiteurs et les moteurs.
   // Une session active reçoit le tableau de bord par réécriture interne afin
   // de conserver l'URL historique `/` et tous les liens applicatifs existants.
+  // Le middleware est le SEUL endroit qui connaisse la méthode HTTP avant que
+  // la route ne s'exécute (227 routes appellent `requireAuthApi()` sans requête).
+  // Il transmet donc l'information au serveur, qui seul peut lire en base si
+  // l'acteur a le droit d'écrire. L'en-tête est toujours écrasé : impossible à
+  // forger depuis le client. Cf. `lib/exploitation/entete-mutation.ts`.
+  const enTetesTransmises = new Headers(req.headers)
+  enTetesTransmises.set(EN_TETE_MUTATION, valeurEnteteMutation(req.method, pathname))
+  const suite = () => NextResponse.next({ request: { headers: enTetesTransmises } })
+
   if (pathname === "/" && isLoggedIn) {
-    return NextResponse.rewrite(new URL("/dashboard", req.nextUrl))
+    return NextResponse.rewrite(new URL("/dashboard", req.nextUrl), {
+      request: { headers: enTetesTransmises },
+    })
   }
 
   // Compatibilité des anciens justificatifs stockés sous public/uploads :
@@ -102,7 +117,7 @@ export default auth((req) => {
     if (isLoggedIn && (pathname === "/login" || pathname === "/register")) {
       return NextResponse.redirect(new URL("/", req.nextUrl))
     }
-    return NextResponse.next()
+    return suite()
   }
 
   // Si non connecté, rediriger vers login
@@ -126,7 +141,7 @@ export default auth((req) => {
     return NextResponse.redirect(new URL("/", req.nextUrl))
   }
 
-  return NextResponse.next()
+  return suite()
 })
 
 export const config = {

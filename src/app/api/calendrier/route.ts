@@ -7,7 +7,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi, getUserId } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
-import { ecritureAutoriseeMaintenant } from '@/lib/exploitation/garde-ecriture'
 import { fetchOpenMeteoForecast, fetchOpenMeteoHistory } from '@/lib/meteo'
 import { grouperIrrigationsPlanifieesParPlancheEtJour } from '@/lib/irrigation-planche'
 import { idsAExpirer } from '@/lib/irrigation-peremption'
@@ -24,6 +23,8 @@ export async function GET(request: NextRequest) {
 
   try {
     const userId = getUserId(session)
+    // Un acteur en lecture seule voit l'état calculé, sans écriture en base.
+    const peutPersister = session!.user.peutEcrireExploitation !== false
     const { searchParams } = new URL(request.url)
 
     const startStr = searchParams.get('start')
@@ -258,7 +259,7 @@ export async function GET(request: NextRequest) {
     if (idsPerimes.size > 0) {
       // Un compte en consultation VOIT la péremption sans la persister : sauter
       // l'écriture, pas l'affichage.
-      if (ecritureAutoriseeMaintenant()) {
+      if (peutPersister) {
         await prisma.irrigationPlanifiee.updateMany({
           where: { id: { in: Array.from(idsPerimes) } },
           data: { perimee: true },
@@ -285,7 +286,7 @@ export async function GET(request: NextRequest) {
         irr.fait = true // Marquer localement pour l'affichage
       }
     }
-    if (autoValidIds.length > 0 && ecritureAutoriseeMaintenant()) {
+    if (autoValidIds.length > 0 && peutPersister) {
       await prisma.irrigationPlanifiee.updateMany({
         where: { id: { in: autoValidIds } },
         data: { fait: true, notes: 'Auto-validée (pluie suffisante)' },

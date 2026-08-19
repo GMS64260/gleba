@@ -24,11 +24,10 @@ import { redirect } from "next/navigation"
 import { NextResponse } from "next/server"
 import { checkRateLimit, getClientIP } from "./rate-limit"
 import { touchActivity } from "./activity"
+import { headers } from "next/headers"
 import { resoudreContexteExploitation } from "./exploitation/membres"
-import {
-  installerGardeEcriture,
-  poserContexteExploitation,
-} from "./exploitation/garde-ecriture"
+import { EN_TETE_MUTATION, requeteEstMutation } from "./exploitation/entete-mutation"
+import { refusMutationSiLectureSeule } from "./exploitation/garde-session"
 import type { ModuleId } from "./modules"
 import type { ContexteExploitation, RoleExploitation } from "./exploitation/roles"
 
@@ -58,9 +57,6 @@ async function appliquerContexteExploitation(session: Session): Promise<SessionE
     ? { ...contexte, peutEcrire: false }
     : contexte
 
-  installerGardeEcriture()
-  poserContexteExploitation(effectif)
-
   return {
     ...session,
     user: {
@@ -72,6 +68,21 @@ async function appliquerContexteExploitation(session: Session): Promise<SessionE
       estProprietaireExploitation: effectif.estProprietaire,
       peutEcrireExploitation: effectif.peutEcrire,
     },
+  }
+}
+
+/**
+ * La requête courante modifie-t-elle des données ? L'information vient du
+ * middleware (seul à connaître la méthode HTTP avant la route) via un en-tête
+ * qu'il écrase systématiquement. Hors contexte de requête — cron, script — on
+ * répond « non », ces chemins n'ont pas d'acteur en lecture seule.
+ */
+async function requeteCouranteEstMutation(): Promise<boolean> {
+  try {
+    const enTetes = await headers()
+    return requeteEstMutation(enTetes.get(EN_TETE_MUTATION))
+  } catch {
+    return false
   }
 }
 
@@ -141,6 +152,16 @@ export async function requireAuthApi(request?: Request): Promise<
     }
   }
   const avecContexte = await appliquerContexteExploitation(session)
+
+  // Le seul endroit où une écriture interdite est arrêtée pour TOUTES les
+  // routes. Placé après la résolution en base, donc une révocation ou un
+  // changement de rôle prend effet à la requête suivante.
+  const refus = refusMutationSiLectureSeule(
+    avecContexte,
+    await requeteCouranteEstMutation(),
+  )
+  if (refus) return { error: refus, session: null }
+
   // Cf. requireAuth : pas de comptage d'activité pendant une consultation admin.
   if (!session.user.impersonatedBy) touchActivity(avecContexte.user.acteurId)
   return { error: null, session: avecContexte }

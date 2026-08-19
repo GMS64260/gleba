@@ -26,7 +26,11 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const annee = parseInt(searchParams.get('annee') || new Date().getFullYear().toString())
 
-    const payload = await computeConseilIrrigation(userId, annee)
+    const payload = await computeConseilIrrigation(
+      userId,
+      annee,
+      session!.user.peutEcrireExploitation !== false,
+    )
     return NextResponse.json(payload)
   } catch (error) {
     console.error('GET /api/cultures/irriguer error:', error)
