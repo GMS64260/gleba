@@ -133,7 +133,14 @@ export const config = {
   matcher: [
     // Les anciens justificatifs image seraient sinon exclus par l'extension.
     "/uploads/:path*",
-    // Matcher tout sauf les fichiers statiques
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    // Matcher tout sauf les fichiers statiques.
+    // Les service workers (`/sw-*.js`) sont exclus explicitement : ils vivent
+    // dans /public, donc le matcher les attrapait faute d'extension image, et
+    // le middleware répondait 307 vers /login. Un service worker doit être
+    // servi SANS session — le navigateur le récupère hors de tout contexte
+    // authentifié. Constaté le 2026-08-19 à la mise en service du push : la
+    // route répondait 307, et `/sw-elevage.js` était dans le même cas depuis
+    // sa création, donc jamais enregistré en production.
+    "/((?!_next/static|_next/image|favicon.ico|sw-[^/]*\\.js|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 }
