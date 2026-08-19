@@ -3,10 +3,10 @@ import { z } from "zod"
 import { requireAuthApi } from "@/lib/auth-utils"
 import prisma from "@/lib/prisma"
 import {
-  datesLotOeufs,
   statutLotOeufs,
   stockRestantLotOeufs,
 } from "@/lib/elevage/stock-oeufs"
+import { blocagesVetoPontes, computeStockOeufsParLots } from "@/lib/elevage/stock-oeufs-lots"
 
 const sortieSchema = z.object({
   productionId: z.coerce.number().int().positive(),
@@ -19,53 +19,9 @@ const sortieSchema = z.object({
 export async function GET() {
   const { session, error } = await requireAuthApi()
   if (error) return error
-  const now = new Date()
-  const productions = await prisma.productionOeuf.findMany({
-    where: { userId: session.user.id },
-    orderBy: { date: "asc" },
-    take: 2000,
-    include: {
-      lot: { select: { id: true, nom: true } },
-      mouvementsStock: {
-        orderBy: { date: "asc" },
-        select: { id: true, date: true, type: true, quantite: true, notes: true },
-      },
-    },
-  })
-  const lots = productions.map((production) => {
-    const restant = stockRestantLotOeufs({
-      quantite: production.quantite,
-      casses: production.casses,
-      sales: production.sales,
-      sorties: production.mouvementsStock,
-    })
-    const dates = datesLotOeufs(production.date)
-    return {
-      id: production.id,
-      datePonte: production.date,
-      lot: production.lot,
-      calibre: production.calibre,
-      quantiteInitiale: production.quantite,
-      restant,
-      limiteVente: dates.limiteVente,
-      dcr: dates.dcr,
-      statut: statutLotOeufs(production.date, now),
-      mouvements: production.mouvementsStock,
-    }
-  })
-  const actifs = lots.filter((lot) => lot.restant > 0)
-  const somme = (statut: string) => actifs
-    .filter((lot) => lot.statut === statut)
-    .reduce((total, lot) => total + lot.restant, 0)
-  return NextResponse.json({
-    data: actifs.sort((a, b) => new Date(a.dcr).getTime() - new Date(b.dcr).getTime()),
-    stats: {
-      commercialisables: somme("commercialisable"),
-      aConsommer: somme("a_consumer"),
-      perimes: somme("perime"),
-      stockPhysique: actifs.reduce((total, lot) => total + lot.restant, 0),
-    },
-  })
+  // Le calcul vit dans src/lib/elevage/stock-oeufs-lots.ts (SSOT partagée
+  // avec l'outil assistant `get_stock_oeufs`) — lot assistant 2026-08-11.
+  return NextResponse.json(await computeStockOeufsParLots(session.user.id))
 }
 
 export async function POST(request: NextRequest) {
@@ -87,6 +43,27 @@ export async function POST(request: NextRequest) {
       { error: "La sortie ne peut pas précéder la date de ponte." },
       { status: 422 },
     )
+  }
+  if (input.type === "vente") {
+    // Ticket cmsoeyhs5 — des œufs pondus pendant le délai d'attente vétérinaire
+    // d'un soin fait (finAttenteOeufs) couvrant le lot/l'animal ne sont JAMAIS
+    // commercialisables : même règle que l'écran et l'assistant
+    // (src/lib/elevage/stock-oeufs-lots.ts).
+    const blocages = await blocagesVetoPontes(prisma, session.user.id, [{
+      id: production.id,
+      date: production.date,
+      lotId: production.lotId,
+      animalId: production.animalId,
+    }])
+    const blocage = blocages.get(production.id)
+    if (blocage) {
+      return NextResponse.json(
+        {
+          error: `Vente interdite : ces œufs ont été pondus pendant un délai d'attente vétérinaire. Seules les pontes à partir du ${blocage.remiseEnVente.toLocaleDateString("fr-FR", { timeZone: "UTC" })} seront commercialisables.`,
+        },
+        { status: 400 },
+      )
+    }
   }
   if (input.type === "vente" && statutLotOeufs(production.date, dateSortie) !== "commercialisable") {
     return NextResponse.json(

@@ -88,7 +88,42 @@ export async function GET(
       return NextResponse.json({ error: 'Animal non trouvé' }, { status: 404 })
     }
 
-    return NextResponse.json({ data: animal })
+    // Ticket cmsoglwee — les soins appliqués au LOT de l'animal n'apparaissaient
+    // pas sur sa fiche (l'include ne remonte que animal_id) : ni la timeline ni
+    // l'alerte de délai d'attente ne voyaient un traitement de lot (ex. Dectomax
+    // sur le lot 58, fin_attente_lait 2026-09-08, concernant Clochette). On
+    // fusionne les soins du lot, marqués `viaLot`, dans data.soins (tri par date
+    // décroissante, même take global de 20 que l'include).
+    let soins: Array<(typeof animal.soins)[number] & { viaLot?: boolean }> = animal.soins
+    if (animal.lotId != null) {
+      // QA cmsqmpqzx — un animal rattaché à un lot héritait de TOUT l'historique
+      // du lot, y compris des soins antérieurs à son arrivée sur l'exploitation :
+      // le carnet sanitaire (document réglementaire) affirmait des traitements
+      // jamais reçus, et les délais d'attente auraient été calculés dessus. Un
+      // soin de lot ne concerne l'animal que s'il était présent : on borne par
+      // sa date d'arrivée (à défaut sa date de naissance — né sur place).
+      const presenceDepuis = animal.dateArrivee ?? animal.dateNaissance
+      const soinsLot = await prisma.soinAnimal.findMany({
+        where: {
+          userId: session.user.id,
+          lotId: animal.lotId,
+          ...(presenceDepuis ? { date: { gte: presenceDepuis } } : {}),
+        },
+        orderBy: { date: 'desc' },
+        take: 20,
+      })
+      const dejaPresents = new Set(animal.soins.map((soin) => soin.id))
+      soins = [
+        ...animal.soins,
+        ...soinsLot
+          .filter((soin) => !dejaPresents.has(soin.id))
+          .map((soin) => ({ ...soin, viaLot: true })),
+      ]
+        .sort((a, b) => b.date.getTime() - a.date.getTime())
+        .slice(0, 20)
+    }
+
+    return NextResponse.json({ data: { ...animal, soins } })
   } catch (error) {
     console.error('GET /api/elevage/animaux/[id] error:', error)
     return NextResponse.json(

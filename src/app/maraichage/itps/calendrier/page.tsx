@@ -250,7 +250,7 @@ export default function ITCalendrierPage() {
   return (
     <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
       <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
-      <AppHeader current="maraichage" />
+      <AppHeader current="maraichage" showLune />
       <PageToolbar>
         <div className="flex items-center gap-4">
           <Link href="/maraichage/itps">
@@ -448,7 +448,7 @@ export default function ITCalendrierPage() {
         <Card>
           <CardHeader>
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <CardTitle>{itpsFiltres.length} itineraires</CardTitle>
+              <CardTitle>{itpsFiltres.length} itinéraires</CardTitle>
               <div className="flex items-center gap-2">
                 {itpsFiltres.length > ganttPageSize && (
                   <>

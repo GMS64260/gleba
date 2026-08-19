@@ -7,235 +7,16 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
-import {
-  doitSignalerSansPollinisateur,
-  isAutofertileFallback,
-} from "@/lib/pollinisation"
+import { computePollinisationVerger, raisonExclusionPollinisateur } from "@/lib/pollinisation-verger"
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   const { error, session } = await requireAuthApi()
   if (error) return error
 
   try {
-    const userId = session!.user.id
-
-    // Récupérer tous les arbres fruitiers avec infos pollinisation
-    const arbres = await prisma.arbre.findMany({
-      where: {
-        userId,
-        type: { in: ["fruitier", "petit_fruit"] },
-      },
-      select: {
-        id: true,
-        nom: true,
-        espece: true,
-        variete: true,
-        floraison: true,
-        groupePollinisation: true,
-        autofertile: true,
-        pollinisateursCompat: {
-          include: {
-            arbrePollinisateur: {
-              select: { id: true, nom: true, espece: true, variete: true, floraison: true, groupePollinisation: true },
-            },
-          },
-        },
-        pollinisateurDe: {
-          include: {
-            arbrePollinise: {
-              select: { id: true, nom: true, espece: true, variete: true },
-            },
-          },
-        },
-      },
-      orderBy: { nom: "asc" },
-    })
-
-    // Feedback Marc 2026-05-16 — V2 Bug 6 : on dérive des suggestions
-    // de pollinisateurs intra-verger quand aucune association n'est
-    // saisie. Critères :
-    //   - même espèce (Pommier × Pommier)
-    //   - variété distincte (Golden ≠ Reinette grise)
-    //   - groupes de floraison adjacents (A↔B, B↔C, C↔D) ou égaux
-    //     (info Variete.groupePollinisation), tolérant si donnée absente
-    //   - on ne propose pas un arbre triploïde comme pollinisateur
-    const groupeAdjacent = (g1: string | null, g2: string | null): boolean => {
-      if (!g1 || !g2) return true // données partielles → on ne bloque pas
-      const order = ["A", "B", "C", "D", "E"]
-      const i1 = order.indexOf(g1.toUpperCase())
-      const i2 = order.indexOf(g2.toUpperCase())
-      if (i1 < 0 || i2 < 0) return g1 === g2
-      return Math.abs(i1 - i2) <= 1
-    }
-
-    // Récupérer ploïdie/groupe par variété (référentiel) pour qualifier.
-    const varieteIds = [
-      ...new Set(arbres.map((a) => a.variete).filter((v): v is string => !!v)),
-    ]
-    const varietes = varieteIds.length
-      ? await prisma.variete.findMany({
-          where: { id: { in: varieteIds } },
-          select: { id: true, ploidie: true, groupePollinisation: true },
-        })
-      : []
-    const varieteMap = new Map(varietes.map((v) => [v.id, v]))
-
-    const compatibilitesDerivees = new Map<number, Array<{
-      id: number
-      nom: string
-      espece: string | null
-      variete: string | null
-      raison: string
-    }>>()
-    // Bug cmp8sk552 (Marc 2026-05-16) — fallback variétés auto-fertiles
-    // (Mirabelle de Nancy, Reine-Claude d'Oullins, Framboisier…) qui
-    // restaient classées "Sans pollinisateur" car flag autofertile=false.
-    const estAutofertile = (a: typeof arbres[number]) =>
-      a.autofertile || isAutofertileFallback(a.variete)
-
-    const estAnemophile = (a: typeof arbres[number]) => {
-      const esp = (a.espece || "").toLowerCase()
-      return (
-        esp.includes("noyer") ||
-        esp.includes("châtaignier") || esp.includes("chataignier") ||
-        esp.includes("pistachier") ||
-        esp.includes("olivier") ||
-        esp.includes("noisetier")
-      )
-    }
-
-    for (const a of arbres) {
-      if (estAutofertile(a)) continue
-      if (!a.espece) continue
-      const va = a.variete ? varieteMap.get(a.variete) : null
-      const candidats: Array<{ id: number; nom: string; espece: string | null; variete: string | null; raison: string }> = []
-      for (const b of arbres) {
-        if (b.id === a.id) continue
-        if (b.espece !== a.espece) continue
-        if (b.variete && a.variete && b.variete === a.variete) continue // même clone
-        const vb = b.variete ? varieteMap.get(b.variete) : null
-        if (vb?.ploidie?.toLowerCase().startsWith("tripl")) continue // tripl. pollinise mal
-        const ga = a.groupePollinisation ?? va?.groupePollinisation ?? null
-        const gb = b.groupePollinisation ?? vb?.groupePollinisation ?? null
-        if (!groupeAdjacent(ga, gb)) continue
-        candidats.push({
-          id: b.id,
-          nom: b.nom,
-          espece: b.espece,
-          variete: b.variete,
-          raison: `Même espèce, ${ga && gb ? `groupes ${ga}/${gb}` : "floraison compatible"}`,
-        })
-      }
-      if (candidats.length) compatibilitesDerivees.set(a.id, candidats)
-    }
-
-    // Bug cms67gg8m (2026-07-29) — « anémophile » décrit le transport
-    // du pollen, pas la présence d'une variété compatible. Les noyers
-    // Franquette sans autre variété doivent donc apparaître dans ce KPI.
-    const alertes = arbres
-      .filter(
-        (a) =>
-          doitSignalerSansPollinisateur({
-            autofertile: estAutofertile(a),
-            nombrePollinisateursExplicites: a.pollinisateursCompat.length,
-            hasPollinisateurDerive: compatibilitesDerivees.has(a.id),
-            modePollinisation: estAnemophile(a) ? "anémophile" : null,
-          })
-      )
-      .map((a) => ({
-        id: a.id,
-        nom: a.nom,
-        espece: a.espece,
-        variete: a.variete,
-        floraison: a.floraison,
-        groupePollinisation: a.groupePollinisation,
-      }))
-
-    // Bug feedback testeur 2026-05-25 (cmplk71ec) — Alertes spécifiques
-    // aux anémophiles : il faut au minimum 2 individus de variétés
-    // différentes pour assurer la pollinisation croisée (protogynie).
-    // Si un seul individu d'une variété donnée → flag distinct.
-    const especesAnemo = new Map<string, Set<string>>() // espece → set(variete)
-    for (const a of arbres) {
-      if (!estAnemophile(a) || !a.espece) continue
-      if (!especesAnemo.has(a.espece)) especesAnemo.set(a.espece, new Set())
-      if (a.variete) especesAnemo.get(a.espece)!.add(a.variete)
-    }
-    const alertesAnemophiles = arbres
-      .filter((a) => estAnemophile(a))
-      .filter((a) => {
-        if (!a.espece) return false
-        const varietes = especesAnemo.get(a.espece)
-        return !varietes || varietes.size < 2
-      })
-      .map((a) => ({
-        id: a.id,
-        nom: a.nom,
-        espece: a.espece,
-        variete: a.variete,
-        raison: "Espèce anémophile (pollinisation par le vent) — prévoir au moins 2 variétés différentes pour assurer la pollinisation croisée.",
-      }))
-
-    // Toutes les associations
-    const associations = await prisma.pollinisationArbre.findMany({
-      where: {
-        arbrePollinise: { userId },
-      },
-      include: {
-        arbrePollinise: {
-          select: { id: true, nom: true, espece: true, variete: true },
-        },
-        arbrePollinisateur: {
-          select: { id: true, nom: true, espece: true, variete: true },
-        },
-      },
-    })
-
-    // Bug #15 — Le tableau UI utilisait `arbre.autofertile` brut et
-    // ignorait les compatibilités dérivées : 1 ligne "Oui" alors que
-    // le compteur en montrait 7, et 17 "Aucun !" alors que l'encart
-    // n'en signalait que 4. On expose pour chaque arbre les flags
-    // effectifs (autofertile + dérivés) calculés ici, pour que la table
-    // s'aligne sur les compteurs.
-    // QA 2026-07-30 — La colonne Groupe affichait « - » pour 49 arbres dont la
-    // variété porte pourtant un groupe au référentiel : le repli variété
-    // n'était utilisé que pour dériver les paires compatibles, jamais exposé.
-    // Le groupe propre à l'arbre reste prioritaire (une migration de 2026-05 a
-    // rempli des valeurs qui peuvent différer du référentiel).
-    const arbresEnrichis = arbres.map((a) => {
-      const groupeReferentiel = varieteMap.get(a.variete ?? '')?.groupePollinisation ?? null
-      const groupeEffectif = a.groupePollinisation ?? groupeReferentiel
-      return {
-        ...a,
-        autofertileEffectif: estAutofertile(a),
-        hasPollinisateurDerive: compatibilitesDerivees.has(a.id),
-        groupePollinisationEffectif: groupeEffectif,
-        groupePollinisationSource: a.groupePollinisation
-          ? ('arbre' as const)
-          : groupeReferentiel
-            ? ('referentiel' as const)
-            : null,
-      }
-    })
-
-    return NextResponse.json({
-      arbres: arbresEnrichis,
-      associations,
-      alertes,
-      alertesAnemophiles,
-      // Feedback Marc 2026-05-16 — V2 Bug 6 : on expose les paires
-      // détectées automatiquement pour que l'UI puisse proposer
-      // "Associer ces pollinisateurs en 1 clic".
-      compatibilitesDerivees: Object.fromEntries(compatibilitesDerivees.entries()),
-      stats: {
-        totalArbres: arbres.length,
-        autofertiles: arbres.filter(estAutofertile).length,
-        sansPollinisateur: alertes.length,
-        anemophiles: arbres.filter(estAnemophile).length,
-        anemophilesSeuls: alertesAnemophiles.length,
-        avecCompatibiliteAuto: compatibilitesDerivees.size,
-      },
-    })
+    // Le calcul vit dans src/lib/pollinisation-verger.ts (SSOT partagée avec
+    // l'outil assistant `get_pollinisation`) — lot assistant 2026-08-11.
+    return NextResponse.json(await computePollinisationVerger(session!.user.id))
   } catch (err) {
     console.error("GET /api/arbres/pollinisation error:", err)
     return NextResponse.json({ error: "Erreur lors de la récupération des données de pollinisation" }, { status: 500 })
@@ -266,6 +47,63 @@ export async function POST(request: NextRequest) {
     })
     if (arbres.length !== 2) {
       return NextResponse.json({ error: "Arbres non trouvés" }, { status: 404 })
+    }
+
+    // QA cmsjhe5nt — la pollinisation croisée n'opère qu'entre arbres de la
+    // même espèce (un cerisier ne pollinise pas un pommier). On ne bloque pas
+    // quand l'une des espèces est inconnue.
+    const normaliseEspece = (e: string | null) =>
+      (e || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase()
+    const [a1, a2] = arbres
+    if (
+      a1.espece && a2.espece &&
+      normaliseEspece(a1.espece) !== normaliseEspece(a2.espece)
+    ) {
+      return NextResponse.json(
+        { error: `${a1.espece} et ${a2.espece} sont d'espèces différentes : la pollinisation croisée demande deux arbres de la même espèce.` },
+        { status: 422 },
+      )
+    }
+    // QA cmswu5y82 — un arbre SANS espèce face à un arbre d'espèce connue
+    // court-circuitait la garde ci-dessus (NULL && … = false) : l'association
+    // invérifiable éteignait ensuite l'alerte « sans pollinisateur ». Même
+    // règle que la dérivation (computePollinisationVerger ignore ces arbres).
+    if ((a1.espece && !a2.espece) || (!a1.espece && a2.espece)) {
+      const sansEspece = a1.espece ? a2 : a1
+      return NextResponse.json(
+        { error: `L'arbre « ${sansEspece.nom} » n'a pas d'espèce renseignée : complétez sa fiche avant d'enregistrer une pollinisation vérifiable.` },
+        { status: 422 },
+      )
+    }
+
+    // QA cmsoeyth0 — un triploïde (Jonagold, Boskoop…) était accepté comme
+    // pollinisateur « excellent » alors que son pollen est stérile, et un
+    // clone (même variété) passait aussi. Mêmes règles que la dérivation
+    // automatique de la matrice (src/lib/pollinisation-verger.ts).
+    const pollinise = arbres.find((a) => a.id === polliniseId)!
+    const pollinisateur = arbres.find((a) => a.id === pollinisateurId)!
+    const varietePollinisateur = pollinisateur.variete
+      ? await prisma.variete.findUnique({
+          where: { id: pollinisateur.variete },
+          select: { ploidie: true },
+        })
+      : null
+    const exclusion = raisonExclusionPollinisateur({
+      varietePollinise: pollinise.variete,
+      varietePollinisateur: pollinisateur.variete,
+      ploidiePollinisateur: varietePollinisateur?.ploidie,
+    })
+    if (exclusion === "meme_variete") {
+      return NextResponse.json(
+        { error: "Deux arbres de la même variété sont des clones : la pollinisation croisée demande une variété différente." },
+        { status: 422 },
+      )
+    }
+    if (exclusion === "triploide") {
+      return NextResponse.json(
+        { error: "Un pollinisateur triploïde a un pollen stérile : choisissez un pollinisateur diploïde." },
+        { status: 422 },
+      )
     }
 
     const association = await prisma.pollinisationArbre.create({

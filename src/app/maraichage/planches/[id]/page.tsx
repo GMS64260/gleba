@@ -10,6 +10,7 @@ import Link from 'next/link'
 import { PlancheHistory, RotationAdvice } from '@/components/planche'
 import { PlancheInfoTable } from '@/components/planches/PlancheInfoTable'
 import { alertDialog } from '@/lib/global-dialog'
+import { etapeCycleRotation } from '@/lib/rotation/etape-cycle'
 
 interface Planche {
   id: string
@@ -25,7 +26,21 @@ interface Planche {
   notes: string | null
   type: string | null
   irrigation: string | null
+  /**
+   * QA cmswy9fyr — année de départ du cycle de rotation. Elle décide de la PHASE
+   * de la planche : deux planches sur la même rotation peuvent être à des étapes
+   * différentes, ce qui est le principe même d'un étalement. Le libellé « Année
+   * rotation » ne le disait pas, et laissée vide la phase retombe sur un ancrage
+   * arbitraire (epoch fixe, cf. getCulturesPrevues) sans que rien ne l'indique.
+   */
   annee: number | null
+  rotationId: string | null
+  /** Renvoyée par l'API avec ses étapes (cf. GET /api/planches/[id]). */
+  rotation: {
+    id: string
+    nbAnnees: number | null
+    details: { annee: number; itpId: string | null }[]
+  } | null
   typeSol: string | null
   retentionEau: string | null
   parcelleGeoId: string | null
@@ -160,11 +175,89 @@ export default function PlancheDetailPage({ params }: PageProps) {
       {/* Content */}
       <div className="mt-6">
         {activeTab === 'info' && (
-          <PlancheInfoTable planche={planche} onUpdate={fetchPlanche} />
+          <PlancheInfoTable
+            planche={planche}
+            onUpdate={fetchPlanche}
+            // L'URL de la fiche accepte l'identifiant : après un renommage, on
+            // s'y recale pour ne plus dépendre du libellé (cf. conventions).
+            onRenamed={() => router.replace(`/maraichage/planches/${encodeURIComponent(planche.id)}`)}
+          />
         )}
-        {activeTab === 'history' && <PlancheHistory plancheId={planche.nom || planche.id} />}
-        {activeTab === 'rotation' && <RotationAdvice plancheId={planche.nom || planche.id} />}
+        {activeTab === 'history' && <PlancheHistory plancheId={planche.id} />}
+        {activeTab === 'rotation' && (
+          <div className="space-y-6">
+            <RotationAncrage planche={planche} />
+            <RotationAdvice plancheId={planche.id} />
+          </div>
+        )}
       </div>
+    </div>
+  )
+}
+
+/**
+ * Rotation affectée à la planche, position dans le cycle et ancrage.
+ *
+ * Ticket cmsx6348h (QA 2026-08-17) : l'onglet nommé « Rotation » n'affichait
+ * que l'état du sol et les conseils de succession. Ni la rotation affectée, ni
+ * l'année de départ du cycle — qui décide pourtant de la phase de la planche —
+ * n'y figuraient. Deux planches de la même rotation suivant des successions
+ * différentes restaient donc inexplicables depuis cet onglet, alors que la
+ * cause (une planche sans année de départ retombe sur un ancrage arbitraire)
+ * est lisible et corrigeable.
+ */
+function RotationAncrage({ planche }: { planche: Planche }) {
+  if (!planche.rotationId) {
+    return (
+      <div className="rounded-lg border border-slate-200 bg-white p-4">
+        <p className="text-sm font-medium text-slate-700">Aucune rotation affectée</p>
+        <p className="mt-1 text-sm text-slate-500">
+          Les conseils ci-dessous reposent alors uniquement sur l&apos;historique des cultures de
+          la planche. Affectez une rotation depuis l&apos;onglet Informations pour planifier une
+          succession.
+        </p>
+      </div>
+    )
+  }
+
+  const nbAnnees = planche.rotation?.nbAnnees || planche.rotation?.details.length || 0
+  const anneeCourante = new Date().getFullYear()
+  const etape = nbAnnees ? etapeCycleRotation(anneeCourante, planche.annee, nbAnnees) : null
+  const itpEtape = planche.rotation?.details.find((d) => d.annee === etape)?.itpId ?? null
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <div>
+          <p className="text-xs uppercase tracking-wide text-slate-500">Rotation affectée</p>
+          <p className="text-base font-semibold text-slate-900">{planche.rotationId}</p>
+        </div>
+        {etape !== null && (
+          <p className="text-sm text-slate-700">
+            étape <span className="font-semibold">{etape}</span>/{nbAnnees} en {anneeCourante}
+            {itpEtape ? <span className="text-slate-500"> · {itpEtape}</span> : null}
+          </p>
+        )}
+      </div>
+      <p className="mt-3 text-sm text-slate-600">
+        Départ du cycle :{' '}
+        {planche.annee ? (
+          <span className="font-medium text-slate-900">
+            {planche.annee} (étape 1 cette année-là)
+          </span>
+        ) : (
+          <span className="font-medium text-amber-700">
+            non défini — la phase du cycle est arbitraire
+          </span>
+        )}
+      </p>
+      {!planche.annee && (
+        <p className="mt-1 text-sm text-amber-700">
+          Renseignez « Année de départ du cycle de rotation » dans l&apos;onglet Informations pour
+          décider à quelle étape cette planche démarre. Sans elle, deux planches de la même
+          rotation suivent des successions décalées sans raison lisible.
+        </p>
+      )}
     </div>
   )
 }
@@ -378,7 +471,9 @@ export default function PlancheDetailPage({ params }: PageProps) {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700">Année rotation</label>
+            <label className="block text-sm font-medium text-slate-700">
+              Année de départ du cycle de rotation
+            </label>
             <input
               type="number"
               name="annee"
@@ -388,6 +483,10 @@ export default function PlancheDetailPage({ params }: PageProps) {
               onChange={handleChange}
               className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-green-500 focus:ring-green-500"
             />
+            <p className="mt-1 text-xs text-slate-500">
+              Année où cette planche est à l&apos;étape 1 de sa rotation. C&apos;est elle qui décale le
+              cycle d&apos;une planche à l&apos;autre. Laissée vide, la phase est arbitraire.
+            </p>
           </div>
 
           <div>
@@ -525,8 +624,20 @@ export default function PlancheDetailPage({ params }: PageProps) {
           <dd className="mt-1 text-sm text-slate-900">{planche.irrigation || '-'}</dd>
         </div>
         <div>
-          <dt className="text-sm font-medium text-slate-500">Année rotation</dt>
-          <dd className="mt-1 text-sm text-slate-900">{planche.annee || '-'}</dd>
+          <dt className="text-sm font-medium text-slate-500">Départ du cycle de rotation</dt>
+          <dd className="mt-1 text-sm text-slate-900">
+            {planche.annee ? (
+              <>
+                {planche.annee} <span className="text-slate-500">(étape 1 cette année-là)</span>
+              </>
+            ) : planche.rotationId ? (
+              <span className="text-amber-700">
+                non défini — la phase du cycle est arbitraire
+              </span>
+            ) : (
+              '-'
+            )}
+          </dd>
         </div>
         <div>
           <dt className="text-sm font-medium text-slate-500">Orientation</dt>

@@ -5,6 +5,7 @@
  */
 
 import * as React from "react"
+import { urlApercu } from "@/lib/apercu-document"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import {
@@ -33,6 +34,7 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { labelStatutAnimal, labelStatutLot } from "@/lib/elevage/labels"
+import { sexeAffichable } from "@/lib/elevage/sexe"
 import { confirmDialog } from "@/lib/global-dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
@@ -236,6 +238,21 @@ function AnimauxSubTab() {
   const [animalSubmitError, setAnimalSubmitError] = React.useState<string | null>(null)
   // QA 2026-05-15 — édition par ligne pour les animaux
   const [editingAnimalId, setEditingAnimalId] = React.useState<number | null>(null)
+  // Ticket cmsoexauc — certains identifiants historiques (ex. FR85001 typé
+  // « IPG caprin ») ne passent pas la regex actuelle : la fiche devenait non
+  // modifiable (bouton « Mettre à jour » désactivé). On mémorise l'identifiant
+  // et son type tels que chargés à l'ouverture de l'édition : s'ils sont
+  // INCHANGÉS, leur validité ne bloque pas la soumission (on ne re-valide que
+  // ce qui est modifié). La validation pleine reste appliquée en création et
+  // dès que l'un des deux champs change.
+  const [identifiantCharge, setIdentifiantCharge] = React.useState<{ identifiant: string; typeIdentifiant: string } | null>(null)
+  const identifiantInchange = React.useCallback(
+    (identifiant: string, typeIdentifiant: string | null | undefined) =>
+      identifiantCharge !== null &&
+      identifiant.trim() === identifiantCharge.identifiant.trim() &&
+      (typeIdentifiant ?? "") === identifiantCharge.typeIdentifiant,
+    [identifiantCharge],
+  )
 
   const EMPTY_ANIMAL_FORM = {
     especeAnimaleId: "", identifiant: "", typeIdentifiant: "",
@@ -257,6 +274,7 @@ function AnimauxSubTab() {
 
   const resetAnimalForm = () => {
     setEditingAnimalId(null)
+    setIdentifiantCharge(null)
     setAnimalSubmitError(null)
     // Quand l'atelier courant ne contient qu'une espèce possible, on la
     // pré-sélectionne pour éviter tout choix ambigu ; sinon on laisse le
@@ -268,6 +286,7 @@ function AnimauxSubTab() {
 
   const handleEditAnimal = (a: Animal) => {
     setEditingAnimalId(a.id)
+    setIdentifiantCharge({ identifiant: a.identifiant ?? "", typeIdentifiant: a.typeIdentifiant ?? "" })
     setFormData({
       especeAnimaleId: a.especeAnimale.id,
       identifiant: a.identifiant ?? "",
@@ -276,7 +295,9 @@ function AnimauxSubTab() {
       raceAnimaleId: a.raceAnimaleId ?? (a.race ? "__legacy__" : ""),
       raceHistorique: a.raceAnimaleId ? "" : (a.race ?? ""),
       orientationProduction: a.orientationProduction ?? "",
-      sexe: a.sexe ?? "",
+      // Une valeur héritée non canonique (`'f'`) ne correspondait à aucune
+      // option : le champ paraissait vide et l'enregistrement la réécrivait.
+      sexe: sexeAffichable(a.sexe),
       dateNaissance: a.dateNaissance ? a.dateNaissance.split('T')[0] : "",
       dateArrivee: a.dateArrivee ? a.dateArrivee.split('T')[0] : todayLocalISO(),
       provenance: a.provenance ?? "",
@@ -396,7 +417,9 @@ function AnimauxSubTab() {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    const submitted = new FormData(e.currentTarget)
+    const submittedForm = e.currentTarget
+    const submitted = new FormData(submittedForm)
+    setAnimalSubmitError(null)
     const identifiantSoumis =
       typeof submitted.get("identifiant") === "string"
         ? String(submitted.get("identifiant")).trim()
@@ -405,11 +428,39 @@ function AnimauxSubTab() {
       (typeof submitted.get("typeIdentifiant") === "string"
         ? String(submitted.get("typeIdentifiant")) || null
         : formData.typeIdentifiant || null) as TypeIdentifiant | null
+    // Ticket cmsogkqpf — les input[type=date] étaient contrôlés sans attribut
+    // name : une saisie automatisée qui ne déclenche pas onChange partait vide.
+    // Même filet FormData que pour identifiant/typeIdentifiant ci-dessus.
+    // QA cmsp5hxl8 — le filet était à sens unique : FormData.get() renvoie
+    // toujours une chaîne pour un champ présent (vide comprise), donc le DOM
+    // gagnait même vide et l'état React n'était jamais consulté. Une date de
+    // naissance saisie puis perdue au re-render partait en NULL.
+    const dateNaissanceSoumise =
+      String(submitted.get("dateNaissance") || "").trim() || formData.dateNaissance
+    const dateArriveeSoumise =
+      String(submitted.get("dateArrivee") || "").trim() || formData.dateArrivee
+    // Le formulaire est en noValidate : sans ce contrôle, une date illisible
+    // pour le navigateur (segments incomplets) est avalée en silence.
+    for (const [champName, label] of [
+      ["dateNaissance", "de naissance"],
+      ["dateArrivee", "d'arrivée"],
+    ] as const) {
+      const champ = submittedForm.elements.namedItem(champName) as HTMLInputElement | null
+      if (champ?.validity?.badInput) {
+        setAnimalSubmitError(`Date ${label} incomplète : saisissez jj/mm/aaaa ou utilisez le calendrier.`)
+        return
+      }
+    }
     if (!formData.especeAnimaleId) {
       toast({ title: "Sélectionnez une espèce", variant: "destructive" })
       return
     }
-    if (!isValidIdentifiant(identifiantSoumis, typeIdentifiantSoumis)) {
+    // Ticket cmsoexauc — un identifiant historique invalide mais INCHANGÉ ne
+    // bloque pas la mise à jour de la fiche (voir identifiantInchange).
+    if (
+      !identifiantInchange(identifiantSoumis, typeIdentifiantSoumis) &&
+      !isValidIdentifiant(identifiantSoumis, typeIdentifiantSoumis)
+    ) {
       const aideIdentifiantSoumis = placeholderIdentifiant(typeIdentifiantSoumis)
       const description = aideIdentifiantSoumis
         ? `Identifiant invalide. Format attendu : ${aideIdentifiantSoumis}`
@@ -462,7 +513,8 @@ function AnimauxSubTab() {
             ? formData.prixAchatInclusDansLot
             : false,
         poidsActuel: toNum(formData.poidsActuel as unknown as string),
-        dateNaissance: (formData as { dateNaissance?: string }).dateNaissance || null,
+        dateNaissance: dateNaissanceSoumise || null,
+        dateArrivee: dateArriveeSoumise,
         lotId: formData.lotId ? parseInt(formData.lotId) : null,
         parcelleGeoId: formData.parcelleGeoId || null,
         mereId: formData.mereId ? parseInt(formData.mereId) : null,
@@ -486,9 +538,12 @@ function AnimauxSubTab() {
         const payload = await response.json().catch(() => ({}))
         const fieldErrors = payload?.details?.fieldErrors as Record<string, string[]> | undefined
         const firstField = fieldErrors ? Object.entries(fieldErrors).find(([, v]) => v.length > 0) : null
+        // QA cmsw8xwgi — replier aussi sur formErrors (refine zod sans path),
+        // sinon le message dégénérait en « Impossible d'enregistrer ».
+        const formErrors = payload?.details?.formErrors as string[] | undefined
         const description = firstField
           ? `${firstField[0]} : ${firstField[1][0]}`
-          : payload?.error || "Impossible d'enregistrer"
+          : formErrors?.[0] || payload?.error || "Impossible d'enregistrer"
         throw new Error(description)
       }
       const payload = await response.json().catch(() => ({}))
@@ -544,22 +599,27 @@ function AnimauxSubTab() {
     date: todayLocalISO(),
     poidsVif: "", poidsCarcasse: "", destination: "auto_consommation", prixVente: "", lieu: "", notes: "",
   })
+  const [isSavingAbattage, setIsSavingAbattage] = React.useState(false)
 
   const [venteDialog, setVenteDialog] = React.useState<Animal | null>(null)
   const [venteForm, setVenteForm] = React.useState({
     date: todayLocalISO(),
     prixUnitaire: "", client: "", description: "", notes: "",
   })
+  const [isSavingVente, setIsSavingVente] = React.useState(false)
 
   const [mortDialog, setMortDialog] = React.useState<Animal | null>(null)
   const [mortForm, setMortForm] = React.useState({
     date: todayLocalISO(),
     cause: "", notes: "",
   })
+  const [isSavingMort, setIsSavingMort] = React.useState(false)
 
   const handleAbattageSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isSavingAbattage) return
     if (!abattageDialog) return
+    setIsSavingAbattage(true)
     try {
       const res = await fetch('/api/elevage/abattages', {
         method: 'POST',
@@ -583,16 +643,20 @@ function AnimauxSubTab() {
       fetchData()
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible d'enregistrer l'abattage" })
+    } finally {
+      setIsSavingAbattage(false)
     }
   }
 
   const handleVenteSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isSavingVente) return
     if (!venteDialog) return
     if (!venteForm.prixUnitaire) {
       toast({ title: "Renseignez le prix de vente", variant: "destructive" })
       return
     }
+    setIsSavingVente(true)
     try {
       // Créer la vente
       const venteRes = await fetch('/api/elevage/ventes', {
@@ -624,13 +688,28 @@ function AnimauxSubTab() {
       fetchData()
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible d'enregistrer la vente" })
+    } finally {
+      setIsSavingVente(false)
     }
   }
 
   const handleMortSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isSavingMort) return
     if (!mortDialog) return
+    setIsSavingMort(true)
     try {
+      // Ticket cmsoggk23 — la note du dialog décès n'était jamais transmise
+      // (perdue). Le PATCH écrase le champ notes tel quel (pas de merge côté
+      // serveur) : on APPEND donc à la note existante de l'animal, avec un
+      // préfixe daté, sans jamais écraser ce qui était déjà saisi.
+      const noteDeces = mortForm.notes.trim()
+      const notesFusionnees = noteDeces
+        ? [
+            mortDialog.notes,
+            `Décès ${mortForm.date.split('-').reverse().join('/')} (${mortForm.cause || 'Mort'}) : ${noteDeces}`,
+          ].filter(Boolean).join('\n')
+        : undefined
       const res = await fetch(`/api/elevage/animaux/${mortDialog.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -638,6 +717,7 @@ function AnimauxSubTab() {
           statut: 'mort',
           dateSortie: mortForm.date,
           causeSortie: mortForm.cause || 'Mort',
+          ...(notesFusionnees !== undefined ? { notes: notesFusionnees } : {}),
         }),
       })
       if (!res.ok) throw new Error('Erreur')
@@ -647,6 +727,8 @@ function AnimauxSubTab() {
       fetchData()
     } catch {
       toast({ variant: "destructive", title: "Erreur" })
+    } finally {
+      setIsSavingMort(false)
     }
   }
 
@@ -727,8 +809,39 @@ function AnimauxSubTab() {
   })
 
   const typeIdentifiant = (formData.typeIdentifiant || null) as TypeIdentifiant | null
-  const identifiantValide = isValidIdentifiant(formData.identifiant, typeIdentifiant)
+  // Ticket cmsoexauc — en édition, un identifiant historique hors format mais
+  // inchangé ne doit pas désactiver « Mettre à jour » ni s'afficher en erreur.
+  const identifiantValide =
+    identifiantInchange(formData.identifiant, formData.typeIdentifiant) ||
+    isValidIdentifiant(formData.identifiant, typeIdentifiant)
   const aideIdentifiant = placeholderIdentifiant(typeIdentifiant)
+
+  // Ticket cmsoevxrj — les combobox père/mère proposaient des animaux créant
+  // un cycle généalogique (rejetés ensuite en 400 par l'API). On exclut des
+  // candidats l'animal édité lui-même et ses descendants connus : tout animal
+  // dont pereId/mereId pointe — directement ou transitivement — vers lui,
+  // calculé sur la liste déjà chargée côté client.
+  const exclusParenteEdition = React.useMemo(() => {
+    const exclus = new Set<number>()
+    if (editingAnimalId === null) return exclus
+    const enfantsParParent = new Map<number, number[]>()
+    for (const a of animaux) {
+      for (const parentId of [a.pereId, a.mereId]) {
+        if (parentId == null) continue
+        const liste = enfantsParParent.get(parentId)
+        if (liste) liste.push(a.id)
+        else enfantsParParent.set(parentId, [a.id])
+      }
+    }
+    const aVisiter = [editingAnimalId]
+    while (aVisiter.length > 0) {
+      const courant = aVisiter.pop() as number
+      if (exclus.has(courant)) continue
+      exclus.add(courant)
+      for (const enfant of enfantsParParent.get(courant) ?? []) aVisiter.push(enfant)
+    }
+    return exclus
+  }, [animaux, editingAnimalId])
 
   // Filière de l'espèce choisie dans le formulaire (fallback : atelier courant).
   // Pilote le vocabulaire et les champs affichés : un chien/chat n'a ni « N°
@@ -785,11 +898,18 @@ function AnimauxSubTab() {
         <div className="text-sm text-muted-foreground ml-auto">
           {filteredAnimaux.length} animal(aux)
         </div>
-        <a href="/api/elevage/inventaire-cheptel" target="_blank" rel="noreferrer">
+        <a
+          href={urlApercu("/api/elevage/inventaire-cheptel", "Inventaire du cheptel")}
+          target="_blank"
+          rel="noreferrer"
+        >
           <Button variant="outline" size="sm" title="Inventaire complet des animaux présents"><Archive className="h-4 w-4 mr-1" />Inventaire complet</Button>
         </a>
         <a
-          href={`/api/elevage/registre-elevage?year=${new Date().getFullYear()}`}
+          href={urlApercu(
+            `/api/elevage/registre-elevage?year=${new Date().getFullYear()}`,
+            `Registre d'élevage ${new Date().getFullYear()}`,
+          )}
           target="_blank"
           rel="noreferrer"
         >
@@ -803,7 +923,7 @@ function AnimauxSubTab() {
         </Button>
         <ImportAnimauxCsv
           especes={especes}
-          existingIdentifiers={animaux.flatMap((animal) => animal.identifiant ? [animal.identifiant] : [])}
+          animauxExistants={animaux.map((animal) => ({ id: animal.id, identifiant: animal.identifiant }))}
           onImported={fetchData}
         />
         <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) resetAnimalForm() }}>
@@ -936,11 +1056,13 @@ function AnimauxSubTab() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Date de naissance</Label>
-                  <Input type="date" min="1990-01-01" max={todayLocalISO()} value={formData.dateNaissance} onChange={(e) => setFormData(f => ({ ...f, dateNaissance: e.target.value }))} />
+                  {/* Ticket cmsogkqpf — name requis pour la relecture FormData de
+                      secours au submit (saisie automatisée sans onChange). */}
+                  <Input type="date" name="dateNaissance" min="1990-01-01" max={todayLocalISO()} value={formData.dateNaissance} onChange={(e) => setFormData(f => ({ ...f, dateNaissance: e.target.value }))} />
                 </div>
                 <div className="space-y-2">
                   <Label>Date d&apos;arrivée</Label>
-                  <Input type="date" min="1990-01-01" max={todayLocalISO()} value={formData.dateArrivee} onChange={(e) => setFormData(f => ({ ...f, dateArrivee: e.target.value }))} />
+                  <Input type="date" name="dateArrivee" min="1990-01-01" max={todayLocalISO()} value={formData.dateArrivee} onChange={(e) => setFormData(f => ({ ...f, dateArrivee: e.target.value }))} />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -956,11 +1078,17 @@ function AnimauxSubTab() {
                       // Prix remis à 0/vide ⇒ « inclus dans le lot » n'a plus de sens
                       // et sa case disparaît : on le décoche pour ne pas envoyer une
                       // valeur résiduelle que l'API refuse (400 insoluble).
+                      // QA cmsw8xwgi — prix saisi alors qu'un lot porteur d'un
+                      // prix est déjà sélectionné : pré-cocher la ventilation.
                       const prixPositif = parseFloat(v) > 0
+                      const lotSelectionne = lotsActifs.find((l) => String(l.id) === formData.lotId)
+                      const lotPorteAchat = Number(lotSelectionne?.prixAchatTotal || 0) > 0
                       setFormData(f => ({
                         ...f,
                         prixAchat: v,
-                        prixAchatInclusDansLot: prixPositif ? f.prixAchatInclusDansLot : false,
+                        prixAchatInclusDansLot: prixPositif
+                          ? (lotPorteAchat ? true : f.prixAchatInclusDansLot)
+                          : false,
                       }))
                     }}
                   />
@@ -978,8 +1106,14 @@ function AnimauxSubTab() {
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label>{estRente ? "Mère dans le cheptel" : "Mère (dans l’élevage)"}</Label>
+                    {/* QA cmsqmp5ep — comparer l'ESPÈCE DE BASE, comme le
+                        sélecteur de lot ci-dessous : l'égalité stricte d'id de
+                        PROFIL (brebis_lacaune ≠ brebis) vidait la liste et
+                        rendait toute généalogie impossible, alors que le
+                        formulaire de naissance, sans ce filtre, listait bien
+                        les mêmes animaux. */}
                     <AnimalCombobox
-                      animaux={animaux.filter(a => a.id !== editingAnimalId && a.sexe === "femelle" && (!formData.especeAnimaleId || a.especeAnimale.id === formData.especeAnimaleId))}
+                      animaux={animaux.filter(a => !exclusParenteEdition.has(a.id) && a.sexe === "femelle" && (!formData.especeAnimaleId || especeBaseId(a.especeAnimale.id) === especeBaseId(formData.especeAnimaleId)))}
                       value={formData.mereId}
                       onChange={(v) => setFormData(f => ({ ...f, mereId: v }))}
                       emptyLabel="Non renseignée"
@@ -988,7 +1122,7 @@ function AnimauxSubTab() {
                   <div className="space-y-2">
                     <Label>{estRente ? "Père dans le cheptel" : "Père (dans l’élevage)"}</Label>
                     <AnimalCombobox
-                      animaux={animaux.filter(a => a.id !== editingAnimalId && a.sexe === "male" && (!formData.especeAnimaleId || a.especeAnimale.id === formData.especeAnimaleId))}
+                      animaux={animaux.filter(a => !exclusParenteEdition.has(a.id) && a.sexe === "male" && (!formData.especeAnimaleId || especeBaseId(a.especeAnimale.id) === especeBaseId(formData.especeAnimaleId)))}
                       value={formData.pereId}
                       onChange={(v) => setFormData(f => ({ ...f, pereId: v }))}
                       emptyLabel="Non renseigné"
@@ -1006,7 +1140,22 @@ function AnimauxSubTab() {
                 <Label>Lot (optionnel)</Label>
                 <Select
                   value={formData.lotId || "__none__"}
-                  onValueChange={(v) => setFormData(f => ({ ...f, lotId: v === "__none__" ? "" : v }))}
+                  onValueChange={(v) => {
+                    const lotId = v === "__none__" ? "" : v
+                    // QA cmsw8xwgi — lot porteur d'un prix + prix individuel
+                    // saisi : pré-cocher la ventilation informative, sinon la
+                    // case (rendue plus bas) passait inaperçue et l'API
+                    // refusait la création en 400.
+                    const lot = lotsActifs.find((l) => String(l.id) === lotId)
+                    setFormData(f => ({
+                      ...f,
+                      lotId,
+                      prixAchatInclusDansLot:
+                        Number(lot?.prixAchatTotal || 0) > 0 && Number(f.prixAchat || 0) > 0
+                          ? true
+                          : f.prixAchatInclusDansLot,
+                    }))
+                  }}
                 >
                   <SelectTrigger><SelectValue placeholder="Aucun lot" /></SelectTrigger>
                   <SelectContent>
@@ -1085,23 +1234,11 @@ function AnimauxSubTab() {
                   <p role="alert" className="mr-auto text-sm text-red-600">{animalSubmitError}</p>
                 )}
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSavingAnimal}>Annuler</Button>
-                <Button
-                  type="submit"
-                  disabled={
-                    isSavingAnimal ||
-                    !formData.especeAnimaleId ||
-                    !identifiantValide
-                  }
-                  title={
-                    !formData.especeAnimaleId
-                      ? "Sélectionnez un profil d’élevage"
-                      : !identifiantValide
-                        ? aideIdentifiant
-                          ? `Corrigez l’identifiant : ${aideIdentifiant}`
-                          : "Corrigez l’identifiant"
-                        : undefined
-                  }
-                >
+                {/* QA cmsw8xwgi — le bouton n'est plus désactivé sur un
+                    formulaire incomplet : un clic sur un bouton disabled est
+                    totalement muet (le title n'est pas restitué). handleSubmit
+                    valide déjà espèce et identifiant avec un message visible. */}
+                <Button type="submit" disabled={isSavingAnimal}>
                   {isSavingAnimal ? "Enregistrement…" : editingAnimalId ? "Mettre à jour" : "Créer"}
                 </Button>
               </div>
@@ -1504,7 +1641,7 @@ function AnimauxSubTab() {
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="outline" onClick={() => setAbattageDialog(null)}>Annuler</Button>
-              <Button type="submit" className="bg-red-600 hover:bg-red-700">Enregistrer l'abattage</Button>
+              <Button type="submit" className="bg-red-600 hover:bg-red-700" disabled={isSavingAbattage}>{isSavingAbattage ? "Enregistrement..." : "Enregistrer l'abattage"}</Button>
             </div>
           </form>
         </DialogContent>
@@ -1547,7 +1684,7 @@ function AnimauxSubTab() {
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="outline" onClick={() => setVenteDialog(null)}>Annuler</Button>
-              <Button type="submit">Enregistrer la vente</Button>
+              <Button type="submit" disabled={isSavingVente}>{isSavingVente ? "Enregistrement..." : "Enregistrer la vente"}</Button>
             </div>
           </form>
         </DialogContent>
@@ -1589,7 +1726,7 @@ function AnimauxSubTab() {
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="outline" onClick={() => setMortDialog(null)}>Annuler</Button>
-              <Button type="submit" variant="destructive">Confirmer le décès</Button>
+              <Button type="submit" variant="destructive" disabled={isSavingMort}>{isSavingMort ? "Enregistrement..." : "Confirmer le décès"}</Button>
             </div>
           </form>
         </DialogContent>
@@ -1636,6 +1773,7 @@ function LotsSubTab() {
   const [especes, setEspeces] = React.useState<EspeceAnimale[]>([])
   const [parcelles, setParcelles] = React.useState<Parcelle[]>([])
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
+  const [isSavingLot, setIsSavingLot] = React.useState(false)
   // QA 2026-05-15 — édition par ligne
   const [editingLotId, setEditingLotId] = React.useState<number | null>(null)
 
@@ -1676,10 +1814,13 @@ function LotsSubTab() {
     quantite: "1", poidsVif: "", poidsCarcasse: "",
     destination: "auto_consommation", prixVente: "", lieu: "", notes: "",
   })
+  const [isSavingAbatLot, setIsSavingAbatLot] = React.useState(false)
 
   const handleAbatLotSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isSavingAbatLot) return
     if (!abatLotDialog) return
+    setIsSavingAbatLot(true)
     try {
       const res = await fetch('/api/elevage/abattages', {
         method: 'POST',
@@ -1703,6 +1844,8 @@ function LotsSubTab() {
       fetchData()
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible d'enregistrer l'abattage" })
+    } finally {
+      setIsSavingAbatLot(false)
     }
   }
 
@@ -1833,6 +1976,7 @@ function LotsSubTab() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isSavingLot) return
     if (!formData.especeAnimaleId) {
       toast({ title: "Sélectionnez une espèce", variant: "destructive" })
       return
@@ -1841,6 +1985,7 @@ function LotsSubTab() {
       toast({ title: "Renseignez la quantité", variant: "destructive" })
       return
     }
+    setIsSavingLot(true)
     try {
       const isEdit = editingLotId !== null
       // Bug R17 : le schéma attend des nombres ; les Input renvoient des strings.
@@ -1886,6 +2031,8 @@ function LotsSubTab() {
         title: "Erreur",
         description: err instanceof Error ? err.message : "Impossible d'enregistrer",
       })
+    } finally {
+      setIsSavingLot(false)
     }
   }
 
@@ -1974,8 +2121,8 @@ function LotsSubTab() {
                 </div>
                 <div className="flex justify-end gap-2 pt-4">
                   <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
-                  <Button type="submit">
-                    {editingLotId ? "Mettre à jour" : "Créer"}
+                  <Button type="submit" disabled={isSavingLot}>
+                    {isSavingLot ? "Enregistrement..." : editingLotId ? "Mettre à jour" : "Créer"}
                   </Button>
                 </div>
               </form>
@@ -2083,6 +2230,14 @@ function LotsSubTab() {
                         const parts = [`${lot.quantiteInitiale} initial`]
                         if (naissances > 0) parts.push(`+${naissances} naissance(s)`)
                         if (abattages > 0) parts.push(`−${abattages} abattage(s)`)
+                        // QA cmsjhki8e — quand le compteur stocké est plus bas
+                        // que initial + naissances − abattages (ventes/pertes
+                        // saisies sans événement tracé), l'équation du détail
+                        // ne bouclait pas : « 7 initial +32 naissances →
+                        // effectif 19 ». On affiche l'écart comme sorties non
+                        // détaillées pour que le total colle à l'effectif.
+                        const sortiesImplicites = lot.quantiteInitiale + naissances - abattages - effectif
+                        if (sortiesImplicites > 0) parts.push(`−${sortiesImplicites} sortie(s) non détaillée(s) (ventes, pertes…)`)
                         const title = parts.length > 1
                           ? `Mouvements : ${parts.join("  ")}  →  effectif ${effectif}`
                           : `Effectif ${effectif} (aucun mouvement enregistré)`
@@ -2258,7 +2413,7 @@ function LotsSubTab() {
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="outline" onClick={() => setAbatLotDialog(null)}>Annuler</Button>
-              <Button type="submit" className="bg-red-600 hover:bg-red-700">Enregistrer l'abattage</Button>
+              <Button type="submit" className="bg-red-600 hover:bg-red-700" disabled={isSavingAbatLot}>{isSavingAbatLot ? "Enregistrement..." : "Enregistrer l'abattage"}</Button>
             </div>
           </form>
         </DialogContent>

@@ -6,8 +6,9 @@
  */
 
 import * as React from "react"
+import { urlApercu } from "@/lib/apercu-document"
 import Link from "next/link"
-import { ArrowLeft, Download, RefreshCw, TrendingUp, TrendingDown, Wallet, PieChart, BarChart3, FileSpreadsheet, Calendar, Percent, Info } from "lucide-react"
+import { ArrowLeft, Download, RefreshCw, TrendingUp, TrendingDown, Wallet, PieChart, BarChart3, FileSpreadsheet, Calendar, Percent, Info, FileText } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -33,6 +34,7 @@ import {
   Line,
 } from "recharts"
 import { kpiCardClass } from "@/lib/kpi-theme"
+import { getAvailableYears } from "@/components/year-selector"
 
 interface Stats {
   revenus: number
@@ -53,6 +55,10 @@ interface Stats {
     depensesSsot: number
     depensesSommeModules: number
     depensesEcart: number
+    /** QA cmsw9dcrd — Σ avoirs de l'exercice, pour nommer l'écart connu. */
+    avoirsExercice?: number
+    /** Ticket cmsx69cuc — Σ des coûts analytiques (soins, aliments, fertilisation). */
+    depensesAnalytiques?: number
   }
 }
 
@@ -162,16 +168,45 @@ export default function RapportsPage() {
   const [isLoading, setIsLoading] = React.useState(true)
   const [selectedYear, setSelectedYear] = React.useState(new Date().getFullYear())
   const [stats, setStats] = React.useState<Stats | null>(null)
+  // QA cmsjiqtd1 — Rapports ne partageait pas l'année choisie ailleurs (clé
+  // `gleba_compta_year`). On la relit au montage (client-only) et on persiste
+  // les changements réels, comme le dashboard Comptabilité.
+  // QA cmsoamukd — `yearHydrated` doit être un STATE, pas un ref : avec un
+  // ref, le fetch du montage partait avec l'année par défaut (2026) AVANT
+  // l'hydratation, et sa réponse, plus lourde, arrivait après celle de
+  // l'année demandée et l'écrasait (rapport « 2025 » aux chiffres 2026).
+  const [yearHydrated, setYearHydrated] = React.useState(false)
+  React.useEffect(() => {
+    const stored = window.localStorage.getItem("gleba_compta_year")
+    if (stored && /^\d{4}$/.test(stored)) {
+      const y = parseInt(stored, 10)
+      setSelectedYear((prev) => (y !== prev ? y : prev))
+    }
+    setYearHydrated(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  React.useEffect(() => {
+    if (yearHydrated) window.localStorage.setItem("gleba_compta_year", String(selectedYear))
+  }, [yearHydrated, selectedYear])
   const [charts, setCharts] = React.useState<ChartData | null>(null)
   const [revenus, setRevenus] = React.useState<any[]>([])
   const [depenses, setDepenses] = React.useState<any[]>([])
   const [tvaData, setTvaData] = React.useState<TVAData | null>(null)
   const [selectedTrimestre, setSelectedTrimestre] = React.useState<string>("all")
 
-  const currentYear = new Date().getFullYear()
-  const years = Array.from({ length: 5 }, (_, i) => currentYear - i)
+  // QA cmsqltuok — SSOT des exercices : même plage que le dashboard Comptabilité,
+  // avec lequel cet écran partage la clé `gleba_compta_year`. La formule locale
+  // s'arrêtait à l'année courante : l'année 2027 choisie au dashboard arrivait
+  // ici sans SelectItem correspondant, et le sélecteur s'affichait vide.
+  const years = getAvailableYears()
+
+  // QA cmsoamukd — anti-réponse périmée : seule la dernière salve de fetch a
+  // le droit d'écrire les states (dernier-arrivé-gagne sinon, et la salve la
+  // plus lourde n'est pas forcément la dernière à répondre).
+  const fetchSeq = React.useRef(0)
 
   const fetchData = React.useCallback(async () => {
+    const seq = ++fetchSeq.current
     setIsLoading(true)
     try {
       const tvaParam = selectedTrimestre !== 'all' ? `&trimestre=${selectedTrimestre}` : ''
@@ -183,35 +218,49 @@ export default function RapportsPage() {
         // DEV1 #5 — Bilan ACTIF/PASSIF
         fetch(`/api/comptabilite/bilan?year=${selectedYear}`),
       ])
+      if (seq !== fetchSeq.current) return
 
       if (statsRes.ok) {
         const data = await statsRes.json()
+        if (seq !== fetchSeq.current) return
         setStats(data.stats)
         setCharts(data.charts)
       }
       if (revRes.ok) {
         const data = await revRes.json()
+        if (seq !== fetchSeq.current) return
         setRevenus(data.data || [])
       }
       if (depRes.ok) {
         const data = await depRes.json()
+        if (seq !== fetchSeq.current) return
         setDepenses(data.data || [])
       }
       if (bilanRes.ok) {
-        setBilanData(await bilanRes.json())
+        const data = await bilanRes.json()
+        if (seq !== fetchSeq.current) return
+        setBilanData(data)
       }
       if (tvaRes.ok) {
         const data = await tvaRes.json()
+        if (seq !== fetchSeq.current) return
         setTvaData(data)
       }
     } catch (error) {
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les données" })
+      if (seq === fetchSeq.current) {
+        toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les données" })
+      }
     } finally {
-      setIsLoading(false)
+      if (seq === fetchSeq.current) setIsLoading(false)
     }
   }, [selectedYear, selectedTrimestre, toast])
 
-  React.useEffect(() => { fetchData() }, [fetchData])
+  // QA cmsoamukd — pas de fetch avant l'hydratation de l'année persistée : la
+  // salve « année par défaut » était un fetch fantôme dont la réponse écrasait
+  // celle de l'année réellement choisie.
+  React.useEffect(() => {
+    if (yearHydrated) fetchData()
+  }, [yearHydrated, fetchData])
 
   const formatEuro = (value: number) => {
     return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(value)
@@ -299,7 +348,10 @@ export default function RapportsPage() {
 
       <div className="container mx-auto px-4 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="mb-6">
+          {/* Même correctif que l'écran Factures (ticket cmsx6g3gq) : cinq
+              onglets en `inline-flex` débordent d'un écran de 375 px et font
+              défiler la page entière. */}
+          <TabsList className="mb-6 flex h-auto w-full flex-wrap justify-start gap-1">
             <TabsTrigger value="compte-de-resultat" className="flex items-center gap-2">
               <TrendingUp className="h-4 w-4" />
               Compte de résultat
@@ -346,19 +398,73 @@ export default function RapportsPage() {
                   </div>
                 )}
                 {/* BUG #2 — Alerte si la somme des modules ne matche pas la
-                    SSOT (signe d'une vente ou dépense saisie hors VenteManuelle
-                    / DepenseManuelle / Facture). Bug que Dev B traite côté flux. */}
-                {stats.coherenceCheck && (Math.abs(stats.coherenceCheck.revenusEcart) > 0.5 || Math.abs(stats.coherenceCheck.depensesEcart) > 0.5) && (
-                  <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900 flex items-start gap-2">
-                    <Info className="h-4 w-4 mt-0.5 text-red-700 flex-shrink-0" />
-                    <div>
-                      <p className="font-semibold">Incohérence détectée entre la SSOT et la ventilation par module</p>
-                      <p className="text-xs mt-0.5">
-                        Revenus : SSOT {formatEuro(stats.coherenceCheck.revenusSsot)} vs somme modules {formatEuro(stats.coherenceCheck.revenusSommeModules)} (écart {formatEuro(stats.coherenceCheck.revenusEcart)}).
-                        Dépenses : SSOT {formatEuro(stats.coherenceCheck.depensesSsot)} vs somme modules {formatEuro(stats.coherenceCheck.depensesSommeModules)} (écart {formatEuro(stats.coherenceCheck.depensesEcart)}).
-                        La ligne TOTAL ci-dessous reflète la somme des cellules visibles.
-                      </p>
+                    SSOT (signe d'une vente saisie hors VenteManuelle / Facture).
+                    TICKET cmsoevq3v/cmsoevq3q — restreinte aux REVENUS : côté
+                    dépenses, la ventilation par module inclut VOLONTAIREMENT
+                    des valorisations internes (consommations d'aliments,
+                    fertilisations…) qui ne sont pas des charges comptables ;
+                    l'écart y est attendu et expliqué par le bandeau discret
+                    ci-dessous, pas par une alerte rouge. */}
+                {/* QA cmsw9dcrd — quand l'écart correspond aux avoirs de
+                    l'exercice (SSOT nette d'avoirs vs ventilation en factures
+                    brutes, convention tranchée le 2026-08-10), le bandeau le
+                    dit et passe en ton neutre : c'est un fait comptable
+                    documenté, pas une anomalie. */}
+                {stats.coherenceCheck && Math.abs(stats.coherenceCheck.revenusEcart) > 0.5 && (() => {
+                  const cc = stats.coherenceCheck!
+                  const avoirs = cc.avoirsExercice ?? 0
+                  const ecartEstAvoirs =
+                    avoirs > 0 && Math.abs(Math.abs(cc.revenusEcart) - avoirs) < 0.01
+                  return ecartEstAvoirs ? (
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 flex items-start gap-2">
+                      <Info className="h-4 w-4 mt-0.5 text-slate-500 flex-shrink-0" />
+                      <div>
+                        <p className="font-semibold">Écart SSOT / ventilation = avoirs de l&apos;exercice</p>
+                        <p className="text-xs mt-0.5">
+                          Le total SSOT ({formatEuro(cc.revenusSsot)}) est net des avoirs ({formatEuro(avoirs)}) ;
+                          la ventilation par module ({formatEuro(cc.revenusSommeModules)}) additionne les factures brutes.
+                          La ligne TOTAL ci-dessous reflète la somme des cellules visibles.
+                        </p>
+                      </div>
                     </div>
+                  ) : (
+                    <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900 flex items-start gap-2">
+                      <Info className="h-4 w-4 mt-0.5 text-red-700 flex-shrink-0" />
+                      <div>
+                        <p className="font-semibold">Incohérence détectée entre la SSOT et la ventilation par module</p>
+                        <p className="text-xs mt-0.5">
+                          Revenus : SSOT {formatEuro(cc.revenusSsot)} vs somme modules {formatEuro(cc.revenusSommeModules)} (écart {formatEuro(cc.revenusEcart)}).
+                          La ligne TOTAL ci-dessous reflète la somme des cellules visibles.
+                        </p>
+                      </div>
+                    </div>
+                  )
+                })()}
+                {/* TICKET cmsoevq3v/cmsoevq3q — le coherenceCheck de l'API
+                    n'était pas affiché ici : la « somme des modules » (qui
+                    additionne l'achat d'aliment comptable ET la valorisation
+                    analytique de sa consommation) se lisait comme un total
+                    comptable → double comptage apparent (ex. 7 417,80 vs
+                    6 483,80). Bandeau discret, purement explicatif — le calcul
+                    de la ventilation n'est PAS modifié. */}
+                {stats.coherenceCheck && Math.abs(stats.coherenceCheck.depensesEcart) > 0.01 && (
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 flex items-start gap-2">
+                    <Info className="h-4 w-4 mt-0.5 text-slate-500 flex-shrink-0" />
+                  {/* Ticket cmsx69cuc — l'explication restait générale, donc
+                      inopposable à un contrôle : l'écart est désormais chiffré
+                      et rapproché des valorisations internes, au centime. */}
+                  <p className="text-xs">
+                    Dépenses — ventilation analytique par module : {formatEuro(stats.coherenceCheck.depensesSommeModules)} ;
+                    total comptable : {formatEuro(stats.coherenceCheck.depensesSsot)}.
+                    {(() => {
+                      const analytiques = stats.coherenceCheck?.depensesAnalytiques ?? null
+                      const ecart = Math.abs(stats.coherenceCheck?.depensesEcart ?? 0)
+                      if (analytiques !== null && Math.abs(analytiques - ecart) < 0.01) {
+                        return ` L'écart de ${formatEuro(analytiques)} est exactement la valorisation interne des soins, consommations d'aliments et fertilisations : ce sont des coûts analytiques, pas des charges comptables.`
+                      }
+                      return " Les valorisations internes (consommations d'aliments, fertilisations…) ne sont pas des charges comptables : l'écart entre les deux n'est pas une anomalie."
+                    })()}
+                  </p>
                   </div>
                 )}
                 {/* Résumé */}
@@ -406,10 +512,17 @@ export default function RapportsPage() {
                   </Card>
                 </div>
 
-                {/* Détail par module */}
+                {/* Détail par module — TICKET cmsoevq3v/cmsoevq3q : renommé
+                    « ventilation analytique » car la colonne Dépenses mêle
+                    charges comptables et valorisations internes ; son TOTAL
+                    n'est pas le total comptable du dashboard. */}
                 <Card>
                   <CardHeader>
-                    <CardTitle>Résultat par module</CardTitle>
+                    <CardTitle>Ventilation analytique par module</CardTitle>
+                    <CardDescription>
+                      Dépenses = coûts analytiques des modules (valorisations internes incluses) —
+                      le total comptable de la ferme est celui des cartes ci-dessus.
+                    </CardDescription>
                   </CardHeader>
                   <CardContent>
                     <Table>
@@ -742,13 +855,19 @@ export default function RapportsPage() {
                   )}
                 </CardHeader>
                 <CardContent className="flex flex-wrap gap-2">
+                  {/* 2026-08-19 — les documents PDF s'ouvrent dans l'écran
+                      d'aperçu : on relit l'aide CA3 avant de la reporter, et le
+                      téléchargement reste à un clic. */}
                   <a
-                    href={`/api/comptabilite/tva/ca3?year=${selectedYear}${selectedTrimestre !== 'all' ? `&trimestre=${selectedTrimestre}` : ''}&format=pdf`}
+                    href={urlApercu(
+                      `/api/comptabilite/tva/ca3?year=${selectedYear}${selectedTrimestre !== 'all' ? `&trimestre=${selectedTrimestre}` : ''}&format=pdf`,
+                      `Aide CA3 ${selectedYear}${selectedTrimestre !== 'all' ? ` — T${selectedTrimestre}` : ''}`,
+                    )}
                     target="_blank"
                     rel="noreferrer"
                   >
                     <Button variant="outline" size="sm">
-                      <Download className="h-4 w-4 mr-2" />
+                      <FileText className="h-4 w-4 mr-2" />
                       Aide CA3 (PDF)
                     </Button>
                   </a>

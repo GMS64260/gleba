@@ -18,12 +18,11 @@ export function MarketingShell({ children }: { children: React.ReactNode }) {
 
 function MarketingNav() {
   const businessLinks = [
+    ["/logiciel-micro-ferme", "Micro-ferme"],
     ["/logiciel-maraichage", "Maraîchage"],
-    ["/logiciel-potager", "Potager"],
-    ["/logiciel-arboriculture", "Arboriculture"],
+    ["/logiciel-verger", "Verger"],
     ["/logiciel-elevage", "Élevage"],
-    ["/logiciel-permaculture", "Permaculture"],
-    ["/calendrier-semis", "Calendrier semis"],
+    ["/planification-maraichage", "Planification"],
   ] as const;
 
   return (
@@ -39,7 +38,7 @@ function MarketingNav() {
         </div>
         <div className="flex shrink-0 items-center gap-3">
           <Link href="/referentiel" className="hidden items-center gap-1.5 text-sm font-medium text-slate-500 transition-colors hover:text-emerald-700 xl:flex"><BookOpen className="h-4 w-4" />Référentiel</Link>
-          <Link href="/register" className="inline-flex items-center rounded-full bg-emerald-700 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-emerald-800">Essayer Gleba</Link>
+          <Link href="/register" className="inline-flex items-center rounded-full bg-emerald-700 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-emerald-800">Essayer la bêta</Link>
         </div>
       </div>
       <div className="border-t border-slate-100 px-3 py-2 lg:hidden">
@@ -68,23 +67,20 @@ function MarketingFooter() {
           <span className="text-slate-300">v1.1.0</span>
         </div>
         <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
+          <Link href="/logiciel-micro-ferme" className="hover:text-emerald-600 transition-colors">
+            Micro-ferme
+          </Link>
           <Link href="/logiciel-maraichage" className="hover:text-emerald-600 transition-colors">
             Maraîchage
           </Link>
-          <Link href="/logiciel-potager" className="hover:text-emerald-600 transition-colors">
-            Potager
-          </Link>
           <Link href="/logiciel-verger" className="hover:text-emerald-600 transition-colors">
-            Arboriculture
+            Verger
           </Link>
           <Link href="/logiciel-elevage" className="hover:text-emerald-600 transition-colors">
             Élevage
           </Link>
-          <Link href="/logiciel-permaculture" className="hover:text-emerald-600 transition-colors">
-            Permaculture
-          </Link>
-          <Link href="/calendrier-semis" className="hover:text-emerald-600 transition-colors">
-            Calendrier semis
+          <Link href="/planification-maraichage" className="hover:text-emerald-600 transition-colors">
+            Planification
           </Link>
           <Link href="/referentiel" className="hover:text-emerald-600 transition-colors">
             Référentiel

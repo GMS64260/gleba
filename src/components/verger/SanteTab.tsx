@@ -42,7 +42,8 @@ import { ZntFieldset } from "@/components/phyto/ZntFieldset"
 import { ExportPhytoButton } from "@/components/phyto/ExportPhytoButton"
 import { CuivreCounterCard } from "@/components/phyto/CuivreCounterCard"
 import { todayLocalISO } from '@/lib/format-utils'
-import { doitSignalerSansPollinisateur } from "@/lib/pollinisation"
+import { doitSignalerSansPollinisateur, groupesCompatibles } from "@/lib/pollinisation"
+import { arbreSupprimeDansNotes } from "@/lib/verger/preserver-traces-phyto"
 
 interface Arbre {
   id: number
@@ -67,6 +68,10 @@ interface Observation {
   uniteDose: string | null
   dar: number | null
   numAMM: string | null
+  // QA cmsbu174l — la ZNT est exigée à la saisie et exportée, elle doit
+  // aussi être visible dans le registre à l'écran.
+  zntRespectee: boolean | null
+  zntDistanceM: number | null
   resolu: boolean
   dateResolution: string | null
   notes: string | null
@@ -83,6 +88,9 @@ interface PollinisationData {
     groupePollinisation: string | null
     groupePollinisationEffectif?: string | null
     groupePollinisationSource?: "arbre" | "referentiel" | null
+    // QA cmsoeyth0 — ploïdie du référentiel variétal : un triploïde a un
+    // pollen stérile et ne peut pas servir de pollinisateur.
+    ploidie?: string | null
     autofertile: boolean
     pollinisateursCompat: { id: number; arbrePollinisateur: { id: number; nom: string; espece: string | null; variete: string | null } }[]
   }[]
@@ -181,6 +189,7 @@ function ObservationsSubTab() {
   const [filterResolu, setFilterResolu] = React.useState("all")
   const [showDialog, setShowDialog] = React.useState(false)
   const [editingObs, setEditingObs] = React.useState<Observation | null>(null)
+  const [isSubmitting, setIsSubmitting] = React.useState(false)
   const defaultFormData = {
     arbreId: "",
     date: todayLocalISO(),
@@ -272,6 +281,7 @@ function ObservationsSubTab() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isSubmitting) return
     // Famille C — au lieu d'un bouton grisé muet (perçu comme « ça bloque »),
     // on valide explicitement les champs requis avec un message clair.
     if (!formData.arbreId) {
@@ -283,6 +293,7 @@ function ObservationsSubTab() {
       toast({ title: "Choisissez un type d'observation", variant: "destructive" })
       return
     }
+    setIsSubmitting(true)
     try {
       const url = editingObs
         ? `/api/arbres/observations/${editingObs.id}`
@@ -311,6 +322,8 @@ function ObservationsSubTab() {
       }
     } catch {
       toast({ title: "Erreur", variant: "destructive" })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -578,7 +591,9 @@ function ObservationsSubTab() {
                     <SelectItem value="BBCH 65 - Pleine floraison">BBCH 65 — Pleine floraison</SelectItem>
                     <SelectItem value="BBCH 69 - Nouaison">BBCH 69 — Nouaison</SelectItem>
                     <SelectItem value="BBCH 75 - Grossissement fruit">BBCH 75 — Grossissement fruit</SelectItem>
-                    <SelectItem value="BBCH 81 - Véraison">BBCH 81 — Véraison</SelectItem>
+                    {/* QA cmswu8thr — « Véraison » est un terme viticole :
+                        libellé générique fruitiers (pommier, poirier…). */}
+                    <SelectItem value="BBCH 81 - Début de maturation">BBCH 81 — Début de maturation</SelectItem>
                     <SelectItem value="BBCH 89 - Maturité">BBCH 89 — Maturité</SelectItem>
                     <SelectItem value="BBCH 93 - Sénescence">BBCH 93 — Sénescence</SelectItem>
                   </SelectContent>
@@ -631,7 +646,7 @@ function ObservationsSubTab() {
                     <div>
                       <Label>Méthode</Label>
                       {/* Les méthodes chimiques exigent les champs réglementaires
-                          (Arrêté 16/06/2009) absents de ce dialog : elles se
+                          (arrêté du 4 mai 2017 modifié) absents de ce dialog : elles se
                           saisissent dans le Registre phyto, sinon l'API renvoie
                           systématiquement un 400. */}
                       <Select value={formData.methodeTraitement} onValueChange={(v) => setFormData({ ...formData, methodeTraitement: v })}>
@@ -705,8 +720,8 @@ function ObservationsSubTab() {
               <Label>Notes</Label>
               <Textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} rows={2} />
             </div>
-            <Button type="submit" className="w-full">
-              {editingObs ? "Enregistrer les modifications" : "Enregistrer l'observation"}
+            <Button type="submit" className="w-full" disabled={isSubmitting}>
+              {isSubmitting ? "Enregistrement..." : (editingObs ? "Enregistrer les modifications" : "Enregistrer l'observation")}
             </Button>
           </form>
         </DialogContent>
@@ -727,6 +742,9 @@ function RegistrePhytoSubTab() {
   const [editingObs, setEditingObs] = React.useState<Observation | null>(null)
   const [showEditDialog, setShowEditDialog] = React.useState(false)
   const [showAddDialog, setShowAddDialog] = React.useState(false)
+  // Anti double-submit : un seul dialog (ajout OU édition) est ouvert à la fois,
+  // un flag commun au sous-composant suffit.
+  const [isSubmitting, setIsSubmitting] = React.useState(false)
   const [editForm, setEditForm] = React.useState({
     produit: "",
     numAMM: "",
@@ -736,7 +754,7 @@ function RegistrePhytoSubTab() {
     traitement: "",
     methodeTraitement: "",
   })
-  // DEV3 #1 — Champs réglementaires (Arrêté 16/06/2009)
+  // DEV3 #1 — Champs réglementaires (arrêté du 4 mai 2017 modifié)
   const [addForm, setAddForm] = React.useState({
     arbreId: "",
     date: todayLocalISO(),
@@ -762,6 +780,22 @@ function RegistrePhytoSubTab() {
     zntDistanceM: "",
     zntRespectee: null as boolean | null,
   })
+
+  // QA cmsqn4u8n — « Volume bouillie (L total) » promettait un calcul
+  // automatique (« auto si surface × L/ha ») qui n'existait pas : le champ
+  // restait vide et le total n'atteignait jamais le registre. On le dérive à
+  // chaque saisie de la surface ou du L/ha, sauf si l'utilisateur a saisi son
+  // propre total (sa valeur prime alors, on ne l'écrase pas).
+  const bouillieSaisieManuellement = React.useRef(false)
+  const majBouillie = <T extends { surfaceTraiteeHa: string; volumeBouillieLHa: string; volumeBouillieLTotal: string }>(f: T): T => {
+    if (bouillieSaisieManuellement.current) return f
+    const surface = parseFloat(f.surfaceTraiteeHa)
+    const lha = parseFloat(f.volumeBouillieLHa)
+    if (Number.isFinite(surface) && Number.isFinite(lha) && surface > 0 && lha > 0) {
+      return { ...f, volumeBouillieLTotal: String(Math.round(surface * lha * 10) / 10) }
+    }
+    return f
+  }
   const [addWeather, setAddWeather] = React.useState<WeatherData>(EMPTY_WEATHER)
   const [addEpi, setAddEpi] = React.useState<string[]>([])
   const [parcelles, setParcelles] = React.useState<{ id: string; nom: string }[]>([])
@@ -787,15 +821,22 @@ function RegistrePhytoSubTab() {
       // Les opérations enregistrées via Verger > Opérations (huile blanche,
       // bouillie bordelaise, etc.) étaient absentes alors qu'elles doivent
       // figurer au registre phyto réglementaire (AB/HVE).
-      const [malRes, ravRes, arbresRes, opsRes] = await Promise.all([
+      const [malRes, ravRes, arbresRes, opsRes, interventionsRes] = await Promise.all([
         fetch("/api/arbres/observations?type=maladie&resolu=all"),
         fetch("/api/arbres/observations?type=ravageur&resolu=all"),
         fetch("/api/arbres"),
         fetch("/api/arbres/operations?type=traitement"),
+        // QA cmsno1hct — un traitement phyto déclenché depuis une observation
+        // (« Déclencher un traitement pré-rempli ») crée une Intervention,
+        // table que ce registre ne lisait pas : le traitement semblait perdu
+        // alors qu'il figurait bien dans /tracabilite. On agrège les
+        // interventions traitement_phyto rattachées à un arbre.
+        fetch("/api/interventions?type=traitement_phyto"),
       ])
       const allObs: Observation[] = []
       const ids = new Set<number>()
       const obsKey = (o: Observation) => `obs-${o.id}`
+      const arbresList: Arbre[] = arbresRes.ok ? await arbresRes.json() : []
       if (malRes.ok) {
         const mal = await malRes.json()
         mal.filter((o: Observation) => o.produit || o.traitement).forEach((o: Observation) => {
@@ -848,6 +889,8 @@ function RegistrePhytoSubTab() {
             uniteDose: op.unite ?? null,
             dar: null,
             numAMM: null,
+            zntRespectee: null,
+            zntDistanceM: null,
             resolu: true,
             dateResolution: null,
             notes: `Source: Opération arbre #${op.id}`,
@@ -857,8 +900,77 @@ function RegistrePhytoSubTab() {
         // suppress unused obsKey var lint
         void obsKey
       }
+      if (interventionsRes.ok) {
+        const payload = await interventionsRes.json()
+        const interventions = Array.isArray(payload?.data) ? payload.data : []
+        for (const i of interventions as Array<{
+          id: number
+          source?: string
+          arbreId?: number | null
+          date: string
+          description?: string | null
+          produitPhyto?: string | null
+          numAMM?: string | null
+          doseAppliquee?: number | null
+          uniteDose?: string | null
+          dar?: number | null
+          zntRespectee?: boolean | null
+          zntDistanceM?: number | null
+          cibleTraitement?: string | null
+          notes?: string | null
+        }>) {
+          // Les entrées dérivées (source operation_arbre, culture…) sont déjà
+          // couvertes par les autres fetches : on ne garde que la table
+          // Intervention.
+          if (i.source !== "intervention") continue
+          // Ticket cmsx6acih — une intervention DÉTACHÉE (arbre supprimé) était
+          // écartée par ce filtre. La suppression d'un arbre promet pourtant
+          // que ses traitements restent au registre, avec le nom de l'arbre
+          // snapshoté : la trace existait bien en base et dans /tracabilite,
+          // mais ce registre-ci la comptait en moins, ce qui se lisait comme un
+          // effacement. On la garde, identifiée par son snapshot.
+          const arbreSupprime = arbreSupprimeDansNotes(i.notes)
+          if (!i.arbreId && !arbreSupprime) continue
+          const pseudoId = -(1_000_000 + i.id)
+          if (ids.has(pseudoId)) continue
+          ids.add(pseudoId)
+          const arbre = i.arbreId ? arbresList.find((a) => a.id === i.arbreId) : undefined
+          allObs.push({
+            id: pseudoId,
+            arbreId: i.arbreId ?? 0,
+            date: i.date,
+            type: "traitement",
+            symptome: null,
+            // QA cmsof2b33 — la cible du traitement (cibleTraitement) est
+            // persistée et renvoyée par l'API mais n'était jamais mappée :
+            // la colonne Cible affichait « - » pour toute intervention.
+            diagnostic: i.cibleTraitement ?? null,
+            gravite: "faible",
+            organe: null,
+            traitement: i.description ?? null,
+            methodeTraitement: null,
+            produit: i.produitPhyto ?? null,
+            doseAppliquee: i.doseAppliquee ?? null,
+            uniteDose: i.uniteDose ?? null,
+            dar: i.dar ?? null,
+            numAMM: i.numAMM ?? null,
+            zntRespectee: i.zntRespectee ?? null,
+            zntDistanceM: i.zntDistanceM ?? null,
+            resolu: true,
+            dateResolution: null,
+            notes: arbreSupprime
+              ? `Source: Intervention #${i.id} — arbre supprimé, trace conservée`
+              : `Source: Intervention #${i.id}`,
+            arbre:
+              arbre ??
+              (i.arbreId
+                ? { id: i.arbreId, nom: `Arbre #${i.arbreId}`, type: "fruitier", espece: null }
+                : { id: 0, nom: `${arbreSupprime} (supprimé)`, type: "fruitier", espece: null }),
+          })
+        }
+      }
       setObservations(allObs)
-      if (arbresRes.ok) setArbres(await arbresRes.json())
+      setArbres(arbresList)
     } catch {
       // silent
     } finally {
@@ -886,7 +998,9 @@ function RegistrePhytoSubTab() {
 
   const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isSubmitting) return
     if (!editingObs) return
+    setIsSubmitting(true)
     try {
       const res = await fetch(`/api/arbres/observations/${editingObs.id}`, {
         method: "PUT",
@@ -918,17 +1032,21 @@ function RegistrePhytoSubTab() {
       }
     } catch {
       toast({ title: "Erreur", variant: "destructive" })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isSubmitting) return
     // Famille C — au lieu d'un bouton grisé muet, on valide explicitement
     // l'arbre requis avec un message clair.
     if (!addForm.arbreId) {
       toast({ title: "Sélectionnez un arbre", variant: "destructive" })
       return
     }
+    setIsSubmitting(true)
     try {
       const res = await fetch("/api/arbres/observations", {
         method: "POST",
@@ -1005,6 +1123,8 @@ function RegistrePhytoSubTab() {
       }
     } catch {
       toast({ title: "Erreur réseau", description: "Impossible de contacter le serveur.", variant: "destructive" })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -1084,8 +1204,11 @@ function RegistrePhytoSubTab() {
             <p className="text-2xl font-bold">{chimiques.length}</p>
             {chimiques.length > 0 && (
               <p className="text-xs mt-1">
+                {/* QA cmswu9mg2 — séparateur textuel réel : la marge CSS seule
+                    rendait « 2 complets2 incomplets » à la lecture du texte. */}
                 <span className="text-green-600">{complets} complet{complets > 1 ? "s" : ""}</span>
-                {incomplets > 0 && <span className="text-red-600 ml-2">{incomplets} incomplet{incomplets > 1 ? "s" : ""}</span>}
+                {incomplets > 0 && <span className="text-muted-foreground">{" · "}</span>}
+                {incomplets > 0 && <span className="text-red-600">{incomplets} incomplet{incomplets > 1 ? "s" : ""}</span>}
               </p>
             )}
           </CardContent>
@@ -1140,6 +1263,7 @@ function RegistrePhytoSubTab() {
                   <TableHead>N° AMM</TableHead>
                   <TableHead>Dose</TableHead>
                   <TableHead>DAR</TableHead>
+                  <TableHead>ZNT</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -1183,6 +1307,25 @@ function RegistrePhytoSubTab() {
                           <Badge variant="outline">{obs.dar}j</Badge>
                         ) : needsAmm ? (
                           <Badge variant="destructive" className="text-xs">Manquant</Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {/* QA cmsbu174l — ZNT saisie et exportée mais absente
+                            du registre à l'écran. */}
+                        {obs.zntDistanceM != null || obs.zntRespectee != null ? (
+                          <span className="text-sm whitespace-nowrap">
+                            {obs.zntDistanceM != null ? `${obs.zntDistanceM} m` : ""}
+                            {obs.zntRespectee != null && (
+                              <Badge
+                                variant="outline"
+                                className={`ml-1 text-xs ${obs.zntRespectee ? "text-green-700 border-green-300" : "text-red-700 border-red-300"}`}
+                              >
+                                {obs.zntRespectee ? "Respectée" : "Non respectée"}
+                              </Badge>
+                            )}
+                          </span>
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
                         )}
@@ -1275,8 +1418,8 @@ function RegistrePhytoSubTab() {
                 </div>
               </>
             )}
-            <Button type="submit" className="w-full">
-              Enregistrer les modifications
+            <Button type="submit" className="w-full" disabled={isSubmitting}>
+              {isSubmitting ? "Enregistrement..." : "Enregistrer les modifications"}
             </Button>
           </form>
         </DialogContent>
@@ -1401,7 +1544,7 @@ function RegistrePhytoSubTab() {
                 <CardHeader className="pb-2 pt-3">
                   <CardTitle className="text-sm flex items-center gap-2 text-amber-800">
                     <Shield className="h-4 w-4" />
-                    Conformité réglementaire (Arrêté 16/06/2009)
+                    Conformité réglementaire (arrêté du 4 mai 2017 modifié)
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
@@ -1409,7 +1552,7 @@ function RegistrePhytoSubTab() {
                     <div>
                       <Label>Surface traitée (ha) <span className="text-red-600">*</span></Label>
                       <Input type="number" step="0.01" value={addForm.surfaceTraiteeHa}
-                        onChange={(e) => setAddForm({ ...addForm, surfaceTraiteeHa: e.target.value })} placeholder="0.5" />
+                        onChange={(e) => setAddForm((f) => majBouillie({ ...f, surfaceTraiteeHa: e.target.value }))} placeholder="0.5" />
                     </div>
                     <div>
                       <Label>Parcelle d'application</Label>
@@ -1427,12 +1570,12 @@ function RegistrePhytoSubTab() {
                     <div>
                       <Label>Volume bouillie (L/ha) <span className="text-red-600">*</span></Label>
                       <Input type="number" step="0.5" value={addForm.volumeBouillieLHa}
-                        onChange={(e) => setAddForm({ ...addForm, volumeBouillieLHa: e.target.value })} placeholder="500" />
+                        onChange={(e) => setAddForm((f) => majBouillie({ ...f, volumeBouillieLHa: e.target.value }))} placeholder="500" />
                     </div>
                     <div>
                       <Label>Volume bouillie (L total)</Label>
                       <Input type="number" step="0.5" value={addForm.volumeBouillieLTotal}
-                        onChange={(e) => setAddForm({ ...addForm, volumeBouillieLTotal: e.target.value })} placeholder="(auto si surface × L/ha)" />
+                        onChange={(e) => { bouillieSaisieManuellement.current = e.target.value !== ""; setAddForm({ ...addForm, volumeBouillieLTotal: e.target.value }) }} placeholder="(auto si surface × L/ha)" />
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
@@ -1470,8 +1613,8 @@ function RegistrePhytoSubTab() {
               <Label>Notes</Label>
               <Textarea value={addForm.notes} onChange={(e) => setAddForm({ ...addForm, notes: e.target.value })} rows={2} />
             </div>
-            <Button type="submit" className="w-full">
-              Enregistrer le traitement
+            <Button type="submit" className="w-full" disabled={isSubmitting}>
+              {isSubmitting ? "Enregistrement..." : "Enregistrer le traitement"}
             </Button>
           </form>
         </DialogContent>
@@ -1489,6 +1632,7 @@ function PollinisationSubTab() {
   const [data, setData] = React.useState<PollinisationData | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [showDialog, setShowDialog] = React.useState(false)
+  const [isSubmitting, setIsSubmitting] = React.useState(false)
   const [formData, setFormData] = React.useState({
     arbrePolliniseId: "",
     arbrePollinisateurId: "",
@@ -1512,8 +1656,58 @@ function PollinisationSubTab() {
     fetchData()
   }, [fetchData])
 
+  // QA cmsjhe5nt — le sélecteur proposait n'importe quel arbre du verger
+  // (cerisier ou noyer pour un pommier). La pollinisation croisée n'opère
+  // qu'au sein d'une même espèce : on filtre les candidats sur l'espèce de
+  // l'arbre à polliniser et on pré-calcule la compatibilité depuis les
+  // groupes de floraison (A/B/C/D, adjacents compatibles).
+  const normaliseEspece = (e: string | null) =>
+    (e || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase()
+  const arbrePollinise = data?.arbres.find((a) => a.id.toString() === formData.arbrePolliniseId) ?? null
+  const groupeDe = (a: { groupePollinisation: string | null; groupePollinisationEffectif?: string | null }) =>
+    a.groupePollinisationEffectif ?? a.groupePollinisation
+  // QA cmsoeyth0 — un triploïde a un pollen stérile : jamais pollinisateur.
+  const estTriploidePollinisateur = (a: { ploidie?: string | null }) =>
+    (a.ploidie ?? "").toLowerCase().startsWith("tripl")
+  // QA cmswu5y82 — un arbre sans espèce ni groupe n'est pas vérifiable : la
+  // dérivation serveur (computePollinisationVerger) l'exclut déjà, le
+  // sélecteur manuel était plus permissif que le moteur qui l'alimente.
+  const donneesIncompletes = (a: { espece: string | null; groupePollinisation: string | null; groupePollinisationEffectif?: string | null }) =>
+    !a.espece || !groupeDe(a)
+  const candidatsPollinisateurs = (data?.arbres ?? [])
+    .filter((a) => {
+      if (a.id.toString() === formData.arbrePolliniseId) return false
+      // QA cmsoeyth0 — même variété = clone : pollen auto-incompatible, on
+      // l'exclut des candidats (le serveur le refuse aussi en 422).
+      if (arbrePollinise?.variete && a.variete && a.variete === arbrePollinise.variete) return false
+      // QA cmswu5y82 — cible d'espèce connue : un candidat SANS espèce n'est
+      // plus assimilé à un compatible, il est exclu comme sur le serveur.
+      if (arbrePollinise?.espece && !a.espece) return false
+      if (!arbrePollinise?.espece || !a.espece) return true // cible inconnue : on ne bloque pas
+      return normaliseEspece(a.espece) === normaliseEspece(arbrePollinise.espece)
+    })
+    // QA cmswu5y82 — candidats vérifiables d'abord, données incomplètes en
+    // dernier (l'option nue « Pommier » arrivait en tête par tri alphabétique).
+    .sort((a, b) => Number(donneesIncompletes(a)) - Number(donneesIncompletes(b)))
+  const suggererCompatibilite = (pollinisateur: { groupePollinisation: string | null; groupePollinisationEffectif?: string | null; ploidie?: string | null }) => {
+    // QA cmsoeyth0 — la suggestion ne comparait que les groupes de floraison :
+    // un Jonagold (triploïde, pollen stérile) ressortait « excellente ».
+    if (estTriploidePollinisateur(pollinisateur)) return "incompatible"
+    // QA cmswu5y82 — sans groupe connu, ne rien affirmer : « partielle »,
+    // cohérent avec la requalification vérifiée/présumée du 16/08.
+    if (!arbrePollinise) return "partielle"
+    const g1 = groupeDe(arbrePollinise)
+    const g2 = groupeDe(pollinisateur)
+    if (!g1 || !g2) return "partielle"
+    if (g1 === g2) return "excellente"
+    return groupesCompatibles(g1, g2) ? "bonne" : "partielle"
+  }
+  const pollinisateurChoisi = data?.arbres.find((a) => a.id.toString() === formData.arbrePollinisateurId) ?? null
+  const pollinisateurTriploide = pollinisateurChoisi ? estTriploidePollinisateur(pollinisateurChoisi) : false
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isSubmitting) return
     // Famille C — au lieu d'un bouton grisé muet, on valide explicitement
     // les deux arbres requis avec des messages clairs.
     if (!formData.arbrePolliniseId) {
@@ -1524,6 +1718,16 @@ function PollinisationSubTab() {
       toast({ title: "Sélectionnez le pollinisateur", variant: "destructive" })
       return
     }
+    // QA cmsoeyth0 — garde client alignée sur le 422 serveur.
+    if (pollinisateurTriploide) {
+      toast({
+        title: "Pollinisateur incompatible",
+        description: "Un pollinisateur triploïde a un pollen stérile : choisissez un pollinisateur diploïde.",
+        variant: "destructive",
+      })
+      return
+    }
+    setIsSubmitting(true)
     try {
       const res = await fetch("/api/arbres/pollinisation", {
         method: "POST",
@@ -1541,6 +1745,8 @@ function PollinisationSubTab() {
       }
     } catch {
       toast({ title: "Erreur", variant: "destructive" })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -1637,6 +1843,10 @@ function PollinisationSubTab() {
                   <TableHead>Espèce</TableHead>
                   <TableHead>Floraison</TableHead>
                   <TableHead>Groupe</TableHead>
+                  {/* QA cmsnnw18k — la ploïdie (référentiel variétal) était
+                      utilisée en interne mais invisible : un triploïde exige
+                      deux pollinisateurs diploïdes et pollinise mal. */}
+                  <TableHead>Ploïdie</TableHead>
                   <TableHead>Autofertile</TableHead>
                   <TableHead>Mode</TableHead>
                   <TableHead>Pollinisateurs</TableHead>
@@ -1651,9 +1861,16 @@ function PollinisationSubTab() {
                   const a = arbre as typeof arbre & {
                     autofertileEffectif?: boolean
                     hasPollinisateurDerive?: boolean
+                    pollinisateurDeriveCertitude?: 'verifiee' | 'presumee' | null
+                    ploidie?: string | null
                   }
                   const isAutofertile = a.autofertileEffectif ?? arbre.autofertile
                   const hasDerive = a.hasPollinisateurDerive ?? false
+                  // QA cmsw9e88e — dérivation « présumée » quand aucun groupe
+                  // de floraison n'est connu : ne plus l'afficher comme une
+                  // compatibilité prouvée.
+                  const deriveVerifie = (a.pollinisateurDeriveCertitude ?? 'verifiee') === 'verifiee'
+                  const estTriploide = (a.ploidie ?? "").toLowerCase().startsWith("tripl")
                   const isAnemophile = estAnemophileEspece(arbre.espece)
                   const sansPolli = doitSignalerSansPollinisateur({
                     autofertile: isAutofertile,
@@ -1681,6 +1898,20 @@ function PollinisationSubTab() {
                           {arbre.groupePollinisationEffectif ?? arbre.groupePollinisation}
                           {arbre.groupePollinisationSource === "referentiel" ? " *" : ""}
                         </Badge>
+                      ) : "-"}
+                    </TableCell>
+                    <TableCell>
+                      {a.ploidie ? (
+                        estTriploide ? (
+                          <Badge
+                            className="bg-amber-100 text-amber-800"
+                            title="Variété triploïde : son pollen est stérile — prévoir deux pollinisateurs diploïdes à proximité"
+                          >
+                            Triploïde ⚠
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-xs">{a.ploidie}</Badge>
+                        )
                       ) : "-"}
                     </TableCell>
                     <TableCell>
@@ -1724,8 +1955,15 @@ function PollinisationSubTab() {
                         </div>
                       ) : isAutofertile ? (
                         <span className="text-sm text-muted-foreground">-</span>
-                      ) : hasDerive ? (
+                      ) : hasDerive && deriveVerifie ? (
                         <span className="text-xs text-amber-600" title="Pollinisateur dérivé automatiquement (même espèce, groupes compatibles)">À associer (auto)</span>
+                      ) : hasDerive ? (
+                        <span
+                          className="text-xs text-amber-600"
+                          title="Même espèce et variété différente présentes au verger, mais le groupe de floraison n'est renseigné ni sur l'arbre ni sur la variété au référentiel : compatibilité non vérifiée."
+                        >
+                          À vérifier (groupe de floraison inconnu)
+                        </span>
                       ) : (
                         <span className="text-sm text-red-500">Aucun !</span>
                       )}
@@ -1736,6 +1974,12 @@ function PollinisationSubTab() {
               </TableBody>
             </Table>
           )}
+          {/* QA cmsqn5lh4 (c) — l'astérisque des badges (« B * », « Oui * »)
+              n'était expliqué nulle part sur la page. */}
+          <p className="mt-2 text-xs text-muted-foreground">
+            * : information déduite de la variété au référentiel Gleba (groupe de
+            floraison ou autofertilité non saisis sur l&apos;arbre).
+          </p>
         </CardContent>
       </Card>
 
@@ -1748,7 +1992,14 @@ function PollinisationSubTab() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <Label>Arbre à polliniser *</Label>
-              <Select value={formData.arbrePolliniseId} onValueChange={(v) => setFormData({ ...formData, arbrePolliniseId: v })}>
+              <Select
+                value={formData.arbrePolliniseId}
+                onValueChange={(v) =>
+                  // Changer d'arbre cible invalide le pollinisateur déjà choisi
+                  // (l'espèce filtrée n'est plus la même).
+                  setFormData({ ...formData, arbrePolliniseId: v, arbrePollinisateurId: "" })
+                }
+              >
                 <SelectTrigger><SelectValue placeholder="— Sélectionner l'arbre à polliniser —" /></SelectTrigger>
                 <SelectContent>
                   {data?.arbres.filter((a) => !a.autofertile).map((a) => (
@@ -1761,16 +2012,48 @@ function PollinisationSubTab() {
             </div>
             <div>
               <Label>Pollinisateur *</Label>
-              <Select value={formData.arbrePollinisateurId} onValueChange={(v) => setFormData({ ...formData, arbrePollinisateurId: v })}>
+              <Select
+                value={formData.arbrePollinisateurId}
+                onValueChange={(v) => {
+                  const pollinisateur = data?.arbres.find((a) => a.id.toString() === v)
+                  setFormData({
+                    ...formData,
+                    arbrePollinisateurId: v,
+                    compatibilite: pollinisateur ? suggererCompatibilite(pollinisateur) : formData.compatibilite,
+                  })
+                }}
+              >
                 <SelectTrigger><SelectValue placeholder="— Sélectionner le pollinisateur —" /></SelectTrigger>
                 <SelectContent>
-                  {data?.arbres.filter((a) => a.id.toString() !== formData.arbrePolliniseId).map((a) => (
-                    <SelectItem key={a.id} value={a.id.toString()}>
-                      {a.nom} {a.espece ? `(${a.espece})` : ""}
-                    </SelectItem>
-                  ))}
+                  {candidatsPollinisateurs.map((a) => {
+                    const g = groupeDe(a)
+                    return (
+                      <SelectItem key={a.id} value={a.id.toString()}>
+                        {a.nom} {a.espece ? `(${a.espece})` : ""}{g ? ` — Gr.${g}` : ""}
+                        {estTriploidePollinisateur(a) ? " — ⚠ triploïde (pollen stérile)" : ""}
+                        {donneesIncompletes(a) ? " — données incomplètes, à vérifier" : ""}
+                      </SelectItem>
+                    )
+                  })}
                 </SelectContent>
               </Select>
+              {/* QA cmsoeyth0 — alerte visuelle : le pollen d'un triploïde est stérile. */}
+              {pollinisateurTriploide && (
+                <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                  <AlertTriangle className="h-3 w-3 shrink-0" />
+                  Un pollinisateur triploïde a un pollen stérile : cette association est incompatible.
+                </p>
+              )}
+              {formData.arbrePolliniseId && candidatsPollinisateurs.length === 0 && (
+                <p className="text-xs text-amber-600 mt-1">
+                  {/* QA cmsqn5lh4 (d) — « Aucun autre cerisier au verger » était
+                      faux quand un congénère existait mais qu'aucune VARIÉTÉ
+                      compatible ne restait (même variété = inter-incompatible) :
+                      l'utilisateur doutait que son second arbre soit enregistré. */}
+                  Aucune autre variété de {arbrePollinise?.espece?.toLowerCase() || "cette espèce"} compatible au verger :
+                  la pollinisation croisée demande une variété différente, de floraison compatible.
+                </p>
+              )}
             </div>
             <div>
               <Label>Compatibilité</Label>
@@ -1780,15 +2063,21 @@ function PollinisationSubTab() {
                   <SelectItem value="excellente">Excellente</SelectItem>
                   <SelectItem value="bonne">Bonne</SelectItem>
                   <SelectItem value="partielle">Partielle</SelectItem>
+                  {/* QA cmsoeyth0 — valeur suggérée pour un triploïde (pollen
+                      stérile) : visible mais non sélectionnable à la main. */}
+                  <SelectItem value="incompatible" disabled>Incompatible (pollen stérile)</SelectItem>
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground mt-1">
+                Pré-remplie depuis les groupes de floraison (même groupe = excellente, adjacent = bonne).
+              </p>
             </div>
             <div>
               <Label>Notes</Label>
               <Input value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} />
             </div>
-            <Button type="submit" className="w-full">
-              Créer l'association
+            <Button type="submit" className="w-full" disabled={isSubmitting}>
+              {isSubmitting ? "Enregistrement..." : "Créer l'association"}
             </Button>
           </form>
         </DialogContent>

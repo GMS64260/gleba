@@ -22,6 +22,8 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
+import { masquerActionPlantation } from "@/components/potager/CulturesTab"
+import { etatCulture } from "@/lib/cultures/etat"
 
 // Types d'états pour le filtre
 const CULTURE_ETATS = [
@@ -57,6 +59,8 @@ interface CultureWithRelations {
   }
   variete: { id: string; nom: string | null; isPlaceholder?: boolean } | null
   planche: { id: string } | null
+  // Présent au runtime (GET /api/cultures inclut l'ITP) — cf. CulturesTab.
+  itp?: { semainePlantation: number | null } | null
   quantite: number | null
   _count: { recoltes: number }
 }
@@ -154,29 +158,31 @@ function createColumns(
                 </TooltipContent>
               </Tooltip>
 
-              {/* Plantation */}
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    aria-label={`${culture.plantationFaite ? 'Annuler' : 'Marquer'} la plantation faite — confirmation requise`}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onQuickUpdate(culture.id, 'plantationFaite', !culture.plantationFaite)
-                    }}
-                    className={`p-1.5 rounded-md transition-colors ${
-                      culture.plantationFaite
-                        ? 'bg-green-100 text-green-600 hover:bg-green-200'
-                        : 'bg-slate-100 text-slate-400 hover:bg-slate-200'
-                    }`}
-                  >
-                    <TreeDeciduous className="h-4 w-4" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  {culture.plantationFaite ? 'Annuler la plantation faite' : 'Marquer plantation faite'} (confirmation)
-                </TooltipContent>
-              </Tooltip>
+              {/* Plantation — masquée pour un ITP en semis direct (cmsoaedw2) */}
+              {!masquerActionPlantation(culture) && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label={`${culture.plantationFaite ? 'Annuler' : 'Marquer'} la plantation faite — confirmation requise`}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onQuickUpdate(culture.id, 'plantationFaite', !culture.plantationFaite)
+                      }}
+                      className={`p-1.5 rounded-md transition-colors ${
+                        culture.plantationFaite
+                          ? 'bg-green-100 text-green-600 hover:bg-green-200'
+                          : 'bg-slate-100 text-slate-400 hover:bg-slate-200'
+                      }`}
+                    >
+                      <TreeDeciduous className="h-4 w-4" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {culture.plantationFaite ? 'Annuler la plantation faite' : 'Marquer plantation faite'} (confirmation)
+                  </TooltipContent>
+                </Tooltip>
+              )}
 
               {/* Récolte */}
               <Tooltip>
@@ -312,22 +318,20 @@ function CulturesPageInner() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ [field]: value }),
       })
-      if (!response.ok) throw new Error('Erreur')
+      if (!response.ok) {
+        // QA cmsio768u — le serveur refuse (409) une régression qui
+        // contredirait les récoltes enregistrées : son message est la seule
+        // explication actionnable, « Impossible de mettre à jour » ne dit rien.
+        const detail = await response.json().catch(() => null)
+        throw new Error(detail?.error || 'Erreur')
+      }
 
       // Mettre a jour localement
       setData(prev => prev.map(c => {
         if (c.id !== id) return c
         const updated = { ...c, [field]: value }
-        // Recalculer l'etat
-        updated.etat = updated.terminee
-          ? 'Terminée'
-          : updated.recolteFaite
-            ? 'En récolte'
-            : updated.plantationFaite
-              ? 'Plantée'
-              : updated.semisFait
-                ? 'Semée'
-                : 'Planifiée'
+        // Recalculer l'etat (même cascade que l'API : cf. lib/cultures/etat)
+        updated.etat = etatCulture(updated)
         return updated
       }))
 
@@ -338,8 +342,8 @@ function CulturesPageInner() {
     } catch (error) {
       toast({
         variant: 'destructive',
-        title: 'Erreur',
-        description: 'Impossible de mettre a jour',
+        title: 'Changement refusé',
+        description: error instanceof Error ? error.message : 'Impossible de mettre à jour',
       })
     }
   }, [toast])
@@ -433,7 +437,7 @@ function CulturesPageInner() {
       <AssistantDialog open={showAssistant} onOpenChange={setShowAssistant} />
 
       {/* Header */}
-      <AppHeader current="maraichage" />
+      <AppHeader current="maraichage" showLune />
       <PageToolbar>
         <div className="flex items-center gap-4">
           <Link href="/">

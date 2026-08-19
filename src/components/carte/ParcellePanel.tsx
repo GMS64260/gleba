@@ -20,6 +20,8 @@ import {
   dimensionsCaptureMetrique,
   type PointGps,
 } from '@/lib/satellite-plan-utils'
+// Options de type de sol partagées avec le formulaire /parcelles.
+import { TYPE_SOL_OPTIONS } from '@/components/parcelles/parcelle-constants'
 
 interface ParcelleGeoData {
   id: string
@@ -63,14 +65,6 @@ const USAGE_OPTIONS = [
   { value: 'autre', label: 'Autre' },
 ]
 
-// Options pour le type de sol
-const TYPE_SOL_OPTIONS = [
-  { value: 'argileux', label: 'Argileux' },
-  { value: 'limoneux', label: 'Limoneux' },
-  { value: 'sableux', label: 'Sableux' },
-  { value: 'calcaire', label: 'Calcaire' },
-  { value: 'mixte', label: 'Mixte' },
-]
 
 /**
  * Panneau lateral droit pour afficher et editer les proprietes d'une parcelle.
@@ -311,7 +305,7 @@ export default function ParcellePanel({
 
               {parcelle.numero && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Numero</span>
+                  <span className="text-muted-foreground">Numéro</span>
                   <span className="font-medium">{parcelle.numero}</span>
                 </div>
               )}

@@ -42,6 +42,12 @@ interface Planche {
 interface PlancheInfoTableProps {
   planche: Planche
   onUpdate: () => void
+  /**
+   * Appelé après un renommage réussi. L'URL de la fiche est bâtie sur le nom
+   * de la planche : sans navigation, la page pointerait sur un nom qui
+   * n'existe plus.
+   */
+  onRenamed?: (nouveauNom: string) => void
 }
 
 const TYPES_SOL = ['Argileux', 'Limoneux', 'Sableux', 'Mixte']
@@ -49,7 +55,7 @@ const RETENTION_EAU = ['Faible', 'Moyenne', 'Élevée']
 const PLANCHE_TYPES = ['Serre', 'Plein champ', 'Tunnel', 'Chassis']
 const PLANCHE_IRRIGATION = ['Goutte-a-goutte', 'Aspersion', 'Manuel', 'Aucun']
 
-export function PlancheInfoTable({ planche, onUpdate }: PlancheInfoTableProps) {
+export function PlancheInfoTable({ planche, onUpdate, onRenamed }: PlancheInfoTableProps) {
   const [ilotOptions, setIlotOptions] = React.useState<{value: string, label: string}[]>([])
   const [parcelles, setParcelles] = React.useState<{id: string, nom: string}[]>([])
   const [soilLoading, setSoilLoading] = React.useState(false)
@@ -102,7 +108,7 @@ export function PlancheInfoTable({ planche, onUpdate }: PlancheInfoTableProps) {
   const applySoilEstimate = async () => {
     if (!soilEstimate) return
     try {
-      const res = await fetch(`/api/planches/${encodeURIComponent(planche.nom || planche.id)}`, {
+      const res = await fetch(`/api/planches/${encodeURIComponent(planche.id)}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -125,20 +131,24 @@ export function PlancheInfoTable({ planche, onUpdate }: PlancheInfoTableProps) {
 
   const handleUpdate = async (field: string, value: string | number | null) => {
     try {
-      const res = await fetch(`/api/planches/${encodeURIComponent(planche.nom || planche.id)}`, {
+      const res = await fetch(`/api/planches/${encodeURIComponent(planche.id)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ [field]: value }),
       })
 
       if (!res.ok) {
-        throw new Error('Erreur sauvegarde')
+        // Le renommage peut légitimement échouer sur un doublon : afficher le
+        // message de l'API plutôt qu'une erreur générique.
+        const payload = await res.json().catch(() => null)
+        throw new Error(payload?.error || 'Erreur sauvegarde')
       }
 
+      if (field === 'nom') onRenamed?.(String(value ?? ''))
       onUpdate()
     } catch (error) {
       console.error('Erreur:', error)
-      await alertDialog('Erreur lors de la sauvegarde')
+      await alertDialog(error instanceof Error ? error.message : 'Erreur lors de la sauvegarde')
     }
   }
 
@@ -159,6 +169,24 @@ export function PlancheInfoTable({ planche, onUpdate }: PlancheInfoTableProps) {
         <CardContent>
           <table className="w-full text-sm">
             <tbody className="divide-y">
+              <tr>
+                <td className="py-2 text-muted-foreground w-1/3">Nom</td>
+                <td className="py-2 font-medium">
+                  <InlineEditField
+                    value={planche.nom ?? null}
+                    onSave={async (v) => {
+                      const nouveau = (v ?? '').trim()
+                      if (!nouveau) {
+                        await alertDialog('Le nom de la planche ne peut pas être vide.')
+                        return
+                      }
+                      if (nouveau === planche.nom) return
+                      await handleUpdate('nom', nouveau)
+                    }}
+                    placeholder="Nom de la planche"
+                  />
+                </td>
+              </tr>
               <tr>
                 <td className="py-2 text-muted-foreground w-1/3">Largeur</td>
                 <td className="py-2 font-medium">

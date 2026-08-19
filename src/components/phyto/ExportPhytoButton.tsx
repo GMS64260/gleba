@@ -13,6 +13,7 @@
  */
 
 import * as React from "react"
+import { ouvrirApercu } from "@/lib/apercu-document"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -60,6 +61,16 @@ export function ExportPhytoButton({ format }: ExportPhytoButtonProps) {
         ...(produit ? { produit } : {}),
         ...(methode && methode !== "all" ? { methode } : {}),
       })
+      // 2026-08-19 — le PDF s'AFFICHE (écran d'aperçu, téléchargement à un clic) ;
+      // le CSV, qui n'a aucun rendu utile dans le navigateur, reste un fichier.
+      if (format === "pdf") {
+        ouvrirApercu(
+          `/api/registre-phyto/export?${params}`,
+          `Registre phytosanitaire ${from} → ${to}`,
+        )
+        setOpen(false)
+        return
+      }
       const res = await fetch(`/api/registre-phyto/export?${params}`)
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))

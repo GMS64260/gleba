@@ -72,90 +72,82 @@ async function fetchStationsProches(
   distanceKm: number = 50,
   size: number = 20
 ): Promise<StationPiezo[]> {
-  try {
-    // Convertir le rayon en degrés approximatifs pour la bbox
-    const dLat = distanceKm / 111.32
-    const dLng = distanceKm / (111.32 * Math.cos(lat * Math.PI / 180))
+  // Convertir le rayon en degrés approximatifs pour la bbox
+  const dLat = distanceKm / 111.32
+  const dLng = distanceKm / (111.32 * Math.cos(lat * Math.PI / 180))
 
-    const params = new URLSearchParams({
-      bbox: `${(lng - dLng).toFixed(4)},${(lat - dLat).toFixed(4)},${(lng + dLng).toFixed(4)},${(lat + dLat).toFixed(4)}`,
-      size: size.toString(),
-      fields: 'code_bss,nom_commune,nom_departement,x,y,altitude_station,profondeur_investigation',
-    })
+  const params = new URLSearchParams({
+    bbox: `${(lng - dLng).toFixed(4)},${(lat - dLat).toFixed(4)},${(lng + dLng).toFixed(4)},${(lat + dLat).toFixed(4)}`,
+    size: size.toString(),
+    fields: 'code_bss,nom_commune,nom_departement,x,y,altitude_station,profondeur_investigation',
+  })
 
-    const url = `${HUBEAU_BASE_URL}/stations?${params.toString()}`
+  const url = `${HUBEAU_BASE_URL}/stations?${params.toString()}`
 
-    const response = await fetch(url, {
-      headers: { 'Accept': 'application/json' },
-      signal: AbortSignal.timeout(10000),
-    })
+  const response = await fetch(url, {
+    headers: { 'Accept': 'application/json' },
+    signal: AbortSignal.timeout(10000),
+  })
 
-    if (!response.ok) {
-      console.error(`Hub'Eau stations API error: ${response.status}`)
-      return []
-    }
-
-    const json = await response.json()
-    const stations: StationPiezo[] = (json.data || []).map((s: Record<string, unknown>) => {
-      const distance = haversineKm(lat, lng, s.y as number, s.x as number)
-
-      return {
-        code_bss: s.code_bss as string,
-        nom_commune: s.nom_commune as string || 'Inconnue',
-        nom_departement: s.nom_departement as string || '',
-        x: s.x as number,
-        y: s.y as number,
-        altitude_station: s.altitude_station as number | null,
-        profondeur_investigation: s.profondeur_investigation as number | null,
-        distance_km: Math.round(distance * 10) / 10,
-      }
-    })
-
-    // Filtrer par distance réelle et trier par distance croissante
-    return stations
-      .filter((s) => s.distance_km <= distanceKm)
-      .sort((a, b) => a.distance_km - b.distance_km)
-  } catch (error) {
-    console.error("Hub'Eau stations error:", error)
-    return []
+  if (!response.ok) {
+    const statusMessage = `Hub'Eau stations API error: ${response.status}`
+    console.error(statusMessage)
+    throw new Error(statusMessage)
   }
+
+  const json = await response.json()
+  const stations: StationPiezo[] = (json.data || []).map((s: Record<string, unknown>) => {
+    const distance = haversineKm(lat, lng, s.y as number, s.x as number)
+
+    return {
+      code_bss: s.code_bss as string,
+      nom_commune: s.nom_commune as string || 'Inconnue',
+      nom_departement: s.nom_departement as string || '',
+      x: s.x as number,
+      y: s.y as number,
+      altitude_station: s.altitude_station as number | null,
+      profondeur_investigation: s.profondeur_investigation as number | null,
+      distance_km: Math.round(distance * 10) / 10,
+    }
+  })
+
+  // Filtrer par distance réelle et trier par distance croissante
+  return stations
+    .filter((s) => s.distance_km <= distanceKm)
+    .sort((a, b) => a.distance_km - b.distance_km)
 }
 
 /**
  * Récupère les dernières mesures d'un piézomètre
  */
 async function fetchChroniques(codeBss: string, size: number = 30): Promise<MesureNappe[]> {
-  try {
-    const params = new URLSearchParams({
-      code_bss: codeBss,
-      size: size.toString(),
-      sort: 'desc',
-      fields: 'date_mesure,niveau_nappe_eau,profondeur_nappe,qualification',
-    })
+  const params = new URLSearchParams({
+    code_bss: codeBss,
+    size: size.toString(),
+    sort: 'desc',
+    fields: 'date_mesure,niveau_nappe_eau,profondeur_nappe,qualification',
+  })
 
-    const url = `${HUBEAU_BASE_URL}/chroniques?${params.toString()}`
+  const url = `${HUBEAU_BASE_URL}/chroniques?${params.toString()}`
 
-    const response = await fetch(url, {
-      headers: { 'Accept': 'application/json' },
-      signal: AbortSignal.timeout(10000),
-    })
+  const response = await fetch(url, {
+    headers: { 'Accept': 'application/json' },
+    signal: AbortSignal.timeout(10000),
+  })
 
-    if (!response.ok) {
-      console.error(`Hub'Eau chroniques API error: ${response.status}`)
-      return []
-    }
-
-    const json = await response.json()
-    return (json.data || []).map((m: Record<string, unknown>) => ({
-      date_mesure: m.date_mesure as string,
-      niveau_nappe_eau: m.niveau_nappe_eau as number,
-      profondeur_nappe: m.profondeur_nappe as number | null,
-      qualification: m.qualification as string | null,
-    }))
-  } catch (error) {
-    console.error("Hub'Eau chroniques error:", error)
-    return []
+  if (!response.ok) {
+    const statusMessage = `Hub'Eau chroniques API error: ${response.status}`
+    console.error(statusMessage)
+    throw new Error(statusMessage)
   }
+
+  const json = await response.json()
+  return (json.data || []).map((m: Record<string, unknown>) => ({
+    date_mesure: m.date_mesure as string,
+    niveau_nappe_eau: m.niveau_nappe_eau as number,
+    profondeur_nappe: m.profondeur_nappe as number | null,
+    qualification: m.qualification as string | null,
+  }))
 }
 
 /**
@@ -205,40 +197,42 @@ export async function fetchNappeInfo(lat: number, lng: number): Promise<NappeInf
 }
 
 async function _fetchNappeInfoLive(lat: number, lng: number): Promise<NappeInfo | null> {
-  try {
-    const stations = await fetchStationsProches(lat, lng, 100, 10)
-    if (stations.length === 0) return null
+  const stations = await fetchStationsProches(lat, lng, 100, 10)
+  if (stations.length === 0) return null
 
-    // Bug #5 (testeur Marc) : une nappe relevée il y a ~20 mois était encore
-    // acceptée (seuil 2 ans) et affichée « DONNÉE PÉRIMÉE » en tête des conseils.
-    // Une donnée piézo de plus de 3 mois n'est plus pertinente pour le pilotage.
-    const MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000
+  // Bug #5 (testeur Marc) : une nappe relevée il y a ~20 mois était encore
+  // acceptée (seuil 2 ans) et affichée « DONNÉE PÉRIMÉE » en tête des conseils.
+  // Une donnée piézo de plus de 3 mois n'est plus pertinente pour le pilotage.
+  const MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000
 
-    for (const station of stations) {
-      const mesures = await fetchChroniques(station.code_bss, 30)
-      if (mesures.length === 0) continue
-
-      const derniereMesure = mesures[0]
-      const ageMesure = Date.now() - new Date(derniereMesure.date_mesure).getTime()
-      if (ageMesure > MAX_AGE_MS) {
-        console.log(`Hub'Eau: station ${station.nom_commune} ignorée (dernier relevé: ${derniereMesure.date_mesure})`)
-        continue
-      }
-
-      const { tendance, variationMensuelle } = calculerTendance(mesures)
-      return {
-        station,
-        mesures: mesures.slice(0, 10),
-        niveauActuel: derniereMesure.niveau_nappe_eau,
-        profondeurActuelle: derniereMesure.profondeur_nappe,
-        tendance,
-        variationMensuelle,
-        dateReleve: derniereMesure.date_mesure,
-      }
+  for (const station of stations) {
+    let mesures: MesureNappe[]
+    try {
+      mesures = await fetchChroniques(station.code_bss, 30)
+    } catch (error) {
+      console.warn(`Hub'Eau: station ${station.code_bss} ignorée (chroniques indisponibles)`, error)
+      continue
     }
-    return null
-  } catch (error) {
-    console.error("Hub'Eau fetchNappeInfo error:", error)
-    return null
+
+    if (mesures.length === 0) continue
+
+    const derniereMesure = mesures[0]
+    const ageMesure = Date.now() - new Date(derniereMesure.date_mesure).getTime()
+    if (ageMesure > MAX_AGE_MS) {
+      console.log(`Hub'Eau: station ${station.nom_commune} ignorée (dernier relevé: ${derniereMesure.date_mesure})`)
+      continue
+    }
+
+    const { tendance, variationMensuelle } = calculerTendance(mesures)
+    return {
+      station,
+      mesures: mesures.slice(0, 10),
+      niveauActuel: derniereMesure.niveau_nappe_eau,
+      profondeurActuelle: derniereMesure.profondeur_nappe,
+      tendance,
+      variationMensuelle,
+      dateReleve: derniereMesure.date_mesure,
+    }
   }
+  return null
 }

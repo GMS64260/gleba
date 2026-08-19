@@ -293,6 +293,9 @@ async function main() {
   }
 
   // 7) Ventes : fromage (80 % écoulé) + un peu de lait cru
+  // Ticket cmsoge7t9 — type 'fromage' (et non 'autre') + sortie de cave liée,
+  // comme le fait POST /api/elevage/ventes : sans le MouvementFromage, la Cave
+  // démo affichait le stock plein alors que 80 % étaient vendus.
   for (const f of lotsFromageIds) {
     const kgVendus = Math.round(f.kg * 0.8 * 100) / 100
     if (kgVendus <= 0) continue
@@ -300,7 +303,7 @@ async function main() {
       data: {
         userId,
         date: iso("2026-07-05"),
-        type: "autre",
+        type: "fromage",
         description: f.type,
         quantite: kgVendus,
         unite: "kg",
@@ -310,6 +313,20 @@ async function main() {
         paye: true,
         tauxTVA: 5.5,
         lotFromageId: f.id,
+      },
+    })
+    // Sortie de cave (mêmes champs que la route ventes) : vente au kg → sortie
+    // en poids, 0 pièce.
+    await prisma.mouvementFromage.create({
+      data: {
+        userId,
+        lotFromageId: f.id,
+        date: vente.date,
+        type: "sortie_vente",
+        nbPieces: 0,
+        poidsKg: kgVendus,
+        venteProduitId: vente.id,
+        notes: "Vente Marché de La Roche-sur-Yon",
       },
     })
     await mirrorVente(userId, vente)

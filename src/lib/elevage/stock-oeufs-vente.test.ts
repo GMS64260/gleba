@@ -24,6 +24,9 @@ describe("stock d’œufs lié aux ventes", () => {
   it("ventile une demi-douzaine en FIFO sur le stock commercialisable", async () => {
     const creations: Array<{ productionId: number; quantite: number; notes: string }> = []
     const tx = {
+      soinAnimal: {
+        findMany: async () => [],
+      },
       mouvementStockOeuf: {
         deleteMany: async () => ({ count: 0 }),
         create: async ({ data }: { data: { productionId: number; quantite: number; notes: string } }) => {
@@ -70,6 +73,9 @@ describe("stock d’œufs lié aux ventes", () => {
 
   it("refuse atomiquement une vente supérieure au stock disponible", async () => {
     const tx = {
+      soinAnimal: {
+        findMany: async () => [],
+      },
       mouvementStockOeuf: {
         deleteMany: async () => ({ count: 0 }),
         create: async ({ data }: { data: unknown }) => data,

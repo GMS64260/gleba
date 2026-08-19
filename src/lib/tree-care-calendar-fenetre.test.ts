@@ -125,6 +125,24 @@ describe("couverture des espèces", () => {
     expect(findTreeCareProfile("Chene")).toBeNull()
   })
 
+  it("n'applique pas un profil fruitier à un arbre sans conduite productive (cmsofzh0w)", () => {
+    // Un Châtaignier saisi comme arbre FORESTIER recevait « Récolte des
+    // châtaignes » et la frise l'affichait « fruitier ». Le type de l'arbre
+    // borne désormais la recherche : conduite forestière/ornement/haie →
+    // pas de profil de production, même traitement que le chêne forestier.
+    expect(findTreeCareProfile("Châtaignier", "forestier")).toBeNull()
+    expect(findTreeCareProfile("Châtaignier", "haie")).toBeNull()
+    expect(findTreeCareProfile("Châtaignier", "ornement")).toBeNull()
+    // La conduite fruitière du Châtaignier reste couverte.
+    expect(findTreeCareProfile("Châtaignier", "fruitier")?.espece).toBe("Châtaignier")
+    // Sans type fourni (rétro-compat), le comportement historique demeure.
+    expect(findTreeCareProfile("Châtaignier")?.espece).toBe("Châtaignier")
+    // Les profils non productifs restent accessibles aux arbres d'ornement,
+    // et les petits fruits aux arbres de type petit_fruit.
+    expect(findTreeCareProfile("Érable du Japon", "ornement")?.espece).toBe("Érable du Japon")
+    expect(findTreeCareProfile("Framboisier", "petit_fruit")?.espece).toBe("Framboisier")
+  })
+
   it("génère un calendrier cohérent pour les nouveaux profils", () => {
     for (const espece of ["Feijoa", "Noisetier", "Rhubarbe"]) {
       const profil = findTreeCareProfile(espece)!

@@ -42,6 +42,9 @@ export default auth((req) => {
     "/impersonation",
     // RGPD / LCEN : doivent rester accessibles sans authentification
     "/cgv", "/mentions-legales", "/confidentialite",
+    // Politique Google Play : l'URL de demande de suppression de compte est
+    // publiée sur la fiche Play Store, donc consultable sans session.
+    "/suppression-compte",
     // Pages cibles SEO (marketing)
     "/logiciel-maraichage", "/logiciel-micro-ferme", "/logiciel-permaculture",
     "/logiciel-verger", "/logiciel-elevage", "/calendrier-semis",
@@ -104,6 +107,13 @@ export default auth((req) => {
 
   // Si non connecté, rediriger vers login
   if (!isLoggedIn) {
+    // QA cmsnnybbg — un fetch() applicatif suit silencieusement une
+    // redirection : la page /login revenait en HTML avec un statut 200, que
+    // les handlers `res.ok` prenaient pour un succès (mutation « enregistrée »
+    // jamais écrite). Une API sans session répond 401 JSON, jamais un 302.
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "Non authentifié" }, { status: 401 })
+    }
     const loginUrl = new URL("/login", req.nextUrl)
     loginUrl.searchParams.set("callbackUrl", pathname)
     return NextResponse.redirect(loginUrl)

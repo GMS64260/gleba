@@ -35,6 +35,10 @@ export default function CadastreSearch({ onImport }: CadastreSearchProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [collapsed, setCollapsed] = useState(false)
+  // QA cmsp57mck — chaque clic sur l'épingle relançait un import : 6 doublons
+  // « Mellionnec - WK 0016 » sur le compte démo. On marque les résultats déjà
+  // importés dans cette session ; le serveur (409) arbitre les autres cas.
+  const [importedIds, setImportedIds] = useState<Set<string>>(new Set())
 
   const handleSearch = useCallback(
     async (e: FormEvent) => {
@@ -129,6 +133,12 @@ export default function CadastreSearch({ onImport }: CadastreSearchProps) {
 
   const handleImport = useCallback(
     (result: CadastreResult) => {
+      setImportedIds((prev) => {
+        if (prev.has(result.id)) return prev
+        const next = new Set(prev)
+        next.add(result.id)
+        return next
+      })
       if (onImport) {
         onImport(result)
       }
@@ -243,7 +253,8 @@ export default function CadastreSearch({ onImport }: CadastreSearchProps) {
                       variant="ghost"
                       size="icon"
                       onClick={() => handleImport(result)}
-                      title="Importer cette parcelle"
+                      disabled={importedIds.has(result.id)}
+                      title={importedIds.has(result.id) ? "Parcelle déjà importée" : "Importer cette parcelle"}
                       className="ml-2 flex-shrink-0"
                     >
                       <MapPin className="h-4 w-4" />

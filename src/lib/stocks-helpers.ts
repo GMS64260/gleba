@@ -4,6 +4,30 @@
  */
 
 import prisma from '@/lib/prisma'
+import { arrondiQuantiteStock } from '@/lib/stocks/agregation'
+
+/**
+ * Nombre d'œufs par unité de vente. QA cmsjioqg — le conditionnement n'était
+ * converti que pour « douzaine » (×12), à deux endroits avec un multiplicateur
+ * en dur : une vente en « boîte » (de 6) comptait 1 œuf, donc le stock vendu
+ * était sous-estimé et le prix/œuf surévalué. Constante partagée entre le
+ * décompte de stock (`calculerStockOeufs`) et la valorisation (route stocks).
+ */
+export const OEUFS_PAR_UNITE: Record<string, number> = {
+  unite: 1,
+  'demi-douzaine': 6,
+  'boîte': 6, // boîte standard de 6 (convention du catalogue)
+  boite: 6,
+  douzaine: 12,
+  plaque: 30,
+  plateau: 30,
+}
+
+/** Nombre d'œufs représentés par une quantité dans une unité de vente donnée. */
+export function oeufsDepuisUnite(quantite: number, unite: string | null | undefined): number {
+  const parUnite = OEUFS_PAR_UNITE[(unite || '').trim().toLowerCase()] ?? 1
+  return quantite * parUnite
+}
 
 export interface StockNet {
   stockNet: number
@@ -115,7 +139,9 @@ export async function calculerStocksNet(
     const totalConso = consommations.reduce((sum, c) => sum + c.quantite, 0)
 
     result[espece.id] = {
-      stockNet: baseline + totalRecoltes - totalConso,
+      // QA cmswu8uva — arrondi métier : la somme flottante affichait
+      // « 10.799999999999999 kg » à l'écran Stocks > Récoltes.
+      stockNet: arrondiQuantiteStock(baseline + totalRecoltes - totalConso),
       detail: {
         inventaire: baseline,
         recoltes: totalRecoltes,
@@ -157,10 +183,7 @@ export async function calculerStockOeufs(userId: string): Promise<{
     select: { quantite: true, unite: true },
   })
 
-  const vendus = ventes.reduce((sum, v) => {
-    const mult = v.unite === 'douzaine' ? 12 : 1
-    return sum + v.quantite * mult
-  }, 0)
+  const vendus = ventes.reduce((sum, v) => sum + oeufsDepuisUnite(v.quantite, v.unite), 0)
 
   return {
     stockNet: produits - casses - sales - vendus,

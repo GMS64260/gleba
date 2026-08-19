@@ -93,6 +93,7 @@ export default function AnimauxPage() {
   const [filterEspece, setFilterEspece] = React.useState<string>("all")
   const [filterStatut, setFilterStatut] = React.useState<string>("actif")
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
+  const [isSubmitting, setIsSubmitting] = React.useState(false)
 
   // Form state
   const [formData, setFormData] = React.useState({
@@ -146,14 +147,35 @@ export default function AnimauxPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isSubmitting) return
+    setIsSubmitting(true)
     try {
+      // QA cmsw8xwgi (connexe) — cette page envoyait prixAchat/poidsActuel en
+      // chaînes ("" comprise) : zod (z.number) refusait TOUTE création en 400,
+      // avalée ensuite par un message générique. Nettoyage identique à
+      // AnimauxTab + remontée du message d'erreur réel de l'API.
+      const toNum = (v: string): number | null => {
+        if (!v) return null
+        const n = parseFloat(v.replace(',', '.'))
+        return Number.isNaN(n) ? null : n
+      }
+      const body = {
+        ...formData,
+        prixAchat: toNum(formData.prixAchat),
+        poidsActuel: toNum(formData.poidsActuel),
+        sexe: formData.sexe || undefined,
+        dateNaissance: formData.dateNaissance || undefined,
+      }
       const response = await fetch('/api/elevage/animaux', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(body),
       })
 
-      if (!response.ok) throw new Error('Erreur création')
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}))
+        throw new Error(payload?.error || 'Erreur création')
+      }
 
       toast({
         title: "Animal créé",
@@ -178,8 +200,12 @@ export default function AnimauxPage() {
       toast({
         variant: "destructive",
         title: "Erreur",
-        description: "Impossible de créer l'animal",
+        description: error instanceof Error && error.message !== 'Erreur création'
+          ? error.message
+          : "Impossible de créer l'animal",
       })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -357,8 +383,8 @@ export default function AnimauxPage() {
                     <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
                       Annuler
                     </Button>
-                    <Button type="submit" disabled={!formData.especeAnimaleId}>
-                      Créer
+                    <Button type="submit" disabled={!formData.especeAnimaleId || isSubmitting}>
+                      {isSubmitting ? "Enregistrement..." : "Créer"}
                     </Button>
                   </div>
                 </form>

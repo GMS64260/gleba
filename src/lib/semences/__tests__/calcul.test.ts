@@ -17,6 +17,21 @@ describe('calculerBesoin', () => {
       expect(r.statut).toBe('MISSING') // stock 0, besoin > 0
     })
 
+    // QA cmswxo3ri — une culture PLANIFIÉE sans dose au référentiel n'est pas
+    // « rien à commander » : la Phacélie prévue sur 4 planches disparaissait de
+    // l'écran Semences et du total, sans message. Elle doit rester visible.
+    it("signale une donnée manquante quand la culture est planifiée sans dose", () => {
+      const r = calculerBesoin({
+        mode: 'graine_directe',
+        surfaceM2: 211.9,
+        nbPlants: 0,
+        doseGParM2: null,
+        margeSecuritePct: 15,
+      })
+      expect(r.besoinGrammes).toBe(0)
+      expect(r.statut).toBe('DONNEE_MANQUANTE')
+    })
+
     it("retourne IGNORE si dose ou surface manquent (besoin = 0)", () => {
       const r = calculerBesoin({
         mode: 'graine_directe',

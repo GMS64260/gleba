@@ -42,7 +42,7 @@ export function codesEspeceVeterinaire(espece: EspecePourDelai): string[] {
   if (/brebis|mouton|ovin/.test(haystack)) codes.add("ovin")
   if (/vache|bovin/.test(haystack)) codes.add("bovin")
   if (/truie|porc|cochon|porcin/.test(haystack)) codes.add("porcin")
-  if (/poule|poulet|canard|oie|dinde|volaille/.test(haystack)) codes.add("volaille")
+  if (/poule|poulet|canard|oie|dinde|pintade|caille|volaille/.test(haystack)) codes.add("volaille")
   if (/cheval|jument|ane|poney|equin/.test(haystack)) codes.add("equin")
   if (/chien/.test(haystack)) codes.add("chien")
   if (/chat/.test(haystack)) codes.add("chat")

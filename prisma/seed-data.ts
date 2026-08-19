@@ -102,8 +102,11 @@ export const especes = [
   { id: "Coriandre", type: "aromatique", familleId: "Apiaceae", rendement: 0.3, besoinN: 2, besoinEau: 3, couleur: "#27ae60" },
 
   // Fruits
-  { id: "Fraise", type: "petit_fruit", familleId: "Rosaceae", rendement: 0.8, vivace: true, besoinN: 2, besoinEau: 4, couleur: "#e74c3c" },
-  { id: "Framboise", type: "petit_fruit", familleId: "Rosaceae", rendement: 0.5, vivace: true, besoinN: 2, besoinEau: 3, couleur: "#c0392b" },
+  // QA 2026-08-11 (cmsoeqlnm) : forme "plante" (Fraisier/Framboisier), pas le
+  // fruit — la migration 20260514280000 avait fusionné Fraise→Fraisier mais ce
+  // seed ressuscitait l'entrée à chaque db:seed (upsert create-only sur l'id).
+  { id: "Fraisier", type: "petit_fruit", familleId: "Rosaceae", rendement: 0.8, vivace: true, besoinN: 2, besoinEau: 4, couleur: "#e74c3c" },
+  { id: "Framboisier", type: "petit_fruit", familleId: "Rosaceae", rendement: 0.5, vivace: true, besoinN: 2, besoinEau: 3, couleur: "#c0392b" },
   { id: "Pommier", type: "arbre_fruitier", familleId: "Rosaceae", rendement: 30, vivace: true, besoinN: 3, besoinEau: 3, couleur: "#c0392b" },
   { id: "Poirier", type: "arbre_fruitier", familleId: "Rosaceae", rendement: 25, vivace: true, besoinN: 3, besoinEau: 3, couleur: "#f1c40f" },
   { id: "Prunier", type: "arbre_fruitier", familleId: "Rosaceae", rendement: 20, vivace: true, besoinN: 2, besoinEau: 2, couleur: "#8e44ad" },
@@ -148,7 +151,8 @@ export const varietes = [
   { id: "Épinard-Géant d'hiver", especeId: "Épinard", fournisseurId: "Germinance", nbGrainesG: 100, bio: true },
   { id: "Betterave-Detroit", especeId: "Betterave", fournisseurId: "Kokopelli", nbGrainesG: 60, bio: true },
   { id: "Petit pois-Merveille de Kelvedon", especeId: "Petit pois", fournisseurId: "Germinance", nbGrainesG: 4, bio: true },
-  { id: "Fraise-Mara des Bois", especeId: "Fraise", fournisseurId: "La Ferme de Sainte Marthe", bio: true, description: "Remontante, très parfumée" },
+  // L'id historique "Fraise-Mara des Bois" est conservé (des données y sont rattachées) ; seule l'espèce pointe sur la forme canonique.
+  { id: "Fraise-Mara des Bois", especeId: "Fraisier", fournisseurId: "La Ferme de Sainte Marthe", bio: true, description: "Remontante, très parfumée" },
 ]
 
 // ============================================================
@@ -295,7 +299,7 @@ export function generateCultures(userId: string) {
     { especeId: "Poireau", varieteId: "Poireau-Bleu de Solaise", itpId: "ITP-Poireau", plancheId: "B2", annee: 2023, dateSemis: new Date("2023-02-20"), datePlantation: new Date("2023-06-01"), dateRecolte: new Date("2023-10-05"), semisFait: true, plantationFaite: true, recolteFaite: true, terminee: "x", nbRangs: 4, longueur: 4, userId },
 
     // Fraises 2023 (vivaces)
-    { especeId: "Fraise", varieteId: "Fraise-Mara des Bois", plancheId: "D1", annee: 2023, datePlantation: new Date("2022-09-15"), dateRecolte: new Date("2023-05-20"), plantationFaite: true, recolteFaite: true, terminee: "v", nbRangs: 3, longueur: 4, userId },
+    { especeId: "Fraisier", varieteId: "Fraise-Mara des Bois", plancheId: "D1", annee: 2023, datePlantation: new Date("2022-09-15"), dateRecolte: new Date("2023-05-20"), plantationFaite: true, recolteFaite: true, terminee: "v", nbRangs: 3, longueur: 4, userId },
   )
 
   // 2024
@@ -341,7 +345,7 @@ export function generateCultures(userId: string) {
     { especeId: "Petit pois", varieteId: "Petit pois-Merveille de Kelvedon", itpId: "ITP-Petit-pois", plancheId: "A4", annee: 2024, dateSemis: new Date("2024-03-08"), dateRecolte: new Date("2024-06-02"), semisFait: true, recolteFaite: true, terminee: "x", nbRangs: 3, longueur: 5, userId },
 
     // Fraises 2024 (vivaces)
-    { especeId: "Fraise", varieteId: "Fraise-Mara des Bois", plancheId: "D1", annee: 2024, dateRecolte: new Date("2024-05-18"), recolteFaite: true, terminee: "v", nbRangs: 3, longueur: 4, userId },
+    { especeId: "Fraisier", varieteId: "Fraise-Mara des Bois", plancheId: "D1", annee: 2024, dateRecolte: new Date("2024-05-18"), recolteFaite: true, terminee: "v", nbRangs: 3, longueur: 4, userId },
 
     // Engrais vert 2024
     { especeId: "Phacélie", itpId: "ITP-Phacelie", plancheId: "C2", annee: 2024, dateSemis: new Date("2024-08-10"), semisFait: true, terminee: "x", nbRangs: 1, longueur: 6, notes: "Engrais vert après haricots", userId },

@@ -35,6 +35,8 @@ export const COMPTES_VENTES: Record<string, { num: string; lib: string }> = {
   oeufs: { num: '701300', lib: 'Ventes d\'œufs' },
   viande: { num: '701400', lib: 'Ventes de viande / volailles' },
   produits_transformes: { num: '701500', lib: 'Ventes de produits transformés' },
+  // Sous-compte interne par groupe de produits finis (PCG 701).
+  produits_ruche: { num: '701600', lib: 'Ventes de produits de la ruche' },
   // Production animale (702)
   animaux_vivants: { num: '702100', lib: 'Ventes d\'animaux vivants' },
   // DEV3 #5 - Audit Marc 2026-05-14 : Ventes de bois et produits forestiers.

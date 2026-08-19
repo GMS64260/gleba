@@ -6,6 +6,7 @@
  */
 
 import * as React from "react"
+import { urlApercu } from "@/lib/apercu-document"
 import Link from "next/link"
 import {
   Bird,
@@ -24,7 +25,7 @@ import {
   Search,
   BarChart3,
   ClipboardCheck,
-  Settings,
+  Settings, FileText
 } from "lucide-react"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -43,12 +44,46 @@ import {
 } from "@/components/ui/chart"
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts"
 import { kpiCardClass, kpiSubtleClass } from "@/lib/kpi-theme"
+import { updateDashboardSearchParams } from "@/lib/dashboard-navigation"
+
 import { useFiliereSelection, capacitesSelection } from "@/lib/elevage/filiere-context"
 import { formatRemisesEnVente } from "@/lib/elevage/remise-vente-label"
 import {
   attentesSanitairesPrioritaires,
   soinsSanitairesPrioritaires,
 } from "@/lib/elevage/dashboard-priorites"
+
+/**
+ * Raccourcis du dashboard vers les autres onglets d'Élevage (QA cmsx6hqel).
+ * Une seule liste : le href affiché et l'URL poussée au clic ne peuvent plus
+ * diverger.
+ */
+const RACCOURCIS_DASHBOARD = [
+  {
+    query: "tab=alimentation&sub=soins&action=nouveau-soin",
+    label: "+ Soin",
+    icone: Stethoscope,
+    couleur: "text-blue-600",
+  },
+  {
+    query: "tab=reproduction&sub=naissances&action=nouvelle-naissance",
+    label: "+ Naissance",
+    icone: Baby,
+    couleur: "text-pink-600",
+  },
+  {
+    query: "tab=animaux&action=rechercher",
+    label: "Rechercher (boucle)",
+    icone: Search,
+    couleur: "text-slate-500",
+  },
+  {
+    query: "tab=alimentation&sub=registre",
+    label: "Registres",
+    icone: ClipboardCheck,
+    couleur: "text-emerald-600",
+  },
+] as const
 
 interface DashboardTabProps {
   year: number
@@ -73,6 +108,7 @@ interface DashboardData {
     alimentsStockBas: number
     stockOeufs: number
     stockOeufsDetail: { produits: number; casses: number; sales?: number; vendus: number }
+    stockOeufsCommercialisables: number
     mortaliteAnnee: number
     tauxMortalite: number
     tauxPonte: number | null
@@ -648,19 +684,28 @@ export function DashboardTab({ year }: DashboardTabProps) {
                     </div>
                   </section>
                 )}
+                {/* QA cmsx6hqel — ces quatre raccourcis pointent la page
+                    COURANTE avec une query différente : en build de production
+                    et après un chargement à froid, la navigation App Router est
+                    dédupliquée et le clic ne faisait RIEN (même piège que la
+                    barre d'onglets, cmsnoo8mc / cmsbu12hb). Le href reste, pour
+                    l'ouverture dans un nouvel onglet et l'accessibilité ; le
+                    clic passe par l'API History, intégrée au routeur. */}
                 <div className="flex flex-wrap gap-2">
-                  <Link href="/elevage?tab=alimentation&sub=soins&action=nouveau-soin" className={action}>
-                    <Stethoscope className="h-4 w-4 text-blue-600" />+ Soin
-                  </Link>
-                  <Link href="/elevage?tab=reproduction&sub=naissances&action=nouvelle-naissance" className={action}>
-                    <Baby className="h-4 w-4 text-pink-600" />+ Naissance
-                  </Link>
-                  <Link href="/elevage?tab=animaux&action=rechercher" className={action}>
-                    <Search className="h-4 w-4 text-slate-500" />Rechercher (boucle)
-                  </Link>
-                  <Link href="/elevage?tab=alimentation&sub=registre" className={action}>
-                    <ClipboardCheck className="h-4 w-4 text-emerald-600" />Registres
-                  </Link>
+                  {RACCOURCIS_DASHBOARD.map(({ query, label, icone: Icone, couleur }) => (
+                    <Link
+                      key={query}
+                      href={`/elevage?${query}`}
+                      className={action}
+                      onClick={(evenement) => {
+                        if (evenement.metaKey || evenement.ctrlKey || evenement.shiftKey || evenement.button !== 0) return
+                        evenement.preventDefault()
+                        updateDashboardSearchParams(new URLSearchParams(query), "push")
+                      }}
+                    >
+                      <Icone className={`h-4 w-4 ${couleur}`} />{label}
+                    </Link>
+                  ))}
                 </div>
               </div>
             )
@@ -738,15 +783,26 @@ export function DashboardTab({ year }: DashboardTabProps) {
               </CardContent>
             </Card>}
 
-            {preferences.oeufs && data.stats.activiteOeufs && <Card className={kpiCardClass(data.stats.stockOeufs < 24 ? "alerte" : "neutre")}>
-              <CardHeader className="pb-1 pt-3 px-4">
-                <CardDescription className={`text-xs ${kpiSubtleClass(data.stats.stockOeufs < 24 ? "alerte" : "neutre")}`}>Stock œufs</CardDescription>
-                <CardTitle className="text-2xl">{data.stats.stockOeufs}</CardTitle>
-              </CardHeader>
-              <CardContent className="pb-3 px-4">
-                <p className={`text-xs ${kpiSubtleClass(data.stats.stockOeufs < 24 ? "alerte" : "neutre")}`}>disponibles</p>
-              </CardContent>
-            </Card>}
+            {/* QA cmsw97cn5 (2026-08-16) — le chiffre est le stock PHYSIQUE
+                (même total que Production > Œufs), plus jamais annoncé
+                « disponibles » : un stock entièrement DCR dépassée/bloqué véto
+                s'affichait vendable. L'alerte porte sur les commercialisables
+                (SSOT computeStockOeufsParLots), pas sur le physique. */}
+            {preferences.oeufs && data.stats.activiteOeufs && (() => {
+              const commercialisables = data.stats.stockOeufsCommercialisables ?? data.stats.stockOeufs
+              const tonalite = commercialisables < 24 ? "alerte" : "neutre"
+              return <Card className={kpiCardClass(tonalite)}>
+                <CardHeader className="pb-1 pt-3 px-4">
+                  <CardDescription className={`text-xs ${kpiSubtleClass(tonalite)}`}>Stock œufs</CardDescription>
+                  <CardTitle className="text-2xl">{data.stats.stockOeufs}</CardTitle>
+                </CardHeader>
+                <CardContent className="pb-3 px-4">
+                  <p className={`text-xs ${kpiSubtleClass(tonalite)}`}>
+                    en stock · {commercialisables} commercialisable{commercialisables > 1 ? "s" : ""}
+                  </p>
+                </CardContent>
+              </Card>
+            })()}
 
             {preferences.commercial && <Card className={kpiCardClass("revenu")}>
               <CardHeader className="pb-1 pt-3 px-4">
@@ -902,19 +958,28 @@ export function DashboardTab({ year }: DashboardTabProps) {
                 </Card>
               </Link>
             )}
+            {/* QA cmsw995bu (2026-08-16) — deux indicateurs métier distincts :
+                cette carte compte les fiches Animal mortes (mortalité du
+                cheptel immatriculé). La mortinatalité (nés − vivants des
+                portées) est mesurée sur l'onglet Reproduction ; les morts-nés
+                ne créent jamais de fiche (équarrissage/registre préservés).
+                Le libellé le dit désormais au lieu de laisser croire à un
+                compteur unique. */}
             {data.stats.mortaliteAnnee > 0 && (
               <Card className={data.stats.tauxMortalite > 5 ? "border-red-200 bg-red-50" : ""}>
                 <CardHeader className="pb-1 pt-3 px-4">
                   <CardDescription className="text-xs flex items-center gap-1">
                     <AlertTriangle className="h-3 w-3" />
-                    Mortalite {year}
+                    Mortalité cheptel {year}
                   </CardDescription>
                   <CardTitle className={`text-2xl ${data.stats.tauxMortalite > 5 ? 'text-red-600' : 'text-slate-700'}`}>
                     {data.stats.mortaliteAnnee}
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="pb-3 px-4">
-                  <p className="text-xs text-muted-foreground">taux : {data.stats.tauxMortalite}%</p>
+                  <p className="text-xs text-muted-foreground">
+                    taux : {data.stats.tauxMortalite}% · hors pertes néonatales (voir Reproduction)
+                  </p>
                 </CardContent>
               </Card>
             )}
@@ -998,12 +1063,12 @@ export function DashboardTab({ year }: DashboardTabProps) {
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm text-blue-700 flex items-center gap-2">
                       <Stethoscope className="h-4 w-4" />
-                      Soins a planifier
+                      Soins à planifier
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <p className="text-blue-800">
-                      {data.stats.soinsAPlanifier} soin(s) prevu(s) dans les 30 prochains jours
+                      {data.stats.soinsAPlanifier} soin(s) prévu(s) dans les 30 prochains jours
                     </p>
                   </CardContent>
                 </Card>
@@ -1018,7 +1083,7 @@ export function DashboardTab({ year }: DashboardTabProps) {
                   </CardHeader>
                   <CardContent>
                     <p className="text-orange-800">
-                      {data.stats.alimentsStockBas} aliment(s) a reapprovisionner
+                      {data.stats.alimentsStockBas} aliment(s) à réapprovisionner
                     </p>
                   </CardContent>
                 </Card>
@@ -1225,8 +1290,17 @@ export function DashboardTab({ year }: DashboardTabProps) {
             )}
           </h2>
           <Button asChild variant="outline" size="sm">
-            <a href={`/api/elevage/registre-sanitaire?year=${new Date().getFullYear()}`}>
-              <Download className="h-4 w-4 mr-1" />Télécharger tous les soins
+            {/* 2026-08-19 — aperçu dans la fenêtre plutôt que téléchargement
+                immédiat : un registre se relit avant d'être classé. */}
+            <a
+              href={urlApercu(
+                `/api/elevage/registre-sanitaire?year=${new Date().getFullYear()}`,
+                `Registre sanitaire ${new Date().getFullYear()}`,
+              )}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <FileText className="h-4 w-4 mr-1" />Registre des soins
             </a>
           </Button>
           {/* PROMPT 20a — Actions en masse sur les soins */}

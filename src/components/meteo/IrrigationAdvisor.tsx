@@ -79,9 +79,17 @@ interface IrrigationAdvisorProps {
   parcelleId?: string
   lat?: number
   lng?: number
+  /**
+   * Nom de la parcelle quand l'encart est filtré (QA cmsiny9fd, 2026-08-07).
+   * Sans périmètre affiché, le même titre « Conseils irrigation » annonçait
+   * 9 urgentes sur Maraîchage (toute l'exploitation) et 3 sur Météo (la
+   * parcelle sélectionnée) : les deux compteurs se lisaient comme
+   * contradictoires alors qu'ils ne comptent pas la même chose.
+   */
+  scopeLabel?: string
 }
 
-export function IrrigationAdvisor({ parcelleId, lat, lng }: IrrigationAdvisorProps) {
+export function IrrigationAdvisor({ parcelleId, lat, lng, scopeLabel }: IrrigationAdvisorProps) {
   const { toast } = useToast()
   const [data, setData] = React.useState<IrrigationData | null>(null)
   const [loading, setLoading] = React.useState(true)
@@ -129,9 +137,12 @@ export function IrrigationAdvisor({ parcelleId, lat, lng }: IrrigationAdvisorPro
       }))
       toast({
         title: "Planche arrosée",
-        description: reco.cultureCount > 1
+        description: (reco.cultureCount > 1
           ? `${reco.cultureCount} cultures synchronisées et alertes recalculées.`
-          : "La recommandation vient d’être recalculée.",
+          : "La recommandation vient d’être recalculée.")
+          // QA cmsioeku5 — l'arrosage est désormais tracé : on le dit, sinon
+          // l'utilisateur ne sait pas où retrouver l'opération.
+          + " Arrosage consigné dans les interventions.",
       })
     } catch {
       toast({
@@ -209,7 +220,7 @@ export function IrrigationAdvisor({ parcelleId, lat, lng }: IrrigationAdvisorPro
       <div className="border rounded-lg p-4 bg-white">
         <div className="flex items-center gap-2 text-slate-500">
           <CheckCircle2 className="h-4 w-4 text-green-500" />
-          <span className="text-sm">Aucune culture active necessitant une analyse d&apos;irrigation.</span>
+          <span className="text-sm">Aucune culture active nécessitant une analyse d&apos;irrigation.</span>
         </div>
       </div>
     )
@@ -229,7 +240,13 @@ export function IrrigationAdvisor({ parcelleId, lat, lng }: IrrigationAdvisorPro
         <div className="flex items-center gap-2">
           <Droplets className="h-5 w-5 text-blue-500" />
           <div>
-            <span className="font-medium text-sm">Conseils irrigation</span>
+            <span className="font-medium text-sm">
+              Conseils irrigation
+              <span className="font-normal text-slate-500">
+                {" · "}
+                {scopeLabel ?? "toute l’exploitation"}
+              </span>
+            </span>
             {data.cachedAt && (
               <p className="text-xs text-slate-400 leading-none mt-0.5">
                 {data.cached

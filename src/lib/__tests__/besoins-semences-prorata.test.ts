@@ -3,10 +3,12 @@
  * partagent une même planche (sinon double comptage Carotte 30 m² +
  * Actinidia 30 m² sur B1 alors que B1 fait 30 m² réel).
  *
- * Bug #8 (testeur Marc, lot bugs-v4) : `getBesoinsSemences` ne porte plus
- * que sur les cultures RÉELLEMENT créées (`existante`). Les mocks passent
- * donc par des cultures directes (prisma.culture.findMany), plus par des
- * projections de rotation comme dans la version initiale du test.
+ * QA cmsob4f5t : `getBesoinsSemences` inclut désormais aussi les cultures
+ * suggérées (`existante: false`), comme `getBesoinsPlants` — le double
+ * comptage historique du Bug #8 est couvert par les garde-fous de
+ * `getCulturesPrevues` (pas de suggestion sur planche occupée, prorata 1/N).
+ * Les mocks de ce fichier passent par des cultures directes
+ * (prisma.culture.findMany), le prorata testé est indépendant du mode.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'

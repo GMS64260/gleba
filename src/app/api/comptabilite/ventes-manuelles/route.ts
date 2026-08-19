@@ -8,6 +8,7 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { createVenteManuelleSchema, updateVenteManuelleSchema } from '@/lib/validations/vente-manuelle'
 import { invalidateKpi } from '@/lib/kpi'
+import { champsEnvoyes, refusModificationDerivee } from '@/lib/comptabilite/ecriture-derivee'
 import { ensureClientForUser } from '@/lib/comptabilite/ensure-client'
 
 export async function GET(request: NextRequest) {
@@ -170,6 +171,10 @@ export async function PATCH(request: NextRequest) {
     }
 
     const { id, ...updates } = parsed.data
+    // `.partial()` conserve les `.default()` du schéma de création : la sortie
+    // de zod contient toujours tauxTVA, paye et journal. Seules les clés du
+    // corps brut disent ce que l'appelant a réellement demandé.
+    const envoyes = champsEnvoyes(body)
 
     const existing = await prisma.venteManuelle.findFirst({
       where: { id, userId: session.user.id },
@@ -179,14 +184,31 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Vente non trouvée' }, { status: 404 })
     }
 
+    // Une vente dérivée appartient à sa source (récolte, vente d'atelier,
+    // commande boutique) : montant, date et périmètre ne se corrigent que là.
+    // Le suivi du règlement reste ouvert — `markAsPaid` de l'écran des impayés
+    // marque légitimement une vente dérivée comme payée.
+    const refus = refusModificationDerivee(existing, envoyes)
+    if (refus) {
+      return NextResponse.json({ error: refus }, { status: 400 })
+    }
+
     const updateData: any = {}
-    if (updates.paye !== undefined) updateData.paye = updates.paye
+    if (envoyes.has('paye') && updates.paye !== undefined) updateData.paye = updates.paye
+    // Ticket cmsx5xjhn (QA 2026-08-17) — la modale « Corriger l'écriture »
+    // envoyait date et catégorie, que ce PATCH ignorait purement et
+    // simplement : l'utilisateur voyait « Enregistré » et rien ne changeait.
+    // `module` n'était nulle part alors que le schéma l'accepte, et c'est LUI
+    // qui décide de la ventilation par module des rapports.
+    if (updates.date !== undefined) updateData.date = updates.date
+    if (updates.categorie !== undefined) updateData.categorie = updates.categorie
+    if (updates.module !== undefined) updateData.module = updates.module
     if (updates.clientNom !== undefined) updateData.clientNom = updates.clientNom
     if (updates.clientId !== undefined) updateData.clientId = updates.clientId ?? null
     if (updates.notes !== undefined) updateData.notes = updates.notes
     if (updates.description !== undefined) updateData.description = updates.description
     if (updates.montant !== undefined) updateData.montant = updates.montant
-    if (updates.tauxTVA !== undefined) {
+    if (envoyes.has('tauxTVA') && updates.tauxTVA !== undefined) {
       updateData.tauxTVA = updates.tauxTVA
       // Si on modifie le taux manuellement, on ne considère plus la TVA comme inférée.
       updateData.tvaInferee = false
@@ -197,7 +219,7 @@ export async function PATCH(request: NextRequest) {
     // laissait montantHT/montantTVA périmés (TVA fausse dans la CA3/FEC/bilan).
     // On les recalcule à partir des valeurs effectives.
     if (
-      (updates.montant !== undefined || updates.tauxTVA !== undefined) &&
+      (envoyes.has('montant') || envoyes.has('tauxTVA')) &&
       updates.montantHT === undefined &&
       updates.montantTVA === undefined
     ) {
@@ -207,7 +229,7 @@ export async function PATCH(request: NextRequest) {
       updateData.montantHT = Math.round(ht * 100) / 100
       updateData.montantTVA = Math.round((montant - ht) * 100) / 100
     }
-    if (updates.journal !== undefined) updateData.journal = updates.journal
+    if (envoyes.has('journal') && updates.journal !== undefined) updateData.journal = updates.journal
     if (updates.modeReglement !== undefined) updateData.modeReglement = updates.modeReglement
     if (updates.numeroPiece !== undefined) updateData.numeroPiece = updates.numeroPiece
     if (updates.pjUrl !== undefined) updateData.pjUrl = updates.pjUrl || null

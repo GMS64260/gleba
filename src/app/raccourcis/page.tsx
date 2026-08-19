@@ -81,7 +81,8 @@ export default function RaccourcisPage() {
             <CardDescription>
               Utilisez la séquence{" "}
               <kbd className="bg-slate-100 px-1 rounded text-xs">g</kbd> puis{" "}
-              <kbd className="bg-slate-100 px-1 rounded text-xs">m / v / e / c</kbd> pour basculer entre modules
+              <kbd className="bg-slate-100 px-1 rounded text-xs">m / v / e / c</kbd>{" "}
+              pour basculer entre modules
               (1.2&nbsp;s entre les deux touches).
             </CardDescription>
           </CardHeader>

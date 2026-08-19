@@ -12,6 +12,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server"
+import { dispositionDocument } from "@/lib/http/disposition-fichier"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 import PDFDocument from "pdfkit"
@@ -190,7 +191,10 @@ export async function GET(request: NextRequest) {
     status: 200,
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="calendrier-verger-${new Date().toISOString().slice(0, 10)}.pdf"`,
+      "Content-Disposition": dispositionDocument(
+        request,
+        `calendrier-verger-${new Date().toISOString().slice(0, 10)}.pdf`,
+      ),
     },
   })
 }

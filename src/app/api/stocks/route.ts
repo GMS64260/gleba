@@ -9,6 +9,13 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { calculerStocksNet } from '@/lib/stocks-helpers'
 import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
+import { ESPECE_TYPES_MARAICHAGE } from '@/lib/validations/espece'
+
+// Ticket FB-PMWX8O — le filtre « légumes » énumérait le triplet historique en
+// dur : les semences, plants et récoltes d'une espèce de type `fleur` étaient
+// donc absents des trois onglets de Stocks. On lit la SSOT des types conduits
+// sur planche pour qu'un type ajouté au référentiel n'en soit plus exclu.
+const TYPES_MARAICHAGE = [...ESPECE_TYPES_MARAICHAGE]
 
 /**
  * QA 2026-07-30 — L'onglet Stocks > Récoltes n'affichait aucune ligne pour une
@@ -115,7 +122,7 @@ export async function GET(request: NextRequest) {
     if (especeType === 'arbres') {
       especeTypeFilter = { in: ['arbre_fruitier', 'petit_fruit'] }
     } else if (especeType === 'legumes') {
-      especeTypeFilter = { in: ['legume', 'aromatique', 'engrais_vert'] }
+      especeTypeFilter = { in: TYPES_MARAICHAGE }
     }
 
     // Helper: récupérer les stocks varietes per-user jointés avec la variete de reference
@@ -243,7 +250,7 @@ export async function GET(request: NextRequest) {
           ...(especeType === 'arbres'
             ? { type: { in: ['arbre_fruitier', 'petit_fruit'] } }
             : especeType === 'legumes'
-            ? { type: { in: ['legume', 'aromatique', 'engrais_vert'] } }
+            ? { type: { in: TYPES_MARAICHAGE } }
             : {}),
           OR: especesAvecStock(userId),
         },
@@ -295,7 +302,7 @@ export async function GET(request: NextRequest) {
             especeType === 'arbres'
               ? { type: { in: ['arbre_fruitier', 'petit_fruit'] } }
               : especeType === 'legumes'
-              ? { type: { in: ['legume', 'aromatique', 'engrais_vert'] } }
+              ? { type: { in: TYPES_MARAICHAGE } }
               : {},
           ],
         },

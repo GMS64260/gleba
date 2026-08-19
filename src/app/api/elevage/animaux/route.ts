@@ -12,9 +12,32 @@ import prisma from '@/lib/prisma'
 import { createDepenseFromAchatAnimal } from '@/lib/auto-compta'
 import { animalSchema, isPlausibleAnimalDate } from '@/lib/validations/elevage-animal'
 import { enregistrerChangementLot, isAssignableAnimalLot, isOwnedParcelle } from '@/lib/elevage/animal-lot'
+import { resoudreRaceTexte } from '@/lib/elevage/race-referentiel'
+import { normaliserSexe, SEXES_ANIMAL } from '@/lib/elevage/sexe'
 import { verifierLienParenteSansCycle } from '@/lib/elevage/genealogie-validation'
 import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 import { invalidateKpi } from '@/lib/kpi'
+
+/** JJ/MM/AAAA déterministe (sans dépendre de l'ICU du runtime). */
+const formatDateFr = (d: Date) => d.toISOString().slice(0, 10).split('-').reverse().join('/')
+
+/**
+ * Ticket cmsoevxrj — vraisemblance de filiation : un parent né APRÈS l'enfant
+ * est refusé, uniquement si les deux dates de naissance sont connues.
+ * Retourne le message d'erreur, ou null si le lien est plausible.
+ */
+function erreurParentNeApresEnfant(
+  label: 'mère' | 'père',
+  parentNaissance: Date | null,
+  enfantNaissance: Date | null,
+): string | null {
+  if (!parentNaissance || !enfantNaissance) return null
+  if (parentNaissance <= enfantNaissance) return null
+  const detail = `né${label === 'mère' ? 'e' : ''} le ${formatDateFr(parentNaissance)}, après la naissance de cet animal (${formatDateFr(enfantNaissance)})`
+  return label === 'mère'
+    ? `Filiation impossible : la mère proposée est ${detail}`
+    : `Filiation impossible : le père proposé est ${detail}`
+}
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -155,11 +178,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const raceRef = raceAnimaleId ? await prisma.raceAnimale.findFirst({
+    let raceRef = raceAnimaleId ? await prisma.raceAnimale.findFirst({
       where: { id: raceAnimaleId, especeAnimaleId, AND: [visibiliteReferentiel(session.user.id)] },
       select: { id: true, nom: true },
     }) : null
     if (raceAnimaleId && !raceRef) return NextResponse.json({ error: 'Race incompatible ou inaccessible' }, { status: 400 })
+    // Race en texte libre (import CSV notamment) : rattacher au référentiel
+    // quand la correspondance est univoque pour l'espèce.
+    if (!raceRef && race) raceRef = await resoudreRaceTexte(prisma, session.user.id, especeAnimaleId, race)
 
     if (lotId != null && !await isAssignableAnimalLot(session.user.id, lotId, especeAnimaleId)) {
       return NextResponse.json({ error: 'Lot invalide' }, { status: 400 })
@@ -177,11 +203,16 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       )
     }
+    // QA cmsw8xwgi (2026-08-16) — à la CRÉATION, prix animal + lot déjà
+    // porteur d'un prix : on force la ventilation informative (prix inclus
+    // dans le lot) au lieu de renvoyer 400. La case du formulaire était
+    // invisible (rendue seulement si prix ET lot déjà saisis, au-dessus du
+    // point de saisie) et le refus faisait perdre la fiche. L'invariant
+    // anti-double-comptage de l'achat est préservé : le prix individuel
+    // marqué inclus n'est jamais additionné au prix du lot.
+    let prixAchatInclusDansLotEffectif = prixAchatInclusDansLot
     if (Number(prixAchat || 0) > 0 && lotPorteAchat && !prixAchatInclusDansLot) {
-      return NextResponse.json(
-        { error: "Ce lot possède déjà un prix d'achat total. Indiquez que le prix individuel est inclus dans le lot, ou retirez l'un des deux prix." },
-        { status: 400 },
-      )
+      prixAchatInclusDansLotEffectif = true
     }
 
     if (parcelleGeoId != null && !await isOwnedParcelle(session.user.id, parcelleGeoId)) {
@@ -194,10 +225,15 @@ export async function POST(request: NextRequest) {
       if (parentId) {
         const parent = await prisma.animal.findFirst({
           where: { id: parentId, userId: session.user.id },
-          select: { id: true },
+          select: { id: true, dateNaissance: true },
         })
         if (!parent) {
           return NextResponse.json({ error: `Animal ${label} introuvable` }, { status: 400 })
+        }
+        // Ticket cmsoevxrj — durcissement généalogie : dates invraisemblables.
+        const erreurDates = erreurParentNeApresEnfant(label, parent.dateNaissance, dateNaissance ?? null)
+        if (erreurDates) {
+          return NextResponse.json({ error: erreurDates }, { status: 400 })
         }
       }
     }
@@ -226,7 +262,7 @@ export async function POST(request: NextRequest) {
         motifSortie: motifSortie ?? null,
         statutSanitaire: statutSanitaire ?? [],
         prixAchat,
-        prixAchatInclusDansLot,
+        prixAchatInclusDansLot: prixAchatInclusDansLotEffectif,
         statut,
         posX,
         posY,
@@ -405,8 +441,34 @@ export async function PATCH(request: NextRequest) {
     }
     if (parcelleGeoId !== undefined) updateData.parcelleGeoId = parcelleGeoId || null
     if (nom !== undefined) updateData.nom = nom
-    if (race !== undefined) updateData.race = race
-    if (sexe !== undefined) updateData.sexe = sexe
+    if (race !== undefined) {
+      updateData.race = race
+      // Race en texte libre sans raceAnimaleId explicite (mode « mise à jour »
+      // de l'import CSV) : rattacher au référentiel si univoque.
+      if (race && raceAnimaleId === undefined) {
+        const ref = await resoudreRaceTexte(prisma, session.user.id, especeCible, race)
+        if (ref) { updateData.raceAnimaleId = ref.id; updateData.race = ref.nom }
+      }
+    }
+    // Ce PATCH écrit le corps brut, sans passer par `animalSchema` : c'est par
+    // ici qu'un `'f'` hérité repassait en base à chaque enregistrement de la
+    // fiche, invisible dans le formulaire et excluant l'animal de la liste des
+    // mères. Le sexe est normalisé comme à la création, et une valeur non
+    // reconnue est refusée plutôt que persistée.
+    if (sexe !== undefined) {
+      if (sexe === null || sexe === '') {
+        updateData.sexe = null
+      } else {
+        const normalise = normaliserSexe(String(sexe))
+        if (normalise === undefined) {
+          return NextResponse.json(
+            { error: `Sexe « ${sexe} » non reconnu (attendu : ${SEXES_ANIMAL.join(', ')})` },
+            { status: 400 }
+          )
+        }
+        updateData.sexe = normalise
+      }
+    }
     if (statut !== undefined) updateData.statut = statut
     if (lotId !== undefined) updateData.lotId = lotId ? parseInt(lotId) : null
     if (prixAchatInclusDansLot !== undefined || lotId !== undefined) {
@@ -429,6 +491,17 @@ export async function PATCH(request: NextRequest) {
     if (mereIdModifie !== undefined) updateData.mereId = mereIdModifie
     if (pereIdModifie !== undefined) updateData.pereId = pereIdModifie
 
+    // Ticket cmsoevxrj — date de naissance cible de l'enfant pour la
+    // vraisemblance de filiation : celle envoyée dans ce même PATCH si
+    // exploitable (elle est parsée et bornée plus bas pour l'écriture),
+    // sinon celle déjà en base.
+    const dateNaissanceEnfant = (() => {
+      if (dateNaissance === undefined) return existing.dateNaissance
+      if (dateNaissance === null || dateNaissance === '') return null
+      const d = new Date(dateNaissance)
+      return Number.isNaN(d.getTime()) ? null : d
+    })()
+
     // Audit élevage 2026-06-11 — un animal ne peut pas être son propre
     // parent (générait un arbre généalogique absurde) et les parents
     // doivent appartenir au user.
@@ -439,10 +512,16 @@ export async function PATCH(request: NextRequest) {
         }
         const parent = await prisma.animal.findFirst({
           where: { id: parentId, userId: session.user.id },
-          select: { id: true },
+          select: { id: true, dateNaissance: true },
         })
         if (!parent) {
           return NextResponse.json({ error: `Animal ${label} introuvable` }, { status: 400 })
+        }
+        // Ticket cmsoevxrj — durcissement généalogie : un parent nouvellement
+        // affecté né après l'enfant est refusé (dates connues uniquement).
+        const erreurDates = erreurParentNeApresEnfant(label, parent.dateNaissance, dateNaissanceEnfant)
+        if (erreurDates) {
+          return NextResponse.json({ error: erreurDates }, { status: 400 })
         }
         const lienValide = await verifierLienParenteSansCycle({
           animalId: existing.id,

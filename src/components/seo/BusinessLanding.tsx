@@ -57,12 +57,15 @@ export function BusinessLanding({
           <p className="mx-auto mt-8 max-w-3xl text-lg font-light leading-relaxed text-slate-600 sm:text-xl">
             {introduction}
           </p>
+          <p className="mx-auto mt-5 max-w-2xl text-sm font-medium text-emerald-800">
+            Pensé en priorité pour les micro-fermes professionnelles et les projets en installation.
+          </p>
           <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Link href="/register" className="inline-flex items-center gap-2 rounded-full bg-emerald-700 px-7 py-3.5 text-sm font-medium text-white transition-colors hover:bg-emerald-800">
-              Essayer Gleba <ArrowRight className="h-4 w-4" />
+              Essayer la bêta Gleba <ArrowRight className="h-4 w-4" />
             </Link>
-            <Link href="/login" className="rounded-full border border-slate-200 px-7 py-3.5 text-sm font-medium text-slate-700 transition-colors hover:border-emerald-300">
-              Ouvrir le compte de démonstration
+            <Link href="/login?demo=1" className="rounded-full border border-slate-200 px-7 py-3.5 text-sm font-medium text-slate-700 transition-colors hover:border-emerald-300">
+              Explorer la ferme de démonstration
             </Link>
           </div>
           <p className="mx-auto mt-8 max-w-2xl rounded-2xl border border-emerald-100 bg-emerald-50/60 px-5 py-4 text-sm leading-relaxed text-emerald-950">

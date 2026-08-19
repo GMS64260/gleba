@@ -6,7 +6,28 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi, getUserId } from '@/lib/auth-utils'
-import { genererIrrigationsPlanifiees } from '@/lib/irrigation-scheduler'
+import { compterCulturesSansPlan, genererIrrigationsPlanifiees } from '@/lib/irrigation-scheduler'
+
+/**
+ * GET /api/irrigations/generate
+ * Combien de cultures « à irriguer » attendent encore un plan d'arrosage.
+ * Lecture seule : sert à proposer l'action sans jamais l'imposer.
+ */
+export async function GET() {
+  const { error, session } = await requireAuthApi()
+  if (error) return error
+
+  try {
+    const aPlanifier = await compterCulturesSansPlan(getUserId(session))
+    return NextResponse.json({ aPlanifier })
+  } catch (err) {
+    console.error('GET /api/irrigations/generate error:', err)
+    return NextResponse.json(
+      { error: 'Erreur lors du calcul des cultures à planifier' },
+      { status: 500 }
+    )
+  }
+}
 
 export async function POST(request: NextRequest) {
   const { error, session } = await requireAuthApi()

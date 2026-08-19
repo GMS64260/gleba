@@ -10,6 +10,7 @@ import { createPlancheSchema } from '@/lib/validations'
 import { Prisma } from '@prisma/client'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { invalidateKpi } from '@/lib/kpi'
+import { surfacePlanche } from '@/lib/planches/surface'
 
 // GET /api/planches
 export async function GET(request: NextRequest) {
@@ -127,9 +128,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Calculer la surface si largeur et longueur sont fournies
-    const surface = data.largeur && data.longueur
-      ? data.largeur * data.longueur
-      : data.surface
+    const surface = surfacePlanche(data.largeur, data.longueur) ?? data.surface
 
     // Création avec userId (id auto-generated as cuid)
     const { nom, ...rest } = data

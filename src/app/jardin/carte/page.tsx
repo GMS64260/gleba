@@ -20,6 +20,9 @@ import type { CadastreResult } from "@/components/carte/CadastreSearch"
 
 // Composants non-Leaflet : import statique
 import ParcelleList from "@/components/carte/ParcelleList"
+import BandeauLocalisationExemple, {
+  type LocalisationExempleInfo,
+} from "@/components/carte/BandeauLocalisationExemple"
 import ParcellePanel from "@/components/carte/ParcellePanel"
 import MapToolbar from "@/components/carte/MapToolbar"
 
@@ -67,6 +70,9 @@ function CartePageContent() {
   const usageFilter = searchParams.get("usage")
   const parcelleIdParam = searchParams.get("parcelle")
   const [parcelles, setParcelles] = useState<ParcelleGeoData[]>([])
+  // Parcelle d'exemple restée à Paris alors que le compte a saisi du réel.
+  const [localisationExemple, setLocalisationExemple] =
+    useState<LocalisationExempleInfo | null>(null)
   const [selectedParcelle, setSelectedParcelle] = useState<ParcelleGeoData | null>(null)
   const [isDrawing, setIsDrawing] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
@@ -104,6 +110,24 @@ function CartePageContent() {
   useEffect(() => {
     fetchParcelles()
   }, [fetchParcelles])
+
+  // Rappel de recalage : la parcelle d'exemple est géolocalisée à Paris et
+  // pilote météo, pluie et nappe. Un échec ici n'empêche pas la carte de
+  // fonctionner : on reste silencieux.
+  useEffect(() => {
+    let annule = false
+    fetch("/api/carte/localisation-exemple")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: LocalisationExempleInfo | null) => {
+        if (!annule && data && typeof data.surDecorExemple === "boolean") {
+          setLocalisationExemple(data)
+        }
+      })
+      .catch(() => {})
+    return () => {
+      annule = true
+    }
+  }, [parcelles])
 
   // -- Auto-focus sur parcelle par usage ou par ID --
   useEffect(() => {
@@ -225,6 +249,25 @@ function CartePageContent() {
   // -- Import cadastral --
   const handleCadastreImport = useCallback(async (result: CadastreResult) => {
     try {
+      // QA cmsnodx00 — rien n'empêchait de ré-importer N fois la même
+      // parcelle cadastrale : 6 lignes au nom identique rendaient les
+      // sélecteurs (météo, rattachements) indiscernables. On refuse le
+      // doublon exact commune/section/numéro avec un message explicite.
+      const dejaImportee = parcelles.some(
+        (p) =>
+          p.commune?.trim().toLowerCase() === result.commune.trim().toLowerCase() &&
+          p.section?.trim().toUpperCase() === result.section.trim().toUpperCase() &&
+          p.numero?.trim() === result.numero.trim()
+      )
+      if (dejaImportee) {
+        toast({
+          title: "Parcelle déjà importée",
+          description: `${result.commune} - ${result.section} ${result.numero} existe déjà sur la carte.`,
+          variant: "destructive",
+        })
+        return
+      }
+
       const body = {
         nom: `${result.commune} - ${result.section} ${result.numero}`,
         geometry: result.geometry,
@@ -247,7 +290,7 @@ function CartePageContent() {
       }
 
       toast({
-        title: "Parcelle importee",
+        title: "Parcelle importée",
         description: `${result.commune} - ${result.section} ${result.numero}`,
       })
 
@@ -256,7 +299,7 @@ function CartePageContent() {
       const message = err instanceof Error ? err.message : "Erreur inconnue"
       toast({ title: "Erreur", description: message, variant: "destructive" })
     }
-  }, [fetchParcelles, toast])
+  }, [fetchParcelles, toast, parcelles])
 
   // -- Edition de parcelle --
   const handleEditVertices = useCallback(() => {
@@ -336,6 +379,15 @@ function CartePageContent() {
     }
   }, [mapRef])
 
+  // Amener l'utilisateur sur la parcelle à recaler : sélection + zoom, pour
+  // qu'il n'ait plus qu'à la déplacer ou la redessiner au bon endroit.
+  const handleRecalerLocalisation = useCallback((parcelleId: string) => {
+    const parcelle = parcelles.find((p) => p.id === parcelleId)
+    if (!parcelle) return
+    handleSelect(parcelle)
+    handleFlyTo(parcelle)
+  }, [parcelles, handleSelect, handleFlyTo])
+
   const handleMovementComplete = useCallback(async (destinationId: string) => {
     await fetchParcelles()
     setSelectedParcelle(null)
@@ -410,6 +462,15 @@ function CartePageContent() {
           </div>
         </div>
       </header>
+
+      <BandeauLocalisationExemple
+        info={localisationExemple}
+        onRecale={() => {
+          setLocalisationExemple(null)
+          fetchParcelles()
+        }}
+        onOuvrirSurCarte={handleRecalerLocalisation}
+      />
 
       {/* Contenu principal */}
       <div className="flex-1 flex overflow-hidden relative">

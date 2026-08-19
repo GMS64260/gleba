@@ -2,14 +2,14 @@ import type { Metadata } from "next";
 import { BusinessLanding } from "@/components/seo/BusinessLanding";
 
 export const metadata: Metadata = {
-  title: "Logiciel pour ferme en permaculture — Plan 2D, cultures et verger",
-  description: "Cartographiez planches, arbres et objets, puis suivez cultures, associations, rotations, verger, élevage, récoltes et interventions avec Gleba.",
+  title: "Logiciel pour micro-ferme en permaculture — Plan et suivi",
+  description: "Pour une ferme en permaculture professionnelle : cartographiez planches et arbres, puis suivez cultures, rotations, verger, élevage, récoltes et interventions.",
   alternates: { canonical: "https://gleba.fr/logiciel-permaculture" },
   openGraph: { title: "Gleba pour une ferme en permaculture", description: "Plan 2D et suivi des productions diversifiées dans un logiciel open source.", url: "https://gleba.fr/logiciel-permaculture", type: "article" },
 };
 
 export default function Page() {
-  return <BusinessLanding breadcrumb="Logiciel pour ferme en permaculture" currentPath="/logiciel-permaculture" eyebrow="Plan 2D · Cultures · Verger · Élevage" title="Un logiciel pour documenter" highlightedTitle="une ferme diversifiée" introduction="Les fermes inspirées de la permaculture combinent souvent planches, arbres, haies, animaux et petits aménagements. Gleba permet de représenter ces éléments puis de suivre les productions et interventions associées." proof="le plan 2D manipule parcelles, planches, arbres et objets ; les modules Maraîchage, Verger et Élevage partagent ensuite les données de la même exploitation." capabilities={[
+  return <BusinessLanding breadcrumb="Logiciel pour ferme en permaculture" currentPath="/logiciel-permaculture" eyebrow="Micro-ferme · Plan 2D · Cultures · Verger" title="Documenter une ferme en permaculture" highlightedTitle="du design au suivi réel" introduction="Une micro-ferme professionnelle inspirée de la permaculture combine souvent planches, arbres, haies, animaux et aménagements. Gleba représente les éléments décidés par le porteur de projet, puis conserve productions et interventions dans le même carnet d'exploitation." proof="le plan 2D manipule parcelles, planches, arbres et objets ; les modules Maraîchage, Verger et Élevage partagent ensuite les données de la même exploitation." capabilities={[
     { title: "Plan 2D", description: "Dessinez les planches et positionnez arbres et objets aux dimensions et coordonnées choisies." },
     { title: "Associations", description: "Consultez le référentiel d'associations favorables, incompatibles ou neutres entre espèces." },
     { title: "Rotations", description: "Préparez et relisez les séquences de cultures prévues sur chaque planche." },

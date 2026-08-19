@@ -30,6 +30,30 @@ describe("fec", () => {
     expect(v.totalDebit).toBeCloseTo(v.totalCredit, 1)
   })
 
+  it("ventile les produits de la ruche sur le compte 701600", () => {
+    const lignes = genererFec({
+      ventes: [{
+        id: 6,
+        date: new Date("2026-07-29"),
+        description: "Vente miel de printemps",
+        categorie: "produits_ruche",
+        modeReglement: null,
+        numeroPiece: "ELEV-6",
+        tauxTVA: 5.5,
+        montant: 105.5,
+        montantHT: 100,
+        montantTVA: 5.5,
+        clientNom: "Épicerie",
+        paye: true,
+      }],
+      depenses: [],
+      factures: [],
+    })
+
+    expect(lignes.some((ligne) => ligne.CompteNum === "701600")).toBe(true)
+    expect(validerEquilibre(lignes).equilibre).toBe(true)
+  })
+
   it("équilibre Débit = Crédit sur une facture multi-catégories (POSTREVIEW)", () => {
     // POSTREVIEW : la facture ventile désormais ses lignes par catégorie
     // → on doit retrouver les comptes 701100 (legumes), 701300 (œufs),

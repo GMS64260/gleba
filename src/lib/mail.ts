@@ -651,3 +651,62 @@ export function commandeStatutClientEmail(args: CommandeStatutEmailArgs) {
 </body></html>`,
   }
 }
+
+/**
+ * Confirmation de suppression définitive du compte. Email transactionnel : il
+ * part même si le membre s'est désabonné des campagnes, et il est envoyé APRÈS
+ * la suppression, donc sans aucun lien vers un espace personnel devenu inexistant.
+ */
+export function accountDeletedEmail(name?: string | null) {
+  const displayName = name ? escapeHtml(name) : "utilisateur"
+  return {
+    subject: "Gleba — Votre compte a été supprimé",
+    html: `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;padding:40px 20px;">
+    <tr><td align="center">
+      <table width="480" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+        <tr>
+          <td style="background:linear-gradient(135deg,#065f46,#0d9488);padding:32px 40px;text-align:center;">
+            <h1 style="margin:0;font-size:28px;font-weight:300;color:#ffffff;letter-spacing:-0.5px;">Gleba</h1>
+            <p style="margin:8px 0 0;font-size:13px;color:#a7f3d0;letter-spacing:0.1em;text-transform:uppercase;">Compte supprimé</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:36px 40px;">
+            <h2 style="margin:0 0 16px;font-size:20px;font-weight:600;color:#1e293b;">
+              Bonjour ${displayName},
+            </h2>
+            <p style="margin:0 0 20px;font-size:15px;color:#64748b;line-height:1.6;">
+              Votre compte Gleba et les données de votre exploitation ont été définitivement supprimés, comme vous l'avez demandé. Cette opération est irréversible.
+            </p>
+            <p style="margin:0 0 12px;font-size:15px;color:#1e293b;font-weight:600;">Ce qui a été supprimé</p>
+            <p style="margin:0 0 20px;font-size:14px;color:#64748b;line-height:1.6;">
+              Votre compte et vos identifiants, vos parcelles, cultures, récoltes et interventions, vos animaux et registres d'élevage, votre verger, votre comptabilité et vos justificatifs, ainsi que les fichiers que vous aviez téléversés.
+            </p>
+            <p style="margin:0 0 12px;font-size:15px;color:#1e293b;font-weight:600;">Ce qui est conservé</p>
+            <p style="margin:0 0 20px;font-size:14px;color:#64748b;line-height:1.6;">
+              Les fiches de référentiel que vous aviez explicitement partagées avec la communauté restent disponibles pour les autres membres, sous le nom « Communauté Gleba » et sans lien avec votre identité. Les journaux techniques de sécurité sont conservés jusqu'à douze mois, comme l'impose la réglementation.
+            </p>
+            <p style="margin:0;font-size:14px;color:#64748b;line-height:1.6;">
+              Vous n'avez rien d'autre à faire. Si cette suppression ne vient pas de vous, écrivez-nous immédiatement à <a href="mailto:contact@gleba.fr" style="color:#10b981;text-decoration:none;">contact@gleba.fr</a>.
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:20px 40px 28px;border-top:1px solid #f1f5f9;">
+            <p style="margin:0;font-size:12px;color:#94a3b8;text-align:center;">
+              Gleba — Logiciel libre de gestion agricole<br>
+              <a href="https://gleba.fr" style="color:#10b981;text-decoration:none;">gleba.fr</a> · <a href="mailto:contact@gleba.fr" style="color:#10b981;text-decoration:none;">contact@gleba.fr</a>
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`,
+  }
+}

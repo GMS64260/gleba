@@ -89,6 +89,7 @@ interface Intervention {
   intrantUnite: string | null
   intrantCout: number | null
   intrantNumLot: string | null
+  justification: string | null
   notes: string | null
   createdAt: string
   // Source tracking (virtual entries from other modules)
@@ -126,6 +127,23 @@ interface Planche {
   nom: string
 }
 
+/**
+ * Valeur d'option du sélecteur Planche correspondant à la planche d'une culture.
+ *
+ * QA cmsiod5e8 (2026-08-07) — le sélecteur indexe ses options sur `nom || id`
+ * (dette antérieure : `Intervention.plancheId` contient historiquement des noms
+ * autant que des cuid). On résout donc la planche de la culture contre la liste
+ * chargée pour produire exactement la valeur attendue par le `<select>` ; sans
+ * cela l'option ne correspond à rien et le champ retombe sur « Aucune ».
+ */
+function valeurOptionPlanche(culture: Culture, planches: Planche[]): string {
+  const id = culture.plancheId ?? culture.planche?.id ?? null
+  const nom = culture.planche?.nom ?? null
+  const match = planches.find((p) => (id && p.id === id) || (nom && p.nom === nom))
+  if (match) return match.nom || match.id
+  return nom || id || ""
+}
+
 // ============================================================
 // Constants
 // ============================================================
@@ -133,7 +151,7 @@ interface Planche {
 const TYPE_OPTIONS = [
   { value: "semis", label: "Semis" },
   { value: "plantation", label: "Plantation" },
-  { value: "desherbage", label: "Desherbage" },
+  { value: "desherbage", label: "Désherbage" },
   { value: "binage", label: "Binage" },
   { value: "paillage", label: "Paillage" },
   { value: "traitement_phyto", label: "Traitement phyto" },
@@ -163,7 +181,7 @@ const TYPE_COLORS: Record<string, { bg: string; text: string }> = {
 const TYPE_LABELS: Record<string, string> = {
   semis: "Semis",
   plantation: "Plantation",
-  desherbage: "Desherbage",
+  desherbage: "Désherbage",
   binage: "Binage",
   paillage: "Paillage",
   traitement_phyto: "Traitement phyto",
@@ -226,6 +244,7 @@ export default function InterventionsPage() {
   const [expandedRow, setExpandedRow] = React.useState<number | null>(null)
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [editingIntervention, setEditingIntervention] = React.useState<Intervention | null>(null)
+  const [isSubmitting, setIsSubmitting] = React.useState(false)
 
   // Form state
   const emptyForm = {
@@ -279,13 +298,53 @@ export default function InterventionsPage() {
       ...f,
       type: params.get("type") || "traitement_phyto",
       arbreId: params.get("arbreId") || "",
+      // QA cmsbu1q0s — deep-link depuis la fiche culture maraîchère.
+      cultureId: params.get("cultureId") || "",
+      plancheId: params.get("plancheId") || "",
       cibleTraitement: params.get("cible") || "",
       justification: params.get("justification") || "",
       observationLieeId: params.get("observationLieeId") || "",
     }))
     setDialogOpen(true)
+    // QA cmsno1hct — sans nettoyage, `?prefill=` survivait au reload : la
+    // modale se rouvrait pré-remplie après F5, donnant l'impression que la
+    // saisie précédente n'avait jamais été enregistrée.
+    window.history.replaceState(window.history.state, "", window.location.pathname)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // QA cmsiod5e8 — « Traitement phyto » depuis une fiche culture n'envoie que
+  // `cultureId` : la planche restait « Aucune » et un traitement phyto pouvait
+  // être enregistré sans planche, donc sans localisation traçable. La planche
+  // est déduite de la culture, ici plutôt que dans chaque deep-link, ce qui
+  // couvre aussi la sélection manuelle d'une culture dans le formulaire.
+  // Le ref évite de réécraser un choix « Aucune » fait volontairement après.
+  const plancheAutoRef = React.useRef<string | null>(null)
+  React.useEffect(() => {
+    if (!form.cultureId) return
+    if (plancheAutoRef.current === form.cultureId) return
+    const culture = cultures.find((c) => String(c.id) === form.cultureId)
+    if (!culture) return // référentiel pas encore chargé : on retentera
+    plancheAutoRef.current = form.cultureId
+    const valeur = valeurOptionPlanche(culture, planches)
+    if (!valeur) return
+    setForm((f) => (f.plancheId ? f : { ...f, plancheId: valeur }))
+  }, [form.cultureId, cultures, planches])
+
+  // QA cmswubyce — deux cultures homonymes (même espèce/variété/planche)
+  // étaient indiscernables dans le sélecteur : on suffixe l'identifiant
+  // uniquement quand le libellé est porté par plusieurs cultures.
+  const libelleCultureUnique = React.useMemo(() => {
+    const compte = new Map<string, number>()
+    for (const c of cultures) {
+      const l = libelleCulture(c)
+      compte.set(l, (compte.get(l) ?? 0) + 1)
+    }
+    return (c: Culture) => {
+      const l = libelleCulture(c)
+      return (compte.get(l) ?? 0) > 1 ? `${l} — #${c.id}` : l
+    }
+  }, [cultures])
 
   // ============================================================
   // Data fetching
@@ -352,6 +411,7 @@ export default function InterventionsPage() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isSubmitting) return
 
     const dureeMinutes =
       (form.dureeHeures ? parseInt(form.dureeHeures) * 60 : 0) +
@@ -396,6 +456,7 @@ export default function InterventionsPage() {
       justification: form.justification || null,
     }
 
+    setIsSubmitting(true)
     try {
       const url = editingIntervention
         ? "/api/interventions"
@@ -419,10 +480,19 @@ export default function InterventionsPage() {
         setForm(emptyForm)
         fetchInterventions()
       } else {
-        throw new Error()
+        // QA cmsno1hct — le corps d'erreur du serveur (validation zod…) était
+        // jeté : toute 400 était indiscernable d'une panne réseau.
+        const d = await res.json().catch(() => ({}))
+        throw new Error(d.error ?? `Erreur ${res.status}`)
       }
-    } catch {
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible d'enregistrer l'intervention" })
+    } catch (e) {
+      toast({
+        variant: "destructive",
+        title: "Erreur",
+        description: e instanceof Error && e.message ? e.message : "Impossible d'enregistrer l'intervention",
+      })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -438,7 +508,7 @@ export default function InterventionsPage() {
         }),
       })
       if (res.ok) {
-        toast({ title: "Fait", description: "Intervention marquee comme realisee" })
+        toast({ title: "Fait", description: "Intervention marquée comme réalisée" })
         fetchInterventions()
       } else {
         throw new Error()
@@ -498,7 +568,7 @@ export default function InterventionsPage() {
       arbreId: (intervention as Intervention & { arbreId?: number | null }).arbreId?.toString() || "",
       observationLieeId:
         (intervention as Intervention & { observationLieeId?: number | null }).observationLieeId?.toString() || "",
-      justification: (intervention as Intervention & { justification?: string | null }).justification || "",
+      justification: intervention.justification || "",
     })
     setDialogOpen(true)
   }
@@ -628,14 +698,19 @@ export default function InterventionsPage() {
 
       <main className="container mx-auto px-4 py-6 max-w-[1600px]">
         {/* Title + Year + Add button */}
-        <div className="flex items-center justify-between mb-6">
+        {/* QA cmswxlath — cette ligne ne repliait pas : titre (≈180 px) + année +
+            bouton « Nouvelle intervention » (≈195 px) ne tiennent pas dans les
+            344 px utiles d'un écran de 375 px, et rien ici n'est réductible
+            (min-width auto). Le document mesurait 502 px et la saisie au champ
+            partait hors écran. */}
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-orange-100 flex items-center justify-center">
               <Hammer className="h-5 w-5 text-orange-700" />
             </div>
             <h1 className="text-xl font-semibold text-slate-800">Interventions</h1>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <select
               value={selectedYear}
               onChange={(e) => setSelectedYear(parseInt(e.target.value))}
@@ -717,7 +792,7 @@ export default function InterventionsPage() {
                           onChange={(e) => setForm({ ...form, fait: e.target.checked })}
                           className="rounded"
                         />
-                        <span className="text-sm">{form.fait ? "Realisee" : "Planifiee"}</span>
+                        <span className="text-sm">{form.fait ? "Réalisée" : "Planifiée"}</span>
                       </label>
                     </div>
                   </div>
@@ -734,7 +809,7 @@ export default function InterventionsPage() {
                         <option value="">-- Aucune --</option>
                         {cultures.map((c) => (
                           <option key={c.id} value={c.id}>
-                            {libelleCulture(c)}
+                            {libelleCultureUnique(c)}
                           </option>
                         ))}
                       </select>
@@ -800,7 +875,7 @@ export default function InterventionsPage() {
                       />
                     </div>
                     <div>
-                      <Label>Cout main d'oeuvre (EUR)</Label>
+                      <Label>Coût main d&apos;œuvre (€)</Label>
                       <Input
                         type="number"
                         step="0.01"
@@ -833,7 +908,7 @@ export default function InterventionsPage() {
                           <Input
                             value={form.numAMM}
                             onChange={(e) => setForm({ ...form, numAMM: e.target.value })}
-                            placeholder="Autorisation de mise sur le marche"
+                            placeholder="Autorisation de mise sur le marché"
                           />
                         </div>
                       </div>
@@ -874,7 +949,7 @@ export default function InterventionsPage() {
                       </div>
                       <div className="grid gap-4 sm:grid-cols-3">
                         <div>
-                          <Label>Surface traitee (m2)</Label>
+                          <Label>Surface traitée (m²)</Label>
                           <Input
                             type="number"
                             step="0.01"
@@ -894,7 +969,7 @@ export default function InterventionsPage() {
                           />
                         </div>
                         <div>
-                          <Label>Conditions meteo</Label>
+                          <Label>Conditions météo</Label>
                           <Input
                             value={form.conditionsMeteo}
                             onChange={(e) => setForm({ ...form, conditionsMeteo: e.target.value })}
@@ -928,7 +1003,7 @@ export default function InterventionsPage() {
 
                   {/* Intrant section */}
                   <div className="border rounded-lg p-4 bg-slate-50/50 space-y-4">
-                    <h3 className="text-sm font-semibold text-slate-700">Intrant utilise</h3>
+                    <h3 className="text-sm font-semibold text-slate-700">Intrant utilisé</h3>
                     <div className="grid gap-4 sm:grid-cols-3">
                       <div>
                         <Label>Nom</Label>
@@ -967,7 +1042,7 @@ export default function InterventionsPage() {
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <Label>Cout (EUR)</Label>
+                          <Label>Coût (€)</Label>
                           <Input
                             type="number"
                             step="0.01"
@@ -994,7 +1069,7 @@ export default function InterventionsPage() {
                     <Textarea
                       value={form.notes}
                       onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                      placeholder="Remarques supplementaires..."
+                      placeholder="Remarques supplémentaires…"
                       rows={2}
                     />
                   </div>
@@ -1012,9 +1087,9 @@ export default function InterventionsPage() {
                     >
                       Annuler
                     </Button>
-                    <Button type="submit" className="bg-orange-600 hover:bg-orange-700">
+                    <Button type="submit" className="bg-orange-600 hover:bg-orange-700" disabled={isSubmitting}>
                       <Plus className="h-4 w-4 mr-1" />
-                      {editingIntervention ? "Enregistrer" : "Créer"}
+                      {isSubmitting ? "Enregistrement..." : (editingIntervention ? "Enregistrer" : "Créer")}
                     </Button>
                   </div>
                 </form>
@@ -1053,7 +1128,7 @@ export default function InterventionsPage() {
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                     <Clock className="h-4 w-4" />
-                    Heures travaillees
+                    Heures travaillées
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -1066,7 +1141,7 @@ export default function InterventionsPage() {
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                     <Euro className="h-4 w-4" />
-                    Cout total
+                    Coût total
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -1136,7 +1211,7 @@ export default function InterventionsPage() {
                 >
                   <option value="all">Toutes</option>
                   <option value="false">Planifiées uniquement</option>
-                  <option value="true">Realisees</option>
+                  <option value="true">Réalisées</option>
                 </select>
               </div>
               <div className="relative">
@@ -1160,10 +1235,15 @@ export default function InterventionsPage() {
 
         {/* Interventions table */}
         <Card>
-          <CardHeader>
+          <CardHeader className="flex-row items-center justify-between gap-2">
             <CardTitle className="text-base">
               Interventions ({filteredInterventions.length})
             </CardTitle>
+            {/* QA cmswueqe1 — le registre réglementaire complet (AMM, dose,
+                DAR, ZNT en colonnes) vit sur /tracabilite : lien explicite. */}
+            <Link href="/tracabilite" className="text-xs text-primary underline underline-offset-2 whitespace-nowrap">
+              Registre phyto complet
+            </Link>
           </CardHeader>
           <CardContent className="p-0">
             {isLoading ? (
@@ -1197,7 +1277,7 @@ export default function InterventionsPage() {
                       <TableHead>Culture / Planche</TableHead>
                       <TableHead>Description</TableHead>
                       <TableHead className="text-right">Durée</TableHead>
-                      <TableHead className="text-right">Cout</TableHead>
+                      <TableHead className="text-right">Coût</TableHead>
                       <TableHead>Statut</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
@@ -1270,7 +1350,7 @@ export default function InterventionsPage() {
                               ) : (
                                 <Badge className="bg-amber-100 text-amber-800 border-0">
                                   <Calendar className="h-3 w-3 mr-1" />
-                                  Planifie
+                                  Planifié
                                 </Badge>
                               )}
                             </TableCell>
@@ -1381,8 +1461,13 @@ export default function InterventionsPage() {
                                     </div>
                                   )}
 
-                                  {/* Phyto info */}
-                                  {intervention.type === "traitement_phyto" && intervention.produitPhyto && (
+                                  {/* Phyto info — QA cmswueqe1 : le bloc réglementaire
+                                      disparaissait entièrement quand le produit était
+                                      vide alors qu'AMM/dose/DAR/ZNT étaient renseignés. */}
+                                  {intervention.type === "traitement_phyto" &&
+                                    (intervention.produitPhyto || intervention.numAMM ||
+                                      intervention.doseAppliquee != null || intervention.dar != null ||
+                                      intervention.zntDistanceM != null) && (
                                     <div className="space-y-1">
                                       <p className="font-medium text-red-700">Traitement phytosanitaire</p>
                                       <p>
@@ -1421,8 +1506,32 @@ export default function InterventionsPage() {
                                       )}
                                       {intervention.conditionsMeteo && (
                                         <p>
-                                          <span className="text-muted-foreground">Meteo :</span>{" "}
+                                          <span className="text-muted-foreground">Météo :</span>{" "}
                                           {intervention.conditionsMeteo}
+                                        </p>
+                                      )}
+                                      {(intervention.zntDistanceM != null || intervention.zntRespectee != null) && (
+                                        <p>
+                                          <span className="text-muted-foreground">ZNT cours d&apos;eau :</span>{" "}
+                                          {intervention.zntDistanceM != null ? `${intervention.zntDistanceM} m` : "—"}
+                                          {intervention.zntRespectee != null && (
+                                            <Badge
+                                              variant="outline"
+                                              className={`ml-1 text-xs ${
+                                                intervention.zntRespectee
+                                                  ? "text-green-700 border-green-300"
+                                                  : "text-red-700 border-red-300"
+                                              }`}
+                                            >
+                                              {intervention.zntRespectee ? "Respectée" : "Non respectée"}
+                                            </Badge>
+                                          )}
+                                        </p>
+                                      )}
+                                      {intervention.justification && (
+                                        <p>
+                                          <span className="text-muted-foreground">Justification :</span>{" "}
+                                          {intervention.justification}
                                         </p>
                                       )}
                                     </div>

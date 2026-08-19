@@ -11,8 +11,33 @@ export interface NotifPrefs {
   autresUrgentes: boolean
 }
 
-/** Valeurs appliquées quand aucune préférence n'a encore été enregistrée. */
+/**
+ * Valeurs appliquées quand aucune préférence n'a encore été enregistrée.
+ *
+ * **Tout est éteint : les alertes par email sont sur OPT-IN**, chaque
+ * utilisateur les active lui-même dans `/parametres`. Décision du
+ * 2026-08-19, prise à la mise en service : le store anti-redondance vit en
+ * mémoire et démarre vide, donc un défaut « activé » aurait envoyé l'arriéré
+ * entier (retards, rappels d'irrigation, tâches de la semaine) à tous les
+ * comptes existants dans la minute suivant la bascule, sans que personne
+ * l'ait demandé — et de nouveau à chaque redémarrage du conteneur.
+ *
+ * Un défaut éteint est aussi le seul repli sûr : `chargerPrefsNotif` retombe
+ * ici quand la lecture des préférences échoue, et une panne de base ne doit
+ * pas se traduire par un envoi massif.
+ */
 export const DEFAULT_NOTIF_PREFS: NotifPrefs = {
+  meteo: false,
+  resume: false,
+  stocks: false,
+  itpSemaine: false,
+  recoltes: false,
+  irrigations: false,
+  autresUrgentes: false,
+}
+
+/** Toutes les notifications activées — utile aux tests et à un « tout cocher ». */
+export const TOUTES_NOTIF_PREFS: NotifPrefs = {
   meteo: true,
   resume: true,
   stocks: true,
@@ -20,6 +45,17 @@ export const DEFAULT_NOTIF_PREFS: NotifPrefs = {
   recoltes: true,
   irrigations: true,
   autresUrgentes: true,
+}
+
+/** Au moins une alerte « urgente » est-elle demandée ? (évite un scan pour rien) */
+export function auMoinsUneAlerteUrgenteActivee(prefs: NotifPrefs): boolean {
+  return (
+    prefs.stocks ||
+    prefs.itpSemaine ||
+    prefs.recoltes ||
+    prefs.irrigations ||
+    prefs.autresUrgentes
+  )
 }
 
 /** Parse une préférence sauvegardée sans faire confiance à son contenu. */

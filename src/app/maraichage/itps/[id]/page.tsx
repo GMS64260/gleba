@@ -160,13 +160,25 @@ export default function EditITPPage() {
     loadData()
   }, [id, form, toast, router])
 
-  const onSubmit = async (data: UpdateITPInput) => {
+  const onSubmit = async (data: UpdateITPInput, event?: React.BaseSyntheticEvent) => {
     setIsSubmitting(true)
     try {
+      // QA cmswxy73g — même filet qu'à la création : le <select> natif caché de
+      // Radix fait foi si l'état React n'a pas reçu le choix d'espèce.
+      const formulaire = event?.target
+      const especeSoumise =
+        formulaire instanceof HTMLFormElement
+          ? String(new FormData(formulaire).get("especeId") || "").trim()
+          : ""
+      const payload: UpdateITPInput = {
+        ...data,
+        especeId:
+          data.especeId ?? (especeSoumise && especeSoumise !== "_none" ? especeSoumise : null),
+      }
       const response = await fetch(`/api/itps/${encodeURIComponent(id)}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify(payload),
       })
 
       if (!response.ok) {
@@ -230,7 +242,7 @@ export default function EditITPPage() {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-50">
-        <AppHeader current="maraichage" />
+        <AppHeader current="maraichage" showLune />
         <PageToolbar>
           <Skeleton className="h-8 w-64" />
         </PageToolbar>
@@ -252,7 +264,7 @@ export default function EditITPPage() {
   return (
     <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
       <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
-      <AppHeader current="maraichage" />
+      <AppHeader current="maraichage" showLune />
       <PageToolbar>
         <div className="flex items-center gap-4">
           <Link href="/maraichage/itps">
@@ -369,6 +381,7 @@ export default function EditITPPage() {
                     <FormItem>
                       <FormLabel>Espèce</FormLabel>
                       <Select
+                        name="especeId"
                         onValueChange={(value) => field.onChange(value === "_none" ? null : value)}
                         value={field.value || "_none"}
                       >

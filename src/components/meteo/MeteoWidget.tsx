@@ -222,7 +222,7 @@ export function MeteoWidget({ parcelleId, lat, lng, compact = false, defaultExpa
       <div className="border rounded-lg p-4 bg-white">
         <div className="flex items-center gap-2 text-slate-400">
           <Loader2 className="h-4 w-4 animate-spin" />
-          <span className="text-sm">Chargement meteo...</span>
+          <span className="text-sm">Chargement météo…</span>
         </div>
       </div>
     )
@@ -329,7 +329,7 @@ export function MeteoWidget({ parcelleId, lat, lng, compact = false, defaultExpa
 
           {/* Previsions 7 jours */}
           <div className="px-3 py-2">
-            <p className="text-xs font-medium text-slate-500 mb-2">Previsions 7 jours</p>
+            <p className="text-xs font-medium text-slate-500 mb-2">Prévisions 7 jours</p>
             <div className="grid grid-cols-7 gap-1">
               {previsions.slice(0, 7).map((jour, i) => {
                 const date = new Date(jour.date)

@@ -62,9 +62,10 @@ export interface UseElevageModesResult {
 }
 
 export function useElevageModes(): UseElevageModesResult {
-  const cached = readCache()
-  const [modes, setModes] = React.useState<ElevageModeId[]>(cached?.modes ?? DEFAULT_MODES_ELEVAGE)
-  const [loading, setLoading] = React.useState(!cached)
+  // Pas de lecture localStorage au rendu : le serveur et le 1er rendu client
+  // doivent produire le même HTML (React #418, cf. use-modules.ts).
+  const [modes, setModes] = React.useState<ElevageModeId[]>(DEFAULT_MODES_ELEVAGE)
+  const [loading, setLoading] = React.useState(true)
 
   const refresh = React.useCallback(async () => {
     setLoading(true)
@@ -84,6 +85,12 @@ export function useElevageModes(): UseElevageModesResult {
   }, [])
 
   React.useEffect(() => {
+    // Cache appliqué au mount seulement, jamais au rendu initial (React #418).
+    const cached = readCache()
+    if (cached) {
+      setModes([...cached.modes])
+      setLoading(false)
+    }
     refresh()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

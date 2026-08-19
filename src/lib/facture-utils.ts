@@ -161,9 +161,10 @@ function mentionsParDefaut(snapshot: EmetteurSnapshot | null, lignes: LigneFactu
  * en lockant la ligne `sequences_facture` correspondante (FOR UPDATE).
  *
  * Si la séquence n'existe pas encore (cas d'un nouvel exercice), elle est
- * initialisée à 1. Le `INSERT ... ON CONFLICT` garantit qu'une transaction
- * concurrente ne créera pas de doublon : le second arrivant trouvera la
- * ligne et la verrouillera après la première transaction.
+ * initialisée juste après le plus grand numéro déjà utilisé — 1 s'il n'y en a
+ * aucun. Le `INSERT ... ON CONFLICT` garantit qu'une transaction concurrente ne
+ * créera pas de doublon : le second arrivant trouvera la ligne et la
+ * verrouillera après la première transaction.
  */
 async function reserverProchainNumero(
   tx: PrismaTx,
@@ -174,11 +175,28 @@ async function reserverProchainNumero(
   const prefixeDefaut =
     typeSeq === 'AVOIR' ? `AV-${exercice}-` : typeSeq === 'DEVIS' ? `D-${exercice}-` : `F-${exercice}-`
 
-  // Insert idempotent si la séquence n'existe pas encore pour cet exercice
+  // Insert idempotent si la séquence n'existe pas encore pour cet exercice.
+  //
+  // QA cmsqln4om — l'amorçage était codé en dur à 1, sans jamais regarder les
+  // factures déjà présentes. Or les jeux de données semés (prisma/seed-demo.ts)
+  // créent F-AAAA-0001 et suivantes sans écrire de ligne de séquence : la
+  // première facture émise depuis l'écran réservait donc F-AAAA-0001, violait
+  // l'index unique (user_id, numero), et le rollback de la transaction annulait
+  // aussi cet INSERT — le compte restait bloqué à l'infini, chaque tentative
+  // rejouant la même collision. On amorce sur le plus grand numéro déjà utilisé
+  // pour ce couple (utilisateur, préfixe). Le filtre `~ '[0-9]+$'` écarte les
+  // numéros temporaires de brouillon (BR-<timestamp>-<n>), et le LIKE sur le
+  // préfixe garde les trois séquences (facture / avoir / devis) étanches.
   await tx.$executeRawUnsafe(
     `
     INSERT INTO sequences_facture (id, user_id, exercice, type, prochain_num, prefixe, format, created_at, updated_at)
-    VALUES (gen_random_uuid()::text, $1, $2, $3, 1, $4, '%04d', NOW(), NOW())
+    SELECT gen_random_uuid()::text, $1, $2, $3,
+           COALESCE((SELECT MAX(SUBSTRING(f.numero FROM '([0-9]+)$')::int)
+                     FROM factures f
+                     WHERE f.user_id = $1
+                       AND f.numero LIKE $4 || '%'
+                       AND f.numero ~ '[0-9]+$'), 0) + 1,
+           $4, '%04d', NOW(), NOW()
     ON CONFLICT (user_id, exercice, type) DO NOTHING
     `,
     userId,

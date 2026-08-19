@@ -27,35 +27,41 @@ export function EditableSelectCell({
 }: EditableSelectCellProps) {
   const [editing, setEditing] = React.useState(false)
   const [localValue, setLocalValue] = React.useState(value || '')
+  const [saving, setSaving] = React.useState(false)
 
   React.useEffect(() => {
     setLocalValue(value || '')
   }, [value])
 
-  const handleBlur = async () => {
-    setEditing(false)
+  // QA cmsnodbo6 — la sauvegarde n'était déclenchée qu'au blur, or choisir
+  // une option d'un <select> natif ne retire pas le focus : « Limoneux »
+  // s'affichait puis disparaissait au reload car aucun PUT n'était jamais
+  // parti (et le clic « ailleurs » naturel tombait sur la ligne cliquable qui
+  // navigue vers la fiche). On enregistre dès le changement de valeur.
+  const save = async (next: string) => {
+    if (next === (value || '')) return
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/planches/${encodeURIComponent(plancheId)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [field]: next || null }),
+      })
 
-    if (localValue !== value) {
-      // Sauvegarder
-      try {
-        const res = await fetch(`/api/planches/${encodeURIComponent(plancheId)}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ [field]: localValue || null }),
-        })
-
-        if (!res.ok) {
-          throw new Error('Erreur sauvegarde')
-        }
-
-        // Rafraîchir les données
-        onUpdate()
-      } catch (error) {
-        console.error('Erreur:', error)
-        await alertDialog('Erreur lors de la sauvegarde')
-        // Revenir à l'ancienne valeur
-        setLocalValue(value || '')
+      if (!res.ok) {
+        throw new Error('Erreur sauvegarde')
       }
+
+      // Rafraîchir les données
+      onUpdate()
+    } catch (error) {
+      console.error('Erreur:', error)
+      await alertDialog('Erreur lors de la sauvegarde')
+      // Revenir à l'ancienne valeur
+      setLocalValue(value || '')
+    } finally {
+      setSaving(false)
+      setEditing(false)
     }
   }
 
@@ -70,19 +76,27 @@ export function EditableSelectCell({
   }
 
   const currentOption = options.find(o => o.value === value)
+  // Une valeur héritée hors canon (ex. type_sol « argile ») reste visible
+  // telle quelle au lieu de se faire passer pour absente (« Définir »).
   const displayValue = currentOption
     ? `${currentOption.icon || ''} ${currentOption.label}`.trim()
-    : placeholder
+    : (value || placeholder)
 
   if (editing) {
     return (
       <select
         value={localValue}
-        onChange={(e) => setLocalValue(e.target.value)}
-        onBlur={handleBlur}
+        onChange={(e) => {
+          setLocalValue(e.target.value)
+          void save(e.target.value)
+        }}
+        onBlur={() => {
+          if (!saving) setEditing(false)
+        }}
         onKeyDown={handleKeyDown}
         onClick={(e) => e.stopPropagation()}
-        className="h-8 text-xs rounded-md border border-green-500 bg-background px-2 py-1 focus:outline-none focus:ring-2 focus:ring-green-500"
+        disabled={saving}
+        className="h-8 text-xs rounded-md border border-green-500 bg-background px-2 py-1 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-60"
         autoFocus
       >
         <option value="">{placeholder}</option>

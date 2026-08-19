@@ -7,7 +7,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
-import { findTreeCareProfile, generateCareOperations } from "@/lib/tree-care-calendar"
+import { productifParDefaut } from "@/lib/tree-care-calendar"
+import { genererCalendrierEntretien } from "@/lib/verger/creation-arbre"
 import { zoneEffectiveUser } from "@/lib/terroir"
 import { adequationEspece } from "@/lib/adequation-zone"
 import { visibiliteReferentiel } from "@/lib/referentiel-communaute"
@@ -151,6 +152,23 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Friction du 2026-08-12 (compte inscrit le jour même) : l'espèce était
+    // facultative, et un arbre sans espèce est un arbre sans rien — le
+    // calendrier d'entretien n'est généré que `if (arbre.espece)`, l'adéquation
+    // au climat n'est pas contrôlée, et l'âge d'entrée en production n'est pas
+    // connu (l'arbre ressortait « Productif » le jour de sa plantation).
+    // Même motif que la date de plantation ci-dessus, et même exigence que le
+    // lot agrégé, qui la réclame déjà (`validerLotArbres`).
+    if (!body.espece || !String(body.espece).trim()) {
+      return NextResponse.json(
+        {
+          error:
+            "L’espèce est requise : elle conditionne le calendrier d’entretien, l’âge d’entrée en production et le contrôle d’adéquation au climat.",
+        },
+        { status: 400 }
+      )
+    }
+
     const gpsLat =
       body.gpsLat == null || body.gpsLat === "" ? null : Number(body.gpsLat)
     const gpsLng =
@@ -237,7 +255,16 @@ export async function POST(request: NextRequest) {
         pollinisateur: body.pollinisateur || null,
         couleur: body.couleur || null,
         notes: body.notes || null,
-        productif: body.productif !== undefined ? body.productif : true,
+        // QA cmsnobba5 — un arbre planté le jour même sortait « Productif :
+        // Oui » et gonflait le KPI fruitiers productifs : le défaut `true`
+        // ignorait l'âge d'entrée en production, pourtant connu du
+        // référentiel. Friction du 2026-08-12 : la dérivation retombait sur
+        // `true` dès que l'espèce était hors barème. `productifParDefaut`
+        // ajoute le plancher « moins d'un an ⇒ pas productif ».
+        productif:
+          body.productif !== undefined
+            ? body.productif
+            : productifParDefaut(body.espece, body.datePlantation),
         anneeProduction: body.anneeProduction ? parseInt(body.anneeProduction) : null,
         rendementMoyen: body.rendementMoyen ? parseFloat(body.rendementMoyen) : null,
         // Nouveaux champs verger enrichi
@@ -274,25 +301,9 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // Auto-génération du calendrier d'entretien si espece connue.
-    // Plancher = aujourd'hui : un arbre créé en juillet ne doit pas naître
-    // avec les opérations de mars déjà « en retard » (elles reviendront au
-    // cycle suivant). On transmet aussi la variété pour caler la récolte.
-    let calendrierGenere = false
-    if (arbre.espece) {
-      const profile = findTreeCareProfile(arbre.espece)
-      if (profile) {
-        const now = new Date()
-        const debutJour = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-        const operations = generateCareOperations(
-          profile, now.getFullYear(), arbre.id, session!.user.id, arbre.variete, debutJour,
-        )
-        if (operations.length > 0) {
-          await prisma.operationArbre.createMany({ data: operations })
-        }
-        calendrierGenere = operations.length > 0
-      }
-    }
+    // Geste partagé avec l'outil `create_arbre` de l'assistant : voir
+    // `src/lib/verger/creation-arbre.ts`.
+    const calendrierGenere = await genererCalendrierEntretien(arbre, session!.user.id)
 
     // Avertissement d'adéquation géographique (non bloquant) : ex. planter un
     // fruitier à besoin de froid en zone tropicale. Renvoyé pour affichage

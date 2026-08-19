@@ -8,10 +8,9 @@
 import * as React from "react"
 import { Suspense } from "react"
 import Link from "next/link"
-import { useSearchParams } from "next/navigation"
 import { ArrowLeft, FileStack, CheckCircle2, Plus, Loader2 } from "lucide-react"
 import { formatSemaine } from "@/lib/assistant-helpers"
-import { updateDashboardSearchParams } from "@/lib/dashboard-navigation"
+import { useAnneePlanification } from "@/hooks/use-annee-planification"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -52,20 +51,20 @@ interface CulturePrevue {
 }
 
 function CreerCulturesContent() {
-  const searchParams = useSearchParams()
   const { toast } = useToast()
 
   const [data, setData] = React.useState<CulturePrevue[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [isCreating, setIsCreating] = React.useState(false)
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
-  const anneeParam = parseInt(searchParams.get("annee") || "", 10)
-  const annee = Number.isNaN(anneeParam) ? new Date().getFullYear() : anneeParam
-
-  const annees = React.useMemo(() => {
-    const currentYear = new Date().getFullYear()
-    return Array.from({ length: 11 }, (_, i) => currentYear - 5 + i)
-  }, [])
+  // QA cmswunyun — même motif que cultures-prevues (cmsp5p3v4) : l'URL est
+  // la source de vérité de l'année. Le repli silencieux sur l'année courante
+  // affichait « Total prévues 0 » (2026, tout créé) alors que l'écran voisin
+  // listait 13 cultures 2028.
+  const [hasError, setHasError] = React.useState(false)
+  // QA cmswwu5cc — l'année du hub Planification vit dans une seule source
+  // (URL, puis saison mémorisée du module) : voir useAnneePlanification.
+  const { annee, definirAnnee, annees, pret: anneePrete } = useAnneePlanification()
 
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
@@ -75,7 +74,11 @@ function CreerCulturesContent() {
       if (!response.ok) throw new Error("Erreur lors du chargement")
       const result = await response.json()
       setData(result.data)
+      setHasError(false)
     } catch {
+      // QA cmswunyun — un échec de chargement laissait data=[] et l'écran
+      // affichait « Total prévues 0 » : l'erreur reste visible après le toast.
+      setHasError(true)
       toast({
         variant: "destructive",
         title: "Erreur",
@@ -87,19 +90,12 @@ function CreerCulturesContent() {
   }, [annee, toast])
 
   React.useEffect(() => {
+    // Ne pas charger la saison courante avant d'avoir restauré la saison
+    // mémorisée : la réponse tardive écraserait les données de la bonne année.
+    if (!anneePrete) return
     fetchData()
-  }, [fetchData])
+  }, [anneePrete, fetchData])
 
-  const handleAnneeChange = React.useCallback(
-    (value: string) => {
-      const params = new URLSearchParams(searchParams.toString())
-      params.set("annee", value)
-      // Un filtre d'année ne doit pas encombrer l'historique, mais il doit
-      // rester dans le deep-link et survivre à un rechargement.
-      updateDashboardSearchParams(params, "replace")
-    },
-    [searchParams]
-  )
 
   // Cultures à créer (non existantes avec un ITP)
   const culturesACreer = data.filter(c => !c.existante && c.itpId)
@@ -198,7 +194,7 @@ function CreerCulturesContent() {
         <div className="flex items-center gap-4">
           <Select
             value={annee.toString()}
-            onValueChange={handleAnneeChange}
+            onValueChange={(value) => definirAnnee(parseInt(value, 10))}
           >
             <SelectTrigger className="w-[100px]">
               <SelectValue />
@@ -282,6 +278,14 @@ function CreerCulturesContent() {
           <CardContent>
             {isLoading ? (
               <Skeleton className="h-[400px] w-full" />
+            ) : hasError ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <p className="text-lg font-medium text-red-600">Chargement impossible</p>
+                <p className="mt-2">Les cultures prévues n&apos;ont pas pu être chargées.</p>
+                <Button variant="outline" className="mt-4" onClick={fetchData}>
+                  Réessayer
+                </Button>
+              </div>
             ) : culturesACreer.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <CheckCircle2 className="h-12 w-12 mx-auto mb-4 text-green-600" />

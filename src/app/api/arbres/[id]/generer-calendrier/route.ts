@@ -37,12 +37,17 @@ export async function POST(
       )
     }
 
-    const profile = findTreeCareProfile(arbre.espece)
+    // Ticket cmsofzh0w — le type de l'arbre borne la recherche : un
+    // Châtaignier FORESTIER ne doit pas recevoir le calendrier fruitier.
+    const profile = findTreeCareProfile(arbre.espece, arbre.type)
     if (!profile) {
-      return NextResponse.json(
-        { error: `Aucun calendrier d'entretien connu pour "${arbre.espece}"` },
-        { status: 404 }
-      )
+      // Message explicite quand l'espèce existe au référentiel mais que la
+      // conduite de l'arbre (forestier, ornement, haie) l'exclut.
+      const profilAutreConduite = findTreeCareProfile(arbre.espece)
+      const message = profilAutreConduite
+        ? `"${arbre.espece}" est enregistré comme arbre de type "${arbre.type}" : le calendrier ${profilAutreConduite.type} du référentiel ne s'applique pas à cette conduite`
+        : `Aucun calendrier d'entretien connu pour "${arbre.espece}"`
+      return NextResponse.json({ error: message }, { status: 404 })
     }
 
     const body = await request.json().catch(() => ({}))

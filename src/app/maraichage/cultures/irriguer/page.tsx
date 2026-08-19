@@ -35,6 +35,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
+import { consommationHebdoTotale } from "@/lib/irrigation/consommation"
 
 interface MeteoResume {
   pluie48h: number
@@ -172,14 +173,14 @@ function CulturesIrriguerContent() {
       })
 
       toast({
-        title: "Mis a jour",
-        description: currentValue ? "Irrigation desactivee" : "Irrigation activee",
+        title: "Mis à jour",
+        description: currentValue ? "Irrigation désactivée" : "Irrigation activée",
       })
     } catch {
       toast({
         variant: "destructive",
         title: "Erreur",
-        description: "Impossible de mettre a jour",
+        description: "Impossible de mettre à jour",
       })
     }
   }
@@ -195,8 +196,8 @@ function CulturesIrriguerContent() {
       await fetchData()
 
       toast({
-        title: "Arrosage note",
-        description: "Derniere irrigation mise à jour",
+        title: "Arrosage noté",
+        description: "Dernière irrigation mise à jour",
       })
     } catch {
       toast({
@@ -222,8 +223,8 @@ function CulturesIrriguerContent() {
       await fetchData()
 
       toast({
-        title: "Ilot arrose",
-        description: `${culturesIlot.length} culture(s) marquee(s)`,
+        title: "Îlot arrosé",
+        description: `${culturesIlot.length} culture(s) marquée(s)`,
       })
     } catch {
       toast({
@@ -246,7 +247,7 @@ function CulturesIrriguerContent() {
     if (urgence === 'aucune') return <Badge variant="secondary" className="bg-green-100 text-green-700">OK</Badge>
     if (jamais && urgence !== 'critique') return <Badge variant="secondary" className="bg-slate-100 text-slate-600">Jamais</Badge>
     if (urgence === 'critique') return <Badge variant="destructive">Urgent</Badge>
-    if (urgence === 'haute') return <Badge className="bg-orange-500">Priorite</Badge>
+    if (urgence === 'haute') return <Badge className="bg-orange-500">Priorité</Badge>
     if (urgence === 'moyenne') return <Badge className="bg-yellow-500">Moyen</Badge>
     return <Badge variant="secondary" className="bg-blue-100 text-blue-700">Faible</Badge>
   }
@@ -288,7 +289,7 @@ function CulturesIrriguerContent() {
     if (groupBy === 'ilot') {
       const groups: Record<string, typeof filteredData> = {}
       filteredData.forEach(c => {
-        const key = c.planche?.ilot || 'Sans ilot'
+        const key = c.planche?.ilot || 'Sans îlot'
         if (!groups[key]) groups[key] = []
         groups[key].push(c)
       })
@@ -296,7 +297,7 @@ function CulturesIrriguerContent() {
     } else if (groupBy === 'type-irrigation') {
       const groups: Record<string, typeof filteredData> = {}
       filteredData.forEach(c => {
-        const key = c.planche?.irrigation || 'Non defini'
+        const key = c.planche?.irrigation || 'Non défini'
         if (!groups[key]) groups[key] = []
         groups[key].push(c)
       })
@@ -319,7 +320,7 @@ function CulturesIrriguerContent() {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-50">
-        <AppHeader current="maraichage" />
+        <AppHeader current="maraichage" showLune />
         <PageToolbar>
           <Skeleton className="h-8 w-64" />
         </PageToolbar>
@@ -334,7 +335,7 @@ function CulturesIrriguerContent() {
     <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
       <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
       {/* Header */}
-      <AppHeader current="maraichage" />
+      <AppHeader current="maraichage" showLune />
       <PageToolbar>
         <div className="flex items-center gap-4">
           <Link href="/maraichage/cultures">
@@ -414,12 +415,12 @@ function CulturesIrriguerContent() {
                   <span>48h: {Math.round(meteoGlobal.pluie48h)}mm</span>
                   {meteoGlobal.pluiePrevue48h > 0 && (
                     <span className="text-blue-600">
-                      +{Math.round(meteoGlobal.pluiePrevue48h)}mm prevus (48h)
+                      +{Math.round(meteoGlobal.pluiePrevue48h)}mm prévus (48h)
                     </span>
                   )}
                   {meteoGlobal.pluiePrevue5j > 0 && (
                     <span className="text-blue-600">
-                      +{Math.round(meteoGlobal.pluiePrevue5j)}mm prevus (5j)
+                      +{Math.round(meteoGlobal.pluiePrevue5j)}mm prévus (5j)
                     </span>
                   )}
                   {meteoGlobal.joursAvantPluie !== null && meteoGlobal.joursAvantPluie > 0 && (
@@ -534,7 +535,7 @@ function CulturesIrriguerContent() {
                   restantes (7j)
                   {stats.irrigationsAutoValidees > 0 && (
                     <span className="text-green-600 ml-1">
-                      · {stats.irrigationsAutoValidees} auto-validee{stats.irrigationsAutoValidees > 1 ? 's' : ''} par la pluie
+                      · {stats.irrigationsAutoValidees} auto-validée{stats.irrigationsAutoValidees > 1 ? 's' : ''} par la pluie
                     </span>
                   )}
                 </p>
@@ -546,7 +547,7 @@ function CulturesIrriguerContent() {
               </CardHeader>
               <CardContent>
                 <p className="text-2xl font-bold text-cyan-600">{stats.consommationTotaleEstimee}L</p>
-                <p className="text-xs text-muted-foreground mt-1">par semaine (estime)</p>
+                <p className="text-xs text-muted-foreground mt-1">par semaine (estimé)</p>
               </CardContent>
             </Card>
           </div>
@@ -564,7 +565,10 @@ function CulturesIrriguerContent() {
         ) : (
           <div className="space-y-6">
             {Object.entries(groupedData).map(([groupe, cultures]) => {
-              const consommationGroupe = cultures.reduce((sum, c) => sum + c.consommationEauSemaine, 0)
+              // QA cmsqlstoi — même règle que le KPI Consommation : une planche
+              // multiculture est arrosée en un seul passage, donc on dédoublonne
+              // par planche au lieu d'additionner culture par culture.
+              const consommationGroupe = consommationHebdoTotale(cultures)
               const prochainesGroupe = cultures.reduce((sum, c) => sum + c.prochainesIrrigations, 0)
               const okCount = cultures.filter(c => c.urgence === 'aucune').length
 
@@ -603,7 +607,7 @@ function CulturesIrriguerContent() {
                       </div>
                       {prochainesGroupe > 0 && (
                         <span className="text-blue-600 whitespace-nowrap">
-                          +{prochainesGroupe} a venir
+                          +{prochainesGroupe} à venir
                         </span>
                       )}
                     </div>
@@ -674,7 +678,7 @@ function CulturesIrriguerContent() {
                                   )}
                                   {culture.prochainesIrrigations > 0 && (
                                     <span className="text-blue-600">
-                                      +{culture.prochainesIrrigations} planifiee{culture.prochainesIrrigations > 1 ? 's' : ''} (7j)
+                                      +{culture.prochainesIrrigations} planifiée{culture.prochainesIrrigations > 1 ? 's' : ''} (7j)
                                     </span>
                                   )}
                                   {culture.irrigationsAutoValidees > 0 && (
@@ -719,7 +723,7 @@ function CulturesIrriguerContent() {
                               </div>
 
                               {culture.planche && (
-                                <Link href={`/maraichage/planches/${encodeURIComponent(culture.planche.nom || culture.planche.id)}`}>
+                                <Link href={`/maraichage/planches/${encodeURIComponent(culture.planche.id)}`}>
                                   <Badge variant="secondary" className="cursor-pointer hover:bg-slate-200 whitespace-nowrap">
                                     {culture.planche.nom || culture.planche.id}
                                   </Badge>
@@ -732,7 +736,7 @@ function CulturesIrriguerContent() {
                                   variant="ghost"
                                   onClick={() => marquerArrosee(culture.id)}
                                   className="h-8 w-8 p-0 text-cyan-600 hover:text-cyan-700 hover:bg-cyan-50"
-                                  title="Marquer comme arrose"
+                                  title="Marquer comme arrosé"
                                 >
                                   <Droplet className="h-4 w-4" />
                                 </Button>
@@ -760,11 +764,11 @@ function CulturesIrriguerContent() {
           </div>
         )}
 
-        {/* Historique recent */}
+        {/* Historique récent */}
         {filteredData.length > 0 && (
           <Card className="mt-6">
             <CardHeader>
-              <CardTitle className="text-sm">Historique recent</CardTitle>
+              <CardTitle className="text-sm">Historique récent</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-1">

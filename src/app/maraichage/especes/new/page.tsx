@@ -35,15 +35,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useToast } from "@/hooks/use-toast"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 import { createEspeceSchema, ESPECE_TYPES, type CreateEspeceInput } from "@/lib/validations"
-
-// Labels pour les types
-const TYPE_LABELS: Record<string, string> = {
-  legume: 'Légume',
-  arbre_fruitier: 'Arbre fruitier',
-  petit_fruit: 'Petit fruit',
-  aromatique: 'Aromatique',
-  engrais_vert: 'Engrais vert',
-}
+// Ticket FB-E33FAA (2026-08-18) : cet écran énumérait ESPECE_TYPES (sept
+// valeurs) mais les labellisait avec une carte LOCALE de six entrées. `ornement`
+// n'y figurant pas, le menu déroulant rendait une option VIDE — sélectionnable,
+// sans un mot pour dire ce qu'elle crée. Les libellés viennent désormais du
+// référentiel (`libelleTypeEspece`), et chaque option porte l'effet du type.
+import {
+  ESPECE_TYPE_DESCRIPTIONS,
+  UNITE_RENDEMENT_LABELS,
+  libelleTypeEspece,
+  uniteRendementParType,
+} from "@/lib/validations/espece"
 
 export default function NewEspecePage() {
   const router = useRouter()
@@ -72,6 +74,9 @@ export default function NewEspecePage() {
     },
   })
 
+  // Type courant : pilote l'unité de rendement affichée ET enregistrée.
+  const typeChoisi = form.watch("type")
+
   // Charger les familles
   React.useEffect(() => {
     fetch("/api/familles")
@@ -83,10 +88,18 @@ export default function NewEspecePage() {
   const onSubmit = async (data: CreateEspeceInput) => {
     setIsSubmitting(true)
     try {
+      // L’unité est DÉRIVÉE du type au moment de l’envoi, jamais tenue dans un
+      // état parallèle : rien à resynchroniser, donc rien à désynchroniser.
+      // Sans ce champ, la colonne `unite_rendement` (NOT NULL, défaut kg_m2)
+      // recevait kg/m² pour un arbre fruitier comme pour un engrais vert, et le
+      // référentiel réaffichait ensuite ce rendement sous une unité fausse.
       const response = await fetch("/api/especes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+          ...data,
+          uniteRendement: uniteRendementParType(data.type),
+        }),
       })
 
       if (!response.ok) {
@@ -114,7 +127,7 @@ export default function NewEspecePage() {
     <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
       <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
       {/* Header */}
-      <AppHeader current="maraichage" />
+      <AppHeader current="maraichage" showLune />
       <PageToolbar>
         <div className="flex items-center gap-4">
           <Link href="/maraichage/especes">
@@ -158,7 +171,7 @@ export default function NewEspecePage() {
                   name="type"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Type</FormLabel>
+                      <FormLabel>Type *</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger>
@@ -166,13 +179,44 @@ export default function NewEspecePage() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
+                          {/*
+                            Un seul libellé par option, et rien de plus : le
+                            SelectItem de shadcn enveloppe TOUS ses enfants dans
+                            `SelectPrimitive.ItemText`, que Radix reporte dans le
+                            déclencheur. Une description en second ligne ici se
+                            retrouverait donc affichée dans le champ fermé. Elle
+                            vit sous le champ, pour le type sélectionné.
+                          */}
                           {ESPECE_TYPES.map((type) => (
                             <SelectItem key={type} value={type}>
-                              {TYPE_LABELS[type]}
+                              {libelleTypeEspece(type)}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
+                      {/*
+                        Le type n'est pas une étiquette : il décide de l'écran qui
+                        listera l'espèce, de l'unité de son rendement, de sa
+                        présence dans les stocks de maraîchage et de sa catégorie
+                        boutique. D'où une liste fermée — et d'où l'obligation de
+                        le DIRE, avec l'endroit où demander un type manquant
+                        (même règle que le ticket FB-2DX9QI, qui avait vu
+                        l'assistant refuser une fonction sans jamais nommer
+                        /communaute).
+                      */}
+                      <FormDescription>
+                        <span className="block font-medium text-slate-700">
+                          {ESPECE_TYPE_DESCRIPTIONS[typeChoisi]}
+                        </span>
+                        Cette liste est fermée : chaque type pilote l&apos;écran où
+                        l&apos;espèce apparaît, l&apos;unité de son rendement et ses stocks.
+                        Il manque un type à votre production ?{" "}
+                        <Link href="/communaute" className="underline">
+                          demandez-le à la communauté
+                        </Link>
+                        {" "}— en attendant, choisissez le type dont la conduite est la plus
+                        proche et précisez votre usage dans les notes.
+                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -270,11 +314,20 @@ export default function NewEspecePage() {
                   name="rendement"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Rendement (kg/m²)</FormLabel>
+                      {/*
+                        L'unité suit le TYPE choisi et n'est plus écrite en dur :
+                        elle étiquetait « kg/m² » les rendements par arbre et les
+                        biomasses en t/ha (même mensonge d'étiquette que QA
+                        cmsqlu3os). C'est bien cette unité qui part en base, via
+                        `uniteRendement` dans le payload.
+                      */}
+                      <FormLabel>
+                        Rendement ({UNITE_RENDEMENT_LABELS[uniteRendementParType(typeChoisi)]})
+                      </FormLabel>
                       <FormControl>
                         <Input
                           type="number"
-                          step="0.1"
+                          step="any"
                           placeholder="Ex: 5"
                           {...field}
                           value={field.value ?? ""}
@@ -285,6 +338,13 @@ export default function NewEspecePage() {
                           }
                         />
                       </FormControl>
+                      <FormDescription>
+                        {typeChoisi === "arbre_fruitier"
+                          ? "Récolte attendue par arbre adulte et par an."
+                          : typeChoisi === "engrais_vert"
+                            ? "Biomasse produite par hectare, en tonnes."
+                            : "Récolte attendue par mètre carré cultivé et par an."}
+                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}

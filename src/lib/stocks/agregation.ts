@@ -76,3 +76,16 @@ export function moyennePrix(prix: (number | null | undefined)[]): number | null 
 function round2(n: number): number {
   return Math.round(n * 100) / 100
 }
+
+/**
+ * Arrondi d'affichage d'une quantité de stock.
+ *
+ * QA cmsqlr6jb : `4.8 + 4.8 + 0.5 + 0.7` vaut `10.799999999999999` en flottant,
+ * et ce nombre est parti tel quel à l'utilisateur sur /comptabilite/stocks.
+ * Même raison que `surfacePlanche()`. Trois décimales = le gramme sur un kilo,
+ * le millilitre sur un litre : assez fin pour ne rien perdre, assez court pour
+ * ne plus laisser passer la bavure.
+ */
+export function arrondiQuantiteStock(q: number): number {
+  return Number.isFinite(q) ? Math.round(q * 1000) / 1000 : 0
+}

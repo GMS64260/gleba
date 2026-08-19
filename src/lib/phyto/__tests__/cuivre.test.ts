@@ -128,6 +128,41 @@ describe('doseCuivreMetalKg', () => {
     expect(cu).toBeCloseTo(1, 2)
   })
 
+  // QA cmsogea5w (a) — l'arrondi à 3 décimales PAR LIGNE faisait tomber à 0
+  // une intervention réellement dosée sur petite surface (1,5 L/ha × 9,6 m²).
+  it("ne tronque plus à 0 une dose faible non nulle (1,5 L/ha × 9,6 m²)", () => {
+    const cu = doseCuivreMetalKg({
+      date: new Date('2026-04-08'),
+      parcelleId: 'P1',
+      surfaceHa: 0.00096, // 9,6 m²
+      doseAppliquee: 1.5,
+      uniteDose: 'L/ha',
+      volumeBouillieLHa: null,
+      produit: { contientCuivre: true, cuivreMetalPct: 20 },
+    })
+    // 1,5 × 0,00096 = 0,00144 kg produit × 20% = 0,000288 kg Cu
+    expect(cu).toBeGreaterThan(0)
+    expect(cu).toBeCloseTo(0.000288, 6)
+  })
+
+  // QA cmsogea5w (b) — quantités absolues des opérations d'arbres (« 3 kg »
+  // de bouillie sur un arbre) : pas de dose/ha ni de surface.
+  it("gère les quantités absolues kg/L/g sans surface (opérations d'arbres)", () => {
+    const base = {
+      date: new Date('2026-04-08'),
+      parcelleId: 'P1',
+      surfaceHa: null,
+      volumeBouillieLHa: null,
+      produit: { nomCommercial: 'Bouillie bordelaise' }, // 20% par défaut
+    }
+    // 3 kg × 20% = 0.6 kg Cu
+    expect(doseCuivreMetalKg({ ...base, doseAppliquee: 3, uniteDose: 'kg' })).toBeCloseTo(0.6, 3)
+    // 2 L ≈ 2 kg × 20% = 0.4 kg Cu
+    expect(doseCuivreMetalKg({ ...base, doseAppliquee: 2, uniteDose: 'L' })).toBeCloseTo(0.4, 3)
+    // 500 g = 0.5 kg × 20% = 0.1 kg Cu
+    expect(doseCuivreMetalKg({ ...base, doseAppliquee: 500, uniteDose: 'g' })).toBeCloseTo(0.1, 3)
+  })
+
   it('retourne 0 si surface ou dose manquantes', () => {
     expect(
       doseCuivreMetalKg({
@@ -275,6 +310,49 @@ describe('cumuleParParcelle', () => {
     expect(p1.cuivreKgParHa7ans).toBeCloseTo(3, 2)
     // Plafond 7 ans = 28 kg/ha → 3 kg/ha = OK
     expect(p1.statut).toBe('ok')
+  })
+
+  // QA cmsogea5w (a) — une ligne à dose faible non nulle était arrondie à 0
+  // par ligne, donc classée à tort « sans dose ni surface ».
+  it('somme une dose faible non nulle au lieu de la classer « sans dose »', () => {
+    const traitements = [
+      {
+        date: new Date('2026-04-08'),
+        parcelleId: 'P1',
+        surfaceHa: 0.00096, // 9,6 m²
+        doseAppliquee: 1.5,
+        uniteDose: 'L/ha',
+        volumeBouillieLHa: null,
+        produit: bouillie,
+      },
+    ]
+    const cumuls = cumuleParParcelle(traitements, surfaces, new Date('2026-06-01'))
+    const p1 = cumuls.find((c) => c.parcelleId === 'P1')!
+    expect(p1.nbTraitementsAn).toBe(1)
+    expect(p1.nbTraitements7ans).toBe(1)
+    expect(p1.nbTraitementsCuivreSansDose7ans).toBe(0)
+  })
+
+  // QA cmsogea5w (b) — une opération d'arbre cuivrée en quantité absolue
+  // (« Bouillie bordelaise 3 kg ») doit être comptée dans le cumul.
+  it("compte une opération d'arbre cuivrée en quantité absolue", () => {
+    const traitements = [
+      {
+        date: new Date('2026-04-08'),
+        parcelleId: 'P1',
+        surfaceHa: null,
+        doseAppliquee: 3,
+        uniteDose: 'kg',
+        volumeBouillieLHa: null,
+        produit: { nomCommercial: 'Bouillie bordelaise' },
+      },
+    ]
+    const cumuls = cumuleParParcelle(traitements, surfaces, new Date('2026-06-01'))
+    const p1 = cumuls.find((c) => c.parcelleId === 'P1')!
+    // 3 kg × 20% (défaut) = 0.6 kg Cu sur P1 (2 ha) → 0.3 kg/ha
+    expect(p1.cumulAnnuelKg).toBeCloseTo(0.6, 3)
+    expect(p1.nbTraitementsAn).toBe(1)
+    expect(p1.nbTraitementsCuivreSansDose7ans).toBe(0)
   })
 
   it('plafond 7 ans (28 kg/ha) dimensionne aussi l\'alerte', () => {

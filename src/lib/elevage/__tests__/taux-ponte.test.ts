@@ -10,6 +10,8 @@ import {
   oeufsAttendusJour,
   tauxPonteAttenduPeriode,
   oeufsAttendusPeriode,
+  fenetrePonteGlissante,
+  FENETRE_PONTE_JOURS,
   seuilCollecteMaxJour,
   TAUX_PONTE_PAR_MOIS,
   MARGE_COHERENCE_COLLECTE,
@@ -159,5 +161,27 @@ describe('intégrité du référentiel', () => {
         expect(v).toBeLessThanOrEqual(100)
       }
     }
+  })
+
+  /**
+   * QA cmswwvsoj — la fenêtre glissante doit couvrir 7 jours CIVILS : une
+   * collecte datée du 7ᵉ jour à minuit doit entrer dans le numérateur alors que
+   * le dénominateur compte déjà ce jour.
+   */
+  describe('fenetrePonteGlissante', () => {
+    it('couvre 7 jours civils, minuit inclus', () => {
+      const { debut, fin, jours } = fenetrePonteGlissante(new Date(2026, 7, 17, 9, 55))
+      expect(jours).toBe(FENETRE_PONTE_JOURS)
+      expect(debut.getTime()).toBe(new Date(2026, 7, 11, 0, 0, 0, 0).getTime())
+      expect(fin.getTime()).toBe(new Date(2026, 7, 17, 23, 59, 59, 999).getTime())
+      // Une collecte du 11/08 à minuit tombait avant l'ancien début de fenêtre.
+      expect(new Date(2026, 7, 11).getTime()).toBeGreaterThanOrEqual(debut.getTime())
+    })
+
+    it('traverse un changement de mois sans perdre de jour', () => {
+      const { debut, fin } = fenetrePonteGlissante(new Date(2026, 8, 2, 14, 0))
+      expect(debut.getTime()).toBe(new Date(2026, 7, 27, 0, 0, 0, 0).getTime())
+      expect(Math.round((fin.getTime() - debut.getTime()) / 86_400_000)).toBe(7)
+    })
   })
 })

@@ -5,6 +5,7 @@
  */
 
 import * as React from "react"
+import { urlApercu } from "@/lib/apercu-document"
 import { useRouter } from "next/navigation"
 import { ColumnDef } from "@tanstack/react-table"
 import { TreeDeciduous, Leaf, Cherry, Fence, Flower2, Shrub, CalendarPlus, Map as MapIcon, MapPin } from "lucide-react"
@@ -32,6 +33,17 @@ import { adequationEspece } from "@/lib/adequation-zone"
 import { CONDUITES_ARBRE } from "@/lib/verger/arbre-constants"
 import type { ZoneClimat } from "@/lib/terroir"
 import { Snowflake } from "lucide-react"
+
+/**
+ * QA cmswxinhf — l'avertissement annonçait la purge des observations et des
+ * opérations sans distinguer les traitements phyto, que la suppression effaçait
+ * réellement du registre réglementaire. Ils sont désormais conservés quelle que
+ * soit leur saisie d'origine (voir src/lib/verger/preserver-traces-phyto.ts).
+ */
+const AVERTISSEMENT_SUPPRESSION_ARBRE =
+  "Bio/HVE : la suppression purge les récoltes, ainsi que les opérations et observations SANS traitement. " +
+  "Tous les traitements phytosanitaires restent au registre (détachés de l'arbre, nom snapshoté), comme les lots de bois. " +
+  "Préférez « Archiver » pour conserver toute la traçabilité."
 
 const TYPES_ARBRES = [
   { value: "all", label: "Tous", icon: TreeDeciduous },
@@ -143,11 +155,21 @@ function makeColumns(onGenererCalendrier: (arbre: Arbre) => void): ColumnDef<Arb
     {
       accessorKey: "nom",
       header: "Nom",
-      cell: ({ getValue }) => <span className="font-medium">{getValue() as string}</span>,
+      // QA cmsp5yry4 — sur mobile les colonnes Espèce et Variété sont masquées :
+      // on les replie sous le nom pour ne rien perdre de l'identification.
+      cell: ({ row }) => (
+        <div>
+          <span className="font-medium">{row.original.nom}</span>
+          <span className="block text-xs text-muted-foreground md:hidden">
+            {[row.original.espece, row.original.variete].filter(Boolean).join(" · ") || "—"}
+          </span>
+        </div>
+      ),
     },
     {
       accessorKey: "type",
       header: "Type",
+      meta: { className: "hidden md:table-cell" },
       cell: ({ getValue }) => {
         const type = getValue() as string
         return (
@@ -160,11 +182,13 @@ function makeColumns(onGenererCalendrier: (arbre: Arbre) => void): ColumnDef<Arb
     {
       accessorKey: "espece",
       header: "Espèce",
+      meta: { className: "hidden md:table-cell" },
       cell: ({ getValue }) => getValue() || "-",
     },
     {
       accessorKey: "variete",
       header: "Variété",
+      meta: { className: "hidden md:table-cell" },
       cell: ({ getValue }) => getValue() || "-",
     },
     {
@@ -176,11 +200,13 @@ function makeColumns(onGenererCalendrier: (arbre: Arbre) => void): ColumnDef<Arb
       id: "portGreffe",
       accessorFn: (arbre) => arbre.porteGreffeRef?.nom ?? arbre.portGreffe ?? null,
       header: "Porte-greffe",
+      meta: { className: "hidden md:table-cell" },
       cell: ({ getValue }) => (getValue() as string | null) || "-",
     },
     {
       accessorKey: "datePlantation",
       header: "Plantation",
+      meta: { className: "hidden md:table-cell" },
       cell: ({ getValue }) => {
         const date = getValue() as string | null
         return date ? new Date(date).toLocaleDateString("fr-FR") : "-"
@@ -192,6 +218,7 @@ function makeColumns(onGenererCalendrier: (arbre: Arbre) => void): ColumnDef<Arb
       id: "parcelle",
       accessorFn: (arbre) => arbre.parcelleGeo?.nom ?? null,
       header: "Parcelle",
+      meta: { className: "hidden md:table-cell" },
       cell: ({ getValue }) => {
         const nom = getValue() as string | null
         return nom || <span className="text-muted-foreground">—</span>
@@ -213,6 +240,7 @@ function makeColumns(onGenererCalendrier: (arbre: Arbre) => void): ColumnDef<Arb
     {
       accessorKey: "productif",
       header: "Productif",
+      meta: { className: "hidden md:table-cell" },
       // Bug #13 — On affichait "—" dès que datePlantation manquait, même
       // pour des arbres marqués productif=true par l'utilisateur. C'est
       // la donnée saisie qui prime ; on signale juste les dates futures
@@ -231,6 +259,8 @@ function makeColumns(onGenererCalendrier: (arbre: Arbre) => void): ColumnDef<Arb
     {
       id: "calendrier",
       header: "",
+      // Masquée sur mobile : le raccourci reste accessible depuis la fiche.
+      meta: { className: "hidden md:table-cell" },
       cell: ({ row }) => {
         const arbre = row.original
         if (!arbre.espece) return null
@@ -275,7 +305,7 @@ export function ArbresTab() {
     Array<{ id: string; nom: string; vigueur: number; precocite: number }>
   >([])
   // PROMPT 10 — filtres "fiche incomplète"
-  const [filtreCompletude, setFiltreCompletude] = React.useState<"all" | "sansPorteGreffe" | "sansGps" | "sansParcelle">("all")
+  const [filtreCompletude, setFiltreCompletude] = React.useState<"all" | "sansPorteGreffe" | "sansGps" | "sansParcelle" | "sansEspece">("all")
   // Retour utilisateur 2026-07-27 — rattachement en masse à une parcelle
   const [bulkParcelleId, setBulkParcelleId] = React.useState("")
   const [bulkSaving, setBulkSaving] = React.useState(false)
@@ -310,8 +340,18 @@ export function ArbresTab() {
   const [batchMode, setBatchMode] = React.useState(false)
   const [batchPrefix, setBatchPrefix] = React.useState("")
   const [batchCount, setBatchCount] = React.useState("5")
+  const [isSubmitting, setIsSubmitting] = React.useState(false)
+  // QA cmsp5gx9u — les refus de validation ne vivaient que dans un toast de
+  // 5 s (voire dans une bulle native hors écran) : erreur persistante rendue
+  // en role="alert" près du bouton de soumission.
+  const [submitError, setSubmitError] = React.useState<string | null>(null)
 
+  // Deux requêtes simultanées (double-clic) peuvent entrelacer le
+  // deleteMany/createMany du serveur et dupliquer les opérations.
+  const generatingRef = React.useRef<Set<number>>(new Set())
   const handleGenererCalendrier = React.useCallback(async (arbre: Arbre) => {
+    if (generatingRef.current.has(arbre.id)) return
+    generatingRef.current.add(arbre.id)
     try {
       const res = await fetch(`/api/arbres/${arbre.id}/generer-calendrier`, {
         method: "POST",
@@ -327,6 +367,8 @@ export function ArbresTab() {
       }
     } catch {
       toast({ title: "Erreur", variant: "destructive" })
+    } finally {
+      generatingRef.current.delete(arbre.id)
     }
   }, [toast])
 
@@ -461,6 +503,8 @@ export function ArbresTab() {
       filtered = filtered.filter((a) => a.gpsLat == null || a.gpsLng == null)
     } else if (filtreCompletude === "sansParcelle") {
       filtered = filtered.filter((a) => !a.parcelleGeoId)
+    } else if (filtreCompletude === "sansEspece") {
+      filtered = filtered.filter((a) => !a.espece?.trim())
     }
     return filtered
   }, [selectedType, data, filtreCompletude])
@@ -568,13 +612,13 @@ export function ArbresTab() {
     setNewArbreGpsAccuracy(null)
   }
 
-  const buildArbrePayload = (overrideNom?: string, overrideDatePlantation?: string) => ({
+  const buildArbrePayload = (overrideNom?: string, overrideDatePlantation?: string, overrideDateAchat?: string) => ({
     nom: overrideNom ?? newArbre.nom,
     type: newArbre.type,
     espece: newArbre.espece || null,
     variete: newArbre.variete || null,
     fournisseur: newArbre.fournisseur || null,
-    dateAchat: newArbre.dateAchat || null,
+    dateAchat: overrideDateAchat || newArbre.dateAchat || null,
     prixAchat: newArbre.prixAchat || null,
     datePlantation: overrideDatePlantation || newArbre.datePlantation || null,
     etat: newArbre.etat,
@@ -594,13 +638,23 @@ export function ArbresTab() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    // Un double-clic sur « Ajouter l'arbre » envoyait deux POST et créait
+    // deux arbres identiques (constaté en prod le 2026-08-10).
+    if (isSubmitting) return
     // Source de secours : certains navigateurs/agents remplissent
     // `input[type=date]` juste avant le submit, alors que la mise à jour React
     // contrôlée n'est pas encore visible dans la closure courante.
+    // Ticket cmsoeu32c — même traitement pour TOUS les input[type=date] du
+    // formulaire : la date d'achat, sans `name`, partait vide à la création.
+    const formData = new FormData(e.currentTarget as HTMLFormElement)
     const datePlantation =
-      String(new FormData(e.currentTarget as HTMLFormElement).get("datePlantation") || "").trim()
-      || newArbre.datePlantation
-    if (!newArbre.nom.trim() && !batchMode) {
+      String(formData.get("datePlantation") || "").trim() || newArbre.datePlantation
+    const dateAchat =
+      String(formData.get("dateAchat") || "").trim() || newArbre.dateAchat
+    setSubmitError(null)
+    const nom = String(formData.get("nom") || "").trim() || newArbre.nom.trim()
+    if (!nom && !batchMode) {
+      setSubmitError("Le nom est requis.")
       toast({ title: "Le nom est requis", variant: "destructive" })
       return
     }
@@ -608,6 +662,7 @@ export function ArbresTab() {
     // le calendrier d'entretien, la pyramide d'âge et les aides PCAE/HVE
     // ne fonctionnent pas).
     if (!datePlantation) {
+      setSubmitError("Date de plantation requise : elle conditionne le calendrier d'entretien et les calculs d'âge.")
       toast({
         title: "Date de plantation requise",
         description: "Renseignez la date de plantation pour activer le calendrier d'entretien et les calculs d'âge.",
@@ -615,14 +670,30 @@ export function ArbresTab() {
       })
       return
     }
+    // Friction du 2026-08-12 — Espèce requise, même motif que la date de
+    // plantation : sans elle, pas de calendrier d'entretien, pas d'âge
+    // d'entrée en production (l'arbre sortait « Productif » le jour de sa
+    // plantation) et pas de contrôle d'adéquation au climat. Le lot agrégé
+    // l'exigeait déjà côté serveur, l'arbre individuel non.
+    if (!newArbre.espece.trim()) {
+      setSubmitError("Espèce requise : elle conditionne le calendrier d'entretien, l'âge d'entrée en production et l'adéquation au climat.")
+      toast({
+        title: "Espèce requise",
+        description: "Renseignez l'espèce pour générer le calendrier d'entretien et situer l'entrée en production.",
+        variant: "destructive",
+      })
+      return
+    }
     if (batchMode) {
       const n = parseInt(batchCount)
       if (!batchPrefix.trim() || !n || n < 1 || n > 200) {
+        setSubmitError("Préfixe + quantité (1-200) requis pour la création en lot.")
         toast({ title: "Préfixe + quantité (1-200) requis pour la création en lot", variant: "destructive" })
         return
       }
     }
 
+    setIsSubmitting(true)
     try {
       if (batchMode) {
         const n = parseInt(batchCount)
@@ -633,6 +704,7 @@ export function ArbresTab() {
         })
         const payload = await res.json().catch(() => ({}))
         if (!res.ok) {
+          setSubmitError(payload.error || "Création du lot impossible.")
           toast({ title: "Création du lot impossible", description: payload.error, variant: "destructive" })
           return
         }
@@ -646,7 +718,7 @@ export function ArbresTab() {
       const res = await fetch("/api/arbres", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(buildArbrePayload(undefined, datePlantation)),
+        body: JSON.stringify(buildArbrePayload(nom, datePlantation, dateAchat)),
       })
 
       if (res.ok) {
@@ -656,11 +728,15 @@ export function ArbresTab() {
         toast({ title: created.calendrierGenere ? `Arbre ajouté — calendrier d'entretien généré pour ${newArbre.espece}` : "Arbre ajouté" })
         fetchData()
       } else {
-        const error = await res.json()
+        const error = await res.json().catch(() => ({}))
+        setSubmitError(error.error || "Ajout impossible.")
         toast({ title: "Erreur", description: error.error, variant: "destructive" })
       }
     } catch {
+      setSubmitError("Ajout impossible : erreur réseau.")
       toast({ title: "Erreur", variant: "destructive" })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -669,7 +745,13 @@ export function ArbresTab() {
       <Tabs value={selectedType} onValueChange={setSelectedType}>
         <TabsList className="flex-wrap h-auto gap-1">
           {TYPES_ARBRES.map(({ value, label, icon: Icon }) => (
-            <TabsTrigger key={value} value={value} className="flex items-center gap-1">
+            <TabsTrigger
+              key={value}
+              value={value}
+              aria-label={label}
+              title={label}
+              className="flex items-center gap-1"
+            >
               <Icon className="h-4 w-4" />
               <span className="hidden sm:inline">{label}</span>
             </TabsTrigger>
@@ -713,6 +795,23 @@ export function ArbresTab() {
             return n > 0 ? ` (${n})` : ""
           })()}
         </Button>
+        {/* Friction du 2026-08-12 — l'espèce est désormais requise à la
+            création, mais les arbres saisis avant restent muets (pas de
+            calendrier d'entretien). Ce filtre n'apparaît que s'il en reste :
+            c'est le seul moyen pour l'utilisateur de les retrouver. */}
+        {(() => {
+          const n = data.filter((a) => !a.espece?.trim()).length
+          if (n === 0) return null
+          return (
+            <Button
+              variant={filtreCompletude === "sansEspece" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setFiltreCompletude("sansEspece")}
+            >
+              Sans espèce ({n})
+            </Button>
+          )
+        })()}
         {/* Feedback LVBB40430 — géolocaliser les arbres en enchaînant, sans
             recopier de coordonnées depuis une autre application. */}
         <Button
@@ -734,7 +833,12 @@ export function ArbresTab() {
             Lien désactivé si sélection vide ou > 60 arbres (limite de la
             planche) plutôt que d'imprimer silencieusement TOUS les arbres. */}
         <a
-          href={`/api/verger/etiquettes-planche?ids=${filteredData.map((a) => a.id).join(",")}`}
+          href={urlApercu(
+            `/api/verger/etiquettes-planche?ids=${filteredData.map((a) => a.id).join(",")}`,
+            `Étiquettes QR — ${filteredData.length} arbre${filteredData.length > 1 ? "s" : ""}`,
+          )}
+          target="_blank"
+          rel="noreferrer"
           aria-disabled={filteredData.length === 0 || filteredData.length > 60}
           className={`ml-auto inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 ${
             filteredData.length === 0 || filteredData.length > 60
@@ -759,7 +863,13 @@ export function ArbresTab() {
         isLoading={isLoading}
         showPagination={true}
         pageSize={50}
-        onAdd={() => setShowDialog(true)}
+        // QA cmsp5yry4 — largeur forcée seulement à partir de md : en mobile les
+        // colonnes secondaires sont masquées, la liste doit tenir dans l'écran.
+        tableClassName="md:min-w-[985px]"
+        onAdd={() => {
+          setSubmitError(null)
+          setShowDialog(true)
+        }}
         onRefresh={fetchData}
         onRowClick={(row) => router.push(`/verger/${row.id}`)}
         onRowEdit={(row) => router.push(`/verger/${row.id}`)}
@@ -840,7 +950,7 @@ export function ArbresTab() {
               ]
             : []
         }
-        warning="Bio/HVE : la suppression purge le registre phyto et l'historique. Préférez « Archiver » pour conserver la traçabilité."
+        warning={AVERTISSEMENT_SUPPRESSION_ARBRE}
         onConfirm={async () => {
           if (!arbreToDelete) return
           try {
@@ -878,12 +988,20 @@ export function ArbresTab() {
           <DialogHeader>
             <DialogTitle>Ajouter un arbre</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          {/* noValidate : la validation native bloquait le submit sans message
+              visible (bulle hors écran dans le dialog scrollable), rendant
+              « Ajouter l'arbre » muet (QA cmsp5gx9u). handleSubmit valide et
+              affiche l'erreur. Même traitement qu'AnimauxTab. */}
+          <form onSubmit={handleSubmit} noValidate className="space-y-4">
             <div>
               <Label>Nom *</Label>
               <Input
+                name="nom"
                 value={newArbre.nom}
-                onChange={(e) => setNewArbre({ ...newArbre, nom: e.target.value })}
+                onChange={(e) => {
+                  const value = e.currentTarget.value
+                  setNewArbre((current) => ({ ...current, nom: value }))
+                }}
                 placeholder="Ex: Pommier du verger nord"
               />
             </div>
@@ -892,7 +1010,7 @@ export function ArbresTab() {
                 <Label>Type *</Label>
                 <Select
                   value={newArbre.type}
-                  onValueChange={(v) => setNewArbre({ ...newArbre, type: v })}
+                  onValueChange={(v) => setNewArbre((current) => ({ ...current, type: v }))}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -910,7 +1028,7 @@ export function ArbresTab() {
                 <Label>État</Label>
                 <Select
                   value={newArbre.etat}
-                  onValueChange={(v) => setNewArbre({ ...newArbre, etat: v })}
+                  onValueChange={(v) => setNewArbre((current) => ({ ...current, etat: v }))}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -927,12 +1045,12 @@ export function ArbresTab() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Espèce</Label>
+                <Label>Espèce *</Label>
                 <Combobox
                   value={newArbre.espece}
-                  onValueChange={(v) => setNewArbre({ ...newArbre, espece: v })}
+                  onValueChange={(v) => setNewArbre((current) => ({ ...current, espece: v }))}
                   options={especeOptions}
-                  placeholder="Ex: Pommier, Chene..."
+                  placeholder="Ex : Pommier, Chêne…"
                 />
                 {avertissementZone && (
                   <p className="mt-1.5 flex items-start gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
@@ -945,7 +1063,7 @@ export function ArbresTab() {
                 <Label>Variété</Label>
                 <Combobox
                   value={newArbre.variete}
-                  onValueChange={(v) => setNewArbre({ ...newArbre, variete: v })}
+                  onValueChange={(v) => setNewArbre((current) => ({ ...current, variete: v }))}
                   options={varieteOptions}
                   placeholder="Ex: Golden, Sessile..."
                 />
@@ -955,7 +1073,7 @@ export function ArbresTab() {
               <Label>Fournisseur / Pépinière</Label>
               <Combobox
                 value={newArbre.fournisseur}
-                onValueChange={(v) => setNewArbre({ ...newArbre, fournisseur: v })}
+                onValueChange={(v) => setNewArbre((current) => ({ ...current, fournisseur: v }))}
                 options={fournisseurOptions}
                 placeholder="Ex: Pépinière du Morvan"
               />
@@ -965,8 +1083,16 @@ export function ArbresTab() {
                 <Label>Date d'achat</Label>
                 <Input
                   type="date"
+                  name="dateAchat"
                   value={newArbre.dateAchat}
-                  onChange={(e) => setNewArbre({ ...newArbre, dateAchat: e.target.value })}
+                  onChange={(e) => {
+                    const value = e.currentTarget.value
+                    setNewArbre((current) => ({ ...current, dateAchat: value }))
+                  }}
+                  onBlur={(e) => {
+                    const value = e.currentTarget.value
+                    if (value) setNewArbre((current) => (current.dateAchat === value ? current : { ...current, dateAchat: value }))
+                  }}
                 />
               </div>
               <div>
@@ -976,7 +1102,7 @@ export function ArbresTab() {
                   step="0.01"
                   min="0"
                   value={newArbre.prixAchat}
-                  onChange={(e) => setNewArbre({ ...newArbre, prixAchat: e.target.value })}
+                  onChange={(e) => setNewArbre((current) => ({ ...current, prixAchat: e.target.value }))}
                   placeholder="0.00"
                 />
               </div>
@@ -992,6 +1118,14 @@ export function ArbresTab() {
                   const value = e.currentTarget.value
                   setNewArbre((current) => ({ ...current, datePlantation: value }))
                 }}
+                onBlur={(e) => {
+                  // QA cmsp5gx9u — un remplissage programmatique (agent, autofill)
+                  // pose la valeur DOM sans onChange : on resynchronise l'état
+                  // pour que le prochain re-render (choix de la parcelle) ne
+                  // l'efface pas.
+                  const value = e.currentTarget.value
+                  if (value) setNewArbre((current) => (current.datePlantation === value ? current : { ...current, datePlantation: value }))
+                }}
               />
             </div>
 
@@ -1006,7 +1140,7 @@ export function ArbresTab() {
                     // SelectItem et empêche la sélection de s'afficher. On utilise
                     // le sentinel "_none" (même pattern que la fiche détail arbre).
                     value={newArbre.porteGreffeId || "_none"}
-                    onValueChange={(v) => setNewArbre({ ...newArbre, porteGreffeId: v === "_none" ? "" : v })}
+                    onValueChange={(v) => setNewArbre((current) => ({ ...current, porteGreffeId: v === "_none" ? "" : v }))}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder={
@@ -1031,7 +1165,7 @@ export function ArbresTab() {
                     // Même sentinel "_none" que le Select porte-greffe ci-dessus :
                     // permet de revenir à « aucune » après avoir choisi une conduite.
                     value={newArbre.conduite || "_none"}
-                    onValueChange={(v) => setNewArbre({ ...newArbre, conduite: v === "_none" ? "" : v })}
+                    onValueChange={(v) => setNewArbre((current) => ({ ...current, conduite: v === "_none" ? "" : v }))}
                   >
                     <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
                     <SelectContent>
@@ -1044,7 +1178,7 @@ export function ArbresTab() {
                   <Label className="text-xs">Variété pollinisatrice</Label>
                   <Input
                     value={newArbre.pollinisateur}
-                    onChange={(e) => setNewArbre({ ...newArbre, pollinisateur: e.target.value })}
+                    onChange={(e) => setNewArbre((current) => ({ ...current, pollinisateur: e.target.value }))}
                     placeholder="ex: Granny Smith (pour Golden)"
                   />
                 </div>
@@ -1057,7 +1191,7 @@ export function ArbresTab() {
                 <Input
                   type="number" step="0.1" min="0"
                   value={newArbre.envergure}
-                  onChange={(e) => setNewArbre({ ...newArbre, envergure: e.target.value })}
+                  onChange={(e) => setNewArbre((current) => ({ ...current, envergure: e.target.value }))}
                   placeholder="2.5"
                 />
               </div>
@@ -1066,7 +1200,7 @@ export function ArbresTab() {
                 <Input
                   type="number" step="0.1" min="0"
                   value={newArbre.hauteur}
-                  onChange={(e) => setNewArbre({ ...newArbre, hauteur: e.target.value })}
+                  onChange={(e) => setNewArbre((current) => ({ ...current, hauteur: e.target.value }))}
                   placeholder="3"
                 />
               </div>
@@ -1075,7 +1209,7 @@ export function ArbresTab() {
                 <Input
                   type="number" step="0.1" min="0"
                   value={newArbre.circonferenceCm}
-                  onChange={(e) => setNewArbre({ ...newArbre, circonferenceCm: e.target.value })}
+                  onChange={(e) => setNewArbre((current) => ({ ...current, circonferenceCm: e.target.value }))}
                   placeholder="ex: 15 (utile PCAE/HVE)"
                 />
               </div>
@@ -1084,7 +1218,7 @@ export function ArbresTab() {
                 <Input
                   type="number" min="1900" max="2100"
                   value={newArbre.anneeProduction}
-                  onChange={(e) => setNewArbre({ ...newArbre, anneeProduction: e.target.value })}
+                  onChange={(e) => setNewArbre((current) => ({ ...current, anneeProduction: e.target.value }))}
                   placeholder="2028"
                 />
               </div>
@@ -1093,7 +1227,7 @@ export function ArbresTab() {
                 <Input
                   type="number" step="0.5" min="0"
                   value={newArbre.rendementMoyen}
-                  onChange={(e) => setNewArbre({ ...newArbre, rendementMoyen: e.target.value })}
+                  onChange={(e) => setNewArbre((current) => ({ ...current, rendementMoyen: e.target.value }))}
                   placeholder="ex: 50"
                 />
               </div>
@@ -1103,7 +1237,7 @@ export function ArbresTab() {
                   type="number" step="0.000001"
                   value={newArbre.gpsLat}
                   onChange={(e) => {
-                    setNewArbre({ ...newArbre, gpsLat: e.target.value })
+                    setNewArbre((current) => ({ ...current, gpsLat: e.target.value }))
                     setNewArbreGpsAccuracy(null)
                   }}
                   placeholder="48.8566"
@@ -1115,7 +1249,7 @@ export function ArbresTab() {
                   type="number" step="0.000001"
                   value={newArbre.gpsLng}
                   onChange={(e) => {
-                    setNewArbre({ ...newArbre, gpsLng: e.target.value })
+                    setNewArbre((current) => ({ ...current, gpsLng: e.target.value }))
                     setNewArbreGpsAccuracy(null)
                   }}
                   placeholder="2.3522"
@@ -1150,7 +1284,7 @@ export function ArbresTab() {
               <Label>Parcelle du verger (optionnel)</Label>
               <Select
                 value={newArbre.parcelleGeoId || "__none__"}
-                onValueChange={(v) => setNewArbre({ ...newArbre, parcelleGeoId: v === "__none__" ? "" : v })}
+                onValueChange={(v) => setNewArbre((current) => ({ ...current, parcelleGeoId: v === "__none__" ? "" : v }))}
               >
                 <SelectTrigger><SelectValue placeholder="Aucune parcelle" /></SelectTrigger>
                 <SelectContent>
@@ -1206,8 +1340,12 @@ export function ArbresTab() {
               )}
             </div>
 
-            <Button type="submit" className="w-full">
-              {batchMode ? `Créer ${batchCount} arbres` : "Ajouter l'arbre"}
+            {submitError && (
+              <p role="alert" className="text-sm text-red-600">{submitError}</p>
+            )}
+
+            <Button type="submit" className="w-full" disabled={isSubmitting}>
+              {isSubmitting ? "Enregistrement..." : batchMode ? `Créer ${batchCount} arbres` : "Ajouter l'arbre"}
             </Button>
           </form>
         </DialogContent>

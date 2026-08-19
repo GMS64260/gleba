@@ -7,6 +7,16 @@ const mocks = vi.hoisted(() => ({
   parcelleFindFirst: vi.fn(),
   parcelleFindMany: vi.fn(),
   lotArbresFindFirst: vi.fn(),
+  recolteFindMany: vi.fn(),
+  boisFindMany: vi.fn(),
+  interventionFindMany: vi.fn(),
+  txVenteDeleteMany: vi.fn(),
+  txBoisUpdate: vi.fn(),
+  txInterventionUpdate: vi.fn(),
+  txInterventionCreate: vi.fn(),
+  txObservationFindMany: vi.fn(),
+  txOperationFindMany: vi.fn(),
+  txArbreDelete: vi.fn(),
 }))
 
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
@@ -21,10 +31,25 @@ vi.mock("@/lib/prisma", () => ({
       findMany: mocks.parcelleFindMany,
     },
     lotArbres: { findFirst: mocks.lotArbresFindFirst },
+    recolteArbre: { findMany: mocks.recolteFindMany },
+    productionBois: { findMany: mocks.boisFindMany },
+    intervention: { findMany: mocks.interventionFindMany },
+    $transaction: (cb: (tx: unknown) => Promise<unknown>) =>
+      cb({
+        venteManuelle: { deleteMany: mocks.txVenteDeleteMany },
+        productionBois: { update: mocks.txBoisUpdate },
+        intervention: {
+          update: mocks.txInterventionUpdate,
+          create: mocks.txInterventionCreate,
+        },
+        observationSante: { findMany: mocks.txObservationFindMany },
+        operationArbre: { findMany: mocks.txOperationFindMany },
+        arbre: { delete: mocks.txArbreDelete },
+      }),
   },
 }))
 
-import { PUT } from "./route"
+import { DELETE, PUT } from "./route"
 
 const request = (body: unknown) =>
   new Request("http://localhost/api/arbres/42", {
@@ -206,5 +231,138 @@ describe("PUT /api/arbres/[id]", () => {
         }),
       })
     )
+  })
+})
+
+// QA cmsofhlzg — Intervention.arbreId est une colonne sans FK : la
+// suppression d'un arbre laissait ses traitements phyto « orphelins »
+// (registre : « Arbre #587 »). Le registre phyto est une traçabilité
+// réglementaire : les interventions sont conservées, détachées de l'arbre
+// avec un snapshot de son identité dans les notes.
+describe("DELETE /api/arbres/[id]", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.requireAuthApi.mockResolvedValue({
+      error: null,
+      session: { user: { id: "user-1" } },
+    })
+    mocks.arbreFindUnique.mockResolvedValue({
+      id: 42,
+      userId: "user-1",
+      nom: "Pêcher du fond",
+      espece: "Pêcher",
+    })
+    mocks.recolteFindMany.mockResolvedValue([])
+    mocks.boisFindMany.mockResolvedValue([])
+    mocks.interventionFindMany.mockResolvedValue([])
+    mocks.txObservationFindMany.mockResolvedValue([])
+    mocks.txOperationFindMany.mockResolvedValue([])
+    mocks.txInterventionCreate.mockResolvedValue({ id: 900 })
+    mocks.txArbreDelete.mockResolvedValue({ id: 42 })
+  })
+
+  const deleteRequest = () =>
+    new Request("http://localhost/api/arbres/42", { method: "DELETE" })
+
+  it("détache les interventions phyto en snapshotant le nom de l'arbre", async () => {
+    mocks.interventionFindMany.mockResolvedValue([
+      { id: 77, notes: "Vent faible" },
+      { id: 78, notes: null },
+    ])
+
+    const response = await DELETE(deleteRequest() as never, params)
+
+    expect(response.status).toBe(200)
+    expect(mocks.interventionFindMany).toHaveBeenCalledWith({
+      where: { arbreId: 42, userId: "user-1" },
+      select: { id: true, notes: true },
+    })
+    // Jamais de suppression : détachement + snapshot en tête de notes.
+    expect(mocks.txInterventionUpdate).toHaveBeenCalledTimes(2)
+    expect(mocks.txInterventionUpdate).toHaveBeenCalledWith({
+      where: { id: 77 },
+      data: {
+        arbreId: null,
+        notes: "[Arbre supprimé : Pêcher du fond (Pêcher)]\nVent faible",
+      },
+    })
+    expect(mocks.txInterventionUpdate).toHaveBeenCalledWith({
+      where: { id: 78 },
+      data: {
+        arbreId: null,
+        notes: "[Arbre supprimé : Pêcher du fond (Pêcher)]",
+      },
+    })
+    expect(mocks.txArbreDelete).toHaveBeenCalledWith({ where: { id: 42 } })
+  })
+
+  // QA cmswxinhf — les traitements saisis via Verger > Santé & Phyto vivent dans
+  // `observations_sante`, dont `arbre_id` est obligatoire et en cascade : un
+  // traitement complet (AMM, dose, DAR, ZNT) disparaissait du registre
+  // phytosanitaire avec l'arbre. Il est désormais versé au registre.
+  it("verse au registre les traitements saisis en observation de santé", async () => {
+    mocks.txObservationFindMany.mockResolvedValue([
+      {
+        id: 7,
+        date: new Date("2026-08-17T08:00:00Z"),
+        produit: "Bouillie QA",
+        numAMM: "AMM-QA-2026-V7B",
+        diagnostic: "Tavelure",
+        symptome: null,
+        traitement: "Rattrapage",
+        doseAppliquee: 0.5,
+        uniteDose: "L/ha",
+        dar: 7,
+        zntDistanceM: 20,
+        zntRespectee: true,
+        surfaceTraiteeHa: null,
+        volumeBouillieLHa: null,
+        volumeBouillieLTotal: null,
+        temperatureC: null,
+        ventKmh: null,
+        hygrometriePct: null,
+        pluie24h: null,
+        pluie24hMm: null,
+        epiPortes: [],
+        parcelleId: null,
+        operateurId: null,
+        certiphytoNum: null,
+        notes: null,
+      },
+    ])
+
+    const response = await DELETE(deleteRequest() as never, params)
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({
+      success: true,
+      tracesPhytoConservees: { observations: 1, operations: 0 },
+    })
+    expect(mocks.txInterventionCreate).toHaveBeenCalledTimes(1)
+    const trace = mocks.txInterventionCreate.mock.calls[0][0].data
+    expect(trace.type).toBe("traitement_phyto")
+    expect(trace.arbreId).toBeNull()
+    expect(trace.numAMM).toBe("AMM-QA-2026-V7B")
+    expect(trace.dar).toBe(7)
+    expect(trace.zntDistanceM).toBe(20)
+    expect(trace.notes).toBe("[Arbre supprimé : Pêcher du fond (Pêcher)]")
+    expect(mocks.txArbreDelete).toHaveBeenCalledWith({ where: { id: 42 } })
+  })
+
+  it("supprime sans toucher aux interventions quand l'arbre n'en a pas", async () => {
+    const response = await DELETE(deleteRequest() as never, params)
+
+    expect(response.status).toBe(200)
+    expect(mocks.txInterventionUpdate).not.toHaveBeenCalled()
+    expect(mocks.txArbreDelete).toHaveBeenCalledWith({ where: { id: 42 } })
+  })
+
+  it("refuse la suppression si des récoltes sont facturées", async () => {
+    mocks.recolteFindMany.mockResolvedValue([{ id: 1, factureId: 9 }])
+
+    const response = await DELETE(deleteRequest() as never, params)
+
+    expect(response.status).toBe(409)
+    expect(mocks.txArbreDelete).not.toHaveBeenCalled()
   })
 })

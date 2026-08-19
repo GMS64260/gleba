@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { MODULES_COMPTA, bucketModuleCompta, ventilerParModule } from '@/lib/comptabilite/modules'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -31,6 +32,7 @@ export async function GET(request: NextRequest) {
       achatsLots,
       achatsAnimaux,
       achatsArbres,
+      interventions,
       depensesManuelles,
     ] = await Promise.all([
       // SoinAnimal
@@ -144,6 +146,35 @@ export async function GET(request: NextRequest) {
         orderBy: { dateAchat: 'desc' },
       }),
 
+      // Intervention (travaux culturaux : intrants + main d'oeuvre)
+      // Ticket cmsx69cuc — cette source manquait à la liste. Son miroir
+      // comptable (DepenseManuelle auto, sourceType='intervention') est exclu
+      // plus bas comme tous les miroirs, mais aucune ligne ne le remplaçait :
+      // l'« Apport compost » de 9,50 € comptait dans le KPI et le Compte de
+      // résultat sans apparaître NULLE PART dans Transactions, et le total
+      // comptable de l'écran était faux d'autant.
+      prisma.intervention.findMany({
+        where: {
+          userId,
+          date: { gte: startOfYear, lte: endOfYear },
+          coutTotal: { not: null },
+        },
+        orderBy: { date: 'desc' },
+        select: {
+          id: true,
+          date: true,
+          type: true,
+          description: true,
+          coutTotal: true,
+          coutMainOeuvre: true,
+          intrantCout: true,
+          intrantNom: true,
+          fait: true,
+          arbreId: true,
+          plancheId: true,
+        },
+      }),
+
       // DepenseManuelle (exclure auto=true pour eviter le double comptage
       // avec les sources brutes SoinAnimal, ConsommationAliment, Intervention, etc.)
       prisma.depenseManuelle.findMany({
@@ -161,6 +192,13 @@ export async function GET(request: NextRequest) {
       id: string
       source: string
       sourceId: number
+      /**
+       * Écriture saisie à la main, donc corrigeable et supprimable depuis cet
+       * écran (2026-08-13). Toute autre ligne est dérivée d'un objet métier :
+       * elle se corrige à sa source, jamais ici. Calculé côté serveur pour que
+       * l'écran n'ait pas à redéduire la règle.
+       */
+      corrigeable?: boolean
       module: string
       date: string
       description: string
@@ -199,6 +237,12 @@ export async function GET(request: NextRequest) {
     })
 
     // OperationArbre -> dépenses
+    // QA cmsnnud2q — une opération RÉALISÉE avec un coût crée un miroir
+    // DepenseManuelle auto `comptable` (createDepenseFromOperationArbre,
+    // comptable @default(true)), compté par le KPI du dashboard. La classer
+    // ici en analytique faisait diverger le « Total comptable » de la liste
+    // du KPI d'exactement ce montant. Même règle que le miroir : comptable
+    // si l'opération est faite et coûte réellement.
     operationsArbres.forEach(o => {
       expenses.push({
         id: `operation-${o.id}`,
@@ -214,7 +258,7 @@ export async function GET(request: NextRequest) {
         fournisseur: null,
         paye: null,
         categorie: 'Opérations arbres',
-        comptable: false,
+        comptable: o.fait !== false && (o.cout ?? 0) > 0,
       })
     })
 
@@ -328,12 +372,45 @@ export async function GET(request: NextRequest) {
       })
     })
 
+    // Intervention -> dépenses (miroir de createDepenseFromIntervention :
+    // même montant, même module, même règle « comptable »).
+    interventions.forEach(i => {
+      const montant = i.coutTotal || 0
+      if (montant <= 0) return
+      const libelle = i.description
+        || `${i.type}${i.intrantNom ? ` - ${i.intrantNom}` : ''}`
+      expenses.push({
+        id: `intervention-${i.id}`,
+        source: 'Intervention',
+        sourceId: i.id,
+        module: i.arbreId ? 'verger' : 'potager',
+        date: i.date.toISOString(),
+        description: libelle,
+        quantite: null,
+        unite: null,
+        prixUnitaire: null,
+        montant,
+        fournisseur: null,
+        paye: null,
+        categorie:
+          i.coutMainOeuvre && i.coutMainOeuvre > 0 && !i.intrantCout
+            ? "Main d'oeuvre"
+            : 'Intrants',
+        // Une intervention PLANIFIÉE n'est pas une dépense réelle : c'est déjà
+        // la règle du miroir comptable (audit compta 2026-06 #9).
+        comptable: i.fait !== false,
+      })
+    })
+
     // DepenseManuelle -> dépenses
     depensesManuelles.forEach(d => {
       expenses.push({
         id: `depense-${d.id}`,
         source: 'DepenseManuelle',
         sourceId: d.id,
+        // La requête ci-dessus exclut déjà `auto`, toute ligne restante est
+        // une saisie manuelle.
+        corrigeable: true,
         module: d.module || 'autre',
         date: d.date.toISOString(),
         description: d.description,
@@ -351,10 +428,17 @@ export async function GET(request: NextRequest) {
       })
     })
 
-    // Filtrer par module si spécifié
+    // Filtrer par module si spécifié. Le filtre suit la même règle que les
+    // cartes de total (ticket cmsx69cuc) : demander « Autre » rend aussi les
+    // écritures imputées à un module hors liste (`general`), sans quoi la
+    // carte annoncerait un montant que le filtre ne sait pas montrer. Un
+    // module hors des quatre postes (ex. `boutique`) reste filtré à l'exact.
     let filtered = expenses
     if (module) {
-      filtered = expenses.filter(e => e.module === module)
+      const demande = module.trim().toLowerCase()
+      filtered = (MODULES_COMPTA as readonly string[]).includes(demande)
+        ? expenses.filter(e => bucketModuleCompta(e.module) === demande)
+        : expenses.filter(e => e.module === module)
     }
 
     // Trier par date décroissante
@@ -372,12 +456,10 @@ export async function GET(request: NextRequest) {
       totalComptable: comptables.reduce((sum, e) => sum + e.montant, 0),
       totalAnalytique: filtered.filter((e) => !e.comptable).reduce((sum, e) => sum + e.montant, 0),
       count: filtered.length,
-      parModule: {
-        potager: comptables.filter(e => e.module === 'potager').reduce((sum, e) => sum + e.montant, 0),
-        verger: comptables.filter(e => e.module === 'verger').reduce((sum, e) => sum + e.montant, 0),
-        elevage: comptables.filter(e => e.module === 'elevage').reduce((sum, e) => sum + e.montant, 0),
-        autre: comptables.filter(e => e.module === 'autre').reduce((sum, e) => sum + e.montant, 0),
-      },
+      // Ticket cmsx69cuc — la somme des quatre postes est désormais EGALE au
+      // total comptable : les modules hors liste (`general`, `boutique`) sont
+      // rangés en « Autre » au lieu d'être ignorés par les quatre filtres.
+      parModule: ventilerParModule(comptables, (e) => e.montant, (e) => e.module),
       parCategorie: Object.entries(
         comptables.reduce((acc, e) => {
           acc[e.categorie] = (acc[e.categorie] || 0) + e.montant

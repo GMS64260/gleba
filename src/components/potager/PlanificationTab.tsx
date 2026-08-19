@@ -504,11 +504,16 @@ function ItpsSubTab() {
                 total de la table, qui en affiche 647 : les deux compteurs
                 paraissaient se contredire alors qu'ils mesurent des périmètres
                 différents. On annonce désormais le rapport. */}
+            {/* QA cmsfz2lp2 — « 647itinéraires » : JSX supprime l'espace de tête
+                d'un texte multiligne qui suit une expression, et le compilateur
+                émettait bien `data.length,"itinéraires"`. Un {" "} explicite est
+                le seul séparateur qui survit à la compilation. */}
             <p className="mt-1 max-w-3xl text-emerald-800">
-              {documentedCount} des {data.length} itinéraires reposent sur une source documentée,
-              indiquant une vraie fenêtre d&apos;implantation et de récolte ; les autres restent
-              listés dans le tableau. Les dates sont recalées depuis le climat de la source vers
-              celui de votre exploitation.
+              {documentedCount} des {data.length}{" "}
+              itinéraires reposent sur une source documentée, indiquant une vraie fenêtre
+              d&apos;implantation et de récolte ; les autres restent listés dans le tableau.
+              Les dates sont recalées depuis le climat de la source vers celui de votre
+              exploitation.
             </p>
           </div>
           <Link

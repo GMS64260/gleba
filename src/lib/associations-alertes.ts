@@ -75,9 +75,23 @@ export async function alertesAssociations(
     const classe = classeAssociation(a.type, a.nom)
     if (classe === "neutre") continue // pas d'alerte pour une association neutre
     const defavorable = classe === "defavorable"
+
+    // QA cmsqlhv0c — une entrée du référentiel est EN ÉTOILE : une espèce pivot
+    // (`requise`) et ses compagnes. « Chou brocoli + » dit que le chou brocoli
+    // s'associe bien au concombre et à l'oignon, il ne dit RIEN du couple
+    // concombre ↔ oignon. Émettre toutes les paires faisait justifier
+    // « concombre ↔ oignon » par « Chou brocoli + », et pire, « Fenouil ! »
+    // inventait une incompatibilité épinard ↔ concombre. On n'émet donc que les
+    // paires qui contiennent le pivot. Les quelques entrées sans pivot sont de
+    // vrais couples à deux membres : elles gardent l'ancien comportement.
+    const pivots = new Set(
+      a.details.filter((d) => d.requise && d.especeId).map((d) => d.especeId!.toLowerCase())
+    )
+
     // On émet une alerte par PAIRE présente (en pratique 2-3 max)
     for (let i = 0; i < present.length; i++) {
       for (let j = i + 1; j < present.length; j++) {
+        if (pivots.size > 0 && !pivots.has(present[i]) && !pivots.has(present[j])) continue
         out.push({
           type: defavorable ? "defavorable" : "favorable",
           especes: [present[i], present[j]],

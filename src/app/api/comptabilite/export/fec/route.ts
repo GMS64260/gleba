@@ -242,6 +242,13 @@ export async function GET(request: NextRequest) {
       case 'animal_vivant': return 'animaux_vivants'
       case 'lait': return 'produits_transformes'
       case 'fromage': return 'produits_transformes'
+      case 'miel':
+      case 'cire':
+      case 'propolis':
+      case 'pollen':
+      case 'gelee_royale':
+      case 'autre_ruche':
+        return 'produits_ruche'
       case 'autre':
       default: return 'autre'
     }
@@ -333,6 +340,7 @@ export async function GET(request: NextRequest) {
     if (/fruit|pomme|poire|abricot|cerise|prune|fraise|raisin|figue/.test(d)) return "fruits"
     if (/œuf|oeuf/.test(d)) return "oeufs"
     if (/viande|poulet|porc|agneau|veau|bœuf|boeuf|lapin/.test(d)) return "viande"
+    if (/miel|cire|propolis|pollen|gelée royale|gelee[_ ]royale|autre_ruche|produit de la ruche/.test(d)) return "produits_ruche"
     if (/bois|stère|stere/.test(d)) return "bois"
     if (/lait|fromage|tomme|crottin|brique/.test(d)) return "produits_transformes"
     if (/service|prestation|main-d'?œuvre|main d'?oeuvre|formation|conseil/.test(d)) return "service"

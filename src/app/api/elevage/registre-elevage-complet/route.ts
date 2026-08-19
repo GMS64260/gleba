@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { dispositionDocument } from "@/lib/http/disposition-fichier"
 import PDFDocument from "pdfkit"
 import { z } from "zod"
 import { Prisma } from "@prisma/client"
@@ -964,7 +965,7 @@ export async function GET(request: NextRequest) {
   return new NextResponse(new Uint8Array(buffer), {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="registre-elevage-complet-${year}.pdf"`,
+      "Content-Disposition": dispositionDocument(request, `registre-elevage-complet-${year}.pdf`),
       "Cache-Control": "private, no-store",
     },
   })

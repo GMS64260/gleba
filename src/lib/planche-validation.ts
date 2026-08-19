@@ -5,7 +5,15 @@
 
 interface CultureOccupation {
   nbRangs: number
-  espacementRangs: number // en cm
+  /**
+   * Espacement ENTRE RANGS en cm, ou `null` quand l'itinéraire technique ne le
+   * renseigne pas. QA cmsqla9c2 : cette valeur était auparavant remplacée par
+   * un 30 cm inventé, ce qui refusait des cultures parfaitement banales (4 rangs
+   * de radis sur une planche de 80 cm) au nom d'un chiffre que l'utilisateur ne
+   * voyait nulle part et ne pouvait pas corriger. On ne compte plus que ce qu'on
+   * sait vraiment.
+   */
+  espacementRangs: number | null
   longueur?: number // en mètres (longueur de la culture)
 }
 
@@ -19,6 +27,9 @@ interface PlancheData {
  */
 export function calculerLargeurOccupee(culture: CultureOccupation): number {
   if (!culture.nbRangs || culture.nbRangs <= 1) return 0.1 // Minimum 10cm
+  // Espacement inconnu : on compte l'emprise minimale plutôt qu'un espacement
+  // inventé, qui gonflerait l'occupation et ferait refuser une culture voisine.
+  if (culture.espacementRangs == null) return 0.1
   // Largeur = (nb rangs - 1) × espacement entre rangs
   return ((culture.nbRangs - 1) * culture.espacementRangs) / 100 // Convertir cm en m
 }
@@ -118,9 +129,10 @@ export function suggererAjustements(
   }
 
   // Suggestion 2 : Réduire l'espacement entre rangs
-  const espacementsTests = [40, 35, 30, 25, 20, 15]
+  const espacementActuel = nouvelleCulture.espacementRangs
+  const espacementsTests = espacementActuel == null ? [] : [40, 35, 30, 25, 20, 15]
   for (const esp of espacementsTests) {
-    if (esp >= nouvelleCulture.espacementRangs) continue
+    if (espacementActuel == null || esp >= espacementActuel) continue
     const test = peutAjouterCulture(planche, culturesExistantes, {
       ...nouvelleCulture,
       espacementRangs: esp,

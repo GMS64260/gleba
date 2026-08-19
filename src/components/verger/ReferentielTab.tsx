@@ -36,6 +36,9 @@ import { AvisDialog } from "@/components/avis/AvisDialog"
 import { AvisCell } from "@/components/avis/AvisCell"
 import type { AvisStatsListe } from "@/lib/avis/types"
 import { libelleForesterie } from "@/lib/verger/libelles-foresterie"
+// Bug #cmp8e4qut puis ticket cmsx5wjsb : les libellés de catégorie vivent
+// désormais dans la SSOT du référentiel espèces, jamais recopiés par écran.
+import { libelleCategorieEspece } from "@/lib/validations/espece"
 
 const ESPECE_TYPES = [
   { value: "all", label: "Tous", icon: Leaf },
@@ -46,25 +49,6 @@ const ESPECE_TYPES = [
 const TYPE_LABELS: Record<string, string> = {
   arbre_fruitier: "Arbre fruitier",
   petit_fruit: "Petit fruit",
-}
-
-// Bug #cmp8e4qut : la catégorie historique du référentiel mélangeait des
-// libellés snake_case (`fruitier`, `petit_fruit`, `legume`...) et des
-// émojis. On humanise les valeurs textuelles, les émojis passent au travers.
-const CATEGORIE_LABELS: Record<string, string> = {
-  fruitier: "Fruitier",
-  arbre_fruitier: "Arbre fruitier",
-  petit_fruit: "Petit fruit",
-  fruit: "Fruit",
-  legume: "Légume",
-  aromatique: "Aromatique",
-  engrais_vert: "Engrais vert",
-  ornement: "Ornement",
-}
-
-function labelCategorie(v: string | null | undefined): string {
-  if (!v) return "-"
-  return CATEGORIE_LABELS[v] ?? v
 }
 
 // QA Hélène 2026-05-15 — Bug #15 + #16 : les sensibilités porte-greffes
@@ -158,17 +142,30 @@ interface EspeceDetail {
   _count: { cultures: number; recoltes: number }
 }
 
+/**
+ * Besoin hydrique sur 5 niveaux.
+ *
+ * Ticket cmsx6iwru (campagne QA du 2026-08-17) : la valeur n'existait QUE sous
+ * forme de barres colorées. Un lecteur d'écran, un export, une recherche de
+ * texte dans la page — et le testeur qui lit le DOM — n'y voyaient rien du
+ * tout, d'où « le champ Besoin eau reste vide » alors que Pommier vaut 3 et
+ * Figuier 2 en base. Les barres restent, la valeur est désormais écrite.
+ */
 function BesoinsEau({ val }: { val: number | null }) {
   if (!val) return <span className="text-muted-foreground">-</span>
   const bars = Math.min(val, 5)
+  const libelle = `${bars}/5`
   return (
-    <div className="flex gap-0.5">
-      {Array.from({ length: 5 }, (_, i) => (
-        <div
-          key={i}
-          className={`w-1.5 h-4 rounded-sm ${i < bars ? "bg-blue-500" : "bg-slate-200"}`}
-        />
-      ))}
+    <div className="flex items-center gap-1.5" title={`Besoin en eau : ${libelle}`}>
+      <div className="flex gap-0.5" aria-hidden="true">
+        {Array.from({ length: 5 }, (_, i) => (
+          <div
+            key={i}
+            className={`w-1.5 h-4 rounded-sm ${i < bars ? "bg-blue-500" : "bg-slate-200"}`}
+          />
+        ))}
+      </div>
+      <span className="text-xs text-muted-foreground">{libelle}</span>
     </div>
   )
 }
@@ -443,7 +440,13 @@ function EspecesReferentiel() {
       <Tabs value={selectedType} onValueChange={setSelectedType}>
         <TabsList className="flex-wrap h-auto gap-1">
           {ESPECE_TYPES.map(({ value, label, icon: Icon }) => (
-            <TabsTrigger key={value} value={value} className="flex items-center gap-1">
+            <TabsTrigger
+              key={value}
+              value={value}
+              aria-label={label}
+              title={label}
+              className="flex items-center gap-1"
+            >
               <Icon className="h-4 w-4" />
               <span className="hidden sm:inline">{label}</span>
             </TabsTrigger>
@@ -522,7 +525,7 @@ function EspecesReferentiel() {
                   </div>
                   <div>
                     <p className="text-muted-foreground text-xs">Catégorie</p>
-                    <p className="font-medium">{labelCategorie(detail.categorie)}</p>
+                    <p className="font-medium">{libelleCategorieEspece(detail.categorie) || "-"}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground text-xs">Rendement</p>

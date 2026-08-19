@@ -104,6 +104,23 @@ function groupKey(s: SoinAttenteRow): string {
 const MAX_GAP_MEME_CURE_MS = 7 * 86_400_000
 
 /**
+ * Fenêtre pendant laquelle une injection encore PLANIFIÉE est considérée comme
+ * faisant partie du protocole en cours, et repousse donc la fin d'attente.
+ *
+ * QA cmsqlj7bn : un soin administré le 12/08 avec un rappel planifié au 19/08
+ * (7 jours plus tard, donc dans le même cluster) décalait immédiatement la
+ * remise en vente du lait au 17/09 au lieu du 10/09 — un rappel pas encore
+ * administré bloquait les produits par anticipation. C'est l'inverse de la règle
+ * que suit la route qui écrit les données : « un soin planifié n'est pas encore
+ * administré, la fenêtre ne devient effective qu'au passage à fait=true ».
+ *
+ * Un vrai protocole multi-injections s'étale sur quelques dizaines d'heures
+ * (3 injections à 48 h d'intervalle) ; un rappel de vaccination, sur des
+ * semaines. 72 h sépare proprement les deux.
+ */
+const PROLONGATION_PROTOCOLE_MS = 72 * 3_600_000
+
+/**
  * Regroupe des lignes de soin en échéances de délai d'attente consolidées.
  * Ne conserve que les traitements COMMENCÉS (≥ 1 injection faite) dont la
  * fenêtre lait et/ou viande est encore active à `today`.
@@ -149,11 +166,20 @@ export function consoliderAttentes(soins: SoinAttenteRow[], today: Date): Attent
     const faits = membres.filter((m) => m.fait)
     if (faits.length === 0) continue
 
-    // Ancre = dernière injection du traitement (faite ou planifiée à venir).
+    // Ancre = dernière injection RÉELLEMENT ADMINISTRÉE...
     let ancre = derniereInjectionLigne(faits[0])
-    for (const m of membres) {
+    for (const m of faits) {
       const d = derniereInjectionLigne(m)
       if (d.getTime() > ancre.getTime()) ancre = d
+    }
+    // ...qu'une injection encore planifiée ne repousse que si elle appartient au
+    // protocole en cours (cf. PROLONGATION_PROTOCOLE_MS). Un rappel lointain
+    // n'allonge pas le délai d'attente avant d'avoir été administré.
+    for (const m of membres) {
+      if (m.fait) continue
+      const d = derniereInjectionLigne(m)
+      const ecart = d.getTime() - ancre.getTime()
+      if (ecart > 0 && ecart <= PROLONGATION_PROTOCOLE_MS) ancre = d
     }
 
     const tempsLait = Math.max(0, ...membres.map((m) => m.tempsAttenteLaitJ ?? 0))

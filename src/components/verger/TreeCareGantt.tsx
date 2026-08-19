@@ -6,6 +6,7 @@
  */
 
 import * as React from "react"
+import { urlApercu } from "@/lib/apercu-document"
 import {
   TREE_CARE_PROFILES,
   findTreeCareProfile,
@@ -34,8 +35,25 @@ const TYPE_LABELS: Record<string, string> = {
 
 const MOIS = ["Janv.", "Févr.", "Mars", "Avr.", "Mai", "Juin", "Juil.", "Août", "Sept.", "Oct.", "Nov.", "Déc."]
 
+/**
+ * Ticket cmsofzh0w — la frise reçoit désormais les couples espèce + type
+ * d'ARBRE (et non plus la seule espèce) : le profil est résolu en tenant
+ * compte de la conduite (un Châtaignier forestier n'hérite pas du calendrier
+ * fruitier) et le badge affiche le type de l'arbre, pas celui du profil.
+ */
+export interface EspeceArbreGantt {
+  espece: string
+  type: string | null
+}
+
 interface TreeCareGanttProps {
-  especes: string[]  // Liste des especes uniques de l'utilisateur
+  especes: EspeceArbreGantt[]  // Couples espèce/type uniques de l'utilisateur
+}
+
+interface LigneGantt {
+  profile: TreeCareProfile
+  /** Type affiché dans le badge : celui de l'arbre en scope "mine". */
+  typeAffiche: string
 }
 
 export function TreeCareGantt({ especes }: TreeCareGanttProps) {
@@ -45,20 +63,31 @@ export function TreeCareGantt({ especes }: TreeCareGanttProps) {
   // 3 espèces de l'user, alors que 26 profils existent).
   const [scope, setScope] = React.useState<"mine" | "all">("mine")
 
-  // Profils filtrés selon le scope.
-  const profiles = React.useMemo(() => {
-    if (scope === "all") return TREE_CARE_PROFILES
-    const found: TreeCareProfile[] = []
+  // Lignes correspondant aux arbres de l'utilisateur (profil compatible avec
+  // le type de l'arbre), dédupliquées par profil.
+  const lignesMine = React.useMemo(() => {
+    const found: LigneGantt[] = []
     const seen = new Set<string>()
-    for (const espece of especes) {
-      const profile = findTreeCareProfile(espece)
+    for (const { espece, type } of especes) {
+      const profile = findTreeCareProfile(espece, type)
       if (profile && !seen.has(profile.espece)) {
         seen.add(profile.espece)
-        found.push(profile)
+        found.push({ profile, typeAffiche: type || profile.type })
       }
     }
     return found
-  }, [especes, scope])
+  }, [especes])
+
+  // Lignes affichées selon le scope. En "all", le badge décrit le profil du
+  // référentiel (aucun arbre utilisateur à refléter).
+  const lignes = React.useMemo<LigneGantt[]>(() => {
+    if (scope === "all") {
+      return TREE_CARE_PROFILES.map((profile) => ({ profile, typeAffiche: profile.type }))
+    }
+    return lignesMine
+  }, [scope, lignesMine])
+
+  const profiles = React.useMemo(() => lignes.map((l) => l.profile), [lignes])
 
   if (profiles.length === 0 && scope === "mine") {
     return (
@@ -85,7 +114,7 @@ export function TreeCareGantt({ especes }: TreeCareGanttProps) {
             onClick={() => setScope("mine")}
             className={`px-3 py-1 rounded-l-md ${scope === "mine" ? "bg-lime-600 text-white" : "text-slate-600 hover:bg-slate-100"}`}
           >
-            Mes espèces ({Math.min(especes.length, profiles.length)})
+            Mes espèces ({lignesMine.length})
           </button>
           <button
             onClick={() => setScope("all")}
@@ -95,11 +124,13 @@ export function TreeCareGantt({ especes }: TreeCareGanttProps) {
           </button>
         </div>
         <a
-          href={`/api/verger/calendrier/export?scope=${scope}`}
+          href={urlApercu(`/api/verger/calendrier/export?scope=${scope}`, "Calendrier d'entretien du verger")}
+          target="_blank"
+          rel="noreferrer"
           className="text-xs px-3 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700"
-          title="Télécharger le calendrier en PDF"
+          title="Afficher le calendrier en PDF — téléchargeable depuis l'aperçu"
         >
-          📥 Export PDF
+          📄 Calendrier PDF
         </a>
       </div>
 
@@ -113,16 +144,20 @@ export function TreeCareGantt({ especes }: TreeCareGanttProps) {
             {p.espece}
           </span>
         ))}
-        {scope === "mine" && especes.filter((e) => !profiles.some((p) =>
-          p.espece.toLowerCase() === e.toLowerCase() ||
-          p.aliases.some((a) => a.toLowerCase() === e.toLowerCase())
-        )).map((e) => (
+        {scope === "mine" && especes.filter((e) => !findTreeCareProfile(e.espece, e.type)).map((e) => (
           <span
-            key={e}
+            key={`${e.espece}::${e.type ?? ""}`}
             className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-500"
-            title="Espèce non reconnue dans le référentiel d'entretien"
+            title={
+              // cmsofzh0w — distinguer « espèce inconnue » de « conduite
+              // incompatible » (ex. Châtaignier forestier : profil fruitier
+              // volontairement non appliqué).
+              findTreeCareProfile(e.espece)
+                ? `Conduite ${e.type ?? "inconnue"} : le calendrier du référentiel (${findTreeCareProfile(e.espece)!.type}) ne s'applique pas à cet arbre`
+                : "Espèce non reconnue dans le référentiel d'entretien"
+            }
           >
-            {e}
+            {e.espece}
           </span>
         ))}
       </div>
@@ -160,7 +195,7 @@ export function TreeCareGantt({ especes }: TreeCareGanttProps) {
             </tr>
           </thead>
           <tbody>
-            {profiles.map((profile) => {
+            {lignes.map(({ profile, typeAffiche }) => {
               const calendar = getMonthlyCalendar(profile)
               const isExpanded = expandedEspece === profile.espece
 
@@ -179,8 +214,10 @@ export function TreeCareGantt({ especes }: TreeCareGanttProps) {
                         </span>
                         <div>
                           <div className="font-medium text-sm">{profile.espece}</div>
+                          {/* cmsofzh0w — le badge reflète le type de l'ARBRE
+                              (scope "mine"), pas celui du profil. */}
                           <div className="text-xs text-muted-foreground capitalize">
-                            {profile.type.replace("_", " ")}
+                            {typeAffiche.replace("_", " ")}
                           </div>
                         </div>
                       </div>
@@ -234,7 +271,9 @@ export function TreeCareGantt({ especes }: TreeCareGanttProps) {
                                   {MOIS[op.moisDebut - 1]}
                                   {op.moisFin !== op.moisDebut && ` → ${MOIS[op.moisFin - 1]}`}
                                   {" · "}
-                                  <span className="capitalize">{op.saisonRecommandee}</span>
+                                  {/* QA cmsqn3tux — la clé technique « ete » s'affichait telle quelle
+                                      (« Ete » via capitalize) au milieu de saisons accentuées. */}
+                                  <span className="capitalize">{op.saisonRecommandee === "ete" ? "été" : op.saisonRecommandee}</span>
                                   {" · Priorité "}
                                   <span
                                     className={

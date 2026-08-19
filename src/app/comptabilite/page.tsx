@@ -228,10 +228,28 @@ export default function DashboardComptabilite() {
   const [data, setData] = React.useState<ComptaStats | null>(null)
   const [loading, setLoading] = React.useState(true)
 
-  // Bug R2 : mémoriser l'année choisie pour la propager aux sous-pages (Transactions…).
+  // QA cmsjiqtd1 / cmsjitp3x — l'année revenait à 2026 après reload : la page
+  // ÉCRIVAIT `gleba_compta_year` à chaque changement (dont le montage) mais ne
+  // le RELISAIT jamais, écrasant donc la préférence à chaque reload. On lit la
+  // valeur stockée au montage (client-only, pour ne pas casser l'hydratation),
+  // puis on ne persiste que les changements réels de l'utilisateur.
+  // QA cmsoamukd — state et non ref : le fetch du montage attend l'hydratation
+  // (sinon la salve « année par défaut » peut écraser celle de l'année choisie).
+  const [yearHydrated, setYearHydrated] = React.useState(false)
   React.useEffect(() => {
-    if (typeof window !== "undefined") window.localStorage.setItem("gleba_compta_year", String(selectedYear))
-  }, [selectedYear])
+    const stored = window.localStorage.getItem("gleba_compta_year")
+    if (stored && /^\d{4}$/.test(stored)) {
+      const y = parseInt(stored, 10)
+      if (y !== selectedYear) setSelectedYear(y)
+    }
+    setYearHydrated(true)
+    // Montage uniquement : lecture initiale de la préférence.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  React.useEffect(() => {
+    // Ne persiste qu'après la lecture initiale, sinon le fallback écrase la préférence.
+    if (yearHydrated) window.localStorage.setItem("gleba_compta_year", String(selectedYear))
+  }, [yearHydrated, selectedYear])
 
   // Années disponibles
   const currentYear = new Date().getFullYear()
@@ -256,10 +274,10 @@ export default function DashboardComptabilite() {
       }
     }
 
-    if (session?.user) {
+    if (session?.user && yearHydrated) {
       fetchData()
     }
-  }, [selectedYear, session?.user])
+  }, [selectedYear, session?.user, yearHydrated])
 
   // QA Camille 2026-05-15 — Bug #6 : le seuil "N-1 ≥ 100 €" cachait les
   // comparatifs légitimes (N-1 = 0 € et N > 0 → la carte disait
@@ -397,6 +415,12 @@ export default function DashboardComptabilite() {
                     <p className={`text-sm ${kpiSubtleClass("revenu")} mt-1`}>
                       {selectedYear - 1} : 0 € de revenus, {formatEuro(yearDiff.depensesPrecedente)} de dépenses
                     </p>
+                  ) : yearDiff.state === "depenses-seules" ? (
+                    // QA 2026-08-11 (cmsp5ti6m) — même exigence côté année N :
+                    // des dépenses sans revenus restent de l'activité.
+                    <p className={`text-sm ${kpiSubtleClass("revenu")} mt-1`}>
+                      {selectedYear} : 0 € de revenus, {formatEuro(yearDiff.depensesCourante)} de dépenses
+                    </p>
                   ) : (
                     <p className={`text-[10px] ${kpiSubtleClass("revenu")} italic mt-1`}>
                       Aucune activité en {selectedYear} ni en {selectedYear - 1}
@@ -462,12 +486,14 @@ export default function DashboardComptabilite() {
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm text-amber-700 flex items-center gap-2">
                     <AlertTriangle className="h-4 w-4" />
-                    Factures impayées
+                    {/* QA cmswu9r5x — créances (factures, ventes, commandes
+                        boutique), pas seulement des factures. */}
+                    Créances impayées
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <p className="text-amber-800">
-                    {data.stats.facturesImpayees} facture(s) en attente ({formatEuro(data.stats.facturesImpayeesTotal)})
+                    {data.stats.facturesImpayees} créance(s) en attente ({formatEuro(data.stats.facturesImpayeesTotal)})
                   </p>
                 </CardContent>
               </Card>

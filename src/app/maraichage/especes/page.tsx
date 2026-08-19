@@ -2,7 +2,7 @@
 
 /**
  * Page Espèces - Référentiel des plantes cultivables
- * Filtrable par type : Légumes, Arbres fruitiers, Petits fruits, Aromatiques, Engrais verts
+ * Filtrable par type : Légumes, Arbres fruitiers, Petits fruits, Aromatiques, Fleurs, Engrais verts
  */
 
 import * as React from "react"
@@ -11,7 +11,7 @@ import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useSession } from "next-auth/react"
 import { ColumnDef } from "@tanstack/react-table"
-import { ArrowLeft, Leaf, Droplets, TreeDeciduous, Cherry, Salad, Sprout, Flower2 } from "lucide-react"
+import { ArrowLeft, Leaf, Droplets, TreeDeciduous, Cherry, Salad, Sprout, Flower, Flower2 } from "lucide-react"
 
 import { DataTable } from "@/components/tables/DataTable"
 import { Button } from "@/components/ui/button"
@@ -31,7 +31,25 @@ import {
   type FiltreOrigineValue,
 } from "@/components/referentiel/catalogue-communaute"
 import { adequationEspece, badgeAdequation } from "@/lib/adequation-zone"
-import type { ZoneClimat } from "@/lib/terroir"
+import { ZONES_CLIMAT, ZONE_CLIMAT_LABEL, type ZoneClimat } from "@/lib/terroir"
+import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
+  AVIS_FILTRES,
+  AVIS_FILTRE_LABELS,
+  type AvisFiltre,
+} from "@/lib/especes/filtres"
+import {
+  formatRendement,
+  libelleTypeEspece,
+  uniteRendementParType,
+} from "@/lib/validations/espece"
 
 // Types d'especes
 const ESPECE_TYPES = [
@@ -40,6 +58,9 @@ const ESPECE_TYPES = [
   { value: 'arbre_fruitier', label: 'Arbres fruitiers', icon: TreeDeciduous, arbresOnly: true },
   { value: 'petit_fruit', label: 'Petits fruits', icon: Cherry, arbresOnly: true },
   { value: 'aromatique', label: 'Aromatiques', icon: Flower2, arbresOnly: false },
+  // Ticket FB-PMWX8O — fermes florales : les fleurs sont une production à part
+  // entière, pas un sous-cas des légumes.
+  { value: 'fleur', label: 'Fleurs', icon: Flower, arbresOnly: false },
   { value: 'engrais_vert', label: 'Engrais verts', icon: Sprout, arbresOnly: false },
 ] as const
 
@@ -50,14 +71,11 @@ const ESPECE_TYPES_ARBRES = [
   { value: 'petit_fruit', label: 'Petits fruits', icon: Cherry },
 ] as const
 
-// Labels pour l'affichage
-const TYPE_LABELS: Record<string, string> = {
-  legume: 'Légume',
-  arbre_fruitier: 'Arbre fruitier',
-  petit_fruit: 'Petit fruit',
-  aromatique: 'Aromatique',
-  engrais_vert: 'Engrais vert',
-}
+// Ticket FB-E33FAA (2026-08-18) : la carte de libellés locale de cet écran était
+// une copie sans `ornement`, si bien que la colonne Type et l'export CSV
+// affichaient le slug brut pour les sept ligneux d'agrément du catalogue. Trois
+// écrans portaient la même copie, une seule avait été corrigée en mai. Les
+// libellés viennent maintenant du référentiel : `libelleTypeEspece`.
 
 // Type pour les especes avec relations
 interface EspeceWithRelations {
@@ -72,6 +90,10 @@ interface EspeceWithRelations {
   familleId: string | null
   nomLatin: string | null
   rendement: number | null
+  // Unité du rendement ci-dessus (kg_m2 | kg_arbre | biomasse_t_ha) : sans elle,
+  // la colonne devait DEVINER l'unité depuis le type et se trompait sur les
+  // engrais verts (cf. FB-E33FAA).
+  uniteRendement: string | null
   vivace: boolean
   besoinN: number | null
   besoinP: number | null
@@ -146,7 +168,7 @@ const columns: ColumnDef<EspeceWithRelations>[] = [
       const type = getValue() as string
       return (
         <Badge variant="secondary" className="text-xs">
-          {TYPE_LABELS[type] || type}
+          {libelleTypeEspece(type)}
         </Badge>
       )
     },
@@ -179,15 +201,15 @@ const columns: ColumnDef<EspeceWithRelations>[] = [
   {
     accessorKey: "rendement",
     header: "Rendement",
+    // Ticket FB-E33FAA — ce bloc ne connaissait que l'arbre fruitier, donc
+    // annonçait « kg/m² » sur les 11 engrais verts que le catalogue stocke en
+    // t/ha. L'unité STOCKÉE fait foi ; le type ne sert que de repli pour une
+    // ligne héritée sans unité. Même mensonge d'étiquette que QA cmsqlu3os,
+    // corrigé par la même fonction.
     cell: ({ row }) => {
-      const val = row.original.rendement
-      const type = row.original.type
-      if (!val) return "-"
-      // Affichage différent selon le type
-      if (type === 'arbre_fruitier') {
-        return `${val} kg/arbre`
-      }
-      return `${val} kg/m²`
+      const { rendement, uniteRendement, type } = row.original
+      if (!rendement) return "-"
+      return formatRendement(rendement, uniteRendement ?? uniteRendementParType(type))
     },
   },
   {
@@ -249,7 +271,7 @@ function EspecesPageContent() {
   // Lire le type depuis l'URL (pour filtrage depuis dashboard arbres)
   // Supporte 'arbres' qui active le mode arbres (arbre_fruitier + petit_fruit seulement)
   const typeFromUrl = searchParams.get('type')
-  const validTypes = ['legume', 'arbre_fruitier', 'petit_fruit', 'aromatique', 'engrais_vert']
+  const validTypes = ['legume', 'arbre_fruitier', 'petit_fruit', 'aromatique', 'fleur', 'engrais_vert']
 
   // Mode arbres: détecté depuis l'URL, persiste en état
   const [isArbresMode, setIsArbresMode] = React.useState(false)
@@ -266,6 +288,11 @@ function EspecesPageContent() {
   // Zone climatique effective de l'utilisateur (référentiel géographique) : sert
   // au badge d'adéquation « adaptée / peu adaptée à votre zone ».
   const [userZone, setUserZone] = React.useState<ZoneClimat | null>(null)
+  // Filtres serveur zone climatique et avis communautaires. `zone` vaut soit
+  // 'toutes', soit une valeur de ZONES_CLIMAT ; `avisFiltre` soit 'tous', soit
+  // une valeur d'AVIS_FILTRES.
+  const [filtreZone, setFiltreZone] = React.useState<'toutes' | ZoneClimat>('toutes')
+  const [filtreAvis, setFiltreAvis] = React.useState<'tous' | AvisFiltre>('tous')
   const pageSize = 50
 
   React.useEffect(() => {
@@ -314,6 +341,12 @@ function EspecesPageContent() {
       if (filtreOrigine !== 'tout') {
         url += `&origine=${filtreOrigine}`
       }
+      if (filtreZone !== 'toutes') {
+        url += `&zone=${filtreZone}`
+      }
+      if (filtreAvis !== 'tous') {
+        url += `&avisFiltre=${filtreAvis}`
+      }
       const response = await fetch(url)
       if (!response.ok) throw new Error("Erreur lors du chargement")
       const result = await response.json()
@@ -328,7 +361,7 @@ function EspecesPageContent() {
     } finally {
       setIsLoading(false)
     }
-  }, [pageIndex, selectedType, debouncedSearch, cultureCount, filtreOrigine, toast])
+  }, [pageIndex, selectedType, debouncedSearch, cultureCount, filtreOrigine, filtreZone, filtreAvis, toast])
 
   // Ne charger les données qu'après initialisation
   React.useEffect(() => {
@@ -367,7 +400,7 @@ function EspecesPageContent() {
     const headers = ["Espèce", "Type", "Famille", "Nom latin", "Rendement", "Vivace", "Besoin N", "Besoin P", "Besoin K", "Besoin Eau"]
     const rows = data.map(e => [
       e.id,
-      TYPE_LABELS[e.type] || e.type,
+      libelleTypeEspece(e.type),
       e.famille?.id || "",
       e.nomLatin || "",
       e.rendement?.toString() || "",
@@ -535,8 +568,58 @@ function EspecesPageContent() {
           value={filtreOrigine}
           onChange={(v) => { setFiltreOrigine(v); setPageIndex(0) }}
           labelPerso="Mes espèces"
-          className="mb-4"
+          className="mb-3"
         />
+
+        {/* Filtres zone climatique et avis communautaires */}
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Label className="text-xs text-muted-foreground">Zone</Label>
+            <Select
+              value={filtreZone}
+              onValueChange={(v) => { setFiltreZone(v as typeof filtreZone); setPageIndex(0) }}
+            >
+              <SelectTrigger className="h-8 w-[210px] text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="toutes">Toutes zones</SelectItem>
+                {userZone && (
+                  <SelectItem value={userZone}>
+                    Ma zone — {ZONE_CLIMAT_LABEL[userZone]}
+                  </SelectItem>
+                )}
+                {ZONES_CLIMAT.filter((z) => z !== userZone).map((z) => (
+                  <SelectItem key={z} value={z}>{ZONE_CLIMAT_LABEL[z]}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Label className="text-xs text-muted-foreground">Avis</Label>
+            <Select
+              value={filtreAvis}
+              onValueChange={(v) => { setFiltreAvis(v as typeof filtreAvis); setPageIndex(0) }}
+            >
+              <SelectTrigger className="h-8 w-[150px] text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="tous">Tous</SelectItem>
+                {AVIS_FILTRES.map((f) => (
+                  <SelectItem key={f} value={f}>{AVIS_FILTRE_LABELS[f]}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {filtreZone !== 'toutes' && (
+            <span className="text-xs text-muted-foreground">
+              Les espèces prévues pour d&apos;autres zones sont masquées.
+            </span>
+          )}
+        </div>
 
         <DataTable
           columns={
@@ -581,7 +664,7 @@ function EspecesLoadingFallback() {
     <div className="min-h-screen bg-slate-50">
       {/* Avant résolution des searchParams, on ne connaît pas le mode arbres :
           on affiche le shell maraîchage (cas dominant), corrigé au montage. */}
-      <AppHeader current="maraichage" />
+      <AppHeader current="maraichage" showLune />
       <PageToolbar>
         <Skeleton className="h-8 w-64" />
       </PageToolbar>

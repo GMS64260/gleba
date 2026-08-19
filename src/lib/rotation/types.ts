@@ -89,4 +89,19 @@ export interface RotationAdvice {
   recommendedFamilies: RecommendedFamily[]
   soilStatus: SoilAnalysis
   especeAdvice?: EspeceAdvice
+  /**
+   * Conformité au PLAN de rotation (Rotation + RotationDetail), distincte du
+   * conseil agronomique ci-dessus qui ne regarde que les intervalles de retour
+   * par famille. QA cmsg52uzr : les deux étaient présentés sous le même mot
+   * « rotation », donc le formulaire annonçait « Rotation respectée » là où
+   * l'enregistrement répondait « plan de rotation non respecté ». Renseigné
+   * seulement quand une espèce est soumise et que la planche suit un plan ;
+   * provient de `checkRotationViolation`, la fonction qu'applique le POST.
+   */
+  planRotation?: {
+    conforme: boolean
+    etapeAttendue?: number
+    familleAttendue?: string | null
+    message?: string
+  }
 }

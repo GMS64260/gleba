@@ -22,9 +22,11 @@ import {
   Milk,
   Wheat,
   Euro,
+  Flower2,
 } from "lucide-react"
 import { LaitSubTab } from "./LaitSubTab"
 import { EconomieLaitSubTab } from "./EconomieLaitSubTab"
+import { ProduitsRucheSubTab } from "./ProduitsRucheSubTab"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -42,13 +44,16 @@ import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { AnimalCombobox, type AnimalOption } from "@/components/elevage/AnimalCombobox"
 import { useToast } from "@/hooks/use-toast"
 import { oeufsAttendusJour } from "@/lib/elevage/taux-ponte"
 import { labelStatutLot, labelUnite } from "@/lib/elevage/labels"
 import { confirmDialog } from "@/lib/global-dialog"
 import { todayLocalISO } from '@/lib/format-utils'
+import { tauxTvaVenteProduitParDefaut } from '@/lib/elevage/produits-ruche'
 
 // ============================================================
 // Composant principal
@@ -58,7 +63,14 @@ import { todayLocalISO } from '@/lib/format-utils'
 // pour que Dashboard et Production partagent la même fenêtre temporelle.
 
 const PROD_TAB_KEY = "gleba:elevage:production-tab"
-const PROD_TABS = ["oeufs", "lait", "ventes", "abattages", "economie"] as const
+const PROD_TABS = ["oeufs", "lait", "ruche", "ventes", "abattages", "economie"] as const
+
+// QA cmswug6di — un Select Radix contrôlé à "" n'émet AUCUNE <option value="">
+// dans son <select> natif caché : le navigateur retombe sur la première option
+// et FormData soumet le premier lot alors que l'écran affiche le placeholder.
+// Valeur sentinelle : le <select> natif a toujours une option correspondante,
+// et la relecture DOM du submit peut distinguer « rien de choisi ».
+const LOT_NON_CHOISI = "__aucun__"
 
 export function ProductionTab({ year }: { year?: number } = {}) {
   // Review caprin 2026-07-21 — l'onglet par défaut n'est plus « Œufs » en dur :
@@ -110,6 +122,10 @@ export function ProductionTab({ year }: { year?: number } = {}) {
           <Milk className="h-4 w-4" />
           Lait
         </TabsTrigger>
+        <TabsTrigger value="ruche" className="flex items-center gap-1.5">
+          <Flower2 className="h-4 w-4" />
+          Ruche
+        </TabsTrigger>
         <TabsTrigger value="ventes" className="flex items-center gap-1.5">
           <ShoppingCart className="h-4 w-4" />
           Ventes
@@ -129,6 +145,9 @@ export function ProductionTab({ year }: { year?: number } = {}) {
       </TabsContent>
       <TabsContent value="lait">
         <LaitSubTab />
+      </TabsContent>
+      <TabsContent value="ruche">
+        <ProduitsRucheSubTab year={year} />
       </TabsContent>
       <TabsContent value="ventes">
         <VentesSubTab />
@@ -197,7 +216,8 @@ interface LotStockOeufs {
   restant: number
   limiteVente: string
   dcr: string
-  statut: "commercialisable" | "a_consumer" | "perime"
+  statut: "commercialisable" | "a_consumer" | "perime" | "bloque_attente_veto"
+  remiseEnVente: string | null
   mouvements: MouvementStockOeufs[]
 }
 
@@ -208,6 +228,7 @@ interface StockTraceOeufs {
     aConsommer: number
     perimes: number
     stockPhysique: number
+    bloquesVeto?: number
   }
 }
 
@@ -351,6 +372,16 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
     setSortieForm((form) => ({ ...form, productionId: stockTrace.data[0].id.toString() }))
   }, [isSortieOpen, sortieForm.productionId, stockTrace])
 
+  // QA cmsqlacc2 — quand il n'y a qu'un seul lot de pondeuses, le sélecteur
+  // l'affichait sans que la valeur entre jamais dans l'état React : la saisie
+  // rapide était refusée côté client tant qu'on n'avait pas re-choisi
+  // explicitement le lot déjà visible. On préremplit le cas trivial, comme le
+  // fait déjà le formulaire de sortie juste au-dessus.
+  React.useEffect(() => {
+    if (formData.lotId || lots.length !== 1) return
+    setFormData((f) => ({ ...f, lotId: lots[0].id.toString() }))
+  }, [lots, formData.lotId])
+
   // BUG #2 — encapsule l'appel POST pour pouvoir le rejouer avec
   // `overrideCoherence: true` quand l'éleveur confirme la saisie après
   // un 422 COLLECTE_OVER_SEUIL.
@@ -408,7 +439,14 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
     const submittedQuantite = submittedValue("quantite", formData.quantite)
     const submittedCasses = submittedValue("casses", formData.casses)
     const submittedSales = submittedValue("sales", formData.sales)
-    if (!formData.lotId) {
+    // QA cmsqlacc2 — même invariant que les champs date/quantité : on relit le
+    // DOM au submit. Un remplissage programmatique du Select ne déclenche pas
+    // `onValueChange`, donc l'état React peut rester vide alors que le lot est
+    // bien affiché et bien soumis. QA cmswug6di : la sentinelle compte comme vide.
+    const domLotId = String(submitted.get("lotId") || "").trim()
+    const submittedLotId = (domLotId !== LOT_NON_CHOISI ? domLotId : "") || formData.lotId
+    if (!submittedLotId) {
+      setProductionSubmitError("Sélectionnez un lot de pondeuses.")
       toast({ title: "Sélectionnez un lot", variant: "destructive" })
       return
     }
@@ -419,7 +457,7 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
     setIsSubmittingProd(true)
     setProductionSubmitError(null)
     const payload = {
-      lotId: formData.lotId ? parseInt(formData.lotId) : null,
+      lotId: submittedLotId ? parseInt(submittedLotId) : null,
       date: submittedDate,
       quantite: submittedQuantite ? parseInt(submittedQuantite) : 0,
       casses: submittedCasses ? parseInt(submittedCasses) : 0,
@@ -440,6 +478,14 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
             lotNom: result.body.details.lotNom,
             quantite: result.body.details.quantite,
           })
+          // QA 2026-07-30 — La saisie était refusée à juste titre (17 œufs pour
+          // 7 poules), mais la seule trace était une modale ouverte par-dessus
+          // celle de saisie : l'utilisateur croyait la collecte enregistrée puis
+          // perdue. On double la confirmation d'un message inline persistant.
+          setProductionSubmitError(
+            result.body.details.message
+              ?? `Saisie refusée : ${result.body.details.quantite} œufs pour ${result.body.details.effectif} animaux (maximum cohérent ${result.body.details.seuilMax}). Confirmez pour forcer.`
+          )
           return
         }
         // Bug feedback testeur 2026-05-26 (cmpm75c6r) — doublon date+lot.
@@ -452,6 +498,9 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
             confirmLabel: 'Ajouter une 2e ligne',
             successMessage: `${formData.quantite} œufs (2e collecte du jour)`,
           })
+          setProductionSubmitError(
+            result.body.details.message ?? 'Une collecte existe déjà pour ce lot à cette date.'
+          )
           return
         }
         // Bug feedback testeur 2026-05-26 (cmpmqlnrz) — lot clôturé
@@ -471,6 +520,9 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
             confirmLabel: 'Forcer la saisie',
             successMessage: `${formData.quantite} œufs (lot clôturé, saisie forcée)`,
           })
+          setProductionSubmitError(
+            `Le lot « ${result.body.details.lotNom} » est ${result.body.details.statut} : réactivez-le ou forcez la saisie.`
+          )
           return
         }
         throw new Error(result.body?.error || 'Erreur')
@@ -604,6 +656,7 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
     commercialisable: { label: "Vente autorisée", className: "bg-green-100 text-green-800" },
     a_consumer: { label: "À consommer", className: "bg-amber-100 text-amber-800" },
     perime: { label: "DCR dépassée", className: "bg-red-100 text-red-800" },
+    bloque_attente_veto: { label: "Délai véto", className: "bg-red-100 text-red-800" },
   } as const
 
   return (
@@ -618,7 +671,9 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
             </CardHeader>
             <CardContent className="pb-3 px-4">
               <p className="text-xs text-white/80">
-                {stockTrace ? `${stockTrace.stats.stockPhysique} en stock physique` : "œufs disponibles"}
+                {stockTrace
+                  ? `${stockTrace.stats.stockPhysique} en stock physique${(stockTrace.stats.bloquesVeto ?? 0) > 0 ? ` · ${stockTrace.stats.bloquesVeto} bloqués (délai véto)` : ""}`
+                  : "œufs disponibles"}
               </p>
             </CardContent>
           </Card>
@@ -707,9 +762,14 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
                 <Label>Lot de pondeuses *</Label>
-                <Select value={formData.lotId} onValueChange={(v) => setFormData(f => ({ ...f, lotId: v }))}>
+                <Select
+                  name="lotId"
+                  value={formData.lotId || LOT_NON_CHOISI}
+                  onValueChange={(v) => setFormData(f => ({ ...f, lotId: v === LOT_NON_CHOISI ? "" : v }))}
+                >
                   <SelectTrigger><SelectValue placeholder="— Sélectionner un lot —" /></SelectTrigger>
                   <SelectContent>
+                    <SelectItem value={LOT_NON_CHOISI}>— Sélectionner un lot —</SelectItem>
                     {lots.map(lot => (
                       <SelectItem key={lot.id} value={lot.id.toString()}>
                         {lot.nom || `Lot #${lot.id}`} ({lot.effectifCalcule ?? lot.quantiteActuelle} {lot.especeAnimale.nom}
@@ -908,6 +968,11 @@ function OeufsSubTab({ year }: { year?: number } = {}) {
                       <TableCell>{new Date(lot.dcr).toLocaleDateString("fr-FR")}</TableCell>
                       <TableCell>
                         <Badge className={statutStock[lot.statut].className}>{statutStock[lot.statut].label}</Badge>
+                        {lot.statut === "bloque_attente_veto" && lot.remiseEnVente && (
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            vendables dès le {new Date(lot.remiseEnVente).toLocaleDateString("fr-FR")}
+                          </p>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -1042,6 +1107,7 @@ interface Vente {
   prixTotal: number
   client: string | null
   paye: boolean
+  tauxTVA: number
   notes: string | null
 }
 
@@ -1050,7 +1116,29 @@ const TYPE_LABELS: Record<string, string> = {
   viande: "Viande",
   animal_vivant: "Animal vivant",
   lait: "Lait",
+  fromage: "Fromage",
+  miel: "Miel",
+  cire: "Cire",
+  propolis: "Propolis",
+  pollen: "Pollen",
+  gelee_royale: "Gelée royale",
+  autre_ruche: "Autre produit de la ruche",
   autre: "Autre",
+}
+
+const TYPE_VENTE_UNITE_DEFAUT: Record<string, string> = {
+  oeufs: "douzaine",
+  viande: "kg",
+  animal_vivant: "unite",
+  lait: "L",
+  fromage: "kg",
+  miel: "kg",
+  cire: "kg",
+  propolis: "g",
+  pollen: "kg",
+  gelee_royale: "g",
+  autre_ruche: "kg",
+  autre: "unite",
 }
 
 // Ticket cms1vqsqu — convention « cession gratuite » (pas de colonne dédiée en
@@ -1067,19 +1155,37 @@ function VentesSubTab() {
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
   // QA 2026-05-15 — édition par ligne
   const [editingId, setEditingId] = React.useState<number | null>(null)
+  const [isSubmittingVente, setIsSubmittingVente] = React.useState(false)
 
   const [formData, setFormData] = React.useState({
     date: todayLocalISO(),
     type: "oeufs", description: "", quantite: "", unite: "douzaine",
     prixUnitaire: "", client: "", paye: true, notes: "",
+    tauxTVA: "5.5",
     // Ticket cms1vqsqu — don / autoconsommation d'un animal vivant.
     cessionGratuite: false,
+    // Ticket cmsog7lrc — animal du cheptel lié à une vente d'animal vivant
+    // (l'API POST exige animalId pour ce type, le formulaire ne le proposait pas).
+    animalId: "",
   })
 
   const resetForm = () => {
     setEditingId(null)
-    setFormData({ date: todayLocalISO(), type: "oeufs", description: "", quantite: "", unite: "douzaine", prixUnitaire: "", client: "", paye: true, notes: "", cessionGratuite: false })
+    setFormData({ date: todayLocalISO(), type: "oeufs", description: "", quantite: "", unite: "douzaine", prixUnitaire: "", client: "", paye: true, notes: "", tauxTVA: "5.5", cessionGratuite: false, animalId: "" })
   }
+
+  // Ticket cmsog7lrc — animaux actifs pour le sélecteur « Animal vendu »,
+  // chargés au premier passage sur le type animal_vivant (création uniquement).
+  const [animauxActifs, setAnimauxActifs] = React.useState<AnimalOption[]>([])
+  const animauxChargesRef = React.useRef(false)
+  React.useEffect(() => {
+    if (formData.type !== 'animal_vivant' || editingId !== null || animauxChargesRef.current) return
+    animauxChargesRef.current = true
+    fetch('/api/elevage/animaux?statut=actif')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (j?.data) setAnimauxActifs(j.data) })
+      .catch(() => { animauxChargesRef.current = false })
+  }, [formData.type, editingId])
 
   const handleEdit = (v: Vente) => {
     setEditingId(v.id)
@@ -1093,8 +1199,11 @@ function VentesSubTab() {
       client: v.client ?? "",
       paye: v.paye,
       notes: v.notes ?? "",
+      tauxTVA: String(v.tauxTVA ?? tauxTvaVenteProduitParDefaut(v.type)),
       // Ticket cms1vqsqu — la case reflète la convention notes préfixées.
       cessionGratuite: estCessionGratuite(v.notes),
+      // Ticket cmsog7lrc — le lien animal n'est pas modifiable via PATCH.
+      animalId: "",
     })
     setIsDialogOpen(true)
   }
@@ -1119,6 +1228,7 @@ function VentesSubTab() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isSubmittingVente) return
     if (!formData.quantite) {
       toast({ title: "Renseignez la quantité", variant: "destructive" })
       return
@@ -1146,7 +1256,18 @@ function VentesSubTab() {
         })
         return
       }
+      // Ticket cmsog7lrc — l'API exige animalId à la création : sans sélecteur,
+      // la vente était tout simplement impossible depuis ce formulaire.
+      if (editingId === null && !formData.animalId) {
+        toast({
+          variant: "destructive",
+          title: "Animal requis",
+          description: "Sélectionnez l'animal du cheptel concerné par la vente.",
+        })
+        return
+      }
     }
+    setIsSubmittingVente(true)
     try {
       const isEdit = editingId !== null
       // Ticket cms1vqsqu — en édition (PATCH), la convention notes préfixées
@@ -1170,11 +1291,19 @@ function VentesSubTab() {
         prixUnitaire: formData.prixUnitaire ? parseFloat(formData.prixUnitaire) : 0,
         client: formData.client || null,
         paye: formData.paye,
+        tauxTVA: Number.parseFloat(formData.tauxTVA),
         notes,
         // Ticket cms1vqsqu — cessionGratuite + marqueur `validationVente` qui
         // active la validation stricte du POST (les appelants historiques sans
         // ce marqueur ne sont pas cassés).
-        ...(isEdit ? {} : { cessionGratuite: formData.cessionGratuite, validationVente: true }),
+        ...(isEdit ? {} : {
+          cessionGratuite: formData.cessionGratuite,
+          validationVente: true,
+          // Ticket cmsog7lrc — animal du cheptel requis par l'API pour ce type.
+          ...(formData.type === 'animal_vivant' && formData.animalId
+            ? { animalId: parseInt(formData.animalId, 10) }
+            : {}),
+        }),
       }
       const response = await fetch('/api/elevage/ventes', {
         method: isEdit ? 'PATCH' : 'POST',
@@ -1194,11 +1323,15 @@ function VentesSubTab() {
       })
       // Review caprin 2026-07-22 — alerte délai d'attente lait sur vente de lait cru.
       if (json?.warning) toast({ variant: "destructive", title: "Attention lait", description: json.warning })
+      // Ticket cmsog7lrc — l'animal vendu n'est plus actif : la liste sera rechargée.
+      if (!isEdit && formData.type === 'animal_vivant') animauxChargesRef.current = false
       setIsDialogOpen(false)
       resetForm()
       fetchData()
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible d'enregistrer" })
+    } finally {
+      setIsSubmittingVente(false)
     }
   }
 
@@ -1256,7 +1389,7 @@ function VentesSubTab() {
           <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle>{editingId ? "Modifier la vente" : "Enregistrer une vente"}</DialogTitle>
-              <DialogDescription>{editingId ? `Édition de la vente #${editingId}` : "Œufs, viande, animaux vivants…"}</DialogDescription>
+              <DialogDescription>{editingId ? `Édition de la vente #${editingId}` : "Productions animales et produits de la ruche"}</DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
@@ -1267,12 +1400,27 @@ function VentesSubTab() {
                 <div className="space-y-2">
                   <Label>Type *</Label>
                   {/* Ticket cms1vqsqu — quitter « Animal vivant » décoche la cession gratuite. */}
-                  <Select value={formData.type} onValueChange={(v) => setFormData(f => ({ ...f, type: v, cessionGratuite: v === 'animal_vivant' ? f.cessionGratuite : false }))}>
+                  <Select value={formData.type} onValueChange={(v) => setFormData(f => ({
+                    ...f,
+                    type: v,
+                    unite: TYPE_VENTE_UNITE_DEFAUT[v] ?? f.unite,
+                    tauxTVA: String(tauxTvaVenteProduitParDefaut(v)),
+                    cessionGratuite: v === 'animal_vivant' ? f.cessionGratuite : false,
+                    // Ticket cmsog7lrc — l'animal lié n'a de sens que pour ce type.
+                    animalId: v === 'animal_vivant' ? f.animalId : "",
+                  }))}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="oeufs">Œufs</SelectItem>
                       <SelectItem value="viande">Viande</SelectItem>
                       <SelectItem value="animal_vivant">Animal vivant</SelectItem>
+                      <SelectItem value="lait">Lait</SelectItem>
+                      <SelectItem value="miel">Miel</SelectItem>
+                      <SelectItem value="cire">Cire</SelectItem>
+                      <SelectItem value="propolis">Propolis</SelectItem>
+                      <SelectItem value="pollen">Pollen</SelectItem>
+                      <SelectItem value="gelee_royale">Gelée royale</SelectItem>
+                      <SelectItem value="autre_ruche">Autre produit de la ruche</SelectItem>
                       <SelectItem value="autre">Autre</SelectItem>
                     </SelectContent>
                   </Select>
@@ -1280,9 +1428,9 @@ function VentesSubTab() {
               </div>
               <div className="space-y-2">
                 <Label>Description</Label>
-                <Input value={formData.description} onChange={(e) => setFormData(f => ({ ...f, description: e.target.value }))} placeholder="Œufs plein air, Poulet fermier..." />
+                <Input value={formData.description} onChange={(e) => setFormData(f => ({ ...f, description: e.target.value }))} placeholder="Miel de printemps, œufs plein air, poulet fermier…" />
               </div>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
                 <div className="space-y-2">
                   <Label>Quantité *</Label>
                   <Input type="number" step="0.01" value={formData.quantite} onChange={(e) => setFormData(f => ({ ...f, quantite: e.target.value }))} />
@@ -1295,6 +1443,7 @@ function VentesSubTab() {
                       <SelectItem value="unite">Unité</SelectItem>
                       <SelectItem value="douzaine">Douzaine</SelectItem>
                       <SelectItem value="kg">kg</SelectItem>
+                      <SelectItem value="g">g</SelectItem>
                       <SelectItem value="L">Litre</SelectItem>
                     </SelectContent>
                   </Select>
@@ -1304,7 +1453,42 @@ function VentesSubTab() {
                   {/* Ticket cms1vqsqu — prix verrouillé à 0 quand cession gratuite. */}
                   <Input type="number" step="0.01" value={formData.prixUnitaire} onChange={(e) => setFormData(f => ({ ...f, prixUnitaire: e.target.value }))} placeholder={'€'} disabled={formData.cessionGratuite} />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="vente-taux-tva">TVA *</Label>
+                  <Input
+                    id="vente-taux-tva"
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    required
+                    value={formData.tauxTVA}
+                    onChange={(e) => setFormData(f => ({ ...f, tauxTVA: e.target.value }))}
+                    aria-describedby="vente-tva-aide"
+                  />
+                </div>
               </div>
+              <p id="vente-tva-aide" className="text-xs text-muted-foreground">
+                Taux proposé selon le produit, à adapter à sa destination fiscale.
+              </p>
+              {/* Ticket cmsog7lrc — sélecteur d'animal actif, requis par l'API pour
+                  une vente d'animal vivant (création uniquement : le lien n'est pas
+                  modifiable via PATCH). */}
+              {formData.type === 'animal_vivant' && editingId === null && (
+                <div className="space-y-2">
+                  <Label>Animal vendu *</Label>
+                  <AnimalCombobox
+                    animaux={animauxActifs}
+                    value={formData.animalId}
+                    onChange={(id) => setFormData(f => ({ ...f, animalId: id }))}
+                    allowEmpty={false}
+                    emptyLabel="— Sélectionner un animal —"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    L'animal passera au statut « vendu » à l'enregistrement.
+                  </p>
+                </div>
+              )}
               {/* Ticket cms1vqsqu — cession à titre gratuit (don / autoconsommation)
                   pour un animal vivant : prix forcé à 0, acquéreur obligatoire. */}
               {formData.type === 'animal_vivant' && (
@@ -1342,8 +1526,9 @@ function VentesSubTab() {
               </div>
               <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
-                <Button type="submit">
-                  {editingId ? "Mettre à jour" : "Enregistrer"}
+                {/* Ticket cmsog7lrc — pas de soumission sans animal pour ce type. */}
+                <Button type="submit" disabled={isSubmittingVente || (editingId === null && formData.type === 'animal_vivant' && !formData.animalId)}>
+                  {isSubmittingVente ? "Enregistrement..." : editingId ? "Mettre à jour" : "Enregistrer"}
                 </Button>
               </div>
             </form>
@@ -1448,6 +1633,7 @@ function AbattagesSubTab() {
   const [especeFilter, setEspeceFilter] = React.useState<Set<string>>(new Set())
   // QA 2026-05-15 — édition par ligne
   const [editingId, setEditingId] = React.useState<number | null>(null)
+  const [isSubmittingAbattage, setIsSubmittingAbattage] = React.useState(false)
 
   const [formData, setFormData] = React.useState({
     lotId: "", date: todayLocalISO(), quantite: "1",
@@ -1521,17 +1707,26 @@ function AbattagesSubTab() {
     })
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    if (!formData.lotId) {
+    if (isSubmittingAbattage) return
+    // Même invariant que la saisie d'œufs (QA cmsqlacc2) : le Select porte
+    // `name` et on relit le DOM au submit, sinon un remplissage programmatique
+    // laisse l'état React vide et la garde refuse une saisie pourtant visible.
+    // QA cmswug6di : la sentinelle compte comme vide.
+    const domLotIdAbattage = String(new FormData(e.currentTarget).get("lotId") || "").trim()
+    const submittedLotId =
+      (domLotIdAbattage !== LOT_NON_CHOISI ? domLotIdAbattage : "") || formData.lotId
+    if (!submittedLotId) {
       toast({ title: "Sélectionnez un lot", variant: "destructive" })
       return
     }
+    setIsSubmittingAbattage(true)
     try {
       const isEdit = editingId !== null
       const body = {
         ...(isEdit ? { id: editingId } : {}),
-        lotId: formData.lotId ? parseInt(formData.lotId) : null,
+        lotId: submittedLotId ? parseInt(submittedLotId) : null,
         date: formData.date,
         quantite: formData.quantite ? parseInt(formData.quantite) : 1,
         poidsVif: formData.poidsVif ? parseFloat(formData.poidsVif) : null,
@@ -1553,6 +1748,8 @@ function AbattagesSubTab() {
       fetchData()
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible d'enregistrer" })
+    } finally {
+      setIsSubmittingAbattage(false)
     }
   }
 
@@ -1638,9 +1835,16 @@ function AbattagesSubTab() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
                 <Label>Lot *</Label>
-                <Select value={formData.lotId} onValueChange={(v) => setFormData(f => ({ ...f, lotId: v }))}>
+                <Select
+                  name="lotId"
+                  value={formData.lotId || LOT_NON_CHOISI}
+                  onValueChange={(v) => setFormData(f => ({ ...f, lotId: v === LOT_NON_CHOISI ? "" : v }))}
+                >
                   <SelectTrigger><SelectValue placeholder="— Sélectionner un lot —" /></SelectTrigger>
-                  <SelectContent>{lots.map(l => <SelectItem key={l.id} value={l.id.toString()}>{l.nom || `Lot #${l.id}`} ({l.quantiteActuelle} {l.especeAnimale.nom})</SelectItem>)}</SelectContent>
+                  <SelectContent>
+                    <SelectItem value={LOT_NON_CHOISI}>— Sélectionner un lot —</SelectItem>
+                    {lots.map(l => <SelectItem key={l.id} value={l.id.toString()}>{l.nom || `Lot #${l.id}`} ({l.quantiteActuelle} {l.especeAnimale.nom})</SelectItem>)}
+                  </SelectContent>
                 </Select>
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -1665,10 +1869,13 @@ function AbattagesSubTab() {
                 </div>
                 <div className="space-y-2"><Label>Prix vente</Label><Input type="number" step="0.01" value={formData.prixVente} onChange={(e) => setFormData(f => ({ ...f, prixVente: e.target.value }))} disabled={formData.destination !== 'vente'} /></div>
               </div>
+              {/* Ticket cmsog52qx — lieu et notes étaient persistés (formData/API) mais absents du dialog. */}
+              <div className="space-y-2"><Label>Lieu</Label><Input value={formData.lieu} onChange={(e) => setFormData(f => ({ ...f, lieu: e.target.value }))} placeholder="Abattoir, à la ferme…" /></div>
+              <div className="space-y-2"><Label>Notes</Label><Textarea rows={2} value={formData.notes} onChange={(e) => setFormData(f => ({ ...f, notes: e.target.value }))} placeholder="Remarques (découpe, congélation…)" /></div>
               <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
-                <Button type="submit">
-                  {editingId ? "Mettre à jour" : "Enregistrer"}
+                <Button type="submit" disabled={isSubmittingAbattage}>
+                  {isSubmittingAbattage ? "Enregistrement..." : editingId ? "Mettre à jour" : "Enregistrer"}
                 </Button>
               </div>
             </form>
@@ -1710,7 +1917,11 @@ function AbattagesSubTab() {
                         </div>
                       ) : '-'}
                     </TableCell>
-                    <TableCell>{a.lot?.nom || a.animal?.nom || '-'}</TableCell>
+                    <TableCell>
+                      {a.lot?.nom || a.animal?.nom || '-'}
+                      {/* Ticket cmsog52qx — la note saisie était invisible dans la liste. */}
+                      {a.notes && <p className="mt-0.5 max-w-[240px] text-xs text-muted-foreground break-words">{a.notes}</p>}
+                    </TableCell>
                     <TableCell className="text-right font-bold">{a.quantite}</TableCell>
                     <TableCell className="text-right">{a.poidsVif ? `${a.poidsVif} kg` : '-'}</TableCell>
                     <TableCell className="text-right">{a.poidsCarcasse ? `${a.poidsCarcasse} kg` : '-'}</TableCell>

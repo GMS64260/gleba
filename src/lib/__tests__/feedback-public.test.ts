@@ -11,8 +11,22 @@ describe("feedback public", () => {
     expect(publicFeedbackSelect).not.toHaveProperty("statusLogs")
   })
 
-  it("traduit les trois états", () => {
-    expect(feedbackStatusLabels).toEqual({ OPEN: "Reçue", IN_PROGRESS: "En cours", RESOLVED: "Résolue" })
+  it("traduit les cinq états, y compris les issues de tri", () => {
+    expect(feedbackStatusLabels).toEqual({
+      OPEN: "Reçue",
+      IN_PROGRESS: "En cours",
+      RESOLVED: "Résolue",
+      EVOLUTION_PRODUIT: "Retenue comme évolution",
+      HORS_PERIMETRE: "Analysée, sans correctif prévu",
+    })
+  })
+
+  // Un signalement classé « évolution » ou « hors périmètre » n'est pas résolu :
+  // le rapporteur ne doit pas recevoir de mail de résolution.
+  it("n'annonce aucune résolution sur une issue de tri", () => {
+    expect(shouldSendResolutionEmail("OPEN", "EVOLUTION_PRODUIT", false)).toBe(false)
+    expect(shouldSendResolutionEmail("OPEN", "HORS_PERIMETRE", false)).toBe(false)
+    expect(shouldSendResolutionEmail("HORS_PERIMETRE", "RESOLVED", false)).toBe(true)
   })
 
   it("dérive une référence de suivi stable et lisible depuis l'id", () => {

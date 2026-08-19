@@ -47,7 +47,11 @@ export const plancheSchema = z.object({
 })
 
 export const createPlancheSchema = plancheSchema
-export const updatePlancheSchema = plancheSchema.partial().omit({ nom: true })
+// `nom` est modifiable : sans lui, une planche mal nommée à la création restait
+// définitivement mal nommée (constaté le 2026-07-30 sur des planches issues de
+// duplications successives). L'unicité (nom, userId) est vérifiée par l'API,
+// qui renvoie un 409 explicite plutôt qu'une violation de contrainte brute.
+export const updatePlancheSchema = plancheSchema.partial()
 
 export type PlancheInput = z.infer<typeof plancheSchema>
 export type CreatePlancheInput = z.infer<typeof createPlancheSchema>

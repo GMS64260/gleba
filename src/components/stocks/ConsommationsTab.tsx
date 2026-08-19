@@ -72,6 +72,7 @@ export function ConsommationsTab() {
   const [destinations, setDestinations] = React.useState<{ id: string; description: string | null }[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [dialogOpen, setDialogOpen] = React.useState(false)
+  const [isSubmitting, setIsSubmitting] = React.useState(false)
 
   // Formulaire
   const [formData, setFormData] = React.useState({
@@ -121,6 +122,7 @@ export function ConsommationsTab() {
   // Créer consommation
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isSubmitting) return
 
     if (!formData.especeId || !formData.quantite) {
       toast({
@@ -131,6 +133,7 @@ export function ConsommationsTab() {
       return
     }
 
+    setIsSubmitting(true)
     try {
       const response = await fetch('/api/consommations', {
         method: 'POST',
@@ -163,6 +166,8 @@ export function ConsommationsTab() {
         title: "Erreur",
         description: error instanceof Error ? error.message : "Impossible d'enregistrer",
       })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -320,7 +325,7 @@ export function ConsommationsTab() {
                 <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
                   Annuler
                 </Button>
-                <Button type="submit">Enregistrer</Button>
+                <Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Enregistrement..." : "Enregistrer"}</Button>
               </DialogFooter>
             </form>
           </DialogContent>

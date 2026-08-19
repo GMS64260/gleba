@@ -12,12 +12,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { z } from 'zod'
+import { CHAMP_DATE_ETAPE, dateExecutionARecaler } from '@/lib/cultures/execution'
+import type { ChampEtape } from '@/lib/cultures/execution'
 
 const FIELD_MAP = {
   semis: 'semisFait',
   plantation: 'plantationFaite',
   recolte: 'recolteFaite',
-} as const
+} as const satisfies Record<string, ChampEtape>
 
 const schema = z.object({
   ids: z.array(z.coerce.number().int().positive()).min(1).max(500),
@@ -37,13 +39,61 @@ export async function POST(request: NextRequest) {
     const { ids, type } = parsed.data
     const field = FIELD_MAP[type]
 
-    // L'updateMany applique le where {userId} pour la sécurité — pas de fuite cross-tenant
-    const r = await prisma.culture.updateMany({
-      where: { id: { in: ids }, userId: session.user.id },
-      data: { [field]: true },
+    // QA cmsoaedw2 — une culture d'ITP en semis direct (pas de semaine de
+    // plantation) n'a pas d'étape plantation : on l'ignore silencieusement au
+    // lieu de rejeter tout le lot (une sélection mixte reste utilisable). Même
+    // règle que la garde du PATCH unitaire.
+    const wherePlantationApplicable =
+      type === 'plantation'
+        ? {
+            OR: [
+              { itpId: null },
+              { datePlantation: { not: null } },
+              { itp: { is: { semainePlantation: { not: null } } } },
+            ],
+          }
+        : {}
+
+    // Le where {userId} est appliqué à la sélection pour la sécurité — pas de
+    // fuite cross-tenant.
+    // QA cmsp66tdm — une étape marquée faite ne peut pas rester datée dans le
+    // futur : on lit les dates prévisionnelles pour recaler celles qui le sont,
+    // ce qu'un updateMany global ne permet pas. Les cultures sans recalage
+    // restent groupées dans un seul updateMany.
+    const champDate = CHAMP_DATE_ETAPE[field]
+    // Select statique (une clé dynamique casse l'inférence du client Prisma).
+    const concernees = await prisma.culture.findMany({
+      where: { id: { in: ids }, userId: session.user.id, ...wherePlantationApplicable },
+      select: { id: true, dateSemis: true, datePlantation: true, dateRecolte: true },
     })
 
-    return NextResponse.json({ updated: r.count })
+    const maintenant = new Date()
+    const aRecaler: Array<{ id: number; date: Date }> = []
+    const sansRecalage: number[] = []
+    for (const culture of concernees) {
+      const recalage = dateExecutionARecaler(culture[champDate], maintenant)
+      if (recalage) aRecaler.push({ id: culture.id, date: recalage })
+      else sansRecalage.push(culture.id)
+    }
+
+    await prisma.$transaction([
+      ...(sansRecalage.length > 0
+        ? [
+            prisma.culture.updateMany({
+              where: { id: { in: sansRecalage }, userId: session.user.id },
+              data: { [field]: true },
+            }),
+          ]
+        : []),
+      ...aRecaler.map(({ id, date }) =>
+        prisma.culture.update({
+          where: { id },
+          data: { [field]: true, [champDate]: date },
+        }),
+      ),
+    ])
+
+    return NextResponse.json({ updated: concernees.length, ignores: ids.length - concernees.length })
   } catch (err) {
     console.error('POST /api/cultures/bulk-fait error:', err)
     return NextResponse.json({ error: 'Erreur interne du serveur' }, { status: 500 })

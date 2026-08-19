@@ -7,6 +7,7 @@
 
 import * as React from "react"
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import { Suspense } from "react"
 import {
   ArrowLeft,
@@ -45,6 +46,7 @@ interface TacheItem {
   date: string
   fait: boolean
   couleur: string | null
+  retardJours?: number
 }
 
 interface IrrigationItem {
@@ -89,15 +91,27 @@ function TachesContent() {
   const [actionValue, setActionValue] = React.useState("")
   const [actionLoading, setActionLoading] = React.useState(false)
 
+  // TICKET cmsoeqjmv — le dashboard peut pointer ici avec ?year= (saison
+  // choisie) : la semaine s'ancre alors dans cette année, même règle que
+  // CalendrierTab (mois et jour courants conservés). Sans paramètre valide,
+  // comportement historique : semaine réelle.
+  const searchParams = useSearchParams()
+  const anneeChoisie = React.useMemo(() => {
+    const brut = searchParams.get("year")
+    const annee = brut ? parseInt(brut, 10) : NaN
+    return Number.isInteger(annee) && annee >= 2000 && annee <= 2100 ? annee : null
+  }, [searchParams])
+
   // Calculer la semaine courante - mémoriser pour éviter les boucles infinies
   const { weekStart, weekEnd } = React.useMemo(() => {
-    const base = new Date()
+    const now = new Date()
+    const base = anneeChoisie === null ? now : new Date(anneeChoisie, now.getMonth(), now.getDate())
     const current = addWeeks(base, weekOffset)
     return {
       weekStart: startOfWeek(current, { weekStartsOn: 1 }),
       weekEnd: endOfWeek(current, { weekStartsOn: 1 }),
     }
-  }, [weekOffset])
+  }, [weekOffset, anneeChoisie])
 
   // Créer les strings ISO une seule fois pour éviter les re-renders
   const startIso = React.useMemo(() => weekStart.toISOString(), [weekStart])
@@ -126,7 +140,7 @@ function TachesContent() {
     setIsLoading(true)
     try {
       const response = await fetch(
-        `/api/taches?start=${startIso}&end=${endIso}`
+        `/api/taches?start=${startIso}&end=${endIso}${anneeChoisie !== null ? `&year=${anneeChoisie}` : ""}`
       )
       if (!response.ok) throw new Error("Erreur")
       const result = await response.json()
@@ -135,12 +149,12 @@ function TachesContent() {
       toast({
         variant: "destructive",
         title: "Erreur",
-        description: "Impossible de charger les taches",
+        description: "Impossible de charger les tâches",
       })
     } finally {
       setIsLoading(false)
     }
-  }, [startIso, endIso, toast])
+  }, [startIso, endIso, anneeChoisie, toast])
 
   React.useEffect(() => {
     fetchData()
@@ -237,12 +251,23 @@ function TachesContent() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ recolteFaite: false }),
         })
-        if (!patch.ok) throw new Error("Erreur")
+        if (!patch.ok) {
+          // QA cmsio8o54 — le serveur refuse (409) d'annuler la récolte tant que
+          // des récoltes subsistent (vendues ou consommées, donc non supprimées
+          // ci-dessus). Son message dit lesquelles : le taire laissait
+          // l'utilisateur devant un « Erreur » sans issue.
+          const detail = await patch.json().catch(() => null)
+          throw new Error(detail?.error || "Erreur")
+        }
         toast({ title: "Récolte annulée" })
         setPendingAction(null)
         fetchData()
-      } catch {
-        toast({ variant: "destructive", title: "Erreur" })
+      } catch (e) {
+        toast({
+          variant: "destructive",
+          title: "Annulation refusée",
+          description: e instanceof Error ? e.message : "Erreur",
+        })
       } finally {
         setActionLoading(false)
       }
@@ -262,7 +287,10 @@ function TachesContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ [field]: !currentValue }),
       })
-      if (!response.ok) throw new Error("Erreur")
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null)
+        throw new Error(detail?.error || "Erreur")
+      }
 
       // Mettre a jour localement
       setData(prev => {
@@ -281,14 +309,14 @@ function TachesContent() {
       })
 
       toast({
-        title: currentValue ? "Annule" : "Fait !",
-        description: `${type} ${currentValue ? "a refaire" : "termine"}`,
+        title: currentValue ? "Annulé" : "Fait !",
+        description: `${type} ${currentValue ? "à refaire" : "terminé"}`,
       })
-    } catch {
+    } catch (e) {
       toast({
         variant: "destructive",
-        title: "Erreur",
-        description: "Impossible de mettre a jour",
+        title: "Changement refusé",
+        description: e instanceof Error ? e.message : "Impossible de mettre à jour",
       })
     }
   }
@@ -412,6 +440,22 @@ function TachesContent() {
                     </span>
                   )}
                 </div>
+                {/* QA cmsjiedps — la page ne montrait ni le retard ni la date
+                    prévue, donc impossible d'identifier les tâches en retard
+                    remontées par le KPI du dashboard. On affiche la date prévue
+                    et un badge de retard rouge le cas échéant. */}
+                {!item.fait && (item.retardJours ?? 0) > 0 && (
+                  <Badge variant="destructive" className="flex-shrink-0">
+                    {(item.retardJours ?? 0) >= 7
+                      ? `${Math.floor((item.retardJours ?? 0) / 7)} sem. de retard`
+                      : `${item.retardJours} j de retard`}
+                  </Badge>
+                )}
+                {item.date && (
+                  <span className="text-xs text-muted-foreground flex-shrink-0 tabular-nums">
+                    {new Date(item.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" })}
+                  </span>
+                )}
                 {item.plancheId && (
                   <Badge variant="outline" className="flex-shrink-0">
                     {item.plancheId}
@@ -447,7 +491,7 @@ function TachesContent() {
                 <ArrowLeft className="h-4 w-4" />
               </Button>
             </Link>
-            <h1 className="text-lg font-bold">Taches</h1>
+            <h1 className="text-lg font-bold">Tâches</h1>
             <Button variant="ghost" size="sm" className="h-8 px-2" onClick={fetchData}>
               <RefreshCw className="h-4 w-4" />
             </Button>
@@ -571,7 +615,7 @@ function TachesContent() {
               <CardContent>
                 {data.irrigation.length === 0 ? (
                   <p className="text-sm text-muted-foreground py-2">
-                    Tout est arrose !
+                    Tout est arrosé !
                   </p>
                 ) : (
                   // Bug #6 (testeur) — Regroupement par espèce : avant, 20 cultures

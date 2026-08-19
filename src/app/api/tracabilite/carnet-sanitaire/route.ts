@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
         animalLot += ` (${soin.lot.quantiteActuelle} animaux)`
         especeNom = soin.lot.especeAnimale.nom
       } else {
-        animalLot = 'Non renseigne'
+        animalLot = 'Non renseigné'
       }
 
       return {

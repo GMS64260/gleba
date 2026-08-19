@@ -625,7 +625,7 @@ function NewPlancheForm({
                   }
                 >
                   <SelectTrigger id="type-sol" className="text-sm">
-                    <SelectValue placeholder="Non renseigne" />
+                    <SelectValue placeholder="Non renseigné" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Argileux">Argileux (lourd)</SelectItem>
@@ -647,12 +647,12 @@ function NewPlancheForm({
                   }
                 >
                   <SelectTrigger id="retention-eau" className="text-sm">
-                    <SelectValue placeholder="Non renseigne" />
+                    <SelectValue placeholder="Non renseigné" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Faible">Faible (arroser+)</SelectItem>
                     <SelectItem value="Moyenne">Moyenne</SelectItem>
-                    <SelectItem value="Élevée">Elevee (arroser-)</SelectItem>
+                    <SelectItem value="Élevée">Élevée (arroser-)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

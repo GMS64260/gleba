@@ -11,6 +11,7 @@
  */
 
 import * as React from "react"
+import { urlApercu } from "@/lib/apercu-document"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { Milk, FileText, LineChart, Plus, Copy, Loader2, Download, Trash2, ShieldAlert, TrendingUp, TrendingDown, Minus, Trophy, Truck, Warehouse, FlaskConical } from "lucide-react"
 import { LivraisonLaitSubTab } from "./LivraisonLaitSubTab"
@@ -1167,9 +1168,16 @@ function FabricationsView() {
                     </td>
                     <td className="p-2 text-center text-xs">{l.dluo ? new Date(l.dluo).toLocaleDateString("fr-FR") : "—"}</td>
                     <td className="p-2 text-right">
-                      <a href={`/api/elevage/lots-fromage/${l.id}/etiquette`} target="_blank" rel="noreferrer">
-                        <Button variant="ghost" size="sm" title="Étiquette PDF">
-                          <Download className="h-4 w-4" />
+                      <a
+                        href={urlApercu(
+                          `/api/elevage/lots-fromage/${l.id}/etiquette`,
+                          `Étiquette du lot ${l.numeroLot}`,
+                        )}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        <Button variant="ghost" size="sm" title="Étiquette PDF — affichée avant impression">
+                          <FileText className="h-4 w-4" />
                         </Button>
                       </a>
                       <Button
@@ -1404,7 +1412,9 @@ function LactationView() {
     fetch("/api/elevage/animaux?statut=actif")
       .then((r) => r.json())
       .then(({ data }) => {
-        const list: Animal[] = data || []
+        // Ticket cmsog9reb — même filtre que la vue Collecte : seules les
+        // femelles d'espèces laitières sont proposées (pas de chien/chat/NAC).
+        const { animaux: list } = listerCiblesCollecteLait<Animal, Lot>(data || [], null)
         setAnimaux(list)
         if (list.length > 0) setSelectedId(list[0].id)
       })

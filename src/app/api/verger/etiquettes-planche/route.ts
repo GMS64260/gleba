@@ -17,6 +17,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server"
+import { dispositionDocument } from "@/lib/http/disposition-fichier"
 import { requireAuthApi } from "@/lib/auth-utils"
 import prisma from "@/lib/prisma"
 import PDFDocument from "pdfkit"
@@ -159,7 +160,10 @@ export async function GET(request: NextRequest) {
     status: 200,
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="etiquettes-arbres-${new Date().toISOString().slice(0, 10)}.pdf"`,
+      "Content-Disposition": dispositionDocument(
+        request,
+        `etiquettes-arbres-${new Date().toISOString().slice(0, 10)}.pdf`,
+      ),
     },
   })
 }

@@ -102,6 +102,10 @@ interface CultureData {
 interface Totaux {
   revenus: number
   coutTotal: number
+  // TICKET cmsoez28o — dépenses comptables SSOT (dashboard Comptabilité),
+  // exposées par la lib pour afficher l'écart avec les coûts analytiques.
+  // Optionnel pour tolérer une réponse d'une version antérieure de l'API.
+  depensesComptables?: number
   coutSemences: number
   coutIntrants: number
   coutFertilisation: number
@@ -138,6 +142,19 @@ interface CoutsData {
     general: { couts: number }
   }
   totaux: Totaux
+  // Sous-total des lignes espèces affichées (QA cmsno0ixf) — optionnel pour
+  // tolérer une réponse d'une version antérieure de l'API pendant une bascule.
+  totauxEspeces?: {
+    revenus: number
+    coutTotal: number
+    margeBrute: number
+    margePercent: number
+    production: number
+    surface: number
+    heuresTravaillees: number
+    nbEspeces: number
+    nbCultures: number
+  }
   meta: {
     annee: number
     module: string
@@ -184,6 +201,26 @@ export default function CoutsProductionPage() {
   const [sortKey, setSortKey] = React.useState<SortKey>("revenus")
   const [sortDir, setSortDir] = React.useState<SortDir>("desc")
 
+  // Même motif que /comptabilite et /comptabilite/transactions : l'année
+  // choisie se partage entre les écrans compta via `gleba_compta_year`
+  // (lecture au montage, persistance après hydratation).
+  // QA cmsoamukd — state et non ref : le fetch du montage attend l'hydratation
+  // (sinon la salve « année par défaut » peut écraser celle de l'année choisie).
+  const [yearHydrated, setYearHydrated] = React.useState(false)
+  React.useEffect(() => {
+    const stored = window.localStorage.getItem("gleba_compta_year")
+    if (stored && /^\d{4}$/.test(stored)) {
+      const y = parseInt(stored, 10)
+      setSelectedYear((prev) => (y !== prev ? y : prev))
+    }
+    setYearHydrated(true)
+    // Montage uniquement : lecture initiale de la préférence.
+  }, [])
+  React.useEffect(() => {
+    // Ne persiste qu'après la lecture initiale, sinon le fallback écrase la préférence.
+    if (yearHydrated) window.localStorage.setItem("gleba_compta_year", String(selectedYear))
+  }, [yearHydrated, selectedYear])
+
   // QA Camille 2026-05-15 — bonus : plage factorisée [N+1 … N-4]
   const currentYear = new Date().getFullYear()
   const availableYears = getAvailableYears()
@@ -205,10 +242,10 @@ export default function CoutsProductionPage() {
       }
     }
 
-    if (session?.user) {
+    if (session?.user && yearHydrated) {
       fetchData()
     }
-  }, [selectedYear, session?.user])
+  }, [selectedYear, session?.user, yearHydrated])
 
   // Sorting
   const handleSort = (key: SortKey) => {
@@ -519,11 +556,17 @@ export default function CoutsProductionPage() {
                 Rentabilité par espèce
               </CardTitle>
               <CardDescription>
-                Cliquez sur une espèce pour voir le detail par culture
+                Cliquez sur une espèce pour voir le détail par culture
               </CardDescription>
             </CardHeader>
-            <CardContent className="overflow-x-auto">
-              <Table>
+            {/* TICKET cmsof7s3n — mobile 375px : le tableau (12 colonnes,
+                ~637px incompressibles) doit défiler DANS sa carte, pas pousser
+                la page. Même motif que DataTable.tsx / tableau Opérations du
+                10/08 : min-w explicite sur le <table> + conteneur
+                overflow-x-auto (min-w-0 : aucun ancêtre flex/grid ici, la
+                carte est en flux bloc direct sous <main>). */}
+            <CardContent className="min-w-0 overflow-x-auto">
+              <Table className="min-w-[900px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-8" />
@@ -532,7 +575,7 @@ export default function CoutsProductionPage() {
                     <SortHeader label="Production (kg)" field="production" className="text-right" />
                     <SortHeader label="Rdt (kg/m²)" field="rendement" className="text-right" />
                     <SortHeader label="Revenus" field="revenus" className="text-right" />
-                    <SortHeader label="Couts" field="coutTotal" className="text-right" />
+                    <SortHeader label="Coûts" field="coutTotal" className="text-right" />
                     <SortHeader label="Marge" field="margeBrute" className="text-right" />
                     <SortHeader label="Marge %" field="margePercent" className="text-right" />
                     <SortHeader label="Coût/kg" field="coutKg" className="text-right" />
@@ -619,9 +662,10 @@ export default function CoutsProductionPage() {
                                 </div>
                               </div>
 
-                              {/* Cultures table */}
-                              <div className="bg-white rounded-lg border overflow-x-auto">
-                                <Table>
+                              {/* Cultures table — même motif anti-débordement
+                                  (cmsof7s3n) : min-w + conteneur overflow-x-auto */}
+                              <div className="bg-white rounded-lg border min-w-0 overflow-x-auto">
+                                <Table className="min-w-[720px]">
                                   <TableHeader>
                                     <TableRow>
                                       <TableHead>Culture</TableHead>
@@ -672,16 +716,95 @@ export default function CoutsProductionPage() {
                     </React.Fragment>
                   ))}
 
-                  {/* Totals row */}
+                  {/* QA cmsno0ixf / cmsnogwaz — la ligne TOTAL reprend les KPI
+                      ferme (SSOT), pas la somme des lignes espèces. On rend la
+                      pyramide vérifiable : Σ espèces + non affecté = TOTAL. */}
+                  {data?.totauxEspeces && (
+                    <TableRow className="border-t-2 font-semibold bg-slate-50/60">
+                      <TableCell />
+                      <TableCell>
+                        Sous-total espèces
+                        <span className="text-xs text-muted-foreground ml-2 font-normal">({data.totauxEspeces.nbCultures} cultures)</span>
+                      </TableCell>
+                      <TableCell className="text-right">{formatNumber(data.totauxEspeces.surface)}</TableCell>
+                      <TableCell className="text-right">{formatNumber(data.totauxEspeces.production)}</TableCell>
+                      <TableCell className="text-right">
+                        {data.totauxEspeces.surface > 0 ? formatNumber(data.totauxEspeces.production / data.totauxEspeces.surface, 2) : "-"}
+                      </TableCell>
+                      <TableCell className="text-right text-green-600">{formatEuro(data.totauxEspeces.revenus)}</TableCell>
+                      <TableCell className="text-right text-red-600">{formatEuro(data.totauxEspeces.coutTotal)}</TableCell>
+                      <TableCell className={`text-right ${data.totauxEspeces.margeBrute >= 0 ? "text-emerald-600" : "text-orange-600"}`}>
+                        {formatEuro(data.totauxEspeces.margeBrute)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getMargeColorBg(data.totauxEspeces.margePercent)}`}>
+                          {formatNumber(data.totauxEspeces.margePercent)}%
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right">-</TableCell>
+                      <TableCell className="text-right">-</TableCell>
+                      <TableCell className="text-right">
+                        <span className="flex items-center justify-end gap-1">
+                          <Clock className="h-3 w-3 text-slate-400" />
+                          {formatNumber(data.totauxEspeces.heuresTravaillees)}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {data?.totauxEspeces && data?.totaux && (
+                    <TableRow className="text-muted-foreground bg-slate-50/60">
+                      <TableCell />
+                      <TableCell>
+                        Non affecté aux espèces
+                        <span className="block text-xs font-normal">
+                          autres modules, ventes non rattachées, charges générales
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right">-</TableCell>
+                      <TableCell className="text-right">
+                        {formatNumber(Math.round((data.totaux.production - data.totauxEspeces.production) * 100) / 100)}
+                      </TableCell>
+                      <TableCell className="text-right">-</TableCell>
+                      <TableCell className="text-right">
+                        {formatEuro(Math.round((data.totaux.revenus - data.totauxEspeces.revenus) * 100) / 100)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {formatEuro(Math.round((data.totaux.coutTotal - data.totauxEspeces.coutTotal) * 100) / 100)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {formatEuro(Math.round((data.totaux.margeBrute - data.totauxEspeces.margeBrute) * 100) / 100)}
+                      </TableCell>
+                      <TableCell className="text-right">-</TableCell>
+                      <TableCell className="text-right">-</TableCell>
+                      <TableCell className="text-right">-</TableCell>
+                      <TableCell className="text-right">
+                        <span className="flex items-center justify-end gap-1">
+                          <Clock className="h-3 w-3 text-slate-400" />
+                          {formatNumber(Math.round((data.totaux.heuresTravaillees - data.totauxEspeces.heuresTravaillees) * 10) / 10)}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  )}
+
+                  {/* Totals row — KPI ferme entière (SSOT), tous modules */}
                   {data?.totaux && (
                     <TableRow className="border-t-2 font-bold bg-slate-50">
                       <TableCell />
-                      <TableCell>TOTAL</TableCell>
+                      <TableCell>
+                        TOTAL ferme
+                        {/* TICKET cmsoez28o — l'ancien libellé (« aligné sur le
+                            dashboard Comptabilité ») était faux pour les coûts :
+                            seuls les REVENUS reprennent la SSOT du dashboard,
+                            les coûts restent analytiques (saisis dans les
+                            modules, hors dépenses générales non ventilées). */}
+                        <span className="block text-xs font-normal text-muted-foreground">
+                          tous modules — revenus alignés sur le dashboard Comptabilité ;
+                          coûts = coûts analytiques saisis dans les modules
+                        </span>
+                      </TableCell>
                       <TableCell className="text-right">{formatNumber(data.totaux.surface)}</TableCell>
                       <TableCell className="text-right">{formatNumber(data.totaux.production)}</TableCell>
-                      <TableCell className="text-right">
-                        {data.totaux.surface > 0 ? formatNumber(data.totaux.production / data.totaux.surface, 2) : "-"}
-                      </TableCell>
+                      <TableCell className="text-right">-</TableCell>
                       <TableCell className="text-right text-green-600">{formatEuro(data.totaux.revenus)}</TableCell>
                       <TableCell className="text-right text-red-600">{formatEuro(data.totaux.coutTotal)}</TableCell>
                       <TableCell className={`text-right ${data.totaux.margeBrute >= 0 ? "text-emerald-600" : "text-orange-600"}`}>
@@ -702,6 +825,20 @@ export default function CoutsProductionPage() {
                       </TableCell>
                     </TableRow>
                   )}
+
+                  {/* TICKET cmsoez28o — écart explicite entre les coûts
+                      analytiques ci-dessus et les dépenses comptables du
+                      dashboard (SSOT), au lieu d'un « aligné » mensonger. */}
+                  {data?.totaux && typeof data.totaux.depensesComptables === "number" && (
+                    <TableRow className="bg-slate-50">
+                      <TableCell />
+                      <TableCell colSpan={11} className="py-2 text-xs font-normal text-muted-foreground">
+                        Dépenses comptables du dashboard : {formatEuro(data.totaux.depensesComptables)}{" "}
+                        (écart {formatEuro(Math.round((data.totaux.depensesComptables - data.totaux.coutTotal) * 100) / 100)}{" "}
+                        = dépenses générales non ventilées − valorisations analytiques)
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </CardContent>
@@ -711,10 +848,10 @@ export default function CoutsProductionPage() {
             <CardContent className="py-12 text-center">
               <Package className="h-12 w-12 mx-auto text-slate-300 mb-4" />
               <p className="text-muted-foreground">
-                Aucune donnee de production pour {selectedYear}.
+                Aucune donnée de production pour {selectedYear}.
               </p>
               <p className="text-sm text-muted-foreground mt-1">
-                Enregistrez des cultures et des recoltes pour voir l&apos;analyse des couts.
+                Enregistrez des cultures et des récoltes pour voir l&apos;analyse des coûts.
               </p>
             </CardContent>
           </Card>
@@ -744,12 +881,12 @@ export default function CoutsProductionPage() {
                       />
                       <Legend />
                       <Bar dataKey="revenus" name="Revenus" fill="#22c55e" radius={[0, 2, 2, 0]} />
-                      <Bar dataKey="couts" name="Couts" fill="#ef4444" radius={[0, 2, 2, 0]} />
+                      <Bar dataKey="couts" name="Coûts" fill="#ef4444" radius={[0, 2, 2, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 ) : (
                   <div className="h-[350px] flex items-center justify-center text-muted-foreground">
-                    Aucune donnee
+                    Aucune donnée
                   </div>
                 )}
               </CardContent>
@@ -786,7 +923,7 @@ export default function CoutsProductionPage() {
                   </ResponsiveContainer>
                 ) : (
                   <div className="h-[350px] flex items-center justify-center text-muted-foreground">
-                    Aucun cout enregistre
+                    Aucun coût enregistré
                   </div>
                 )}
               </CardContent>
@@ -800,7 +937,7 @@ export default function CoutsProductionPage() {
                   Coût/kg vs Prix de vente/kg par espèce
                 </CardTitle>
                 <CardDescription>
-                  Compare le cout de production au prix de vente moyen par kilogramme
+                  Compare le coût de production au prix de vente moyen par kilogramme
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -828,7 +965,7 @@ export default function CoutsProductionPage() {
                   </ResponsiveContainer>
                 ) : (
                   <div className="h-[350px] flex items-center justify-center text-muted-foreground">
-                    Aucune donnee de production avec cout
+                    Aucune donnée de production avec coût
                   </div>
                 )}
               </CardContent>

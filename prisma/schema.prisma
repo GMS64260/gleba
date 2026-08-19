@@ -34,10 +34,18 @@ enum BugType {
   AUTRE
 }
 
+/// États d'un signalement. Les deux derniers sont des issues de TRI : le
+/// signalement est qualifié, aucun correctif applicatif n'est attendu, et il
+/// sort du compteur de travail de l'accueil admin (qui ne somme que OPEN et
+/// IN_PROGRESS). Sans eux, tout signalement requalifié restait OPEN à vie.
 enum BugStatus {
   OPEN
   IN_PROGRESS
   RESOLVED
+  /// Besoin produit reconnu, non planifié — reste visible comme demande.
+  EVOLUTION_PRODUIT
+  /// Cause hors du code applicatif (pipeline, infrastructure, tiers).
+  HORS_PERIMETRE
 }
 
 enum BugPriority {
@@ -1358,6 +1366,11 @@ model IrrigationPlanifiee {
   culture       Culture   @relation(fields: [cultureId], references: [id], onDelete: Cascade)
   datePrevue    DateTime  @map("date_prevue")
   fait          Boolean   @default(false) @map("fait")
+  // Passage manqué de plus d'un cycle d'arrosage : abandonné, plus jamais dû.
+  // Un arrosage ne se rattrape pas — sans cet état, chaque jour sauté restait
+  // en retard indéfiniment et se soldait d'un clic qui antidatait la trace
+  // (cf. src/lib/irrigation-peremption.ts). `fait` et `perimee` s'excluent.
+  perimee       Boolean   @default(false) @map("perimee")
   dateEffective DateTime? @map("date_effective") // Date réelle si différente
   notes         String?   @map("notes") @db.Text
   createdAt     DateTime  @default(now()) @map("created_at")
@@ -1366,6 +1379,7 @@ model IrrigationPlanifiee {
   @@index([userId])
   @@index([cultureId])
   @@index([datePrevue])
+  @@index([userId, fait, perimee])
   @@map("irrigations_planifiees")
 }
 

@@ -7,7 +7,6 @@
 import * as React from "react"
 import { Suspense } from "react"
 import Link from "next/link"
-import { useSearchParams } from "next/navigation"
 import { formatSemaine } from "@/lib/assistant-helpers"
 import { ColumnDef } from "@tanstack/react-table"
 import { ArrowLeft, LayoutGrid, CheckCircle2, XCircle, AlertTriangle } from "lucide-react"
@@ -24,6 +23,7 @@ import {
 } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
+import { useAnneePlanification } from "@/hooks/use-annee-planification"
 
 interface CulturePrevue {
   plancheId: string
@@ -35,6 +35,8 @@ interface CulturePrevue {
   itpNom?: string | null
   rotationId: string | null
   rotationAnnee: number
+  rotationNbAnnees?: number | null
+  rotationAncrage?: number | null
   annee: number
   semaineSemis: number | null
   semainePlantation: number | null
@@ -108,14 +110,33 @@ const columns: ColumnDef<CulturePrevue>[] = [
     accessorKey: "rotationId",
     header: "Rotation",
     cell: ({ row }) => {
-      const { rotationId, rotationAnnee } = row.original
+      const { rotationId, rotationAnnee, rotationNbAnnees, rotationAncrage } = row.original
       if (!rotationId) return "-"
+      // QA cmswy9fyr — deux planches sur la MÊME rotation peuvent légitimement
+      // être à des étapes différentes : la phase est ancrée sur l'année de
+      // départ du cycle de la planche. Rien ne l'exposait, et une planche sans
+      // ancrage retombe sur un epoch arbitraire. On nomme donc la position dans
+      // le cycle et son ancrage, ou l'absence d'ancrage.
+      const etape =
+        rotationAnnee > 0
+          ? rotationNbAnnees
+            ? `étape ${rotationAnnee}/${rotationNbAnnees}`
+            : `étape ${rotationAnnee}`
+          : null
       return (
-        <Link href={`/maraichage/rotations/${encodeURIComponent(rotationId)}`}>
-          <span className="text-sm text-blue-600 hover:underline">
-            {rotationId}{rotationAnnee > 0 ? ` (A${rotationAnnee})` : ""}
-          </span>
-        </Link>
+        <div className="text-sm">
+          <Link href={`/maraichage/rotations/${encodeURIComponent(rotationId)}`}>
+            <span className="text-blue-600 hover:underline">{rotationId}</span>
+          </Link>
+          {etape && (
+            <span className="block text-xs text-muted-foreground">
+              {etape}
+              {rotationAncrage
+                ? ` · départ ${rotationAncrage}`
+                : " · départ non défini (phase arbitraire)"}
+            </span>
+          )}
+        </div>
       )
     },
   },
@@ -198,20 +219,15 @@ const columns: ColumnDef<CulturePrevue>[] = [
 ]
 
 function CulturesPrevuesParPlanchesContent() {
-  const searchParams = useSearchParams()
   const { toast } = useToast()
 
   const [data, setData] = React.useState<CulturePrevue[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
-  const [annee, setAnnee] = React.useState(
-    parseInt(searchParams.get("annee") || new Date().getFullYear().toString())
-  )
+  // QA cmswwu5cc — l'année du hub Planification vit dans une seule source
+  // (URL, puis saison mémorisée du module) : voir useAnneePlanification.
+  const { annee, definirAnnee, annees, pret: anneePrete } = useAnneePlanification()
   const [stats, setStats] = React.useState<{ total: number }>({ total: 0 })
 
-  const annees = React.useMemo(() => {
-    const currentYear = new Date().getFullYear()
-    return Array.from({ length: 11 }, (_, i) => currentYear - 5 + i)
-  }, [])
 
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
@@ -233,8 +249,11 @@ function CulturesPrevuesParPlanchesContent() {
   }, [annee, toast])
 
   React.useEffect(() => {
+    // Ne pas charger la saison courante avant d'avoir restauré la saison
+    // mémorisée : la réponse tardive écraserait les données de la bonne année.
+    if (!anneePrete) return
     fetchData()
-  }, [fetchData])
+  }, [anneePrete, fetchData])
 
   const handleExport = () => {
     const headers = ["Planche", "Îlot", "Rotation", "Année Rot.", "Espèce", "S.Semis", "S.Plantation", "S.Récolte", "Surface (m²)", "Statut"]
@@ -248,7 +267,7 @@ function CulturesPrevuesParPlanchesContent() {
       c.semainePlantation?.toString() || "",
       c.semaineRecolte?.toString() || "",
       c.surface.toFixed(1),
-      c.existante ? "Créée" : "A créer",
+      c.existante ? "Créée" : "À créer",
     ])
 
     const csv = [headers, ...rows].map(r => r.join(";")).join("\n")
@@ -282,7 +301,7 @@ function CulturesPrevuesParPlanchesContent() {
           <Badge variant="outline">{stats.total} cultures</Badge>
           <Select
             value={annee.toString()}
-            onValueChange={(value) => setAnnee(parseInt(value))}
+            onValueChange={(value) => definirAnnee(parseInt(value))}
           >
             <SelectTrigger className="w-[100px]">
               <SelectValue />

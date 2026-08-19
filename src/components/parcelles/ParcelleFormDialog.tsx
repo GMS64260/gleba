@@ -6,6 +6,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -13,8 +14,18 @@ import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { useToast } from "@/hooks/use-toast"
 import { ParcelleFormMap } from "@/components/parcelles/ParcelleFormMap"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { COUCHES_ACTIVITE, createParcelleSchema } from "@/lib/validations/parcelle"
-import { COUCHE_LABELS, type ParcelleWithRelations } from "@/components/parcelles/parcelle-constants"
+import { COUCHE_LABELS, TYPE_SOL_OPTIONS, type ParcelleWithRelations } from "@/components/parcelles/parcelle-constants"
+
+// Sentinelle Radix : un SelectItem ne peut pas porter une valeur vide.
+const TYPE_SOL_AUCUN = "__non_renseigne__"
 
 interface ParcelleFormDialogProps {
   open: boolean
@@ -26,6 +37,8 @@ export function ParcelleFormDialog({ open, parcelle, onClose }: ParcelleFormDial
   const { toast } = useToast()
   const [nom, setNom] = useState("")
   const [couches, setCouches] = useState<string[]>([])
+  // QA cmswu0bql — le texte du dialogue annonçait le type de sol sans champ.
+  const [typeSol, setTypeSol] = useState("")
   const [geometry, setGeometry] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
@@ -36,10 +49,12 @@ export function ParcelleFormDialog({ open, parcelle, onClose }: ParcelleFormDial
     if (parcelle) {
       setNom(parcelle.nom)
       setCouches(parcelle.couches || [])
+      setTypeSol(parcelle.typeSol || "")
       setGeometry(parcelle.geometry || null)
     } else {
       setNom("")
       setCouches([])
+      setTypeSol("")
       setGeometry(null)
     }
   }, [parcelle, open])
@@ -55,7 +70,7 @@ export function ParcelleFormDialog({ open, parcelle, onClose }: ParcelleFormDial
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    const formData = { nom: nom.trim(), geometry: geometry || "", couches }
+    const formData = { nom: nom.trim(), geometry: geometry || "", couches, typeSol: typeSol || null }
     const validation = createParcelleSchema.safeParse(formData)
     if (!validation.success) {
       const msg = validation.error.issues[0]?.message || "Donnees invalides"
@@ -111,6 +126,9 @@ export function ParcelleFormDialog({ open, parcelle, onClose }: ParcelleFormDial
           <DialogTitle>
             {isEdit ? `Modifier "${parcelle!.nom}"` : "Nouvelle parcelle"}
           </DialogTitle>
+          <DialogDescription>
+            Renseignez le nom, l&apos;usage, le type de sol et la surface de la parcelle.
+          </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -139,6 +157,29 @@ export function ParcelleFormDialog({ open, parcelle, onClose }: ParcelleFormDial
                 </label>
               ))}
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="typeSol">Type de sol</Label>
+            <Select
+              value={typeSol || TYPE_SOL_AUCUN}
+              onValueChange={(v) => setTypeSol(v === TYPE_SOL_AUCUN ? "" : v)}
+            >
+              <SelectTrigger id="typeSol">
+                <SelectValue placeholder="Non renseigné" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={TYPE_SOL_AUCUN}>Non renseigné</SelectItem>
+                {TYPE_SOL_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
+                {/* Valeur héritée hors liste (ex. limono-argileux) : proposée
+                    telle quelle pour ne pas l'écraser en mode édition. */}
+                {typeSol && !TYPE_SOL_OPTIONS.some((opt) => opt.value === typeSol) && (
+                  <SelectItem value={typeSol}>{typeSol}</SelectItem>
+                )}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="space-y-2">

@@ -89,9 +89,14 @@ export async function GET(request: NextRequest) {
       ]
     }
 
+    // QA cmsqmq9q6 — l'ancien tri [fait asc, datePrevue asc, date desc]
+    // entremêlait planifiés et réalisés sans ordre lisible (20/08, 10/05,
+    // 20/05, 24/07…) : un carnet sanitaire se lit en chronologie. Tri par
+    // date décroissante — les rappels planifiés, datés de leur échéance,
+    // remontent naturellement en tête.
     const soins = await prisma.soinAnimal.findMany({
       where,
-      orderBy: [{ fait: 'asc' }, { datePrevue: 'asc' }, { date: 'desc' }],
+      orderBy: [{ date: 'desc' }, { id: 'desc' }],
       ...(rappels ? {} : { take: limit }),
       include: {
         animal: { select: { id: true, nom: true, identifiant: true, especeAnimale: { select: { id: true, filiere: true } } } },
@@ -299,6 +304,12 @@ export async function POST(request: NextRequest) {
     // Un soin planifie n'est pas encore administre : on conserve le snapshot
     // des delais du produit, mais la fenetre ne devient effective qu'au
     // passage a `fait=true`.
+    // QA cmsqlj7bn — quand le rappel est matérialisé en soin distinct (plus bas),
+    // le soin exécuté ne doit PAS conserver la date du rappel comme date prévue :
+    // l'écran affichait alors « 19/08 — Fait en avance le 12/08 » pour un soin
+    // administré le 12/08, et le rappel apparaissait deux fois au calendrier.
+    const rappelMaterialise = Boolean(d.fait && d.datePrevue && d.datePrevue.getTime() > dateSoin.getTime())
+
     const finLait = d.fait && tempsLait > 0 ? addDays(derniereInjection, tempsLait) : null
     const finViande = d.fait && tempsViande > 0 ? addDays(derniereInjection, tempsViande) : null
     const finOeufs = d.fait && tempsOeufs > 0 ? addDays(derniereInjection, tempsOeufs) : null
@@ -340,7 +351,7 @@ export async function POST(request: NextRequest) {
           unite: d.unite ?? null,
           cout: d.cout ?? null,
           veterinaire: d.veterinaire ?? null,
-          datePrevue: d.datePrevue ?? null,
+          datePrevue: rappelMaterialise ? null : (d.datePrevue ?? null),
           fait: d.fait,
           notes: d.notes ?? null,
           nbInjections,
@@ -367,6 +378,66 @@ export async function POST(request: NextRequest) {
         `
       }
 
+      // Ticket cmsof7ccx — le champ « Rappel planifié » d'un soin déjà effectué
+      // ne produisait JAMAIS de rappel : GET ?rappels=1 exige fait=false, or le
+      // soin créé ici est fait=true (sa datePrevue future restait invisible).
+      // On matérialise le rappel par un second soin planifié (fait=false) daté
+      // de datePrevue — mêmes cible, produit, protocole et délais — calqué sur
+      // la duplication côté client (AlimentationTab, cms1vau9l). Il apparaît
+      // ainsi dans les soins à faire et le calendrier.
+      let rappel: { id: number } | null = null
+      if (rappelMaterialise && d.datePrevue) {
+        const rappelCree = await tx.soinAnimal.create({
+          data: {
+            userId: session.user.id,
+            animalId: d.animalId || null,
+            lotId: d.lotId || null,
+            date: d.datePrevue,
+            type: d.type,
+            description: d.description ?? null,
+            produit: nomProduit,
+            produitId: d.produitId ?? null,
+            stockMedicamentId: stockMedicament?.id ?? null,
+            numeroLotMedicament: stockMedicament?.numeroLot ?? null,
+            peremptionMedicament: stockMedicament?.datePeremption ?? null,
+            dose: d.dose ?? null,
+            voie: d.voie ?? null,
+            motif: d.motif ?? null,
+            ordonnanceUrl: d.ordonnanceUrl || stockMedicament?.ordonnanceUrl || null,
+            quantite: d.quantite ?? null,
+            unite: d.unite ?? null,
+            // QA cmsqmqwn9 — le rappel héritait du coût du soin exécuté : le
+            // coût sanitaire de l'animal doublait à chaque rappel programmé.
+            // Un soin non administré n'a pas coûté : le coût se saisit à sa
+            // validation, comme le prélèvement de stock.
+            cout: null,
+            veterinaire: d.veterinaire ?? null,
+            datePrevue: d.datePrevue,
+            fait: false,
+            notes: `Rappel du soin du ${dateSoin.toLocaleDateString('fr-FR', { timeZone: 'UTC' })}`,
+            nbInjections,
+            intervalleInjectionsHeures: intervalleH,
+            tempsAttenteLaitJ: tempsLait > 0 ? tempsLait : null,
+            tempsAttenteViandeJ: tempsViande > 0 ? tempsViande : null,
+            tempsAttenteOeufsJ: tempsOeufs > 0 ? tempsOeufs : null,
+            delaiAttenteSource,
+            // fait=false : fenêtres d'attente nulles tant que non administré,
+            // et aucun prélèvement de stock avant validation.
+          },
+        })
+        rappel = { id: rappelCree.id }
+        for (const injection of calendrierInjections(d.datePrevue, nbInjections, intervalleH, false)) {
+          await tx.$executeRaw`
+            INSERT INTO injections_soins
+              (id, user_id, soin_id, numero, date_prevue, date_realisee, statut, created_at, updated_at)
+            VALUES
+              (${randomUUID()}, ${session.user.id}, ${rappelCree.id}, ${injection.numero},
+               ${injection.datePrevue}, ${injection.dateRealisee ?? null}, ${injection.statut},
+               NOW(), NOW())
+          `
+        }
+      }
+
       // Écartement des collectes (cross-granularité individu↔lot, recompute).
       let nbEcartees = 0
       if (finLait) {
@@ -380,16 +451,23 @@ export async function POST(request: NextRequest) {
         date: soin.date,
         fait: soin.fait,
       }, tx)
-      return { soin, nbEcartees }
+      return { soin, nbEcartees, rappel }
     })
     invalidateKpi(session.user.id)
 
+    const infos = [
+      result.nbEcartees > 0
+        ? `${result.nbEcartees} collecte(s) de lait écartée(s) jusqu'au ${finLait?.toLocaleDateString('fr-FR')}.`
+        : null,
+      result.rappel
+        ? `Rappel planifié le ${d.datePrevue?.toLocaleDateString('fr-FR', { timeZone: 'UTC' })}.`
+        : null,
+    ].filter(Boolean)
     return NextResponse.json(
       {
         data: result.soin,
-        info: result.nbEcartees > 0
-          ? `${result.nbEcartees} collecte(s) de lait écartée(s) jusqu'au ${finLait?.toLocaleDateString('fr-FR')}.`
-          : null,
+        rappel: result.rappel,
+        info: infos.length > 0 ? infos.join(' ') : null,
       },
       { status: 201 }
     )
@@ -415,7 +493,7 @@ export async function PATCH(request: NextRequest) {
     if (!parsed.success) {
       return NextResponse.json({ error: 'Données invalides', details: parsed.error.flatten() }, { status: 400 })
     }
-    const { id, fait, date, notes, type, description, produit, quantite, unite, cout, datePrevue, veterinaire, animalId, lotId, dose, voie, motif, ordonnanceUrl, nbInjections, intervalleInjectionsHeures, tempsAttenteLaitJ, tempsAttenteViandeJ, stockMedicamentId } = parsed.data
+    const { id, fait, date, notes, type, description, produit, quantite, unite, cout, datePrevue, veterinaire, animalId, lotId, dose, voie, motif, ordonnanceUrl, nbInjections, intervalleInjectionsHeures, tempsAttenteLaitJ, tempsAttenteOeufsJ, tempsAttenteViandeJ, stockMedicamentId } = parsed.data
 
     const existing = await prisma.soinAnimal.findFirst({
       where: { id, userId: session.user.id },
@@ -457,8 +535,9 @@ export async function PATCH(request: NextRequest) {
     if (intervalleInjectionsHeures !== undefined) updateData.intervalleInjectionsHeures = intervalleInjectionsHeures
     // QA caprin cms1v5j14 — délais d'attente surchargeables (ordonnance véto)
     if (tempsAttenteLaitJ !== undefined) updateData.tempsAttenteLaitJ = tempsAttenteLaitJ
+    if (tempsAttenteOeufsJ !== undefined) updateData.tempsAttenteOeufsJ = tempsAttenteOeufsJ
     if (tempsAttenteViandeJ !== undefined) updateData.tempsAttenteViandeJ = tempsAttenteViandeJ
-    if (tempsAttenteLaitJ !== undefined || tempsAttenteViandeJ !== undefined) {
+    if (tempsAttenteLaitJ !== undefined || tempsAttenteOeufsJ !== undefined || tempsAttenteViandeJ !== undefined) {
       updateData.delaiAttenteSource = 'prescription'
     }
     if (
@@ -643,6 +722,7 @@ export async function PATCH(request: NextRequest) {
           data: {
             fait: commence,
             finAttenteLait: commence && derniere ? ajouterJours(derniere, taLaitEffectif) : null,
+            finAttenteOeufs: commence && derniere ? ajouterJours(derniere, taOeufsEffectif) : null,
             finAttenteViande: commence && derniere ? ajouterJours(derniere, taViandeEffectif) : null,
           },
           include: { animal: true, lot: true, produitVeterinaire: true },

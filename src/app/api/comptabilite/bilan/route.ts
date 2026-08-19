@@ -52,14 +52,20 @@ export async function GET(request: NextRequest) {
   })
 
   // Créances clients : factures non payées (totalTTC) + ventes manuelles non payées
-  const [creancesFactures, creancesVentes] = await Promise.all([
-    prisma.facture.aggregate({
+  // QA cmsjivhbv — un avoir (type='avoir') a `statut='emise'` comme une facture,
+  // et sommer `totalTTC` sans signe faisait GONFLER la créance (411 = 1 111,24 +
+  // 143,00 + 14,30 au lieu de − 14,30). Un avoir réduit la créance : on somme
+  // donc les factures avec leur signe (avoir = −1), comme le fait déjà la SSOT
+  // (cf. lib/kpi/compta.ts). Les statuts "envoyee"/"partielle" n'existent pas
+  // dans la machine à états des factures : on s'aligne sur "emise".
+  const [facturesCreance, creancesVentes] = await Promise.all([
+    prisma.facture.findMany({
       where: {
         userId,
-        statut: { in: ["emise", "envoyee", "partielle"] },
+        statut: "emise",
         date: { gte: startOfYear, lte: endOfYear },
       },
-      _sum: { totalTTC: true },
+      select: { id: true, totalTTC: true, type: true, factureOrigineId: true },
     }),
     prisma.venteManuelle.aggregate({
       where: {
@@ -70,8 +76,23 @@ export async function GET(request: NextRequest) {
       _sum: { montant: true },
     }),
   ])
-  const creances =
-    (creancesFactures._sum.totalTTC ?? 0) + (creancesVentes._sum.montant ?? 0)
+  // QA cmswunx5s (écart 20,90 €) — un avoir sur une facture déjà PAYÉE n'est
+  // pas une créance négative (c'est une dette envers le client) : on ne
+  // déduit un avoir que si sa facture d'origine est encore une créance
+  // ouverte, exactement comme construireImpayees (invariant « impayées ==
+  // créances 411 » documenté dans lib/comptabilite/impayees.ts).
+  const facturesOuvertes = new Set(
+    facturesCreance.filter(f => f.type !== "avoir").map(f => f.id),
+  )
+  const creancesFacturesSignees = facturesCreance.reduce((sum, f) => {
+    if (f.type === "avoir") {
+      return f.factureOrigineId != null && facturesOuvertes.has(f.factureOrigineId)
+        ? sum - f.totalTTC
+        : sum
+    }
+    return sum + f.totalTTC
+  }, 0)
+  const creances = creancesFacturesSignees + (creancesVentes._sum.montant ?? 0)
 
   // ─── PASSIF ─────────────────────────────────────────────────────────
   // Résultat de l'exercice : KPI compta SSOT (YTD).

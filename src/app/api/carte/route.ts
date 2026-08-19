@@ -148,6 +148,34 @@ export async function POST(request: NextRequest) {
     // Calcul automatique de la surface si non fournie
     const surface = providedSurface ?? calculateSurfaceHa(geometry)
 
+    // QA cmsp57mck — un ré-import cadastre créait N lignes homonymes
+    // (6 × « Mellionnec - WK 0016 » sur le compte démo le 2026-08-10),
+    // rendant indiscernables tous les sélecteurs de parcelle. La garde
+    // client (jardin/carte) ne couvre ni la course au double-clic ni un
+    // POST direct : l'unicité (commune, section, numéro) est arbitrée ici.
+    // Les parcelles dessinées à la main (sans référence cadastrale) restent
+    // libres de porter le même nom.
+    if (commune && section && numero) {
+      const existante = await prisma.parcelleGeo.findFirst({
+        where: {
+          userId: session!.user.id,
+          commune: { equals: commune.trim(), mode: 'insensitive' },
+          section: { equals: section.trim(), mode: 'insensitive' },
+          numero: numero.trim(),
+        },
+        select: { id: true, nom: true },
+      })
+      if (existante) {
+        return NextResponse.json(
+          {
+            error: `La parcelle cadastrale ${commune} ${section} ${numero} est déjà importée (« ${existante.nom} »). Modifiez-la plutôt que de la dupliquer.`,
+            id: existante.id,
+          },
+          { status: 409 }
+        )
+      }
+    }
+
     const parcelle = await prisma.parcelleGeo.create({
       data: {
         nom: nom.trim(),

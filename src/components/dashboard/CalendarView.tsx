@@ -22,6 +22,7 @@ import {
 import { fr } from "date-fns/locale"
 import { ChevronLeft, ChevronRight, Sprout, Leaf, Package, Droplets, Calendar, CalendarDays, CloudRain } from "lucide-react"
 
+import { libelleIrrigationInutile } from "@/lib/irrigation-meteo-decision"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -58,7 +59,11 @@ interface CalendarEvent {
   cultureId?: number // Pour les irrigations, ID de la culture liée
   cultureCount?: number
   pluiePrevue?: number | null
+  pluieRecente?: number | null
   probablementInutile?: boolean
+  raisonInutile?: "pluie-recente" | "pluie-prevue" | null
+  /** Passage manqué de plus d'un cycle : abandonné, plus une action due. */
+  perimee?: boolean
 }
 
 interface CalendarViewProps {
@@ -367,7 +372,11 @@ export function CalendarView({ year }: CalendarViewProps) {
                 const plantationEvents = dayEvents.filter(e => e.type === "plantation")
                 const recolteEvents = dayEvents.filter(e => e.type === "recolte")
                 const irrigationEvents = dayEvents.filter(e => e.type === "irrigation")
-                const allIrrigationsInutiles = irrigationEvents.length > 0 && irrigationEvents.every(e => e.probablementInutile)
+                // Un passage abandonné ne réclame plus rien : il est traité
+                // comme un passage annulé par la pluie pour ne pas laisser une
+                // pastille d'action sur une journée définitivement passée.
+                const allIrrigationsInutiles = irrigationEvents.length > 0
+                  && irrigationEvents.every(e => e.probablementInutile || e.perimee)
 
                 const counts = {
                   semis: semisEvents.length,
@@ -381,7 +390,7 @@ export function CalendarView({ year }: CalendarViewProps) {
                   semis: semisEvents.length > 0 && semisEvents.every(e => e.fait),
                   plantation: plantationEvents.length > 0 && plantationEvents.every(e => e.fait),
                   recolte: recolteEvents.length > 0 && recolteEvents.every(e => e.fait),
-                  irrigation: irrigationEvents.length > 0 && irrigationEvents.every(e => e.fait),
+                  irrigation: irrigationEvents.length > 0 && irrigationEvents.every(e => e.fait || e.perimee),
                 }
 
                 return (
@@ -481,10 +490,12 @@ export function CalendarView({ year }: CalendarViewProps) {
                                   {format(dayDate, "EEEE d MMMM", { locale: fr })}
                                 </p>
                                 {dayEvents.map(event => {
-                                  const inutile = event.type === "irrigation" && event.probablementInutile && !event.fait
+                                  const abandonne = event.type === "irrigation" && !!event.perimee && !event.fait
+                                  const pluie = event.type === "irrigation" && !!event.probablementInutile && !event.fait && !abandonne
+                                  const inutile = pluie || abandonne
                                   const { icon: Icon, color } = typeIcons[event.type]
-                                  const EventIcon = inutile ? CloudRain : Icon
-                                  const iconColor = inutile ? "text-blue-400" : color
+                                  const EventIcon = pluie ? CloudRain : Icon
+                                  const iconColor = abandonne ? "text-muted-foreground" : pluie ? "text-blue-400" : color
                                   return (
                                     <div
                                       key={`${event.id}-${event.type}`}
@@ -497,7 +508,11 @@ export function CalendarView({ year }: CalendarViewProps) {
                                         setEventDialogOpen(true)
                                       }}
                                       className={`flex items-center gap-1.5 text-xs hover:bg-accent rounded px-1.5 py-1 w-full cursor-grab active:cursor-grabbing transition-colors ${inutile ? "opacity-60" : ""}`}
-                                      title={inutile ? `${Math.round(event.pluiePrevue!)}mm de pluie prévue — irrigation probablement inutile` : "Glisser pour deplacer, cliquer pour details"}
+                                      title={abandonne
+                                        ? "Passage manqué depuis plus d'un cycle : abandonné, il ne sera pas rattrapé"
+                                        : pluie
+                                          ? libelleIrrigationInutile(event)
+                                          : "Glisser pour deplacer, cliquer pour details"}
                                     >
                                       <EventIcon className={`h-4 w-4 ${iconColor} flex-shrink-0`} />
                                       <span className={`truncate ${event.fait ? "line-through opacity-60" : ""} ${inutile ? "line-through text-muted-foreground" : ""}`}>
@@ -507,8 +522,20 @@ export function CalendarView({ year }: CalendarViewProps) {
                                       {event.plancheName && (
                                         <span className="text-muted-foreground flex-shrink-0">→ {event.plancheName}</span>
                                       )}
-                                      {inutile && (
-                                        <span className="text-blue-500 ml-auto flex-shrink-0 text-[10px]">{Math.round(event.pluiePrevue!)}mm</span>
+                                      {pluie && (
+                                        <span className="text-blue-500 ml-auto flex-shrink-0 text-[10px]">
+                                          {(() => {
+                                            // QA cmswu3260 — afficher la grandeur qui motive la
+                                            // décision, sans jamais arrondir à « 0mm ».
+                                            const v = event.raisonInutile === "pluie-recente"
+                                              ? event.pluieRecente
+                                              : event.pluiePrevue
+                                            return v != null ? `${String(Math.round(v * 10) / 10).replace(".", ",")}mm` : "pluie"
+                                          })()}
+                                        </span>
+                                      )}
+                                      {abandonne && (
+                                        <span className="text-muted-foreground ml-auto flex-shrink-0 text-[10px]">abandonné</span>
                                       )}
                                       {event.fait && <span className="text-green-600 ml-auto flex-shrink-0">✓</span>}
                                     </div>
@@ -615,9 +642,11 @@ export function CalendarView({ year }: CalendarViewProps) {
               </div>
             </div>
 
-            {/* Lien vers tâches */}
+            {/* Lien vers tâches — TICKET cmsoeqjmv : transmettre l'année du
+                dashboard, sinon /taches retombe sur l'année courante et
+                affiche d'autres tâches que celles promises par le lien. */}
             <div className="mt-3 text-center">
-              <Link href="/taches">
+              <Link href={`/taches?year=${year}`}>
                 <Button variant="outline" size="sm">
                   Voir les tâches de la semaine
                 </Button>
@@ -645,11 +674,13 @@ export function CalendarView({ year }: CalendarViewProps) {
                 </SheetHeader>
                 <div className="py-4 space-y-2 overflow-y-auto">
                   {selectedDayForMobile?.events.map(event => {
-                    const inutile = event.type === "irrigation" && event.probablementInutile && !event.fait
+                    const abandonne = event.type === "irrigation" && !!event.perimee && !event.fait
+                    const pluie = event.type === "irrigation" && !!event.probablementInutile && !event.fait && !abandonne
+                    const inutile = pluie || abandonne
                     const { icon: Icon, color, bg } = typeIcons[event.type]
-                    const EventIcon = inutile ? CloudRain : Icon
-                    const iconColor = inutile ? "text-blue-400" : color
-                    const bgColor = inutile ? "bg-blue-50/60" : bg
+                    const EventIcon = pluie ? CloudRain : Icon
+                    const iconColor = abandonne ? "text-muted-foreground" : pluie ? "text-blue-400" : color
+                    const bgColor = abandonne ? "bg-muted/50" : pluie ? "bg-blue-50/60" : bg
                     const typeLabel = {
                       semis: "Semis",
                       plantation: "Plantation",
@@ -678,15 +709,22 @@ export function CalendarView({ year }: CalendarViewProps) {
                             {typeLabel[event.type]}
                             {event.plancheName && <span> · {event.plancheName}</span>}
                           </p>
-                          {inutile && event.pluiePrevue != null && (
+                          {pluie && (
                             <p className="text-xs text-blue-500 mt-0.5">
-                              {Math.round(event.pluiePrevue)}mm de pluie prévue — probablement inutile
+                              {libelleIrrigationInutile(event)}
+                            </p>
+                          )}
+                          {abandonne && (
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              Manqué depuis plus d&apos;un cycle : un arrosage ne se rattrape pas.
                             </p>
                           )}
                         </div>
                         {event.fait ? (
                           <Badge className="bg-green-100 text-green-800">Fait</Badge>
-                        ) : inutile ? (
+                        ) : abandonne ? (
+                          <Badge variant="secondary" className="text-muted-foreground">Abandonné</Badge>
+                        ) : pluie ? (
                           <Badge className="bg-blue-100 text-blue-600">Pluie</Badge>
                         ) : (
                           <Badge variant="outline">À faire</Badge>

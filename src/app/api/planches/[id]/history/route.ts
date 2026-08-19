@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
+import { resoudreIdPlanche } from '@/lib/planches/resolution'
 import { PlancheHistory, CultureHistory, FertilisationHistory } from '@/lib/rotation'
 import { requireAuthApi } from '@/lib/auth-utils'
 
@@ -43,15 +44,12 @@ export async function GET(request: NextRequest, { params }: Params) {
     const currentYear = new Date().getFullYear()
     const minYear = currentYear - years
 
-    // Vérifier que la planche existe et appartient à l'utilisateur (URL param is nom)
-    const planche = await prisma.planche.findUnique({
-      where: {
-        nom_userId: {
-          nom: plancheId,
-          userId: session!.user.id,
-        },
-      },
-    })
+    // Vérifier que la planche existe et appartient à l'utilisateur.
+    // Le paramètre est un identifiant ; le nom reste accepté en repli.
+    const resolu = await resoudreIdPlanche(prisma, plancheId, session!.user.id)
+    const planche = resolu
+      ? await prisma.planche.findUnique({ where: { id: resolu } })
+      : null
 
     if (!planche) {
       return NextResponse.json({ error: 'Planche non trouvée' }, { status: 404 })

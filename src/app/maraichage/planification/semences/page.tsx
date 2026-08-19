@@ -16,6 +16,7 @@ import * as React from "react"
 import { Suspense } from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
+import { useAnneePlanification } from "@/hooks/use-annee-planification"
 import { ColumnDef } from "@tanstack/react-table"
 import { ArrowLeft, Sprout, AlertTriangle, Package, Clock } from "lucide-react"
 
@@ -63,7 +64,7 @@ interface BesoinSemence {
   tauxGerminationPct: number | null
   aCommander: number
   caieuxACommander: number
-  statut: "OK" | "LOW" | "MISSING" | "IGNORE"
+  statut: "OK" | "LOW" | "MISSING" | "IGNORE" | "DONNEE_MANQUANTE"
   stockDateMaj: string | null
 }
 
@@ -84,6 +85,8 @@ interface Stats {
   nbGraineDirecte: number
   nbPlantRepique: number
   nbBulbeCaieu: number
+  nbDonneeManquante?: number
+  especesDonneeManquante?: string[]
   stockObsolete: boolean
   stockObsoleteSeuilJours: number
   derniereMajStockISO: string | null
@@ -105,6 +108,15 @@ function StatutBadge({ statut }: { statut: BesoinSemence["statut"] }) {
         <Badge variant="destructive" className="flex items-center gap-1">
           <AlertTriangle className="h-3 w-3" />
           Manquant
+        </Badge>
+      )
+    case "DONNEE_MANQUANTE":
+      // QA cmswxo3ri — besoin non calculable : la ligne reste visible, avec la
+      // cause. Avant, elle était filtrée avec les lignes hors plan.
+      return (
+        <Badge variant="outline" className="flex items-center gap-1 border-amber-400 text-amber-700">
+          <AlertTriangle className="h-3 w-3" />
+          Dose manquante
         </Badge>
       )
     default:
@@ -374,9 +386,9 @@ function SemencesContent() {
   const [data, setData] = React.useState<BesoinSemence[]>([])
   const [stats, setStats] = React.useState<Stats | null>(null)
   const [isLoading, setIsLoading] = React.useState(true)
-  const [annee, setAnnee] = React.useState(
-    parseInt(searchParams.get("annee") || new Date().getFullYear().toString())
-  )
+  // QA cmswwu5cc — l'année du hub Planification vit dans une seule source
+  // (URL, puis saison mémorisée du module) : voir useAnneePlanification.
+  const { annee, definirAnnee, annees, pret: anneePrete } = useAnneePlanification()
   // BUG-01 audit Marc : toggle pour basculer entre besoin brut et besoin
   // majoré (marge sécurité). Persistence via localStorage afin que la
   // préférence du maraîcher tienne d'une session à l'autre.
@@ -395,10 +407,6 @@ function SemencesContent() {
   const grainesColumns = React.useMemo(() => makeGrainesColumns(appliquerMarge), [appliquerMarge])
   const plantsColumns = React.useMemo(() => makePlantsColumns(appliquerMarge), [appliquerMarge])
 
-  const annees = React.useMemo(() => {
-    const currentYear = new Date().getFullYear()
-    return Array.from({ length: 11 }, (_, i) => currentYear - 5 + i)
-  }, [])
 
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
@@ -420,8 +428,11 @@ function SemencesContent() {
   }, [annee, toast])
 
   React.useEffect(() => {
+    // Ne pas charger la saison courante avant d'avoir restauré la saison
+    // mémorisée : la réponse tardive écraserait les données de la bonne année.
+    if (!anneePrete) return
     fetchData()
-  }, [fetchData])
+  }, [anneePrete, fetchData])
 
   const handleExport = () => {
     const headers = [
@@ -540,7 +551,7 @@ function SemencesContent() {
           </Link>
           <Select
             value={annee.toString()}
-            onValueChange={(value) => setAnnee(parseInt(value))}
+            onValueChange={(value) => definirAnnee(parseInt(value))}
           >
             <SelectTrigger className="w-[100px]">
               <SelectValue />
@@ -577,6 +588,33 @@ function SemencesContent() {
             </CardContent>
           </Card>
         )}
+
+        {/* QA cmswxo3ri — une espèce planifiée sans dose au référentiel était
+            purement escamotée : l'écran annonçait « 3 espèces » et n'en listait
+            que 2, et le total à commander l'excluait sans le dire. */}
+        {stats?.nbDonneeManquante ? (
+          <Card className="mb-4 border-amber-300 bg-amber-50">
+            <CardContent className="py-3 flex items-start gap-3">
+              <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0" />
+              <div className="text-sm text-amber-800">
+                Besoin non calculable pour{" "}
+                <strong>
+                  {stats.especesDonneeManquante?.join(", ") || `${stats.nbDonneeManquante} espèce(s)`}
+                </strong>{" "}
+                : aucune dose de semis n&apos;est renseignée au référentiel. Ces lignes sont
+                listées avec le statut « Dose manquante » et n&apos;entrent pas dans les totaux à
+                commander.{" "}
+                <Link
+                  href="/?tab=referentiel"
+                  className="underline underline-offset-2 hover:text-amber-900"
+                >
+                  Compléter le référentiel
+                </Link>
+                .
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
 
         {/* Stats */}
         {stats && (

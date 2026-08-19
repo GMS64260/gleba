@@ -145,6 +145,14 @@ export async function GET(request: NextRequest) {
       id: string
       source: string
       sourceId: number
+      /**
+       * Écriture saisie à la main, donc corrigeable et supprimable depuis cet
+       * écran (2026-08-13). Une vente manuelle peut aussi être AUTO (commande
+       * boutique, réservation d'élevage) : elle porte alors le nom de table
+       * `VenteManuelle` sans être corrigeable ici — ne pas déduire l'origine
+       * du seul nom de source.
+       */
+      corrigeable?: boolean
       module: string
       date: string
       description: string
@@ -178,7 +186,13 @@ export async function GET(request: NextRequest) {
                    v.type === 'viande' ? 'Viande' :
                    v.type === 'animal_vivant' ? 'Animal vivant' :
                    v.type === 'lait' ? 'Lait' :
-                   v.type === 'fromage' ? 'Fromage' : 'Autre élevage',
+                   v.type === 'fromage' ? 'Fromage' :
+                   v.type === 'miel' ? 'Miel' :
+                   v.type === 'cire' ? 'Cire' :
+                   v.type === 'propolis' ? 'Propolis' :
+                   v.type === 'pollen' ? 'Pollen' :
+                   v.type === 'gelee_royale' ? 'Gelée royale' :
+                   v.type === 'autre_ruche' ? 'Autre produit de la ruche' : 'Autre élevage',
       })
     })
 
@@ -286,6 +300,7 @@ export async function GET(request: NextRequest) {
         id: `manuel-${v.id}`,
         source: 'VenteManuelle',
         sourceId: v.id,
+        corrigeable: v.auto !== true,
         module: v.module || 'autre',
         date: v.date.toISOString(),
         description: v.description,
@@ -339,7 +354,11 @@ export async function GET(request: NextRequest) {
         prixUnitaire: null,
         montant: c.total,
         client: c.clientNom,
-        paye: true, // commande livrée = encaissée
+        // QA cmsqlzvw9 — « livrée » n'implique PAS « encaissée » : une
+        // commande livrée avec paiement « En attente » était constatée payée
+        // en comptabilité alors que la Boutique affichait l'inverse. Le
+        // statut de paiement du modèle est la seule vérité.
+        paye: c.paiementStatut === 'Confirmé',
         categorie: 'Boutique en ligne',
       })
     })

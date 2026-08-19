@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { urlApercu } from "@/lib/apercu-document"
 import { AlertTriangle, Archive, Check, Download, ExternalLink, FileSpreadsheet, FileText, History, Loader2, Pencil, Plus, RotateCcw, Send, Trash2, Upload } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -276,6 +277,7 @@ export function SanitaireReglementaireSubTab() {
   const [declarationResume, setDeclarationResume] = React.useState<DeclarationResume | null>(null)
   const [declarationsLoading, setDeclarationsLoading] = React.useState(true)
   const [transmissionOpen, setTransmissionOpen] = React.useState(false)
+  const [isSavingTransmission, setIsSavingTransmission] = React.useState(false)
   const [declarationSelectionnee, setDeclarationSelectionnee] = React.useState<Declaration | null>(null)
   const [inventaireDate, setInventaireDate] = React.useState(dateISO())
   const [circulationOpen, setCirculationOpen] = React.useState(false)
@@ -295,7 +297,9 @@ export function SanitaireReglementaireSubTab() {
     notes: "",
   })
   const [stockForm, setStockForm] = React.useState({ produitId: "", numeroLot: "", quantite: "", unite: "mL", datePeremption: "", ordonnanceUrl: "", fournisseur: "", notes: "" })
+  const [isSavingStock, setIsSavingStock] = React.useState(false)
   const [proForm, setProForm] = React.useState({ type: "", datePrevue: dateISO(), organisme: "", notes: "" })
+  const [isSavingPro, setIsSavingPro] = React.useState(false)
   const [numeroEde, setNumeroEde] = React.useState("")
   const [numeroEdeSaving, setNumeroEdeSaving] = React.useState(false)
 
@@ -438,23 +442,45 @@ export function SanitaireReglementaireSubTab() {
 
   async function saveStock(e: React.FormEvent) {
     e.preventDefault()
-    const res = await fetch('/api/elevage/stock-medicaments', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...stockForm, quantite: Number(stockForm.quantite), datePeremption: stockForm.datePeremption || null, ordonnanceUrl: stockForm.ordonnanceUrl || null }),
-    })
-    if (!res.ok) return toast({ variant: 'destructive', title: 'Stock non enregistré', description: (await res.json()).error })
-    setStockOpen(false); await reload()
-    toast({ title: 'Stock de médicament enregistré' })
+    if (isSavingStock) return
+    // QA cmswtt0ee — filet FormData (motif cmsogkqpf) : le DOM gagne s'il
+    // porte une valeur, sinon l'état React ; une saisie qui ne déclenche pas
+    // onChange partait en NULL. Lu avant tout await (currentTarget est
+    // remis à null après).
+    const champPeremption = (e.currentTarget as HTMLFormElement)
+      .elements.namedItem("datePeremption") as HTMLInputElement | null
+    if (champPeremption?.validity?.badInput) {
+      return toast({ variant: 'destructive', title: 'Date de péremption incomplète', description: 'Saisissez jj/mm/aaaa ou utilisez le calendrier.' })
+    }
+    const peremptionSoumise = (champPeremption?.value || "").trim() || stockForm.datePeremption
+    setIsSavingStock(true)
+    try {
+      const res = await fetch('/api/elevage/stock-medicaments', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...stockForm, quantite: Number(stockForm.quantite), datePeremption: peremptionSoumise || null, ordonnanceUrl: stockForm.ordonnanceUrl || null }),
+      })
+      if (!res.ok) return toast({ variant: 'destructive', title: 'Stock non enregistré', description: (await res.json()).error })
+      setStockOpen(false); await reload()
+      toast({ title: 'Stock de médicament enregistré' })
+    } finally {
+      setIsSavingStock(false)
+    }
   }
 
   async function savePro(e: React.FormEvent) {
     e.preventDefault()
-    const res = await fetch('/api/elevage/prophylaxies', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(proForm),
-    })
-    if (!res.ok) return toast({ variant: 'destructive', title: 'Échéance non enregistrée', description: (await res.json()).error })
-    setProOpen(false); await reload()
-    toast({ title: 'Prophylaxie ajoutée à l’agenda' })
+    if (isSavingPro) return
+    setIsSavingPro(true)
+    try {
+      const res = await fetch('/api/elevage/prophylaxies', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(proForm),
+      })
+      if (!res.ok) return toast({ variant: 'destructive', title: 'Échéance non enregistrée', description: (await res.json()).error })
+      setProOpen(false); await reload()
+      toast({ title: 'Prophylaxie ajoutée à l’agenda' })
+    } finally {
+      setIsSavingPro(false)
+    }
   }
 
   function ouvrirJustificatif(justificatif?: JustificatifAliment) {
@@ -706,28 +732,34 @@ export function SanitaireReglementaireSubTab() {
 
   async function enregistrerTransmission(e: React.FormEvent) {
     e.preventDefault()
+    if (isSavingTransmission) return
     if (!declarationSelectionnee) return
-    const res = await fetch('/api/elevage/declarations-reglementaires', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        key: declarationSelectionnee.key,
-        year: anneeCourante,
-        statut: 'TRANSMISE',
-        ...transmissionForm,
-      }),
-    })
-    if (!res.ok) {
-      const payload = await res.json()
-      return toast({
-        variant: 'destructive',
-        title: 'Transmission non enregistrée',
-        description: payload.error || 'Vérifiez les informations obligatoires.',
+    setIsSavingTransmission(true)
+    try {
+      const res = await fetch('/api/elevage/declarations-reglementaires', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          key: declarationSelectionnee.key,
+          year: anneeCourante,
+          statut: 'TRANSMISE',
+          ...transmissionForm,
+        }),
       })
+      if (!res.ok) {
+        const payload = await res.json()
+        return toast({
+          variant: 'destructive',
+          title: 'Transmission non enregistrée',
+          description: payload.error || 'Vérifiez les informations obligatoires.',
+        })
+      }
+      setTransmissionOpen(false)
+      await reload()
+      toast({ title: 'Transmission réglementaire tracée' })
+    } finally {
+      setIsSavingTransmission(false)
     }
-    setTransmissionOpen(false)
-    await reload()
-    toast({ title: 'Transmission réglementaire tracée' })
   }
 
   async function remettreADeclarer(declaration: Declaration) {
@@ -871,7 +903,20 @@ export function SanitaireReglementaireSubTab() {
     {/* Registres BDNI / inventaire du cheptel : documents de rente. */}
     {caps.productionRente && (
       <div className="flex flex-wrap items-end gap-2">
-        <Button asChild><a href={`/api/elevage/registre-elevage-complet?year=${new Date().getFullYear()}`}><Download className="h-4 w-4 mr-2" />Registre complet PDF</a></Button>
+        <Button asChild>
+          {/* 2026-08-19 — les registres réglementaires s'affichent d'abord :
+              on les relit avant de les archiver ou de les transmettre. */}
+          <a
+            href={urlApercu(
+              `/api/elevage/registre-elevage-complet?year=${new Date().getFullYear()}`,
+              `Registre d'élevage complet ${new Date().getFullYear()}`,
+            )}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <FileText className="h-4 w-4 mr-2" />Registre complet PDF
+          </a>
+        </Button>
         <Button
           variant="secondary"
           onClick={() => void archiverRegistreComplet()}
@@ -896,8 +941,15 @@ export function SanitaireReglementaireSubTab() {
           />
         </div>
         <Button asChild variant="outline">
-          <a href={`/api/elevage/inventaire-cheptel?date=${inventaireDate}&format=pdf`}>
-            <Download className="h-4 w-4 mr-2" />Inventaire PDF
+          <a
+            href={urlApercu(
+              `/api/elevage/inventaire-cheptel?date=${inventaireDate}&format=pdf`,
+              `Inventaire du cheptel au ${inventaireDate}`,
+            )}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <FileText className="h-4 w-4 mr-2" />Inventaire PDF
           </a>
         </Button>
         <Button asChild variant="outline">
@@ -905,8 +957,30 @@ export function SanitaireReglementaireSubTab() {
             <FileSpreadsheet className="h-4 w-4 mr-2" />Inventaire CSV
           </a>
         </Button>
-        <Button asChild variant="outline"><a href={`/api/elevage/registre-sanitaire?year=${new Date().getFullYear()}`}><Download className="h-4 w-4 mr-2" />Registre sanitaire PDF</a></Button>
-        <Button asChild variant="outline"><a href={`/api/elevage/registre-elevage?year=${new Date().getFullYear()}`}><Download className="h-4 w-4 mr-2" />Registre d’élevage PDF</a></Button>
+        <Button asChild variant="outline">
+          <a
+            href={urlApercu(
+              `/api/elevage/registre-sanitaire?year=${new Date().getFullYear()}`,
+              `Registre sanitaire ${new Date().getFullYear()}`,
+            )}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <FileText className="h-4 w-4 mr-2" />Registre sanitaire PDF
+          </a>
+        </Button>
+        <Button asChild variant="outline">
+          <a
+            href={urlApercu(
+              `/api/elevage/registre-elevage?year=${new Date().getFullYear()}`,
+              `Registre d'élevage ${new Date().getFullYear()}`,
+            )}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <FileText className="h-4 w-4 mr-2" />Registre d’élevage PDF
+          </a>
+        </Button>
       </div>
     )}
 
@@ -1136,7 +1210,7 @@ export function SanitaireReglementaireSubTab() {
           </div>
           <div><Label>Référence ou preuve</Label><Input required value={transmissionForm.referenceTransmission} onChange={e => setTransmissionForm(f => ({ ...f, referenceTransmission: e.target.value }))} placeholder="Accusé, bordereau, nom du fichier…" /></div>
           <div><Label>Notes</Label><Textarea value={transmissionForm.notes} onChange={e => setTransmissionForm(f => ({ ...f, notes: e.target.value }))} /></div>
-          <Button type="submit">Enregistrer la transmission</Button>
+          <Button type="submit" disabled={isSavingTransmission}>{isSavingTransmission ? "Enregistrement..." : "Enregistrer la transmission"}</Button>
         </form>
       </DialogContent>
     </Dialog>
@@ -1302,8 +1376,18 @@ export function SanitaireReglementaireSubTab() {
               Enregistrer la préparation
             </Button>
             <Button asChild type="button" variant="outline">
-              <a href={lienPdfCirculation}>
-                <Download className="mr-1 h-4 w-4" />Télécharger la fiche PDF
+              {/* Ce bouton vit dans une modale : aperçu ouvert par le lien,
+                  dans un onglet, avec le téléchargement à portée (2026-08-19). */}
+              <a
+                href={
+                  declarationSelectionnee
+                    ? urlApercu(lienPdfCirculation, `Préparation de circulation — ${declarationSelectionnee.libelle}`)
+                    : "#"
+                }
+                target="_blank"
+                rel="noreferrer"
+              >
+                <FileText className="mr-1 h-4 w-4" />Fiche PDF de circulation
               </a>
             </Button>
           </div>
@@ -1920,10 +2004,10 @@ export function SanitaireReglementaireSubTab() {
           <DialogHeader><DialogTitle>Enregistrer un lot de médicament</DialogTitle><DialogDescription>Les produits proviennent du référentiel vétérinaire Gleba.</DialogDescription></DialogHeader>
           <form onSubmit={saveStock} className="space-y-3">
             <div><Label>Produit</Label><Select value={stockForm.produitId} onValueChange={(v) => setStockForm(f => ({ ...f, produitId: v }))}><SelectTrigger><SelectValue placeholder="Choisir" /></SelectTrigger><SelectContent>{produitsFiltres.map(p => <SelectItem key={p.id} value={p.id}>{p.nom}{p.amm ? ` · ${p.amm}` : ''}</SelectItem>)}</SelectContent></Select></div>
-            <div className="grid grid-cols-2 gap-3"><div><Label>N° lot</Label><Input required value={stockForm.numeroLot} onChange={e => setStockForm(f => ({ ...f, numeroLot: e.target.value }))} /></div><div><Label>Péremption</Label><Input type="date" value={stockForm.datePeremption} onChange={e => setStockForm(f => ({ ...f, datePeremption: e.target.value }))} /></div></div>
+            <div className="grid grid-cols-2 gap-3"><div><Label>N° lot</Label><Input required value={stockForm.numeroLot} onChange={e => setStockForm(f => ({ ...f, numeroLot: e.target.value }))} /></div><div><Label>Péremption</Label><Input type="date" name="datePeremption" value={stockForm.datePeremption} onChange={e => setStockForm(f => ({ ...f, datePeremption: e.target.value }))} onBlur={e => { const v = e.currentTarget.value; if (v) setStockForm(f => (f.datePeremption === v ? f : { ...f, datePeremption: v })) }} /></div></div>
             <div className="grid grid-cols-2 gap-3"><div><Label>Quantité</Label><Input required type="number" min="0" step="any" value={stockForm.quantite} onChange={e => setStockForm(f => ({ ...f, quantite: e.target.value }))} /></div><div><Label>Unité</Label><Input required value={stockForm.unite} onChange={e => setStockForm(f => ({ ...f, unite: e.target.value }))} /></div></div>
             <div><Label>URL ordonnance</Label><Input type="url" value={stockForm.ordonnanceUrl} onChange={e => setStockForm(f => ({ ...f, ordonnanceUrl: e.target.value }))} /></div>
-            <Button type="submit" disabled={!stockForm.produitId}>Enregistrer</Button>
+            <Button type="submit" disabled={isSavingStock || !stockForm.produitId}>{isSavingStock ? "Enregistrement..." : "Enregistrer"}</Button>
           </form>
         </DialogContent></Dialog>
       </CardHeader>
@@ -1934,7 +2018,7 @@ export function SanitaireReglementaireSubTab() {
     </Card>
 
     <Card><CardHeader className="flex-row items-start justify-between gap-3"><div><CardTitle>{caps.productionRente ? "Prophylaxies et contrôles" : "Rappels sanitaires & contrôles"}</CardTitle><CardDescription>{caps.productionRente ? "Échéances réglementaires, visites et dépistages." : "Rappels de vaccination, vermifuge et visites vétérinaires."}</CardDescription></div>
-      <Dialog open={proOpen} onOpenChange={setProOpen}><DialogTrigger asChild><Button size="sm"><Plus className="h-4 w-4 mr-1" />Échéance</Button></DialogTrigger><DialogContent><DialogHeader><DialogTitle>Planifier une prophylaxie</DialogTitle></DialogHeader><form onSubmit={savePro} className="space-y-3"><div><Label>Type</Label><Input required value={proForm.type} onChange={e => setProForm(f => ({ ...f, type: e.target.value }))} placeholder={caps.productionRente ? "Brucellose, visite sanitaire…" : "Vaccination, vermifuge, visite véto…"} /></div><div><Label>Date prévue</Label><Input required type="date" value={proForm.datePrevue} onChange={e => setProForm(f => ({ ...f, datePrevue: e.target.value }))} /></div><div><Label>Organisme / vétérinaire</Label><Input value={proForm.organisme} onChange={e => setProForm(f => ({ ...f, organisme: e.target.value }))} /></div><div><Label>Notes</Label><Textarea value={proForm.notes} onChange={e => setProForm(f => ({ ...f, notes: e.target.value }))} /></div><Button type="submit">Planifier</Button></form></DialogContent></Dialog>
+      <Dialog open={proOpen} onOpenChange={setProOpen}><DialogTrigger asChild><Button size="sm"><Plus className="h-4 w-4 mr-1" />Échéance</Button></DialogTrigger><DialogContent><DialogHeader><DialogTitle>Planifier une prophylaxie</DialogTitle></DialogHeader><form onSubmit={savePro} className="space-y-3"><div><Label>Type</Label><Input required value={proForm.type} onChange={e => setProForm(f => ({ ...f, type: e.target.value }))} placeholder={caps.productionRente ? "Brucellose, visite sanitaire…" : "Vaccination, vermifuge, visite véto…"} /></div><div><Label>Date prévue</Label><Input required type="date" value={proForm.datePrevue} onChange={e => setProForm(f => ({ ...f, datePrevue: e.target.value }))} /></div><div><Label>Organisme / vétérinaire</Label><Input value={proForm.organisme} onChange={e => setProForm(f => ({ ...f, organisme: e.target.value }))} /></div><div><Label>Notes</Label><Textarea value={proForm.notes} onChange={e => setProForm(f => ({ ...f, notes: e.target.value }))} /></div><Button type="submit" disabled={isSavingPro}>{isSavingPro ? "Enregistrement..." : "Planifier"}</Button></form></DialogContent></Dialog>
     </CardHeader><CardContent className="space-y-2">{prophylaxies.map(p => <div key={p.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3"><div><div className="font-medium">{p.type}</div><div className="text-sm text-muted-foreground">{new Date(p.datePrevue).toLocaleDateString('fr-FR')} · {p.organisme || 'organisme à préciser'}</div></div><div className="flex items-center gap-2"><Badge variant={p.statut === 'realisee' ? 'default' : 'secondary'}>{p.statut === 'realisee' ? 'Réalisée' : 'À faire'}</Badge>{p.statut !== 'realisee' && <Button size="sm" variant="outline" onClick={() => realisee(p)}><Check className="h-4 w-4 mr-1" />Réalisée</Button>}</div></div>)}{!prophylaxies.length && <p className="text-center text-muted-foreground py-8">Aucune prophylaxie planifiée</p>}</CardContent></Card>
   </div>
 }

@@ -7,8 +7,9 @@
 import * as React from "react"
 import { Loader2, ArrowRight, Mail, RefreshCw } from "lucide-react"
 import Link from "next/link"
+import { GoogleSignInButton } from "./GoogleSignInButton"
 
-export function RegisterForm() {
+export function RegisterForm({ googleEnabled = false }: { googleEnabled?: boolean }) {
   const [name, setName] = React.useState("")
   const [email, setEmail] = React.useState("")
   const [password, setPassword] = React.useState("")
@@ -17,6 +18,8 @@ export function RegisterForm() {
   const [loading, setLoading] = React.useState(false)
   const [emailSent, setEmailSent] = React.useState(false)
   const [resending, setResending] = React.useState(false)
+  const [emailEchec, setEmailEchec] = React.useState<string | null>(null)
+  const [resendMessage, setResendMessage] = React.useState<{ ok: boolean; texte: string } | null>(null)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -48,7 +51,9 @@ export function RegisterForm() {
         return
       }
 
-      // Afficher le message de verification email
+      // Signalement vigie1919cd84 — l'API dit maintenant si l'email est
+      // réellement parti : on ne promet plus un message qui n'existe pas.
+      setEmailEchec(data.emailEnvoye === false ? (data.emailEchec ?? "envoi_impossible") : null)
       setEmailSent(true)
     } catch {
       setError("Une erreur est survenue")
@@ -59,31 +64,66 @@ export function RegisterForm() {
 
   async function handleResend() {
     setResending(true)
+    setResendMessage(null)
     try {
-      await fetch("/api/auth/resend-verify", {
+      const res = await fetch("/api/auth/resend-verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
       })
+      const data = await res.json().catch(() => ({}))
+      // Signalement vigie1919cd84 — un renvoi qui échoue était silencieux : on
+      // le dit, sinon l'utilisateur reclique indéfiniment sans rien apprendre.
+      if (res.ok && data?.emailEnvoye !== false) {
+        setResendMessage({ ok: true, texte: "Email renvoyé. Vérifiez votre boîte, et les indésirables." })
+        setEmailEchec(null)
+      } else {
+        setResendMessage({
+          ok: false,
+          texte:
+            data?.error ||
+            "Le renvoi a échoué. Vérifiez l'adresse saisie, ou écrivez à contact@gleba.fr.",
+        })
+      }
     } catch {
-      // silencieux
+      setResendMessage({ ok: false, texte: "Le renvoi a échoué (réseau indisponible)." })
     } finally {
       setResending(false)
     }
   }
 
-  // Ecran de confirmation email envoyé
+  // Écran de confirmation
   if (emailSent) {
     return (
       <div className="text-center space-y-4 py-4">
-        <div className="mx-auto w-14 h-14 rounded-full bg-emerald-50 flex items-center justify-center">
-          <Mail className="h-7 w-7 text-emerald-600" />
+        <div
+          className={`mx-auto w-14 h-14 rounded-full flex items-center justify-center ${
+            emailEchec ? "bg-amber-50" : "bg-emerald-50"
+          }`}
+        >
+          <Mail className={`h-7 w-7 ${emailEchec ? "text-amber-600" : "text-emerald-600"}`} />
         </div>
-        <h3 className="text-lg font-semibold text-slate-900">Verifiez votre email</h3>
-        <p className="text-sm text-slate-500 leading-relaxed">
-          Un email de confirmation a été envoyé a <strong className="text-slate-700">{email}</strong>.
-          Cliquez sur le lien dans l&apos;email pour activer votre compte.
-        </p>
+        <h3 className="text-lg font-semibold text-slate-900">
+          {emailEchec ? "Compte créé, email non envoyé" : "Vérifiez votre email"}
+        </h3>
+        {emailEchec ? (
+          <div className="space-y-2 text-sm leading-relaxed">
+            <p className="text-slate-700">
+              Votre compte <strong>{email}</strong> est créé, mais l&apos;email de vérification
+              n&apos;a pas pu être remis.
+            </p>
+            <p className="text-amber-700">
+              {emailEchec === "adresse_refusee"
+                ? "Le serveur de messagerie a refusé cette adresse. Vérifiez qu'elle est exacte, puis relancez l'envoi ci-dessous. Si l'adresse est fausse, créez un compte avec la bonne adresse."
+                : "L'envoi a échoué pour une raison temporaire. Relancez-le ci-dessous dans un instant ; si le problème persiste, écrivez à contact@gleba.fr."}
+            </p>
+          </div>
+        ) : (
+          <p className="text-sm text-slate-500 leading-relaxed">
+            Un email de confirmation a été envoyé à <strong className="text-slate-700">{email}</strong>.
+            Cliquez sur le lien dans l&apos;email pour activer votre compte.
+          </p>
+        )}
         <div className="pt-2 space-y-3">
           <button
             onClick={handleResend}
@@ -97,11 +137,19 @@ export function RegisterForm() {
             )}
             Renvoyer l&apos;email
           </button>
+          {resendMessage && (
+            <p
+              role="status"
+              className={`text-xs ${resendMessage.ok ? "text-emerald-600" : "text-red-600"}`}
+            >
+              {resendMessage.texte}
+            </p>
+          )}
           <Link
             href="/login"
             className="block text-sm text-slate-400 hover:text-slate-600 transition-colors"
           >
-            Retour a la connexion
+            Retour à la connexion
           </Link>
         </div>
       </div>
@@ -209,6 +257,24 @@ export function RegisterForm() {
           </>
         )}
       </button>
+
+      {googleEnabled && (
+        <>
+          {/* Séparateur */}
+          <div className="relative py-1">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-slate-200/40" />
+            </div>
+            <div className="relative flex justify-center">
+              <span className="px-4 text-xs text-slate-400 bg-white/60 backdrop-blur-sm rounded-full">ou</span>
+            </div>
+          </div>
+
+          {/* Inscription en 1 clic : le compte est créé vérifié (email garanti
+              par Google), sans mot de passe local ni email de confirmation. */}
+          <GoogleSignInButton label="S'inscrire avec Google" />
+        </>
+      )}
 
       <p className="text-center text-sm text-slate-500">
         Deja un compte ?{" "}

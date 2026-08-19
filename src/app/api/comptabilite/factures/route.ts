@@ -41,6 +41,34 @@ export async function GET(request: NextRequest) {
       },
     })
 
+    // Ticket cmsx5zhke (QA 2026-08-17) — un avoir portait le numéro de sa
+    // facture d'origine RECOPIÉ dans son objet à la création. Les deux numéros
+    // de facture du compte de démonstration ont été échangés le 2026-08-17 par
+    // une reprise de données : le libellé figé désignait alors la mauvaise
+    // facture, donc le mauvais client, alors que `facture_origine_id` et
+    // `client_id` étaient justes. On expose la relation pour que l'écran lise
+    // le numéro courant au lieu d'un texte gelé (règle du brain : un libellé
+    // n'est jamais une clé).
+    const origineIds = [
+      ...new Set(
+        factures
+          .filter((f) => f.factureOrigineId != null)
+          .map((f) => f.factureOrigineId as number),
+      ),
+    ]
+    const origines = origineIds.length
+      ? await prisma.facture.findMany({
+          where: { userId, id: { in: origineIds } },
+          select: { id: true, numero: true, clientId: true, clientNom: true, date: true },
+        })
+      : []
+    const origineParId = new Map(origines.map((o) => [o.id, o]))
+    const data = factures.map((f) =>
+      f.factureOrigineId != null
+        ? { ...f, factureOrigine: origineParId.get(f.factureOrigineId) ?? null }
+        : f,
+    )
+
     // Stats
     const stats = {
       total: factures.length,
@@ -54,7 +82,7 @@ export async function GET(request: NextRequest) {
       },
     }
 
-    return NextResponse.json({ data: factures, stats })
+    return NextResponse.json({ data, stats })
   } catch (error) {
     console.error('GET /api/comptabilite/factures error:', error)
     return NextResponse.json(
@@ -268,6 +296,20 @@ export async function PATCH(request: NextRequest) {
         data.numero = numero
         data.date = dateEmission
         data.emetteurSnapshot = (await snapshotEmetteurForEmission(tx, session.user.id)) as any
+      }
+
+      // TICKET cmsogchrf — le pointage « payée » se propage aux ventes sources
+      // liées (relation factureId), sinon la vente reste affichée impayée dans
+      // Transactions alors que sa facture est soldée. La sync inverse
+      // vente→facture existe déjà (api/elevage/ventes). Parmi les sources
+      // liables à une facture, seul VenteProduit porte un champ `paye`
+      // (RecolteArbre/ProductionBois n'ont qu'un statut, sans notion de
+      // règlement) ; VenteProduit n'a pas de datePaiement.
+      if (updateData.statut === 'payee') {
+        await tx.venteProduit.updateMany({
+          where: { factureId: existing.id, userId: session.user.id },
+          data: { paye: true },
+        })
       }
 
       return tx.facture.update({

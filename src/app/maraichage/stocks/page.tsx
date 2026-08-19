@@ -12,6 +12,7 @@ import * as React from "react"
 import { Suspense } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
+import { updateDashboardSearchParams } from "@/lib/dashboard-navigation"
 import {
   ArrowLeft,
   Package,
@@ -237,11 +238,14 @@ function StocksPageContent() {
       } else {
         params.set("tab", value)
       }
-      const query = params.toString()
-      // replace : changer d'onglet interne ne doit pas empiler l'historique
-      router.replace(query ? `/maraichage/stocks?${query}` : "/maraichage/stocks", { scroll: false })
+      // replace : changer d'onglet interne ne doit pas empiler l'historique.
+      // Même piège que le verger (cmsbu12hb) : une navigation routeur vers la
+      // même route avec seule la query modifiée (a fortiori vidée) est un
+      // no-op silencieux en build de production — l'onglet par défaut
+      // devenait inatteignable. Passage par updateDashboardSearchParams.
+      updateDashboardSearchParams(params, "replace")
     },
-    [searchParams, router, defaultStockTab]
+    [searchParams, defaultStockTab]
   )
 
   const [isLoading, setIsLoading] = React.useState(true)
@@ -858,7 +862,7 @@ function StocksLoadingFallback() {
     <div className="min-h-screen bg-slate-50">
       {/* Avant résolution des searchParams, on ne connaît pas le mode arbres :
           on affiche le shell maraîchage (cas dominant), corrigé au montage. */}
-      <AppHeader current="maraichage" />
+      <AppHeader current="maraichage" showLune />
       <PageToolbar>
         <Skeleton className="h-8 w-64" />
       </PageToolbar>

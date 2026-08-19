@@ -27,6 +27,7 @@
 import { PrismaClient } from "@prisma/client"
 import * as bcrypt from "bcryptjs"
 import { ESPECES_COMPAGNIE } from "../src/lib/elevage/catalogue-compagnie"
+import { marqueurVenteOeufs } from "../src/lib/elevage/stock-oeufs-vente"
 
 const prisma = new PrismaClient()
 
@@ -564,7 +565,10 @@ async function seedElevage(parcelles: Record<string, string>) {
     { nom: "Praline", naissance: Y - 1, miseBasAgo: 120, peak: 3.3, cellBase: 520, cellPente: 4, lactationLongue: false, prior: 0 },
   ]
   const chevres: Array<{ id: number; nom: string; p: (typeof profils)[number] }> = []
-  let ipg = 85001
+  // Ticket cmsoexauc — identifiants IPG caprin VALIDES (FR + 11 chiffres :
+  // indicatif exploitation 6 + n° d'ordre 5). L'ancien FR85001 ne passait pas
+  // la regex et rendait la fiche non modifiable dans le formulaire d'édition.
+  let ipg = 85000000001
   for (const p of profils) {
     const a = await prisma.animal.create({
       data: {
@@ -580,12 +584,15 @@ async function seedElevage(parcelles: Record<string, string>) {
   // Cochons (arrivés année passée → pas d'achat compté cette année)
   for (const c of [{ nom: "Grognon", sexe: "male" }, { nom: "Rosette", sexe: "femelle" }]) {
     const animal = await prisma.animal.create({
-      data: { userId, especeAnimaleId: "cochon_gascon", nom: c.nom, race: "Gascon", identifiant: `FR85${c.nom === "Grognon" ? "9001" : "9002"}`, typeIdentifiant: "IPG porcin", sexe: c.sexe, dateNaissance: dYMD(Y - 1, 9, 15), dateArrivee: dYMD(Y - 1, 11, 5), provenance: "Ferme du Coteau (32)", prixAchat: 200, statut: "actif" },
+      // Même correctif que les chèvres (cmsoexauc) : IPG porcin valide =
+      // FR + 12 chiffres (l'ancien FR859001/FR859002 ne passait pas la regex).
+      data: { userId, especeAnimaleId: "cochon_gascon", nom: c.nom, race: "Gascon", identifiant: `FR8590000000${c.nom === "Grognon" ? "01" : "02"}`, typeIdentifiant: "IPG porcin", sexe: c.sexe, dateNaissance: dYMD(Y - 1, 9, 15), dateArrivee: dYMD(Y - 1, 11, 5), provenance: "Ferme du Coteau (32)", prixAchat: 200, statut: "actif" },
     })
     await autoDepense("achat_animal_individuel", animal.id, { date: dYMD(Y - 1, 11, 5), ttc: 200, taux: 5.5, categorie: "achats", module: "elevage", description: `Achat animal - ${c.nom}` })
   }
 
   // ── Œufs : production hebdo sur ~18 mois + ventes mensuelles ──
+  const lotsOeufsSeed: Array<{ id: number; date: Date; restant: number }> = []
   for (let wAgo = 78; wAgo >= 0; wAgo--) {
     const date = dAgo(wAgo * 7)
     if (!inRange(date)) continue
@@ -593,9 +600,13 @@ async function seedElevage(parcelles: Record<string, string>) {
     const mois = date.getUTCMonth()
     const saison = mois >= 3 && mois <= 8 ? 1 : 0.65
     const q = Math.round(29 * 7 * 0.62 * saison)
-    await prisma.productionOeuf.create({ data: { userId, lotId: lotPondeuses.id, date, quantite: q, casses: Math.round(q * 0.02) } })
+    const prod = await prisma.productionOeuf.create({ data: { userId, lotId: lotPondeuses.id, date, quantite: q, casses: Math.round(q * 0.02) } })
+    lotsOeufsSeed.push({ id: prod.id, date, restant: q - Math.round(q * 0.02) })
   }
   // Ventes œufs mensuelles de l'année (VenteProduit type oeufs) + miroir auto
+  // + miroir de stock par lot (MouvementStockOeuf) : sans lui, le registre
+  // Production > Œufs divergeait du stock global de 2 520 œufs (QA cmsnokro7)
+  // — le seed doit produire un état atteignable par l'API.
   for (let m = 1; m <= 12; m++) {
     const date = dYMD(Y, m, 20)
     if (!inRange(date)) continue
@@ -606,6 +617,26 @@ async function seedElevage(parcelles: Record<string, string>) {
       data: { userId, date, type: "oeufs", description: "Œufs frais (boîtes de 6)", quantite: nbBoites, unite: "boîte", prixUnitaire: prixBoite, prixTotal: ttc, client: "AMAP & marché", paye: true, tauxTVA: 5.5 },
     })
     await autoVente("vente_produit", vp.id, { date, ttc, taux: 5.5, categorie: "oeufs", module: "elevage", description: "Vente œufs" })
+    // FIFO simple sur les lots déjà pondus à la date de vente (données de
+    // démonstration : on ne rejoue pas la contrainte DCR stricte de l'API).
+    let restantAVentiler = nbBoites * 6
+    for (const lot of lotsOeufsSeed) {
+      if (restantAVentiler === 0) break
+      if (lot.date > date || lot.restant <= 0) continue
+      const sortie = Math.min(lot.restant, restantAVentiler)
+      await prisma.mouvementStockOeuf.create({
+        data: {
+          userId,
+          productionId: lot.id,
+          date,
+          type: "vente",
+          quantite: sortie,
+          notes: `${marqueurVenteOeufs(vp.id)} Sortie automatique depuis Production > Ventes`,
+        },
+      })
+      lot.restant -= sortie
+      restantAVentiler -= sortie
+    }
   }
 
   // ── Soins (avec coûts → dépenses auto) ──
@@ -643,6 +674,27 @@ async function seedElevage(parcelles: Record<string, string>) {
     const date = dAgo(n.moisAgo)
     if (!inRange(date)) continue
     await prisma.naissanceAnimale.create({ data: { userId, lotId: lotLapins.id, pereIdentifiant: "M1 (mâle reproducteur)", date, nombreNes: n.nes, nombreVivants: n.nes, nombreMales: n.m, nombreFemelles: n.f, notes: "Portée lapereaux" } })
+  }
+
+  // ── Lapins : sorties. QA cmsjhki8e — le lot affichait « 7 initial + 32
+  // naissances » pour un effectif de 19 sans aucune sortie tracée : le
+  // registre doit boucler (7 + 32 − 20 = 19 = quantiteActuelle ci-dessus).
+  const lapSorties = [
+    { joursAgo: 28, quantite: 8, destination: "auto_consommation", poidsCarcasse: 12.0, prix: null as number | null, notes: "Abattage 1re portée (~90 j) — autoconsommation" },
+    { joursAgo: 4, quantite: 7, destination: "vente", poidsCarcasse: 10.5, prix: 105, notes: "Abattage 2e portée (~90 j) — vente directe" },
+    { joursAgo: 50, quantite: 5, destination: "don", poidsCarcasse: null as number | null, prix: null as number | null, notes: "Réforme reproducteurs — dons" },
+  ]
+  for (const s of lapSorties) {
+    const date = dAgo(s.joursAgo)
+    if (!inRange(date)) continue
+    const abattage = await prisma.abattage.create({
+      data: { userId, lotId: lotLapins.id, date, quantite: s.quantite, destination: s.destination, poidsCarcasse: s.poidsCarcasse, prixVente: s.prix, notes: s.notes },
+    })
+    if (s.destination === "vente" && s.prix) {
+      // Même forme que createVenteFromAbattage (auto-compta) : catégorie
+      // « viande », quantité = poids carcasse en kg.
+      await autoVente("abattage", abattage.id, { date, ttc: s.prix, taux: 5.5, categorie: "viande", module: "elevage", description: `Vente abattage - Lapins ${Y} (${s.poidsCarcasse} kg carcasse)`, quantite: s.poidsCarcasse ?? s.quantite, unite: s.poidsCarcasse ? "kg" : "animal", prixUnitaire: s.poidsCarcasse ? round2(s.prix / s.poidsCarcasse) : round2(s.prix / s.quantite) })
+    }
   }
 
   // ── CAPRIN : campagne repro + saillies + mises-bas + lactation + qualité ──
@@ -727,8 +779,21 @@ async function seedElevage(parcelles: Record<string, string>) {
     const date = dAgo(10 + i * 5)
     const ttc = round2(kgVendus * f.prixKg)
     const surFacture = i === 0 // la Tomme part sur une facture restaurant
+    // TICKET cmsogchrf — la vente facturée suivait paye:true en dur alors que
+    // sa facture (seedClientsEtFactures) est créée « emise » si l'échéance
+    // (date + 30 j) est future : même critère ici pour rester cohérent
+    // facture ↔ vente. Les ventes au marché (non facturées) restent payées.
+    const echeance = new Date(date); echeance.setUTCDate(echeance.getUTCDate() + 30)
+    const payeVente = surFacture ? inRange(echeance) : true
+    // TICKET cmsoge7t9 — une vente liée à un lot de fromage est de type
+    // « fromage » et sort de la cave (MouvementFromage), comme le chemin
+    // applicatif réel (POST /api/elevage/ventes) ; sinon la Cave affiche le
+    // stock intégral malgré les ventes.
     const vp = await prisma.venteProduit.create({
-      data: { userId, date, type: "autre", description: f.type, quantite: kgVendus, unite: "kg", prixUnitaire: f.prixKg, prixTotal: ttc, client: surFacture ? "Restaurant La Table du Bocage" : "Marché de La Roche-sur-Yon", paye: true, tauxTVA: 5.5, lotFromageId: f.id },
+      data: { userId, date, type: "fromage", description: f.type, quantite: kgVendus, unite: "kg", prixUnitaire: f.prixKg, prixTotal: ttc, client: surFacture ? "Restaurant La Table du Bocage" : "Marché de La Roche-sur-Yon", paye: payeVente, tauxTVA: 5.5, lotFromageId: f.id },
+    })
+    await prisma.mouvementFromage.create({
+      data: { id: `seed-demo-vf-${vp.id}`, userId, lotFromageId: f.id, date, type: "sortie_vente", nbPieces: 0, poidsKg: kgVendus, notes: `Vente ${f.type}`, venteProduitId: vp.id },
     })
     if (surFacture) factureFromage.push({ venteProduitId: vp.id, ttc, date, kg: kgVendus, prixKg: f.prixKg, type: f.type })
     else await autoVente("vente_produit", vp.id, { date, ttc, taux: 5.5, categorie: "autre", module: "elevage", description: `Vente ${f.type}` })
@@ -975,7 +1040,9 @@ async function seedBoutique() {
   const produits = [
     { nom: "Panier AMAP hebdo", prix: 20, unite: "panier", categorie: "legumes", ordre: 1 },
     { nom: "Panier découverte", prix: 27, unite: "panier", categorie: "legumes", ordre: 2 },
-    { nom: "Boîte de 6 œufs", prix: 3.2, unite: "boîte", categorie: "oeufs", ordre: 3, stockDispo: 40 },
+    // Décision produit 2026-08 — stock cohérent avec la production du seed :
+    // 53 œufs commercialisables ≈ 8 boîtes de 6 (et non 40).
+    { nom: "Boîte de 6 œufs", prix: 3.2, unite: "boîte", categorie: "oeufs", ordre: 3, stockDispo: 8 },
     { nom: "Tomme de chèvre (250 g)", prix: 7, unite: "pièce", categorie: "cremerie", ordre: 4, stockDispo: 15 },
     { nom: "Crottin de chèvre", prix: 3, unite: "pièce", categorie: "cremerie", ordre: 5, stockDispo: 30 },
     { nom: "Confiture mirabelle 250 g", prix: 5, unite: "pot", categorie: "epicerie", ordre: 6, stockDispo: 24 },
@@ -1103,8 +1170,18 @@ async function seedClientsEtFactures(sources: {
     await prisma.client.create({ data: { userId, nom, type: "particulier", exonererTVA: false, actif: true } })
   }
 
-  let numero = 1
-  const nextNum = () => `F-${Y}-${String(numero++).padStart(4, "0")}`
+  // QA cmswu8roo — numérotation chronologique par date de facture : le compteur
+  // suivait l'ordre du code (fromage à date glissante AVANT fruits au 20/06
+  // fixe), ce qui produisait F-0001 postérieure à F-0002 dès que le seed
+  // tournait après fin juin.
+  const facturesParDate = [
+    ...sources.factureFromage.map((f) => f as { date: Date }),
+    ...sources.factureFruits.map((f) => f as { date: Date }),
+  ].sort((a, b) => a.date.getTime() - b.date.getTime())
+  const numeroFacture = new Map<object, string>(
+    facturesParDate.map((f, i) => [f, `F-${Y}-${String(i + 1).padStart(4, "0")}`]),
+  )
+  const nextNum = (ff: object) => numeroFacture.get(ff)!
 
   // Montants alignés au centime pour un FEC équilibré PAR écriture :
   // ttcR = round2(htR + tvaR). La source est réalignée sur ce ttcR pour que la
@@ -1122,7 +1199,7 @@ async function seedClientsEtFactures(sources: {
     const echeance = new Date(ff.date); echeance.setUTCDate(echeance.getUTCDate() + 30)
     const fac = await prisma.facture.create({
       data: {
-        userId, numero: nextNum(), type: "facture", clientId: restaurant.id, clientNom: restaurant.nom,
+        userId, numero: nextNum(ff), type: "facture", clientId: restaurant.id, clientNom: restaurant.nom,
         clientAdresse: "12 place du Marché, 85600 Montaigu-Vendée", date: ff.date, dateEcheance: echeance,
         objet: `Livraison fromages ${Y}`, totalHT: htR, totalTVA: tvaR, totalTTC: ttcR,
         totauxParTauxTva: { "5.5": { ht: htR, tva: tvaR } },
@@ -1140,7 +1217,7 @@ async function seedClientsEtFactures(sources: {
     const echeance = new Date(ff.date); echeance.setUTCDate(echeance.getUTCDate() + 30)
     const fac = await prisma.facture.create({
       data: {
-        userId, numero: nextNum(), type: "facture", clientId: epicerie.id, clientNom: epicerie.nom,
+        userId, numero: nextNum(ff), type: "facture", clientId: epicerie.id, clientNom: epicerie.nom,
         clientAdresse: "3 rue des Halles, 85000 La Roche-sur-Yon", date: ff.date, dateEcheance: echeance,
         objet: `Livraison fruits ${Y}`, totalHT: htR, totalTVA: tvaR, totalTTC: ttcR,
         totauxParTauxTva: { "5.5": { ht: htR, tva: tvaR } },

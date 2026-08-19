@@ -1,9 +1,16 @@
 import type { BugStatus, BugType } from "@prisma/client"
 
+/**
+ * Libellés vus par le RAPPORTEUR sur le suivi public de son retour. Les deux
+ * issues de tri doivent rester honnêtes sans être sèches : dire qu'on a lu et
+ * décidé, pas qu'on écarte.
+ */
 export const feedbackStatusLabels: Record<BugStatus, string> = {
   OPEN: "Reçue",
   IN_PROGRESS: "En cours",
   RESOLVED: "Résolue",
+  EVOLUTION_PRODUIT: "Retenue comme évolution",
+  HORS_PERIMETRE: "Analysée, sans correctif prévu",
 }
 
 export const feedbackTypeLabels: Record<BugType, string> = {

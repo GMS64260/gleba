@@ -6,6 +6,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import prisma from "@/lib/prisma"
+import { productifParDefaut } from "@/lib/tree-care-calendar"
 import {
   familles,
   fournisseurs,
@@ -254,6 +255,11 @@ export async function POST() {
           variete: arbre.variete || null,
           portGreffe: arbre.portGreffe || null,
           datePlantation: arbre.datePlantation || null,
+          // Le jeu importé ne porte pas de statut `productif` : sans cette
+          // dérivation, le défaut Prisma `true` s'appliquait à l'aveugle et un
+          // jeune arbre entrait dans le KPI « fruitiers productifs »
+          // (friction du 2026-08-12, même défaut que les autres chemins).
+          productif: productifParDefaut(arbre.espece, arbre.datePlantation || null),
           posX: arbre.posX,
           posY: arbre.posY,
           envergure: arbre.envergure || 2,

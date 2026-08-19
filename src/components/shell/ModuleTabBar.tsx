@@ -48,9 +48,13 @@ export function ModuleTabBar({ tabs, activeTab, onTabChange, accent, actions }: 
   const headerHidden = useHideOnScroll()
   return (
     <nav
-      className={`relative border-b border-t-2 ${a.top} bg-white/90 backdrop-blur-sm z-40 xl:sticky xl:transition-[top] xl:duration-200 motion-reduce:transition-none ${
-        headerHidden ? "xl:top-0" : "xl:top-[61px]"
-      }`}
+      className={`relative border-b border-t-2 ${a.top} bg-white/90 backdrop-blur-sm z-40 xl:sticky xl:transition-[top] xl:duration-200 motion-reduce:transition-none`}
+      // Ticket cmsx5x1z2 — décalage MESURÉ (publié par AppHeader dans
+      // `--app-header-h`) et non plus 61 px codés en dur : un header qui passe
+      // sur deux lignes recouvrait sinon cette barre et avalait les clics de ses
+      // actions. Repli sur 61 px avant la première mesure. `top` est inerte
+      // sous xl, où la barre n'est pas collée.
+      style={{ top: headerHidden ? 0 : "var(--app-header-h, 61px)" }}
     >
       <div className="container mx-auto px-4 max-w-[1600px]">
         {/* Mobile : une section clairement nommée, puis les raccourcis sur une

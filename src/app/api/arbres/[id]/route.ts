@@ -11,6 +11,7 @@ import { requireAuthApi } from "@/lib/auth-utils"
 import { doitInfererParcelle, trouverParcelleGpsProche } from "@/lib/parcelle-gps-utils"
 import { messageErreurCoordonnees } from "@/lib/geolocation"
 import { normaliserLibelle } from "@/lib/libelle-libre"
+import { noteArbreSupprime, preserverTracesPhytoArbre } from "@/lib/verger/preserver-traces-phyto"
 
 interface Params {
   params: Promise<{ id: string }>
@@ -316,7 +317,35 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       )
     }
 
+    // QA cmsjhogc8 — les productions de bois (arbreId onDelete:SetNull) sont du
+    // stock réel : on ne les supprime pas (sinon perte d'inventaire), mais leur
+    // rattachement à l'arbre allait être nullé, cassant la traçabilité (« Arbre
+    // - »). On snapshote donc l'identité de l'arbre dans les notes du lot avant
+    // la coupe du lien, pour conserver l'origine au registre.
+    const boisAOrpheliner = await prisma.productionBois.findMany({
+      where: { arbreId, userId: session!.user.id },
+      select: { id: true, notes: true },
+    })
+    const origineArbre = `Arbre d'origine : ${existing.nom}${existing.espece ? ` (${existing.espece})` : ""} — fiche supprimée le ${new Date().toLocaleDateString("fr-FR")}.`
+
+    // QA cmsofhlzg — Intervention.arbreId est une colonne SANS FK : la
+    // suppression de l'arbre laissait les traitements phyto « orphelins »
+    // (le registre affichait « Arbre #587 »). Le registre phyto est une
+    // traçabilité réglementaire : on ne supprime JAMAIS ces interventions.
+    // Même approche que la traçabilité bois ci-dessus : on snapshote
+    // l'identité de l'arbre dans les notes, puis on détache le lien.
+    const interventionsADetacher = await prisma.intervention.findMany({
+      where: { arbreId, userId: session!.user.id },
+      select: { id: true, notes: true },
+    })
+    const snapshotArbre = noteArbreSupprime({
+      id: arbreId,
+      nom: existing.nom,
+      espece: existing.espece,
+    })
+
     const recolteIds = recoltes.map((r) => r.id)
+    let tracesPhyto = { observations: 0, operations: 0 }
     await prisma.$transaction(async (tx) => {
       // Supprimer les écritures auto liées aux récoltes (pas de FK, sinon orphelines)
       if (recolteIds.length > 0) {
@@ -329,11 +358,41 @@ export async function DELETE(request: NextRequest, { params }: Params) {
           },
         })
       }
+      // Conserver la traçabilité de l'arbre sur les lots de bois avant que la
+      // suppression ne mette arbreId à NULL (onDelete: SetNull).
+      for (const bois of boisAOrpheliner) {
+        await tx.productionBois.update({
+          where: { id: bois.id },
+          data: { notes: bois.notes ? `${bois.notes}\n${origineArbre}` : origineArbre },
+        })
+      }
+      // QA cmsofhlzg — détacher les interventions (registre phyto) en
+      // conservant l'identité de l'arbre dans les notes.
+      for (const intervention of interventionsADetacher) {
+        await tx.intervention.update({
+          where: { id: intervention.id },
+          data: {
+            arbreId: null,
+            notes: intervention.notes ? `${snapshotArbre}\n${intervention.notes}` : snapshotArbre,
+          },
+        })
+      }
+      // QA cmswxinhf — les traitements saisis via Verger > Santé & Phyto
+      // (`ObservationSante`) et via Verger > Opérations (`OperationArbre`)
+      // portent un `arbre_id` obligatoire en cascade : ils disparaissaient du
+      // registre phytosanitaire avec l'arbre, alors que ce registre est une
+      // obligation de conservation. On les matérialise en interventions
+      // détachées avant la suppression.
+      tracesPhyto = await preserverTracesPhytoArbre(tx, session!.user.id, {
+        id: arbreId,
+        nom: existing.nom,
+        espece: existing.espece,
+      })
       // La suppression de l'arbre cascade sur les récoltes (onDelete: Cascade)
       await tx.arbre.delete({ where: { id: arbreId } })
     })
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, tracesPhytoConservees: tracesPhyto })
   } catch (err) {
     console.error("DELETE /api/arbres/[id] error:", err)
     return NextResponse.json(

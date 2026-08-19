@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { chargerAttentesConsolidees } from '@/lib/elevage/attentes-query'
+import { chargerFenetresMiseBas } from '@/lib/elevage/fenetre-mise-bas'
 import { remiseVente } from '@/lib/elevage/attentes'
 
 type Gravite = 'info' | 'attention' | 'urgent'
@@ -22,6 +23,7 @@ type Echeance = {
   id: string
   kind:
     | 'mise_bas'
+    | 'fenetre_mise_bas'
     | 'tarissement'
     | 'diagnostic_gestation'
     | 'attente_lait'
@@ -76,7 +78,7 @@ export async function GET(request: NextRequest) {
     const now = new Date()
     const horizon = new Date(now.getTime() + horizonJours * 86_400_000)
 
-    const [gestantes, enAttente, attentesConsolidees, soinsPlanifies, stocksBas, medicaments, prophylaxies, tachesTerrain, echeancesAdmin] = await Promise.all([
+    const [gestantes, enAttente, attentesConsolidees, soinsPlanifies, stocksBas, medicaments, prophylaxies, tachesTerrain, echeancesAdmin, fenetresMiseBas] = await Promise.all([
       // Saillies gestantes : mise-bas + tarissement à venir
       prisma.saillie.findMany({
         where: { userId, statut: 'Gestante', ...femFiliere },
@@ -136,6 +138,10 @@ export async function GET(request: NextRequest) {
         where: { userId, statut: 'a_faire', dateEcheance: { lte: horizon } },
         select: { id: true, libelle: true, categorie: true, dateEcheance: true },
       }),
+      // Fenêtres de mise-bas des campagnes de lutte (friction 2026-08-14) :
+      // en monte naturelle de groupe, aucune saillie individuelle n'existe —
+      // la campagne est la seule échéance de reproduction calculable.
+      chargerFenetresMiseBas(userId, { filiere }),
     ])
     const injectionsPlanifiees = await prisma.$queryRaw<Array<{
       id: string
@@ -216,6 +222,27 @@ export async function GET(request: NextRequest) {
           })
         }
       }
+    }
+
+    // Une ligne par campagne dont la fenêtre est à venir ou en cours. Pendant
+    // la fenêtre, joursRestants = 0 : la surveillance est due chaque jour.
+    for (const fenetre of fenetresMiseBas) {
+      const jrDebut = jours(now, fenetre.debut)
+      const jrFin = jours(now, fenetre.fin)
+      if (jrFin < 0) continue
+      const enCours = jrDebut <= 0
+      const femelles = fenetre.nbFemelles > 0 ? ` · ${fenetre.nbFemelles} femelles` : ''
+      echeances.push({
+        id: `fmb-${fenetre.campagneId}`,
+        kind: 'fenetre_mise_bas',
+        date: fenetre.debut.toISOString(),
+        joursRestants: enCours ? 0 : jrDebut,
+        titre: `Mises bas — ${fenetre.nom}`,
+        detail: enCours
+          ? `fenêtre estimée en cours jusqu'au ${fenetre.fin.toLocaleDateString('fr-FR')}${femelles}`
+          : `fenêtre estimée du ${fenetre.debut.toLocaleDateString('fr-FR')} au ${fenetre.fin.toLocaleDateString('fr-FR')}${femelles}`,
+        gravite: enCours ? 'urgent' : jrDebut <= 7 ? 'attention' : 'info',
+      })
     }
 
     for (const s of enAttente) {
@@ -302,7 +329,13 @@ export async function GET(request: NextRequest) {
         action: { soinId: s.id },
       })
     }
+    // QA cmsqlj7bn — un soin planifié à injection unique produisait DEUX
+    // échéances au même jour : celle du soin (boucle ci-dessus) et celle de son
+    // unique injection. Le protocole multi-injections, lui, garde le détail de
+    // chaque injection, qui porte une information que le soin n'a pas.
+    const soinsDejaListes = new Set(soinsPlanifies.filter((s) => s.datePrevue).map((s) => s.id))
     for (const injection of injectionsPlanifiees) {
+      if (injection.nombreInjections <= 1 && soinsDejaListes.has(injection.soinId)) continue
       const cible = injection.animalId
         ? (injection.animalNom && injection.animalIdentifiant
             ? `${injection.animalNom} · ${injection.animalIdentifiant}`
@@ -414,7 +447,7 @@ export async function GET(request: NextRequest) {
     const counts = {
       total: echeancesDansHorizon.length,
       urgent: echeancesDansHorizon.filter((e) => e.gravite === 'urgent').length,
-      misesBas: echeancesDansHorizon.filter((e) => e.kind === 'mise_bas').length,
+      misesBas: echeancesDansHorizon.filter((e) => e.kind === 'mise_bas' || e.kind === 'fenetre_mise_bas').length,
       tarissements: echeancesDansHorizon.filter((e) => e.kind === 'tarissement').length,
       attentes: echeancesDansHorizon.filter((e) => e.kind === 'attente_lait' || e.kind === 'attente_viande').length,
       soins: echeancesDansHorizon.filter((e) => e.kind === 'soin_planifie' || e.kind === 'soin_retard').length,

@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/tooltip"
 import { Info } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { libelleIrrigationInutile } from "@/lib/irrigation-meteo-decision"
 import { BulkActions } from "@/components/calendrier/BulkActions"
 import { CalendarView } from "@/components/dashboard/CalendarView"
 import { ItpCalendarView } from "@/components/dashboard/ItpCalendarView"
@@ -90,7 +91,9 @@ interface IrrigationItem {
   couleur: string | null
   retardJours: number
   pluiePrevue: number | null
+  pluieRecente?: number | null
   probablementInutile: boolean
+  raisonInutile?: "pluie-recente" | "pluie-prevue" | null
 }
 
 interface TachesData {
@@ -208,6 +211,52 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
         .catch(() => {})
     }
   }, [taches, loadingTaches, irrigationsGenerated, fetchTaches])
+
+  /**
+   * Cultures cochées « à irriguer » mais encore sans plan d'arrosage.
+   *
+   * Friction constatée le 2026-07-30 : l'auto-génération ci-dessus ne part
+   * qu'à zéro irrigation. Une fois le premier lot créé, toute culture cochée
+   * ensuite restait indéfiniment sans plan, sans bouton ni signal. On l'annonce
+   * désormais et on laisse l'utilisateur déclencher la planification.
+   */
+  const [aPlanifier, setAPlanifier] = React.useState(0)
+  const [planificationEnCours, setPlanificationEnCours] = React.useState(false)
+
+  const rafraichirAPlanifier = React.useCallback(() => {
+    fetch('/api/irrigations/generate')
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => setAPlanifier(d?.aPlanifier ?? 0))
+      .catch(() => {})
+  }, [])
+
+  React.useEffect(() => {
+    if (loadingTaches) return
+    rafraichirAPlanifier()
+  }, [taches, loadingTaches, rafraichirAPlanifier])
+
+  const planifierArrosage = async () => {
+    setPlanificationEnCours(true)
+    try {
+      const res = await fetch('/api/irrigations/generate', { method: 'POST' })
+      const result = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(result?.error || 'Erreur de planification')
+      toast({
+        title: 'Arrosage planifié',
+        description: result?.message || 'Plan mis à jour.',
+      })
+      await fetchTaches()
+      rafraichirAPlanifier()
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Erreur',
+        description: error instanceof Error ? error.message : 'Erreur inconnue',
+      })
+    } finally {
+      setPlanificationEnCours(false)
+    }
+  }
 
   // Toggle tâche
   const toggleTache = async (
@@ -690,7 +739,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                   Arrosage
                   {taches.irrigation.filter(i => i.probablementInutile).length > 0 && (
                     <span className="text-blue-500 ml-1">
-                      ({taches.irrigation.filter(i => i.probablementInutile).length} annule{taches.irrigation.filter(i => i.probablementInutile).length > 1 ? "s" : ""} pluie)
+                      ({taches.irrigation.filter(i => i.probablementInutile).length} annulé{taches.irrigation.filter(i => i.probablementInutile).length > 1 ? "s" : ""} pluie)
                     </span>
                   )}
                 </p>
@@ -754,6 +803,23 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
+                  {aPlanifier > 0 && (
+                    <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-cyan-200 bg-cyan-50 p-2">
+                      <Droplets className="h-4 w-4 shrink-0 text-cyan-600" />
+                      <span className="text-sm text-cyan-900">
+                        {aPlanifier} culture{aPlanifier > 1 ? "s" : ""} marquée{aPlanifier > 1 ? "s" : ""} « à irriguer » sans plan d&apos;arrosage.
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="ml-auto h-7 bg-white text-xs"
+                        onClick={planifierArrosage}
+                        disabled={planificationEnCours}
+                      >
+                        {planificationEnCours ? "Planification…" : "Planifier"}
+                      </Button>
+                    </div>
+                  )}
                   {taches.irrigation.length === 0 ? (
                     <p className="text-sm text-muted-foreground py-2">Tout est arrosé !</p>
                   ) : (
@@ -808,9 +874,9 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                                 )}
                               </div>
                             </div>
-                            {inutile && item.pluiePrevue != null && (
+                            {inutile && (
                               <p className="text-[11px] text-blue-500 pl-7">
-                                {Math.round(item.pluiePrevue)}mm de pluie prévue — irrigation probablement inutile
+                                {libelleIrrigationInutile(item)}
                               </p>
                             )}
                           </button>

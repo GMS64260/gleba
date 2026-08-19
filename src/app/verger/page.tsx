@@ -2,7 +2,8 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { useSearchParams, useRouter } from "next/navigation"
+import { useSearchParams } from "next/navigation"
+import { updateDashboardSearchParams } from "@/lib/dashboard-navigation"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AppHeader } from "@/components/shell/AppHeader"
@@ -58,8 +59,28 @@ export default function VergerPage() {
 
 function VergerPageInner() {
   const searchParams = useSearchParams()
-  const router = useRouter()
   const [selectedYear, setSelectedYear] = React.useState(currentYearNow)
+  // QA cmsogh2sw — l'année du verger revenait à l'année courante à chaque
+  // reload alors que compta (gleba_compta_year) et élevage (gleba_elevage_year)
+  // la persistent. Même pattern exact que la compta : lecture au montage
+  // (client-only), puis persistance des seuls changements réels.
+  // QA cmsoamukd — state et non ref : le fetch du montage attend l'hydratation
+  // (sinon la salve « année par défaut » peut écraser celle de l'année choisie).
+  const [yearHydrated, setYearHydrated] = React.useState(false)
+  React.useEffect(() => {
+    const stored = window.localStorage.getItem("gleba_verger_year")
+    if (stored && /^\d{4}$/.test(stored)) {
+      const y = parseInt(stored, 10)
+      if (y !== selectedYear) setSelectedYear(y)
+    }
+    setYearHydrated(true)
+    // Montage uniquement : lecture initiale de la préférence.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  React.useEffect(() => {
+    // Ne persiste qu'après la lecture initiale, sinon le fallback écrase la préférence.
+    if (yearHydrated) window.localStorage.setItem("gleba_verger_year", String(selectedYear))
+  }, [yearHydrated, selectedYear])
   const [showChat, setShowChat] = React.useState(false)
   const [isChatExpanded, setIsChatExpanded] = React.useState(false)
   const [showAssistant, setShowAssistant] = React.useState(false)
@@ -77,10 +98,13 @@ function VergerPageInner() {
       } else {
         params.set("tab", tab)
       }
-      const query = params.toString()
-      router.push(query ? `/verger?${query}` : "/verger", { scroll: false })
+      // QA cmsbu12hb — en build de production, `router.push("/verger")` avec
+      // query vide après un chargement à froid sur /verger?tab=… est un no-op
+      // (navigation dédupliquée) : l'onglet Calendrier devenait inatteignable.
+      // Même contournement History natif que MaraichageHome (f87ba97/73afa13).
+      updateDashboardSearchParams(params, "push")
     },
-    [searchParams, router]
+    [searchParams]
   )
 
   // POSTREVIEW — ?action=plantation ouvre le dialog AssistantPlantation
@@ -117,7 +141,7 @@ function VergerPageInner() {
       )}
 
       {/* Shell partagé (palier 2) : header global + barre d'onglets communs */}
-      <AppHeader current="verger" />
+      <AppHeader current="verger" showLune />
       <ModuleTabBar
         tabs={TABS}
         activeTab={activeTab}
@@ -181,7 +205,10 @@ function VergerPageInner() {
       {/* Contenu de l'onglet actif */}
       <main className="container mx-auto px-4 py-6 max-w-[1600px] space-y-4">
         {activeTab === "calendrier" && <PremiersPasBanner module="verger" />}
-        {activeTab === "calendrier" && <CalendrierTab year={selectedYear} />}
+        {/* QA cmsogh2sw — garde d'hydratation : ne pas monter le calendrier
+            avant la lecture de gleba_verger_year, sinon il fetche l'année par
+            défaut puis refetche (fetch fantôme déjà mordu sur 4 écrans). */}
+        {activeTab === "calendrier" && yearHydrated && <CalendrierTab year={selectedYear} />}
         {activeTab === "plantations" && <PlantationsTab />}
         {activeTab === "arbres" && <ArbresTab />}
         {activeTab === "productions" && <ProductionsTab />}

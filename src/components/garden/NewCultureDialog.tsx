@@ -26,15 +26,13 @@ import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
 import { RotationAdviceCompact } from "@/components/planche"
-import { EspeceCombobox, type EspeceOption } from "@/components/especes/EspeceCombobox"
-
-function weekToDate(year: number, week: number): Date {
-  const jan4 = new Date(year, 0, 4)
-  const dayOfWeek = jan4.getDay() || 7
-  const monday = new Date(jan4)
-  monday.setDate(jan4.getDate() - dayOfWeek + 1 + (week - 1) * 7)
-  return monday
-}
+import { EspeceCombobox, type EspeceOption, type EspeceType } from "@/components/especes/EspeceCombobox"
+import {
+  NouvelleEspecePersoDialog,
+  type NouvelleEspecePerso,
+} from "@/components/especes/NouvelleEspecePersoDialog"
+import { datesDepuisItp, recolteApresDebut } from "@/lib/cultures/dates-itp"
+import { validateCultureDates } from "@/lib/validations/date-validation"
 
 interface ITPData {
   id: string
@@ -43,6 +41,10 @@ interface ITPData {
   semaineSemis: number | null
   semainePlantation: number | null
   semaineRecolte: number | null
+  // QA cmsfxvbab — jalon de début de cycle des ITP « implantation seule »
+  // (ni semis ni plantation), cf. semaineSemisEffective.
+  semaineImplantationDebut: number | null
+  dureeCulture: number | null
   nbRangs: number | null
   espacement: number | null
 }
@@ -75,6 +77,9 @@ export function NewCultureDialog({ open, onOpenChange, plancheId, plancheNom, pl
   const [espacement, setEspacement] = React.useState<number | null>(null)
   const [quantite, setQuantite] = React.useState<number | null>(null)
   const [notes, setNotes] = React.useState("")
+  // Dernier début de cycle appliqué : le recalage de la récolte ne suit que
+  // les CHANGEMENTS de début, jamais le remplissage initial de l'ITP.
+  const debutCycleRef = React.useRef<string | null>(null)
 
   // Reset quand on ouvre
   React.useEffect(() => {
@@ -85,6 +90,7 @@ export function NewCultureDialog({ open, onOpenChange, plancheId, plancheNom, pl
       setDateSemis("")
       setDatePlantation("")
       setDateRecolte("")
+      debutCycleRef.current = null
       setNbRangs(null)
       setLongueur(plancheLongueur)
       setEspacement(null)
@@ -110,18 +116,40 @@ export function NewCultureDialog({ open, onOpenChange, plancheId, plancheNom, pl
   const currentUserId = (authSession?.user as { id?: string } | undefined)?.id ?? null
 
   // Création d'une espèce perso (ex. Maracuja) directement depuis le sélecteur.
-  const handleCreateEspece = async (nom: string) => {
+  // Passe par un dialogue : le type et la famille botanique étaient auparavant
+  // forcés à « légume » / aucune, ce qui privait rotation et associations de
+  // leur donnée d'entrée (friction du 2026-07-30).
+  const [especeACreer, setEspeceACreer] = React.useState<{
+    nom: string
+    type: EspeceType | undefined
+  } | null>(null)
+
+  const handleCreateEspece = (nom: string, typeSuggere?: EspeceType) => {
+    setEspeceACreer({ nom, type: typeSuggere })
+  }
+
+  const handleConfirmEspece = async (data: NouvelleEspecePerso) => {
     try {
       const res = await fetch("/api/especes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: nom, type: "legume", vivace: false, aPlanifier: true }),
+        body: JSON.stringify({
+          id: data.nom,
+          type: data.type,
+          familleId: data.familleId,
+          vivace: data.vivace,
+          aPlanifier: true,
+        }),
       })
       const created = await res.json().catch(() => null)
       if (res.ok && created?.id) {
         await loadEspeces()
         setEspeceId(created.id)
-        toast({ title: "Espèce perso créée", description: `« ${created.id} » ajoutée à votre catalogue.` })
+        // `created.id` est un cuid pour une espèce perso : afficher `nom`.
+        toast({
+          title: "Espèce perso créée",
+          description: `« ${created.nom ?? created.id} » ajoutée à votre catalogue.`,
+        })
       } else {
         toast({ variant: "destructive", title: "Erreur", description: created?.error || "Impossible de créer l'espèce" })
       }
@@ -162,21 +190,45 @@ export function NewCultureDialog({ open, onOpenChange, plancheId, plancheNom, pl
     if (!itpId) return
     const itp = itps.find(i => i.id === itpId)
     if (!itp) return
-    // Chronologie : une étape dont la semaine est antérieure au semis tombe l'année
-    // suivante (ITP chevauchant deux années, ex. semis août → récolte janvier).
-    if (itp.semaineSemis) setDateSemis(format(weekToDate(annee, itp.semaineSemis), "yyyy-MM-dd"))
-    if (itp.semainePlantation) {
-      const an = itp.semaineSemis && itp.semainePlantation < itp.semaineSemis ? annee + 1 : annee
-      setDatePlantation(format(weekToDate(an, itp.semainePlantation), "yyyy-MM-dd"))
-    }
-    if (itp.semaineRecolte) {
-      const ref = itp.semainePlantation ?? itp.semaineSemis
-      const an = ref && itp.semaineRecolte < ref ? annee + 1 : annee
-      setDateRecolte(format(weekToDate(an, itp.semaineRecolte), "yyyy-MM-dd"))
-    }
+    // Chronologie garantie croissante par datesDepuisItp : un ITP à cheval sur
+    // deux années ne peut plus produire une récolte antérieure à la plantation.
+    const cycle = datesDepuisItp(annee, itp)
+    if (cycle.dateSemis) setDateSemis(format(cycle.dateSemis, "yyyy-MM-dd"))
+    if (cycle.datePlantation) setDatePlantation(format(cycle.datePlantation, "yyyy-MM-dd"))
+    if (cycle.dateRecolte) setDateRecolte(format(cycle.dateRecolte, "yyyy-MM-dd"))
+    // Le cycle vient d'être posé en bloc : mémoriser son début pour que le
+    // recalage de la récolte ne réécrive pas celle de datesDepuisItp.
+    const debutCycle = cycle.datePlantation ?? cycle.dateSemis
+    if (debutCycle) debutCycleRef.current = format(debutCycle, "yyyy-MM-dd")
     if (itp.nbRangs) setNbRangs(itp.nbRangs)
     if (itp.espacement) setEspacement(Math.round(itp.espacement))
   }, [itpId, itps, annee])
+
+  // Friction 2026-08-14 — la date de récolte SUIT le début de cycle saisi
+  // (durée du cycle ITP préservée, `recolteApresDebut`). Éditer la seule
+  // récolte ne déclenche rien ; une récolte vidée n'est pas re-remplie.
+  React.useEffect(() => {
+    const debutStr = datePlantation || dateSemis
+    if (!debutStr) return
+    const debut = new Date(debutStr)
+    if (Number.isNaN(debut.getTime())) return
+    const debutChange = debutCycleRef.current !== null && debutCycleRef.current !== debutStr
+    debutCycleRef.current = debutStr
+
+    if (!dateRecolte) return
+    const recolte = new Date(dateRecolte)
+    if (Number.isNaN(recolte.getTime())) return
+    const recolteIncoherente = recolte <= debut
+    if (!debutChange && !recolteIncoherente) return
+
+    const itp = itps.find((i) => i.id === itpId)
+    if (!itp) return
+    const nouvelleRecolte = recolteApresDebut(debut, itp)
+    if (!nouvelleRecolte) return
+    const nouvelleStr = format(nouvelleRecolte, "yyyy-MM-dd")
+    if (nouvelleStr !== dateRecolte) setDateRecolte(nouvelleStr)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateSemis, datePlantation, itpId, itps])
 
   // Auto-calculer quantite
   React.useEffect(() => {
@@ -185,9 +237,21 @@ export function NewCultureDialog({ open, onOpenChange, plancheId, plancheNom, pl
     }
   }, [nbRangs, longueur, espacement])
 
+  // Contrôle de chronologie en direct : l'API refuse désormais un cycle
+  // impossible, autant le dire avant que l'utilisateur clique sur Créer.
+  const erreursDates = React.useMemo(() => {
+    if (!dateSemis && !datePlantation && !dateRecolte) return []
+    return validateCultureDates({
+      dateSemis: dateSemis || null,
+      datePlantation: datePlantation || null,
+      dateRecolte: dateRecolte || null,
+      annee,
+    }).errors
+  }, [dateSemis, datePlantation, dateRecolte, annee])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!especeId) return
+    if (!especeId || erreursDates.length > 0) return
 
     setIsSubmitting(true)
     try {
@@ -261,6 +325,15 @@ export function NewCultureDialog({ open, onOpenChange, plancheId, plancheNom, pl
   }
 
   return (
+    <>
+    <NouvelleEspecePersoDialog
+      open={especeACreer !== null}
+      onOpenChange={(o) => { if (!o) setEspeceACreer(null) }}
+      nomInitial={especeACreer?.nom ?? ""}
+      typeInitial={especeACreer?.type ?? "legume"}
+      typesProposes={["legume", "aromatique", "fleur", "engrais_vert", "petit_fruit"]}
+      onConfirm={handleConfirmEspece}
+    />
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
@@ -275,7 +348,7 @@ export function NewCultureDialog({ open, onOpenChange, plancheId, plancheNom, pl
                 options={especes}
                 value={especeId || null}
                 onChange={(id) => setEspeceId(id || "")}
-                defaultTypes={["legume", "aromatique", "engrais_vert"]}
+                defaultTypes={["legume", "aromatique", "fleur", "engrais_vert"]}
                 recentStorageKey="espece-recents-garden"
                 placeholder="Rechercher une espèce…"
                 currentUserId={currentUserId}
@@ -284,10 +357,12 @@ export function NewCultureDialog({ open, onOpenChange, plancheId, plancheNom, pl
             </div>
           </div>
 
-          {/* Conseils de rotation */}
+          {/* Conseils de rotation. Identifiant et non libellé : la création POST
+              envoie `plancheId`, le conseil doit porter sur la même planche sans
+              repli de résolution par nom. */}
           {especeId && (
             <RotationAdviceCompact
-              plancheId={plancheNom}
+              plancheId={plancheId}
               especeId={especeId}
               year={annee}
             />
@@ -342,6 +417,9 @@ export function NewCultureDialog({ open, onOpenChange, plancheId, plancheNom, pl
               <Input type="date" className="mt-1" value={dateRecolte} onChange={e => setDateRecolte(e.target.value)} />
             </div>
           </div>
+          {erreursDates.length > 0 && (
+            <p className="text-xs text-red-600">{erreursDates.join(" ")}</p>
+          )}
 
           {/* Quantites */}
           <div className="grid grid-cols-2 gap-3">
@@ -361,7 +439,7 @@ export function NewCultureDialog({ open, onOpenChange, plancheId, plancheNom, pl
               <Input type="number" min="1" className="mt-1" value={espacement ?? ""} onChange={e => setEspacement(e.target.value ? parseInt(e.target.value) : null)} />
             </div>
             <div>
-              <Label className="text-xs">Quantite (auto)</Label>
+              <Label className="text-xs">Quantité (auto)</Label>
               <Input type="number" className="mt-1" value={quantite ?? ""} onChange={e => setQuantite(e.target.value ? parseFloat(e.target.value) : null)} />
             </div>
           </div>
@@ -374,7 +452,7 @@ export function NewCultureDialog({ open, onOpenChange, plancheId, plancheNom, pl
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Annuler</Button>
-            <Button type="submit" disabled={isSubmitting || !especeId}>
+            <Button type="submit" disabled={isSubmitting || !especeId || erreursDates.length > 0}>
               <Save className="h-4 w-4 mr-2" />
               {isSubmitting ? "..." : "Créer"}
             </Button>
@@ -382,5 +460,6 @@ export function NewCultureDialog({ open, onOpenChange, plancheId, plancheNom, pl
         </form>
       </DialogContent>
     </Dialog>
+    </>
   )
 }

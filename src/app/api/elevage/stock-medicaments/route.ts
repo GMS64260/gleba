@@ -38,7 +38,13 @@ export async function POST(request: NextRequest) {
   const data = await prisma.stockMedicamentElevage.upsert({
     where: { userId_produitId_numeroLot: { userId: session.user.id, produitId: d.produitId, numeroLot: d.numeroLot } },
     create: { userId: session.user.id, ...d, ordonnanceUrl: d.ordonnanceUrl || null },
-    update: { ...d, ordonnanceUrl: d.ordonnanceUrl || null },
+    // QA cmswtt0ee — un ré-envoi du même lot sans date ne doit pas écraser
+    // une péremption déjà connue (traçabilité réglementaire).
+    update: {
+      ...d,
+      ordonnanceUrl: d.ordonnanceUrl || null,
+      datePeremption: d.datePeremption ?? undefined,
+    },
   })
   return NextResponse.json({ data }, { status: 201 })
 }

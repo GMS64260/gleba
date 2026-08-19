@@ -12,7 +12,6 @@ import Image from "next/image";
 import Link from "next/link";
 import {
   Calendar,
-  LayoutGrid,
   BarChart3,
   Wrench,
   Sprout,
@@ -38,12 +37,11 @@ import {
 /* ─── Données ─── */
 
 const BUSINESS_LINKS = [
+  ["/logiciel-micro-ferme", "Micro-ferme"],
   ["/logiciel-maraichage", "Maraîchage"],
-  ["/logiciel-potager", "Potager"],
-  ["/logiciel-arboriculture", "Arboriculture"],
+  ["/logiciel-verger", "Verger"],
   ["/logiciel-elevage", "Élevage"],
-  ["/logiciel-permaculture", "Permaculture"],
-  ["/calendrier-semis", "Calendrier semis"],
+  ["/planification-maraichage", "Planification"],
 ] as const;
 
 const PILLARS = [
@@ -51,19 +49,19 @@ const PILLARS = [
     icon: Calendar,
     title: "Planifiez",
     description:
-      "Calendrier de semis, rotations, associations, calendrier lunaire. Des itinéraires techniques prêts à l'emploi pour ne rien oublier.",
+      "Préparez le plan de culture, les semis, les rotations et les itinéraires techniques avant la saison.",
   },
   {
     icon: Wrench,
-    title: "Gérez",
+    title: "Suivez le terrain",
     description:
-      "Cultures, verger, élevage, soins, traitements, irrigations et interventions — tout votre quotidien au même endroit.",
+      "Consignez cultures, verger, interventions, irrigations et éventuels ateliers d'élevage au fil du travail réel.",
   },
   {
     icon: BarChart3,
-    title: "Analysez",
+    title: "Gardez la trace",
     description:
-      "Rendements par planche, coûts de production, factures, traçabilité. Des décisions basées sur vos données.",
+      "Reliez récoltes, stocks, traitements, coûts et factures dans un dossier d'exploitation cohérent.",
   },
 ];
 
@@ -109,7 +107,7 @@ const MODULES = [
   },
   {
     icon: Map,
-    title: "Plan du jardin 2D",
+    title: "Plan de l'exploitation 2D",
     description:
       "Dessinez vos planches aux vraies dimensions. Cadastre, satellite et données de sol intégrés.",
     accent: "teal" as const,
@@ -174,7 +172,7 @@ const FAQS: { question: string; answer: string }[] = [
   {
     question: "Qu'est-ce que Gleba ?",
     answer:
-      "Gleba est un logiciel libre tout-en-un de gestion pour micro-fermes diversifiées. Il regroupe planification maraîchage, gestion de verger, suivi d'élevage, comptabilité, traçabilité phytosanitaire, plan 2D du jardin et du potager et assistant IA. Il s'adresse au potager familial et au jardin comme aux maraîchers professionnels, écolieux, jardins pédagogiques et fermes en permaculture.",
+      "Gleba est le carnet d'exploitation libre des micro-fermes professionnelles ou en installation. Il relie planification maraîchère, suivi du verger, ateliers d'élevage, stocks, traçabilité et gestion dans le même dossier, sans enfermer les données dans un service propriétaire.",
   },
   {
     question: "Gleba est-il un logiciel de maraîchage adapté au bio et à la permaculture ?",
@@ -288,7 +286,7 @@ export function HomeLanding() {
               href="/register"
               className="inline-flex items-center px-4 py-2 rounded-full bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-medium transition-colors shadow-sm"
             >
-              Inscription
+              Essayer la bêta
             </Link>
           </div>
         </nav>
@@ -310,32 +308,32 @@ export function HomeLanding() {
         {/* Hero content */}
         <div className="flex-1 flex flex-col items-center justify-center px-4 py-16 md:py-20">
           <p className="text-xs tracking-[0.25em] uppercase text-emerald-800 font-medium mb-6">
-            Micro-fermes · Écolieux · Jardins pédagogiques · Maraîchage
+            Micro-fermes professionnelles · Projets en installation
           </p>
 
           <h1 className="font-heading text-center text-5xl sm:text-6xl lg:text-7xl font-extralight tracking-tight text-slate-900 leading-[1.05] mb-8">
             <span className="sr-only">
-              Gleba, le logiciel libre de gestion pour micro-ferme, maraîchage, verger et élevage.
+              Gleba, le carnet d&apos;exploitation libre des micro-fermes diversifiées.
             </span>
             <span aria-hidden="true">
-              Votre exploitation.
+              Votre micro-ferme.
               <br />
               <span className="bg-gradient-to-r from-emerald-700 via-teal-600 to-emerald-600 bg-clip-text text-transparent">
-                Un seul outil.
+                Un dossier cohérent.
               </span>
             </span>
           </h1>
 
           <p className="text-base sm:text-lg text-slate-600 font-light max-w-md mx-auto leading-relaxed text-center mb-10">
-            Maraîchage, verger, élevage, comptabilité, traçabilité et IA —
+            Planifiez le maraîchage, suivez le verger et gardez une traçabilité cohérente —
             <br className="hidden sm:block" />
-            regroupés dans un seul logiciel libre.
+            du terrain à la gestion de l&apos;exploitation.
           </p>
 
           <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-50/80 border border-emerald-100 text-emerald-700 text-xs font-medium mb-10">
             <TreeDeciduous className="h-3.5 w-3.5 flex-shrink-0" />
             <span>
-              Nouveau — 25 espèces d&apos;arbres, traçabilité phytosanitaire, météo et calendrier lunaire
+              Logiciel libre · Hébergement en France · Auto-hébergement possible
             </span>
           </div>
 
@@ -344,14 +342,14 @@ export function HomeLanding() {
               href="/register"
               className="inline-flex items-center gap-2 px-7 py-3.5 rounded-full bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-medium transition-colors shadow-lg shadow-emerald-700/20"
             >
-              Créer mon compte
+              Essayer la bêta
               <ArrowRight className="h-4 w-4" />
             </Link>
             <Link
               href="/login?demo=1"
               className="inline-flex items-center px-7 py-3.5 rounded-full border border-emerald-300 bg-white/80 text-emerald-700 hover:bg-emerald-50 hover:border-emerald-400 text-sm font-medium transition-colors"
             >
-              Essayer la démo
+              Explorer la démo
             </Link>
             <Link
               href="/login"
@@ -362,7 +360,7 @@ export function HomeLanding() {
           </div>
 
           <p className="text-xs text-slate-600 mt-5">
-            Gratuit · Open source AGPL-3.0 · Hébergé en France
+            Bêta hébergée gratuite pendant le développement · Code AGPL-3.0
           </p>
 
           <a
@@ -387,9 +385,9 @@ export function HomeLanding() {
               Trois dimensions
             </p>
             <h2 className="font-heading text-3xl sm:text-4xl lg:text-5xl font-extralight text-slate-900 tracking-tight">
-              Conçu pour ceux qui
+              Conçu autour du travail
               <br />
-              <span className="font-normal">font vivre la terre</span>
+              <span className="font-normal">d&apos;une micro-ferme</span>
             </h2>
           </div>
 
@@ -423,7 +421,7 @@ export function HomeLanding() {
               Neuf modules intégrés
             </p>
             <h2 className="font-heading text-3xl sm:text-4xl lg:text-5xl font-extralight text-slate-900 tracking-tight">
-              Tout au <span className="font-normal">même endroit</span>
+              Un même <span className="font-normal">dossier d&apos;exploitation</span>
             </h2>
           </div>
 
@@ -566,14 +564,14 @@ export function HomeLanding() {
           </h2>
 
           <p className="text-lg sm:text-xl text-slate-600 leading-relaxed mb-6 font-light">
-            Gérer une micro-ferme, un écolieu ou un jardin pédagogique demande de jongler entre
-            semis, arbres fruitiers, animaux, récoltes, traitements, traçabilité et comptabilité.
+            Gérer une micro-ferme diversifiée demande de relier plan de culture, arbres fruitiers,
+            ateliers animaux, récoltes, traitements, stocks et suivi économique.
             Les tableurs débordent. Les carnets se perdent. Les outils existants ne couvrent
             qu&apos;une partie du travail.
           </p>
 
           <p className="text-lg sm:text-xl text-slate-700 leading-relaxed font-light">
-            Gleba regroupe tout au même endroit — en{" "}
+            Gleba garde ces ateliers dans un même carnet d&apos;exploitation — en{" "}
             <strong className="font-semibold">open source</strong>, hébergé{" "}
             <strong className="font-semibold">sur nos serveurs ou les vôtres</strong> — pour que
             vous puissiez vous concentrer sur ce qui compte.
@@ -656,17 +654,20 @@ export function HomeLanding() {
             <span className="text-slate-600">v1.1.0</span>
           </div>
           <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
+            <Link href="/logiciel-micro-ferme" className="hover:text-emerald-600 transition-colors">
+              Micro-ferme
+            </Link>
             <Link href="/logiciel-maraichage" className="hover:text-emerald-600 transition-colors">
               Maraîchage
-            </Link>
-            <Link href="/logiciel-potager" className="hover:text-emerald-600 transition-colors">
-              Potager
             </Link>
             <Link href="/logiciel-verger" className="hover:text-emerald-600 transition-colors">
               Verger
             </Link>
             <Link href="/logiciel-elevage" className="hover:text-emerald-600 transition-colors">
               Élevage
+            </Link>
+            <Link href="/planification-maraichage" className="hover:text-emerald-600 transition-colors">
+              Planification
             </Link>
             <Link href="/calendrier-semis" className="hover:text-emerald-600 transition-colors">
               Calendrier semis

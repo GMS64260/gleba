@@ -40,7 +40,7 @@ import {
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { VergerCalendarView } from "./VergerCalendarView"
-import { TreeCareGantt } from "./TreeCareGantt"
+import { TreeCareGantt, type EspeceArbreGantt } from "./TreeCareGantt"
 import { kpiCardClass, kpiSubtleClass } from "@/lib/kpi-theme"
 import { libelleOperationArbre } from "@/lib/verger/operation-label"
 import {
@@ -306,7 +306,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
   const [loading, setLoading] = React.useState(true)
   const [operations, setOperations] = React.useState<OperationArbre[]>([])
   const [arbresAttention, setArbresAttention] = React.useState<{ id: number; nom: string; type: string; etat: string }[]>([])
-  const [especesUtilisateur, setEspecesUtilisateur] = React.useState<string[]>([])
+  const [especesUtilisateur, setEspecesUtilisateur] = React.useState<EspeceArbreGantt[]>([])
   const [lotsDeplies, setLotsDeplies] = React.useState<Record<string, boolean>>({})
   const [fenetresDepasseesDepliees, setFenetresDepasseesDepliees] = React.useState(false)
   const [enCours, setEnCours] = React.useState<string | null>(null)
@@ -338,9 +338,16 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
           setArbresAttention(
             arbres.filter((a: { etat: string }) => ["mauvais", "moyen"].includes(a.etat))
           )
-          // Espèces uniques pour le Gantt d'entretien
-          const especes = [...new Set(arbres.map((a: { espece: string | null }) => a.espece).filter(Boolean))] as string[]
-          setEspecesUtilisateur(especes)
+          // Couples espèce/type uniques pour le Gantt d'entretien.
+          // cmsofzh0w — le type de l'arbre accompagne l'espèce : la frise ne
+          // doit pas afficher un calendrier fruitier pour un arbre forestier.
+          const paires = new Map<string, EspeceArbreGantt>()
+          for (const a of arbres as Array<{ espece: string | null; type: string | null }>) {
+            if (!a.espece) continue
+            const cle = `${a.espece}::${a.type ?? ""}`
+            if (!paires.has(cle)) paires.set(cle, { espece: a.espece, type: a.type ?? null })
+          }
+          setEspecesUtilisateur([...paires.values()])
         }
       } catch {
         toast({ variant: "destructive", title: "Erreur" })
@@ -765,7 +772,8 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={data.charts.recoltesFruitsMois}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="mois" tick={{ fontSize: 12 }} />
+                    {/* QA cmsqn3n9s — sans interval=0, Recharts saute des ticks (« Nov » absent, trou visible entre Oct et Déc) */}
+                    <XAxis dataKey="mois" tick={{ fontSize: 10 }} interval={0} />
                     <YAxis tick={{ fontSize: 12 }} />
                     <Tooltip
                       formatter={(value) => [`${value} kg`, "Récolte"]}
@@ -798,7 +806,8 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={data.charts.productionBoisMois}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="mois" tick={{ fontSize: 12 }} />
+                    {/* QA cmsqn3n9s — sans interval=0, Recharts saute des ticks (« Nov » absent, trou visible entre Oct et Déc) */}
+                    <XAxis dataKey="mois" tick={{ fontSize: 10 }} interval={0} />
                     <YAxis tick={{ fontSize: 12 }} />
                     <Tooltip
                       formatter={(value) => [`${value} m³`, "Volume"]}

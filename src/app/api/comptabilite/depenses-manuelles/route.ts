@@ -8,6 +8,7 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { createDepenseManuelleSchema, updateDepenseManuelleSchema } from '@/lib/validations/depense-manuelle'
 import { invalidateKpi } from '@/lib/kpi'
+import { champsEnvoyes, refusModificationDerivee } from '@/lib/comptabilite/ecriture-derivee'
 import { ensureFournisseurForUser } from '@/lib/comptabilite/ensure-fournisseur'
 
 export async function GET(request: NextRequest) {
@@ -147,6 +148,10 @@ export async function PATCH(request: NextRequest) {
     }
 
     const { id, ...updates } = parsed.data
+    // `.partial()` conserve les `.default()` du schéma de création : la sortie
+    // de zod contient toujours tauxTVA, paye et journal. Seules les clés du
+    // corps brut disent ce que l'appelant a réellement demandé.
+    const envoyes = champsEnvoyes(body)
 
     const existing = await prisma.depenseManuelle.findFirst({
       where: { id, userId: session.user.id },
@@ -156,13 +161,25 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Dépense non trouvée' }, { status: 404 })
     }
 
+    // Une dépense dérivée appartient à sa source : son montant, sa date et son
+    // périmètre ne se corrigent que là. Le suivi du règlement reste ouvert
+    // (l'écran des impayés marque légitimement `paye` sur une ligne dérivée).
+    const refus = refusModificationDerivee(existing, envoyes)
+    if (refus) {
+      return NextResponse.json({ error: refus }, { status: 400 })
+    }
+
     const updateData: any = {}
-    if (updates.paye !== undefined) updateData.paye = updates.paye
+    if (envoyes.has('paye') && updates.paye !== undefined) updateData.paye = updates.paye
     if (updates.date !== undefined) updateData.date = updates.date
     if (updates.categorie !== undefined) updateData.categorie = updates.categorie
+    // Ticket cmsx5xjhn — `module` était accepté par le schéma et jeté par le
+    // handler : impossible de réimputer une charge, alors que ce champ décide
+    // de la ventilation du compte de résultat.
+    if (updates.module !== undefined) updateData.module = updates.module
     if (updates.description !== undefined) updateData.description = updates.description
     if (updates.montant !== undefined) updateData.montant = updates.montant
-    if (updates.tauxTVA !== undefined) {
+    if (envoyes.has('tauxTVA') && updates.tauxTVA !== undefined) {
       updateData.tauxTVA = updates.tauxTVA
       updateData.tvaInferee = false
     }
@@ -171,7 +188,7 @@ export async function PATCH(request: NextRequest) {
     // Audit 2026-07 (#9) : recalcul HT/TVA si montant ou taux changent sans
     // HT/TVA fournis (sinon TVA déductible périmée dans CA3/FEC/bilan).
     if (
-      (updates.montant !== undefined || updates.tauxTVA !== undefined) &&
+      (envoyes.has('montant') || envoyes.has('tauxTVA')) &&
       updates.montantHT === undefined &&
       updates.montantTVA === undefined
     ) {
@@ -186,7 +203,7 @@ export async function PATCH(request: NextRequest) {
     if (updates.refFacture !== undefined) updateData.refFacture = updates.refFacture
     if (updates.dateEcheance !== undefined) updateData.dateEcheance = updates.dateEcheance ?? null
     if (updates.notes !== undefined) updateData.notes = updates.notes
-    if (updates.journal !== undefined) updateData.journal = updates.journal
+    if (envoyes.has('journal') && updates.journal !== undefined) updateData.journal = updates.journal
     if (updates.modeReglement !== undefined) updateData.modeReglement = updates.modeReglement
     if (updates.numeroPiece !== undefined) updateData.numeroPiece = updates.numeroPiece
     if (updates.pjUrl !== undefined) updateData.pjUrl = updates.pjUrl || null

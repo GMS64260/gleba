@@ -164,8 +164,10 @@ export function VergerCalendarView({ year }: VergerCalendarViewProps) {
   const eventsByDay = React.useMemo(() => {
     const map = new Map<string, OperationEvent[]>()
     operations.forEach((op) => {
-      // Use datePrevue as the calendar date if available, otherwise use date
-      const opDate = op.datePrevue || op.date
+      // Ticket cmsogc0z3 — une opération RÉALISÉE se place à sa date de
+      // réalisation (`date`), pas à sa date prévue ; une opération planifiée
+      // reste à sa date prévue.
+      const opDate = op.fait ? (op.date || op.datePrevue) : (op.datePrevue || op.date)
       if (!opDate) return
       const dateKey = format(new Date(opDate), "yyyy-MM-dd")
       if (!map.has(dateKey)) {
@@ -452,7 +454,7 @@ export function VergerCalendarView({ year }: VergerCalendarViewProps) {
                       )}
                   </SheetTitle>
                   <SheetDescription>
-                    {selectedDayForMobile?.events.length} operation(s)
+                    {selectedDayForMobile?.events.length} opération(s)
                   </SheetDescription>
                 </SheetHeader>
                 <div className="py-4 space-y-2 overflow-y-auto">

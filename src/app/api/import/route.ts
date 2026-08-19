@@ -9,6 +9,7 @@ import prisma from '@/lib/prisma'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { normalizeVarieteName } from '@/lib/normalize'
 import { invalidateKpi } from '@/lib/kpi'
+import { frequenceIrrigationJours } from '@/lib/irrigation-peremption'
 
 interface ImportData {
   version?: string
@@ -1022,8 +1023,11 @@ export async function POST(request: NextRequest) {
 
       if (!dateDebut) continue
 
-      const besoinEau = culture.espece.besoinEau || 3
-      const frequenceJours = besoinEau >= 4 ? 2 : 3
+      // Cadence partagée avec le planificateur et la péremption. Cette copie
+      // ignorait le palier « besoin faible » (5 j) et arrosait tout tous les
+      // 3 jours : une culture importée périmait donc sur un cycle qu'elle
+      // n'avait jamais suivi.
+      const frequenceJours = frequenceIrrigationJours(culture.espece.besoinEau)
 
       const irrigations: Date[] = []
       let currentDate = new Date(dateDebut)

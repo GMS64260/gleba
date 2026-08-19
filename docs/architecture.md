@@ -21,7 +21,7 @@ Gleba est un ERP open source (AGPL-3.0) de gestion de micro-fermes diversifiées
 | ORM | Prisma | 5.22.0 |
 | BDD | PostgreSQL (PostGIS) | 16 |
 | Auth | NextAuth v5 (Auth.js) | 5.0.0-beta.30 |
-| IA | Ollama | 0.6.3 |
+| IA | Agents Paperclip (Normal/Support/Extra) via API | — |
 | Email | Nodemailer | 8.0.1 |
 | Build | Docker multi-stage | Node 20 Alpine |
 | Reverse Proxy | Caddy | — |
@@ -131,7 +131,7 @@ Gleba est un ERP open source (AGPL-3.0) de gestion de micro-fermes diversifiées
 - Météo (Open-Meteo, stations personnelles)
 - Calendrier lunaire
 - Qualité du sol (SoilGrids, analyses labo)
-- Assistant IA (Ollama, 39 outils MCP)
+- Assistant IA : agents Paperclip asynchrones (Normal/Support/Extra) ; catalogue d'outils PAR RÔLE selon la section (`src/lib/chat/catalogues.ts`), lectures exécutées par Gleba (allowlist, `userId` de session), mutations confirmées par l'utilisateur ; second point d'entrée `/api/mcp` (bearer token)
 
 ## Architecture des données
 
@@ -183,7 +183,7 @@ Le module `auto-compta.ts` intercepte les ventes (récoltes, produits élevage, 
 | SoilGrids | Données pédologiques | `src/lib/soilgrids.ts` |
 | IGN Géoportail | Couches carte (satellite, cadastre) | `src/components/carte/` |
 | API Cadastre | Recherche parcellaire | `src/app/api/carte/cadastre/` |
-| Ollama | Chat IA assistant | `src/lib/ollama.ts` |
+| Paperclip | Agents du chat IA (Normal/Support/Extra) | `src/lib/chat/advanced-reasoning.ts` |
 
 ## Performance et cache
 

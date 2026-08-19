@@ -4,15 +4,26 @@
 
 import { z } from 'zod'
 
+// QA cmsbtr0e4 — un Select piloté peut émettre '' pour une référence
+// facultative ; '' inséré tel quel violait la FK (P2003 ⇒ 500). '' vaut
+// « aucune référence » (⇒ null), même sémantique que l'effacement des dates.
+// `.transform` (et non `.preprocess`) : l'input reste string|null|undefined
+// pour l'inférence des formulaires react-hook-form.
+const refFacultative = z
+  .string()
+  .nullable()
+  .transform((v) => (typeof v === 'string' && v.trim() === '' ? null : v))
+  .optional()
+
 export const cultureSchema = z.object({
   especeId: z.string().min(1, "L'espèce est requise"),
   // varieteId reste nullable côté validation : si absent à la création,
   // le backend assigne automatiquement le placeholder "Non spécifiée" de l'espèce
   // (Variete.isPlaceholder=true) — l'UI affiche un bandeau "À renseigner".
   // Aucune Culture ne reste sans variete en BDD.
-  varieteId: z.string().nullable().optional(),
-  itpId: z.string().nullable().optional(),
-  plancheId: z.string().nullable().optional(),
+  varieteId: refFacultative,
+  itpId: refFacultative,
+  plancheId: refFacultative,
   annee: z.number().int().min(2000).max(2100).nullable().optional(),
   dateSemis: z.union([z.string(), z.date()]).nullable().optional(),
   datePlantation: z.union([z.string(), z.date()]).nullable().optional(),
@@ -31,6 +42,44 @@ export const cultureSchema = z.object({
 
 export const createCultureSchema = cultureSchema
 export const updateCultureSchema = cultureSchema.partial()
+
+// QA cmsfxvbab — l'API refuse déjà récolte < semis (400 explicite), mais côté
+// formulaire ce refus n'apparaissait que dans un toast éphémère : l'utilisateur
+// voyait un échec silencieux. Schéma réservé aux formulaires react-hook-form
+// (l'API garde createCultureSchema : ses messages d'erreur dédiés priment sur
+// un flatten Zod générique). Mêmes règles que validateCultureDates côté serveur.
+function champDate(v: string | Date | null | undefined): Date | null {
+  if (!v) return null
+  const d = v instanceof Date ? v : new Date(v)
+  return Number.isNaN(d.getTime()) ? null : d
+}
+
+function refineChronologie(
+  data: Pick<CultureInput, 'dateSemis' | 'datePlantation' | 'dateRecolte'>,
+  ctx: z.RefinementCtx,
+) {
+  const semis = champDate(data.dateSemis)
+  const plantation = champDate(data.datePlantation)
+  const recolte = champDate(data.dateRecolte)
+  if (semis && plantation && semis > plantation) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['datePlantation'],
+      message: 'La plantation doit être postérieure au semis',
+    })
+  }
+  const debutCycle = plantation ?? semis
+  if (debutCycle && recolte && debutCycle > recolte) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['dateRecolte'],
+      message: 'La récolte doit être postérieure au semis et à la plantation',
+    })
+  }
+}
+
+export const cultureFormSchema = cultureSchema.superRefine(refineChronologie)
+export const cultureUpdateFormSchema = cultureSchema.partial().superRefine(refineChronologie)
 
 export type CultureInput = z.infer<typeof cultureSchema>
 export type CreateCultureInput = z.infer<typeof createCultureSchema>

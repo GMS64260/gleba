@@ -8,6 +8,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server"
+import { dispositionDocument, dispositionTelechargement } from "@/lib/http/disposition-fichier"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 import PDFDocument from "pdfkit"
@@ -16,7 +17,7 @@ import { identifiantLegalAffichage } from "@/lib/territoires"
 type Format = "pdf" | "csv"
 
 const MENTION_LEGALE =
-  "Document généré conformément à l'arrêté du 16 juin 2009 modifié — Registre des produits phytosanitaires."
+  "Document généré conformément à l'arrêté du 4 mai 2017 modifié — Registre des produits phytosanitaires."
 
 export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
@@ -212,7 +213,7 @@ export async function GET(request: NextRequest) {
   if (format === "csv") {
     return buildCsv(lignes, user, exploitation, from, to)
   }
-  return buildPdf(lignes, user, exploitation, from, to)
+  return buildPdf(lignes, user, exploitation, from, to, request)
 }
 
 type Exploitation = {
@@ -339,7 +340,7 @@ function buildCsv(
     status: 200,
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Content-Disposition": dispositionTelechargement(filename),
     },
   })
 }
@@ -353,7 +354,9 @@ async function buildPdf(
   user: { name: string | null; email: string; certiphytoNum: string | null; certiphytoValidite: Date | null } | null,
   exploitation: Exploitation,
   from: Date,
-  to: Date
+  to: Date,
+  // L'URL appelante décide de l'affichage ou du téléchargement (2026-08-19).
+  requete: NextRequest
 ): Promise<NextResponse> {
   const buffer = await new Promise<Buffer>((resolve, reject) => {
     const doc = new PDFDocument({
@@ -366,7 +369,7 @@ async function buildPdf(
       info: {
         Title: `Registre phyto ${from.toISOString().slice(0, 10)}_${to.toISOString().slice(0, 10)}`,
         Author: exploitation?.raisonSociale || user?.name || user?.email || "Gleba",
-        Subject: "Registre des produits phytosanitaires - Arrêté 16/06/2009",
+        Subject: "Registre des produits phytosanitaires - Arrêté du 4 mai 2017 modifié",
         Keywords: "registre,phytosanitaire,bio,traçabilité",
       },
     })
@@ -571,7 +574,7 @@ async function buildPdf(
     status: 200,
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Content-Disposition": dispositionDocument(requete, filename),
       "Cache-Control": "no-cache",
     },
   })

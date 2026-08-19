@@ -97,6 +97,12 @@ const VENTES_LABELS: Record<string, string> = {
   oeufs: "Œufs",
   lait: "Lait",
   fromage: "Fromage",
+  miel: "Miel",
+  cire: "Cire",
+  propolis: "Propolis",
+  pollen: "Pollen",
+  gelee_royale: "Gelée royale",
+  autre_ruche: "Autre produit de la ruche",
   autre: "Autres",
   animal_vivant: "Animal vivant",
 }

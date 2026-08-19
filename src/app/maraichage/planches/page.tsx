@@ -187,11 +187,11 @@ export default function PlanchesPage() {
   }
 
   const handleRowClick = (row: PlancheWithRelations) => {
-    router.push(`/maraichage/planches/${encodeURIComponent(row.nom)}`)
+    router.push(`/maraichage/planches/${encodeURIComponent(row.id)}`)
   }
 
   const handleEdit = (row: PlancheWithRelations) => {
-    router.push(`/maraichage/planches/${encodeURIComponent(row.nom)}`)
+    router.push(`/maraichage/planches/${encodeURIComponent(row.id)}`)
   }
 
   const handleDelete = async (row: PlancheWithRelations) => {
@@ -207,7 +207,7 @@ export default function PlanchesPage() {
     if (!(await confirmDialog(`Supprimer la planche "${row.nom}" ?`))) return
 
     try {
-      const response = await fetch(`/api/planches/${encodeURIComponent(row.nom)}`, {
+      const response = await fetch(`/api/planches/${encodeURIComponent(row.id)}`, {
         method: "DELETE",
       })
       if (!response.ok) throw new Error("Erreur lors de la suppression")
@@ -242,7 +242,7 @@ export default function PlanchesPage() {
       {/* Assistant Maraîcher */}
       <AssistantDialog open={showAssistant} onOpenChange={setShowAssistant} />
 
-      <AppHeader current="maraichage" />
+      <AppHeader current="maraichage" showLune />
       <PageToolbar>
         <div className="flex items-center gap-4">
           <Link href="/">

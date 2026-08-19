@@ -11,7 +11,7 @@
 import { NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
-import { cumuleParParcelle, type TraitementCuivreInput } from "@/lib/phyto/cuivre"
+import { cumuleParParcelle, isProduitCuivre, type TraitementCuivreInput } from "@/lib/phyto/cuivre"
 
 export async function GET() {
   const { error, session } = await requireAuthApi()
@@ -22,7 +22,7 @@ export async function GET() {
   const dateMin7ans = new Date(asOf)
   dateMin7ans.setFullYear(dateMin7ans.getFullYear() - 7)
 
-  const [parcelles, interventions, observations] = await Promise.all([
+  const [parcelles, interventions, observations, operationsArbres] = await Promise.all([
     prisma.parcelleGeo.findMany({
       where: { userId },
       select: { id: true, nom: true, surface: true },
@@ -55,6 +55,27 @@ export async function GET() {
         date: { gte: dateMin7ans },
       },
     }),
+    // QA cmsogea5w — les traitements saisis via Verger > Opérations
+    // (operations_arbres) figuraient au registre phyto mais restaient
+    // invisibles du compteur cuivre : la « Bouillie bordelaise 3 kg » d'un
+    // arbre, seul traitement cuivré réellement dosé, n'était pas comptée.
+    prisma.operationArbre.findMany({
+      where: {
+        userId,
+        type: "traitement",
+        fait: true,
+        date: { gte: dateMin7ans },
+      },
+      select: {
+        id: true,
+        date: true,
+        arbreId: true,
+        produit: true,
+        description: true,
+        quantite: true,
+        unite: true,
+      },
+    }),
   ])
 
   // Pré-charger arbres pour dériver parcelle d'une observation rattachée
@@ -81,9 +102,11 @@ export async function GET() {
   // QA Hélène 2026-05-15 — Bug #2 : pré-charger la table arbres pour
   // dériver parcelle_geo_id quand l'intervention est rattachée à un
   // arbre mais pas directement à une parcelle.
-  const arbreIds = interventions
-    .map((i) => i.arbreId)
-    .filter((id): id is number => id != null)
+  // QA cmsogea5w — même dérivation pour les opérations d'arbres.
+  const arbreIds = [
+    ...interventions.map((i) => i.arbreId),
+    ...operationsArbres.map((op) => op.arbreId),
+  ].filter((id): id is number => id != null)
   const arbresMap = new Map<number, string | null>()
   if (arbreIds.length > 0) {
     const arbres = await prisma.arbre.findMany({
@@ -146,6 +169,24 @@ export async function GET() {
         nomCommercial: o.produit ?? o.traitement,
         classification: o.methodeTraitement === "chimique_cuivre" ? "Chimique cuivré" : null,
       },
+    })
+  }
+
+  // QA cmsogea5w — Opérations d'arbres de type traitement : on ne garde que
+  // celles dont le produit matche la détection cuivre (isProduitCuivre). La
+  // quantité y est ABSOLUE (« 3 kg » sur l'arbre, pas une dose/ha) : l'unité
+  // kg/L/g est gérée telle quelle par quantiteProduitTotalKg, sans surface.
+  for (const op of operationsArbres) {
+    const produit = { nomCommercial: op.produit ?? op.description }
+    if (!isProduitCuivre(produit)) continue
+    traitements.push({
+      date: op.date,
+      parcelleId: arbresMap.get(op.arbreId) ?? "__sans_parcelle__",
+      surfaceHa: null,
+      doseAppliquee: op.quantite,
+      uniteDose: op.unite,
+      volumeBouillieLHa: null,
+      produit,
     })
   }
   // Bucket "Sans parcelle" : libellé explicite pour l'UI

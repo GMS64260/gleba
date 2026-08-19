@@ -8,7 +8,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
-import { ArrowLeft, Receipt, RefreshCw, Filter, Plus, Sprout, TreeDeciduous, Bird, TrendingUp, TrendingDown, Store, Info, ChevronDown, ChevronUp } from "lucide-react"
+import { ArrowLeft, Receipt, RefreshCw, Filter, Plus, Sprout, TreeDeciduous, Bird, TrendingUp, TrendingDown, Store, Info, ChevronDown, ChevronUp, Pencil, Trash2, Loader2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -20,13 +20,17 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
+import { MODULE_COMPTA_LABELS } from "@/lib/comptabilite/modules"
 import {
   compteVente,
   compteAchat,
   JOURNAUX,
 } from "@/lib/comptabilite/plan-comptable-agricole"
 import { todayLocalISO } from '@/lib/format-utils'
+import { getAvailableYears } from "@/components/year-selector"
 
 // DEV1 #3 — Modes de règlement (lus par compteTresorerie pour générer
 // la contrepartie 512 banque / 530 caisse / 411 client / 401 fournisseur).
@@ -67,7 +71,58 @@ interface Transaction {
   // false = coût interne de production : visible ici mais non ajouté au FEC,
   // à la TVA déductible ni au total comptable.
   comptable?: boolean
+  /**
+   * Écriture saisie à la main : corrigeable et supprimable ici (2026-08-13).
+   * Calculé par l'API — une vente manuelle peut être AUTO (boutique,
+   * réservation) et porter malgré tout le nom de source `VenteManuelle`.
+   */
+  corrigeable?: boolean
 }
+
+/**
+ * Écrans où corriger une écriture dérivée. Deux utilisateurs ont demandé la
+ * suppression d'une dépense sans jamais l'obtenir : quand l'action n'est pas
+ * possible ici, l'écran doit dire OÙ elle l'est, pas se taire.
+ */
+/**
+ * Modules proposés à la saisie et à la correction. Même liste que le
+ * formulaire de saisie : ces quatre valeurs sont celles que la ventilation
+ * comptable sait ranger (cf. src/lib/comptabilite/modules.ts).
+ */
+const MODULES_SAISIE = ["potager", "verger", "elevage", "autre"] as const
+
+
+const ECRAN_SOURCE: Record<string, string> = {
+  Recolte: "la récolte, dans Maraîchage > Récoltes",
+  RecolteArbre: "la récolte, dans Verger > Récoltes",
+  VenteProduit: "la vente, dans Élevage > Production",
+  Abattage: "l'abattage, dans Élevage",
+  ProductionBois: "la production, dans Verger > Bois",
+  VenteManuelle: "sa source (commande boutique ou réservation)",
+  SoinAnimal: "le soin, dans Élevage > Alimentation & Soins",
+  ConsommationAliment: "la consommation, dans Élevage > Alimentation & Soins",
+  Fertilisation: "l'intervention, dans Interventions",
+  Intervention: "l'intervention, dans Interventions",
+  OperationArbre: "l'opération, dans Verger > Opérations",
+  LotAnimaux: "le prix d'achat du lot, dans Élevage > Animaux & Lots",
+  Animal: "le prix d'achat de l'animal, sur sa fiche",
+  Arbre: "l'arbre, sur sa fiche",
+}
+
+const CATEGORIES_VENTE = [
+  ["legumes", "Légumes"], ["fruits", "Fruits"], ["oeufs", "Œufs"], ["viande", "Viande"],
+  ["transformation", "Transformation"], ["service", "Service / prestation"],
+  ["bois", "Bois et produits forestiers"], ["autre", "Autre"],
+] as const
+
+const CATEGORIES_DEPENSE = [
+  ["semences", "Semences et plants"], ["engrais", "Engrais et amendements"],
+  ["phyto", "Produits phytosanitaires"], ["carburant", "Carburant"],
+  ["energie", "Énergie (eau, élec, gaz)"], ["materiel", "Matériel agricole"],
+  ["petit_outillage", "Petit outillage"], ["prestation", "Prestation / sous-traitance"],
+  ["veterinaire", "Vétérinaire"], ["msa", "Cotisations MSA"],
+  ["main_oeuvre", "Main d'œuvre"], ["abonnement", "Abonnement / services"], ["autre", "Autre"],
+] as const
 
 const MODULE_ICONS: Record<string, React.ReactNode> = {
   potager: <Sprout className="h-4 w-4 text-green-600" />,
@@ -108,12 +163,24 @@ function isManualTransactionType(value: string | null): value is ManualTransacti
   return value === "vente" || value === "depense"
 }
 
+// TICKETS cmsog6ddw / cmsogfefz — le filtre de module est lié à l'URL comme
+// tab/type : /comptabilite/transactions?module=boutique ouvre filtré Boutique
+// et un F5 après filtrage conserve le filtre. Liste blanche = valeurs du
+// Select ci-dessous ("all" = pas de filtre, jamais écrit dans l'URL).
+const TRANSACTION_MODULES = ["all", "potager", "verger", "elevage", "boutique", "autre"] as const
+type TransactionModule = (typeof TRANSACTION_MODULES)[number]
+
+function isTransactionModule(value: string | null): value is TransactionModule {
+  return value !== null && TRANSACTION_MODULES.includes(value as TransactionModule)
+}
+
 function TransactionsPageInner() {
   const { toast } = useToast()
   const router = useRouter()
   const searchParams = useSearchParams()
   const requestedTab = searchParams.get("tab")
   const requestedType = searchParams.get("type")
+  const requestedModule = searchParams.get("module")
   const searchQuery = searchParams.toString()
   const [activeTab, setActiveTab] = React.useState<TransactionTab>(
     isTransactionTab(requestedTab) ? requestedTab : "revenus",
@@ -127,14 +194,33 @@ function TransactionsPageInner() {
   const [sourcesOpen, setSourcesOpen] = React.useState(false)
   // Bug R2 : l'année choisie sur le dashboard Compta se propage aux sous-pages
   // via localStorage (partagé), au lieu de toujours réinitialiser à l'année courante.
-  const [selectedYear, setSelectedYear] = React.useState(() => {
-    if (typeof window !== "undefined") {
-      const ls = window.localStorage.getItem("gleba_compta_year")
-      if (ls && /^\d{4}$/.test(ls)) return parseInt(ls, 10)
+  // QA cmsnny4pl / cmsnoctbj — la page LISAIT la préférence mais ne l'écrivait
+  // jamais : changer d'année ici ne persistait rien, et le reload retombait sur
+  // la valeur écrite par une autre page. Même motif que /comptabilite : lecture
+  // au montage (client-only), persistance des changements après hydratation.
+  const [selectedYear, setSelectedYear] = React.useState(new Date().getFullYear())
+  // QA cmsoamukd — state et non ref : le fetch du montage ne doit partir
+  // qu'APRÈS l'hydratation, sinon une salve « année par défaut » peut revenir
+  // après celle de l'année choisie et l'écraser.
+  const [yearHydrated, setYearHydrated] = React.useState(false)
+  React.useEffect(() => {
+    const stored = window.localStorage.getItem("gleba_compta_year")
+    if (stored && /^\d{4}$/.test(stored)) {
+      const y = parseInt(stored, 10)
+      setSelectedYear((prev) => (y !== prev ? y : prev))
     }
-    return new Date().getFullYear()
-  })
-  const [selectedModule, setSelectedModule] = React.useState<string>("all")
+    setYearHydrated(true)
+    // Montage uniquement : lecture initiale de la préférence.
+  }, [])
+  React.useEffect(() => {
+    // Ne persiste qu'après la lecture initiale, sinon le fallback écrase la préférence.
+    if (yearHydrated) window.localStorage.setItem("gleba_compta_year", String(selectedYear))
+  }, [yearHydrated, selectedYear])
+  // TICKETS cmsog6ddw / cmsogfefz — initialisé depuis l'URL (validé contre la
+  // liste blanche), et resynchronisé si l'URL change (lien profond, retour).
+  const [selectedModule, setSelectedModule] = React.useState<string>(
+    isTransactionModule(requestedModule) ? requestedModule : "all",
+  )
 
   // Form states for manual entry (DEV1 #3 — refonte conforme)
   const [formType, setFormType] = React.useState<ManualTransactionType>(
@@ -161,13 +247,148 @@ function TransactionsPageInner() {
     pjFilename: "",
   })
   const [pjUploading, setPjUploading] = React.useState(false)
+  const [isSubmitting, setIsSubmitting] = React.useState(false)
+
+  // Correction et suppression d'une écriture saisie à la main (2026-08-13).
+  // Frictions réelles : « SUPPRIME LA DEPENSE DE 5€ » et « mes dépenses restent
+  // à 3 433 € » — l'écran listait les écritures sans jamais permettre de les
+  // corriger, et l'assistant n'avait aucun outil pour le faire non plus.
+  const [editing, setEditing] = React.useState<Transaction | null>(null)
+  // Ticket cmsx5xjhn — la correction ne portait que sur cinq champs : une
+  // erreur de taux de TVA ou d'imputation obligeait à supprimer puis ressaisir
+  // l'écriture. Les champs ajoutés ici sont ceux que le PATCH accepte
+  // réellement ; laissés vides, ils ne sont pas envoyés (donc inchangés).
+  const editFormVide = {
+    date: "",
+    description: "",
+    montant: "",
+    categorie: "",
+    module: "",
+    tauxTVA: "",
+    modeReglement: "",
+    numeroPiece: "",
+    tiers: "",
+    paye: "true",
+  }
+  const [editForm, setEditForm] = React.useState(editFormVide)
+  const [isSavingEdit, setIsSavingEdit] = React.useState(false)
+  const [deleting, setDeleting] = React.useState<Transaction | null>(null)
+
+  const endpointFor = (t: Transaction) =>
+    t.source === "VenteManuelle"
+      ? "/api/comptabilite/ventes-manuelles"
+      : "/api/comptabilite/depenses-manuelles"
+
+  const openEdit = (t: Transaction) => {
+    setEditForm({
+      ...editFormVide,
+      date: new Date(t.date).toISOString().slice(0, 10),
+      description: t.description ?? "",
+      montant: String(t.montant ?? ""),
+      // La liste affiche un libellé ; la valeur canonique n'est pas rendue, on
+      // laisse donc le choix vide plutôt que de deviner une catégorie fausse.
+      categorie: "",
+      // Le module, lui, est renvoyé tel quel par l'API. Une valeur hors des
+      // quatre postes de saisie (`general`, `boutique`) laisse le champ vide :
+      // on ne réimpute pas une écriture sans que l'utilisateur le demande.
+      module: (MODULES_SAISIE as readonly string[]).includes(t.module) ? t.module : "",
+      tiers: (t.source === "VenteManuelle" ? t.client : t.fournisseur) ?? "",
+      paye: t.paye === false ? "false" : "true",
+    })
+    setEditing(t)
+  }
+
+  const saveEdit = async () => {
+    if (!editing || isSavingEdit) return
+    const montant = parseFloat(editForm.montant.replace(",", "."))
+    if (!Number.isFinite(montant) || montant < 0) {
+      toast({ variant: "destructive", title: "Montant invalide", description: "Saisissez un montant en euros." })
+      return
+    }
+    setIsSavingEdit(true)
+    try {
+      const body: Record<string, unknown> = {
+        id: editing.sourceId,
+        date: new Date(editForm.date).toISOString(),
+        description: editForm.description.trim(),
+        montant,
+        paye: editForm.paye === "true",
+      }
+      if (editForm.categorie) body.categorie = editForm.categorie
+      if (editForm.module) body.module = editForm.module
+      if (editForm.modeReglement) body.modeReglement = editForm.modeReglement
+      if (editForm.numeroPiece.trim()) body.numeroPiece = editForm.numeroPiece.trim()
+      if (editForm.tauxTVA) {
+        const taux = parseFloat(editForm.tauxTVA.replace(",", "."))
+        if (!Number.isFinite(taux) || taux < 0 || taux > 100) {
+          toast({ variant: "destructive", title: "Taux de TVA invalide", description: "Saisissez un taux entre 0 et 100." })
+          setIsSavingEdit(false)
+          return
+        }
+        body.tauxTVA = taux
+      }
+      const tiers = editForm.tiers.trim()
+      if (tiers) {
+        if (editing.source === "VenteManuelle") body.clientNom = tiers
+        else body.fournisseurNom = tiers
+      }
+      const res = await fetch(endpointFor(editing), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || "Correction refusée")
+      }
+      toast({ title: "Écriture corrigée", description: formatEuro(montant) })
+      setEditing(null)
+      fetchData()
+    } catch (err) {
+      toast({ variant: "destructive", title: "Erreur", description: err instanceof Error ? err.message : "Correction impossible" })
+    } finally {
+      setIsSavingEdit(false)
+    }
+  }
+
+  const confirmDelete = async () => {
+    if (!deleting) return
+    const res = await fetch(`${endpointFor(deleting)}?id=${deleting.sourceId}`, { method: "DELETE" })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      toast({ variant: "destructive", title: "Suppression refusée", description: data.error || "Erreur" })
+      return
+    }
+    toast({ title: "Écriture supprimée", description: formatEuro(deleting.montant) })
+    setDeleting(null)
+    fetchData()
+  }
+
+  /** Cellule d'actions : corriger/supprimer, ou dire où corriger. */
+  const cellulActions = (t: Transaction) =>
+    t.corrigeable ? (
+      <div className="flex justify-end gap-1">
+        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" title="Corriger cette écriture" onClick={() => openEdit(t)}>
+          <Pencil className="h-4 w-4" />
+        </Button>
+        <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-red-600 hover:bg-red-100 hover:text-red-700" title="Supprimer cette écriture" onClick={() => setDeleting(t)}>
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </div>
+    ) : (
+      <span className="text-xs text-muted-foreground" title={`Écriture générée par Gleba : corrigez ${ECRAN_SOURCE[t.source] ?? "sa source"}.`}>
+        Générée · corriger {ECRAN_SOURCE[t.source] ?? "sa source"}
+      </span>
+    )
+
 
   // Les raccourcis et résultats de recherche peuvent ouvrir directement la
   // saisie voulue. L'URL reste synchronisée aussi lors des clics dans la page.
   React.useEffect(() => {
     setActiveTab(isTransactionTab(requestedTab) ? requestedTab : "revenus")
     if (isManualTransactionType(requestedType)) setFormType(requestedType)
-  }, [requestedTab, requestedType])
+    setSelectedModule(isTransactionModule(requestedModule) ? requestedModule : "all")
+  }, [requestedTab, requestedType, requestedModule])
 
   const handleTabChange = React.useCallback((value: string) => {
     if (!isTransactionTab(value)) return
@@ -176,6 +397,19 @@ function TransactionsPageInner() {
     params.set("tab", value)
     if (value !== "saisie") params.delete("type")
     router.replace(`/comptabilite/transactions?${params.toString()}`, { scroll: false })
+  }, [router, searchQuery])
+
+  // TICKETS cmsog6ddw / cmsogfefz — même motif URL que handleTabChange :
+  // chaque changement de filtre module est reflété dans l'URL (en préservant
+  // tab/type déjà présents dans searchQuery). "all" retire le paramètre.
+  const handleModuleChange = React.useCallback((value: string) => {
+    if (!isTransactionModule(value)) return
+    setSelectedModule(value)
+    const params = new URLSearchParams(searchQuery)
+    if (value === "all") params.delete("module")
+    else params.set("module", value)
+    const qs = params.toString()
+    router.replace(qs ? `/comptabilite/transactions?${qs}` : "/comptabilite/transactions", { scroll: false })
   }, [router, searchQuery])
 
   const handleFormTypeChange = React.useCallback((value: ManualTransactionType) => {
@@ -198,8 +432,9 @@ function TransactionsPageInner() {
     })
   }, [formType])
 
-  const currentYear = new Date().getFullYear()
-  const years = Array.from({ length: 5 }, (_, i) => currentYear - i)
+  // QA cmsqltuok / cmsqm3cry — même SSOT d'exercices que le dashboard et les
+  // rapports, avec lesquels cet écran partage la clé `gleba_compta_year`.
+  const years = getAvailableYears()
 
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
@@ -234,7 +469,10 @@ function TransactionsPageInner() {
     }
   }, [selectedYear, selectedModule, toast])
 
-  React.useEffect(() => { fetchData() }, [fetchData])
+  // QA cmsoamukd — pas de fetch avant l'hydratation de l'année persistée.
+  React.useEffect(() => {
+    if (yearHydrated) fetchData()
+  }, [yearHydrated, fetchData])
 
   const formatEuro = (value: number) => {
     return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(value)
@@ -322,6 +560,8 @@ function TransactionsPageInner() {
       ...commonExtras,
     }
 
+    if (isSubmitting) return
+    setIsSubmitting(true)
     try {
       const res = await fetch(endpoint, {
         method: "POST",
@@ -361,6 +601,8 @@ function TransactionsPageInner() {
         title: "Erreur",
         description: err instanceof Error ? err.message : "Impossible d'enregistrer",
       })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -368,22 +610,25 @@ function TransactionsPageInner() {
     <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
       <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
       <header className="border-b border-b-2 border-b-blue-500 bg-white/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        {/* QA cmsqlx0t7 — à 375 px l'en-tête dépassait 600 px de large :
+            les filtres Année/Module sortaient de l'écran. flex-wrap au lieu
+            d'une seule ligne rigide. */}
+        <div className="container mx-auto px-4 py-4 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-4 min-w-0">
             <Link href="/comptabilite"><Button variant="ghost" size="sm"><ArrowLeft className="h-4 w-4 mr-2" />Comptabilité</Button></Link>
-            <div className="flex items-center gap-2">
-              <Receipt className="h-6 w-6 text-blue-600" />
-              <h1 className="text-xl font-bold">Transactions</h1>
+            <div className="flex items-center gap-2 min-w-0">
+              <Receipt className="h-6 w-6 text-blue-600 shrink-0" />
+              <h1 className="text-xl font-bold truncate">Transactions</h1>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Select value={selectedYear.toString()} onValueChange={(v) => setSelectedYear(parseInt(v))}>
               <SelectTrigger className="w-[100px]"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {years.map(y => <SelectItem key={y} value={y.toString()}>{y}</SelectItem>)}
               </SelectContent>
             </Select>
-            <Select value={selectedModule} onValueChange={setSelectedModule}>
+            <Select value={selectedModule} onValueChange={handleModuleChange}>
               <SelectTrigger className="w-[130px]">
                 <Filter className="h-4 w-4 mr-2" />
                 <SelectValue placeholder="Tous" />
@@ -402,7 +647,10 @@ function TransactionsPageInner() {
         </div>
       </header>
 
-      <div className="container mx-auto px-4 py-6">
+      {/* QA cmsw9fo4j — pb-24 : le bouton feedback flottant recouvrait
+          « Enregistrer la vente » en bas du formulaire de saisie à 375 px.
+          Même pattern que /maraichage/recoltes/saisie (QA cmsbu4f00). */}
+      <div className="container mx-auto px-4 py-6 pb-24">
         <Tabs value={activeTab} onValueChange={handleTabChange}>
           <TabsList className="mb-6">
             <TabsTrigger value="revenus" className="flex items-center gap-2">
@@ -584,6 +832,7 @@ function TransactionsPageInner() {
                           <TableHead className="text-right">Montant</TableHead>
                           <TableHead>Client</TableHead>
                           <TableHead>Statut</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -621,10 +870,11 @@ function TransactionsPageInner() {
                                 <Badge className="bg-orange-100 text-orange-800">À payer</Badge>
                               )}
                             </TableCell>
+                            <TableCell className="text-right">{cellulActions(r)}</TableCell>
                           </TableRow>
                         ))}
                         {revenus.length === 0 && (
-                          <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Aucun revenu</TableCell></TableRow>
+                          <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Aucun revenu</TableCell></TableRow>
                         )}
                       </TableBody>
                     </Table>
@@ -679,6 +929,7 @@ function TransactionsPageInner() {
                           <TableHead className="text-right">Montant</TableHead>
                           <TableHead>Fournisseur</TableHead>
                           <TableHead>Statut</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -705,10 +956,11 @@ function TransactionsPageInner() {
                                 <Badge className="bg-orange-100 text-orange-800">À payer</Badge>
                               )}
                             </TableCell>
+                            <TableCell className="text-right">{cellulActions(d)}</TableCell>
                           </TableRow>
                         ))}
                         {depenses.length === 0 && (
-                          <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Aucune dépense</TableCell></TableRow>
+                          <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Aucune dépense</TableCell></TableRow>
                         )}
                       </TableBody>
                     </Table>
@@ -984,9 +1236,9 @@ function TransactionsPageInner() {
                     </label>
                   </div>
 
-                  <Button type="submit" className={formType === "vente" ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700"}>
+                  <Button type="submit" disabled={isSubmitting} className={formType === "vente" ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700"}>
                     <Plus className="h-4 w-4 mr-2" />
-                    Enregistrer {formType === "vente" ? "la vente" : "la dépense"}
+                    {isSubmitting ? "Enregistrement..." : `Enregistrer ${formType === "vente" ? "la vente" : "la dépense"}`}
                   </Button>
                 </form>
               </CardContent>
@@ -994,6 +1246,142 @@ function TransactionsPageInner() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Correction d'une écriture manuelle. Les écritures dérivées ne sont
+          jamais proposées ici : leur montant appartient à leur source, et le
+          serveur les refuse (lib/comptabilite/ecriture-derivee.ts). */}
+      <Dialog open={editing !== null} onOpenChange={(open) => !open && setEditing(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Corriger l&apos;écriture</DialogTitle>
+            <DialogDescription>
+              {editing?.source === "VenteManuelle" ? "Vente" : "Dépense"} saisie à la main.
+              Un champ laissé vide reste inchangé. Le HT et la TVA sont recalculés
+              dès que le montant ou le taux change.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label htmlFor="edit-date">Date</Label>
+              <Input id="edit-date" type="date" value={editForm.date} onChange={(e) => setEditForm({ ...editForm, date: e.target.value })} />
+            </div>
+            <div>
+              <Label htmlFor="edit-description">Description</Label>
+              <Input id="edit-description" value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} />
+            </div>
+            <div>
+              <Label htmlFor="edit-montant">Montant TTC (€)</Label>
+              <Input id="edit-montant" inputMode="decimal" value={editForm.montant} onChange={(e) => setEditForm({ ...editForm, montant: e.target.value })} />
+            </div>
+            <div>
+              <Label htmlFor="edit-categorie">Catégorie</Label>
+              <Select value={editForm.categorie} onValueChange={(v) => setEditForm({ ...editForm, categorie: v })}>
+                <SelectTrigger id="edit-categorie" name="categorie">
+                  <SelectValue placeholder="Inchangée" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(editing?.source === "VenteManuelle" ? CATEGORIES_VENTE : CATEGORIES_DEPENSE).map(([valeur, libelle]) => (
+                    <SelectItem key={valeur} value={valeur}>{libelle}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="edit-module">Imputation (module)</Label>
+              <Select value={editForm.module} onValueChange={(v) => setEditForm({ ...editForm, module: v })}>
+                <SelectTrigger id="edit-module" name="module">
+                  <SelectValue placeholder="Inchangée" />
+                </SelectTrigger>
+                <SelectContent>
+                  {MODULES_SAISIE.map((m) => (
+                    <SelectItem key={m} value={m}>{MODULE_COMPTA_LABELS[m]}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Décide de la ligne du compte de résultat où la somme apparaît.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="edit-taux">Taux de TVA</Label>
+                <Select value={editForm.tauxTVA} onValueChange={(v) => setEditForm({ ...editForm, tauxTVA: v })}>
+                  <SelectTrigger id="edit-taux" name="tauxTVA">
+                    <SelectValue placeholder="Inchangé" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TAUX_TVA.map((t) => (
+                      <SelectItem key={t} value={t}>{t} %</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="edit-piece">N° de pièce</Label>
+                <Input
+                  id="edit-piece"
+                  placeholder="Inchangé"
+                  value={editForm.numeroPiece}
+                  onChange={(e) => setEditForm({ ...editForm, numeroPiece: e.target.value })}
+                />
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="edit-tiers">
+                {editing?.source === "VenteManuelle" ? "Client" : "Fournisseur"}
+              </Label>
+              <Input
+                id="edit-tiers"
+                placeholder="Inchangé"
+                value={editForm.tiers}
+                onChange={(e) => setEditForm({ ...editForm, tiers: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit-mode">Mode de règlement</Label>
+              <Select value={editForm.modeReglement} onValueChange={(v) => setEditForm({ ...editForm, modeReglement: v })}>
+                <SelectTrigger id="edit-mode" name="modeReglement">
+                  <SelectValue placeholder="Inchangé" />
+                </SelectTrigger>
+                <SelectContent>
+                  {MODES_REGLEMENT.map((m) => (
+                    <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="edit-paye">Règlement</Label>
+              <Select value={editForm.paye} onValueChange={(v) => setEditForm({ ...editForm, paye: v })}>
+                <SelectTrigger id="edit-paye" name="paye"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="true">Payé</SelectItem>
+                  <SelectItem value="false">À payer</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditing(null)} disabled={isSavingEdit}>Annuler</Button>
+            <Button onClick={saveEdit} disabled={isSavingEdit}>
+              {isSavingEdit && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              {isSavingEdit ? "Enregistrement..." : "Enregistrer"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <DeleteConfirmDialog
+        open={deleting !== null}
+        onOpenChange={(open) => !open && setDeleting(null)}
+        entityLabel={
+          deleting
+            ? `${deleting.source === "VenteManuelle" ? "la vente" : "la dépense"} « ${deleting.description} » du ${new Date(deleting.date).toLocaleDateString("fr-FR")}`
+            : ""
+        }
+        warning="Le montant sera retiré de vos totaux, de la TVA et de l'export FEC de l'année."
+        onConfirm={confirmDelete}
+      />
     </div>
   )
 }

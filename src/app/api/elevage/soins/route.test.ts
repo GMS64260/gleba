@@ -95,6 +95,70 @@ describe('soins planifies et temps attente lait', () => {
     }) }))
   })
 
+  // Ticket cmsof7ccx — « Rappel planifié » d'un soin déjà effectué : le GET
+  // ?rappels=1 exige fait=false, un soin fait=true avec datePrevue future ne
+  // remontait donc jamais. Le POST doit matérialiser un second soin planifié.
+  it('crée un soin de rappel planifié quand un soin fait porte une datePrevue future', async () => {
+    mocks.soinCreate.mockImplementation(async ({ data }) => ({ id: data.fait ? 1 : 2, ...data }))
+
+    const response = await POST(request('POST', {
+      animalId: 7,
+      date: '2026-08-11',
+      type: 'Vermifuge',
+      produit: 'Dectomax',
+      datePrevue: '2026-11-11',
+      fait: true,
+    }))
+
+    expect(response.status).toBe(201)
+    expect(mocks.soinCreate).toHaveBeenCalledTimes(2)
+    const rappel = mocks.soinCreate.mock.calls[1][0].data
+    expect(rappel).toMatchObject({
+      animalId: 7,
+      fait: false,
+      type: 'Vermifuge',
+      produit: 'Dectomax',
+      date: new Date('2026-11-11T00:00:00Z'),
+      datePrevue: new Date('2026-11-11T00:00:00Z'),
+    })
+    // fait=false : la fenêtre d'attente ne démarre qu'à la validation.
+    expect(rappel.finAttenteLait).toBeUndefined()
+    expect(rappel.notes).toBe('Rappel du soin du 11/08/2026')
+    const body = await response.json()
+    expect(body.rappel).toEqual({ id: 2 })
+    expect(body.info).toContain('Rappel planifié le 11/11/2026')
+  })
+
+  it('ne crée pas de rappel pour une datePrevue passée (simple trace du retard)', async () => {
+    mocks.soinCreate.mockImplementation(async ({ data }) => ({ id: 1, ...data }))
+
+    const response = await POST(request('POST', {
+      animalId: 7,
+      date: '2026-08-11',
+      type: 'Vermifuge',
+      datePrevue: '2026-08-01',
+      fait: true,
+    }))
+
+    expect(response.status).toBe(201)
+    expect(mocks.soinCreate).toHaveBeenCalledTimes(1)
+  })
+
+  it('ne crée pas de rappel pour un soin seulement planifié (il EST le rappel)', async () => {
+    mocks.soinCreate.mockImplementation(async ({ data }) => ({ id: 1, ...data }))
+
+    const response = await POST(request('POST', {
+      animalId: 7,
+      date: '2026-08-11',
+      type: 'Vermifuge',
+      datePrevue: '2026-11-11',
+      fait: false,
+    }))
+
+    expect(response.status).toBe(201)
+    expect(mocks.soinCreate).toHaveBeenCalledTimes(1)
+  })
+
   it('charge les rappels sans filtre annuel ni plafond et les scope par filière', async () => {
     mocks.soinFindMany.mockResolvedValue([])
 

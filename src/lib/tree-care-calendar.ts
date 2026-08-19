@@ -408,26 +408,54 @@ export const TREE_CARE_PROFILES: TreeCareProfile[] = [
 ]
 
 /**
- * Recherche fuzzy d'un profil d'entretien par nom d'espece
+ * Ticket cmsofzh0w — Compatibilité profil / type d'arbre. Un Châtaignier
+ * saisi comme arbre FORESTIER recevait le calendrier fruitier (« Récolte des
+ * châtaignes ») : les profils à vocation de production (fruitier, petit
+ * fruit, vivace) ne s'appliquent pas aux arbres sans conduite productive
+ * (forestier, ornement, haie) — même traitement que le chêne forestier,
+ * volontairement hors périmètre (cf. commentaire d'en-tête).
  */
-export function findTreeCareProfile(espece: string): TreeCareProfile | null {
+const TYPES_ARBRE_SANS_CONDUITE_FRUITIERE = new Set(["forestier", "ornement", "haie"])
+const TYPES_PROFIL_PRODUCTION = new Set(["fruitier", "petit_fruit", "vivace"])
+
+function profilCompatibleAvecTypeArbre(profile: TreeCareProfile, typeArbre: string): boolean {
+  if (TYPES_ARBRE_SANS_CONDUITE_FRUITIERE.has(typeArbre) && TYPES_PROFIL_PRODUCTION.has(profile.type)) {
+    return false
+  }
+  return true
+}
+
+/**
+ * Recherche fuzzy d'un profil d'entretien par nom d'espece.
+ *
+ * `typeArbre` (optionnel) : type de l'ARBRE ("fruitier", "petit_fruit",
+ * "forestier", "ornement", "haie"). Quand il est fourni, un profil
+ * incompatible avec la conduite de l'arbre n'est jamais retourné
+ * (cf. cmsofzh0w) : un Châtaignier forestier rend `null`, pas le
+ * calendrier fruitier.
+ */
+export function findTreeCareProfile(espece: string, typeArbre?: string | null): TreeCareProfile | null {
   if (!espece) return null
   const search = espece.toLowerCase().trim()
 
+  const candidats = typeArbre
+    ? TREE_CARE_PROFILES.filter((p) => profilCompatibleAvecTypeArbre(p, typeArbre))
+    : TREE_CARE_PROFILES
+
   // Match exact sur le nom d'espece
-  const exactMatch = TREE_CARE_PROFILES.find(
+  const exactMatch = candidats.find(
     (p) => p.espece.toLowerCase() === search
   )
   if (exactMatch) return exactMatch
 
   // Match sur les aliases
-  const aliasMatch = TREE_CARE_PROFILES.find((p) =>
+  const aliasMatch = candidats.find((p) =>
     p.aliases.some((a) => a.toLowerCase() === search)
   )
   if (aliasMatch) return aliasMatch
 
   // Match partiel (contient)
-  const partialMatch = TREE_CARE_PROFILES.find(
+  const partialMatch = candidats.find(
     (p) =>
       p.espece.toLowerCase().includes(search) ||
       search.includes(p.espece.toLowerCase()) ||
@@ -649,6 +677,35 @@ export function checkProductifCoherence(
   }
 }
 
+/**
+ * Valeur de `productif` à la création quand l'utilisateur ne l'a pas choisie.
+ *
+ * Friction du 2026-08-12 (compte inscrit le jour même) : un arbre saisi sans
+ * espèce et planté le jour de sa saisie ressortait « Productif : Oui » et
+ * gonflait le KPI « fruitiers productifs ». `checkProductifCoherence` ne peut
+ * rien affirmer d'une espèce absente du barème et renvoie `null` — le défaut
+ * `!checkProductifCoherence(...)?.tooYoung` valait donc `true`. Le même trou
+ * existait sur TOUS les chemins de création qui ne passent pas par
+ * `POST /api/arbres` (données d'exemple à l'inscription, outil `create_arbre`
+ * de l'assistant), le défaut Prisma de la colonne étant `true`.
+ *
+ * Invariant : le barème par espèce fait autorité quand il connaît l'espèce ;
+ * en dessous, un plancher indépendant de tout référentiel s'applique — un arbre
+ * planté il y a moins d'un an ne produit pas, quelle que soit son espèce.
+ * Une date de plantation absente ou illisible laisse le comportement d'origine.
+ */
+export function productifParDefaut(
+  espece: string | null | undefined,
+  datePlantation: string | Date | null | undefined,
+): boolean {
+  if (checkProductifCoherence(espece, datePlantation, true)?.tooYoung) return false
+  if (!datePlantation) return true
+  const d = typeof datePlantation === "string" ? new Date(datePlantation) : datePlantation
+  if (Number.isNaN(d.getTime())) return true
+  const ageAns = (Date.now() - d.getTime()) / (1000 * 60 * 60 * 24 * 365.25)
+  return ageAns >= 1
+}
+
 function moisDansFenetre(mois: number, debut: number, fin: number): boolean {
   if (debut <= fin) return mois >= debut && mois <= fin
   return mois >= debut || mois <= fin // wrap-around (ex. nov→fév)
@@ -714,7 +771,10 @@ export function checkOperationSaison(
   }
   return {
     niveau: "info",
-    message: `${typeLabel[type] ?? "Cette opération"} du ${profile.espece.toLowerCase()} est habituellement recommandée en ${fenetres}. La date saisie (${MOIS_LABELS[mois - 1]}) est hors de cette période.`,
+    // QA cmsqn3tux — « Juin-Juil.. La date saisie » : quand la fenêtre se
+    // termine par une abréviation (« Juil. »), le point de la phrase doublait
+    // celui de l'abréviation. On ne rajoute le point que s'il manque.
+    message: `${typeLabel[type] ?? "Cette opération"} du ${profile.espece.toLowerCase()} est habituellement recommandée en ${fenetres}${fenetres.endsWith(".") ? "" : "."} La date saisie (${MOIS_LABELS[mois - 1]}) est hors de cette période.`,
   }
 }
 

@@ -46,7 +46,9 @@ const portesGreffe: PG[] = [
   // fiche arbre. On utilise le nom botanique partout.
   { id: "pg-poirier-sydo",        nom: "Cognassier Sydo",        vigueur: 4, precocite: 3, sensibilites: ["calcaire"], drageonnement: false, notes: "Sélection Sydo — cognassier vigoureux porte-greffe poirier.", especes: ["Poirier"] },
   { id: "pg-poirier-ba29",        nom: "Cognassier BA29",        vigueur: 3, precocite: 4, sensibilites: ["calcaire", "secheresse"], drageonnement: false, notes: "Cognassier de Provence BA29 — vigueur moyenne, le plus utilisé en pro.", especes: ["Poirier"] },
-  { id: "pg-poirier-ohf",         nom: "Poirier OHF",         vigueur: 3, precocite: 4, sensibilites: ["feu_bacterien"], drageonnement: false, notes: "Old Home × Farmingdale — franc de poirier.", especes: ["Poirier"] },
+  // QA 2026-08-11 (cmsog7qjr) : la série OHxF a été sélectionnée POUR sa
+  // résistance au feu bactérien — elle ne doit pas figurer en sensibilité.
+  { id: "pg-poirier-ohf",         nom: "Poirier OHF",         vigueur: 3, precocite: 4, sensibilites: [], drageonnement: false, notes: "Old Home × Farmingdale — franc de poirier, résistant au feu bactérien.", especes: ["Poirier"] },
   { id: "pg-poirier-cognassier-a", nom: "Cognassier A",        vigueur: 3, precocite: 4, sensibilites: ["calcaire"], drageonnement: true, especes: ["Poirier", "Cognassier"] },
   // Prunier
   { id: "pg-prunier-mariana",     nom: "Prunier Mariana 2624", vigueur: 5, precocite: 3, sensibilites: [], drageonnement: false, especes: ["Prunier", "Abricotier"] },
@@ -61,7 +63,12 @@ const portesGreffe: PG[] = [
   { id: "pg-cerisier-maxma14",    nom: "Cerisier Maxma 14",    vigueur: 4, precocite: 4, sensibilites: [], drageonnement: false, especes: ["Cerisier"] },
   { id: "pg-cerisier-gisela5",    nom: "Cerisier Gisela 5",    vigueur: 2, precocite: 5, sensibilites: ["secheresse"], drageonnement: false, notes: "Nanifiant — palissé.", especes: ["Cerisier"] },
   { id: "pg-cerisier-gisela6",    nom: "Cerisier Gisela 6",    vigueur: 3, precocite: 4, sensibilites: [], drageonnement: false, especes: ["Cerisier"] },
-  { id: "pg-cerisier-sainte-lucie", nom: "Cerisier Sainte-Lucie F12/1", vigueur: 5, precocite: 2, sensibilites: ["asphyxie"], drageonnement: false, notes: "Vigoureux — verger non irrigué.", especes: ["Cerisier"] },
+  // QA 2026-08-11 (cmsog9mys) : Sainte-Lucie (Prunus mahaleb) et F12/1
+  // (clone de merisier, Prunus avium) sont deux porte-greffes distincts —
+  // l'entrée fusionnée est scindée en gardant l'id historique pour Sainte-Lucie
+  // (des arbres utilisateurs y sont rattachés).
+  { id: "pg-cerisier-sainte-lucie", nom: "Cerisier Sainte-Lucie", vigueur: 3, precocite: 3, sensibilites: ["asphyxie"], drageonnement: false, notes: "Prunus mahaleb — semi-vigoureux, sols secs et calcaires, verger non irrigué.", especes: ["Cerisier"] },
+  { id: "pg-cerisier-f12-1",       nom: "Cerisier F12/1",       vigueur: 5, precocite: 2, sensibilites: ["asphyxie"], drageonnement: false, notes: "Clone de merisier (Prunus avium) — très vigoureux, hautes tiges.", especes: ["Cerisier"] },
 ]
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -81,7 +88,12 @@ type BA = {
 
 const bioagresseurs: BA[] = [
   // Maladies fruitières
-  { id: "ba-tavelure", nomCommun: "Tavelure", nomLatin: "Venturia inaequalis", type: "Maladie", organeCible: "Feuille", periodePression: ["S12-S25"], methodesPbi: ["biocontrôle", "traitement_AB"], seuilNuisibilite: "RIMpro > 50", especes: ["Pommier", "Poirier"] },
+  // QA 2026-08-11 (cmsog8uu4) : Venturia inaequalis ne cible que le pommier ;
+  // la tavelure du poirier est causée par Venturia pyrina — deux entrées.
+  // NB : l'upsert ne retire pas un lien espèce obsolète — la reprise SQL
+  // (scripts/fix-referentiel-verger-20260811.sql) supprime le lien Poirier.
+  { id: "ba-tavelure", nomCommun: "Tavelure du pommier", nomLatin: "Venturia inaequalis", type: "Maladie", organeCible: "Feuille", periodePression: ["S12-S25"], methodesPbi: ["biocontrôle", "traitement_AB"], seuilNuisibilite: "RIMpro > 50", especes: ["Pommier"] },
+  { id: "ba-tavelure-poirier", nomCommun: "Tavelure du poirier", nomLatin: "Venturia pyrina", type: "Maladie", organeCible: "Feuille", periodePression: ["S12-S25"], methodesPbi: ["biocontrôle", "traitement_AB"], especes: ["Poirier"] },
   { id: "ba-monilia", nomCommun: "Moniliose", nomLatin: "Monilinia laxa", type: "Maladie", organeCible: "Fruit", periodePression: ["S10-S15", "S30-S35"], methodesPbi: ["traitement_AB"], especes: ["Abricotier", "Pêcher", "Cerisier", "Prunier"] },
   { id: "ba-oidium-pommier", nomCommun: "Oïdium du pommier", nomLatin: "Podosphaera leucotricha", type: "Maladie", organeCible: "Feuille", periodePression: ["S15-S25"], methodesPbi: ["soufre", "biocontrôle"], especes: ["Pommier"] },
   { id: "ba-feu-bacterien", nomCommun: "Feu bactérien", nomLatin: "Erwinia amylovora", type: "Maladie", organeCible: "Bois", periodePression: ["S18-S25"], methodesPbi: ["taille_assainissement"], seuilNuisibilite: "Risque selon météo (chaleur+humidité floraison)", especes: ["Pommier", "Poirier", "Cognassier"] },

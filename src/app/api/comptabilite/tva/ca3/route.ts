@@ -24,6 +24,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { dispositionDocument } from "@/lib/http/disposition-fichier"
 import { requireAuthApi } from '@/lib/auth-utils'
 import { computeTvaPeriode } from '@/lib/kpi/tva'
 import { motifHorsChampCa3 } from '@/lib/territoires'
@@ -182,7 +183,7 @@ export async function GET(request: NextRequest) {
     status: 200,
     headers: {
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="${filename}.pdf"`,
+      'Content-Disposition': dispositionDocument(request, `${filename}.pdf`),
     },
   })
 }

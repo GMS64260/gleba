@@ -4,13 +4,17 @@
 
 import NextAuth from "next-auth"
 import Credentials from "next-auth/providers/credentials"
+import Google from "next-auth/providers/google"
 import { PrismaAdapter } from "@auth/prisma-adapter"
+import type { Adapter, AdapterAccount, AdapterUser } from "next-auth/adapters"
 import bcrypt from "bcryptjs"
 import prisma from "./prisma"
 import {
   consommerJetonImpersonation,
   hashJeton,
 } from "./impersonation"
+import { googleAuthDisponible, motifRefusConnexionGoogle } from "./auth-google"
+import { estEmailDemo } from "./demo"
 
 /** Extrait l'IP réelle et le user-agent depuis les en-têtes (derrière Caddy) */
 function clientInfo(request?: Request): { ip: string | null; userAgent: string | null } {
@@ -43,8 +47,96 @@ function logLogin(
   }).catch((err) => console.error("loginLog error:", err))
 }
 
+/**
+ * L'adapter Prisma d'Auth.js suppose son schéma User de référence (colonne
+ * `image`, `emailVerified` DateTime). Le modèle Gleba diverge : pas d'image,
+ * `emailVerified` booléen, champs `role`/`active`/`password`. On surcharge
+ * donc les méthodes qui écrivent des lignes pour contrôler exactement les
+ * champs envoyés à Prisma — sans surcharge, la première connexion Google
+ * planterait sur un champ inconnu.
+ */
+export function glebaAdapter(): Adapter {
+  const base = PrismaAdapter(prisma)
+  return {
+    ...base,
+    // Pendant un callback OAuth en stratégie JWT, Auth.js résout l'utilisateur
+    // de la session courante via getUser(sub) : s'il existe, l'identité Google
+    // entrante lui est LIÉE au lieu de créer/retrouver le compte du visiteur.
+    // La session démo étant partagée par tous les visiteurs du site public,
+    // y répondre rattacherait leur identité Google au compte démo (incident
+    // du 2026-07-31 : 28 connexions d'un utilisateur réel ont atterri sur la
+    // démo). Répondre null = « personne n'est connecté » : le visiteur en
+    // session démo qui clique « Continuer avec Google » obtient son propre
+    // compte, et la démo ne peut capturer aucune identité.
+    async getUser(id: string) {
+      const user = await prisma.user.findUnique({ where: { id } })
+      if (!user || estEmailDemo(user.email)) return null
+      return { ...user, emailVerified: user.emailVerified ? new Date() : null }
+    },
+    // Création d'un compte à la volée lors d'une première connexion Google.
+    // L'adresse est déjà contrôlée `email_verified` par le callback signIn :
+    // le compte naît vérifié, sans passer par l'email de vérification.
+    async createUser(data: AdapterUser) {
+      const user = await prisma.user.create({
+        data: {
+          email: data.email.toLowerCase().trim(),
+          name: data.name?.trim() || null,
+          password: null,
+          role: "USER",
+          active: true,
+          emailVerified: true,
+        },
+      })
+      // Données d'exemple + emails de bienvenue : import dynamique pour tenir
+      // nodemailer hors du bundle du middleware, qui importe ce fichier.
+      const { initialiserCompteGoogle } = await import("./auth-google-onboarding")
+      initialiserCompteGoogle({ id: user.id, email: user.email, name: user.name }).catch(
+        (err) => console.error("initialiserCompteGoogle error:", err)
+      )
+      return { ...user, emailVerified: user.emailVerified ? new Date() : null }
+    },
+    // Le rattachement par email doit matcher l'email normalisé stocké en base.
+    async getUserByEmail(email: string) {
+      const user = await prisma.user.findUnique({
+        where: { email: email.toLowerCase().trim() },
+      })
+      if (!user) return null
+      return { ...user, emailVerified: user.emailVerified ? new Date() : null }
+    },
+    // Liste blanche des champs : certains providers renvoient des clés hors
+    // schéma Account (ex. refresh_token_expires_in) que Prisma rejetterait.
+    async linkAccount(account: AdapterAccount) {
+      // Verrou de fond, quel que soit le flux Auth.js qui mène ici : aucune
+      // identité OAuth ne doit jamais être rattachée au compte démo partagé.
+      const cible = await prisma.user.findUnique({
+        where: { id: account.userId },
+        select: { email: true },
+      })
+      if (cible && estEmailDemo(cible.email)) {
+        throw new Error("Liaison OAuth refusée : compte de démonstration")
+      }
+      await prisma.account.create({
+        data: {
+          userId: account.userId,
+          type: account.type,
+          provider: account.provider,
+          providerAccountId: account.providerAccountId,
+          refresh_token: (account.refresh_token as string | undefined) ?? null,
+          access_token: (account.access_token as string | undefined) ?? null,
+          expires_at: (account.expires_at as number | undefined) ?? null,
+          token_type: (account.token_type as string | undefined) ?? null,
+          scope: (account.scope as string | undefined) ?? null,
+          id_token: (account.id_token as string | undefined) ?? null,
+          session_state: (account.session_state as string | undefined) ?? null,
+        },
+      })
+      return account
+    },
+  }
+}
+
 export const { handlers, signIn, signOut, auth } = NextAuth({
-  adapter: PrismaAdapter(prisma),
+  adapter: glebaAdapter(),
   session: {
     strategy: "jwt",
   },
@@ -83,6 +175,15 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         if (!user.emailVerified) {
           logLogin(email, false, "email_not_verified", user.id, info)
           throw new Error("Email non vérifié. Consultez votre boîte mail.")
+        }
+
+        // Compte créé via Google, sans mot de passe local : la connexion par
+        // mot de passe est impossible tant qu'il n'en a pas défini un.
+        if (!user.password) {
+          logLogin(email, false, "no_password", user.id, info)
+          throw new Error(
+            "Ce compte utilise la connexion Google. Cliquez sur « Continuer avec Google » ou créez un mot de passe via « Mot de passe oublié »."
+          )
         }
 
         const passwordMatch = await bcrypt.compare(
@@ -149,8 +250,44 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         }
       },
     }),
+    // Connexion Google : activée seulement si le client OAuth est configuré
+    // (AUTH_GOOGLE_ID / AUTH_GOOGLE_SECRET, lus automatiquement par Auth.js).
+    ...(googleAuthDisponible()
+      ? [
+          Google({
+            // Un membre inscrit par email peut se connecter avec Google sur la
+            // même adresse : le callback signIn exige un email vérifié par
+            // Google, le rattachement automatique est donc sûr.
+            allowDangerousEmailAccountLinking: true,
+            // Toujours afficher le sélecteur de compte Google. Sans cela,
+            // Google reconnecte silencieusement la session en cours : un
+            // utilisateur qui se déconnectait pour changer de compte
+            // retombait systématiquement sur le même compte, sans écran.
+            authorization: { params: { prompt: "select_account" } },
+          }),
+        ]
+      : []),
   ],
   callbacks: {
+    async signIn({ account, profile }) {
+      // Les deux providers Credentials font leurs contrôles et leur
+      // journalisation dans authorize().
+      if (account?.provider !== "google") return true
+
+      const email = profile?.email?.toLowerCase().trim() || null
+      const existant = email
+        ? await prisma.user.findUnique({
+            where: { email },
+            select: { id: true, active: true },
+          })
+        : null
+      const motif = motifRefusConnexionGoogle(profile ?? undefined, existant)
+      if (motif) {
+        logLogin(email ?? "google:email-manquant", false, `google_${motif}`, existant?.id)
+        return `/login?error=${motif === "compte_inactif" ? "inactive" : "google"}`
+      }
+      return true
+    },
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id
@@ -167,6 +304,15 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         session.user.impersonatedBy = (token.impersonatedBy as string | null) ?? null
       }
       return session
+    },
+  },
+  events: {
+    // Succès Google journalisé ici (et non dans le callback signIn) : pour un
+    // nouveau compte, `user` y est la ligne créée en base, avec le bon id.
+    async signIn({ user, account }) {
+      if (account?.provider === "google" && user.email && user.id) {
+        logLogin(user.email, true, "ok", user.id)
+      }
     },
   },
 })

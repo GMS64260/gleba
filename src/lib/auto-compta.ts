@@ -308,6 +308,9 @@ export async function createVenteFromVenteProduit(
   else if (venteProduit.type === 'lait') categorie = 'lait'
   else if (venteProduit.type === 'fromage') categorie = 'fromage'
   else if (venteProduit.type === 'animal_vivant') categorie = 'viande'
+  else if (['miel', 'cire', 'propolis', 'pollen', 'gelee_royale', 'autre_ruche'].includes(venteProduit.type)) {
+    categorie = 'produits_ruche'
+  }
 
   return inAutoComptaTransaction(tx, async (db) => {
     await db.venteManuelle.deleteMany({

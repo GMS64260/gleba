@@ -1,8 +1,14 @@
 /**
  * Service calendrier lunaire pour le jardinage
- * Source primaire : FarmSense Moon Phase API (gratuit, sans clé)
- * Fallback : calcul astronomique local
- * https://farmsense.net/api/
+ * Calcul astronomique local : instants VRAIS des phases (Meeus, « Astronomical
+ * Algorithms », ch. 49, termes principaux — précision de l'ordre de quelques
+ * minutes, ΔT négligé).
+ *
+ * TICKET cmsoglmwb (2026-08-11) — l'ancien modèle d'âge lunaire MOYEN (cycle
+ * synodique constant depuis le 06/01/2000) s'écarte de ±14 h des instants
+ * vrais : la nouvelle lune d'août 2026 (12/08 17:37 UTC) était affichée le
+ * 13/08. L'API FarmSense, dont l'âge renvoyé a le même défaut, est abandonnée
+ * au profit du calcul local exact (plus de dépendance réseau ni timeout 5 s).
  */
 
 // ── Types ──────────────────────────────────────────────────
@@ -18,6 +24,7 @@ export interface JourLunaire {
   emoji: string          // 🌑🌒🌓🌔🌕🌖🌗🌘
   typeJour: TypeJour
   conseil: string        // Conseil du jour
+  conseilVerger: string  // Conseil arboriculture (plantation, taille, greffe)
   couleur: string        // Couleur CSS pour le type de jour
 }
 
@@ -93,34 +100,121 @@ function setCache(dateStr: string, data: JourLunaire): void {
   cache.set(dateStr, { data, cachedAt: Date.now() })
 }
 
-// ── Calcul local des phases lunaires ──────────────────────
-// Algorithme de Conway (précis à ~1 jour)
-// Utilisé comme fallback si l'API FarmSense est down
+// ── Calcul local des phases lunaires (syzygies vraies) ─────
 
-function calculerPhaseLunaireLocale(date: Date): { phase: number; age: number; illumination: number } {
-  const year = date.getFullYear()
-  const month = date.getMonth() + 1
-  const day = date.getDate()
+const SYNODIC_PERIOD = 29.53059
+const REF_NEW_MOON_MS = Date.UTC(2000, 0, 6, 18, 14)
+const JOUR_MS = 24 * 60 * 60 * 1000
+const D2R = Math.PI / 180
 
-  // Algorithme basé sur le cycle synodique de 29.53059 jours
-  // Référence : Nouvelle Lune du 6 janvier 2000
-  const refNewMoon = new Date(2000, 0, 6, 18, 14).getTime()
-  const synodicPeriod = 29.53059
+function jdeVersMs(jde: number): number {
+  return (jde - 2440587.5) * 86400000
+}
 
-  const daysSinceRef = (date.getTime() - refNewMoon) / (24 * 60 * 60 * 1000)
-  const lunarAge = ((daysSinceRef % synodicPeriod) + synodicPeriod) % synodicPeriod
+/**
+ * Instant vrai (ms epoch) de la phase de rang k (Meeus ch. 49) :
+ * k entier = nouvelle lune, k+0,25 premier quartier, k+0,5 pleine lune,
+ * k+0,75 dernier quartier. k=0 ≈ nouvelle lune du 6 janvier 2000.
+ */
+export function instantPhaseVraie(k: number): number {
+  const T = k / 1236.85
+  let jde =
+    2451550.09766 + 29.530588861 * k + 0.00015437 * T * T -
+    0.00000015 * T * T * T + 0.00000000073 * T * T * T * T
+  const E = 1 - 0.002516 * T - 0.0000074 * T * T
+  const M = (2.5534 + 29.1053567 * k - 0.0000014 * T * T) * D2R
+  const Mp = (201.5643 + 385.81693528 * k + 0.0107582 * T * T + 0.00001238 * T * T * T) * D2R
+  const F = (160.7108 + 390.67050284 * k - 0.0016118 * T * T - 0.00000227 * T * T * T) * D2R
+  const Om = (124.7746 - 1.56375588 * k + 0.0020672 * T * T) * D2R
 
-  // Phase index (0-7)
-  const phaseIndex = Math.floor((lunarAge / synodicPeriod) * 8) % 8
-
-  // Illumination approximative (sinusoïdale)
-  const illumination = Math.round((1 - Math.cos(2 * Math.PI * lunarAge / synodicPeriod)) / 2 * 100)
-
-  return {
-    phase: phaseIndex,
-    age: Math.round(lunarAge * 10) / 10,
-    illumination,
+  const frac = ((k % 1) + 1) % 1
+  const estSyzygie = frac < 1e-9 || Math.abs(frac - 0.5) < 1e-9
+  if (estSyzygie) {
+    const nm = frac < 1e-9 // nouvelle lune vs pleine lune (coefficients propres)
+    jde +=
+      (nm ? -0.4072 : -0.40614) * Math.sin(Mp) +
+      (nm ? 0.17241 : 0.17302) * E * Math.sin(M) +
+      (nm ? 0.01608 : 0.01614) * Math.sin(2 * Mp) +
+      (nm ? 0.01039 : 0.01043) * Math.sin(2 * F) +
+      (nm ? -0.00739 : -0.00734) * E * Math.sin(Mp - M) +
+      (nm ? 0.00514 : 0.00515) * E * Math.sin(Mp + M) +
+      (nm ? 0.00208 : 0.00209) * E * E * Math.sin(2 * M) -
+      0.00111 * Math.sin(Mp - 2 * F) -
+      0.00057 * Math.sin(Mp + 2 * F) +
+      0.00056 * E * Math.sin(2 * Mp + M) -
+      0.00042 * Math.sin(3 * Mp) +
+      0.00042 * E * Math.sin(M + 2 * F) +
+      0.00038 * E * Math.sin(M - 2 * F) -
+      0.00024 * E * Math.sin(2 * Mp - M) -
+      0.00017 * Math.sin(Om)
+  } else {
+    jde +=
+      -0.62801 * Math.sin(Mp) +
+      0.17172 * E * Math.sin(M) -
+      0.01183 * E * Math.sin(Mp + M) +
+      0.00862 * Math.sin(2 * Mp) +
+      0.00804 * Math.sin(2 * F) +
+      0.00454 * E * Math.sin(Mp - M) +
+      0.00204 * E * E * Math.sin(2 * M) -
+      0.0018 * Math.sin(Mp - 2 * F) -
+      0.0007 * Math.sin(Mp + 2 * F) -
+      0.0004 * Math.sin(3 * Mp) -
+      0.00034 * E * Math.sin(2 * Mp - M) +
+      0.00032 * E * Math.sin(M + 2 * F) +
+      0.00032 * E * Math.sin(M - 2 * F) -
+      0.00028 * E * E * Math.sin(Mp + 2 * M) +
+      0.00027 * E * Math.sin(2 * Mp + M) -
+      0.00017 * Math.sin(Om)
+    const W =
+      0.00306 - 0.00038 * E * Math.cos(M) + 0.00026 * Math.cos(Mp) -
+      0.00002 * Math.cos(Mp - M) + 0.00002 * Math.cos(Mp + M) + 0.00002 * Math.cos(2 * F)
+    jde += Math.abs(frac - 0.25) < 1e-9 ? W : -W
   }
+  return jdeVersMs(jde)
+}
+
+type EvenementLunaire = { index: 0 | 2 | 4 | 6; t: number }
+
+/** Les 4 phases vraies des cycles k-1, k et k+1 entourant l'instant donné. */
+function evenementsAutour(dateMs: number): EvenementLunaire[] {
+  const k0 = Math.floor((dateMs - REF_NEW_MOON_MS) / (SYNODIC_PERIOD * JOUR_MS))
+  const evts: EvenementLunaire[] = []
+  for (const k of [k0 - 1, k0, k0 + 1]) {
+    evts.push({ index: 0, t: instantPhaseVraie(k) })
+    evts.push({ index: 2, t: instantPhaseVraie(k + 0.25) })
+    evts.push({ index: 4, t: instantPhaseVraie(k + 0.5) })
+    evts.push({ index: 6, t: instantPhaseVraie(k + 0.75) })
+  }
+  return evts.sort((a, b) => a.t - b.t)
+}
+
+/**
+ * Phase du jour civil contenant `midiLocal` (l'appelant ancre chaque jour à
+ * midi local). Règle d'icône : un jour porte l'icône d'un événement (nouvelle
+ * lune, quartiers, pleine lune) si son instant VRAI tombe dans la journée
+ * civile [midi−12 h, midi+12 h) ; sinon phase intermédiaire, déterminée par le
+ * dernier événement écoulé. L'âge est recalé sur la dernière nouvelle lune
+ * vraie (l'ancien âge moyen dérivait de ±14 h).
+ */
+export function phaseVraieDuJour(midiLocal: Date): { phaseIndex: number; age: number; illumination: number } {
+  const midi = midiLocal.getTime()
+  const debutJour = midi - JOUR_MS / 2
+  const finJour = midi + JOUR_MS / 2
+  const evts = evenementsAutour(midi)
+
+  const nmAvant = [...evts].reverse().find((e) => e.index === 0 && e.t <= midi)
+  const nmApres = evts.find((e) => e.index === 0 && e.t > midi)
+  const cycleMs = nmAvant && nmApres ? nmApres.t - nmAvant.t : SYNODIC_PERIOD * JOUR_MS
+  const age = nmAvant ? (midi - nmAvant.t) / JOUR_MS : 0
+  const illumination = Math.round(((1 - Math.cos(2 * Math.PI * ((midi - (nmAvant?.t ?? midi)) / cycleMs))) / 2) * 100)
+
+  const duJour = evts.filter((e) => e.t >= debutJour && e.t < finJour)
+  if (duJour.length > 0) {
+    const plusProche = duJour.reduce((a, b) => (Math.abs(a.t - midi) <= Math.abs(b.t - midi) ? a : b))
+    return { phaseIndex: plusProche.index, age, illumination }
+  }
+  const precedent = [...evts].reverse().find((e) => e.t <= midi)
+  return { phaseIndex: precedent ? (precedent.index + 1) % 8 : 1, age, illumination }
 }
 
 // ── Détermination du type de jour ─────────────────────────
@@ -137,7 +231,7 @@ function calculerPhaseLunaireLocale(date: Date): { phase: number; age: number; i
  * Jours de nœuds lunaires (transitions de phase) : Repos
  */
 export function getTypeJour(age: number): TypeJour {
-  const synodicPeriod = 29.53
+  const synodicPeriod = SYNODIC_PERIOD
 
   // Jours de transition (nœuds) : ±0.5 jour autour des changements de phase
   const quarterDay = synodicPeriod / 4
@@ -164,71 +258,35 @@ export function getTypeJour(age: number): TypeJour {
   }
 }
 
-// ── API FarmSense ─────────────────────────────────────────
-
-const FARMSENSE_URL = 'https://api.farmsense.net/v1/moonphases/'
-
-interface FarmSenseResponse {
-  Error: number
-  ErrorMsg: string
-  Phase: string
-  Moon: string[]
-  Index: number
-  Age: number
-  Illumination: string
-  AngularDiameter: number
-  Distance: number
-  DistanceToSun: number
-}
-
 /**
- * Récupère la phase lunaire pour une date via FarmSense
- * Fallback sur calcul local si l'API est indisponible
+ * Phase lunaire pour une date (attendue ancrée à midi local par l'appelant).
+ * Calcul local exact — plus d'appel réseau (cf. en-tête du fichier).
  */
 export async function fetchMoonPhase(date: Date): Promise<JourLunaire> {
-  const dateStr = date.toISOString().split('T')[0]
+  // Jour local : toISOString() renverrait le jour UTC, soit la veille entre
+  // minuit et 2 h en heure d'été française.
+  const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 
   // Vérifier le cache
   const cached = getCached(dateStr)
   if (cached) return cached
 
-  let phaseIndex: number
-  let age: number
-  let illumination: number
-  let phaseName: string
-
-  try {
-    // Timestamp Unix en secondes
-    const unixTimestamp = Math.floor(date.getTime() / 1000)
-    const url = `${FARMSENSE_URL}?d=${unixTimestamp}`
-
-    const response = await fetch(url, {
-      signal: AbortSignal.timeout(5000),
-    })
-
-    if (!response.ok) throw new Error(`FarmSense ${response.status}`)
-
-    const data: FarmSenseResponse[] = await response.json()
-    if (!data || data.length === 0 || data[0].Error !== 0) {
-      throw new Error('FarmSense invalid response')
-    }
-
-    const moon = data[0]
-    phaseIndex = moon.Index
-    age = moon.Age
-    illumination = Math.round(parseFloat(moon.Illumination) * 100)
-    phaseName = PHASE_NOMS[phaseIndex] || moon.Phase
-  } catch {
-    // Fallback : calcul local
-    const local = calculerPhaseLunaireLocale(date)
-    phaseIndex = local.phase
-    age = local.age
-    illumination = local.illumination
-    phaseName = PHASE_NOMS[phaseIndex] || 'Inconnue'
-  }
+  const { phaseIndex, age, illumination } = phaseVraieDuJour(date)
+  const phaseName = PHASE_NOMS[phaseIndex] || 'Inconnue'
 
   const typeJour = getTypeJour(age)
   const config = TYPE_JOUR_CONFIG[typeJour]
+
+  // Verger : la moitié croissante du cycle favorise greffes et semis, la
+  // moitié décroissante plantation, taille et bouturage.
+  // QA cmsjh8u71 — un jour « repos » (nœud ou fin de cycle) affichait à la fois
+  // « éviter les plantations » (conseil jardin) et « favorable à la plantation »
+  // (conseil verger). Le conseil verger doit respecter le repos lunaire.
+  const conseilVerger = typeJour === 'repos'
+    ? 'Verger — jour de repos lunaire : reporter plantation, taille et greffe au prochain jour favorable.'
+    : age < SYNODIC_PERIOD / 2
+      ? 'Verger — lune croissante : greffes et semis favorisés. Réserver plantation et taille des arbres à la lune décroissante.'
+      : 'Verger — lune décroissante : période favorable à la plantation, à la taille et au bouturage des arbres et arbustes.'
 
   const jour: JourLunaire = {
     date: dateStr,
@@ -239,6 +297,7 @@ export async function fetchMoonPhase(date: Date): Promise<JourLunaire> {
     emoji: PHASE_EMOJIS[phaseIndex] || '🌑',
     typeJour,
     conseil: config.conseil,
+    conseilVerger,
     couleur: config.couleur,
   }
 
@@ -267,7 +326,16 @@ export async function getLunarCalendar(year: number, month: number): Promise<Cal
 
 /**
  * Récupère la phase lunaire du jour (pour le widget)
+ *
+ * QA cmsjjjfl2 — passé minuit (ex. 00h43 Paris), `new Date()` vaut la veille
+ * en UTC : l'âge lunaire et l'illumination étaient calculés pour le jour
+ * précédent (30 % au lieu de ~22 %), alors que le calendrier ancre chaque
+ * jour à midi. On aligne « aujourd'hui » sur midi LOCAL : le libellé de jour
+ * (dateStr, déjà local) et le calcul d'âge portent ainsi tous deux sur la
+ * même journée civile, quelle que soit l'heure de consultation.
  */
 export async function getMoonPhaseToday(): Promise<JourLunaire> {
-  return fetchMoonPhase(new Date())
+  const now = new Date()
+  const midiLocal = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0)
+  return fetchMoonPhase(midiLocal)
 }

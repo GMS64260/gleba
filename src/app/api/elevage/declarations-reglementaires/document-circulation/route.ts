@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { dispositionDocument } from "@/lib/http/disposition-fichier"
 import { Prisma } from "@prisma/client"
 import PDFDocument from "pdfkit"
 import { z } from "zod"
@@ -312,7 +313,10 @@ export async function GET(request: NextRequest) {
   return new NextResponse(new Uint8Array(buffer), {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="preparation-circulation-${contexte.declaration.categorie.toLowerCase()}-${parsedYear.data}.pdf"`,
+      "Content-Disposition": dispositionDocument(
+        request,
+        `preparation-circulation-${contexte.declaration.categorie.toLowerCase()}-${parsedYear.data}.pdf`,
+      ),
       "Cache-Control": "private, no-store",
     },
   })

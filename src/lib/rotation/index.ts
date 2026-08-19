@@ -324,7 +324,14 @@ function calculateEspeceAdvice(
  * Fonction principale de calcul des conseils de rotation
  */
 export function calculateRotationAdvice(ctx: RotationContext): RotationAdvice {
-  const { plancheId, targetYear, cultures, allFamilies, especeToCheck } = ctx
+  const { plancheId, targetYear, allFamilies, especeToCheck } = ctx
+
+  // QA cmsw8pzzw (2026-08-16) — seules les cultures acquises (annee <= cible)
+  // sont des précédents culturaux. Une projection d'année future (plan de
+  // rotation matérialisé) ne bloque pas une famille et n'apparaît pas dans les
+  // cultures récentes. `<= targetYear` et non `<` : une culture en place
+  // l'année visée bloque bien sa famille (Bug #4, voir calculateSoilStatus).
+  const cultures = ctx.cultures.filter((c) => c.annee <= targetYear)
 
   // Calculer l'état du sol
   const soilStatus = calculateSoilStatus(cultures, targetYear)

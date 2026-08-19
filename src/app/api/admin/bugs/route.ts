@@ -5,7 +5,16 @@ import type { BugStatus, BugType, BugPriority, Prisma } from "@prisma/client"
 
 export const dynamic = "force-dynamic"
 
-const STATUS_VALUES: BugStatus[] = ["OPEN", "IN_PROGRESS", "RESOLVED"]
+// Allowlist du filtre : une valeur absente d'ici est ignorée en silence, donc
+// toute nouvelle issue de tri doit y figurer sous peine de rendre son option du
+// menu déroulant inopérante.
+const STATUS_VALUES: BugStatus[] = [
+  "OPEN",
+  "IN_PROGRESS",
+  "RESOLVED",
+  "EVOLUTION_PRODUIT",
+  "HORS_PERIMETRE",
+]
 const TYPE_VALUES: BugType[] = ["BUG", "EVOLUTION", "AUTRE"]
 const PRIORITY_VALUES: BugPriority[] = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
 

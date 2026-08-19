@@ -7,8 +7,9 @@
  */
 
 import { useSession } from "next-auth/react"
+import { DEMO_EMAIL } from "@/lib/demo"
 
-export const DEMO_EMAIL = "demo@gleba.fr"
+export { DEMO_EMAIL }
 
 export function useIsDemoAccount(): boolean {
   const { data: session } = useSession()

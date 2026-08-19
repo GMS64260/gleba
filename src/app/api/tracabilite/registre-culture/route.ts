@@ -245,7 +245,7 @@ export async function GET(request: NextRequest) {
           chronologie.push({
             date: r.date.toISOString(),
             type: 'recolte',
-            description: `Recolte: ${r.quantite} kg`,
+            description: `Récolte : ${r.quantite} kg`,
             details: {
               quantite: r.quantite,
               statut: r.statut,

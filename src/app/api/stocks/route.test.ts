@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { NextRequest } from "next/server"
+import { ESPECE_TYPES_MARAICHAGE } from "@/lib/validations/espece"
 
 const mocks = vi.hoisted(() => ({
   requireAuthApi: vi.fn(),
@@ -82,7 +83,7 @@ describe("GET /api/stocks", () => {
               {
                 espece: {
                   type: {
-                    in: ["legume", "aromatique", "engrais_vert"],
+                    in: [...ESPECE_TYPES_MARAICHAGE],
                   },
                 },
               },

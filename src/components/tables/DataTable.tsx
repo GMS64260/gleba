@@ -18,6 +18,17 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table"
+import type { RowData } from "@tanstack/react-table"
+
+declare module "@tanstack/react-table" {
+  // Classe appliquée à l'en-tête ET aux cellules d'une colonne : permet de
+  // masquer les colonnes secondaires sur mobile ("hidden md:table-cell")
+  // plutôt que d'imposer un long défilement horizontal à 375 px (cmsp5yry4).
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  interface ColumnMeta<TData extends RowData, TValue> {
+    className?: string
+  }
+}
 import {
   ArrowUpDown,
   ChevronDown,
@@ -79,6 +90,10 @@ interface DataTableProps<TData, TValue> {
   showColumnToggle?: boolean
   showSearch?: boolean
   showPagination?: boolean
+  // Largeur minimale du tableau (ex. "min-w-[820px]") : sans elle, un tableau
+  // large se compresse sur mobile au lieu de déborder dans le conteneur
+  // overflow-auto déjà présent (cmsoayr7d).
+  tableClassName?: string
   // Sélection multiple (opt-in) : ajoute une colonne de cases à cocher et une
   // barre d'actions groupées au-dessus du tableau quand au moins une ligne est
   // sélectionnée. `bulkActions` reçoit les lignes sélectionnées (sur l'ensemble
@@ -110,6 +125,7 @@ export function DataTable<TData, TValue>({
   showColumnToggle = true,
   showSearch = true,
   showPagination = true,
+  tableClassName,
   enableRowSelection = false,
   bulkActions,
 }: DataTableProps<TData, TValue>) {
@@ -331,12 +347,12 @@ export function DataTable<TData, TValue>({
 
       {/* Table */}
       <div className="rounded-md border">
-        <Table>
+        <Table className={tableClassName}>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id}>
+                  <TableHead key={header.id} className={header.column.columnDef.meta?.className}>
                     {header.isPlaceholder ? null : (
                       <div
                         className={
@@ -381,7 +397,7 @@ export function DataTable<TData, TValue>({
                   onClick={() => onRowClick?.(row.original)}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
+                    <TableCell key={cell.id} className={cell.column.columnDef.meta?.className}>
                       {flexRender(
                         cell.column.columnDef.cell,
                         cell.getContext()

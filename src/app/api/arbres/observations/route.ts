@@ -6,36 +6,24 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
+import { listerObservationsSante } from "@/lib/observations-sante"
 
 export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
   if (error) return error
 
   try {
-    const userId = session!.user.id
     const searchParams = request.nextUrl.searchParams
     const arbreId = searchParams.get("arbreId")
-    const type = searchParams.get("type")
-    const gravite = searchParams.get("gravite")
     const resolu = searchParams.get("resolu")
 
-    const where: Record<string, unknown> = { userId }
-    if (arbreId) where.arbreId = parseInt(arbreId)
-    if (type && type !== "all") where.type = type
-    if (gravite && gravite !== "all") where.gravite = gravite
-    if (resolu !== null && resolu !== "all") {
-      if (resolu === "true") where.resolu = true
-      if (resolu === "false") where.resolu = false
-    }
-
-    const observations = await prisma.observationSante.findMany({
-      where,
-      include: {
-        arbre: {
-          select: { id: true, nom: true, type: true, espece: true },
-        },
-      },
-      orderBy: { date: "desc" },
+    // La lecture vit dans src/lib/observations-sante.ts (SSOT partagée avec
+    // l'outil assistant `get_observations_sante`) — lot assistant 2026-08-11.
+    const observations = await listerObservationsSante(session!.user.id, {
+      arbreId: arbreId ? parseInt(arbreId) : undefined,
+      type: searchParams.get("type") ?? undefined,
+      gravite: searchParams.get("gravite") ?? undefined,
+      resolu: resolu === "true" ? true : resolu === "false" ? false : undefined,
     })
 
     return NextResponse.json(observations)
@@ -90,7 +78,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(
           {
             error:
-              "Champs réglementaires manquants (Arrêté 16/06/2009) : " +
+              "Champs réglementaires manquants (arrêté du 4 mai 2017 modifié) : " +
               manquants.join(", "),
             manquants,
           },
@@ -132,7 +120,7 @@ export async function POST(request: NextRequest) {
         stadeBBCH: body.stadeBBCH || null,
         pctOrganesTouches: body.pctOrganesTouches != null ? parseInt(body.pctOrganesTouches) : null,
         photoUrl: body.photoUrl || null,
-        // DEV3 #1 — Champs réglementaires (Arrêté 16/06/2009)
+        // DEV3 #1 — Champs réglementaires (arrêté du 4 mai 2017 modifié)
         surfaceTraiteeHa: body.surfaceTraiteeHa != null ? parseFloat(body.surfaceTraiteeHa) : null,
         volumeBouillieLHa: body.volumeBouillieLHa != null ? parseFloat(body.volumeBouillieLHa) : null,
         volumeBouillieLTotal: body.volumeBouillieLTotal != null ? parseFloat(body.volumeBouillieLTotal) : null,

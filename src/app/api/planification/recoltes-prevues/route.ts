@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireAuthApi, getUserId } from '@/lib/auth-utils'
-import { getRecoltesPrevues } from '@/lib/planification'
+import { getRecoltesPrevuesDetail } from '@/lib/planification'
 import { getRecoltesAnneeAggregat } from '@/lib/kpi/recoltes-annee'
 
 export async function GET(request: NextRequest) {
@@ -23,10 +23,11 @@ export async function GET(request: NextRequest) {
     // BUG-03 : projection détaillée (utilisée pour le tableau par mois/sem
     // avec breakdown par espèce) + agrégat unifié (réalisé + projection)
     // utilisé par les 3 écrans Planif / Calendrier / Récoltes.
-    const [recoltesPrevues, aggregat] = await Promise.all([
-      getRecoltesPrevues(userId, annee, groupBy),
+    const [detailPrevues, aggregat] = await Promise.all([
+      getRecoltesPrevuesDetail(userId, annee, groupBy),
       getRecoltesAnneeAggregat(userId, annee),
     ])
+    const recoltesPrevues = detailPrevues.periodes
 
     // Clé technique : especeId peut être un cuid opaque pour une espèce perso.
     // On résout un nom lisible (espece.nom ?? id) pour l'affichage, sans toucher
@@ -58,6 +59,15 @@ export async function GET(request: NextRequest) {
       { periode: '', totalKg: 0 }
     )
 
+    // QA cmswxpaer — l'en-tête et les cartes ignoraient les cultures suggérées
+    // par les rotations, que le tableau projette pourtant : 2028 annonçait
+    // « 0,0 kg attendu » avec 361,9 kg en juillet. Le total couvre désormais ce
+    // que l'écran montre, en nommant la part encore à créer.
+    const arrondi = (n: number) => Math.round(n * 100) / 100
+    const projectionRotationsKg = detailPrevues.projectionSuggestionsKg
+    const projectionKg = arrondi(aggregat.projectionKg + projectionRotationsKg)
+    const totalAttenduKg = arrondi(aggregat.realiseesKg + projectionKg)
+
     return NextResponse.json({
       data,
       stats: {
@@ -65,8 +75,9 @@ export async function GET(request: NextRequest) {
         totalAnnee: Math.round(projectionAnnee * 100) / 100,
         // BUG-03 : nouveaux champs unifiés (alignés avec Dashboard/Calendrier).
         realiseesKg: aggregat.realiseesKg,
-        projectionKg: aggregat.projectionKg,
-        totalAttenduKg: aggregat.totalAttenduKg,
+        projectionKg,
+        projectionRotationsKg,
+        totalAttenduKg,
         surfaceTotale: Math.round(surfaceTotale * 100) / 100,
         meilleurePeriode: meilleurePeriode.periode,
         meilleureQuantite: Math.round(meilleurePeriode.totalKg * 100) / 100,

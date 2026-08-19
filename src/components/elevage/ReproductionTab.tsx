@@ -5,6 +5,7 @@
  */
 
 import * as React from "react"
+import { urlApercu } from "@/lib/apercu-document"
 import { useSearchParams } from "next/navigation"
 import {
   Baby,
@@ -43,7 +44,7 @@ import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
 import { AnimalCombobox } from "./AnimalCombobox"
 import { useFiliereSelection, capacitesSelection, filiereMatch } from "@/lib/elevage/filiere-context"
-import { libellePetit } from "@/lib/elevage/espece-base"
+import { especeBaseId, libellePetit } from "@/lib/elevage/espece-base"
 import { ReservationsSubTab } from "./ReservationsSubTab"
 import { SelectionSubTab } from "./SelectionSubTab"
 import { normaliserSousOnglet } from "@/lib/elevage/filiere-ui"
@@ -292,6 +293,9 @@ type Campagne = {
   dateDebut: string
   dateFin: string | null
   objectifMiseBas: string | null
+  // Fenêtre projetée depuis la période de lutte + gestation de l'espèce :
+  // seule échéance calculable en monte naturelle de groupe (friction 2026-08-14).
+  fenetreMiseBas: { debut: string; fin: string } | null
   notes: string | null
   nbSaillies: number
   tauxReussite: number | null
@@ -426,7 +430,11 @@ function CampagnesSubTab() {
                       {c.dateFin ? ` → ${new Date(c.dateFin).toLocaleDateString("fr-FR")}` : ""}
                     </td>
                     <td className="p-2 text-slate-600">
-                      {c.objectifMiseBas ? new Date(c.objectifMiseBas).toLocaleDateString("fr-FR") : "—"}
+                      {c.objectifMiseBas
+                        ? new Date(c.objectifMiseBas).toLocaleDateString("fr-FR")
+                        : c.fenetreMiseBas
+                          ? `${new Date(c.fenetreMiseBas.debut).toLocaleDateString("fr-FR")} → ${new Date(c.fenetreMiseBas.fin).toLocaleDateString("fr-FR")} (estimée)`
+                          : "—"}
                     </td>
                     <td className="p-2 text-center">{c.nbSaillies}</td>
                     <td className="p-2 text-center">
@@ -785,10 +793,22 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
   // (nées il y a moins d'une gestation de leur espèce) ; la mère de la
   // naissance en cours d'édition reste sélectionnable.
   const dateMiseBasSaisie = formData.date ? new Date(formData.date) : new Date()
+  const mereSelPourLots = femelles.find((f) => String(f.id) === formData.mereId)
   const femellesCibles = femelles.filter((f) =>
     filiereMatch(filiereSel, f.especeAnimale.filiere) &&
     (String(f.id) === formData.mereId || mereBiologiquementPossible(f, dateMiseBasSaisie)))
-  const lotsCibles = lots.filter((l) => filiereMatch(filiereSel, l.especeAnimale?.filiere))
+  // QA cmsqmty0u — le « Lot des petits » proposait les 11 lots de
+  // l'exploitation toutes espèces confondues : des poussins pouvaient être
+  // versés dans un lot de chèvres sans avertissement, faussant les effectifs
+  // de deux ateliers. Dès qu'une mère est choisie, seuls les lots de son
+  // espèce de base restent proposés (même équivalence que le formulaire
+  // animal : brebis_lacaune et brebis sont la même espèce).
+  const especeBaseMere = mereSelPourLots?.especeAnimale?.id
+    ? especeBaseId(mereSelPourLots.especeAnimale.id)
+    : null
+  const lotsCibles = lots.filter((l) =>
+    filiereMatch(filiereSel, l.especeAnimale?.filiere) &&
+    (!especeBaseMere || !l.especeAnimale?.id || especeBaseId(l.especeAnimale.id) === especeBaseMere))
 
   // QA caprin cms1v6ctk — saillies proposables pour la mère choisie : encore
   // ouvertes (En attente / Gestante), triées par proximité avec la date saisie.
@@ -1977,7 +1997,10 @@ function SailliesSubTab({ year }: { year?: number } = {}) {
               {/* QA caprin cms1vlsa9 — le carnet PDF suit l'année sélectionnée
                   (un carnet s'imprime pour le contrôle, pas l'année courante par défaut). */}
               <a
-                href={`/api/elevage/carnet-saillies?year=${year ?? new Date().getFullYear()}${filiereSel !== "toutes" ? `&filiere=${filiereSel}` : ""}`}
+                href={urlApercu(
+                  `/api/elevage/carnet-saillies?year=${year ?? new Date().getFullYear()}${filiereSel !== "toutes" ? `&filiere=${filiereSel}` : ""}`,
+                  `Carnet de saillies ${year ?? new Date().getFullYear()}`,
+                )}
                 target="_blank"
                 rel="noreferrer"
               >

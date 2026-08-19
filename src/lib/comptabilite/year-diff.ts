@@ -27,13 +27,14 @@
  * un flag `previousYearAvailable`.
  */
 
-export type YearDiffState = "compare" | "nouveau" | "nouveau-revenus" | "vide"
+export type YearDiffState = "compare" | "nouveau" | "nouveau-revenus" | "depenses-seules" | "vide"
 
 export interface YearDiff {
   state: YearDiffState
   diff: number                  // current - previous (revenus)
   percent: number               // 0 sauf si state === "compare"
   depensesPrecedente: number    // dépenses N-1 (info pour le libellé)
+  depensesCourante: number      // dépenses N (info pour le libellé "depenses-seules")
 }
 
 export interface StatsCompta {
@@ -42,15 +43,20 @@ export interface StatsCompta {
   // Bug COMPTA #2 — on a besoin des dépenses N-1 pour distinguer
   // "vraiment rien en N-1" de "des dépenses mais pas de revenus".
   depensesAnneePrecedente?: number | null
+  // QA 2026-08-11 (cmsp5ti6m) — même trou côté année N : sans les dépenses
+  // courantes, une année à 0 € de revenus mais 4 700 € d'achats était
+  // annoncée « Aucune activité ».
+  depenses?: number | null
 }
 
 export function computeYearDiff(stats: StatsCompta | null | undefined): YearDiff {
   if (!stats) {
-    return { state: "vide", diff: 0, percent: 0, depensesPrecedente: 0 }
+    return { state: "vide", diff: 0, percent: 0, depensesPrecedente: 0, depensesCourante: 0 }
   }
   const current = stats.revenus ?? 0
   const previous = stats.revenusAnneePrecedente ?? 0
   const previousDepenses = stats.depensesAnneePrecedente ?? 0
+  const currentDepenses = stats.depenses ?? 0
   const diff = current - previous
 
   if (previous > 0) {
@@ -59,17 +65,25 @@ export function computeYearDiff(stats: StatsCompta | null | undefined): YearDiff
       diff,
       percent: Math.round((diff / previous) * 100),
       depensesPrecedente: previousDepenses,
+      depensesCourante: currentDepenses,
     }
   }
 
   // Revenus N-1 = 0. Distinguer selon l'existence (ou non) de dépenses N-1.
   if (previousDepenses > 0) {
     // Il y a bien eu de l'activité en N-1 (dépenses), juste pas de revenus.
-    return { state: "nouveau-revenus", diff, percent: 0, depensesPrecedente: previousDepenses }
+    return { state: "nouveau-revenus", diff, percent: 0, depensesPrecedente: previousDepenses, depensesCourante: currentDepenses }
   }
 
   if (current > 0) {
-    return { state: "nouveau", diff, percent: 0, depensesPrecedente: 0 }
+    return { state: "nouveau", diff, percent: 0, depensesPrecedente: 0, depensesCourante: currentDepenses }
   }
-  return { state: "vide", diff: 0, percent: 0, depensesPrecedente: 0 }
+
+  // QA 2026-08-11 (cmsp5ti6m) — revenus N et N-1 nuls mais des dépenses en N
+  // (ex. 4 700 € d'achats d'élevage en 2024) : il y a bien eu de l'activité,
+  // ne pas afficher « Aucune activité ».
+  if (currentDepenses > 0) {
+    return { state: "depenses-seules", diff, percent: 0, depensesPrecedente: 0, depensesCourante: currentDepenses }
+  }
+  return { state: "vide", diff: 0, percent: 0, depensesPrecedente: 0, depensesCourante: 0 }
 }

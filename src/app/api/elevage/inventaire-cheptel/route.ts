@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { dispositionDocument } from "@/lib/http/disposition-fichier"
 import PDFDocument from "pdfkit"
 import { z } from "zod"
 import { requireAuthApi } from "@/lib/auth-utils"
@@ -416,7 +417,7 @@ export async function GET(request: NextRequest) {
   return new NextResponse(new Uint8Array(buffer), {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="inventaire-cheptel-${parsed.data.date}.pdf"`,
+      "Content-Disposition": dispositionDocument(request, `inventaire-cheptel-${parsed.data.date}.pdf`),
       "Cache-Control": "private, no-store",
     },
   })

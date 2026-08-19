@@ -267,7 +267,7 @@ export default function EditRotationPage() {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-50">
-        <AppHeader current="maraichage" />
+        <AppHeader current="maraichage" showLune />
         <PageToolbar>
           <Skeleton className="h-8 w-64" />
         </PageToolbar>
@@ -282,7 +282,7 @@ export default function EditRotationPage() {
   return (
     <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
       <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
-      <AppHeader current="maraichage" />
+      <AppHeader current="maraichage" showLune />
       <PageToolbar>
         <div className="flex items-center gap-4">
           <Link href="/maraichage/rotations">
@@ -372,7 +372,7 @@ export default function EditRotationPage() {
               <CardHeader>
                 <CardTitle>Plan de rotation</CardTitle>
                 <CardDescription>
-                  ITP pour chaque annee du cycle
+                  ITP pour chaque année du cycle
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -444,7 +444,7 @@ export default function EditRotationPage() {
                   className="w-full"
                 >
                   <Plus className="h-4 w-4 mr-2" />
-                  Ajouter une annee
+                  Ajouter une année
                 </Button>
               </CardContent>
             </Card>
@@ -497,7 +497,7 @@ export default function EditRotationPage() {
                             </Badge>
                           )}
                           <Link
-                            href={`/maraichage/planches/${encodeURIComponent(p.nom)}`}
+                            href={`/maraichage/planches/${encodeURIComponent(p.id)}`}
                             className="ml-auto text-xs text-blue-600 hover:underline"
                             onClick={(e) => e.stopPropagation()}
                           >

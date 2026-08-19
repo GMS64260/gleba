@@ -6,8 +6,9 @@
  */
 
 import * as React from "react"
+import { ouvrirApercu } from "@/lib/apercu-document"
 import Link from "next/link"
-import { ArrowLeft, FileText, RefreshCw, Check, Plus, AlertCircle, Download, Printer, CreditCard } from "lucide-react"
+import { ArrowLeft, FileText, RefreshCw, Check, Plus, AlertCircle, Download, Printer, CreditCard, Eye } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -23,16 +24,7 @@ import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
 import { todayLocalISO } from '@/lib/format-utils'
 import { factureSansTaxe } from '@/lib/territoires'
-
-interface Impayee {
-  id: number
-  source: string
-  date: string
-  type: string
-  description: string
-  montant: number
-  client: string | null
-}
+import { construireImpayees, type Impayee } from '@/lib/comptabilite/impayees'
 
 interface LigneFacture {
   id: string
@@ -67,9 +59,28 @@ interface FactureEmise {
   dateEcheance: string | null
   clientNom: string
   objet: string | null
+  notes?: string | null
   totalHT: number
   totalTTC: number
   statut: string
+  factureOrigineId?: number | null
+  /** Résolue côté API depuis `factureOrigineId` (cf. ticket cmsx5zhke). */
+  factureOrigine?: { id: number; numero: string; clientNom: string } | null
+}
+
+/**
+ * Objet affiché d'une écriture de facturation.
+ *
+ * Ticket cmsx5zhke — pour un avoir, la référence à la facture d'origine est
+ * RECALCULÉE depuis la relation à chaque affichage. Le champ `objet` en base
+ * contient un libellé composé à la création : il désignait le mauvais numéro
+ * dès lors que la numérotation avait bougé, et laissait croire à un avoir
+ * rattaché au mauvais client.
+ */
+function objetAffiche(f: FactureEmise): string {
+  if (f.type !== "avoir" || !f.factureOrigine) return f.objet || "—"
+  const motif = f.notes?.trim() || f.objet?.split(" — ").slice(1).join(" — ").trim() || ""
+  return `Avoir sur facture ${f.factureOrigine.numero}${motif ? ` — ${motif}` : ""}`
 }
 
 export default function FacturesPage() {
@@ -82,7 +93,11 @@ export default function FacturesPage() {
 
   // État formulaire facture
   const [factureData, setFactureData] = React.useState({
-    numero: `F-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 1000)).padStart(4, '0')}`,
+    // QA cmsqln4om — ce champ affichait un numéro TIRÉ AU HASARD, différent à
+    // chaque rechargement, jamais envoyé au serveur et jamais retenu. Le numéro
+    // qui fait foi est réservé par la séquence légale continue (SequenceFacture)
+    // au moment de l'enregistrement, et rendu par la réponse.
+    numero: "",
     date: todayLocalISO(),
     echeance: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     client: "",
@@ -129,48 +144,31 @@ export default function FacturesPage() {
   const fetchImpayees = React.useCallback(async () => {
     setIsLoading(true)
     try {
-      const [ventesRes, manuellesRes] = await Promise.all([
+      const [ventesRes, manuellesRes, facturesRes] = await Promise.all([
         fetch('/api/elevage/ventes?paye=false'),
         fetch('/api/comptabilite/ventes-manuelles?paye=false'),
+        // QA cmsjilhre — l'onglet Impayées n'interrogeait jamais la table
+        // Facture : deux factures « Émise » non réglées ressortaient « 0 € dû ».
+        // Une facture au statut « emise » (hors avoir) est un impayé.
+        fetch(`/api/comptabilite/factures?year=${new Date().getFullYear()}`),
       ])
 
-      const items: Impayee[] = []
-
-      if (ventesRes.ok) {
-        const ventesData = await ventesRes.json()
-        const ventes = ventesData.data || []
-        ventes.forEach((v: any) => {
-          items.push({
-            id: v.id,
-            source: 'VenteProduit',
-            date: v.date,
-            type: v.type,
-            description: v.description || `Vente ${v.type}`,
-            montant: v.prixTotal,
-            client: v.client,
-          })
-        })
+      let factures: any[] = []
+      if (facturesRes.ok) {
+        const facturesData = await facturesRes.json()
+        factures = Array.isArray(facturesData)
+          ? facturesData
+          : (facturesData.data || facturesData.factures || [])
       }
+      const ventes = ventesRes.ok ? ((await ventesRes.json()).data || []) : []
+      const ventesManuelles = manuellesRes.ok ? ((await manuellesRes.json()).data || []) : []
 
-      if (manuellesRes.ok) {
-        const manuellesData = await manuellesRes.json()
-        const manuelles = manuellesData.data || []
-        manuelles.forEach((m: any) => {
-          items.push({
-            id: m.id,
-            source: 'VenteManuelle',
-            date: m.date,
-            type: m.categorie,
-            description: m.description,
-            montant: m.montant,
-            client: m.client,
-          })
-        })
-      }
-
-      items.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      // QA cmsqlqcuq / cmsqmbfxs — l'agrégation vit dans une fonction partagée :
+      // elle impute les avoirs sur leur facture d'origine (comme le Bilan) et
+      // écarte les ventes déjà portées par une facture (double comptage).
+      const { items, total: totalImpayees } = construireImpayees({ factures, ventes, ventesManuelles })
       setImpayees(items)
-      setTotal(items.reduce((sum, i) => sum + i.montant, 0))
+      setTotal(totalImpayees)
     } catch (error) {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les données" })
     } finally {
@@ -203,34 +201,18 @@ export default function FacturesPage() {
   //   * remonter les erreurs serveur (toast + console)
   //   * forcer le download via Blob URL
   //   * ne pas naviguer hors page si l'auth échoue
-  const downloadFacturePDF = async (factureId: number, numero: string) => {
-    try {
-      const res = await fetch(`/api/comptabilite/factures/${factureId}/pdf`, {
-        credentials: "include",
-      })
-      if (!res.ok) {
-        const msg = res.status === 401
-          ? "Session expirée — reconnectez-vous."
-          : res.status === 404
-          ? "Facture introuvable."
-          : `Erreur ${res.status} lors de la génération du PDF`
-        toast({ variant: "destructive", title: "Téléchargement impossible", description: msg })
-        return
-      }
-      const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement("a")
-      link.href = url
-      link.download = `${numero}.pdf`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      // Libère l'URL après un tick pour laisser le browser télécharger
-      setTimeout(() => URL.revokeObjectURL(url), 1000)
-    } catch (err) {
-      console.error("PDF download error:", err)
-      toast({ variant: "destructive", title: "Téléchargement impossible", description: "Erreur réseau" })
-    }
+  /**
+   * Ouvre la facture dans l'écran d'aperçu (2026-08-19).
+   *
+   * Avant : la facture était récupérée en blob puis poussée dans un
+   * `<a download>` programmatique — donc un téléchargement natif, systématique.
+   * On ne pouvait pas relire une facture avant de l'envoyer sans encombrer son
+   * dossier de téléchargements, et un contrôle mené au navigateur perdait la
+   * main dès l'ouverture du fichier. L'aperçu affiche le document dans la
+   * fenêtre et garde le téléchargement à un clic.
+   */
+  const apercuFacturePDF = (factureId: number, numero: string) => {
+    ouvrirApercu(`/api/comptabilite/factures/${factureId}/pdf`, `Facture ${numero}`)
   }
 
   const downloadFactureUBL = async (factureId: number, numero: string) => {
@@ -267,20 +249,28 @@ export default function FacturesPage() {
 
   const markAsPaid = async (item: Impayee) => {
     try {
-      const endpoint = item.source === 'VenteProduit'
-        ? '/api/elevage/ventes'
-        : '/api/comptabilite/ventes-manuelles'
-
-      const response = await fetch(endpoint, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: item.id, paye: true }),
-      })
+      // Une facture passe par sa machine à états (emise→payee, pose la date de
+      // paiement) ; les ventes brutes/manuelles par leur flag `paye`.
+      const response = item.source === 'Facture'
+        ? await fetch('/api/comptabilite/factures', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: item.id, statut: 'payee' }),
+          })
+        : await fetch(
+            item.source === 'VenteProduit' ? '/api/elevage/ventes' : '/api/comptabilite/ventes-manuelles',
+            {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id: item.id, paye: true }),
+            },
+          )
 
       if (!response.ok) throw new Error('Erreur')
 
       toast({ title: "Marqué comme payé", description: formatEuro(item.montant) })
       fetchImpayees()
+      fetchFacturesEmises()
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible de mettre à jour" })
     }
@@ -409,7 +399,7 @@ export default function FacturesPage() {
       })
       // Recharge la liste & ouvre le PDF
       fetchFacturesEmises()
-      window.open(`/api/comptabilite/factures/${json.data.id}/pdf`, '_blank')
+      ouvrirApercu(`/api/comptabilite/factures/${json.data.id}/pdf`, `Facture ${json.data.numero ?? ''}`.trim())
       setActiveTab('emises')
     } catch (err) {
       toast({ variant: 'destructive', title: 'Erreur réseau', description: String(err) })
@@ -498,7 +488,7 @@ export default function FacturesPage() {
       })
       fetchFacturesEmises()
       // Ouvre le PDF généré côté serveur (mentions légales + snapshot émetteur).
-      window.open(`/api/comptabilite/factures/${created.id}/pdf`, "_blank")
+      ouvrirApercu(`/api/comptabilite/factures/${created.id}/pdf`, `Facture ${created.numero ?? ""}`.trim())
     } catch (err) {
       toast({
         variant: "destructive",
@@ -528,7 +518,13 @@ export default function FacturesPage() {
 
       <div className="container mx-auto px-4 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="mb-6">
+          {/* Ticket cmsx6g3gq (QA 2026-08-17, viewport 375 px) — quatre onglets
+              en `inline-flex` mesuraient 618 px : c'est le DOCUMENT qui
+              débordait, pas le tableau des lignes. Le tableau, lui, a bien son
+              conteneur défilant — il apparaissait « à -145 px » simplement
+              parce que la page entière était décalée. Les onglets passent donc
+              à la ligne sur mobile. */}
+          <TabsList className="mb-6 flex h-auto w-full flex-wrap justify-start gap-1">
             <TabsTrigger value="impayees" className="flex items-center gap-2">
               <AlertCircle className="h-4 w-4" />
               Impayées
@@ -558,7 +554,7 @@ export default function FacturesPage() {
             <div className="grid gap-4 md:grid-cols-2 mb-6">
               <Card className={impayees.length > 0 ? "border-amber-200 bg-amber-50" : ""}>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm text-muted-foreground">Factures en attente</CardTitle>
+                  <CardTitle className="text-sm text-muted-foreground">Créances en attente</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <p className={`text-3xl font-bold ${impayees.length > 0 ? 'text-amber-600' : 'text-green-600'}`}>
@@ -580,7 +576,9 @@ export default function FacturesPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle>Factures en attente de paiement</CardTitle>
+                {/* QA cmswu9r5x — l'onglet liste des créances clients
+                    (factures, ventes, commandes boutique). */}
+                <CardTitle>Créances en attente de paiement</CardTitle>
               </CardHeader>
               <CardContent className="p-0">
                 {isLoading ? (
@@ -596,6 +594,7 @@ export default function FacturesPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead>N°</TableHead>
                         <TableHead>Date</TableHead>
                         <TableHead>Ancienneté</TableHead>
                         <TableHead>Description</TableHead>
@@ -609,6 +608,9 @@ export default function FacturesPage() {
                         const days = daysSince(item.date)
                         return (
                           <TableRow key={`${item.source}-${item.id}`} className={days > 30 ? "bg-red-50" : days > 14 ? "bg-orange-50" : ""}>
+                            {/* QA cmswu9r5x — le numéro était calculé par le
+                                helper mais jamais affiché. */}
+                            <TableCell className="text-muted-foreground">{item.numero || '—'}</TableCell>
                             <TableCell>{new Date(item.date).toLocaleDateString('fr-FR')}</TableCell>
                             <TableCell>
                               <Badge className={
@@ -682,7 +684,7 @@ export default function FacturesPage() {
                           <TableCell className="capitalize">{f.type}</TableCell>
                           <TableCell className="max-w-[180px] truncate">{f.clientNom}</TableCell>
                           <TableCell className="max-w-[200px] truncate text-muted-foreground">
-                            {f.objet || "—"}
+                            {objetAffiche(f)}
                           </TableCell>
                           <TableCell className="text-right font-medium">{formatEuro(f.totalTTC)}</TableCell>
                           <TableCell>
@@ -737,9 +739,10 @@ export default function FacturesPage() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => downloadFacturePDF(f.id, f.numero)}
+                                title="Afficher la facture — le téléchargement reste disponible dans l'aperçu"
+                                onClick={() => apercuFacturePDF(f.id, f.numero)}
                               >
-                                <Download className="h-4 w-4 mr-1" />
+                                <Eye className="h-4 w-4 mr-1" />
                                 PDF
                               </Button>
                               {f.type !== "avoir" && (
@@ -775,10 +778,9 @@ export default function FacturesPage() {
                 <div className="grid gap-4 md:grid-cols-4">
                   <div>
                     <Label>N° Facture</Label>
-                    <Input
-                      value={factureData.numero}
-                      onChange={(e) => setFactureData({ ...factureData, numero: e.target.value })}
-                    />
+                    <p className="text-sm text-muted-foreground mt-2">
+                      Attribué à l&apos;enregistrement, en séquence continue.
+                    </p>
                   </div>
                   <div>
                     <Label>Date</Label>

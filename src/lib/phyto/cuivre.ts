@@ -64,10 +64,17 @@ export interface TraitementCuivreInput {
  */
 function quantiteProduitTotalKg(t: TraitementCuivreInput): number {
   const dose = t.doseAppliquee ?? 0
-  const surfaceHa = t.surfaceHa ?? 0
-  if (dose <= 0 || surfaceHa <= 0) return 0
+  if (dose <= 0) return 0
 
   const unite = (t.uniteDose ?? '').toLowerCase()
+
+  // QA cmsogea5w — quantités ABSOLUES (saisies Verger > Opérations : « 3 kg »,
+  // « 2 L » sur un arbre) : pas de surface requise, la quantité est le total.
+  if (unite === 'kg' || unite === 'l') return dose
+  if (unite === 'g') return dose / 1000
+
+  const surfaceHa = t.surfaceHa ?? 0
+  if (surfaceHa <= 0) return 0
 
   // kg/ha ou L/ha : dose × surface = kg total
   if (unite === '' || unite === 'kg/ha' || unite === 'l/ha') {
@@ -107,12 +114,16 @@ export function doseCuivreMetalKg(t: TraitementCuivreInput): number {
   const totalProduitKg = quantiteProduitTotalKg(t)
   if (totalProduitKg <= 0) return 0
 
-  // Conversion en cuivre métal
+  // Conversion en cuivre métal.
+  // QA cmsogea5w — PAS d'arrondi ici : l'arrondi à 3 décimales PAR LIGNE
+  // avant sommation faisait tomber à 0 une intervention réellement dosée
+  // (1,5 L/ha × 9,6 m² = 0,000288 kg Cu), classée à tort « sans dose ni
+  // surface ». On arrondit uniquement à l'affichage (cf. cumuleParParcelle).
   if (t.produit?.cuivreMetalGParUnite != null && t.produit.cuivreMetalGParUnite > 0) {
-    return Math.round(totalProduitKg * t.produit.cuivreMetalGParUnite) / 1000
+    return (totalProduitKg * t.produit.cuivreMetalGParUnite) / 1000
   }
   const pct = t.produit?.cuivreMetalPct ?? DEFAULT_CUIVRE_METAL_PCT
-  return Math.round(totalProduitKg * pct * 10) / 1000  // *10/1000 = *(pct/100), arrondi 0.001 kg
+  return (totalProduitKg * pct) / 100
 }
 
 export interface CumulCuivreParcelle {
@@ -161,6 +172,9 @@ export function cumuleParParcelle(
       // Bug #12 — Traitement cuivre détecté mais dose/surface manquante :
       // on ne peut pas le sommer mais on l'incrémente dans le compteur
       // de saisies incomplètes pour le signaler à l'UI.
+      // QA cmsogea5w — doseCuivreMetalKg n'arrondissant plus par ligne,
+      // cu <= 0 signifie désormais réellement « donnée manquante » (dose,
+      // surface ou volume de bouillie), plus jamais un arrondi à zéro.
       if (cuivreProduit && inWindow7) cur.nbSansDose += 1
       acc.set(t.parcelleId, cur)
       continue

@@ -5,6 +5,7 @@ import { BookOpen, ChevronRight, Globe2, Leaf, MapPin, Search, Sprout, TreeDecid
 import { MarketingShell } from "@/components/seo/MarketingShell";
 import prisma from "@/lib/prisma";
 import { nomPublic, originePublique, visibiliteEnfantPublic, visibiliteReferentielPublic } from "@/lib/referentiel-public";
+import { ESPECE_TYPES, libelleTypeEspece } from "@/lib/validations/espece";
 
 export const dynamic = "force-dynamic";
 
@@ -28,14 +29,29 @@ const TYPES = [
   { value: "", label: "Tous" },
   { value: "legume", label: "Légumes" },
   { value: "aromatique", label: "Aromatiques" },
+  { value: "fleur", label: "Fleurs" },
   { value: "engrais_vert", label: "Engrais verts" },
   { value: "arbre_fruitier", label: "Arbres fruitiers" },
   { value: "petit_fruit", label: "Petits fruits" },
 ] as const;
 
-const TYPE_LABELS: Record<string, string> = Object.fromEntries(
-  TYPES.filter((type) => type.value).map((type) => [type.value, type.label]),
-);
+/**
+ * Libellés des fiches. `TYPES` ne porte que les types FILTRABLES du catalogue
+ * public, au pluriel ; la SSOT du référentiel sert de socle pour que les autres
+ * gardent un libellé lisible.
+ *
+ * Ticket FB-E33FAA (2026-08-18) : sans ce socle, une espèce de type `ornement`
+ * — absent des filtres publics — retombait sur `espece.type` et affichait le
+ * slug brut « ornement » en sous-titre de sa fiche.
+ */
+const TYPE_LABELS: Record<string, string> = {
+  // Socle : TOUS les types du référentiel, au singulier.
+  ...Object.fromEntries(ESPECE_TYPES.map((type) => [type, libelleTypeEspece(type)])),
+  // Puis les types filtrables du catalogue public, au pluriel, qui l'emportent.
+  ...Object.fromEntries(
+    TYPES.filter((type) => type.value).map((type) => [type.value, type.label]),
+  ),
+};
 
 export default async function ReferentielPage({ searchParams }: PageProps) {
   const params = await searchParams;

@@ -169,7 +169,11 @@ export async function POST(request: NextRequest) {
       // probablement une double saisie accidentelle (ou 2 passages au
       // poulailler dans la même journée). On bloque la 2e avec un code
       // distinct ; l'éleveur peut confirmer pour additionner.
-      if (date && !animalId) {
+      // QA cmsp58ce5 — ce garde-fou était le seul des trois à ignorer
+      // `overrideCoherence` : la confirmation « Ajouter une 2e ligne » du client
+      // rejouait le POST et se faisait refuser à l'identique, donc une seconde
+      // collecte du jour était impossible à saisir.
+      if (!overrideCoherence && date && !animalId) {
         const dateOnly = new Date(date)
         dateOnly.setHours(0, 0, 0, 0)
         const dateNext = new Date(dateOnly)

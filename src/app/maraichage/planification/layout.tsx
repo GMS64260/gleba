@@ -7,6 +7,7 @@
  * sont conservées telles quelles.
  */
 
+import { Suspense } from "react"
 import { AppHeader } from "@/components/shell/AppHeader"
 import { PlanificationSubnav } from "@/components/shell/PlanificationSubnav"
 
@@ -14,9 +15,12 @@ export default function PlanificationLayout({ children }: { children: React.Reac
   return (
     <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
       <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
-      <AppHeader current="maraichage" />
+      <AppHeader current="maraichage" showLune />
       <div className="container mx-auto px-4 py-5 max-w-[1600px] flex flex-col lg:flex-row gap-5 items-start">
-        <PlanificationSubnav />
+        {/* Suspense requis : la sous-nav lit useSearchParams (QA cmswunyun). */}
+        <Suspense fallback={null}>
+          <PlanificationSubnav />
+        </Suspense>
         <div className="flex-1 min-w-0 w-full">{children}</div>
       </div>
     </div>

@@ -49,10 +49,20 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const campagne = await prisma.campagnePlantation.findFirst({
     where: { id: campagneId, userId: session!.user.id },
-    select: { id: true, nombrePlants: true },
+    select: { id: true, nombrePlants: true, statut: true, datePlantationReelle: true },
   })
   if (!campagne) {
     return NextResponse.json({ error: "Campagne non trouvée" }, { status: 404 })
+  }
+
+  // Ticket cmsog61e5 — une observation de reprise n'a pas de sens avant la
+  // plantation (obs saisie le 11/08 sur une campagne planifiée au 20/11) :
+  // datePlantationReelle est renseignée en cochant l'étape Plantation.
+  if (!campagne.datePlantationReelle) {
+    return NextResponse.json(
+      { error: "La plantation n'a pas encore été réalisée : enregistrez d'abord l'étape Plantation" },
+      { status: 400 }
+    )
   }
 
   const body = await request.json()

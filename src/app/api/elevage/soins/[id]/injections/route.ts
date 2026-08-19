@@ -89,6 +89,7 @@ export async function PATCH(
       data: {
         fait: commence,
         finAttenteLait: commence && derniere ? ajouterJours(derniere, soin.tempsAttenteLaitJ) : null,
+        finAttenteOeufs: commence && derniere ? ajouterJours(derniere, soin.tempsAttenteOeufsJ) : null,
         finAttenteViande: commence && derniere ? ajouterJours(derniere, soin.tempsAttenteViandeJ) : null,
         quantitePreleveeStock,
       },

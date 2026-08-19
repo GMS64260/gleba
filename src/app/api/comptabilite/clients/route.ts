@@ -41,19 +41,25 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    // Stats
-    const stats = await prisma.client.groupBy({
-      by: ['type'],
-      where: { userId, actif: true },
-      _count: true,
-    })
+    // Ticket cmsx64vcw (QA 2026-08-17) — les cartes de tête mélangeaient deux
+    // périmètres : « Total clients » comptait la liste FILTRÉE tandis que la
+    // ventilation par type comptait toujours les seuls actifs, quelle que soit
+    // la case « Afficher inactifs ». Total 23 face à 20 répartis, sans rien qui
+    // l'explique : de quoi conclure qu'une fiche a disparu. Les quatre cartes
+    // décrivent désormais la même population que le tableau, et le nombre
+    // d'actifs reste exposé à part.
+    const parType = clients.reduce<Record<string, number>>((acc, c) => {
+      acc[c.type] = (acc[c.type] ?? 0) + 1
+      return acc
+    }, {})
 
     return NextResponse.json({
       data: clients,
       stats: {
         total: clients.length,
         actifs: clients.filter(c => c.actif).length,
-        parType: stats.reduce((acc, s) => ({ ...acc, [s.type]: s._count }), {}),
+        inactifs: clients.filter(c => !c.actif).length,
+        parType,
       },
     })
   } catch (error) {
@@ -91,6 +97,33 @@ export async function POST(request: NextRequest) {
 
     const userId = session.user.id
     const d = parsed.data
+
+    // QA cmsjihd3z — un doublon strict (même nom ET même e-mail) était créé
+    // sans avertissement. On bloque le cas non ambigu : identité e-mail exacte
+    // (non vide, insensible à la casse) + même nom normalisé, chez ce user, sur
+    // une fiche active. Deux clients de même nom mais e-mails distincts (ou
+    // sans e-mail) restent autorisés — l'homonymie réelle existe.
+    const emailNorm = d.email?.trim().toLowerCase() || null
+    if (emailNorm) {
+      const doublon = await prisma.client.findFirst({
+        where: {
+          userId,
+          actif: true,
+          email: { equals: emailNorm, mode: 'insensitive' },
+          nom: { equals: d.nom.trim(), mode: 'insensitive' },
+        },
+        select: { id: true },
+      })
+      if (doublon) {
+        return NextResponse.json(
+          {
+            error: `Un client « ${d.nom} » avec cet e-mail existe déjà. Modifiez la fiche existante plutôt que de la dupliquer.`,
+            code: 'CLIENT_DOUBLON',
+          },
+          { status: 409 },
+        )
+      }
+    }
 
     // DEV2 #4 — Auto-dérivation SIREN depuis SIRET si non fourni.
     // Le SIREN = 9 premiers chiffres du SIRET (cf src/lib/siret.ts).

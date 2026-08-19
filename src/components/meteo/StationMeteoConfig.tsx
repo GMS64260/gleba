@@ -118,7 +118,7 @@ export function StationMeteoConfig({ onStationsChanged }: { onStationsChanged?: 
       await fetchStations()
       onStationsChanged?.()
     } catch {
-      setError("Erreur reseau lors de la suppression")
+      setError("Erreur réseau lors de la suppression")
     }
   }
 
@@ -138,7 +138,7 @@ export function StationMeteoConfig({ onStationsChanged }: { onStationsChanged?: 
       await fetchStations()
       onStationsChanged?.()
     } catch {
-      setError("Erreur reseau lors de la mise à jour")
+      setError("Erreur réseau lors de la mise à jour")
     }
   }
 
@@ -163,7 +163,7 @@ export function StationMeteoConfig({ onStationsChanged }: { onStationsChanged?: 
         <div>
           <h3 className="text-sm font-medium flex items-center gap-2">
             <Radio className="h-4 w-4 text-blue-500" />
-            Stations meteo personnelles
+            Stations météo personnelles
           </h3>
           <p className="text-xs text-slate-500 mt-0.5">
             Connectez votre station pour des données ultra-locales
@@ -201,7 +201,7 @@ export function StationMeteoConfig({ onStationsChanged }: { onStationsChanged?: 
                   variant="ghost"
                   size="sm"
                   onClick={() => handleToggle(station.id, station.active)}
-                  title={station.active ? "Desactiver" : "Activer"}
+                  title={station.active ? "Désactiver" : "Activer"}
                 >
                   {station.active ? (
                     <ToggleRight className="h-4 w-4 text-green-500" />
@@ -222,7 +222,7 @@ export function StationMeteoConfig({ onStationsChanged }: { onStationsChanged?: 
           ))}
         </div>
       ) : (
-        <p className="text-sm text-slate-400 py-2">Aucune station configuree.</p>
+        <p className="text-sm text-slate-400 py-2">Aucune station configurée.</p>
       )}
 
       {/* Formulaire d'ajout */}
@@ -333,8 +333,8 @@ export function StationMeteoConfig({ onStationsChanged }: { onStationsChanged?: 
 
       {/* Info providers */}
       <div className="text-[10px] text-slate-400 leading-relaxed">
-        <p><strong>Ecowitt</strong> : Cles API sur ecowitt.net/home/index → API → Get API/App Key</p>
-        <p><strong>Weather Underground</strong> : Cle API sur wunderground.com → My Profile → API Keys</p>
+        <p><strong>Ecowitt</strong> : Clés API sur ecowitt.net/home/index → API → Get API/App Key</p>
+        <p><strong>Weather Underground</strong> : Clé API sur wunderground.com → My Profile → API Keys</p>
         <p>La connexion est testée avant enregistrement. Une seule station est active pour toute l&apos;exploitation.</p>
       </div>
     </div>

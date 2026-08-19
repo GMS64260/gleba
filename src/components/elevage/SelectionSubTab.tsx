@@ -10,6 +10,7 @@
  */
 
 import * as React from "react"
+import { ouvrirApercu } from "@/lib/apercu-document"
 import Link from "next/link"
 import { Dna, HeartPulse, Plus, Trash2, ExternalLink } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -117,6 +118,7 @@ export function SelectionSubTab() {
   const [testAnimalId, setTestAnimalId] = React.useState("")
   const [tests, setTests] = React.useState<TestSante[]>([])
   const [form, setForm] = React.useState(EMPTY_TEST)
+  const [isSubmittingTest, setIsSubmittingTest] = React.useState(false)
   const [ped, setPed] = React.useState(EMPTY_PED)
 
   React.useEffect(() => {
@@ -163,16 +165,22 @@ export function SelectionSubTab() {
 
   const ajouterTest = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isSubmittingTest) return
     if (!form.animalId || !form.type) { toast({ variant: "destructive", title: "Animal et type requis" }); return }
-    const res = await fetch("/api/elevage/tests-sante", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...form, animalId: Number(form.animalId) }),
-    })
-    if (!res.ok) { const j = await res.json().catch(() => null); toast({ variant: "destructive", title: "Erreur", description: j?.error }); return }
-    toast({ title: "Test enregistré" })
-    setForm((f) => ({ ...EMPTY_TEST, animalId: f.animalId, type: f.type }))
-    if (String(form.animalId) === testAnimalId) chargerTests(testAnimalId)
-    else setTestAnimalId(String(form.animalId))
+    setIsSubmittingTest(true)
+    try {
+      const res = await fetch("/api/elevage/tests-sante", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...form, animalId: Number(form.animalId) }),
+      })
+      if (!res.ok) { const j = await res.json().catch(() => null); toast({ variant: "destructive", title: "Erreur", description: j?.error }); return }
+      toast({ title: "Test enregistré" })
+      setForm((f) => ({ ...EMPTY_TEST, animalId: f.animalId, type: f.type }))
+      if (String(form.animalId) === testAnimalId) chargerTests(testAnimalId)
+      else setTestAnimalId(String(form.animalId))
+    } finally {
+      setIsSubmittingTest(false)
+    }
   }
 
   const supprimerTest = async (t: TestSante) => {
@@ -245,7 +253,7 @@ export function SelectionSubTab() {
             <div className="space-y-1"><Label className="text-xs">Résultat</Label><Input className="h-9" value={form.resultat} onChange={(e) => setForm((f) => ({ ...f, resultat: e.target.value }))} placeholder={hint} /></div>
             <div className="space-y-1"><Label className="text-xs">Labo</Label><Input className="h-9" value={form.laboratoire} onChange={(e) => setForm((f) => ({ ...f, laboratoire: e.target.value }))} /></div>
             <div className="space-y-1"><Label className="text-xs">Date</Label><Input className="h-9" type="date" value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} /></div>
-            <div className="lg:col-span-6"><Button type="submit" size="sm" disabled={!form.animalId}><Plus className="h-4 w-4 mr-1" />Ajouter le test</Button></div>
+            <div className="lg:col-span-6"><Button type="submit" size="sm" disabled={isSubmittingTest || !form.animalId}><Plus className="h-4 w-4 mr-1" />{isSubmittingTest ? "Enregistrement..." : "Ajouter le test"}</Button></div>
           </form>
 
           <div className="space-y-2">
@@ -274,7 +282,7 @@ export function SelectionSubTab() {
               <div className="border-t pt-3 space-y-3">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <Label className="text-sm font-medium flex items-center gap-2"><Dna className="h-4 w-4 text-blue-600" />{cfg.pedigreeTitle}</Label>
-                  <Button size="sm" variant="outline" onClick={() => window.open(`/api/elevage/animaux/${testAnimalId}/pedigree`, "_blank")}><ExternalLink className="h-4 w-4 mr-1" />Exporter le pedigree (PDF)</Button>
+                  <Button size="sm" variant="outline" onClick={() => ouvrirApercu(`/api/elevage/animaux/${testAnimalId}/pedigree`, cfg.pedigreeTitle)}><ExternalLink className="h-4 w-4 mr-1" />Exporter le pedigree (PDF)</Button>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 items-end">
                   <div className="space-y-1"><Label className="text-xs">{cfg.registreLabel}</Label><Input className="h-9" value={ped.numeroLof} onChange={(e) => setPed((p) => ({ ...p, numeroLof: e.target.value }))} /></div>

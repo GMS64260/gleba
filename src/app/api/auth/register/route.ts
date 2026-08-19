@@ -8,8 +8,8 @@ import { randomBytes } from "crypto"
 import prisma from "@/lib/prisma"
 import { hashPassword } from "@/lib/auth-utils"
 import { checkRateLimit, getClientIP } from "@/lib/rate-limit"
-import { createSampleDataForUser } from "@/lib/user-sample-data"
 import { sendMail, verifyEmailEmail, newUserNotificationEmail } from "@/lib/mail"
+import { envoyerVerification } from "@/lib/mail-verification"
 
 export async function POST(request: NextRequest) {
   // Rate limiting strict : 5 inscriptions par IP par heure
@@ -90,20 +90,26 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // Creer les données d'exemple
-    try {
-      await createSampleDataForUser(user.id)
-    } catch (sampleError) {
-      console.error("Erreur creation donnees exemple:", sampleError)
-    }
+    // Refonte onboarding 2026-08-17 : plus de données d'exemple d'office au
+    // signup — elles étaient géolocalisées en dur à Paris 4ᵉ et faussaient
+    // météo, arrosage et éphémérides pour tout inscrit. Le parcours de
+    // première connexion (/onboarding) les propose désormais comme choix
+    // explicite, ancrées sur la commune réelle de l'exploitation.
 
-    // Envoyer l'email de verification (non bloquant)
+    // Email de verification : ATTENDU, car c'est la seule clé d'activation du
+    // compte. Vigie du 2026-08-17 (signalement vigie1919cd84) : un envoi refusé
+    // par le serveur SMTP (« 550 invalid DNS MX » sur un domaine inexistant)
+    // n'était que journalisé, et l'inscrit lisait quand même « Vérifiez votre
+    // email » — il attendait un message qui ne partirait jamais, sans savoir
+    // que son adresse était en cause ni qu'un renvoi existe.
+    //
+    // Le compte reste créé (il l'est déjà, et le renvoi permet de le rattraper).
+    // Seul le MESSAGE change : on dit la vérité sur l'envoi.
     const verify = verifyEmailEmail(user.name, verifyToken)
-    sendMail({ to: user.email, subject: verify.subject, html: verify.html }).catch((mailErr) =>
-      console.error("Erreur envoi email verification:", mailErr)
-    )
+    const envoi = await envoyerVerification(user.email, verify)
 
-    // Notifier l'admin de la nouvelle inscription (non bloquant)
+    // Notifier l'admin de la nouvelle inscription (non bloquant : son échec ne
+    // concerne pas l'inscrit).
     const notif = newUserNotificationEmail(user)
     sendMail({ to: "contact@gleba.fr", subject: notif.subject, html: notif.html }).catch((mailErr) =>
       console.error("Erreur envoi notification admin:", mailErr)
@@ -111,8 +117,12 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(
       {
-        message: "Compte cree. Verifiez votre email pour activer votre compte.",
+        message: envoi.envoye
+          ? "Compte cree. Verifiez votre email pour activer votre compte."
+          : "Compte créé, mais l'email de vérification n'a pas pu être envoyé.",
         needsVerification: true,
+        emailEnvoye: envoi.envoye,
+        emailEchec: envoi.envoye ? null : envoi.cause,
         user: { email: user.email },
       },
       { status: 201 }

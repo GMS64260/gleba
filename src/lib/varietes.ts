@@ -29,11 +29,22 @@ export async function ensurePlaceholderVariete(especeId: string, tx: Tx = prisma
   })
   if (existing) return existing.id
 
+  // Nom affiché : pour une espèce du catalogue Gleba, l'id EST le nom lisible ;
+  // pour une espèce perso, l'id est un cuid et le libellé vit dans `nom`.
+  // Sans cette lecture, le sélecteur de variété affichait
+  // « cms7n0lx10003k0rei0qb6pkv — Non spécifiée » (friction du 2026-07-30).
+  const espece = await tx.espece.findUnique({
+    where: { id: especeId },
+    select: { nom: true },
+  })
+  const nomEspece = espece?.nom ?? especeId
+
   // Pas de placeholder pour cette espèce : on le crée.
   await tx.variete.upsert({
     where: { id: placeholderId },
     create: {
       id: placeholderId,
+      nom: `${nomEspece}${PLACEHOLDER_VARIETE_SUFFIX}`,
       nomNormalise,
       isPlaceholder: true,
       especeId,

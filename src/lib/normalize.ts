@@ -8,8 +8,27 @@
  */
 
 /**
- * Nettoie un nom : trim + collapse whitespace + remplace les tirets/underscores par espace.
- * Préserve les accents et la casse pour l'affichage humain.
+ * Libellé tel que l'utilisateur l'a saisi, au bruit près : trim et espaces
+ * multiples réduites. Rien d'autre.
+ *
+ * QA cmswxyuoi — `cleanReferentielName` servait à la fois de clé de comparaison
+ * ET de libellé stocké. Son remplacement des tirets par des espaces est
+ * indispensable à la première (« Carotte-Nantaise » et « Carotte Nantaise » sont
+ * un doublon) et faux pour la seconde : un ITP créé « TEST-Marc-Phacelie-v7 »
+ * était enregistré « TEST Marc Phacelie v7 », donc introuvable par le nom tapé —
+ * l'utilisateur en concluait que sa saisie avait été perdue. Un libellé
+ * appartient à celui qui le saisit (règle du brain : un nom est de l'affichage,
+ * jamais une clé).
+ */
+export function displayReferentielName(input: string): string {
+  return input.normalize("NFC").replace(/\s+/g, " ").trim()
+}
+
+/**
+ * Clé de comparaison lisible : trim + collapse whitespace + remplace les
+ * tirets/underscores par espace. Préserve les accents et la casse.
+ * Réservé à la DÉDUPLICATION — pour le libellé affiché, voir
+ * `displayReferentielName`.
  */
 export function cleanReferentielName(input: string): string {
   return input

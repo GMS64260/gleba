@@ -249,29 +249,61 @@ export function RotationAdviceCompact({
 
   if (loading || !advice) return null
 
+  // QA cmsg52uzr — écart au plan de rotation, à afficher AVANT la sauvegarde.
+  // Le conseil agronomique ci-dessous ne juge que les intervalles de retour par
+  // famille : il pouvait annoncer « Rotation respectée » alors que le plan de la
+  // planche attendait une autre famille, et la contradiction n'apparaissait qu'à
+  // l'enregistrement. Les deux verdicts sont désormais montrés ensemble.
+  const ecartPlan =
+    advice.planRotation && !advice.planRotation.conforme ? advice.planRotation : null
+  const blocPlan = ecartPlan ? (
+    <div className="rounded-lg border border-amber-300 bg-amber-50 p-3">
+      <div className="text-sm font-medium text-amber-900">
+        Écart au plan de rotation de la planche
+      </div>
+      <p className="mt-1 text-xs text-amber-800">
+        {ecartPlan.familleAttendue
+          ? `L'étape ${ecartPlan.etapeAttendue} du cycle attend la famille « ${ecartPlan.familleAttendue} ».`
+          : ecartPlan.message}{' '}
+        L&apos;enregistrement demandera une confirmation.
+      </p>
+    </div>
+  ) : null
+
   // Si une espece est sélectionnée, afficher le conseil spécifique
   if (advice.especeAdvice) {
     return (
-      <div
-        className={`rounded-lg border p-3 ${
-          advice.especeAdvice.status === 'blocked'
-            ? 'border-red-300 bg-red-50'
-            : advice.especeAdvice.status === 'warning'
-              ? 'border-yellow-300 bg-yellow-50'
-              : 'border-green-300 bg-green-50'
-        }`}
-      >
-        <div className="flex items-center gap-2">
-          <RotationBadge status={advice.especeAdvice.status} size="sm" />
-          <span className="text-sm font-medium">{advice.especeAdvice.message}</span>
+      <div className="space-y-2">
+        {blocPlan}
+        <div
+          className={`rounded-lg border p-3 ${
+            advice.especeAdvice.status === 'blocked'
+              ? 'border-red-300 bg-red-50'
+              : advice.especeAdvice.status === 'warning'
+                ? 'border-yellow-300 bg-yellow-50'
+                : 'border-green-300 bg-green-50'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <RotationBadge status={advice.especeAdvice.status} size="sm" />
+            <span className="text-sm font-medium">{advice.especeAdvice.message}</span>
+          </div>
+          {advice.especeAdvice.details.length > 0 && (
+            <ul className="mt-2 space-y-1 text-xs text-slate-600">
+              {advice.especeAdvice.details.map((detail, idx) => (
+                <li key={idx}>• {detail}</li>
+              ))}
+            </ul>
+          )}
+          {/* Le conseil ci-dessus porte sur les intervalles de retour, pas sur
+              le plan : le préciser évite de relire « Rotation respectée » comme
+              une conformité au plan. */}
+          {ecartPlan && (
+            <p className="mt-2 text-xs text-slate-500">
+              Ce conseil porte sur les intervalles de retour par famille, pas sur le plan.
+            </p>
+          )}
         </div>
-        {advice.especeAdvice.details.length > 0 && (
-          <ul className="mt-2 space-y-1 text-xs text-slate-600">
-            {advice.especeAdvice.details.map((detail, idx) => (
-              <li key={idx}>• {detail}</li>
-            ))}
-          </ul>
-        )}
       </div>
     )
   }

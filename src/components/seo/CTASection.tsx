@@ -11,7 +11,7 @@ type Props = {
 export function CTASection({
   title,
   subtitle,
-  primaryLabel = "Essayer Gleba gratuitement",
+  primaryLabel = "Essayer la bêta Gleba",
   primaryHref = "/register",
 }: Props) {
   return (
@@ -53,7 +53,7 @@ export function CTASection({
             </a>
           </div>
           <p className="mt-6 text-xs text-emerald-300/60">
-            Gratuit · Open source AGPL-3.0 · Auto-hébergeable
+            Bêta hébergée gratuite pendant le développement · Code AGPL-3.0
           </p>
         </div>
       </div>

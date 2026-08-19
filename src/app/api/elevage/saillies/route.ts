@@ -19,7 +19,7 @@ import {
   dateMiseBasAttendue,
   dateTarissementPrevue,
   detecterConsanguinite,
-  DUREE_GESTATION_DEFAUTS,
+  dureeGestationEspece,
 } from '@/lib/reproduction'
 
 export async function GET(request: NextRequest) {
@@ -88,10 +88,7 @@ export async function POST(request: NextRequest) {
       if (!male) return NextResponse.json({ error: 'Mâle introuvable' }, { status: 404 })
     }
 
-    const duree =
-      femelle.especeAnimale.dureeGestation ??
-      DUREE_GESTATION_DEFAUTS[femelle.especeAnimale.id.toLowerCase()] ??
-      DUREE_GESTATION_DEFAUTS[(femelle.especeAnimale.type || '').toLowerCase()]
+    const duree = dureeGestationEspece(femelle.especeAnimale)
     if (!duree) {
       return NextResponse.json(
         { error: `Durée de gestation inconnue pour l'espèce ${femelle.especeAnimale.nom}. Configurez-la dans Espèces.` },
@@ -203,9 +200,7 @@ export async function PATCH(request: NextRequest) {
     // par erreur sans DELETE+POST)
     if (updates.date) {
       const espece = existing.femelle.especeAnimale
-      const duree = espece.dureeGestation ??
-        DUREE_GESTATION_DEFAUTS[espece.id.toLowerCase()] ??
-        DUREE_GESTATION_DEFAUTS[(espece.type || '').toLowerCase()]
+      const duree = dureeGestationEspece(espece)
       if (duree) {
         const dateMb = dateMiseBasAttendue(updates.date, duree)
         data.dateMiseBasAttendue = dateMb

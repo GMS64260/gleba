@@ -71,6 +71,130 @@ function statutBioMajoritaire(
   return entries[0][0]
 }
 
+/** Mapping provider → mode_reglement compta. */
+function modeReglementDepuisProvider(provider?: string): string | null {
+  switch (provider) {
+    case "Stripe":
+    case "SumUp":
+      return "CB"
+    case "Virement":
+      return "Virement"
+    case "Manuel":
+      return "Espèces"
+    default:
+      return null
+  }
+}
+
+type CommandeMaterialisable = Prisma.CommandeBoutiqueGetPayload<{
+  include: { lignes: { include: { produit: true } } }
+}>
+
+/**
+ * QA cmsw9bv3s (2026-08-16) — effets « la marchandise sort de la ferme »
+ * partagés par la confirmation de paiement ET la livraison : décrément du
+ * stock, création de la VenteManuelle (payée ou non selon le contexte),
+ * fiche client (ensureClientForUser), liaison venteManuelleId.
+ * Ne touche PAS à paiementStatut : l'appelant décide.
+ */
+async function materialiserVenteCommande(
+  commande: CommandeMaterialisable,
+  opts: { paye: boolean; provider?: string; tauxTVA?: number },
+  tx: Tx
+): Promise<{ venteManuelleId: number; stockNegatifs: ConfirmationResult["stockNegatifs"] }> {
+  // 1) Décrément stock — non bloquant si négatif (cf rapport tech audit A4).
+  const stockNegatifs: ConfirmationResult["stockNegatifs"] = []
+  for (const ligne of commande.lignes) {
+    if (!ligne.produit) continue
+    // stockDispo = null → stock illimité, on ignore.
+    if (ligne.produit.stockDispo === null) continue
+
+    const stockApres = ligne.produit.stockDispo - ligne.quantite
+    await tx.produitBoutique.update({
+      where: { id: ligne.produit.id },
+      data: { stockDispo: stockApres },
+    })
+    if (stockApres < 0) {
+      stockNegatifs.push({
+        produitId: ligne.produit.id,
+        nom: ligne.produit.nom,
+        stockApres,
+      })
+      console.warn(
+        `[commande-boutique] Stock négatif après commande #${commande.id} : ` +
+          `${ligne.produit.nom} = ${stockApres} ${ligne.produit.unite}`
+      )
+    }
+
+    // Audit 2026-07 (#51) : produit issu d'une récolte du jardin et désormais
+    // épuisé → on marque la récolte source « vendue » pour cohérence (elle ne
+    // doit plus apparaître comme stock loose ni pouvoir être vendue à part).
+    // Mise à jour DIRECTE (pas via l'API récolte) pour NE PAS déclencher une
+    // 2e écriture comptable : la commande boutique a déjà créé la VenteManuelle.
+    if (ligne.produit.recolteId && stockApres <= 0) {
+      await tx.recolte.updateMany({
+        where: { id: ligne.produit.recolteId, statut: "en_stock" },
+        data: { statut: "vendu", dateVente: commande.createdAt },
+      })
+    }
+  }
+
+  // 2) Création VenteManuelle.
+  // On considère un seul taux TVA pour le panier (opts.tauxTVA ou 5.5 par défaut).
+  // Une ventilation par ligne nécessiterait un sous-modèle dédié, hors scope.
+  const tauxTVA = opts.tauxTVA ?? 5.5
+  const montantTTC = commande.total
+  const montantHT = montantTTC / (1 + tauxTVA / 100)
+  const montantTVAEur = montantTTC - montantHT
+
+  const categorie = categorieMajoritaire(commande.lignes)
+  const statutBio = statutBioMajoritaire(commande.lignes)
+  const description = `Commande boutique ${commande.numero} — ${commande.clientNom}` +
+    (statutBio ? ` (${statutBio})` : "")
+
+  // QA 2026-05-15 — Bug #6 : auto-création du client à partir des
+  // informations saisies lors de la commande (nom/email/téléphone).
+  // Idempotent — pas de doublon si le client existe déjà (match par
+  // email puis par nom normalisé).
+  const clientId = await ensureClientForUser(
+    commande.userId,
+    {
+      nom: commande.clientNom,
+      email: commande.clientEmail,
+      telephone: commande.clientTelephone,
+    },
+    tx
+  )
+
+  const venteManuelle = await tx.venteManuelle.create({
+    data: {
+      userId: commande.userId,
+      date: commande.createdAt,
+      categorie,
+      description,
+      quantite: null,
+      unite: null,
+      prixUnitaire: null,
+      tauxTVA,
+      montantHT,
+      montantTVA: montantTVAEur,
+      montant: montantTTC,
+      journal: "VE",
+      modeReglement: opts.paye ? modeReglementDepuisProvider(opts.provider) : null,
+      numeroPiece: commande.numero,
+      module: "boutique",
+      paye: opts.paye,
+      sourceType: "commande_boutique",
+      sourceId: commande.id,
+      auto: true,
+      clientId,
+      clientNom: commande.clientNom,
+    },
+  })
+
+  return { venteManuelleId: venteManuelle.id, stockNegatifs }
+}
+
 /**
  * Confirme une commande : décrémente stock + crée VenteManuelle.
  *
@@ -113,110 +237,54 @@ export async function confirmCommandeBoutique(
     }
   }
 
-  // 1) Décrément stock — non bloquant si négatif (cf rapport tech audit A4).
-  const stockNegatifs: ConfirmationResult["stockNegatifs"] = []
-  for (const ligne of commande.lignes) {
-    if (!ligne.produit) continue
-    // stockDispo = null → stock illimité, on ignore.
-    if (ligne.produit.stockDispo === null) continue
-
-    const stockApres = ligne.produit.stockDispo - ligne.quantite
-    await tx.produitBoutique.update({
-      where: { id: ligne.produit.id },
-      data: { stockDispo: stockApres },
+  // QA cmsw9bv3s (2026-08-16) — la commande a déjà été matérialisée à la
+  // LIVRAISON (vente paye=false via livrerCommandeBoutique) : confirmer le
+  // paiement se borne à solder l'écriture existante. Ni stock (déjà décrémenté
+  // à la livraison), ni nouvelle VenteManuelle. Le repli findFirst couvre les
+  // données historiques (seed) où la vente existe sans back-link sur la
+  // commande — sans lui, on créerait une écriture en double.
+  const venteLiee = commande.venteManuelleId
+    ? { id: commande.venteManuelleId }
+    : await tx.venteManuelle.findFirst({
+        where: {
+          userId: commande.userId,
+          sourceType: "commande_boutique",
+          sourceId: commande.id,
+        },
+        select: { id: true },
+      })
+  if (venteLiee) {
+    const modeReglementConfirmation = modeReglementDepuisProvider(opts.provider)
+    await tx.venteManuelle.update({
+      where: { id: venteLiee.id },
+      data: {
+        paye: true,
+        ...(modeReglementConfirmation ? { modeReglement: modeReglementConfirmation } : {}),
+      },
     })
-    if (stockApres < 0) {
-      stockNegatifs.push({
-        produitId: ligne.produit.id,
-        nom: ligne.produit.nom,
-        stockApres,
-      })
-      console.warn(
-        `[commande-boutique] Stock négatif après commande #${commandeId} : ` +
-          `${ligne.produit.nom} = ${stockApres} ${ligne.produit.unite}`
-      )
-    }
-
-    // Audit 2026-07 (#51) : produit issu d'une récolte du jardin et désormais
-    // épuisé → on marque la récolte source « vendue » pour cohérence (elle ne
-    // doit plus apparaître comme stock loose ni pouvoir être vendue à part).
-    // Mise à jour DIRECTE (pas via l'API récolte) pour NE PAS déclencher une
-    // 2e écriture comptable : la commande boutique a déjà créé la VenteManuelle.
-    if (ligne.produit.recolteId && stockApres <= 0) {
-      await tx.recolte.updateMany({
-        where: { id: ligne.produit.recolteId, statut: "en_stock" },
-        data: { statut: "vendu", dateVente: commande.createdAt },
-      })
+    await tx.commandeBoutique.update({
+      where: { id: commande.id },
+      data: {
+        paiementStatut: "Confirmé",
+        paiementProvider: opts.provider ?? commande.paiementProvider ?? "Manuel",
+        paiementRef: opts.ref ?? commande.paiementRef,
+        venteManuelleId: venteLiee.id,
+      },
+    })
+    return {
+      commandeId: commande.id,
+      venteManuelleId: venteLiee.id,
+      stockNegatifs: [],
+      alreadyConfirmed: false,
     }
   }
 
-  // 2) Création VenteManuelle.
-  // On considère un seul taux TVA pour le panier (opts.tauxTVA ou 5.5 par défaut).
-  // Une ventilation par ligne nécessiterait un sous-modèle dédié, hors scope.
-  const tauxTVA = opts.tauxTVA ?? 5.5
-  const montantTTC = commande.total
-  const montantHT = montantTTC / (1 + tauxTVA / 100)
-  const montantTVAEur = montantTTC - montantHT
-
-  const categorie = categorieMajoritaire(commande.lignes)
-  const statutBio = statutBioMajoritaire(commande.lignes)
-  const description = `Commande boutique ${commande.numero} — ${commande.clientNom}` +
-    (statutBio ? ` (${statutBio})` : "")
-
-  // Mapping provider → mode_reglement compta.
-  const modeReglement = (() => {
-    switch (opts.provider) {
-      case "Stripe":
-      case "SumUp":
-        return "CB"
-      case "Virement":
-        return "Virement"
-      case "Manuel":
-        return "Espèces"
-      default:
-        return null
-    }
-  })()
-
-  // QA 2026-05-15 — Bug #6 : auto-création du client à partir des
-  // informations saisies lors de la commande (nom/email/téléphone).
-  // Idempotent — pas de doublon si le client existe déjà (match par
-  // email puis par nom normalisé).
-  const clientId = await ensureClientForUser(
-    commande.userId,
-    {
-      nom: commande.clientNom,
-      email: commande.clientEmail,
-      telephone: commande.clientTelephone,
-    },
+  // 1-2) Stock + VenteManuelle payée + fiche client.
+  const { venteManuelleId, stockNegatifs } = await materialiserVenteCommande(
+    commande,
+    { paye: true, provider: opts.provider, tauxTVA: opts.tauxTVA },
     tx
   )
-
-  const venteManuelle = await tx.venteManuelle.create({
-    data: {
-      userId: commande.userId,
-      date: commande.createdAt,
-      categorie,
-      description,
-      quantite: null,
-      unite: null,
-      prixUnitaire: null,
-      tauxTVA,
-      montantHT,
-      montantTVA: montantTVAEur,
-      montant: montantTTC,
-      journal: "VE",
-      modeReglement,
-      numeroPiece: commande.numero,
-      module: "boutique",
-      paye: true,
-      sourceType: "commande_boutique",
-      sourceId: commande.id,
-      auto: true,
-      clientId,
-      clientNom: commande.clientNom,
-    },
-  })
 
   // 3) Mise à jour de la commande.
   await tx.commandeBoutique.update({
@@ -225,14 +293,102 @@ export async function confirmCommandeBoutique(
       paiementStatut: "Confirmé",
       paiementProvider: opts.provider ?? commande.paiementProvider ?? "Manuel",
       paiementRef: opts.ref ?? commande.paiementRef,
-      venteManuelleId: venteManuelle.id,
+      venteManuelleId,
       statut: commande.statut === "nouveau" ? "confirmee" : commande.statut,
     },
   })
 
   return {
     commandeId: commande.id,
-    venteManuelleId: venteManuelle.id,
+    venteManuelleId,
+    stockNegatifs,
+    alreadyConfirmed: false,
+  }
+}
+
+/**
+ * QA cmsw9bv3s (2026-08-16) — une commande passée « livrée » sans confirmation
+ * de paiement restait sans écriture comptable ni fiche client : l'écran
+ * Transactions synthétisait un revenu que la SSOT, le compte de résultat, la
+ * TVA et le FEC ignoraient (écart de 3,20 € constaté), et le client de la
+ * commande n'existait pas au répertoire.
+ *
+ * À la livraison, la marchandise est sortie : on matérialise la vente
+ * (paye=false tant que le paiement n'est pas confirmé — le correctif
+ * « paiement boutique respecté » du 2026-08-14 reste honoré), le stock est
+ * décrémenté et la fiche client créée. La confirmation de paiement ultérieure
+ * se borne à solder l'écriture (cf. confirmCommandeBoutique).
+ *
+ * Idempotent : commande déjà matérialisée (venteManuelleId) → no-op.
+ */
+export async function livrerCommandeBoutique(
+  commandeId: number,
+  tx: Tx = prisma
+): Promise<ConfirmationResult> {
+  // Même verrou de ligne que confirmCommandeBoutique : sérialise une livraison
+  // et une confirmation de paiement concurrentes sur la même commande.
+  await tx.$executeRawUnsafe(
+    'SELECT id FROM commandes_boutique WHERE id = $1 FOR UPDATE',
+    commandeId,
+  )
+
+  const commande = await tx.commandeBoutique.findUnique({
+    where: { id: commandeId },
+    include: {
+      lignes: { include: { produit: true } },
+    },
+  })
+  if (!commande) {
+    throw new Error(`Commande #${commandeId} introuvable`)
+  }
+
+  if (commande.venteManuelleId) {
+    return {
+      commandeId,
+      venteManuelleId: commande.venteManuelleId,
+      stockNegatifs: [],
+      alreadyConfirmed: true,
+    }
+  }
+
+  // Données historiques (seed notamment) : une VenteManuelle de cette commande
+  // peut exister SANS que commande.venteManuelleId soit renseigné. La relier
+  // au lieu d'en créer une seconde (et de re-décrémenter le stock).
+  const venteExistante = await tx.venteManuelle.findFirst({
+    where: {
+      userId: commande.userId,
+      sourceType: "commande_boutique",
+      sourceId: commande.id,
+    },
+    select: { id: true },
+  })
+  if (venteExistante) {
+    await tx.commandeBoutique.update({
+      where: { id: commande.id },
+      data: { venteManuelleId: venteExistante.id },
+    })
+    return {
+      commandeId: commande.id,
+      venteManuelleId: venteExistante.id,
+      stockNegatifs: [],
+      alreadyConfirmed: true,
+    }
+  }
+
+  const { venteManuelleId, stockNegatifs } = await materialiserVenteCommande(
+    commande,
+    { paye: false, provider: commande.paiementProvider ?? undefined },
+    tx
+  )
+
+  await tx.commandeBoutique.update({
+    where: { id: commande.id },
+    data: { venteManuelleId },
+  })
+
+  return {
+    commandeId: commande.id,
+    venteManuelleId,
     stockNegatifs,
     alreadyConfirmed: false,
   }
@@ -254,8 +410,10 @@ export async function annulerCommandeBoutique(
   })
   if (!commande) throw new Error(`Commande #${commandeId} introuvable`)
 
-  // Réintégration stock si la commande avait été confirmée.
-  if (commande.paiementStatut === "Confirmé") {
+  // Réintégration stock si la commande avait été matérialisée (paiement
+  // confirmé OU livraison — QA cmsw9bv3s : une livrée-non-payée a aussi
+  // décrémenté le stock et créé une VenteManuelle à neutraliser).
+  if (commande.paiementStatut === "Confirmé" || commande.venteManuelleId) {
     for (const ligne of commande.lignes) {
       if (!ligne.produit || ligne.produit.stockDispo === null) continue
       await tx.produitBoutique.update({

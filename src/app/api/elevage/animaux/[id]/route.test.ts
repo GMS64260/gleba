@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   animalFindFirst: vi.fn(),
   animalUpdate: vi.fn(),
   enregistrerChangementLot: vi.fn(),
+  soinFindMany: vi.fn(),
 }))
 
 vi.mock('@/lib/auth-utils', () => ({ requireAuthApi: mocks.requireAuthApi }))
@@ -19,15 +20,78 @@ vi.mock('@/lib/prisma', () => ({
   default: {
     $transaction: (callback: (tx: unknown) => unknown) => callback({ animal: { update: mocks.animalUpdate } }),
     animal: { findFirst: mocks.animalFindFirst, update: mocks.animalUpdate },
+    // Ticket cmsoglwee — le GET fusionne les soins du lot de l'animal.
+    soinAnimal: { findMany: mocks.soinFindMany },
   },
 }))
 
-import { PUT } from './route'
+import { GET, PUT } from './route'
 
 const callPut = (body: object) => PUT(
   new NextRequest('http://localhost/api/elevage/animaux/7', { method: 'PUT', body: JSON.stringify(body) }),
   { params: Promise.resolve({ id: '7' }) }
 )
+
+// Ticket cmsoglwee — les soins de LOT n'apparaissaient pas sur la fiche d'un
+// animal membre : le GET doit fusionner les soins du lot (marqués viaLot) pour
+// que la timeline et l'alerte de délai d'attente les voient.
+describe('GET /api/elevage/animaux/[id] — soins du lot fusionnés', () => {
+  const callGet = () => GET(
+    new NextRequest('http://localhost/api/elevage/animaux/7'),
+    { params: Promise.resolve({ id: '7' }) }
+  )
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: 'user-1' } } })
+    mocks.soinFindMany.mockResolvedValue([])
+  })
+
+  it('fusionne les soins du lot de l’animal, marqués viaLot et triés par date', async () => {
+    mocks.animalFindFirst.mockResolvedValue({
+      id: 7,
+      lotId: 58,
+      soins: [{ id: 1, date: new Date('2026-08-01T00:00:00Z'), type: 'Vaccination', fait: true }],
+    })
+    mocks.soinFindMany.mockResolvedValue([{
+      id: 95,
+      date: new Date('2026-08-08T00:00:00Z'),
+      type: 'Vermifuge',
+      produit: 'Dectomax',
+      fait: true,
+      finAttenteLait: new Date('2026-09-08T00:00:00Z'),
+      animalId: null,
+      lotId: 58,
+    }])
+
+    const response = await callGet()
+
+    expect(response.status).toBe(200)
+    const { data } = await response.json()
+    expect(mocks.soinFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { userId: 'user-1', lotId: 58 },
+    }))
+    expect(data.soins.map((s: { id: number }) => s.id)).toEqual([95, 1])
+    expect(data.soins[0].viaLot).toBe(true)
+    expect(data.soins[0].finAttenteLait).toBe('2026-09-08T00:00:00.000Z')
+    expect(data.soins[1].viaLot).toBeUndefined()
+  })
+
+  it('ne requête pas les soins de lot pour un animal sans lot', async () => {
+    mocks.animalFindFirst.mockResolvedValue({
+      id: 7,
+      lotId: null,
+      soins: [{ id: 1, date: new Date('2026-08-01T00:00:00Z'), type: 'Vaccination', fait: true }],
+    })
+
+    const response = await callGet()
+
+    expect(response.status).toBe(200)
+    expect(mocks.soinFindMany).not.toHaveBeenCalled()
+    const { data } = await response.json()
+    expect(data.soins).toHaveLength(1)
+  })
+})
 
 describe('affectation d’un lot via PUT /api/elevage/animaux/[id]', () => {
   beforeEach(() => {

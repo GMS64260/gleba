@@ -6,6 +6,7 @@
  */
 
 import * as React from "react"
+import { ouvrirApercu } from "@/lib/apercu-document"
 import { CalendarClock, Plus, Trash2, Pencil, FileText } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -58,6 +59,7 @@ export function ReservationsSubTab() {
   const [open, setOpen] = React.useState(false)
   const [editingId, setEditingId] = React.useState<string | null>(null)
   const [form, setForm] = React.useState(EMPTY)
+  const [isSubmitting, setIsSubmitting] = React.useState(false)
 
   const fetchData = React.useCallback(async () => {
     setLoading(true)
@@ -99,6 +101,7 @@ export function ReservationsSubTab() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isSubmitting) return
     if (!form.acquereurNom.trim()) { toast({ variant: "destructive", title: "Nom de l'acquéreur requis" }); return }
     const payload = {
       ...(editingId ? { id: editingId } : {}),
@@ -107,14 +110,19 @@ export function ReservationsSubTab() {
       statut: form.statut, acompte: form.acompte || null, montant: form.montant || null,
       dateLivraison: form.dateLivraison || null, notes: form.notes || null,
     }
-    const res = await fetch("/api/elevage/reservations", {
-      method: editingId ? "PATCH" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-    if (!res.ok) { const j = await res.json().catch(() => null); toast({ variant: "destructive", title: "Erreur", description: j?.error || "Échec" }); return }
-    toast({ title: editingId ? "Réservation modifiée" : "Réservation créée" })
-    setOpen(false); fetchData()
+    setIsSubmitting(true)
+    try {
+      const res = await fetch("/api/elevage/reservations", {
+        method: editingId ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      if (!res.ok) { const j = await res.json().catch(() => null); toast({ variant: "destructive", title: "Erreur", description: j?.error || "Échec" }); return }
+      toast({ title: editingId ? "Réservation modifiée" : "Réservation créée" })
+      setOpen(false); fetchData()
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const changerStatut = async (r: Reservation, statut: string) => {
@@ -189,9 +197,9 @@ export function ReservationsSubTab() {
                       <Button variant="ghost" size="sm" title="Documents de cession"><FileText className="h-4 w-4" /></Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => window.open(`/api/elevage/reservations/${r.id}/document?type=contrat`, "_blank")}>Projet de contrat</DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => window.open(`/api/elevage/reservations/${r.id}/document?type=engagement`, "_blank")}>Trame d’engagement</DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => window.open(`/api/elevage/reservations/${r.id}/document?type=attestation`, "_blank")}>Projet d’attestation</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => ouvrirApercu(`/api/elevage/reservations/${r.id}/document?type=contrat`, `Projet de contrat — ${r.acquereurNom}`)}>Projet de contrat</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => ouvrirApercu(`/api/elevage/reservations/${r.id}/document?type=engagement`, `Trame d'engagement — ${r.acquereurNom}`)}>Trame d’engagement</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => ouvrirApercu(`/api/elevage/reservations/${r.id}/document?type=attestation`, `Projet d'attestation — ${r.acquereurNom}`)}>Projet d’attestation</DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                   <Button variant="ghost" size="sm" onClick={() => openEdit(r)}><Pencil className="h-4 w-4" /></Button>
@@ -241,7 +249,7 @@ export function ReservationsSubTab() {
             <div className="space-y-2"><Label>Notes</Label><Input value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} placeholder="Préférences, délai de réflexion…" /></div>
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>Annuler</Button>
-              <Button type="submit" disabled={!form.acquereurNom.trim()}>{editingId ? "Enregistrer" : "Créer"}</Button>
+              <Button type="submit" disabled={isSubmitting || !form.acquereurNom.trim()}>{isSubmitting ? "Enregistrement..." : editingId ? "Enregistrer" : "Créer"}</Button>
             </div>
           </form>
         </DialogContent>

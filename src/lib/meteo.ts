@@ -5,6 +5,7 @@
  */
 
 import prisma from '@/lib/prisma'
+import { getOrFetch } from '@/lib/cache-helper'
 
 // ============================================================
 // TYPES
@@ -106,9 +107,24 @@ function roundCoord(v: number): number {
 }
 
 /**
- * Récupère les prévisions météo 7 jours depuis Open-Meteo
+ * Récupère les prévisions météo 7 jours depuis Open-Meteo.
+ * Caché en base (generic_cache) 30 min par coordonnées arrondies (~1 km) :
+ * le cache fetch de Next vit dans .next/cache, non monté en volume, donc
+ * perdu à chaque déploiement — et sa clé en pleine précision ne mutualisait
+ * rien entre le widget d'en-tête et la page Météo.
  */
 export async function fetchOpenMeteoForecast(lat: number, lng: number): Promise<{
+  current: MeteoActuelle | null
+  daily: MeteoPrevision[]
+}> {
+  return getOrFetch(
+    `openmeteo:forecast:${roundCoord(lat)},${roundCoord(lng)}`,
+    () => fetchOpenMeteoForecastUncached(lat, lng),
+    30 * 60_000
+  )
+}
+
+async function fetchOpenMeteoForecastUncached(lat: number, lng: number): Promise<{
   current: MeteoActuelle | null
   daily: MeteoPrevision[]
 }> {
@@ -183,9 +199,24 @@ export async function fetchOpenMeteoForecast(lat: number, lng: number): Promise<
 }
 
 /**
- * Récupère l'historique météo depuis Open-Meteo Archive
+ * Récupère l'historique météo depuis Open-Meteo Archive.
+ * Caché en base 24 h (les données passées ERA5 sont immuables) : ce fetch
+ * n'avait AUCUN cache ni timeout et se payait à chaque affichage météo.
  */
 export async function fetchOpenMeteoHistory(
+  lat: number,
+  lng: number,
+  startDate: string,
+  endDate: string
+): Promise<MeteoJournaliere[]> {
+  return getOrFetch(
+    `openmeteo:archive:${roundCoord(lat)},${roundCoord(lng)}:${startDate}:${endDate}`,
+    () => fetchOpenMeteoHistoryUncached(lat, lng, startDate, endDate),
+    24 * 60 * 60_000
+  )
+}
+
+async function fetchOpenMeteoHistoryUncached(
   lat: number,
   lng: number,
   startDate: string,
@@ -210,7 +241,16 @@ export async function fetchOpenMeteoHistory(
     timezone: 'auto', // audit #59 : fuseau du lieu (correct en métropole ET Outre-mer)
   })
 
-  const res = await fetch(`${OPEN_METEO_ARCHIVE_URL}?${params}`)
+  // Même garde-fou que le forecast : 8 s max, sinon un Open-Meteo lent
+  // bloque la réponse applicative entière.
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 8000)
+  let res: Response
+  try {
+    res = await fetch(`${OPEN_METEO_ARCHIVE_URL}?${params}`, { signal: controller.signal })
+  } finally {
+    clearTimeout(timeoutId)
+  }
 
   if (!res.ok) {
     throw new Error(`Open-Meteo archive error: ${res.status} ${res.statusText}`)
@@ -483,6 +523,22 @@ export async function getMeteoForParcelle(
   // Vérifier le cache d'abord (prévisions < 1h)
   const cachedToday = await getMeteoWithCache(lat, lng, new Date().toISOString().split('T')[0])
 
+  // Historique 7 derniers jours : indépendant du forecast, on le lance en
+  // parallèle au lieu de l'attendre en série (il pesait 30 à 50 % du temps
+  // de réponse de /api/meteo).
+  const today = new Date()
+  const weekAgo = new Date(today)
+  weekAgo.setDate(weekAgo.getDate() - 8) // -8 car archive exclut aujourd'hui
+  const yesterday = new Date(today)
+  yesterday.setDate(yesterday.getDate() - 1)
+  const historiquePromise = fetchOpenMeteoHistory(
+    lat, lng,
+    weekAgo.toISOString().split('T')[0],
+    yesterday.toISOString().split('T')[0]
+  )
+  // L'historique peut échouer pour des dates trop récentes, on ignore
+  const historiqueSafe = historiquePromise.catch(() => [] as MeteoJournaliere[])
+
   // Fetch prévisions Open-Meteo (necessaire pour current + daily 7j)
   const forecast = await fetchOpenMeteoForecast(lat, lng)
   let current = forecast.current
@@ -534,24 +590,11 @@ export async function getMeteoForParcelle(
     }
   }
 
-  // Historique 7 derniers jours
-  const today = new Date()
-  const weekAgo = new Date(today)
-  weekAgo.setDate(weekAgo.getDate() - 8) // -8 car archive exclut aujourd'hui
-  const yesterday = new Date(today)
-  yesterday.setDate(yesterday.getDate() - 1)
-
-  let historique7j: MeteoJournaliere[] = []
-  try {
-    historique7j = await fetchOpenMeteoHistory(
-      lat, lng,
-      weekAgo.toISOString().split('T')[0],
-      yesterday.toISOString().split('T')[0]
-    )
+  // Historique 7 derniers jours (lancé en parallèle plus haut)
+  const historique7j = await historiqueSafe
+  if (historique7j.length > 0) {
     // Sauvegarder l'historique en cache (batch)
     await Promise.all(historique7j.map(day => saveMeteoCache(lat, lng, day, 'open-meteo')))
-  } catch {
-    // L'historique peut échouer pour des dates trop récentes, on ignore
   }
 
   return {

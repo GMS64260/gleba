@@ -8,7 +8,7 @@ import * as React from "react"
 import { useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
 import { ColumnDef } from "@tanstack/react-table"
-import { Leaf, Salad, TreeDeciduous, Cherry, Sprout, Flower2 } from "lucide-react"
+import { Leaf, Salad, TreeDeciduous, Cherry, Sprout, Flower, Flower2 } from "lucide-react"
 
 import { DataTable } from "@/components/tables/DataTable"
 import { Badge } from "@/components/ui/badge"
@@ -21,26 +21,24 @@ import {
   filtrerParOrigine,
   type FiltreOrigineValue,
 } from "@/components/referentiel/catalogue-communaute"
+import { formatRendement, libelleTypeEspece } from "@/lib/validations/espece"
 
 const ESPECE_TYPES = [
   { value: "all", label: "Tous", icon: Leaf },
   { value: "legume", label: "Légumes", icon: Salad },
   { value: "aromatique", label: "Aromatiques", icon: Flower2 },
+  // Ticket FB-PMWX8O — production florale.
+  { value: "fleur", label: "Fleurs", icon: Flower },
   { value: "engrais_vert", label: "Engrais verts", icon: Sprout },
   { value: "arbre_fruitier", label: "Arbres fruitiers", icon: TreeDeciduous },
   { value: "petit_fruit", label: "Petits fruits", icon: Cherry },
 ] as const
 
-// Bug feedback testeur 2026-05-26 (cmpm71z5s) — ajout du label
-// "Ornement" pour ne pas afficher la valeur brute minuscule "ornement".
-const TYPE_LABELS: Record<string, string> = {
-  legume: "Légume",
-  arbre_fruitier: "Arbre fruitier",
-  petit_fruit: "Petit fruit",
-  aromatique: "Aromatique",
-  engrais_vert: "Engrais vert",
-  ornement: "Ornement",
-}
+// Bug feedback testeur 2026-05-26 (cmpm71z5s) : le label « Ornement » avait été
+// ajouté ICI pour ne pas afficher la valeur brute minuscule « ornement ». Le
+// correctif n'a jamais atteint les trois autres copies de la même carte, et le
+// défaut a été re-signalé sur l'écran de création deux mois et demi plus tard
+// (FB-E33FAA, 2026-08-18). Les libellés viennent maintenant du référentiel.
 
 interface EspeceWithRelations {
   id: string
@@ -53,6 +51,7 @@ interface EspeceWithRelations {
   familleId: string | null
   nomLatin: string | null
   rendement: number | null
+  uniteRendement: string | null
   vivace: boolean
   besoinEau: number | null
   aPlanifier: boolean
@@ -99,7 +98,7 @@ const columns: ColumnDef<EspeceWithRelations>[] = [
       const type = getValue() as string
       return (
         <Badge variant="outline" className="text-xs">
-          {TYPE_LABELS[type] || type}
+          {libelleTypeEspece(type)}
         </Badge>
       )
     },
@@ -131,14 +130,11 @@ const columns: ColumnDef<EspeceWithRelations>[] = [
   },
   {
     accessorKey: "rendement",
-    header: "Rendement (kg/m²)",
-    cell: ({ getValue }) => {
-      const val = getValue() as number | null
-      // Format français (virgule) cohérent avec la fiche espèce (cmpmqxjug).
-      return val != null
-        ? val.toLocaleString("fr-FR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })
-        : "-"
-    },
+    // QA cmsqlu3os — l'unité vit dans la cellule, pas dans l'en-tête : la même
+    // colonne mélange du kg/m² (maraîchage), du kg/arbre (fruitiers) et des
+    // t/ha (engrais verts).
+    header: "Rendement",
+    cell: ({ row }) => formatRendement(row.original.rendement, row.original.uniteRendement),
   },
   {
     accessorKey: "besoinEau",
@@ -228,7 +224,13 @@ export function ReferentielTab({ year }: ReferentielTabProps) {
       <Tabs value={selectedType} onValueChange={setSelectedType}>
         <TabsList className="flex-wrap h-auto gap-1">
           {ESPECE_TYPES.map(({ value, label, icon: Icon }) => (
-            <TabsTrigger key={value} value={value} className="flex items-center gap-1">
+            <TabsTrigger
+              key={value}
+              value={value}
+              aria-label={label}
+              title={label}
+              className="flex items-center gap-1"
+            >
               <Icon className="h-4 w-4" />
               <span className="hidden sm:inline">{label}</span>
             </TabsTrigger>

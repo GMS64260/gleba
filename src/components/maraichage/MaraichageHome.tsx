@@ -11,9 +11,9 @@ import { ModuleTabBar } from "@/components/shell/ModuleTabBar"
 import { updateDashboardSearchParams } from "@/lib/dashboard-navigation"
 import {
   DASHBOARD_YEAR_STORAGE_KEY,
+  anneesMaraichage,
   resolveDashboardYear,
 } from "@/lib/dashboard-year"
-import { WelcomeDialog } from "@/components/onboarding/WelcomeDialog"
 import {
   Sprout,
   LayoutGrid,
@@ -46,10 +46,13 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]["id"]
 
-// QA Camille 2026-05-15 — bonus : plage factorisée [N+1 … N-4]
-import { getAvailableYears } from "@/components/year-selector"
+// QA Camille 2026-05-15 — bonus : plage factorisée.
+// QA cmswwx0nj — le module Maraîchage couvre l'horizon des rotations
+// (N−5 … N+5), pas seulement N+1 : une culture 2028 matérialisée depuis une
+// rotation restait inaccessible faute d'année dans le sélecteur. Même plage
+// que les écrans de planification (voir anneesMaraichage).
 const currentYearNow = new Date().getFullYear()
-const availableYears = getAvailableYears()
+const availableYears = anneesMaraichage(currentYearNow)
 
 export function MaraichageHome() {
   return (
@@ -62,7 +65,6 @@ export function MaraichageHome() {
 function HomeContent() {
   const { data: session } = useSession()
   const searchParams = useSearchParams()
-  const [showWelcome, setShowWelcome] = React.useState(false)
   // BUG #9 — le choix d'année du dashboard n'était pas persisté (revenait à
   // l'année courante après F5). On le lit/écrit dans localStorage, sur le
   // même pattern que la compta (`gleba_compta_year`).
@@ -152,38 +154,13 @@ function HomeContent() {
     [searchParams]
   )
 
-  // Vérifier si l'utilisateur est nouveau
-  React.useEffect(() => {
-    async function checkNewUser() {
-      if (localStorage.getItem("gleba-onboarding-complete")) return
-      try {
-        const response = await fetch("/api/import-test-data")
-        if (response.ok) {
-          const result = await response.json()
-          if (result.canImport) setShowWelcome(true)
-        }
-      } catch (error) {
-        console.error("Erreur verification nouvel utilisateur:", error)
-      }
-    }
-    if (session?.user) checkNewUser()
-  }, [session])
-
-  const handleOnboardingComplete = React.useCallback(() => {
-    localStorage.setItem("gleba-onboarding-complete", "true")
-    window.location.reload()
-  }, [])
+  // Refonte onboarding 2026-08-17 : le WelcomeDialog (import de démonstration
+  // via localStorage) doublonnait le parcours /onboarding, qui couvre désormais
+  // la configuration minimale ET le choix des données d'exemple.
 
   return (
     <div className="min-h-screen bg-gris-nuage aurora-bg-subtle">
       <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
-      {/* Dialog de bienvenue */}
-      <WelcomeDialog
-        open={showWelcome}
-        onOpenChange={setShowWelcome}
-        onComplete={handleOnboardingComplete}
-      />
-
       {/* Assistant culture */}
       <AssistantDialog open={showAssistant} onOpenChange={handleAssistantOpenChange} />
 
@@ -301,7 +278,11 @@ function HomeContent() {
       )}
 
       {/* Contenu de l'onglet actif */}
-      <main className="container mx-auto px-4 py-6 max-w-[1600px] space-y-6">
+      {/* QA cmsnogxml / cmsnowodu — pb-24 réserve la bande occupée par le
+          bouton flottant Assistant IA (fixed bottom-4 right-4, 48px) : sans
+          ce dégagement, les dernières actions de la page (« Noter
+          l'arrosage ») restaient piégées sous la bulle à 390px de large. */}
+      <main className="container mx-auto px-4 pt-6 pb-24 max-w-[1600px] space-y-6">
         {/* POSTREVIEW Sprint 6 — Tour Shepherd.js Maraîchage */}
         {activeTab === "calendrier" && <TourMaraichage />}
         {/* PROMPT 22 + POSTREVIEW Sprint 6 — Bandeau "Premiers pas" Maraîchage */}

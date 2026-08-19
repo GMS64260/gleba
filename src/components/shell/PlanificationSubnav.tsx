@@ -10,7 +10,7 @@
  */
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useSearchParams } from "next/navigation"
 import {
   LayoutDashboard,
   Sprout,
@@ -38,6 +38,13 @@ const SECTIONS = [
 
 export function PlanificationSubnav() {
   const pathname = usePathname()
+  // QA cmswunyun — le passage « Cultures prévues 2028 → Créer les cultures »
+  // perdait l'année (repli silencieux sur l'année courante). L'année du
+  // deep-link est propagée sur les liens de sections.
+  const searchParams = useSearchParams()
+  const annee = searchParams.get("annee")
+  const avecAnnee = (href: string) =>
+    annee && href.startsWith(BASE) ? `${href}?annee=${encodeURIComponent(annee)}` : href
 
   return (
     <nav
@@ -49,7 +56,7 @@ export function PlanificationSubnav() {
         return (
           <Link
             key={s.label}
-            href={s.href}
+            href={avecAnnee(s.href)}
             aria-current={isActive ? "page" : undefined}
             className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm whitespace-nowrap transition-colors ${
               isActive

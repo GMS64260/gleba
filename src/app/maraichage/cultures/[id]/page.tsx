@@ -7,7 +7,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { useRouter, useParams } from "next/navigation"
-import { ArrowLeft, Sprout, Save, Trash2 } from "lucide-react"
+import { ArrowLeft, Sprout, Save, SprayCan, Trash2 } from "lucide-react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { format } from "date-fns"
@@ -36,18 +36,10 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
-import { updateCultureSchema, type UpdateCultureInput } from "@/lib/validations"
+import { cultureUpdateFormSchema, type UpdateCultureInput } from "@/lib/validations"
 import { estimerNombrePlantsStrict } from "@/lib/assistant-helpers"
 import { libelleItp } from "@/lib/itp-label"
-
-// Convertir un numéro de semaine (1-52) en date pour une annee donnée
-function weekToDate(year: number, week: number): Date {
-  const jan4 = new Date(year, 0, 4)
-  const dayOfWeek = jan4.getDay() || 7
-  const monday = new Date(jan4)
-  monday.setDate(jan4.getDate() - dayOfWeek + 1 + (week - 1) * 7)
-  return monday
-}
+import { datesDepuisItp, recolteApresDebut } from "@/lib/cultures/dates-itp"
 
 interface ITPData {
   id: string
@@ -56,6 +48,11 @@ interface ITPData {
   semaineSemis: number | null
   semainePlantation: number | null
   semaineRecolte: number | null
+  // QA cmsfxvbab — 173 ITP du référentiel n'ont ni semaine de semis ni
+  // semaine de plantation : leur fenêtre d'implantation est le seul jalon
+  // de début de cycle exploitable.
+  semaineImplantationDebut: number | null
+  dureeCulture: number | null
   dureeRecolte: number | null
   nbRangs: number | null
   espacement: number | null
@@ -76,12 +73,18 @@ export default function EditCulturePage() {
   // Empêcher l'auto-remplissage au chargement initial
   const initialLoadDone = React.useRef(false)
   const initialItpId = React.useRef<string | null>(null)
+  // Dernier début de cycle appliqué (chargement, changement d'ITP ou saisie).
+  // Le recalage de la récolte ne suit que les CHANGEMENTS de début : éditer la
+  // seule récolte ne déclenche rien.
+  const debutCycleRef = React.useRef<string | null>(null)
   // Mémoriser les valeurs de l'ITP précédent pour la logique d'écrasement intelligent
   const prevItpNbRangs = React.useRef<number | null>(null)
   const prevItpEspacement = React.useRef<number | null>(null)
 
   const form = useForm<UpdateCultureInput>({
-    resolver: zodResolver(updateCultureSchema),
+    // QA cmsfxvbab — schéma formulaire : bloque récolte < semis AVANT le PUT,
+    // avec message inline sous le champ.
+    resolver: zodResolver(cultureUpdateFormSchema),
     defaultValues: {
       especeId: "",
       varieteId: null,
@@ -131,6 +134,9 @@ export default function EditCulturePage() {
 
         // Mémoriser l'ITP initial pour ne pas écraser les données existantes
         initialItpId.current = cultureData.itpId || null
+        // Début de cycle tel que chargé : baseline du recalage de la récolte.
+        const debutInitial = cultureData.datePlantation || cultureData.dateSemis
+        debutCycleRef.current = debutInitial ? new Date(debutInitial).toISOString() : null
         // Mémoriser les valeurs initiales de nbRangs/espacement de l'ITP
         prevItpNbRangs.current = cultureData.nbRangs || null
         prevItpEspacement.current = cultureData.espacement || null
@@ -202,20 +208,17 @@ export default function EditCulturePage() {
 
     const year = form.getValues("annee") || new Date().getFullYear()
 
-    // Chronologie : une étape antérieure au semis tombe l'année suivante (ITP
-    // chevauchant deux années, ex. semis août → récolte janvier).
-    if (itp.semaineSemis) {
-      form.setValue("dateSemis", weekToDate(year, itp.semaineSemis))
-    }
-    if (itp.semainePlantation) {
-      const an = itp.semaineSemis && itp.semainePlantation < itp.semaineSemis ? year + 1 : year
-      form.setValue("datePlantation", weekToDate(an, itp.semainePlantation))
-    }
-    if (itp.semaineRecolte) {
-      const ref = itp.semainePlantation ?? itp.semaineSemis
-      const an = ref && itp.semaineRecolte < ref ? year + 1 : year
-      form.setValue("dateRecolte", weekToDate(an, itp.semaineRecolte))
-    }
+    // Chronologie garantie croissante par datesDepuisItp : ITP à cheval sur
+    // deux années, et ITP « implantation seule » dont la récolte était posée en
+    // absolu, donc parfois avant le semis de la culture (QA cmsfxvbab).
+    const cycle = datesDepuisItp(year, itp)
+    if (cycle.dateSemis) form.setValue("dateSemis", cycle.dateSemis)
+    if (cycle.datePlantation) form.setValue("datePlantation", cycle.datePlantation)
+    if (cycle.dateRecolte) form.setValue("dateRecolte", cycle.dateRecolte)
+    // Le cycle vient d'être posé en bloc : mémoriser son début pour que le
+    // recalage de la récolte ne réécrive pas celle de datesDepuisItp.
+    const debutCycle = cycle.datePlantation ?? cycle.dateSemis
+    if (debutCycle) debutCycleRef.current = debutCycle.toISOString()
 
     // Auto-remplir nbRangs seulement si vide ou encore égal à la valeur de l'ITP précédent
     const currentNbRangs = form.getValues("nbRangs")
@@ -237,6 +240,39 @@ export default function EditCulturePage() {
     // Mettre à jour la reference pour les changements suivants
     initialItpId.current = selectedItp
   }, [selectedItp, itps, form])
+
+  // Friction 2026-08-14 — la date de récolte SUIT le début de cycle saisi.
+  // Les dates n'étaient recalculées qu'au changement d'ITP : sur la fiche d'un
+  // ail planté le 05/03, la récolte restait au 11/07 de l'année SUIVANTE
+  // (ancrage ITP d'automne). À chaque changement de semis/plantation par
+  // l'utilisateur, la récolte est recalée en préservant la durée du cycle ITP
+  // (`recolteApresDebut`, source unique) ; éditer la seule récolte ne
+  // déclenche rien, et une récolte volontairement vide n'est pas re-remplie.
+  const watchedDateSemis = form.watch("dateSemis")
+  const watchedDatePlantation = form.watch("datePlantation")
+  React.useEffect(() => {
+    if (!initialLoadDone.current) return
+    const debutRaw = watchedDatePlantation ?? watchedDateSemis
+    if (!debutRaw) return
+    const debut = new Date(debutRaw)
+    if (Number.isNaN(debut.getTime())) return
+    const debutKey = debut.toISOString()
+    const debutChange = debutCycleRef.current !== null && debutCycleRef.current !== debutKey
+    debutCycleRef.current = debutKey
+
+    const recolteRaw = form.getValues("dateRecolte")
+    if (!recolteRaw) return
+    const recolte = new Date(recolteRaw)
+    if (Number.isNaN(recolte.getTime())) return
+    const recolteIncoherente = recolte <= debut
+    if (!debutChange && !recolteIncoherente) return
+
+    const itp = itps.find((i) => i.id === selectedItp)
+    if (!itp) return
+    const nouvelleRecolte = recolteApresDebut(debut, itp)
+    if (!nouvelleRecolte || nouvelleRecolte.getTime() === recolte.getTime()) return
+    form.setValue("dateRecolte", nouvelleRecolte)
+  }, [watchedDateSemis, watchedDatePlantation, selectedItp, itps, form])
 
   // Mettre à jour la longueur quand la planche change.
   // Bug Ail #509 — En mode édition, on n'écrase la longueur qu'après que l'utilisateur
@@ -336,7 +372,7 @@ export default function EditCulturePage() {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-50">
-        <AppHeader current="maraichage" />
+        <AppHeader current="maraichage" showLune />
         <PageToolbar>
           <Skeleton className="h-8 w-64" />
         </PageToolbar>
@@ -352,7 +388,7 @@ export default function EditCulturePage() {
     <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
       <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
       {/* Header */}
-      <AppHeader current="maraichage" />
+      <AppHeader current="maraichage" showLune />
       <PageToolbar>
         <div className="flex items-center gap-4">
           <Link href="/maraichage/cultures">
@@ -366,10 +402,25 @@ export default function EditCulturePage() {
             <h1 className="text-xl font-bold">Modifier culture #{cultureId}</h1>
           </div>
         </div>
-        <Button variant="destructive" size="sm" onClick={handleDelete}>
-          <Trash2 className="h-4 w-4 mr-2" />
-          Supprimer
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* QA cmsbu1q0s — la saisie phyto (AMM, dose, DAR, ZNT) vit dans
+              Interventions ; sans ce lien elle était introuvable depuis la
+              fiche culture. Même pattern de prefill que le verger (SanteTab). */}
+          <Link
+            href={`/interventions?prefill=${encodeURIComponent(
+              new URLSearchParams({ type: "traitement_phyto", cultureId: String(cultureId) }).toString()
+            )}`}
+          >
+            <Button variant="outline" size="sm">
+              <SprayCan className="h-4 w-4 mr-2" />
+              Traitement phyto
+            </Button>
+          </Link>
+          <Button variant="destructive" size="sm" onClick={handleDelete}>
+            <Trash2 className="h-4 w-4 mr-2" />
+            Supprimer
+          </Button>
+        </div>
       </PageToolbar>
 
       {/* Form */}

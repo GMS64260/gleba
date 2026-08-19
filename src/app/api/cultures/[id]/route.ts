@@ -11,7 +11,11 @@ import { updateCultureSchema, normalizeCultureDateFields } from '@/lib/validatio
 import { validateCultureDates } from '@/lib/validations/date-validation'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { irrigationCache } from '@/lib/irrigation-cache'
+import { etendrePlanArrosage } from '@/lib/irrigation-scheduler'
 import { invalidateKpi } from '@/lib/kpi'
+import { etatCulture } from '@/lib/cultures/etat'
+import { CHAMP_DATE_ETAPE, dateExecutionARecaler } from '@/lib/cultures/execution'
+import type { ChampDateEtape, ChampEtape } from '@/lib/cultures/execution'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -66,15 +70,7 @@ export async function GET(
     // Ajouter les champs calculés
     const cultureWithComputed = {
       ...culture,
-      etat: culture.terminee
-        ? 'Terminée'
-        : culture.recolteFaite
-          ? 'En récolte'
-          : culture.plantationFaite
-            ? 'Plantée'
-            : culture.semisFait
-              ? 'Semée'
-              : 'Planifiée',
+      etat: etatCulture(culture),
       totalRecolte: culture.recoltes.reduce((sum, r) => sum + r.quantite, 0),
     }
 
@@ -213,6 +209,14 @@ export async function PUT(
     })
 
     invalidateKpi(session!.user.id)
+
+    // Friction 2026-08-14 — un plan d'arrosage existant suit les cultures :
+    // cocher « à irriguer » ou (re)dater le cycle depuis le formulaire doit
+    // produire les passages sans repasser par l'onglet Calendrier.
+    if (culture.aIrriguer) {
+      await etendrePlanArrosage(session!.user.id, culture.id)
+    }
+
     return NextResponse.json(
       dateWarnings.length > 0 ? { ...culture, warnings: dateWarnings } : culture
     )
@@ -250,6 +254,10 @@ export async function PATCH(
       where: {
         id: cultureId,
         userId: session!.user.id,
+      },
+      include: {
+        _count: { select: { recoltes: true } },
+        itp: { select: { semainePlantation: true } },
       },
     })
 
@@ -306,6 +314,90 @@ export async function PATCH(
       )
     }
 
+    // QA cmsio768u / cmsio8o54 (2026-08-07) — les actions rapides du tableau
+    // sont des bascules : recliquer sur une étape déjà faite la dé-marque. La
+    // cascade d'état (récolte > plantation > semis) faisait alors régresser une
+    // culture qui portait déjà des récoltes — « Planifiée » affiché à côté de
+    // 3 récoltes, ou « Plantée » à côté de 4. Le registre de récolte est la
+    // source de vérité : on refuse de le contredire plutôt que de recalculer un
+    // état faux.
+    const ETAPES = ['semisFait', 'plantationFaite', 'recolteFaite'] as const
+    const LIBELLE_ETAPE: Record<string, string> = {
+      semisFait: 'le semis',
+      plantationFaite: 'la plantation',
+      recolteFaite: 'la récolte',
+    }
+    const etapesAnnulees = ETAPES.filter((e) => e in updateData && updateData[e] === false)
+
+    // QA cmsoaedw2 — un ITP en semis direct (pas de semaine de plantation) n'a
+    // pas d'étape plantation : la marquer « faite » fabrique un état de suivi
+    // incohérent. Le masquage UI du 2026-08-11 est ici verrouillé côté serveur.
+    // On ne bloque que la POSE (true) : une valeur héritée reste annulable, et
+    // le PUT du formulaire d'édition (geste explicite) n'est pas concerné.
+    const datePlantationFinale = 'datePlantation' in updateData
+      ? updateData.datePlantation
+      : existing.datePlantation
+    if (
+      updateData.plantationFaite === true &&
+      existing.itp != null &&
+      existing.itp.semainePlantation == null &&
+      datePlantationFinale == null
+    ) {
+      return NextResponse.json(
+        {
+          error: `L'itinéraire technique de cette culture est en semis direct :`
+            + ` il n'y a pas d'étape de plantation à marquer. Renseignez une date`
+            + ` de plantation si cette culture est réellement repiquée.`,
+        },
+        { status: 409 }
+      )
+    }
+
+    if (etapesAnnulees.length > 0 && existing._count.recoltes > 0) {
+      const n = existing._count.recoltes
+      return NextResponse.json(
+        {
+          error: `Cette culture porte ${n} récolte${n > 1 ? 's' : ''} enregistrée${n > 1 ? 's' : ''}`
+            + ` : ${etapesAnnulees.map((e) => LIBELLE_ETAPE[e]).join(' et ')} ne peut pas être annulé`
+            + ` sans contredire le registre de récolte. Supprimez d'abord les récoltes concernées.`,
+          recoltes: n,
+        },
+        { status: 409 }
+      )
+    }
+
+    // Cohérence du cycle : annuler une étape amont en laissant une étape aval
+    // marquée faite produit un état incohérent, sauf si le même appel annule
+    // aussi l'aval.
+    const resteraFaite = (champ: (typeof ETAPES)[number]) =>
+      champ in updateData ? updateData[champ] === true : Boolean(existing[champ])
+
+    for (const annulee of etapesAnnulees) {
+      const aval = ETAPES.slice(ETAPES.indexOf(annulee) + 1).filter(resteraFaite)
+      if (aval.length > 0) {
+        return NextResponse.json(
+          {
+            error: `Annulez d'abord ${aval.map((e) => LIBELLE_ETAPE[e]).join(' et ')}`
+              + ` : le cycle ne peut pas revenir avant ${LIBELLE_ETAPE[annulee]}`
+              + ` tant qu'une étape postérieure reste marquée faite.`,
+          },
+          { status: 409 }
+        )
+      }
+    }
+
+    // QA cmsp66tdm — une étape marquée faite ne peut pas rester datée dans le
+    // futur : cliquer une tâche planifiée au 15/08 le 11/08 enregistrait « Semis
+    // fait le 15/08 » au registre. On recale la date d'exécution sur le jour
+    // courant, sauf si l'appel fournit lui-même la date (geste explicite).
+    for (const [champEtape, champDate] of Object.entries(CHAMP_DATE_ETAPE) as Array<
+      [ChampEtape, ChampDateEtape]
+    >) {
+      if (updateData[champEtape] !== true || champDate in updateData) continue
+      const recalage = dateExecutionARecaler(existing[champDate])
+      if (recalage) updateData[champDate] = recalage
+    }
+
     const culture = await prisma.culture.update({
       where: { id: cultureId },
       data: updateData,
@@ -317,6 +409,15 @@ export async function PATCH(
     }
 
     invalidateKpi(session!.user.id)
+
+    // Friction 2026-08-14 — un plan d'arrosage existant suit les cultures :
+    // le toggle « à irriguer » des actions rapides doit produire les passages
+    // sans repasser par l'onglet Calendrier.
+    const champsPlanArrosage = ['aIrriguer', 'dateSemis', 'datePlantation', 'dateRecolte']
+    if (culture.aIrriguer && champsPlanArrosage.some((champ) => champ in updateData)) {
+      await etendrePlanArrosage(session!.user.id, culture.id)
+    }
+
     return NextResponse.json(culture)
   } catch (error) {
     console.error('PATCH /api/cultures/[id] error:', error)

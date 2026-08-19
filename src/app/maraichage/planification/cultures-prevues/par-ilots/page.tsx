@@ -7,7 +7,6 @@
 import * as React from "react"
 import { Suspense } from "react"
 import Link from "next/link"
-import { useSearchParams } from "next/navigation"
 import { formatSemaine } from "@/lib/assistant-helpers"
 import { ColumnDef } from "@tanstack/react-table"
 import { ArrowLeft, Map, CheckCircle2, XCircle } from "lucide-react"
@@ -24,6 +23,7 @@ import {
 } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
+import { useAnneePlanification } from "@/hooks/use-annee-planification"
 
 interface CulturePrevue {
   plancheId: string
@@ -45,7 +45,7 @@ interface CulturePrevue {
 const columns: ColumnDef<CulturePrevue>[] = [
   {
     accessorKey: "ilot",
-    header: "Ilot",
+    header: "Îlot",
     cell: ({ getValue }) => {
       const ilot = getValue() as string | null
       return ilot ? (
@@ -53,7 +53,7 @@ const columns: ColumnDef<CulturePrevue>[] = [
           {ilot}
         </Badge>
       ) : (
-        <span className="text-muted-foreground">Sans ilot</span>
+        <span className="text-muted-foreground">Sans îlot</span>
       )
     },
   },
@@ -121,20 +121,15 @@ const columns: ColumnDef<CulturePrevue>[] = [
 ]
 
 function CulturesPrevuesParIlotsContent() {
-  const searchParams = useSearchParams()
   const { toast } = useToast()
 
   const [data, setData] = React.useState<CulturePrevue[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
-  const [annee, setAnnee] = React.useState(
-    parseInt(searchParams.get("annee") || new Date().getFullYear().toString())
-  )
+  // QA cmswwu5cc — l'année du hub Planification vit dans une seule source
+  // (URL, puis saison mémorisée du module) : voir useAnneePlanification.
+  const { annee, definirAnnee, annees, pret: anneePrete } = useAnneePlanification()
   const [stats, setStats] = React.useState<{ parIlot: Record<string, number> }>({ parIlot: {} })
 
-  const annees = React.useMemo(() => {
-    const currentYear = new Date().getFullYear()
-    return Array.from({ length: 11 }, (_, i) => currentYear - 5 + i)
-  }, [])
 
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
@@ -156,20 +151,23 @@ function CulturesPrevuesParIlotsContent() {
   }, [annee, toast])
 
   React.useEffect(() => {
+    // Ne pas charger la saison courante avant d'avoir restauré la saison
+    // mémorisée : la réponse tardive écraserait les données de la bonne année.
+    if (!anneePrete) return
     fetchData()
-  }, [fetchData])
+  }, [anneePrete, fetchData])
 
   const handleExport = () => {
-    const headers = ["Ilot", "Planche", "Espèce", "S.Semis", "S.Plantation", "S.Récolte", "Surface (m2)", "Statut"]
+    const headers = ["Îlot", "Planche", "Espèce", "S.Semis", "S.Plantation", "S.Récolte", "Surface (m2)", "Statut"]
     const rows = data.map(c => [
-      c.ilot || "Sans ilot",
+      c.ilot || "Sans îlot",
       c.plancheId,
       c.especeNom ?? c.especeId ?? "",
       c.semaineSemis?.toString() || "",
       c.semainePlantation?.toString() || "",
       c.semaineRecolte?.toString() || "",
       c.surface.toFixed(1),
-      c.existante ? "Créée" : "A créer",
+      c.existante ? "Créée" : "À créer",
     ])
 
     const csv = [headers, ...rows].map(r => r.join(";")).join("\n")
@@ -210,7 +208,7 @@ function CulturesPrevuesParIlotsContent() {
           </div>
           <Select
             value={annee.toString()}
-            onValueChange={(value) => setAnnee(parseInt(value))}
+            onValueChange={(value) => definirAnnee(parseInt(value))}
           >
             <SelectTrigger className="w-[100px]">
               <SelectValue />

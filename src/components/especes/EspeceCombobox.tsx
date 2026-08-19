@@ -28,10 +28,20 @@ import {
   CommandSeparator,
 } from "@/components/ui/command"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { normaliserRecherche, scoreEspece } from "@/lib/especes/recherche"
+import { libelleTypeEspece } from "@/lib/validations/espece"
+
+/**
+ * Valeur cmdk de l'entrée « Créer l'espèce … ». Préfixe sentinelle : le filtre
+ * lui donne un score plancher non nul pour qu'elle reste visible en toute
+ * dernière position, quelle que soit la recherche.
+ */
+const VALEUR_CREATION = "__creer__"
 
 export type EspeceType =
   | "legume"
   | "aromatique"
+  | "fleur"
   | "engrais_vert"
   | "arbre_fruitier"
   | "petit_fruit"
@@ -65,6 +75,9 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "all", label: "Tous" },
   { key: "legume", label: "Légumes" },
   { key: "aromatique", label: "Aromatiques" },
+  // Ticket FB-PMWX8O — une ferme florale conduit ses fleurs sur planche comme
+  // des légumes ; sans cet onglet, ses espèces restaient introuvables au tri.
+  { key: "fleur", label: "Fleurs" },
   { key: "engrais_vert", label: "Engrais verts" },
   { key: "arbre_fruitier", label: "Arbres fruitiers" },
   { key: "petit_fruit", label: "Petits fruits" },
@@ -109,8 +122,12 @@ type Props = {
   className?: string
   /** Id de l'utilisateur courant, pour distinguer ses espèces perso. */
   currentUserId?: string | null
-  /** Si fourni, propose « Créer l'espèce … » quand la recherche ne matche rien. */
-  onCreate?: (nom: string) => void
+  /**
+   * Si fourni, propose « Créer l'espèce … ». `typeSuggere` reprend l'onglet
+   * actif quand il en désigne un : créer depuis l'onglet « Aromatiques » ne
+   * doit plus produire un légume (friction du 2026-07-30).
+   */
+  onCreate?: (nom: string, typeSuggere?: EspeceType) => void
 }
 
 export function EspeceCombobox({
@@ -118,7 +135,7 @@ export function EspeceCombobox({
   value,
   onChange,
   defaultTypes,
-  visibleTabs = ["all", "legume", "aromatique", "engrais_vert", "arbre_fruitier", "petit_fruit"],
+  visibleTabs = ["all", "legume", "aromatique", "fleur", "engrais_vert", "arbre_fruitier", "petit_fruit"],
   placeholder = "Rechercher une espèce…",
   recentStorageKey = "espece-recents-default",
   disabled,
@@ -158,6 +175,33 @@ export function EspeceCombobox({
         .filter((o): o is EspeceOption => o !== undefined),
     [recents, options]
   )
+
+  /**
+   * Espèces écartées par l'onglet courant mais qui répondent à la recherche.
+   *
+   * Friction du 2026-07-30 : le dialogue de culture masque les `petit_fruit`,
+   * donc chercher « Groseillers » ou « Fraise » en maraîchage ne renvoyait
+   * rien et poussait à créer un doublon perso. On les propose désormais dans
+   * un groupe séparé plutôt que de les rendre introuvables.
+   */
+  const horsOnglet = React.useMemo(() => {
+    const q = query.trim()
+    if (!q) return []
+    const visibles = new Set(filtered.map((o) => o.id))
+    return options
+      .filter((o) => !visibles.has(o.id) && scoreEspece(nomOf(o), q) > 0)
+      .sort((a, b) => scoreEspece(nomOf(b), q) - scoreEspece(nomOf(a), q))
+      .slice(0, 8)
+  }, [options, filtered, query])
+
+  // La création reste offerte même quand la recherche remonte des voisins :
+  // « Pois chiche » propose « Pois » sans empêcher de créer le pois chiche.
+  // On la masque seulement si le nom saisi existe déjà à l'identique.
+  const nomExistant = React.useMemo(() => {
+    const q = normaliserRecherche(query)
+    if (!q) return true
+    return options.some((o) => normaliserRecherche(nomOf(o)) === q)
+  }, [options, query])
 
   const selected = options.find((o) => o.id === value)
 
@@ -213,30 +257,19 @@ export function EspeceCombobox({
           ))}
         </div>
         <Command
-          // cmdk fait du fuzzy matching tolérant aux accents et à la casse
-          // par défaut, via son scoring builtin (Sublime-style).
+          // Matching tolérant au pluriel et à la faute de frappe (cf.
+          // lib/especes/recherche). Le score sert aussi au tri de cmdk :
+          // la correspondance exacte reste en tête, la suggestion faible
+          // (saisie composée) en bas, et l'entrée de création toujours après.
           filter={(value, search) => {
-            const v = value.toLowerCase()
-            const s = search.toLowerCase()
-            // Normalisation simple "à"->"a" pour matching tolérant.
-            const norm = (x: string) => x.normalize("NFD").replace(/[̀-ͯ]/g, "")
-            return norm(v).includes(norm(s)) ? 1 : 0
+            if (value.startsWith(VALEUR_CREATION)) return 0.0001
+            return scoreEspece(value, search)
           }}
         >
           <CommandInput placeholder={placeholder} value={query} onValueChange={setQuery} />
           <CommandList>
             <CommandEmpty>
-              {onCreate && query.trim() ? (
-                <button
-                  type="button"
-                  onClick={() => { onCreate(query.trim()); setOpen(false); setQuery("") }}
-                  className="w-full text-left px-2 py-1.5 text-sm text-green-700 hover:bg-green-50 rounded"
-                >
-                  ＋ Créer l&apos;espèce « {query.trim()} » (perso)
-                </button>
-              ) : (
-                <span className="px-2 py-1.5 text-sm text-muted-foreground">Aucune espèce trouvée.</span>
-              )}
+              <span className="px-2 py-1.5 text-sm text-muted-foreground">Aucune espèce trouvée.</span>
             </CommandEmpty>
             {tab === "all" && recentOptions.length > 0 && (
               <>
@@ -290,12 +323,65 @@ export function EspeceCombobox({
                       ) : null
                     })()}
                     {o.type && o.type !== "legume" && (
-                      <span className="text-xs text-muted-foreground">{o.type.replace("_", " ")}</span>
+                      <span className="text-xs text-muted-foreground">{libelleTypeEspece(o.type)}</span>
                     )}
                   </span>
                 </CommandItem>
               ))}
             </CommandGroup>
+            {horsOnglet.length > 0 && (
+              <>
+                <CommandSeparator />
+                <CommandGroup heading="Dans d'autres catégories">
+                  {horsOnglet.map((o) => (
+                    <CommandItem key={`hors-${o.id}`} value={nomOf(o)} onSelect={() => handleSelect(o.id)}>
+                      <Check
+                        className={cn(
+                          "mr-2 h-4 w-4",
+                          value === o.id ? "opacity-100" : "opacity-0"
+                        )}
+                      />
+                      {o.couleur && (
+                        <span
+                          className="inline-block w-2 h-2 rounded-full mr-2"
+                          style={{ backgroundColor: o.couleur }}
+                        />
+                      )}
+                      {nomOf(o)}
+                      <span className="ml-auto flex items-center gap-1">
+                        {(() => {
+                          const b = origineBadge(o, currentUserId)
+                          return b ? (
+                            <span className={cn("text-[10px] px-1.5 py-0.5 rounded", b.cls)}>{b.label}</span>
+                          ) : null
+                        })()}
+                        {o.type && (
+                          <span className="text-xs text-muted-foreground">{o.type.replace("_", " ")}</span>
+                        )}
+                      </span>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </>
+            )}
+            {onCreate && query.trim() && !nomExistant && (
+              <>
+                <CommandSeparator />
+                <CommandGroup>
+                  <CommandItem
+                    value={`${VALEUR_CREATION}${query.trim()}`}
+                    onSelect={() => {
+                      onCreate(query.trim(), tab === "all" ? undefined : tab)
+                      setOpen(false)
+                      setQuery("")
+                    }}
+                    className="text-green-700"
+                  >
+                    ＋ Créer l&apos;espèce « {query.trim()} » (perso)
+                  </CommandItem>
+                </CommandGroup>
+              </>
+            )}
           </CommandList>
         </Command>
       </PopoverContent>

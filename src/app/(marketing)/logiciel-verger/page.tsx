@@ -2,14 +2,14 @@ import type { Metadata } from "next";
 import { BusinessLanding } from "@/components/seo/BusinessLanding";
 
 export const metadata: Metadata = {
-  title: "Logiciel de gestion de verger — Arbres, tailles, traitements et récoltes",
-  description: "Suivez chaque arbre du verger : variété, porte-greffe, emplacement, tailles, greffes, pollinisation, observations, traitements et récoltes dans Gleba.",
+  title: "Logiciel de verger pour micro-ferme — Suivi arbre par arbre",
+  description: "Ajoutez un atelier verger à votre micro-ferme : arbres, variétés, porte-greffes, emplacements, opérations, pollinisation, traitements et récoltes.",
   alternates: { canonical: "https://gleba.fr/logiciel-verger" },
   openGraph: { title: "Logiciel de gestion de verger — Gleba", description: "Le suivi du verger arbre par arbre, de la plantation à la récolte.", url: "https://gleba.fr/logiciel-verger", type: "article" },
 };
 
 export default function Page() {
-  return <BusinessLanding breadcrumb="Logiciel de gestion de verger" currentPath="/logiciel-verger" eyebrow="Verger · Arbres · Variétés" title="Le logiciel de gestion de verger" highlightedTitle="qui garde l'histoire de chaque arbre" introduction="Gleba associe une fiche individuelle, une position sur la ferme et un historique d'opérations à chaque arbre. Les variétés, porte-greffes, pollinisateurs, observations et récoltes restent consultables au même endroit." proof="le module Verger permet déjà d'ajouter, cartographier, filtrer et documenter les arbres, puis de suivre opérations, campagnes, pollinisation et récoltes." screenshot={{ src: "/screenshots/gleba-gestion-verger.png", alt: "Vue réelle du logiciel de gestion de verger Gleba", caption: "Tableau de bord réel du verger de démonstration, avec indicateurs et calendrier." }} capabilities={[
+  return <BusinessLanding breadcrumb="Logiciel de gestion de verger" currentPath="/logiciel-verger" eyebrow="Micro-ferme · Verger · Arbres · Variétés" title="Le logiciel de gestion de verger" highlightedTitle="qui garde l'histoire de chaque arbre" introduction="Gleba relie l'atelier verger au reste de la micro-ferme. Chaque arbre conserve sa fiche, sa position, ses opérations, ses observations et ses récoltes, tandis que parcelles, stocks et gestion restent dans le même carnet d'exploitation." proof="le module Verger permet déjà d'ajouter, cartographier, filtrer et documenter les arbres, puis de suivre opérations, campagnes, pollinisation et récoltes." screenshot={{ src: "/screenshots/gleba-gestion-verger.png", alt: "Vue réelle du logiciel de gestion de verger Gleba", caption: "Tableau de bord réel du verger de démonstration, avec indicateurs et calendrier." }} capabilities={[
     { title: "Inventaire du verger", description: "Retrouvez arbres, espèces, variétés, porte-greffes, dates de plantation, états et parcelles." },
     { title: "Position sur la ferme", description: "Placez les arbres sur la carte 2D et conservez leurs coordonnées au sein de la parcelle." },
     { title: "Opérations", description: "Planifiez et consignez tailles, greffes, plantations, traitements et autres travaux du verger." },

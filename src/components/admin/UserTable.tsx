@@ -255,7 +255,7 @@ export function UserTable({ users }: UserTableProps) {
                       {user.active ? (
                         <>
                           <UserX className="mr-2 h-4 w-4" />
-                          Desactiver
+                          Désactiver
                         </>
                       ) : (
                         <>

@@ -8,7 +8,9 @@
  * - Formulaire Operations (MAJEUR #6)
  *
  * Champs : Température (°C), Vent (km/h ou échelle Beaufort), Hygrométrie (%),
- * Pluie ±24h (O/N + mm).
+ * Pluie ±24h (O/N + mm — donnée de traçabilité, pas une contrainte
+ * réglementaire : l'arrêté du 4 mai 2017 encadre l'intensité AU MOMENT du
+ * traitement, cf. src/lib/phyto/mentions-legales.ts).
  *
  * On expose une "valeur contrôlée" via `value`/`onChange` pour s'intégrer
  * naturellement dans un state form parent. Les champs sont marqués requis
@@ -19,6 +21,7 @@ import * as React from "react"
 import { Cloud, Droplets, Thermometer, Wind } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { CONDITIONS_APPLICATION_PHYTO } from "@/lib/phyto/mentions-legales"
 
 export interface WeatherData {
   temperatureC: number | null
@@ -43,7 +46,7 @@ interface WeatherFieldsetProps {
   required?: boolean
   /** Légende affichée en titre du fieldset. */
   legend?: string
-  /** Active la mention "Arrêté 16/06/2009" en pied du bloc. */
+  /** Active la mention réglementaire (arrêté du 4 mai 2017) en pied du bloc. */
   showLegalHint?: boolean
 }
 
@@ -119,7 +122,7 @@ export function WeatherFieldset({
 
         <div>
           <Label className="text-xs">
-            Pluie ±24h{required && <span className="text-red-600"> *</span>}
+            Pluie ±24h (traçabilité){required && <span className="text-red-600"> *</span>}
           </Label>
           <div className="flex gap-2">
             {/* Bug bloquant phyto (2026-05-29) — l'ancien `<select required>` natif
@@ -177,11 +180,13 @@ export function WeatherFieldset({
         </div>
       </div>
 
+      {/* QA cmsw9ba0q — mention réglementaire centralisée : l'arrêté du
+          16/06/2009 est abrogé et « pas de pluie dans les 24h » n'a jamais
+          été la règle (l'arrêté de 2017 encadre l'intensité au moment du
+          traitement). */}
       {showLegalHint && (
         <p className="mt-2 text-[10px] text-slate-500 italic">
-          Conditions d'application (Arrêté 16/06/2009 modifié) : vent ≤ 19 km/h
-          (Force 3 Beaufort), pas de précipitations dans les 24h. Saisie obligatoire
-          pour les produits chimiques.
+          {CONDITIONS_APPLICATION_PHYTO} Saisie obligatoire pour les produits chimiques.
         </p>
       )}
     </fieldset>

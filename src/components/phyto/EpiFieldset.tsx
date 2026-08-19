@@ -3,14 +3,16 @@
 /**
  * DEV3 audit Marc 2026-05-14 - Bloc EPI obligatoire.
  *
- * EPI = Équipements de Protection Individuelle (Arrêté 16/06/2009, art. 4).
- * Sélection multiple ; un avertissement est affiché si la méthode est
+ * EPI = Équipements de Protection Individuelle (arrêté du 4 mai 2017 modifié,
+ * cf. src/lib/phyto/mentions-legales.ts — QA cmsw9ba0q : l'arrêté de 2009 est
+ * abrogé). Sélection multiple ; un avertissement est affiché si la méthode est
  * chimique et qu'aucun EPI n'est sélectionné.
  */
 
 import * as React from "react"
 import { ShieldAlert } from "lucide-react"
 import { Label } from "@/components/ui/label"
+import { ARRETE_PHYTO } from "@/lib/phyto/mentions-legales"
 
 export const EPI_OPTIONS = [
   { slug: "gants", label: "Gants nitrile" },
@@ -65,7 +67,7 @@ export function EpiFieldset({ value, onChange, warnIfEmpty = false, required = f
       </div>
       {warnIfEmpty && value.length === 0 && (
         <p className="mt-2 text-[10px] text-red-700 italic">
-          ⚠ Méthode chimique : EPI obligatoires (Arrêté 16/06/2009, art. 4).
+          ⚠ Méthode chimique : EPI obligatoires ({ARRETE_PHYTO}).
         </p>
       )}
     </fieldset>

@@ -10,6 +10,7 @@ import { isPast, differenceInDays } from "date-fns"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { confirmDialog } from "@/lib/global-dialog"
+import { checkOperationSaison } from "@/lib/tree-care-calendar"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -44,6 +45,8 @@ interface Arbre {
   id: number
   nom: string
   type: string
+  espece?: string | null
+  variete?: string | null
 }
 
 interface Client {
@@ -99,6 +102,17 @@ const DESTINATIONS_UTILISATION = [
   { value: "construction", label: "Construction" },
 ]
 
+// QA cmsjhmi58 — les listes affichaient la valeur technique (« elagage »
+// passé en CSS capitalize → « Elagage » sans accent) au lieu du libellé.
+function labelTypeBois(type: string): string {
+  return TYPES_PRODUCTION.find((t) => t.value === type)?.label ?? type
+}
+
+function labelDestinationBois(destination: string | null): string {
+  if (!destination) return "-"
+  return DESTINATIONS_UTILISATION.find((d) => d.value === destination)?.label ?? destination
+}
+
 // ============================================================
 // Main component
 // ============================================================
@@ -139,6 +153,7 @@ function RecoltesFruitsSubTab() {
   const [loading, setLoading] = React.useState(true)
   const [activeTab, setActiveTab] = React.useState("stock")
   const [showDialog, setShowDialog] = React.useState(false)
+  const [isSubmitting, setIsSubmitting] = React.useState(false)
   const [showVenteDialog, setShowVenteDialog] = React.useState(false)
   const [selectedRecolte, setSelectedRecolte] = React.useState<RecolteArbre | null>(null)
   const [venteData, setVenteData] = React.useState({
@@ -232,12 +247,25 @@ function RecoltesFruitsSubTab() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isSubmitting) return
     // Famille C — au lieu d'un bouton grisé muet, on valide explicitement
     // l'arbre requis avec un message clair.
     if (!newRecolte.arbreId) {
       toast({ title: "Sélectionnez un arbre", variant: "destructive" })
       return
     }
+    // QA cmsw8t3wk (même famille) — noValidate + revalidation explicite :
+    // le step="0.1" natif refusait « 1,25 kg » sans message perceptible.
+    const quantite = parseFloat(newRecolte.quantite.replace(",", "."))
+    if (!Number.isFinite(quantite) || quantite <= 0) {
+      toast({
+        title: "Quantité invalide",
+        description: "Saisissez un poids en kg supérieur à 0 (ex. 1,25).",
+        variant: "destructive",
+      })
+      return
+    }
+    setIsSubmitting(true)
     try {
       const res = await fetch("/api/arbres/recoltes", {
         method: "POST",
@@ -245,7 +273,7 @@ function RecoltesFruitsSubTab() {
         body: JSON.stringify({
           arbreId: parseInt(newRecolte.arbreId),
           date: newRecolte.date,
-          quantite: parseFloat(newRecolte.quantite),
+          quantite,
           qualite: newRecolte.qualite || null,
           prixKg: newRecolte.prixKg ? parseFloat(newRecolte.prixKg) : null,
           datePeremption: newRecolte.datePeremption || null,
@@ -296,6 +324,8 @@ function RecoltesFruitsSubTab() {
       }
     } catch {
       toast({ title: "Erreur", variant: "destructive" })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -642,7 +672,9 @@ function RecoltesFruitsSubTab() {
           <DialogHeader>
             <DialogTitle>Enregistrer une récolte</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          {/* noValidate : même piège que le formulaire bois (QA cmsw8t3wk) —
+              revalidation explicite dans handleSubmit. */}
+          <form onSubmit={handleSubmit} noValidate className="space-y-4">
             <div>
               <Label>Arbre *</Label>
               <Select
@@ -661,6 +693,23 @@ function RecoltesFruitsSubTab() {
                 </SelectContent>
               </Select>
             </div>
+            {/* QA cmsqn6n46 — même contrôle de fenêtre que la taille : une
+                récolte de Golden fin mai était acceptée sans un mot et rendait
+                le graphique mensuel inexploitable (pic en mai). Non bloquant :
+                les micro-climats existent, mais l'écart est DIT. */}
+            {(() => {
+              const arbre = arbresFruitiers.find((a) => a.id.toString() === newRecolte.arbreId)
+              const w = arbre?.espece
+                ? checkOperationSaison(arbre.espece, "recolte", newRecolte.date, arbre.variete)
+                : null
+              if (!w) return null
+              return (
+                <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-700">
+                  <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                  <span>{w.message}</span>
+                </div>
+              )
+            })()}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Date</Label>
@@ -674,7 +723,7 @@ function RecoltesFruitsSubTab() {
                 <Label>Quantité (kg) *</Label>
                 <Input
                   type="number"
-                  step="0.1"
+                  step="any"
                   min="0"
                   value={newRecolte.quantite}
                   onChange={(e) => setNewRecolte({ ...newRecolte, quantite: e.target.value })}
@@ -812,8 +861,8 @@ function RecoltesFruitsSubTab() {
                 onChange={(e) => setNewRecolte({ ...newRecolte, notes: e.target.value })}
               />
             </div>
-            <Button type="submit" className="w-full">
-              Enregistrer
+            <Button type="submit" className="w-full" disabled={isSubmitting}>
+              {isSubmitting ? "Enregistrement..." : "Enregistrer"}
             </Button>
           </form>
         </DialogContent>
@@ -900,6 +949,7 @@ function ProductionBoisSubTab() {
   const [showDialog, setShowDialog] = React.useState(false)
   const [showVenteDialog, setShowVenteDialog] = React.useState(false)
   const [showUtiliseDialog, setShowUtiliseDialog] = React.useState(false)
+  const [isSubmitting, setIsSubmitting] = React.useState(false)
   const [selectedProduction, setSelectedProduction] = React.useState<ProductionBois | null>(null)
 
   // DEV3 #4 — Champs traçabilité bois (audit Marc)
@@ -990,6 +1040,33 @@ function ProductionBoisSubTab() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isSubmitting) return
+
+    // QA cmsw8t3wk (2026-08-16) — le formulaire est passé en noValidate : la
+    // validation native (step="0.1") annulait la soumission de « 1,01 m³ »
+    // sans message perceptible (bulle hors écran dans le dialog scrollable),
+    // aucune requête ne partait. Revalidation explicite ici, virgule décimale
+    // acceptée, refus toujours accompagné d'un toast.
+    const lireDecimal = (brut: string): number | null => {
+      if (!brut.trim()) return null
+      const v = parseFloat(brut.replace(",", "."))
+      return Number.isFinite(v) ? v : NaN as unknown as number
+    }
+    const volumeM3 = lireDecimal(newProduction.volumeM3)
+    const volumeStere = lireDecimal(newProduction.volumeStere)
+    const poidsKg = lireDecimal(newProduction.poidsKg)
+    for (const [label, v] of [["Volume (m³)", volumeM3], ["Volume (stères)", volumeStere], ["Poids (kg)", poidsKg]] as const) {
+      if (v !== null && (!Number.isFinite(v) || v < 0)) {
+        toast({
+          title: "Valeur invalide",
+          description: `${label} : saisissez un nombre positif (ex. 1,01).`,
+          variant: "destructive",
+        })
+        return
+      }
+    }
+
+    setIsSubmitting(true)
     try {
       const res = await fetch("/api/arbres/bois", {
         method: "POST",
@@ -998,9 +1075,9 @@ function ProductionBoisSubTab() {
           arbreId: newProduction.arbreId ? parseInt(newProduction.arbreId) : null,
           date: newProduction.date,
           type: newProduction.type,
-          volumeM3: newProduction.volumeM3 ? parseFloat(newProduction.volumeM3) : null,
-          volumeStere: newProduction.volumeStere ? parseFloat(newProduction.volumeStere) : null,
-          poidsKg: newProduction.poidsKg ? parseFloat(newProduction.poidsKg) : null,
+          volumeM3,
+          volumeStere,
+          poidsKg,
           qualiteBois: newProduction.qualiteBois || null,
           destination: newProduction.destination || null,
           statut: "en_stock",
@@ -1028,6 +1105,8 @@ function ProductionBoisSubTab() {
       }
     } catch {
       toast({ title: "Erreur", variant: "destructive" })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -1077,7 +1156,7 @@ function ProductionBoisSubTab() {
         setShowUtiliseDialog(false)
         setSelectedProduction(null)
         setUtiliseData({ destination: "chauffage" })
-        toast({ title: "Marque comme utilise" })
+        toast({ title: "Marqué comme utilisé" })
         fetchData()
       } else {
         const data = await res.json().catch(() => ({}))
@@ -1166,7 +1245,7 @@ function ProductionBoisSubTab() {
             </TabsTrigger>
             <TabsTrigger value="utilise" className="flex items-center gap-2">
               <Axe className="h-4 w-4" />
-              Utilise ({utiliseProductions.length})
+              Utilisé ({utiliseProductions.length})
             </TabsTrigger>
           </TabsList>
         </Tabs>
@@ -1200,7 +1279,7 @@ function ProductionBoisSubTab() {
                   {stockProductions.map((p) => (
                     <TableRow key={p.id}>
                       <TableCell>{new Date(p.date).toLocaleDateString("fr-FR")}</TableCell>
-                      <TableCell className="capitalize">{p.type}</TableCell>
+                      <TableCell>{labelTypeBois(p.type)}</TableCell>
                       <TableCell>{p.arbre?.nom || "-"}</TableCell>
                       <TableCell className="text-right">{p.volumeM3 ? `${p.volumeM3} m³` : "-"}</TableCell>
                       <TableCell className="text-right">{p.poidsKg ? `${p.poidsKg} kg` : "-"}</TableCell>
@@ -1261,7 +1340,7 @@ function ProductionBoisSubTab() {
                   {venduProductions.map((p) => (
                     <TableRow key={p.id}>
                       <TableCell>{p.dateVente ? new Date(p.dateVente).toLocaleDateString("fr-FR") : "-"}</TableCell>
-                      <TableCell className="capitalize">{p.type}</TableCell>
+                      <TableCell>{labelTypeBois(p.type)}</TableCell>
                       <TableCell className="text-right">{p.volumeM3 ? `${p.volumeM3} m³` : "-"}</TableCell>
                       <TableCell>{p.clientNom || "-"}</TableCell>
                       <TableCell className="text-right font-medium text-green-600">
@@ -1305,9 +1384,9 @@ function ProductionBoisSubTab() {
                   {utiliseProductions.map((p) => (
                     <TableRow key={p.id}>
                       <TableCell>{new Date(p.date).toLocaleDateString("fr-FR")}</TableCell>
-                      <TableCell className="capitalize">{p.type}</TableCell>
+                      <TableCell>{labelTypeBois(p.type)}</TableCell>
                       <TableCell className="text-right">{p.volumeM3 ? `${p.volumeM3} m³` : "-"}</TableCell>
-                      <TableCell className="capitalize">{p.destination || "-"}</TableCell>
+                      <TableCell>{labelDestinationBois(p.destination)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -1323,7 +1402,10 @@ function ProductionBoisSubTab() {
           <DialogHeader>
             <DialogTitle>Enregistrer une production</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          {/* noValidate : la validation native bloquait le submit sans message
+              visible (bulle hors écran dans le dialog scrollable) — QA cmsw8t3wk.
+              La revalidation est faite dans handleSubmit avec un toast. */}
+          <form onSubmit={handleSubmit} noValidate className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Type *</Label>
@@ -1387,7 +1469,7 @@ function ProductionBoisSubTab() {
                 <Label>Volume (m³)</Label>
                 <Input
                   type="number"
-                  step="0.1"
+                  step="any"
                   min="0"
                   value={newProduction.volumeM3}
                   onChange={(e) => setNewProduction({ ...newProduction, volumeM3: e.target.value })}
@@ -1397,7 +1479,7 @@ function ProductionBoisSubTab() {
                 <Label>Poids (kg)</Label>
                 <Input
                   type="number"
-                  step="1"
+                  step="any"
                   min="0"
                   value={newProduction.poidsKg}
                   onChange={(e) => setNewProduction({ ...newProduction, poidsKg: e.target.value })}
@@ -1411,8 +1493,8 @@ function ProductionBoisSubTab() {
                 onChange={(e) => setNewProduction({ ...newProduction, notes: e.target.value })}
               />
             </div>
-            <Button type="submit" className="w-full">
-              Ajouter au stock
+            <Button type="submit" className="w-full" disabled={isSubmitting}>
+              {isSubmitting ? "Enregistrement..." : "Ajouter au stock"}
             </Button>
           </form>
         </DialogContent>
@@ -1502,7 +1584,7 @@ function ProductionBoisSubTab() {
       <Dialog open={showUtiliseDialog} onOpenChange={setShowUtiliseDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Marquer comme utilise</DialogTitle>
+            <DialogTitle>Marquer comme utilisé</DialogTitle>
           </DialogHeader>
           {selectedProduction && (
             <div className="space-y-4">

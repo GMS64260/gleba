@@ -19,6 +19,7 @@ import { useModules } from '@/hooks/use-modules'
 import { MODULES, MODULE_IDS, type ModuleId } from '@/lib/modules'
 import { useElevageModes } from '@/hooks/use-elevage-modes'
 import { ELEVAGE_MODES, ELEVAGE_MODE_IDS, type ElevageModeId } from '@/lib/elevage-modes'
+import { signOut } from 'next-auth/react'
 import { confirmDialog } from '@/lib/global-dialog'
 import { todayLocalISO } from '@/lib/format-utils'
 import { DEFAULT_NOTIF_PREFS, parseNotifPrefs, type NotifPrefs } from '@/lib/notifications/prefs'
@@ -81,6 +82,14 @@ export default function ParametresPage() {
   const [deleting, setDeleting] = React.useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false)
   const [deleteConfirmation, setDeleteConfirmation] = React.useState('')
+  // Suppression du COMPTE (distincte de la suppression des seules données).
+  const [deletingAccount, setDeletingAccount] = React.useState(false)
+  const [deleteAccountDialogOpen, setDeleteAccountDialogOpen] = React.useState(false)
+  const [deleteAccountConfirmation, setDeleteAccountConfirmation] = React.useState('')
+  const [deleteAccountPassword, setDeleteAccountPassword] = React.useState('')
+  // null = inconnu → on exige le mot de passe par défaut. false = compte créé
+  // via Google, sans mot de passe local : la confirmation « SUPPRIMER » suffit.
+  const [accountHasPassword, setAccountHasPassword] = React.useState<boolean | null>(null)
   // MCP / API Token
   const [mcpLoading, setMcpLoading] = React.useState(false)
   const [mcpToken, setMcpToken] = React.useState<string | null>(null)
@@ -474,6 +483,47 @@ export default function ParametresPage() {
     }
   }
 
+  // Suppression définitive du compte lui-même (exigence Google Play / RGPD).
+  // Le mot de passe est revérifié côté serveur quand le compte en a un ; un
+  // compte Google sans mot de passe local confirme par la saisie « SUPPRIMER ».
+  const handleDeleteAccount = async () => {
+    const passwordRequis = accountHasPassword !== false
+    if (deleteAccountConfirmation !== 'SUPPRIMER' || (passwordRequis && !deleteAccountPassword)) return
+
+    setDeletingAccount(true)
+    try {
+      const response = await fetch('/api/account', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(passwordRequis ? { password: deleteAccountPassword } : {}),
+      })
+
+      const result = await response.json()
+      if (!response.ok) {
+        throw new Error(result.error || 'Erreur lors de la suppression du compte')
+      }
+
+      setDeleteAccountDialogOpen(false)
+      toast({
+        title: 'Compte supprimé',
+        description: 'Vos données ont été effacées. Un email de confirmation vous a été envoyé.',
+      })
+
+      // Le compte n'existe plus : on ferme la session côté client pour éviter
+      // de naviguer avec un JWT qui ne référence plus aucun utilisateur.
+      await signOut({ callbackUrl: '/' })
+    } catch (err) {
+      toast({
+        variant: 'destructive',
+        title: 'Erreur',
+        description: err instanceof Error ? err.message : 'Impossible de supprimer le compte',
+      })
+      setDeletingAccount(false)
+    } finally {
+      setDeleteAccountPassword('')
+    }
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
       <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
@@ -653,10 +703,12 @@ export default function ParametresPage() {
               </div>
             </div>
 
-            {/* Couleurs */}
+            {/* Couleurs — 1 colonne sur mobile : le duo pastille + champ hex ne
+                tient pas à trois de front sous 640px (l'input texte ne peut pas
+                rétrécir sous sa largeur intrinsèque, le bloc débordait). */}
             <div>
               <h4 className="text-sm font-medium text-slate-900 mb-3">Couleurs</h4>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm text-slate-600 mb-1">Planches</label>
                   <div className="flex gap-2">
@@ -673,7 +725,7 @@ export default function ParametresPage() {
                       onChange={(e) =>
                         setSettings((prev) => ({ ...prev, plancheColor: e.target.value }))
                       }
-                      className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
+                      className="flex-1 min-w-0 rounded-md border border-slate-300 px-3 py-2 text-sm"
                     />
                   </div>
                 </div>
@@ -693,7 +745,7 @@ export default function ParametresPage() {
                       onChange={(e) =>
                         setSettings((prev) => ({ ...prev, plancheSelectedColor: e.target.value }))
                       }
-                      className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
+                      className="flex-1 min-w-0 rounded-md border border-slate-300 px-3 py-2 text-sm"
                     />
                   </div>
                 </div>
@@ -713,7 +765,7 @@ export default function ParametresPage() {
                       onChange={(e) =>
                         setSettings((prev) => ({ ...prev, gridColor: e.target.value }))
                       }
-                      className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
+                      className="flex-1 min-w-0 rounded-md border border-slate-300 px-3 py-2 text-sm"
                     />
                   </div>
                 </div>
@@ -883,10 +935,10 @@ export default function ParametresPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <CloudSun className="h-5 w-5" />
-              Stations meteo
+              Stations météo
             </CardTitle>
             <CardDescription>
-              Connectez votre station meteo personnelle pour des données ultra-locales sur vos parcelles
+              Connectez votre station météo personnelle pour des données ultra-locales sur vos parcelles
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -1041,8 +1093,8 @@ export default function ParametresPage() {
                     Supprimer toutes mes données
                   </h4>
                   <p className="text-sm text-slate-600">
-                    Supprimé toutes vos cultures, planches, recoltes, arbres et objets.
-                    Les référentiels (especes, ITPs, etc.) sont conservés.
+                    Supprimé toutes vos cultures, planches, récoltes, arbres et objets.
+                    Les référentiels (espèces, ITPs, etc.) sont conservés.
                   </p>
                 </div>
                 <Button
@@ -1070,6 +1122,53 @@ export default function ParametresPage() {
                 <p className="text-xs text-red-700">
                   ⚠️ Cette action est <strong>irréversible</strong>. Exportez vos données avant si vous souhaitez les conserver.
                 </p>
+              </div>
+
+              <div className="flex items-start justify-between gap-4 border-t border-red-200 pt-3">
+                <div className="flex-1">
+                  <h4 className="text-sm font-medium text-slate-900 mb-1">
+                    Supprimer mon compte
+                  </h4>
+                  <p className="text-sm text-slate-600">
+                    Supprime définitivement votre compte, vos données et vos fichiers.
+                    Les fiches de référentiel que vous avez partagées avec la communauté
+                    sont conservées sous le nom « Communauté Gleba ».{' '}
+                    <Link href="/suppression-compte" className="underline underline-offset-2">
+                      En savoir plus
+                    </Link>
+                  </p>
+                </div>
+                <Button
+                  variant="destructive"
+                  onClick={() => {
+                    setDeleteAccountConfirmation('')
+                    setDeleteAccountPassword('')
+                    setDeleteAccountDialogOpen(true)
+                    // Compte Google sans mot de passe local ? Le dialogue
+                    // s'adapte ; en cas d'échec on garde l'exigence par défaut.
+                    fetch('/api/account')
+                      .then((res) => (res.ok ? res.json() : null))
+                      .then((data) => {
+                        if (data && typeof data.hasPassword === 'boolean') {
+                          setAccountHasPassword(data.hasPassword)
+                        }
+                      })
+                      .catch(() => {})
+                  }}
+                  disabled={deletingAccount}
+                >
+                  {deletingAccount ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Suppression...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Supprimer mon compte
+                    </>
+                  )}
+                </Button>
               </div>
             </div>
           </CardContent>
@@ -1111,6 +1210,76 @@ export default function ParametresPage() {
             <Button variant="destructive" onClick={handleDeleteAllData} disabled={deleting || deleteConfirmation !== 'SUPPRIMER'}>
               {deleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Supprimer définitivement
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteAccountDialogOpen} onOpenChange={(nextOpen) => {
+        if (!deletingAccount) setDeleteAccountDialogOpen(nextOpen)
+      }}>
+        <DialogContent className="max-h-[calc(100dvh-1rem)] overflow-y-auto sm:max-w-[460px]">
+          <DialogHeader>
+            <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-xl bg-red-100">
+              <Trash2 className="h-5 w-5 text-red-700" />
+            </div>
+            <DialogTitle>Supprimer définitivement votre compte ?</DialogTitle>
+            <DialogDescription>
+              Cette action est irréversible et prend effet immédiatement. Vous serez déconnecté.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+            <p className="font-medium">Seront définitivement supprimés :</p>
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-red-800">
+              <li>Votre compte et vos identifiants</li>
+              <li>Parcelles, cultures, récoltes et interventions</li>
+              <li>Élevage, verger, comptabilité et boutique</li>
+              <li>Photos, justificatifs et registres archivés</li>
+            </ul>
+            <p className="mt-3 text-xs">
+              Vos fiches de référentiel partagées avec la communauté sont conservées,
+              réattribuées à « Communauté Gleba » et détachées de votre identité.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="delete-account-confirmation">Tapez <strong>SUPPRIMER</strong> pour confirmer</Label>
+            <Input
+              id="delete-account-confirmation"
+              autoFocus
+              autoComplete="off"
+              value={deleteAccountConfirmation}
+              onChange={(e) => setDeleteAccountConfirmation(e.target.value)}
+              className="h-11"
+            />
+          </div>
+          {accountHasPassword !== false && (
+            <div className="space-y-2">
+              <Label htmlFor="delete-account-password">Votre mot de passe</Label>
+              <Input
+                id="delete-account-password"
+                type="password"
+                autoComplete="current-password"
+                value={deleteAccountPassword}
+                onChange={(e) => setDeleteAccountPassword(e.target.value)}
+                className="h-11"
+              />
+            </div>
+          )}
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button variant="outline" onClick={() => setDeleteAccountDialogOpen(false)} disabled={deletingAccount}>
+              Conserver mon compte
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteAccount}
+              disabled={
+                deletingAccount ||
+                deleteAccountConfirmation !== 'SUPPRIMER' ||
+                (accountHasPassword !== false && !deleteAccountPassword)
+              }
+            >
+              {deletingAccount && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Supprimer mon compte
             </Button>
           </div>
         </DialogContent>
@@ -1411,7 +1580,10 @@ function NotificationsSection() {
           Notifications
         </CardTitle>
         <CardDescription>
-          Choisissez les types de notifications métier que vous souhaitez recevoir par email ou par push.
+          Gleba peut vous prévenir des alertes météo, des tâches à faire et des stocks bas, par email
+          et par notification push. <strong>Tout est désactivé au départ</strong> : cochez seulement
+          ce que vous voulez recevoir. Vous pouvez revenir ici à tout moment, et chaque email contient
+          un lien de désabonnement.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">

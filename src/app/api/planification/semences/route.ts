@@ -56,6 +56,11 @@ export async function GET(request: NextRequest) {
 
     const nbMissing = besoins.filter(b => b.statut === 'MISSING').length
     const nbLow     = besoins.filter(b => b.statut === 'LOW').length
+    // QA cmswxo3ri — espèces planifiées dont le référentiel ne permet aucun
+    // calcul : l'écran annonçait « 3 espèces » et n'en listait que 2.
+    const especesDonneeManquante = [
+      ...new Set(besoins.filter(b => b.statut === 'DONNEE_MANQUANTE').map(b => b.especeId)),
+    ]
 
     // BUG-15 : breakdown par mode (graines/plants vs caïeux) — le header
     // « 8 manquant » contredisait la liste « 6 graines » : les 2 caïeux
@@ -91,6 +96,10 @@ export async function GET(request: NextRequest) {
         nbGraineDirecte: graineDirecte.length,
         nbPlantRepique: plantRepique.length,
         nbBulbeCaieu: bulbeCaieu.length,
+        nbDonneeManquante: especesDonneeManquante.length,
+        especesDonneeManquante: especesDonneeManquante.map(
+          (id) => especeNomMap.get(id) ?? id,
+        ),
         stockObsolete,
         stockObsoleteSeuilJours: STOCK_STALE_DAYS,
         derniereMajStockISO: maxDateMaj > 0 ? new Date(maxDateMaj).toISOString() : null,

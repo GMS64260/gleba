@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
     const [animaux, lots, collectes, fabrications, ventes, consommations, soins, paies] = await Promise.all([
       prisma.animal.findMany({
         where: { userId, statut: 'actif' },
-        select: { id: true, especeAnimale: { select: { production: true, productions: true } } },
+        select: { id: true, lotId: true, especeAnimale: { select: { production: true, productions: true } } },
       }),
       prisma.lotAnimaux.findMany({
         where: { userId, statut: 'actif' },
@@ -96,10 +96,16 @@ export async function GET(request: NextRequest) {
     }
 
     // Prorata têtes laitières (pour les charges globales sans lot ni animal)
+    // Ticket cmsoga3zp — un animal nominatif rattaché à un lot est déjà compté
+    // dans quantiteActuelle du lot : seuls les animaux hors lot s'ajoutent ici,
+    // sinon chaque tête rattachée est comptée deux fois (ex: « 8/102 » au lieu
+    // de 4/98 pour 4 chèvres du lot laitier).
+    const animauxHorsLot = animaux.filter((a) => a.lotId == null)
     const tetesLaitieres =
-      animauxLaitiers.size + lots.filter((l) => lotsLaitiers.has(l.id)).reduce((s, l) => s + (l.quantiteActuelle || 0), 0)
+      animauxHorsLot.filter((a) => animauxLaitiers.has(a.id)).length +
+      lots.filter((l) => lotsLaitiers.has(l.id)).reduce((s, l) => s + (l.quantiteActuelle || 0), 0)
     const tetesTotales =
-      animaux.length + lots.reduce((s, l) => s + (l.quantiteActuelle || 0), 0)
+      animauxHorsLot.length + lots.reduce((s, l) => s + (l.quantiteActuelle || 0), 0)
     const partGlobaleLaitiere = tetesTotales > 0 ? tetesLaitieres / tetesTotales : 0
 
     // Production

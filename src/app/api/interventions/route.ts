@@ -10,7 +10,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { createDepenseFromIntervention, deleteAutoEntry } from '@/lib/auto-compta'
-import { createInterventionSchema } from '@/lib/validations/intervention'
+import { createInterventionSchema, updateInterventionSchema } from '@/lib/validations/intervention'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -178,7 +178,7 @@ export async function GET(request: NextRequest) {
           cultureId: c.id,
           plancheId: c.plancheId,
           arbreId: null,
-          description: `Recolte ${cultureLabel}${plancheLabel ? ' sur ' + plancheLabel : ''}`,
+          description: `Récolte ${cultureLabel}${plancheLabel ? ' sur ' + plancheLabel : ''}`,
           dureeMinutes: null,
           nbPersonnes: null,
           coutMainOeuvre: null,
@@ -227,6 +227,9 @@ export async function GET(request: NextRequest) {
       coutTotal: null,
       datePrevue: ir.datePrevue,
       fait: ir.fait,
+      // Passage abandonné (manqué de plus d'un cycle) : le registre doit
+      // pouvoir le distinguer d'un arrosage réalisé.
+      perimee: ir.perimee,
       produitPhyto: null, numAMM: null, cibleTraitement: null,
       doseAppliquee: null, uniteDose: null, surfaceTraitee: null,
       dar: null, delaiReentree: null, conditionsMeteo: null,
@@ -403,14 +406,38 @@ export async function GET(request: NextRequest) {
       allEntries = allEntries.filter((e: any) => e.fait === false)
     }
 
-    // Apply date range filter
+    // Filtre de période, en journées civiles LOCALES.
+    //
+    // QA cmsqmoqno (2026-08-12) : le registre filtré perdait des lignes en
+    // silence. `new Date("2026-08-12")` est parsé en UTC (minuit Z), alors que
+    // les échéances générées sont ancrées à minuit LOCAL, donc stockées à
+    // 22:00 Z la veille en été. Une irrigation prévue le 12/08 à 00:00 locale
+    // tombait avant la borne basse et disparaissait — tandis que la borne
+    // haute, elle, était parsée en local (`+ 'T23:59:59'`). Les deux bornes ne
+    // vivaient pas dans le même fuseau.
+    //
+    // Un registre qui retire des lignes sans le dire ne peut plus servir de
+    // registre : on compare désormais des jours civils locaux des deux côtés.
+    const jourLocalDe = (valeur: Date) =>
+      Date.UTC(valeur.getFullYear(), valeur.getMonth(), valeur.getDate())
+    const jourLocalDepuisSaisie = (saisie: string) => {
+      const [annee, mois, jour] = saisie.split('-').map(Number)
+      return Number.isFinite(annee) && Number.isFinite(mois) && Number.isFinite(jour)
+        ? Date.UTC(annee, mois - 1, jour)
+        : null
+    }
+
     if (dateFrom) {
-      const from = new Date(dateFrom)
-      allEntries = allEntries.filter((e: any) => new Date(e.date) >= from)
+      const from = jourLocalDepuisSaisie(dateFrom)
+      if (from !== null) {
+        allEntries = allEntries.filter((e: any) => jourLocalDe(new Date(e.date)) >= from)
+      }
     }
     if (dateTo) {
-      const to = new Date(dateTo + 'T23:59:59')
-      allEntries = allEntries.filter((e: any) => new Date(e.date) <= to)
+      const to = jourLocalDepuisSaisie(dateTo)
+      if (to !== null) {
+        allEntries = allEntries.filter((e: any) => jourLocalDe(new Date(e.date)) <= to)
+      }
     }
 
     // Sort by date desc
@@ -539,6 +566,18 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'ID requis' }, { status: 400 })
     }
 
+    // QA cmsjk2k5n — le PATCH ne validait rien (contrairement au POST) : une
+    // dose ou une surface négative (−1 L/ha, −10 m²) était persistée telle
+    // quelle. On valide les champs modifiés via le schéma (mêmes contraintes
+    // que la création, dont `min(0)` sur les valeurs numériques) avant d'écrire.
+    const parsedUpdates = updateInterventionSchema.safeParse({ id: parseInt(id), ...updates })
+    if (!parsedUpdates.success) {
+      return NextResponse.json(
+        { error: 'Données invalides', details: parsedUpdates.error.flatten() },
+        { status: 400 },
+      )
+    }
+
     // Verify ownership
     const existing = await prisma.intervention.findFirst({
       where: { id: parseInt(id), userId },
@@ -593,6 +632,7 @@ export async function PATCH(request: NextRequest) {
     if (updates.conditionsMeteo !== undefined) data.conditionsMeteo = updates.conditionsMeteo || null
     if (updates.zntDistanceM !== undefined) data.zntDistanceM = updates.zntDistanceM ? parseInt(updates.zntDistanceM) : null
     if (updates.zntRespectee !== undefined) data.zntRespectee = updates.zntRespectee ?? null
+    if (updates.justification !== undefined) data.justification = updates.justification || null
     // Intrant
     if (updates.intrantNom !== undefined) data.intrantNom = updates.intrantNom || null
     if (updates.intrantQuantite !== undefined) data.intrantQuantite = updates.intrantQuantite ? parseFloat(updates.intrantQuantite) : null

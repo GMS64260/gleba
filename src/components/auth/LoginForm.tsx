@@ -9,6 +9,7 @@ import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { signIn } from "next-auth/react"
 import { Loader2, ArrowRight } from "lucide-react"
+import { GoogleSignInButton } from "./GoogleSignInButton"
 
 const VERIFY_MESSAGES: Record<string, { text: string; type: "success" | "error" | "info" }> = {
   success: { text: "Email vérifié ! Vous pouvez maintenant vous connecter.", type: "success" },
@@ -18,11 +19,26 @@ const VERIFY_MESSAGES: Record<string, { text: string; type: "success" | "error" 
   error: { text: "Erreur lors de la vérification.", type: "error" },
 }
 
-export function LoginForm() {
+// Erreurs renvoyées sur /login?error=… par le flux OAuth (callback signIn de
+// auth.ts pour `google`/`inactive`, codes Auth.js pour le reste).
+const OAUTH_ERROR_MESSAGES: Record<string, string> = {
+  google:
+    "Connexion Google impossible : adresse email absente ou non vérifiée par Google.",
+  inactive: "Ce compte a été désactivé. Contactez contact@gleba.fr.",
+  AccessDenied: "Connexion refusée.",
+  OAuthAccountNotLinked:
+    "Cet email est déjà associé à un compte. Connectez-vous avec votre mot de passe.",
+  OAuthCallbackError: "La connexion Google a échoué. Réessayez.",
+  Configuration:
+    "La connexion est momentanément indisponible. Contactez contact@gleba.fr.",
+}
+
+export function LoginForm({ googleEnabled = false }: { googleEnabled?: boolean }) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const callbackUrl = searchParams.get("callbackUrl") || "/"
   const verifyStatus = searchParams.get("verify")
+  const oauthError = searchParams.get("error")
 
   const [email, setEmail] = React.useState("")
   const [password, setPassword] = React.useState("")
@@ -86,6 +102,11 @@ export function LoginForm() {
           }`}
         >
           {VERIFY_MESSAGES[verifyStatus].text}
+        </div>
+      )}
+      {!error && oauthError && OAUTH_ERROR_MESSAGES[oauthError] && (
+        <div className="p-3 text-sm text-red-700 bg-red-50/80 rounded-xl border border-red-200/50 backdrop-blur-sm">
+          {OAUTH_ERROR_MESSAGES[oauthError]}
         </div>
       )}
       {error && (
@@ -170,6 +191,8 @@ export function LoginForm() {
           <span className="px-4 text-xs text-slate-400 bg-white/60 backdrop-blur-sm rounded-full">ou</span>
         </div>
       </div>
+
+      {googleEnabled && <GoogleSignInButton callbackUrl={callbackUrl} />}
 
       <button
         type="button"

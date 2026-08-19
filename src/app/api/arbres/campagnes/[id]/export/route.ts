@@ -15,6 +15,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server"
+import { dispositionDocument } from "@/lib/http/disposition-fichier"
 import { requireAuthApi } from "@/lib/auth-utils"
 import prisma from "@/lib/prisma"
 import PDFDocument from "pdfkit"
@@ -23,7 +24,7 @@ interface Params {
   params: Promise<{ id: string }>
 }
 
-export async function GET(_request: NextRequest, { params }: Params) {
+export async function GET(request: NextRequest, { params }: Params) {
   const { session, error } = await requireAuthApi()
   if (error) return error
   const { id } = await params
@@ -262,7 +263,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
     status: 200,
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="dossier-campagne-${campagne.id}.pdf"`,
+      "Content-Disposition": dispositionDocument(request, `dossier-campagne-${campagne.id}.pdf`),
     },
   })
 }

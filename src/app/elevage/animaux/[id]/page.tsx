@@ -145,6 +145,9 @@ interface AnimalDetail {
     fait: boolean
     finAttenteLait: string | null
     finAttenteViande: string | null
+    // Ticket cmsoglwee — soin posé sur le LOT de l'animal, fusionné par l'API
+    // dans la fiche du membre (alerte délai + timeline).
+    viaLot?: boolean
   }[]
   abattages: {
     id: number
@@ -158,7 +161,7 @@ interface AnimalDetail {
 // Timeline event type
 interface TimelineEvent {
   date: string
-  type: "soin" | "production" | "naissance" | "abattage" | "saillie"
+  type: "soin" | "production" | "naissance" | "abattage" | "saillie" | "sortie"
   icon: React.ComponentType<{ className?: string }>
   iconColor: string
   bgColor: string
@@ -226,7 +229,8 @@ export default function AnimalDetailPage() {
         iconColor: "text-blue-600",
         bgColor: "bg-blue-100",
         title: SOIN_TYPE_LABELS[s.type] || s.type,
-        detail: [s.produit, s.description, s.cout ? `${s.cout.toFixed(2)} \u20ac` : null].filter(Boolean).join(" - "),
+        // Ticket cmsoglwee \u2014 mention discr\u00e8te des soins h\u00e9rit\u00e9s du lot.
+        detail: [s.produit, s.description, s.cout ? `${s.cout.toFixed(2)} \u20ac` : null, s.viaLot ? "soin de lot" : null].filter(Boolean).join(" - "),
       })
     })
 
@@ -281,6 +285,21 @@ export default function AnimalDetailPage() {
         detail: [ab.poidsVif ? `${ab.poidsVif}kg vif` : null, ab.poidsCarcasse ? `${ab.poidsCarcasse}kg carc.` : null].filter(Boolean).join(" / "),
       })
     })
+
+    // TICKET cmsoggk23 — l'événement de sortie (décès, vente, réforme…) était
+    // absent de la timeline : la fiche d'un animal mort affichait « Aucun
+    // événement enregistré » alors que date et cause sont en base.
+    if (a.dateSortie) {
+      events.push({
+        date: a.dateSortie,
+        type: "sortie",
+        icon: ArrowLeft,
+        iconColor: "text-gray-600",
+        bgColor: "bg-gray-100",
+        title: a.statut === "mort" ? "Décès" : "Sortie du cheptel",
+        detail: a.causeSortie || "",
+      })
+    }
 
     events.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     return events

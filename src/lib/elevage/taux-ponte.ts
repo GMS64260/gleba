@@ -75,6 +75,30 @@ export function resolvePonteRef(especeNom: string | null | undefined): PonteRefN
   return 'pondeuse_standard'
 }
 
+/** Nombre de jours civils de la fenêtre glissante de référence du taux de ponte. */
+export const FENETRE_PONTE_JOURS = 7
+
+/**
+ * Fenêtre glissante de référence du taux de ponte, en JOURS CIVILS LOCAUX.
+ *
+ * QA cmswwvsoj — la fenêtre était calculée en millisecondes (`fin − 6 × 24 h`),
+ * donc bornée à l'heure courante : une collecte datée du jour J−6 à minuit
+ * tombait AVANT le début de fenêtre et sortait du numérateur, alors que le
+ * dénominateur comptait bien 7 jours. Le taux affiché portait sur 6 jours de
+ * collecte (88 œufs annoncés sur 11–17/08 → 27 % au lieu de 34,9 %). Les deux
+ * bornes sont désormais alignées sur le jour civil, comme la décision
+ * d'irrigation (`jourCivilLocalISO`).
+ */
+export function fenetrePonteGlissante(
+  fin: Date,
+  jours: number = FENETRE_PONTE_JOURS,
+): { debut: Date; fin: Date; jours: number } {
+  const nbJours = Math.max(1, Math.round(jours))
+  const finJour = new Date(fin.getFullYear(), fin.getMonth(), fin.getDate(), 23, 59, 59, 999)
+  const debutJour = new Date(fin.getFullYear(), fin.getMonth(), fin.getDate() - (nbJours - 1))
+  return { debut: debutJour, fin: finJour, jours: nbJours }
+}
+
 /**
  * Taux attendu UN JOUR donné, en % (0..100).
  */

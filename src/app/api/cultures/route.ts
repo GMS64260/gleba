@@ -6,13 +6,15 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
-import { createCultureSchema, validateCultureDates } from '@/lib/validations'
+import { createCultureSchema, normalizeCultureDateFields, validateCultureDates } from '@/lib/validations'
 import { Prisma } from '@prisma/client'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { peutAjouterCulture, suggererAjustements } from '@/lib/planche-validation'
 import { ensurePlaceholderVariete } from '@/lib/varietes'
 import { invalidateKpi } from '@/lib/kpi'
 import { checkRotationViolation } from '@/lib/rotation-check'
+import { estEtatCulture, etatCulture, whereEtatCulture } from '@/lib/cultures/etat'
+import { etendrePlanArrosage } from '@/lib/irrigation-scheduler'
 
 // GET /api/cultures
 export async function GET(request: NextRequest) {
@@ -69,31 +71,12 @@ export async function GET(request: NextRequest) {
       where.plancheId = plancheId
     }
 
-    // Filtre par état (calculé)
-    if (etat) {
-      switch (etat) {
-        case 'Planifiée':
-          where.semisFait = false
-          where.terminee = null
-          break
-        case 'Semée':
-          where.semisFait = true
-          where.plantationFaite = false
-          where.terminee = null
-          break
-        case 'Plantée':
-          where.plantationFaite = true
-          where.recolteFaite = false
-          where.terminee = null
-          break
-        case 'En récolte':
-          where.recolteFaite = true
-          where.terminee = null
-          break
-        case 'Terminée':
-          where.terminee = { not: null }
-          break
-      }
+    // Filtre par état (calculé). QA cmsp59tdu — le filtre est le miroir exact
+    // de la cascade d'affichage (whereEtatCulture/etatCulture), sinon l'onglet
+    // « Planifiées » liste des cultures marquées « En récolte ». Passé en AND
+    // pour ne pas entrer en conflit avec le OR de recherche ci-dessus.
+    if (estEtatCulture(etat)) {
+      where.AND = [whereEtatCulture(etat)]
     }
 
     // Requête avec comptage
@@ -125,15 +108,7 @@ export async function GET(request: NextRequest) {
     const culturesWithComputed = cultures.map((culture) => ({
       ...culture,
       // Calcul de l'état
-      etat: culture.terminee
-        ? 'Terminée'
-        : culture.recolteFaite
-          ? 'En récolte'
-          : culture.plantationFaite
-            ? 'Plantée'
-            : culture.semisFait
-              ? 'Semée'
-              : 'Planifiée',
+      etat: etatCulture(culture),
       // Total récolté (kg)
       totalRecolte: culture.recoltes.reduce((sum, r) => sum + r.quantite, 0),
       // Calcul du type
@@ -184,6 +159,16 @@ export async function POST(request: NextRequest) {
 
     const data = validationResult.data
 
+    // Parité avec le PUT (fix efa206f) : un input type=date envoie
+    // « YYYY-MM-DD », Prisma exige un DateTime — normaliser avant insertion.
+    const champDateInvalide = normalizeCultureDateFields(data)
+    if (champDateInvalide) {
+      return NextResponse.json(
+        { error: `Date invalide pour ${champDateInvalide}` },
+        { status: 400 }
+      )
+    }
+
     // Vérifier que l'espece existe
     const espece = await prisma.espece.findUnique({
       where: { id: data.especeId },
@@ -203,7 +188,8 @@ export async function POST(request: NextRequest) {
     const rotationCheck = await checkRotationViolation(
       data.plancheId ?? null,
       data.especeId,
-      data.annee ?? new Date().getFullYear()
+      data.annee ?? new Date().getFullYear(),
+      session!.user.id
     )
     if (rotationCheck && !confirmRotation) {
       return NextResponse.json(
@@ -246,8 +232,17 @@ export async function POST(request: NextRequest) {
           annee,
         })
 
+        // Les erreurs étaient seulement journalisées : une récolte antérieure à
+        // la plantation, ou un semis postérieur, passaient sans le moindre
+        // signal (friction constatée le 2026-07-30). On refuse désormais.
         if (!dateValidation.valid) {
-          console.error('⚠️ Date validation errors (NOT BLOCKING):', dateValidation.errors)
+          return NextResponse.json(
+            {
+              error: dateValidation.errors.join(' '),
+              errors: dateValidation.errors,
+            },
+            { status: 400 }
+          )
         }
         dateWarnings.push(...dateValidation.warnings)
       } catch (validationError) {
@@ -285,11 +280,14 @@ export async function POST(request: NextRequest) {
       // Concombre (25/05–25/07) pouvaient cohabiter sur A1 sans aucune
       // alerte. Désormais on remonte un warning non-bloquant qui
       // s'affiche en toast comme les warnings ITP.
+      // Période demandée : sert au warning de chevauchement ci-dessous ET au
+      // calcul d'occupation de la planche (QA cmsp5927v).
+      const newStart =
+        data.dateSemis ? new Date(data.dateSemis) :
+        data.datePlantation ? new Date(data.datePlantation) : null
+      const newEnd = data.dateRecolte ? new Date(data.dateRecolte) : null
+
       if (planche && data.plancheId) {
-        const newStart =
-          data.dateSemis ? new Date(data.dateSemis) :
-          data.datePlantation ? new Date(data.datePlantation) : null
-        const newEnd = data.dateRecolte ? new Date(data.dateRecolte) : null
         if (newStart && newEnd) {
           for (const c of planche.cultures) {
             const cStart = c.dateSemis ?? c.datePlantation
@@ -307,55 +305,84 @@ export async function POST(request: NextRequest) {
       }
 
       if (planche) {
-        // Récupérer l'ITP pour avoir l'espacementRangs
-        let espacementRangs = 30 // Défaut 30cm
+        // Récupérer l'ITP pour avoir l'espacementRangs.
+        // QA cmsqla9c2 — il n'y a plus de défaut inventé : la majorité des ITP
+        // du référentiel INRAE ne renseigne pas l'espacement entre rangs, et le
+        // 30 cm de repli refusait en 400 des créations parfaitement légitimes
+        // (4 rangs de radis sur une planche de 80 cm). Sans donnée, on prévient
+        // au lieu de refuser.
+        let espacementRangs: number | null = null
         if (data.itpId) {
           const itp = await prisma.iTP.findUnique({
             where: { id: data.itpId },
             select: { espacementRangs: true },
           })
-          espacementRangs = itp?.espacementRangs || 30
+          espacementRangs = itp?.espacementRangs ?? null
         }
 
-        // Cultures existantes avec leur espacement
-        const culturesExistantes = planche.cultures.map(c => ({
+        // Cultures existantes avec leur espacement.
+        // QA cmsp5927v — l'occupation était calculée sur TOUTES les cultures non
+        // clôturées de la planche, sans regarder les dates : une culture d'une
+        // saison passée jamais marquée terminée saturait la planche à vie et la
+        // création était refusée (planche B2 de la démo). On ne compte donc que
+        // les cultures dont le cycle chevauche réellement la période demandée ;
+        // faute de dates exploitables, on reste prudent en la comptant.
+        const chevaucheLaPeriode = (c: (typeof planche.cultures)[number]) => {
+          if (!newStart || !newEnd) return true
+          const cStart = c.dateSemis ?? c.datePlantation
+          const cEnd = c.dateRecolte
+          if (!cStart || !cEnd) return true
+          return newStart < new Date(cEnd) && new Date(cStart) < newEnd
+        }
+        const culturesExistantes = planche.cultures.filter(chevaucheLaPeriode).map(c => ({
           nbRangs: c.nbRangs || 1,
-          espacementRangs: c.itp?.espacementRangs || 30,
+          espacementRangs: c.itp?.espacementRangs ?? null,
         }))
 
-        // Nouvelle culture
-        const nouvelleCulture = {
-          nbRangs: data.nbRangs || 1,
-          espacementRangs,
-          longueur: data.longueur || undefined,
-        }
+        if (espacementRangs === null) {
+          dateWarnings.push(
+            "Espacement entre rangs inconnu pour cet itinéraire technique : l'occupation de la planche n'a pas été vérifiée."
+          )
+        } else {
+          // Nouvelle culture
+          const nouvelleCulture = {
+            nbRangs: data.nbRangs || 1,
+            espacementRangs,
+            longueur: data.longueur || undefined,
+          }
 
-        const validation = peutAjouterCulture(
-          { largeur: planche.largeur || 0.8, longueur: planche.longueur || 2 },
-          culturesExistantes,
-          nouvelleCulture
-        )
-
-        if (!validation.possible) {
-          const suggestions = suggererAjustements(
+          const validation = peutAjouterCulture(
             { largeur: planche.largeur || 0.8, longueur: planche.longueur || 2 },
             culturesExistantes,
             nouvelleCulture
           )
 
-          return NextResponse.json(
-            {
-              error: validation.message,
-              suggestions: suggestions.map(s => s.message),
-              details: {
-                largeurPlanche: planche.largeur,
-                largeurOccupee: validation.largeurOccupee,
-                largeurDisponible: validation.largeurDisponible,
-                largeurNecessaire: validation.largeurNecessaire,
+          if (!validation.possible) {
+            const suggestions = suggererAjustements(
+              { largeur: planche.largeur || 0.8, longueur: planche.longueur || 2 },
+              culturesExistantes,
+              nouvelleCulture
+            )
+
+            return NextResponse.json(
+              {
+                // On nomme l'origine du chiffre : la suggestion « réduire
+                // l'espacement » parlait d'une valeur portée par l'itinéraire
+                // technique, que l'utilisateur confondait avec le champ
+                // « Espacement » du formulaire (espacement SUR le rang).
+                error: `${validation.message}. Espacement entre rangs de l'itinéraire technique : ${espacementRangs} cm.`,
+                suggestions: suggestions.map(s => s.message),
+                details: {
+                  largeurPlanche: planche.largeur,
+                  largeurOccupee: validation.largeurOccupee,
+                  largeurDisponible: validation.largeurDisponible,
+                  largeurNecessaire: validation.largeurNecessaire,
+                  espacementRangsItp: espacementRangs,
+                },
               },
-            },
-            { status: 400 }
-          )
+              { status: 400 }
+            )
+          }
         }
       }
     }
@@ -410,23 +437,6 @@ export async function POST(request: NextRequest) {
       // de l'espèce (créé à la demande). Aucune Culture ne reste sans variete.
       const varieteId = data.varieteId ?? (await ensurePlaceholderVariete(data.especeId, tx))
 
-      // Feedback Marc 2026-05-16 — V4 Bug 6 : si aucun ITP n'est fourni
-      // explicitement, on choisit automatiquement le premier ITP de
-      // l'espèce (préférence "-printemps", puis "-plein-champ"). Sans
-      // cela, les écrans Planification (Cultures prévues, Récoltes par
-      // mois, Plants nécessaires…) traitaient toutes les cultures
-      // comme orphelines et n'arrivaient pas à dériver les dates/durées.
-      if (!data.itpId) {
-        const autoItp = await tx.iTP.findFirst({
-          where: { especeId: data.especeId },
-          orderBy: { id: "asc" },
-          select: { id: true },
-        })
-        if (autoItp) {
-          data.itpId = autoItp.id
-        }
-      }
-
       // Création avec userId. rotationViolee=true si l'utilisateur a confirmé
       // malgré le warning (PROMPT 12).
       const newCulture = await tx.culture.create({
@@ -446,10 +456,8 @@ export async function POST(request: NextRequest) {
       })
 
       // Décrément automatique du stock de semences (per-user).
-      // Audit #40 : on utilise l'ITP EFFECTIF de la culture (newCulture.itp),
-      // pas la variable `itp` (nulle quand l'ITP a été auto-assigné) → le
-      // décrément ne s'appliquait qu'avec un ITP choisi explicitement.
-      const itpEff = itp ?? newCulture.itp
+      // Sans ITP sur la culture, pas de dose de semis fiable : pas de décrément.
+      const itpEff = newCulture.itp
       if (data.varieteId && data.dateSemis && itpEff) {
         const variete = await tx.variete.findUnique({
           where: { id: data.varieteId },
@@ -502,6 +510,14 @@ export async function POST(request: NextRequest) {
     })
 
     invalidateKpi(session!.user.id)
+
+    // Friction 2026-08-14 — un plan d'arrosage existant suit les cultures :
+    // une culture « à irriguer » créée après la génération du plan restait
+    // sans passage jusqu'à un clic explicite dans l'onglet Calendrier.
+    if (culture.aIrriguer) {
+      await etendrePlanArrosage(session!.user.id, culture.id)
+    }
+
     // Audit Marc 2026-05-14 — Bug 04 : warnings remontés non bloquants
     return NextResponse.json(
       dateWarnings.length > 0 ? { ...culture, warnings: dateWarnings } : culture,

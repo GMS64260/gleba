@@ -37,6 +37,7 @@ const LIBELLES: Record<string, string> = {
   chevaux: "Chevaux",
   ane: "Âne",
   abeille: "Abeille",
+  escargot: "Escargot",
   // Phase 0 modes d'élevage — filières compagnie / équin / NAC.
   // Tout id du catalogue (cf. catalogue-compagnie.ts) doit avoir son libellé
   // ici : le test `catalogue-compagnie.test.ts` le vérifie.
@@ -91,6 +92,9 @@ const LIBELLE_PETIT: Record<string, { s: string; p: string }> = {
   canard: { s: "caneton", p: "canetons" },
   oie: { s: "oison", p: "oisons" },
   dinde: { s: "dindonneau", p: "dindonneaux" },
+  pintade: { s: "pintadeau", p: "pintadeaux" },
+  caille: { s: "cailleteau", p: "cailleteaux" },
+  escargot: { s: "juvénile", p: "juvéniles" },
   // NAC — rongeurs, oiseaux, reptiles (cf. catalogue-compagnie.ts).
   cobaye: { s: "jeune cobaye", p: "jeunes cobayes" },
   hamster: { s: "bébé hamster", p: "bébés hamsters" },

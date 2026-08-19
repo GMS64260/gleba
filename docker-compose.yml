@@ -31,12 +31,14 @@ services:
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-changez-moi-en-production}
       NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
       AUTH_TRUST_HOST: "true"
+      # Connexion Google (optionnelle) : le bouton n'apparaît que si le client
+      # OAuth est renseigné dans le .env privé du serveur.
+      AUTH_GOOGLE_ID: ${AUTH_GOOGLE_ID:-}
+      AUTH_GOOGLE_SECRET: ${AUTH_GOOGLE_SECRET:-}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@gleba.local}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme}
       ADMIN_NAME: ${ADMIN_NAME:-Administrateur}
-      OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-glm-4.7}
-      # Modes « Extra » et « Support » : agents Paperclip dédiés.
+      # Modes « Normal », « Extra » et « Support » : agents Paperclip dédiés.
       # Les clés restent uniquement dans le .env privé du serveur.
       GLEBA_PAPERCLIP_API_URL: ${GLEBA_PAPERCLIP_API_URL:-}
       GLEBA_PAPERCLIP_COMPANY_ID: ${GLEBA_PAPERCLIP_COMPANY_ID:-}
@@ -47,6 +49,10 @@ services:
       GLEBA_PAPERCLIP_SUPPORT_AGENT_ID: ${GLEBA_PAPERCLIP_SUPPORT_AGENT_ID:-}
       GLEBA_PAPERCLIP_SUPPORT_AGENT_KEY: ${GLEBA_PAPERCLIP_SUPPORT_AGENT_KEY:-}
       GLEBA_PAPERCLIP_SUPPORT_TICKET_ASSIGNEE_ID: ${GLEBA_PAPERCLIP_SUPPORT_TICKET_ASSIGNEE_ID:-}
+      # Lot assistant 2026-08-11 : cadence de sondage Paperclip (ms) et
+      # kill-switch des réponses directes sans LLM ("off" pour couper).
+      GLEBA_PAPERCLIP_POLL_MS: ${GLEBA_PAPERCLIP_POLL_MS:-}
+      GLEBA_REPONSES_DIRECTES: ${GLEBA_REPONSES_DIRECTES:-}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER:-}

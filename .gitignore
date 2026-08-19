@@ -127,3 +127,18 @@ et)
 
 # La consultation admin fait partie du produit : ses sources doivent rester
 # versionnées avec auth.ts/layout.tsx afin qu'un clone propre compile.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Scripts one-shot porteurs de DONNÉES PERSONNELLES réelles (dépôt public).
+# Ils ont servi une fois, contre la base de production, et contiennent des
+# adresses email, des noms et des questions d'utilisateurs identifiables :
+# rien de tout cela ne doit entrer dans l'historique Git, qui est indélébile.
+# Les garder en local est utile ; les publier serait une violation RGPD.
+# ─────────────────────────────────────────────────────────────────────────────
+/scripts/debloquer-jeanjacques-20260811.ts
+/scripts/reponse-vorwerk-fleurs-20260818.ts
+/scripts/replay-questions-reelles.ts
+
+# Rebut de travail (sauvegardes d'éditeur, page 3D retirée du site)
+/.dl-retire/
+*.bak-vc3

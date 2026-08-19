@@ -29,7 +29,7 @@ import {
 } from "lucide-react"
 
 type BugType = "BUG" | "EVOLUTION" | "AUTRE"
-type BugStatus = "OPEN" | "IN_PROGRESS" | "RESOLVED"
+type BugStatus = "OPEN" | "IN_PROGRESS" | "RESOLVED" | "EVOLUTION_PRODUIT" | "HORS_PERIMETRE"
 type BugPriority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL"
 
 interface StatusLog {
@@ -60,7 +60,14 @@ interface BugRow {
 
 interface Props {
   initialBugs: BugRow[]
-  stats: { total: number; open: number; inProgress: number; resolved: number }
+  stats: {
+    total: number
+    open: number
+    inProgress: number
+    resolved: number
+    evolution: number
+    horsPerimetre: number
+  }
 }
 
 const TYPE_LABELS: Record<BugType, string> = {
@@ -69,10 +76,15 @@ const TYPE_LABELS: Record<BugType, string> = {
   AUTRE: "Autre",
 }
 
+// EVOLUTION_PRODUIT et HORS_PERIMETRE sont des issues de TRI : le signalement
+// est qualifié, aucun correctif applicatif n'est attendu, et il ne compte plus
+// comme travail en attente sur l'accueil admin.
 const STATUS_LABELS: Record<BugStatus, string> = {
   OPEN: "Ouvert",
   IN_PROGRESS: "En cours",
   RESOLVED: "Résolu",
+  EVOLUTION_PRODUIT: "Évolution produit",
+  HORS_PERIMETRE: "Hors périmètre",
 }
 
 const PRIORITY_LABELS: Record<BugPriority, string> = {
@@ -101,6 +113,10 @@ function statusBadgeClass(s: BugStatus) {
       return "bg-amber-50 text-amber-700 ring-amber-200"
     case "RESOLVED":
       return "bg-emerald-50 text-emerald-700 ring-emerald-200"
+    case "EVOLUTION_PRODUIT":
+      return "bg-indigo-50 text-indigo-700 ring-indigo-200"
+    case "HORS_PERIMETRE":
+      return "bg-slate-100 text-slate-600 ring-slate-300"
   }
 }
 
@@ -216,7 +232,10 @@ export function BugsDashboard({ initialBugs, stats }: Props) {
   return (
     <div className="space-y-6">
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {/* Six cartes : sans les deux issues de tri, la somme des cartes ne
+          retombait pas sur le total et les signalements qualifiés semblaient
+          avoir disparu. */}
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Total</CardDescription>
@@ -242,6 +261,22 @@ export function BugsDashboard({ initialBugs, stats }: Props) {
             <CardDescription className="text-emerald-700">Résolus</CardDescription>
             <CardTitle className="text-3xl text-emerald-700">
               {stats.resolved}
+            </CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription className="text-indigo-700">Évolution produit</CardDescription>
+            <CardTitle className="text-3xl text-indigo-700">
+              {stats.evolution}
+            </CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription className="text-slate-600">Hors périmètre</CardDescription>
+            <CardTitle className="text-3xl text-slate-600">
+              {stats.horsPerimetre}
             </CardTitle>
           </CardHeader>
         </Card>
@@ -292,6 +327,8 @@ export function BugsDashboard({ initialBugs, stats }: Props) {
             <option value="OPEN">Ouvert</option>
             <option value="IN_PROGRESS">En cours</option>
             <option value="RESOLVED">Résolu</option>
+            <option value="EVOLUTION_PRODUIT">Évolution produit</option>
+            <option value="HORS_PERIMETRE">Hors périmètre</option>
           </select>
           <select
             value={filterPriority}

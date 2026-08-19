@@ -15,6 +15,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server"
+import { dispositionDocument } from "@/lib/http/disposition-fichier"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 import PDFDocument from "pdfkit"
@@ -34,7 +35,7 @@ const TYPE_LABELS: Record<string, string> = {
   acompte: "ACOMPTE",
 }
 
-export async function GET(_request: NextRequest, { params }: Params) {
+export async function GET(request: NextRequest, { params }: Params) {
   const { error, session } = await requireAuthApi()
   if (error) return error
 
@@ -419,7 +420,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
     status: 200,
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="${facture.numero}.pdf"`,
+      "Content-Disposition": dispositionDocument(request, `${facture.numero}.pdf`),
       "Cache-Control": "no-cache",
     },
   })

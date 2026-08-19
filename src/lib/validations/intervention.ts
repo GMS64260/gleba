@@ -70,5 +70,5 @@ export const createInterventionSchema = z.object({
 })
 
 export const updateInterventionSchema = createInterventionSchema.partial().extend({
-  id: z.number().int().min(1, 'ID requis'),
+  id: z.coerce.number().int().min(1, 'ID requis'),
 })

@@ -170,7 +170,8 @@ export function SemisLunaireEncart({
           </div>
         ) : categoriesActives.length === 0 ? (
           <p className="text-sm text-muted-foreground py-2">
-            Aucun semis recommandé dans les {horizonSemaines} prochaines semaines
+            Aucun semis recommandé dans les {horizonSemaines}{" "}
+            prochaines semaines
             pour vos itinéraires{zone || reglageFin !== 0 ? " (zone climatique prise en compte)" : ""}.
           </p>
         ) : (

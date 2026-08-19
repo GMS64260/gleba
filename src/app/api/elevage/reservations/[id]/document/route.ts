@@ -10,6 +10,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { dispositionDocument } from '@/lib/http/disposition-fichier'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import PDFDocument from 'pdfkit'
@@ -236,7 +237,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   return new NextResponse(buffer as unknown as BodyInit, {
     headers: {
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `inline; filename="${noms[type]}-${resa.acquereurNom.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.pdf"`,
+      'Content-Disposition': dispositionDocument(
+        request,
+        `${noms[type]}-${resa.acquereurNom.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.pdf`,
+      ),
     },
   })
 }

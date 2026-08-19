@@ -5,6 +5,7 @@
  */
 
 import * as React from "react"
+import { ouvrirApercu } from "@/lib/apercu-document"
 import {
   Dialog,
   DialogContent,
@@ -71,6 +72,9 @@ interface Campagne {
   datePlantationReelle: string | null
   essenceLibre: string | null
   varieteOuProvenance: string | null
+  porteGreffe: { id: string; nom: string; vigueur: number | null } | null
+  typePlant: string | null
+  conduite: string | null
   pepiniere: string | null
   budgetPrevu: number | null
   coutReel: number | null
@@ -179,40 +183,22 @@ export function CampagneDetailDialog({ campagneId, open, onOpenChange, onUpdate 
   const [campagne, setCampagne] = React.useState<Campagne | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [editingStatut, setEditingStatut] = React.useState(false)
-  const [exporting, setExporting] = React.useState(false)
 
-  // Fix verger 2026-05-31 (bug #3) — Le simple <a href> du bouton "Dossier
-  // PDF" ne déclenchait aucun téléchargement (lien sans `download` ni
-  // `target`, clic potentiellement intercepté dans la modale Radix). On
-  // récupère le PDF en blob et on force le téléchargement via un <a download>
-  // programmatique, ce qui marche dans tous les navigateurs et hors du flux
-  // de navigation SPA.
-  const handleExportPdf = React.useCallback(async () => {
-    if (!campagne || exporting) return
-    setExporting(true)
-    try {
-      const res = await fetch(`/api/arbres/campagnes/${campagne.id}/export`)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const blob = await res.blob()
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement("a")
-      a.href = url
-      a.download = `dossier-campagne-${campagne.id}.pdf`
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      window.URL.revokeObjectURL(url)
-    } catch (err) {
-      console.error("Export dossier PDF campagne:", err)
-      toast({
-        variant: "destructive",
-        title: "Erreur",
-        description: "Impossible de générer le dossier PDF.",
-      })
-    } finally {
-      setExporting(false)
-    }
-  }, [campagne, exporting, toast])
+  // Aperçu du dossier de campagne (2026-08-19).
+  //
+  // Historique : un lien `<a href>` ne déclenchait rien depuis cette modale
+  // Radix (clic intercepté), d'où un téléchargement forcé par blob + `<a
+  // download>`. Mais un dossier de plantation se RELIT avant d'être transmis, et
+  // un téléchargement natif sort de l'application — il bloque net un contrôle
+  // mené au navigateur. On ouvre donc l'écran d'aperçu, depuis un gestionnaire
+  // de clic (jamais un lien, pour la même raison qu'avant).
+  const handleExportPdf = React.useCallback(() => {
+    if (!campagne) return
+    ouvrirApercu(
+      `/api/arbres/campagnes/${campagne.id}/export`,
+      `Dossier de campagne ${campagne.nom ?? campagne.id}`,
+    )
+  }, [campagne])
   // Bug #ybnkt — Tabs en non-controlled re-démontaient sur chaque load(),
   // ramenant l'utilisateur à l'Aperçu après un toggle d'étape. On contrôle
   // l'onglet actif et on ne le reset que lorsque la modale s'ouvre.
@@ -222,6 +208,7 @@ export function CampagneDetailDialog({ campagneId, open, onOpenChange, onUpdate 
   }, [open])
 
   // Nouvelle observation
+  const [isSubmittingObs, setIsSubmittingObs] = React.useState(false)
   const [obsForm, setObsForm] = React.useState({
     nbVivants: "",
     nbMorts: "",
@@ -292,23 +279,29 @@ export function CampagneDetailDialog({ campagneId, open, onOpenChange, onUpdate 
 
   const submitObservation = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isSubmittingObs) return
     if (!obsForm.nbVivants && !obsForm.notes) {
       toast({ title: "Saisir au moins le nombre de plants vivants ou une note", variant: "destructive" })
       return
     }
-    const res = await fetch(`/api/arbres/campagnes/${campagneId}/observations`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(obsForm),
-    })
-    if (res.ok) {
-      toast({ title: "Observation enregistrée" })
-      setObsForm({ nbVivants: "", nbMorts: "", nbManquants: "", hauteurMoyenneCm: "", vigueur: "", problemes: "", notes: "" })
-      load()
-      onUpdate?.()
-    } else {
-      const data = await res.json().catch(() => null)
-      toast({ title: "Erreur", description: data?.error || "Enregistrement de l'observation impossible", variant: "destructive" })
+    setIsSubmittingObs(true)
+    try {
+      const res = await fetch(`/api/arbres/campagnes/${campagneId}/observations`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(obsForm),
+      })
+      if (res.ok) {
+        toast({ title: "Observation enregistrée" })
+        setObsForm({ nbVivants: "", nbMorts: "", nbManquants: "", hauteurMoyenneCm: "", vigueur: "", problemes: "", notes: "" })
+        load()
+        onUpdate?.()
+      } else {
+        const data = await res.json().catch(() => null)
+        toast({ title: "Erreur", description: data?.error || "Enregistrement de l'observation impossible", variant: "destructive" })
+      }
+    } finally {
+      setIsSubmittingObs(false)
     }
   }
 
@@ -344,11 +337,10 @@ export function CampagneDetailDialog({ campagneId, open, onOpenChange, onUpdate 
               <button
                 type="button"
                 onClick={handleExportPdf}
-                disabled={exporting}
-                className="ml-auto text-xs px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-normal disabled:opacity-60 disabled:cursor-wait"
-                title="Télécharger le dossier complet pour montage d'aides"
+                className="ml-auto text-xs px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-normal"
+                title="Afficher le dossier complet pour montage d'aides — téléchargeable depuis l'aperçu"
               >
-                {exporting ? "Génération…" : "📥 Dossier PDF"}
+                {"📄 Dossier PDF"}
               </button>
             )}
           </DialogTitle>
@@ -405,6 +397,18 @@ export function CampagneDetailDialog({ campagneId, open, onOpenChange, onUpdate 
                   <Info label="Densité" value={campagne.densitePlantsParHa ? `${Math.round(campagne.densitePlantsParHa)}/ha` : "—"} />
                   <Info label="Essence" value={campagne.essenceLibre || campagne.espece?.nomLatin || "—"} />
                   <Info label="Variété/Provenance" value={campagne.varieteOuProvenance || "—"} />
+                  {/* QA cmsqn6gds — porte-greffe, type de plant et conduite,
+                      saisis à l'assistant et bien persistés, n'étaient
+                      restitués nulle part : ce sont pourtant les trois
+                      déterminants de la distance de plantation, de la taille
+                      de formation et de la mise à fruit. */}
+                  {(campagne.porteGreffe || campagne.typePlant || campagne.conduite) && (
+                    <>
+                      <Info label="Porte-greffe" value={campagne.porteGreffe?.nom || "—"} />
+                      <Info label="Type de plant" value={campagne.typePlant || "—"} />
+                      <Info label="Conduite" value={campagne.conduite || "—"} />
+                    </>
+                  )}
                   <Info label="Pépinière" value={campagne.pepiniere || "—"} />
                   <Info label="Date plantation prévue" value={campagne.datePlantationPrevue ? new Date(campagne.datePlantationPrevue).toLocaleDateString("fr-FR") : "—"} />
                   <Info label="Date plantation réelle" value={campagne.datePlantationReelle ? new Date(campagne.datePlantationReelle).toLocaleDateString("fr-FR") : "—"} />
@@ -526,10 +530,25 @@ export function CampagneDetailDialog({ campagneId, open, onOpenChange, onUpdate 
 
             {/* Suivi reprise */}
             <TabsContent value="suivi" className="space-y-3">
+              {/* Ticket cmsog61e5 — pas d'observation de reprise avant la
+                  plantation : l'API renvoie 400, on prévient et on désactive
+                  le formulaire tant que datePlantationReelle est vide. */}
+              {!campagne.datePlantationReelle && (
+                <Card className="border-amber-300 bg-amber-50/50">
+                  <CardContent className="p-3 text-sm text-amber-900 flex items-start gap-2">
+                    <HelpCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                    <span>
+                      La plantation n&apos;a pas encore été réalisée : enregistrez d&apos;abord
+                      l&apos;étape « Plantation » (onglet Étapes) pour pouvoir suivre la reprise.
+                    </span>
+                  </CardContent>
+                </Card>
+              )}
               {/* Form nouvelle observation */}
               <Card>
                 <CardContent className="p-4">
-                  <form onSubmit={submitObservation} className="space-y-3">
+                  <form onSubmit={submitObservation}>
+                    <fieldset disabled={!campagne.datePlantationReelle} className="space-y-3 disabled:opacity-60">
                     <p className="font-medium text-sm flex items-center gap-2">
                       <Plus className="h-4 w-4" />
                       Nouvelle observation
@@ -583,9 +602,10 @@ export function CampagneDetailDialog({ campagneId, open, onOpenChange, onUpdate 
                         rows={2}
                       />
                     </div>
-                    <Button type="submit" size="sm">
-                      <Save className="h-4 w-4 mr-1" />Enregistrer l'observation
+                    <Button type="submit" size="sm" disabled={isSubmittingObs}>
+                      <Save className="h-4 w-4 mr-1" />{isSubmittingObs ? "Enregistrement..." : "Enregistrer l'observation"}
                     </Button>
+                    </fieldset>
                   </form>
                 </CardContent>
               </Card>

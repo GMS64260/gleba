@@ -10,11 +10,13 @@ import prisma from '@/lib/prisma'
 import { updatePlancheSchema } from '@/lib/validations'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { invalidateKpi } from '@/lib/kpi'
+import { resoudreIdPlanche } from '@/lib/planches/resolution'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
 // GET /api/planches/[id]
-// URL param "id" is the planche nom (human-readable name)
+// Le paramètre est l'identifiant de la planche ; son nom reste accepté en
+// repli pour les liens et favoris antérieurs (cf. lib/planches/resolution).
 export async function GET(
   request: NextRequest,
   { params }: RouteParams
@@ -24,15 +26,11 @@ export async function GET(
 
   try {
     const { id } = await params
-    const nom = decodeURIComponent(id)
+    const reference = decodeURIComponent(id)
+    const plancheId = await resoudreIdPlanche(prisma, reference, session!.user.id)
 
-    const planche = await prisma.planche.findUnique({
-      where: {
-        nom_userId: {
-          nom,
-          userId: session!.user.id,
-        },
-      },
+    const planche = plancheId ? await prisma.planche.findUnique({
+      where: { id: plancheId },
       include: {
         rotation: {
           include: {
@@ -63,11 +61,11 @@ export async function GET(
           select: { id: true, nom: true, surface: true, centroidLat: true, centroidLng: true },
         },
       },
-    })
+    }) : null
 
     if (!planche) {
       return NextResponse.json(
-        { error: `Planche "${nom}" non trouvée` },
+        { error: `Planche "${reference}" non trouvée` },
         { status: 404 }
       )
     }
@@ -82,8 +80,7 @@ export async function GET(
   }
 }
 
-// PUT /api/planches/[id]
-// URL param "id" is the planche nom
+// PUT /api/planches/[id] — identifiant, ou nom en repli.
 export async function PUT(
   request: NextRequest,
   { params }: RouteParams
@@ -93,7 +90,7 @@ export async function PUT(
 
   try {
     const { id } = await params
-    const nom = decodeURIComponent(id)
+    const reference = decodeURIComponent(id)
     const body = await request.json()
 
     // Validation
@@ -106,23 +103,35 @@ export async function PUT(
     }
 
     // Vérifier existence et propriété
-    const existing = await prisma.planche.findUnique({
-      where: {
-        nom_userId: {
-          nom,
-          userId: session!.user.id,
-        },
-      },
-    })
+    const plancheId = await resoudreIdPlanche(prisma, reference, session!.user.id)
+    const existing = plancheId
+      ? await prisma.planche.findUnique({ where: { id: plancheId } })
+      : null
 
     if (!existing) {
       return NextResponse.json(
-        { error: `Planche "${nom}" non trouvée` },
+        { error: `Planche "${reference}" non trouvée` },
         { status: 404 }
       )
     }
 
     const data = validationResult.data
+
+    // Renommage : l'unicité (nom, userId) est une contrainte SQL. On la teste
+    // avant l'update pour renvoyer un message compréhensible plutôt qu'un
+    // échec Prisma générique.
+    if (data.nom !== undefined && data.nom !== existing.nom) {
+      const collision = await prisma.planche.findUnique({
+        where: { nom_userId: { nom: data.nom, userId: session!.user.id } },
+        select: { id: true },
+      })
+      if (collision) {
+        return NextResponse.json(
+          { error: `Vous avez déjà une planche nommée « ${data.nom} ».` },
+          { status: 409 }
+        )
+      }
+    }
 
     // Recalculer la surface si necessaire
     const largeur = data.largeur ?? existing.largeur
@@ -155,8 +164,7 @@ export async function PUT(
   }
 }
 
-// DELETE /api/planches/[id]
-// URL param "id" is the planche nom
+// DELETE /api/planches/[id] — identifiant, ou nom en repli.
 export async function DELETE(
   request: NextRequest,
   { params }: RouteParams
@@ -166,16 +174,12 @@ export async function DELETE(
 
   try {
     const { id } = await params
-    const nom = decodeURIComponent(id)
+    const reference = decodeURIComponent(id)
 
     // Vérifier existence, propriété et dépendances
-    const planche = await prisma.planche.findUnique({
-      where: {
-        nom_userId: {
-          nom,
-          userId: session!.user.id,
-        },
-      },
+    const plancheId = await resoudreIdPlanche(prisma, reference, session!.user.id)
+    const planche = plancheId ? await prisma.planche.findUnique({
+      where: { id: plancheId },
       include: {
         _count: {
           select: {
@@ -183,11 +187,11 @@ export async function DELETE(
           },
         },
       },
-    })
+    }) : null
 
     if (!planche) {
       return NextResponse.json(
-        { error: `Planche "${nom}" non trouvée` },
+        { error: `Planche "${reference}" non trouvée` },
         { status: 404 }
       )
     }
@@ -196,7 +200,7 @@ export async function DELETE(
     if (planche._count.cultures > 0) {
       return NextResponse.json(
         {
-          error: `Impossible de supprimer la planche "${nom}" car elle a des cultures`,
+          error: `Impossible de supprimer la planche "${planche.nom}" car elle a des cultures`,
           details: { cultures: planche._count.cultures }
         },
         { status: 409 }
@@ -209,7 +213,7 @@ export async function DELETE(
     })
 
     invalidateKpi(session!.user.id)
-    return NextResponse.json({ success: true, deleted: nom })
+    return NextResponse.json({ success: true, deleted: planche.nom, deletedId: planche.id })
   } catch (error) {
     console.error('DELETE /api/planches/[id] error:', error)
     return NextResponse.json(

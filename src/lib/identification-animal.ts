@@ -5,9 +5,11 @@
  * - BDNI bovin : FR + 2 chiffres département + 8 chiffres = 14 caractères
  *   (instruction technique DGAL/SDSPA/2018-528). Le code pays peut être
  *   omis dans l'usage courant — on accepte les deux.
- * - IPG ovin/caprin : "FR" + 7 chiffres exploitation + 5 chiffres numéro
- *   national d'animal (note de service DGAL 2009). Total 12 chiffres +
- *   préfixe FR.
+ * - IPG ovin/caprin : "FR" + indicatif de marquage de l'exploitation
+ *   (6 chiffres, attribué par l'EDE) + numéro d'ordre (5 chiffres), soit
+ *   FR + 11 chiffres (arrêté du 19 décembre 2005, animaux nés après le
+ *   09/07/2005). L'ancien motif FR + 12 chiffres reste toléré pour les
+ *   identifiants historiques déjà saisis.
  * - IPG porcin : tatouage à l'oreille (5 chiffres) ou identifiant
  *   éleveur structuré : "FR" + 7 chiffres exploitation + 5 chiffres
  *   animal (notes DGAL). Accepte tatouage 5 chiffres en fallback.
@@ -34,10 +36,10 @@ const PATTERNS: Record<TypeIdentifiant, RegExp> = {
   // Bovin : "FR" optionnel + 10 chiffres (dpt 2 + 8) — accepte aussi
   // les anciens identifiants nationaux à 10 chiffres
   'BDNI bovin': /^(FR)?\d{10}$/i,
-  // Ovin : FR + 12 chiffres
-  'IPG ovin': /^FR\d{12}$/i,
-  // Caprin : FR + 12 chiffres (même format qu'ovin)
-  'IPG caprin': /^FR\d{12}$/i,
+  // Ovin : FR + 11 chiffres (indicatif 6 + ordre 5) ; 12 toléré (historique)
+  'IPG ovin': /^FR\d{11,12}$/i,
+  // Caprin : même format qu'ovin
+  'IPG caprin': /^FR\d{11,12}$/i,
   // Porcin : FR + 12 chiffres OU tatouage 5 chiffres
   'IPG porcin': /^(FR\d{12}|\d{5})$/i,
   // Équin SIRE : UELN 15 chiffres ou n° SIRE 8 chiffres
@@ -67,7 +69,7 @@ export function placeholderIdentifiant(type: TypeIdentifiant | null | undefined)
       return 'FR + 10 chiffres (ex: FR2412345678)'
     case 'IPG ovin':
     case 'IPG caprin':
-      return 'FR + 12 chiffres (ex: FR012345601234)'
+      return 'FR + 11 chiffres (ex: FR64123412345)'
     case 'IPG porcin':
       return 'FR+12 chiffres ou tatouage 5 chiffres'
     case 'SIRE équin':

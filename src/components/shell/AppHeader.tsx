@@ -38,8 +38,32 @@ export function AppHeader({ current, showLune = false }: AppHeaderProps) {
   // les onglets du module restent), réapparaît dès qu'on remonte.
   const hidden = useHideOnScroll()
 
+  // Ticket cmsx5x1z2 — la barre d'onglets des modules se collait sous le header
+  // avec un décalage codé en dur (`top-[61px]`), qui suppose un header d'une
+  // seule ligne. Le conteneur est en `flex-wrap` : dès qu'il passe sur deux
+  // lignes (largeur intermédiaire, zoom, police plus grande), le header — qui
+  // est au-dessus dans l'empilement — RECOUVRE la barre d'onglets et intercepte
+  // les clics destinés à ses actions, au profit de ses propres liens de module.
+  // On publie donc la hauteur réelle, mesurée, et la barre s'y accroche.
+  const headerRef = React.useRef<HTMLElement | null>(null)
+  React.useEffect(() => {
+    const element = headerRef.current
+    if (!element) return
+    const publier = () => {
+      document.documentElement.style.setProperty(
+        "--app-header-h",
+        `${Math.round(element.getBoundingClientRect().height)}px`,
+      )
+    }
+    publier()
+    const observateur = new ResizeObserver(publier)
+    observateur.observe(element)
+    return () => observateur.disconnect()
+  }, [])
+
   return (
     <header
+      ref={headerRef}
       className={`border-b bg-white/95 backdrop-blur-sm sticky top-0 z-50 transition-transform duration-200 motion-reduce:transition-none ${
         hidden ? "-translate-y-full" : "translate-y-0"
       }`}

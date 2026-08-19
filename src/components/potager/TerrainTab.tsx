@@ -94,7 +94,9 @@ const TYPES_SOL = [
 const RETENTION_EAU = [
   { value: "Faible", label: "Faible", icon: "" },
   { value: "Moyenne", label: "Moyenne", icon: "" },
-  { value: "Elevee", label: "Élevée", icon: "" },
+  // Valeur canonique accentuée (src/lib/validations/planche.ts) : « Elevee »
+  // saisi ici s'affichait « Définir » sur /maraichage/planches et inversement.
+  { value: "Élevée", label: "Élevée", icon: "" },
 ]
 
 // ============================================================
@@ -249,8 +251,8 @@ function PlanchesSubTab() {
         showPagination={false}
         onAdd={() => router.push("/maraichage/planches/new")}
         onRefresh={fetchData}
-        onRowClick={(row) => router.push(`/maraichage/planches/${encodeURIComponent(row.nom)}`)}
-        onRowEdit={(row) => router.push(`/maraichage/planches/${encodeURIComponent(row.nom)}`)}
+        onRowClick={(row) => router.push(`/maraichage/planches/${encodeURIComponent(row.id)}`)}
+        onRowEdit={(row) => router.push(`/maraichage/planches/${encodeURIComponent(row.id)}`)}
         rowEditLabel="Voir et modifier"
         onRowDelete={async (row) => {
           if (row._count.cultures > 0) {

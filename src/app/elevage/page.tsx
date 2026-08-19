@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AppHeader } from "@/components/shell/AppHeader"
 import { ModuleTabBar } from "@/components/shell/ModuleTabBar"
+import { updateDashboardSearchParams } from "@/lib/dashboard-navigation"
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu"
 import {
   Baby,
@@ -93,6 +94,33 @@ function ElevageDashboardInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [selectedYear, setSelectedYear] = React.useState(currentYearNow)
+  // QA cmsob8lon — l'année choisie revenait à l'année courante après F5.
+  // Même motif que le dashboard maraîchage : lecture au montage (client-only),
+  // et les vues dépendantes de l'année ne sont montées qu'après restauration
+  // pour qu'une réponse « année par défaut » ne puisse pas écraser la bonne.
+  const [yearReady, setYearReady] = React.useState(false)
+  React.useEffect(() => {
+    try {
+      const stored = localStorage.getItem("gleba_elevage_year")
+      if (stored && /^\d{4}$/.test(stored)) {
+        const y = parseInt(stored, 10)
+        if (availableYears.includes(y)) setSelectedYear(y)
+      }
+    } catch {
+      // localStorage indisponible (mode privé, quota) — on garde le défaut
+    } finally {
+      setYearReady(true)
+    }
+  }, [])
+  const handleYearChange = React.useCallback((value: string) => {
+    const y = parseInt(value, 10)
+    setSelectedYear(y)
+    try {
+      localStorage.setItem("gleba_elevage_year", String(y))
+    } catch {
+      // ignore
+    }
+  }, [])
   const [showChat, setShowChat] = React.useState(false)
   const [isChatExpanded, setIsChatExpanded] = React.useState(false)
   // Modes d'élevage → sélecteur de filière en tête de module (Phase 0).
@@ -112,12 +140,24 @@ function ElevageDashboardInner() {
   // ?tab=aliments tombait sur le Calendrier (onglet par défaut) au lieu
   // d'Alimentation. On mappe les alias usuels vers l'id canonique.
   const rawTab = searchParams.get("tab")
-  const activeTab: TabId =
+  const urlTab: TabId =
     rawTab && VALID_TABS.includes(rawTab)
       ? rawTab as TabId
       : rawTab && TAB_ALIASES[rawTab]
         ? TAB_ALIASES[rawTab]
         : "calendrier"
+
+  // TICKET cmsofbepa — état optimiste : sur mobile, la navigation d'onglet
+  // (Select Radix → pushState) peut être avalée par la chaîne tactile et
+  // l'écran, 100 % dérivé de l'URL, restait alors muet sur « Calendrier ».
+  // Le clic affiche immédiatement l'onglet demandé ; l'URL reste la source de
+  // vérité : dès que searchParams bouge (push abouti ou navigation réelle),
+  // l'état optimiste est effacé.
+  const [tabOptimiste, setTabOptimiste] = React.useState<TabId | null>(null)
+  React.useEffect(() => {
+    setTabOptimiste(null)
+  }, [searchParams])
+  const activeTab: TabId = tabOptimiste ?? urlTab
 
   React.useEffect(() => {
     if (rawTab && !VALID_TABS.includes(rawTab) && TAB_ALIASES[rawTab]) {
@@ -141,16 +181,23 @@ function ElevageDashboardInner() {
   // rebasculer vers le Dashboard (activeTab est dérivé de l'URL).
   React.useEffect(() => {
     if (hideRente && activeTab === "production") {
-      router.replace("/elevage?tab=dashboard", { scroll: false })
+      updateDashboardSearchParams(new URLSearchParams([["tab", "dashboard"]]), "replace")
     }
-  }, [hideRente, activeTab, router])
+  }, [hideRente, activeTab])
 
   // QA caprin cms1vc12t / cms1v9baa — toujours reconstruire une URL propre
   // /elevage?tab=<tab> : cliquer l'onglet DÉJÀ actif purge ainsi les params
   // résiduels (sub/action/edit) et resynchronise les sous-onglets contrôlés.
+  // QA cmsnoo8mc — router.push sur la même route avec seule la query modifiée
+  // est un no-op silencieux en build de production après chargement à froid
+  // (même piège que le verger, cmsbu12hb) : la barre d'onglets ne naviguait
+  // plus. Passage par updateDashboardSearchParams (History API intégrée).
   const handleTabChange = React.useCallback((tab: TabId) => {
-    router.push(`/elevage?tab=${tab}`, { scroll: false })
-  }, [router])
+    setTabOptimiste(tab)
+    const params = new URLSearchParams()
+    params.set("tab", tab)
+    updateDashboardSearchParams(params, "push")
+  }, [])
 
   if (!session) {
     return (
@@ -231,7 +278,7 @@ function ElevageDashboardInner() {
               </DropdownMenu>
               <Select
                 value={selectedYear.toString()}
-                onValueChange={(value) => setSelectedYear(parseInt(value))}
+                onValueChange={handleYearChange}
               >
                 <SelectTrigger className="w-[100px] h-8">
                   <Calendar className="h-3.5 w-3.5 mr-1 text-muted-foreground" />
@@ -289,16 +336,18 @@ function ElevageDashboardInner() {
         <FiliereProvider value={selectedFiliere}>
         {activeTab === "calendrier" && <PremiersPasBanner module="elevage" />}
         {activeTab === "calendrier" && <CalendrierTab />}
-        {activeTab === "dashboard" && (dashboardCompagnie
+        {/* QA cmsob8lon — les onglets dépendants de l'année attendent la
+            restauration de la préférence (yearReady), cf. MaraichageHome. */}
+        {activeTab === "dashboard" && yearReady && (dashboardCompagnie
           ? <DashboardCompagnie year={selectedYear} />
           : <DashboardTab year={selectedYear} />)}
         {activeTab === "animaux" && <AnimauxTab />}
         {/* DEV2 Ticket #3 — passer l'année pour que Dashboard et Production
             voient la même fenêtre temporelle (1269 vs Aucune = filtres
             désynchronisés) */}
-        {activeTab === "production" && <ProductionTab year={selectedYear} />}
+        {activeTab === "production" && yearReady && <ProductionTab year={selectedYear} />}
         {/* QA caprin cms1vc12t — même fenêtre temporelle que Dashboard/Production */}
-        {activeTab === "reproduction" && <ReproductionTab year={selectedYear} />}
+        {activeTab === "reproduction" && yearReady && <ReproductionTab year={selectedYear} />}
         {activeTab === "alimentation" && <AlimentationTab />}
         {activeTab === "especes" && <EspecesTab />}
         {activeTab === "races" && <RacesTab />}

@@ -10,16 +10,20 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = "https://gleba.fr";
   // Dates éditoriales réelles : ne pas annoncer artificiellement une mise à
   // jour à chaque génération du sitemap.
-  const marketingUpdatedAt = new Date("2026-07-17");
-  const seoUpdatedAtByPath: Record<string, Date> = {
-    "/logiciel-potager": new Date("2026-07-25"),
-    "/logiciel-elevage": new Date("2026-07-25"),
-    "/logiciel-elevage-volailles": new Date("2026-07-25"),
-    "/logiciel-elevage-ovin": new Date("2026-07-25"),
-    "/logiciel-elevage-caprin": new Date("2026-07-25"),
-    "/logiciel-elevage-canin-felin": new Date("2026-07-25"),
-    "/logiciel-elevage-equin": new Date("2026-07-25"),
-    "/logiciel-elevage-nac": new Date("2026-07-25"),
+  const marketingUpdatedAt = new Date("2026-08-01");
+  const seoPriorityByPath: Record<string, number> = {
+    "/logiciel-micro-ferme": 1.0,
+    "/logiciel-maraichage": 0.95,
+    "/logiciel-verger": 0.95,
+    "/planification-maraichage": 0.9,
+    "/logiciel-arboriculture": 0.85,
+    "/rotation-cultures-maraichage": 0.8,
+    "/itineraire-technique-maraichage": 0.8,
+    "/registre-phytosanitaire": 0.8,
+    "/logiciel-elevage": 0.8,
+    "/assistant-ia-agricole": 0.75,
+    "/logiciel-permaculture": 0.7,
+    "/logiciel-potager": 0.65,
   };
 
   // Pages principales
@@ -68,9 +72,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     "/assistant-ia-agricole",
   ].map((path) => ({
     url: `${baseUrl}${path}`,
-    lastModified: seoUpdatedAtByPath[path] ?? marketingUpdatedAt,
+    lastModified: marketingUpdatedAt,
     changeFrequency: "monthly" as const,
-    priority: 0.9,
+    priority: seoPriorityByPath[path] ?? 0.7,
   }));
 
   // Pages légales

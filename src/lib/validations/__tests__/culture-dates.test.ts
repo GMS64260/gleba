@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeCultureDateFields } from '../culture'
+import {
+  cultureFormSchema,
+  cultureUpdateFormSchema,
+  normalizeCultureDateFields,
+} from '../culture'
 
 describe('normalizeCultureDateFields', () => {
   it('convertit les dates « YYYY-MM-DD » des inputs type=date en Date', () => {
@@ -32,5 +36,68 @@ describe('normalizeCultureDateFields', () => {
     const data = { dateSemis: '2026-08-15', datePlantation: 'pas-une-date' }
     expect(normalizeCultureDateFields(data)).toBe('datePlantation')
     expect(data.datePlantation).toBe('pas-une-date')
+  })
+})
+
+// QA cmsfxvbab — la chronologie n'était vérifiée que par l'API : le refus
+// arrivait en toast éphémère, formulaire vidé, et l'utilisateur concluait à un
+// échec silencieux. Le schéma formulaire la refuse avant l'envoi.
+describe('cultureFormSchema — chronologie', () => {
+  const base = {
+    especeId: 'Pourpier',
+    semisFait: false,
+    plantationFaite: false,
+    recolteFaite: false,
+  }
+
+  it('refuse une récolte antérieure au semis, sur le champ récolte', () => {
+    const r = cultureFormSchema.safeParse({
+      ...base,
+      dateSemis: '2026-08-05',
+      dateRecolte: '2026-04-20',
+    })
+    expect(r.success).toBe(false)
+    if (!r.success) {
+      expect(r.error.issues.map((i) => i.path.join('.'))).toContain('dateRecolte')
+    }
+  })
+
+  it('refuse une plantation antérieure au semis', () => {
+    const r = cultureFormSchema.safeParse({
+      ...base,
+      dateSemis: '2026-05-10',
+      datePlantation: '2026-04-01',
+    })
+    expect(r.success).toBe(false)
+    if (!r.success) {
+      expect(r.error.issues.map((i) => i.path.join('.'))).toContain('datePlantation')
+    }
+  })
+
+  it('accepte un cycle chronologique complet', () => {
+    const r = cultureFormSchema.safeParse({
+      ...base,
+      dateSemis: '2026-03-02',
+      datePlantation: '2026-04-27',
+      dateRecolte: '2026-08-17',
+    })
+    expect(r.success).toBe(true)
+  })
+
+  it('accepte les dates absentes ou partielles', () => {
+    expect(cultureFormSchema.safeParse({ ...base }).success).toBe(true)
+    expect(
+      cultureFormSchema.safeParse({ ...base, dateRecolte: '2026-04-20' }).success
+    ).toBe(true)
+  })
+
+  it('applique la même règle au schéma d’édition partiel', () => {
+    expect(
+      cultureUpdateFormSchema.safeParse({
+        dateSemis: '2026-08-05',
+        dateRecolte: '2026-04-20',
+      }).success
+    ).toBe(false)
+    expect(cultureUpdateFormSchema.safeParse({ notes: 'ok' }).success).toBe(true)
   })
 })

@@ -199,6 +199,7 @@ export function OperationsTab() {
   const [isLoading, setIsLoading] = React.useState(true)
   const [filterFait, setFilterFait] = React.useState("all")
   const [showDialog, setShowDialog] = React.useState(false)
+  const [isSubmitting, setIsSubmitting] = React.useState(false)
   const [newOperation, setNewOperation] = React.useState({
     arbreId: "",
     // Date locale (toISOString donnait la veille en UTC entre minuit et 2h FR)
@@ -226,7 +227,13 @@ export function OperationsTab() {
         fetch("/api/arbres/operations"),
         fetch("/api/arbres"),
       ])
-      if (opsRes.ok) setData(await opsRes.json())
+      // QA cmsnnybbg — un GET en échec laissait la table sur « Aucune
+      // opération trouvée », indiscernable d'un verger vide.
+      if (opsRes.ok) {
+        setData(await opsRes.json())
+      } else {
+        toast({ variant: "destructive", title: "Impossible de charger les opérations", description: `Erreur ${opsRes.status}` })
+      }
       if (arbresRes.ok) setArbres(await arbresRes.json())
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les opérations" })
@@ -315,6 +322,7 @@ export function OperationsTab() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isSubmitting) return
     const submitted = new FormData(e.currentTarget as HTMLFormElement)
     // Certains agents/navigateurs remplissent input[type=date] juste avant le
     // submit sans déclencher l'état React. Le DOM soumis est la source finale.
@@ -322,10 +330,16 @@ export function OperationsTab() {
     const submittedDatePrevue = String(submitted.get("datePrevue") || "").trim()
     const date = submittedDate || newOperation.date
     const datePrevue = submittedDatePrevue || newOperation.datePrevue
+    // QA cmsnnybbg — même course sur les Select Radix : une valeur posée sur
+    // le select natif caché (SelectBubbleInput) sans passer par onValueChange
+    // laissait l'état React vide et la garde « Sélectionnez un arbre »
+    // rejetait une saisie pourtant visible à l'écran.
+    const arbreId = String(submitted.get("arbreId") || "").trim() || newOperation.arbreId
+    const typeOperation = String(submitted.get("type") || "").trim() || newOperation.type
 
     // Famille C — au lieu d'un bouton grisé muet, on valide explicitement
     // l'arbre requis avec un message clair.
-    if (!newOperation.arbreId) {
+    if (!arbreId) {
       toast({ title: "Sélectionnez un arbre", variant: "destructive" })
       return
     }
@@ -337,27 +351,28 @@ export function OperationsTab() {
       })
       return
     }
-    // Bug feedback testeur 2026-05-26 (cmpmqugqr) — un traitement phyto sans
-    // produit/dose rend le registre non conforme (Bio/HVE). On confirme
-    // explicitement avant d'enregistrer une fiche incomplète.
-    if (newOperation.type === "traitement" && (!newOperation.produit.trim() || !newOperation.quantite.trim())) {
-      const ok = await confirmDialog(
-        "Traitement sans produit et/ou dose : la fiche sera incomplète et non conforme au registre phytosanitaire (Bio/HVE). Enregistrer quand même ?",
-        { title: "Traitement incomplet", confirmLabel: "Enregistrer quand même", variant: "warning" }
-      )
-      if (!ok) return
-    }
+    setIsSubmitting(true)
     try {
+      // Bug feedback testeur 2026-05-26 (cmpmqugqr) — un traitement phyto sans
+      // produit/dose rend le registre non conforme (Bio/HVE). On confirme
+      // explicitement avant d'enregistrer une fiche incomplète.
+      if (typeOperation === "traitement" && (!newOperation.produit.trim() || !newOperation.quantite.trim())) {
+        const ok = await confirmDialog(
+          "Traitement sans produit et/ou dose : la fiche sera incomplète et non conforme au registre phytosanitaire (Bio/HVE). Enregistrer quand même ?",
+          { title: "Traitement incomplet", confirmLabel: "Enregistrer quand même", variant: "warning" }
+        )
+        if (!ok) return
+      }
       const res = await fetch("/api/arbres/operations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          arbreId: parseInt(newOperation.arbreId),
+          arbreId: parseInt(arbreId),
           // `date` est non nullable en base. Pour une tâche à faire, on y
           // conserve aussi la date prévue afin que les anciens écrans restent
           // cohérents, tout en gardant `datePrevue` explicite.
           date: newOperation.fait ? (date || format(new Date(), "yyyy-MM-dd")) : datePrevue,
-          type: newOperation.type,
+          type: typeOperation,
           description: newOperation.description || null,
           produit: newOperation.produit || null,
           quantite: newOperation.quantite ? parseFloat(newOperation.quantite) : null,
@@ -390,7 +405,7 @@ export function OperationsTab() {
       if (res.ok) {
         setShowDialog(false)
         resetForm()
-        toast({ title: "Operation enregistrée" })
+        toast({ title: "Opération enregistrée" })
         fetchData()
       } else {
         const data = await res.json().catch(() => ({}))
@@ -398,6 +413,8 @@ export function OperationsTab() {
       }
     } catch {
       toast({ title: "Erreur", variant: "destructive" })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -416,10 +433,21 @@ export function OperationsTab() {
       {/* Filtres */}
       <Tabs value={filterFait} onValueChange={setFilterFait}>
         <TabsList className="flex-wrap h-auto gap-1">
+          {/* QA cmswxt8a8 — sous 640 px, le libellé était masqué sans aucun
+              équivalent accessible : trois icônes ambiguës (clé, liste, coche)
+              pour « Toutes / À faire / Réalisées ». Les trois libellés tiennent
+              largement dans 375 px, on les garde ; l'aria-label couvre les
+              lecteurs d'écran et l'affichage compact éventuel. */}
           {FILTER_STATES.map(({ value, label, icon: Icon }) => (
-            <TabsTrigger key={value} value={value} className="flex items-center gap-1">
-              <Icon className="h-4 w-4" />
-              <span className="hidden sm:inline">{label}</span>
+            <TabsTrigger
+              key={value}
+              value={value}
+              aria-label={label}
+              title={label}
+              className="flex items-center gap-1 text-xs sm:text-sm"
+            >
+              <Icon className="h-4 w-4 shrink-0" />
+              {label}
             </TabsTrigger>
           ))}
         </TabsList>
@@ -434,7 +462,7 @@ export function OperationsTab() {
         onAdd={() => setShowDialog(true)}
         onRefresh={fetchData}
         onRowDelete={async (row) => {
-          if (!(await confirmDialog("Supprimer cette operation ?"))) return
+          if (!(await confirmDialog("Supprimer cette opération ?"))) return
           try {
             const res = await fetch(`/api/arbres/operations/${row.id}`, { method: "DELETE" })
             if (!res.ok) {
@@ -442,7 +470,7 @@ export function OperationsTab() {
               toast({ variant: "destructive", title: "Erreur", description: p?.error || "Suppression impossible" })
               return
             }
-            toast({ title: "Operation supprimée" })
+            toast({ title: "Opération supprimée" })
             fetchData()
           } catch {
             toast({ variant: "destructive", title: "Erreur" })
@@ -450,6 +478,7 @@ export function OperationsTab() {
         }}
         searchPlaceholder="Rechercher une opération..."
         emptyMessage="Aucune opération trouvée."
+        tableClassName="min-w-[820px]"
       />
 
       {/* Dialog nouvelle operation */}
@@ -462,9 +491,13 @@ export function OperationsTab() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Arbre *</Label>
+                {/* name= : expose la valeur au FormData via le select natif
+                    Radix (SelectBubbleInput) — le submit relit le DOM, cf.
+                    handleSubmit (course état React vs remplissage direct). */}
                 <Select
+                  name="arbreId"
                   value={newOperation.arbreId}
-                  onValueChange={(v) => setNewOperation({ ...newOperation, arbreId: v })}
+                  onValueChange={(v) => setNewOperation((prev) => ({ ...prev, arbreId: v }))}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="— Sélectionner un arbre —" />
@@ -481,8 +514,9 @@ export function OperationsTab() {
               <div>
                 <Label>Type *</Label>
                 <Select
+                  name="type"
                   value={newOperation.type}
-                  onValueChange={(v) => setNewOperation({ ...newOperation, type: v })}
+                  onValueChange={(v) => setNewOperation((prev) => ({ ...prev, type: v }))}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -504,7 +538,14 @@ export function OperationsTab() {
                   name="date"
                   type="date"
                   value={newOperation.date}
-                  onChange={(e) => setNewOperation({ ...newOperation, date: e.target.value })}
+                  onChange={(e) => setNewOperation((prev) => ({ ...prev, date: e.target.value }))}
+                  onBlur={(e) => {
+                    // Un remplissage programmatique (agent, autofill) pose la
+                    // valeur DOM sans onChange : on resynchronise l'état pour
+                    // que le prochain re-render ne l'efface pas (cmsoaxmok).
+                    const v = e.target.value
+                    if (v) setNewOperation((prev) => (prev.date === v ? prev : { ...prev, date: v }))
+                  }}
                 />
               </div>
               <div>
@@ -513,7 +554,11 @@ export function OperationsTab() {
                   name="datePrevue"
                   type="date"
                   value={newOperation.datePrevue}
-                  onChange={(e) => setNewOperation({ ...newOperation, datePrevue: e.target.value })}
+                  onChange={(e) => setNewOperation((prev) => ({ ...prev, datePrevue: e.target.value }))}
+                  onBlur={(e) => {
+                    const v = e.target.value
+                    if (v) setNewOperation((prev) => (prev.datePrevue === v ? prev : { ...prev, datePrevue: v }))
+                  }}
                 />
               </div>
             </div>
@@ -521,7 +566,14 @@ export function OperationsTab() {
                 bloquante, basée sur le calendrier d'entretien par espèce. */}
             {(() => {
               const arbre = arbres.find((a) => a.id.toString() === newOperation.arbreId)
-              const dateRef = newOperation.date || newOperation.datePrevue
+              // QA cmsqn4nmi — quand on PLANIFIE (« réalisée » décochée), la
+              // date qui compte est la date prévue : l'alerte regardait
+              // `date` (pré-remplie à aujourd'hui) et criait « hors période »
+              // pour une taille planifiée en plein janvier. À force de crier
+              // au loup à chaque planification, elle aurait été ignorée.
+              const dateRef = newOperation.fait
+                ? (newOperation.date || newOperation.datePrevue)
+                : (newOperation.datePrevue || newOperation.date)
               const w = arbre
                 ? checkOperationSaison(arbre.espece, newOperation.type, dateRef, arbre.variete)
                 : null
@@ -543,7 +595,7 @@ export function OperationsTab() {
               <Label>Description</Label>
               <Input
                 value={newOperation.description}
-                onChange={(e) => setNewOperation({ ...newOperation, description: e.target.value })}
+                onChange={(e) => setNewOperation((prev) => ({ ...prev, description: e.target.value }))}
               />
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -551,7 +603,7 @@ export function OperationsTab() {
                 <Label>Produit utilisé</Label>
                 <Input
                   value={newOperation.produit}
-                  onChange={(e) => setNewOperation({ ...newOperation, produit: e.target.value })}
+                  onChange={(e) => setNewOperation((prev) => ({ ...prev, produit: e.target.value }))}
                   placeholder="Ex: Bouillie bordelaise"
                 />
               </div>
@@ -561,14 +613,14 @@ export function OperationsTab() {
                   type="number"
                   step="0.1"
                   value={newOperation.quantite}
-                  onChange={(e) => setNewOperation({ ...newOperation, quantite: e.target.value })}
+                  onChange={(e) => setNewOperation((prev) => ({ ...prev, quantite: e.target.value }))}
                 />
               </div>
               <div>
                 <Label>Unité</Label>
                 <Input
                   value={newOperation.unite}
-                  onChange={(e) => setNewOperation({ ...newOperation, unite: e.target.value })}
+                  onChange={(e) => setNewOperation((prev) => ({ ...prev, unite: e.target.value }))}
                   placeholder="L, kg, g"
                 />
               </div>
@@ -580,7 +632,7 @@ export function OperationsTab() {
                   type="number"
                   step="0.01"
                   value={newOperation.cout}
-                  onChange={(e) => setNewOperation({ ...newOperation, cout: e.target.value })}
+                  onChange={(e) => setNewOperation((prev) => ({ ...prev, cout: e.target.value }))}
                 />
               </div>
               <div className="flex items-end pb-2">
@@ -589,7 +641,7 @@ export function OperationsTab() {
                     id="fait"
                     checked={newOperation.fait}
                     onCheckedChange={(checked) =>
-                      setNewOperation({ ...newOperation, fait: !!checked })
+                      setNewOperation((prev) => ({ ...prev, fait: !!checked }))
                     }
                   />
                   <Label htmlFor="fait">Opération réalisée</Label>
@@ -602,7 +654,7 @@ export function OperationsTab() {
                 <Label>Opérateur</Label>
                 <Input
                   value={newOperation.operateur}
-                  onChange={(e) => setNewOperation({ ...newOperation, operateur: e.target.value })}
+                  onChange={(e) => setNewOperation((prev) => ({ ...prev, operateur: e.target.value }))}
                   placeholder="Nom de l'opérateur"
                 />
               </div>
@@ -613,7 +665,7 @@ export function OperationsTab() {
                   step="0.25"
                   min="0"
                   value={newOperation.tempsHeures}
-                  onChange={(e) => setNewOperation({ ...newOperation, tempsHeures: e.target.value })}
+                  onChange={(e) => setNewOperation((prev) => ({ ...prev, tempsHeures: e.target.value }))}
                   placeholder="2.5"
                 />
               </div>
@@ -632,7 +684,7 @@ export function OperationsTab() {
                 <p className="text-amber-700">
                   Pour saisir un traitement phytosanitaire complet (Certiphyto, ZNT, EPI),
                   utilisez plutôt l'onglet <strong>Santé &amp; Phyto</strong> qui ouvre le
-                  formulaire conforme à l'Arrêté du 16/06/2009.
+                  formulaire conforme à l'arrêté du 4 mai 2017 modifié.
                 </p>
               </div>
             )}
@@ -641,11 +693,11 @@ export function OperationsTab() {
               <Label>Notes</Label>
               <Input
                 value={newOperation.notes}
-                onChange={(e) => setNewOperation({ ...newOperation, notes: e.target.value })}
+                onChange={(e) => setNewOperation((prev) => ({ ...prev, notes: e.target.value }))}
               />
             </div>
-            <Button type="submit" className="w-full">
-              Enregistrer
+            <Button type="submit" className="w-full" disabled={isSubmitting}>
+              {isSubmitting ? "Enregistrement..." : "Enregistrer"}
             </Button>
           </form>
         </DialogContent>

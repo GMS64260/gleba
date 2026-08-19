@@ -32,6 +32,8 @@ export default async function AdminBugsPage() {
     open: counts.find((c) => c.status === "OPEN")?._count._all ?? 0,
     inProgress: counts.find((c) => c.status === "IN_PROGRESS")?._count._all ?? 0,
     resolved: counts.find((c) => c.status === "RESOLVED")?._count._all ?? 0,
+    evolution: counts.find((c) => c.status === "EVOLUTION_PRODUIT")?._count._all ?? 0,
+    horsPerimetre: counts.find((c) => c.status === "HORS_PERIMETRE")?._count._all ?? 0,
   }
 
   const initialBugs = bugs.map((b) => ({

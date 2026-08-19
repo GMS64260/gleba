@@ -89,6 +89,12 @@ export async function PATCH(
 
     if (typeof fait === 'boolean') {
       updateData.fait = fait
+      // Cocher UNE ligne précise est un geste délibéré (« j'ai bien arrosé ce
+      // jour-là ») : il rouvre un passage abandonné, contrairement au balayage
+      // en masse qui, lui, ne rattrape plus rien au-delà d'un cycle.
+      // `fait` et `perimee` s'excluent : les laisser vrais tous les deux
+      // rendrait le passage à la fois réalisé et abandonné.
+      updateData.perimee = false
       // Si on marque comme fait et pas de date effective, utiliser aujourd'hui
       if (fait && !dateEffective && !existing.dateEffective) {
         updateData.dateEffective = new Date()

@@ -136,16 +136,34 @@ export async function POST(request: NextRequest) {
     if (body.genererEtapes !== false && datePrevue) {
       const etapesTypes = ETAPES_TYPES[body.typeFormation as TypeFormation]
       if (etapesTypes && etapesTypes.length > 0) {
+        // QA cmsqm0tlw — la taille de formation était posée à « plantation
+        // + 365 j » brut : une plantation d'automne (20/11) programmait la
+        // taille au 20/11 suivant, feuilles en place, alors que le propre
+        // référentiel Gleba dit « Janv. → Mars ». Les étapes de taille sont
+        // recalées dans la première fenêtre hivernale (15/02) qui SUIT la
+        // date brute — même logique que le calendrier d'entretien par espèce.
+        const dansFenetreHivernale = (d: Date) => {
+          const m = d.getMonth() + 1
+          return m >= 1 && m <= 3
+        }
+        const calerTailleFenetre = (brute: Date): Date => {
+          if (dansFenetreHivernale(brute)) return brute
+          const annee = brute.getMonth() + 1 > 3 ? brute.getFullYear() + 1 : brute.getFullYear()
+          return new Date(annee, 1, 15) // 15 février
+        }
         await prisma.etapeCampagne.createMany({
-          data: etapesTypes.map((e, idx) => ({
-            userId: session!.user.id,
-            campagneId: campagne.id,
-            type: e.type,
-            ordre: idx,
-            description: e.libelle,
-            datePrevue: new Date(datePrevue.getTime() + e.offsetJours * 24 * 60 * 60 * 1000),
-            fait: false,
-          })),
+          data: etapesTypes.map((e, idx) => {
+            const brute = new Date(datePrevue.getTime() + e.offsetJours * 24 * 60 * 60 * 1000)
+            return {
+              userId: session!.user.id,
+              campagneId: campagne.id,
+              type: e.type,
+              ordre: idx,
+              description: e.libelle,
+              datePrevue: e.type === "elagage_formation" ? calerTailleFenetre(brute) : brute,
+              fait: false,
+            }
+          }),
         })
       }
     }

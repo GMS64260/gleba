@@ -58,7 +58,7 @@ android {
         minSdkVersion 21
         // Google Play exige l'API 36 pour les nouvelles apps à partir du 2026-08-31.
         targetSdkVersion 36
-        versionCode 3
+        versionCode 4
         versionName "1.1.0"
 
         // The name for the application

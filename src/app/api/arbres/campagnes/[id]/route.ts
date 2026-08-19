@@ -32,6 +32,8 @@ export async function GET(_request: NextRequest, { params }: Params) {
         parcelleGeo: { select: { id: true, nom: true, surface: true } },
         zoneVerger: { select: { id: true, nom: true } },
         espece: { select: { id: true, nomLatin: true } },
+        // QA cmsqn6gds — porte-greffe saisi dans l'assistant mais jamais restitué.
+        porteGreffe: { select: { id: true, nom: true, vigueur: true } },
         productionBois: { include: { arbre: { select: { id: true, nom: true } } } },
         etapes: { orderBy: [{ ordre: "asc" }, { datePrevue: "asc" }] },
         observations: { orderBy: { date: "desc" } },
@@ -116,6 +118,8 @@ export async function PUT(request: NextRequest, { params }: Params) {
         parcelleGeo: { select: { id: true, nom: true } },
         zoneVerger: { select: { id: true, nom: true } },
         espece: { select: { id: true, nomLatin: true } },
+        // QA cmsqn6gds — porte-greffe saisi dans l'assistant mais jamais restitué.
+        porteGreffe: { select: { id: true, nom: true, vigueur: true } },
         etapes: { orderBy: { ordre: "asc" } },
         observations: { orderBy: { date: "desc" } },
       },

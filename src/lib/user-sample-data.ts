@@ -3,29 +3,61 @@
  * Crée : 2 planches, 2 cultures récoltées (annee précédente),
  *        2 cultures en cours avec recoltes (annee en cours), 2 arbres,
  *        irrigations planifiées pour les cultures actives
+ *
+ * Refonte onboarding 2026-08-17 : ce décor n'est plus créé d'office au signup —
+ * il est proposé comme CHOIX à la fin du parcours de configuration, ancré sur
+ * la parcelle réelle de l'utilisateur (fini Paris 4ᵉ pour tout le monde) et
+ * borné aux modules qu'il a activés (un éleveur pur ne reçoit pas 4 cultures).
  */
 
 import prisma from "@/lib/prisma"
 import { genererIrrigationsPlanifiees } from "@/lib/irrigation-scheduler"
+import { PARCELLE_EXEMPLE } from "@/lib/localisation-exemple"
+import { productifParDefaut } from "@/lib/tree-care-calendar"
 
-export async function createSampleDataForUser(userId: string): Promise<void> {
+export interface SampleDataOptions {
+  /**
+   * Parcelle d'ancrage : les planches d'exemple s'y rattachent au lieu de
+   * créer la parcelle-décor de Paris. C'est la parcelle géolocalisée à la
+   * commune de l'utilisateur, créée par l'étape « exploitation » du parcours.
+   */
+  parcelleGeoId?: string | null
+  /** Planches, cultures, récoltes et irrigations d'exemple (défaut : oui). */
+  avecMaraichage?: boolean
+  /** Arbres d'exemple (défaut : oui). */
+  avecVerger?: boolean
+}
+
+export async function createSampleDataForUser(
+  userId: string,
+  options: SampleDataOptions = {},
+): Promise<void> {
+  const avecMaraichage = options.avecMaraichage !== false
+  const avecVerger = options.avecVerger !== false
   const currentYear = new Date().getFullYear()
   const lastYear = currentYear - 1
+  // 15 novembre de l'année précédente : les deux arbres d'exemple ont donc
+  // moins d'un an, et un pommier n'entre en production que vers 3 ans.
+  const datePlantationArbres = new Date(lastYear, 10, 15)
 
-  // Créer une parcelle par défaut pour le maraîchage
-  const parcellePotager = await prisma.parcelleGeo.create({
-    data: {
-      nom: "Potager",
-      userId,
-      geometry: '{"type":"Polygon","coordinates":[[[2.3510,48.8560],[2.3530,48.8560],[2.3530,48.8575],[2.3510,48.8575],[2.3510,48.8560]]]}',
-      centroidLat: 48.85675,
-      centroidLng: 2.3520,
-      surface: 0.05,
-      usage: "culture, verger",
-      couleur: "#4ade80",
-      notes: "Parcelle maraîchage",
-    },
-  })
+  if (avecVerger) {
+    await creerArbresExemple(userId, datePlantationArbres)
+  }
+  if (!avecMaraichage) return
+
+  // Parcelle d'ancrage des planches : celle de l'utilisateur quand le parcours
+  // de configuration l'a créée à SA commune. À défaut (chemin admin,
+  // rétro-compat), le décor historique de Paris 4ᵉ — `localisation-exemple.ts`
+  // détient ces coordonnées et détecte les comptes qui bâtissent du réel
+  // dessus sans les recaler, la météo, la pluie et Hub'Eau en dépendant.
+  const parcellePotager = options.parcelleGeoId
+    ? { id: options.parcelleGeoId }
+    : await prisma.parcelleGeo.create({
+        data: {
+          userId,
+          ...PARCELLE_EXEMPLE,
+        },
+      })
 
   // Créer 2 planches
   const planche1 = await prisma.planche.create({
@@ -136,6 +168,10 @@ export async function createSampleDataForUser(userId: string): Promise<void> {
       annee: currentYear,
       dateSemis: new Date(currentYear, 2, 15), // 15 mars
       datePlantation: new Date(currentYear, 4, 15), // 15 mai
+      // Échéance à venir : sans date de récolte, le tout premier briefing
+      // reprochait au compte neuf des « cultures sans échéance » qu'il n'avait
+      // pas saisies (constat compte réel du 2026-08-17).
+      dateRecolte: new Date(Date.now() + 30 * 86400000),
       semisFait: true,
       plantationFaite: true,
       recolteFaite: false,
@@ -156,6 +192,7 @@ export async function createSampleDataForUser(userId: string): Promise<void> {
       annee: currentYear,
       dateSemis: new Date(currentYear, 3, 15), // 15 avril
       datePlantation: new Date(currentYear, 4, 20), // 20 mai
+      dateRecolte: new Date(Date.now() + 21 * 86400000), // idem tomate en cours
       semisFait: true,
       plantationFaite: true,
       recolteFaite: false,
@@ -201,6 +238,11 @@ export async function createSampleDataForUser(userId: string): Promise<void> {
     },
   })
 
+  // Générer les irrigations planifiées pour les cultures actives
+  await genererIrrigationsPlanifiees(userId)
+}
+
+async function creerArbresExemple(userId: string, datePlantationArbres: Date): Promise<void> {
   // Créer 2 arbres fruitiers
   await prisma.arbre.create({
     data: {
@@ -210,7 +252,12 @@ export async function createSampleDataForUser(userId: string): Promise<void> {
       especeId: "Pommier",
       espece: "Pommier",
       variete: "Golden Delicious",
-      datePlantation: new Date(lastYear, 10, 15), // 15 novembre annee dernière
+      datePlantation: datePlantationArbres,
+      // Le défaut Prisma de la colonne est `true` : les deux arbres d'exemple
+      // naissaient « productifs » alors qu'ils sont plantés depuis moins d'un
+      // an, et tout compte neuf affichait « 2 fruitiers productifs » (KPI
+      // Verger). Constaté le 2026-08-12 sur les comptes du jour.
+      productif: productifParDefaut("Pommier", datePlantationArbres),
       posX: 15,
       posY: 8,
       envergure: 3,
@@ -227,7 +274,8 @@ export async function createSampleDataForUser(userId: string): Promise<void> {
       especeId: "Cerisier",
       espece: "Cerisier",
       variete: "Burlat",
-      datePlantation: new Date(lastYear, 10, 15), // 15 novembre annee dernière
+      datePlantation: datePlantationArbres,
+      productif: productifParDefaut("Cerisier", datePlantationArbres),
       posX: 20,
       posY: 8,
       envergure: 4,
@@ -235,7 +283,4 @@ export async function createSampleDataForUser(userId: string): Promise<void> {
       notes: "Variété précoce, fruits sucrés",
     },
   })
-
-  // Générer les irrigations planifiées pour les cultures actives
-  await genererIrrigationsPlanifiees(userId)
 }

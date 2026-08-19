@@ -60,8 +60,20 @@ export async function POST(request: NextRequest) {
       where: { id: session!.user.id },
       select: { id: true, password: true },
     })
-    if (!user || !user.password) {
+    if (!user) {
       return NextResponse.json({ error: "Utilisateur introuvable" }, { status: 404 })
+    }
+    // Compte créé via Google, sans mot de passe local : la création du premier
+    // mot de passe passe par le flux « Mot de passe oublié » (preuve par
+    // email), pas par une session seule — anti hijack de session.
+    if (!user.password) {
+      return NextResponse.json(
+        {
+          error:
+            "Ce compte utilise la connexion Google et n'a pas encore de mot de passe. Créez-en un via « Mot de passe oublié » sur la page de connexion.",
+        },
+        { status: 400 }
+      )
     }
 
     const valid = await verifyPassword(currentPassword, user.password)

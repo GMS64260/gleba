@@ -28,7 +28,12 @@ import { detecterAlertesMeteo } from "./detect"
 import { construireResume } from "./resume"
 import { alerteMeteoEmail, alerteUrgenteEmail, resumeQuotidienEmail } from "./templates"
 import type { AlerteMeteoNotification, DestinataireNotification } from "./types"
-import { DEFAULT_NOTIF_PREFS, typeAlerteEstActivee, type NotifPrefs } from "./prefs"
+import {
+  auMoinsUneAlerteUrgenteActivee,
+  DEFAULT_NOTIF_PREFS,
+  typeAlerteEstActivee,
+  type NotifPrefs,
+} from "./prefs"
 import { fetchOpenMeteoForecast } from "@/lib/meteo"
 import {
   construirePayloadAlerteUrgente,
@@ -148,9 +153,20 @@ export async function envoyerAlertesUrgentes(): Promise<number> {
   for (const user of users) {
     try {
       const prefs = await chargerPrefsNotifAvecFallback(user)
+      // Les alertes sont sur opt-in : sans aucun type demandé, ne pas payer la
+      // détection (une dizaine de requêtes Prisma + météo par utilisateur) pour
+      // en jeter le résultat juste après. Sur 112 comptes toutes les 30 min,
+      // c'est la différence entre un scan inutile et un scan gratuit.
+      if (!auMoinsUneAlerteUrgenteActivee(prefs)) continue
+
       const urgentes = (await detecterAlertesUrgentes(user.id)).filter((alerte) =>
         typeAlerteEstActivee(alerte.type, prefs)
       )
+      if (urgentes.length === 0) continue
+
+      // Résolu seulement quand il y a réellement quelque chose à envoyer :
+      // getOrCreateUnsubscribeToken peut ÉCRIRE (création du token au premier
+      // usage), inutile de le faire à chaque scan pour tout le monde.
       const { user: destinataire, headers } = await avecDesabonnement(user)
       let envoyees = 0
       for (const alerte of urgentes) {

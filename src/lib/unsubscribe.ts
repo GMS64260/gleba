@@ -7,8 +7,21 @@
  * ne sont jamais soumis à l'opt-out.
  */
 
-import { randomBytes } from "crypto"
 import prisma from "@/lib/prisma"
+
+/**
+ * 24 octets aléatoires en base64url via Web Crypto — pas le module Node
+ * `crypto` : ce fichier est atteignable depuis le bundle edge du middleware
+ * (auth.ts → onboarding Google) et Turbopack refuse les modules Node dans ce
+ * graphe. Même précédent que l'impersonation.
+ */
+function tokenAleatoireBase64Url(octets: number): string {
+  const buf = new Uint8Array(octets)
+  globalThis.crypto.getRandomValues(buf)
+  let bin = ""
+  for (const b of buf) bin += String.fromCharCode(b)
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")
+}
 
 export const MAIL_BASE_URL =
   process.env.FEEDBACK_BASE_URL || process.env.NEXTAUTH_URL || "https://gleba.fr"
@@ -37,7 +50,7 @@ export async function getOrCreateUnsubscribeToken(
   })
   if (user?.unsubscribeToken) return user.unsubscribeToken
 
-  const token = randomBytes(24).toString("base64url")
+  const token = tokenAleatoireBase64Url(24)
   await client.user.update({
     where: { id: userId },
     data: { unsubscribeToken: token },

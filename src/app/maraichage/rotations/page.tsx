@@ -7,6 +7,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { useSession } from "next-auth/react"
 import { ColumnDef } from "@tanstack/react-table"
 import { ArrowLeft, RefreshCw, CheckCircle2, XCircle, LayoutGrid, AlertTriangle } from "lucide-react"
 
@@ -148,6 +149,9 @@ const columns: ColumnDef<RotationWithRelations>[] = [
 export default function RotationsPage() {
   const router = useRouter()
   const { toast } = useToast()
+  const { data: session } = useSession()
+  // Référentiel global : seul un administrateur peut écrire (cf. handleAdd).
+  const peutModifier = session?.user?.role === "ADMIN"
   const [data, setData] = React.useState<RotationWithRelations[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [pageIndex, setPageIndex] = React.useState(0)
@@ -184,6 +188,12 @@ export default function RotationsPage() {
     router.push("/maraichage/rotations/new")
   }
 
+  // QA cmsp5fzf8 — « Créer la rotation » revenait sur une liste inchangée : le
+  // référentiel de rotations est GLOBAL (le modèle Prisma n'a pas de userId,
+  // les plans sont partagés entre comptes), donc l'API réserve l'écriture aux
+  // administrateurs. L'écran, lui, proposait les actions à tout le monde et le
+  // 403 disparaissait dans un toast. On n'expose plus ce qui est refusé.
+
   const handleRowClick = (row: RotationWithRelations) => {
     router.push(`/maraichage/rotations/${encodeURIComponent(row.id)}`)
   }
@@ -208,7 +218,10 @@ export default function RotationsPage() {
       const response = await fetch(`/api/rotations/${encodeURIComponent(row.id)}`, {
         method: "DELETE",
       })
-      if (!response.ok) throw new Error("Erreur lors de la suppression")
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}))
+        throw new Error(payload.error || "Erreur lors de la suppression")
+      }
       toast({
         title: "Rotation supprimée",
         description: `La rotation "${row.id}" a été supprimée`,
@@ -247,7 +260,7 @@ export default function RotationsPage() {
   return (
     <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
       <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
-      <AppHeader current="maraichage" />
+      <AppHeader current="maraichage" showLune />
       <PageToolbar>
         <div className="flex items-center gap-4">
           <Link href="/">
@@ -334,14 +347,18 @@ export default function RotationsPage() {
           pageIndex={pageIndex}
           pageSize={pageSize}
           onPaginationChange={(page) => setPageIndex(page)}
-          onAdd={handleAdd}
+          onAdd={peutModifier ? handleAdd : undefined}
           onRefresh={fetchData}
           onExport={handleExport}
           onRowClick={handleRowClick}
-          onRowEdit={handleEdit}
-          onRowDelete={handleDelete}
+          onRowEdit={peutModifier ? handleEdit : undefined}
+          onRowDelete={peutModifier ? handleDelete : undefined}
           searchPlaceholder="Rechercher une rotation..."
-          emptyMessage="Aucune rotation trouvée. Cliquez sur + pour en créer une."
+          emptyMessage={
+            peutModifier
+              ? "Aucune rotation trouvée. Cliquez sur + pour en créer une."
+              : "Aucune rotation trouvée. Les plans de rotation sont un référentiel partagé, géré par l'équipe Gleba."
+          }
         />
       </main>
     </div>

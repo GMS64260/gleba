@@ -319,6 +319,7 @@ function ZonesSubTab() {
   const [loading, setLoading] = React.useState(true)
   const [showDialog, setShowDialog] = React.useState(false)
   const [editingZone, setEditingZone] = React.useState<ZoneVerger | null>(null)
+  const [isSubmitting, setIsSubmitting] = React.useState(false)
   const [formData, setFormData] = React.useState({
     nom: "",
     type: "verger",
@@ -380,9 +381,11 @@ function ZonesSubTab() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isSubmitting) return
     const url = editingZone ? `/api/arbres/zones/${editingZone.id}` : "/api/arbres/zones"
     const method = editingZone ? "PUT" : "POST"
 
+    setIsSubmitting(true)
     try {
       const res = await fetch(url, {
         method,
@@ -397,6 +400,8 @@ function ZonesSubTab() {
       }
     } catch {
       toast({ title: "Erreur", variant: "destructive" })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -604,8 +609,8 @@ function ZonesSubTab() {
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
               />
             </div>
-            <Button type="submit" className="w-full">
-              {editingZone ? "Modifier" : "Créer"}
+            <Button type="submit" className="w-full" disabled={isSubmitting}>
+              {isSubmitting ? "Enregistrement..." : (editingZone ? "Modifier" : "Créer")}
             </Button>
           </form>
         </DialogContent>

@@ -1,11 +1,14 @@
 /**
  * API Conseils de rotation pour une planche
  * GET /api/planches/[id]/rotation-advice
+ *
+ * Le chargement et le calcul vivent dans src/lib/rotation/planche-advice.ts,
+ * partagés avec l'assistant IA pour que les deux surfaces annoncent la même
+ * année de retour (QA cmsfyxhk5).
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from '@/lib/prisma'
-import { calculateRotationAdvice } from '@/lib/rotation'
+import { conseilRotationPlanche } from '@/lib/rotation/planche-advice'
 import { requireAuthApi } from '@/lib/auth-utils'
 
 interface Params {
@@ -24,92 +27,18 @@ export async function GET(request: NextRequest, { params }: Params) {
     const targetYear = parseInt(searchParams.get('year') || String(new Date().getFullYear()), 10)
     const especeId = searchParams.get('especeId')
 
-    // Vérifier que la planche existe et appartient à l'utilisateur (URL param is nom)
-    const planche = await prisma.planche.findUnique({
-      where: {
-        nom_userId: {
-          nom: plancheId,
-          userId: session!.user.id,
-        },
-      },
-    })
+    const resultat = await conseilRotationPlanche(
+      plancheId,
+      session!.user.id,
+      targetYear,
+      especeId
+    )
 
-    if (!planche) {
+    if (!resultat) {
       return NextResponse.json({ error: 'Planche non trouvée' }, { status: 404 })
     }
 
-    // Récupérer les cultures des 10 dernières annees (use real PK id)
-    const minYear = targetYear - 10
-    const cultures = await prisma.culture.findMany({
-      where: {
-        plancheId: planche.id,
-        userId: session!.user.id,
-        annee: { gte: minYear },
-      },
-      include: {
-        espece: {
-          include: {
-            famille: true,
-          },
-        },
-      },
-    })
-
-    // Récupérer toutes les familles
-    const allFamilies = await prisma.famille.findMany()
-
-    // Préparer les données pour l'algorithme
-    const culturesData = cultures.map((c) => ({
-      annee: c.annee || targetYear,
-      especeId: c.especeId,
-      espece: {
-        id: c.especeId,
-        familleId: c.espece.familleId,
-        famille: c.espece.famille
-          ? {
-              id: c.espece.famille.id,
-              intervalle: c.espece.famille.intervalle ?? 4,
-              couleur: c.espece.famille.couleur,
-            }
-          : null,
-        besoinN: c.espece.besoinN,
-        besoinP: c.espece.besoinP,
-        besoinK: c.espece.besoinK,
-      },
-    }))
-
-    const familiesData = allFamilies.map((f) => ({
-      id: f.id,
-      intervalle: f.intervalle ?? 4,
-      couleur: f.couleur,
-      nomFr: f.nomFr,
-    }))
-
-    // Préparer l'espece à vérifier si demandée
-    let especeToCheck = undefined
-    if (especeId) {
-      const espece = await prisma.espece.findUnique({
-        where: { id: especeId },
-      })
-      if (espece) {
-        especeToCheck = {
-          id: espece.id,
-          familleId: espece.familleId,
-          besoinN: espece.besoinN,
-        }
-      }
-    }
-
-    // Calculer les conseils
-    const advice = calculateRotationAdvice({
-      plancheId,
-      targetYear,
-      cultures: culturesData,
-      allFamilies: familiesData,
-      especeToCheck,
-    })
-
-    return NextResponse.json(advice)
+    return NextResponse.json(resultat.advice)
   } catch (error) {
     console.error('Erreur GET rotation-advice:', error)
     return NextResponse.json(

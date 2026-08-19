@@ -219,6 +219,13 @@ export function RacesTab() {
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     )}
+                    {/* Même règle que les profils d'élevage : dire pourquoi
+                        l'action n'est pas là plutôt que laisser une case vide. */}
+                    {!(isAdmin || r.userId === currentUserId) && (
+                      <span className="text-xs text-muted-foreground" title="Entrée du catalogue Gleba, partagée par tous les comptes : elle ne peut être ni modifiée ni supprimée depuis un compte. Créez votre propre entrée pour l'adapter.">
+                      Catalogue Gleba
+                    </span>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}

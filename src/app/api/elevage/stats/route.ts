@@ -7,8 +7,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { calculerStockOeufs } from '@/lib/stocks-helpers'
+import { computeStockOeufsParLots } from '@/lib/elevage/stock-oeufs-lots'
 import { tauxPonteSaisonnalise } from '@/lib/lait'
-import { tauxPonteAttenduPeriode } from '@/lib/elevage/taux-ponte'
+import { fenetrePonteGlissante, tauxPonteAttenduPeriode } from '@/lib/elevage/taux-ponte'
 import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
 import {
   aUneActiviteOeufsDashboard,
@@ -47,9 +48,9 @@ export async function GET(request: NextRequest) {
       soinsAPlanifier,
       alimentsStockBas,
       stockOeufs,
+      stockOeufsLots,
       mortaliteAnnee,
       animauxPondeursActifs,
-      totalPondeuses,
       lotsPondeusesDetail,
       lotsParType,
       totalConsommationAliments,
@@ -185,6 +186,12 @@ export async function GET(request: NextRequest) {
       // Stock œufs calculé
       calculerStockOeufs(userId),
 
+      // QA cmsw97cn5 (2026-08-16) — statuts par lot (SSOT partagée avec
+      // Production > Œufs et l'assistant) : le dashboard annonçait
+      // « disponibles » un stock physique intégralement DCR dépassée/bloqué
+      // véto, et son seuil d'alerte portait sur le physique.
+      computeStockOeufsParLots(userId),
+
       // Mortalité annee (animaux morts cette annee)
       prisma.animal.count({
         where: {
@@ -203,16 +210,6 @@ export async function GET(request: NextRequest) {
         },
       }),
 
-      // Total pondeuses actives (lots volaille actifs, somme quantiteActuelle)
-      prisma.lotAnimaux.aggregate({
-        where: {
-          userId,
-          statut: 'actif',
-          especeAnimale: { production: { in: ['oeufs', 'mixte'] } },
-        },
-        _sum: { quantiteActuelle: true },
-      }),
-
       // BUG #5 — Lots pondeuses détaillés (espèce + effectif) pour le
       // calcul du taux attendu pondéré par race. Marans et Sussex ont
       // des saisonnalités différentes ; on ne peut pas se contenter
@@ -224,6 +221,8 @@ export async function GET(request: NextRequest) {
           especeAnimale: { production: { in: ['oeufs', 'mixte'] } },
         },
         select: {
+          id: true,
+          quantiteInitiale: true,
           quantiteActuelle: true,
           especeAnimale: { select: { nom: true } },
         },
@@ -297,7 +296,18 @@ export async function GET(request: NextRequest) {
     }
 
     // Métriques calculées
-    const nbPondeuses = totalPondeuses._sum.quantiteActuelle || 0
+    // QA cmsp5lzye — l'effectif des pondeuses lisait `quantiteActuelle` brut
+    // alors que l'écran Lots affiche l'effectif reconstitué (fiches nominatives
+    // rattachées incluses) : « 29 pondeuses » au dénominateur du taux de ponte
+    // contre « Actuel 30 » dans les lots. Un seul appel au helper sert les deux
+    // usages, les lots pondeurs actifs étant un sous-ensemble des lots actifs.
+    const effectifsLots = await reconstituerEffectifsLots(userId, lotsActifs)
+    const effectifLotPondeur = (lot: { id: number; quantiteActuelle: number }) =>
+      effectifsLots.get(lot.id)?.effectifCalcule ?? lot.quantiteActuelle
+    const nbPondeuses = lotsPondeusesDetail.reduce(
+      (somme, lot) => somme + effectifLotPondeur(lot),
+      0,
+    )
     const nbOeufsAnnee = productionOeufsAnnee._sum.quantite || 0
     const nbOeufsAnneePrecedente = productionOeufsAnneePrecedente._sum.quantite || 0
     const ventesTotal = ventesAnnee._sum.prixTotal || 0
@@ -324,8 +334,12 @@ export async function GET(request: NextRequest) {
     // pondéré par espèce car Marans et Sussex n'ont pas la même
     // saisonnalité.
     const now = new Date()
-    const periodEnd = annee === now.getFullYear() ? now : endOfYear
-    const periodStart = new Date(periodEnd.getTime() - 6 * 86_400_000)
+    // QA cmswwvsoj — la fenêtre est bornée au JOUR CIVIL, pas à l'heure courante :
+    // sinon la collecte du 7ᵉ jour (datée à minuit) sortait du numérateur tandis
+    // que le dénominateur comptait 7 jours, et le taux portait en réalité sur 6.
+    const fenetre = fenetrePonteGlissante(annee === now.getFullYear() ? now : endOfYear)
+    const periodStart = fenetre.debut
+    const periodEnd = fenetre.fin
 
     // Taux observé sur 7 j glissants : œufs collectés / (pondeuses × jours).
     const productionOeufs7j = await prisma.productionOeuf.aggregate({
@@ -334,13 +348,13 @@ export async function GET(request: NextRequest) {
     })
     const nbOeufs7j = productionOeufs7j._sum.quantite || 0
     const tauxObserve7j =
-      nbPondeuses > 0 ? (nbOeufs7j / (nbPondeuses * 7)) * 100 : 0
+      nbPondeuses > 0 ? (nbOeufs7j / (nbPondeuses * fenetre.jours)) * 100 : 0
 
     // Taux attendu pondéré par espèce (chaque lot tire son propre coef).
     let sommeAttenduPondere = 0
     let effectifPondeur = 0
     for (const lot of lotsPondeusesDetail) {
-      const q = lot.quantiteActuelle ?? 0
+      const q = effectifLotPondeur(lot)
       if (q <= 0) continue
       const tx = tauxPonteAttenduPeriode(lot.especeAnimale.nom, periodStart, periodEnd)
       sommeAttenduPondere += q * tx
@@ -403,7 +417,6 @@ export async function GET(request: NextRequest) {
     // contenaient 63 bêtes). Désormais on expose les deux compteurs et le
     // total cheptel pour que l'UI puisse afficher « 69 animaux · 6 individus
     // · 63 en lots (3 lots) ».
-    const effectifsLots = await reconstituerEffectifsLots(userId, lotsActifs)
     const animauxEnLots = Array.from(effectifsLots.values()).reduce(
       (sum, e) => sum + e.effectifCalcule,
       0,
@@ -435,6 +448,8 @@ export async function GET(request: NextRequest) {
         alimentsStockBas,
         stockOeufs: stockOeufs.stockNet,
         stockOeufsDetail: stockOeufs.detail,
+        // QA cmsw97cn5 — part réellement vendable du stock physique.
+        stockOeufsCommercialisables: stockOeufsLots.stats.commercialisables,
         // Nouvelles métriques
         mortaliteAnnee,
         tauxMortalite: Math.round(tauxMortalite * 10) / 10,

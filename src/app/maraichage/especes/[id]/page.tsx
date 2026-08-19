@@ -58,9 +58,12 @@ import {
   updateEspeceSchema,
   type UpdateEspeceInput,
   ESPECE_CATEGORIES,
+  libelleCategorieEspece,
   ESPECE_NIVEAUX,
   ESPECE_IRRIGATION,
   ESPECE_IRRIGATION_LABELS,
+  libelleUniteRendement,
+  uniteRendementParType,
 } from "@/lib/validations/espece"
 import { StarRating } from "@/components/avis/StarRating"
 import { AvisDialog } from "@/components/avis/AvisDialog"
@@ -122,6 +125,8 @@ export default function EditEspecePage() {
   const [fournisseurs, setFournisseurs] = React.useState<{ id: string }[]>([])
   const [showVarieteDialog, setShowVarieteDialog] = React.useState(false)
   const [editingVariete, setEditingVariete] = React.useState<Variete | null>(null)
+  // `isSubmitting` est déjà pris par le formulaire principal de l'espèce.
+  const [isSavingVariete, setIsSavingVariete] = React.useState(false)
   const [varieteForm, setVarieteForm] = React.useState(EMPTY_VARIETE_FORM)
   // Avis communautaires
   const [avisVariete, setAvisVariete] = React.useState<Variete | null>(null)
@@ -129,6 +134,16 @@ export default function EditEspecePage() {
   const [filtreOrigine, setFiltreOrigine] = React.useState<FiltreOrigineValue>("tout")
   // Nom affiché de l'espèce : = id pour l'officiel, `nom` pour le perso (id=cuid).
   const [especeNom, setEspeceNom] = React.useState<string>(especeId)
+  /**
+   * Unité du rendement de CETTE espèce, telle qu'elle est stockée.
+   *
+   * Ticket FB-E33FAA — elle ne peut pas venir du formulaire : `form.reset()` ne
+   * charge ni `type` ni `uniteRendement`, si bien que l'ancien ternaire
+   * `form.watch("type") === "arbre_fruitier"` lisait toujours `undefined` et
+   * étiquetait TOUT en kg/m², les 40 fruitiers du catalogue compris. Le repli
+   * par type ne sert qu'aux lignes héritées sans unité.
+   */
+  const [uniteRendementEspece, setUniteRendementEspece] = React.useState<string | null>(null)
 
   // Charge les variétés via /api/varietes (superset enrichi des stats d'avis via avis=1).
   const reloadVarietes = React.useCallback(async () => {
@@ -194,6 +209,9 @@ export default function EditEspecePage() {
       .then(([famillesData, especeData, fournisseursData]) => {
         setFamilles(Array.isArray(famillesData) ? famillesData : [])
         setEspeceNom(especeData.nom ?? especeId)
+        setUniteRendementEspece(
+          especeData.uniteRendement ?? uniteRendementParType(especeData.type)
+        )
         void reloadVarietes()
         setFournisseurs(fournisseursData.data || fournisseursData || [])
         form.reset({
@@ -318,6 +336,8 @@ export default function EditEspecePage() {
 
   const handleVarieteSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isSavingVariete) return
+    setIsSavingVariete(true)
     try {
       if (editingVariete) {
         // PUT
@@ -378,6 +398,8 @@ export default function EditEspecePage() {
         title: "Erreur",
         description: error instanceof Error ? error.message : "Erreur inconnue",
       })
+    } finally {
+      setIsSavingVariete(false)
     }
   }
 
@@ -405,7 +427,7 @@ export default function EditEspecePage() {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-50">
-        <AppHeader current="maraichage" />
+        <AppHeader current="maraichage" showLune />
         <PageToolbar>
           <Skeleton className="h-8 w-64" />
         </PageToolbar>
@@ -420,7 +442,7 @@ export default function EditEspecePage() {
     <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
       <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
       {/* Header */}
-      <AppHeader current="maraichage" />
+      <AppHeader current="maraichage" showLune />
       <PageToolbar>
         <div className="flex items-center gap-4">
           <Link href="/maraichage/especes">
@@ -512,9 +534,13 @@ export default function EditEspecePage() {
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
+                                {/* Ticket cmsx5wjsb — le slug stocké
+                                    (« fruit_legume ») n'est pas un libellé :
+                                    on affiche le français, la valeur reste
+                                    l'identifiant. */}
                                 {ESPECE_CATEGORIES.map((c) => (
                                   <SelectItem key={c} value={c}>
-                                    {c}
+                                    {libelleCategorieEspece(c)}
                                   </SelectItem>
                                 ))}
                               </SelectContent>
@@ -960,7 +986,15 @@ export default function EditEspecePage() {
                         name="rendement"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Rendement ({form.watch("type") === "arbre_fruitier" ? "kg/arbre" : "kg/m²"})</FormLabel>
+                            {/*
+                              Ticket FB-E33FAA — l'unité RÉELLEMENT stockée fait
+                              foi (cf. `uniteRendementEspece`). L'ancien ternaire
+                              ne connaissait que l'arbre fruitier, et lisait de
+                              surcroît un champ absent du formulaire.
+                            */}
+                            <FormLabel>
+                              Rendement ({libelleUniteRendement(uniteRendementEspece)})
+                            </FormLabel>
                             <FormControl>
                               <Input
                                 type="number"
@@ -1124,7 +1158,7 @@ export default function EditEspecePage() {
               <TabsContent value="varietes">
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between">
-                    <CardTitle>Varietes de {especeNom}</CardTitle>
+                    <CardTitle>Variétés de {especeNom}</CardTitle>
                     <div className="flex items-center gap-2">
                       <Button
                         type="button"
@@ -1410,8 +1444,8 @@ export default function EditEspecePage() {
                 />
               </div>
 
-              <Button type="submit" className="w-full">
-                {editingVariete ? "Enregistrer" : "Ajouter"}
+              <Button type="submit" className="w-full" disabled={isSavingVariete}>
+                {isSavingVariete ? "Enregistrement..." : (editingVariete ? "Enregistrer" : "Ajouter")}
               </Button>
             </form>
           </DialogContent>

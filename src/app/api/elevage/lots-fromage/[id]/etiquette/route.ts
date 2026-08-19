@@ -14,6 +14,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { dispositionDocument } from '@/lib/http/disposition-fichier'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import PDFDocument from 'pdfkit'
@@ -28,7 +29,7 @@ const TRAITEMENT_LABELS: Record<string, string> = {
   pasteurise: 'au lait pasteurisé',
 }
 
-export async function GET(_request: NextRequest, { params }: Params) {
+export async function GET(request: NextRequest, { params }: Params) {
   const { session, error } = await requireAuthApi()
   if (error) return error
   const { id } = await params
@@ -131,7 +132,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
     status: 200,
     headers: {
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="etiquette-${lot.numeroLot}.pdf"`,
+      'Content-Disposition': dispositionDocument(request, `etiquette-${lot.numeroLot}.pdf`),
     },
   })
 }

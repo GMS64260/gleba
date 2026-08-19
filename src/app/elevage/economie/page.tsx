@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
-type Atelier = { code: string; libelle: string; effectif: number; couts: { total: number }; revenus: { total: number }; marge: number; production: { oeufs: number; litresLivres: number; kgCarcasse: number }; metriques: { coutParOeuf: number | null; coutParKgCarcasse: number | null; coutParLitre: number | null } }
+type Atelier = { code: string; libelle: string; effectif: number; couts: { total: number }; revenus: { total: number }; marge: number; production: { oeufs: number; litresLivres: number; kgCarcasse: number; kgMiel?: number }; metriques: { coutParOeuf: number | null; coutParKgCarcasse: number | null; coutParLitre: number | null; coutParKgMiel?: number | null } }
 type Rapprochement = { mois: number; litresLivres: number; litresPayes: number; ecartLitres: number; montantHT: number; statut: string }
 type Analyse = { ateliers: Atelier[]; rapprochementLait: Rapprochement[]; stats: { totalCouts: number; totalRevenus: number; margeGlobale: number }; methode: Record<string, string> }
 type Administration = { contrats: { id: string; client: string; production: string; dateFin: string | null; actif: boolean }[]; echeances: { id: string; libelle: string; categorie: string; dateEcheance: string; statut: string }[] }
@@ -18,11 +18,14 @@ const euro = new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR"
 // trois décimales sont nécessaires pour que l'indicateur reste lisible.
 const euroUnitaire = new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 3 })
 const coutUnitaire = (atelier: Atelier) => {
-  const { coutParOeuf, coutParKgCarcasse, coutParLitre } = atelier.metriques
+  const { coutParOeuf, coutParKgCarcasse, coutParLitre, coutParKgMiel } = atelier.metriques
   const parts: string[] = []
   if (coutParOeuf != null) parts.push(`${euroUnitaire.format(coutParOeuf)} / œuf`)
   if (coutParKgCarcasse != null) parts.push(`${euroUnitaire.format(coutParKgCarcasse)} / kg carcasse`)
   if (coutParLitre != null) parts.push(`${euroUnitaire.format(coutParLitre)} / L`)
+  // QA cmswxw80j — l'atelier apicole affichait « — » malgré une récolte de miel
+  // et des coûts réels : sa production n'entrait dans aucun dénominateur.
+  if (coutParKgMiel != null) parts.push(`${euroUnitaire.format(coutParKgMiel)} / kg de miel`)
   return parts.length ? parts.join(" · ") : "—"
 }
 const mois = ["Jan.", "Fév.", "Mars", "Avr.", "Mai", "Juin", "Juil.", "Août", "Sept.", "Oct.", "Nov.", "Déc."]

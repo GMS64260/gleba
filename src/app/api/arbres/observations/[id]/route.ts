@@ -60,7 +60,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (body.stadeBBCH !== undefined) data.stadeBBCH = body.stadeBBCH || null
     if (body.pctOrganesTouches !== undefined) data.pctOrganesTouches = body.pctOrganesTouches == null ? null : parseInt(body.pctOrganesTouches)
     if (body.photoUrl !== undefined) data.photoUrl = body.photoUrl || null
-    // DEV3 #1 — Champs réglementaires (Arrêté 16/06/2009)
+    // DEV3 #1 — Champs réglementaires (arrêté du 4 mai 2017 modifié)
     if (body.surfaceTraiteeHa !== undefined) data.surfaceTraiteeHa = body.surfaceTraiteeHa == null ? null : parseFloat(body.surfaceTraiteeHa)
     if (body.volumeBouillieLHa !== undefined) data.volumeBouillieLHa = body.volumeBouillieLHa == null ? null : parseFloat(body.volumeBouillieLHa)
     if (body.volumeBouillieLTotal !== undefined) data.volumeBouillieLTotal = body.volumeBouillieLTotal == null ? null : parseFloat(body.volumeBouillieLTotal)
@@ -99,7 +99,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     // DEV3 audit fix — Validation PUT : si la méthode finale (post-merge) est
     // chimique, vérifier que les champs réglementaires obligatoires ne sont
-    // pas vidés. Évite un trou de conformité Arrêté 16/06/2009 où on créerait
+    // pas vidés. Évite un trou de conformité phyto (arrêté du 4 mai 2017) où on créerait
     // en règle puis on viderait via PATCH.
     const methodeFinale = data.methodeTraitement ?? existing.methodeTraitement
     const isChimique =
@@ -133,7 +133,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         return NextResponse.json(
           {
             error:
-              "Champs réglementaires manquants (Arrêté 16/06/2009) : " +
+              "Champs réglementaires manquants (arrêté du 4 mai 2017 modifié) : " +
               manquants.join(", "),
             manquants,
           },

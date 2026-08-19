@@ -50,6 +50,51 @@ export async function PUT(request: NextRequest, { params }: Params) {
       notes: body.notes !== undefined ? (body.notes || null) : undefined,
     },
   })
+
+  // Tickets cmsog4sbz + cmsog61e5 — le cycle de vie de la campagne suit
+  // l'étape Plantation : cocher l'étape renseigne datePlantationReelle (et
+  // avance le statut s'il est encore amont), la décocher annule cette date si
+  // elle en provenait, et ramène le statut à "planifiee".
+  if (etape.type === "plantation" && body.fait !== undefined) {
+    const campagne = await prisma.campagnePlantation.findFirst({
+      where: { id: campagneId, userId: session!.user.id },
+      select: { statut: true, datePlantationReelle: true },
+    })
+    if (campagne) {
+      if (body.fait === true) {
+        await prisma.campagnePlantation.update({
+          where: { id: campagneId },
+          data: {
+            datePlantationReelle: etape.dateRealisation ?? new Date(),
+            // Statuts (cf. schema.prisma) : planifiee → prep_sol → plantation
+            // → suivi → terminee / echec. On n'avance que depuis un statut
+            // amont, sans écraser un statut déjà aval (suivi, terminee…).
+            ...(campagne.statut === "planifiee" || campagne.statut === "prep_sol"
+              ? { statut: "plantation" }
+              : {}),
+          },
+        })
+      } else if (
+        campagne.datePlantationReelle &&
+        existing.dateRealisation &&
+        campagne.datePlantationReelle.getTime() === existing.dateRealisation.getTime()
+      ) {
+        // datePlantationReelle provenait de cette étape (mêmes dates) : on la
+        // retire. Le statut redescend à "planifiee" sauf s'il est terminal
+        // (terminee / echec), acté explicitement par l'utilisateur.
+        await prisma.campagnePlantation.update({
+          where: { id: campagneId },
+          data: {
+            datePlantationReelle: null,
+            ...(campagne.statut === "terminee" || campagne.statut === "echec"
+              ? {}
+              : { statut: "planifiee" }),
+          },
+        })
+      }
+    }
+  }
+
   return NextResponse.json(etape)
 }
 

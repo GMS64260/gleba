@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { oeufsAttendusJour } from '@/lib/elevage/taux-ponte'
+import { chargerFenetresMiseBas } from '@/lib/elevage/fenetre-mise-bas'
 import { remiseVente } from '@/lib/elevage/attentes'
 
 export async function GET(request: NextRequest) {
@@ -127,6 +128,11 @@ export async function GET(request: NextRequest) {
         femelle: { select: { id: true, nom: true, identifiant: true } },
       },
     })
+    // Fenêtres de mise-bas des campagnes de lutte (friction 2026-08-14) : en
+    // monte naturelle de groupe, aucune saillie individuelle n'existe — le
+    // calendrier marque le début et la fin de la fenêtre projetée.
+    const fenetresMiseBas = await chargerFenetresMiseBas(userId, { filiere })
+    const dansFenetreAffichee = (d: Date) => d >= start && d <= end
     const reproduction = [
       ...sailliesFenetre
         .filter((s) => s.dateMiseBasAttendue && s.dateMiseBasAttendue >= start && s.dateMiseBasAttendue <= end)
@@ -143,6 +149,24 @@ export async function GET(request: NextRequest) {
           kind: 'tarissement' as const,
           date: s.dateTarissementPrevue as Date,
           femelle: s.femelle,
+        })),
+      ...fenetresMiseBas
+        .filter((f) => dansFenetreAffichee(f.debut))
+        .map((f) => ({
+          id: `fmb-debut-${f.campagneId}`,
+          kind: 'fenetre_mise_bas' as const,
+          date: f.debut,
+          femelle: null,
+          libelle: `Début estimé — ${f.nom}${f.especeNom ? ` · ${f.especeNom}` : ''}`,
+        })),
+      ...fenetresMiseBas
+        .filter((f) => dansFenetreAffichee(f.fin) && f.fin.getTime() !== f.debut.getTime())
+        .map((f) => ({
+          id: `fmb-fin-${f.campagneId}`,
+          kind: 'fenetre_mise_bas' as const,
+          date: f.fin,
+          femelle: null,
+          libelle: `Fin estimée — ${f.nom}${f.especeNom ? ` · ${f.especeNom}` : ''}`,
         })),
     ]
     const injections = await prisma.$queryRaw<Array<{

@@ -18,12 +18,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useToast } from "@/hooks/use-toast"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 import { estimerRendement } from "@/lib/assistant-helpers"
+import { surfaceCultureM2 } from "@/lib/culture-surface"
 
 interface Culture {
   id: number
   especeId: string
   varieteId: string | null
   plancheId: string | null
+  /** Longueur cultivée (m) : portion de la planche occupée par CETTE culture. */
+  longueur: number | null
   dateRecolte: string | null
   finRecolte: string | null
   terminee: string | null
@@ -112,9 +115,10 @@ export default function SaisieRecoltePage() {
     const planche = selectedCultureData.planche
     if (!rendementM2 || !planche) return null
 
-    // Surface de la planche : utiliser surface si disponible, sinon longueur x largeur
-    const surface = planche.surface
-      ?? ((planche.longueur ?? 0) * (planche.largeur ?? 0))
+    // QA cmswu7zfb — la surface de la culture, pas de la planche entière :
+    // une culture de 5 m sur une planche de 10 m était estimée à 12 kg au
+    // lieu de 6 (SSOT surfaceCultureM2 : la longueur cultivée prime).
+    const surface = surfaceCultureM2({ longueur: selectedCultureData.longueur, planche })
     if (surface <= 0) return null
 
     const rendementTotal = estimerRendement(rendementM2, surface)
@@ -218,7 +222,7 @@ export default function SaisieRecoltePage() {
     <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
       <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
       {/* Header */}
-      <AppHeader current="maraichage" />
+      <AppHeader current="maraichage" showLune />
       <PageToolbar>
         <div className="flex items-center gap-4">
           <Link href="/maraichage/recoltes">
@@ -235,7 +239,10 @@ export default function SaisieRecoltePage() {
       </PageToolbar>
 
       {/* Form */}
-      <main className="container mx-auto px-4 py-6 max-w-lg">
+      {/* QA cmsbu4f00 — pb-24 : les pastilles flottantes (Assistant IA,
+          Feedback) recouvraient le bouton « Enregistrer la récolte » en bas
+          de page sur mobile. Même pattern que /taches (pb-20). */}
+      <main className="container mx-auto px-4 py-6 pb-24 max-w-lg">
         <form onSubmit={handleSubmit} className="space-y-6">
           <Card>
             <CardHeader>
@@ -390,9 +397,12 @@ export default function SaisieRecoltePage() {
             </CardContent>
           </Card>
 
+          {/* scroll-mb-28 : un scrollIntoView (agent, clavier mobile) ne doit
+              pas caler le bouton sous les pastilles fixed feedback/IA qui
+              occupent la bande basse du viewport (cmsoazhyy). */}
           <Button
             type="submit"
-            className="w-full h-14 text-lg"
+            className="w-full h-14 text-lg scroll-mb-28"
             disabled={isSubmitting || !quantite}
           >
             <Save className="h-5 w-5 mr-2" />

@@ -2,14 +2,14 @@ import type { Metadata } from "next";
 import { BusinessLanding } from "@/components/seo/BusinessLanding";
 
 export const metadata: Metadata = {
-  title: "Logiciel de maraîchage — Planification, cultures et traçabilité",
-  description: "Planifiez cultures et rotations, gérez planches, semis, interventions, récoltes, stocks et registre phytosanitaire avec le logiciel de maraîchage Gleba.",
+  title: "Logiciel de maraîchage pour micro-ferme — Planification et suivi",
+  description: "Pour maraîchers en installation et micro-fermes : planifiez cultures et rotations, puis suivez planches, interventions, récoltes, stocks et traçabilité.",
   alternates: { canonical: "https://gleba.fr/logiciel-maraichage" },
   openGraph: { title: "Logiciel de maraîchage open source — Gleba", description: "Planification, planches, cultures, interventions, récoltes et traçabilité.", url: "https://gleba.fr/logiciel-maraichage", type: "article" },
 };
 
 export default function Page() {
-  return <BusinessLanding breadcrumb="Logiciel de maraîchage" currentPath="/logiciel-maraichage" eyebrow="Maraîchage · Plan de culture · Récoltes" title="Le logiciel de maraîchage" highlightedTitle="qui relie le prévu au réalisé" introduction="Gleba réunit itinéraires techniques, planches, cultures, rotations, interventions, récoltes, stocks et coûts. Le maraîcher prépare sa saison puis conserve les événements réellement saisis au champ dans le même dossier." proof="les modules Planification, Cultures, Planches, Rotations, Interventions, Récoltes et Stocks sont déjà disponibles, reliés aux mêmes espèces et parcelles." screenshot={{ src: "/screenshots/gleba-planification-maraichage.png", alt: "Écran réel de planification maraîchère dans Gleba", caption: "Organisation de la saison dans le compte de démonstration : plan, îlots, planches, semences et plants." }} capabilities={[
+  return <BusinessLanding breadcrumb="Logiciel de maraîchage" currentPath="/logiciel-maraichage" eyebrow="Maraîchage diversifié · Plan de culture · Récoltes" title="Le logiciel de maraîchage" highlightedTitle="qui relie le prévu au réalisé" introduction="Gleba réunit itinéraires techniques, planches, cultures, rotations, interventions, récoltes, stocks et coûts pour les micro-fermes maraîchères. Le porteur de projet prépare sa saison, puis le maraîcher conserve les événements réellement saisis au champ dans le même dossier." proof="les modules Planification, Cultures, Planches, Rotations, Interventions, Récoltes et Stocks sont déjà disponibles, reliés aux mêmes espèces et parcelles." screenshot={{ src: "/screenshots/gleba-planification-maraichage.png", alt: "Écran réel de planification maraîchère dans Gleba", caption: "Organisation de la saison dans le compte de démonstration : plan, îlots, planches, semences et plants." }} capabilities={[
     { title: "Planification", description: "Préparez ITP, besoins, prévisionnels, affectations aux planches et calendrier de la saison." },
     { title: "Planches et carte 2D", description: "Décrivez les surfaces de culture et visualisez leur implantation sur le terrain." },
     { title: "Cultures", description: "Suivez espèce, variété, planche, dates, état, quantités attendues, notes et historique." },

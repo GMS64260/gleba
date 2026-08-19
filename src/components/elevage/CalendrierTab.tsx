@@ -73,9 +73,12 @@ interface ConsoEntry {
 
 interface ReproEntry {
   id: string
-  kind: 'mise_bas' | 'tarissement'
+  kind: 'mise_bas' | 'tarissement' | 'fenetre_mise_bas'
   date: string
   femelle: { id: number; nom: string | null; identifiant: string | null } | null
+  // Fenêtre de mise-bas d'une campagne de lutte : libellé de la campagne
+  // (aucune femelle individuelle en monte naturelle de groupe).
+  libelle?: string
 }
 
 interface TachesData {
@@ -640,20 +643,27 @@ export function CalendrierTab() {
                       </p>
                     )}
 
-                    {/* QA caprin cms1vevyb — mises-bas prévues & tarissements */}
+                    {/* QA caprin cms1vevyb — mises-bas prévues & tarissements.
+                        Friction 2026-08-14 — fenêtres de mise-bas des campagnes
+                        de lutte (monte naturelle de groupe, sans saillie). */}
                     {dayEvents?.reproduction.map(r => (
                       <div
                         key={r.id}
-                        className={`w-full p-1.5 rounded text-xs ${r.kind === 'mise_bas' ? 'bg-pink-50 text-pink-700' : 'bg-purple-50 text-purple-700'}`}
+                        className={`w-full p-1.5 rounded text-xs ${r.kind === 'tarissement' ? 'bg-purple-50 text-purple-700' : 'bg-pink-50 text-pink-700'}`}
                       >
                         <div className="flex items-center gap-1">
-                          <CalendarClock className={`h-3 w-3 flex-shrink-0 ${r.kind === 'mise_bas' ? 'text-pink-500' : 'text-purple-500'}`} />
-                          <span className="truncate font-medium">{r.kind === 'mise_bas' ? 'Mise-bas prévue' : 'Tarissement'}</span>
+                          <CalendarClock className={`h-3 w-3 flex-shrink-0 ${r.kind === 'tarissement' ? 'text-purple-500' : 'text-pink-500'}`} />
+                          <span className="truncate font-medium">
+                            {r.kind === 'mise_bas' ? 'Mise-bas prévue' : r.kind === 'fenetre_mise_bas' ? 'Mises bas (fenêtre)' : 'Tarissement'}
+                          </span>
                         </div>
                         {r.femelle && (
                           <p className="text-[10px] opacity-70 truncate ml-4">
                             {r.femelle.nom && r.femelle.identifiant ? `${r.femelle.nom} · ${r.femelle.identifiant}` : r.femelle.nom || r.femelle.identifiant || ''}
                           </p>
+                        )}
+                        {r.libelle && (
+                          <p className="text-[10px] opacity-70 truncate ml-4">{r.libelle}</p>
                         )}
                       </div>
                     ))}

@@ -11,13 +11,22 @@ import prisma from '@/lib/prisma'
 import { StockFromageError, verrouillerEtVerifierStockFromage } from '@/lib/elevage/stock-fromage'
 import { createVenteFromVenteProduit, deleteAutoEntry } from '@/lib/auto-compta'
 import { creerFacture, annulerFactureLiee } from '@/lib/facture-utils'
-import { venteProduitSchema } from '@/lib/validations/elevage-vente'
+import { venteProduitSchema, venteProduitTypeSchema } from '@/lib/validations/elevage-vente'
 import { invalidateKpi } from '@/lib/kpi'
 import {
   StockOeufsVenteError,
   supprimerStockOeufsVente,
   synchroniserStockOeufsVente,
 } from '@/lib/elevage/stock-oeufs-vente'
+import {
+  StockRucheError,
+  supprimerStockRucheVente,
+  synchroniserStockRucheVente,
+} from '@/lib/elevage/stock-ruche'
+import {
+  estVenteProduitRuche,
+  tauxTvaVenteProduitParDefaut,
+} from '@/lib/elevage/produits-ruche'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -107,6 +116,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { date, type, description, quantite, unite, prixUnitaire, client, destinationId, paye, tauxTVA, cessionGratuite } = parsed.data
+    const tauxTVAFinal = tauxTVA ?? tauxTvaVenteProduitParDefaut(type)
     let notes = parsed.data.notes ?? null
     const prixTotal = quantite * prixUnitaire
 
@@ -141,6 +151,15 @@ export async function POST(request: NextRequest) {
     const PREFIXE_CESSION = '[Cession gratuite]'
     if (cessionGratuite && !(notes ?? '').startsWith(PREFIXE_CESSION)) {
       notes = notes ? `${PREFIXE_CESSION} ${notes}` : PREFIXE_CESSION
+    }
+
+    // Ticket cmsoge7t9 — un lotFromageId posé sur un autre type contournerait le
+    // décrément du stock de cave (la sortie n'est créée que pour type 'fromage').
+    if (parsed.data.lotFromageId && type !== 'fromage') {
+      return NextResponse.json(
+        { error: 'Une vente liée à un lot de fromage doit être de type fromage' },
+        { status: 400 }
+      )
     }
 
     // Review caprin 2026-07-21 — vente de fromage : une action unique doit
@@ -255,7 +274,7 @@ export async function POST(request: NextRequest) {
           client,
           destinationId,
           paye,
-          tauxTVA,
+          tauxTVA: tauxTVAFinal,
           notes,
           // Audit élevage 2026-06-11 — garder le lien vente→animal pour que
           // l'annulation puisse restaurer le statut de l'animal.
@@ -272,6 +291,16 @@ export async function POST(request: NextRequest) {
         await synchroniserStockOeufsVente(tx, {
           userId: session.user.id,
           venteId: vente.id,
+          date: vente.date,
+          quantite: vente.quantite,
+          unite: vente.unite,
+        })
+      }
+      if (estVenteProduitRuche(type)) {
+        await synchroniserStockRucheVente(tx, {
+          userId: session.user.id,
+          venteId: vente.id,
+          type: vente.type,
           date: vente.date,
           quantite: vente.quantite,
           unite: vente.unite,
@@ -382,6 +411,9 @@ export async function POST(request: NextRequest) {
     if (error instanceof StockFromageError) {
       return NextResponse.json({ error: error.message }, { status: error.status })
     }
+    if (error instanceof StockRucheError) {
+      return NextResponse.json({ error: error.message }, { status: error.status })
+    }
     console.error('POST /api/elevage/ventes error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la création', details: "Erreur interne du serveur" },
@@ -433,6 +465,9 @@ export async function DELETE(request: NextRequest) {
       if (existing.type === 'oeufs') {
         await supprimerStockOeufsVente(tx, session.user.id, existing.id)
       }
+      if (estVenteProduitRuche(existing.type)) {
+        await supprimerStockRucheVente(tx, session.user.id, existing.id)
+      }
 
       if (existing.type === 'animal_vivant' && existing.animalId) {
         await tx.animal.updateMany({
@@ -470,6 +505,9 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ success: true })
   } catch (error) {
     if (error instanceof StockOeufsVenteError) {
+      return NextResponse.json({ error: error.message }, { status: error.status })
+    }
+    if (error instanceof StockRucheError) {
       return NextResponse.json({ error: error.message }, { status: error.status })
     }
     console.error('DELETE /api/elevage/ventes error:', error)
@@ -536,7 +574,16 @@ export async function PATCH(request: NextRequest) {
     // unité et description — l'édition affichait un succès mais ne changeait
     // rien (CA/TVA/écriture auto calculés sur l'ancien prix). On les persiste.
     if (body.date !== undefined) updateData.date = new Date(body.date)
-    if (body.type !== undefined) updateData.type = body.type
+    if (body.type !== undefined) {
+      const typeParse = venteProduitTypeSchema.safeParse(body.type)
+      if (!typeParse.success) {
+        return NextResponse.json({ error: 'Type de vente invalide' }, { status: 400 })
+      }
+      updateData.type = typeParse.data
+      if (body.tauxTVA === undefined && typeParse.data !== existing.type) {
+        updateData.tauxTVA = tauxTvaVenteProduitParDefaut(typeParse.data)
+      }
+    }
     if (body.description !== undefined) updateData.description = body.description || null
     if (body.unite !== undefined) updateData.unite = body.unite
     if (body.quantite !== undefined) {
@@ -653,6 +700,18 @@ export async function PATCH(request: NextRequest) {
       } else if (existing.type === 'oeufs') {
         await supprimerStockOeufsVente(tx, userId, existing.id)
       }
+      if (estVenteProduitRuche(updated.type)) {
+        await synchroniserStockRucheVente(tx, {
+          userId,
+          venteId: updated.id,
+          type: updated.type,
+          date: updated.date,
+          quantite: updated.quantite,
+          unite: updated.unite,
+        })
+      } else if (estVenteProduitRuche(existing.type)) {
+        await supprimerStockRucheVente(tx, userId, existing.id)
+      }
       await createVenteFromVenteProduit(userId, {
         id: updated.id,
         type: updated.type,
@@ -674,6 +733,9 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ data: vente })
   } catch (error) {
     if (error instanceof StockOeufsVenteError) {
+      return NextResponse.json({ error: error.message }, { status: error.status })
+    }
+    if (error instanceof StockRucheError) {
       return NextResponse.json({ error: error.message }, { status: error.status })
     }
     console.error('PATCH /api/elevage/ventes error:', error)

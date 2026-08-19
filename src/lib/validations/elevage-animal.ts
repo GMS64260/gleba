@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { isValidIdentifiant, TYPES_IDENTIFIANT, type TypeIdentifiant } from '@/lib/identification-animal'
 import { caseInsensitiveEnum } from './case-insensitive-enum'
+import { normaliserSexe, SEXES_ANIMAL } from '@/lib/elevage/sexe'
 
 /**
  * Borne plausible pour une date d'animal (naissance / arrivée).
@@ -31,7 +32,26 @@ export const animalSchema = z
     race: z.string().max(100).nullable().optional(),
     raceAnimaleId: z.string().nullable().optional(),
     orientationProduction: z.enum(ORIENTATIONS_PRODUCTION).nullable().optional(),
-    sexe: z.string().max(20).nullable().optional(),
+    // Normalisé à l'écriture, jamais stocké tel quel : un `'f'` hérité était
+    // invisible dans le formulaire (aucune option correspondante) et excluait
+    // l'animal de la liste des mères. Voir `@/lib/elevage/sexe`.
+    sexe: z
+      .string()
+      .max(20)
+      .nullable()
+      .optional()
+      .transform((value, ctx) => {
+        if (value === undefined || value === null) return value
+        const normalise = normaliserSexe(value)
+        if (normalise === undefined) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Sexe « ${value} » non reconnu (attendu : ${SEXES_ANIMAL.join(', ')})`,
+          })
+          return z.NEVER
+        }
+        return normalise
+      }),
     dateNaissance: z.coerce.date().nullable().optional(),
     dateArrivee: z.coerce.date().optional(),
     provenance: z.string().max(200).nullable().optional(),

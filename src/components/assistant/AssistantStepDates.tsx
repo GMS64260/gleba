@@ -30,7 +30,7 @@ import {
   ToggleLeft,
   RefreshCw,
 } from "lucide-react"
-import { format, getWeek } from "date-fns"
+import { format, getISOWeek } from "date-fns"
 import { fr } from "date-fns/locale"
 import {
   calculerDatesCulture,
@@ -423,7 +423,7 @@ export function AssistantStepDates({
                   max={2100}
                 />
                 <span className="text-sm text-muted-foreground">
-                  Semaine actuelle: S{getWeek(new Date(), { weekStartsOn: 1 })}
+                  Semaine actuelle: S{getISOWeek(new Date())}
                 </span>
               </div>
             </div>
@@ -539,7 +539,7 @@ export function AssistantStepDates({
                   max={2100}
                 />
                 <span className="text-sm text-muted-foreground">
-                  Semaine actuelle: S{getWeek(new Date(), { weekStartsOn: 1 })}
+                  Semaine actuelle: S{getISOWeek(new Date())}
                 </span>
               </div>
             </div>
@@ -566,7 +566,7 @@ export function AssistantStepDates({
                     />
                     {manualSemis && (
                       <p className="text-xs text-muted-foreground text-center">
-                        {formatSemaine(getWeek(new Date(manualSemis + "T00:00:00"), { weekStartsOn: 1 }))}
+                        {formatSemaine(getISOWeek(new Date(manualSemis + "T00:00:00")))}
                       </p>
                     )}
                   </div>
@@ -583,7 +583,7 @@ export function AssistantStepDates({
                     />
                     {manualPlantation && (
                       <p className="text-xs text-muted-foreground text-center">
-                        {formatSemaine(getWeek(new Date(manualPlantation + "T00:00:00"), { weekStartsOn: 1 }))}
+                        {formatSemaine(getISOWeek(new Date(manualPlantation + "T00:00:00")))}
                       </p>
                     )}
                   </div>
@@ -600,7 +600,7 @@ export function AssistantStepDates({
                     />
                     {manualRecolte && (
                       <p className="text-xs text-muted-foreground text-center">
-                        {formatSemaine(getWeek(new Date(manualRecolte + "T00:00:00"), { weekStartsOn: 1 }))}
+                        {formatSemaine(getISOWeek(new Date(manualRecolte + "T00:00:00")))}
                       </p>
                     )}
                   </div>

@@ -9,6 +9,13 @@ import { requireAuthApi, getUserId } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { fetchOpenMeteoForecast, fetchOpenMeteoHistory } from '@/lib/meteo'
 import { grouperIrrigationsPlanifieesParPlancheEtJour } from '@/lib/irrigation-planche'
+import { idsAExpirer } from '@/lib/irrigation-peremption'
+import {
+  decideIrrigationMeteo,
+  jourCivilLocalISO,
+  joursCivilsAvant,
+  type DecisionIrrigationMeteo,
+} from '@/lib/irrigation-meteo-decision'
 
 export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
@@ -127,7 +134,7 @@ export async function GET(request: NextRequest) {
               especeId: true,
               varieteId: true,
               espece: {
-                select: { couleur: true, nom: true },
+                select: { couleur: true, nom: true, besoinEau: true },
               },
               variete: {
                 select: { nom: true },
@@ -188,6 +195,7 @@ export async function GET(request: NextRequest) {
 
     const precipByCoordAndDate = new Map<string, Map<string, number>>()
     const pluieRecente3jByCoord = new Map<string, number>()
+    const et0RecenteByCoord = new Map<string, number | null>()
 
     await Promise.all(
       Array.from(coordsMap.entries()).map(async ([coordKey, { lat, lng }]) => {
@@ -214,44 +222,54 @@ export async function GET(request: NextRequest) {
           const pluieHisto = historique.reduce((s, d) => s + d.precipitation, 0)
           const pluieAujourdhui = forecast.daily[0]?.precipitation ?? 0
           pluieRecente3jByCoord.set(coordKey, pluieHisto + pluieAujourdhui)
+          const et0Hist = historique.length > 0
+            ? historique.reduce((s, d) => s + d.et0, 0) / historique.length
+            : null
+          et0RecenteByCoord.set(coordKey, et0Hist ?? forecast.daily[0]?.et0 ?? null)
         } catch {
           // pas bloquant
         }
       })
     )
 
-    const SEUIL_PLUIE_RECENTE = 5
-    const JOURS_COUVERTURE_PLUIE = 3
-
-    function getIrrigationMeteo(irr: typeof irrigationsPlanifiees[number]): {
-      pluiePrevue: number | null
-      probablementInutile: boolean
-    } {
+    // Décision « probablement inutile » : règle partagée avec getTachesPotager
+    // (QA cmswu3260 — seuils et cause dans irrigation-meteo-decision.ts).
+    function getIrrigationMeteo(irr: typeof irrigationsPlanifiees[number]): DecisionIrrigationMeteo {
       const lat = irr.culture.planche?.parcelleGeo?.centroidLat ?? fallbackCoords?.lat
       const lng = irr.culture.planche?.parcelleGeo?.centroidLng ?? fallbackCoords?.lng
-      if (!lat || !lng) return { pluiePrevue: null, probablementInutile: false }
+      if (!lat || !lng) {
+        return { pluiePrevue: null, pluieRecente: 0, probablementInutile: false, raisonInutile: null }
+      }
       const coordKey = `${Math.round(lat * 100)}_${Math.round(lng * 100)}`
 
-      const dateMap = precipByCoordAndDate.get(coordKey)
-      const dateStr = irr.datePrevue.toISOString().split('T')[0]
-      const pluiePrevueJour = dateMap?.get(dateStr) ?? null
+      return decideIrrigationMeteo({
+        pluiePrevueJour: precipByCoordAndDate.get(coordKey)?.get(jourCivilLocalISO(irr.datePrevue)) ?? null,
+        pluieRecente: pluieRecente3jByCoord.get(coordKey) ?? 0,
+        et0MoyenneJournaliere: et0RecenteByCoord.get(coordKey) ?? null,
+        joursAvant: joursCivilsAvant(irr.datePrevue),
+      })
+    }
 
-      const pluieRecente = pluieRecente3jByCoord.get(coordKey) ?? 0
-      const joursAvant = Math.floor((irr.datePrevue.getTime() - Date.now()) / 86_400_000)
-
-      const inutileParPluieRecente = pluieRecente >= SEUIL_PLUIE_RECENTE && joursAvant <= JOURS_COUVERTURE_PLUIE
-      const inutileParPrevision = pluiePrevueJour !== null && pluiePrevueJour >= 5
-
-      return {
-        pluiePrevue: pluiePrevueJour,
-        probablementInutile: inutileParPluieRecente || inutileParPrevision,
+    // Péremption : un passage manqué de plus d'un cycle est abandonné, jamais
+    // rattrapé. Le calendrier continue de l'AFFICHER — c'est l'historique du
+    // plan — mais il cesse d'être une action due.
+    const idsPerimes = new Set(idsAExpirer(irrigationsPlanifiees))
+    if (idsPerimes.size > 0) {
+      await prisma.irrigationPlanifiee.updateMany({
+        where: { id: { in: Array.from(idsPerimes) } },
+        data: { perimee: true },
+      })
+      for (const irr of irrigationsPlanifiees) {
+        if (idsPerimes.has(irr.id)) irr.perimee = true
       }
     }
 
     // Auto-valider les irrigations passées ou du jour couvertes par la pluie récente
     const autoValidIds: number[] = []
     for (const irr of irrigationsPlanifiees) {
-      if (irr.fait) continue
+      // Un passage abandonné n'est pas « couvert par la pluie » : le clore
+      // comme fait inventerait un arrosage dans le registre.
+      if (irr.fait || irr.perimee) continue
       const meteo = getIrrigationMeteo(irr)
       // Auto-valider seulement si l'échéance est RÉELLEMENT passée. Avant,
       // `floor((datePrevue - now)/24h) <= 0` comptait une irrigation de
@@ -283,13 +301,16 @@ export async function GET(request: NextRequest) {
           datePrevue: i.datePrevue.toISOString(),
           date: i.datePrevue.toISOString(),
           fait: i.fait,
+          perimee: i.perimee,
           couleur: i.culture.espece?.couleur || null,
           especeNom: i.culture.espece?.nom ?? i.culture.especeId,
           varieteNom: i.culture.variete?.nom ?? i.culture.varieteId ?? null,
           cultureId: i.culture.id,
           retardJours: 0,
           pluiePrevue: meteo.pluiePrevue !== null ? Math.round(meteo.pluiePrevue * 10) / 10 : null,
+          pluieRecente: Math.round(meteo.pluieRecente * 10) / 10,
           probablementInutile: meteo.probablementInutile,
+          raisonInutile: meteo.raisonInutile,
         }
       })
     )

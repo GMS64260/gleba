@@ -42,6 +42,42 @@ export function dateMiseBasAttendue(dateSaillie: Date, dureeGestationJours: numb
 }
 
 /**
+ * Durée de gestation d'une espèce : champ renseigné, sinon défauts FR par
+ * identifiant puis par type. Source unique — la route saillies portait deux
+ * copies de cette cascade avant le 2026-08-14.
+ */
+export function dureeGestationEspece(espece: {
+  id: string
+  type?: string | null
+  dureeGestation?: number | null
+}): number | null {
+  return (
+    espece.dureeGestation ??
+    DUREE_GESTATION_DEFAUTS[espece.id.toLowerCase()] ??
+    DUREE_GESTATION_DEFAUTS[(espece.type || '').toLowerCase()] ??
+    null
+  )
+}
+
+/**
+ * Fenêtre de mise-bas PROJETÉE d'une campagne de lutte : chaque borne de la
+ * période de lutte décalée de la durée de gestation. C'est la seule échéance
+ * calculable en monte naturelle de groupe, où aucune saillie individuelle
+ * n'est saisie (friction du 2026-08-14 : une campagne 15/04→16/05 sur 70
+ * brebis ne produisait AUCUNE échéance — briefing, agenda et calendrier ne
+ * lisaient que les saillies).
+ */
+export function fenetreMiseBasCampagne(
+  campagne: { dateDebut: Date; dateFin?: Date | null },
+  dureeGestationJours: number
+): { debut: Date; fin: Date } {
+  return {
+    debut: dateMiseBasAttendue(campagne.dateDebut, dureeGestationJours),
+    fin: dateMiseBasAttendue(campagne.dateFin ?? campagne.dateDebut, dureeGestationJours),
+  }
+}
+
+/**
  * Date de tarissement prévue : ~60 jours avant la mise-bas pour les
  * espèces laitières (caprin, bovin). Null sinon.
  */

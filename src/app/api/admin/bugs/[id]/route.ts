@@ -9,7 +9,9 @@ import { shouldSendResolutionEmail } from "@/lib/feedback-public"
 export const dynamic = "force-dynamic"
 
 const patchSchema = z.object({
-  status: z.enum(["OPEN", "IN_PROGRESS", "RESOLVED"]).optional(),
+  status: z
+    .enum(["OPEN", "IN_PROGRESS", "RESOLVED", "EVOLUTION_PRODUIT", "HORS_PERIMETRE"])
+    .optional(),
   priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).optional(),
   adminNote: z.string().max(2000).nullable().optional(),
   statusNote: z.string().max(500).optional(),

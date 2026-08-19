@@ -18,7 +18,16 @@ export type ModeSemis = 'graine_directe' | 'plant_repique' | 'bulbe_caieu' | 'bo
 
 export type UniteDose = 'g_m2' | 'pieces_m2' | 'graines_plant' | 'caieux_m2'
 
-export type StatutSemence = 'OK' | 'LOW' | 'MISSING' | 'IGNORE'
+/**
+ * `IGNORE`  : rien à commander (aucune surface, aucun plant) — hors plan.
+ * `DONNEE_MANQUANTE` : la culture est bien planifiée mais le référentiel ne
+ *   permet aucun calcul (pas de dose, pas de graines/g). QA cmswxo3ri : la
+ *   Phacélie prévue sur 4 planches disparaissait purement et simplement de
+ *   l'écran Semences et du total à commander, sans le moindre message — un
+ *   engrais vert sans `doseSemis` retombait dans `IGNORE`, filtré comme « rien
+ *   à faire ». Une donnée absente doit se voir, pas s'escamoter.
+ */
+export type StatutSemence = 'OK' | 'LOW' | 'MISSING' | 'IGNORE' | 'DONNEE_MANQUANTE'
 
 export interface BesoinSemenceInput {
   mode: ModeSemis | null | undefined
@@ -226,7 +235,17 @@ export function calculerBesoin(input: BesoinSemenceInput): BesoinSemenceResult {
     stockUnites,
     manqueGrammes,
     manqueCaieux,
-    statut: computeStatut(mode, besoinGrammes, besoinCaieux, stockGrammes, stockUnites),
+    statut: computeStatut(
+      mode,
+      besoinGrammes,
+      besoinCaieux,
+      stockGrammes,
+      stockUnites,
+      // QA cmswxo3ri — une culture planifiée sans dose au référentiel n'est pas
+      // « rien à commander » : c'est une donnée manquante, qui doit rester
+      // visible à l'écran au lieu d'être filtrée avec les lignes hors plan.
+      surfaceM2 > 0 || nbPlants > 0,
+    ),
   }
 }
 
@@ -235,10 +254,11 @@ function computeStatut(
   besoinG: number,
   besoinC: number,
   stockG: number,
-  stockC: number
+  stockC: number,
+  cultureplanifiee = false,
 ): StatutSemence {
   if (mode === 'bulbe_caieu' || mode === 'bouture') {
-    if (besoinC === 0) return 'IGNORE'
+    if (besoinC === 0) return cultureplanifiee ? 'DONNEE_MANQUANTE' : 'IGNORE'
     if (stockC === 0) return 'MISSING'
     if (stockC < besoinC) return 'LOW'
     return 'OK'
@@ -246,7 +266,9 @@ function computeStatut(
   // En modes graine_*, on peut avoir un besoin exprimé en grammes OU en
   // unités (graines à acheter à l'unité). On considère "absent" si les
   // deux compteurs sont à zéro.
-  if (besoinG === 0 && besoinC === 0) return 'IGNORE'
+  if (besoinG === 0 && besoinC === 0) {
+    return cultureplanifiee ? 'DONNEE_MANQUANTE' : 'IGNORE'
+  }
   if (besoinG > 0) {
     if (stockG === 0) return 'MISSING'
     if (stockG < besoinG) return 'LOW'

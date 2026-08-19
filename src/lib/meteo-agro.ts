@@ -465,7 +465,7 @@ export function genererAlertesMeteo(
         niveau: 'info',
         date: jour.date,
         message: `Vent fort : ${Math.round(jour.windSpeedMax)} km/h — traitements déconseillés`,
-        details: 'Vent supérieur à 19 km/h : les traitements phytosanitaires sont interdits (arrêté du 12/09/2006). Reporter les pulvérisations.',
+        details: 'Vent supérieur à 19 km/h (force 3 Beaufort) : les traitements phytosanitaires sont interdits (arrêté du 4 mai 2017 modifié). Reporter les pulvérisations.',
       })
     }
   }

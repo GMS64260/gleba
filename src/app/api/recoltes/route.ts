@@ -11,6 +11,7 @@ import { Prisma } from '@prisma/client'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { invalidateKpi } from '@/lib/kpi'
 import { snapshotStatutBio } from '@/lib/statut-bio'
+import { dateExecutionARecaler } from '@/lib/cultures/execution'
 
 // GET /api/recoltes
 export async function GET(request: NextRequest) {
@@ -209,10 +210,21 @@ export async function POST(request: NextRequest) {
         },
       })
 
-      if (!culture.recolteFaite) {
+      // QA cmsw98kx1 (2026-08-16) — la saisie d'une récolte réelle marquait
+      // l'étape faite en laissant Culture.dateRecolte au prévisionnel : une
+      // récolte du 16/08 s'affichait « 20/09 · Fait » sur /interventions.
+      // Même SSOT que le PATCH culture et bulk-fait (dateExecutionARecaler),
+      // avec la date RÉELLE de récolte comme instant de référence : une
+      // dateRecolte déjà passée n'est pas réécrite (historique de retard
+      // préservé, les récoltes échelonnées suivantes ne bougent plus la date).
+      const recalage = dateExecutionARecaler(culture.dateRecolte, dateRecolte)
+      if (!culture.recolteFaite || recalage) {
         await tx.culture.update({
           where: { id: data.cultureId },
-          data: { recolteFaite: true },
+          data: {
+            recolteFaite: true,
+            ...(recalage ? { dateRecolte: recalage } : {}),
+          },
         })
       }
 

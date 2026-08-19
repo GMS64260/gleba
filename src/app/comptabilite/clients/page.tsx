@@ -63,7 +63,12 @@ export default function ClientsPage() {
   const [search, setSearch] = React.useState("")
   const [showInactifs, setShowInactifs] = React.useState(false)
   const [dialogOpen, setDialogOpen] = React.useState(false)
+  const [isSubmitting, setIsSubmitting] = React.useState(false)
   const [editingClient, setEditingClient] = React.useState<Client | null>(null)
+  // QA cmsw91q0z (2026-08-16) — un refus serveur (doublon 409, SIRET invalide…)
+  // n'était restitué que par un toast de 5 s hors de la modale : perçu comme
+  // « aucun message ». L'erreur est désormais aussi affichée dans la modale.
+  const [formError, setFormError] = React.useState<string | null>(null)
 
   const [formData, setFormData] = React.useState({
     nom: "",
@@ -138,10 +143,12 @@ export default function ClientsPage() {
       notes: "",
     })
     setEditingClient(null)
+    setFormError(null)
   }
 
   const openEdit = (client: Client) => {
     setEditingClient(client)
+    setFormError(null)
     setFormData({
       nom: client.nom,
       type: client.type,
@@ -162,6 +169,9 @@ export default function ClientsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isSubmitting) return
+    setIsSubmitting(true)
+    setFormError(null)
 
     try {
       // DEV2 #4 — Empty strings → null pour permettre la validation Zod
@@ -193,10 +203,18 @@ export default function ClientsPage() {
               .map(([k, v]) => `${k}: ${(v as string[]).join(', ')}`)
               .join(' · ')
           : err?.error || "Impossible d'enregistrer"
-        toast({ variant: "destructive", title: "Erreur de validation", description: msg })
+        setFormError(msg)
+        toast({
+          variant: "destructive",
+          title: err?.code === 'CLIENT_DOUBLON' ? "Doublon détecté" : "Erreur de validation",
+          description: msg,
+        })
       }
     } catch {
+      setFormError("Impossible d'enregistrer (erreur réseau)")
       toast({ variant: "destructive", title: "Erreur", description: "Impossible d'enregistrer" })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -391,11 +409,20 @@ export default function ClientsPage() {
                     />
                   </div>
 
+                  {formError && (
+                    <div
+                      role="alert"
+                      className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+                    >
+                      {formError}
+                    </div>
+                  )}
+
                   <DialogFooter>
                     <DialogClose asChild>
                       <Button type="button" variant="outline">Annuler</Button>
                     </DialogClose>
-                    <Button type="submit">{editingClient ? "Modifier" : "Créer"}</Button>
+                    <Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Enregistrement..." : editingClient ? "Modifier" : "Créer"}</Button>
                   </DialogFooter>
                 </form>
               </DialogContent>
@@ -410,8 +437,19 @@ export default function ClientsPage() {
         {stats && (
           <div className="grid gap-4 md:grid-cols-4 mb-6">
             <Card>
-              <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Total clients</CardTitle></CardHeader>
-              <CardContent><p className="text-2xl font-bold">{stats.total}</p></CardContent>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm text-muted-foreground">
+                  {showInactifs ? "Clients (actifs + inactifs)" : "Clients actifs"}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold">{stats.total}</p>
+                {showInactifs && stats.inactifs > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    dont {stats.inactifs} inactif{stats.inactifs > 1 ? "s" : ""}
+                  </p>
+                )}
+              </CardContent>
             </Card>
             <Card>
               <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Particuliers</CardTitle></CardHeader>

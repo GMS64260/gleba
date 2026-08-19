@@ -10,11 +10,16 @@ type Atelier = {
   effectif: number
   couts: { achat: number; soins: number; alimentation: number; total: number }
   revenus: { ventes: number; abattages: number; paiesLait: number; total: number }
-  production: { oeufs: number; litresLivres: number; kgCarcasse: number }
+  production: { oeufs: number; litresLivres: number; kgCarcasse: number; kgMiel: number }
   marge: number
   // Coûts unitaires par atelier, `null` quand la production correspondante
   // est nulle (un coût divisé par zéro n'est pas un indicateur).
-  metriques: { coutParOeuf: number | null; coutParKgCarcasse: number | null; coutParLitre: number | null }
+  metriques: {
+    coutParOeuf: number | null
+    coutParKgCarcasse: number | null
+    coutParLitre: number | null
+    coutParKgMiel: number | null
+  }
 }
 
 export async function GET(request: NextRequest) {
@@ -32,7 +37,7 @@ export async function GET(request: NextRequest) {
     const end = new Date(annee, 11, 31, 23, 59, 59, 999)
     const period = { gte: start, lte: end }
 
-    const [lots, animals, soins, consommations, abattages, ventes, productionsOeufs, livraisons, paies] = await Promise.all([
+    const [lots, animals, soins, consommations, abattages, ventes, productionsOeufs, productionsMiel, livraisons, paies] = await Promise.all([
       prisma.lotAnimaux.findMany({ where: { userId }, include: { especeAnimale: { select: { id: true, nom: true } } } }),
       prisma.animal.findMany({ where: { userId }, include: { especeAnimale: { select: { id: true, nom: true } } } }),
       prisma.soinAnimal.findMany({ where: { userId, fait: true, date: period }, select: { lotId: true, animalId: true, cout: true } }),
@@ -56,6 +61,14 @@ export async function GET(request: NextRequest) {
       prisma.abattage.findMany({ where: { userId, annule: false, date: period }, select: { lotId: true, animalId: true, prixVente: true, poidsCarcasse: true, quantite: true } }),
       prisma.venteProduit.findMany({ where: { userId, annule: false, date: period }, select: { type: true, prixTotal: true, animalId: true } }),
       prisma.productionOeuf.findMany({ where: { userId, date: period }, select: { lotId: true, animalId: true, quantite: true } }),
+      // QA cmswxw80j — l'atelier apicole portait ses coûts mais aucune
+      // production : son coût unitaire restait « — » malgré 19,3 kg récoltés.
+      // Le miel est la sortie de l'atelier ruche ; cire, propolis et pollen ne
+      // partagent pas son unité et ne peuvent pas entrer au même dénominateur.
+      prisma.productionRuche.findMany({
+        where: { userId, date: period, produit: 'miel' },
+        select: { lotId: true, animalId: true, quantite: true, unite: true },
+      }),
       prisma.livraisonLait.findMany({ where: { userId, date: period }, select: { date: true, litres: true, laiterie: true } }),
       prisma.paieLait.findMany({ where: { userId, annee }, select: { mois: true, litres: true, montantHT: true, laiterie: true } }),
     ])
@@ -66,7 +79,7 @@ export async function GET(request: NextRequest) {
     const getAtelier = (code: string, libelle: string) => {
       let atelier = ateliers.get(code)
       if (!atelier) {
-        atelier = { code, libelle, effectif: 0, couts: { achat: 0, soins: 0, alimentation: 0, total: 0 }, revenus: { ventes: 0, abattages: 0, paiesLait: 0, total: 0 }, production: { oeufs: 0, litresLivres: 0, kgCarcasse: 0 }, marge: 0, metriques: { coutParOeuf: null, coutParKgCarcasse: null, coutParLitre: null } }
+        atelier = { code, libelle, effectif: 0, couts: { achat: 0, soins: 0, alimentation: 0, total: 0 }, revenus: { ventes: 0, abattages: 0, paiesLait: 0, total: 0 }, production: { oeufs: 0, litresLivres: 0, kgCarcasse: 0, kgMiel: 0 }, marge: 0, metriques: { coutParOeuf: null, coutParKgCarcasse: null, coutParLitre: null, coutParKgMiel: null } }
         ateliers.set(code, atelier)
       }
       return atelier
@@ -110,6 +123,19 @@ export async function GET(request: NextRequest) {
       a.revenus.ventes += vente.prixTotal
     }
     for (const production of productionsOeufs) speciesFor(production.lotId, production.animalId).production.oeufs += production.quantite
+    // Les récoltes se saisissent en kg ou en g : on ramène tout au kilogramme.
+    // Une récolte sans ruche désignée ne peut pas être rattachée à une espèce,
+    // mais elle ne relève pas pour autant du fourre-tout « Non affecté » : le
+    // produit lui-même désigne l'atelier. Même parti que le lait livré sans
+    // espèce renseignée, juste en dessous.
+    for (const recolte of productionsMiel) {
+      const kg = recolte.unite === 'g' ? recolte.quantite / 1000 : recolte.quantite
+      const atelier =
+        recolte.lotId == null && recolte.animalId == null
+          ? getAtelier('miel_non_ventile', 'Miel — ruche non renseignée')
+          : speciesFor(recolte.lotId, recolte.animalId)
+      atelier.production.kgMiel += kg
+    }
 
     const lait = getAtelier('lait_non_ventile', 'Lait — espèce non renseignée')
     lait.production.litresLivres = livraisons.reduce((sum, l) => sum + Number(l.litres), 0)
@@ -138,15 +164,22 @@ export async function GET(request: NextRequest) {
       a.revenus.ventes = round(a.revenus.ventes); a.revenus.abattages = round(a.revenus.abattages); a.revenus.paiesLait = round(a.revenus.paiesLait)
       a.production.oeufs = round(a.production.oeufs); a.production.litresLivres = round(a.production.litresLivres)
       a.production.kgCarcasse = round(a.production.kgCarcasse)
+      a.production.kgMiel = round(a.production.kgMiel)
       a.marge = round(a.revenus.total - a.couts.total)
       // Le coût unitaire garde 3 décimales : un œuf coûte quelques centimes,
       // l'arrondi au centime écraserait l'indicateur.
+      // Sans coût imputé, il n'y a pas de coût unitaire à annoncer : « 0,000 €
+      // / kg » se lirait comme une production gratuite alors que c'est
+      // l'imputation qui manque (cas des récoltes sans ruche désignée).
       const unitaire = (production: number) =>
-        production > 0 ? Math.round((a.couts.total / production) * 1000) / 1000 : null
+        production > 0 && a.couts.total > 0
+          ? Math.round((a.couts.total / production) * 1000) / 1000
+          : null
       a.metriques = {
         coutParOeuf: unitaire(a.production.oeufs),
         coutParKgCarcasse: unitaire(a.production.kgCarcasse),
         coutParLitre: unitaire(a.production.litresLivres),
+        coutParKgMiel: unitaire(a.production.kgMiel),
       }
     }
 
@@ -163,7 +196,7 @@ export async function GET(request: NextRequest) {
       const totalOeufs = productionsOeufs.filter(p => p.lotId === lot.id).reduce((sum, p) => sum + p.quantite, 0)
       return { lotId: lot.id, lotNom: lot.nom || `Lot #${lot.id}`, espece: lot.especeAnimale.nom, quantiteActuelle: lot.quantiteActuelle, quantiteInitiale: lot.quantiteInitiale, statut: lot.statut, couts: { achat: round(coutAchat), soins: round(coutSoins), alimentation: round(coutAlimentation), total: round(total) }, revenus: { ventes: round(revenus) }, marge: round(revenus - total), metriques: { coutParAnimal: round(lot.quantiteActuelle ? total / lot.quantiteActuelle : 0), coutParOeuf: totalOeufs ? round(total / totalOeufs) : null, totalOeufs, totalConsoKg: round(lotConso.reduce((sum, c) => sum + c.quantite, 0)), poidsCarcasse: round(lotAbattages.reduce((sum, a) => sum + (a.poidsCarcasse || 0), 0)), nbAbattages: lotAbattages.reduce((sum, a) => sum + a.quantite, 0), nbSoins: lotSoins.length } }
     })
-    const atelierList = [...ateliers.values()].filter(a => a.effectif || a.couts.total || a.revenus.total || a.production.oeufs || a.production.litresLivres || a.production.kgCarcasse)
+    const atelierList = [...ateliers.values()].filter(a => a.effectif || a.couts.total || a.revenus.total || a.production.oeufs || a.production.litresLivres || a.production.kgCarcasse || a.production.kgMiel)
     const totalCouts = atelierList.reduce((sum, a) => sum + a.couts.total, 0)
     const totalRevenus = atelierList.reduce((sum, a) => sum + a.revenus.total, 0)
 

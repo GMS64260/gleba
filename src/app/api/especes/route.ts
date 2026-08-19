@@ -10,8 +10,10 @@ import { createEspeceSchema } from '@/lib/validations'
 import { visibiliteReferentiel, attributionCreation } from '@/lib/referentiel-communaute'
 import { Prisma } from '@prisma/client'
 import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
-import { cleanReferentielName, normalizeReferentielKey } from '@/lib/normalize'
+import { displayReferentielName, normalizeReferentielKey } from '@/lib/normalize'
 import { statsAvisPourRefs } from '@/lib/avis/stats-liste'
+import { isAvisFiltre, retenuParAvis, whereZoneCultivable } from '@/lib/especes/filtres'
+import { ZONES_CLIMAT, type ZoneClimat } from '@/lib/terroir'
 
 // GET /api/especes - Référentiel global (lecture)
 export async function GET(request: NextRequest) {
@@ -37,6 +39,9 @@ export async function GET(request: NextRequest) {
     const aPlanifier = searchParams.get('aPlanifier')
     const type = searchParams.get('type')
     const origine = searchParams.get('origine') // 'perso' | 'gleba' | 'communaute' | null
+    // Zone climatique visée (valeur de ZONES_CLIMAT) et filtre avis.
+    const zone = searchParams.get('zone')
+    const avisFiltre = searchParams.get('avisFiltre')
 
     // Audit Marc Bug #6 — Compteur "Cultures" : par défaut "saison active"
     // = cultures de l'année en cours non terminées. Mode "historique"
@@ -57,10 +62,36 @@ export async function GET(request: NextRequest) {
     }
 
     if (search) {
+      // `nom` est indispensable : une espèce perso a un id technique (cuid) et
+      // ne porte son libellé que dans `nom`. Sans cette clause, un membre ne
+      // retrouvait aucune de ses propres espèces par leur nom (friction
+      // constatée le 2026-07-30).
+      //
+      // QA cmsqn2b36 — la recherche exigeait les accents : « Mache » ou
+      // « Epinard » tapés au champ (sans circonflexe ni accent aigu, cas
+      // normal sur mobile) rendaient 0 résultat et faisaient conclure que
+      // l'espèce n'existe pas. On pré-résout les ids par `unaccent` (même
+      // extension que l'index nom_normalise des variétés) et on les ajoute
+      // aux clauses exactes existantes. Combobox client déjà tolérant
+      // (scoreEspece) : c'est le chemin serveur qui manquait.
+      const idsSansAccents = await prisma.$queryRaw<Array<{ espece: string }>>`
+        SELECT espece FROM especes
+        WHERE unaccent(lower(espece)) LIKE '%' || unaccent(lower(${search})) || '%'
+           OR unaccent(lower(coalesce(nom, ''))) LIKE '%' || unaccent(lower(${search})) || '%'
+        LIMIT 200
+      `
       where.OR = [
         { id: { contains: search, mode: 'insensitive' } },
+        { nom: { contains: search, mode: 'insensitive' } },
         { nomLatin: { contains: search, mode: 'insensitive' } },
         { description: { contains: search, mode: 'insensitive' } },
+        // QA cmswxyuoi — insensible aussi à la ponctuation : un libellé est
+        // désormais conservé tel que saisi (tirets compris), donc « Chou-fleur »
+        // et « Chou fleur » doivent se retrouver l'un l'autre.
+        { nomNormalise: { contains: normalizeReferentielKey(search) } },
+        ...(idsSansAccents.length > 0
+          ? [{ id: { in: idsSansAccents.map((r) => r.espece) } }]
+          : []),
       ]
     }
 
@@ -100,8 +131,31 @@ export async function GET(request: NextRequest) {
         : origine === 'communaute'
         ? { userId: { not: null }, partageCommunaute: true }
         : {}
+    // Filtre zone climatique : mêmes règles que le badge d'adéquation, mais
+    // appliqué avant la pagination.
+    const zoneFilter: Prisma.EspeceWhereInput =
+      zone && (ZONES_CLIMAT as readonly string[]).includes(zone)
+        ? whereZoneCultivable(zone as ZoneClimat)
+        : {}
+
+    // Filtre avis : les stats sont agrégées depuis la table `avis`, donc
+    // impossibles à exprimer en SQL Prisma. On résout d'abord la liste des
+    // espèces retenues — bornée aux espèces effectivement notées — puis on
+    // l'injecte dans le `where` pour que la pagination reste juste.
+    let avisFilter: Prisma.EspeceWhereInput = {}
+    if (isAvisFiltre(avisFiltre)) {
+      const notees = await prisma.avis.findMany({
+        where: { refType: 'ESPECE' },
+        select: { refId: true },
+        distinct: ['refId'],
+      })
+      const refIds = notees.map((a) => a.refId)
+      const stats = await statsAvisPourRefs(prisma, 'ESPECE', refIds)
+      avisFilter = { id: { in: refIds.filter((id) => retenuParAvis(stats.get(id), avisFiltre)) } }
+    }
+
     const whereVisible: Prisma.EspeceWhereInput = {
-      AND: [where, visibiliteReferentiel(me), origineFilter],
+      AND: [where, visibiliteReferentiel(me), origineFilter, zoneFilter, avisFilter],
     }
 
     // Requête avec comptage
@@ -176,7 +230,11 @@ export async function POST(request: NextRequest) {
 
     // `data.id` porte le NOM saisi (contrat client inchangé). Le nom affiché vit
     // désormais dans `nom` ; l'id technique dépend de l'origine (cf. plus bas).
-    const nomSaisi = cleanReferentielName(data.id)
+    // QA cmswxyuoi — le libellé est conservé TEL QUE SAISI (tirets compris) ;
+    // seule la clé de dédup normalise la ponctuation. Avant, un nom
+    // « TEST-Marc-Phacelie-v7 » était stocké « TEST Marc Phacelie v7 » et
+    // devenait introuvable par le nom tapé.
+    const nomSaisi = displayReferentielName(data.id)
     const nomNormalise = normalizeReferentielKey(nomSaisi)
     const attrib = attributionCreation(isAdmin, session!.user.id, body.partageCommunaute === true)
     const estOfficiel = attrib.userId === null

@@ -102,9 +102,14 @@ export interface IrrigationPlanifieeAffichable {
   datePrevue: string
   especeNom?: string | null
   fait: boolean
+  /** Passage abandonné (manqué de plus d'un cycle) : affiché, mais plus dû. */
+  perimee?: boolean
   retardJours: number
   pluiePrevue: number | null
+  /** mm tombés sur les 3 derniers jours (cause « pluie récente »). */
+  pluieRecente?: number | null
   probablementInutile: boolean
+  raisonInutile?: 'pluie-recente' | 'pluie-prevue' | null
 }
 
 export type IrrigationPlancheAffichable<T extends IrrigationPlanifieeAffichable> = T & {
@@ -145,11 +150,19 @@ export function grouperIrrigationsPlanifieesParPlancheEtJour<
       ...representative,
       especeNom: noms.join(" + ") || representative.especeNom,
       fait: groupe.every((item) => item.fait),
+      // Une planche-jour n'est abandonnée que si tous ses passages le sont :
+      // un seul encore rattrapable garde l'action ouverte.
+      perimee: groupe.every((item) => item.perimee === true),
       probablementInutile: groupe.every((item) => item.probablementInutile),
       pluiePrevue: groupe.reduce<number | null>((max, item) => {
         if (item.pluiePrevue == null) return max
         return max == null ? item.pluiePrevue : Math.max(max, item.pluiePrevue)
       }, null),
+      pluieRecente: groupe.reduce<number | null>((max, item) => {
+        if (item.pluieRecente == null) return max
+        return max == null ? item.pluieRecente : Math.max(max, item.pluieRecente)
+      }, null),
+      raisonInutile: groupe.find((item) => item.raisonInutile)?.raisonInutile ?? null,
       retardJours: Math.max(...groupe.map((item) => item.retardJours)),
       irrigationIds: groupe.map((item) => item.id),
       cultureIds: Array.from(new Set(groupe.map((item) => item.cultureId))),

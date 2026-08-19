@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
+import { useSession } from "next-auth/react"
 import { confirmDialog } from "@/lib/global-dialog"
 
 interface Fournisseur {
@@ -48,12 +49,21 @@ const TYPE_LABELS: Record<string, string> = {
 
 export default function FournisseursPage() {
   const { toast } = useToast()
+  const { data: session } = useSession()
+  // QA cmsqlixl2 / cmsqlpeoq — « Accès interdit » puis un dialogue qui reste
+  // ouvert sans rien dire : le répertoire des fournisseurs est un référentiel
+  // GLOBAL (le modèle Prisma n'a pas de userId, les fiches sont partagées entre
+  // tous les comptes), donc l'API réserve POST/PATCH/DELETE aux administrateurs.
+  // L'écran, lui, proposait les actions à tout le monde. Même correction que le
+  // référentiel de rotations (cmsp5fzf8) : on n'expose plus ce qui sera refusé.
+  const peutModifier = session?.user?.role === "ADMIN"
   const [isLoading, setIsLoading] = React.useState(true)
   const [fournisseurs, setFournisseurs] = React.useState<Fournisseur[]>([])
   const [stats, setStats] = React.useState<any>(null)
   const [search, setSearch] = React.useState("")
   const [showInactifs, setShowInactifs] = React.useState(false)
   const [dialogOpen, setDialogOpen] = React.useState(false)
+  const [isSubmitting, setIsSubmitting] = React.useState(false)
   const [editingFournisseur, setEditingFournisseur] = React.useState<Fournisseur | null>(null)
 
   const [formData, setFormData] = React.useState({
@@ -132,6 +142,8 @@ export default function FournisseursPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isSubmitting) return
+    setIsSubmitting(true)
 
     try {
       const body = {
@@ -156,6 +168,8 @@ export default function FournisseursPage() {
       }
     } catch (error: any) {
       toast({ variant: "destructive", title: "Erreur", description: error.message || "Impossible d'enregistrer" })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -192,6 +206,7 @@ export default function FournisseursPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {peutModifier && (
             <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
               <DialogTrigger asChild>
                 <Button><Plus className="h-4 w-4 mr-2" />Nouveau fournisseur</Button>
@@ -331,11 +346,12 @@ export default function FournisseursPage() {
                     <DialogClose asChild>
                       <Button type="button" variant="outline">Annuler</Button>
                     </DialogClose>
-                    <Button type="submit">{editingFournisseur ? "Modifier" : "Créer"}</Button>
+                    <Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Enregistrement..." : editingFournisseur ? "Modifier" : "Créer"}</Button>
                   </DialogFooter>
                 </form>
               </DialogContent>
             </Dialog>
+            )}
             <Button variant="outline" size="sm" onClick={fetchData}><RefreshCw className="h-4 w-4" /></Button>
           </div>
         </div>
@@ -362,6 +378,16 @@ export default function FournisseursPage() {
               <CardContent><p className="text-2xl font-bold">{stats.parType?.materiel || 0}</p></CardContent>
             </Card>
           </div>
+        )}
+
+        {!peutModifier && (
+          <Card className="mb-6">
+            <CardContent className="pt-4 text-sm text-muted-foreground">
+              Le répertoire des fournisseurs est un référentiel partagé par toutes les exploitations :
+              sa mise à jour est réservée à l&apos;équipe Gleba. Vos achats restent enregistrés
+              normalement depuis Comptabilité &gt; Dépenses, où le nom du fournisseur est libre.
+            </CardContent>
+          </Card>
         )}
 
         {/* Filtres */}
@@ -445,13 +471,17 @@ export default function FournisseursPage() {
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-1">
-                          <Button variant="ghost" size="sm" onClick={() => openEdit(fournisseur)}>
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          {fournisseur.actif && (
-                            <Button variant="ghost" size="sm" onClick={() => handleDelete(fournisseur)}>
-                              <Trash2 className="h-4 w-4 text-red-500" />
-                            </Button>
+                          {peutModifier && (
+                            <>
+                              <Button variant="ghost" size="sm" onClick={() => openEdit(fournisseur)}>
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              {fournisseur.actif && (
+                                <Button variant="ghost" size="sm" onClick={() => handleDelete(fournisseur)}>
+                                  <Trash2 className="h-4 w-4 text-red-500" />
+                                </Button>
+                              )}
+                            </>
                           )}
                         </div>
                       </TableCell>

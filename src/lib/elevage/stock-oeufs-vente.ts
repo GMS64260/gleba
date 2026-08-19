@@ -1,5 +1,7 @@
 import type { Prisma } from "@prisma/client"
+import { OEUFS_PAR_UNITE, oeufsDepuisUnite } from "@/lib/stocks-helpers"
 import { statutLotOeufs, stockRestantLotOeufs } from "./stock-oeufs"
+import { blocagesVetoPontes } from "./stock-oeufs-lots"
 
 export class StockOeufsVenteError extends Error {
   constructor(
@@ -12,16 +14,20 @@ export class StockOeufsVenteError extends Error {
 }
 
 export function quantiteOeufsVendus(quantite: number, unite: string): number {
-  const uniteNormalisee = unite.trim().toLowerCase()
-  const brut = uniteNormalisee === "douzaine" || uniteNormalisee === "douzaines"
-    ? quantite * 12
-    : uniteNormalisee === "unite" || uniteNormalisee === "unité"
-      ? quantite
-      : Number.NaN
+  // QA cmsnokro7 — cette table locale n'acceptait que douzaine/unité alors
+  // que le référentiel partagé (OEUFS_PAR_UNITE, stocks-helpers) en connaît
+  // sept : une vente en « boîte »/« plaque »/« plateau » était rejetée en 400
+  // et le registre par lot divergeait du stock global. Une seule conversion.
+  const uniteNormalisee = unite.trim().toLowerCase().replace(/s$/, "")
+  const connue =
+    uniteNormalisee in OEUFS_PAR_UNITE ||
+    uniteNormalisee === "unité" ||
+    uniteNormalisee === "douzaine"
+  const brut = connue ? oeufsDepuisUnite(quantite, uniteNormalisee === "unité" ? "unite" : uniteNormalisee) : Number.NaN
   const arrondi = Math.round(brut)
   if (!Number.isFinite(brut) || brut <= 0 || Math.abs(brut - arrondi) > 1e-6) {
     throw new StockOeufsVenteError(
-      "Une vente d’œufs doit être exprimée en unités entières ou en douzaines.",
+      "Une vente d’œufs doit être exprimée en œufs entiers (unité, demi-douzaine, boîte, douzaine, plaque, plateau).",
       400,
     )
   }
@@ -67,8 +73,13 @@ export async function synchroniserStockOeufsVente(
     },
   })
 
+  // Ticket cmsoeyhs5 — les pontes sous délai d'attente vétérinaire (soin avec
+  // finAttenteOeufs) ne sont pas vendables : même règle que computeStockOeufsParLots.
+  const blocagesVeto = await blocagesVetoPontes(tx, input.userId, productions)
+
   for (const production of productions) {
     if (restantAVentiler === 0) break
+    if (blocagesVeto.has(production.id)) continue
     if (statutLotOeufs(production.date, input.date) !== "commercialisable") continue
     const disponible = stockRestantLotOeufs({
       quantite: production.quantite,

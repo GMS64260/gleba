@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { dureeGestationEspece, fenetreMiseBasCampagne } from '@/lib/reproduction'
 
 const TYPES_CONDUITE = [
   'Monte naturelle',
@@ -40,7 +41,9 @@ export async function GET() {
     where: { userId },
     orderBy: { dateDebut: 'desc' },
     include: {
-      especeAnimale: { select: { nom: true, filiere: true } },
+      especeAnimale: {
+        select: { id: true, nom: true, type: true, filiere: true, dureeGestation: true },
+      },
       _count: { select: { saillies: true } },
       saillies: { select: { statut: true } },
     },
@@ -50,6 +53,10 @@ export async function GET() {
   const data = campagnes.map((c) => {
     const issues = c.saillies.filter((s) => s.statut !== 'En attente')
     const fecondantes = c.saillies.filter((s) => s.statut === 'Gestante' || s.statut === 'Mise-bas réalisée')
+    // Fenêtre de mise-bas projetée (friction 2026-08-14) : seule échéance
+    // calculable en monte naturelle de groupe, sans saillie individuelle.
+    const duree = c.especeAnimale ? dureeGestationEspece(c.especeAnimale) : null
+    const fenetreMiseBas = duree ? fenetreMiseBasCampagne(c, duree) : null
     return {
       id: c.id,
       nom: c.nom,
@@ -60,6 +67,7 @@ export async function GET() {
       dateDebut: c.dateDebut,
       dateFin: c.dateFin,
       objectifMiseBas: c.objectifMiseBas,
+      fenetreMiseBas,
       notes: c.notes,
       nbSaillies: c._count.saillies,
       tauxReussite: issues.length > 0 ? Math.round((fecondantes.length / issues.length) * 1000) / 10 : null,

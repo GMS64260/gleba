@@ -51,6 +51,8 @@ interface PhytoEntry {
   surfaceTraitee: number | null
   dar: number | null
   delaiReentree: number | null
+  zntDistanceM: number | null
+  zntRespectee: boolean | null
   conditionsMeteo: string | null
   applicateur: string
   intrantNumLot: string | null
@@ -282,7 +284,7 @@ const TYPE_LABELS: Record<string, string> = {
   recolte: "Récolte",
   fertilisation: "Fertilisation",
   traitement_phyto: "Traitement phyto",
-  desherbage: "Desherbage",
+  desherbage: "Désherbage",
   binage: "Binage",
   paillage: "Paillage",
   arrosage: "Arrosage",
@@ -386,13 +388,13 @@ function TraçabilitéContent() {
       {/* Print header (hidden in screen, shown in print) */}
       <div className="print-header hidden">
         <h1 style={{ fontSize: "16pt", fontWeight: "bold", textAlign: "center", marginBottom: "4pt" }}>
-          {activeTab === "phyto" && `Registre Phytosanitaire - Annee ${selectedYear}`}
-          {activeTab === "culture" && `Registre de Culture - Annee ${selectedYear}`}
-          {activeTab === "sanitaire" && `Carnet Sanitaire d'Elevage - Annee ${selectedYear}`}
-          {activeTab === "elevage" && `Registre d'Elevage - Annee ${selectedYear}`}
+          {activeTab === "phyto" && `Registre Phytosanitaire - Année ${selectedYear}`}
+          {activeTab === "culture" && `Registre de Culture - Année ${selectedYear}`}
+          {activeTab === "sanitaire" && `Carnet Sanitaire d'Élevage - Année ${selectedYear}`}
+          {activeTab === "elevage" && `Registre d'Élevage - Année ${selectedYear}`}
         </h1>
         <p style={{ textAlign: "center", fontSize: "10pt", color: "#666", marginBottom: "12pt" }}>
-          Document genere le {new Date().toLocaleDateString("fr-FR")} - Gleba
+          Document généré le {new Date().toLocaleDateString("fr-FR")} - Gleba
         </p>
         <hr style={{ borderTop: "2px solid #333", marginBottom: "12pt" }} />
       </div>
@@ -492,7 +494,7 @@ function TraçabilitéContent() {
                 <Printer className="h-4 w-4 mr-1" />
                 <span className="hidden sm:inline">Imprimer / PDF</span>
               </Button>
-              {/* PROMPT 11 LOT C — Export PDF / CSV du registre phyto (conforme arrêté 2009). */}
+              {/* PROMPT 11 LOT C — Export PDF / CSV du registre phyto (arrêté du 4 mai 2017 modifié). */}
               {activeTab === "phyto" && (
                 <>
                   <Button
@@ -617,10 +619,10 @@ function PhytoTab({
         <CardContent className="py-12 text-center">
           <Shield className="h-12 w-12 mx-auto text-slate-300 mb-4" />
           <p className="text-muted-foreground text-lg">
-            Aucun traitement phytosanitaire enregistre pour {year}
+            Aucun traitement phytosanitaire enregistré pour {year}
           </p>
           <p className="text-sm text-muted-foreground mt-2">
-            Les interventions de type &quot;Traitement phyto&quot; apparaitront ici automatiquement.
+            Les interventions de type &quot;Traitement phyto&quot; apparaîtront ici automatiquement.
           </p>
         </CardContent>
       </Card>
@@ -651,13 +653,21 @@ function PhytoTab({
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">Surface totale traitee</CardTitle>
+            <CardTitle className="text-sm text-muted-foreground">Surface totale traitée</CardTitle>
           </CardHeader>
           <CardContent>
+            {/* QA cmswxf83f — la valeur brute sortait l'artefact de la somme de
+                flottants (« 1849.8999999999999 m² »). On arrondit et on
+                localise, comme partout ailleurs dans l'écran. */}
             <p className="text-2xl font-bold">
               {data.stats.surfaceTotalTraitee > 10000
-                ? `${(data.stats.surfaceTotalTraitee / 10000).toFixed(2)} ha`
-                : `${data.stats.surfaceTotalTraitee} m²`}
+                ? `${(data.stats.surfaceTotalTraitee / 10000).toLocaleString("fr-FR", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })} ha`
+                : `${data.stats.surfaceTotalTraitee.toLocaleString("fr-FR", {
+                    maximumFractionDigits: 1,
+                  })} m²`}
             </p>
           </CardContent>
         </Card>
@@ -666,7 +676,7 @@ function PhytoTab({
             <CardHeader className="pb-2">
               <CardTitle className="text-sm text-red-600 flex items-center gap-1">
                 <AlertCircle className="h-4 w-4" />
-                Fiches incompletes
+                Fiches incomplètes
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -685,7 +695,7 @@ function PhytoTab({
             Registre phytosanitaire - {year}
           </CardTitle>
           <CardDescription>
-            Periode: {data.stats.periodeDebut ? formatDate(data.stats.periodeDebut) : "-"} au{" "}
+            Période : {data.stats.periodeDebut ? formatDate(data.stats.periodeDebut) : "-"} au{" "}
             {data.stats.periodeFin ? formatDate(data.stats.periodeFin) : "-"}
           </CardDescription>
         </CardHeader>
@@ -702,7 +712,8 @@ function PhytoTab({
                 <th className="text-left p-2 font-semibold">Dose</th>
                 <th className="text-left p-2 font-semibold">Surface</th>
                 <th className="text-left p-2 font-semibold">DAR (j)</th>
-                <th className="text-left p-2 font-semibold">Meteo</th>
+                <th className="text-left p-2 font-semibold">ZNT</th>
+                <th className="text-left p-2 font-semibold">Météo</th>
                 <th className="text-left p-2 font-semibold">Applicateur</th>
               </tr>
             </thead>
@@ -726,7 +737,7 @@ function PhytoTab({
                   </td>
                   <td className="p-2">
                     <span className="font-medium">{entry.culture}</span>
-                    {!entry.culture || entry.culture === "Non renseigne" ? (
+                    {!entry.culture || entry.culture === "Non renseigné" ? (
                       <MissingField />
                     ) : null}
                   </td>
@@ -766,8 +777,13 @@ function PhytoTab({
                     {entry.surfaceTraitee ? (
                       <>
                         {entry.surfaceTraitee > 10000
-                          ? `${(entry.surfaceTraitee / 10000).toFixed(2)} ha`
-                          : `${entry.surfaceTraitee} m²`}
+                          ? `${(entry.surfaceTraitee / 10000).toLocaleString("fr-FR", {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })} ha`
+                          : `${entry.surfaceTraitee.toLocaleString("fr-FR", {
+                              maximumFractionDigits: 1,
+                            })} m²`}
                       </>
                     ) : (
                       <MissingField />
@@ -778,6 +794,18 @@ function PhytoTab({
                       <span>{entry.dar} j</span>
                     ) : (
                       <MissingField />
+                    )}
+                  </td>
+                  <td className="p-2 whitespace-nowrap">
+                    {entry.zntDistanceM !== null ? (
+                      <span title={entry.zntRespectee === false ? "ZNT non respectée" : entry.zntRespectee ? "ZNT respectée" : undefined}>
+                        {entry.zntDistanceM} m
+                        {entry.zntRespectee === false && (
+                          <AlertCircle className="inline h-3 w-3 ml-0.5 text-red-500" />
+                        )}
+                      </span>
+                    ) : (
+                      <MissingFieldOptional />
                     )}
                   </td>
                   <td className="p-2 text-xs max-w-[120px] truncate" title={entry.conditionsMeteo || ""}>
@@ -839,10 +867,10 @@ function CultureTab({
         <CardContent className="py-12 text-center">
           <Leaf className="h-12 w-12 mx-auto text-slate-300 mb-4" />
           <p className="text-muted-foreground text-lg">
-            Aucune culture enregistree pour {year}
+            Aucune culture enregistrée pour {year}
           </p>
           <p className="text-sm text-muted-foreground mt-2">
-            Les cultures avec leurs semis, plantations et récoltes apparaitront ici.
+            Les cultures avec leurs semis, plantations et récoltes apparaîtront ici.
           </p>
         </CardContent>
       </Card>
@@ -1045,10 +1073,10 @@ function SanitaireTab({
         <CardContent className="py-12 text-center">
           <Bird className="h-12 w-12 mx-auto text-slate-300 mb-4" />
           <p className="text-muted-foreground text-lg">
-            Aucun soin animal enregistre pour {year}
+            Aucun soin animal enregistré pour {year}
           </p>
           <p className="text-sm text-muted-foreground mt-2">
-            Les soins (vaccinations, vermifuges, traitements) apparaitront ici automatiquement.
+            Les soins (vaccinations, vermifuges, traitements) apparaîtront ici automatiquement.
           </p>
         </CardContent>
       </Card>
@@ -1072,7 +1100,7 @@ function SanitaireTab({
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">Animaux/Lots traites</CardTitle>
+            <CardTitle className="text-sm text-muted-foreground">Animaux/Lots traités</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold">{data.stats.nbAnimauxOuLots}</p>
@@ -1080,7 +1108,7 @@ function SanitaireTab({
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-muted-foreground">Cout total</CardTitle>
+            <CardTitle className="text-sm text-muted-foreground">Coût total</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold">
@@ -1140,11 +1168,11 @@ function SanitaireTab({
             </div>
           </div>
           <CardDescription>
-            Periode: {data.stats.periodeDebut ? formatDate(data.stats.periodeDebut) : "-"} au{" "}
+            Période : {data.stats.periodeDebut ? formatDate(data.stats.periodeDebut) : "-"} au{" "}
             {data.stats.periodeFin ? formatDate(data.stats.periodeFin) : "-"}
             {filter !== "all" && (
               <span className="ml-2 text-indigo-600">
-                (filtre: {filter} - {filteredEntries.length} resultat{filteredEntries.length > 1 ? "s" : ""})
+                (filtre: {filter} - {filteredEntries.length} résultat{filteredEntries.length > 1 ? "s" : ""})
               </span>
             )}
           </CardDescription>
@@ -1245,10 +1273,10 @@ function ElevageRegistreTab({
         <CardContent className="py-12 text-center">
           <FileText className="h-12 w-12 mx-auto text-slate-300 mb-4" />
           <p className="text-muted-foreground text-lg">
-            Aucun mouvement d&apos;elevage enregistre pour {year}
+            Aucun mouvement d&apos;élevage enregistré pour {year}
           </p>
           <p className="text-sm text-muted-foreground mt-2">
-            Les entrees, sorties, naissances, deces et soins apparaitront ici automatiquement.
+            Les entrees, sorties, naissances, deces et soins apparaîtront ici automatiquement.
           </p>
         </CardContent>
       </Card>
@@ -1275,7 +1303,7 @@ function ElevageRegistreTab({
             </div>
             <div className="text-right">
               <p className="text-sm font-medium text-amber-800">
-                Registre d&apos;elevage - Annee {year}
+                Registre d&apos;élevage - Année {year}
               </p>
               <p className="text-xs text-amber-600">
                 Art. L214-9 et R214-25 du Code rural
@@ -1289,7 +1317,7 @@ function ElevageRegistreTab({
       <div className="grid gap-4 grid-cols-2 md:grid-cols-5">
         <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white">
           <CardHeader className="pb-1 pt-3">
-            <CardTitle className="text-xs font-medium text-green-100">Entrees</CardTitle>
+            <CardTitle className="text-xs font-medium text-green-100">Entrées</CardTitle>
           </CardHeader>
           <CardContent className="pb-3">
             <p className="text-2xl font-bold">{data.stats.totalEntrees}</p>
@@ -1337,7 +1365,7 @@ function ElevageRegistreTab({
             Registre chronologique - {year}
           </CardTitle>
           <CardDescription>
-            {totalMouvements} mouvement{totalMouvements > 1 ? "s" : ""} enregistre{totalMouvements > 1 ? "s" : ""}
+            {totalMouvements} mouvement{totalMouvements > 1 ? "s" : ""} enregistré{totalMouvements > 1 ? "s" : ""}
           </CardDescription>
         </CardHeader>
         <CardContent className="overflow-x-auto">

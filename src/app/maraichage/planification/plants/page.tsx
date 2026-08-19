@@ -8,6 +8,7 @@ import * as React from "react"
 import { Suspense } from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
+import { useAnneePlanification } from "@/hooks/use-annee-planification"
 import { ColumnDef } from "@tanstack/react-table"
 import { ArrowLeft, Package, AlertTriangle, Leaf } from "lucide-react"
 
@@ -144,14 +145,10 @@ function PlantsContent() {
   const [data, setData] = React.useState<BesoinPlant[]>([])
   const [stats, setStats] = React.useState<Stats | null>(null)
   const [isLoading, setIsLoading] = React.useState(true)
-  const [annee, setAnnee] = React.useState(
-    parseInt(searchParams.get("annee") || new Date().getFullYear().toString())
-  )
+  // QA cmswwu5cc — l'année du hub Planification vit dans une seule source
+  // (URL, puis saison mémorisée du module) : voir useAnneePlanification.
+  const { annee, definirAnnee, annees, pret: anneePrete } = useAnneePlanification()
 
-  const annees = React.useMemo(() => {
-    const currentYear = new Date().getFullYear()
-    return Array.from({ length: 11 }, (_, i) => currentYear - 5 + i)
-  }, [])
 
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
@@ -173,8 +170,11 @@ function PlantsContent() {
   }, [annee, toast])
 
   React.useEffect(() => {
+    // Ne pas charger la saison courante avant d'avoir restauré la saison
+    // mémorisée : la réponse tardive écraserait les données de la bonne année.
+    if (!anneePrete) return
     fetchData()
-  }, [fetchData])
+  }, [anneePrete, fetchData])
 
   const handleExport = () => {
     const headers = ["Espèce", "Variété", "Semaine plantation", "Nb plants", "Stock", "À commander", "Planches"]
@@ -224,7 +224,7 @@ function PlantsContent() {
           </Link>
           <Select
             value={annee.toString()}
-            onValueChange={(value) => setAnnee(parseInt(value))}
+            onValueChange={(value) => definirAnnee(parseInt(value))}
           >
             <SelectTrigger className="w-[100px]">
               <SelectValue />

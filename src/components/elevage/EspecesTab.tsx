@@ -218,6 +218,28 @@ export function EspecesTab() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setEspeceSubmitError(null)
+    // Le formulaire est en noValidate : ces contrôles remplacent les attributs
+    // min/max natifs, dont le refus était invisible (QA cmsp5omse).
+    const nombresAControler: Array<[string, string, number, number]> = [
+      ["poidsAdulte", "Poids adulte : nombre supérieur à 0 (ex. 0,25).", 0, Number.POSITIVE_INFINITY],
+      ["consommationJour", "Consommation par jour : nombre positif (ex. 0,12).", 0, Number.POSITIVE_INFINITY],
+      ["prixAchat", "Prix d'achat : nombre positif (ex. 12,90).", 0, Number.POSITIVE_INFINITY],
+      ["rendementCarcasse", "Rendement carcasse : ratio entre 0 et 1 (ex. 0,72).", 0, 1],
+    ]
+    for (const [champ, message, mini, maxi] of nombresAControler) {
+      const brut = (formData as unknown as Record<string, string>)[champ]
+      if (!brut) continue
+      const valeur = Number(brut)
+      const strictementPositif = champ === "poidsAdulte"
+      if (
+        !Number.isFinite(valeur) ||
+        valeur > maxi ||
+        (strictementPositif ? valeur <= mini : valeur < mini)
+      ) {
+        setEspeceSubmitError(message)
+        return
+      }
+    }
     setIsSavingEspece(true)
     try {
       const payload: any = {
@@ -416,6 +438,15 @@ export function EspecesTab() {
                           </Button>
                         </div>
                       )}
+                      {/* Friction du 2026-04-26, « je n'arrive pas à supprimer
+                          une espèce » : la cellule était VIDE sur une entrée du
+                          catalogue. Une action absente doit être motivée, sinon
+                          l'utilisateur conclut que l'application est cassée. */}
+                      {!(isAdmin || esp.userId === currentUserId) && (
+                        <span className="text-xs text-muted-foreground" title="Entrée du catalogue Gleba, partagée par tous les comptes : elle ne peut être ni modifiée ni supprimée depuis un compte. Créez votre propre entrée pour l'adapter.">
+                        Catalogue Gleba
+                      </span>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -437,7 +468,11 @@ export function EspecesTab() {
               {editingId ? "Modifier ce couple espèce et orientation" : "Ajouter un couple espèce et orientation au référentiel"}
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          {/* noValidate : le pas de 0,1 kg du poids adulte annulait la
+              soumission de 0,25 kg sans message perceptible (bulle native
+              masquée dans ce dialogue défilant) — QA cmsp5omse. Les contrôles
+              sont refaits explicitement dans handleSubmit. */}
+          <form onSubmit={handleSubmit} noValidate className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Nom *</Label>
@@ -529,13 +564,13 @@ export function EspecesTab() {
               <div /> {/* placeholder pour conserver la grille à 3 cols */}
             </div>
             <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-2"><Label>Poids adulte (kg)</Label><Input type="number" min="0" step="0.1" value={formData.poidsAdulte} onChange={(e) => setFormData(f => ({ ...f, poidsAdulte: e.target.value }))} placeholder="3.5" /></div>
+              <div className="space-y-2"><Label>Poids adulte (kg)</Label><Input type="number" min="0" step="any" value={formData.poidsAdulte} onChange={(e) => setFormData(f => ({ ...f, poidsAdulte: e.target.value }))} placeholder="3.5" /></div>
               {prodRente && <div className="space-y-2"><Label>Rendement carc. (%)</Label><Input type="number" min="0" max="1" step="0.01" value={formData.rendementCarcasse} onChange={(e) => setFormData(f => ({ ...f, rendementCarcasse: e.target.value }))} placeholder="0.72" /></div>}
               {prodRente && <div className="space-y-2"><Label>Ponte/an</Label><Input type="number" min="0" value={formData.ponteAnnuelle} onChange={(e) => setFormData(f => ({ ...f, ponteAnnuelle: e.target.value }))} placeholder="280" /></div>}
             </div>
             <div className="grid grid-cols-2 gap-4">
-              {prodRente && <div className="space-y-2"><Label>Conso/jour (kg)</Label><Input type="number" min="0" step="0.01" value={formData.consommationJour} onChange={(e) => setFormData(f => ({ ...f, consommationJour: e.target.value }))} placeholder="0.12" /></div>}
-              <div className="space-y-2"><Label>Prix d'achat (&euro;)</Label><Input type="number" min="0" step="0.5" value={formData.prixAchat} onChange={(e) => setFormData(f => ({ ...f, prixAchat: e.target.value }))} placeholder="15" /></div>
+              {prodRente && <div className="space-y-2"><Label>Conso/jour (kg)</Label><Input type="number" min="0" step="any" value={formData.consommationJour} onChange={(e) => setFormData(f => ({ ...f, consommationJour: e.target.value }))} placeholder="0.12" /></div>}
+              <div className="space-y-2"><Label>Prix d'achat (&euro;)</Label><Input type="number" min="0" step="any" value={formData.prixAchat} onChange={(e) => setFormData(f => ({ ...f, prixAchat: e.target.value }))} placeholder="15" /></div>
             </div>
             {!isAdmin ? (
               <label className="flex items-center gap-2 text-sm text-slate-600">

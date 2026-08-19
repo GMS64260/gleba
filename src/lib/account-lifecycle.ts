@@ -12,10 +12,54 @@
  * Fichier SERVEUR uniquement (utilise Prisma) — ne pas importer côté client.
  */
 
+import { rm } from 'node:fs/promises'
+import path from 'node:path'
+
 import type { Prisma } from '@prisma/client'
 
 /** Id fixe du compte système sentinelle (cf. migration 20260713160000_sentinelle_communaute). */
 export const COMMUNAUTE_USER_ID = 'gleba-communaute'
+
+/**
+ * Les quatre emplacements de fichiers rattachés à un compte, tous organisés en
+ * un dossier par `userId` et montés sur un volume Docker distinct. Le cascade
+ * SQL n'emporte que les lignes : sans ce ménage, les fichiers survivraient à la
+ * suppression du compte (cf. RGPD et politique Google Play sur la suppression).
+ */
+function dossiersFichiersUtilisateur(userId: string): string[] {
+  const racine = process.cwd()
+  return [
+    path.join(racine, 'public', 'uploads', userId),
+    path.join(racine, 'storage', 'justificatifs', userId),
+    path.join(racine, 'storage', 'plan-fonds', userId),
+    path.join(racine, 'storage', 'registres', userId),
+  ]
+}
+
+/**
+ * Supprime les fichiers du membre `userId` sur les quatre volumes. À appeler
+ * APRÈS le commit de la transaction de suppression : un échec disque ne doit pas
+ * annuler la suppression en base, qui est ce que l'utilisateur a demandé. Les
+ * erreurs sont donc journalisées et le nombre de dossiers effacés est renvoyé.
+ */
+export async function supprimerFichiersUtilisateur(
+  userId: string
+): Promise<{ dossiersSupprimes: number; echecs: string[] }> {
+  const echecs: string[] = []
+  let dossiersSupprimes = 0
+
+  for (const dossier of dossiersFichiersUtilisateur(userId)) {
+    try {
+      await rm(dossier, { recursive: true, force: true })
+      dossiersSupprimes++
+    } catch (error) {
+      echecs.push(dossier)
+      console.error('supprimerFichiersUtilisateur:', dossier, error)
+    }
+  }
+
+  return { dossiersSupprimes, echecs }
+}
 
 /**
  * Réattribue à la sentinelle « Communauté Gleba » toutes les entrées de référentiel

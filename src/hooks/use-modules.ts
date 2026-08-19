@@ -70,9 +70,11 @@ export interface UseModulesResult {
 }
 
 export function useModules(): UseModulesResult {
-  const cached = readCache()
-  const [modules, setModules] = React.useState<ModuleId[]>(cached?.modules ?? DEFAULT_MODULES_ACTIFS)
-  const [loading, setLoading] = React.useState(!cached)
+  // Pas de lecture localStorage au rendu : le serveur et le 1er rendu client
+  // doivent produire le même HTML (React #418). Le cache est appliqué dans
+  // l'effect de mount, avant le refresh réseau.
+  const [modules, setModules] = React.useState<ModuleId[]>(DEFAULT_MODULES_ACTIFS)
+  const [loading, setLoading] = React.useState(true)
 
   const refresh = React.useCallback(async () => {
     setLoading(true)
@@ -95,6 +97,14 @@ export function useModules(): UseModulesResult {
   }, [])
 
   React.useEffect(() => {
+    // Le cache local s'applique au mount seulement (jamais au rendu initial,
+    // cf. React #418 ci-dessus) : l'utilisateur voit la valeur connue sans
+    // attendre le réseau.
+    const cached = readCache()
+    if (cached) {
+      setModules([...cached.modules])
+      setLoading(false)
+    }
     // Bug feedback testeur 2026-05-25 (cmplk8yoz) — on refresh
     // systématiquement au mount, même quand on a un cache local : ça
     // garantit que le toggle reflète la valeur serveur en cas de modif

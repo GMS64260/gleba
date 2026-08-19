@@ -87,6 +87,7 @@ const LABELS_PROVENANCE = [
 
 type EssenceItem = {
   source: "forestiere" | "fruitier" | "bocagere"
+  sousType?: "arbre_fruitier" | "petit_fruit"
   id: string
   nom: string
   nomLatin: string
@@ -185,6 +186,14 @@ interface Props {
 export function AssistantPlantationDialog({ open, onOpenChange, onSuccess, prefill }: Props) {
   const { toast } = useToast()
   const [state, setState] = React.useState<WizardState>(() => ({ ...INITIAL, ...(prefill || {}) }))
+  // Ticket cmsog29er — tant que l'utilisateur n'a pas édité lui-même le
+  // nombre de plants, il reste dérivé de surface × densité et se recalcule à
+  // CHAQUE changement (clic essence inclus). L'ancien garde `!nombrePlants`
+  // figeait la première valeur : 0,03 ha × 2750 = 83 plants persistés avec
+  // une densité de 2250/ha après le clic « Châtaignier ».
+  const [plantsEditesManuellement, setPlantsEditesManuellement] = React.useState<boolean>(
+    () => Boolean(prefill?.nombrePlants)
+  )
   const [parcelles, setParcelles] = React.useState<Array<{ id: string; nom: string; surface: number | null }>>([])
   const [zonesVerger, setZonesVerger] = React.useState<Array<{ id: number; nom: string }>>([])
   const [coupes, setCoupes] = React.useState<Array<{ id: number; date: string; volumeM3: number | null; arbre: { nom: string; espece: string | null } | null }>>([])
@@ -216,6 +225,7 @@ export function AssistantPlantationDialog({ open, onOpenChange, onSuccess, prefi
   React.useEffect(() => {
     if (open && prefill) {
       setState((s) => ({ ...s, ...prefill }))
+      if (prefill.nombrePlants) setPlantsEditesManuellement(true)
     }
   }, [open, prefill])
 
@@ -223,6 +233,7 @@ export function AssistantPlantationDialog({ open, onOpenChange, onSuccess, prefi
     if (!open) {
       const timer = setTimeout(() => {
         setState({ ...INITIAL, ...(prefill || {}) })
+        setPlantsEditesManuellement(Boolean(prefill?.nombrePlants))
       }, 300)
       return () => clearTimeout(timer)
     }
@@ -385,14 +396,17 @@ export function AssistantPlantationDialog({ open, onOpenChange, onSuccess, prefi
     }
   }, [state.typeFormation]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-calcul nombre de plants si surface * densité
+  // Auto-calcul nombre de plants = surface × densité, recalculé à CHAQUE
+  // changement de surface ou de densité tant que l'utilisateur n'a pas saisi
+  // lui-même le nombre de plants (ticket cmsog29er).
   React.useEffect(() => {
-    if (state.surfaceHa && state.densitePlantsParHa && !state.nombrePlants) {
+    if (plantsEditesManuellement) return
+    if (state.surfaceHa && state.densitePlantsParHa) {
       const s = parseFloat(state.surfaceHa)
       const d = parseFloat(state.densitePlantsParHa)
       if (s > 0 && d > 0) update({ nombrePlants: Math.round(s * d).toString() })
     }
-  }, [state.surfaceHa, state.densitePlantsParHa]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [state.surfaceHa, state.densitePlantsParHa, plantsEditesManuellement]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const progress = ((state.step - 1) / STEPS.length) * 100
 
@@ -681,7 +695,13 @@ export function AssistantPlantationDialog({ open, onOpenChange, onSuccess, prefi
                       >
                         <div className="flex items-center gap-1">
                           <span className="font-medium">{e.nom}</span>
-                          {e.source === "fruitier" && (
+                          {/* QA cmsnnu2q2 — Fraise/Framboise sont des petits
+                              fruits : les badger « Fruitier » les faisait
+                              passer pour des arbres fruitiers. */}
+                          {e.source === "fruitier" && e.sousType === "petit_fruit" && (
+                            <Badge variant="outline" className="text-[10px] bg-purple-50 border-purple-200 text-purple-700">Petit fruit</Badge>
+                          )}
+                          {e.source === "fruitier" && e.sousType !== "petit_fruit" && (
                             <Badge variant="outline" className="text-[10px] bg-rose-50 border-rose-200 text-rose-700">Fruitier</Badge>
                           )}
                           {e.source === "bocagere" && (
@@ -808,7 +828,12 @@ export function AssistantPlantationDialog({ open, onOpenChange, onSuccess, prefi
                   <Input
                     type="number"
                     value={state.nombrePlants}
-                    onChange={(e) => update({ nombrePlants: e.target.value })}
+                    onChange={(e) => {
+                      // cmsog29er — une saisie manuelle fige la valeur : plus
+                      // de recalcul automatique surface × densité.
+                      setPlantsEditesManuellement(true)
+                      update({ nombrePlants: e.target.value })
+                    }}
                   />
                 </div>
                 <div>
@@ -1022,7 +1047,13 @@ export function AssistantPlantationDialog({ open, onOpenChange, onSuccess, prefi
                 Vous pouvez maintenant suivre la progression et enregistrer vos observations de reprise.
               </p>
               <div className="flex items-center justify-center gap-2 pt-2">
-                <Button variant="outline" onClick={() => setState({ ...INITIAL, ...(prefill || {}) })}>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setState({ ...INITIAL, ...(prefill || {}) })
+                    setPlantsEditesManuellement(Boolean(prefill?.nombrePlants))
+                  }}
+                >
                   Nouvelle campagne
                 </Button>
                 <Button onClick={() => onOpenChange(false)} className="bg-gradient-to-r from-green-500 to-emerald-600 text-white">

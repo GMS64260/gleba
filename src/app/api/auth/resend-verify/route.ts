@@ -7,7 +7,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { randomBytes } from "crypto"
 import prisma from "@/lib/prisma"
 import { checkRateLimit, getClientIP } from "@/lib/rate-limit"
-import { sendMail, verifyEmailEmail } from "@/lib/mail"
+import { verifyEmailEmail } from "@/lib/mail"
+import { envoyerVerification } from "@/lib/mail-verification"
 
 export async function POST(request: NextRequest) {
   // Rate limiting : 3 renvois par IP par 15 min
@@ -46,10 +47,26 @@ export async function POST(request: NextRequest) {
       },
     })
 
+    // Signalement vigie1919cd84 — un envoi refusé remontait en 500 « Erreur lors
+    // de l'envoi » sans dire si l'adresse était en cause. L'écran a besoin de la
+    // distinction pour donner la bonne consigne.
     const verify = verifyEmailEmail(user.name, verifyToken)
-    await sendMail({ to: user.email, subject: verify.subject, html: verify.html })
+    const envoi = await envoyerVerification(user.email, verify)
+    if (!envoi.envoye) {
+      return NextResponse.json(
+        {
+          emailEnvoye: false,
+          emailEchec: envoi.cause,
+          error:
+            envoi.cause === "adresse_refusee"
+              ? "Le serveur de messagerie a refusé cette adresse. Vérifiez qu'elle est exacte."
+              : "L'envoi a échoué. Réessayez dans un instant.",
+        },
+        { status: 502 },
+      )
+    }
 
-    return NextResponse.json({ message: "Si ce compte existe, un email a été envoyé." })
+    return NextResponse.json({ emailEnvoye: true, message: "Si ce compte existe, un email a été envoyé." })
   } catch (error) {
     console.error("POST /api/auth/resend-verify error:", error)
     return NextResponse.json(

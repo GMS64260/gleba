@@ -94,7 +94,18 @@ export function AlimentationTab() {
       setActiveSub("soins")
       setOuvrirNouveauSoin(true)
     }
-  }, [searchParams])
+    // QA cmswtrpr5 — un deep-link (« + Soin », animalId) se consomme une seule
+    // fois : retiré de l'URL sitôt l'état posé, sinon F5 rouvre un formulaire
+    // vierge avec risque de double saisie.
+    if (animalId || action) {
+      const params = new URLSearchParams(searchParams.toString())
+      params.set("tab", "alimentation")
+      params.set("sub", "soins")
+      params.delete("animalId")
+      params.delete("action")
+      router.replace(`/elevage?${params.toString()}`, { scroll: false })
+    }
+  }, [searchParams, router])
 
   const handleSubChange = React.useCallback((sub: string) => {
     setActiveSub(sub)
@@ -214,6 +225,7 @@ function StocksSubTab() {
   // QA Julien 2026-05-15 — Bug #12 : payload en attente quand prix
   // hors-norme, en attente de confirmation utilisateur via ConfirmDialog.
   const [prixWarning, setPrixWarning] = React.useState<{ message: string } | null>(null)
+  const [isSubmittingAliment, setIsSubmittingAliment] = React.useState(false)
 
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
@@ -238,6 +250,7 @@ function StocksSubTab() {
   // explicite si la valeur dépasse l'ordre de grandeur usuel pour la
   // catégorie (Granulés ≤ 2 €/kg, Foin ≤ 0,5, etc.).
   const submitAliment = React.useCallback(async () => {
+    setIsSubmittingAliment(true)
     try {
       const response = await fetch('/api/elevage/aliments', {
         method: 'POST',
@@ -251,11 +264,14 @@ function StocksSubTab() {
       fetchData()
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible de créer l'aliment" })
+    } finally {
+      setIsSubmittingAliment(false)
     }
   }, [formData, toast, fetchData])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isSubmittingAliment) return
     if (!formData.id) {
       toast({ title: "Renseignez l'identifiant", variant: "destructive" })
       return
@@ -371,7 +387,7 @@ function StocksSubTab() {
               </div>
               <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
-                <Button type="submit">Créer</Button>
+                <Button type="submit" disabled={isSubmittingAliment}>{isSubmittingAliment ? "Enregistrement..." : "Créer"}</Button>
               </div>
             </form>
           </DialogContent>
@@ -564,6 +580,7 @@ function ConsommationsSubTab() {
   // in-app. `stockConfirm` porte le message serveur (422 STOCK_*).
   const [stockConfirm, setStockConfirm] = React.useState<{ message: string } | null>(null)
   const [deletingConsoId, setDeletingConsoId] = React.useState<number | null>(null)
+  const [isSubmittingConso, setIsSubmittingConso] = React.useState(false)
 
   const [formData, setFormData] = React.useState({
     alimentId: "", cible: "tous", lotId: "", animalId: "", date: todayLocalISO(), quantite: "", notes: "",
@@ -670,6 +687,7 @@ function ConsommationsSubTab() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isSubmittingConso) return
     if (!formData.alimentId) {
       toast({ title: "Sélectionnez un aliment", variant: "destructive" })
       return
@@ -678,6 +696,7 @@ function ConsommationsSubTab() {
       toast({ title: "Renseignez la quantité", variant: "destructive" })
       return
     }
+    setIsSubmittingConso(true)
     try {
       await submitConsommation(false)
     } catch (err) {
@@ -686,6 +705,8 @@ function ConsommationsSubTab() {
         title: "Erreur",
         description: err instanceof Error ? err.message : "Impossible d'enregistrer",
       })
+    } finally {
+      setIsSubmittingConso(false)
     }
   }
 
@@ -821,8 +842,8 @@ function ConsommationsSubTab() {
                 </div>
                 <div className="flex justify-end gap-2 pt-4">
                   <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
-                  <Button type="submit">
-                    {editingConsoId ? "Mettre à jour" : "Enregistrer"}
+                  <Button type="submit" disabled={isSubmittingConso}>
+                    {isSubmittingConso ? "Enregistrement..." : editingConsoId ? "Mettre à jour" : "Enregistrer"}
                   </Button>
                 </div>
               </form>
@@ -940,6 +961,7 @@ interface Soin {
   tempsAttenteOeufsJ?: number | null
   tempsAttenteViandeJ: number | null
   finAttenteLait: string | null
+  finAttenteOeufs?: string | null
   finAttenteViande: string | null
   // PROMPT 30 — traitement à plusieurs injections
   nbInjections: number | null
@@ -1060,8 +1082,17 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
   const [formData, setFormData] = React.useState(soinFormVide)
   const [ajoutLotPharmacieOuvert, setAjoutLotPharmacieOuvert] = React.useState(false)
   const [lotPharmacieForm, setLotPharmacieForm] = React.useState(lotPharmacieFormVide)
+  // QA cmswtt0ee — même motif que cmsogkqpf : un input[type=date] contrôlé
+  // sans filet perd la valeur quand la saisie ne déclenche pas onChange
+  // (saisie automatisée, autofill). L'ajout du lot étant un onClick (pas un
+  // submit), le filet passe par un ref qui relit le DOM à l'envoi.
+  const lotPeremptionRef = React.useRef<HTMLInputElement>(null)
   const [lotPharmacieError, setLotPharmacieError] = React.useState<string | null>(null)
   const [isSavingLotPharmacie, setIsSavingLotPharmacie] = React.useState(false)
+  const [isSavingSoin, setIsSavingSoin] = React.useState(false)
+  // QA cmsp5ckbx — les refus de saisie ne vivaient que dans un toast de 5 s :
+  // erreur persistante au pied du formulaire de soin.
+  const [soinSubmitError, setSoinSubmitError] = React.useState<string | null>(null)
 
   const resetSoinForm = React.useCallback(() => {
     setEditingSoinId(null)
@@ -1254,6 +1285,13 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
       setLotPharmacieError("L’unité de stock est requise.")
       return
     }
+    // QA cmswtt0ee — le DOM gagne s'il porte une valeur, sinon l'état React.
+    if (lotPeremptionRef.current?.validity?.badInput) {
+      setLotPharmacieError("Date de péremption incomplète : saisissez jj/mm/aaaa ou utilisez le calendrier.")
+      return
+    }
+    const peremptionSoumise =
+      (lotPeremptionRef.current?.value || "").trim() || lotPharmacieForm.datePeremption
 
     setIsSavingLotPharmacie(true)
     setLotPharmacieError(null)
@@ -1266,7 +1304,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
           numeroLot: lotPharmacieForm.numeroLot.trim(),
           quantite,
           unite: lotPharmacieForm.unite.trim(),
-          datePeremption: lotPharmacieForm.datePeremption || null,
+          datePeremption: peremptionSoumise || null,
           fournisseur: lotPharmacieForm.fournisseur.trim() || null,
           ordonnanceUrl: lotPharmacieForm.ordonnanceUrl.trim() || null,
         }),
@@ -1353,8 +1391,31 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
     setIsDialogOpen(true)
   }, [initialOpen, resetSoinForm])
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const stockSelectionne = stocksMedicaments.find((stock) => stock.id === formData.stockMedicamentId) ?? null
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    if (isSavingSoin) return
+    setSoinSubmitError(null)
+    // QA cmsp5ckbx — filet FormData bidirectionnel : le DOM gagne s'il porte une
+    // valeur, sinon l'état React. Construit avant tout await (currentTarget est
+    // remis à null après).
+    const formulaireSoumis = e.currentTarget
+    const champsSoumis = new FormData(formulaireSoumis)
+    const dateSoinSoumise =
+      String(champsSoumis.get("dateSoin") || "").trim() || formData.date
+    const datePrevueSoumise =
+      String(champsSoumis.get("datePrevue") || "").trim() || formData.datePrevue
+    for (const [champName, label] of [
+      ["dateSoin", "du soin"],
+      ["datePrevue", "de rappel"],
+    ] as const) {
+      const champ = formulaireSoumis.elements.namedItem(champName) as HTMLInputElement | null
+      if (champ?.validity?.badInput) {
+        setSoinSubmitError(`Date ${label} incomplète : saisissez jj/mm/aaaa ou utilisez le calendrier.`)
+        return
+      }
+    }
     if (lotPharmacieManquant) {
       toast({
         variant: "destructive",
@@ -1363,9 +1424,21 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
       })
       return
     }
+    // QA cmsjhh9bb — un soin avec lot de pharmacie mais sans quantité était
+    // refusé en 422 par l'API : le testeur croyait le soin enregistré et le
+    // perdait. On bloque AVANT l'envoi avec un message qui désigne le champ.
+    if (stockSelectionne && !(parseFloat(formData.quantite) > 0)) {
+      toast({
+        variant: "destructive",
+        title: "Quantité prélevée requise",
+        description: `Renseignez la quantité prélevée sur le lot ${stockSelectionne.numeroLot} (en ${stockSelectionne.unite}) : elle décompte la pharmacie.`,
+      })
+      return
+    }
+    setIsSavingSoin(true)
     try {
       const payload: any = {
-        date: formData.date,
+        date: dateSoinSoumise,
         type: formData.type,
         description: formData.description || null,
         produit: formData.produit || null,
@@ -1376,7 +1449,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
         motif: formData.motif || null,
         ordonnanceUrl: formData.ordonnanceUrl || null,
         veterinaire: formData.veterinaire || null,
-        datePrevue: formData.datePrevue || null,
+        datePrevue: datePrevueSoumise || null,
         quantite: formData.quantite ? parseFloat(formData.quantite) : null,
         unite: formData.unite || null,
         cout: formData.cout ? parseFloat(formData.cout) : null,
@@ -1406,6 +1479,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
       })
       const json = await response.json()
       if (!response.ok) {
+        setSoinSubmitError(json.error || "Enregistrement du soin impossible.")
         toast({ variant: "destructive", title: "Erreur", description: json.error || "Échec" })
         return
       }
@@ -1418,6 +1492,8 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
       fetchData()
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible d'enregistrer le soin" })
+    } finally {
+      setIsSavingSoin(false)
     }
   }
 
@@ -1504,7 +1580,16 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
                   </div>
                   <div className="space-y-2">
                     <Label>Date</Label>
-                    <Input type="date" value={formData.date} onChange={(e) => setFormData(f => ({ ...f, date: e.target.value }))} />
+                    <Input
+                      type="date"
+                      name="dateSoin"
+                      value={formData.date}
+                      onChange={(e) => setFormData(f => ({ ...f, date: e.target.value }))}
+                      onBlur={(e) => {
+                        const v = e.currentTarget.value
+                        if (v) setFormData(f => (f.date === v ? f : { ...f, date: v }))
+                      }}
+                    />
                   </div>
                 </div>
 
@@ -1617,11 +1702,19 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
                                     <Label className="text-xs">Péremption</Label>
                                     <Input
                                       type="date"
+                                      name="lotPeremption"
+                                      ref={lotPeremptionRef}
                                       value={lotPharmacieForm.datePeremption}
                                       onChange={(event) => setLotPharmacieForm((current) => ({
                                         ...current,
                                         datePeremption: event.target.value,
                                       }))}
+                                      onBlur={(event) => {
+                                        const v = event.currentTarget.value
+                                        if (v) setLotPharmacieForm((current) => (
+                                          current.datePeremption === v ? current : { ...current, datePeremption: v }
+                                        ))
+                                      }}
                                     />
                                   </div>
                                   <div className="space-y-1">
@@ -1754,8 +1847,9 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
                     </div>
                     {(() => {
                       const taLait = parseInt(formData.tempsAttenteLaitJ, 10) || 0
+                      const taOeufs = parseInt(formData.tempsAttenteOeufsJ, 10) || 0
                       const taViande = parseInt(formData.tempsAttenteViandeJ, 10) || 0
-                      if ((!taLait && !taViande) || !formData.date) return null
+                      if ((!taLait && !taOeufs && !taViande) || !formData.date) return null
                       // PROMPT 30 — l'attente court depuis la DERNIÈRE injection.
                       const nb = Math.max(1, parseInt(formData.nbInjections, 10) || 1)
                       const interH = parseInt(formData.intervalleInjectionsHeures, 10) || 0
@@ -1766,6 +1860,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
                         <div className="text-xs rounded-md bg-amber-50 border border-amber-200 p-2 text-amber-800">
                           Remise en vente
                           {taLait ? <> · lait le <b>{remise(taLait)}</b></> : null}
+                          {taOeufs ? <> · œufs le <b>{remise(taOeufs)}</b></> : null}
                           {taViande ? <> · viande le <b>{remise(taViande)}</b></> : null}
                           {nb > 1 ? <span className="text-amber-600"> (dès la {nb}ᵉ injection)</span> : null}
                           {!formData.fait ? <span className="text-amber-600"> — actif dès que le soin sera « fait »</span> : null}
@@ -1847,7 +1942,24 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div className="space-y-2"><Label>Quantité</Label><Input type="number" step="0.01" value={formData.quantite} onChange={(e) => setFormData(f => ({ ...f, quantite: e.target.value }))} /></div>
+                  <div className="space-y-2">
+                    <Label>
+                      {stockSelectionne ? `Quantité prélevée (${stockSelectionne.unite}) *` : "Quantité"}
+                    </Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min={stockSelectionne ? "0.01" : undefined}
+                      required={Boolean(stockSelectionne)}
+                      value={formData.quantite}
+                      onChange={(e) => setFormData(f => ({ ...f, quantite: e.target.value }))}
+                    />
+                    {stockSelectionne && (
+                      <p className="text-xs text-muted-foreground">
+                        Décomptée du lot {stockSelectionne.numeroLot} ({stockSelectionne.quantite} {stockSelectionne.unite} en stock).
+                      </p>
+                    )}
+                  </div>
                   <div className="space-y-2"><Label>Unité</Label><Input value={formData.unite} onChange={(e) => setFormData(f => ({ ...f, unite: e.target.value }))} placeholder="mL, doses..." /></div>
                 </div>
 
@@ -1860,19 +1972,35 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
                   </div>
                   <div className="space-y-2">
                     <Label>Rappel planifié (date)</Label>
-                    <Input type="date" value={formData.datePrevue} onChange={(e) => setFormData(f => ({ ...f, datePrevue: e.target.value }))} />
+                    {/* QA cmsp5ckbx — champ contrôlé sans name : un remplissage
+                        qui ne déclenche pas onChange envoyait datePrevue à null
+                        et le rappel disparaissait sans message. */}
+                    <Input
+                      type="date"
+                      name="datePrevue"
+                      value={formData.datePrevue}
+                      onChange={(e) => setFormData(f => ({ ...f, datePrevue: e.target.value }))}
+                      onBlur={(e) => {
+                        const v = e.currentTarget.value
+                        if (v) setFormData(f => (f.datePrevue === v ? f : { ...f, datePrevue: v }))
+                      }}
+                    />
                   </div>
                 </div>
-                <div className="flex justify-end gap-2 pt-2">
+                <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
+                  {soinSubmitError && (
+                    <p role="alert" className="mr-auto text-sm text-red-600">{soinSubmitError}</p>
+                  )}
                   <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
                   <Button
                     type="submit"
                     disabled={
+                      isSavingSoin ||
                       (formData.cible === "lot" ? !formData.lotId : !formData.animalId) ||
                       lotPharmacieManquant
                     }
                   >
-                    Enregistrer
+                    {isSavingSoin ? "Enregistrement..." : "Enregistrer"}
                   </Button>
                 </div>
               </form>
@@ -1909,7 +2037,11 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
                   // distinctement la date prévue et la date de réalisation
                   // pour ne pas perdre l'historique du planning. Badge "En
                   // retard" en rouge si datePrevue < aujourd'hui et !fait.
-                  const dateAffichee = soin.datePrevue ?? soin.date
+                  // QA cmsqlj7bn — un soin FAIT s'affiche à sa date d'exécution.
+                  // Afficher sa date prévue faisait apparaître un soin administré
+                  // le 12/08 comme daté du 19/08, « fait en avance ». Le repli sur
+                  // datePrevue ne concerne que les soins encore à faire.
+                  const dateAffichee = soin.fait ? soin.date : (soin.datePrevue ?? soin.date)
                   const enRetard =
                     !soin.fait &&
                     !!soin.datePrevue &&
@@ -1956,7 +2088,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
                       </div>
                     </TableCell>
                     <TableCell><Badge variant="outline">{SOIN_TYPE_LABELS[soin.type] || soin.type}</Badge></TableCell>
-                    <TableCell>{soin.lot?.nom || soin.animal?.nom || '-'}</TableCell>
+                    <TableCell>{soin.lot?.nom || soin.animal?.nom || soin.animal?.identifiant || '-'}</TableCell>
                     <TableCell>
                       <div>{soin.produit || '-'}</div>
                       {soin.nbInjections != null && soin.nbInjections > 1 && (
@@ -1988,11 +2120,12 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
                     <TableCell className="text-xs">
                       {(() => {
                         const rvLait = remiseEnVente(soin.finAttenteLait)
+                        const rvOeufs = remiseEnVente(soin.finAttenteOeufs ?? null)
                         const rvViande = remiseEnVente(soin.finAttenteViande)
                         // QA caprin cms1v4sw4 : les \uXXXX en noeud texte JSX
                         // s'affichaient bruts ; et un pictogramme ne doit jamais
                         // porter seul une info de conformite -> libelles texte.
-                        if (!rvLait && !rvViande) return <span className="text-slate-400">{'\u2014'}</span>
+                        if (!rvLait && !rvOeufs && !rvViande) return <span className="text-slate-400">{'\u2014'}</span>
                         const auj = new Date(new Date().toDateString())
                         const cls = (d: Date | null) => (d && d > auj ? "text-amber-700 font-medium" : "text-slate-500")
                         const badge = (actif: boolean) =>
@@ -2000,6 +2133,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
                         return (
                           <div className="space-y-0.5 whitespace-nowrap">
                             {rvLait && <div className={cls(rvLait)}><span className={badge(rvLait > auj)}>Lait</span>{rvLait.toLocaleDateString('fr-FR')}</div>}
+                            {rvOeufs && <div className={cls(rvOeufs)}><span className={badge(rvOeufs > auj)}>Œufs</span>{rvOeufs.toLocaleDateString('fr-FR')}</div>}
                             {rvViande && <div className={cls(rvViande)}><span className={badge(rvViande > auj)}>Viande</span>{rvViande.toLocaleDateString('fr-FR')}</div>}
                           </div>
                         )
@@ -2023,14 +2157,17 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
               {visibleSoins.length === 0 ? (
                 <p className="text-center py-8 text-muted-foreground text-sm">Aucun soin enregistré</p>
               ) : visibleSoins.map((soin) => {
-                const dateAffichee = soin.datePrevue ?? soin.date
+                // Même règle que la vue tableau (QA cmsqlj7bn) : un soin fait
+                // s'affiche à sa date d'exécution, pas à sa date prévue.
+                const dateAffichee = soin.fait ? soin.date : (soin.datePrevue ?? soin.date)
                 const enRetard =
                   !soin.fait && !!soin.datePrevue &&
                   new Date(soin.datePrevue) < new Date(new Date().toDateString())
                 const auj = new Date(new Date().toDateString())
                 const rvLait = remiseEnVente(soin.finAttenteLait)
+                const rvOeufs = remiseEnVente(soin.finAttenteOeufs ?? null)
                 const rvViande = remiseEnVente(soin.finAttenteViande)
-                const cible = soin.lot?.nom || soin.animal?.nom || "—"
+                const cible = soin.lot?.nom || soin.animal?.nom || soin.animal?.identifiant || "—"
                 const boucle = soin.animal?.identifiant
                 const doseVoie = [soin.dose, soin.voie].filter(Boolean).join(" · ")
                 return (
@@ -2039,7 +2176,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-medium">{cible}</span>
-                          {boucle && <span className="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded">{boucle}</span>}
+                          {boucle && boucle !== cible && <span className="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded">{boucle}</span>}
                           <Badge variant="outline" className="text-xs">{SOIN_TYPE_LABELS[soin.type] || soin.type}</Badge>
                         </div>
                         <div className="mt-1 text-sm">
@@ -2069,6 +2206,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
                       {enRetard && <span className="font-medium text-red-700 uppercase tracking-wide">En retard</span>}
                       {soin.cout ? <span className="text-muted-foreground">{soin.cout.toFixed(2)} €</span> : null}
                       {rvLait && <span className={rvLait > auj ? "text-amber-700 font-medium" : "text-slate-500"}>Lait : {rvLait.toLocaleDateString("fr-FR")}</span>}
+                      {rvOeufs && <span className={rvOeufs > auj ? "text-amber-700 font-medium" : "text-slate-500"}>Œufs : {rvOeufs.toLocaleDateString("fr-FR")}</span>}
                       {rvViande && <span className={rvViande > auj ? "text-amber-700 font-medium" : "text-slate-500"}>Viande : {rvViande.toLocaleDateString("fr-FR")}</span>}
                     </div>
                     {soin.injections?.length > 1 && (

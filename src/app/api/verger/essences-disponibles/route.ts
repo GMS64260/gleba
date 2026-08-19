@@ -31,6 +31,9 @@ import {
 
 export type EssenceItem = {
   source: "forestiere" | "fruitier" | "bocagere"
+  // Pour source "fruitier" : distingue arbre fruitier et petit fruit
+  // (QA cmsnnu2q2 — Fraise/Framboise étaient badgées « Fruitier »).
+  sousType?: "arbre_fruitier" | "petit_fruit"
   id: string // forestière.id | espece.id | essence_bocagere.id
   nom: string
   nomLatin: string
@@ -135,6 +138,10 @@ export async function GET(request: NextRequest) {
       select: {
         id: true,
         nomLatin: true,
+        // QA cmsnnu2q2 — Fraise et Framboise étaient badgées « Fruitier » :
+        // la route écrasait arbre_fruitier et petit_fruit dans une seule
+        // source. On conserve le type réel pour que l'UI les distingue.
+        type: true,
         // QA 2026-07-30 — L'assistant proposait Ananas, Vanille, Cocotier,
         // Bananier… en « Verger fruitier » métropolitain : le référentiel
         // outre-mer livré en juillet a ajouté ces espèces avec leurs zones
@@ -157,6 +164,7 @@ export async function GET(request: NextRequest) {
       if (adequation.statut === "peu_adaptee") continue
       out.push({
         source: "fruitier",
+        sousType: f.type === "petit_fruit" ? "petit_fruit" : "arbre_fruitier",
         id: `fruitier::${f.id}`,
         nom: f.id,
         nomLatin: f.nomLatin ?? "",

@@ -4,6 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { dispositionDocument } from '@/lib/http/disposition-fichier'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import PDFDocument from 'pdfkit'
@@ -26,7 +27,7 @@ function ancestorAt(tree: GenealogyNode | null, g: number, i: number): Genealogy
   return node
 }
 
-export async function GET(_request: NextRequest, { params }: RouteParams) {
+export async function GET(request: NextRequest, { params }: RouteParams) {
   const { session, error } = await requireAuthApi()
   if (error) return error
   const userId = session!.user.id
@@ -247,7 +248,10 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
   return new NextResponse(buffer as unknown as BodyInit, {
     headers: {
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `inline; filename="pedigree-${(animal.nom || animal.identifiant || animal.id).toString().replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.pdf"`,
+      'Content-Disposition': dispositionDocument(
+        request,
+        `pedigree-${(animal.nom || animal.identifiant || animal.id).toString().replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.pdf`,
+      ),
     },
   })
 }

@@ -18,6 +18,7 @@ interface JourLunaire {
   emoji: string
   typeJour: "feuille" | "fruit" | "racine" | "fleur" | "repos"
   conseil: string
+  conseilVerger?: string
   couleur: string
 }
 
@@ -125,6 +126,9 @@ export function LunaireWidget({ embedded = false }: { embedded?: boolean }) {
             <p className={`text-sm font-medium ${tc.text}`}>{tc.emoji} Jour {tc.label}</p>
             <p className="text-xs text-slate-600 leading-relaxed mt-0.5">{today.conseil}</p>
           </div>
+          {today.conseilVerger && (
+            <p className="text-xs text-slate-600 leading-relaxed mt-1.5">🌳 {today.conseilVerger}</p>
+          )}
         </div>
 
         {/* Calendrier */}
@@ -204,6 +208,9 @@ export function LunaireWidget({ embedded = false }: { embedded?: boolean }) {
                       <p className={`text-[11px] font-medium ${sc.text}`}>{sc.emoji} Jour {sc.label}</p>
                       <p className="text-slate-600 text-[10px] mt-0.5">{selectedDay.conseil}</p>
                     </div>
+                    {selectedDay.conseilVerger && (
+                      <p className="text-slate-600 text-[10px] mt-1">🌳 {selectedDay.conseilVerger}</p>
+                    )}
                   </div>
                 )
               })()}

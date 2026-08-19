@@ -11,7 +11,7 @@ import { Prisma } from '@prisma/client'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { statsAvisPourRefs } from '@/lib/avis/stats-liste'
 import { visibiliteReferentiel, attributionCreation } from '@/lib/referentiel-communaute'
-import { cleanReferentielName, normalizeReferentielKey } from '@/lib/normalize'
+import { displayReferentielName, normalizeReferentielKey } from '@/lib/normalize'
 import { zoneEffectiveUser } from '@/lib/terroir'
 import {
   appliquerDecalageItp,
@@ -73,6 +73,12 @@ export async function GET(request: NextRequest) {
       where.OR = [
         { id: { contains: search, mode: 'insensitive' } },
         { nom: { contains: search, mode: 'insensitive' } },
+        // QA cmswxyuoi — la recherche était sensible à la ponctuation : chercher
+        // « TEST-Marc-Phacelie-v7 » ne trouvait pas « TEST Marc Phacelie v7 »
+        // (et réciproquement). La colonne `nomNormalise` existe précisément pour
+        // comparer sans tiret, underscore, accent ni casse : on l'interroge avec
+        // la même normalisation appliquée à la saisie.
+        { nomNormalise: { contains: normalizeReferentielKey(search) } },
         { notes: { contains: search, mode: 'insensitive' } },
         { sourceReference: { contains: search, mode: 'insensitive' } },
         { contexteClimatique: { contains: search, mode: 'insensitive' } },
@@ -163,7 +169,12 @@ export async function GET(request: NextRequest) {
     // seule la réponse est convertie vers la zone de l'exploitation.
     if (calibrer) {
       data = data.map((itp) => {
-        const decalage = decalageItpPourZone(itp.zoneClimat, userZone)
+        // QA cmsqmujo9 — stock historique : un ITP perso sans zone de calage
+        // appartient à quelqu'un qui a saisi ses semaines dans SON climat.
+        // Quand son auteur le lit, aucun décalage ; le référentiel officiel
+        // (userId null) garde la transposition de zone.
+        const estPersoDeLAuteur = itp.userId === userId && itp.zoneClimat == null
+        const decalage = estPersoDeLAuteur ? 0 : decalageItpPourZone(itp.zoneClimat, userZone)
         return {
           ...appliquerDecalageItp(itp, decalage),
           decalageClimatiqueApplique: decalage,
@@ -213,7 +224,11 @@ export async function POST(request: NextRequest) {
 
     // `data.id` porte le NOM saisi. Le nom affiché vit dans `nom` ; l'id technique
     // dépend de l'origine (officiel = nom lisible, perso = cuid).
-    const nomSaisi = cleanReferentielName(data.id)
+    // QA cmswxyuoi — le libellé est conservé TEL QUE SAISI (tirets compris) ;
+    // seule la clé de dédup normalise la ponctuation. Avant, un nom
+    // « TEST-Marc-Phacelie-v7 » était stocké « TEST Marc Phacelie v7 » et
+    // devenait introuvable par le nom tapé.
+    const nomSaisi = displayReferentielName(data.id)
     const nomNormalise = normalizeReferentielKey(nomSaisi)
     const attrib = attributionCreation(isAdmin, session!.user.id, body.partageCommunaute === true)
     const estOfficiel = attrib.userId === null
@@ -285,8 +300,14 @@ export async function POST(request: NextRequest) {
     // Les ITP officiels (admin) gardent la valeur transmise (null par défaut).
     let zoneClimat = data.zoneClimat ?? null
     if (zoneClimat == null && !estOfficiel) {
+      // QA cmsqmujo9 — un ITP perso sans zone était réputé calé sur le
+      // référentiel métropole (océanique altéré) puis TRANSPOSÉ vers la zone
+      // de son auteur : S10 saisi devenait S9 partout (liste, cultures
+      // générées) sans un mot. Or les semaines d'un ITP personnel décrivent
+      // la pratique de l'auteur DANS SON climat : on le cale sur sa zone,
+      // le décalage devient nul pour lui (et correct pour les autres zones).
       const zone = await zoneEffectiveUser(prisma, session!.user.id)
-      if (zoneHorsReferenceMetropole(zone)) {
+      if (zone) {
         zoneClimat = zone
       }
     }

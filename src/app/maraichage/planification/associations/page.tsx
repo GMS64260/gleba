@@ -9,6 +9,7 @@ import * as React from "react"
 import { Suspense } from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
+import { useAnneePlanification } from "@/hooks/use-annee-planification"
 import { ColumnDef } from "@tanstack/react-table"
 import { ArrowLeft, Users } from "lucide-react"
 
@@ -116,7 +117,7 @@ const columns: ColumnDef<AssociationCulture>[] = [
         <div className="flex flex-wrap gap-1">
           {voisines.map((cv) => (
             <Badge
-              key={cv.plancheId}
+              key={`${cv.plancheId}:${cv.especeId ?? "?"}`}
               variant="outline"
               className={`text-xs ${colorByEval[cv.eval]}`}
               title={cv.evalMessage || undefined}
@@ -147,18 +148,14 @@ function AssociationsContent() {
 
   const [data, setData] = React.useState<AssociationCulture[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
-  const [annee, setAnnee] = React.useState(
-    parseInt(searchParams.get("annee") || new Date().getFullYear().toString())
-  )
+  // QA cmswwu5cc — l'année du hub Planification vit dans une seule source
+  // (URL, puis saison mémorisée du module) : voir useAnneePlanification.
+  const { annee, definirAnnee, annees, pret: anneePrete } = useAnneePlanification()
   const [stats, setStats] = React.useState<{ totalPlanches: number; planchesAvecVoisins: number }>({
     totalPlanches: 0,
     planchesAvecVoisins: 0,
   })
 
-  const annees = React.useMemo(() => {
-    const currentYear = new Date().getFullYear()
-    return Array.from({ length: 11 }, (_, i) => currentYear - 5 + i)
-  }, [])
 
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
@@ -180,8 +177,11 @@ function AssociationsContent() {
   }, [annee, toast])
 
   React.useEffect(() => {
+    // Ne pas charger la saison courante avant d'avoir restauré la saison
+    // mémorisée : la réponse tardive écraserait les données de la bonne année.
+    if (!anneePrete) return
     fetchData()
-  }, [fetchData])
+  }, [anneePrete, fetchData])
 
   const handleExport = () => {
     const headers = ["Planche", "Îlot", "Culture", "Semaine", "Planches voisines", "Cultures voisines", "Bilan"]
@@ -228,7 +228,7 @@ function AssociationsContent() {
           </Badge>
           <Select
             value={annee.toString()}
-            onValueChange={(value) => setAnnee(parseInt(value))}
+            onValueChange={(value) => definirAnnee(parseInt(value))}
           >
             <SelectTrigger className="w-[100px]">
               <SelectValue />

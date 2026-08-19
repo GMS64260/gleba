@@ -108,3 +108,41 @@ describe('consoliderAttentes — cas QA animal 253 (Engemycin sur 3 jours)', () 
     expect(res[0].derniereInjection.toISOString()).toBe(D('2026-07-24').toISOString())
   })
 })
+
+describe('consoliderAttentes — QA cmsqlj7bn (un rappel futur ne prolonge pas la fenêtre)', () => {
+  const today = D('2026-08-12')
+
+  it("garde l'ancre sur l'injection administrée quand le rappel est à 7 jours", () => {
+    // Cas réel : Dectomax sur Bergère, administré le 12/08 (TA lait 28 j,
+    // viande 35 j) avec un rappel planifié au 19/08. L'écran annonçait une
+    // remise en vente au 17/09 et 24/09 — le rappel, pas encore administré,
+    // bloquait déjà les produits d'une semaine.
+    const soins: SoinAttenteRow[] = [
+      row({ id: 104, animalId: 267, cibleLabel: 'Bergère', produit: 'Dectomax Injectable',
+        date: D('2026-08-12'), fait: true, tempsAttenteLaitJ: 28, tempsAttenteViandeJ: 35 }),
+      row({ id: 105, animalId: 267, cibleLabel: 'Bergère', produit: 'Dectomax Injectable',
+        date: D('2026-08-19'), datePrevue: D('2026-08-19'), fait: false,
+        tempsAttenteLaitJ: 28, tempsAttenteViandeJ: 35 }),
+    ]
+    const res = consoliderAttentes(soins, today)
+
+    expect(res).toHaveLength(1)
+    expect(res[0].derniereInjection.toISOString()).toBe(D('2026-08-12').toISOString())
+    expect(res[0].finAttenteLait!.toISOString()).toBe(D('2026-09-09').toISOString())
+    expect(res[0].finAttenteViande!.toISOString()).toBe(D('2026-09-16').toISOString())
+    expect(remiseVente(res[0].finAttenteLait).toISOString()).toBe(D('2026-09-10').toISOString())
+    expect(remiseVente(res[0].finAttenteViande).toISOString()).toBe(D('2026-09-17').toISOString())
+  })
+
+  it("laisse une injection du protocole en cours (48 h) repousser l'ancre", () => {
+    // Garde-fou de la correction QA #2 : un protocole J0/J2 reste un seul
+    // traitement, sa dernière injection pilote bien la fenêtre.
+    const soins: SoinAttenteRow[] = [
+      row({ id: 130, date: D('2026-08-12'), fait: true }),
+      row({ id: 131, date: D('2026-08-14'), datePrevue: D('2026-08-14'), fait: false }),
+    ]
+    const res = consoliderAttentes(soins, today)
+    expect(res).toHaveLength(1)
+    expect(res[0].derniereInjection.toISOString()).toBe(D('2026-08-14').toISOString())
+  })
+})

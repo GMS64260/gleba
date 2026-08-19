@@ -54,16 +54,34 @@ export function HeaderMeteoWidget({ showLune = false }: { showLune?: boolean }) 
   const [meteo, setMeteo] = React.useState<MeteoResume | null>(null)
   const [loading, setLoading] = React.useState(true)
 
+  // QA cmsqmf6om — le bandeau prenait TOUJOURS la première parcelle
+  // géolocalisée, pendant que la page Météo en suivait une autre : les deux
+  // affichages se contredisaient en permanence, alors que l'écran promet que
+  // ce choix pilote alertes et conseils d'irrigation. Le bandeau lit désormais
+  // la même clé que la page Météo, et se recale sans rechargement quand elle
+  // change (événement `gleba:parcelle-meteo`).
+  const [parcelleDemandee, setParcelleDemandee] = React.useState<string | null>(null)
+  React.useEffect(() => {
+    setParcelleDemandee(window.localStorage.getItem("gleba_meteo_parcelle"))
+    const onChange = (e: Event) => {
+      const id = (e as CustomEvent<string>).detail
+      if (id) setParcelleDemandee(id)
+    }
+    window.addEventListener("gleba:parcelle-meteo", onChange)
+    return () => window.removeEventListener("gleba:parcelle-meteo", onChange)
+  }, [])
+
   React.useEffect(() => {
     async function load() {
       try {
         const carteRes = await fetch("/api/carte")
         if (!carteRes.ok) return
         const parcelles = await carteRes.json()
-        const p = parcelles.find(
+        const geolocalisees = parcelles.filter(
           (x: { centroidLat: number | null; centroidLng: number | null }) =>
             x.centroidLat && x.centroidLng
         )
+        const p = geolocalisees.find((x: { id: string }) => x.id === parcelleDemandee) ?? geolocalisees[0]
         if (!p) return
         setParcelle({ id: p.id, nom: p.nom, centroidLat: p.centroidLat, centroidLng: p.centroidLng })
 
@@ -90,7 +108,7 @@ export function HeaderMeteoWidget({ showLune = false }: { showLune?: boolean }) 
       }
     }
     load()
-  }, [])
+  }, [parcelleDemandee])
 
   if (loading) {
     return (

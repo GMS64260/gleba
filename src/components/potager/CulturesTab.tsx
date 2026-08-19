@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
 import type { PluviometrieBulkItem } from "@/app/api/meteo/pluviometrie-bulk/route"
 
@@ -51,7 +52,35 @@ interface CultureWithRelations {
   }
   variete: { id: string; nom: string | null; isPlaceholder?: boolean } | null
   planche: { id: string; nom?: string } | null
+  // Présent au runtime (GET /api/cultures fait `include: { itp: true }`) mais
+  // absent du type historique : seul `semainePlantation` nous intéresse pour
+  // savoir si l'itinéraire porte un jalon de plantation (cmsoaedw2).
+  itp?: { semainePlantation: number | null } | null
   _count: { recoltes: number }
+}
+
+// Un ITP en semis direct (aucune semaine de plantation) ne doit pas proposer
+// « Marquer la plantation faite » : la colonne Plantation affiche « - » et
+// taches-potager ne génère jamais de tâche plantation pour ces cultures.
+// On garde l'action si l'étape est déjà cochée (pour pouvoir l'annuler) ou si
+// la culture n'a pas d'ITP (saisie libre).
+export function masquerActionPlantation(culture: {
+  plantationFaite: boolean
+  datePlantation: string | null
+  itp?: { semainePlantation: number | null } | null
+}): boolean {
+  return (
+    !culture.plantationFaite &&
+    culture.itp != null &&
+    culture.itp.semainePlantation == null &&
+    culture.datePlantation == null
+  )
+}
+
+const FIELD_LABELS: Record<string, string> = {
+  semisFait: "le semis",
+  plantationFaite: "la plantation",
+  recolteFaite: "la récolte",
 }
 
 const etatColors: Record<string, string> = {
@@ -121,69 +150,65 @@ function createColumns(
       header: "Actions",
       cell: ({ row }) => {
         const culture = row.original
+        // QA cmsio768u / cmsio8o54 (2026-08-07) — ces boutons sont des bascules :
+        // sur une étape déjà faite, le clic l'ANNULE. L'infobulle annonçait
+        // pourtant l'état (« Semis fait ») et non l'effet du clic, ce qui se
+        // lisait comme un simple badge. Elle nomme désormais l'action.
+        const etapes = [
+          {
+            champ: "semisFait" as const,
+            faite: culture.semisFait,
+            Icone: Sprout,
+            actif: "bg-orange-100 text-orange-600 hover:bg-orange-200",
+            libelle: "le semis",
+            participe: "fait",
+          },
+          {
+            champ: "plantationFaite" as const,
+            faite: culture.plantationFaite,
+            Icone: TreeDeciduous,
+            actif: "bg-green-100 text-green-600 hover:bg-green-200",
+            libelle: "la plantation",
+            participe: "faite",
+          },
+          {
+            champ: "recolteFaite" as const,
+            faite: culture.recolteFaite,
+            Icone: Apple,
+            actif: "bg-amber-100 text-amber-600 hover:bg-amber-200",
+            libelle: "la récolte",
+            participe: "faite",
+          },
+        ]
+        // cmsoaedw2 — pas d'action plantation sur un ITP en semis direct.
+        const etapesVisibles = etapes.filter(
+          (e) => e.champ !== "plantationFaite" || !masquerActionPlantation(culture)
+        )
         return (
           <TooltipProvider delayDuration={100}>
             <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onQuickUpdate(culture.id, "semisFait", !culture.semisFait)
-                    }}
-                    className={`p-1.5 rounded-md transition-colors ${
-                      culture.semisFait
-                        ? "bg-orange-100 text-orange-600 hover:bg-orange-200"
-                        : "bg-slate-100 text-slate-400 hover:bg-slate-200"
-                    }`}
-                  >
-                    <Sprout className="h-4 w-4" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  {culture.semisFait ? "Semis fait" : "Marquer semis fait"}
-                </TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onQuickUpdate(culture.id, "plantationFaite", !culture.plantationFaite)
-                    }}
-                    className={`p-1.5 rounded-md transition-colors ${
-                      culture.plantationFaite
-                        ? "bg-green-100 text-green-600 hover:bg-green-200"
-                        : "bg-slate-100 text-slate-400 hover:bg-slate-200"
-                    }`}
-                  >
-                    <TreeDeciduous className="h-4 w-4" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  {culture.plantationFaite ? "Plantation faite" : "Marquer plantation faite"}
-                </TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onQuickUpdate(culture.id, "recolteFaite", !culture.recolteFaite)
-                    }}
-                    className={`p-1.5 rounded-md transition-colors ${
-                      culture.recolteFaite
-                        ? "bg-amber-100 text-amber-600 hover:bg-amber-200"
-                        : "bg-slate-100 text-slate-400 hover:bg-slate-200"
-                    }`}
-                  >
-                    <Apple className="h-4 w-4" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  {culture.recolteFaite ? "Récolte faite" : "Marquer récolte faite"}
-                </TooltipContent>
-              </Tooltip>
+              {etapesVisibles.map(({ champ, faite, Icone, actif, libelle, participe }) => {
+                const action = faite ? `Annuler ${libelle}` : `Marquer ${libelle} ${participe}`
+                return (
+                  <Tooltip key={champ}>
+                    <TooltipTrigger asChild>
+                      <button
+                        aria-label={action}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onQuickUpdate(culture.id, champ, !faite)
+                        }}
+                        className={`p-1.5 rounded-md transition-colors ${
+                          faite ? actif : "bg-slate-100 text-slate-400 hover:bg-slate-200"
+                        }`}
+                      >
+                        <Icone className="h-4 w-4" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>{action}</TooltipContent>
+                  </Tooltip>
+                )
+              })}
             </div>
           </TooltipProvider>
         )
@@ -251,10 +276,16 @@ export function CulturesTab({ year }: CulturesTabProps = {}) {
   const [selectedEtat, setSelectedEtat] = React.useState("all")
   const [pluieMap, setPluieMap] = React.useState<Map<string, PluviometrieBulkItem>>(new Map())
   const [cultureToDelete, setCultureToDelete] = React.useState<CultureWithRelations | null>(null)
+  const [pendingUpdate, setPendingUpdate] = React.useState<{
+    id: number
+    field: string
+    value: boolean
+    message: string
+  } | null>(null)
   const latestRequestRef = React.useRef(0)
   const pageSize = 50
 
-  const handleQuickUpdate = React.useCallback(
+  const executeQuickUpdate = React.useCallback(
     async (id: number, field: string, value: boolean) => {
       try {
         const response = await fetch(`/api/cultures/${id}`, {
@@ -262,7 +293,12 @@ export function CulturesTab({ year }: CulturesTabProps = {}) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ [field]: value }),
         })
-        if (!response.ok) throw new Error("Erreur")
+        if (!response.ok) {
+          // Le serveur refuse les régressions qui contrediraient les récoltes
+          // enregistrées (409) : son message est la seule explication utile.
+          const detail = await response.json().catch(() => null)
+          throw new Error(detail?.error || "Erreur")
+        }
         setData((prev) =>
           prev.map((c) => {
             if (c.id !== id) return c
@@ -279,12 +315,42 @@ export function CulturesTab({ year }: CulturesTabProps = {}) {
             return updated
           })
         )
-        toast({ title: value ? "Fait !" : "Annule" })
-      } catch {
-        toast({ variant: "destructive", title: "Erreur" })
+        toast({ title: value ? "Fait !" : "Annulé" })
+      } catch (e) {
+        toast({
+          variant: "destructive",
+          title: "Changement refusé",
+          description: e instanceof Error ? e.message : "Erreur",
+        })
       }
     },
     [toast]
+  )
+
+  // QA cmsio768u / cmsio8o54 (2026-08-07) — annuler une étape est destructif et
+  // se faisait en un clic. On confirme, en nommant les récoltes déjà saisies :
+  // c'est ce que l'utilisateur risque de contredire sans le voir.
+  const handleQuickUpdate = React.useCallback(
+    (id: number, field: string, value: boolean) => {
+      if (value) {
+        void executeQuickUpdate(id, field, value)
+        return
+      }
+      const culture = data.find((c) => c.id === id)
+      const sujet = FIELD_LABELS[field] ?? field
+      const nbRecoltes = culture?._count?.recoltes ?? 0
+      const rappelRecoltes =
+        nbRecoltes > 0
+          ? ` Cette culture porte ${nbRecoltes} récolte${nbRecoltes > 1 ? "s" : ""} enregistrée${nbRecoltes > 1 ? "s" : ""}.`
+          : ""
+      setPendingUpdate({
+        id,
+        field,
+        value,
+        message: `Annuler ${sujet} de la culture #${id} ?${rappelRecoltes}`,
+      })
+    },
+    [data, executeQuickUpdate]
   )
 
   const columns = React.useMemo(() => createColumns(handleQuickUpdate), [handleQuickUpdate])
@@ -384,7 +450,13 @@ export function CulturesTab({ year }: CulturesTabProps = {}) {
       <Tabs value={selectedEtat} onValueChange={handleEtatChange}>
         <TabsList className="flex-wrap h-auto gap-1">
           {CULTURE_ETATS.map(({ value, label, icon: Icon }) => (
-            <TabsTrigger key={value} value={value} className="flex items-center gap-1">
+            <TabsTrigger
+              key={value}
+              value={value}
+              aria-label={label}
+              title={label}
+              className="flex items-center gap-1"
+            >
               <Icon className="h-4 w-4" />
               <span className="hidden sm:inline">{label}</span>
             </TabsTrigger>
@@ -436,6 +508,23 @@ export function CulturesTab({ year }: CulturesTabProps = {}) {
           } catch {
             toast({ variant: "destructive", title: "Erreur" })
           }
+        }}
+      />
+
+      {/* Confirmation de l'annulation d'une étape du cycle (QA cmsio768u). */}
+      <ConfirmDialog
+        open={pendingUpdate !== null}
+        onOpenChange={(open) => !open && setPendingUpdate(null)}
+        title="Annuler cette étape ?"
+        description={pendingUpdate?.message ?? ""}
+        confirmLabel="Annuler l'étape"
+        cancelLabel="Conserver"
+        variant="destructive"
+        onConfirm={async () => {
+          if (pendingUpdate) {
+            await executeQuickUpdate(pendingUpdate.id, pendingUpdate.field, pendingUpdate.value)
+          }
+          setPendingUpdate(null)
         }}
       />
     </div>

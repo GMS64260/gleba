@@ -30,19 +30,10 @@ export async function GET(request: NextRequest) {
     const parcelleId = searchParams.get('parcelleId')
     const forceRefresh = searchParams.get('refresh') === '1'
 
-    const station = await prisma.stationMeteo.findFirst({ where: { userId, active: true } })
-    let stationToday: MeteoJournaliere | null = null
-    if (station?.provider === 'ecowitt' && station.appKey && station.apiKey) {
-      stationToday = await fetchEcowittData(station.appKey, station.apiKey, station.stationId)
-    } else if (station?.provider === 'wunderground' && station.apiKey) {
-      stationToday = await fetchWundergroundData(station.apiKey, station.stationId)
-    } else if (station?.provider === 'open-meteo-reference' && station.lat && station.lng) {
-      stationToday = (await fetchOpenMeteoForecast(station.lat, station.lng)).daily[0] ?? null
-    }
-
     const cacheKey = irrigationCacheKey(userId, parcelleId)
 
-    // Vérifier le cache (sauf si refresh forcé)
+    // Vérifier le cache (sauf si refresh forcé) AVANT tout appel externe :
+    // un hit de cache ne doit pas payer la requête station météo.
     if (!forceRefresh) {
       const cached = irrigationCache.get(cacheKey) as {
         data: unknown; cachedAt: Date; ageSeconds: number
@@ -59,6 +50,16 @@ export async function GET(request: NextRequest) {
     }
 
     // ── Calcul complet ──────────────────────────────────────────
+
+    const station = await prisma.stationMeteo.findFirst({ where: { userId, active: true } })
+    let stationToday: MeteoJournaliere | null = null
+    if (station?.provider === 'ecowitt' && station.appKey && station.apiKey) {
+      stationToday = await fetchEcowittData(station.appKey, station.apiKey, station.stationId)
+    } else if (station?.provider === 'wunderground' && station.apiKey) {
+      stationToday = await fetchWundergroundData(station.apiKey, station.stationId)
+    } else if (station?.provider === 'open-meteo-reference' && station.lat && station.lng) {
+      stationToday = (await fetchOpenMeteoForecast(station.lat, station.lng)).daily[0] ?? null
+    }
 
     // Récupérer les cultures actives (non terminées) avec leurs planches et parcelles
     const whereClause: Prisma.CultureWhereInput = {

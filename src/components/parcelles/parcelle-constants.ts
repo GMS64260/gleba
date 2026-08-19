@@ -4,11 +4,23 @@ export interface ParcelleWithRelations {
   surface: number | null
   couches: string[]
   usage: string | null
+  typeSol: string | null
   geometry: string
   centroidLat: number | null
   centroidLng: number | null
   _count: { planches: number; arbres: number; lotsAnimaux: number }
 }
+
+// QA cmswu0bql — options de type de sol partagées entre le panneau de la
+// carte (ParcellePanel) et le formulaire /parcelles (ParcelleFormDialog),
+// alignées sur les valeurs déjà en base (minuscules).
+export const TYPE_SOL_OPTIONS = [
+  { value: "argileux", label: "Argileux" },
+  { value: "limoneux", label: "Limoneux" },
+  { value: "sableux", label: "Sableux" },
+  { value: "calcaire", label: "Calcaire" },
+  { value: "mixte", label: "Mixte" },
+]
 
 /**
  * Feedback testeur cmpkycncq — La liste /parcelles affichait "-" pour les

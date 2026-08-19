@@ -10,7 +10,12 @@ import { Suspense } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { LoginForm } from "@/components/auth/LoginForm"
+import { googleAuthDisponible } from "@/lib/auth-google"
 import { Loader2 } from "lucide-react"
+
+// Rendu à la requête : la disponibilité du bouton Google dépend de l'env du
+// conteneur (AUTH_GOOGLE_ID), inconnue au moment du build de l'image.
+export const dynamic = "force-dynamic"
 
 export const metadata: Metadata = {
   title: {
@@ -72,7 +77,7 @@ export default function LoginPage() {
               </div>
 
               <Suspense fallback={<LoginFormFallback />}>
-                <LoginForm />
+                <LoginForm googleEnabled={googleAuthDisponible()} />
               </Suspense>
             </div>
           </div>

@@ -1,6 +1,21 @@
 import { z } from 'zod'
 import { caseInsensitiveEnum } from './case-insensitive-enum'
 
+export const venteProduitTypeSchema = caseInsensitiveEnum([
+  'oeufs',
+  'viande',
+  'animal_vivant',
+  'lait',
+  'fromage',
+  'miel',
+  'cire',
+  'propolis',
+  'pollen',
+  'gelee_royale',
+  'autre_ruche',
+  'autre',
+] as const)
+
 // Bug cmp8rzcjc (Marc 2026-05-16) — une vente fantôme (animal inexistant,
 // prix unitaire 0, statut Payé) pouvait être créée. On verrouille :
 //  - prix unitaire > 0 sauf si paye=false (don/échantillon en attente)
@@ -10,7 +25,7 @@ export const venteProduitSchema = z
   .object({
     date: z.coerce.date().optional(),
     // DEV1 T1 — Résilient à la casse.
-    type: caseInsensitiveEnum(['oeufs', 'viande', 'animal_vivant', 'lait', 'fromage', 'autre'] as const),
+    type: venteProduitTypeSchema,
     description: z.string().max(500).nullable().optional(),
     quantite: z.number().positive('La quantité doit être positive'),
     unite: z.string().min(1, 'Unité requise'),
@@ -18,7 +33,9 @@ export const venteProduitSchema = z
     client: z.string().max(200).nullable().optional(),
     destinationId: z.string().nullable().optional(),
     paye: z.boolean().default(true),
-    tauxTVA: z.number().min(0).max(100).default(5.5),
+    // Le taux par défaut dépend du produit et est appliqué par l'API. Il reste
+    // facultatif ici pour préserver les appelants historiques.
+    tauxTVA: z.number().min(0).max(100).optional(),
     animalId: z.number().int().nullable().optional(),
     // Review caprin 2026-07-21 — vente de fromage : lien vers le lot de
     // fabrication (traçabilité + décrément du stock de cave). Requis pour une

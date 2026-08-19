@@ -11,21 +11,59 @@ Stocké en `snake_case` en base, mappé vers un label français à l'affichage v
 | ---------------- | ---------------- | -------------------------------- |
 | `legume`         | Maraîchage       | Carotte, Tomate, Aubergine       |
 | `aromatique`     | Aromatique       | Basilic, Thym, Sauge             |
+| `fleur`          | Fleur            | Zinnia, Cosmos, Dahlia           |
 | `engrais_vert`   | Engrais vert     | Trèfle incarnat, Tournesol       |
 | `arbre_fruitier` | Arbre fruitier   | Pommier, Poirier, Amandier       |
 | `petit_fruit`    | Petit fruit      | Cassissier, Argousier, Groseille |
 | `ornement`       | Ornement         | Bambou, Albizia                  |
 
 Le contrôle d'intégrité est posé via un `CHECK` SQL (`especes_type_check`) et un
-`z.enum(ESPECE_TYPES)` côté validation.
+`z.enum(ESPECE_TYPES)` côté validation. **Les deux doivent bouger ensemble** :
+ajouter une valeur au `z.enum` sans reprendre le `CHECK` fait échouer la création
+en 500 côté base.
+
+**Trois règles pour ajouter un type** (ticket FB-E33FAA, 2026-08-18 — trois des
+quatre écrans du référentiel affichaient le slug brut `ornement`, et l'écran de
+création rendait une option vide, parce que chacun portait sa propre carte de
+libellés recopiée) :
+
+1. un libellé dans `ESPECE_TYPE_LABELS` et une description dans
+   `ESPECE_TYPE_DESCRIPTIONS` — les deux `Record` sont exhaustifs sur
+   `ESPECE_TYPES`, donc un oubli casse la compilation ;
+2. aucun écran ne réénumère ces libellés : ils passent par `libelleTypeEspece()`,
+   qui tolère une valeur héritée hors canon en l'affichant sous son slug ;
+3. décider si le type se conduit sur planche, c'est-à-dire s'il rejoint
+   `ESPECE_TYPES_MARAICHAGE` (stocks de semences, plants et récoltes).
+
+Le registre d'affichage diffère sur un point : une colonne ou une option nomme la
+PLANTE (`legume` → « Légume »), là où le référentiel nomme le MODULE
+(« Maraîchage »). Ce delta d'une ligne vit dans `libelleTypeEspece`, jamais
+recopié dans un écran.
 
 ### Unité de rendement (`Espece.uniteRendement`)
 
 | Valeur DB        | Label affiché | Quand                                          |
 | ---------------- | ------------- | ---------------------------------------------- |
-| `kg_m2`          | kg/m²         | Maraîchage, aromatique, petit fruit, ornement  |
+| `kg_m2`          | kg/m²         | Maraîchage, aromatique, fleur, petit fruit, ornement |
 | `kg_arbre`       | kg/arbre      | Arbre fruitier                                 |
 | `biomasse_t_ha`  | t/ha          | Engrais vert                                   |
+
+Cette correspondance est du CODE, pas de la prose : `uniteRendementParType()`.
+L'unité STOCKÉE fait toujours foi à l'affichage (`formatRendement(val, unite)`) ;
+la dérivation par type ne sert qu'à la création et au repli sur une ligne
+héritée sans unité. Ne pas réintroduire de ternaire local
+`type === 'arbre_fruitier' ? 'kg/arbre' : 'kg/m²'` : il étiquette les engrais
+verts en kg/m² alors qu'ils sont stockés en t/ha.
+
+Le plafond de plausibilité du rendement dépend de l'unité (`kg/m²` ≤ 100,
+`kg/arbre` ≤ 1000, `t/ha` ≤ 100) : une borne uniforme à 100 interdisait de
+déclarer un fruitier au-delà de 100 kg/arbre, alors que le catalogue en contient
+(arbre à pain 150). Sur un PATCH partiel qui n'établit aucune unité, seule la
+borne absolue s'applique — refuser vaudrait rejeter une correction légitime.
+
+La vente à la TIGE (fleurs coupées) n'est pas modélisée : les récoltes florales
+sont pesées comme le reste. Écart produit ouvert, à trancher avec une ferme
+florale pilote.
 
 ### Familles botaniques
 

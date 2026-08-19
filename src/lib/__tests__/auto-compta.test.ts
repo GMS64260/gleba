@@ -66,6 +66,26 @@ describe('invariants auto-compta élevage', () => {
     })
   })
 
+  it('classe une vente de miel dans les produits de la ruche avec son taux réel', async () => {
+    await createVenteFromVenteProduit('user-1', {
+      id: 11,
+      type: 'miel',
+      description: 'Miel de printemps',
+      prixTotal: 105.5,
+      tauxTVA: 5.5,
+      paye: true,
+    })
+
+    expect(mocks.venteCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        categorie: 'produits_ruche',
+        tauxTVA: 5.5,
+        montantHT: 100,
+        montantTVA: 5.5,
+      }),
+    })
+  })
+
   it("ne crée pas une seconde dépense si le prix individuel est inclus dans le lot", async () => {
     await createDepenseFromAchatAnimal('user-1', {
       id: 20,

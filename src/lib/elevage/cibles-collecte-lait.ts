@@ -75,9 +75,11 @@ export function estEspeceSansDelaiLait(
   if (!espece) return false
   if (normaliser(espece.type) === "volaille") return true
   if (normaliser(espece.categorieReglementaire).startsWith("volaille")) return true
+  if (normaliser(espece.categorieReglementaire) === "heliciculture") return true
+  if (normaliser(espece.categorieReglementaire) === "apiculture") return true
   const productions = [espece.production, ...(espece.productions ?? [])].map(normaliser)
   if (productions.some((value) => value === "lait" || value === "mixte")) return false
-  return productions.some((value) => value === "oeufs" || value === "compagnie")
+  return productions.some((value) => value === "oeufs" || value === "compagnie" || value === "miel")
 }
 
 export function estAnimalCollectableLait(animal: CibleAnimalLait): boolean {
