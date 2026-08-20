@@ -10,6 +10,7 @@
 import prisma from "@/lib/prisma"
 import { fetchOpenMeteoForecast, fetchOpenMeteoHistory } from "@/lib/meteo"
 import { grouperIrrigationsPlanifieesParPlancheEtJour } from "@/lib/irrigation-planche"
+import { borneLectureIrrigation, idsAExpirer } from "@/lib/irrigation-peremption"
 import { alertesAssociations } from "@/lib/associations-alertes"
 import { zoneEffectiveUser } from "@/lib/terroir"
 import type { ZoneClimat } from "@/lib/terroir"
@@ -347,7 +348,11 @@ export async function chargerTachesDuJour(userId: string): Promise<TacheJour[]> 
       select: CULTURE_SELECT,
     }),
     prisma.irrigationPlanifiee.findMany({
-      where: { userId, datePrevue: { gte: start, lte: end } },
+      // `perimee: false` — un arrosage manqué depuis plus d'un cycle est
+      // ABANDONNÉ (cf. irrigation-peremption) : il ne compte plus à l'écran, il
+      // ne doit pas non plus arriver par courriel. Les trois requêtes
+      // d'irrigation de ce module l'omettaient (2026-08-20).
+      where: { userId, perimee: false, datePrevue: { gte: start, lte: end } },
       include: {
         culture: {
           select: {
@@ -491,7 +496,7 @@ async function detecterIrrigationsInutiles(userId: string): Promise<AlerteUrgent
   const end = finDeJournee()
   const [irrigations, coords] = await Promise.all([
     prisma.irrigationPlanifiee.findMany({
-      where: { userId, fait: false, datePrevue: { gte: start, lte: end } },
+      where: { userId, fait: false, perimee: false, datePrevue: { gte: start, lte: end } },
       include: {
         culture: {
           select: {
@@ -578,14 +583,24 @@ async function detecterIrrigationsInutiles(userId: string): Promise<AlerteUrgent
 async function detecterIrrigationsEnRetard(userId: string): Promise<AlerteUrgente[]> {
   const [irrigations, coords] = await Promise.all([
     prisma.irrigationPlanifiee.findMany({
-      where: { userId, fait: false, datePrevue: { lte: finDeJournee() } },
+      // Sans borne basse, cette lecture remontait TOUT l'historique des passages
+      // manqués : un compte à un millier de passages abandonnés recevait quinze
+      // courriels de rappel (le plafond anti-spam), pour des arrosages
+      // abandonnés depuis des semaines. La borne est celle de l'écran et du
+      // briefing — au-delà d'un cycle complet, un passage n'est plus dû.
+      where: {
+        userId,
+        fait: false,
+        perimee: false,
+        datePrevue: { gte: borneLectureIrrigation(new Date(), new Date(0)), lte: finDeJournee() },
+      },
       orderBy: { datePrevue: "asc" },
       include: {
         culture: {
           select: {
             especeId: true,
             varieteId: true,
-            espece: { select: { nom: true } },
+            espece: { select: { nom: true, besoinEau: true } },
             variete: { select: { nom: true } },
             planche: {
               select: {
@@ -601,10 +616,17 @@ async function detecterIrrigationsEnRetard(userId: string): Promise<AlerteUrgent
   ])
   if (irrigations.length === 0) return []
 
+  // La colonne `perimee` n'est qu'une TRACE : la règle se rejoue en mémoire à
+  // chaque lecture (même invariant que l'écran et l'assistant, « 11 = 11 »).
+  // Un passage périmé mais pas encore estampillé serait sinon notifié.
+  const perimees = new Set(idsAExpirer(irrigations))
+  const dues = irrigations.filter((irrigation) => !perimees.has(irrigation.id))
+  if (dues.length === 0) return []
+
   const meteo = await fetchMeteoParCoord(coords)
   const fallback = coords[0]
   return calculerRappelsIrrigationsEnRetard(
-    irrigations.map((irrigation) => ({
+    dues.map((irrigation) => ({
       id: irrigation.id,
       fait: irrigation.fait,
       datePrevue: irrigation.datePrevue,

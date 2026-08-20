@@ -3,8 +3,11 @@
  *
  * Chaque exécution est isolée (try/catch par utilisateur et par étape) :
  * une erreur de météo, de SMTP ou de base ne fait jamais tomber le cron.
- * L'anti-redondance (store en mémoire) est scellée par utilisateur pour
- * que chaque compte reçoive bien ses propres alertes.
+ * L'anti-redondance est scellée par utilisateur pour que chaque compte reçoive
+ * bien ses propres alertes, et elle est PERSISTÉE depuis le 2026-08-20 : un
+ * redémarrage du conteneur rejouait sinon les alertes du jour (mesuré deux fois
+ * dans la même journée, cf. `store.ts`). Chaque scan commence donc par purger
+ * puis précharger le store.
  */
 
 import { sendMail } from "@/lib/mail"
@@ -23,6 +26,7 @@ import {
   alerteDejaEnvoyee,
   marquerAlerteEnvoyee,
   nettoyerAlertesEnvoyees,
+  prechargerAlertesEnvoyees,
 } from "./store"
 import { detecterAlertesMeteo } from "./detect"
 import { construireResume } from "./resume"
@@ -39,6 +43,13 @@ import {
   construirePayloadAlerteUrgente,
   envoyerPushUtilisateur,
 } from "@/lib/push"
+
+/** Jour civil local au format YYYY-MM-DD, pour sceller un envoi quotidien. */
+function jourLocalIso(date = new Date()): string {
+  const mois = String(date.getMonth() + 1).padStart(2, "0")
+  const jour = String(date.getDate()).padStart(2, "0")
+  return `${date.getFullYear()}-${mois}-${jour}`
+}
 
 /** Nombre maximal d'emails envoyés par utilisateur et par scan (anti-spam). */
 const MAX_EMAILS_PAR_UTILISATEUR = 15
@@ -87,7 +98,8 @@ export function notificationsEnabled(): boolean {
  */
 export async function envoyerAlertesMeteoTempsReel(): Promise<number> {
   if (!notificationsEnabled()) return 0
-  nettoyerAlertesEnvoyees()
+  await nettoyerAlertesEnvoyees()
+  await prechargerAlertesEnvoyees()
   const users = await getDestinatairesNotifications()
   let total = 0
   for (const user of users) {
@@ -128,11 +140,11 @@ async function traiterMeteoUtilisateur(user: DestinataireNotification): Promise<
       break
     }
     const cle = `${user.id}:${alerte.key}`
-    if (envoyees.has(cle) || alerteDejaEnvoyee(cle)) continue
+    if (envoyees.has(cle) || (await alerteDejaEnvoyee(cle))) continue
     try {
       const { subject, html } = alerteMeteoEmail(destinataire, alerte)
       await sendMail({ to: user.email, subject, html, headers })
-      marquerAlerteEnvoyee(cle, { until: alerte.date })
+      await marquerAlerteEnvoyee(cle, { until: alerte.date })
       envoyees.add(cle)
       total++
     } catch (error) {
@@ -148,6 +160,8 @@ async function traiterMeteoUtilisateur(user: DestinataireNotification): Promise<
  */
 export async function envoyerAlertesUrgentes(): Promise<number> {
   if (!notificationsEnabled()) return 0
+  await nettoyerAlertesEnvoyees()
+  await prechargerAlertesEnvoyees()
   const users = await getDestinatairesNotifications()
   let total = 0
   for (const user of users) {
@@ -175,7 +189,7 @@ export async function envoyerAlertesUrgentes(): Promise<number> {
           break
         }
         const cle = `${user.id}:${alerte.key}`
-        if (alerteDejaEnvoyee(cle)) continue
+        if (await alerteDejaEnvoyee(cle)) continue
         let emailEnvoye = false
         try {
           const { subject, html } = alerteUrgenteEmail(destinataire, alerte)
@@ -195,7 +209,7 @@ export async function envoyerAlertesUrgentes(): Promise<number> {
         // L'alerte est scellée dès que l'email a été livré ; une subscription
         // push morte ou indisponible ne doit pas provoquer un doublon email.
         if (emailEnvoye) {
-          marquerAlerteEnvoyee(cle)
+          await marquerAlerteEnvoyee(cle)
           envoyees++
         }
       }
@@ -207,15 +221,28 @@ export async function envoyerAlertesUrgentes(): Promise<number> {
   return total
 }
 
-/** Résumé quotidien « Quoi faire ce matin ? » pour chaque utilisateur. */
+/**
+ * Résumé quotidien « Quoi faire ce matin ? » pour chaque utilisateur.
+ *
+ * Un résumé PAR JOUR ET PAR COMPTE, garanti par le même store persistant que
+ * les alertes. Il n'avait aucune garde : le cron est censé ne tirer qu'une fois
+ * à l'heure dite, mais rien n'empêchait un second envoi si le processus était
+ * relancé au passage de cette heure — et « censé » n'est pas une garantie quand
+ * la conséquence est un courriel en double chez 115 comptes.
+ */
 export async function envoyerResumeQuotidien(): Promise<number> {
   if (!notificationsEnabled()) return 0
+  await nettoyerAlertesEnvoyees()
+  await prechargerAlertesEnvoyees()
   const users = await getDestinatairesNotifications()
+  const jour = jourLocalIso()
   let total = 0
   for (const user of users) {
     try {
       const prefs = await chargerPrefsNotifAvecFallback(user)
       if (!prefs.resume) continue
+      const cleResume = `${user.id}:resume:${jour}`
+      if (await alerteDejaEnvoyee(cleResume)) continue
       // Le résumé embarquait les blocs « Cette semaine » (tâches ITP) et
       // « Stocks bas » quel que soit l'état de leurs cases dans /parametres :
       // décocher « Tâches ITP de la semaine » n'avait aucun effet ici, seulement
@@ -230,6 +257,8 @@ export async function envoyerResumeQuotidien(): Promise<number> {
       const { user: destinataire, headers } = await avecDesabonnement(user)
       const { subject, html } = resumeQuotidienEmail(destinataire, resume)
       await sendMail({ to: user.email, subject, html, headers })
+      // Scellé APRÈS l'envoi : un échec SMTP doit laisser le résumé rejouable.
+      await marquerAlerteEnvoyee(cleResume, { until: jour })
       total++
     } catch (error) {
       console.error(`[notifications] Résumé quotidien échoué pour ${user.email}:`, error)
