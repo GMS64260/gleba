@@ -800,6 +800,12 @@ const cultureItpSelect = (userId: string) =>
     id: true,
     especeId: true,
     annee: true,
+    // Les dates réellement saisies font foi pour les jalons qui en portent une :
+    // sans elles, la notification tombait sur la semaine THÉORIQUE de l'ITP
+    // pendant que /taches affichait la date stockée.
+    dateSemis: true,
+    datePlantation: true,
+    dateRecolte: true,
     semisFait: true,
     plantationFaite: true,
     recolteFaite: true,
@@ -880,6 +886,9 @@ export async function chargerTachesItpSemaine(
     id: culture.id,
     especeId: culture.especeId,
     annee: culture.annee,
+    dateSemis: culture.dateSemis,
+    datePlantation: culture.datePlantation,
+    dateRecolte: culture.dateRecolte,
     semisFait: culture.semisFait,
     plantationFaite: culture.plantationFaite,
     recolteFaite: culture.recolteFaite,

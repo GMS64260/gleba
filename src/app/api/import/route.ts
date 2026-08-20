@@ -301,6 +301,10 @@ export async function POST(request: NextRequest) {
       fertilisants: 0,
       planches: 0,
       cultures: 0,
+      // Références de référentiel absentes de la cible, dégradées à NULL plutôt
+      // que de faire tomber la transaction entière.
+      culturesItpIgnore: 0,
+      culturesVarieteIgnore: 0,
       recoltes: 0,
       fertilisations: 0,
       objetsJardin: 0,
@@ -506,6 +510,15 @@ export async function POST(request: NextRequest) {
         const nomImporte =
           typeof item.nom === 'string' && item.nom.trim() ? item.nom : item.id
         const nomItp = nomItpDepuisSaisie(nomImporte)
+        // Référence sourcée : intouchable, comme le refusent PUT et DELETE
+        // /api/itps/[id]. Un fichier un peu ancien ramenait sinon les 552
+        // itinéraires INRAE aux semaines du fichier et réactivait les 4
+        // scénarios retirés du service, sans trace ni migration.
+        const existantItp = await tx.iTP.findUnique({
+          where: { id: item.id },
+          select: { sourceRecordId: true },
+        })
+        if (existantItp?.sourceRecordId) continue
         await tx.iTP.upsert({
           where: { id: item.id },
           update: {
@@ -845,6 +858,34 @@ export async function POST(request: NextRequest) {
                 item.plancheId = null
               }
             }
+          }
+        }
+
+        // Références de référentiel absentes de l'instance cible : les dégrader,
+        // pas faire tomber l'import.
+        //
+        // Un membre qui migre vers son instance auto-hébergée exporte ses ITP et
+        // variétés perso, mais l'import ne les recrée pas (branche réservée aux
+        // admins). Ses cultures les référençaient encore : `culture.create`
+        // violait la clé étrangère, la transaction ENTIÈRE était annulée, et il
+        // voyait « Impossible d'importer les données » — ni planches, ni cultures,
+        // ni récoltes, aucune ligne écrite. Le traitement appliqué à `plancheId`
+        // juste au-dessus manquait ici.
+        if (item.itpId) {
+          const itpExists = await tx.iTP.findUnique({ where: { id: item.itpId }, select: { id: true } })
+          if (!itpExists) {
+            item.itpId = null
+            stats.culturesItpIgnore += 1
+          }
+        }
+        if (item.varieteId) {
+          const varieteExists = await tx.variete.findUnique({
+            where: { id: item.varieteId },
+            select: { id: true },
+          })
+          if (!varieteExists) {
+            item.varieteId = null
+            stats.culturesVarieteIgnore += 1
           }
         }
 

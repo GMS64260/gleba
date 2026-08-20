@@ -89,7 +89,9 @@ export default async function ReferentielPage({ searchParams }: PageProps) {
         _count: {
           select: {
             varietes: { where: visibiliteEnfantPublic() },
-            itps: { where: visibiliteEnfantPublic() },
+            // `actif: true` comme partout ailleurs : la carte comptait aussi les
+            // scénarios retirés du service, que la fiche ne montre plus.
+            itps: { where: { AND: [{ actif: true }, visibiliteEnfantPublic()] } },
           },
         },
       },

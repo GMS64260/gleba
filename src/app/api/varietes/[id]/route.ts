@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
+import { nomEtCleReferentiel } from '@/lib/normalize'
 import { updateVarieteSchema } from '@/lib/validations'
 import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
 import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
@@ -83,11 +84,57 @@ export async function PUT(
       }
     }
 
+    // Renommage, borné aux variétés PERSO (sur une variété du catalogue,
+    // l'identifiant est le nom lisible). L'unicité est revérifiée dans le
+    // périmètre de l'index partiel : (user_id, espece, nom_normalise).
+    const { nom: nomDemande, ...donnees } = validationResult.data
+    let renommage: { nom: string; nomNormalise: string } | null = null
+    if (nomDemande !== undefined) {
+      if (!existing.userId) {
+        return NextResponse.json(
+          {
+            error:
+              "Une variété du catalogue Gleba ne peut pas être renommée : son identifiant est son nom. Créez une variété personnelle pour utiliser une autre appellation.",
+          },
+          { status: 409 }
+        )
+      }
+      const propose = nomEtCleReferentiel(nomDemande)
+      if (!propose.nom) {
+        return NextResponse.json(
+          { error: 'Le nom de la variété ne peut pas être vide.' },
+          { status: 400 }
+        )
+      }
+      if (propose.nomNormalise !== (existing.nomNormalise ?? '')) {
+        const conflit = await prisma.variete.findFirst({
+          where: {
+            userId: existing.userId,
+            especeId: donnees.especeId ?? existing.especeId,
+            nomNormalise: propose.nomNormalise,
+            NOT: { id },
+          },
+          select: { id: true, nom: true },
+        })
+        if (conflit) {
+          return NextResponse.json(
+            {
+              error: `Vous avez déjà une variété « ${conflit.nom ?? conflit.id} » sur cette espèce.`,
+              conflit: conflit.id,
+            },
+            { status: 409 }
+          )
+        }
+      }
+      renommage = propose
+    }
+
     // Mise à jour (l'auteur d'un perso peut basculer « proposer à la communauté »).
     const variete = await prisma.variete.update({
       where: { id },
       data: {
-        ...validationResult.data,
+        ...donnees,
+        ...(renommage ?? {}),
         ...(existing.userId && body.partageCommunaute !== undefined
           ? { partageCommunaute: body.partageCommunaute === true }
           : {}),

@@ -91,6 +91,26 @@ export async function reprendreReferentielCommunaute(
     })
   }
 
+  // Même symétrie pour les ITP partagés, qui manquait : `ITP.espece` est
+  // onDelete:SetNull, donc l'itinéraire survit — mais SANS son espèce. Un
+  // « zinnia s1 » proposé à la communauté par un membre dont l'espèce « zinnia »
+  // restait privée se retrouvait dans le catalogue commun avec « - » en espèce,
+  // sans couleur de famille, et écarté de tous les sélecteurs (qui filtrent par
+  // especeId).
+  const itpsPartages = await tx.iTP.findMany({
+    where: { userId, partageCommunaute: true, especeId: { not: null } },
+    select: { especeId: true },
+  })
+  const especeItpParentIds = [
+    ...new Set(itpsPartages.map((i) => i.especeId).filter(Boolean) as string[]),
+  ]
+  if (especeItpParentIds.length > 0) {
+    await tx.espece.updateMany({
+      where: { id: { in: especeItpParentIds }, userId },
+      data: { ...cible, partageCommunaute: true },
+    })
+  }
+
   const racesPartagees = await tx.raceAnimale.findMany({
     where: { userId, partageCommunaute: true },
     select: { especeAnimaleId: true },
@@ -101,6 +121,37 @@ export async function reprendreReferentielCommunaute(
       where: { id: { in: especeAnimParentIds }, userId },
       data: { ...cible, partageCommunaute: true },
     })
+  }
+
+  // Étape 1 bis — sauver les ITP dont d'AUTRES membres dépendent, même restés
+  // privés. `DELETE /api/itps/[id]` refuse en 409 de supprimer un itinéraire
+  // porteur de cultures ou d'étapes de rotation ; la suppression de compte
+  // contournait cette garde : l'itinéraire partait en cascade et les cultures des
+  // autres membres perdaient leur itpId en silence (SetNull). Mêmes critères que
+  // le 409, donc même promesse tenue.
+  const itpsUtilisesAilleurs = await tx.iTP.findMany({
+    where: {
+      userId,
+      partageCommunaute: false,
+      OR: [{ cultures: { some: { userId: { not: userId } } } }, { rotationsDetails: { some: {} } }],
+    },
+    select: { id: true, especeId: true },
+  })
+  if (itpsUtilisesAilleurs.length > 0) {
+    await tx.iTP.updateMany({
+      where: { id: { in: itpsUtilisesAilleurs.map((i) => i.id) } },
+      data: { ...cible, partageCommunaute: true },
+    })
+    // Et leur espèce parente, pour la même raison qu'au-dessus.
+    const parents = [
+      ...new Set(itpsUtilisesAilleurs.map((i) => i.especeId).filter(Boolean) as string[]),
+    ]
+    if (parents.length > 0) {
+      await tx.espece.updateMany({
+        where: { id: { in: parents }, userId },
+        data: { ...cible, partageCommunaute: true },
+      })
+    }
   }
 
   // Étape 2 — réattribuer à la sentinelle toutes les entrées PARTAGÉES du membre

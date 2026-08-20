@@ -14,7 +14,7 @@
 
 import type { PrismaClient } from '@prisma/client'
 
-import { displayReferentielName, normalizeReferentielKey } from './normalize'
+import { nomEtCleReferentiel, normalizeReferentielKey } from './normalize'
 import { visibiliteReferentiel } from './referentiel-communaute'
 
 export interface NomItp {
@@ -24,8 +24,7 @@ export interface NomItp {
 
 /** Libellé affiché + clé de dédup pour une saisie utilisateur. */
 export function nomItpDepuisSaisie(saisie: string): NomItp {
-  const nom = displayReferentielName(saisie)
-  return { nom, nomNormalise: normalizeReferentielKey(nom) }
+  return nomEtCleReferentiel(saisie)
 }
 
 export interface ConflitNomItp {
@@ -120,4 +119,60 @@ export async function doublonVisibleItp(
     select: { id: true, nom: true },
     orderBy: { userId: 'asc' },
   })
+}
+
+/**
+ * Violation de l'index `itps_periode_unique_idx` traduite en message.
+ *
+ * Cet index interdit deux itinéraires qui partagent (auteur, espèce, semaine de
+ * semis, semaine de plantation, semaine de récolte, type de planche). La
+ * violation remontait en 500 « Erreur lors de la création de l'ITP » : rien ne
+ * disait qu'il s'agissait d'un conflit de PÉRIODE, ni avec quel itinéraire — qui
+ * pouvait d'ailleurs être invisible au demandeur avant que l'index ne soit borné
+ * par auteur.
+ */
+export function estConflitPeriodeItp(erreur: unknown): boolean {
+  const e = erreur as { code?: string; meta?: { target?: unknown } } | null
+  if (!e) return false
+  if (e.code === 'P2002') {
+    const cible = JSON.stringify(e.meta?.target ?? '')
+    return cible.includes('periode') || cible.includes('itps_periode_unique_idx')
+  }
+  return (e as { code?: string }).code === '23505'
+}
+
+/** Itinéraire déjà présent sur la même période, pour nommer le conflit. */
+export async function itpMemePeriode(
+  prisma: PrismaClient,
+  opts: {
+    proprietaireId: string | null
+    especeId: string | null | undefined
+    semaineSemis?: number | null
+    semainePlantation?: number | null
+    semaineRecolte?: number | null
+    typePlanche?: string | null
+    exclureId?: string
+  }
+): Promise<ConflitNomItp | null> {
+  if (!opts.especeId) return null
+  return prisma.iTP.findFirst({
+    where: {
+      userId: opts.proprietaireId,
+      especeId: opts.especeId,
+      semaineSemis: opts.semaineSemis ?? null,
+      semainePlantation: opts.semainePlantation ?? null,
+      semaineRecolte: opts.semaineRecolte ?? null,
+      typePlanche: opts.typePlanche ?? null,
+      sourceRecordId: null,
+      ...(opts.exclureId ? { NOT: { id: opts.exclureId } } : {}),
+    },
+    select: { id: true, nom: true },
+  })
+}
+
+/** Message 409 du conflit de période. */
+export function messageConflitPeriodeItp(conflit: ConflitNomItp | null): string {
+  return conflit
+    ? `Vous avez déjà un itinéraire sur cette même période pour cette espèce : « ${conflit.nom ?? conflit.id} ». Modifiez une semaine ou le type de planche, ou repartez de celui-là.`
+    : `Un itinéraire existe déjà sur cette même période pour cette espèce, avec le même type de planche. Modifiez une semaine ou le type de planche.`
 }

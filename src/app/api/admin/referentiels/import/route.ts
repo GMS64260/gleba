@@ -4,6 +4,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
+
 import prisma from '@/lib/prisma'
 import { requireAdminApi } from '@/lib/auth-utils'
 
@@ -44,16 +46,25 @@ export async function POST(request: NextRequest) {
       especes: 0,
       varietes: 0,
       itps: 0,
+      // Itinéraires sourcés laissés intacts (cf. la garde de l'importeur ITP).
+      itpsProteges: 0,
       fertilisants: 0,
       associations: 0,
       rotations: 0,
     }
 
-    // Import selon le type
-    const importers: Record<string, () => Promise<void>> = {
+    // Import selon le type.
+    //
+    // Les importeurs prennent le client de TRANSACTION : la boucle « all » les
+    // enchaînait hors transaction, si bien qu'une erreur au milieu laissait le
+    // référentiel à moitié importé — familles et espèces écrites, variétés et
+    // itinéraires non, sans aucun moyen de savoir où ça s'était arrêté.
+    const construireImporteurs = (
+      db: Prisma.TransactionClient
+    ): Record<string, () => Promise<void>> => ({
       familles: async () => {
         for (const item of data.familles || []) {
-          await prisma.famille.upsert({
+          await db.famille.upsert({
             where: { id: item.id },
             update: { intervalle: item.intervalle, couleur: item.couleur, description: item.description },
             create: item,
@@ -63,7 +74,7 @@ export async function POST(request: NextRequest) {
       },
       fournisseurs: async () => {
         for (const item of data.fournisseurs || []) {
-          await prisma.fournisseur.upsert({
+          await db.fournisseur.upsert({
             where: { id: item.id },
             update: { ...item },
             create: item,
@@ -73,7 +84,7 @@ export async function POST(request: NextRequest) {
       },
       especes: async () => {
         for (const item of data.especes || []) {
-          await prisma.espece.upsert({
+          await db.espece.upsert({
             where: { id: item.id },
             update: { ...item },
             create: item,
@@ -83,7 +94,7 @@ export async function POST(request: NextRequest) {
       },
       varietes: async () => {
         for (const item of data.varietes || []) {
-          await prisma.variete.upsert({
+          await db.variete.upsert({
             where: { id: item.id },
             update: { ...item },
             create: item,
@@ -93,17 +104,41 @@ export async function POST(request: NextRequest) {
       },
       itps: async () => {
         for (const item of data.itps || []) {
-          await prisma.iTP.upsert({
+          // Références SOURCÉES : intouchables par un import.
+          //
+          // `update: { ...item }` réécrivait les 552 itinéraires INRAE aux
+          // semaines du fichier et réactivait les 4 scénarios désactivés, sans
+          // trace ni migration — alors que l'interface les déclare protégés
+          // (PUT et DELETE /api/itps/[id] répondent 409 sur `sourceRecordId`).
+          // Et `create: item` réinjectait `user_id` / `partage_communaute` du
+          // fichier : sur une instance où ce compte n'existe pas, l'insertion
+          // échoue ; là où il existe, on attribue un itinéraire à quelqu'un
+          // d'autre. L'import ne fixe donc plus l'attribution.
+          const existant = await db.iTP.findUnique({
             where: { id: item.id },
-            update: { ...item },
-            create: item,
+            select: { sourceRecordId: true },
+          })
+          if (existant?.sourceRecordId || item.sourceRecordId) {
+            stats.itpsProteges = (stats.itpsProteges ?? 0) + 1
+            continue
+          }
+          const { userId: _userId, partageCommunaute: _partage, ...champs } = item as Record<
+            string,
+            unknown
+          >
+          void _userId
+          void _partage
+          await db.iTP.upsert({
+            where: { id: item.id },
+            update: champs,
+            create: champs as typeof item,
           })
           stats.itps++
         }
       },
       fertilisants: async () => {
         for (const item of data.fertilisants || []) {
-          await prisma.fertilisant.upsert({
+          await db.fertilisant.upsert({
             where: { id: item.id },
             update: { ...item },
             create: item,
@@ -113,7 +148,7 @@ export async function POST(request: NextRequest) {
       },
       associations: async () => {
         for (const item of data.associations || []) {
-          await prisma.association.upsert({
+          await db.association.upsert({
             where: { id: item.id },
             update: { nom: item.nom, description: item.description, notes: item.notes },
             create: { id: item.id, nom: item.nom, description: item.description, notes: item.notes },
@@ -124,7 +159,7 @@ export async function POST(request: NextRequest) {
           if (item.details && Array.isArray(item.details)) {
             for (const detail of item.details) {
               // Vérifier si existe déjà pour éviter doublons
-              const existing = await prisma.associationDetail.findFirst({
+              const existing = await db.associationDetail.findFirst({
                 where: {
                   associationId: item.id,
                   especeId: detail.especeId,
@@ -135,7 +170,7 @@ export async function POST(request: NextRequest) {
 
               if (existing) {
                 // Update
-                await prisma.associationDetail.update({
+                await db.associationDetail.update({
                   where: { id: existing.id },
                   data: {
                     requise: detail.requise ?? false,
@@ -144,7 +179,7 @@ export async function POST(request: NextRequest) {
                 })
               } else {
                 // Create
-                await prisma.associationDetail.create({
+                await db.associationDetail.create({
                   data: {
                     associationId: item.id,
                     especeId: detail.especeId,
@@ -161,7 +196,7 @@ export async function POST(request: NextRequest) {
       },
       rotations: async () => {
         for (const item of data.rotations || []) {
-          await prisma.rotation.upsert({
+          await db.rotation.upsert({
             where: { id: item.id },
             update: { active: item.active, nbAnnees: item.nbAnnees, notes: item.notes },
             create: { id: item.id, active: item.active, nbAnnees: item.nbAnnees, notes: item.notes },
@@ -171,7 +206,7 @@ export async function POST(request: NextRequest) {
           // Import des details
           if (item.details) {
             for (const detail of item.details) {
-              await prisma.rotationDetail.upsert({
+              await db.rotationDetail.upsert({
                 where: { id: detail.id },
                 update: { ...detail },
                 create: detail,
@@ -180,18 +215,25 @@ export async function POST(request: NextRequest) {
           }
         }
       },
-    }
+    })
 
-    // Importer selon le type demandé
-    if (type === 'all') {
-      for (const [key, importer] of Object.entries(importers)) {
-        await importer()
-      }
-    } else if (importers[type]) {
-      await importers[type]()
-    } else {
+    // Importer selon le type demandé, tout ou rien.
+    if (type !== 'all' && !construireImporteurs(prisma as unknown as Prisma.TransactionClient)[type]) {
       return NextResponse.json({ error: 'Type de référentiel invalide' }, { status: 400 })
     }
+    await prisma.$transaction(
+      async (tx) => {
+        const importers = construireImporteurs(tx)
+        if (type === 'all') {
+          for (const importer of Object.values(importers)) {
+            await importer()
+          }
+        } else {
+          await importers[type]()
+        }
+      },
+      { timeout: 120_000 }
+    )
 
     const total = Object.values(stats).reduce((sum, count) => sum + count, 0)
 

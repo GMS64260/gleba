@@ -13,7 +13,10 @@ import { peutEditerReferentiel, visibiliteReferentiel } from '@/lib/referentiel-
 import {
   conflitNomItp,
   doublonVisibleItp,
+  estConflitPeriodeItp,
+  itpMemePeriode,
   messageConflitNomItp,
+  messageConflitPeriodeItp,
   nomItpDepuisSaisie,
 } from '@/lib/itp-nom'
 
@@ -243,6 +246,28 @@ export async function PUT(
         : {}),
     })
   } catch (error) {
+    // Même traduction qu'à la création : conflit de période → 409 nommé.
+    if (estConflitPeriodeItp(error)) {
+      const { id } = await params
+      const body = await request.clone().json().catch(() => ({}))
+      const existant = await prisma.iTP.findUnique({
+        where: { id },
+        select: { userId: true, especeId: true },
+      })
+      const conflit = await itpMemePeriode(prisma, {
+        proprietaireId: existant?.userId ?? null,
+        especeId: body?.especeId ?? existant?.especeId,
+        semaineSemis: body?.semaineSemis,
+        semainePlantation: body?.semainePlantation,
+        semaineRecolte: body?.semaineRecolte,
+        typePlanche: body?.typePlanche,
+        exclureId: id,
+      })
+      return NextResponse.json(
+        { error: messageConflitPeriodeItp(conflit), conflit: conflit?.id },
+        { status: 409 }
+      )
+    }
     console.error('PUT /api/itps/[id] error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la mise à jour de l\'ITP' },

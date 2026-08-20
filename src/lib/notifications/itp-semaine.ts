@@ -199,6 +199,13 @@ export interface CultureItpInput {
   ilot: string | null
   /** ITP résolu (culture.itp, sinon meilleur ITP de l'espèce). */
   itp: ItpSemaineInput | null
+  /**
+   * Dates réellement saisies sur la culture. Elles font foi : les semaines de
+   * l'ITP ne servent qu'aux jalons que l'utilisateur n'a pas datés.
+   */
+  dateSemis?: Date | string | null
+  datePlantation?: Date | string | null
+  dateRecolte?: Date | string | null
 }
 
 /** Flag « fait » qui éteint l'opération correspondante (pas de doublon de tâche). */
@@ -209,6 +216,43 @@ const FAIT_PAR_TYPE: Record<TypeOperationItp, keyof Pick<CultureItpInput, "semis
 }
 
 const ORDRE_TYPE: Record<TypeOperationItp, number> = { semis: 0, plantation: 1, recolte: 2 }
+
+const DATE_PAR_TYPE: Record<
+  TypeOperationItp,
+  keyof Pick<CultureItpInput, "dateSemis" | "datePlantation" | "dateRecolte">
+> = {
+  semis: "dateSemis",
+  plantation: "datePlantation",
+  recolte: "dateRecolte",
+}
+
+/**
+ * Jalon daté par l'utilisateur : la semaine réelle, ou null si non daté.
+ *
+ * Les notifications se calculaient sur `culture.annee` et sur les semaines
+ * THÉORIQUES de l'ITP, alors que tous les écrans lisent les dates stockées de la
+ * culture. Les deux se contredisaient : une courgette semée le 15/04 (S16) avec
+ * un ITP à S14/S18/S34 recevait « Cette semaine : planter » en S18, quand
+ * /taches plaçait la plantation au 20/05 (S21) — et rien n'arrivait en S21.
+ * La date saisie fait foi.
+ */
+function semaineDuJalon(
+  culture: CultureItpInput,
+  type: TypeOperationItp
+): { annee: number; semaine: number; jour: string } | null {
+  const brute = culture[DATE_PAR_TYPE[type]]
+  if (!brute) return null
+  const d = brute instanceof Date ? brute : new Date(brute)
+  if (Number.isNaN(d.getTime())) return null
+  // Midi UTC : une date saisie via <input type="date"> peut être persistée à
+  // 23:00 la veille (minuit Europe/Paris) — même précaution qu'en planification.
+  const jourCivil = new Date(d.getTime() + 12 * 3_600_000)
+  return {
+    annee: getISOWeekYear(jourCivil),
+    semaine: getISOWeek(jourCivil),
+    jour: jourCivil.toISOString().slice(0, 10),
+  }
+}
 
 /**
  * Tâches ITP de la semaine courante pour des cultures actives.
@@ -238,8 +282,31 @@ export function tachesItpSemainePourCultures(
       options.lecteurId ?? null
     )
 
+    // Jalons datés par l'utilisateur : ils sortent du calcul ITP et sont
+    // confrontés directement à la semaine cible.
+    for (const type of ["semis", "plantation", "recolte"] as TypeOperationItp[]) {
+      if (culture[FAIT_PAR_TYPE[type]]) continue
+      const reelle = semaineDuJalon(culture, type)
+      if (!reelle) continue
+      if (reelle.annee !== cible.annee || reelle.semaine !== cible.semaine) continue
+      taches.push({
+        cultureId: culture.id,
+        type,
+        especeNom: culture.especeNom ?? culture.especeId,
+        varieteNom: culture.varieteNom,
+        plancheName: culture.plancheName,
+        ilot: culture.ilot,
+        date: reelle.jour,
+        semaine: cible.semaine,
+        couleur: culture.couleur,
+      })
+    }
+
     for (const op of operationsItpDansSemaine(itp, cible, { anneeCulture, decalageZone })) {
       if (culture[FAIT_PAR_TYPE[op.type]]) continue
+      // Jalon déjà daté : la date stockée a été traitée juste au-dessus, la
+      // semaine théorique de l'ITP ne doit pas en produire un second.
+      if (semaineDuJalon(culture, op.type)) continue
       taches.push({
         cultureId: culture.id,
         type: op.type,

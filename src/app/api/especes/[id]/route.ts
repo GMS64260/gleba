@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { updateEspeceSchema } from '@/lib/validations'
+import { nomEtCleReferentiel } from '@/lib/normalize'
 import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
 import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 
@@ -121,11 +122,57 @@ export async function PUT(
       )
     }
 
+    // Renommage. Borné aux entrées PERSO : sur une espèce du catalogue officiel
+    // l'identifiant EST le nom lisible, renommer sans toucher l'id ferait
+    // diverger les deux. La clé de dédup suit le nom, et l'unicité est
+    // revérifiée — mêmes règles que pour un ITP.
+    const { nom: nomDemande, ...donnees } = validationResult.data
+    let renommage: { nom: string; nomNormalise: string } | null = null
+    if (nomDemande !== undefined) {
+      if (!existing.userId) {
+        return NextResponse.json(
+          {
+            error:
+              "Une espèce du catalogue Gleba ne peut pas être renommée : son identifiant est son nom. Créez une espèce personnelle pour utiliser une autre appellation.",
+          },
+          { status: 409 }
+        )
+      }
+      const propose = nomEtCleReferentiel(nomDemande)
+      if (!propose.nom) {
+        return NextResponse.json(
+          { error: "Le nom de l'espèce ne peut pas être vide." },
+          { status: 400 }
+        )
+      }
+      if (propose.nomNormalise !== (existing.nomNormalise ?? '')) {
+        const conflit = await prisma.espece.findFirst({
+          where: {
+            userId: existing.userId,
+            nomNormalise: propose.nomNormalise,
+            NOT: { id },
+          },
+          select: { id: true, nom: true },
+        })
+        if (conflit) {
+          return NextResponse.json(
+            {
+              error: `Vous avez déjà une espèce « ${conflit.nom ?? conflit.id} » dans votre catalogue.`,
+              conflit: conflit.id,
+            },
+            { status: 409 }
+          )
+        }
+      }
+      renommage = propose
+    }
+
     // Mise à jour (l'auteur d'un perso peut basculer « proposer à la communauté »).
     const espece = await prisma.espece.update({
       where: { id },
       data: {
-        ...validationResult.data,
+        ...donnees,
+        ...(renommage ?? {}),
         ...(existing.userId && body.partageCommunaute !== undefined
           ? { partageCommunaute: body.partageCommunaute === true }
           : {}),
@@ -165,6 +212,14 @@ export async function DELETE(
           select: {
             cultures: true,
             recoltes: true,
+            // Les itinéraires passent à NULL (onDelete: SetNull) et les variétés
+            // sont DÉTRUITES (onDelete: Cascade) : ni l'un ni l'autre n'était
+            // compté. Supprimer l'espèce fourre-tout « Mesclun » — sans culture
+            // ni récolte, donc acceptée en 200 — rendait ses 115 itinéraires
+            // INRAE inutilisables : toujours actifs, toujours listés, mais avec
+            // « - » en espèce et plus jamais proposés à la création d'une culture.
+            itps: true,
+            varietes: true,
           },
         },
       },
@@ -185,21 +240,33 @@ export async function DELETE(
       )
     }
 
-    // Vérifier si des cultures ou recoltes sont liées
-    if (espece._count.cultures > 0 || espece._count.recoltes > 0) {
+    // Vérifier ce que la suppression emporterait, et le nommer.
+    const attaches = [
+      espece._count.cultures > 0 ? `${espece._count.cultures} culture(s)` : null,
+      espece._count.recoltes > 0 ? `${espece._count.recoltes} récolte(s)` : null,
+      espece._count.itps > 0
+        ? `${espece._count.itps} itinéraire(s) technique(s), qui perdraient leur espèce`
+        : null,
+      espece._count.varietes > 0
+        ? `${espece._count.varietes} variété(s), qui seraient supprimées avec elle`
+        : null,
+    ].filter(Boolean)
+    if (attaches.length > 0) {
       return NextResponse.json(
         {
-          error: `Impossible de supprimer l'espece "${id}" car elle est utilisée`,
+          error: `Impossible de supprimer l'espèce « ${id} » : elle porte ${attaches.join(', ')}.`,
           details: {
             cultures: espece._count.cultures,
             recoltes: espece._count.recoltes,
-          }
+            itps: espece._count.itps,
+            varietes: espece._count.varietes,
+          },
         },
         { status: 409 }
       )
     }
 
-    // Suppression (les varietes seront supprimées en cascade)
+    // Suppression (plus aucune variété ni itinéraire attaché à ce stade)
     await prisma.espece.delete({
       where: { id },
     })

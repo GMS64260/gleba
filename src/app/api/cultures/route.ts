@@ -16,6 +16,7 @@ import { checkRotationViolation } from '@/lib/rotation-check'
 import { estEtatCulture, etatCulture, whereEtatCulture } from '@/lib/cultures/etat'
 import { etendrePlanArrosage } from '@/lib/irrigation-scheduler'
 import { whereItpUtilisable } from '@/lib/itp-acces'
+import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 import { appliquerDecalageItp, decalageItpPourLecteur } from '@/lib/calendrier-climat'
 import { zoneEffectiveUser } from '@/lib/terroir'
 
@@ -172,16 +173,47 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Vérifier que l'espece existe
-    const espece = await prisma.espece.findUnique({
-      where: { id: data.especeId },
+    // Vérifier que l'espèce existe ET qu'elle est visible par cet utilisateur.
+    //
+    // L'ITP était résolu sous la règle « visible et actif » ; l'espèce l'était
+    // par un `findUnique` nu, donc une culture pouvait être rattachée à l'espèce
+    // PRIVÉE d'un autre membre — et la réponse en renvoyait la fiche.
+    const espece = await prisma.espece.findFirst({
+      where: { AND: [{ id: data.especeId }, visibiliteReferentiel(session!.user.id)] },
     })
 
     if (!espece) {
       return NextResponse.json(
-        { error: `L'espèce "${data.especeId}" n'existe pas` },
+        { error: `L'espèce « ${data.especeId} » n'est pas disponible : introuvable ou privée.` },
         { status: 400 }
       )
+    }
+
+    // La variété doit être visible ET appartenir à CETTE espèce.
+    //
+    // Elle n'était vérifiée nulle part : un POST avec
+    // { especeId: 'Carotte', varieteId: 'Tomate Marmande' } créait une culture
+    // « Carotte / Tomate Marmande », affichée telle quelle dans la liste et sur
+    // la planche, et l'écran Semences lisait ensuite le stock de graines de la
+    // tomate pour une carotte.
+    if (data.varieteId) {
+      const variete = await prisma.variete.findFirst({
+        where: {
+          AND: [
+            { id: data.varieteId, especeId: data.especeId },
+            visibiliteReferentiel(session!.user.id),
+          ],
+        },
+        select: { id: true },
+      })
+      if (!variete) {
+        return NextResponse.json(
+          {
+            error: `La variété « ${data.varieteId} » n'est pas disponible pour l'espèce « ${data.especeId} » : introuvable, privée, ou rattachée à une autre espèce.`,
+          },
+          { status: 400 }
+        )
+      }
     }
 
     // PROMPT 12 — Détection de violation de rotation.

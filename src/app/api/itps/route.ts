@@ -15,7 +15,10 @@ import { normalizeReferentielKey } from '@/lib/normalize'
 import {
   conflitNomItp,
   doublonVisibleItp,
+  estConflitPeriodeItp,
+  itpMemePeriode,
   messageConflitNomItp,
+  messageConflitPeriodeItp,
   nomItpDepuisSaisie,
 } from '@/lib/itp-nom'
 import { zoneEffectiveUser } from '@/lib/terroir'
@@ -333,6 +336,23 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     )
   } catch (error) {
+    // Conflit de période (index `itps_periode_unique_idx`) : le dire, au lieu du
+    // 500 muet « Erreur lors de la création de l'ITP ».
+    if (estConflitPeriodeItp(error)) {
+      const body = await request.clone().json().catch(() => ({}))
+      const conflit = await itpMemePeriode(prisma, {
+        proprietaireId: session!.user.role === 'ADMIN' ? null : session!.user.id,
+        especeId: body?.especeId,
+        semaineSemis: body?.semaineSemis,
+        semainePlantation: body?.semainePlantation,
+        semaineRecolte: body?.semaineRecolte,
+        typePlanche: body?.typePlanche,
+      })
+      return NextResponse.json(
+        { error: messageConflitPeriodeItp(conflit), conflit: conflit?.id },
+        { status: 409 }
+      )
+    }
     console.error('POST /api/itps error:', error)
     return NextResponse.json(
       { error: 'Erreur lors de la création de l\'ITP' },

@@ -359,10 +359,19 @@ export const baseEspeceSchema = z.object({
 // se font donc sur `baseEspeceSchema`, jamais sur ces deux exports.
 export const createEspeceSchema = baseEspeceSchema.superRefine(bornerRendement)
 
-// Schéma pour la mise à jour (id optionnel, tous les champs optionnels)
+/**
+ * Schéma de mise à jour. L'`id` reste intouchable (clé étrangère des variétés,
+ * ITP, cultures et récoltes), mais le LIBELLÉ devient corrigeable : sans lui, une
+ * faute de saisie était définitive — « Rubarbe », « Groseillers », « Choux »
+ * existent en base et aucune route ne permettait de les réparer. Le serveur
+ * recalcule `nomNormalise` et revérifie l'unicité, et n'accepte le renommage que
+ * sur une entrée PERSO (sur une espèce officielle l'id EST le nom lisible :
+ * renommer sans toucher l'id ferait diverger les deux).
+ */
 export const updateEspeceSchema = baseEspeceSchema
   .partial()
   .omit({ id: true })
+  .extend({ nom: z.string().min(1, "Le nom de l'espèce est requis").max(100).optional() })
   .superRefine(bornerRendement)
 
 // Types inférés

@@ -72,8 +72,19 @@ export async function GET(request: NextRequest) {
     // Requête avec comptage
     const userId = session!.user.id
     // Visibilité : catalogue Gleba officiel (userId null) + communauté (partagé) + mes perso.
+    //
+    // La règle doit CASCADER sur l'espèce parente. La variété « Non spécifiée »
+    // d'une espèce privée était créée en catalogue officiel (userId null), donc
+    // visible de tous — et la réponse embarque `espece` en entier : le libellé
+    // nommait l'espèce privée d'un autre membre et le payload portait sa fiche
+    // complète. 13 entrées étaient dans ce cas. Une variété dont l'espèce ne
+    // m'est pas visible ne m'est pas visible.
     const whereVisible: Prisma.VarieteWhereInput = {
-      AND: [where, visibiliteReferentiel(userId)],
+      AND: [
+        where,
+        visibiliteReferentiel(userId),
+        { espece: visibiliteReferentiel(userId) },
+      ],
     }
     const [varietes, total] = await Promise.all([
       prisma.variete.findMany({

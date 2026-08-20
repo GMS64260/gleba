@@ -289,3 +289,58 @@ describe("tachesItpSemainePourCultures", () => {
     expect(tachesItpSemainePourCultures([], { aujourdHui: REFERENCE })).toHaveLength(0)
   })
 })
+
+describe("la date saisie fait foi", () => {
+  // QA C14 : les notifications se calculaient sur les semaines THÉORIQUES de
+  // l'ITP alors que /taches lit les dates stockées. Une courgette semée le 15/04
+  // (S16) avec un ITP à S14/S18/S34 recevait « planter » en S18, quand l'écran
+  // plaçait la plantation au 20/05 (S21) — et rien n'arrivait en S21.
+  const ITP = { id: "Courgette-printemps", zoneClimat: null, semaineSemis: 14, semainePlantation: 18, semaineRecolte: 34 }
+  const base = {
+    id: 346,
+    especeId: "Courgette",
+    annee: 2026,
+    semisFait: true,
+    plantationFaite: false,
+    recolteFaite: false,
+    couleur: null,
+    especeNom: "Courgette",
+    varieteNom: null,
+    plancheName: "B2",
+    ilot: null,
+    itp: ITP,
+  }
+
+  it("ne réclame pas la plantation à la semaine théorique quand une date est saisie", () => {
+    const taches = tachesItpSemainePourCultures(
+      [{ ...base, datePlantation: new Date("2026-05-20T00:00:00Z") }],
+      { aujourdHui: new Date("2026-04-29T12:00:00Z") } // S18
+    )
+    expect(taches.filter((t) => t.type === "plantation")).toHaveLength(0)
+  })
+
+  it("la réclame à la semaine de la date saisie", () => {
+    const taches = tachesItpSemainePourCultures(
+      [{ ...base, datePlantation: new Date("2026-05-20T00:00:00Z") }],
+      { aujourdHui: new Date("2026-05-20T12:00:00Z") } // S21
+    )
+    expect(taches.filter((t) => t.type === "plantation")).toHaveLength(1)
+    expect(taches[0].date).toBe("2026-05-20")
+  })
+
+  it("garde la semaine de l'ITP pour un jalon NON daté", () => {
+    const taches = tachesItpSemainePourCultures(
+      [{ ...base, plantationFaite: true, dateRecolte: null }],
+      { aujourdHui: new Date("2026-08-19T12:00:00Z") } // S34
+    )
+    expect(taches.filter((t) => t.type === "recolte")).toHaveLength(1)
+  })
+
+  it("ne produit jamais deux tâches pour le même jalon", () => {
+    const taches = tachesItpSemainePourCultures(
+      [{ ...base, datePlantation: new Date("2026-04-27T00:00:00Z") }], // S18, comme l'ITP
+      { aujourdHui: new Date("2026-04-29T12:00:00Z") }
+    )
+    expect(taches.filter((t) => t.type === "plantation")).toHaveLength(1)
+  })
+})

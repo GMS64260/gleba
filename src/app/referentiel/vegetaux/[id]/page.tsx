@@ -30,6 +30,15 @@ async function getEspece(id: string) {
         orderBy: [{ nom: "asc" }, { id: "asc" }],
         take: 24,
       },
+      // Compte réel des itinéraires publiables, pour pouvoir annoncer ce que la
+      // liste ne montre pas : elle est bornée à 24, sans un mot, sous une carte
+      // de /referentiel qui en annonce 115 pour le mesclun. Un visiteur voyait
+      // 24 encadrés tous « Mesclun asiatique-moutarde » et aucun des 91 autres.
+      _count: {
+        select: {
+          itps: { where: { AND: [{ actif: true }, visibiliteEnfantPublic()] } },
+        },
+      },
       itps: {
         // `actif: false` = scénario dont les semaines publiées sortent de
         // l'intervalle ISO 1–52, conservé pour audit. Il n'était filtré que dans
@@ -168,6 +177,12 @@ export default async function FicheVegetalPage({ params }: PageProps) {
           <h2 className="text-2xl font-bold text-slate-900">Itinéraires techniques par contexte</h2>
           <p className="mt-1 text-sm text-slate-500">Ces calendriers sont des références contextualisées, pas des garanties de réussite.</p>
           {espece.itps.length ? <div className="mt-4 grid gap-4 md:grid-cols-2">{espece.itps.map((itp) => <div key={itp.id} className="rounded-2xl border border-slate-200 bg-white p-5"><div className="flex flex-wrap items-start justify-between gap-2"><h3 className="font-semibold text-slate-900">{nomAffichableItp(itp)}</h3><div className="flex flex-wrap items-center gap-2"><QualiteBadge statut={itp.statutValidation} /><span className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-600">{itp.zoneClimat ? zoneLabel(itp.zoneClimat) : "Référence générale"}</span></div></div><dl className="mt-4 grid grid-cols-2 gap-3 text-sm"><MiniFact label="Conduite" value={itp.typePlanche || "Non précisée"} /><MiniFact label="Démarrage" value={itp.modeDemarrage || "Non précisé"} /><MiniFact label="Semis" value={week(itp.semaineSemis)} /><MiniFact label="Plantation" value={week(itp.semainePlantation)} /><MiniFact label="Récolte" value={week(itp.semaineRecolte)} /><MiniFact label="Cycle" value={cycleLisible(itp)} /></dl>{itp.sourceReference && <p className="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-500">Source déclarée : {itp.sourceReference}</p>}</div>)}</div> : <Empty>Les itinéraires contextualisés de ce végétal restent à documenter.</Empty>}
+          {espece._count.itps > espece.itps.length && (
+            <p className="mt-4 text-sm text-slate-500">
+              {espece.itps.length} itinéraires affichés sur {espece._count.itps} publiés pour ce
+              végétal.
+            </p>
+          )}
         </section>
 
         <section className="mt-10">

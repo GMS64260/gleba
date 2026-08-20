@@ -109,3 +109,16 @@ export function normalizeReferentielKey(input: string): string {
 export function normalizeVarieteName(input: string): string {
   return normalizeReferentielKey(input)
 }
+
+/**
+ * Libellé affiché et clé de comparaison pour une saisie utilisateur, dans les
+ * trois référentiels communautaires (espèce, variété, ITP).
+ *
+ * Le libellé est conservé tel que saisi, la clé est normalisée : c'est la seule
+ * combinaison qui permette à la fois de respecter la graphie de l'auteur et de
+ * détecter un doublon (QA cmswxyuoi).
+ */
+export function nomEtCleReferentiel(saisie: string): { nom: string; nomNormalise: string } {
+  const nom = displayReferentielName(saisie)
+  return { nom, nomNormalise: normalizeReferentielKey(nom) }
+}

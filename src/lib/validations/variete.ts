@@ -19,7 +19,15 @@ export const varieteSchema = z.object({
 })
 
 export const createVarieteSchema = varieteSchema
-export const updateVarieteSchema = varieteSchema.partial().omit({ id: true })
+/**
+ * Mise à jour : l'`id` est la clé étrangère des cultures, le LIBELLÉ est
+ * corrigeable (même raison que pour les espèces et les ITP). Renommage borné aux
+ * variétés perso, où l'id est un cuid opaque.
+ */
+export const updateVarieteSchema = varieteSchema
+  .partial()
+  .omit({ id: true })
+  .extend({ nom: z.string().min(1, 'Le nom de la variété est requis').max(100).optional() })
 
 export type VarieteInput = z.infer<typeof varieteSchema>
 export type CreateVarieteInput = z.infer<typeof createVarieteSchema>

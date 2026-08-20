@@ -176,6 +176,10 @@ export function NewCultureDialog({ open, onOpenChange, plancheId, plancheNom, pl
       fetch(`/api/itps?especeId=${encodeURIComponent(especeId)}&pageSize=1000&applicable=1&calibre=1&sortBy=confiance`).then(r => r.json()),
     ]).then(([especeData, itpsData]) => {
       setVarietes(especeData.varietes || [])
+      // La variété de l'espèce précédente restait sélectionnée : la culture
+      // partait « Carotte / Tomate Marmande ». Le serveur refuse désormais cette
+      // combinaison, le formulaire ne doit plus la produire.
+      setVarieteId(null)
       const loaded = itpsData.data || []
       setItps(loaded)
       if (loaded.length > 0) {
@@ -185,6 +189,7 @@ export function NewCultureDialog({ open, onOpenChange, plancheId, plancheNom, pl
       }
     }).catch(() => {
       setVarietes([])
+      setVarieteId(null)
       setItps([])
       setItpId(null)
     })

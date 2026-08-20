@@ -237,6 +237,11 @@ export default function NewCulturePage() {
       ])
         .then(([especeData, itpsData]) => {
           setVarietes(especeData.varietes || [])
+          // La variété de l'espèce PRÉCÉDENTE restait sélectionnée au changement
+          // d'espèce : la culture partait « Carotte / Tomate Marmande ». Le
+          // serveur refuse désormais cette combinaison — encore faut-il que le
+          // formulaire ne la produise plus tout seul.
+          form.setValue("varieteId", null)
           const loadedItps = itpsData.data || []
           setItps(loadedItps)
           // Auto-sélectionner le premier ITP disponible
