@@ -198,21 +198,40 @@ export default function ParametresPage() {
     })
   }
 
-  // Génère la config Claude Desktop JSON
-  const claudeDesktopConfig = mcpToken
-    ? JSON.stringify({
+  /**
+   * Config Claude Desktop.
+   *
+   * Deux défauts corrigés le 2026-08-20, après un utilisateur bloqué une heure.
+   *
+   * 1. Le nom du paquet était `@gleba/mcp-server`, qui n'existe pas sur npm
+   *    (404) : `npx` échouait, aucun outil Gleba n'apparaissait, et le seul
+   *    symptôme visible était « ma configuration JSON n'est pas prise en
+   *    compte ». Le paquet publié est `gleba-mcp-server` — même nom que le
+   *    README, `mcp-server/package.json` et la documentation. Cet écran était
+   *    le SEUL endroit faux, donc le seul que suit un utilisateur.
+   * 2. Le bloc n'était rendu que tant que le jeton fraîchement généré vivait
+   *    en mémoire : revoir la configuration imposait de RÉGÉNÉRER le jeton,
+   *    donc d'invalider celui déjà collé dans Claude. La configuration est
+   *    désormais toujours lisible ; quand le jeton n'est plus affichable, le
+   *    JSON porte un marqueur explicite à remplacer.
+   */
+  const MCP_TOKEN_PLACEHOLDER = 'glb_collez_ici_votre_token'
+  const claudeDesktopConfig = React.useMemo(
+    () =>
+      JSON.stringify({
         mcpServers: {
           gleba: {
             command: 'npx',
-            args: ['-y', '@gleba/mcp-server'],
+            args: ['-y', 'gleba-mcp-server'],
             env: {
               GLEBA_URL: typeof window !== 'undefined' ? window.location.origin : 'https://gleba.fr',
-              GLEBA_TOKEN: mcpToken,
+              GLEBA_TOKEN: mcpToken ?? MCP_TOKEN_PLACEHOLDER,
             },
           },
         },
-      }, null, 2)
-    : null
+      }, null, 2),
+    [mcpToken]
+  )
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type } = e.target
@@ -1033,7 +1052,7 @@ export default function ParametresPage() {
             </div>
 
             {/* Configuration Claude Desktop */}
-            {mcpToken && (
+            {(mcpToken || mcpHasToken) && (
               <div className="space-y-3 pt-4 border-t">
                 <h4 className="text-sm font-medium text-slate-900">
                   Configuration Claude Desktop
@@ -1041,6 +1060,14 @@ export default function ParametresPage() {
                 <p className="text-sm text-slate-500">
                   Ajoutez cette configuration dans le fichier <code className="bg-slate-100 px-1 rounded text-xs">claude_desktop_config.json</code> de Claude Desktop :
                 </p>
+                {!mcpToken && (
+                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                    Votre jeton n’est plus affichable : remplacez{' '}
+                    <code className="bg-amber-100 px-1 rounded">{MCP_TOKEN_PLACEHOLDER}</code> par celui
+                    que vous avez copié. Si vous l’avez perdu, régénérez-le ci-dessus — la connexion
+                    déjà en place devra alors être mise à jour avec le nouveau jeton.
+                  </p>
+                )}
                 <div className="relative">
                   <pre className="text-xs bg-slate-900 text-green-400 p-4 rounded-lg overflow-x-auto font-mono">
                     {claudeDesktopConfig}
@@ -1063,6 +1090,11 @@ export default function ParametresPage() {
                     <li>Redémarrez Claude Desktop</li>
                     <li>Les outils Gleba apparaissent dans la liste des serveurs MCP</li>
                   </ol>
+                  <p className="text-xs text-slate-500">
+                    C’est le seul mode de connexion supporté : Gleba s’authentifie par ce jeton, pas
+                    par OAuth. Ajouter <code className="bg-slate-100 px-1 rounded">gleba.fr</code> comme
+                    connecteur distant par son URL échoue donc à l’inscription, quel que soit le client.
+                  </p>
                 </div>
               </div>
             )}
