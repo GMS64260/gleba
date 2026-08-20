@@ -5,6 +5,8 @@
  * en sous-composants (GardenCanvas, GardenLayer, GardenElement).
  */
 
+import { OBJET_COLORS, couleurObjet } from "@/lib/jardin/objets-plan"
+
 export interface SelectionItem {
   type: "planche" | "objet" | "arbre"
   id: string | number
@@ -71,15 +73,10 @@ export interface BackgroundImageSettings {
   contour?: number[][][] | null
 }
 
-export const OBJET_COLORS: Record<string, string> = {
-  allee: "#d4a574",
-  passage: "#a8a29e",
-  bordure: "#78716c",
-  serre: "#93c5fd",
-  compost: "#854d0e",
-  eau: "#60a5fa",
-  autre: "#d1d5db",
-}
+// Réexport, et non copie : le catalogue des types d'objets du plan vit dans
+// @/lib/jardin/objets-plan. Une table locale avait déjà divergé une fois — elle
+// ignorait mur, clôture, poteau, bâtiment et haie.
+export { OBJET_COLORS }
 
 export const ARBRE_COLORS: Record<string, string> = {
   fruitier: "#22c55e",
@@ -90,7 +87,7 @@ export const ARBRE_COLORS: Record<string, string> = {
 
 /** Retourne la couleur d'un objet/arbre selon son type. */
 export function colorForObjet(type: string, couleur: string | null): string {
-  return couleur || OBJET_COLORS[type] || OBJET_COLORS.autre
+  return couleurObjet(type, couleur)
 }
 export function colorForArbre(type: string, couleur: string | null): string {
   return couleur || ARBRE_COLORS[type] || ARBRE_COLORS.fruitier

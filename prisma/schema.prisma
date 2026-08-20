@@ -1511,7 +1511,11 @@ model ObjetJardin {
   userId        String       @map("user_id")
   user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   nom           String?      @map("nom")
-  type          String       @map("type") // "allee", "passage", "bordure", "serre", "compost", "autre"
+  // Catalogue et rendus (2D/3D) : src/lib/jardin/objets-plan.ts — chaîne libre,
+  // donc ajouter un type n'exige aucune migration. Types connus : allee,
+  // passage, mur, cloture, poteau, batiment, serre, bordure, haie, compost,
+  // eau, autre.
+  type          String       @map("type")
   largeur       Float        @map("largeur") // mètres
   longueur      Float        @map("longueur") // mètres
   posX          Float        @map("pos_x") // Position X en mètres

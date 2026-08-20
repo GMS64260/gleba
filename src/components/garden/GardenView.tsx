@@ -3,6 +3,7 @@
 import * as React from "react"
 
 import { formatDistance } from "@/lib/plan-fond-utils"
+import { couleurObjet, typeObjet } from "@/lib/jardin/objets-plan"
 
 export interface SelectionItem {
   type: 'planche' | 'objet' | 'arbre'
@@ -73,16 +74,8 @@ function envergureProjetee(arbre: Arbre): number | null {
   return projetee && projetee > arbre.envergure ? projetee : null
 }
 
-// Couleurs par défaut pour les types d'objets
-const OBJET_COLORS: Record<string, string> = {
-  allee: "#d4a574",      // Marron clair (gravier)
-  passage: "#a8a29e",    // Gris pierre
-  bordure: "#78716c",    // Gris foncé
-  serre: "#93c5fd",      // Bleu clair transparent
-  compost: "#854d0e",    // Marron foncé
-  eau: "#60a5fa",        // Bleu
-  autre: "#d1d5db"       // Gris
-}
+// Les couleurs par défaut des objets viennent du catalogue partagé
+// (@/lib/jardin/objets-plan) : 2D, 3D et écran d'édition doivent s'accorder.
 
 // Couleurs par défaut pour les types d'arbres
 const ARBRE_COLORS: Record<string, string> = {
@@ -1061,6 +1054,29 @@ export function GardenView({
             <circle cx="0.31" cy="0.33" r="0.02" fill="#78350f" opacity="0.3" />
           </pattern>
 
+          {/* Maçonnerie : assises décalées, lisibles même sur un mur de 10 cm
+              de large (le cas courant sur un plan de ferme). */}
+          <pattern id="tex-maconnerie" patternUnits="userSpaceOnUse" width="0.5" height="0.5">
+            <path d="M0 0.25 H0.5 M0 0.5 H0.5" stroke="#000000" strokeWidth="0.012" opacity="0.22" fill="none" />
+            <path d="M0.25 0 V0.25 M0 0.25 V0.5 M0.5 0.25 V0.5" stroke="#000000" strokeWidth="0.012" opacity="0.18" fill="none" />
+            <rect x="0" y="0" width="0.5" height="0.5" fill="#ffffff" opacity="0.05" />
+          </pattern>
+
+          {/* Bâti : hachure oblique, convention de plan pour une emprise couverte. */}
+          <pattern id="tex-bati" patternUnits="userSpaceOnUse" width="0.4" height="0.4">
+            <path d="M-0.1 0.1 l0.2 -0.2 M0 0.4 l0.4 -0.4 M0.3 0.5 l0.2 -0.2" stroke="#000000" strokeWidth="0.02" opacity="0.16" fill="none" />
+          </pattern>
+
+          {/* Haie : feuillage dense, sans dessiner un cercle par mètre linéaire. */}
+          <pattern id="tex-haie" patternUnits="userSpaceOnUse" width="0.45" height="0.45">
+            <circle cx="0.1" cy="0.12" r="0.075" fill="#3f6212" opacity="0.3" />
+            <circle cx="0.31" cy="0.08" r="0.06" fill="#4d7c0f" opacity="0.28" />
+            <circle cx="0.22" cy="0.28" r="0.08" fill="#365314" opacity="0.26" />
+            <circle cx="0.4" cy="0.33" r="0.055" fill="#4d7c0f" opacity="0.3" />
+            <circle cx="0.04" cy="0.36" r="0.05" fill="#3f6212" opacity="0.24" />
+            <circle cx="0.17" cy="0.02" r="0.04" fill="#84cc16" opacity="0.22" />
+          </pattern>
+
           <radialGradient id="grad-eau" cx="0.4" cy="0.35" r="0.8">
             <stop offset="0%" stopColor="#bfdbfe" />
             <stop offset="60%" stopColor="#7cb8f7" />
@@ -1170,9 +1186,25 @@ export function GardenView({
 
         {/* Objets de jardin (rendus en premier, sous les planches) */}
         {objets.map((objet) => {
-          const color = objet.couleur || OBJET_COLORS[objet.type] || OBJET_COLORS.autre
+          const color = couleurObjet(objet.type, objet.couleur)
           const isSelected = selectedObjets.has(objet.id)
           const isDraggingThis = dragging?.type === 'objet' && dragging.id === objet.id
+          // Un mur ou une clôture fait 10 à 20 cm de large : à 16 px/m la forme
+          // dessinée mesure 2 px, cible inatteignable au doigt. On garantit
+          // 26 px de prise, exprimés en unités monde comme les autres épaisseurs
+          // constantes à l'écran — au zoom fort, la forme suffit et la cible
+          // élargie disparaît d'elle-même.
+          // Bornée par la longueur de l'objet : sur un poteau de 0,2 × 0,2 m,
+          // une bande de 26 px capterait tout ce qui l'entoure.
+          const largeurCible = Math.min(
+            Math.max(objet.largeur, 26 / scale),
+            Math.max(objet.longueur, objet.largeur)
+          )
+          const mince = largeurCible > objet.largeur
+          const etiquetteLeLong = typeObjet(objet.type).lineaire && objet.largeur < 0.6
+          const tailleEtiquette = etiquetteLeLong
+            ? Math.max(Math.min(objet.longueur * 0.1, 0.3), 0.14)
+            : Math.max(Math.min(objet.largeur * 0.3, objet.longueur * 0.15, 0.3), 0.12)
 
           return (
             <g
@@ -1182,6 +1214,18 @@ export function GardenView({
               filter="url(#garden-soft-shadow)"
               style={{ cursor: editable ? (isDraggingThis ? "grabbing" : "grab") : "pointer" }}
             >
+              {/* Cible de saisie élargie des éléments fins : dessinée en
+                  premier, donc sous la forme, et transparente (fill="none" ne
+                  recevrait pas les événements). */}
+              {mince && (
+                <rect
+                  x={-(largeurCible - objet.largeur) / 2}
+                  y={-2 / scale}
+                  width={largeurCible}
+                  height={objet.longueur + 4 / scale}
+                  fill="transparent"
+                />
+              )}
               {/* Forme selon le type */}
               {objet.type === 'allee' || objet.type === 'passage' ? (
                 // Allée/passage: gravier
@@ -1223,6 +1267,145 @@ export function GardenView({
                     width={objet.largeur}
                     height={objet.longueur}
                     fill="url(#tex-wood)"
+                    style={{ pointerEvents: "none" }}
+                  />
+                </>
+              ) : objet.type === 'poteau' ? (
+                // Poteau : section pleine, contour marqué
+                <>
+                  <rect
+                    x={0}
+                    y={0}
+                    width={objet.largeur}
+                    height={objet.longueur}
+                    fill={color}
+                    stroke={isSelected ? "#3b82f6" : "#44403c"}
+                    strokeWidth={isSelected ? 0.08 : 0.04}
+                    rx={Math.min(objet.largeur, objet.longueur) * 0.2}
+                  />
+                  <circle
+                    cx={objet.largeur / 2}
+                    cy={objet.longueur / 2}
+                    r={Math.min(objet.largeur, objet.longueur) * 0.18}
+                    fill={shade(color, -0.35)}
+                    style={{ pointerEvents: "none" }}
+                  />
+                </>
+              ) : objet.type === 'mur' ? (
+                // Mur : maçonnerie, angles vifs, contour marqué
+                <>
+                  <rect
+                    x={0}
+                    y={0}
+                    width={objet.largeur}
+                    height={objet.longueur}
+                    fill={color}
+                    stroke={isSelected ? "#3b82f6" : "#4b5563"}
+                    strokeWidth={isSelected ? 0.08 : 0.03}
+                  />
+                  <rect
+                    x={0}
+                    y={0}
+                    width={objet.largeur}
+                    height={objet.longueur}
+                    fill="url(#tex-maconnerie)"
+                    style={{ pointerEvents: "none" }}
+                  />
+                </>
+              ) : objet.type === 'cloture' ? (
+                // Clôture : ligne continue et poteaux réguliers. Le pas suit la
+                // longueur pour rester lisible du portail au fond de parcelle,
+                // et reste borné pour ne pas dessiner 500 poteaux sur 1 km.
+                <>
+                  <rect
+                    x={0}
+                    y={0}
+                    width={objet.largeur}
+                    height={objet.longueur}
+                    fill={color}
+                    fillOpacity={0.35}
+                    stroke={isSelected ? "#3b82f6" : color}
+                    strokeWidth={isSelected ? 0.08 : 0.02}
+                  />
+                  <line
+                    x1={objet.largeur / 2}
+                    y1={0}
+                    x2={objet.largeur / 2}
+                    y2={objet.longueur}
+                    stroke={color}
+                    strokeWidth={Math.max(objet.largeur * 0.5, 0.04)}
+                    style={{ pointerEvents: "none" }}
+                  />
+                  {(() => {
+                    const pas = Math.max(objet.longueur / 40, 1.5)
+                    const nb = Math.max(Math.floor(objet.longueur / pas) + 1, 2)
+                    return Array.from({ length: nb }).map((_, i) => (
+                      <circle
+                        key={i}
+                        cx={objet.largeur / 2}
+                        cy={Math.min(i * pas, objet.longueur)}
+                        r={Math.max(objet.largeur * 0.75, 0.07)}
+                        fill={shade(color, -0.3)}
+                        style={{ pointerEvents: "none" }}
+                      />
+                    ))
+                  })()}
+                </>
+              ) : objet.type === 'batiment' ? (
+                // Bâtiment : emprise hachurée et murs épais, convention de plan
+                <>
+                  <rect
+                    x={0}
+                    y={0}
+                    width={objet.largeur}
+                    height={objet.longueur}
+                    fill={color}
+                    fillOpacity={0.5}
+                    stroke={isSelected ? "#3b82f6" : "#3f3f46"}
+                    strokeWidth={isSelected ? 0.1 : 0.06}
+                  />
+                  <rect
+                    x={0}
+                    y={0}
+                    width={objet.largeur}
+                    height={objet.longueur}
+                    fill="url(#tex-bati)"
+                    style={{ pointerEvents: "none" }}
+                  />
+                  {/* Trait de rive : lit la couverture sans modéliser le toit */}
+                  {objet.largeur > 1 && objet.longueur > 1 && (
+                    <line
+                      x1={objet.largeur / 2}
+                      y1={0.08}
+                      x2={objet.largeur / 2}
+                      y2={objet.longueur - 0.08}
+                      stroke="#3f3f46"
+                      strokeWidth={0.03}
+                      opacity={0.5}
+                      style={{ pointerEvents: "none" }}
+                    />
+                  )}
+                </>
+              ) : objet.type === 'haie' ? (
+                // Haie : masse végétale, contour souple
+                <>
+                  <rect
+                    x={0}
+                    y={0}
+                    width={objet.largeur}
+                    height={objet.longueur}
+                    fill={color}
+                    stroke={isSelected ? "#3b82f6" : "#3f6212"}
+                    strokeWidth={isSelected ? 0.08 : 0.03}
+                    rx={Math.min(objet.largeur, objet.longueur) / 2}
+                  />
+                  <rect
+                    x={0}
+                    y={0}
+                    width={objet.largeur}
+                    height={objet.longueur}
+                    fill="url(#tex-haie)"
+                    rx={Math.min(objet.largeur, objet.longueur) / 2}
                     style={{ pointerEvents: "none" }}
                   />
                 </>
@@ -1330,17 +1513,23 @@ export function GardenView({
                   rx={0.08}
                 />
               )}
-              {/* Nom si présent */}
+              {/* Nom si présent. Sur un élément linéaire étroit, l'étiquette
+                  court le long de la longueur et se dimensionne sur elle : le
+                  calcul d'origine, basé sur la largeur, rendait un « Mur » de
+                  10 cm en corps 0,03 m, soit invisible à tout zoom utile. */}
               {calques.etiquettes && objet.nom && (
                 <text
-                  x={objet.largeur / 2}
-                  y={objet.longueur / 2}
+                  {...(etiquetteLeLong
+                    ? { transform: `translate(${objet.largeur / 2}, ${objet.longueur / 2}) rotate(-90)` }
+                    : { x: objet.largeur / 2, y: objet.longueur / 2 })}
                   textAnchor="middle"
                   dominantBaseline="middle"
-                  fontSize={Math.min(objet.largeur * 0.3, objet.longueur * 0.15, 0.3)}
+                  fontSize={tailleEtiquette}
                   fill="#374151"
                   fontWeight="500"
-                  style={{ pointerEvents: "none" }}
+                  stroke="#ffffff"
+                  strokeWidth={tailleEtiquette * 0.16}
+                  style={{ pointerEvents: "none", paintOrder: "stroke" }}
                 >
                   {objet.nom}
                 </text>

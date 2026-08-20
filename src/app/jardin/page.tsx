@@ -24,7 +24,9 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
@@ -33,6 +35,7 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
@@ -51,7 +54,15 @@ import { calibrerFond, distance, formatDistance } from "@/lib/plan-fond-utils"
 import { croissanceCulture, envergureArbreADate } from "@/lib/plan-croissance"
 import { projeterGpsSurPlan, projeterPlanSurGps } from "@/lib/gps-plan-utils"
 import { partitionnerArbresPourSauvegarde } from "@/lib/plan-sauvegarde"
-import { nomsCopiesEnLot, prochainNomCopie } from "@/lib/jardin/noms-copie"
+import { nomsCopiesEnLot } from "@/lib/jardin/noms-copie"
+import {
+  TYPES_CONVERSION_PLANCHE,
+  TYPES_OBJETS_PAR_GROUPE,
+  gabaritObjet,
+  labelTypeObjet,
+  poseCopieObjet,
+  typeObjet,
+} from "@/lib/jardin/objets-plan"
 
 /** Garde-fou sur la duplication en lot (une requête par copie). */
 const MAX_COPIES_PLANCHE = 20
@@ -164,15 +175,46 @@ interface Arbre {
   parcelleGeoId: string | null
 }
 
-const TYPES_OBJETS = [
-  { value: "allee", label: "Allée", color: "#d4a574" },
-  { value: "passage", label: "Passage", color: "#a8a29e" },
-  { value: "bordure", label: "Bordure", color: "#78716c" },
-  { value: "serre", label: "Serre", color: "#93c5fd" },
-  { value: "compost", label: "Compost", color: "#854d0e" },
-  { value: "eau", label: "Point d'eau", color: "#60a5fa" },
-  { value: "autre", label: "Autre", color: "#d1d5db" },
-]
+/**
+ * Sélecteur de type d'objet, sectionné.
+ *
+ * L'ajout du bâti porte le catalogue à douze types. Une liste à plat de douze
+ * lignes se parcourt mal ; les trois sections gardent le menu aussi court à
+ * l'œil qu'avant, et le même composant sert à la création et au panneau
+ * d'édition — les deux ne peuvent plus diverger.
+ */
+function SelectTypeObjet({
+  value,
+  onValueChange,
+  className,
+}: {
+  value: string
+  onValueChange: (v: string) => void
+  className?: string
+}) {
+  return (
+    <Select value={value} onValueChange={onValueChange}>
+      <SelectTrigger className={className}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {TYPES_OBJETS_PAR_GROUPE.map(groupe => (
+          <SelectGroup key={groupe.groupe}>
+            <SelectLabel>{groupe.label}</SelectLabel>
+            {groupe.types.map(t => (
+              <SelectItem key={t.value} value={t.value}>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded" style={{ backgroundColor: t.color }} />
+                  {t.label}
+                </div>
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}
 
 const TYPES_ARBRES = [
   { value: "fruitier", label: "Arbre fruitier", color: "#22c55e" },
@@ -1338,6 +1380,44 @@ function JardinContent() {
     }
   }
 
+  // Reclasser une planche en objet du plan.
+  //
+  // Faute de types bâti, l'outil « planche » servait à dessiner murs et
+  // clôtures. Supprimer puis redessiner ferait perdre le placement, qui est
+  // l'essentiel du travail de tracé. L'API refuse la conversion dès qu'un
+  // historique de culture existe : dans ce cas c'est une vraie planche.
+  const handleConvertirPlanche = async (type: string) => {
+    if (!selectedPlanche) return
+    const source = selectedPlancheData
+    const label = labelTypeObjet(type)
+    if (!(await confirmDialog(
+      `Reclasser « ${source?.nom || selectedPlanche} » en ${label.toLowerCase()} ? La planche disparaît de la liste des planches ; sa position et ses dimensions sont conservées.`
+    ))) return
+
+    try {
+      const response = await fetch(
+        `/api/planches/${encodeURIComponent(selectedPlanche)}/convertir-en-objet`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type }),
+        }
+      )
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(payload?.error || "Erreur conversion")
+
+      toast({ title: `Reclassé en ${label.toLowerCase()}`, description: source?.nom })
+      setSelection(payload?.objet?.id ? [{ type: 'objet', id: payload.objet.id }] : [])
+      await Promise.all([fetchPlanches(), fetchObjets()])
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Conversion impossible",
+        description: error instanceof Error ? error.message : "Erreur inconnue",
+      })
+    }
+  }
+
   // Créer un nouvel objet
   const handleCreateObjet = async () => {
     // Audit #35 : refuser les dimensions nulles (un champ vidé donnait 0 via
@@ -1379,7 +1459,9 @@ function JardinContent() {
 
       toast({ title: "Objet créé" })
       setShowNewObjetDialog(false)
-      setNewObjet({ nom: "", type: "allee", largeur: 0.5, longueur: 5 })
+      // On garde le type qui vient d'être utilisé, avec son gabarit : créer
+      // plusieurs murs à la suite est le cas courant.
+      setNewObjet(o => ({ nom: "", type: o.type, ...gabaritObjet(o.type) }))
       fetchObjets()
     } catch (error) {
       toast({
@@ -1417,43 +1499,71 @@ function JardinContent() {
     }
   }
 
-  // Dupliquer l'objet sélectionné
-  const handleDuplicateObjet = async () => {
+  // Dupliquer l'objet sélectionné, éventuellement en plusieurs exemplaires.
+  //
+  // L'objet n'avait qu'une duplication unitaire, posée en diagonale (+1, +1).
+  // Tracer un mur ou une clôture imposait donc de créer chaque tronçon puis de
+  // le replacer à la main, là où la planche offrait déjà « Dupliquer ×N » — ce
+  // qui poussait à dessiner du bâti avec des planches.
+  // Les copies suivent désormais l'orientation propre de l'objet : un élément
+  // linéaire s'enchaîne bout à bout, le reste se pose côte à côte
+  // (cf. poseCopieObjet).
+  const handleDuplicateObjet = async (nombre = 1) => {
     if (!selectedObjet) return
     const source = objets.find(o => o.id === selectedObjet)
     if (!source) return
 
-    try {
-      const response = await fetch("/api/objets-jardin", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          // Même correctif de nommage que les planches : on numérote au lieu
-          // d'empiler « (copie) (copie) ».
-          nom: source.nom
-            ? prochainNomCopie(source.nom, objets.map(o => o.nom || "").filter(Boolean))
-            : null,
-          type: source.type,
-          largeur: source.largeur,
-          longueur: source.longueur,
-          posX: source.posX + 1,
-          posY: source.posY + 1,
-          rotation2D: source.rotation2D,
-          couleur: source.couleur,
-          parcelleGeoId: selectedParcelleId || undefined,
-        })
-      })
+    const copies = Math.max(1, Math.min(nombre, MAX_COPIES_PLANCHE))
+    const { lineaire, label } = typeObjet(source.type)
+    // Un objet sans nom le reste : numéroter « (2) » un objet anonyme
+    // n'apporterait rien sur le plan.
+    const noms: (string | null)[] = source.nom
+      ? nomsCopiesEnLot(source.nom, objets.map(o => o.nom || "").filter(Boolean), copies)
+      : Array.from({ length: copies }, () => null)
 
-      if (!response.ok) {
-        const err = await response.json()
-        throw new Error(err.error || "Erreur duplication")
+    try {
+      let dernierId: number | null = null
+      for (const [index, nom] of noms.entries()) {
+        const { posX, posY } = poseCopieObjet(source, index + 1, lineaire)
+        const response = await fetch("/api/objets-jardin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            nom,
+            type: source.type,
+            largeur: source.largeur,
+            longueur: source.longueur,
+            posX,
+            posY,
+            rotation2D: source.rotation2D,
+            couleur: source.couleur,
+            parcelleGeoId: selectedParcelleId || undefined,
+          })
+        })
+
+        if (!response.ok) {
+          const err = await response.json()
+          throw new Error(err.error || "Erreur duplication")
+        }
+
+        const created = await response.json()
+        dernierId = created.id
       }
 
-      const created = await response.json()
-      toast({ title: "Objet dupliqué" })
+      toast({
+        title: copies === 1
+          ? "Objet dupliqué"
+          : lineaire
+            ? `${copies} tronçons ajoutés`
+            : `${copies} objets créés`,
+        description: source.nom ? noms.join(", ") : label,
+      })
       await fetchObjets()
-      setSelection([{ type: 'objet', id: created.id }])
+      if (dernierId !== null) setSelection([{ type: 'objet', id: dernierId }])
     } catch (error) {
+      // Comme pour les planches : les copies créées avant l'échec sont
+      // conservées, on rafraîchit pour montrer l'état réel.
+      await fetchObjets()
       toast({
         variant: "destructive",
         title: "Erreur",
@@ -2393,6 +2503,35 @@ function JardinContent() {
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
+                    {/* Aucune culture en cours : la planche est peut-être un
+                        élément du plan saisi comme planche, faute de type bâti
+                        à l'époque. On propose de la reclasser sans perdre son
+                        placement.
+                        Attention : `cultures` ne porte ici que l'année courante
+                        non terminée (cf. /api/jardin), ce n'est donc PAS une
+                        preuve d'absence d'historique. L'autorité reste la route
+                        de conversion, qui refuse dès qu'une culture, une
+                        fertilisation ou une analyse de sol existe. */}
+                    {selectedPlancheData.cultures.length === 0 && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm" className="w-full justify-start text-xs text-muted-foreground">
+                            Ce n&apos;est pas une planche ?
+                            <ChevronDown className="h-3 w-3 ml-auto" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start">
+                          <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                            Reclasser en élément du plan
+                          </DropdownMenuLabel>
+                          {TYPES_CONVERSION_PLANCHE.map(value => (
+                            <DropdownMenuItem key={value} onClick={() => handleConvertirPlanche(value)}>
+                              {labelTypeObjet(value)}
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -2401,7 +2540,7 @@ function JardinContent() {
                 <CardHeader className="pb-2">
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-base">
-                      {selectedObjetData.nom || TYPES_OBJETS.find(t => t.value === selectedObjetData.type)?.label || "Objet"}
+                      {selectedObjetData.nom || labelTypeObjet(selectedObjetData.type)}
                     </CardTitle>
                     <Button variant="ghost" size="icon" onClick={() => setSelection([])}>
                       <X className="h-4 w-4" />
@@ -2413,7 +2552,8 @@ function JardinContent() {
                     {/* Type */}
                     <div>
                       <Label className="text-xs text-muted-foreground">Type</Label>
-                      <Select
+                      <SelectTypeObjet
+                        className="h-8 text-sm"
                         value={selectedObjetData.type}
                         onValueChange={(v) => {
                           setObjets(prev => prev.map(o =>
@@ -2421,21 +2561,7 @@ function JardinContent() {
                           ))
                           marquerChangement()
                         }}
-                      >
-                        <SelectTrigger className="h-8 text-sm">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {TYPES_OBJETS.map(t => (
-                            <SelectItem key={t.value} value={t.value}>
-                              <div className="flex items-center gap-2">
-                                <div className="w-3 h-3 rounded" style={{ backgroundColor: t.color }} />
-                                {t.label}
-                              </div>
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                      />
                       </div>
 
                       {/* Nom */}
@@ -2498,7 +2624,7 @@ function JardinContent() {
                         <div className="flex gap-2">
                           <input
                             type="color"
-                            value={selectedObjetData.couleur || TYPES_OBJETS.find(t => t.value === selectedObjetData.type)?.color || "#d1d5db"}
+                            value={selectedObjetData.couleur || typeObjet(selectedObjetData.type).color}
                             onChange={(e) => {
                               setObjets(prev => prev.map(o =>
                                 o.id === selectedObjet ? { ...o, couleur: e.target.value } : o
@@ -2541,10 +2667,27 @@ function JardinContent() {
 
                       {/* Actions */}
                       <div className="flex gap-2">
-                        <Button variant="outline" size="sm" onClick={handleDuplicateObjet} className="flex-1">
-                          <Copy className="h-4 w-4 mr-2" />
-                          Dupliquer
-                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="outline" size="sm" className="flex-1">
+                              <Copy className="h-4 w-4 mr-2" />
+                              Dupliquer
+                              <ChevronDown className="h-4 w-4 ml-1" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start">
+                            {typeObjet(selectedObjetData.type).lineaire && (
+                              <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                                Copies enchaînées bout à bout
+                              </DropdownMenuLabel>
+                            )}
+                            {[1, 2, 3, 5, 10].map(n => (
+                              <DropdownMenuItem key={n} onClick={() => handleDuplicateObjet(n)}>
+                                {n === 1 ? "Dupliquer" : `Dupliquer ×${n}`}
+                              </DropdownMenuItem>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                         <Button variant="destructive" size="sm" onClick={handleDeleteObjet} className="flex-1">
                           <Trash2 className="h-4 w-4 mr-2" />
                           Supprimer
@@ -3270,21 +3413,13 @@ function JardinContent() {
           <div className="space-y-4 py-4">
             <div>
               <Label htmlFor="objet-type">Type</Label>
-              <Select value={newObjet.type} onValueChange={v => setNewObjet(o => ({ ...o, type: v }))}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {TYPES_OBJETS.map(t => (
-                    <SelectItem key={t.value} value={t.value}>
-                      <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded" style={{ backgroundColor: t.color }} />
-                        {t.label}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {/* Changer de type applique son gabarit : sans valeur de départ
+                  crédible, on recrée un modèle par dimension au lieu d'en
+                  redimensionner un. Les champs restent libres. */}
+              <SelectTypeObjet
+                value={newObjet.type}
+                onValueChange={v => setNewObjet(o => ({ ...o, type: v, ...gabaritObjet(v) }))}
+              />
             </div>
             <div>
               <Label htmlFor="objet-nom">Nom (optionnel)</Label>

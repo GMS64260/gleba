@@ -151,16 +151,14 @@ export function placerPlants(
   return out
 }
 
-/** Couleurs par défaut des objets (aligné sur la 2D). */
-export const OBJET_COLORS: Record<string, string> = {
-  allee: "#cbb994",
-  passage: "#b7b2aa",
-  bordure: "#8a6a45",
-  serre: "#bcdcff",
-  compost: "#5a3d1e",
-  eau: "#4a90d9",
-  autre: "#c9c9c9",
-}
+/**
+ * Couleurs par défaut des objets, palette 3D du catalogue partagé.
+ *
+ * La 3D garde des teintes propres (plus sourdes que la 2D, l'éclairage de la
+ * scène les éclaircit), mais les deux jeux vivent désormais côte à côte dans
+ * @/lib/jardin/objets-plan : un type ajouté ne peut plus manquer d'un côté.
+ */
+export { OBJET_COLORS_3D as OBJET_COLORS } from "@/lib/jardin/objets-plan"
 
 export const ARBRE_COLORS: Record<string, string> = {
   fruitier: "#3f9440",

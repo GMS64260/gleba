@@ -18,6 +18,7 @@ import type { Garden3DData, Garden3DFond, Objet3D, Planche3D } from "./types"
 import { computeLayout } from "./layout"
 import { OBJET_COLORS, rnd, shade, placerPlants, shapePourFamille, specPourShape, vertFeuillage, type GeoKind } from "./procedural"
 import { modelPourArbre, modelPourCulture } from "./gltf-map"
+import { typeObjet } from "@/lib/jardin/objets-plan"
 import { InstancedGltf, type GltfInstance } from "./GltfModels"
 
 const BED_H = 0.28 // hauteur d'une planche surélevée (m)
@@ -279,6 +280,8 @@ function Objet({ o }: { o: Objet3D }) {
   const cz = o.posY + o.longueur / 2
   const rotY = -(o.rotation2D * Math.PI) / 180
   const color = o.couleur || OBJET_COLORS[o.type] || OBJET_COLORS.autre
+  // Hauteur bâtie du catalogue partagé (0 pour les objets rendus au sol).
+  const hBati = typeObjet(o.type).hauteur3D
 
   let node: React.ReactNode
   if (o.type === "allee" || o.type === "passage") {
@@ -326,6 +329,66 @@ function Objet({ o }: { o: Objet3D }) {
       <mesh position={[0, 0.25, 0]} castShadow receiveShadow>
         <boxGeometry args={[o.largeur, 0.5, o.longueur]} />
         <meshStandardMaterial color={color} roughness={1} />
+      </mesh>
+    )
+  } else if (o.type === "mur" || o.type === "poteau") {
+    // Hauteur du catalogue : un mur ou un poteau doit porter une ombre, c'est
+    // ce qui rend l'orientation du bâti lisible dans la scène.
+    const h = hBati
+    node = (
+      <mesh position={[0, h / 2, 0]} castShadow receiveShadow>
+        <boxGeometry args={[o.largeur, h, o.longueur]} />
+        <meshStandardMaterial color={color} roughness={0.92} />
+      </mesh>
+    )
+  } else if (o.type === "cloture") {
+    // Poteaux + deux lisses. Le pas est borné : une clôture de 200 m ne doit
+    // pas ajouter 130 meshes à la scène.
+    const h = hBati
+    const pas = Math.max(o.longueur / 24, 2)
+    const nb = Math.max(Math.floor(o.longueur / pas) + 1, 2)
+    const ep = Math.max(o.largeur, 0.08)
+    node = (
+      <>
+        {Array.from({ length: nb }).map((_, i) => (
+          <mesh
+            key={i}
+            position={[0, h / 2, Math.min(i * pas, o.longueur) - o.longueur / 2]}
+            castShadow
+          >
+            <boxGeometry args={[ep, h, ep]} />
+            <meshStandardMaterial color={shade(color, -0.25)} roughness={0.95} />
+          </mesh>
+        ))}
+        {[h * 0.75, h * 0.35].map((y, i) => (
+          <mesh key={`lisse-${i}`} position={[0, y, 0]} castShadow>
+            <boxGeometry args={[ep * 0.6, 0.07, o.longueur]} />
+            <meshStandardMaterial color={color} roughness={0.9} />
+          </mesh>
+        ))}
+      </>
+    )
+  } else if (o.type === "batiment") {
+    const h = hBati
+    node = (
+      <>
+        <mesh position={[0, h / 2, 0]} castShadow receiveShadow>
+          <boxGeometry args={[o.largeur, h, o.longueur]} />
+          <meshStandardMaterial color={color} roughness={0.85} />
+        </mesh>
+        {/* Toiture débordante : suffit à distinguer un bâtiment d'un bloc. */}
+        <mesh position={[0, h + 0.09, 0]} castShadow>
+          <boxGeometry args={[o.largeur + 0.35, 0.18, o.longueur + 0.35]} />
+          <meshStandardMaterial color={shade(color, -0.3)} roughness={0.8} />
+        </mesh>
+      </>
+    )
+  } else if (o.type === "haie") {
+    const h = hBati
+    node = (
+      <mesh position={[0, h / 2, 0]} castShadow receiveShadow>
+        <boxGeometry args={[o.largeur, h, o.longueur]} />
+        <meshStandardMaterial color={color} roughness={1} flatShading />
       </mesh>
     )
   } else {
