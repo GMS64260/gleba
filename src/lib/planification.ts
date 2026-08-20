@@ -48,6 +48,21 @@ export interface CulturePrevue {
    * (QA cmsqm5f3f : Poireau 198 plants sur la fiche, 66 à l'écran Plants).
    */
   cultureQuantite: number | null
+  /**
+   * Date de récolte RÉELLEMENT stockée sur la culture, quand elle existe.
+   *
+   * `semaineRecolte` en est dérivée et perd de l'information : une semaine ISO
+   * chevauche deux mois, si bien qu'une récolte du 2 juillet appartient à une
+   * semaine dont le lundi tombe le 29 juin. Ventiler les kilos sur la semaine
+   * plaçait donc cette récolte en juin sur Planification, quand le tableau de
+   * bord et le Calendrier la lisent en juillet depuis la même date. La date
+   * fait foi partout ailleurs : elle doit descendre jusqu'ici.
+   *
+   * Null pour les suggestions de rotation, qui n'ont pas de date par
+   * construction — la semaine de l'ITP est alors la seule information
+   * disponible.
+   */
+  cultureDateRecolte: Date | null
   ilot: string | null
   rotationId: string | null
   rotationAnnee: number // Annee dans le cycle (1, 2, 3...)
@@ -459,6 +474,7 @@ export async function getCulturesPrevues(
         plancheSurface: planche.surface,
         cultureLongueur: cultureExistante?.longueur ?? null,
         cultureQuantite: cultureExistante?.quantite ?? null,
+        cultureDateRecolte: cultureExistante?.dateRecolte ?? null,
         ilot: deriveIlot(planche.ilot, planche.nom),
         rotationId: planche.rotationId,
         rotationAnnee: detail.annee,
@@ -570,6 +586,7 @@ export async function getCulturesPrevues(
         plancheSurface: planche?.surface ?? null,
         cultureLongueur: culture.longueur,
         cultureQuantite: culture.quantite ?? null,
+        cultureDateRecolte: culture.dateRecolte ?? null,
         ilot: planche ? deriveIlot(planche.ilot, planche.nom) : null,
         rotationId: planche?.rotationId ?? null,
         // 0 = planche sans rotation. Si elle en a une, on expose sa position
@@ -659,8 +676,16 @@ export async function getRecoltesPrevuesDetail(
   for (const culture of culturesPrevues) {
     if (!culture.semaineRecolte || !culture.especeId) continue
 
+    // La DATE stockée fait foi pour le mois : c'est elle que le tableau de
+    // bord et le Calendrier lisent. La semaine ISO ne sert que pour les
+    // cultures qui n'ont pas de date (suggestions de rotation), où elle est la
+    // seule information disponible — et son lundi peut alors tomber dans le
+    // mois précédent, ce qui est sans conséquence puisque rien d'autre ne
+    // projette ces lignes.
     const periodeNum = groupBy === 'mois'
-      ? moisDepuisSemaine(culture.annee, culture.semaineRecolte)
+      ? (culture.cultureDateRecolte
+          ? culture.cultureDateRecolte.getMonth() + 1
+          : moisDepuisSemaine(culture.annee, culture.semaineRecolte))
       : culture.semaineRecolte
 
     if (!groupedMap.has(periodeNum)) {

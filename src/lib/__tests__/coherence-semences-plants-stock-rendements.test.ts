@@ -34,7 +34,7 @@ vi.mock('@/lib/terroir', async (importOriginal) => {
 })
 
 import prisma from '@/lib/prisma'
-import { getBesoinsSemences, getBesoinsPlants } from '../planification'
+import { getBesoinsSemences, getBesoinsPlants, getRecoltesPrevuesDetail } from '../planification'
 import { projectionRecolteKg, rendementKgParM2 } from '../recolte/projection'
 import { moisDepuisSemaine } from '../cultures/dates-itp'
 
@@ -299,7 +299,7 @@ describe('C21 — le rendement est converti avant d\'être multiplié par une su
 // ---------------------------------------------------------------------------
 
 describe('C24 — Planification et tableau de bord rangent la récolte dans le même mois', () => {
-  // Les 5 divergences nommément relevées au registre (29 sur 158 cultures).
+  // Les 5 divergences nommément relevées au registre (30 sur 159 cultures).
   const cas: [string, Date][] = [
     ['353 Épinard', new Date(2026, 4, 25)],
     ['349 Chou brocoli', new Date(2026, 5, 22)],
@@ -308,15 +308,43 @@ describe('C24 — Planification et tableau de bord rangent la récolte dans le m
     ['831 Mâche', new Date(2026, 10, 30)],
   ]
 
-  it.each(cas)('%s : le mois de la semaine ISO est celui de la date', (_nom, date) => {
-    const moisTableauDeBord = date.getMonth() + 1
-    const moisPlanification = moisDepuisSemaine(2026, getISOWeek(date))
-    expect(moisPlanification).toBe(moisTableauDeBord)
+  it.each(cas)('%s : la date stockée range la récolte dans son vrai mois', async (_nom, date) => {
+    mocked.culture.findMany.mockResolvedValue([
+      { ...culture(1, 'carotte', { nom: 'B1', longueur: 10, largeur: 1 }), dateRecolte: date },
+    ])
+    mocked.espece.findMany.mockResolvedValue([
+      { id: 'carotte', rendement: 5, uniteRendement: 'kg_m2', couleur: null },
+    ])
+
+    const detail = await getRecoltesPrevuesDetail('u1', 2026, 'mois')
+    const moisPorteur = detail.periodes.filter(p => p.totalKg > 0).map(p => p.periodeNum)
+    expect(moisPorteur).toEqual([date.getMonth() + 1])
+  })
+
+  it("une semaine ISO À CHEVAL ne déplace plus la récolte d'un mois", async () => {
+    // Le 2 juillet 2026 appartient à une semaine ISO dont le LUNDI tombe le
+    // 29 juin. Caler le mois sur la semaine plaçait cette récolte en juin sur
+    // Planification quand le tableau de bord la lit en juillet depuis la même
+    // date : c'est le résidu qu'un premier correctif avait laissé (30
+    // divergences ramenées à 27 seulement, mesuré en production).
+    const dateRecolte = new Date(2026, 6, 2)
+    expect(moisDepuisSemaine(2026, getISOWeek(dateRecolte))).toBe(6) // le piège
+    mocked.culture.findMany.mockResolvedValue([
+      { ...culture(1, 'carotte', { nom: 'B1', longueur: 10, largeur: 1 }), dateRecolte },
+    ])
+    mocked.espece.findMany.mockResolvedValue([
+      { id: 'carotte', rendement: 5, uniteRendement: 'kg_m2', couleur: null },
+    ])
+
+    const detail = await getRecoltesPrevuesDetail('u1', 2026, 'mois')
+    const moisPorteur = detail.periodes.filter(p => p.totalKg > 0).map(p => p.periodeNum)
+    expect(moisPorteur).toEqual([7]) // juillet, comme le tableau de bord
   })
 
   it("l'approximation à 4,33 semaines dérivait d'un mois entier en fin d'année", () => {
     // Ancienne formule : ceil(48 / 4.33) = 12 (décembre) pour une semaine
-    // qui tombe en novembre.
+    // qui tombe en novembre. `moisDepuisSemaine` reste la référence pour les
+    // cultures SANS date (suggestions de rotation).
     expect(Math.ceil(48 / 4.33)).toBe(12)
     expect(moisDepuisSemaine(2026, 48)).toBe(11)
   })
