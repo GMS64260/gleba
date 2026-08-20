@@ -69,7 +69,12 @@ import {
   libelleUniteRendement,
   uniteRendementParType,
 } from "@/lib/validations/espece"
-import { libelleUniteObjectif, uniteQuantiteRecolte } from "@/lib/recolte/projection"
+import {
+  libelleUniteObjectif,
+  uniteQuantiteRecolte,
+  type UniteQuantite,
+} from "@/lib/recolte/projection"
+import { formatQuantite, formatQuantiteParUnite } from "@/lib/recolte/quantites"
 import { StarRating } from "@/components/avis/StarRating"
 import { AvisDialog } from "@/components/avis/AvisDialog"
 import type { AvisStatsListe } from "@/lib/avis/types"
@@ -222,6 +227,10 @@ export default function EditEspecePage() {
     uniteRendement: string | null
     objectifAnnuel: number | null
   } | null>(null)
+  const [realiseAnnee, setRealiseAnnee] = React.useState<{
+    annee: number
+    parUnite: Partial<Record<UniteQuantite, number>>
+  } | null>(null)
   const [rendementFermeSaisi, setRendementFermeSaisi] = React.useState<string>("")
   const [uniteFermeSaisie, setUniteFermeSaisie] = React.useState<string>("")
   const [objectifFermeSaisi, setObjectifFermeSaisi] = React.useState<string>("")
@@ -292,6 +301,7 @@ export default function EditEspecePage() {
           especeData.uniteRendement ?? uniteRendementParType(especeData.type)
         )
         setMonRendement(especeData.monRendement ?? null)
+        setRealiseAnnee(especeData.realiseAnnee ?? null)
         setRendementFermeSaisi(
           especeData.monRendement?.rendement != null
             ? String(especeData.monRendement.rendement)
@@ -1285,6 +1295,39 @@ export default function EditEspecePage() {
                         />
                       </div>
                     </div>
+
+                    {/*
+                      Un objectif qu'aucun écran ne confronte au réalisé est une
+                      note, pas un objectif : on affiche l'avancement de l'année
+                      dans l'unité de l'espèce (demande FB-JISNQI, 2026-08-20).
+                    */}
+                    {realiseAnnee && (
+                      <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-sm">
+                        <span className="font-medium text-emerald-800">
+                          Réalisé en {realiseAnnee.annee} :{" "}
+                          {formatQuantiteParUnite(realiseAnnee.parUnite)}
+                        </span>
+                        {(() => {
+                          const objectif = monRendement?.objectifAnnuel ?? null
+                          if (!objectif || objectif <= 0) {
+                            return (
+                              <span className="text-emerald-700">
+                                {" "}— renseignez un objectif pour suivre votre avancement.
+                              </span>
+                            )
+                          }
+                          const uniteObjectif = uniteQuantiteRecolte(uniteFermeEffective)
+                          const fait = realiseAnnee.parUnite[uniteObjectif] ?? 0
+                          const pourcent = Math.round((fait / objectif) * 100)
+                          return (
+                            <span className="text-emerald-700">
+                              {" "}soit {pourcent} % de votre objectif de{" "}
+                              {formatQuantite(objectif, uniteObjectif)}.
+                            </span>
+                          )
+                        })()}
+                      </div>
+                    )}
 
                     <p className="text-xs text-slate-500">
                       Catalogue :{" "}

@@ -12,6 +12,8 @@ import { nomEtCleReferentiel } from '@/lib/normalize'
 import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
 import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 import { rendementEffectif } from '@/lib/recolte/rendement-effectif'
+import { type UniteQuantite } from '@/lib/recolte/projection'
+import { arrondirQuantites, ajouterQuantite, type QuantiteParUnite } from '@/lib/recolte/quantites'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -72,15 +74,39 @@ export async function GET(
     // et sont, pour une espèce officielle, le seul endroit où un membre peut les
     // fixer — la fiche du catalogue lui est refusée en écriture (403 du PUT).
     // La fiche affiche les deux : la référence, et « chez moi ».
-    const monRendement = await prisma.userStockEspece.findUnique({
-      where: { userId_especeId: { userId, especeId: espece.id } },
-      select: { rendement: true, uniteRendement: true, objectifAnnuel: true, prixKg: true },
-    })
+    const annee = new Date().getFullYear()
+    const [monRendement, recoltesAnnee] = await Promise.all([
+      prisma.userStockEspece.findUnique({
+        where: { userId_especeId: { userId, especeId: espece.id } },
+        select: { rendement: true, uniteRendement: true, objectifAnnuel: true, prixKg: true },
+      }),
+      // Réalisé de l'année pour CE compte et CETTE espèce, ventilé par unité.
+      // Sans lui, un objectif annuel était un champ qu'on saisissait sans jamais
+      // savoir où l'on en est — une note, pas un objectif.
+      prisma.recolte.groupBy({
+        by: ['unite'],
+        where: {
+          userId,
+          especeId: espece.id,
+          date: { gte: new Date(annee, 0, 1), lte: new Date(annee, 11, 31, 23, 59, 59, 999) },
+        },
+        _sum: { quantite: true },
+      }),
+    ])
+
+    const realiseParUnite = arrondirQuantites(
+      recoltesAnnee.reduce<QuantiteParUnite>(
+        (acc, ligne) =>
+          ajouterQuantite(acc, (ligne.unite ?? 'kg') as UniteQuantite, ligne._sum.quantite ?? 0),
+        {},
+      ),
+    )
 
     return NextResponse.json({
       ...espece,
       monRendement: monRendement ?? null,
       rendementEffectif: rendementEffectif(espece, monRendement),
+      realiseAnnee: { annee, parUnite: realiseParUnite },
     })
   } catch (err) {
     console.error(`GET /api/especes/${resolvedId ?? '?'} error:`, err)
