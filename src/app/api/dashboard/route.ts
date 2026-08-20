@@ -8,6 +8,8 @@ import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { getKpiMaraichage } from "@/lib/kpi"
 import { getRecoltesAnneeAggregat } from "@/lib/kpi/recoltes-annee"
+import { surfaceCultureM2 } from "@/lib/culture-surface"
+import { projectionRecolteKg } from "@/lib/recolte/projection"
 
 export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
@@ -70,16 +72,17 @@ export async function GET(request: NextRequest) {
       },
       select: {
         dateRecolte: true,
-        nbRangs: true,
         longueur: true,
         espece: {
           select: {
             rendement: true,
+            uniteRendement: true,
           },
         },
         planche: {
           select: {
             largeur: true,
+            longueur: true,
             surface: true,
           },
         },
@@ -97,23 +100,20 @@ export async function GET(request: NextRequest) {
       monthData[month] += r._sum.quantite || 0
     })
 
-    // Ajouter les recoltes prévisionnelles
+    // Ajouter les recoltes prévisionnelles.
+    // Surface : SSOT `surfaceCultureM2` (la formule locale multipliait puis
+    // divisait par nbRangs, et retombait sur la planche ENTIÈRE dès que
+    // nbRangs manquait). Quantité : SSOT `projectionRecolteKg`, qui lit
+    // l'unité du rendement au lieu de traiter kg/arbre et t/ha en kg/m².
     recoltesPrevisionnelles.forEach((c) => {
       if (!c.dateRecolte) return
       const month = new Date(c.dateRecolte).getMonth()
 
-      // Estimer la quantité : surface × rendement
-      let surface = 0
-      if (c.nbRangs && c.longueur && c.planche?.largeur) {
-        surface = (c.nbRangs * c.longueur * c.planche.largeur) / (c.nbRangs || 1)
-      } else {
-        surface = c.planche?.surface || 0
-      }
-
-      const rendement = c.espece?.rendement || 0
-      const quantitePrevue = surface * rendement
-
-      monthDataPrev[month] += quantitePrevue
+      monthDataPrev[month] += projectionRecolteKg(
+        surfaceCultureM2(c),
+        c.espece?.rendement,
+        c.espece?.uniteRendement,
+      )
     })
 
     moisNoms.forEach((nom, i) => {

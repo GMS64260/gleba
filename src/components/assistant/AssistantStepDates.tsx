@@ -215,9 +215,21 @@ export function AssistantStepDates({
     )
   }, [culture.longueur, planche.longueur, planche.largeur, culture.nbRangs, culture.espacement])
 
+  // L'unité voyage avec le rendement : sans elle, un fruitier en kg/ARBRE
+  // était projeté au m² (kiwi 25 → 750 kg sur 30 m²).
   const rendement = React.useMemo(() => {
-    return estimerRendement(espece?.rendement ?? culture.espece?.rendement, surface)
-  }, [espece?.rendement, culture.espece?.rendement, surface])
+    return estimerRendement(
+      espece?.rendement ?? culture.espece?.rendement,
+      surface,
+      espece?.uniteRendement ?? culture.espece?.uniteRendement,
+    )
+  }, [
+    espece?.rendement,
+    espece?.uniteRendement,
+    culture.espece?.rendement,
+    culture.espece?.uniteRendement,
+    surface,
+  ])
 
   // Décalage max from ITP
   const decalageMax = itp?.decalageMax || 4

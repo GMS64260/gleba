@@ -54,18 +54,37 @@ export async function GET(request: NextRequest) {
     const totalCaieux = bulbeCaieu.reduce((sum, b) => sum + b.besoinCaieux, 0)
     const totalCaieuxACommander = bulbeCaieu.reduce((sum, b) => sum + b.caieuxACommander, 0)
 
-    const nbMissing = besoins.filter(b => b.statut === 'MISSING').length
-    const nbLow     = besoins.filter(b => b.statut === 'LOW').length
+    // Les compteurs ne portent QUE sur ce que les trois onglets listent.
+    // Calculés sur `besoins`, ils comptaient aussi les modes `bouture`,
+    // `greffe`, `tubercule` et `rejet`, qui n'apparaissent dans aucun onglet :
+    // la carte « À commander » passait au rouge avec « 1 espèce sans stock »
+    // et aucune ligne correspondante n'était affichable. Ces modes restent
+    // signalés par le bandeau « donnée manquante » ci-dessous.
+    const besoinsListes = [...graineDirecte, ...plantRepique, ...bulbeCaieu]
+
+    const nbMissing = besoinsListes.filter(b => b.statut === 'MISSING').length
+    const nbLow     = besoinsListes.filter(b => b.statut === 'LOW').length
     // QA cmswxo3ri — espèces planifiées dont le référentiel ne permet aucun
     // calcul : l'écran annonçait « 3 espèces » et n'en listait que 2.
     const especesDonneeManquante = [
       ...new Set(besoins.filter(b => b.statut === 'DONNEE_MANQUANTE').map(b => b.especeId)),
     ]
+    // Espèces planifiées dont le MODE de propagation n'a aucun onglet
+    // (bouture, greffe, tubercule, rejet) : elles pesaient sur les compteurs
+    // sans être listées nulle part, et n'entrent pas non plus dans le bandeau
+    // « dose manquante », dont le texte promet des lignes visibles.
+    const especesModeNonListe = [
+      ...new Set(
+        besoins
+          .filter(b => b.statut !== 'IGNORE' && !besoinsListes.includes(b))
+          .map(b => b.especeId),
+      ),
+    ]
 
     // BUG-15 : breakdown par mode (graines/plants vs caïeux) — le header
     // « 8 manquant » contredisait la liste « 6 graines » : les 2 caïeux
     // n'étaient pas remontés au même endroit.
-    const breakdown = computeManquantsBreakdown(besoins)
+    const breakdown = computeManquantsBreakdown(besoinsListes)
     const { nbMissingGraines, nbMissingCaieux, nbLowGraines, nbLowCaieux } = breakdown
 
     // Alerte stock obsolète : la dernière `dateStock` la plus récente parmi
@@ -80,7 +99,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       data,
       stats: {
-        nbEspeces: new Set(besoins.map(b => b.especeId)).size,
+        nbEspeces: new Set(besoinsListes.map(b => b.especeId)).size,
         totalPlants: besoins.reduce((sum, b) => sum + b.nbPlants, 0),
         totalGraines,
         totalACommander: totalACommanderG,
@@ -98,6 +117,10 @@ export async function GET(request: NextRequest) {
         nbBulbeCaieu: bulbeCaieu.length,
         nbDonneeManquante: especesDonneeManquante.length,
         especesDonneeManquante: especesDonneeManquante.map(
+          (id) => especeNomMap.get(id) ?? id,
+        ),
+        nbModeNonListe: especesModeNonListe.length,
+        especesModeNonListe: especesModeNonListe.map(
           (id) => especeNomMap.get(id) ?? id,
         ),
         stockObsolete,

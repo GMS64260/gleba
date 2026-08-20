@@ -18,6 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useToast } from "@/hooks/use-toast"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 import { estimerRendement } from "@/lib/assistant-helpers"
+import { rendementKgParM2 } from "@/lib/recolte/projection"
 import { surfaceCultureM2 } from "@/lib/culture-surface"
 
 interface Culture {
@@ -30,7 +31,7 @@ interface Culture {
   dateRecolte: string | null
   finRecolte: string | null
   terminee: string | null
-  espece: { id: string; nom: string | null; rendement: number | null }
+  espece: { id: string; nom: string | null; rendement: number | null; uniteRendement: string | null }
   variete: { id: string; nom: string | null } | null
   planche: { id: string; nom?: string; longueur: number | null; largeur: number | null; surface: number | null } | null
   totalRecolte: number
@@ -111,7 +112,13 @@ export default function SaisieRecoltePage() {
   const estimation = React.useMemo(() => {
     if (!selectedCultureData) return null
 
-    const rendementM2 = selectedCultureData.espece.rendement
+    // Le rendement du référentiel n'est pas toujours en kg/m² (kg/arbre pour
+    // un fruitier, t/ha pour un engrais vert) : on le ramène d'abord à une
+    // base surfacique, et on n'estime rien quand il ne s'y ramène pas.
+    const rendementM2 = rendementKgParM2(
+      selectedCultureData.espece.rendement,
+      selectedCultureData.espece.uniteRendement,
+    )
     const planche = selectedCultureData.planche
     if (!rendementM2 || !planche) return null
 
@@ -121,7 +128,7 @@ export default function SaisieRecoltePage() {
     const surface = surfaceCultureM2({ longueur: selectedCultureData.longueur, planche })
     if (surface <= 0) return null
 
-    const rendementTotal = estimerRendement(rendementM2, surface)
+    const rendementTotal = estimerRendement(rendementM2, surface, 'kg_m2')
     if (rendementTotal <= 0) return null
 
     // Soustraire les recoltes déjà effectuées (de la session en cours + de la DB)
@@ -136,7 +143,7 @@ export default function SaisieRecoltePage() {
       dejaRecolte: Math.round((dejaRecolteDB + dejaRecolteSessions) * 100) / 100,
       restant: Math.round(restant * 100) / 100,
       surface: Math.round(surface * 100) / 100,
-      rendementM2,
+      rendementM2: Math.round(rendementM2 * 1000) / 1000,
     }
   }, [selectedCultureData, recentRecoltes])
 

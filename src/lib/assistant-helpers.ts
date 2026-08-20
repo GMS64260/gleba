@@ -5,6 +5,7 @@
 
 import { getISOWeek } from 'date-fns'
 import { semaineVersDate } from './cultures/dates-itp'
+import { projectionRecolteKg } from './recolte/projection'
 
 /**
  * Lundi de la semaine ISO `semaine` de l'année `annee`.
@@ -152,14 +153,20 @@ export function estimerNombrePlantsStrict(
 }
 
 /**
- * Estime le rendement attendu
+ * Estime le rendement attendu sur une surface.
+ *
+ * `Espece.rendement` ne vaut pas toujours des kg/m² : le paramètre s'appelait
+ * `rendementKgM2` et était multiplié tel quel par la surface, ce qui faisait
+ * d'un kiwi à 25 kg/ARBRE 750 kg sur 30 m². L'unité fait partie de la donnée
+ * (cf. `recolte/projection`) ; rend 0 quand elle n'est pas surfacique, à
+ * charge de l'appelant de ne rien afficher plutôt qu'un chiffre inventé.
  */
 export function estimerRendement(
-  rendementKgM2: number | null | undefined,
-  surface: number // m²
+  rendement: number | null | undefined,
+  surface: number, // m²
+  uniteRendement?: string | null
 ): number {
-  if (!rendementKgM2 || !surface) return 0
-  return rendementKgM2 * surface
+  return projectionRecolteKg(surface, rendement, uniteRendement)
 }
 
 /**

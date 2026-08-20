@@ -87,6 +87,8 @@ interface Stats {
   nbBulbeCaieu: number
   nbDonneeManquante?: number
   especesDonneeManquante?: string[]
+  nbModeNonListe?: number
+  especesModeNonListe?: string[]
   stockObsolete: boolean
   stockObsoleteSeuilJours: number
   derniereMajStockISO: string | null
@@ -611,6 +613,27 @@ function SemencesContent() {
                   Compléter le référentiel
                 </Link>
                 .
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {/* Les modes de propagation sans onglet (bouture, greffe, tubercule,
+            rejet) alimentaient les compteurs — « 1 espèce sans stock » en
+            rouge — sans qu'aucune ligne correspondante soit affichable. Ils
+            sortent des compteurs et se nomment ici. */}
+        {stats?.nbModeNonListe ? (
+          <Card className="mb-4 border-amber-300 bg-amber-50">
+            <CardContent className="py-3 flex items-start gap-3">
+              <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0" />
+              <div className="text-sm text-amber-800">
+                <strong>
+                  {stats.especesModeNonListe?.join(", ") || `${stats.nbModeNonListe} espèce(s)`}
+                </strong>{" "}
+                se multiplie(nt) autrement qu&apos;en graines, plants ou bulbilles
+                (bouture, greffe, tubercule, rejet) : ces cultures sont planifiées
+                mais n&apos;apparaissent dans aucun des trois onglets et ne comptent
+                pas dans les totaux ci-dessous.
               </div>
             </CardContent>
           </Card>

@@ -25,6 +25,25 @@ export function semaineVersDate(annee: number, semaine: number): Date {
   return lundi
 }
 
+/**
+ * Mois (1-12) dans lequel tombe la semaine ISO `semaine` de l'année `annee`.
+ *
+ * Deux découpages coexistaient pour la même récolte : `ceil(semaine / 4.33)`
+ * côté Planification, `dateRecolte.getMonth()` côté tableau de bord et
+ * Calendrier. 29 cultures sur 158 tombaient dans deux mois différents — un
+ * épinard récolté le 25/05 se lisait « Juin » sur un écran et « Mai » sur
+ * l'autre, sans que rien ne permette de les réconcilier. L'approximation
+ * dérive d'autant plus qu'on avance dans l'année (12 mois de 4,33 semaines
+ * n'en font que 52 au lieu de 52,18, et aucun mois ne dure exactement cela).
+ *
+ * Le mois est donc celui du LUNDI de la semaine ISO : le même calendrier que
+ * les dates réellement stockées sur les cultures. Ne pas réintroduire de
+ * division par 4,33.
+ */
+export function moisDepuisSemaine(annee: number, semaine: number): number {
+  return semaineVersDate(annee, semaine).getMonth() + 1
+}
+
 export type SemainesItp = {
   semaineSemis?: number | null
   semainePlantation?: number | null

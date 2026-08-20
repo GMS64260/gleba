@@ -63,9 +63,16 @@ export async function GET(request: NextRequest) {
     // par les rotations, que le tableau projette pourtant : 2028 annonçait
     // « 0,0 kg attendu » avec 361,9 kg en juillet. Le total couvre désormais ce
     // que l'écran montre, en nommant la part encore à créer.
+    //
+    // La projection doit venir du MÊME calcul que le tableau affiché juste en
+    // dessous : `aggregat.projectionKg` porte sur une autre population (les
+    // cultures non récoltées de l'année, quelle que soit leur planche) et
+    // rendait « 0,0 kg attendu » en en-tête au-dessus d'un tableau annonçant
+    // 36,0 kg en juillet et 21,6 kg en août. `projectionCreeesKg` est calculé
+    // sur exactement les lignes du tableau — il était produit puis jeté.
     const arrondi = (n: number) => Math.round(n * 100) / 100
     const projectionRotationsKg = detailPrevues.projectionSuggestionsKg
-    const projectionKg = arrondi(aggregat.projectionKg + projectionRotationsKg)
+    const projectionKg = arrondi(detailPrevues.projectionCreeesKg + projectionRotationsKg)
     const totalAttenduKg = arrondi(aggregat.realiseesKg + projectionKg)
 
     return NextResponse.json({

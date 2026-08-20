@@ -511,56 +511,22 @@ export async function POST(request: NextRequest) {
         },
       })
 
-      // Décrément automatique du stock de semences (per-user).
-      // Sans ITP sur la culture, pas de dose de semis fiable : pas de décrément.
-      const itpEff = newCulture.itp
-      if (data.varieteId && data.dateSemis && itpEff) {
-        const variete = await tx.variete.findUnique({
-          where: { id: data.varieteId },
-          select: { nbGrainesG: true },
-        })
-
-        const userStock = await tx.userStockVariete.findFirst({
-          where: { userId: session!.user.id, varieteId: data.varieteId },
-        })
-
-        if (variete && userStock && userStock.stockGraines && userStock.stockGraines > 0 && variete.nbGrainesG) {
-          const planche = newCulture.planche
-          const longueur = data.longueur || 0
-          const nbRangs = data.nbRangs || 1
-          const espacement = data.espacement || 0
-
-          let grammesNecessaires = 0
-
-          if (espacement > 0 && variete.nbGrainesG > 0) {
-            const nbGrainesPlant = itpEff.nbGrainesPlant || 1
-            grammesNecessaires = Math.ceil(
-              (longueur * nbRangs / espacement * 100 * nbGrainesPlant) /
-              variete.nbGrainesG
-            )
-          } else if (itpEff.doseSemis && planche?.largeur) {
-            grammesNecessaires = Math.ceil(
-              longueur * planche.largeur * itpEff.doseSemis
-            )
-          }
-
-          if (grammesNecessaires > 0) {
-            await tx.userStockVariete.upsert({
-              where: { userId_varieteId: { userId: session!.user.id, varieteId: data.varieteId } },
-              create: {
-                userId: session!.user.id,
-                varieteId: data.varieteId,
-                stockGraines: 0,
-                dateStock: new Date(),
-              },
-              update: {
-                stockGraines: Math.max(0, userStock.stockGraines - grammesNecessaires),
-                dateStock: new Date(),
-              },
-            })
-          }
-        }
-      }
+      // Le stock de semences n'est PAS débité à la création.
+      //
+      // Il l'était, et trois comportements se contredisaient pour un même
+      // geste : le formulaire débitait des grammes, l'écran Semences
+      // recalculait ensuite le besoin de cette même culture EN ENTIER et le
+      // soustrayait du stock déjà débité (« à commander » surévalué du montant
+      // déjà consommé), la suppression de la culture ne restituait jamais rien,
+      // et le chemin « Créer les cultures » ne débitait pas du tout. Le stock
+      // ne représentait plus rien.
+      //
+      // Un seul comptable désormais : l'écran Planification > Semences, qui
+      // calcule le besoin de l'année par `calculerBesoin` (marge de sécurité
+      // et taux de germination compris) et le confronte au stock saisi. Le
+      // stock reste ce que l'utilisateur déclare détenir ; l'écran dit ce qu'il
+      // manque. Ne pas réintroduire de décrément ici sans traiter d'un même
+      // geste la restitution au DELETE et la double facturation de l'écran.
 
       return newCulture
     })

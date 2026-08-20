@@ -18,6 +18,7 @@
 
 import prisma from '@/lib/prisma'
 import { surfaceCultureM2 } from '@/lib/culture-surface'
+import { projectionRecolteKg } from '@/lib/recolte/projection'
 
 export interface RecoltesParEspece {
   especeId: string
@@ -37,14 +38,6 @@ export interface RecoltesAnneeAggregat {
     projectionKg: number
   }[]
   parEspece: RecoltesParEspece[]
-}
-
-const MOIS_PAR_SEMAINE = (semaine: number): number => {
-  if (semaine < 1) return 1
-  if (semaine > 52) return 12
-  // approximation : (semaine / 4.345) arrondi sup, clampé 1..12
-  const mois = Math.min(12, Math.max(1, Math.ceil(semaine / 4.345)))
-  return mois
 }
 
 export async function getRecoltesAnneeAggregat(
@@ -85,7 +78,9 @@ export async function getRecoltesAnneeAggregat(
       plancheId: true,
       especeId: true,
       planche: { select: { surface: true, largeur: true, longueur: true } },
-      espece: { select: { id: true, couleur: true, rendement: true } },
+      // `uniteRendement` est indispensable : `rendement` seul ne dit pas s'il
+      // s'agit de kg/m², de kg/arbre ou de t/ha (cf. recolte/projection).
+      espece: { select: { id: true, couleur: true, rendement: true, uniteRendement: true } },
     },
   })
 
@@ -117,7 +112,7 @@ export async function getRecoltesAnneeAggregat(
     if (!c.especeId || !c.espece?.rendement) continue
     const surface = surfaceCultureM2(c)
     if (surface <= 0) continue
-    const quantite = surface * c.espece.rendement
+    const quantite = projectionRecolteKg(surface, c.espece.rendement, c.espece.uniteRendement)
     // Note DEV2 : dérive le mois (0..11) depuis Culture.dateRecolte si
     // saisie (la projection se mappe au mois prévu de récolte).
     const mois = c.dateRecolte ? c.dateRecolte.getMonth() : null

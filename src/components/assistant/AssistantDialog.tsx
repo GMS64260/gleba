@@ -56,6 +56,8 @@ export interface EspeceData {
   famille?: { id: string; couleur?: string | null }
   nomLatin?: string
   rendement?: number | null
+  /** Unité de `rendement` : kg_m2 (défaut) | kg_arbre | biomasse_t_ha. */
+  uniteRendement?: string | null
   besoinEau?: number | null
   irrigation?: string | null
   niveau?: string | null
