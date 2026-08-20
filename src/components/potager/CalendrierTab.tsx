@@ -44,6 +44,8 @@ import { IrrigationAdvisor } from "@/components/meteo"
 import { format, startOfWeek, endOfWeek, addWeeks } from "date-fns"
 import { fr } from "date-fns/locale"
 import { kpiCardClass, kpiSubtleClass } from "@/lib/kpi-theme"
+import { formatQuantiteParUnite, type QuantiteParUnite } from "@/lib/recolte/quantites"
+import { libelleUniteQuantite, type UniteQuantite } from "@/lib/recolte/projection"
 
 interface DashboardStats {
   culturesActives: number
@@ -62,11 +64,20 @@ interface DashboardStats {
   recoltesRealiseesKg?: number
   recoltesProjectionKg?: number
   recoltesTotalAttenduKg?: number
+  // Ventilations par unité (2026-08-20) : les champs en kilos n'en sont que la
+  // part pondérale, nulle pour une production comptée en tiges ou en bottes.
+  recoltesAnneeParUnite?: QuantiteParUnite
+  recoltesAnneePrecedenteParUnite?: QuantiteParUnite
+  recoltesRealiseesParUnite?: QuantiteParUnite
+  recoltesProjectionParUnite?: QuantiteParUnite
+  recoltesTotalAttenduParUnite?: QuantiteParUnite
 }
 
 interface TacheItem {
   id: number
   type: "semis" | "plantation" | "recolte"
+  /** Unité de saisie d'une récolte (kg par défaut) — cf. taches-potager. */
+  unite?: UniteQuantite
   especeId: string
   especeNom?: string | null
   varieteId: string | null
@@ -125,7 +136,13 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
   const [loadingStats, setLoadingStats] = React.useState(true)
   const [loadingTaches, setLoadingTaches] = React.useState(true)
   const [weekOffset, setWeekOffset] = React.useState(0)
-  const [pendingHarvest, setPendingHarvest] = React.useState<{ cultureId: number; especeId: string } | null>(null)
+  const [pendingHarvest, setPendingHarvest] = React.useState<{
+    cultureId: number
+    especeId: string
+    // Unité de saisie, portée par la tâche : la boîte de dialogue l'affiche et
+    // le toast la reprend (kg, tiges, pièces, bottes).
+    unite?: UniteQuantite
+  } | null>(null)
   const [harvestQuantity, setHarvestQuantity] = React.useState("")
   const [harvestLoading, setHarvestLoading] = React.useState(false)
   const { weekStart, weekEnd } = React.useMemo(() => {
@@ -264,12 +281,13 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
     type: "semis" | "plantation" | "recolte",
     currentValue: boolean,
     especeId: string,
-    quantity?: number
+    quantity?: number,
+    unite?: UniteQuantite
   ) => {
     if (type === "recolte" && !currentValue) {
       if (quantity === undefined) {
         setHarvestQuantity("")
-        setPendingHarvest({ cultureId, especeId })
+        setPendingHarvest({ cultureId, especeId, unite })
         return
       }
       const quantite = quantity
@@ -300,7 +318,10 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
           fetchTaches()
           return
         }
-        toast({ title: "Récolte enregistrée", description: `${quantite} kg` })
+        toast({
+          title: "Récolte enregistrée",
+          description: `${quantite} ${libelleUniteQuantite(unite ?? "kg", quantite)}`,
+        })
         setPendingHarvest(null)
         fetchTaches()
       } catch {
@@ -512,14 +533,19 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                 <TooltipContent side="bottom" className="max-w-xs text-left">
                   <p className="font-semibold mb-1">Récoltes de l&apos;année</p>
                   <p className="text-xs leading-relaxed">
-                    Cumul (en kg) de toutes les recoltes enregistrées entre le 1<sup>er</sup> janvier
+                    Cumul de toutes les recoltes enregistrées entre le 1<sup>er</sup> janvier
                     et aujourd&apos;hui. La comparaison vs N-1 indique si la saison est meilleure
                     ou moins bonne que l&apos;an dernier à la même date.
                   </p>
                 </TooltipContent>
               </Tooltip>
               <CardTitle className="text-2xl">
-                {loadingStats ? "..." : `${stats?.recoltesAnnee || 0} kg`}
+                {/* Ventilée par unité : une ferme de fleurs coupées lisait
+                    « 0 kg » ici alors qu'elle avait récolté des milliers de
+                    tiges (2026-08-20). */}
+                {loadingStats
+                  ? "..."
+                  : formatQuantiteParUnite(stats?.recoltesAnneeParUnite ?? {})}
               </CardTitle>
             </CardHeader>
             <CardContent className="pb-3 px-4">
@@ -528,15 +554,15 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                   Planification annonçait 1367 kg attendus). */}
               {(stats?.recoltesProjectionKg ?? 0) > 0 && (
                 <p className={`text-xs ${kpiSubtleClass("revenu")} mb-0.5`}>
-                  + {stats?.recoltesProjectionKg?.toFixed(1)} kg à venir
-                  {stats?.recoltesTotalAttenduKg
-                    ? ` (total attendu ${stats.recoltesTotalAttenduKg.toFixed(1)} kg)`
+                  + {formatQuantiteParUnite(stats?.recoltesProjectionParUnite ?? {})} à venir
+                  {stats?.recoltesTotalAttenduParUnite
+                    ? ` (total attendu ${formatQuantiteParUnite(stats.recoltesTotalAttenduParUnite)})`
                     : ""}
                 </p>
               )}
               {aucuneRecolteN ? (
                 <p className={`text-xs ${kpiSubtleClass("revenu")} italic`}>
-                  Saison à venir (N-1 : {stats?.recoltesAnneePrecedente?.toFixed(1)} kg)
+                  Saison à venir (N-1 : {formatQuantiteParUnite(stats?.recoltesAnneePrecedenteParUnite ?? {})})
                 </p>
               ) : premiereAnnee ? (
                 <p className={`text-xs ${kpiSubtleClass("revenu")} italic`}>
@@ -916,7 +942,9 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                 placeholder="0,00"
                 className="h-11 bg-white pr-12 text-base"
               />
-              <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm font-medium text-muted-foreground">kg</span>
+              <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm font-medium text-muted-foreground">
+                {libelleUniteQuantite(pendingHarvest?.unite ?? "kg")}
+              </span>
             </div>
           </div>
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
@@ -930,7 +958,8 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                   "recolte",
                   false,
                   pendingHarvest.especeId,
-                  Number.parseFloat(harvestQuantity.replace(",", "."))
+                  Number.parseFloat(harvestQuantity.replace(",", ".")),
+                  pendingHarvest.unite
                 )
               }}
             >
@@ -968,7 +997,14 @@ function TaskSection({
   items: TacheItem[]
   type: "semis" | "plantation" | "recolte"
   emptyText: string
-  onToggle: (id: number, type: "semis" | "plantation" | "recolte", fait: boolean, especeId: string) => void
+  onToggle: (
+    id: number,
+    type: "semis" | "plantation" | "recolte",
+    fait: boolean,
+    especeId: string,
+    quantity?: number,
+    unite?: UniteQuantite,
+  ) => void
   onBulkDone?: (type: "semis" | "plantation" | "recolte") => void | Promise<void>
 }) {
   const enRetardCount = items.filter(i => i.retardJours > 0 && !i.fait).length
@@ -1013,7 +1049,7 @@ function TaskSection({
               return (
                 <button
                   key={`${item.id}-${item.retardJours}`}
-                  onClick={() => onToggle(item.id, type, item.fait, item.especeId)}
+                  onClick={() => onToggle(item.id, type, item.fait, item.especeId, undefined, item.unite)}
                   className={`w-full p-2 rounded-lg border transition-all text-left ${
                     item.fait
                       ? "bg-green-50 border-green-200 opacity-60"

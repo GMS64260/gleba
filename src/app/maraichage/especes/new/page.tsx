@@ -40,8 +40,11 @@ import { createEspeceSchema, ESPECE_TYPES, type CreateEspeceInput } from "@/lib/
 // n'y figurant pas, le menu déroulant rendait une option VIDE — sélectionnable,
 // sans un mot pour dire ce qu'elle crée. Les libellés viennent désormais du
 // référentiel (`libelleTypeEspece`), et chaque option porte l'effet du type.
+import { uniteQuantiteRecolte } from "@/lib/recolte/projection"
 import {
   ESPECE_TYPE_DESCRIPTIONS,
+  UNITE_RENDEMENT,
+  UNITE_RENDEMENT_DESCRIPTIONS,
   UNITE_RENDEMENT_LABELS,
   libelleTypeEspece,
   uniteRendementParType,
@@ -76,6 +79,12 @@ export default function NewEspecePage() {
 
   // Type courant : pilote l'unité de rendement affichée ET enregistrée.
   const typeChoisi = form.watch("type")
+  // L'unité de rendement est un CHOIX, le type n'en donne que le défaut. Une
+  // fleur coupée se compte en tiges/m², un radis en bottes/m², une salade à la
+  // pièce : le kilo était la seule unité possible jusqu'au 2026-08-20, ce qui
+  // rendait la planification inutilisable pour ces productions.
+  const uniteChoisie = form.watch("uniteRendement")
+  const uniteEffective = uniteChoisie ?? uniteRendementParType(typeChoisi)
 
   // Charger les familles
   React.useEffect(() => {
@@ -98,7 +107,8 @@ export default function NewEspecePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...data,
-          uniteRendement: uniteRendementParType(data.type),
+          // Le choix explicite prime ; sans choix, le défaut du type.
+          uniteRendement: data.uniteRendement ?? uniteRendementParType(data.type),
         }),
       })
 
@@ -309,46 +319,77 @@ export default function NewEspecePage() {
                 <CardTitle>Caractéristiques agronomiques</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="rendement"
-                  render={({ field }) => (
-                    <FormItem>
-                      {/*
-                        L'unité suit le TYPE choisi et n'est plus écrite en dur :
-                        elle étiquetait « kg/m² » les rendements par arbre et les
-                        biomasses en t/ha (même mensonge d'étiquette que QA
-                        cmsqlu3os). C'est bien cette unité qui part en base, via
-                        `uniteRendement` dans le payload.
-                      */}
-                      <FormLabel>
-                        Rendement ({UNITE_RENDEMENT_LABELS[uniteRendementParType(typeChoisi)]})
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          step="any"
-                          placeholder="Ex: 5"
-                          {...field}
-                          value={field.value ?? ""}
-                          onChange={(e) =>
-                            field.onChange(
-                              e.target.value ? parseFloat(e.target.value) : null
-                            )
-                          }
-                        />
-                      </FormControl>
-                      <FormDescription>
-                        {typeChoisi === "arbre_fruitier"
-                          ? "Récolte attendue par arbre adulte et par an."
-                          : typeChoisi === "engrais_vert"
-                            ? "Biomasse produite par hectare, en tonnes."
-                            : "Récolte attendue par mètre carré cultivé et par an."}
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
+                  <FormField
+                    control={form.control}
+                    name="rendement"
+                    render={({ field }) => (
+                      <FormItem>
+                        {/*
+                          L'unité n'est plus écrite en dur — elle étiquetait
+                          « kg/m² » les rendements par arbre et les biomasses en
+                          t/ha (mensonge d'étiquette de QA cmsqlu3os) — et n'est
+                          plus déduite du seul type : elle se choisit dans le
+                          menu voisin. C'est cette unité qui part en base.
+                        */}
+                        <FormLabel>
+                          Rendement ({UNITE_RENDEMENT_LABELS[uniteEffective]})
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="any"
+                            placeholder="Ex: 5"
+                            {...field}
+                            value={field.value ?? ""}
+                            onChange={(e) =>
+                              field.onChange(
+                                e.target.value ? parseFloat(e.target.value) : null
+                              )
+                            }
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {UNITE_RENDEMENT_DESCRIPTIONS[uniteEffective]}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="uniteRendement"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Unité</FormLabel>
+                        <Select
+                          onValueChange={field.onChange}
+                          value={field.value ?? uniteEffective}
+                        >
+                          <FormControl>
+                            <SelectTrigger className="sm:w-[150px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {UNITE_RENDEMENT.map((unite) => (
+                              <SelectItem key={unite} value={unite}>
+                                {UNITE_RENDEMENT_LABELS[unite]}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormDescription>
+                          {uniteQuantiteRecolte(uniteEffective) === "kg"
+                            ? "Kilos, tiges, pièces ou bottes."
+                            : "Les totaux en kilos (récoltes attendues, graphique mensuel) n'additionnent pas cette unité."}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <FormField

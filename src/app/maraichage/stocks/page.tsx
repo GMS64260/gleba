@@ -44,6 +44,7 @@ import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 import { ConsommationsTab } from "@/components/stocks/ConsommationsTab"
 import { formatStockSemantic } from "@/lib/format-utils"
 import { AlertTriangle } from "lucide-react"
+import { libelleUniteQuantite, type UniteQuantite } from "@/lib/recolte/projection"
 
 interface VarieteStock {
   id: string
@@ -69,6 +70,8 @@ interface EspeceStock {
   id: string
   familleId: string | null
   inventaire: number | null
+  /** Unité du stock : celle de l'espèce chez cet utilisateur (défaut kg). */
+  unite?: string | null
   dateInventaire: string | null
   couleur: string | null
 }
@@ -798,7 +801,7 @@ function StocksPageContent() {
                     <TableRow>
                       <TableHead>Espèce</TableHead>
                       <TableHead>Famille</TableHead>
-                      <TableHead>Stock (kg)</TableHead>
+                      <TableHead>Stock</TableHead>
                       <TableHead>Date inventaire</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -818,11 +821,14 @@ function StocksPageContent() {
                         </TableCell>
                         <TableCell>{e.familleId || "-"}</TableCell>
                         <TableCell>
+                          {/* Unité de l'espèce (2026-08-20) : « kg » en dur
+                              était faux dès qu'une espèce se compte en tiges,
+                              en pièces ou en bottes. */}
                           <StockInput
                             value={e.inventaire}
                             onChange={(val) => updateLocalStock("recoltes", e.id, "inventaire", val)}
                             onSave={(val) => saveStock("recolte", e.id, val)}
-                            unit="kg"
+                            unit={libelleUniteQuantite((e.unite ?? "kg") as UniteQuantite)}
                           />
                         </TableCell>
                         <TableCell>

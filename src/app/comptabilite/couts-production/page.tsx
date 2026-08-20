@@ -49,6 +49,8 @@ import {
   Leaf,
   X,
 } from "lucide-react"
+import { libelleUniteQuantite, type UniteQuantite } from "@/lib/recolte/projection"
+import { formatQuantite, formatQuantiteParUnite, type QuantiteParUnite } from "@/lib/recolte/quantites"
 
 
 // ============================================================
@@ -70,8 +72,10 @@ interface EspeceData {
   coutTotal: number
   margeBrute: number
   margePercent: number
-  coutKg: number
-  prixMoyenKg: number
+  /** Unité des quantités et des ratios (kg, tige, pièce, botte). */
+  unite?: UniteQuantite
+  coutUnitaire: number
+  prixMoyenUnitaire: number
   heuresTravaillees: number
   rendement: number
 }
@@ -93,8 +97,10 @@ interface CultureData {
   coutTotal: number
   margeBrute: number
   margePercent: number
-  coutKg: number
-  prixMoyenKg: number
+  /** Unité des quantités et des ratios (kg, tige, pièce, botte). */
+  unite?: UniteQuantite
+  coutUnitaire: number
+  prixMoyenUnitaire: number
   heuresTravaillees: number
   rendement: number
 }
@@ -113,6 +119,7 @@ interface Totaux {
   margeBrute: number
   margePercent: number
   production: number
+  productionParUnite?: QuantiteParUnite
   surface: number
   heuresTravaillees: number
   nbEspeces: number
@@ -124,6 +131,7 @@ interface ModuleData {
   couts: number
   marge: number
   production?: number
+  productionParUnite?: QuantiteParUnite
   heures?: number
   detailCouts?: {
     alimentation: number
@@ -150,6 +158,7 @@ interface CoutsData {
     margeBrute: number
     margePercent: number
     production: number
+    productionParUnite?: QuantiteParUnite
     surface: number
     heuresTravaillees: number
     nbEspeces: number
@@ -299,17 +308,24 @@ export default function CoutsProductionPage() {
     return items.filter(i => i.value > 0)
   }, [data?.totaux])
 
-  // Chart data: Cost/kg vs Price/kg
+  // Graphique coût vs prix, PAR UNITÉ. Deux espèces comptées différemment ne se
+  // comparent pas d'un coup d'œil (un euro la tige n'est pas un euro le kilo) :
+  // l'unité est donc écrite dans le nom de la ligne au lieu d'être passée sous
+  // silence par un axe « /kg » universel.
   const profitabilityData = React.useMemo(() => {
     if (!data?.parEspece) return []
     return data.parEspece
-      .filter(e => e.production > 0 && (e.coutKg > 0 || e.prixMoyenKg > 0))
-      .map(e => ({
-        name: e.especeNom ?? e.especeId,
-        coutKg: e.coutKg,
-        prixKg: e.prixMoyenKg,
-        margeKg: e.prixMoyenKg - e.coutKg,
-      }))
+      .filter(e => e.production > 0 && (e.coutUnitaire > 0 || e.prixMoyenUnitaire > 0))
+      .map(e => {
+        const unite = e.unite ?? "kg"
+        const suffixe = unite === "kg" ? "" : ` (${libelleUniteQuantite(unite, 1)})`
+        return {
+          name: `${e.especeNom ?? e.especeId}${suffixe}`,
+          coutKg: e.coutUnitaire,
+          prixKg: e.prixMoyenUnitaire,
+          margeKg: e.prixMoyenUnitaire - e.coutUnitaire,
+        }
+      })
       .sort((a, b) => b.margeKg - a.margeKg)
       .slice(0, 15)
   }, [data?.parEspece])
@@ -448,7 +464,10 @@ export default function CoutsProductionPage() {
                 <CardContent>
                   <p className="text-3xl font-bold">{formatEuro(data.totaux.coutTotal)}</p>
                   <p className="text-sm text-red-100 mt-1">
-                    {formatNumber(data.totaux.surface)} m² — {formatNumber(data.totaux.production)} kg
+                    {formatNumber(data.totaux.surface)} m² —{" "}
+                    {data.totaux.productionParUnite
+                      ? formatQuantiteParUnite(data.totaux.productionParUnite)
+                      : `${formatNumber(data.totaux.production)} kg`}
                   </p>
                 </CardContent>
               </Card>
@@ -504,7 +523,7 @@ export default function CoutsProductionPage() {
                 <div className="flex justify-between"><span className="text-muted-foreground">Revenus</span><span className="font-medium text-green-700">{formatEuro(data.parModule.potager.revenus)}</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Coûts</span><span className="font-medium text-red-600">{formatEuro(data.parModule.potager.couts)}</span></div>
                 <div className="flex justify-between border-t pt-1"><span className="font-medium">Marge</span><span className={`font-bold ${data.parModule.potager.marge >= 0 ? 'text-green-700' : 'text-red-600'}`}>{formatEuro(data.parModule.potager.marge)}</span></div>
-                {data.parModule.potager.production ? <div className="flex justify-between text-muted-foreground"><span>Production</span><span>{formatNumber(data.parModule.potager.production)} kg</span></div> : null}
+                {data.parModule.potager.productionParUnite || data.parModule.potager.production ? <div className="flex justify-between text-muted-foreground"><span>Production</span><span>{data.parModule.potager.productionParUnite ? formatQuantiteParUnite(data.parModule.potager.productionParUnite) : `${formatNumber(data.parModule.potager.production ?? 0)} kg`}</span></div> : null}
               </CardContent>
             </Card>
             <Card className="border-lime-200">
@@ -572,14 +591,17 @@ export default function CoutsProductionPage() {
                     <TableHead className="w-8" />
                     <SortHeader label="Espèce" field="especeId" />
                     <SortHeader label="Surface (m²)" field="surface" className="text-right" />
-                    <SortHeader label="Production (kg)" field="production" className="text-right" />
-                    <SortHeader label="Rdt (kg/m²)" field="rendement" className="text-right" />
+                    <SortHeader label="Production" field="production" className="text-right" />
+                    <SortHeader label="Rdt /m²" field="rendement" className="text-right" />
                     <SortHeader label="Revenus" field="revenus" className="text-right" />
                     <SortHeader label="Coûts" field="coutTotal" className="text-right" />
                     <SortHeader label="Marge" field="margeBrute" className="text-right" />
                     <SortHeader label="Marge %" field="margePercent" className="text-right" />
-                    <SortHeader label="Coût/kg" field="coutKg" className="text-right" />
-                    <SortHeader label="Prix/kg" field="prixMoyenKg" className="text-right" />
+                    {/* « /kg » était faux dès qu'une espèce se compte en
+                        tiges, en pièces ou en bottes : l'unité est écrite sur
+                        chaque ligne (2026-08-20). */}
+                    <SortHeader label="Coût/unité" field="coutUnitaire" className="text-right" />
+                    <SortHeader label="Prix/unité" field="prixMoyenUnitaire" className="text-right" />
                     <SortHeader label="Heures" field="heuresTravaillees" className="text-right" />
                   </TableRow>
                 </TableHeader>
@@ -602,8 +624,12 @@ export default function CoutsProductionPage() {
                           <span className="text-xs text-muted-foreground ml-2">({espece.nbCultures})</span>
                         </TableCell>
                         <TableCell className="text-right">{formatNumber(espece.surface)}</TableCell>
-                        <TableCell className="text-right">{formatNumber(espece.production)}</TableCell>
-                        <TableCell className="text-right">{formatNumber(espece.rendement, 2)}</TableCell>
+                        <TableCell className="text-right">
+                          {formatQuantite(espece.production, espece.unite ?? "kg")}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {formatNumber(espece.rendement, 2)} {libelleUniteQuantite(espece.unite ?? "kg")}/m²
+                        </TableCell>
                         <TableCell className="text-right font-medium text-green-600">{formatEuro(espece.revenus)}</TableCell>
                         <TableCell className="text-right text-red-600">{formatEuro(espece.coutTotal)}</TableCell>
                         <TableCell className={`text-right font-medium ${espece.margeBrute >= 0 ? "text-emerald-600" : "text-orange-600"}`}>
@@ -614,8 +640,12 @@ export default function CoutsProductionPage() {
                             {formatNumber(espece.margePercent)}%
                           </span>
                         </TableCell>
-                        <TableCell className="text-right">{formatEuro(espece.coutKg)}</TableCell>
-                        <TableCell className="text-right">{formatEuro(espece.prixMoyenKg)}</TableCell>
+                        <TableCell className="text-right">
+                          {formatEuro(espece.coutUnitaire)}/{libelleUniteQuantite(espece.unite ?? "kg", 1)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {formatEuro(espece.prixMoyenUnitaire)}/{libelleUniteQuantite(espece.unite ?? "kg", 1)}
+                        </TableCell>
                         <TableCell className="text-right">
                           <span className="flex items-center justify-end gap-1">
                             <Clock className="h-3 w-3 text-slate-400" />
@@ -672,7 +702,7 @@ export default function CoutsProductionPage() {
                                       <TableHead>Variété</TableHead>
                                       <TableHead>Planche</TableHead>
                                       <TableHead className="text-right">Surface</TableHead>
-                                      <TableHead className="text-right">Prod. (kg)</TableHead>
+                                      <TableHead className="text-right">Prod.</TableHead>
                                       <TableHead className="text-right">Revenus</TableHead>
                                       <TableHead className="text-right">Coûts</TableHead>
                                       <TableHead className="text-right">Marge</TableHead>
@@ -934,7 +964,7 @@ export default function CoutsProductionPage() {
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2">
                   <BarChart3 className="h-4 w-4 text-blue-600" />
-                  Coût/kg vs Prix de vente/kg par espèce
+                  Coût vs prix de vente, par unité et par espèce
                 </CardTitle>
                 <CardDescription>
                   Compare le coût de production au prix de vente moyen par kilogramme
@@ -950,13 +980,13 @@ export default function CoutsProductionPage() {
                       <Tooltip
                         formatter={(value, name) => [
                           formatEuro(Number(value || 0)),
-                          name === "coutKg" ? "Coût/kg" : name === "prixKg" ? "Prix/kg" : "Marge/kg",
+                          name === "coutKg" ? "Coût/unité" : name === "prixKg" ? "Prix/unité" : "Marge/unité",
                         ]}
                         contentStyle={{ borderRadius: 8, border: "1px solid #e5e7eb" }}
                       />
                       <Legend
                         formatter={(value: string) =>
-                          value === "coutKg" ? "Coût/kg" : value === "prixKg" ? "Prix/kg" : "Marge/kg"
+                          value === "coutKg" ? "Coût/unité" : value === "prixKg" ? "Prix/unité" : "Marge/unité"
                         }
                       />
                       <Bar dataKey="coutKg" name="coutKg" fill="#ef4444" radius={[2, 2, 0, 0]} />

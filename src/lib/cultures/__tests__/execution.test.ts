@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { CHAMP_DATE_ETAPE, dateExecutionARecaler } from '../execution'
+import {
+  CHAMP_DATE_ETAPE,
+  CHAMP_PLAN_ETAPE,
+  ETAPES,
+  dateExecutionARecaler,
+  ecrituresDatePlanRedefinie,
+  ecrituresPassageAFait,
+  ecrituresRetourANonFait,
+} from '../execution'
 
 /**
  * Ticket cmsp66tdm : une étape marquée faite ne doit pas rester datée dans le
@@ -39,5 +47,76 @@ describe('dateExecutionARecaler', () => {
       plantationFaite: 'datePlantation',
       recolteFaite: 'dateRecolte',
     })
+  })
+})
+
+/**
+ * Friction 2026-08-20 : cocher puis décocher une étape détruisait la date du
+ * plan. Le scénario vécu est le premier test — une culture de fleurs planifiée
+ * pour l'année suivante, cochée par erreur puis décochée.
+ */
+describe('mémoire de la date de plan', () => {
+  const maintenant = new Date(2026, 7, 20, 13, 27, 55) // 20/08/2026, l'heure du clic
+
+  it('rend la date de plan quand l’étape est décochée (cas vécu)', () => {
+    const culture = {
+      dateSemis: new Date(2027, 2, 12),
+      dateSemisPlan: null,
+    }
+    const aFait = ecrituresPassageAFait(culture, 'semisFait', maintenant)
+    expect(aFait).toEqual({
+      dateSemis: maintenant,
+      dateSemisPlan: new Date(2027, 2, 12),
+    })
+
+    const apresFait = { ...culture, ...aFait }
+    expect(ecrituresRetourANonFait(apresFait, 'semisFait')).toEqual({
+      dateSemis: new Date(2027, 2, 12),
+      dateSemisPlan: null,
+    })
+  })
+
+  it('ne mémorise qu’une fois : un aller-retour répété ne fait pas fondre le plan', () => {
+    const plan = new Date(2027, 2, 12)
+    let culture: Record<string, Date | null> = { dateSemis: plan, dateSemisPlan: null }
+    for (let cycle = 0; cycle < 3; cycle++) {
+      culture = { ...culture, ...ecrituresPassageAFait(culture, 'semisFait', maintenant) }
+      culture = { ...culture, ...ecrituresRetourANonFait(culture, 'semisFait') }
+    }
+    expect(culture.dateSemis).toEqual(plan)
+    expect(culture.dateSemisPlan).toBeNull()
+  })
+
+  it('rien à mémoriser quand la date planifiée est déjà passée', () => {
+    const culture = { dateSemis: new Date(2026, 6, 31), dateSemisPlan: null }
+    expect(ecrituresPassageAFait(culture, 'semisFait', maintenant)).toEqual({})
+    expect(ecrituresRetourANonFait(culture, 'semisFait')).toEqual({})
+  })
+
+  it('étape sans date planifiée : la date d’exécution est écrite, rien n’est mémorisé', () => {
+    const culture = { dateSemis: null, dateSemisPlan: null }
+    expect(ecrituresPassageAFait(culture, 'semisFait', maintenant)).toEqual({
+      dateSemis: maintenant,
+    })
+  })
+
+  it('ne devine aucune date quand aucun plan n’a été mémorisé', () => {
+    const heritee = { dateRecolte: new Date(2026, 7, 20), dateRecoltePlan: null }
+    expect(ecrituresRetourANonFait(heritee, 'recolteFaite')).toEqual({})
+  })
+
+  it('une date fournie explicitement libère la mémoire', () => {
+    expect(ecrituresDatePlanRedefinie('plantationFaite')).toEqual({
+      datePlantationPlan: null,
+    })
+  })
+
+  it('chaque jalon porte son champ de mémoire', () => {
+    expect(CHAMP_PLAN_ETAPE).toEqual({
+      semisFait: 'dateSemisPlan',
+      plantationFaite: 'datePlantationPlan',
+      recolteFaite: 'dateRecoltePlan',
+    })
+    expect(ETAPES).toEqual(['semisFait', 'plantationFaite', 'recolteFaite'])
   })
 })

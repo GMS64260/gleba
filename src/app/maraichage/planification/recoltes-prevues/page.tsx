@@ -40,12 +40,29 @@ import {
 } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
+import { libelleUniteQuantite, type UniteQuantite } from "@/lib/recolte/projection"
+import {
+  arrondirQuantites,
+  formatQuantite,
+  formatQuantiteParUnite,
+  fusionnerQuantites,
+  quantitesNonNulles,
+  type QuantiteParUnite,
+} from "@/lib/recolte/quantites"
 
 interface RecoltePrevue {
   periode: string
   periodeNum: number
-  especes: { especeId: string; especeNom?: string; especeCouleur: string | null; quantite: number; surface: number }[]
+  especes: {
+    especeId: string
+    especeNom?: string
+    especeCouleur: string | null
+    quantite: number
+    quantiteParUnite?: QuantiteParUnite
+    surface: number
+  }[]
   totalKg: number
+  totalParUnite?: QuantiteParUnite
   totalSurface: number
 }
 
@@ -55,6 +72,14 @@ interface Stats {
   projectionKg?: number
   projectionRotationsKg?: number
   totalAttenduKg?: number
+  // Ventilations par unité (2026-08-20) : les champs en kilos ci-dessus n'en
+  // sont que la part pondérale. Un compte de fleurs coupées les lit à zéro.
+  totalAnneeParUnite?: QuantiteParUnite
+  realiseesParUnite?: QuantiteParUnite
+  projectionParUnite?: QuantiteParUnite
+  projectionRotationsParUnite?: QuantiteParUnite
+  totalAttenduParUnite?: QuantiteParUnite
+  meilleureQuantiteParUnite?: QuantiteParUnite
   surfaceTotale: number
   meilleurePeriode: string
   meilleureQuantite: number
@@ -98,11 +123,32 @@ function RecoltesPrevuesContent() {
     fetchData()
   }, [anneePrete, fetchData])
 
-  // Preparer les données pour le graphique
-  const chartData = data.map(r => ({
-    mois: r.periode.substring(0, 3),
-    quantite: Math.round(r.totalKg * 10) / 10,
-  }))
+  /*
+    Préparer les données du graphique. UNE SÉRIE PAR UNITÉ (2026-08-20) : la
+    seule série « kg » laissait le graphique vide pour un compte de fleurs
+    coupées, alors que son tableau était plein. Les échelles ne sont pas
+    comparables entre unités — 12 kg et 360 tiges dans le même repère — mais
+    chaque barre est nommée, ce qui vaut mieux qu'une donnée absente ou, pire,
+    additionnée.
+  */
+  const unitesPresentes = quantitesNonNulles(
+    arrondirQuantites(fusionnerQuantites(...data.map((r) => r.totalParUnite ?? {}))),
+  ).map((e) => e.unite)
+
+  const chartData = data.map((r) => {
+    const ligne: Record<string, string | number> = { mois: r.periode.substring(0, 3) }
+    for (const unite of unitesPresentes) {
+      ligne[unite] = r.totalParUnite?.[unite] ?? 0
+    }
+    return ligne
+  })
+
+  const COULEUR_UNITE: Record<UniteQuantite, string> = {
+    kg: "#9333ea",
+    tige: "#db2777",
+    piece: "#0891b2",
+    botte: "#16a34a",
+  }
 
   return (
     <div>
@@ -124,7 +170,10 @@ function RecoltesPrevuesContent() {
         <div className="flex items-center gap-4">
           {stats && (
             <Badge variant="outline" className="text-lg">
-              {(stats.totalAttenduKg ?? stats.totalAnnee).toFixed(1)} kg attendu
+              {formatQuantiteParUnite(
+                stats.totalAttenduParUnite ?? stats.totalAnneeParUnite ?? {},
+              )}{" "}
+              attendu
             </Badge>
           )}
           <Select
@@ -156,7 +205,7 @@ function RecoltesPrevuesContent() {
               </CardHeader>
               <CardContent>
                 <p className="text-2xl font-bold text-emerald-600">
-                  {(stats.realiseesKg ?? 0).toFixed(1)} kg
+                  {formatQuantiteParUnite(stats.realiseesParUnite ?? {})}
                 </p>
               </CardContent>
             </Card>
@@ -167,7 +216,7 @@ function RecoltesPrevuesContent() {
               </CardHeader>
               <CardContent>
                 <p className="text-2xl font-bold text-purple-600">
-                  {(stats.projectionKg ?? 0).toFixed(1)} kg
+                  {formatQuantiteParUnite(stats.projectionParUnite ?? {})}
                 </p>
                 {/* QA cmswxpaer — la part venant des rotations non encore créées
                     est nommée : c'est ce qui explique l'écart avec la liste
@@ -175,7 +224,7 @@ function RecoltesPrevuesContent() {
                     face à un tableau mensuel garni. */}
                 {(stats.projectionRotationsKg ?? 0) > 0 && (
                   <p className="mt-1 text-xs text-muted-foreground">
-                    dont {(stats.projectionRotationsKg ?? 0).toFixed(1)} kg de cultures prévues par vos
+                    dont {formatQuantiteParUnite(stats.projectionRotationsParUnite ?? {})} de cultures prévues par vos
                     rotations, pas encore créées
                   </p>
                 )}
@@ -188,7 +237,9 @@ function RecoltesPrevuesContent() {
               </CardHeader>
               <CardContent>
                 <p className="text-2xl font-bold">
-                  {(stats.totalAttenduKg ?? stats.totalAnnee).toFixed(1)} kg
+                  {formatQuantiteParUnite(
+                    stats.totalAttenduParUnite ?? stats.totalAnneeParUnite ?? {},
+                  )}
                 </p>
               </CardContent>
             </Card>
@@ -214,7 +265,8 @@ function RecoltesPrevuesContent() {
           <CardHeader>
             <CardTitle>Récoltes mensuelles prévues</CardTitle>
             <CardDescription>
-              Quantité en kg par mois pour {annee}
+              Quantité par mois pour {annee}
+              {unitesPresentes.length > 1 && " — une série par unité, les échelles ne se comparent pas"}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -225,12 +277,25 @@ function RecoltesPrevuesContent() {
                 <BarChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="mois" />
-                  <YAxis unit=" kg" />
+                  <YAxis />
                   <Tooltip
-                    formatter={(value) => [`${value} kg`, "Récolte"]}
+                    formatter={(value, name) => [
+                      formatQuantite(Number(value), name as UniteQuantite),
+                      "Récolte",
+                    ]}
                     contentStyle={{ borderRadius: 8, border: "1px solid #e5e7eb" }}
                   />
-                  <Bar dataKey="quantite" fill="#9333ea" radius={[4, 4, 0, 0]} />
+                  {(unitesPresentes.length > 0 ? unitesPresentes : (["kg"] as UniteQuantite[])).map(
+                    (unite) => (
+                      <Bar
+                        key={unite}
+                        dataKey={unite}
+                        name={libelleUniteQuantite(unite)}
+                        fill={COULEUR_UNITE[unite]}
+                        radius={[4, 4, 0, 0]}
+                      />
+                    ),
+                  )}
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -251,7 +316,7 @@ function RecoltesPrevuesContent() {
                   <TableRow>
                     <TableHead>Mois</TableHead>
                     <TableHead>Espèces</TableHead>
-                    <TableHead className="text-right">Quantité (kg)</TableHead>
+                    <TableHead className="text-right">Quantité</TableHead>
                     <TableHead className="text-right">Surface (m²)</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -271,7 +336,8 @@ function RecoltesPrevuesContent() {
                                 backgroundColor: e.especeCouleur ? `${e.especeCouleur}20` : undefined,
                               }}
                             >
-                              {e.especeNom ?? e.especeId}: {e.quantite.toFixed(1)} kg
+                              {e.especeNom ?? e.especeId}:{" "}
+                              {formatQuantiteParUnite(e.quantiteParUnite ?? {})}
                             </Badge>
                           ))}
                           {r.especes.length > 5 && (
@@ -282,7 +348,7 @@ function RecoltesPrevuesContent() {
                         </div>
                       </TableCell>
                       <TableCell className="text-right font-medium">
-                        {r.totalKg.toFixed(1)}
+                        {formatQuantiteParUnite(r.totalParUnite ?? {})}
                       </TableCell>
                       <TableCell className="text-right">
                         {r.totalSurface.toFixed(1)}

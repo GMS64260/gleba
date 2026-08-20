@@ -13,6 +13,14 @@
 
 import prisma from '@/lib/prisma'
 import { getKpiCompta } from '@/lib/kpi'
+import { uniteQuantiteRecolte, type UniteQuantite } from '@/lib/recolte/projection'
+import {
+  ajouterQuantite,
+  arrondirQuantites,
+  partKg,
+  type QuantiteParUnite,
+} from '@/lib/recolte/quantites'
+import { chargerSurchargesRendement, rendementEffectif } from '@/lib/recolte/rendement-effectif'
 
 export interface CultureCost {
   cultureId: number
@@ -31,8 +39,16 @@ export interface CultureCost {
   coutTotal: number
   margeBrute: number
   margePercent: number
-  coutKg: number
-  prixMoyenKg: number
+  /**
+   * Unité de `production`, `quantiteVendue` et des deux ratios ci-dessous —
+   * celle de l'espèce chez cet utilisateur (2026-08-20). Une culture de fleurs
+   * coupées se compte en tiges : les ratios étaient nommés et affichés « /kg ».
+   */
+  unite: UniteQuantite
+  /** Coût par UNITÉ produite (€/kg, €/tige, €/botte…), pas par kilo. */
+  coutUnitaire: number
+  /** Prix de vente moyen par UNITÉ vendue. */
+  prixMoyenUnitaire: number
   heuresTravaillees: number
   /**
    * Minutes de main-d'œuvre NON arrondies. `heuresTravaillees` est un affichage
@@ -59,8 +75,10 @@ export interface EspeceAgg {
   coutTotal: number
   margeBrute: number
   margePercent: number
-  coutKg: number
-  prixMoyenKg: number
+  /** Unité des quantités et des ratios de cette espèce (cf. CultureCost). */
+  unite: UniteQuantite
+  coutUnitaire: number
+  prixMoyenUnitaire: number
   heuresTravaillees: number
   /** Minutes non arrondies : seule base de cumul valable (cf. CultureCost). */
   minutesTravaillees: number
@@ -99,6 +117,13 @@ export async function computeCoutsProduction(userId: string, year: number) {
 
   const cultureIds = cultures.map(c => c.id)
   const plancheIds = [...new Set(cultures.map(c => c.plancheId).filter(Boolean))] as string[]
+
+  // Rendement déclaré par la ferme : il fixe l'unité dans laquelle se lisent
+  // production, quantité vendue, coût unitaire et prix moyen.
+  const surchargesRendement = await chargerSurchargesRendement(
+    userId,
+    [...new Set(cultures.map(c => c.especeId).filter(Boolean))],
+  )
 
   // Toutes les interventions manuelles liées aux cultures/planches
   const interventions = await prisma.intervention.findMany({
@@ -165,16 +190,28 @@ export async function computeCoutsProduction(userId: string, year: number) {
   const cultureCosts: CultureCost[] = []
 
   for (const culture of cultures) {
-    const production = culture.recoltes.reduce((sum, r) => sum + r.quantite, 0)
-    // BUG-07 : on n'inclut dans le « CA moyen kg » que les lignes vendues
-    // qui ont effectivement un prix (sinon prixMoyenKg = 0,19 €/kg sur 90 kg).
+    // Unité de l'espèce chez cet utilisateur, et quantités DANS cette unité.
+    // Une récolte porte son unité figée : on ne retient que celles de l'unité
+    // courante plutôt que d'additionner des tiges à des kilos (même règle que
+    // le stock, cf. stocks-helpers). Les REVENUS, eux, s'additionnent toujours :
+    // `prixKg` est un prix par unité, l'euro reste l'euro.
+    const uniteCulture = uniteQuantiteRecolte(
+      rendementEffectif(culture.espece, surchargesRendement.get(culture.especeId)).uniteRendement,
+    )
+    const estUniteCourante = (r: { unite: string | null }) =>
+      ((r.unite ?? 'kg') as UniteQuantite) === uniteCulture
+    const production = culture.recoltes.filter(estUniteCourante).reduce((sum, r) => sum + r.quantite, 0)
+    // BUG-07 : on n'inclut dans le « CA moyen » que les lignes vendues qui ont
+    // effectivement un prix (sinon prixMoyenUnitaire = 0,19 €/kg sur 90 kg).
     const recoltesVendues = culture.recoltes.filter(
       (r) =>
         r.statut === 'vendu' &&
         ((r.prixKg ?? 0) > 0 || (r.prixTotal ?? 0) > 0)
     )
     const revenus = recoltesVendues.reduce((sum, r) => sum + (r.prixTotal || (r.quantite * (r.prixKg || 0))), 0)
-    const quantiteVendue = recoltesVendues.reduce((sum, r) => sum + r.quantite, 0)
+    const quantiteVendue = recoltesVendues
+      .filter(estUniteCourante)
+      .reduce((sum, r) => sum + r.quantite, 0)
 
     const plancheSurface = culture.planche?.surface || ((culture.planche?.largeur || 0) * (culture.planche?.longueur || 0))
     const surface = plancheSurface || 0
@@ -253,8 +290,9 @@ export async function computeCoutsProduction(userId: string, year: number) {
       coutTotal: round2(coutTotal),
       margeBrute: round2(margeBrute),
       margePercent: Math.round(margePercent * 10) / 10,
-      coutKg: round2(production > 0 ? coutTotal / production : 0),
-      prixMoyenKg: round2(quantiteVendue > 0 ? revenus / quantiteVendue : 0),
+      unite: uniteCulture,
+      coutUnitaire: round2(production > 0 ? coutTotal / production : 0),
+      prixMoyenUnitaire: round2(quantiteVendue > 0 ? revenus / quantiteVendue : 0),
       heuresTravaillees: Math.round(dureeMinutes / 60 * 10) / 10,
       minutesTravaillees: dureeMinutes,
       rendement: round2(surface > 0 ? production / surface : 0),
@@ -439,8 +477,10 @@ export async function computeCoutsProduction(userId: string, year: number) {
       coutTotal: round2(coutTotal),
       margeBrute: round2(margeBrute),
       margePercent: Math.round(margePercent * 10) / 10,
-      coutKg: round2(production > 0 ? coutTotal / production : 0),
-      prixMoyenKg: round2(quantiteVendue > 0 ? revenus / quantiteVendue : 0),
+      // Toutes les cultures d'une espèce partagent son unité.
+      unite: costs[0]?.unite ?? 'kg',
+      coutUnitaire: round2(production > 0 ? coutTotal / production : 0),
+      prixMoyenUnitaire: round2(quantiteVendue > 0 ? revenus / quantiteVendue : 0),
       heuresTravaillees: Math.round(minutesTravaillees / 60 * 10) / 10,
       minutesTravaillees,
       rendement: round2(surface > 0 ? production / surface : 0),
@@ -503,12 +543,21 @@ export async function computeCoutsProduction(userId: string, year: number) {
   const especesRevenus = potagerRevenusRecoltes
   const especesCouts = potagerCouts
   const especesMarge = especesRevenus - especesCouts
+  const productionEspecesParUnite = arrondirQuantites(
+    parEspece.reduce<QuantiteParUnite>(
+      (acc, e) => ajouterQuantite(acc, e.unite, e.production),
+      {},
+    ),
+  )
   const totauxEspeces = {
     revenus: round2(especesRevenus),
     coutTotal: round2(especesCouts),
     margeBrute: round2(especesMarge),
     margePercent: especesRevenus > 0 ? Math.round((especesMarge / especesRevenus) * 1000) / 10 : 0,
-    production: round2(parEspece.reduce((s, e) => s + e.production, 0)),
+    // Part en kilos, et ventilation complète : sommer les productions de toutes
+    // les espèces mêlerait les tiges aux kilos (2026-08-20).
+    production: partKg(productionEspecesParUnite),
+    productionParUnite: productionEspecesParUnite,
     surface: round2(parEspece.reduce((s, e) => s + e.surface, 0)),
     heuresTravaillees: Math.round(parEspece.reduce((s, e) => s + e.minutesTravaillees, 0) / 60 * 10) / 10,
     nbEspeces: parEspece.length,
@@ -525,7 +574,8 @@ export async function computeCoutsProduction(userId: string, year: number) {
         revenus: round2(potagerRevenus),
         couts: round2(potagerCouts),
         marge: round2(potagerRevenus - potagerCouts),
-        production: round2(parEspece.reduce((s, e) => s + e.production, 0)),
+        production: partKg(productionEspecesParUnite),
+        productionParUnite: productionEspecesParUnite,
         heures: Math.round(parEspece.reduce((s, e) => s + e.minutesTravaillees, 0) / 60 * 10) / 10,
       },
       verger: {

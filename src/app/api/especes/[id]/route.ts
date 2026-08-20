@@ -11,6 +11,7 @@ import { updateEspeceSchema } from '@/lib/validations'
 import { nomEtCleReferentiel } from '@/lib/normalize'
 import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
 import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
+import { rendementEffectif } from '@/lib/recolte/rendement-effectif'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -67,7 +68,20 @@ export async function GET(
       )
     }
 
-    return NextResponse.json(espece)
+    // Rendement et objectif propres à CETTE ferme. Ils priment sur le catalogue
+    // et sont, pour une espèce officielle, le seul endroit où un membre peut les
+    // fixer — la fiche du catalogue lui est refusée en écriture (403 du PUT).
+    // La fiche affiche les deux : la référence, et « chez moi ».
+    const monRendement = await prisma.userStockEspece.findUnique({
+      where: { userId_especeId: { userId, especeId: espece.id } },
+      select: { rendement: true, uniteRendement: true, objectifAnnuel: true, prixKg: true },
+    })
+
+    return NextResponse.json({
+      ...espece,
+      monRendement: monRendement ?? null,
+      rendementEffectif: rendementEffectif(espece, monRendement),
+    })
   } catch (err) {
     console.error(`GET /api/especes/${resolvedId ?? '?'} error:`, err)
     return NextResponse.json(

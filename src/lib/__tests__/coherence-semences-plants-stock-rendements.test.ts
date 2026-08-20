@@ -23,6 +23,9 @@ vi.mock('@/lib/prisma', () => ({
     espece: { findMany: vi.fn() },
     variete: { findMany: vi.fn() },
     userStockVariete: { findMany: vi.fn() },
+    // Surcharges de rendement par ferme (2026-08-20) : vides par défaut, donc
+    // le catalogue fait foi et les attentes historiques ne bougent pas.
+    userStockEspece: { findMany: vi.fn().mockResolvedValue([]) },
     culture: { findMany: vi.fn() },
     iTP: { findMany: vi.fn() },
   },
@@ -35,7 +38,14 @@ vi.mock('@/lib/terroir', async (importOriginal) => {
 
 import prisma from '@/lib/prisma'
 import { getBesoinsSemences, getBesoinsPlants, getRecoltesPrevuesDetail } from '../planification'
-import { projectionRecolteKg, rendementKgParM2 } from '../recolte/projection'
+import {
+  libelleUniteQuantite,
+  projectionRecolte,
+  projectionRecolteKg,
+  rendementKgParM2,
+  rendementParM2,
+  uniteQuantiteRecolte,
+} from '../recolte/projection'
 import { moisDepuisSemaine } from '../cultures/dates-itp'
 
 const mocked = prisma as unknown as {
@@ -291,6 +301,49 @@ describe('C21 — le rendement est converti avant d\'être multiplié par une su
 
   it('une unité inconnue retombe sur le défaut du schéma plutôt que de perdre la ligne', () => {
     expect(projectionRecolteKg(10, 3, 'unite_inventee')).toBe(30)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Unités en pièces (demande du 2026-08-20 : fleurs coupées, bottes, unité)
+// ---------------------------------------------------------------------------
+
+describe('rendement en tiges, pièces ou bottes', () => {
+  it('n\'entre JAMAIS dans un total de kilos', () => {
+    // Le défaut à éviter : 1 300 tiges de dahlia comptées comme 1 300 kg.
+    for (const unite of ['tiges_m2', 'pieces_m2', 'bottes_m2'] as const) {
+      expect(rendementKgParM2(40, unite)).toBeNull()
+      expect(projectionRecolteKg(9, 40, unite)).toBe(0)
+    }
+  })
+
+  it('rend sa quantité dans SON unité', () => {
+    expect(projectionRecolte(9, 40, 'tiges_m2')).toEqual({ quantite: 360, unite: 'tige' })
+    expect(projectionRecolte(4, 16, 'pieces_m2')).toEqual({ quantite: 64, unite: 'piece' })
+    expect(projectionRecolte(10, 12, 'bottes_m2')).toEqual({ quantite: 120, unite: 'botte' })
+    expect(rendementParM2(40, 'tiges_m2')).toBe(40)
+  })
+
+  it('les unités pondérales restent des kilos, converties comme avant', () => {
+    expect(projectionRecolte(30, 5, 'kg_m2')).toEqual({ quantite: 150, unite: 'kg' })
+    expect(projectionRecolte(18, 2.5, 'biomasse_t_ha').unite).toBe('kg')
+    expect(projectionRecolte(18, 2.5, 'biomasse_t_ha').quantite).toBeCloseTo(4.5, 6)
+    // kg/arbre n'est pas surfacique : zéro, pas un chiffre inventé.
+    expect(projectionRecolte(30, 25, 'kg_arbre')).toEqual({ quantite: 0, unite: 'kg' })
+  })
+
+  it('une unité absente ou hors canon compte des kilos, comme le défaut du schéma', () => {
+    expect(uniteQuantiteRecolte(null)).toBe('kg')
+    expect(uniteQuantiteRecolte('unite_inventee')).toBe('kg')
+    expect(uniteQuantiteRecolte('tiges_m2')).toBe('tige')
+  })
+
+  it('le libellé s\'accorde au nombre', () => {
+    expect(libelleUniteQuantite('tige', 1)).toBe('tige')
+    expect(libelleUniteQuantite('tige', 360)).toBe('tiges')
+    expect(libelleUniteQuantite('piece', 1)).toBe('pièce')
+    expect(libelleUniteQuantite('botte', 12)).toBe('bottes')
+    expect(libelleUniteQuantite('kg', 1)).toBe('kg')
   })
 })
 

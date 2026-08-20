@@ -379,6 +379,7 @@ export async function PATCH(
           id: recolteId,
           especeId: existing.especeId,
           quantite: quantiteVendue,
+          unite: existing.unite,
           prixKg: body.prixKg ?? existing.prixKg,
           prixTotal: body.prixTotal ?? existing.prixTotal,
           clientNom: body.clientNom ?? existing.clientNom,

@@ -44,19 +44,40 @@ recopié dans un écran.
 
 | Valeur DB        | Label affiché | Quand                                          |
 | ---------------- | ------------- | ---------------------------------------------- |
-| `kg_m2`          | kg/m²         | Maraîchage, aromatique, fleur, petit fruit, ornement |
+| `kg_m2`          | kg/m²         | Maraîchage, aromatique, petit fruit, ornement  |
 | `kg_arbre`       | kg/arbre      | Arbre fruitier                                 |
 | `biomasse_t_ha`  | t/ha          | Engrais vert                                   |
+| `tiges_m2`       | tiges/m²      | Fleur coupée (défaut du type `fleur`)          |
+| `pieces_m2`      | pièces/m²     | Vendu à l'unité : salade, laitue, chou         |
+| `bottes_m2`      | bottes/m²     | Vendu en bottes : radis, aromates, oignon      |
 
-Cette correspondance est du CODE, pas de la prose : `uniteRendementParType()`.
-L'unité STOCKÉE fait toujours foi à l'affichage (`formatRendement(val, unite)`) ;
-la dérivation par type ne sert qu'à la création et au repli sur une ligne
-héritée sans unité. Ne pas réintroduire de ternaire local
+L'unité est un CHOIX de l'utilisateur, porté par l'espèce et saisi sur les deux
+écrans de rendement ; `uniteRendementParType()` ne fournit plus que le défaut le
+plus probable. Cette correspondance est du CODE, pas de la prose. L'unité
+STOCKÉE fait toujours foi à l'affichage (`formatRendement(val, unite)`) ; la
+dérivation par type ne sert qu'à la création et au repli sur une ligne héritée
+sans unité.
+
+Les trois unités en pièces (2026-08-20) sont surfaciques mais **non pondérales**,
+ce qui coupe la chaîne des kilos en deux :
+
+- `rendementParM2()` rend la densité dans son unité, `projectionRecolte()` la
+  quantité AVEC son unité (`kg | tige | piece | botte`) ;
+- `rendementKgParM2()` et `projectionRecolteKg()` rendent `null`/`0` pour ces
+  unités. C'est volontaire : il faudrait un poids unitaire que le référentiel ne
+  porte pas, et l'inventer ferait entrer 1 300 tiges de dahlia dans un total de
+  kilos. Les agrégats en kg (KPI « récoltes attendues », graphique mensuel,
+  planification, assistant) les ignorent donc au lieu de les additionner à tort.
+
+L'objectif annuel (`Espece.objectifAnnuel`) se lit dans l'unité de QUANTITÉ
+dérivée du rendement : `libelleUniteObjectif()`. Il était étiqueté « kg » en dur,
+ce qui rendait la planification inutilisable pour une production en tiges. Ne pas réintroduire de ternaire local
 `type === 'arbre_fruitier' ? 'kg/arbre' : 'kg/m²'` : il étiquette les engrais
 verts en kg/m² alors qu'ils sont stockés en t/ha.
 
 Le plafond de plausibilité du rendement dépend de l'unité (`kg/m²` ≤ 100,
-`kg/arbre` ≤ 1000, `t/ha` ≤ 100) : une borne uniforme à 100 interdisait de
+`kg/arbre` ≤ 1000, `t/ha` ≤ 100, `tiges/m²` et `pièces/m²` ≤ 1000,
+`bottes/m²` ≤ 500) : une borne uniforme à 100 interdisait de
 déclarer un fruitier au-delà de 100 kg/arbre, alors que le catalogue en contient
 (arbre à pain 150). Sur un PATCH partiel qui n'établit aucune unité, seule la
 borne absolue s'applique — refuser vaudrait rejeter une correction légitime.

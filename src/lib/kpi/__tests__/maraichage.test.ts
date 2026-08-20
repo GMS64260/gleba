@@ -11,7 +11,9 @@ vi.mock('@/lib/prisma', () => {
         count: vi.fn(),
       },
       recolte: {
-        aggregate: vi.fn(),
+        // groupBy et non aggregate depuis le 2026-08-20 : les récoltes sont
+        // ventilées par unité (kg, tiges, pièces, bottes).
+        groupBy: vi.fn(),
       },
       planche: {
         // Ticket #4 — passé de aggregate à findMany pour fallback surface
@@ -28,14 +30,14 @@ type AnyMock = ReturnType<typeof vi.fn>
 
 const mocked = prisma as unknown as {
   culture: { findMany: AnyMock; count: AnyMock }
-  recolte: { aggregate: AnyMock }
+  recolte: { groupBy: AnyMock }
   planche: { findMany: AnyMock }
 }
 
 function setupDefaults() {
   mocked.culture.findMany.mockResolvedValue([])
   mocked.culture.count.mockResolvedValue(0)
-  mocked.recolte.aggregate.mockResolvedValue({ _sum: { quantite: 0 } })
+  mocked.recolte.groupBy.mockResolvedValue([])
   mocked.planche.findMany.mockResolvedValue([])
 }
 
@@ -90,27 +92,29 @@ describe('getKpiMaraichage', () => {
   })
 
   it('compare les récoltes YTD vs YTD N-1 (pas vs année N-1 complète)', async () => {
-    // Une aggregate par appel : YTD, N1 YTD, N1 total, planches.
-    mocked.recolte.aggregate
-      .mockResolvedValueOnce({ _sum: { quantite: 58.5 } })   // YTD 2026
-      .mockResolvedValueOnce({ _sum: { quantite: 120.0 } })  // YTD 2025 à mi-mai
-      .mockResolvedValueOnce({ _sum: { quantite: 600.0 } })  // 2025 total
+    // Un groupBy par appel : YTD, N1 YTD, N1 total.
+    mocked.recolte.groupBy
+      .mockResolvedValueOnce([{ unite: null, _sum: { quantite: 58.5 } }])   // YTD 2026
+      .mockResolvedValueOnce([{ unite: 'kg', _sum: { quantite: 120.0 } }])  // YTD 2025 à mi-mai
+      .mockResolvedValueOnce([{ unite: null, _sum: { quantite: 600.0 } }])  // 2025 total
 
     const kpi = await getKpiMaraichage('user-1', 2026, new Date('2026-05-14'))
 
     expect(kpi.recoltesKgYtd).toBe(58.5)
     expect(kpi.recoltesKgN1Ytd).toBe(120.0)
     expect(kpi.recoltesKgN1Total).toBe(600.0)
+    // La ventilation accompagne les kilos : `unite: null` compte comme des kg.
+    expect(kpi.recoltesParUniteYtd).toEqual({ kg: 58.5 })
     // La variation calculée par l'UI doit utiliser recoltesKgN1Ytd, jamais
     // recoltesKgN1Total — on s'assure que la couche ne supprime PAS l'info
     // brute mais expose les deux explicitement.
   })
 
   it('reste robuste sur année charnière (asOf en début janvier)', async () => {
-    mocked.recolte.aggregate
-      .mockResolvedValueOnce({ _sum: { quantite: 0.0 } })
-      .mockResolvedValueOnce({ _sum: { quantite: 0.0 } })
-      .mockResolvedValueOnce({ _sum: { quantite: 500.0 } })
+    mocked.recolte.groupBy
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ unite: null, _sum: { quantite: 500.0 } }])
 
     const kpi = await getKpiMaraichage('user-2', 2026, new Date('2026-01-01'))
 
@@ -170,9 +174,9 @@ describe('getKpiMaraichage', () => {
 
   it('mémoïse le calcul (deuxième appel = 0 requête supplémentaire)', async () => {
     await getKpiMaraichage('user-mem', 2026, new Date('2026-05-14'))
-    const callsAfterFirst = mocked.recolte.aggregate.mock.calls.length
+    const callsAfterFirst = mocked.recolte.groupBy.mock.calls.length
 
     await getKpiMaraichage('user-mem', 2026, new Date('2026-05-14'))
-    expect(mocked.recolte.aggregate.mock.calls.length).toBe(callsAfterFirst)
+    expect(mocked.recolte.groupBy.mock.calls.length).toBe(callsAfterFirst)
   })
 })

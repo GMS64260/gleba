@@ -24,6 +24,8 @@ import {
   ESPECE_TYPE_DESCRIPTIONS,
   ESPECE_TYPE_LABELS,
   UNITE_RENDEMENT,
+  UNITE_RENDEMENT_DESCRIPTIONS,
+  UNITE_RENDEMENT_LABELS,
   createEspeceSchema,
   formatRendement,
   libelleUniteRendement,
@@ -127,11 +129,33 @@ describe("unité de rendement d'une espèce", () => {
   it("suit la convention documentée (docs/conventions.md)", () => {
     expect(uniteRendementParType('arbre_fruitier')).toBe('kg_arbre')
     expect(uniteRendementParType('engrais_vert')).toBe('biomasse_t_ha')
-    expect(uniteRendementParType('fleur')).toBe('kg_m2')
+    // Demande du 2026-08-20 : une fleur coupée se dimensionne en tiges. Ce n'est
+    // qu'un DÉFAUT de saisie, les 25 fleurs du catalogue gardent leur kg/m².
+    expect(uniteRendementParType('fleur')).toBe('tiges_m2')
     expect(uniteRendementParType('legume')).toBe('kg_m2')
     expect(uniteRendementParType('ornement')).toBe('kg_m2')
     // Un type inconnu (donnée héritée) reste lisible plutôt que de casser.
     expect(uniteRendementParType(null)).toBe('kg_m2')
+  })
+
+  it('les unités en pièces ont un libellé et une description', () => {
+    for (const unite of ['tiges_m2', 'pieces_m2', 'bottes_m2'] as const) {
+      expect(UNITE_RENDEMENT).toContain(unite)
+      expect(UNITE_RENDEMENT_LABELS[unite]).toBeTruthy()
+      expect(UNITE_RENDEMENT_DESCRIPTIONS[unite]).toBeTruthy()
+    }
+    expect(libelleUniteRendement('tiges_m2')).toBe('tiges/m²')
+    expect(libelleUniteRendement('bottes_m2')).toBe('bottes/m²')
+  })
+
+  it('chaque unité du référentiel est décrite', () => {
+    for (const unite of UNITE_RENDEMENT) {
+      expect(UNITE_RENDEMENT_LABELS[unite], `libellé manquant pour ${unite}`).toBeTruthy()
+      expect(
+        UNITE_RENDEMENT_DESCRIPTIONS[unite],
+        `description manquante pour ${unite}`,
+      ).toBeTruthy()
+    }
   })
 })
 
@@ -149,7 +173,13 @@ describe('plausibilité du rendement, par unité', () => {
   })
 
   it('refuse un rendement au mètre carré invraisemblable', () => {
-    const r = createEspeceSchema.safeParse({ ...especeMinimale, rendement: 150 })
+    // `type: 'legume'` explicite : depuis que la fleur se compte en tiges/m²,
+    // le type de la fixture ne borne plus à 100.
+    const r = createEspeceSchema.safeParse({
+      ...especeMinimale,
+      type: 'legume',
+      rendement: 150,
+    })
     expect(r.success).toBe(false)
     if (!r.success) {
       const issue = r.error.issues.find((i) => i.path.join('.') === 'rendement')

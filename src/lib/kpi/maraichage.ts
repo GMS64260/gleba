@@ -19,6 +19,13 @@ import { surfaceCultureM2 } from '@/lib/culture-surface'
 import type { KPIMaraichage } from './types'
 import { shiftToPrevYear } from './types'
 import { asOfDayKey, memoize } from './cache'
+import { type UniteQuantite } from '@/lib/recolte/projection'
+import {
+  ajouterQuantite,
+  arrondirQuantites,
+  partKg,
+  type QuantiteParUnite,
+} from '@/lib/recolte/quantites'
 
 /**
  * Récupère les KPI maraîchage pour `userId` / `year` à la date `asOf`.
@@ -93,17 +100,24 @@ async function computeKpiMaraichage(
       },
     }),
 
-    prisma.recolte.aggregate({
+    // Ventilées par unité (2026-08-20) : un `_sum` global additionnerait des
+    // tiges de fleurs coupées à des kilos de légumes. Les champs `recoltesKg*`
+    // gardent leur nom et deviennent la PART EN KILOS ; la ventilation complète
+    // les accompagne, pour que les écrans puissent afficher le reste.
+    prisma.recolte.groupBy({
+      by: ['unite'],
       where: { userId, date: { gte: startOfYear, lte: upperBound } },
       _sum: { quantite: true },
     }),
 
-    prisma.recolte.aggregate({
+    prisma.recolte.groupBy({
+      by: ['unite'],
       where: { userId, date: { gte: startOfYearN1, lte: asOfN1 } },
       _sum: { quantite: true },
     }),
 
-    prisma.recolte.aggregate({
+    prisma.recolte.groupBy({
+      by: ['unite'],
       where: { userId, date: { gte: startOfYearN1, lte: endOfYearN1 } },
       _sum: { quantite: true },
     }),
@@ -171,14 +185,31 @@ async function computeKpiMaraichage(
   const surfacePlanifieeM2 = sommeSurfaces(surfacePlanifieePlanches)
   const surfaceCultiveeM2 = sommeSurfaces(surfaceCultiveePlanches)
 
+  const ventiler = (
+    lignes: Array<{ unite: string | null; _sum: { quantite: number | null } }>,
+  ): QuantiteParUnite =>
+    arrondirQuantites(
+      lignes.reduce<QuantiteParUnite>(
+        (acc, ligne) =>
+          ajouterQuantite(acc, (ligne.unite ?? 'kg') as UniteQuantite, ligne._sum.quantite ?? 0),
+        {},
+      ),
+    )
+  const recoltesYtd = ventiler(recoltesYtdAgg)
+  const recoltesN1Ytd = ventiler(recoltesN1YtdAgg)
+  const recoltesN1Total = ventiler(recoltesN1TotalAgg)
+
   return {
     year,
     asOf,
     surfaceCultiveeM2: round1(surfaceCultiveeM2),
     surfacePlanifieeM2: round1(surfacePlanifieeM2),
-    recoltesKgYtd: round2(recoltesYtdAgg._sum.quantite ?? 0),
-    recoltesKgN1Ytd: round2(recoltesN1YtdAgg._sum.quantite ?? 0),
-    recoltesKgN1Total: round2(recoltesN1TotalAgg._sum.quantite ?? 0),
+    recoltesKgYtd: round2(partKg(recoltesYtd)),
+    recoltesKgN1Ytd: round2(partKg(recoltesN1Ytd)),
+    recoltesKgN1Total: round2(partKg(recoltesN1Total)),
+    recoltesParUniteYtd: recoltesYtd,
+    recoltesParUniteN1Ytd: recoltesN1Ytd,
+    recoltesParUniteN1Total: recoltesN1Total,
     culturesActives: culturesActivesCount,
     culturesPlanifiees: culturesAnnee.length,
     planchesCount: planchesTotalAgg.length,

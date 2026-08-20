@@ -25,6 +25,8 @@ import {
   joursCivilsAvant,
   type DecisionIrrigationMeteo,
 } from '@/lib/irrigation-meteo-decision'
+import { uniteQuantiteRecolte } from '@/lib/recolte/projection'
+import { chargerSurchargesRendement, rendementEffectif } from '@/lib/recolte/rendement-effectif'
 
 const CULTURE_SELECT = {
   id: true,
@@ -37,7 +39,10 @@ const CULTURE_SELECT = {
   semisFait: true,
   plantationFaite: true,
   recolteFaite: true,
-  espece: { select: { couleur: true, nom: true } },
+  // `rendement`/`uniteRendement` : une tâche de récolte doit dire dans QUELLE
+  // unité on saisit la quantité (kg, tiges, pièces, bottes). Sans ça, la boîte
+  // de saisie rapide du calendrier étiquetait « kg » la récolte d'un dahlia.
+  espece: { select: { couleur: true, nom: true, rendement: true, uniteRendement: true } },
   variete: { select: { nom: true } },
   planche: { select: { nom: true } },
 } as const
@@ -146,6 +151,13 @@ export async function getTachesPotager(
       select: CULTURE_SELECT,
       orderBy: { dateRecolte: 'asc' },
     }),
+  ])
+
+  // Rendements déclarés par la ferme : ils fixent l'unité de saisie des
+  // récoltes, y compris sur une espèce du catalogue (non modifiable par un
+  // membre). Chargés une fois pour toutes les tâches de récolte.
+  const surchargesRendement = await chargerSurchargesRendement(userId, [
+    ...new Set([...recoltesSemaine, ...recoltesRetard].map((c) => c.especeId)),
   ])
 
   // Irrigations : cette semaine OU en retard
@@ -359,6 +371,10 @@ export async function getTachesPotager(
       date: c.dateRecolte?.toISOString() || '',
       fait: c.recolteFaite,
       couleur: c.espece?.couleur || null,
+      // Unité de saisie de la quantité, surcharge de la ferme comprise.
+      unite: uniteQuantiteRecolte(
+        rendementEffectif(c.espece, surchargesRendement.get(c.especeId)).uniteRendement,
+      ),
       retardJours: retard,
     }
   }

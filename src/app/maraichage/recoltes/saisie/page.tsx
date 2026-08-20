@@ -17,8 +17,18 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useToast } from "@/hooks/use-toast"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
-import { estimerRendement } from "@/lib/assistant-helpers"
-import { rendementKgParM2 } from "@/lib/recolte/projection"
+import {
+  libelleUniteQuantite,
+  rendementParM2,
+  uniteQuantiteRecolte,
+  type UniteQuantite,
+} from "@/lib/recolte/projection"
+import {
+  ajouterQuantite,
+  formatQuantiteParUnite,
+  type QuantiteParUnite,
+} from "@/lib/recolte/quantites"
+import { libelleUniteRendement } from "@/lib/validations/espece"
 import { surfaceCultureM2 } from "@/lib/culture-surface"
 
 interface Culture {
@@ -35,6 +45,7 @@ interface Culture {
   variete: { id: string; nom: string | null } | null
   planche: { id: string; nom?: string; longueur: number | null; largeur: number | null; surface: number | null } | null
   totalRecolte: number
+  totalRecolteParUnite?: Partial<Record<UniteQuantite, number>>
 }
 
 /** Vérifie si une culture est prête à récolter (dateRecolte dans ±14 jours). */
@@ -76,7 +87,7 @@ export default function SaisieRecoltePage() {
   const [datePeremption, setDatePeremption] = React.useState<string>("")
   const [notes, setNotes] = React.useState<string>("")
   const [isSubmitting, setIsSubmitting] = React.useState(false)
-  const [recentRecoltes, setRecentRecoltes] = React.useState<{especeId: string; especeNom?: string; cultureId: number; quantite: number}[]>([])
+  const [recentRecoltes, setRecentRecoltes] = React.useState<{especeId: string; especeNom?: string; cultureId: number; quantite: number; unite: UniteQuantite}[]>([])
 
   // Charger les cultures actives (en cours de recolte ou plantées)
   React.useEffect(() => {
@@ -108,19 +119,30 @@ export default function SaisieRecoltePage() {
 
   const selectedCultureData = cultures.find((c) => c.id.toString() === selectedCulture)
 
+  /**
+   * Unité de la culture sélectionnée — celle du rendement effectif de l'espèce
+   * (surcharge de la ferme comprise, résolue par l'API des cultures).
+   * La saisie s'exprime dans cette unité et la récolte enregistrée la porte.
+   */
+  const uniteCulture = uniteQuantiteRecolte(selectedCultureData?.espece.uniteRendement)
+  const libelleUnite = libelleUniteQuantite(uniteCulture)
+
   // Estimation du rendement restant pour la culture sélectionnée
   const estimation = React.useMemo(() => {
     if (!selectedCultureData) return null
 
     // Le rendement du référentiel n'est pas toujours en kg/m² (kg/arbre pour
-    // un fruitier, t/ha pour un engrais vert) : on le ramène d'abord à une
-    // base surfacique, et on n'estime rien quand il ne s'y ramène pas.
-    const rendementM2 = rendementKgParM2(
+    // un fruitier, t/ha pour un engrais vert, tiges/m² pour une fleur coupée) :
+    // on le ramène d'abord au m² DANS SON UNITÉ, et on n'estime rien quand il
+    // ne s'y ramène pas. `rendementParM2` remplace ici `rendementKgParM2`, qui
+    // rendait null pour une espèce comptée en tiges — l'écran n'affichait alors
+    // aucune estimation à un maraîcher-fleuriste.
+    const parM2 = rendementParM2(
       selectedCultureData.espece.rendement,
       selectedCultureData.espece.uniteRendement,
     )
     const planche = selectedCultureData.planche
-    if (!rendementM2 || !planche) return null
+    if (!parM2 || !planche) return null
 
     // QA cmswu7zfb — la surface de la culture, pas de la planche entière :
     // une culture de 5 m sur une planche de 10 m était estimée à 12 kg au
@@ -128,24 +150,32 @@ export default function SaisieRecoltePage() {
     const surface = surfaceCultureM2({ longueur: selectedCultureData.longueur, planche })
     if (surface <= 0) return null
 
-    const rendementTotal = estimerRendement(rendementM2, surface, 'kg_m2')
+    const rendementTotal = parM2 * surface
     if (rendementTotal <= 0) return null
 
-    // Soustraire les recoltes déjà effectuées (de la session en cours + de la DB)
+    // Soustraire les recoltes déjà effectuées (de la session en cours + de la
+    // DB). Côté DB on prend la part de l'unité courante : `totalRecolteParUnite`
+    // est ventilé, additionner les autres unités serait faux.
     const dejaRecolteSessions = recentRecoltes
       .filter((r) => r.cultureId === selectedCultureData.id)
       .reduce((sum, r) => sum + r.quantite, 0)
-    const dejaRecolteDB = selectedCultureData.totalRecolte || 0
+    const dejaRecolteDB =
+      selectedCultureData.totalRecolteParUnite?.[uniteCulture] ??
+      (uniteCulture === 'kg' ? selectedCultureData.totalRecolte || 0 : 0)
     const restant = Math.max(0, rendementTotal - dejaRecolteDB - dejaRecolteSessions)
 
+    const decimales = uniteCulture === 'kg' ? 2 : 0
+    const arrondi = (valeur: number) =>
+      Math.round(valeur * 10 ** decimales) / 10 ** decimales
+
     return {
-      rendementTotal: Math.round(rendementTotal * 100) / 100,
-      dejaRecolte: Math.round((dejaRecolteDB + dejaRecolteSessions) * 100) / 100,
-      restant: Math.round(restant * 100) / 100,
+      rendementTotal: arrondi(rendementTotal),
+      dejaRecolte: arrondi(dejaRecolteDB + dejaRecolteSessions),
+      restant: arrondi(restant),
       surface: Math.round(surface * 100) / 100,
-      rendementM2: Math.round(rendementM2 * 1000) / 1000,
+      rendementM2: Math.round(parM2 * 1000) / 1000,
     }
-  }, [selectedCultureData, recentRecoltes])
+  }, [selectedCultureData, recentRecoltes, uniteCulture])
 
   // Pré-remplir la quantité quand on change de culture (si estimation disponible)
   const prevSelectedCulture = React.useRef(selectedCulture)
@@ -198,13 +228,21 @@ export default function SaisieRecoltePage() {
       // Ajouter aux recoltes récentes
       const especeNom = cultureData.espece.nom ?? cultureData.especeId
       setRecentRecoltes((prev) => [
-        { especeId: cultureData.especeId, especeNom, cultureId: cultureData.id, quantite: parseFloat(quantite) },
+        {
+          especeId: cultureData.especeId,
+          especeNom,
+          cultureId: cultureData.id,
+          quantite: parseFloat(quantite),
+          // L'unité voyage avec la ligne : la session peut enchaîner une carotte
+          // au kilo et un dahlia à la tige.
+          unite: uniteQuantiteRecolte(cultureData.espece.uniteRendement),
+        },
         ...prev.slice(0, 4),
       ])
 
       toast({
         title: "Récolte enregistrée",
-        description: `${quantite} kg de ${especeNom}`,
+        description: `${quantite} ${libelleUnite} de ${especeNom}`,
       })
 
       // Réinitialiser le formulaire (garder la culture sélectionnée)
@@ -223,7 +261,9 @@ export default function SaisieRecoltePage() {
   }
 
   // Raccourcis pour les quantités courantes
-  const quickQuantities = [0.5, 1, 2, 5, 10]
+  // Des kilos se pèsent au demi, des tiges ou des bottes se comptent : proposer
+  // « 0,5 tige » n'aurait pas de sens.
+  const quickQuantities = uniteCulture === 'kg' ? [0.5, 1, 2, 5, 10] : [5, 10, 25, 50, 100]
 
   return (
     <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
@@ -339,18 +379,20 @@ export default function SaisieRecoltePage() {
                     {estimation && (
                       <div className="text-xs bg-blue-50 border border-blue-200 rounded-md px-3 py-2 space-y-0.5">
                         <p className="font-medium text-blue-700">
-                          Estimation : {estimation.rendementTotal} kg
+                          Estimation : {estimation.rendementTotal} {libelleUnite}
                           <span className="font-normal text-blue-600">
-                            {" "}({estimation.rendementM2} kg/m² x {estimation.surface} m²)
+                            {" "}({estimation.rendementM2}{" "}
+                            {libelleUniteRendement(selectedCultureData?.espece.uniteRendement)} x{" "}
+                            {estimation.surface} m²)
                           </span>
                         </p>
                         {estimation.dejaRecolte > 0 && (
                           <p className="text-blue-600">
-                            Déjà récolté : {estimation.dejaRecolte} kg
+                            Déjà récolté : {estimation.dejaRecolte} {libelleUnite}
                           </p>
                         )}
                         <p className="text-blue-700 font-medium">
-                          Restant estimé : {estimation.restant} kg
+                          Restant estimé : {estimation.restant} {libelleUnite}
                         </p>
                       </div>
                     )}
@@ -365,7 +407,7 @@ export default function SaisieRecoltePage() {
 
               {/* Quantité */}
               <div>
-                <label className="text-sm font-medium">Quantité (kg) *</label>
+                <label className="text-sm font-medium">Quantité ({libelleUnite}) *</label>
                 <Input
                   type="number"
                   step="0.01"
@@ -385,7 +427,7 @@ export default function SaisieRecoltePage() {
                       size="sm"
                       onClick={() => setQuantite(q.toString())}
                     >
-                      {q} kg
+                      {q} {libelleUnite}
                     </Button>
                   ))}
                 </div>
@@ -428,14 +470,23 @@ export default function SaisieRecoltePage() {
                 {recentRecoltes.map((r, i) => (
                   <li key={i} className="flex justify-between text-sm">
                     <span>{r.especeNom ?? r.especeId}</span>
-                    <span className="font-medium text-green-600">{r.quantite} kg</span>
+                    <span className="font-medium text-green-600">
+                      {r.quantite} {libelleUniteQuantite(r.unite, r.quantite)}
+                    </span>
                   </li>
                 ))}
               </ul>
               <div className="border-t mt-3 pt-3 flex justify-between font-medium">
                 <span>Total session</span>
+                {/* Une session peut mêler des kilos et des tiges : on ventile
+                    plutôt que d'additionner. */}
                 <span className="text-green-600">
-                  {recentRecoltes.reduce((sum, r) => sum + r.quantite, 0).toFixed(2)} kg
+                  {formatQuantiteParUnite(
+                    recentRecoltes.reduce<QuantiteParUnite>(
+                      (acc, r) => ajouterQuantite(acc, r.unite, r.quantite),
+                      {},
+                    ),
+                  )}
                 </span>
               </div>
             </CardContent>

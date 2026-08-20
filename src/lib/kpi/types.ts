@@ -7,6 +7,8 @@
  * terminée (31/12).
  */
 
+import type { QuantiteParUnite } from '@/lib/recolte/quantites'
+
 export interface KPIBase {
   /** Année de référence (ex : 2026). */
   year: number
@@ -27,12 +29,20 @@ export interface KPIMaraichage extends KPIBase {
    */
   surfacePlanifieeM2: number
 
-  /** Récoltes (kg) cumulées du 1er janvier `year` à `asOf`. */
+  /** Récoltes : PART EN KILOS cumulée du 1er janvier `year` à `asOf`. */
   recoltesKgYtd: number
-  /** Récoltes (kg) cumulées de l'année `year - 1` au même jour calendaire. */
+  /** Idem pour l'année `year - 1` au même jour calendaire. */
   recoltesKgN1Ytd: number
-  /** Récoltes (kg) totales de l'année `year - 1` (info seulement). */
+  /** Idem, année `year - 1` complète (info seulement). */
   recoltesKgN1Total: number
+  /**
+   * Les mêmes trois totaux, VENTILÉS par unité (2026-08-20). Les champs en
+   * kilos ci-dessus n'en sont que la part pondérale : une ferme de fleurs
+   * coupées les lit à zéro, sa production vivant dans `tige`.
+   */
+  recoltesParUniteYtd: QuantiteParUnite
+  recoltesParUniteN1Ytd: QuantiteParUnite
+  recoltesParUniteN1Total: QuantiteParUnite
 
   /** Cultures actives au sens du statut (Plantée/Semée/En récolte). */
   culturesActives: number

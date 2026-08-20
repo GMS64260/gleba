@@ -14,7 +14,16 @@ import { irrigationCache } from '@/lib/irrigation-cache'
 import { etendrePlanArrosage } from '@/lib/irrigation-scheduler'
 import { invalidateKpi } from '@/lib/kpi'
 import { etatCulture } from '@/lib/cultures/etat'
-import { CHAMP_DATE_ETAPE, dateExecutionARecaler } from '@/lib/cultures/execution'
+import { type UniteQuantite } from '@/lib/recolte/projection'
+import { ajouterQuantite, arrondirQuantites, partKg, type QuantiteParUnite } from '@/lib/recolte/quantites'
+import { chargerSurchargesRendement, rendementEffectif } from '@/lib/recolte/rendement-effectif'
+import {
+  CHAMP_DATE_ETAPE,
+  ETAPES,
+  ecrituresDatePlanRedefinie,
+  ecrituresPassageAFait,
+  ecrituresRetourANonFait,
+} from '@/lib/cultures/execution'
 import type { ChampDateEtape, ChampEtape } from '@/lib/cultures/execution'
 import { whereItpUtilisable } from '@/lib/itp-acces'
 import { appliquerDecalageItp, decalageItpPourLecteur } from '@/lib/calendrier-climat'
@@ -70,11 +79,31 @@ export async function GET(
       )
     }
 
+    // Rendement effectif (celui de la ferme prime) et ventilation du réalisé
+    // par unité : `totalRecolte` garde son sens de PART EN KILOS.
+    const surcharges = await chargerSurchargesRendement(session!.user.id, [culture.especeId])
+    const effectif = rendementEffectif(culture.espece, surcharges.get(culture.especeId))
+    const recolteParUnite: QuantiteParUnite = {}
+    for (const r of culture.recoltes) {
+      ajouterQuantite(recolteParUnite, (r.unite ?? 'kg') as UniteQuantite, r.quantite)
+    }
+
     // Ajouter les champs calculés
     const cultureWithComputed = {
       ...culture,
+      espece: culture.espece
+        ? {
+            ...culture.espece,
+            rendement: effectif.rendement,
+            uniteRendement: effectif.uniteRendement,
+            rendementCatalogue: culture.espece.rendement,
+            uniteRendementCatalogue: culture.espece.uniteRendement,
+            origineRendement: effectif.origine,
+          }
+        : culture.espece,
       etat: etatCulture(culture),
-      totalRecolte: culture.recoltes.reduce((sum, r) => sum + r.quantite, 0),
+      totalRecolte: partKg(arrondirQuantites(recolteParUnite)),
+      totalRecolteParUnite: arrondirQuantites(recolteParUnite),
     }
 
     return NextResponse.json(cultureWithComputed)
@@ -238,10 +267,49 @@ export async function PUT(
       }
     }
 
+    // Le formulaire complet est un chemin de complétion comme les autres : il
+    // porte les trois cases « fait » ET les trois dates. Deux conséquences,
+    // traitées par le même SSOT que le PATCH rapide (execution.ts).
+    // 1. Cocher « semis fait » ici ne recalait rien : le registre pouvait
+    //    afficher un fait daté dans le futur, ce que QA cmsp66tdm avait fermé
+    //    côté PATCH seulement.
+    // 2. Décocher rendait la date de plan — mais le formulaire renvoie AUSSI la
+    //    date affichée, c'est-à-dire la date d'exécution. La restitution ne
+    //    s'applique donc que si l'utilisateur n'a pas lui-même changé la date :
+    //    une date modifiée est un nouveau plan et fait foi.
+    const dateSoumise: Record<ChampEtape, Date | null | undefined> = {
+      semisFait: 'dateSemis' in data ? ((data.dateSemis as Date | null) ?? null) : undefined,
+      plantationFaite:
+        'datePlantation' in data ? ((data.datePlantation as Date | null) ?? null) : undefined,
+      recolteFaite: 'dateRecolte' in data ? ((data.dateRecolte as Date | null) ?? null) : undefined,
+    }
+    const faitSoumis: Record<ChampEtape, boolean | undefined> = {
+      semisFait: data.semisFait,
+      plantationFaite: data.plantationFaite,
+      recolteFaite: data.recolteFaite,
+    }
+    const ecrituresEtapes: Record<string, Date | null> = {}
+    for (const champEtape of ETAPES) {
+      const champDate = CHAMP_DATE_ETAPE[champEtape]
+      const soumise = dateSoumise[champEtape]
+      if (
+        soumise !== undefined &&
+        (soumise?.getTime() ?? null) !== (existing[champDate]?.getTime() ?? null)
+      ) {
+        Object.assign(ecrituresEtapes, ecrituresDatePlanRedefinie(champEtape))
+        continue
+      }
+      if (faitSoumis[champEtape] === true && !existing[champEtape]) {
+        Object.assign(ecrituresEtapes, ecrituresPassageAFait(existing, champEtape))
+      } else if (faitSoumis[champEtape] === false && existing[champEtape]) {
+        Object.assign(ecrituresEtapes, ecrituresRetourANonFait(existing, champEtape))
+      }
+    }
+
     // Mise à jour
     const culture = await prisma.culture.update({
       where: { id: cultureId },
-      data: validationResult.data,
+      data: { ...validationResult.data, ...ecrituresEtapes },
       include: {
         espece: true,
         variete: true,
@@ -432,12 +500,26 @@ export async function PATCH(
     // futur : cliquer une tâche planifiée au 15/08 le 11/08 enregistrait « Semis
     // fait le 15/08 » au registre. On recale la date d'exécution sur le jour
     // courant, sauf si l'appel fournit lui-même la date (geste explicite).
+    //
+    // Friction 2026-08-20 — et le retour en arrière rend sa date au plan. Le
+    // bouton « Annuler le semis fait » de /maraichage/cultures passe ici : sans
+    // restitution, cocher puis décocher laissait la date d'exécution en place et
+    // le plan était perdu.
     for (const [champEtape, champDate] of Object.entries(CHAMP_DATE_ETAPE) as Array<
       [ChampEtape, ChampDateEtape]
     >) {
-      if (updateData[champEtape] !== true || champDate in updateData) continue
-      const recalage = dateExecutionARecaler(existing[champDate])
-      if (recalage) updateData[champDate] = recalage
+      if (!(champEtape in updateData)) continue
+      if (champDate in updateData) {
+        // Date fournie dans le même appel : c'est elle qui fait foi, la mémoire
+        // du plan n'a plus d'objet.
+        Object.assign(updateData, ecrituresDatePlanRedefinie(champEtape))
+        continue
+      }
+      if (updateData[champEtape] === true) {
+        Object.assign(updateData, ecrituresPassageAFait(existing, champEtape))
+      } else if (updateData[champEtape] === false) {
+        Object.assign(updateData, ecrituresRetourANonFait(existing, champEtape))
+      }
     }
 
     const culture = await prisma.culture.update({

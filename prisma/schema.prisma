@@ -1333,6 +1333,16 @@ model Culture {
   datePlantation DateTime? @map("date_plantation")
   dateRecolte    DateTime? @map("date_recolte")
 
+  // Date PRÉVISIONNELLE mémorisée avant recalage d'exécution.
+  // Marquer une étape faite ramène sa date au jour courant si elle était datée
+  // dans le futur (`src/lib/cultures/execution.ts`) : sans mémoire, décocher
+  // l'étape laissait la date d'exécution en place et le plan était perdu — vu
+  // le 2026-08-20 sur une culture de fleurs planifiée pour l'année suivante.
+  // null = la date portée par le champ EST la date de plan.
+  dateSemisPlan      DateTime? @map("date_semis_plan")
+  datePlantationPlan DateTime? @map("date_plantation_plan")
+  dateRecoltePlan    DateTime? @map("date_recolte_plan")
+
   // État d'avancement
   semisFait       Boolean @default(false) @map("semis_fait")
   plantationFaite Boolean @default(false) @map("plantation_faite")
@@ -1385,10 +1395,19 @@ model Recolte {
   cultureId         Int       @map("culture")
   culture           Culture   @relation(fields: [cultureId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   date              DateTime  @default(now()) @map("date")
-  quantite          Float     @map("quantite") // kg
+  quantite          Float     @map("quantite") // dans l'unité ci-dessous
+  // Unité de la quantité, FIGÉE à la saisie — même principe que statutBioSnapshot.
+  // Une espèce peut changer d'unité de rendement (une salade passée du kilo à la
+  // pièce) ; les récoltes déjà enregistrées ne doivent pas changer de sens pour
+  // autant. null = kg, ce qui couvre toutes les lignes antérieures au 2026-08-20.
+  // Valeurs : kg | tige | piece | botte (cf. UniteQuantite, recolte/projection).
+  unite             String?   @map("unite")
   // Statut et vente
   statut            String    @default("en_stock") @map("statut") // "en_stock", "vendu", "consomme", "perte"
   dateVente         DateTime? @map("date_vente")
+  // Prix PAR UNITÉ de la récolte (€/kg, €/tige, €/botte…). Le nom historique
+  // dit « Kg » ; il est conservé pour ne pas réécrire la chaîne comptable, mais
+  // l'unité de référence est `unite`, pas le kilo.
   prixKg            Float?    @map("prix_kg")
   prixTotal         Float?    @map("prix_total")
   clientId          Int?      @map("client_id")
@@ -3671,11 +3690,23 @@ model UserStockEspece {
   user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   especeId       String    @map("espece_id")
   espece         Espece    @relation(fields: [especeId], references: [id], onDelete: Cascade)
-  inventaire     Float?    @map("inventaire") // kg
+  inventaire     Float?    @map("inventaire") // dans l'unité de l'espèce (kg par défaut)
   dateInventaire DateTime? @map("date_inventaire")
-  prixKg         Float?    @map("prix_kg") // €/kg
-  objectifAnnuel Float?    @map("obj_annuel") // kg ou unités visées/an
+  prixKg         Float?    @map("prix_kg") // € par unité de l'espèce
+  objectifAnnuel Float?    @map("obj_annuel") // dans l'unité de l'espèce, visé/an
   uniteStock     String?   @map("unite_stock") // graines | caieux | bulbes | tubercules | plants | pieces
+
+  // Rendement PROPRE À CETTE FERME, qui prime sur celui du catalogue.
+  // Un rendement n'est pas une propriété de l'espèce mais du couple sol-conduite :
+  // le catalogue ne peut en donner qu'un ordre de grandeur. Surtout, une espèce
+  // officielle n'est pas modifiable par un membre (403) — sans cette surcharge,
+  // le choix d'unité introduit le 2026-08-20 restait inaccessible à qui cultive
+  // du catalogue, ce qui était le cas du compte qui l'avait demandé.
+  // Actif dès que l'un des deux champs est renseigné (cf. `rendementEffectif`) :
+  // déclarer « mes dahlias se comptent en tiges » sans encore connaître la
+  // densité est une information, pas une erreur.
+  rendement      Float?    @map("rendement") // sens donné par uniteRendement
+  uniteRendement String?   @map("unite_rendement") // valeurs de UNITE_RENDEMENT
   // DEV2 #6 — coût unitaire pour valorisation (PMP/FIFO/dernier prix).
   // Pour les récoltes maraîchage où il n'y a pas d'achat, dériver du
   // prix de vente moyen × (1 - marge) via coutStandardDepuisPrixVente.

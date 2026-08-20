@@ -8,6 +8,10 @@ vi.mock('@/lib/prisma', () => ({
   default: {
     recolte: { findMany: vi.fn() },
     culture: { findMany: vi.fn() },
+    // Surcharges de rendement propres à la ferme (2026-08-20) : par défaut
+    // aucune, donc le catalogue fait foi et les cas historiques ne bougent pas.
+    userStockEspece: { findMany: vi.fn() },
+    espece: { findUnique: vi.fn() },
   },
 }))
 
@@ -18,6 +22,8 @@ type AnyMock = ReturnType<typeof vi.fn>
 const mocked = prisma as unknown as {
   recolte: { findMany: AnyMock }
   culture: { findMany: AnyMock }
+  userStockEspece: { findMany: AnyMock }
+  espece: { findUnique: AnyMock }
 }
 
 describe('getRecoltesAnneeAggregat', () => {
@@ -25,6 +31,8 @@ describe('getRecoltesAnneeAggregat', () => {
     vi.clearAllMocks()
     mocked.recolte.findMany.mockResolvedValue([])
     mocked.culture.findMany.mockResolvedValue([])
+    mocked.userStockEspece.findMany.mockResolvedValue([])
+    mocked.espece.findUnique.mockResolvedValue(null)
   })
 
   it('renvoie 0 sur tous les champs quand aucune donnée', async () => {
@@ -134,6 +142,54 @@ describe('getRecoltesAnneeAggregat', () => {
       especeCouleur: '#f00',
       realiseesKg: 30,
       projectionKg: 20,
+      realiseesParUnite: { kg: 30 },
+      projectionParUnite: { kg: 20 },
     })
+  })
+
+  it('ne mêle JAMAIS les tiges aux kilos, et ne les perd pas', async () => {
+    // Le cas de la demande du 2026-08-20 : une ferme mixte, légumes au kilo et
+    // fleurs à la tige. Les deux totaux existent, séparément.
+    mocked.recolte.findMany.mockResolvedValue([
+      { quantite: 12, unite: null, date: new Date(2026, 6, 1), especeId: 'carotte', espece: { couleur: null } },
+      { quantite: 120, unite: 'tige', date: new Date(2026, 6, 2), especeId: 'Dahlia', espece: { couleur: null } },
+    ])
+    mocked.culture.findMany.mockResolvedValue([
+      {
+        dateRecolte: new Date(2026, 7, 10),
+        plancheId: 'p1',
+        especeId: 'Dahlia',
+        planche: { surface: 9, largeur: null, longueur: null },
+        espece: { id: 'Dahlia', couleur: null, rendement: 40, uniteRendement: 'tiges_m2' },
+      },
+    ])
+    const agg = await getRecoltesAnneeAggregat('u1', 2026)
+    expect(agg.realiseesKg).toBe(12)
+    expect(agg.realiseesParUnite).toEqual({ kg: 12, tige: 120 })
+    expect(agg.projectionKg).toBe(0)
+    expect(agg.projectionParUnite).toEqual({ tige: 360 })
+    expect(agg.totalAttenduParUnite).toEqual({ kg: 12, tige: 480 })
+    expect(agg.parMois[7].projectionParUnite).toEqual({ tige: 360 })
+  })
+
+  it("le rendement déclaré par la ferme prime sur celui du catalogue", async () => {
+    // Espèce OFFICIELLE non modifiable par le membre : c'est la surcharge qui
+    // rend le choix d'unité accessible.
+    mocked.userStockEspece.findMany.mockResolvedValue([
+      { especeId: 'Dahlia', rendement: 40, uniteRendement: 'tiges_m2' },
+    ])
+    mocked.culture.findMany.mockResolvedValue([
+      {
+        dateRecolte: new Date(2026, 7, 10),
+        plancheId: 'p1',
+        especeId: 'Dahlia',
+        planche: { surface: 10, largeur: null, longueur: null },
+        espece: { id: 'Dahlia', couleur: null, rendement: 4, uniteRendement: 'kg_m2' },
+      },
+    ])
+    const agg = await getRecoltesAnneeAggregat('u1', 2026)
+    // Sans surcharge : 40 kg. Avec : 400 tiges, et zéro kilo.
+    expect(agg.projectionParUnite).toEqual({ tige: 400 })
+    expect(agg.projectionKg).toBe(0)
   })
 })

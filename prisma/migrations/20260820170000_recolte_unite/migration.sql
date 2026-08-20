@@ -1,0 +1,11 @@
+-- Unité d'une récolte, FIGÉE à la saisie.
+--
+-- Le rendement peut s'exprimer en tiges, pièces ou bottes depuis le 2026-08-20 :
+-- un objectif dans ces unités n'a de sens que si le réalisé se saisit de même.
+-- L'unité est snapshotée sur la ligne plutôt que lue sur l'espèce, au même titre
+-- que `statut_bio_snapshot` : une espèce qui change d'unité ne doit pas changer
+-- le sens des récoltes déjà enregistrées.
+--
+-- NULL = kg. Toutes les lignes existantes sont donc lues comme avant, sans
+-- écriture de rattrapage.
+ALTER TABLE "recoltes" ADD COLUMN IF NOT EXISTS "unite" TEXT;

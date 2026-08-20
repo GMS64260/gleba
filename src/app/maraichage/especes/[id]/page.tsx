@@ -62,9 +62,14 @@ import {
   ESPECE_NIVEAUX,
   ESPECE_IRRIGATION,
   ESPECE_IRRIGATION_LABELS,
+  UNITE_RENDEMENT,
+  UNITE_RENDEMENT_DESCRIPTIONS,
+  UNITE_RENDEMENT_LABELS,
+  formatRendement,
   libelleUniteRendement,
   uniteRendementParType,
 } from "@/lib/validations/espece"
+import { libelleUniteObjectif, uniteQuantiteRecolte } from "@/lib/recolte/projection"
 import { StarRating } from "@/components/avis/StarRating"
 import { AvisDialog } from "@/components/avis/AvisDialog"
 import type { AvisStatsListe } from "@/lib/avis/types"
@@ -170,6 +175,7 @@ export default function EditEspecePage() {
       familleId: null,
       nomLatin: null,
       rendement: null,
+      uniteRendement: undefined,
       vivace: false,
       besoinN: null,
       besoinP: null,
@@ -196,6 +202,79 @@ export default function EditEspecePage() {
     },
   })
 
+  // Le formulaire porte désormais l'unité : son choix prime, l'unité chargée en
+  // base ne sert qu'avant le premier rendu du champ.
+  const uniteChoisie = form.watch("uniteRendement")
+  const uniteEffective = uniteChoisie ?? uniteRendementEspece
+
+  /**
+   * Rendement « chez moi » — surcharge propre à la ferme.
+   *
+   * C'est le seul endroit où un membre peut fixer le rendement et l'unité d'une
+   * espèce du CATALOGUE, dont la fiche lui est refusée en écriture (403). Sans
+   * lui, le choix d'unité livré le 2026-08-20 restait inaccessible à qui cultive
+   * des espèces officielles — les 25 fleurs coupées du catalogue, par exemple.
+   * Et c'est de toute façon plus juste : un rendement dépend du sol et de la
+   * conduite, le catalogue n'en donne qu'un ordre de grandeur.
+   */
+  const [monRendement, setMonRendement] = React.useState<{
+    rendement: number | null
+    uniteRendement: string | null
+    objectifAnnuel: number | null
+  } | null>(null)
+  const [rendementFermeSaisi, setRendementFermeSaisi] = React.useState<string>("")
+  const [uniteFermeSaisie, setUniteFermeSaisie] = React.useState<string>("")
+  const [objectifFermeSaisi, setObjectifFermeSaisi] = React.useState<string>("")
+  const [enregistrementFerme, setEnregistrementFerme] = React.useState(false)
+
+  const uniteFermeEffective =
+    uniteFermeSaisie || monRendement?.uniteRendement || uniteEffective || "kg_m2"
+
+  const enregistrerMonRendement = async (remiseAZero = false) => {
+    setEnregistrementFerme(true)
+    try {
+      const response = await fetch(
+        `/api/especes/${encodeURIComponent(especeId)}/mon-rendement`,
+        remiseAZero
+          ? { method: "DELETE" }
+          : {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                rendement: rendementFermeSaisi === "" ? null : parseFloat(rendementFermeSaisi),
+                uniteRendement: uniteFermeSaisie === "" ? null : uniteFermeSaisie,
+                objectifAnnuel: objectifFermeSaisi === "" ? null : parseFloat(objectifFermeSaisi),
+              }),
+            }
+      )
+      if (!response.ok) {
+        const erreur = await response.json()
+        throw new Error(erreur.error || "Erreur lors de l'enregistrement")
+      }
+      const { monRendement: enregistre } = await response.json()
+      setMonRendement(enregistre)
+      setRendementFermeSaisi(enregistre?.rendement != null ? String(enregistre.rendement) : "")
+      setUniteFermeSaisie(enregistre?.uniteRendement ?? "")
+      setObjectifFermeSaisi(
+        enregistre?.objectifAnnuel != null ? String(enregistre.objectifAnnuel) : ""
+      )
+      toast({
+        title: remiseAZero ? "Retour au catalogue" : "Rendement enregistré",
+        description: remiseAZero
+          ? "Le rendement du catalogue s'applique de nouveau."
+          : "Vos projections utilisent désormais cette valeur.",
+      })
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Erreur",
+        description: error instanceof Error ? error.message : "Réessayez.",
+      })
+    } finally {
+      setEnregistrementFerme(false)
+    }
+  }
+
   // Charger les données
   React.useEffect(() => {
     Promise.all([
@@ -212,12 +291,26 @@ export default function EditEspecePage() {
         setUniteRendementEspece(
           especeData.uniteRendement ?? uniteRendementParType(especeData.type)
         )
+        setMonRendement(especeData.monRendement ?? null)
+        setRendementFermeSaisi(
+          especeData.monRendement?.rendement != null
+            ? String(especeData.monRendement.rendement)
+            : ""
+        )
+        setUniteFermeSaisie(especeData.monRendement?.uniteRendement ?? "")
+        setObjectifFermeSaisi(
+          especeData.monRendement?.objectifAnnuel != null
+            ? String(especeData.monRendement.objectifAnnuel)
+            : ""
+        )
         void reloadVarietes()
         setFournisseurs(fournisseursData.data || fournisseursData || [])
         form.reset({
           familleId: especeData.familleId || null,
           nomLatin: especeData.nomLatin || null,
           rendement: especeData.rendement || null,
+          uniteRendement:
+            especeData.uniteRendement ?? uniteRendementParType(especeData.type),
           vivace: especeData.vivace || false,
           besoinN: especeData.besoinN || null,
           besoinP: especeData.besoinP || null,
@@ -988,12 +1081,14 @@ export default function EditEspecePage() {
                           <FormItem>
                             {/*
                               Ticket FB-E33FAA — l'unité RÉELLEMENT stockée fait
-                              foi (cf. `uniteRendementEspece`). L'ancien ternaire
-                              ne connaissait que l'arbre fruitier, et lisait de
-                              surcroît un champ absent du formulaire.
+                              foi. L'ancien ternaire ne connaissait que l'arbre
+                              fruitier, et lisait de surcroît un champ absent du
+                              formulaire. Depuis le 2026-08-20 elle se CHOISIT :
+                              le champ voisin la porte, le type ne donne plus que
+                              le défaut.
                             */}
                             <FormLabel>
-                              Rendement ({libelleUniteRendement(uniteRendementEspece)})
+                              Rendement ({libelleUniteRendement(uniteEffective)})
                             </FormLabel>
                             <FormControl>
                               <Input
@@ -1007,6 +1102,44 @@ export default function EditEspecePage() {
                                 }
                               />
                             </FormControl>
+                            <FormDescription>
+                              {UNITE_RENDEMENT_DESCRIPTIONS[
+                                uniteEffective as typeof UNITE_RENDEMENT[number]
+                              ] ?? UNITE_RENDEMENT_DESCRIPTIONS.kg_m2}
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name="uniteRendement"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Unité de rendement</FormLabel>
+                            <Select
+                              onValueChange={field.onChange}
+                              value={field.value ?? uniteEffective ?? "kg_m2"}
+                            >
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {UNITE_RENDEMENT.map((unite) => (
+                                  <SelectItem key={unite} value={unite}>
+                                    {UNITE_RENDEMENT_LABELS[unite]}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormDescription>
+                              {uniteQuantiteRecolte(uniteEffective) === "kg"
+                            ? "Commande aussi l'unité de l'objectif annuel."
+                            : "Commande aussi l'unité de l'objectif annuel. Les totaux en kilos (récoltes attendues, graphique mensuel) n'additionnent pas cette unité."}
+                            </FormDescription>
                             <FormMessage />
                           </FormItem>
                         )}
@@ -1017,7 +1150,9 @@ export default function EditEspecePage() {
                         name="objectifAnnuel"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Objectif annuel (kg)</FormLabel>
+                            <FormLabel>
+                              Objectif annuel ({libelleUniteObjectif(uniteEffective)})
+                            </FormLabel>
                             <FormControl>
                               <Input
                                 type="number"
@@ -1082,6 +1217,105 @@ export default function EditEspecePage() {
                           </FormItem>
                         )}
                       />
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/*
+                  Rendement propre à la ferme. Séparé du référentiel à dessein :
+                  le catalogue est partagé par tous les comptes et n'est pas
+                  modifiable par un membre, alors qu'un rendement dépend du sol
+                  et de la conduite. C'est aussi le seul chemin d'accès aux
+                  unités en tiges, pièces ou bottes pour une espèce officielle.
+                */}
+                <Card className="mt-6 border-emerald-200">
+                  <CardHeader>
+                    <CardTitle className="text-base">Chez moi</CardTitle>
+                    <p className="text-sm text-slate-500">
+                      Vos propres valeurs, utilisées par vos projections de récolte à la place de
+                      celles du catalogue. Modifiables même sur une espèce du catalogue Gleba.
+                    </p>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid gap-4 sm:grid-cols-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="rendement-ferme">
+                          Mon rendement ({libelleUniteRendement(uniteFermeEffective)})
+                        </Label>
+                        <Input
+                          id="rendement-ferme"
+                          type="number"
+                          step="0.1"
+                          placeholder="Ex: 40"
+                          value={rendementFermeSaisi}
+                          onChange={(e) => setRendementFermeSaisi(e.target.value)}
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="unite-ferme">Mon unité</Label>
+                        <Select
+                          value={uniteFermeEffective}
+                          onValueChange={(valeur) => setUniteFermeSaisie(valeur)}
+                        >
+                          <SelectTrigger id="unite-ferme">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {UNITE_RENDEMENT.map((unite) => (
+                              <SelectItem key={unite} value={unite}>
+                                {UNITE_RENDEMENT_LABELS[unite]}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="objectif-ferme">
+                          Mon objectif annuel ({libelleUniteObjectif(uniteFermeEffective)})
+                        </Label>
+                        <Input
+                          id="objectif-ferme"
+                          type="number"
+                          step="0.1"
+                          placeholder="Ex: 1300"
+                          value={objectifFermeSaisi}
+                          onChange={(e) => setObjectifFermeSaisi(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-slate-500">
+                      Catalogue :{" "}
+                      {form.getValues("rendement") != null
+                        ? formatRendement(form.getValues("rendement"), uniteRendementEspece)
+                        : "aucun rendement de référence"}
+                      .{" "}
+                      {monRendement?.rendement != null || monRendement?.uniteRendement
+                        ? "Vos valeurs s'appliquent."
+                        : "Le catalogue s'applique tant que vous ne saisissez rien."}
+                    </p>
+
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        onClick={() => enregistrerMonRendement(false)}
+                        disabled={enregistrementFerme}
+                      >
+                        <Save className="h-4 w-4 mr-2" />
+                        Enregistrer mes valeurs
+                      </Button>
+                      {(monRendement?.rendement != null || monRendement?.uniteRendement) && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => enregistrerMonRendement(true)}
+                          disabled={enregistrementFerme}
+                        >
+                          Revenir au catalogue
+                        </Button>
+                      )}
                     </div>
                   </CardContent>
                 </Card>

@@ -12,7 +12,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { z } from 'zod'
-import { CHAMP_DATE_ETAPE, dateExecutionARecaler } from '@/lib/cultures/execution'
+import { SELECT_ETAPES, ecrituresPassageAFait } from '@/lib/cultures/execution'
 import type { ChampEtape } from '@/lib/cultures/execution'
 
 const FIELD_MAP = {
@@ -60,19 +60,20 @@ export async function POST(request: NextRequest) {
     // futur : on lit les dates prévisionnelles pour recaler celles qui le sont,
     // ce qu'un updateMany global ne permet pas. Les cultures sans recalage
     // restent groupées dans un seul updateMany.
-    const champDate = CHAMP_DATE_ETAPE[field]
     // Select statique (une clé dynamique casse l'inférence du client Prisma).
+    // Les six champs de dates : le recalage mémorise la date de plan, sinon un
+    // décochage ultérieur ne pourrait plus la rendre (friction 2026-08-20).
     const concernees = await prisma.culture.findMany({
       where: { id: { in: ids }, userId: session.user.id, ...wherePlantationApplicable },
-      select: { id: true, dateSemis: true, datePlantation: true, dateRecolte: true },
+      select: { id: true, ...SELECT_ETAPES },
     })
 
     const maintenant = new Date()
-    const aRecaler: Array<{ id: number; date: Date }> = []
+    const aEcrire: Array<{ id: number; ecritures: Record<string, Date | null> }> = []
     const sansRecalage: number[] = []
     for (const culture of concernees) {
-      const recalage = dateExecutionARecaler(culture[champDate], maintenant)
-      if (recalage) aRecaler.push({ id: culture.id, date: recalage })
+      const ecritures = ecrituresPassageAFait(culture, field, maintenant)
+      if (Object.keys(ecritures).length > 0) aEcrire.push({ id: culture.id, ecritures })
       else sansRecalage.push(culture.id)
     }
 
@@ -85,10 +86,10 @@ export async function POST(request: NextRequest) {
             }),
           ]
         : []),
-      ...aRecaler.map(({ id, date }) =>
+      ...aEcrire.map(({ id, ecritures }) =>
         prisma.culture.update({
           where: { id },
-          data: { [field]: true, [champDate]: date },
+          data: { [field]: true, ...ecritures },
         }),
       ),
     ])

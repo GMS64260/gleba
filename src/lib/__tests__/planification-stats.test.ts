@@ -13,6 +13,7 @@ vi.mock('@/lib/prisma', () => ({
   default: {
     planche: { findMany: vi.fn().mockResolvedValue([]) },
     espece: { findMany: vi.fn().mockResolvedValue([]) },
+    userStockEspece: { findMany: vi.fn().mockResolvedValue([]) },
     culture: { findMany: vi.fn() },
   },
 }))

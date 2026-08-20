@@ -14,28 +14,52 @@
  *   - attendu   = réalisé + projeté
  *
  * Les 3 écrans utilisent la même fonction → cohérence garantie.
+ *
+ * 2026-08-20 — une quantité de récolte n'est plus un nombre de kilos. Le
+ * rendement peut s'exprimer en tiges, pièces ou bottes, et une récolte porte
+ * l'unité qu'elle avait à la saisie. Chaque total existe donc en deux formes :
+ * `*Kg`, la PART EN KILOS, seule comparable à un tonnage ou valorisable au
+ * kilo ; et `*ParUnite`, la ventilation complète, seule affichable. Les champs
+ * en kilos gardent leur nom et leur sens : c'est la ventilation qui est
+ * nouvelle, pas une redéfinition. Le rendement utilisé est celui de la FERME
+ * quand elle en a déclaré un (`rendement-effectif`), pas celui du catalogue.
  */
 
 import prisma from '@/lib/prisma'
 import { surfaceCultureM2 } from '@/lib/culture-surface'
-import { projectionRecolteKg } from '@/lib/recolte/projection'
+import { projectionRecolte, uniteQuantiteRecolte, type UniteQuantite } from '@/lib/recolte/projection'
+import {
+  ajouterQuantite,
+  arrondirQuantites,
+  fusionnerQuantites,
+  partKg,
+  type QuantiteParUnite,
+} from '@/lib/recolte/quantites'
+import { chargerSurchargesRendement, rendementEffectif } from '@/lib/recolte/rendement-effectif'
 
 export interface RecoltesParEspece {
   especeId: string
   especeCouleur: string | null
   realiseesKg: number
   projectionKg: number
+  realiseesParUnite: QuantiteParUnite
+  projectionParUnite: QuantiteParUnite
 }
 
 export interface RecoltesAnneeAggregat {
   year: number
-  realiseesKg: number          // récoltes déjà saisies dans l'année
+  realiseesKg: number          // récoltes déjà saisies dans l'année (part en kilos)
   projectionKg: number         // estimation pour cultures non encore récoltées
   totalAttenduKg: number       // realisees + projection
+  realiseesParUnite: QuantiteParUnite
+  projectionParUnite: QuantiteParUnite
+  totalAttenduParUnite: QuantiteParUnite
   parMois: {
     mois: number               // 1..12
     realiseesKg: number
     projectionKg: number
+    realiseesParUnite: QuantiteParUnite
+    projectionParUnite: QuantiteParUnite
   }[]
   parEspece: RecoltesParEspece[]
 }
@@ -55,6 +79,9 @@ export async function getRecoltesAnneeAggregat(
     },
     select: {
       quantite: true,
+      // Unité figée à la saisie : c'est elle qui fait foi, pas l'unité actuelle
+      // de l'espèce (qui a pu changer depuis).
+      unite: true,
       date: true,
       especeId: true,
       espece: { select: { couleur: true } },
@@ -79,86 +106,128 @@ export async function getRecoltesAnneeAggregat(
       especeId: true,
       planche: { select: { surface: true, largeur: true, longueur: true } },
       // `uniteRendement` est indispensable : `rendement` seul ne dit pas s'il
-      // s'agit de kg/m², de kg/arbre ou de t/ha (cf. recolte/projection).
+      // s'agit de kg/m², de kg/arbre, de t/ha ou de tiges/m² (cf.
+      // recolte/projection).
       espece: { select: { id: true, couleur: true, rendement: true, uniteRendement: true } },
     },
   })
 
-  // Init buckets
-  const moisBuckets: { realiseesKg: number; projectionKg: number }[] = Array.from(
-    { length: 12 },
-    () => ({ realiseesKg: 0, projectionKg: 0 })
+  // Rendements propres à la ferme : ils priment sur le catalogue.
+  const surcharges = await chargerSurchargesRendement(
+    userId,
+    [...new Set(cultures.map((c) => c.especeId).filter(Boolean))],
   )
-  const parEspeceMap = new Map<string, RecoltesParEspece>()
+
+  // Init buckets
+  const moisBuckets: Array<{
+    realisees: QuantiteParUnite
+    projection: QuantiteParUnite
+  }> = Array.from({ length: 12 }, () => ({ realisees: {}, projection: {} }))
+  const parEspeceMap = new Map<
+    string,
+    { especeId: string; especeCouleur: string | null; realisees: QuantiteParUnite; projection: QuantiteParUnite }
+  >()
+
+  const bucketEspece = (especeId: string, couleur: string | null) => {
+    const existant = parEspeceMap.get(especeId)
+    if (existant) return existant
+    const cree = { especeId, especeCouleur: couleur, realisees: {}, projection: {} }
+    parEspeceMap.set(especeId, cree)
+    return cree
+  }
 
   // Réalisé
   for (const r of recoltes) {
+    const unite = (r.unite ?? 'kg') as UniteQuantite
     const mois = r.date.getMonth() // 0..11
-    moisBuckets[mois].realiseesKg += r.quantite
+    ajouterQuantite(moisBuckets[mois].realisees, unite, r.quantite)
     if (r.especeId) {
-      const existing = parEspeceMap.get(r.especeId) ?? {
-        especeId: r.especeId,
-        especeCouleur: r.espece?.couleur ?? null,
-        realiseesKg: 0,
-        projectionKg: 0,
-      }
-      existing.realiseesKg += r.quantite
-      parEspeceMap.set(r.especeId, existing)
+      ajouterQuantite(bucketEspece(r.especeId, r.espece?.couleur ?? null).realisees, unite, r.quantite)
     }
   }
 
   // Projection
   for (const c of cultures) {
-    if (!c.especeId || !c.espece?.rendement) continue
+    if (!c.especeId) continue
+    const effectif = rendementEffectif(c.espece, surcharges.get(c.especeId))
+    if (!effectif.rendement) continue
     const surface = surfaceCultureM2(c)
     if (surface <= 0) continue
-    const quantite = projectionRecolteKg(surface, c.espece.rendement, c.espece.uniteRendement)
+    const { quantite, unite } = projectionRecolte(surface, effectif.rendement, effectif.uniteRendement)
     // Note DEV2 : dérive le mois (0..11) depuis Culture.dateRecolte si
     // saisie (la projection se mappe au mois prévu de récolte).
     const mois = c.dateRecolte ? c.dateRecolte.getMonth() : null
-    if (mois !== null) moisBuckets[mois].projectionKg += quantite
-
-    const existing = parEspeceMap.get(c.especeId) ?? {
-      especeId: c.especeId,
-      especeCouleur: c.espece.couleur ?? null,
-      realiseesKg: 0,
-      projectionKg: 0,
-    }
-    existing.projectionKg += quantite
-    parEspeceMap.set(c.especeId, existing)
+    if (mois !== null) ajouterQuantite(moisBuckets[mois].projection, unite, quantite)
+    ajouterQuantite(bucketEspece(c.especeId, c.espece?.couleur ?? null).projection, unite, quantite)
   }
 
-  const realiseesKg = round2(
-    moisBuckets.reduce((s, m) => s + m.realiseesKg, 0)
+  const realiseesParUnite = arrondirQuantites(
+    fusionnerQuantites(...moisBuckets.map((m) => m.realisees)),
   )
-  const projectionKg = round2(
-    moisBuckets.reduce((s, m) => s + m.projectionKg, 0)
+  const projectionParUnite = arrondirQuantites(
+    fusionnerQuantites(...moisBuckets.map((m) => m.projection)),
   )
-  const totalAttenduKg = round2(realiseesKg + projectionKg)
+  const totalAttenduParUnite = arrondirQuantites(
+    fusionnerQuantites(realiseesParUnite, projectionParUnite),
+  )
 
   return {
     year,
-    realiseesKg,
-    projectionKg,
-    totalAttenduKg,
-    parMois: moisBuckets.map((b, i) => ({
-      mois: i + 1,
-      realiseesKg: round2(b.realiseesKg),
-      projectionKg: round2(b.projectionKg),
-    })),
+    realiseesKg: partKg(realiseesParUnite),
+    projectionKg: partKg(projectionParUnite),
+    totalAttenduKg: partKg(totalAttenduParUnite),
+    realiseesParUnite,
+    projectionParUnite,
+    totalAttenduParUnite,
+    parMois: moisBuckets.map((b, i) => {
+      const realisees = arrondirQuantites(b.realisees)
+      const projection = arrondirQuantites(b.projection)
+      return {
+        mois: i + 1,
+        realiseesKg: partKg(realisees),
+        projectionKg: partKg(projection),
+        realiseesParUnite: realisees,
+        projectionParUnite: projection,
+      }
+    }),
     parEspece: Array.from(parEspeceMap.values())
-      .map((e) => ({
-        ...e,
-        realiseesKg: round2(e.realiseesKg),
-        projectionKg: round2(e.projectionKg),
-      }))
-      .sort(
-        (a, b) =>
-          (b.realiseesKg + b.projectionKg) - (a.realiseesKg + a.projectionKg)
-      ),
+      .map((e) => {
+        const realisees = arrondirQuantites(e.realisees)
+        const projection = arrondirQuantites(e.projection)
+        return {
+          especeId: e.especeId,
+          especeCouleur: e.especeCouleur,
+          realiseesKg: partKg(realisees),
+          projectionKg: partKg(projection),
+          realiseesParUnite: realisees,
+          projectionParUnite: projection,
+        }
+      })
+      // Tri sur le VOLUME toutes unités confondues : additionner des tiges à des
+      // kilos serait faux pour un affichage, mais c'est ici un simple critère
+      // d'ordre — et il vaut mieux qu'un tri en kilos, qui reléguait en queue de
+      // liste toute la production non pondérale.
+      .sort((a, b) => volumeTotal(b) - volumeTotal(a)),
   }
 }
 
-function round2(n: number): number {
-  return Math.round(n * 100) / 100
+/** Somme brute toutes unités confondues — critère de TRI, jamais d'affichage. */
+function volumeTotal(e: RecoltesParEspece): number {
+  const total = fusionnerQuantites(e.realiseesParUnite, e.projectionParUnite)
+  return Object.values(total).reduce((somme, valeur) => somme + (valeur ?? 0), 0)
+}
+
+/** Unité de quantité d'une espèce chez cet utilisateur (surcharge comprise). */
+export async function uniteEspecePourUtilisateur(
+  userId: string,
+  especeId: string,
+): Promise<UniteQuantite> {
+  const [espece, surcharges] = await Promise.all([
+    prisma.espece.findUnique({
+      where: { id: especeId },
+      select: { rendement: true, uniteRendement: true },
+    }),
+    chargerSurchargesRendement(userId, [especeId]),
+  ])
+  return uniteQuantiteRecolte(rendementEffectif(espece, surcharges.get(especeId)).uniteRendement)
 }

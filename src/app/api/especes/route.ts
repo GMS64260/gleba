@@ -12,6 +12,7 @@ import { Prisma } from '@prisma/client'
 import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
 import { displayReferentielName, normalizeReferentielKey } from '@/lib/normalize'
 import { statsAvisPourRefs } from '@/lib/avis/stats-liste'
+import { appliquerSurcharges, chargerSurchargesRendement } from '@/lib/recolte/rendement-effectif'
 import { isAvisFiltre, retenuParAvis, whereZoneCultivable } from '@/lib/especes/filtres'
 import { ZONES_CLIMAT, type ZoneClimat } from '@/lib/terroir'
 
@@ -183,9 +184,19 @@ export async function GET(request: NextRequest) {
     const statsMap = includeAvis
       ? await statsAvisPourRefs(prisma, 'ESPECE', especes.map((e) => e.id))
       : null
-    const data = statsMap
+    const avecAvis = statsMap
       ? especes.map((e) => ({ ...e, avisStats: statsMap.get(e.id) }))
       : especes
+
+    // Rendement EFFECTIF : celui que la ferme a déclaré, sinon le catalogue.
+    // La substitution est faite ici, une fois, plutôt que dans chaque écran :
+    // tout client qui lit `espece.rendement` obtient la vérité de cette ferme
+    // sans connaître l'existence de la surcharge, et les valeurs de référence
+    // restent lisibles sous `rendementCatalogue` / `uniteRendementCatalogue`.
+    const data = appliquerSurcharges(
+      avecAvis,
+      await chargerSurchargesRendement(me, avecAvis.map((e) => e.id)),
+    )
 
     return NextResponse.json({
       data,

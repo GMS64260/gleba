@@ -31,12 +31,27 @@ import {
 } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
+import {
+  formatQuantiteParUnite,
+  fusionnerQuantites,
+  quantitesNonNulles,
+  type QuantiteParUnite,
+} from "@/lib/recolte/quantites"
 
 interface RecoltePrevue {
   periode: string
   periodeNum: number
-  especes: { especeId: string; especeNom?: string; especeCouleur: string | null; quantite: number }[]
+  especes: {
+    especeId: string
+    especeNom?: string
+    especeCouleur: string | null
+    quantite: number
+    quantiteParUnite?: QuantiteParUnite
+    surface: number
+  }[]
   totalKg: number
+  totalParUnite?: QuantiteParUnite
+  totalSurface: number
 }
 
 function RecoltesPrevuesParSemainesContent() {
@@ -50,6 +65,9 @@ function RecoltesPrevuesParSemainesContent() {
   // l'agrégat unifié `getRecoltesAnneeAggregat`. On affiche désormais la MÊME
   // valeur (`stats.projectionKg`) que la cartouche « Récoltes attendues ».
   const [projectionKg, setProjectionKg] = React.useState<number | null>(null)
+  // Même valeur, toutes unités : une projection en tiges laissait le bandeau à
+  // « 0,0 kg restants » alors que le tableau était plein (2026-08-20).
+  const [projectionParUnite, setProjectionParUnite] = React.useState<QuantiteParUnite | null>(null)
   const [isLoading, setIsLoading] = React.useState(true)
   // QA cmswwu5cc — l'année du hub Planification vit dans une seule source
   // (URL, puis saison mémorisée du module) : voir useAnneePlanification.
@@ -64,6 +82,7 @@ function RecoltesPrevuesParSemainesContent() {
       const result = await response.json()
       setData(result.data)
       setProjectionKg(typeof result.stats?.projectionKg === "number" ? result.stats.projectionKg : null)
+      setProjectionParUnite(result.stats?.projectionParUnite ?? null)
     } catch (error) {
       toast({
         variant: "destructive",
@@ -83,7 +102,10 @@ function RecoltesPrevuesParSemainesContent() {
   }, [anneePrete, fetchData])
 
   // Filtrer les semaines avec des recoltes
-  const semainesAvecRecoltes = data.filter(r => r.totalKg > 0)
+  // « Semaine remplie » ne se lit plus sur les kilos : une semaine de 400 tiges
+  // a un totalKg à zéro. On regarde la ventilation.
+  const remplie = (r: RecoltePrevue) => quantitesNonNulles(r.totalParUnite ?? {}).length > 0
+  const semainesAvecRecoltes = data.filter(remplie)
   // Bug #3 — « restant » unifié avec le KPI (projection de l'agrégat). Fallback
   // sur la somme détaillée si l'agrégat n'est pas disponible.
   const totalAnnee = projectionKg ?? data.reduce((sum, r) => sum + r.totalKg, 0)
@@ -109,7 +131,11 @@ function RecoltesPrevuesParSemainesContent() {
           {/* Bug cmp8sc1c6 (Marc 2026-05-16) — "kg/an" prêtait à confusion :
               il s'agit en réalité du restant à récolter sur l'année. */}
           <Badge variant="outline" className="text-lg" title="Total prévu sur les semaines à venir (hors récoltes déjà réalisées)">
-            {totalAnnee.toFixed(1)} kg restants
+            {formatQuantiteParUnite(
+              projectionParUnite ??
+                fusionnerQuantites(...data.map((r) => r.totalParUnite ?? {})),
+            )}{" "}
+            restants
           </Badge>
           <Select
             value={annee.toString()}
@@ -164,18 +190,18 @@ function RecoltesPrevuesParSemainesContent() {
                     <TableRow>
                       <TableHead className="w-[80px]">Semaine</TableHead>
                       <TableHead>Espèces</TableHead>
-                      <TableHead className="text-right w-[100px]">Total (kg)</TableHead>
+                      <TableHead className="text-right w-[100px]">Total</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {data.map((r) => (
                       <TableRow
                         key={r.periode}
-                        className={r.totalKg === 0 ? "opacity-30 h-8" : ""}
+                        className={!remplie(r) ? "opacity-30 h-8" : ""}
                       >
                         <TableCell className="font-medium">{r.periode}</TableCell>
                         <TableCell>
-                          {r.totalKg > 0 ? (
+                          {remplie(r) ? (
                             <div className="flex flex-wrap gap-1">
                               {r.especes.map((e) => (
                                 <Badge
@@ -187,7 +213,8 @@ function RecoltesPrevuesParSemainesContent() {
                                     backgroundColor: e.especeCouleur ? `${e.especeCouleur}20` : undefined,
                                   }}
                                 >
-                                  {e.especeNom ?? e.especeId}: {e.quantite.toFixed(1)} kg
+                                  {e.especeNom ?? e.especeId}:{" "}
+                                  {formatQuantiteParUnite(e.quantiteParUnite ?? {})}
                                 </Badge>
                               ))}
                             </div>
@@ -196,7 +223,9 @@ function RecoltesPrevuesParSemainesContent() {
                           )}
                         </TableCell>
                         <TableCell className="text-right font-medium">
-                          {r.totalKg > 0 ? r.totalKg.toFixed(1) : "-"}
+                          {quantitesNonNulles(r.totalParUnite ?? {}).length > 0
+                            ? formatQuantiteParUnite(r.totalParUnite ?? {})
+                            : "-"}
                         </TableCell>
                       </TableRow>
                     ))}

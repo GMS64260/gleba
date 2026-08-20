@@ -34,6 +34,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
 import { format, startOfWeek, endOfWeek, addWeeks } from "date-fns"
 import { fr } from "date-fns/locale"
+import { libelleUniteQuantite, type UniteQuantite } from "@/lib/recolte/projection"
 
 interface TacheItem {
   id: number
@@ -46,6 +47,8 @@ interface TacheItem {
   date: string
   fait: boolean
   couleur: string | null
+  /** Unité de saisie d'une récolte (kg par défaut) — cf. taches-potager. */
+  unite?: UniteQuantite
   retardJours?: number
 }
 
@@ -83,9 +86,9 @@ function TachesContent() {
   const [isLoading, setIsLoading] = React.useState(true)
   const [weekOffset, setWeekOffset] = React.useState(0)
   const [pendingAction, setPendingAction] = React.useState<
-    | { kind: "recolte"; cultureId: number; especeId: string; label: string }
-    | { kind: "annulation-recolte"; cultureId: number; especeId: string; label: string }
-    | { kind: "irrigation"; irrigationId: number; label: string }
+    | { kind: "recolte"; cultureId: number; especeId: string; label: string; unite?: UniteQuantite }
+    | { kind: "annulation-recolte"; cultureId: number; especeId: string; label: string; unite?: UniteQuantite }
+    | { kind: "irrigation"; irrigationId: number; label: string; unite?: undefined }
     | null
   >(null)
   const [actionValue, setActionValue] = React.useState("")
@@ -161,16 +164,18 @@ function TachesContent() {
   }, [fetchData])
 
   // Marquer une tache comme faite
-  const toggleTache = async (cultureId: number, type: "semis" | "plantation" | "recolte", currentValue: boolean, especeId: string, label: string) => {
+  const toggleTache = async (cultureId: number, type: "semis" | "plantation" | "recolte", currentValue: boolean, especeId: string, label: string, unite?: UniteQuantite) => {
     if (type === "recolte" && !currentValue) {
       setActionValue("")
-      setPendingAction({ kind: "recolte", cultureId, especeId, label })
+      // L'unité vient de la tâche : la quantité récoltée se saisit en kilos,
+      // en tiges, en pièces ou en bottes selon l'espèce (2026-08-20).
+      setPendingAction({ kind: "recolte", cultureId, especeId, label, unite })
       return
     }
 
     if (type === "recolte" && currentValue) {
       setActionValue("")
-      setPendingAction({ kind: "annulation-recolte", cultureId, especeId, label })
+      setPendingAction({ kind: "annulation-recolte", cultureId, especeId, label, unite })
       return
     }
 
@@ -220,7 +225,10 @@ function TachesContent() {
           return
         }
 
-        toast({ title: "Récolte enregistrée", description: `${quantite} kg` })
+        toast({
+          title: "Récolte enregistrée",
+          description: `${quantite} ${libelleUniteQuantite(pendingAction?.unite ?? "kg", quantite)}`,
+        })
         setPendingAction(null)
         fetchData() // Recharger
       } catch {
@@ -412,7 +420,7 @@ function TachesContent() {
             {items.map(item => (
               <button
                 key={item.id}
-                onClick={() => toggleTache(item.id, type, item.fait, item.especeId, item.especeNom ?? item.especeId)}
+                onClick={() => toggleTache(item.id, type, item.fait, item.especeId, item.especeNom ?? item.especeId, item.unite)}
                 className={`w-full flex items-center gap-3 p-3 rounded-lg border transition-all ${
                   item.fait
                     ? "bg-green-50 border-green-200 opacity-60"
@@ -716,7 +724,9 @@ function TachesContent() {
                     placeholder="0,00"
                     className="h-11 bg-white pr-12 text-base"
                   />
-                  <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm font-medium text-muted-foreground">kg</span>
+                  <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm font-medium text-muted-foreground">
+                    {libelleUniteQuantite(pendingAction.unite ?? "kg")}
+                  </span>
                 </div>
               </div>
               <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">

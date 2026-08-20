@@ -275,6 +275,10 @@ export async function GET(request: NextRequest) {
           id: e.id,
           familleId: e.familleId,
           inventaire: nets[e.id]?.stockNet ?? e.userStocks[0]?.inventaire ?? null,
+          // Unité du stock (2026-08-20) : l'écran étiquetait « kg » en dur, ce
+          // qui est faux pour une espèce comptée en tiges, pièces ou bottes.
+          unite: nets[e.id]?.unite ?? 'kg',
+          autresUnites: nets[e.id]?.autresUnites ?? {},
           dateInventaire: e.userStocks[0]?.dateInventaire ?? null,
           couleur: e.couleur,
         })),
@@ -337,6 +341,8 @@ export async function GET(request: NextRequest) {
         id: e.id,
         familleId: e.familleId,
         inventaire: netsTousTypes[e.id]?.stockNet ?? e.userStocks[0]?.inventaire ?? null,
+        unite: netsTousTypes[e.id]?.unite ?? 'kg',
+        autresUnites: netsTousTypes[e.id]?.autresUnites ?? {},
         dateInventaire: e.userStocks[0]?.dateInventaire ?? null,
         couleur: e.couleur,
       })),

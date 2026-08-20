@@ -43,6 +43,17 @@ import { Combobox } from "@/components/ui/combobox"
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
+import { type UniteQuantite } from "@/lib/recolte/projection"
+import {
+  ajouterQuantite,
+  formatQuantite,
+  formatQuantiteParUnite,
+  type QuantiteParUnite,
+} from "@/lib/recolte/quantites"
+
+/** Unité d'une ligne de récolte ; null = kg (lignes antérieures au 2026-08-20). */
+const uniteRecolte = (unite: string | null | undefined): UniteQuantite =>
+  (unite ?? 'kg') as UniteQuantite
 
 interface RecolteWithRelations {
   id: number
@@ -50,6 +61,8 @@ interface RecolteWithRelations {
   cultureId: number
   date: string
   quantite: number
+  /** Unité figée à la saisie ; null = kg (lignes antérieures au 2026-08-20). */
+  unite: string | null
   statut: string
   dateVente: string | null
   prixKg: number | null
@@ -183,9 +196,18 @@ export default function RecoltesPage() {
     return days >= 0 && days <= 3
   }).length
 
-  // Stats
-  const stockKg = stockRecoltes.reduce((sum, r) => sum + r.quantite, 0)
-  const venduKg = venduRecoltes.reduce((sum, r) => sum + r.quantite, 0)
+  // Stats. Les quantités sont VENTILÉES par unité : depuis le 2026-08-20 une
+  // récolte peut être comptée en tiges, pièces ou bottes, et un total unique
+  // additionnerait des tiges de dahlia à des kilos de carotte.
+  // Les montants en euros, eux, restent additionnables : `prixKg` est un prix
+  // PAR UNITÉ de la récolte, quelle que soit cette unité.
+  const ventiler = (lignes: RecolteWithRelations[]) =>
+    lignes.reduce<QuantiteParUnite>(
+      (acc, r) => ajouterQuantite(acc, uniteRecolte(r.unite), r.quantite),
+      {},
+    )
+  const stockParUnite = ventiler(stockRecoltes)
+  const venduParUnite = ventiler(venduRecoltes)
   const totalVentes = venduRecoltes.reduce((sum, r) => sum + (r.prixTotal || 0), 0)
   const stockValeur = stockRecoltes.reduce((sum, r) => sum + (r.quantite * (r.espece?.prixKg || 0)), 0)
 
@@ -432,7 +454,9 @@ export default function RecoltesPage() {
                 <Package className="h-4 w-4 text-green-600" />
                 <p className="text-sm text-green-700">En stock</p>
               </div>
-              <p className="text-2xl font-bold text-green-800">{stockKg.toFixed(1)} kg</p>
+              <p className="text-2xl font-bold text-green-800">
+                {formatQuantiteParUnite(stockParUnite)}
+              </p>
               <p className="text-xs text-green-600">Valeur: {stockValeur.toFixed(2)} €</p>
               {(perimesCount > 0 || bientotPerimesCount > 0) && (
                 <div className="mt-1 flex gap-2 text-xs">
@@ -452,7 +476,9 @@ export default function RecoltesPage() {
                 <ShoppingCart className="h-4 w-4 text-blue-600" />
                 <p className="text-sm text-blue-700">Vendu</p>
               </div>
-              <p className="text-2xl font-bold text-blue-800">{venduKg.toFixed(1)} kg</p>
+              <p className="text-2xl font-bold text-blue-800">
+                {formatQuantiteParUnite(venduParUnite)}
+              </p>
               <p className="text-xs text-blue-600">{venduRecoltes.length} vente(s)</p>
             </CardContent>
           </Card>
@@ -472,11 +498,11 @@ export default function RecoltesPage() {
                 <p className="text-sm text-orange-700">Pertes</p>
               </div>
               <p className="text-2xl font-bold text-orange-800">
-                {perteRecoltes.reduce((sum, r) => sum + r.quantite, 0).toFixed(1)} kg
+                {formatQuantiteParUnite(ventiler(perteRecoltes))}
               </p>
               {consoPersoRecoltes.length > 0 && (
                 <p className="mt-1 text-xs text-orange-700/80">
-                  dont conso perso à part : {consoPersoRecoltes.reduce((sum, r) => sum + r.quantite, 0).toFixed(1)} kg
+                  dont conso perso à part : {formatQuantiteParUnite(ventiler(consoPersoRecoltes))}
                 </p>
               )}
             </CardContent>
@@ -550,7 +576,7 @@ export default function RecoltesPage() {
                             <TableCell>{r.culture?.variete?.nom ?? r.culture?.variete?.id ?? "-"}</TableCell>
                             <TableCell>{r.culture?.planche?.nom || "-"}</TableCell>
                             <TableCell className="text-right font-medium text-green-600">
-                              {r.quantite.toFixed(2)} kg
+                              {formatQuantite(r.quantite, uniteRecolte(r.unite))}
                             </TableCell>
                             <TableCell>
                               {r.datePeremption ? (
@@ -647,7 +673,9 @@ export default function RecoltesPage() {
                               <span>{r.especeId}</span>
                             </div>
                           </TableCell>
-                          <TableCell className="text-right">{r.quantite.toFixed(2)} kg</TableCell>
+                          <TableCell className="text-right">
+                            {formatQuantite(r.quantite, uniteRecolte(r.unite))}
+                          </TableCell>
                           <TableCell className="text-right">{r.prixKg ? `${r.prixKg.toFixed(2)} €` : "-"}</TableCell>
                           <TableCell className="text-right font-medium text-green-600">
                             {r.prixTotal ? `${r.prixTotal.toFixed(2)} €` : "-"}
@@ -705,7 +733,9 @@ export default function RecoltesPage() {
                           </TableCell>
                           <TableCell>{r.especeId}</TableCell>
                           <TableCell>{r.culture?.variete?.nom ?? r.culture?.variete?.id ?? "-"}</TableCell>
-                          <TableCell className={`text-right ${r.statut === "perte" ? "text-orange-600" : "text-sky-700"}`}>{r.quantite.toFixed(2)} kg</TableCell>
+                          <TableCell className={`text-right ${r.statut === "perte" ? "text-orange-600" : "text-sky-700"}`}>
+                            {formatQuantite(r.quantite, uniteRecolte(r.unite))}
+                          </TableCell>
                           <TableCell className="text-muted-foreground">{r.notes || "-"}</TableCell>
                         </TableRow>
                       ))}

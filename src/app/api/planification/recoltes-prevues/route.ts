@@ -8,6 +8,7 @@ import prisma from '@/lib/prisma'
 import { requireAuthApi, getUserId } from '@/lib/auth-utils'
 import { getRecoltesPrevuesDetail } from '@/lib/planification'
 import { getRecoltesAnneeAggregat } from '@/lib/kpi/recoltes-annee'
+import { arrondirQuantites, fusionnerQuantites, type QuantiteParUnite } from '@/lib/recolte/quantites'
 
 export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
@@ -53,10 +54,21 @@ export async function GET(request: NextRequest) {
     const projectionAnnee = recoltesPrevues.reduce((sum, r) => sum + r.totalKg, 0)
     const surfaceTotale = recoltesPrevues.reduce((sum, r) => sum + r.totalSurface, 0)
 
-    // Trouver les mois/semaines avec le plus de recoltes
-    const meilleurePeriode = recoltesPrevues.reduce((max, r) =>
-      r.totalKg > max.totalKg ? r : max,
-      { periode: '', totalKg: 0 }
+    // Ventilation par unité (2026-08-20) : une projection en tiges ou en bottes
+    // ne s'additionne pas aux kilos, mais elle ne doit pas non plus disparaître
+    // de l'en-tête — c'était le cas d'un compte tout en fleurs coupées, qui
+    // lisait « 0,0 kg attendu » au-dessus d'un tableau plein.
+    const projectionAnneeParUnite = arrondirQuantites(
+      fusionnerQuantites(...recoltesPrevues.map((r) => r.totalParUnite)),
+    )
+
+    // Trouver les mois/semaines avec le plus de recoltes. Le critère est le
+    // volume toutes unités confondues : c'est un ORDRE, pas un total affiché.
+    const volume = (v: QuantiteParUnite) =>
+      Object.values(v).reduce((somme, valeur) => somme + (valeur ?? 0), 0)
+    const meilleurePeriode = recoltesPrevues.reduce(
+      (max, r) => (volume(r.totalParUnite) > volume(max.totalParUnite) ? r : max),
+      { periode: '', totalKg: 0, totalParUnite: {} as QuantiteParUnite }
     )
 
     // QA cmswxpaer — l'en-tête et les cartes ignoraient les cultures suggérées
@@ -74,20 +86,36 @@ export async function GET(request: NextRequest) {
     const projectionRotationsKg = detailPrevues.projectionSuggestionsKg
     const projectionKg = arrondi(detailPrevues.projectionCreeesKg + projectionRotationsKg)
     const totalAttenduKg = arrondi(aggregat.realiseesKg + projectionKg)
+    const projectionParUnite = arrondirQuantites(
+      fusionnerQuantites(
+        detailPrevues.projectionCreeesParUnite,
+        detailPrevues.projectionSuggestionsParUnite,
+      ),
+    )
+    const totalAttenduParUnite = arrondirQuantites(
+      fusionnerQuantites(aggregat.realiseesParUnite, projectionParUnite),
+    )
 
     return NextResponse.json({
       data,
       stats: {
         // Compat ancien front : totalAnnee = projection pure (champ déjà utilisé).
         totalAnnee: Math.round(projectionAnnee * 100) / 100,
+        totalAnneeParUnite: projectionAnneeParUnite,
         // BUG-03 : nouveaux champs unifiés (alignés avec Dashboard/Calendrier).
         realiseesKg: aggregat.realiseesKg,
         projectionKg,
         projectionRotationsKg,
         totalAttenduKg,
+        // Mêmes trois valeurs, toutes unités comprises.
+        realiseesParUnite: aggregat.realiseesParUnite,
+        projectionParUnite,
+        projectionRotationsParUnite: detailPrevues.projectionSuggestionsParUnite,
+        totalAttenduParUnite,
         surfaceTotale: Math.round(surfaceTotale * 100) / 100,
         meilleurePeriode: meilleurePeriode.periode,
         meilleureQuantite: Math.round(meilleurePeriode.totalKg * 100) / 100,
+        meilleureQuantiteParUnite: arrondirQuantites(meilleurePeriode.totalParUnite),
       },
       annee,
       groupBy,

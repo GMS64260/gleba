@@ -11,7 +11,10 @@ import { Prisma } from '@prisma/client'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { invalidateKpi } from '@/lib/kpi'
 import { snapshotStatutBio } from '@/lib/statut-bio'
-import { dateExecutionARecaler } from '@/lib/cultures/execution'
+import { ecrituresPassageAFait } from '@/lib/cultures/execution'
+import { uniteQuantiteRecolte, type UniteQuantite } from '@/lib/recolte/projection'
+import { ajouterQuantite, arrondirQuantites, partKg, type QuantiteParUnite } from '@/lib/recolte/quantites'
+import { chargerSurchargesRendement, rendementEffectif } from '@/lib/recolte/rendement-effectif'
 
 // GET /api/recoltes
 export async function GET(request: NextRequest) {
@@ -94,8 +97,11 @@ export async function GET(request: NextRequest) {
         take: pageSize,
       }),
       prisma.recolte.count({ where }),
-      // Statistiques globales
-      prisma.recolte.aggregate({
+      // Statistiques globales, VENTILÉES PAR UNITÉ : un `_sum` sur `quantite`
+      // additionnerait des tiges à des kilos dès qu'une espèce est comptée
+      // autrement (2026-08-20).
+      prisma.recolte.groupBy({
+        by: ['unite'],
         where,
         _sum: { quantite: true },
         _count: { _all: true },
@@ -109,6 +115,14 @@ export async function GET(request: NextRequest) {
       }),
     ])
 
+    const statsParUnite = arrondirQuantites(
+      stats.reduce<QuantiteParUnite>(
+        (acc, ligne) =>
+          ajouterQuantite(acc, (ligne.unite ?? 'kg') as UniteQuantite, ligne._sum.quantite || 0),
+        {},
+      ),
+    )
+
     return NextResponse.json({
       data: recoltes,
       total,
@@ -116,8 +130,11 @@ export async function GET(request: NextRequest) {
       pageSize,
       totalPages: Math.ceil(total / pageSize),
       stats: {
-        totalQuantite: stats._sum.quantite || 0,
-        count: stats._count._all,
+        // `totalQuantite` garde son nom et devient la PART EN KILOS ; la
+        // ventilation complète vit dans `totalParUnite`.
+        totalQuantite: partKg(statsParUnite),
+        totalParUnite: statsParUnite,
+        count: stats.reduce((somme, ligne) => somme + ligne._count._all, 0),
       },
       especes: especesDistinctes.map(e => ({ id: e.especeId })),
     })
@@ -178,6 +195,17 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Unité de la récolte, DÉRIVÉE côté serveur du rendement effectif de
+    // l'espèce chez cet utilisateur, puis FIGÉE sur la ligne (2026-08-20).
+    // Dérivée et non reçue du client : personne ne doit pouvoir enregistrer
+    // 120 « tiges » sur une espèce déclarée en kilos. Figée et non relue sur
+    // l'espèce : une salade qui passe du kilo à la pièce ne doit pas changer le
+    // sens des récoltes déjà saisies — même principe que statutBioSnapshot.
+    const surcharges = await chargerSurchargesRendement(session!.user.id, [culture.especeId])
+    const uniteRecolte = uniteQuantiteRecolte(
+      rendementEffectif(culture.espece, surcharges.get(culture.especeId)).uniteRendement,
+    )
+
     // PROMPT 12 — snapshot statut Bio depuis la planche (si rattachée).
     const dateRecolte = data.date ? new Date(data.date as unknown as string) : new Date()
     const statutBioSnapshot = culture.planche
@@ -203,6 +231,7 @@ export async function POST(request: NextRequest) {
           ...data,
           userId: session!.user.id,
           statutBioSnapshot,
+          unite: uniteRecolte,
         },
         include: {
           espece: true,
@@ -217,13 +246,13 @@ export async function POST(request: NextRequest) {
       // avec la date RÉELLE de récolte comme instant de référence : une
       // dateRecolte déjà passée n'est pas réécrite (historique de retard
       // préservé, les récoltes échelonnées suivantes ne bougent plus la date).
-      const recalage = dateExecutionARecaler(culture.dateRecolte, dateRecolte)
-      if (!culture.recolteFaite || recalage) {
+      const ecrituresRecolte = ecrituresPassageAFait(culture, 'recolteFaite', dateRecolte)
+      if (!culture.recolteFaite || Object.keys(ecrituresRecolte).length > 0) {
         await tx.culture.update({
           where: { id: data.cultureId },
           data: {
             recolteFaite: true,
-            ...(recalage ? { dateRecolte: recalage } : {}),
+            ...ecrituresRecolte,
           },
         })
       }

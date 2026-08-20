@@ -10,6 +10,8 @@
 
 import type { Prisma } from '@prisma/client'
 import prisma from '@/lib/prisma'
+import { libelleUniteQuantite, type UniteQuantite } from '@/lib/recolte/projection'
+import { formatQuantite } from '@/lib/recolte/quantites'
 
 // ============================================================
 // HELPERS
@@ -104,6 +106,14 @@ export async function createVenteFromRecolte(
     id: number
     especeId: string
     quantite: number
+    /**
+     * Unité de la récolte vendue (2026-08-20). L'écriture portait `unite: 'kg'`
+     * en dur : une vente de 300 tiges de dahlia partait en comptabilité comme
+     * 300 kg, et `prixUnitaire` était lu comme un prix au kilo. Le montant, lui,
+     * était juste — `prixKg` est un prix PAR UNITÉ — c'est le libellé et la
+     * colonne `unite` qui mentaient.
+     */
+    unite?: string | null
     prixKg?: number | null
     prixTotal?: number | null
     clientNom?: string | null
@@ -122,6 +132,7 @@ export async function createVenteFromRecolte(
   const montantTTC = recolte.prixTotal || (recolte.quantite * (recolte.prixKg || 0))
   if (montantTTC <= 0) return null
 
+  const uniteVente = (recolte.unite ?? 'kg') as UniteQuantite
   const { montantHT, montantTVA } = calculTVA(montantTTC, 5.5)
 
   // Transaction atomique : supprimer l'ancien + creer le nouveau
@@ -135,9 +146,9 @@ export async function createVenteFromRecolte(
         userId,
         date: recolte.dateVente ? new Date(recolte.dateVente) : new Date(),
         categorie: 'legumes',
-        description: `Vente ${recolte.especeId} - ${recolte.quantite} kg`,
+        description: `Vente ${recolte.especeId} - ${formatQuantite(recolte.quantite, uniteVente)}`,
         quantite: recolte.quantite,
-        unite: 'kg',
+        unite: libelleUniteQuantite(uniteVente, 1),
         prixUnitaire: recolte.prixKg || null,
         tauxTVA: 5.5,
         montantHT,

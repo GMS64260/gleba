@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => ({
   venteManuelleAggregate: vi.fn(),
   consommationAlimentFindMany: vi.fn(),
   soinAnimalFindMany: vi.fn(),
+  userStockEspeceFindMany: vi.fn(),
   getKpiCompta: vi.fn(),
 }))
 
@@ -44,6 +45,9 @@ vi.mock('@/lib/prisma', () => ({
     venteManuelle: { findMany: mocks.venteManuelleFindMany, aggregate: mocks.venteManuelleAggregate },
     consommationAliment: { findMany: mocks.consommationAlimentFindMany },
     soinAnimal: { findMany: mocks.soinAnimalFindMany },
+    // Rendements déclarés par la ferme : ils fixent l'unité des quantités et
+    // des ratios coût/prix (2026-08-20).
+    userStockEspece: { findMany: mocks.userStockEspeceFindMany },
   },
 }))
 vi.mock('@/lib/kpi', () => ({ getKpiCompta: mocks.getKpiCompta }))
@@ -74,6 +78,7 @@ describe('computeCoutsProduction — revenus Verger', () => {
     })
     mocks.consommationAlimentFindMany.mockResolvedValue([])
     mocks.soinAnimalFindMany.mockResolvedValue([])
+    mocks.userStockEspeceFindMany.mockResolvedValue([])
     mocks.getKpiCompta.mockResolvedValue({ revenusYtd: 1234.56, depensesYtd: 999.99 })
   })
 
@@ -115,5 +120,93 @@ describe('computeCoutsProduction — revenus Verger', () => {
 
     expect(res.totaux.revenus).toBe(1234.56)
     expect(res.totaux.depensesComptables).toBe(999.99)
+  })
+})
+
+/**
+ * Une culture de fleurs coupées se compte en TIGES : le coût et le prix moyen
+ * étaient nommés et affichés « par kilo » (2026-08-20).
+ */
+describe('computeCoutsProduction — unité des quantités et des ratios', () => {
+  const planche = { id: 'p1', nom: 'P1', surface: 10, largeur: null, longueur: null }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    for (const mock of [
+      mocks.cultureFindMany,
+      mocks.interventionFindMany,
+      mocks.fertilisationFindMany,
+      mocks.depenseManuelleFindMany,
+      mocks.recolteArbreFindMany,
+      mocks.operationArbreFindMany,
+      mocks.productionBoisFindMany,
+      mocks.venteProduitFindMany,
+      mocks.abattageFindMany,
+      mocks.venteManuelleFindMany,
+      mocks.consommationAlimentFindMany,
+      mocks.soinAnimalFindMany,
+      mocks.userStockEspeceFindMany,
+    ]) {
+      mock.mockResolvedValue([])
+    }
+    mocks.venteManuelleAggregate.mockResolvedValue({ _sum: { montant: 0 } })
+    mocks.getKpiCompta.mockResolvedValue({ revenusYtd: 0, depensesYtd: 0 })
+  })
+
+  it('rend le coût et le prix moyen PAR TIGE quand la ferme compte en tiges', async () => {
+    mocks.cultureFindMany.mockResolvedValue([
+      {
+        id: 1,
+        especeId: 'Dahlia',
+        plancheId: 'p1',
+        longueur: null,
+        espece: { id: 'Dahlia', nom: 'Dahlia', rendement: 4, uniteRendement: 'kg_m2' },
+        variete: null,
+        planche,
+        recoltes: [
+          { quantite: 200, unite: 'tige', statut: 'vendu', prixKg: 1.5, prixTotal: 300 },
+        ],
+      },
+    ])
+    // L'espèce est OFFICIELLE (kg/m² au catalogue) : c'est la surcharge de la
+    // ferme qui la fait compter en tiges.
+    mocks.userStockEspeceFindMany.mockResolvedValue([
+      { especeId: 'Dahlia', rendement: 40, uniteRendement: 'tiges_m2' },
+    ])
+
+    const res = await computeCoutsProduction('user-1', YEAR)
+    const dahlia = res.parEspece.find((e) => e.especeId === 'Dahlia')
+
+    expect(dahlia?.unite).toBe('tige')
+    expect(dahlia?.production).toBe(200)
+    expect(dahlia?.prixMoyenUnitaire).toBe(1.5) // 300 € / 200 tiges
+    expect(res.totauxEspeces.productionParUnite).toEqual({ tige: 200 })
+    // La part en kilos reste à zéro : aucune tige n'y entre.
+    expect(res.totauxEspeces.production).toBe(0)
+  })
+
+  it('une récolte dans une AUTRE unité que celle de l’espèce n’est pas additionnée', async () => {
+    mocks.cultureFindMany.mockResolvedValue([
+      {
+        id: 2,
+        especeId: 'Dahlia',
+        plancheId: 'p1',
+        longueur: null,
+        espece: { id: 'Dahlia', nom: 'Dahlia', rendement: 40, uniteRendement: 'tiges_m2' },
+        variete: null,
+        planche,
+        recoltes: [
+          { quantite: 100, unite: 'tige', statut: 'en_stock', prixKg: null, prixTotal: null },
+          // Ligne héritée en kilos (l'espèce comptait autrement à l'époque).
+          { quantite: 3, unite: null, statut: 'en_stock', prixKg: null, prixTotal: null },
+        ],
+      },
+    ])
+
+    const res = await computeCoutsProduction('user-1', YEAR)
+    const dahlia = res.parEspece.find((e) => e.especeId === 'Dahlia')
+
+    expect(dahlia?.unite).toBe('tige')
+    expect(dahlia?.production).toBe(100) // et non 103
   })
 })

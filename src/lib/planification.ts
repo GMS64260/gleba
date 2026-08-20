@@ -10,7 +10,15 @@ import { whereItpUtilisable } from './itp-acces'
 import { alertesAssociations } from './associations-alertes'
 import { appliquerDecalageItp, decalageItpPourLecteur } from './calendrier-climat'
 import { moisDepuisSemaine, semaineSemisEffective } from './cultures/dates-itp'
-import { projectionRecolteKg } from './recolte/projection'
+import { projectionRecolte } from './recolte/projection'
+import {
+  ajouterQuantite,
+  arrondirQuantites,
+  fusionnerQuantites,
+  partKg,
+  type QuantiteParUnite,
+} from './recolte/quantites'
+import { chargerSurchargesRendement, rendementEffectif } from './recolte/rendement-effectif'
 import type { StatutSemence } from './semences/calcul'
 import { zoneEffectiveUser } from './terroir'
 import { etapeCycleRotation } from './rotation/etape-cycle'
@@ -99,10 +107,16 @@ export interface RecoltePrevue {
   especes: {
     especeId: string
     especeCouleur: string | null
-    quantite: number // kg
+    /** PART EN KILOS. Vaut 0 pour une espèce comptée en tiges, pièces ou bottes. */
+    quantite: number
+    /** Ventilation complète, seule forme affichable (cf. recolte/quantites). */
+    quantiteParUnite: QuantiteParUnite
     surface: number // m2
   }[]
+  /** Part en kilos du total de la période. */
   totalKg: number
+  /** Ventilation complète du total de la période. */
+  totalParUnite: QuantiteParUnite
   totalSurface: number
 }
 
@@ -639,6 +653,9 @@ export interface RecoltesPrevuesDetail {
   projectionCreeesKg: number
   /** Projection des cultures suggérées par les rotations, pas encore créées (kg). */
   projectionSuggestionsKg: number
+  /** Mêmes deux populations, toutes unités comprises. */
+  projectionCreeesParUnite: QuantiteParUnite
+  projectionSuggestionsParUnite: QuantiteParUnite
 }
 
 export async function getRecoltesPrevues(
@@ -655,22 +672,37 @@ export async function getRecoltesPrevuesDetail(
   groupBy: 'mois' | 'semaine' = 'mois'
 ): Promise<RecoltesPrevuesDetail> {
   const culturesPrevues = await getCulturesPrevues(userId, annee)
-  let projectionCreeesKg = 0
-  let projectionSuggestionsKg = 0
+  const projectionCreees: QuantiteParUnite = {}
+  const projectionSuggestions: QuantiteParUnite = {}
 
   // Grouper par periode
   const groupedMap = new Map<number, {
-    especes: Map<string, { especeId: string; especeCouleur: string | null; quantite: number; surface: number }>
+    especes: Map<
+      string,
+      {
+        especeId: string
+        especeCouleur: string | null
+        quantite: number
+        quantiteParUnite: QuantiteParUnite
+        surface: number
+      }
+    >
   }>()
 
   // Recuperer les rendements des especes
   const especeIds = [...new Set(culturesPrevues.map(c => c.especeId).filter(Boolean))]
-  const especes = await prisma.espece.findMany({
-    where: { id: { in: especeIds as string[] } },
-    // `rendement` est un nombre dont le sens dépend de `uniteRendement` : sans
-    // elle, un Kiwi à 25 kg/ARBRE était projeté à 750 kg sur 30 m².
-    select: { id: true, rendement: true, uniteRendement: true, couleur: true },
-  })
+  const [especes, surcharges] = await Promise.all([
+    prisma.espece.findMany({
+      where: { id: { in: especeIds as string[] } },
+      // `rendement` est un nombre dont le sens dépend de `uniteRendement` : sans
+      // elle, un Kiwi à 25 kg/ARBRE était projeté à 750 kg sur 30 m².
+      select: { id: true, rendement: true, uniteRendement: true, couleur: true },
+    }),
+    // Le rendement déclaré par la ferme prime sur celui du catalogue : c'est le
+    // seul chemin d'accès aux unités en tiges/pièces pour une espèce officielle,
+    // qu'un membre ne peut pas modifier.
+    chargerSurchargesRendement(userId, especeIds as string[]),
+  ])
   const especeMap = new Map(especes.map(e => [e.id, e]))
 
   for (const culture of culturesPrevues) {
@@ -695,13 +727,13 @@ export async function getRecoltesPrevuesDetail(
     const group = groupedMap.get(periodeNum)!
     const especeData = especeMap.get(culture.especeId)
 
-    const quantite = projectionRecolteKg(
+    const effectif = rendementEffectif(especeData, surcharges.get(culture.especeId))
+    const { quantite, unite } = projectionRecolte(
       culture.surface,
-      especeData?.rendement,
-      especeData?.uniteRendement,
+      effectif.rendement,
+      effectif.uniteRendement,
     )
-    if (culture.existante) projectionCreeesKg += quantite
-    else projectionSuggestionsKg += quantite
+    ajouterQuantite(culture.existante ? projectionCreees : projectionSuggestions, unite, quantite)
     const key = culture.especeId
 
     if (!group.especes.has(key)) {
@@ -709,12 +741,14 @@ export async function getRecoltesPrevuesDetail(
         especeId: culture.especeId,
         especeCouleur: culture.especeCouleur,
         quantite: 0,
+        quantiteParUnite: {},
         surface: 0,
       })
     }
 
     const especeGroup = group.especes.get(key)!
-    especeGroup.quantite += quantite
+    ajouterQuantite(especeGroup.quantiteParUnite, unite, quantite)
+    if (unite === 'kg') especeGroup.quantite += quantite
     especeGroup.surface += culture.surface
   }
 
@@ -726,21 +760,33 @@ export async function getRecoltesPrevuesDetail(
     const group = groupedMap.get(i)
     const especesArray = group ? Array.from(group.especes.values()) : []
 
+    const totalParUnite = arrondirQuantites(
+      fusionnerQuantites(...especesArray.map((e) => e.quantiteParUnite)),
+    )
+
     result.push({
       // Bug cmp8scj32 (Marc 2026-05-16) — uniformisation format semaine
       // (padStart 2) pour cohérence avec formatSemaine() et tri texte stable.
       periode: groupBy === 'mois' ? MOIS_NOMS[i - 1] : `S${i.toString().padStart(2, '0')}`,
       periodeNum: i,
-      especes: especesArray,
-      totalKg: especesArray.reduce((sum, e) => sum + e.quantite, 0),
+      especes: especesArray.map((e) => ({
+        ...e,
+        quantiteParUnite: arrondirQuantites(e.quantiteParUnite),
+      })),
+      totalKg: partKg(totalParUnite),
+      totalParUnite,
       totalSurface: especesArray.reduce((sum, e) => sum + e.surface, 0),
     })
   }
 
+  const creees = arrondirQuantites(projectionCreees)
+  const suggestions = arrondirQuantites(projectionSuggestions)
   return {
     periodes: result,
-    projectionCreeesKg: Math.round(projectionCreeesKg * 100) / 100,
-    projectionSuggestionsKg: Math.round(projectionSuggestionsKg * 100) / 100,
+    projectionCreeesKg: partKg(creees),
+    projectionSuggestionsKg: partKg(suggestions),
+    projectionCreeesParUnite: creees,
+    projectionSuggestionsParUnite: suggestions,
   }
 }
 

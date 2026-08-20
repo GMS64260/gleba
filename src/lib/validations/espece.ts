@@ -109,16 +109,52 @@ export const ESPECE_TYPES_MARAICHAGE = [
   'engrais_vert',
 ] as const
 
-// Unités de rendement métier — dépendent du type.
-//   kg_m2          : maraîchage, aromatique, fleur, petit fruit, ornement
+// Unités de rendement métier. L'unité est portée par l'ESPÈCE et se choisit à
+// la saisie ; le type ne fait que proposer le défaut le plus probable.
+//   kg_m2          : maraîchage, aromatique, petit fruit, ornement
 //   kg_arbre       : arbre fruitier
 //   biomasse_t_ha  : engrais vert
-export const UNITE_RENDEMENT = ['kg_m2', 'kg_arbre', 'biomasse_t_ha'] as const
+//   tiges_m2       : fleur coupée
+//   pieces_m2      : vendu à l'unité (salade, laitue, chou)
+//   bottes_m2      : vendu en bottes (radis, aromates, oignon botte)
+//
+// Les trois dernières viennent d'une demande du 2026-08-20 : un compte de fleurs
+// coupées ne dimensionne pas en kilos mais en TIGES par m², et les légumes de
+// vente directe se comptent en bottes ou à la pièce. Le kilo restait la seule
+// unité de saisie du rendement comme de l'objectif, ce qui rendait la
+// planification inutilisable pour ces productions. Conséquence à tenir :
+// `Espece.rendement` n'est plus jamais convertible en kilos par défaut, la
+// projection doit lire l'unité (cf. `src/lib/recolte/projection.ts`).
+export const UNITE_RENDEMENT = [
+  'kg_m2',
+  'kg_arbre',
+  'biomasse_t_ha',
+  'tiges_m2',
+  'pieces_m2',
+  'bottes_m2',
+] as const
 
 export const UNITE_RENDEMENT_LABELS: Record<typeof UNITE_RENDEMENT[number], string> = {
   kg_m2: 'kg/m²',
   kg_arbre: 'kg/arbre',
   biomasse_t_ha: 't/ha',
+  tiges_m2: 'tiges/m²',
+  pieces_m2: 'pièces/m²',
+  bottes_m2: 'bottes/m²',
+}
+
+/**
+ * Ce que compte l'unité, en une phrase. Les deux écrans de saisie du rendement
+ * décrivaient chacun la leur par un ternaire sur le TYPE : le jour où l'unité
+ * a cessé de se déduire du type, ces phrases devaient devenir une donnée.
+ */
+export const UNITE_RENDEMENT_DESCRIPTIONS: Record<typeof UNITE_RENDEMENT[number], string> = {
+  kg_m2: 'Récolte attendue par mètre carré cultivé et par an.',
+  kg_arbre: 'Récolte attendue par arbre adulte et par an.',
+  biomasse_t_ha: 'Biomasse produite par hectare, en tonnes.',
+  tiges_m2: 'Nombre de tiges coupées par mètre carré et par an.',
+  pieces_m2: 'Nombre de pièces récoltées par mètre carré et par an.',
+  bottes_m2: 'Nombre de bottes récoltées par mètre carré et par an.',
 }
 
 /**
@@ -173,6 +209,11 @@ export function uniteRendementParType(
       return 'kg_arbre'
     case 'engrais_vert':
       return 'biomasse_t_ha'
+    // Une fleur coupée se dimensionne en tiges (demande du 2026-08-20). Ce n'est
+    // qu'un DÉFAUT de saisie : les 25 fleurs déjà au catalogue portent kg/m² en
+    // base et gardent leur unité, aucune valeur stockée n'est réinterprétée.
+    case 'fleur':
+      return 'tiges_m2'
     default:
       return 'kg_m2'
   }
@@ -193,6 +234,13 @@ const RENDEMENT_MAX: Record<typeof UNITE_RENDEMENT[number], number> = {
   kg_m2: 100,
   kg_arbre: 1000,
   biomasse_t_ha: 100,
+  // Les unités en pièces comptent des individus, pas des kilos : un semis dense
+  // de radis dépasse 300 bottes/m² sur une saison et une planche de zinnias
+  // plusieurs centaines de tiges. Le plafond n'est là que pour arrêter la faute
+  // de frappe, pas pour arbitrer un choix agronomique.
+  tiges_m2: 1000,
+  pieces_m2: 1000,
+  bottes_m2: 500,
 }
 
 /** Plafond le plus large, seul filet quand le payload n'établit aucune unité. */

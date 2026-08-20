@@ -19,6 +19,9 @@ import { whereItpUtilisable } from '@/lib/itp-acces'
 import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 import { appliquerDecalageItp, decalageItpPourLecteur } from '@/lib/calendrier-climat'
 import { zoneEffectiveUser } from '@/lib/terroir'
+import { type UniteQuantite } from '@/lib/recolte/projection'
+import { ajouterQuantite, arrondirQuantites, partKg, type QuantiteParUnite } from '@/lib/recolte/quantites'
+import { chargerSurchargesRendement, rendementEffectif } from '@/lib/recolte/rendement-effectif'
 
 // GET /api/cultures
 export async function GET(request: NextRequest) {
@@ -95,7 +98,10 @@ export async function GET(request: NextRequest) {
           itp: true,
           planche: true,
           recoltes: {
-            select: { quantite: true },
+            // `unite` : une récolte peut être comptée en tiges, pièces ou
+            // bottes depuis le 2026-08-20. Sommer `quantite` sans elle
+            // mélangerait les unités dans `totalRecolte`.
+            select: { quantite: true, unite: true },
           },
           _count: {
             select: { recoltes: true },
@@ -108,13 +114,38 @@ export async function GET(request: NextRequest) {
       prisma.culture.count({ where }),
     ])
 
+    // Rendement effectif : celui déclaré par la ferme prime sur le catalogue.
+    // Résolu ici pour que l'écran de saisie de récolte estime dans la bonne
+    // unité sans avoir à interroger une seconde route.
+    const surcharges = await chargerSurchargesRendement(
+      session!.user.id,
+      [...new Set(cultures.map((c) => c.especeId).filter(Boolean))],
+    )
+
     // Ajouter les champs calculés
-    const culturesWithComputed = cultures.map((culture) => ({
+    const culturesWithComputed = cultures.map((culture) => {
+      const recolteParUnite: QuantiteParUnite = {}
+      for (const r of culture.recoltes) {
+        ajouterQuantite(recolteParUnite, (r.unite ?? 'kg') as UniteQuantite, r.quantite)
+      }
+      const effectif = rendementEffectif(culture.espece, surcharges.get(culture.especeId))
+      return {
       ...culture,
+      espece: culture.espece
+        ? {
+            ...culture.espece,
+            rendement: effectif.rendement,
+            uniteRendement: effectif.uniteRendement,
+            rendementCatalogue: culture.espece.rendement,
+            uniteRendementCatalogue: culture.espece.uniteRendement,
+            origineRendement: effectif.origine,
+          }
+        : culture.espece,
       // Calcul de l'état
       etat: etatCulture(culture),
-      // Total récolté (kg)
-      totalRecolte: culture.recoltes.reduce((sum, r) => sum + r.quantite, 0),
+      // Total récolté : part en kilos (nom et sens historiques) + ventilation.
+      totalRecolte: partKg(arrondirQuantites(recolteParUnite)),
+      totalRecolteParUnite: arrondirQuantites(recolteParUnite),
       // Calcul du type
       type: culture.espece?.vivace
         ? 'Vivace'
@@ -125,7 +156,8 @@ export async function GET(request: NextRequest) {
             : culture.datePlantation && culture.dateRecolte
               ? 'Plant'
               : 'Non défini',
-    }))
+      }
+    })
 
     return NextResponse.json({
       data: culturesWithComputed,

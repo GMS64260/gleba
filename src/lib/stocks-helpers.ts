@@ -5,6 +5,9 @@
 
 import prisma from '@/lib/prisma'
 import { arrondiQuantiteStock } from '@/lib/stocks/agregation'
+import { uniteQuantiteRecolte, type UniteQuantite } from '@/lib/recolte/projection'
+import { ajouterQuantite, arrondirQuantites, type QuantiteParUnite } from '@/lib/recolte/quantites'
+import { chargerSurchargesRendement, rendementEffectif } from '@/lib/recolte/rendement-effectif'
 
 /**
  * Nombre d'œufs par unité de vente. QA cmsjioqg — le conditionnement n'était
@@ -31,11 +34,24 @@ export function oeufsDepuisUnite(quantite: number, unite: string | null | undefi
 
 export interface StockNet {
   stockNet: number
+  /**
+   * Unité du stock — celle de l'espèce chez cet utilisateur (2026-08-20).
+   * Un stock de fleurs coupées se compte en tiges, une salade à la pièce : le
+   * nombre seul ne dit plus rien, et l'écran l'étiquetait « kg » en dur.
+   */
+  unite: UniteQuantite
   detail: {
     inventaire: number
     recoltes: number
     consommations: number
   }
+  /**
+   * Récoltes en stock enregistrées dans une AUTRE unité que l'unité courante.
+   * Cas réel mais rare : l'espèce a changé d'unité en cours de saison, et les
+   * lignes antérieures gardent la leur (l'unité est figée à la saisie). On les
+   * expose à part plutôt que de les additionner à tort ou de les perdre.
+   */
+  autresUnites: QuantiteParUnite
 }
 
 /**
@@ -87,6 +103,22 @@ export async function calculerStocksNet(
     })),
   ]
 
+  // Unité de chaque espèce : celle déclarée par la ferme si elle l'a fait,
+  // celle du catalogue sinon.
+  const [especesUnite, surcharges] = await Promise.all([
+    prisma.espece.findMany({
+      where: { id: { in: allEspeces.map(e => e.id) } },
+      select: { id: true, rendement: true, uniteRendement: true },
+    }),
+    chargerSurchargesRendement(userId, allEspeces.map(e => e.id)),
+  ])
+  const uniteParEspece = new Map(
+    especesUnite.map(e => [
+      e.id,
+      uniteQuantiteRecolte(rendementEffectif(e, surcharges.get(e.id)).uniteRendement),
+    ]),
+  )
+
   // Audit 2026-07 (#51) : une récolte « mise en vente » dans la boutique (liée
   // à un ProduitBoutique actif) est committée à la boutique — son stock est
   // suivi par ProduitBoutique.stockDispo. On l'EXCLUT du stock physique loose
@@ -123,9 +155,18 @@ export async function calculerStocksNet(
         date: { gt: dateRef },
         ...(recolteIdsEnBoutique.length > 0 && { id: { notIn: recolteIdsEnBoutique } }),
       },
-      select: { quantite: true },
+      select: { quantite: true, unite: true },
     })
-    const totalRecoltes = recoltes.reduce((sum, r) => sum + r.quantite, 0)
+    // Ventilation par unité, puis on ne retient dans le stock que l'unité
+    // COURANTE de l'espèce : additionner 12 kg et 120 tiges ne veut rien dire.
+    const uniteEspece = uniteParEspece.get(espece.id) ?? 'kg'
+    const recoltesParUnite: QuantiteParUnite = {}
+    for (const r of recoltes) {
+      ajouterQuantite(recoltesParUnite, (r.unite ?? 'kg') as UniteQuantite, r.quantite)
+    }
+    const totalRecoltes = recoltesParUnite[uniteEspece] ?? 0
+    const autresUnites: QuantiteParUnite = { ...recoltesParUnite }
+    delete autresUnites[uniteEspece]
 
     // Consommations postérieures au comptage
     const consommations = await prisma.consommation.findMany({
@@ -142,11 +183,13 @@ export async function calculerStocksNet(
       // QA cmswu8uva — arrondi métier : la somme flottante affichait
       // « 10.799999999999999 kg » à l'écran Stocks > Récoltes.
       stockNet: arrondiQuantiteStock(baseline + totalRecoltes - totalConso),
+      unite: uniteEspece,
       detail: {
         inventaire: baseline,
         recoltes: totalRecoltes,
         consommations: totalConso,
       },
+      autresUnites: arrondirQuantites(autresUnites),
     }
   }
 

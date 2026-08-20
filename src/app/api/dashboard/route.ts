@@ -9,7 +9,14 @@ import { requireAuthApi } from "@/lib/auth-utils"
 import { getKpiMaraichage } from "@/lib/kpi"
 import { getRecoltesAnneeAggregat } from "@/lib/kpi/recoltes-annee"
 import { surfaceCultureM2 } from "@/lib/culture-surface"
-import { projectionRecolteKg } from "@/lib/recolte/projection"
+import { projectionRecolte, type UniteQuantite } from "@/lib/recolte/projection"
+import {
+  ajouterQuantite,
+  arrondirQuantites,
+  partKg,
+  type QuantiteParUnite,
+} from "@/lib/recolte/quantites"
+import { chargerSurchargesRendement, rendementEffectif } from "@/lib/recolte/rendement-effectif"
 
 export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
@@ -48,9 +55,12 @@ export async function GET(request: NextRequest) {
       }),
     ])
 
-    // Récoltes par mois (annee en cours)
+    // Récoltes par mois (annee en cours). Groupé AUSSI par unité : depuis le
+    // 2026-08-20 une récolte peut être comptée en tiges, pièces ou bottes, et
+    // sommer la colonne `quantite` sans regarder `unite` mélangerait des tiges
+    // à des kilos dans le même point du graphique.
     const recoltesParMois = await prisma.recolte.groupBy({
-      by: ["date"],
+      by: ["date", "unite"],
       where: {
         userId,
         date: { gte: startOfYear, lte: endOfYear },
@@ -73,8 +83,10 @@ export async function GET(request: NextRequest) {
       select: {
         dateRecolte: true,
         longueur: true,
+        especeId: true,
         espece: {
           select: {
+            id: true,
             rendement: true,
             uniteRendement: true,
           },
@@ -89,44 +101,66 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    // Agréger par mois (recoltes réelles)
-    const monthlyHarvest: { mois: string; quantite: number; previsionnel: number }[] = []
+    // Rendements déclarés par la ferme : ils priment sur le catalogue, et sont
+    // le seul moyen pour un membre de fixer l'unité d'une espèce officielle.
+    const surchargesRendement = await chargerSurchargesRendement(
+      userId,
+      [...new Set(recoltesPrevisionnelles.map((c) => c.especeId).filter(Boolean))],
+    )
+
+    // Agréger par mois (recoltes réelles). Chaque mois porte la PART EN KILOS,
+    // que le graphique trace, et la ventilation complète, que la légende affiche.
+    const monthlyHarvest: {
+      mois: string
+      quantite: number
+      previsionnel: number
+      quantiteParUnite: QuantiteParUnite
+      previsionnelParUnite: QuantiteParUnite
+    }[] = []
     const moisNoms = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Août", "Sep", "Oct", "Nov", "Déc"]
-    const monthData: number[] = new Array(12).fill(0)
-    const monthDataPrev: number[] = new Array(12).fill(0)
+    const monthData: QuantiteParUnite[] = Array.from({ length: 12 }, () => ({}))
+    const monthDataPrev: QuantiteParUnite[] = Array.from({ length: 12 }, () => ({}))
 
     recoltesParMois.forEach((r) => {
       const month = new Date(r.date).getMonth()
-      monthData[month] += r._sum.quantite || 0
+      ajouterQuantite(monthData[month], (r.unite ?? 'kg') as UniteQuantite, r._sum.quantite || 0)
     })
 
     // Ajouter les recoltes prévisionnelles.
     // Surface : SSOT `surfaceCultureM2` (la formule locale multipliait puis
     // divisait par nbRangs, et retombait sur la planche ENTIÈRE dès que
-    // nbRangs manquait). Quantité : SSOT `projectionRecolteKg`, qui lit
-    // l'unité du rendement au lieu de traiter kg/arbre et t/ha en kg/m².
+    // nbRangs manquait). Quantité : SSOT `projectionRecolte`, qui lit l'unité
+    // du rendement au lieu de traiter kg/arbre et t/ha en kg/m², et rend
+    // désormais l'unité avec le nombre.
     recoltesPrevisionnelles.forEach((c) => {
       if (!c.dateRecolte) return
       const month = new Date(c.dateRecolte).getMonth()
-
-      monthDataPrev[month] += projectionRecolteKg(
+      const effectif = rendementEffectif(c.espece, surchargesRendement.get(c.especeId))
+      const { quantite, unite } = projectionRecolte(
         surfaceCultureM2(c),
-        c.espece?.rendement,
-        c.espece?.uniteRendement,
+        effectif.rendement,
+        effectif.uniteRendement,
       )
+      ajouterQuantite(monthDataPrev[month], unite, quantite)
     })
 
     moisNoms.forEach((nom, i) => {
+      const reel = arrondirQuantites(monthData[i])
+      const prev = arrondirQuantites(monthDataPrev[i])
       monthlyHarvest.push({
         mois: nom,
-        quantite: Math.round(monthData[i] * 100) / 100,
-        previsionnel: Math.round(monthDataPrev[i] * 100) / 100,
+        quantite: partKg(reel),
+        previsionnel: partKg(prev),
+        quantiteParUnite: reel,
+        previsionnelParUnite: prev,
       })
     })
 
-    // Récoltes par espece (top 10)
+    // Récoltes par espece (top 10). Groupé par (espèce, unité) : une espèce
+    // n'a qu'une unité à un instant donné, mais elle a pu changer en cours de
+    // saison, et le classement ne doit pas additionner des tiges à des kilos.
     const recoltesParEspece = await prisma.recolte.groupBy({
-      by: ["especeId"],
+      by: ["especeId", "unite"],
       where: {
         userId,
         date: { gte: startOfYear, lte: endOfYear },
@@ -173,6 +207,9 @@ export async function GET(request: NextRequest) {
     const harvestBySpecies = recoltesParEspece.map((r) => ({
       espece: r.especeId,
       quantite: Math.round((r._sum.quantite || 0) * 100) / 100,
+      // L'unité voyage avec le nombre : sans elle, la barre d'une espèce en
+      // tiges serait lue comme des kilos par le graphique.
+      unite: (r.unite ?? 'kg') as UniteQuantite,
       couleur: especeColorMap.get(r.especeId) || "#22c55e",
     }))
 
@@ -310,6 +347,10 @@ export async function GET(request: NextRequest) {
         arbres: arbresCount,
         recoltesAnnee: kpiMaraichage.recoltesKgYtd,
         recoltesCount: recoltesCountYear,
+        // Ventilations par unité (2026-08-20) : les champs en kilos qui les
+        // entourent n'en sont que la part pondérale.
+        recoltesAnneeParUnite: kpiMaraichage.recoltesParUniteYtd,
+        recoltesAnneePrecedenteParUnite: kpiMaraichage.recoltesParUniteN1Ytd,
         // YTD vs YTD année précédente à date égale (et non plus année N-1
         // complète, qui faussait toutes les variations mid-year).
         recoltesAnneePrecedente: kpiMaraichage.recoltesKgN1Ytd,
@@ -319,6 +360,9 @@ export async function GET(request: NextRequest) {
         recoltesRealiseesKg: recoltesAggregat.realiseesKg,
         recoltesProjectionKg: recoltesAggregat.projectionKg,
         recoltesTotalAttenduKg: recoltesAggregat.totalAttenduKg,
+        recoltesRealiseesParUnite: recoltesAggregat.realiseesParUnite,
+        recoltesProjectionParUnite: recoltesAggregat.projectionParUnite,
+        recoltesTotalAttenduParUnite: recoltesAggregat.totalAttenduParUnite,
       },
 
       // Graphiques
