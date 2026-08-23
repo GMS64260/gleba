@@ -63,7 +63,7 @@ export const SELECT_ETAPES = {
 } as const
 
 /** Numéro de journée civile LOCALE (le conteneur tourne en Europe/Paris). */
-function jourCivilLocal(date: Date): number {
+export function jourCivilLocal(date: Date): number {
   return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())
 }
 

@@ -55,6 +55,8 @@ import {
 import { nomAffichableItp, nomAffichableItpAvecFenetre } from "@/lib/itp-label"
 import { badgeOrigine } from "@/lib/referentiel-communaute"
 import { datesDepuisItp, recolteApresDebut, semaineSemisEffective } from "@/lib/cultures/dates-itp"
+import { Checkbox } from "@/components/ui/checkbox"
+import { cocherApresSaisieManuelle, etapeDejaRealisable } from "@/lib/cultures/deja-fait"
 
 // Bug #1 — payload de violation renvoyé par POST /api/cultures (status 409).
 type RotationViolation = {
@@ -380,6 +382,21 @@ export default function NewCulturePage() {
     if (!nouvelleRecolte || nouvelleRecolte.getTime() === recolte.getTime()) return
     form.setValue("dateRecolte", nouvelleRecolte)
   }, [watchedDateSemis, watchedDatePlantation, selectedItp, itps, form])
+
+  // Friction 2026-08-23 — « déjà fait » à la création (cf. lib/cultures/
+  // deja-fait.ts). La case ne survit pas à une date devenue future ou vidée,
+  // quel que soit le chemin qui a déplacé la date (saisie, préremplissage ITP,
+  // changement d'année) : une étape faite ne peut pas être datée dans le futur.
+  React.useEffect(() => {
+    if (form.getValues("semisFait") && !etapeDejaRealisable(watchedDateSemis)) {
+      form.setValue("semisFait", false)
+    }
+  }, [watchedDateSemis, form])
+  React.useEffect(() => {
+    if (form.getValues("plantationFaite") && !etapeDejaRealisable(watchedDatePlantation)) {
+      form.setValue("plantationFaite", false)
+    }
+  }, [watchedDatePlantation, form])
 
   // Mettre à jour la longueur quand la planche change
   React.useEffect(() => {
@@ -719,13 +736,34 @@ export default function NewCulturePage() {
                             {...field}
                             value={field.value ? format(new Date(field.value), "yyyy-MM-dd") : ""}
                             onChange={(e) => {
-                              field.onChange(e.target.value ? new Date(e.target.value) : null)
+                              const date = e.target.value ? new Date(e.target.value) : null
+                              field.onChange(date)
                               setDateSemisInfo(null)
+                              // Antidater est le geste de qui enregistre un
+                              // semis déjà en terre : la case suit la saisie.
+                              if (cocherApresSaisieManuelle(date)) {
+                                form.setValue("semisFait", true)
+                              }
                             }}
                           />
                         </FormControl>
                         {dateSemisInfo && (
                           <p className="text-xs text-amber-700 mt-1">{dateSemisInfo}</p>
+                        )}
+                        {etapeDejaRealisable(field.value) && (
+                          <FormField
+                            control={form.control}
+                            name="semisFait"
+                            render={({ field: fait }) => (
+                              <label className="flex items-center gap-2 mt-1 text-xs text-muted-foreground cursor-pointer">
+                                <Checkbox
+                                  checked={fait.value}
+                                  onCheckedChange={(v) => fait.onChange(v === true)}
+                                />
+                                Semis déjà réalisé
+                              </label>
+                            )}
+                          />
                         )}
                         <FormMessage />
                       </FormItem>
@@ -743,11 +781,30 @@ export default function NewCulturePage() {
                             type="date"
                             {...field}
                             value={field.value ? format(new Date(field.value), "yyyy-MM-dd") : ""}
-                            onChange={(e) =>
-                              field.onChange(e.target.value ? new Date(e.target.value) : null)
-                            }
+                            onChange={(e) => {
+                              const date = e.target.value ? new Date(e.target.value) : null
+                              field.onChange(date)
+                              if (cocherApresSaisieManuelle(date)) {
+                                form.setValue("plantationFaite", true)
+                              }
+                            }}
                           />
                         </FormControl>
+                        {etapeDejaRealisable(field.value) && (
+                          <FormField
+                            control={form.control}
+                            name="plantationFaite"
+                            render={({ field: fait }) => (
+                              <label className="flex items-center gap-2 mt-1 text-xs text-muted-foreground cursor-pointer">
+                                <Checkbox
+                                  checked={fait.value}
+                                  onCheckedChange={(v) => fait.onChange(v === true)}
+                                />
+                                Plantation déjà réalisée
+                              </label>
+                            )}
+                          />
+                        )}
                         <FormMessage />
                       </FormItem>
                     )}

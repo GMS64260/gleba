@@ -101,3 +101,66 @@ describe('cultureFormSchema — chronologie', () => {
     expect(cultureUpdateFormSchema.safeParse({ notes: 'ok' }).success).toBe(true)
   })
 })
+
+/**
+ * Friction 2026-08-23 — les formulaires de création proposent « déjà fait »
+ * quand la date saisie est passée. Filet symétrique côté schéma de CRÉATION :
+ * une étape déclarée faite ne peut pas être datée dans le futur (même
+ * invariant que lib/cultures/execution.ts). Le schéma d'édition partiel n'est
+ * pas concerné : il peut recharger une culture antérieure au SSOT.
+ */
+describe('cultureFormSchema — étape faite datée dans le futur', () => {
+  const base = {
+    especeId: 'Laitue',
+    semisFait: false,
+    plantationFaite: false,
+    recolteFaite: false,
+  }
+
+  it('refuse un semis fait daté dans le futur, sur le champ semis', () => {
+    const r = cultureFormSchema.safeParse({
+      ...base,
+      semisFait: true,
+      dateSemis: '2100-01-01',
+    })
+    expect(r.success).toBe(false)
+    if (!r.success) {
+      expect(r.error.issues.map((i) => i.path.join('.'))).toContain('dateSemis')
+    }
+  })
+
+  it('refuse une plantation faite datée dans le futur', () => {
+    const r = cultureFormSchema.safeParse({
+      ...base,
+      plantationFaite: true,
+      dateSemis: '2020-03-02',
+      datePlantation: '2100-04-27',
+    })
+    expect(r.success).toBe(false)
+    if (!r.success) {
+      expect(r.error.issues.map((i) => i.path.join('.'))).toContain('datePlantation')
+    }
+  })
+
+  it('accepte un semis fait daté dans le passé', () => {
+    const r = cultureFormSchema.safeParse({
+      ...base,
+      semisFait: true,
+      dateSemis: '2020-03-02',
+    })
+    expect(r.success).toBe(true)
+  })
+
+  it('accepte un fait sans date (la date d’exécution sera posée côté serveur)', () => {
+    const r = cultureFormSchema.safeParse({ ...base, semisFait: true })
+    expect(r.success).toBe(true)
+  })
+
+  it('le schéma d’édition partiel n’applique pas ce filet', () => {
+    const r = cultureUpdateFormSchema.safeParse({
+      semisFait: true,
+      dateSemis: '2100-01-01',
+    })
+    expect(r.success).toBe(true)
+  })
+})

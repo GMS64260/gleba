@@ -21,6 +21,7 @@ import {
   ChevronRight,
   RefreshCw,
   AlertTriangle,
+  CalendarClock,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -89,6 +90,7 @@ function TachesContent() {
     | { kind: "recolte"; cultureId: number; especeId: string; label: string; unite?: UniteQuantite }
     | { kind: "annulation-recolte"; cultureId: number; especeId: string; label: string; unite?: UniteQuantite }
     | { kind: "irrigation"; irrigationId: number; label: string; unite?: undefined }
+    | { kind: "report"; cultureId: number; type: "semis" | "plantation" | "recolte"; label: string; unite?: undefined }
     | null
   >(null)
   const [actionValue, setActionValue] = React.useState("")
@@ -329,6 +331,62 @@ function TachesContent() {
     }
   }
 
+  // Friction 2026-08-23 — une tâche en retard n'offrait que « fait » ou rien :
+  // un maraîcher a supprimé ses cultures en retard puis recréé les mêmes
+  // variétés à dates fraîches. « Reporter » déplace l'échéance et le reste du
+  // cycle suit (POST /api/cultures/[id]/reporter, calcul lib/cultures/report).
+  const LIBELLE_REPORT = { semis: "Semis", plantation: "Plantation", recolte: "Récolte" } as const
+  const ouvrirReport = (item: TacheItem, type: "semis" | "plantation" | "recolte") => {
+    setActionValue(format(new Date(), "yyyy-MM-dd"))
+    setPendingAction({
+      kind: "report",
+      cultureId: item.id,
+      type,
+      label: `${LIBELLE_REPORT[type]} — ${item.especeNom ?? item.especeId}`,
+    })
+  }
+
+  const reporterTache = async () => {
+    if (!pendingAction || pendingAction.kind !== "report") return
+    if (!actionValue) {
+      toast({ variant: "destructive", title: "Choisissez une date" })
+      return
+    }
+    setActionLoading(true)
+    try {
+      const res = await fetch(`/api/cultures/${pendingAction.cultureId}/reporter`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ etape: pendingAction.type, date: actionValue }),
+      })
+      if (!res.ok) {
+        const p = await res.json().catch(() => null)
+        toast({ variant: "destructive", title: "Report refusé", description: p?.error || "Erreur" })
+        return
+      }
+      const payload = await res.json().catch(() => null)
+      const fmt = (d: string | Date) =>
+        new Date(d).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" })
+      const decalages: Array<{ etape: string; a: string }> = payload?.decalages ?? []
+      const suite = decalages
+        .slice(1)
+        .map((d) => `${d.etape} au ${fmt(d.a)}`)
+        .join(", ")
+      toast({
+        title: "Échéance reportée",
+        description: suite
+          ? `${pendingAction.label} au ${fmt(actionValue)} — le cycle suit : ${suite}.`
+          : `${pendingAction.label} au ${fmt(actionValue)}.`,
+      })
+      setPendingAction(null)
+      fetchData()
+    } catch {
+      toast({ variant: "destructive", title: "Erreur", description: "Impossible de reporter l'échéance" })
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
   // Marquer irrigation planifiée comme faite
   const marquerIrrigation = async (irrigationId: number) => {
     const noteStr = actionValue.trim()
@@ -418,10 +476,10 @@ function TachesContent() {
         ) : (
           <div className="space-y-2">
             {items.map(item => (
+              <div key={item.id} className="flex items-center gap-1">
               <button
-                key={item.id}
                 onClick={() => toggleTache(item.id, type, item.fait, item.especeId, item.especeNom ?? item.especeId, item.unite)}
-                className={`w-full flex items-center gap-3 p-3 rounded-lg border transition-all ${
+                className={`flex-1 min-w-0 flex items-center gap-3 p-3 rounded-lg border transition-all ${
                   item.fait
                     ? "bg-green-50 border-green-200 opacity-60"
                     : "bg-white border-slate-200 hover:border-slate-300 hover:shadow-sm"
@@ -470,6 +528,19 @@ function TachesContent() {
                   </Badge>
                 )}
               </button>
+              {!item.fait && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-9 px-2 flex-shrink-0 text-muted-foreground"
+                  aria-label="Reporter cette échéance"
+                  title="Reporter cette échéance"
+                  onClick={() => ouvrirReport(item, type)}
+                >
+                  <CalendarClock className="h-4 w-4" />
+                </Button>
+              )}
+              </div>
             ))}
           </div>
         )}
@@ -764,6 +835,42 @@ function TachesContent() {
                 <Button onClick={() => marquerIrrigation(pendingAction.irrigationId)} disabled={actionLoading}>
                   {actionLoading && <RefreshCw className="mr-2 h-4 w-4 animate-spin" />}
                   Confirmer l’arrosage
+                </Button>
+              </div>
+            </>
+          )}
+
+          {pendingAction?.kind === "report" && (
+            <>
+              <DialogHeader>
+                <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100">
+                  <CalendarClock className="h-5 w-5 text-slate-600" />
+                </div>
+                <DialogTitle>Reporter cette échéance</DialogTitle>
+                <DialogDescription>
+                  {pendingAction.label} — choisissez la nouvelle date. Les étapes suivantes
+                  du cycle seront décalées d&apos;autant, sans rien supprimer.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+                <Label htmlFor="task-report-date">Nouvelle date</Label>
+                <Input
+                  id="task-report-date"
+                  type="date"
+                  autoFocus
+                  value={actionValue}
+                  onChange={(e) => setActionValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") reporterTache()
+                  }}
+                  className="h-11 bg-white text-base"
+                />
+              </div>
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <Button variant="outline" onClick={() => setPendingAction(null)} disabled={actionLoading}>Retour</Button>
+                <Button onClick={reporterTache} disabled={actionLoading}>
+                  {actionLoading && <RefreshCw className="mr-2 h-4 w-4 animate-spin" />}
+                  Reporter
                 </Button>
               </div>
             </>

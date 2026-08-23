@@ -34,6 +34,8 @@ import {
 import { datesDepuisItp, recolteApresDebut } from "@/lib/cultures/dates-itp"
 import { nomAffichableItpAvecFenetre } from "@/lib/itp-label"
 import { validateCultureDates } from "@/lib/validations/date-validation"
+import { Checkbox } from "@/components/ui/checkbox"
+import { cocherApresSaisieManuelle, etapeDejaRealisable } from "@/lib/cultures/deja-fait"
 
 interface ITPData {
   id: string
@@ -77,6 +79,9 @@ export function NewCultureDialog({ open, onOpenChange, plancheId, plancheNom, pl
   const [dateSemis, setDateSemis] = React.useState<string>("")
   const [datePlantation, setDatePlantation] = React.useState<string>("")
   const [dateRecolte, setDateRecolte] = React.useState<string>("")
+  // Friction 2026-08-23 — « déjà fait » à la création (lib/cultures/deja-fait.ts).
+  const [semisDejaFait, setSemisDejaFait] = React.useState(false)
+  const [plantationDejaFaite, setPlantationDejaFaite] = React.useState(false)
   const [nbRangs, setNbRangs] = React.useState<number | null>(null)
   const [longueur, setLongueur] = React.useState<number | null>(plancheLongueur)
   const [espacement, setEspacement] = React.useState<number | null>(null)
@@ -95,6 +100,8 @@ export function NewCultureDialog({ open, onOpenChange, plancheId, plancheNom, pl
       setDateSemis("")
       setDatePlantation("")
       setDateRecolte("")
+      setSemisDejaFait(false)
+      setPlantationDejaFaite(false)
       debutCycleRef.current = null
       setNbRangs(null)
       setLongueur(plancheLongueur)
@@ -247,6 +254,16 @@ export function NewCultureDialog({ open, onOpenChange, plancheId, plancheNom, pl
     }
   }, [nbRangs, longueur, espacement])
 
+  // La case « déjà fait » ne survit pas à une date devenue future ou vidée,
+  // quel que soit le chemin qui a déplacé la date (saisie ou préremplissage
+  // ITP) : une étape faite ne peut pas être datée dans le futur.
+  React.useEffect(() => {
+    if (semisDejaFait && !etapeDejaRealisable(dateSemis)) setSemisDejaFait(false)
+  }, [dateSemis, semisDejaFait])
+  React.useEffect(() => {
+    if (plantationDejaFaite && !etapeDejaRealisable(datePlantation)) setPlantationDejaFaite(false)
+  }, [datePlantation, plantationDejaFaite])
+
   // Contrôle de chronologie en direct : l'API refuse désormais un cycle
   // impossible, autant le dire avant que l'utilisateur clique sur Créer.
   const erreursDates = React.useMemo(() => {
@@ -275,8 +292,8 @@ export function NewCultureDialog({ open, onOpenChange, plancheId, plancheNom, pl
         dateSemis: toISO(dateSemis),
         datePlantation: toISO(datePlantation),
         dateRecolte: toISO(dateRecolte),
-        semisFait: false,
-        plantationFaite: false,
+        semisFait: semisDejaFait,
+        plantationFaite: plantationDejaFaite,
         recolteFaite: false,
         terminee: null,
         quantite,
@@ -416,11 +433,41 @@ export function NewCultureDialog({ open, onOpenChange, plancheId, plancheNom, pl
           <div className="grid grid-cols-3 gap-3">
             <div>
               <Label className="text-xs">Semis</Label>
-              <Input type="date" className="mt-1" value={dateSemis} onChange={e => setDateSemis(e.target.value)} />
+              <Input
+                type="date"
+                className="mt-1"
+                value={dateSemis}
+                onChange={e => {
+                  setDateSemis(e.target.value)
+                  // Antidater est le geste de qui enregistre un semis déjà en
+                  // terre : la case suit la saisie (lib/cultures/deja-fait.ts).
+                  if (cocherApresSaisieManuelle(e.target.value)) setSemisDejaFait(true)
+                }}
+              />
+              {etapeDejaRealisable(dateSemis) && (
+                <label className="flex items-center gap-1.5 mt-1 text-xs text-muted-foreground cursor-pointer">
+                  <Checkbox checked={semisDejaFait} onCheckedChange={(v) => setSemisDejaFait(v === true)} />
+                  Déjà semé
+                </label>
+              )}
             </div>
             <div>
               <Label className="text-xs">Plantation</Label>
-              <Input type="date" className="mt-1" value={datePlantation} onChange={e => setDatePlantation(e.target.value)} />
+              <Input
+                type="date"
+                className="mt-1"
+                value={datePlantation}
+                onChange={e => {
+                  setDatePlantation(e.target.value)
+                  if (cocherApresSaisieManuelle(e.target.value)) setPlantationDejaFaite(true)
+                }}
+              />
+              {etapeDejaRealisable(datePlantation) && (
+                <label className="flex items-center gap-1.5 mt-1 text-xs text-muted-foreground cursor-pointer">
+                  <Checkbox checked={plantationDejaFaite} onCheckedChange={(v) => setPlantationDejaFaite(v === true)} />
+                  Déjà plantée
+                </label>
+              )}
             </div>
             <div>
               <Label className="text-xs">Récolte</Label>

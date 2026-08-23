@@ -14,6 +14,7 @@ import { ensurePlaceholderVariete } from '@/lib/varietes'
 import { invalidateKpi } from '@/lib/kpi'
 import { checkRotationViolation } from '@/lib/rotation-check'
 import { estEtatCulture, etatCulture, whereEtatCulture } from '@/lib/cultures/etat'
+import { ecrituresPassageAFait, ETAPES, type EtatEtapes } from '@/lib/cultures/execution'
 import { etendrePlanArrosage } from '@/lib/irrigation-scheduler'
 import { whereItpUtilisable } from '@/lib/itp-acces'
 import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
@@ -203,6 +204,23 @@ export async function POST(request: NextRequest) {
         { error: `Date invalide pour ${champDateInvalide}` },
         { status: 400 }
       )
+    }
+
+    // Friction 2026-08-23 — une culture peut naître avec un semis ou une
+    // plantation déjà réalisés (case « déjà fait » des formulaires de
+    // création). La création devient alors un chemin de complétion comme les
+    // autres et passe par le même SSOT : une étape faite ne porte jamais une
+    // date future — elle est recalée au jour courant et le plan mémorisé,
+    // exactement comme au PATCH rapide (lib/cultures/execution.ts).
+    const etatCreation: EtatEtapes = {
+      dateSemis: (data.dateSemis as Date | null) ?? null,
+      datePlantation: (data.datePlantation as Date | null) ?? null,
+      dateRecolte: (data.dateRecolte as Date | null) ?? null,
+    }
+    for (const etape of ETAPES) {
+      if (data[etape] === true) {
+        Object.assign(data, ecrituresPassageAFait(etatCreation, etape))
+      }
     }
 
     // Vérifier que l'espèce existe ET qu'elle est visible par cet utilisateur.

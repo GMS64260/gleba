@@ -3,6 +3,7 @@
  */
 
 import { z } from 'zod'
+import { etapeDejaRealisable } from '@/lib/cultures/deja-fait'
 
 // QA cmsbtr0e4 — un Select piloté peut émettre '' pour une référence
 // facultative ; '' inséré tel quel violait la FK (P2003 ⇒ 500). '' vaut
@@ -78,7 +79,38 @@ function refineChronologie(
   }
 }
 
-export const cultureFormSchema = cultureSchema.superRefine(refineChronologie)
+// Friction 2026-08-23 — les formulaires de création proposent « déjà fait »
+// quand la date saisie est passée (cf. lib/cultures/deja-fait.ts). Filet
+// symétrique : une étape déclarée faite ne peut pas être datée dans le futur,
+// même invariant que le SSOT d'exécution (execution.ts). Réservé au schéma de
+// CRÉATION : le formulaire d'édition peut recharger une culture antérieure au
+// SSOT et ne doit pas bloquer une correction sans rapport.
+function refineFaitsPasses(
+  data: Pick<
+    CultureInput,
+    'dateSemis' | 'datePlantation' | 'dateRecolte' | 'semisFait' | 'plantationFaite' | 'recolteFaite'
+  >,
+  ctx: z.RefinementCtx,
+) {
+  const etapes = [
+    { fait: data.semisFait, date: champDate(data.dateSemis), champ: 'dateSemis', libelle: 'Un semis marqué fait' },
+    { fait: data.plantationFaite, date: champDate(data.datePlantation), champ: 'datePlantation', libelle: 'Une plantation marquée faite' },
+    { fait: data.recolteFaite, date: champDate(data.dateRecolte), champ: 'dateRecolte', libelle: 'Une récolte marquée faite' },
+  ]
+  for (const { fait, date, champ, libelle } of etapes) {
+    if (fait && date && !etapeDejaRealisable(date)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [champ],
+        message: `${libelle} ne peut pas être daté(e) dans le futur.`,
+      })
+    }
+  }
+}
+
+export const cultureFormSchema = cultureSchema
+  .superRefine(refineChronologie)
+  .superRefine(refineFaitsPasses)
 export const cultureUpdateFormSchema = cultureSchema.partial().superRefine(refineChronologie)
 
 export type CultureInput = z.infer<typeof cultureSchema>

@@ -9,10 +9,14 @@ import { useRouter } from "next/navigation"
 import { ColumnDef } from "@tanstack/react-table"
 import { format } from "date-fns"
 import { fr } from "date-fns/locale"
-import { CloudRain, Droplets, Leaf, ListTodo, Sprout, TreeDeciduous, Apple, CheckCircle } from "lucide-react"
+import { CloudRain, Droplets, Leaf, ListTodo, Sprout, TreeDeciduous, Apple, CheckCircle, CalendarClock, RefreshCw } from "lucide-react"
 
 import { DataTable } from "@/components/tables/DataTable"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog"
@@ -83,6 +87,36 @@ const FIELD_LABELS: Record<string, string> = {
   recolteFaite: "la récolte",
 }
 
+// Friction 2026-08-23 — sans action de report, une culture en retard n'offrait
+// que « fait » ou la suppression : un maraîcher a supprimé ses cultures en
+// retard puis recréé les mêmes variétés. La prochaine étape reportable est la
+// première non faite qui porte une date (rien à déplacer sinon).
+export type EtapeReportable = "semis" | "plantation" | "recolte"
+export function prochaineEtapeReportable(culture: {
+  terminee: string | null
+  semisFait: boolean
+  plantationFaite: boolean
+  recolteFaite: boolean
+  dateSemis: string | null
+  datePlantation: string | null
+  dateRecolte: string | null
+}): { etape: EtapeReportable; date: string } | null {
+  if (culture.terminee != null) return null
+  const etapes: Array<{ etape: EtapeReportable; fait: boolean; date: string | null }> = [
+    { etape: "semis", fait: culture.semisFait, date: culture.dateSemis },
+    { etape: "plantation", fait: culture.plantationFaite, date: culture.datePlantation },
+    { etape: "recolte", fait: culture.recolteFaite, date: culture.dateRecolte },
+  ]
+  const prochaine = etapes.find((e) => !e.fait && e.date)
+  return prochaine ? { etape: prochaine.etape, date: prochaine.date! } : null
+}
+
+const LIBELLE_ETAPE_REPORT: Record<EtapeReportable, string> = {
+  semis: "le semis",
+  plantation: "la plantation",
+  recolte: "la récolte",
+}
+
 const etatColors: Record<string, string> = {
   Planifiée: "bg-blue-100 text-blue-800",
   Semée: "bg-green-100 text-green-800",
@@ -97,7 +131,8 @@ const etatColors: Record<string, string> = {
 // ne porte aucune info par ligne. On la sort du tableau et on affiche
 // l'info une seule fois en bandeau au-dessus.
 function createColumns(
-  onQuickUpdate: (id: number, field: string, value: boolean) => void
+  onQuickUpdate: (id: number, field: string, value: boolean) => void,
+  onReport: (culture: CultureWithRelations, etape: EtapeReportable) => void
 ): ColumnDef<CultureWithRelations>[] {
   return [
     {
@@ -209,6 +244,28 @@ function createColumns(
                   </Tooltip>
                 )
               })}
+              {(() => {
+                const reportable = prochaineEtapeReportable(culture)
+                if (!reportable) return null
+                const libelle = `Reporter ${LIBELLE_ETAPE_REPORT[reportable.etape]}…`
+                return (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        aria-label={libelle}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onReport(culture, reportable.etape)
+                        }}
+                        className="p-1.5 rounded-md transition-colors bg-slate-100 text-slate-400 hover:bg-slate-200"
+                      >
+                        <CalendarClock className="h-4 w-4" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>{libelle}</TooltipContent>
+                  </Tooltip>
+                )
+              })()}
             </div>
           </TooltipProvider>
         )
@@ -282,6 +339,13 @@ export function CulturesTab({ year }: CulturesTabProps = {}) {
     value: boolean
     message: string
   } | null>(null)
+  // Friction 2026-08-23 — report d'une étape en retard sans suppression.
+  const [reportCible, setReportCible] = React.useState<{
+    culture: CultureWithRelations
+    etape: EtapeReportable
+  } | null>(null)
+  const [reportDate, setReportDate] = React.useState("")
+  const [reportLoading, setReportLoading] = React.useState(false)
   const latestRequestRef = React.useRef(0)
   const pageSize = 50
 
@@ -353,7 +417,15 @@ export function CulturesTab({ year }: CulturesTabProps = {}) {
     [data, executeQuickUpdate]
   )
 
-  const columns = React.useMemo(() => createColumns(handleQuickUpdate), [handleQuickUpdate])
+  const handleReport = React.useCallback((culture: CultureWithRelations, etape: EtapeReportable) => {
+    setReportDate(format(new Date(), "yyyy-MM-dd"))
+    setReportCible({ culture, etape })
+  }, [])
+
+  const columns = React.useMemo(
+    () => createColumns(handleQuickUpdate, handleReport),
+    [handleQuickUpdate, handleReport]
+  )
 
   // Bug 32 — Résumé pluie global (au lieu de la colonne dupliquée 19×).
   // On prend la médiane des planches en plein air (les planches sous abri
@@ -419,6 +491,40 @@ export function CulturesTab({ year }: CulturesTabProps = {}) {
   React.useEffect(() => {
     fetchData()
   }, [fetchData])
+
+  const executerReport = React.useCallback(async () => {
+    if (!reportCible || !reportDate) return
+    setReportLoading(true)
+    try {
+      const res = await fetch(`/api/cultures/${reportCible.culture.id}/reporter`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ etape: reportCible.etape, date: reportDate }),
+      })
+      if (!res.ok) {
+        const p = await res.json().catch(() => null)
+        toast({ variant: "destructive", title: "Report refusé", description: p?.error || "Erreur" })
+        return
+      }
+      const payload = await res.json().catch(() => null)
+      const fmt = (d: string | Date) =>
+        new Date(d).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" })
+      const suite = (payload?.decalages ?? [])
+        .slice(1)
+        .map((d: { etape: string; a: string }) => `${d.etape} au ${fmt(d.a)}`)
+        .join(", ")
+      toast({
+        title: "Échéance reportée",
+        description: suite ? `Le cycle suit : ${suite}.` : undefined,
+      })
+      setReportCible(null)
+      fetchData()
+    } catch {
+      toast({ variant: "destructive", title: "Erreur", description: "Impossible de reporter l'échéance" })
+    } finally {
+      setReportLoading(false)
+    }
+  }, [reportCible, reportDate, toast, fetchData])
 
   const handleEtatChange = (etat: string) => {
     setSelectedEtat(etat)
@@ -527,6 +633,51 @@ export function CulturesTab({ year }: CulturesTabProps = {}) {
           setPendingUpdate(null)
         }}
       />
+
+      {/* Friction 2026-08-23 — report d'une étape : l'issue non destructrice
+          au retard (avant : cocher « fait » ou supprimer la culture). */}
+      <Dialog open={reportCible !== null} onOpenChange={(open) => {
+        if (!open && !reportLoading) setReportCible(null)
+      }}>
+        <DialogContent className="sm:max-w-[430px]">
+          <DialogHeader>
+            <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100">
+              <CalendarClock className="h-5 w-5 text-slate-600" />
+            </div>
+            <DialogTitle>
+              Reporter {reportCible ? LIBELLE_ETAPE_REPORT[reportCible.etape] : "l'étape"}
+            </DialogTitle>
+            <DialogDescription>
+              {reportCible
+                ? `Culture #${reportCible.culture.id} — ${reportCible.culture.espece?.nom ?? reportCible.culture.especeId}. Les étapes suivantes du cycle seront décalées d'autant, sans rien supprimer.`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+            <Label htmlFor="culture-report-date">Nouvelle date</Label>
+            <Input
+              id="culture-report-date"
+              type="date"
+              autoFocus
+              value={reportDate}
+              onChange={(e) => setReportDate(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") executerReport()
+              }}
+              className="h-11 bg-white text-base"
+            />
+          </div>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button variant="outline" onClick={() => setReportCible(null)} disabled={reportLoading}>
+              Retour
+            </Button>
+            <Button onClick={executerReport} disabled={reportLoading || !reportDate}>
+              {reportLoading && <RefreshCw className="mr-2 h-4 w-4 animate-spin" />}
+              Reporter
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
