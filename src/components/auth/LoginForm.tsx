@@ -8,8 +8,9 @@ import * as React from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { signIn } from "next-auth/react"
-import { Loader2, ArrowRight } from "lucide-react"
+import { Loader2, ArrowRight, RefreshCw } from "lucide-react"
 import { GoogleSignInButton } from "./GoogleSignInButton"
+import { REFUS_CONNEXION, messageRefusConnexion } from "@/lib/auth-refus"
 
 const VERIFY_MESSAGES: Record<string, { text: string; type: "success" | "error" | "info" }> = {
   success: { text: "Email vérifié ! Vous pouvez maintenant vous connecter.", type: "success" },
@@ -43,11 +44,18 @@ export function LoginForm({ googleEnabled = false }: { googleEnabled?: boolean }
   const [email, setEmail] = React.useState("")
   const [password, setPassword] = React.useState("")
   const [error, setError] = React.useState("")
+  // Motif du dernier refus : sert à proposer le remède, pas seulement à
+  // expliquer. Une adresse non vérifiée se débloque par un renvoi d'email.
+  const [refusCode, setRefusCode] = React.useState("")
+  const [resending, setResending] = React.useState(false)
+  const [resendMessage, setResendMessage] = React.useState<{ ok: boolean; texte: string } | null>(null)
   const [loading, setLoading] = React.useState(false)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError("")
+    setRefusCode("")
+    setResendMessage(null)
     setLoading(true)
 
     try {
@@ -58,7 +66,11 @@ export function LoginForm({ googleEnabled = false }: { googleEnabled?: boolean }
       })
 
       if (result?.error) {
-        setError(result.error)
+        // `result.error` est un code Auth.js générique ; le motif réel voyage
+        // dans `result.code`, seule propriété que la bibliothèque propage.
+        const code = result.code ?? ""
+        setRefusCode(code)
+        setError(messageRefusConnexion(code))
       } else {
         router.push(callbackUrl)
         router.refresh()
@@ -67,6 +79,34 @@ export function LoginForm({ googleEnabled = false }: { googleEnabled?: boolean }
       setError("Une erreur est survenue")
     } finally {
       setLoading(false)
+    }
+  }
+
+  /** Même endpoint que l'écran de confirmation d'inscription. */
+  async function handleResend() {
+    setResending(true)
+    setResendMessage(null)
+    try {
+      const res = await fetch("/api/auth/resend-verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok && data?.emailEnvoye !== false) {
+        setResendMessage({ ok: true, texte: "Email renvoyé. Vérifiez votre boîte, et les indésirables." })
+      } else {
+        setResendMessage({
+          ok: false,
+          texte:
+            data?.error ||
+            "Le renvoi a échoué. Vérifiez l'adresse saisie, ou écrivez à contact@gleba.fr.",
+        })
+      }
+    } catch {
+      setResendMessage({ ok: false, texte: "Le renvoi a échoué (réseau indisponible)." })
+    } finally {
+      setResending(false)
     }
   }
 
@@ -110,8 +150,34 @@ export function LoginForm({ googleEnabled = false }: { googleEnabled?: boolean }
         </div>
       )}
       {error && (
-        <div className="p-3 text-sm text-red-700 bg-red-50/80 rounded-xl border border-red-200/50 backdrop-blur-sm">
-          {error}
+        <div className="p-3 text-sm text-red-700 bg-red-50/80 rounded-xl border border-red-200/50 backdrop-blur-sm space-y-2">
+          <p>{error}</p>
+          {/* Expliquer ne suffit pas : cinq comptes sur sept refusés pour
+              adresse non vérifiée l'ont été dans les cinq minutes suivant leur
+              inscription, donc avec un email d'activation encore en route ou
+              déjà perdu. Le remède est offert sur place. */}
+          {refusCode === REFUS_CONNEXION.EMAIL_NON_VERIFIE && (
+            <div className="space-y-1.5">
+              <button
+                type="button"
+                onClick={handleResend}
+                disabled={resending || !email}
+                className="inline-flex items-center gap-1.5 font-medium text-red-800 underline underline-offset-2 hover:text-red-900 disabled:opacity-60"
+              >
+                {resending ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-3.5 w-3.5" />
+                )}
+                Renvoyer l&apos;email de vérification
+              </button>
+              {resendMessage && (
+                <p className={resendMessage.ok ? "text-emerald-700" : "text-red-800"}>
+                  {resendMessage.texte}
+                </p>
+              )}
+            </div>
+          )}
         </div>
       )}
 

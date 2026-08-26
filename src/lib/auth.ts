@@ -2,7 +2,7 @@
  * Configuration NextAuth.js v5 (Auth.js)
  */
 
-import NextAuth from "next-auth"
+import NextAuth, { CredentialsSignin } from "next-auth"
 import Credentials from "next-auth/providers/credentials"
 import Google from "next-auth/providers/google"
 import { PrismaAdapter } from "@auth/prisma-adapter"
@@ -15,6 +15,24 @@ import {
 } from "./impersonation"
 import { googleAuthDisponible, motifRefusConnexionGoogle } from "./auth-google"
 import { estEmailDemo } from "./demo"
+import { REFUS_CONNEXION, type CodeRefusConnexion } from "./auth-refus"
+
+/**
+ * Refus de connexion porteur d'un motif lisible par le formulaire.
+ *
+ * `throw new Error("Email non vérifié…")` ne sort PAS d'Auth.js : le message
+ * est journalisé côté serveur et le client ne reçoit qu'un code générique.
+ * Seule la propriété `code` d'une sous-classe de `CredentialsSignin` traverse.
+ * Le vocabulaire et le compromis d'énumération vivent dans `auth-refus.ts`.
+ */
+class RefusConnexion extends CredentialsSignin {
+  code: string
+
+  constructor(code: CodeRefusConnexion) {
+    super()
+    this.code = code
+  }
+}
 
 /** Extrait l'IP réelle et le user-agent depuis les en-têtes (derrière Caddy) */
 function clientInfo(request?: Request): { ip: string | null; userAgent: string | null } {
@@ -152,7 +170,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       },
       async authorize(credentials, request) {
         if (!credentials?.email || !credentials?.password) {
-          throw new Error("Email et mot de passe requis")
+          throw new RefusConnexion(REFUS_CONNEXION.CHAMPS_MANQUANTS)
         }
 
         const email = credentials.email as string
@@ -164,26 +182,24 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
         if (!user) {
           logLogin(email, false, "not_found", undefined, info)
-          throw new Error("Identifiants invalides")
+          throw new RefusConnexion(REFUS_CONNEXION.IDENTIFIANTS)
         }
 
         if (!user.active) {
           logLogin(email, false, "inactive", user.id, info)
-          throw new Error("Compte désactivé")
+          throw new RefusConnexion(REFUS_CONNEXION.COMPTE_DESACTIVE)
         }
 
         if (!user.emailVerified) {
           logLogin(email, false, "email_not_verified", user.id, info)
-          throw new Error("Email non vérifié. Consultez votre boîte mail.")
+          throw new RefusConnexion(REFUS_CONNEXION.EMAIL_NON_VERIFIE)
         }
 
         // Compte créé via Google, sans mot de passe local : la connexion par
         // mot de passe est impossible tant qu'il n'en a pas défini un.
         if (!user.password) {
           logLogin(email, false, "no_password", user.id, info)
-          throw new Error(
-            "Ce compte utilise la connexion Google. Cliquez sur « Continuer avec Google » ou créez un mot de passe via « Mot de passe oublié »."
-          )
+          throw new RefusConnexion(REFUS_CONNEXION.COMPTE_GOOGLE)
         }
 
         const passwordMatch = await bcrypt.compare(
@@ -193,7 +209,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
         if (!passwordMatch) {
           logLogin(email, false, "bad_password", user.id, info)
-          throw new Error("Identifiants invalides")
+          throw new RefusConnexion(REFUS_CONNEXION.IDENTIFIANTS)
         }
 
         logLogin(email, true, "ok", user.id, info)
