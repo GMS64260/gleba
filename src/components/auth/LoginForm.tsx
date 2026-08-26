@@ -40,6 +40,11 @@ export function LoginForm({ googleEnabled = false }: { googleEnabled?: boolean }
   const callbackUrl = searchParams.get("callbackUrl") || "/"
   const verifyStatus = searchParams.get("verify")
   const oauthError = searchParams.get("error")
+  // Chemin sans JavaScript : Auth.js renvoie sur /login?error=CredentialsSignin
+  // &code=<motif>. Le formulaire utilise normalement `redirect: false` et lit le
+  // motif dans la réponse, mais cette URL existe et ne doit pas rester muette.
+  const refusUrl =
+    oauthError === "CredentialsSignin" ? searchParams.get("code") : null
 
   const [email, setEmail] = React.useState("")
   const [password, setPassword] = React.useState("")
@@ -144,7 +149,12 @@ export function LoginForm({ googleEnabled = false }: { googleEnabled?: boolean }
           {VERIFY_MESSAGES[verifyStatus].text}
         </div>
       )}
-      {!error && oauthError && OAUTH_ERROR_MESSAGES[oauthError] && (
+      {!error && refusUrl && (
+        <div className="p-3 text-sm text-red-700 bg-red-50/80 rounded-xl border border-red-200/50 backdrop-blur-sm">
+          {messageRefusConnexion(refusUrl)}
+        </div>
+      )}
+      {!error && !refusUrl && oauthError && OAUTH_ERROR_MESSAGES[oauthError] && (
         <div className="p-3 text-sm text-red-700 bg-red-50/80 rounded-xl border border-red-200/50 backdrop-blur-sm">
           {OAUTH_ERROR_MESSAGES[oauthError]}
         </div>
