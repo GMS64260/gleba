@@ -23,6 +23,11 @@ import { signOut } from 'next-auth/react'
 import { confirmDialog } from '@/lib/global-dialog'
 import { todayLocalISO } from '@/lib/format-utils'
 import { DEFAULT_NOTIF_PREFS, parseNotifPrefs, type NotifPrefs } from '@/lib/notifications/prefs'
+import {
+  BRIEFING_AUTO_PAR_DEFAUT,
+  CLE_PREF_BRIEFING_AUTO,
+  briefingAutoActive,
+} from '@/lib/chat/daily-opening'
 
 // Clé localStorage pour les parametres
 const SETTINGS_KEY = 'gleba_settings'
@@ -588,6 +593,9 @@ export default function ParametresPage() {
 
         {/* Modules actifs */}
         <ModulesSection />
+
+        {/* Assistant IA : ouverture automatique du briefing */}
+        <AssistantSection />
 
         {/* Préférences des emails métier */}
         <NotificationsSection />
@@ -1420,6 +1428,96 @@ function ModulesSection() {
         <p className="text-xs text-muted-foreground italic pt-2">
           💡 Astuce : un changement est visible immédiatement après rechargement de la page.
         </p>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ============================================================
+// Section : Assistant IA — ouverture automatique
+// ============================================================
+
+/**
+ * Le briefing quotidien s'ouvrait de lui-même au premier passage de chaque
+ * journée et posait sa question sans qu'on la lui demande. Il devient un
+ * réglage, éteint par défaut ; l'assistant reste disponible sur sa bulle.
+ */
+function AssistantSection() {
+  const { toast } = useToast()
+  const [actif, setActif] = React.useState<boolean | null>(null)
+  const [saving, setSaving] = React.useState(false)
+
+  React.useEffect(() => {
+    let annule = false
+    fetch('/api/user/preferences', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((prefs) => {
+        if (!annule) setActif(briefingAutoActive(prefs))
+      })
+      .catch(() => {
+        if (!annule) setActif(BRIEFING_AUTO_PAR_DEFAUT)
+      })
+    return () => {
+      annule = true
+    }
+  }, [])
+
+  const basculer = async (valeur: boolean) => {
+    const precedent = actif
+    setActif(valeur)
+    setSaving(true)
+    try {
+      const res = await fetch('/api/user/preferences', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [CLE_PREF_BRIEFING_AUTO]: valeur }),
+      })
+      if (!res.ok) throw new Error('PUT échoué')
+    } catch {
+      setActif(precedent)
+      toast({
+        variant: 'destructive',
+        title: 'Réglage non enregistré',
+        description: 'Vérifiez votre connexion puis réessayez.',
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Bot className="h-5 w-5 text-emerald-600" />
+          Assistant IA
+        </CardTitle>
+        <CardDescription>
+          L&apos;assistant reste accessible à tout moment par sa bulle, en bas de l&apos;écran.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-center justify-between gap-4 p-3 border rounded-lg">
+          <div className="flex-1 min-w-0">
+            <Label htmlFor="briefing-auto" className="font-medium text-sm cursor-pointer">
+              Briefing automatique à la première visite du jour
+            </Label>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Ouvre l&apos;assistant et liste les tâches du jour et les retards de l&apos;exploitation.
+            </p>
+          </div>
+          {actif === null ? (
+            <div className="h-5 w-9 bg-slate-200 rounded-full animate-pulse" />
+          ) : (
+            <Switch
+              id="briefing-auto"
+              checked={actif}
+              disabled={saving}
+              onCheckedChange={basculer}
+              data-testid="briefing-auto-toggle"
+            />
+          )}
+        </div>
       </CardContent>
     </Card>
   )

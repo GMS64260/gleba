@@ -84,6 +84,7 @@ import { confirmDialog } from "@/lib/global-dialog"
 import { todayLocalISO } from '@/lib/format-utils'
 import { Textarea } from "@/components/ui/textarea"
 import { parcelleCompatibleVerger } from "@/lib/verger/lot-arbres"
+import { parcelleAutoSelectionnee } from "@/lib/jardin/auto-selection"
 import { CONDUITES_ARBRE, ETATS_ARBRE } from "@/lib/verger/arbre-constants"
 
 interface PlancheWithCulture {
@@ -230,6 +231,7 @@ interface ParcelleOption {
   couches: string[]
   geometry: string
   plancheCount: number
+  arbreCount: number
 }
 
 export default function JardinPage() {
@@ -300,17 +302,9 @@ function JardinContent() {
     }
   }, [isPlanFullscreen])
 
-  // Lire la parcelle depuis l'URL si presente (?parcelle=ID ou ?usage=culture|verger)
-  // Bug feedback cmpkyc0qy — Sur ?usage=culture, le `find` retournait la 1re parcelle
-  // marquée "culture" indépendamment de son contenu (Demo-C tunnel = 0 planche).
-  // L'utilisateur voyait un canvas vide alors que Demo-A avait 11 planches.
-  // On préfère désormais la parcelle qui a déjà des planches assignées.
-  //
-  // Bug feedback testeur 2026-05-26 (cmpm769mw) — Si plusieurs parcelles
-  // matchent l'usage (le user a Nath et Luc + autres), sélectionner UNE
-  // parcelle cache les autres. On bascule sur "Toutes les parcelles"
-  // (selectedParcelleId=null) quand ≥ 2 parcelles correspondent à l'usage,
-  // pour ne plus rater 12 planches sur 13.
+  // Lire la parcelle depuis l'URL si presente (?parcelle=ID ou ?usage=culture|verger).
+  // Un id explicite fait foi ; sur un simple usage, la règle et les trois
+  // régressions qu'elle porte vivent dans `lib/jardin/auto-selection.ts`.
   const urlAutoSelectDone = React.useRef(false)
   React.useEffect(() => {
     if (urlAutoSelectDone.current) return
@@ -322,17 +316,7 @@ function JardinContent() {
     }
     const usage = searchParams.get('usage')
     if (usage && parcelles.length > 0) {
-      const matches = parcelles.filter(pa =>
-        pa.usage?.split(',').map(u => u.trim()).includes(usage)
-      )
-      if (matches.length >= 2) {
-        // Plusieurs parcelles culture → on laisse "Toutes les parcelles"
-        // pour ne pas cacher l'inventaire complet.
-        setSelectedParcelleId(null)
-      } else {
-        const match = matches.find(pa => pa.plancheCount > 0) ?? matches[0]
-        if (match) setSelectedParcelleId(match.id)
-      }
+      setSelectedParcelleId(parcelleAutoSelectionnee(parcelles, usage))
       urlAutoSelectDone.current = true
     }
   }, [searchParams, parcelles])
@@ -516,11 +500,74 @@ function JardinContent() {
         couches: p.couches ?? [],
         geometry: p.geometry,
         plancheCount: p._count?.planches ?? 0,
+        arbreCount: p._count?.arbres ?? 0,
       })))
     } catch {
       // Ignorer
     }
   }, [])
+
+  /**
+   * Planches rattachées à AUCUNE parcelle. `GET /api/jardin?parcelle=<id>`
+   * filtre strictement sur `parcelleGeoId` : ces planches n'apparaissent donc
+   * sur aucun plan filtré, et rien à l'écran ne le disait. Le cas n'a rien
+   * d'exotique — le formulaire de création ne propose le champ « parcelle »
+   * que si le compte en possède déjà une, si bien que toute personne qui crée
+   * ses planches avant sa première parcelle les produit orphelines sans jamais
+   * voir le champ (constaté sur un compte réel le 2026-08-26).
+   */
+  const [planchesSansParcelle, setPlanchesSansParcelle] = React.useState<{ id: string; nom: string }[]>([])
+  const [rattachementEnCours, setRattachementEnCours] = React.useState(false)
+  const fetchPlanchesSansParcelle = React.useCallback(async () => {
+    try {
+      const response = await fetch("/api/jardin?parcelle=none")
+      if (!response.ok) return
+      const data = await response.json()
+      setPlanchesSansParcelle(
+        Array.isArray(data)
+          ? data.map((p: { id: string; nom: string }) => ({ id: p.id, nom: p.nom }))
+          : []
+      )
+    } catch {
+      // Silencieux : sans ce décompte le plan reste utilisable, il perd
+      // seulement son explication.
+    }
+  }, [])
+
+  /** Rattache d'un geste les planches orphelines à la parcelle affichée. */
+  const rattacherPlanchesSansParcelle = async () => {
+    if (!selectedParcelleId || selectedParcelleId === "none") return
+    if (planchesSansParcelle.length === 0) return
+    setRattachementEnCours(true)
+    try {
+      const reponses = await Promise.all(
+        planchesSansParcelle.map((p) =>
+          fetch(`/api/planches/${encodeURIComponent(p.id)}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ parcelleGeoId: selectedParcelleId }),
+          }).catch(() => null)
+        )
+      )
+      const echecs = reponses.filter((r) => !r || !r.ok).length
+      const reussies = planchesSansParcelle.length - echecs
+      if (echecs > 0) {
+        toast({
+          variant: "destructive",
+          title: "Rattachement incomplet",
+          description: `${reussies} planche(s) rattachée(s), ${echecs} en échec. Réessayez.`,
+        })
+      } else {
+        toast({
+          title: reussies > 1 ? `${reussies} planches rattachées` : "Planche rattachée",
+          description: `Elles s'affichent maintenant sur ${selectedParcelle?.nom ?? "cette parcelle"}.`,
+        })
+      }
+      await Promise.all([fetchPlanches(), fetchParcelles(), fetchPlanchesSansParcelle()])
+    } finally {
+      setRattachementEnCours(false)
+    }
+  }
 
   const [arbreEspecesRef, setArbreEspecesRef] = React.useState<string[]>([])
   const [arbreVarietesRef, setArbreVarietesRef] = React.useState<string[]>([])
@@ -579,8 +626,8 @@ function JardinContent() {
 
   // Charger arbres et données de reference une seule fois
   React.useEffect(() => {
-    Promise.all([fetchArbres(), fetchEspeces(), fetchParcelles()])
-  }, [fetchArbres, fetchEspeces, fetchParcelles])
+    Promise.all([fetchArbres(), fetchEspeces(), fetchParcelles(), fetchPlanchesSansParcelle()])
+  }, [fetchArbres, fetchEspeces, fetchParcelles, fetchPlanchesSansParcelle])
 
   // Le GPS et le plan utilisent deux repères indépendants : WGS84 pour le
   // relevé terrain, mètres SVG pour l'éditeur. Une capture issue de la
@@ -2288,6 +2335,48 @@ function JardinContent() {
                       contour: fond.contour,
                     } : undefined}
                   />
+                </div>
+              )}
+
+              {/* Planches invisibles parce que non rattachées. Le plan filtré par
+                  parcelle ne peut pas les montrer ; sans ce bandeau l'écran est
+                  vide et muet — c'est ce qu'a vu un compte réel le 2026-08-17,
+                  qui n'a plus rien saisi ensuite. On dit ce qui manque, et on
+                  offre les deux sorties : tout voir, ou rattacher ici. */}
+              {!isLoading
+                && selectedParcelleId
+                && selectedParcelleId !== "none"
+                && planches.length === 0
+                && planchesSansParcelle.length > 0 && (
+                <div className="absolute left-1/2 top-3 z-20 w-[min(30rem,calc(100%-1.5rem))] -translate-x-1/2 rounded-lg border border-amber-300 bg-amber-50/95 p-3 shadow-lg backdrop-blur">
+                  <p className="text-sm font-medium text-amber-900">
+                    {planchesSansParcelle.length > 1
+                      ? `${planchesSansParcelle.length} planches ne sont rattachées à aucune parcelle`
+                      : "1 planche n'est rattachée à aucune parcelle"}
+                  </p>
+                  <p className="mt-1 text-xs text-amber-800">
+                    Ce plan n&apos;affiche que {selectedParcelle?.nom ?? "la parcelle choisie"}, elles n&apos;y
+                    apparaissent donc pas : {planchesSansParcelle.map((p) => p.nom).join(", ")}.
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      onClick={rattacherPlanchesSansParcelle}
+                      disabled={rattachementEnCours}
+                    >
+                      {rattachementEnCours
+                        ? "Rattachement…"
+                        : `Rattacher à ${selectedParcelle?.nom ?? "cette parcelle"}`}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setSelectedParcelleId(null)}
+                      disabled={rattachementEnCours}
+                    >
+                      Voir toutes les parcelles
+                    </Button>
+                  </div>
                 </div>
               )}
 
