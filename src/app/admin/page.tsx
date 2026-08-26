@@ -7,7 +7,7 @@ import prisma from "@/lib/prisma"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
-import { Users, UserPlus, Shield, Activity, Database, MessageSquare, Bug, TrendingUp, Flag, ShieldAlert } from "lucide-react"
+import { Users, UserPlus, Shield, Activity, Database, MessageSquare, Bug, TrendingUp, Flag, Bell, ShieldAlert } from "lucide-react"
 import { AdminTabs } from "@/components/admin/AdminTabs"
 
 export default async function AdminPage() {
@@ -155,6 +155,26 @@ export default async function AdminPage() {
                 <Button variant="outline" className="w-full">
                   <MessageSquare className="mr-2 h-4 w-4" />
                   Tableau de bord feedback
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Bell className="h-5 w-5 text-amber-600" />
+                Réglages des notifications
+              </CardTitle>
+              <CardDescription>
+                Heure du résumé, fréquence de scan, seuils météo
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link href="/admin/notifications">
+                <Button variant="outline" className="w-full">
+                  <Bell className="mr-2 h-4 w-4" />
+                  Configurer les notifications
                 </Button>
               </Link>
             </CardContent>

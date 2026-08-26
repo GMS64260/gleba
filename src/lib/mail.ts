@@ -13,15 +13,17 @@ const APP_URL = (process.env.NEXTAUTH_URL || "https://gleba.fr").replace(/\/$/, 
 
 export { APP_URL }
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: Number(process.env.SMTP_PORT) || 587,
-  secure: false,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-})
+async function getSmtpConfig() {
+  const { getSetting } = await import("@/lib/settings")
+  const [host, port, user, pass, from] = await Promise.all([
+    getSetting("smtp.host"),
+    getSetting("smtp.port"),
+    getSetting("smtp.user"),
+    getSetting("smtp.pass"),
+    getSetting("smtp.from"),
+  ])
+  return { host, port, user, pass, from }
+}
 
 interface SendMailOptions {
   to: string
@@ -33,18 +35,42 @@ interface SendMailOptions {
 }
 
 export async function sendMail({ to, subject, html, replyTo, headers }: SendMailOptions) {
-  if (!process.env.SMTP_HOST || !process.env.SMTP_USER) {
+  const config = await getSmtpConfig()
+  if (!config.host || !config.user) {
     console.warn("SMTP non configure, email non envoye:", subject)
     return
   }
 
+  const transporter = nodemailer.createTransport({
+    host: config.host,
+    port: config.port,
+    secure: config.port === 465,
+    auth: {
+      user: config.user,
+      pass: config.pass,
+    },
+  })
+
   return transporter.sendMail({
-    from: process.env.SMTP_FROM || process.env.SMTP_USER,
+    from: config.from || config.user,
     to,
     subject,
     html,
     ...(replyTo && { replyTo }),
     ...(headers && { headers }),
+  })
+}
+
+export async function envoyerEmailTest(destinataire: string): Promise<void> {
+  const config = await getSmtpConfig()
+  if (!config.host || !config.user) {
+    throw new Error("Configuration SMTP incomplète : l'hôte et l'utilisateur sont requis.")
+  }
+
+  await sendMail({
+    to: destinataire,
+    subject: "Gleba — Email de test",
+    html: `<!DOCTYPE html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#1e293b"><p>Si vous lisez ceci, la configuration SMTP fonctionne.</p></body></html>`,
   })
 }
 

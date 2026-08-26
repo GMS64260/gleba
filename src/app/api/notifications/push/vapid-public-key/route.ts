@@ -7,7 +7,7 @@ export const revalidate = 0
 const NO_STORE = { "Cache-Control": "no-store, no-cache, must-revalidate" }
 
 export async function GET() {
-  const publicKey = getVapidPublicKey()
+  const publicKey = await getVapidPublicKey()
   if (!publicKey) {
     return NextResponse.json(
       { error: "Notifications push non configurées" },
