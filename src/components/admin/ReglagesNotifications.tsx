@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Bell, CloudSun, Mail, RefreshCw, Save, Send, Smartphone } from "lucide-react"
+import { Bell, CloudSun, Mail, RefreshCw, Save, Send, SmartphoneNfc } from "lucide-react"
 import Link from "next/link"
 import { useSession } from "next-auth/react"
 import { Badge } from "@/components/ui/badge"

@@ -12,12 +12,11 @@
  */
 
 import cron from "node-cron"
-import { doitLancerScan, estHeureResume, getMeteoCronExpression, getMeteoIntervalMinutes, getResumeCronExpression } from "./config"
+import { estHeureResume, getMeteoCronExpression, getMeteoIntervalMinutes, getResumeCronExpression } from "./config"
 import {
   envoyerAlertesMeteoTempsReel,
   envoyerAlertesUrgentes,
   envoyerResumeQuotidien,
-  notificationsEnabled,
 } from "./sender"
 import { pushConfigure } from "@/lib/push"
 import { getSetting } from "@/lib/settings"
@@ -26,7 +25,6 @@ let initialized = false
 /** Délai avant le premier scan au démarrage (laisse la DB se réveiller). */
 const DELAI_PREMIER_SCAN_MS = 30_000
 let scanEnCours = false
-let dernierScanMs = 0
 let dernierResumeJour: string | null = null
 
 async function runScanMeteoEtUrgent(): Promise<void> {
@@ -41,7 +39,6 @@ async function runScanMeteoEtUrgent(): Promise<void> {
     if (meteo > 0 || urgent > 0) {
       console.log(`[notifications] Scan météo/urgent: ${meteo} météo + ${urgent} urgentes`)
     }
-    dernierScanMs = Date.now()
   } catch (error) {
     console.error("[notifications] Échec du scan météo/urgent:", error)
   } finally {
