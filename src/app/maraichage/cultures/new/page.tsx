@@ -27,6 +27,7 @@ import {
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -127,6 +128,7 @@ export default function NewCulturePage() {
       dateSemis: null,
       datePlantation: null,
       dateRecolte: null,
+      finRecolte: null,
       semisFait: false,
       plantationFaite: false,
       recolteFaite: false,
@@ -815,7 +817,7 @@ export default function NewCulturePage() {
                     name="dateRecolte"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Date récolte</FormLabel>
+                        <FormLabel>Début de récolte</FormLabel>
                         <FormControl>
                           <Input
                             type="date"
@@ -826,6 +828,34 @@ export default function NewCulturePage() {
                             }
                           />
                         </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* Une récolte DURE : sans cette borne, la culture passait
+                      « en retard » dès le lendemain de son premier jour. Laissée
+                      vide, elle est déduite de l'itinéraire technique. */}
+                  <FormField
+                    control={form.control}
+                    name="finRecolte"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Fin de récolte</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="date"
+                            {...field}
+                            value={field.value ? format(new Date(field.value), "yyyy-MM-dd") : ""}
+                            onChange={(e) =>
+                              field.onChange(e.target.value ? new Date(e.target.value) : null)
+                            }
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          Laissez vide : Gleba la déduit de la durée de récolte de
+                          l&apos;itinéraire technique.
+                        </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}

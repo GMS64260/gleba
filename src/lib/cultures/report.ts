@@ -62,6 +62,8 @@ export type CultureAReporter = {
   dateSemisPlan: Date | null
   datePlantationPlan: Date | null
   dateRecoltePlan: Date | null
+  /** Fin de la fenêtre de récolte, quand la culture en porte une. */
+  finRecolte?: Date | null
 }
 
 export type DecalageEtape = { etape: EtapeReportable; de: Date | null; a: Date }
@@ -121,6 +123,17 @@ export function ecrituresReport(
       ecritures[CHAMP_PLAN_ETAPE[suivante]] = null
       decalages.push({ etape: ETAPE_PAR_CHAMP[suivante], de: dateSuivante, a: decalee })
     }
+  }
+
+  // La fenêtre de récolte SUIT son début. Reporter une récolte du 12/08 au 20/08
+  // sans déplacer sa fin raccourcirait la période d'autant, et une aubergine
+  // reportée de trois semaines finirait avant d'avoir commencé.
+  if (
+    deltaJours !== 0 &&
+    culture.finRecolte &&
+    (champDate === 'dateRecolte' || ecritures.dateRecolte !== undefined)
+  ) {
+    ecritures.finRecolte = plusJoursCivils(culture.finRecolte, deltaJours)
   }
 
   // Chronologie sur les dates résultantes — les étapes FAITES, jamais

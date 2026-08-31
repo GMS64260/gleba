@@ -29,6 +29,11 @@ export const cultureSchema = z.object({
   dateSemis: z.union([z.string(), z.date()]).nullable().optional(),
   datePlantation: z.union([z.string(), z.date()]).nullable().optional(),
   dateRecolte: z.union([z.string(), z.date()]).nullable().optional(),
+  // Fin de la FENÊTRE de récolte (2026-08-26). `dateRecolte` en est le début ;
+  // une récolte dure des semaines, et sans cette borne toute culture passait
+  // « en retard » le lendemain de son premier jour. Facultative : elle est
+  // dérivée de l'ITP à la création quand le client ne la fournit pas.
+  finRecolte: z.union([z.string(), z.date()]).nullable().optional(),
   semisFait: z.boolean(),
   plantationFaite: z.boolean(),
   recolteFaite: z.boolean(),
@@ -127,9 +132,11 @@ export type UpdateCultureInput = z.infer<typeof updateCultureSchema>
  * chaîne n'est pas une date lisible, ou null si tout est normalisé.
  */
 export function normalizeCultureDateFields(
-  data: Partial<Record<'dateSemis' | 'datePlantation' | 'dateRecolte', string | Date | null>>,
+  data: Partial<
+    Record<'dateSemis' | 'datePlantation' | 'dateRecolte' | 'finRecolte', string | Date | null>
+  >,
 ): string | null {
-  for (const field of ['dateSemis', 'datePlantation', 'dateRecolte'] as const) {
+  for (const field of ['dateSemis', 'datePlantation', 'dateRecolte', 'finRecolte'] as const) {
     const value = data[field]
     if (typeof value !== 'string') continue
     if (value.trim() === '') {

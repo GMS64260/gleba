@@ -15,6 +15,7 @@ import { invalidateKpi } from '@/lib/kpi'
 import { checkRotationViolation } from '@/lib/rotation-check'
 import { estEtatCulture, etatCulture, whereEtatCulture } from '@/lib/cultures/etat'
 import { ecrituresPassageAFait, ETAPES, type EtatEtapes } from '@/lib/cultures/execution'
+import { finDeCycle, finRecolteDepuisItp } from '@/lib/cultures/fenetre-recolte'
 import { etendrePlanArrosage } from '@/lib/irrigation-scheduler'
 import { whereItpUtilisable } from '@/lib/itp-acces'
 import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
@@ -303,6 +304,11 @@ export async function POST(request: NextRequest) {
           semaineSemis: true,
           semainePlantation: true,
           semaineRecolte: true,
+          // Fenêtre de récolte (2026-08-26) : ces deux champs existaient au
+          // référentiel — 767 ITP sur 773 portent une durée — et n'étaient lus
+          // par aucun chemin du maraîchage.
+          semaineRecolteFin: true,
+          dureeRecolte: true,
           espacementRangs: true,
           nbGrainesPlant: true,
           doseSemis: true,
@@ -334,6 +340,20 @@ export async function POST(request: NextRequest) {
           )
         )
       : null
+
+    // Fenêtre de récolte (2026-08-26) : le client peut la fournir, sinon elle se
+    // DÉRIVE de l'itinéraire — `dureeRecolte`, à défaut le couple
+    // `semaineRecolte`/`semaineRecolteFin`. La dérivation se fait sur l'ITP
+    // CALIBRÉ, dans le même référentiel de semaines que les dates préremplies.
+    // Sans référentiel qui dise la durée, on ne pose rien : une fenêtre inventée
+    // repousserait silencieusement une échéance réelle.
+    if (data.finRecolte == null) {
+      const finDerivee = finRecolteDepuisItp(
+        (data.dateRecolte as Date | null) ?? null,
+        itpCalibre ?? itp
+      )
+      if (finDerivee) data.finRecolte = finDerivee
+    }
 
     // Audit Marc 2026-05-14 — Bug 04 : remonter les warnings dates/ITP
     // au client (non bloquant). Le client peut alors afficher un toast
@@ -384,6 +404,7 @@ export async function POST(request: NextRequest) {
               dateSemis: true,
               datePlantation: true,
               dateRecolte: true,
+              finRecolte: true,
               nbRangs: true,
               itp: {
                 select: { espacementRangs: true },
@@ -403,13 +424,20 @@ export async function POST(request: NextRequest) {
       const newStart =
         data.dateSemis ? new Date(data.dateSemis) :
         data.datePlantation ? new Date(data.datePlantation) : null
-      const newEnd = data.dateRecolte ? new Date(data.dateRecolte) : null
+      // La FIN du cycle est la fin de fenêtre de récolte quand elle existe, pas
+      // la date de début. Avant ce correctif, une aubergine récoltée pendant 18
+      // semaines libérait sa planche le lendemain de sa première date : ni le
+      // warning de chevauchement ni le calcul d'occupation ne la voyaient plus.
+      const newEnd = finDeCycle({
+        dateRecolte: (data.dateRecolte as Date | null) ?? null,
+        finRecolte: (data.finRecolte as Date | null) ?? null,
+      })
 
       if (planche && data.plancheId) {
         if (newStart && newEnd) {
           for (const c of planche.cultures) {
             const cStart = c.dateSemis ?? c.datePlantation
-            const cEnd = c.dateRecolte
+            const cEnd = finDeCycle(c)
             if (!cStart || !cEnd) continue
             const overlap = newStart < new Date(cEnd) && new Date(cStart) < newEnd
             if (overlap) {
@@ -444,7 +472,7 @@ export async function POST(request: NextRequest) {
         const chevaucheLaPeriode = (c: (typeof planche.cultures)[number]) => {
           if (!newStart || !newEnd) return true
           const cStart = c.dateSemis ?? c.datePlantation
-          const cEnd = c.dateRecolte
+          const cEnd = finDeCycle(c)
           if (!cStart || !cEnd) return true
           return newStart < new Date(cEnd) && new Date(cStart) < newEnd
         }

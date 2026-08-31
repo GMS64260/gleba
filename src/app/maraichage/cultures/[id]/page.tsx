@@ -104,6 +104,7 @@ export default function EditCulturePage() {
       dateSemis: null,
       datePlantation: null,
       dateRecolte: null,
+      finRecolte: null,
       semisFait: false,
       plantationFaite: false,
       recolteFaite: false,
@@ -161,6 +162,7 @@ export default function EditCulturePage() {
           dateSemis: cultureData.dateSemis || null,
           datePlantation: cultureData.datePlantation || null,
           dateRecolte: cultureData.dateRecolte || null,
+          finRecolte: cultureData.finRecolte || null,
           semisFait: cultureData.semisFait || false,
           plantationFaite: cultureData.plantationFaite || false,
           recolteFaite: cultureData.recolteFaite || false,
@@ -659,7 +661,29 @@ export default function EditCulturePage() {
                     name="dateRecolte"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Date récolte</FormLabel>
+                        <FormLabel>Début de récolte</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="date"
+                            value={field.value ? format(new Date(field.value), "yyyy-MM-dd") : ""}
+                            onChange={(e) =>
+                              field.onChange(e.target.value ? e.target.value : null)
+                            }
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* Fin de la fenêtre : tant qu'elle court, la culture est en
+                      récolte, pas en retard (cf. lib/cultures/fenetre-recolte). */}
+                  <FormField
+                    control={form.control}
+                    name="finRecolte"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Fin de récolte</FormLabel>
                         <FormControl>
                           <Input
                             type="date"

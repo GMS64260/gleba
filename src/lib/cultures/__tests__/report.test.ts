@@ -121,3 +121,56 @@ describe('ecrituresReport', () => {
     expect(resultat.decalages).toHaveLength(1)
   })
 })
+
+/**
+ * Fenêtre de récolte (2026-08-26) : reporter une récolte sans déplacer sa fin
+ * raccourcirait la période d'autant — une aubergine reportée de trois semaines
+ * finirait avant d'avoir commencé.
+ */
+describe('report et fenêtre de récolte', () => {
+  it('décale la fin de fenêtre du même nombre de jours que la récolte', () => {
+    const r = ecrituresReport(
+      culture({
+        dateRecolte: new Date(2026, 10, 12, 12, 0),
+        finRecolte: new Date(2026, 11, 10, 12, 0), // +4 semaines
+      }),
+      'recolte',
+      new Date(2026, 10, 19, 12, 0), // +7 jours
+    )
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    const fin = r.ecritures.finRecolte as Date
+    expect(fin.getMonth()).toBe(11)
+    expect(fin.getDate()).toBe(17) // 10/12 + 7 jours
+  })
+
+  it('laisse la fenêtre tranquille quand la récolte ne bouge pas', () => {
+    const r = ecrituresReport(
+      culture({
+        dateSemis: new Date(2026, 7, 17, 12, 0),
+        dateRecolte: new Date(2026, 10, 12, 12, 0),
+        finRecolte: new Date(2026, 11, 10, 12, 0),
+      }),
+      'semis',
+      new Date(2026, 7, 17, 12, 0), // même jour : delta nul
+    )
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.ecritures.finRecolte).toBeUndefined()
+  })
+
+  it('fait suivre la fenêtre quand c’est le semis qui est reporté', () => {
+    const r = ecrituresReport(
+      culture({
+        dateRecolte: new Date(2026, 10, 12, 12, 0),
+        finRecolte: new Date(2026, 11, 10, 12, 0),
+      }),
+      'semis',
+      new Date(2026, 7, 24, 12, 0), // +7 jours
+    )
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    const fin = r.ecritures.finRecolte as Date
+    expect(fin.getDate()).toBe(17)
+  })
+})

@@ -15,6 +15,7 @@ import { alertesAssociations } from "@/lib/associations-alertes"
 import { zoneEffectiveUser } from "@/lib/terroir"
 import type { ZoneClimat } from "@/lib/terroir"
 import { itpApplicableAZone } from "@/lib/calendrier-climat"
+import { finDeCycle } from "@/lib/cultures/fenetre-recolte"
 import {
   calculerRappelsIrrigationsEnRetard,
   calculerRecoltesMures,
@@ -694,7 +695,13 @@ async function detecterTachesEnRetard(userId: string): Promise<AlerteUrgente[]> 
       OR: [
         { dateSemis: { not: null, lt: start } },
         { datePlantation: { not: null, lt: start } },
-        { dateRecolte: { not: null, lt: start } },
+        // Une récolte n'est en retard qu'une fois sa FENÊTRE close. Le filtre
+        // portait sur `dateRecolte`, qui n'en est que le début : une culture
+        // récoltée sur plusieurs semaines était déclarée en retard dès le
+        // lendemain de son premier jour. Quand aucune fenêtre n'est connue, la
+        // règle d'avant s'applique telle quelle.
+        { finRecolte: { not: null, lt: start } },
+        { finRecolte: null, dateRecolte: { not: null, lt: start } },
       ],
     },
     select: {
@@ -703,6 +710,7 @@ async function detecterTachesEnRetard(userId: string): Promise<AlerteUrgente[]> 
       dateSemis: true,
       datePlantation: true,
       dateRecolte: true,
+      finRecolte: true,
       espece: { select: { nom: true } },
       planche: { select: { nom: true } },
     },
@@ -713,7 +721,9 @@ async function detecterTachesEnRetard(userId: string): Promise<AlerteUrgente[]> 
     const actions: Array<{ kind: "semis" | "plantation" | "recolte"; date: Date }> = []
     if (culture.dateSemis) actions.push({ kind: "semis", date: culture.dateSemis })
     if (culture.datePlantation) actions.push({ kind: "plantation", date: culture.datePlantation })
-    if (culture.dateRecolte) actions.push({ kind: "recolte", date: culture.dateRecolte })
+    // L'échéance d'une récolte est la fin de sa fenêtre, pas son début.
+    const echeanceRecolte = finDeCycle(culture)
+    if (echeanceRecolte) actions.push({ kind: "recolte", date: echeanceRecolte })
     const enRetard = actions.filter((a) => a.date < start).sort((a, b) => a.date.getTime() - b.date.getTime())
     if (enRetard.length === 0) continue
 

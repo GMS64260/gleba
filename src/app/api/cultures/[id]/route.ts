@@ -389,10 +389,20 @@ export async function PATCH(
       'dateSemis',
       'datePlantation',
       'dateRecolte',
+      // Fin de la fenêtre de récolte (2026-08-26) : modifiable comme les autres
+      // dates, pour corriger une durée que le référentiel donne trop courte ou
+      // trop longue sur une parcelle donnée.
+      'finRecolte',
       'notes',
     ]
 
-    const dateFields = ['dateSemis', 'datePlantation', 'dateRecolte', 'derniereIrrigation']
+    const dateFields = [
+      'dateSemis',
+      'datePlantation',
+      'dateRecolte',
+      'finRecolte',
+      'derniereIrrigation',
+    ]
     const updateData: Record<string, unknown> = {}
     for (const field of allowedFields) {
       if (field in body) {

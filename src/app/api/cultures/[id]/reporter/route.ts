@@ -59,6 +59,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         plantationFaite: true,
         recolteFaite: true,
         terminee: true,
+        // La fenêtre de récolte suit son début lors d'un report (cf. report.ts).
+        finRecolte: true,
         ...SELECT_ETAPES,
       },
     })
