@@ -17,6 +17,7 @@ import * as React from "react"
 import { Check, ChevronsUpDown } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { getCategorieEmoji } from "@/lib/categories-emojis"
 import { Button } from "@/components/ui/button"
 import {
   Command,
@@ -224,12 +225,17 @@ export function EspeceCombobox({
         >
           {selected ? (
             <span className="flex items-center gap-2 truncate">
-              {selected.couleur && (
-                <span
-                  className="inline-block w-2 h-2 rounded-full shrink-0"
-                  style={{ backgroundColor: selected.couleur }}
-                />
-              )}
+              {(() => {
+                const emoji = getCategorieEmoji(selected.categorie)
+                if (emoji) return <span className="inline-block shrink-0">{emoji}</span>
+                if (selected.couleur) return (
+                  <span
+                    className="inline-block w-2 h-2 rounded-full shrink-0"
+                    style={{ backgroundColor: selected.couleur }}
+                  />
+                )
+                return null
+              })()}
               {nomOf(selected)}
             </span>
           ) : (
@@ -238,7 +244,7 @@ export function EspeceCombobox({
           <ChevronsUpDown className="h-4 w-4 opacity-50 shrink-0" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+      <PopoverContent className="w-[--radix-popover-trigger-width] p-0 z-50" align="start" forceMount={true}>
         <div className="flex flex-wrap gap-1 p-2 border-b bg-slate-50">
           {TABS.filter((t) => visibleTabs.includes(t.key)).map((t) => (
             <button
@@ -286,12 +292,17 @@ export function EspeceCombobox({
                           value === o.id ? "opacity-100" : "opacity-0"
                         )}
                       />
-                      {o.couleur && (
-                        <span
-                          className="inline-block w-2 h-2 rounded-full mr-2"
-                          style={{ backgroundColor: o.couleur }}
-                        />
-                      )}
+                      {(() => {
+                        const emoji = getCategorieEmoji(o.categorie)
+                        if (emoji) return <span className="mr-2">{emoji}</span>
+                        if (o.couleur) return (
+                          <span
+                            className="inline-block w-2 h-2 rounded-full mr-2"
+                            style={{ backgroundColor: o.couleur }}
+                          />
+                        )
+                        return null
+                      })()}
                       {nomOf(o)}
                     </CommandItem>
                   ))}
@@ -308,12 +319,17 @@ export function EspeceCombobox({
                       value === o.id ? "opacity-100" : "opacity-0"
                     )}
                   />
-                  {o.couleur && (
-                    <span
-                      className="inline-block w-2 h-2 rounded-full mr-2"
-                      style={{ backgroundColor: o.couleur }}
-                    />
-                  )}
+                  {(() => {
+                    const emoji = getCategorieEmoji(o.categorie)
+                    if (emoji) return <span className="mr-2">{emoji}</span>
+                    if (o.couleur) return (
+                      <span
+                        className="inline-block w-2 h-2 rounded-full mr-2"
+                        style={{ backgroundColor: o.couleur }}
+                      />
+                    )
+                    return null
+                  })()}
                   {nomOf(o)}
                   <span className="ml-auto flex items-center gap-1">
                     {(() => {
