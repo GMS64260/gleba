@@ -32,6 +32,44 @@ export function getMeteoIntervalMinutes(
   return Math.min(Math.max(raw, 5), 1440)
 }
 
+/** Indique si l'intervalle minimum depuis le dernier scan est écoulé. */
+export function doitLancerScan(
+  nowMs: number,
+  dernierScanMs: number,
+  intervalMin: number
+): boolean {
+  return dernierScanMs === 0 || nowMs - dernierScanMs >= intervalMin * 60_000
+}
+
+/** Vérifie si une date correspond à l'heure de résumé dans un fuseau donné. */
+export function estHeureResume(
+  maintenant: Date,
+  resumeHeure: string,
+  timezone: string
+): boolean {
+  const heure = parseHeureResume(resumeHeure)
+  if (!heure || !/^\d{2}:\d{2}$/.test(resumeHeure.trim())) return false
+
+  let heureLocale: string
+  try {
+    heureLocale = maintenant.toLocaleTimeString("en-GB", {
+      timeZone: timezone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    })
+  } catch {
+    heureLocale = maintenant.toLocaleTimeString("en-GB", {
+      timeZone: "Europe/Paris",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    })
+  }
+
+  return heureLocale === resumeHeure.trim()
+}
+
 /**
  * Expression cron du scan météo/urgences.
  *

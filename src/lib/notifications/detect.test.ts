@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import {
   deciderIrrigationInutile,
   detecterAlertesMeteo,
+  SEUILS_METEO,
   detecterStocksAlimentsBas,
   detecterStocksFertilisantsBas,
   detecterStocksVarietesBas,
@@ -102,6 +103,38 @@ describe("detecterAlertesMeteo", () => {
     const alertes = detecterAlertesMeteo(previsions, null, { horizonJours: 2 })
     expect(alertes.filter((a) => a.type === "canicule")).toHaveLength(1)
     expect(alertes[0].date).toBe("2026-08-11")
+  })
+
+  it("utilise les seuils principaux personnalisés sans modifier le niveau danger", () => {
+    const prevision = jour({ date: "2026-08-10", tempMax: 30 })
+    expect(detecterAlertesMeteo([prevision])).toHaveLength(0)
+    expect(
+      detecterAlertesMeteo([prevision], null, { seuils: { canicule: 30 } })
+    ).toEqual([
+      expect.objectContaining({ type: "canicule", niveau: "attention" }),
+    ])
+    expect(
+      detecterAlertesMeteo(
+        [jour({ date: "2026-08-11", tempMax: 40 })],
+        null,
+        { seuils: { canicule: 30 } }
+      )[0].niveau
+    ).toBe("danger")
+  })
+
+  it("conserve les seuils par défaut sans options.seuils", () => {
+    const previsions = [
+      jour({ date: "2026-08-10", tempMin: 0, tempMax: 35, windSpeedMax: 50, precipitation: 20 }),
+    ]
+    const avecSeuilsExplicites = detecterAlertesMeteo(previsions, null, {
+      seuils: {
+        gel: SEUILS_METEO.gel.tempMin,
+        canicule: SEUILS_METEO.canicule.tempMax,
+        ventFort: SEUILS_METEO.ventFort.vitesse,
+        pluieAbondante: SEUILS_METEO.pluieAbondante.mm,
+      },
+    })
+    expect(detecterAlertesMeteo(previsions)).toEqual(avecSeuilsExplicites)
   })
 })
 

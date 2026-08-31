@@ -11,6 +11,7 @@
  */
 
 import { sendMail, smtpConfigure } from "@/lib/mail"
+import { getSetting } from "@/lib/settings"
 import { getOrCreateUnsubscribeToken, listUnsubscribeHeaders, unsubscribeUrl } from "@/lib/unsubscribe"
 import {
   chargerStocksBas,
@@ -87,8 +88,9 @@ async function chargerPrefsNotifAvecFallback(user: DestinataireNotification): Pr
 }
 
 /** Les notifications sont-elles activées ? (défaut : oui si SMTP configuré). */
-export function notificationsEnabled(): boolean {
-  if (process.env.NOTIF_ENABLED === "false") return false
+export async function notificationsEnabled(): Promise<boolean> {
+  const enabled = await getSetting("notif.enabled")
+  if (!enabled) return false
   // Même prédicat que `sendMail` (issue #32) : sans SMTP, chaque envoi lèverait
   // désormais, et un scan de 100 comptes remplirait le journal d'erreurs de
   // non-incidents. On ne scanne donc pas du tout.
@@ -100,7 +102,7 @@ export function notificationsEnabled(): boolean {
  * dangereuses sur les 48 h à venir et email chaque nouvelle alerte.
  */
 export async function envoyerAlertesMeteoTempsReel(): Promise<number> {
-  if (!notificationsEnabled()) return 0
+  if (!(await notificationsEnabled())) return 0
   await nettoyerAlertesEnvoyees()
   await prechargerAlertesEnvoyees()
   const users = await getDestinatairesNotifications()
@@ -121,14 +123,27 @@ async function traiterMeteoUtilisateur(user: DestinataireNotification): Promise<
   const coords = await getCoordsUtilisateur(user.id)
   if (coords.length === 0) return 0
 
+  const seuils = {
+    gel: await getSetting("seuil.gel"),
+    canicule: await getSetting("seuil.canicule"),
+    ventFort: await getSetting("seuil.ventFort"),
+    pluieAbondante: await getSetting("seuil.pluieAbondante"),
+  }
+
   const { user: destinataire, headers } = await avecDesabonnement(user)
+
 
   const alertes: AlerteMeteoNotification[] = []
   for (const { lat, lng } of coords) {
     try {
       const { current, daily } = await fetchOpenMeteoForecast(lat, lng)
       // Temps réel = conditions actuelles + 48 h (gel de la nuit, canicule du lendemain…)
-      alertes.push(...detecterAlertesMeteo(daily, current, { horizonJours: 2 }))
+      alertes.push(
+        ...detecterAlertesMeteo(daily, current, {
+          horizonJours: 2,
+          seuils,
+        })
+      )
     } catch (error) {
       console.warn(`[notifications] Prévisions indisponibles (${lat},${lng}):`, error)
     }
@@ -162,7 +177,7 @@ async function traiterMeteoUtilisateur(user: DestinataireNotification): Promise<
  * associations incompatibles, tâches en retard.
  */
 export async function envoyerAlertesUrgentes(): Promise<number> {
-  if (!notificationsEnabled()) return 0
+  if (!(await notificationsEnabled())) return 0
   await nettoyerAlertesEnvoyees()
   await prechargerAlertesEnvoyees()
   const users = await getDestinatairesNotifications()
@@ -234,7 +249,7 @@ export async function envoyerAlertesUrgentes(): Promise<number> {
  * la conséquence est un courriel en double chez 115 comptes.
  */
 export async function envoyerResumeQuotidien(): Promise<number> {
-  if (!notificationsEnabled()) return 0
+  if (!(await notificationsEnabled())) return 0
   await nettoyerAlertesEnvoyees()
   await prechargerAlertesEnvoyees()
   const users = await getDestinatairesNotifications()

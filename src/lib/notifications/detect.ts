@@ -44,9 +44,21 @@ function todayIso(): string {
 export function detecterAlertesMeteo(
   previsions: MeteoPrevision[],
   current: MeteoActuelle | null = null,
-  options: { horizonJours?: number } = {}
+  options: {
+    horizonJours?: number
+    seuils?: {
+      gel?: number
+      canicule?: number
+      ventFort?: number
+      pluieAbondante?: number
+    }
+  } = {}
 ): AlerteMeteoNotification[] {
   const horizon = options.horizonJours ?? previsions.length
+  const seuilGel = options.seuils?.gel ?? SEUILS_METEO.gel.tempMin
+  const seuilCanicule = options.seuils?.canicule ?? SEUILS_METEO.canicule.tempMax
+  const seuilVentFort = options.seuils?.ventFort ?? SEUILS_METEO.ventFort.vitesse
+  const seuilPluieAbondante = options.seuils?.pluieAbondante ?? SEUILS_METEO.pluieAbondante.mm
   const alertes: AlerteMeteoNotification[] = []
 
   for (let i = 0; i < Math.min(horizon, previsions.length); i++) {
@@ -54,7 +66,7 @@ export function detecterAlertesMeteo(
     if (!jour) continue
 
     // ── Gel ──
-    if (jour.tempMin <= SEUILS_METEO.gel.tempMin) {
+    if (jour.tempMin <= seuilGel) {
       alertes.push({
         type: "gel",
         date: jour.date,
@@ -69,7 +81,7 @@ export function detecterAlertesMeteo(
     }
 
     // ── Canicule ──
-    if (jour.tempMax >= SEUILS_METEO.canicule.tempMax) {
+    if (jour.tempMax >= seuilCanicule) {
       alertes.push({
         type: "canicule",
         date: jour.date,
@@ -82,7 +94,7 @@ export function detecterAlertesMeteo(
     }
 
     // ── Vent fort ──
-    if (jour.windSpeedMax >= SEUILS_METEO.ventFort.vitesse) {
+    if (jour.windSpeedMax >= seuilVentFort) {
       alertes.push({
         type: "vent",
         date: jour.date,
@@ -95,7 +107,7 @@ export function detecterAlertesMeteo(
     }
 
     // ── Pluie abondante ──
-    if (jour.precipitation >= SEUILS_METEO.pluieAbondante.mm) {
+    if (jour.precipitation >= seuilPluieAbondante) {
       alertes.push({
         type: "pluie",
         date: jour.date,

@@ -25,7 +25,7 @@ export async function register() {
 
   try {
     const { initNotifScheduler } = await import('@/lib/notifications/scheduler')
-    initNotifScheduler()
+    await initNotifScheduler()
   } catch (error) {
     console.error("[notifications] Échec d'initialisation du scheduler:", error)
   }

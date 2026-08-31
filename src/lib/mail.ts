@@ -13,15 +13,17 @@ const APP_URL = (process.env.NEXTAUTH_URL || "https://gleba.fr").replace(/\/$/, 
 
 export { APP_URL }
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: Number(process.env.SMTP_PORT) || 587,
-  secure: false,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-})
+async function getSmtpConfig() {
+  const { getSetting } = await import("@/lib/settings")
+  const [host, port, user, pass, from] = await Promise.all([
+    getSetting("smtp.host"),
+    getSetting("smtp.port"),
+    getSetting("smtp.user"),
+    getSetting("smtp.pass"),
+    getSetting("smtp.from"),
+  ])
+  return { host, port, user, pass, from }
+}
 
 interface SendMailOptions {
   to: string
@@ -54,24 +56,54 @@ export class SmtpNonConfigureError extends Error {
   }
 }
 
-/** Vrai si l'instance sait envoyer un email. À interroger AVANT de promettre un envoi. */
-export function smtpConfigure(): boolean {
-  return Boolean(process.env.SMTP_HOST && process.env.SMTP_USER)
+/**
+ * Vrai si l'instance sait envoyer un email. À interroger AVANT de promettre un
+ * envoi. Async depuis la PR #36 : la configuration SMTP peut désormais vivre
+ * dans les réglages en base (avec repli sur les variables d'environnement),
+ * le prédicat lit donc la même source que `sendMail`.
+ */
+export async function smtpConfigure(): Promise<boolean> {
+  const config = await getSmtpConfig()
+  return Boolean(config.host && config.user)
 }
 
 export async function sendMail({ to, subject, html, replyTo, headers }: SendMailOptions) {
-  if (!smtpConfigure()) {
+  const config = await getSmtpConfig()
+  if (!config.host || !config.user) {
     console.warn("SMTP non configure, email non envoye:", subject)
     throw new SmtpNonConfigureError()
   }
 
+  const transporter = nodemailer.createTransport({
+    host: config.host,
+    port: config.port,
+    secure: config.port === 465,
+    auth: {
+      user: config.user,
+      pass: config.pass,
+    },
+  })
+
   return transporter.sendMail({
-    from: process.env.SMTP_FROM || process.env.SMTP_USER,
+    from: config.from || config.user,
     to,
     subject,
     html,
     ...(replyTo && { replyTo }),
     ...(headers && { headers }),
+  })
+}
+
+export async function envoyerEmailTest(destinataire: string): Promise<void> {
+  const config = await getSmtpConfig()
+  if (!config.host || !config.user) {
+    throw new Error("Configuration SMTP incomplète : l'hôte et l'utilisateur sont requis.")
+  }
+
+  await sendMail({
+    to: destinataire,
+    subject: "Gleba — Email de test",
+    html: `<!DOCTYPE html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#1e293b"><p>Si vous lisez ceci, la configuration SMTP fonctionne.</p></body></html>`,
   })
 }
 

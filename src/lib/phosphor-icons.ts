@@ -112,6 +112,7 @@ export {
   Plant as Shrub,
   Sparkle as Sparkles,
   SprayBottle as SprayCan,
+  DeviceMobileSpeaker as SmartphoneNfc,
   Plant as Sprout,
   Storefront as Store,
   Tag as Tags,

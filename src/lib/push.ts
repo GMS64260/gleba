@@ -20,13 +20,28 @@ export interface PushSubscriptionInput {
 }
 
 /** Indique si les deux clés VAPID nécessaires aux envois sont configurées. */
-export function pushConfigure(): boolean {
-  return Boolean(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY)
+export async function pushConfigure(): Promise<boolean> {
+  const { getSetting } = await import("@/lib/settings")
+  const [publicKey, privateKey] = await Promise.all([
+    getSetting("vapid.publicKey"),
+    getSetting("vapid.privateKey"),
+  ])
+  return Boolean(publicKey && privateKey)
 }
 
 /** Retourne la clé publique VAPID utilisable par le navigateur. */
-export function getVapidPublicKey(): string | null {
-  return pushConfigure() ? process.env.VAPID_PUBLIC_KEY! : null
+export async function getVapidPublicKey(): Promise<string | null> {
+  const { getSetting } = await import("@/lib/settings")
+  const [publicKey, privateKey] = await Promise.all([
+    getSetting("vapid.publicKey"),
+    getSetting("vapid.privateKey"),
+  ])
+  return publicKey && privateKey ? publicKey : null
+}
+
+/** Génère une nouvelle paire de clés VAPID. */
+export function genererClesVapid(): { publicKey: string; privateKey: string } {
+  return webpush.generateVAPIDKeys()
 }
 
 /** Construit le payload commun aux alertes urgentes email et push. */
@@ -44,14 +59,16 @@ export async function envoyerPushSubscription(
   subscription: PushSubscriptionInput,
   payload: PushPayload
 ): Promise<"ok" | "gone"> {
-  if (!pushConfigure()) return "ok"
+  const { getSetting } = await import("@/lib/settings")
+  const [publicKey, privateKey, subject] = await Promise.all([
+    getSetting("vapid.publicKey"),
+    getSetting("vapid.privateKey"),
+    getSetting("vapid.subject"),
+  ])
+  if (!publicKey || !privateKey) return "ok"
 
   try {
-    webpush.setVapidDetails(
-      process.env.VAPID_SUBJECT || "mailto:contact@gleba.fr",
-      process.env.VAPID_PUBLIC_KEY!,
-      process.env.VAPID_PRIVATE_KEY!
-    )
+    webpush.setVapidDetails(subject, publicKey, privateKey)
     await webpush.sendNotification(subscription, JSON.stringify(payload))
     return "ok"
   } catch (error: unknown) {
@@ -68,7 +85,7 @@ export async function envoyerPushSubscription(
 
 /** Envoie une notification à tous les navigateurs enregistrés d'un utilisateur. */
 export async function envoyerPushUtilisateur(userId: string, payload: PushPayload): Promise<number> {
-  if (!pushConfigure()) return 0
+  if (!(await pushConfigure())) return 0
 
   const subscriptions = await prisma.pushSubscription.findMany({
     where: { userId },

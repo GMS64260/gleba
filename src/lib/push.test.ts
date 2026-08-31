@@ -1,18 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import type { AlerteUrgente } from "./notifications/types"
 
-const { sendNotification, setVapidDetails } = vi.hoisted(() => ({
+const { generateVAPIDKeys, getSetting, sendNotification, setVapidDetails } = vi.hoisted(() => ({
+  generateVAPIDKeys: vi.fn(),
+  getSetting: vi.fn(),
   sendNotification: vi.fn(),
   setVapidDetails: vi.fn(),
 }))
 
 vi.mock("web-push", () => ({
-  default: { sendNotification, setVapidDetails },
+  default: { generateVAPIDKeys, sendNotification, setVapidDetails },
 }))
+
+vi.mock("@/lib/settings", () => ({ getSetting }))
 
 import {
   construirePayloadAlerteUrgente,
   envoyerPushSubscription,
+  genererClesVapid,
   getVapidPublicKey,
   pushConfigure,
 } from "./push"
@@ -23,6 +28,11 @@ describe("notifications push", () => {
     delete process.env.VAPID_PUBLIC_KEY
     delete process.env.VAPID_PRIVATE_KEY
     delete process.env.VAPID_SUBJECT
+    getSetting.mockImplementation(async (cle: string) => {
+      if (cle === "vapid.publicKey") return process.env.VAPID_PUBLIC_KEY || ""
+      if (cle === "vapid.privateKey") return process.env.VAPID_PRIVATE_KEY || ""
+      return process.env.VAPID_SUBJECT || "mailto:contact@gleba.fr"
+    })
   })
 
   it.each([
@@ -49,20 +59,27 @@ describe("notifications push", () => {
     })
   })
 
-  it("considère la configuration VAPID complète comme active", () => {
+  it("considère la configuration VAPID complète comme active", async () => {
     process.env.VAPID_PUBLIC_KEY = "public"
     process.env.VAPID_PRIVATE_KEY = "private"
     process.env.VAPID_SUBJECT = "mailto:test@example.com"
 
-    expect(pushConfigure()).toBe(true)
-    expect(getVapidPublicKey()).toBe("public")
+    await expect(pushConfigure()).resolves.toBe(true)
+    await expect(getVapidPublicKey()).resolves.toBe("public")
   })
 
-  it("considère la configuration VAPID incomplète comme inactive", () => {
+  it("considère la configuration VAPID incomplète comme inactive", async () => {
     process.env.VAPID_PUBLIC_KEY = "public"
 
-    expect(pushConfigure()).toBe(false)
-    expect(getVapidPublicKey()).toBeNull()
+    await expect(pushConfigure()).resolves.toBe(false)
+    await expect(getVapidPublicKey()).resolves.toBeNull()
+  })
+
+  it("génère une paire de clés VAPID", () => {
+    generateVAPIDKeys.mockReturnValue({ publicKey: "public", privateKey: "private" })
+
+    expect(genererClesVapid()).toEqual({ publicKey: "public", privateKey: "private" })
+    expect(generateVAPIDKeys).toHaveBeenCalledOnce()
   })
 
   it.each([404, 410])("classe une subscription morte en gone", async (statusCode) => {
