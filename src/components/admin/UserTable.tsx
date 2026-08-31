@@ -25,7 +25,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { MoreHorizontal, Pencil, Shield, ShieldOff, UserX, UserCheck, Trash2, Eye, LogIn, Copy, ExternalLink } from "lucide-react"
+import { MoreHorizontal, Pencil, Shield, ShieldOff, UserX, UserCheck, Trash2, Eye, LogIn, Copy, ExternalLink, MailCheck } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -42,6 +42,7 @@ interface User {
   name: string | null
   role: string
   active: boolean
+  emailVerified: boolean
   createdAt: Date
   updatedAt: Date
   _count: {
@@ -85,6 +86,37 @@ export function UserTable({ users }: UserTableProps) {
       toast({
         title: "Erreur",
         description: e instanceof Error ? e.message : "Impossible d'ouvrir la consultation",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(null)
+    }
+  }
+
+  /**
+   * Issue #32 : un compte dont l'adresse n'a jamais été vérifiée ne peut pas se
+   * connecter, et rien ne pouvait le débloquer — pas de jeton généré côté
+   * création admin, et sur une instance sans SMTP aucun renvoi possible.
+   * L'admin atteste ici à la place de l'email.
+   */
+  async function verifierEmail(userId: string) {
+    setLoading(userId)
+    try {
+      const res = await fetch(`/api/admin/users/${userId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emailVerified: true }),
+      })
+      if (!res.ok) throw new Error("Erreur")
+      toast({
+        title: "Adresse marquée vérifiée",
+        description: "Le compte peut désormais se connecter.",
+      })
+      router.refresh()
+    } catch {
+      toast({
+        title: "Erreur",
+        description: "Impossible de débloquer ce compte",
         variant: "destructive",
       })
     } finally {
@@ -203,15 +235,24 @@ export function UserTable({ users }: UserTableProps) {
                 )}
               </TableCell>
               <TableCell>
-                {user.active ? (
-                  <Badge variant="outline" className="border-green-500 text-green-600">
-                    Actif
-                  </Badge>
-                ) : (
-                  <Badge variant="outline" className="border-slate-300 text-slate-500">
-                    Inactif
-                  </Badge>
-                )}
+                <div className="flex flex-wrap items-center gap-1">
+                  {user.active ? (
+                    <Badge variant="outline" className="border-green-500 text-green-600">
+                      Actif
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="border-slate-300 text-slate-500">
+                      Inactif
+                    </Badge>
+                  )}
+                  {/* Un compte « actif » mais non vérifié ne peut PAS se connecter :
+                      les deux états sont distincts et doivent se voir tous les deux. */}
+                  {!user.emailVerified && (
+                    <Badge variant="outline" className="border-amber-500 text-amber-600">
+                      Email non vérifié
+                    </Badge>
+                  )}
+                </div>
               </TableCell>
               <TableCell className="text-center text-sm text-muted-foreground">
                 {user._count.cultures} cultures / {user._count.planches} planches / {user._count.recoltes} recoltes
@@ -248,6 +289,15 @@ export function UserTable({ users }: UserTableProps) {
                       </DropdownMenuItem>
                     </Link>
                     <DropdownMenuSeparator />
+                    {!user.emailVerified && (
+                      <DropdownMenuItem
+                        className="cursor-pointer"
+                        onClick={() => verifierEmail(user.id)}
+                      >
+                        <MailCheck className="mr-2 h-4 w-4" />
+                        Marquer l&apos;adresse vérifiée
+                      </DropdownMenuItem>
+                    )}
                     <DropdownMenuItem
                       className="cursor-pointer"
                       onClick={() => toggleActive(user.id, user.active)}

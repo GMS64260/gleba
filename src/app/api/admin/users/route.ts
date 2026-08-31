@@ -27,6 +27,7 @@ export async function GET() {
         name: true,
         role: true,
         active: true,
+        emailVerified: true,
         createdAt: true,
         updatedAt: true,
         _count: {
@@ -89,6 +90,15 @@ export async function POST(request: NextRequest) {
     const hashedPassword = await hashPassword(password)
 
     // Creation
+    //
+    // Issue #32 (Siruv, 2026-08-26) : sans `emailVerified`, le compte naissait
+    // « non vérifié », SANS jeton de vérification et SANS email envoyé (à la
+    // différence de /api/auth/register). `authorize()` refusait alors la
+    // connexion, et rien ne pouvait débloquer le compte — pas de jeton à
+    // renvoyer, et sur une instance sans SMTP même le renvoi est impossible.
+    // Un administrateur qui crée un compte de ses mains atteste l'adresse :
+    // c'est exactement le rôle que la vérification par email joue pour une
+    // inscription publique. Le compte est donc utilisable immédiatement.
     const user = await prisma.user.create({
       data: {
         email,
@@ -96,6 +106,7 @@ export async function POST(request: NextRequest) {
         name: name || null,
         role: role || "USER",
         active: active !== false,
+        emailVerified: true,
       },
       select: {
         id: true,
@@ -103,6 +114,7 @@ export async function POST(request: NextRequest) {
         name: true,
         role: true,
         active: true,
+        emailVerified: true,
         createdAt: true,
       },
     })

@@ -8,7 +8,7 @@ import { randomBytes } from "crypto"
 import prisma from "@/lib/prisma"
 import { checkRateLimit, getClientIP } from "@/lib/rate-limit"
 import { verifyEmailEmail } from "@/lib/mail"
-import { envoyerVerification } from "@/lib/mail-verification"
+import { envoyerVerification, PHRASE_ECHEC_ENVOI } from "@/lib/mail-verification"
 
 export async function POST(request: NextRequest) {
   // Rate limiting : 3 renvois par IP par 15 min
@@ -57,10 +57,7 @@ export async function POST(request: NextRequest) {
         {
           emailEnvoye: false,
           emailEchec: envoi.cause,
-          error:
-            envoi.cause === "adresse_refusee"
-              ? "Le serveur de messagerie a refusé cette adresse. Vérifiez qu'elle est exacte."
-              : "L'envoi a échoué. Réessayez dans un instant.",
+          error: PHRASE_ECHEC_ENVOI[envoi.cause],
         },
         { status: 502 },
       )

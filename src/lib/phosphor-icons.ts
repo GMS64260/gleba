@@ -76,6 +76,7 @@ export {
   SignIn as LogIn,
   SignOut as LogOut,
   Envelope as Mail,
+  SealCheck as MailCheck,
   MapTrifold as Map,
   ArrowsOut as Maximize2,
   ChatCircle as MessageCircle,

@@ -32,10 +32,37 @@ interface SendMailOptions {
   headers?: Record<string, string>
 }
 
+/**
+ * Aucun serveur SMTP n'est configuré sur cette instance.
+ *
+ * Issue #32 (Siruv, 2026-08-26) : `sendMail` se contentait de `return`, si bien
+ * qu'un appelant ne pouvait pas distinguer « parti » de « jamais tenté ».
+ * `envoyerVerification` concluait donc `envoye: true` et l'inscrit lisait
+ * « Vérifiez votre email » pour un message qui n'existait pas — impasse totale
+ * sur une instance auto-hébergée sans SMTP, puisque `authorize()` refuse ensuite
+ * la connexion tant que l'adresse n'est pas vérifiée.
+ *
+ * L'absence de SMTP est donc une ERREUR explicite, distincte d'un refus du
+ * serveur : tous les appels d'envoi sont déjà sous `try`, et ceux qui doivent
+ * rendre un verdict à l'utilisateur peuvent enfin le faire honnêtement.
+ */
+export class SmtpNonConfigureError extends Error {
+  readonly code = 'SMTP_NON_CONFIGURE'
+  constructor() {
+    super("SMTP non configuré sur cette instance : aucun email ne peut être envoyé.")
+    this.name = 'SmtpNonConfigureError'
+  }
+}
+
+/** Vrai si l'instance sait envoyer un email. À interroger AVANT de promettre un envoi. */
+export function smtpConfigure(): boolean {
+  return Boolean(process.env.SMTP_HOST && process.env.SMTP_USER)
+}
+
 export async function sendMail({ to, subject, html, replyTo, headers }: SendMailOptions) {
-  if (!process.env.SMTP_HOST || !process.env.SMTP_USER) {
+  if (!smtpConfigure()) {
     console.warn("SMTP non configure, email non envoye:", subject)
-    return
+    throw new SmtpNonConfigureError()
   }
 
   return transporter.sendMail({

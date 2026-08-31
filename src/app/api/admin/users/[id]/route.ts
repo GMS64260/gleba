@@ -30,6 +30,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         name: true,
         role: true,
         active: true,
+        emailVerified: true,
         createdAt: true,
         updatedAt: true,
         _count: {
@@ -69,7 +70,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params
     const body = await request.json()
-    const { name, password, role, active } = body
+    const { name, password, role, active, emailVerified } = body
 
     // Le compte système « Communauté Gleba » (sentinelle, non connectable) n'est
     // ni modifiable ni supprimable — parité avec la garde du DELETE.
@@ -114,11 +115,16 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       password?: string
       role?: "ADMIN" | "USER"
       active?: boolean
+      emailVerified?: boolean
     } = {}
 
     if (name !== undefined) updateData.name = name || null
     if (role !== undefined) updateData.role = role
     if (active !== undefined) updateData.active = active
+    // Issue #32 : seule porte de sortie pour un compte bloqué sur « Email non
+    // vérifié » quand aucun email ne peut partir (instance sans SMTP, jeton
+    // expiré, adresse d'origine perdue). Réservé à l'admin, qui atteste.
+    if (typeof emailVerified === "boolean") updateData.emailVerified = emailVerified
 
     if (password) {
       if (password.length < 6) {
@@ -140,6 +146,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         name: true,
         role: true,
         active: true,
+        emailVerified: true,
         updatedAt: true,
       },
     })

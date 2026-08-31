@@ -8,6 +8,12 @@ import * as React from "react"
 import { Loader2, ArrowRight, Mail, RefreshCw } from "lucide-react"
 import Link from "next/link"
 import { GoogleSignInButton } from "./GoogleSignInButton"
+import {
+  estCauseConnue,
+  PHRASE_ECHEC_ENVOI,
+  relanceUtile,
+  type CauseEchecEnvoi,
+} from "@/lib/mail-verification-messages"
 
 export function RegisterForm({ googleEnabled = false }: { googleEnabled?: boolean }) {
   const [name, setName] = React.useState("")
@@ -18,7 +24,7 @@ export function RegisterForm({ googleEnabled = false }: { googleEnabled?: boolea
   const [loading, setLoading] = React.useState(false)
   const [emailSent, setEmailSent] = React.useState(false)
   const [resending, setResending] = React.useState(false)
-  const [emailEchec, setEmailEchec] = React.useState<string | null>(null)
+  const [emailEchec, setEmailEchec] = React.useState<CauseEchecEnvoi | null>(null)
   const [resendMessage, setResendMessage] = React.useState<{ ok: boolean; texte: string } | null>(null)
 
   async function handleSubmit(e: React.FormEvent) {
@@ -53,7 +59,11 @@ export function RegisterForm({ googleEnabled = false }: { googleEnabled?: boolea
 
       // Signalement vigie1919cd84 — l'API dit maintenant si l'email est
       // réellement parti : on ne promet plus un message qui n'existe pas.
-      setEmailEchec(data.emailEnvoye === false ? (data.emailEchec ?? "envoi_impossible") : null)
+      setEmailEchec(
+        data.emailEnvoye === false
+          ? (estCauseConnue(data.emailEchec) ? data.emailEchec : "envoi_impossible")
+          : null,
+      )
       setEmailSent(true)
     } catch {
       setError("Une erreur est survenue")
@@ -112,11 +122,7 @@ export function RegisterForm({ googleEnabled = false }: { googleEnabled?: boolea
               Votre compte <strong>{email}</strong> est créé, mais l&apos;email de vérification
               n&apos;a pas pu être remis.
             </p>
-            <p className="text-amber-700">
-              {emailEchec === "adresse_refusee"
-                ? "Le serveur de messagerie a refusé cette adresse. Vérifiez qu'elle est exacte, puis relancez l'envoi ci-dessous. Si l'adresse est fausse, créez un compte avec la bonne adresse."
-                : "L'envoi a échoué pour une raison temporaire. Relancez-le ci-dessous dans un instant ; si le problème persiste, écrivez à contact@gleba.fr."}
-            </p>
+            <p className="text-amber-700">{PHRASE_ECHEC_ENVOI[emailEchec]}</p>
           </div>
         ) : (
           <p className="text-sm text-slate-500 leading-relaxed">
@@ -125,18 +131,22 @@ export function RegisterForm({ googleEnabled = false }: { googleEnabled?: boolea
           </p>
         )}
         <div className="pt-2 space-y-3">
-          <button
-            onClick={handleResend}
-            disabled={resending}
-            className="text-sm text-emerald-600 hover:text-emerald-700 font-medium transition-colors flex items-center gap-1.5 mx-auto"
-          >
-            {resending ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <RefreshCw className="h-3.5 w-3.5" />
-            )}
-            Renvoyer l&apos;email
-          </button>
+          {/* Sans SMTP sur l'instance, relancer ne peut rien changer : proposer
+              le bouton reviendrait à faire tourner l'inscrit à vide (issue #32). */}
+          {(!emailEchec || relanceUtile(emailEchec)) && (
+            <button
+              onClick={handleResend}
+              disabled={resending}
+              className="text-sm text-emerald-600 hover:text-emerald-700 font-medium transition-colors flex items-center gap-1.5 mx-auto"
+            >
+              {resending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5" />
+              )}
+              Renvoyer l&apos;email
+            </button>
+          )}
           {resendMessage && (
             <p
               role="status"

@@ -12,23 +12,36 @@
  * même chose.
  */
 
-import { sendMail } from '@/lib/mail'
+import { sendMail, SmtpNonConfigureError } from '@/lib/mail'
+import {
+  PHRASE_ECHEC_ENVOI,
+  relanceUtile,
+  type CauseEchecEnvoi,
+  type ResultatEnvoiVerification,
+} from '@/lib/mail-verification-messages'
+
+// Le vocabulaire et ses phrases vivent dans un module PUR : ce fichier-ci
+// importe `nodemailer` par `mail.ts`, et un composant client qui aurait besoin
+// des phrases tirerait tout le transport SMTP dans son bundle.
+export { PHRASE_ECHEC_ENVOI, relanceUtile }
+export type { CauseEchecEnvoi, ResultatEnvoiVerification }
 
 /** Délai au-delà duquel on n'attend plus le serveur SMTP (l'inscrit patiente). */
 const TIMEOUT_ENVOI_MS = 8000
-
-export type CauseEchecEnvoi = 'adresse_refusee' | 'envoi_impossible'
-
-export type ResultatEnvoiVerification =
-  | { envoye: true }
-  | { envoye: false; cause: CauseEchecEnvoi }
 
 /**
  * Un refus définitif du destinataire (5xx SMTP) n'appelle pas la même consigne
  * qu'une panne d'acheminement : dans le premier cas, c'est l'adresse qu'il faut
  * corriger, dans le second il suffit de réessayer.
+ *
+ * Troisième cas depuis l'issue #32 : l'instance n'a PAS de serveur SMTP. Ce
+ * n'est ni l'adresse ni le réseau, c'est la configuration de l'hébergeur — et
+ * réessayer n'y changera rien. Le distinguer est ce qui permet à l'écran de
+ * dire « demandez l'activation à l'administrateur » au lieu de « réessayez ».
  */
 export function qualifierEchecEnvoi(erreur: unknown): CauseEchecEnvoi {
+  if (erreur instanceof SmtpNonConfigureError) return 'smtp_absent'
+  if ((erreur as { code?: string })?.code === 'SMTP_NON_CONFIGURE') return 'smtp_absent'
   const code = (erreur as { responseCode?: number })?.responseCode
   const texte = erreur instanceof Error ? erreur.message : String(erreur)
   const refusDefinitif =

@@ -20,6 +20,7 @@ export default async function UsersPage() {
       name: true,
       role: true,
       active: true,
+      emailVerified: true,
       createdAt: true,
       updatedAt: true,
       _count: {
