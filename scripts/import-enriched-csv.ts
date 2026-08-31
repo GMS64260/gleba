@@ -70,6 +70,45 @@ function parseInt(value: string | null): number | null {
   return isNaN(num) ? null : num
 }
 
+/**
+ * Ne garder que les champs REELLEMENT vides en base.
+ *
+ * Ce script passe d'un lancement manuel à un lancement au démarrage (issue #29).
+ * Le dépôt a déjà payé une fois le prix d'un import rejoué à chaque boot :
+ * `doseSemis_AI` du CSV écrasait à chaque redémarrage les doses agronomiques
+ * corrigées par migration (feedback Marc, 2026-05-16, cf. migrate-data-v1.ts).
+ * La règle est donc : le CSV COMPLÈTE un référentiel, il ne le corrige jamais.
+ * Une valeur déjà posée — par une migration, par l'admin, par un membre — reste.
+ */
+function champsAComplete<T extends Record<string, unknown>>(
+  proposes: Record<string, unknown>,
+  existant: T | null,
+): Record<string, unknown> {
+  if (!existant) return proposes
+  const retenus: Record<string, unknown> = {}
+  for (const [champ, valeur] of Object.entries(proposes)) {
+    // Une valeur CSV illisible donne `null` après parsing. L'écrire par-dessus
+    // un `null` ne change rien mais compte comme une mise à jour : sans ce
+    // filtre, l'import ne CONVERGE jamais et chaque démarrage réécrit les mêmes
+    // lignes (vérifié : 22 espèces et 8 ITP « mis à jour » à chaque passage).
+    if (valeur === null || valeur === undefined) continue
+    const actuel = existant[champ as keyof T]
+    if (actuel === null || actuel === undefined || actuel === '') retenus[champ] = valeur
+  }
+  return retenus
+}
+
+/**
+ * Une ligne de CSV qui ne correspond à aucune entrée en base n'est pas une
+ * erreur d'exécution : c'est un référentiel plus étroit que le fichier. On la
+ * compte et on la nomme, au lieu d'imprimer une trace qui noie le vrai signal
+ * (constaté le 2026-08-26 : sur une base neuve, l'écrasante majorité des lignes
+ * tombait dans ce cas et personne ne le voyait).
+ */
+function estEntreeAbsente(erreur: unknown): boolean {
+  return (erreur as { code?: string })?.code === 'P2025'
+}
+
 async function importEspeces(file: string) {
   console.log('\n🌱 Import Espèces enrichies...')
 
@@ -81,6 +120,7 @@ async function importEspeces(file: string) {
   const data = parseCSV(file)
   let updated = 0
   let skipped = 0
+  let absentes = 0
 
   for (const row of data) {
     try {
@@ -148,21 +188,34 @@ async function importEspeces(file: string) {
       }
 
       if (hasUpdates) {
-        await prisma.espece.update({
-          where: { id: row.id },
-          data: updateData,
-        })
+        const existante = await prisma.espece.findUnique({ where: { id: row.id } })
+        if (!existante) {
+          absentes++
+          continue
+        }
+        const aEcrire = champsAComplete(updateData, existante as Record<string, unknown>)
+        if (Object.keys(aEcrire).length === 0) {
+          skipped++
+          continue
+        }
+        await prisma.espece.update({ where: { id: row.id }, data: aEcrire })
         updated++
-        console.log(`↻ ${row.id} - ${Object.keys(updateData).join(', ')}`)
       } else {
         skipped++
       }
     } catch (error) {
+      if (estEntreeAbsente(error)) {
+        absentes++
+        continue
+      }
       console.error(`Erreur ${row.id}:`, error)
     }
   }
 
-  console.log(`✓ ${updated} espèces mises à jour, ${skipped} inchangées`)
+  console.log(
+    `✓ ${updated} espèces mises à jour, ${skipped} inchangées` +
+      (absentes > 0 ? `, ${absentes} absentes du référentiel` : '')
+  )
 }
 
 async function importITPs(file: string) {
@@ -176,6 +229,27 @@ async function importITPs(file: string) {
   const data = parseCSV(file)
   let updated = 0
   let skipped = 0
+  let absentes = 0
+
+  // Les espèces semées en place n'ont PAS de semaine de plantation : le trigger
+  // `enforce_itp_dates` remet `s_plantation` à NULL pour `semis_direct`. Le CSV
+  // en propose pourtant une pour la carotte, la betterave, l'épinard et le
+  // haricot : la proposer quand même faisait « mettre à jour » 8 ITP à CHAQUE
+  // démarrage, sans que rien ne change jamais en base. On ne la propose plus.
+  const semisDirect = new Set(
+    (
+      await prisma.espece.findMany({
+        where: { typeCultureSemis: 'semis_direct' },
+        select: { id: true },
+      })
+    ).map((e) => e.id)
+  )
+  const itpsParId = new Map(
+    (await prisma.iTP.findMany({ select: { id: true, especeId: true } })).map((i) => [
+      i.id,
+      i.especeId,
+    ])
+  )
 
   for (const row of data) {
     try {
@@ -186,7 +260,12 @@ async function importITPs(file: string) {
         updateData.semaineSemis = parseInt(row.semaineSemis_AI)
         hasUpdates = true
       }
-      if (row.semainePlantation_AI && row.semainePlantation_AI !== row.semainePlantation_actuel) {
+      const especeItp = itpsParId.get(row.id)
+      if (
+        row.semainePlantation_AI &&
+        row.semainePlantation_AI !== row.semainePlantation_actuel &&
+        !(especeItp && semisDirect.has(especeItp))
+      ) {
         updateData.semainePlantation = parseInt(row.semainePlantation_AI)
         hasUpdates = true
       }
@@ -227,21 +306,57 @@ async function importITPs(file: string) {
       }
 
       if (hasUpdates) {
-        await prisma.iTP.update({
-          where: { id: row.id },
-          data: updateData,
-        })
+        const existant = await prisma.iTP.findUnique({ where: { id: row.id } })
+        if (!existant) {
+          absentes++
+          continue
+        }
+        const aEcrire = champsAComplete(updateData, existant as Record<string, unknown>)
+        if (Object.keys(aEcrire).length === 0) {
+          skipped++
+          continue
+        }
+        await prisma.iTP.update({ where: { id: row.id }, data: aEcrire })
         updated++
-        console.log(`↻ ${row.id} - ${Object.keys(updateData).join(', ')}`)
       } else {
         skipped++
       }
     } catch (error) {
+      if (estEntreeAbsente(error)) {
+        absentes++
+        continue
+      }
       console.error(`Erreur ${row.id}:`, error)
     }
   }
 
-  console.log(`✓ ${updated} ITPs mis à jour, ${skipped} inchangés`)
+  console.log(
+    `✓ ${updated} ITPs mis à jour, ${skipped} inchangés` +
+      (absentes > 0 ? `, ${absentes} absents du référentiel` : '')
+  )
+}
+
+/**
+ * Clés normalisées calculées par la BASE, pas par le script.
+ *
+ * `varietes.nom_normalise` est la colonne portée par l'index unique partiel
+ * `(espece, nom_normalise) WHERE user_id IS NULL`. La formule vit à deux
+ * endroits déjà synchronisés — `normalizeReferentielKey` côté TypeScript et
+ * `gleba_cle_referentiel()` côté SQL. Ce script ne dépend que de
+ * `@prisma/client` (il doit tourner dans l'image standalone) : on interroge donc
+ * la fonction SQL plutôt que d'ajouter une troisième copie de la formule, qui
+ * finirait par diverger.
+ */
+async function clesNormalisees(noms: string[]): Promise<Map<string, string>> {
+  const cles = new Map<string, string>()
+  if (noms.length === 0) return cles
+  const uniques = Array.from(new Set(noms))
+  const lignes = await prisma.$queryRaw<{ nom: string; cle: string }[]>`
+    SELECT n AS nom, gleba_cle_referentiel(n) AS cle
+    FROM unnest(${uniques}::text[]) AS n
+  `
+  for (const ligne of lignes) cles.set(ligne.nom, ligne.cle)
+  return cles
 }
 
 async function importVarietes(file: string) {
@@ -254,7 +369,20 @@ async function importVarietes(file: string) {
 
   const data = parseCSV(file)
   let updated = 0
+  let created = 0
   let skipped = 0
+  const especesManquantes = new Set<string>()
+  let ignoreesEspeceAbsente = 0
+
+  // Issue #29 (Siruv, 2026-08-26) : ce script ne faisait que des `update`. Sur
+  // une base neuve — mesuré le 2026-08-26 — 132 des 155 variétés du CSV
+  // n'existent pas encore : elles produisaient une erreur avalée par le catch,
+  // et l'import « réussissait » sans rien créer. Une variété absente est
+  // désormais CRÉÉE, ce qui suppose de connaître son espèce et sa clé.
+  const especesConnues = new Set(
+    (await prisma.espece.findMany({ select: { id: true } })).map((e) => e.id)
+  )
+  const cles = await clesNormalisees(data.map((row) => row.id).filter(Boolean))
 
   for (const row of data) {
     try {
@@ -285,13 +413,53 @@ async function importVarietes(file: string) {
         hasUpdates = true
       }
 
-      if (hasUpdates) {
-        await prisma.variete.update({
-          where: { id: row.id },
-          data: updateData,
+      // Identifier une variété par sa CLÉ, jamais par son identifiant seul.
+      // L'identifiant du CSV et celui du catalogue diffèrent souvent de la
+      // graphie (« Betterave Detroit » contre « Betterave-Detroit »), or la
+      // clé d'unicité en base est (espece, nom_normalise) et `-` y vaut espace.
+      // Chercher par identifiant faisait conclure « absente », puis la création
+      // heurtait l'index unique partiel : 8 lignes en P2002 au premier essai.
+      const cle = cles.get(row.id)
+      const existante = cle
+        ? await prisma.variete.findFirst({
+            where: { especeId: row.espece, nomNormalise: cle, userId: null },
+          })
+        : await prisma.variete.findUnique({ where: { id: row.id } })
+
+      if (!existante) {
+        // Une variété ne peut pas exister sans son espèce (clé étrangère). On
+        // NOMME ce qui manque au lieu de l'avaler : c'est la seule façon de
+        // savoir qu'un référentiel d'espèces incomplet ampute le catalogue.
+        if (!row.espece || !especesConnues.has(row.espece)) {
+          if (row.espece) especesManquantes.add(row.espece)
+          ignoreesEspeceAbsente++
+          continue
+        }
+        if (!cle) {
+          ignoreesEspeceAbsente++
+          continue
+        }
+        await prisma.variete.create({
+          data: {
+            id: row.id,
+            nom: row.id,
+            nomNormalise: cle,
+            especeId: row.espece,
+            ...updateData,
+          },
         })
+        created++
+        continue
+      }
+
+      if (hasUpdates) {
+        const aEcrire = champsAComplete(updateData, existante as Record<string, unknown>)
+        if (Object.keys(aEcrire).length === 0) {
+          skipped++
+          continue
+        }
+        await prisma.variete.update({ where: { id: existante.id }, data: aEcrire })
         updated++
-        console.log(`↻ ${row.id} - ${Object.keys(updateData).join(', ')}`)
       } else {
         skipped++
       }
@@ -300,7 +468,15 @@ async function importVarietes(file: string) {
     }
   }
 
-  console.log(`✓ ${updated} variétés mises à jour, ${skipped} inchangées`)
+  console.log(
+    `✓ ${created} variétés créées, ${updated} mises à jour, ${skipped} inchangées`
+  )
+  if (ignoreesEspeceAbsente > 0) {
+    console.log(
+      `⚠️  ${ignoreesEspeceAbsente} variété(s) ignorée(s), espèce absente du référentiel : ` +
+        Array.from(especesManquantes).sort().join(', ')
+    )
+  }
 }
 
 async function main() {

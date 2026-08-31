@@ -49,5 +49,29 @@ else
   echo "No enriched CSV files found, skipping data migration"
 fi
 
+# Issue #30 : catalogue variétal arboricole (petits fruits, méditerranéens,
+# noyers, châtaigniers, kiwis, agrumes). `prisma/seed-varietes-arbres.sql`
+# n'était appelé nulle part, d'où 0 variété arboricole sur toute installation
+# neuve. Le seed est idempotent et ne remplace jamais une entrée existante.
+#
+# Il passe AVANT l'import des CSV parce qu'il crée 15 espèces que le CSV sait
+# ensuite enrichir : dans cet ordre, une installation neuve converge en un seul
+# démarrage au lieu de deux.
+echo "==> Seeding tree/berry varieties referential (idempotent)..."
+npx tsx prisma/seed-varietes-arbres.ts || echo "Tree varieties seed skipped"
+
+# Issue #29 (Siruv, 2026-08-26) : `varietes_enriched.csv` était bien copié dans
+# l'image (Dockerfile) et le script d'import existait, mais personne ne l'appelait
+# — ni ici, ni `migrate-data-v1.ts` (qui ne traite qu'espèces et ITP, et reste
+# de toute façon inerte sans `--force`). Mesuré sur une base neuve le 2026-08-26 :
+# 36 variétés au lieu de 192, Tomate 5 au lieu de 16.
+#
+# L'import COMPLÈTE, il n'écrase pas : seuls les champs vides en base sont
+# remplis (cf. `champsAComplete`). Sans cette règle, le passer au démarrage
+# rejouerait la régression de mai 2026 où le CSV réécrivait à chaque boot des
+# valeurs agronomiques corrigées par migration.
+echo "==> Importing enriched CSV data (especes, ITP, varietes, idempotent)..."
+npx tsx scripts/import-enriched-csv.ts || echo "Enriched CSV import skipped"
+
 echo "==> Starting application..."
 exec node server.js

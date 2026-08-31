@@ -177,6 +177,11 @@ async function main() {
       update: {},
       create: {
         id: v.id,
+        // `nom` est le libellé AFFICHÉ ; pour une entrée officielle il vaut son
+        // identifiant. Il était omis ici alors que les 364 variétés officielles
+        // de production le portent toutes : une base neuve était la seule à
+        // exposer des variétés sans libellé (constaté le 2026-08-26).
+        nom: v.id,
         nomNormalise: normalizeVarieteName(v.id),
         especeId: v.especeId,
         fournisseurId: v.fournisseurId || null,
