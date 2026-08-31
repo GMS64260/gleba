@@ -43,7 +43,6 @@
     "mcp-server",
     "prisma/import-legacy-sqlite.ts",
     "src/**/__tests__/**",
-    "vitest.config.ts",
-    "scripts"
+    "vitest.config.ts"
   ]
 }
