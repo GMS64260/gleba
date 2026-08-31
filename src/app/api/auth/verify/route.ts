@@ -19,6 +19,25 @@ function redirect(path: string) {
   return NextResponse.redirect(`${BASE_URL}${path}`)
 }
 
+/**
+ * `HEAD` ne vérifie RIEN.
+ *
+ * Next.js répond aux requêtes `HEAD` en appelant l'export `GET`. Or ce `GET`
+ * mute : il pose `emailVerified`, EFFACE le jeton et envoie l'email de
+ * bienvenue. Un scanner de liens, un antivirus de messagerie ou un aperçu de
+ * client mail qui préfetche le lien du courriel d'activation consommait donc la
+ * vérification à la place de l'inscrit — qui tombait ensuite sur
+ * `/login?verify=already` sans avoir jamais cliqué.
+ *
+ * Constaté le 2026-08-26 en sondant le point d'entrée : `HEAD /api/auth/verify`
+ * exécutait bien le corps du `GET` (307 vers `/login?verify=invalid` sans
+ * jeton). On répond désormais 200 sans effet de bord — un préchargement peut
+ * vérifier que le lien existe, il ne peut plus le brûler.
+ */
+export function HEAD() {
+  return new Response(null, { status: 200 })
+}
+
 export async function GET(request: NextRequest) {
   const token = request.nextUrl.searchParams.get("token")
 

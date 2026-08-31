@@ -31,6 +31,27 @@ let windowStart = 0
 let windowCount = 0
 let writesSincePurge = 0
 
+/**
+ * Un refus de connexion N'EST PAS une erreur serveur.
+ *
+ * Mesuré le 2026-08-26 : `api_errors` comptait une ligne rouge à chaque mot de
+ * passe mal saisi et à chaque adresse non vérifiée. Sur la fenêtre observée, 24
+ * refus « email non vérifié » sur 7 comptes et 51 « mauvais mot de passe » sur
+ * 8 comptes — tous des fonctionnements NORMAUX du formulaire de connexion, tous
+ * comptés comme incidents. Un compteur d'erreurs qui compte des non-incidents
+ * cesse d'être un signal, et c'est précisément le compteur qu'on regarde après
+ * une bascule pour décider si elle s'est bien passée.
+ *
+ * `CredentialsSignin` est la classe qu'Auth.js utilise pour un refus
+ * d'identifiants ; c'est le canal que `lib/auth-refus.ts` emprunte pour porter
+ * son motif. `CallbackRouteError`, en revanche, N'EST PAS filtré : depuis que
+ * les refus passent par `CredentialsSignin`, il ne reste plus qu'aux vraies
+ * pannes du callback, et c'est une information à conserver.
+ */
+export function estRefusAuthentificationNormal(message: string): boolean {
+  return /\[auth\]\[error\][\s\S]*CredentialsSignin/.test(message)
+}
+
 /** Détecte la convention `console.error('PUT /api/cultures/[id] error:', err)`. */
 export function analyseConsoleArgs(
   args: unknown[],
@@ -54,9 +75,12 @@ export function analyseConsoleArgs(
       return String(a)
     }
   })
+  const message = morceaux.join(' ').slice(0, MAX_MESSAGE_CHARS)
+  if (estRefusAuthentificationNormal(message)) return null
+
   return {
     route: routeMatch ? routeMatch[1] : null,
-    message: morceaux.join(' ').slice(0, MAX_MESSAGE_CHARS),
+    message,
   }
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { analyseConsoleArgs } from '../error-journal'
+import { analyseConsoleArgs, estRefusAuthentificationNormal } from '../error-journal'
 
 describe('analyseConsoleArgs — détection des erreurs de routes API', () => {
   it("capture la convention `console.error('PUT /api/... error:', err)` avec la route", () => {
@@ -32,5 +32,40 @@ describe('analyseConsoleArgs — détection des erreurs de routes API', () => {
   it('tronque les messages démesurés', () => {
     const analyse = analyseConsoleArgs(['GET /api/x error:', 'y'.repeat(10_000)])
     expect(analyse!.message.length).toBeLessThanOrEqual(4000)
+  })
+})
+
+/**
+ * 2026-08-26 : `api_errors` comptait une ligne rouge à chaque mot de passe mal
+ * saisi. Sur la fenêtre observée, 51 refus « mauvais mot de passe » sur 8
+ * comptes et 24 « email non vérifié » sur 7 comptes — tous des fonctionnements
+ * normaux. Un compteur d'erreurs qui compte des non-incidents cesse d'être un
+ * signal, et c'est celui qu'on regarde après une bascule.
+ */
+describe('refus de connexion — non-incidents', () => {
+  const REFUS = '\u001b[31m[auth][error]\u001b[0m CredentialsSignin: Read more at https://errors.authjs.dev#credentialssignin'
+
+  it('reconnaît un refus d’identifiants', () => {
+    expect(estRefusAuthentificationNormal(REFUS)).toBe(true)
+  })
+
+  it('ne journalise pas un refus de connexion', () => {
+    expect(analyseConsoleArgs([REFUS])).toBeNull()
+  })
+
+  it('continue de journaliser une VRAIE panne du callback', () => {
+    // `CallbackRouteError` n'est plus la trace d'un refus depuis que les motifs
+    // passent par `CredentialsSignin` : il ne reste qu'aux pannes réelles.
+    const panne = '\u001b[31m[auth][error]\u001b[0m CallbackRouteError: Read more at https://errors.authjs.dev#callbackrouteerror'
+    expect(estRefusAuthentificationNormal(panne)).toBe(false)
+    expect(analyseConsoleArgs([panne])).not.toBeNull()
+  })
+
+  it('ne filtre pas une erreur applicative qui mentionnerait le mot', () => {
+    const analyse = analyseConsoleArgs([
+      'POST /api/cultures error:',
+      new Error('CredentialsSignin mentionné dans un message métier'),
+    ])
+    expect(analyse).not.toBeNull()
   })
 })
