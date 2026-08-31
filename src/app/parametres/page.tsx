@@ -1564,6 +1564,9 @@ function NotificationsSection() {
   const [saving, setSaving] = React.useState(false)
   const [pushEtat, setPushEtat] = React.useState<PushEtat>('chargement')
   const [pushLoading, setPushLoading] = React.useState(false)
+  // Deux types d'alertes exigent une parcelle géolocalisée ; sans elle la case
+  // se coche et rien n'arrive jamais (constaté le 2026-08-26). On le dit ici.
+  const [meteoDisponible, setMeteoDisponible] = React.useState<boolean | null>(null)
 
   React.useEffect(() => {
     const supporte =
@@ -1613,6 +1616,20 @@ function NotificationsSection() {
     hydrate()
     return () => { cancelled = true }
   }, [toast])
+
+  React.useEffect(() => {
+    let cancelled = false
+    fetch('/api/notifications/geolocalisation', { cache: 'no-store' })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (!cancelled && data) setMeteoDisponible(Boolean(data.meteoDisponible))
+      })
+      .catch(() => {
+        // Pré-requis indéterminé : on n'affiche rien plutôt qu'un faux avertissement.
+        if (!cancelled) setMeteoDisponible(null)
+      })
+    return () => { cancelled = true }
+  }, [])
 
   const activerPush = async () => {
     setPushLoading(true)
@@ -1757,6 +1774,21 @@ function NotificationsSection() {
             />
           </div>
         ))}
+        {meteoDisponible === false && (prefs.meteo || prefs.irrigations) && (
+          <p
+            role="status"
+            data-testid="notif-avertissement-geoloc"
+            className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3"
+          >
+            Les alertes météo et les rappels d&apos;irrigation ont besoin d&apos;une parcelle
+            située sur la carte : sans elle, Gleba ne connaît ni la météo de votre lieu, ni
+            l&apos;évapotranspiration, ni la pluie qui annule un arrosage. Ces deux cases resteront
+            sans effet tant qu&apos;aucune parcelle ne sera placée.{' '}
+            <Link href="/jardin/carte" className="underline font-medium">
+              Placer ma parcelle
+            </Link>
+          </p>
+        )}
         <div className="border-t pt-4 mt-4 space-y-3">
           <div>
             <h4 className="text-sm font-medium text-slate-900">Notifications push (navigateur)</h4>
