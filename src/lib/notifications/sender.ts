@@ -10,7 +10,7 @@
  * puis précharger le store.
  */
 
-import { sendMail } from "@/lib/mail"
+import { sendMail, smtpConfigure } from "@/lib/mail"
 import { getOrCreateUnsubscribeToken, listUnsubscribeHeaders, unsubscribeUrl } from "@/lib/unsubscribe"
 import {
   chargerStocksBas,
@@ -89,7 +89,10 @@ async function chargerPrefsNotifAvecFallback(user: DestinataireNotification): Pr
 /** Les notifications sont-elles activées ? (défaut : oui si SMTP configuré). */
 export function notificationsEnabled(): boolean {
   if (process.env.NOTIF_ENABLED === "false") return false
-  return Boolean(process.env.SMTP_HOST && process.env.SMTP_USER)
+  // Même prédicat que `sendMail` (issue #32) : sans SMTP, chaque envoi lèverait
+  // désormais, et un scan de 100 comptes remplirait le journal d'erreurs de
+  // non-incidents. On ne scanne donc pas du tout.
+  return smtpConfigure()
 }
 
 /**
