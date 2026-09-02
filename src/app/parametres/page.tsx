@@ -988,7 +988,10 @@ export default function ParametresPage() {
               Connexion MCP / IA
             </CardTitle>
             <CardDescription>
-              Connectez votre assistant IA (Claude, ChatGPT, etc.) pour interagir avec votre ferme en langage naturel
+              Pilotez votre ferme en langage naturel depuis Claude Desktop, par un serveur MCP local
+              authentifié avec votre jeton personnel. Les connecteurs distants ajoutés par URL
+              (Claude sur le web, ChatGPT) ne sont pas pris en charge : ils exigent OAuth, que Gleba
+              ne propose pas encore.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
