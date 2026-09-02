@@ -55,9 +55,28 @@ export function LoginForm({ googleEnabled = false }: { googleEnabled?: boolean }
   const [resending, setResending] = React.useState(false)
   const [resendMessage, setResendMessage] = React.useState<{ ok: boolean; texte: string } | null>(null)
   const [loading, setLoading] = React.useState(false)
+  // Connexion acceptée, page cible en cours d'ouverture. Le formulaire reste
+  // verrouillé jusqu'à ce que la navigation le démonte : avant, `loading`
+  // retombait dès la réponse de `signIn`, AVANT le rendu du tableau de bord.
+  // Sur une liaison lente (compte en Nouvelle-Calédonie, 2026-08-26 et 28), le
+  // formulaire restait visible et actif plusieurs secondes, et l'utilisatrice
+  // re-soumettait — deux connexions « ok » à 9 et 18 s d'écart à chaque visite.
+  const [redirecting, setRedirecting] = React.useState(false)
+
+  // Filet : si la page cible ne s'ouvre pas, ne pas laisser un formulaire mort.
+  React.useEffect(() => {
+    if (!redirecting) return
+    const t = setTimeout(() => {
+      setRedirecting(false)
+      setLoading(false)
+      setError("Connexion acceptée, mais la page met du temps à s'ouvrir. Rechargez la page.")
+    }, 20_000)
+    return () => clearTimeout(t)
+  }, [redirecting])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (loading) return
     setError("")
     setRefusCode("")
     setResendMessage(null)
@@ -76,13 +95,16 @@ export function LoginForm({ googleEnabled = false }: { googleEnabled?: boolean }
         const code = result.code ?? ""
         setRefusCode(code)
         setError(messageRefusConnexion(code))
-      } else {
-        router.push(callbackUrl)
-        router.refresh()
+        setLoading(false)
+        return
       }
+
+      // Succès : `loading` reste vrai, seul le libellé change.
+      setRedirecting(true)
+      router.push(callbackUrl)
+      router.refresh()
     } catch {
       setError("Une erreur est survenue")
-    } finally {
       setLoading(false)
     }
   }
@@ -248,7 +270,7 @@ export function LoginForm({ googleEnabled = false }: { googleEnabled?: boolean }
         {loading ? (
           <>
             <Loader2 className="h-4 w-4 animate-spin" />
-            Connexion...
+            {redirecting ? "Connexion réussie, ouverture…" : "Connexion..."}
           </>
         ) : (
           <>
