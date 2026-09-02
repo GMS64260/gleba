@@ -41,7 +41,13 @@ export async function getOrFetch<T>(
     // périmé que si la péremption date de moins de STALE_GRACE_MS (24 h).
     // Avant : un fetcher qui plante toujours servait du cache indéfiniment.
     if (cached && cached.expiresAt.getTime() + STALE_GRACE_MS > now.getTime()) {
-      console.warn(`[cache-helper] fetcher failed for ${key}, returning stale cache (< 24h)`)
+      // La cause fait partie du message : sans elle, un échec horaire répété
+      // (Open-Meteo, 2026-08-31 → 2026-09-02) restait indéchiffrable — timeout,
+      // 429 ou réponse malformée se lisaient pareil.
+      const cause = err instanceof Error ? `${err.name}: ${err.message}` : String(err)
+      console.warn(
+        `[cache-helper] fetcher failed for ${key} (${cause}), returning stale cache (< 24h)`
+      )
       return cached.data as T
     }
     throw err
