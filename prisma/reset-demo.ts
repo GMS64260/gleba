@@ -35,6 +35,10 @@ async function main() {
     // ── Comptabilité ────────────────────────────────────────────────────
     ["LigneFacture", () => dm(prisma.ligneFacture.deleteMany({ where: { facture: { userId } } }))],
     ["Facture", () => dm(prisma.facture.deleteMany({ where: { userId } }))],
+    // Les séquences suivent les factures : une séquence orpheline en retard sur
+    // les numéros recréés par le seed faisait échouer la première émission
+    // (index unique user_id+numero), trois 500 d'affilée le 2026-08-12.
+    ["SequenceFacture", () => dm(prisma.sequenceFacture.deleteMany({ where: { userId } }))],
     ["VenteManuelle", () => dm(prisma.venteManuelle.deleteMany({ where: { userId } }))],
     ["DepenseManuelle", () => dm(prisma.depenseManuelle.deleteMany({ where: { userId } }))],
     ["Client", () => dm(prisma.client.deleteMany({ where: { userId } }))],

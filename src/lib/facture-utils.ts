@@ -223,20 +223,45 @@ async function reserverProchainNumero(
   }
 
   const { prochain_num, prefixe, format } = rows[0]
-  const num = Number(prochain_num)
+
+  // 2026-09-02 — la séquence peut être EN RETARD sur les factures existantes,
+  // pas seulement absente. L'amorçage ci-dessus ne regarde les numéros déjà
+  // pris qu'à la CRÉATION de la ligne ; une ligne existante était lue telle
+  // quelle. Or `prisma/reset-demo.ts` supprimait les factures sans purger la
+  // séquence, et le seed recréait des numéros en dur : après chaque reset du
+  // compte démo, la première émission violait l'index unique (user_id, numero),
+  // le rollback annulait l'incrément, et chaque essai rejouait la même
+  // collision — trois 500 d'affilée chez un prospect le 2026-08-12. Le même
+  // scénario attend tout compte dont des factures arrivent par import. On lit
+  // donc le plus grand numéro déjà utilisé SOUS le verrou, et on repart du
+  // maximum des deux : la séquence se recale d'elle-même.
+  const dejaPris = await tx.$queryRawUnsafe<Array<{ max_num: number | null }>>(
+    `
+    SELECT MAX(SUBSTRING(f.numero FROM '([0-9]+)$')::int) AS max_num
+    FROM factures f
+    WHERE f.user_id = $1
+      AND f.numero LIKE $2 || '%'
+      AND f.numero ~ '[0-9]+$'
+    `,
+    userId,
+    prefixe
+  )
+  const num = Math.max(Number(prochain_num), Number(dejaPris[0]?.max_num ?? 0) + 1)
 
   // Padding selon format ('%04d' → '0042')
   const widthMatch = /^%0?(\d+)d$/.exec(format)
   const width = widthMatch ? parseInt(widthMatch[1], 10) : 4
   const numero = `${prefixe}${String(num).padStart(width, '0')}`
 
-  // Incrément
+  // Le prochain numéro suit celui qu'on vient d'attribuer (et non l'ancien
+  // compteur + 1, qui perpétuerait le retard).
   await tx.$executeRawUnsafe(
-    `UPDATE sequences_facture SET prochain_num = prochain_num + 1, updated_at = NOW()
+    `UPDATE sequences_facture SET prochain_num = $4, updated_at = NOW()
      WHERE user_id = $1 AND exercice = $2 AND type = $3`,
     userId,
     exercice,
-    typeSeq
+    typeSeq,
+    num + 1
   )
 
   return { numero, prefixe }
