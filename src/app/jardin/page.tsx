@@ -116,6 +116,7 @@ interface PlancheWithCulture {
       nom: string | null
       couleur: string | null
       etalement: number | null
+      vivace: boolean
       famille: { id: string; couleur: string | null } | null
     }
   }[]
@@ -2597,8 +2598,8 @@ function JardinContent() {
                         à l'époque. On propose de la reclasser sans perdre son
                         placement.
                         Attention : `cultures` ne porte ici que l'année courante
-                        non terminée (cf. /api/jardin), ce n'est donc PAS une
-                        preuve d'absence d'historique. L'autorité reste la route
+                        non terminée et les vivaces en place (cf. /api/jardin),
+                        ce n'est donc PAS une preuve d'absence d'historique. L'autorité reste la route
                         de conversion, qui refuse dès qu'une culture, une
                         fertilisation ou une analyse de sol existe. */}
                     {selectedPlancheData.cultures.length === 0 && (

@@ -29,6 +29,11 @@ export interface CultureCroissanceInput {
   dateRecolte: string | Date | null
   finRecolte: string | Date | null
   itp?: { dureeCulture: number | null; dureeRecolte: number | null } | null
+  /**
+   * `espece.vivace` : la culture reste en place après sa fenêtre de récolte
+   * (fraisier, asperge, artichaut, rhubarbe…). Absent = annuelle.
+   */
+  espece?: { vivace?: boolean | null } | null
 }
 
 export interface ArbreCroissanceInput {
@@ -48,7 +53,14 @@ function asDate(d: string | Date | null | undefined): Date | null {
  * Fraction de croissance [CROISSANCE_MIN..1] d'une culture à une date donnée,
  * ou null si la culture n'occupe pas la planche à cette date (avant la mise
  * en place, ou après la fin de récolte). Sans aucune date connue, la culture
- * est considérée en place à taille adulte (vivaces, imports).
+ * est considérée en place à taille adulte (imports).
+ *
+ * Une VIVACE (`espece.vivace`) ne libère jamais sa planche par la fin d'une
+ * fenêtre de récolte : elle grandit jusqu'à maturité puis reste à taille
+ * adulte, année après année, tant que la culture n'est pas terminée. Avant ce
+ * correctif (2026-09-02), un fraisier planté en 2023 et récolté le 5 mai
+ * disparaissait du plan six semaines plus tard — la fin implicite de récolte
+ * était prise pour la fin de la culture.
  */
 export function croissanceCulture(c: CultureCroissanceInput, date: Date): number | null {
   const debut = asDate(c.datePlantation) ?? asDate(c.dateSemis)
@@ -61,16 +73,19 @@ export function croissanceCulture(c: CultureCroissanceInput, date: Date): number
       ? recolte
       : new Date(debut.getTime() + (c.itp?.dureeCulture ?? DUREE_CULTURE_DEFAUT) * JOUR_MS)
 
-  const finExplicite = asDate(c.finRecolte)
-  const fin =
-    finExplicite && finExplicite > debut
-      ? finExplicite
-      : new Date(
-          maturite.getTime() +
-            (c.itp?.dureeRecolte ?? DUREE_RECOLTE_DEFAUT_SEMAINES) * 7 * JOUR_MS
-        )
+  const vivace = c.espece?.vivace === true
+  if (!vivace) {
+    const finExplicite = asDate(c.finRecolte)
+    const fin =
+      finExplicite && finExplicite > debut
+        ? finExplicite
+        : new Date(
+            maturite.getTime() +
+              (c.itp?.dureeRecolte ?? DUREE_RECOLTE_DEFAUT_SEMAINES) * 7 * JOUR_MS
+          )
+    if (date > fin) return null
+  }
 
-  if (date > fin) return null
   if (date >= maturite) return 1
 
   const f = (date.getTime() - debut.getTime()) / (maturite.getTime() - debut.getTime())

@@ -1,6 +1,7 @@
 /**
  * API Route pour le plan du jardin
  * GET /api/jardin - Récupère les planches avec positions et cultures actives
+ * (année courante non terminée, plus les vivaces non terminées de toute année)
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -46,9 +47,16 @@ export async function GET(request: NextRequest) {
           // Audit #36 : « cultures en cours » = année courante ET non terminée.
           // L'ancien OR incluait les cultures terminées de l'année (annee=currentYear
           // matchait même avec terminee renseigné) → affichées comme en cours.
+          //
+          // 2026-09-02 : une VIVACE (fraisier, asperge, artichaut, rhubarbe…)
+          // reste en place d'une année sur l'autre. Tant qu'elle n'est pas
+          // terminée, elle occupe sa planche quelle que soit son année de
+          // plantation — le filtre d'année ne la concerne pas. Constaté sur un
+          // compte réel le 2026-08-25 : des fraisiers plantés en 2023 absents du
+          // plan, trois questions à l'assistant, départ le jour même.
           where: {
-            annee: currentYear,
             terminee: null,
+            OR: [{ annee: currentYear }, { espece: { vivace: true } }],
           },
           select: {
             id: true,
@@ -73,6 +81,9 @@ export async function GET(request: NextRequest) {
                 nom: true,
                 couleur: true,
                 etalement: true,
+                // Lu par croissanceCulture() : une vivace ne libère jamais sa
+                // planche à la fin d'une fenêtre de récolte.
+                vivace: true,
                 famille: {
                   select: { id: true, couleur: true }
                 }

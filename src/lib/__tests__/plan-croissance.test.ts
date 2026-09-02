@@ -36,7 +36,42 @@ describe("plan-croissance", () => {
       expect(croissanceCulture(sansRecolte, new Date("2026-11-01"))).toBeNull()
     })
 
-    it("sans aucune date : présente à taille adulte (vivace)", () => {
+    it("vivace : reste en place après la fenêtre de récolte, et d'une année sur l'autre", () => {
+      // Cas réel du 2026-08-25 : fraisiers plantés en 2023, récolte 05/05/2026,
+      // fin de récolte inconnue → disparus du plan dès la mi-juin.
+      const fraisier = {
+        dateSemis: null,
+        datePlantation: "2023-04-03",
+        dateRecolte: "2026-05-05",
+        finRecolte: null,
+        itp: { dureeCulture: null, dureeRecolte: null },
+        espece: { vivace: true },
+      }
+      expect(croissanceCulture(fraisier, new Date("2026-08-25"))).toBe(1)
+      // Une fenêtre de récolte explicite ne la retire pas non plus
+      expect(
+        croissanceCulture({ ...fraisier, finRecolte: "2026-09-08" }, new Date("2026-12-01"))
+      ).toBe(1)
+      // Toujours là l'année suivante
+      expect(croissanceCulture(fraisier, new Date("2027-06-01"))).toBe(1)
+      // Mais absente avant sa plantation, et jeune juste après
+      expect(croissanceCulture(fraisier, new Date("2023-01-01"))).toBeNull()
+      expect(croissanceCulture(fraisier, new Date("2023-04-10"))!).toBeLessThan(0.2)
+    })
+
+    it("annuelle : la même culture sans le drapeau vivace libère bien la planche", () => {
+      const annuelle = {
+        dateSemis: null,
+        datePlantation: "2026-04-03",
+        dateRecolte: "2026-05-05",
+        finRecolte: null,
+        itp: { dureeCulture: null, dureeRecolte: null },
+        espece: { vivace: false },
+      }
+      expect(croissanceCulture(annuelle, new Date("2026-08-25"))).toBeNull()
+    })
+
+    it("sans aucune date : présente à taille adulte (import)", () => {
       expect(
         croissanceCulture(
           { dateSemis: null, datePlantation: null, dateRecolte: null, finRecolte: null },

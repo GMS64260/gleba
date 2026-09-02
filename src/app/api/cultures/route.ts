@@ -15,7 +15,7 @@ import { invalidateKpi } from '@/lib/kpi'
 import { checkRotationViolation } from '@/lib/rotation-check'
 import { estEtatCulture, etatCulture, whereEtatCulture } from '@/lib/cultures/etat'
 import { ecrituresPassageAFait, ETAPES, type EtatEtapes } from '@/lib/cultures/execution'
-import { finDeCycle, finRecolteDepuisItp } from '@/lib/cultures/fenetre-recolte'
+import { chevauchePeriode, estVivaceEnPlace, finDeCycle, finRecolteDepuisItp } from '@/lib/cultures/fenetre-recolte'
 import { etendrePlanArrosage } from '@/lib/irrigation-scheduler'
 import { whereItpUtilisable } from '@/lib/itp-acces'
 import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
@@ -400,7 +400,9 @@ export async function POST(request: NextRequest) {
             where: { terminee: null },
             select: {
               id: true,
-              espece: { select: { id: true } },
+              // `vivace` : une vivace en place occupe la planche sans fin de
+              // cycle (chevauchePeriode), sa fenêtre de récolte ne la libère pas.
+              espece: { select: { id: true, vivace: true } },
               dateSemis: true,
               datePlantation: true,
               dateRecolte: true,
@@ -436,16 +438,18 @@ export async function POST(request: NextRequest) {
       if (planche && data.plancheId) {
         if (newStart && newEnd) {
           for (const c of planche.cultures) {
-            const cStart = c.dateSemis ?? c.datePlantation
-            const cEnd = finDeCycle(c)
-            if (!cStart || !cEnd) continue
-            const overlap = newStart < new Date(cEnd) && new Date(cStart) < newEnd
-            if (overlap) {
-              const fmt = (d: Date | string) => new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })
-              dateWarnings.push(
-                `Chevauchement détecté sur la planche : ${c.espece?.id || 'culture'} #${c.id} (${fmt(cStart)}–${fmt(cEnd)}) recouvre la période demandée.`
-              )
-            }
+            // Une vivace en place (fraisier planté il y a trois ans, jamais
+            // terminée) recouvre toute période postérieure à sa mise en place :
+            // sa fin de fenêtre de récolte n'est pas une fin d'occupation.
+            if (chevauchePeriode(c, newStart, newEnd) !== true) continue
+            const cStart = (c.dateSemis ?? c.datePlantation)!
+            const fmt = (d: Date | string) => new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })
+            const periode = estVivaceEnPlace(c)
+              ? `en place depuis le ${fmt(cStart)}, vivace`
+              : `${fmt(cStart)}–${fmt(finDeCycle(c)!)}`
+            dateWarnings.push(
+              `Chevauchement détecté sur la planche : ${c.espece?.id || 'culture'} #${c.id} (${periode}) recouvre la période demandée.`
+            )
           }
         }
       }
@@ -471,10 +475,8 @@ export async function POST(request: NextRequest) {
         // faute de dates exploitables, on reste prudent en la comptant.
         const chevaucheLaPeriode = (c: (typeof planche.cultures)[number]) => {
           if (!newStart || !newEnd) return true
-          const cStart = c.dateSemis ?? c.datePlantation
-          const cEnd = finDeCycle(c)
-          if (!cStart || !cEnd) return true
-          return newStart < new Date(cEnd) && new Date(cStart) < newEnd
+          // `null` = dates insuffisantes pour conclure → comptée, par prudence.
+          return chevauchePeriode(c, newStart, newEnd) ?? true
         }
         const culturesExistantes = planche.cultures.filter(chevaucheLaPeriode).map(c => ({
           nbRangs: c.nbRangs || 1,

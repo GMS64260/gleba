@@ -92,6 +92,48 @@ export interface CycleCulture {
   datePlantation?: Date | null
   dateRecolte?: Date | null
   finRecolte?: Date | null
+  /** Une culture close ne compte plus, vivace ou pas. */
+  terminee?: string | Date | null
+  /**
+   * `espece.vivace` : la plante reste en place après sa fenêtre de récolte
+   * (fraisier, asperge, artichaut, rhubarbe…). Absent = annuelle.
+   */
+  espece?: { vivace?: boolean | null; [autre: string]: unknown } | null
+}
+
+/**
+ * Une vivace non terminée occupe sa planche SANS fin de cycle : sa fenêtre de
+ * récolte se referme, la plante reste. Constaté le 2026-08-25 sur un compte
+ * réel (fraisiers plantés en 2023 traités comme libérant leur planche six
+ * semaines après la première récolte) — corrigé sur le plan le 2026-09-02, et
+ * ici pour l'occupation et les chevauchements.
+ */
+export function estVivaceEnPlace(culture: CycleCulture): boolean {
+  return culture.espece?.vivace === true && !culture.terminee
+}
+
+/**
+ * Une culture en place chevauche-t-elle la période [debut, fin] demandée sur la
+ * même planche ?
+ *
+ * - Vivace non terminée : oui dès que la période commence après sa mise en
+ *   place — elle n'a pas de fin.
+ * - Annuelle : chevauchement d'intervalles avec `finDeCycle`.
+ * - `null` quand les dates ne permettent pas de conclure (pas de début, ou pas
+ *   de fin pour une annuelle) : l'appelant décide de la prudence à tenir.
+ */
+export function chevauchePeriode(
+  culture: CycleCulture,
+  debut: Date,
+  fin: Date
+): boolean | null {
+  const cDebut = culture.dateSemis ?? culture.datePlantation
+  if (!cDebut) return null
+  const debutCulture = new Date(cDebut)
+  if (estVivaceEnPlace(culture)) return debutCulture < fin
+  const finCulture = finDeCycle(culture)
+  if (!finCulture) return null
+  return debut < finCulture && debutCulture < fin
 }
 
 /**

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  chevauchePeriode,
+  estVivaceEnPlace,
   finDeCycle,
   finRecolteDepuisItp,
   recolteEnRetard,
@@ -138,5 +140,63 @@ describe('recolteEnRetard', () => {
         maintenant
       )
     ).toBe(false)
+  })
+})
+
+/**
+ * Cas réel du 2026-08-25 : fraisiers plantés le 03/04/2023, récolte du
+ * 05/05/2026 au 08/09/2026, jamais terminés. Une vivace ne libère pas sa
+ * planche à la fin de sa fenêtre : toute période postérieure à sa mise en
+ * place la chevauche.
+ */
+describe('vivaces — occupation sans fin de cycle', () => {
+  const fraisier = {
+    datePlantation: new Date(2023, 3, 3),
+    dateRecolte: new Date(2026, 4, 5),
+    finRecolte: new Date(2026, 8, 8),
+    espece: { vivace: true },
+  }
+  const periodeAutomne = [new Date(2026, 9, 1), new Date(2026, 11, 15)] as const
+
+  it('estVivaceEnPlace : vivace non terminée seulement', () => {
+    expect(estVivaceEnPlace(fraisier)).toBe(true)
+    expect(estVivaceEnPlace({ ...fraisier, terminee: 'recoltee' })).toBe(false)
+    expect(estVivaceEnPlace({ ...fraisier, espece: { vivace: false } })).toBe(false)
+    expect(estVivaceEnPlace({ ...fraisier, espece: null })).toBe(false)
+  })
+
+  it('une vivace recouvre une période postérieure à sa fenêtre de récolte', () => {
+    expect(chevauchePeriode(fraisier, ...periodeAutomne)).toBe(true)
+    // et l'année suivante encore
+    expect(chevauchePeriode(fraisier, new Date(2027, 2, 1), new Date(2027, 5, 30))).toBe(true)
+  })
+
+  it('la même culture, annuelle, libère la planche après sa fenêtre', () => {
+    const annuelle = { ...fraisier, espece: { vivace: false } }
+    expect(chevauchePeriode(annuelle, ...periodeAutomne)).toBe(false)
+    // mais chevauche pendant sa fenêtre
+    expect(chevauchePeriode(annuelle, new Date(2026, 5, 1), new Date(2026, 6, 1))).toBe(true)
+  })
+
+  it('une vivace terminée ne compte plus', () => {
+    expect(chevauchePeriode({ ...fraisier, terminee: 'arrachee' }, ...periodeAutomne)).toBe(false)
+  })
+
+  it('ne recouvre pas une période antérieure à sa mise en place', () => {
+    expect(chevauchePeriode(fraisier, new Date(2022, 0, 1), new Date(2022, 11, 31))).toBe(false)
+  })
+
+  it('rend null quand les dates ne permettent pas de conclure', () => {
+    expect(chevauchePeriode({ espece: { vivace: true } }, ...periodeAutomne)).toBeNull()
+    expect(
+      chevauchePeriode({ datePlantation: new Date(2026, 3, 1), espece: { vivace: false } }, ...periodeAutomne)
+    ).toBeNull()
+  })
+
+  it('finDeCycle et recolteEnRetard restent inchangés pour une vivace', () => {
+    // La fenêtre de récolte garde son sens d'échéance : la planche, elle,
+    // n'est pas libérée pour autant (chevauchePeriode).
+    expect(finDeCycle(fraisier)).toEqual(new Date(2026, 8, 8))
+    expect(recolteEnRetard({ ...fraisier, recolteFaite: false }, new Date(2026, 8, 20))).toBe(true)
   })
 })
