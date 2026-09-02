@@ -153,6 +153,70 @@ export function glebaAdapter(): Adapter {
   }
 }
 
+/**
+ * Connexion par email + mot de passe. Extraite du provider pour être testable.
+ *
+ * L'adresse est normalisée (minuscules, sans espaces) comme le font déjà
+ * l'inscription, le renvoi de vérification et le mot de passe oublié : les
+ * comptes sont stockés en minuscules, et un clavier mobile qui capitalise la
+ * première lettre rendait sinon « identifiants incorrects » pour un bon mot
+ * de passe (constaté latent le 2026-09-02 : ce point d'entrée était le seul à
+ * comparer l'adresse telle que saisie).
+ */
+export async function authorizeCredentials(
+  credentials: Partial<Record<"email" | "password", unknown>> | undefined,
+  request?: Request
+) {
+  if (!credentials?.email || !credentials?.password) {
+    throw new RefusConnexion(REFUS_CONNEXION.CHAMPS_MANQUANTS)
+  }
+
+  const email = String(credentials.email).toLowerCase().trim()
+  const info = clientInfo(request)
+
+  const user = await prisma.user.findUnique({
+    where: { email },
+  })
+
+  if (!user) {
+    logLogin(email, false, "not_found", undefined, info)
+    throw new RefusConnexion(REFUS_CONNEXION.IDENTIFIANTS)
+  }
+
+  if (!user.active) {
+    logLogin(email, false, "inactive", user.id, info)
+    throw new RefusConnexion(REFUS_CONNEXION.COMPTE_DESACTIVE)
+  }
+
+  if (!user.emailVerified) {
+    logLogin(email, false, "email_not_verified", user.id, info)
+    throw new RefusConnexion(REFUS_CONNEXION.EMAIL_NON_VERIFIE)
+  }
+
+  // Compte créé via Google, sans mot de passe local : la connexion par
+  // mot de passe est impossible tant qu'il n'en a pas défini un.
+  if (!user.password) {
+    logLogin(email, false, "no_password", user.id, info)
+    throw new RefusConnexion(REFUS_CONNEXION.COMPTE_GOOGLE)
+  }
+
+  const passwordMatch = await bcrypt.compare(credentials.password as string, user.password)
+
+  if (!passwordMatch) {
+    logLogin(email, false, "bad_password", user.id, info)
+    throw new RefusConnexion(REFUS_CONNEXION.IDENTIFIANTS)
+  }
+
+  logLogin(email, true, "ok", user.id, info)
+
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+  }
+}
+
 export const { handlers, signIn, signOut, auth } = NextAuth({
   adapter: glebaAdapter(),
   session: {
@@ -168,59 +232,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         email: { label: "Email", type: "email" },
         password: { label: "Mot de passe", type: "password" },
       },
-      async authorize(credentials, request) {
-        if (!credentials?.email || !credentials?.password) {
-          throw new RefusConnexion(REFUS_CONNEXION.CHAMPS_MANQUANTS)
-        }
-
-        const email = credentials.email as string
-        const info = clientInfo(request as Request | undefined)
-
-        const user = await prisma.user.findUnique({
-          where: { email },
-        })
-
-        if (!user) {
-          logLogin(email, false, "not_found", undefined, info)
-          throw new RefusConnexion(REFUS_CONNEXION.IDENTIFIANTS)
-        }
-
-        if (!user.active) {
-          logLogin(email, false, "inactive", user.id, info)
-          throw new RefusConnexion(REFUS_CONNEXION.COMPTE_DESACTIVE)
-        }
-
-        if (!user.emailVerified) {
-          logLogin(email, false, "email_not_verified", user.id, info)
-          throw new RefusConnexion(REFUS_CONNEXION.EMAIL_NON_VERIFIE)
-        }
-
-        // Compte créé via Google, sans mot de passe local : la connexion par
-        // mot de passe est impossible tant qu'il n'en a pas défini un.
-        if (!user.password) {
-          logLogin(email, false, "no_password", user.id, info)
-          throw new RefusConnexion(REFUS_CONNEXION.COMPTE_GOOGLE)
-        }
-
-        const passwordMatch = await bcrypt.compare(
-          credentials.password as string,
-          user.password
-        )
-
-        if (!passwordMatch) {
-          logLogin(email, false, "bad_password", user.id, info)
-          throw new RefusConnexion(REFUS_CONNEXION.IDENTIFIANTS)
-        }
-
-        logLogin(email, true, "ok", user.id, info)
-
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role,
-        }
-      },
+      authorize: (credentials, request) =>
+        authorizeCredentials(credentials, request as Request | undefined),
     }),
     // Consultation admin lecture seule : un jeton one-time émis par un admin
     // ouvre une session (dans une fenêtre privée) comme l'utilisateur cible.
