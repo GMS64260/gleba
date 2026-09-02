@@ -210,32 +210,19 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
     return () => window.removeEventListener("gleba:irrigation-updated", handleIrrigationUpdated)
   }, [fetchTaches])
 
-  // Auto-générer les irrigations si aucune n'existe (une seule fois par session)
-  const [irrigationsGenerated, setIrrigationsGenerated] = React.useState(false)
-  React.useEffect(() => {
-    if (irrigationsGenerated || !taches || loadingTaches) return
-    // Si 0 irrigations et qu'il y a des cultures actives, générer automatiquement
-    if (taches.irrigation.length === 0 && taches.stats.semisPrevus + taches.stats.plantationsPrevues > 0) {
-      setIrrigationsGenerated(true)
-      fetch('/api/irrigations/generate', { method: 'POST' })
-        .then(r => r.json())
-        .then(result => {
-          if (result.created > 0) {
-            // Recharger les tâches avec les nouvelles irrigations
-            fetchTaches()
-          }
-        })
-        .catch(() => {})
-    }
-  }, [taches, loadingTaches, irrigationsGenerated, fetchTaches])
-
   /**
    * Cultures cochées « à irriguer » mais encore sans plan d'arrosage.
    *
-   * Friction constatée le 2026-07-30 : l'auto-génération ci-dessus ne part
-   * qu'à zéro irrigation. Une fois le premier lot créé, toute culture cochée
-   * ensuite restait indéfiniment sans plan, sans bouton ni signal. On l'annonce
-   * désormais et on laisse l'utilisateur déclencher la planification.
+   * Le plan d'arrosage se PROPOSE, il ne s'impose plus. Jusqu'au 2026-09-02,
+   * cet onglet postait lui-même `/api/irrigations/generate` dès qu'un compte
+   * avait des cultures et zéro arrosage : un compte réel a ainsi reçu
+   * 86 passages à sa première ouverture du calendrier (29/07), n'en a coché
+   * aucun, et n'est revenu que pour trouver 51 périmés et des retards — trois
+   * visites, zéro saisie. La route GET du même endpoint disait déjà
+   * « proposer l'action sans jamais l'imposer » ; le bandeau ci-dessous est
+   * désormais le seul chemin, pour le premier plan comme pour les cultures
+   * cochées ensuite (friction du 2026-07-30 : après le premier lot, toute
+   * culture cochée restait sans plan et sans signal).
    */
   const [aPlanifier, setAPlanifier] = React.useState(0)
   const [planificationEnCours, setPlanificationEnCours] = React.useState(false)
@@ -842,7 +829,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                         onClick={planifierArrosage}
                         disabled={planificationEnCours}
                       >
-                        {planificationEnCours ? "Planification…" : "Planifier"}
+                        {planificationEnCours ? "Planification…" : "Planifier l'arrosage"}
                       </Button>
                     </div>
                   )}
