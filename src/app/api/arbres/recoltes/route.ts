@@ -164,6 +164,37 @@ export async function POST(request: NextRequest) {
     // On prend donc le défaut quand la valeur est null OU undefined.
     const parcelleId = body.parcelleId ?? arbre.parcelleGeo?.id ?? null
 
+    // Avertissements de saisie (rendus au client, PAS persistés dans les notes
+    // contrairement aux alertes de saison). Deux cas vus en production le
+    // 2026-09-04 sur un même compte verger :
+    //  - l'arbre n'est rattaché à aucune parcelle → lot « NA », statut bio non
+    //    déduit, traçabilité incomplète sans que rien ne le dise ;
+    //  - la même récolte (même arbre, même quantité) saisie deux fois à une
+    //    minute d'écart, seule la date différant — une correction faite par
+    //    re-saisie faute de pouvoir modifier la première.
+    const avertissements: string[] = []
+    if (!parcelleId) {
+      avertissements.push(
+        "Cet arbre n'est rattaché à aucune parcelle : le lot est numéroté « NA » et le statut bio n'a pas été déduit. Rattachez l'arbre à sa parcelle (fiche de l'arbre) ou choisissez la parcelle d'origine dans le formulaire."
+      )
+    }
+    const doublonRecent = await prisma.recolteArbre.findFirst({
+      where: {
+        userId,
+        arbreId: body.arbreId,
+        quantite: body.quantite,
+        createdAt: { gte: new Date(Date.now() - 15 * 60 * 1000) },
+      },
+      orderBy: { createdAt: "desc" },
+      select: { date: true, createdAt: true },
+    })
+    if (doublonRecent) {
+      const minutes = Math.max(1, Math.round((Date.now() - doublonRecent.createdAt.getTime()) / 60_000))
+      avertissements.push(
+        `Une récolte identique (${body.quantite} kg sur le même arbre, datée du ${doublonRecent.date.toLocaleDateString("fr-FR")}) a été enregistrée il y a ${minutes} min. Si celle-ci la corrige, modifiez ou supprimez la première depuis la liste du stock.`
+      )
+    }
+
     // DEV3 #4 — Numéro de lot auto YYYYMMDD-PARCELLE-ESPECE-NN si non fourni.
     // Pour le séquentiel NN, on compte le nb de lots du jour + même parcelle + même espèce.
     let numLot = body.numLot || null
@@ -232,7 +263,11 @@ export async function POST(request: NextRequest) {
     })
 
     return NextResponse.json(
-      recolteWarnings.length > 0 ? { ...recolte, warnings: recolteWarnings } : recolte,
+      {
+        ...recolte,
+        ...(recolteWarnings.length > 0 ? { warnings: recolteWarnings } : {}),
+        ...(avertissements.length > 0 ? { avertissements } : {}),
+      },
       { status: 201 }
     )
   } catch (err) {

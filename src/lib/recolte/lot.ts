@@ -25,14 +25,36 @@ export function stereToM3Plein(stere: number | null | undefined): number | null 
   return Math.round(stere * M3_PLEIN_PER_STERE * 100) / 100
 }
 
+/** Fragment produit quand la parcelle ou l'espèce est inconnue. */
+export const FRAGMENT_LOT_INCONNU = "NA"
+
 /**
  * Normalise un fragment de texte (parcelle, espèce) pour numéro de lot :
+ * translittère les lettres accentuées (« Pêcher » → « Pecher », pas « Pcher »),
  * supprime tout sauf alphanumérique, tronque à 8 chars.
+ *
+ * Constaté en production le 2026-09-04 : les lots d'un pêcher sortaient en
+ * « 20260903-NA-Pcher-01 » — l'accent était avalé au lieu d'être ramené à sa
+ * lettre de base, ce qui rendait l'espèce illisible sur l'étiquette.
  */
 function slugFragment(s: string | null | undefined, maxLen = 8): string {
-  if (!s) return "NA"
-  const cleaned = s.replace(/[^A-Za-z0-9]/g, "")
-  return cleaned.slice(0, maxLen) || "NA"
+  if (!s) return FRAGMENT_LOT_INCONNU
+  const cleaned = s
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Za-z0-9]/g, "")
+  return cleaned.slice(0, maxLen) || FRAGMENT_LOT_INCONNU
+}
+
+/**
+ * Vrai si le numéro de lot a la forme produite par `genererNumeroLot`
+ * (YYYYMMDD-…-NN). Sert à ne régénérer, lors d'une modification de récolte,
+ * que les lots automatiques : un numéro saisi à la main par l'utilisateur
+ * (lot d'étiquetage, référence client) ne doit jamais être écrasé.
+ */
+export function estNumeroLotAuto(numLot: string | null | undefined): boolean {
+  if (!numLot) return true
+  return /^\d{8}-[A-Za-z0-9]{1,8}-[A-Za-z0-9]{1,8}-\d{2,}$/.test(numLot)
 }
 
 /**

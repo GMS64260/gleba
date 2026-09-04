@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { genererNumeroLot, m3PleinToStere, stereToM3Plein } from '../lot'
+import { FRAGMENT_LOT_INCONNU, estNumeroLotAuto, genererNumeroLot, m3PleinToStere, stereToM3Plein } from '../lot'
 
 describe('genererNumeroLot', () => {
   it('formate YYYYMMDD-PARCELLE-ESPECE-NN', () => {
@@ -30,14 +30,42 @@ describe('genererNumeroLot', () => {
     expect(lot).toBe('20260102-Vergerpr-Pommierr-01')
   })
 
-  it('retire caractères spéciaux/accents/espaces du fragment', () => {
+  it('translittère les accents et retire caractères spéciaux/espaces du fragment', () => {
     const lot = genererNumeroLot({
       date: new Date('2026-03-10'),
       parcelleNom: 'Île aux fées #1',
       espece: 'Pêcher / Greffé',
     })
-    // Accents non-ASCII (Î, é) sont retirés (regex [^A-Za-z0-9])
-    expect(lot).toMatch(/^20260310-[A-Za-z0-9]{1,8}-[A-Za-z0-9]{1,8}-01$/)
+    // Production 2026-09-04 : « Pêcher » sortait en « Pcher ». La lettre de
+    // base est conservée, seul le signe diacritique disparaît.
+    expect(lot).toBe('20260310-Ileauxfe-PecherGr-01')
+  })
+
+  it('un pêcher sans parcelle donne un lot lisible mais marqué NA', () => {
+    const lot = genererNumeroLot({
+      date: new Date('2026-09-03'),
+      parcelleNom: null,
+      espece: 'Pêcher',
+    })
+    expect(lot).toBe(`20260903-${FRAGMENT_LOT_INCONNU}-Pecher-01`)
+  })
+})
+
+describe('estNumeroLotAuto', () => {
+  it('reconnaît un lot généré, avec ou sans fragment NA', () => {
+    expect(estNumeroLotAuto('20260903-NA-Pcher-01')).toBe(true)
+    expect(estNumeroLotAuto('20260903-Vergerdu-Pecher-01')).toBe(true)
+    expect(estNumeroLotAuto('20260903-Vergerdu-Pecher-12')).toBe(true)
+  })
+
+  it('un lot vide compte comme automatique (rien à préserver)', () => {
+    expect(estNumeroLotAuto(null)).toBe(true)
+    expect(estNumeroLotAuto('')).toBe(true)
+  })
+
+  it('préserve un numéro saisi à la main', () => {
+    expect(estNumeroLotAuto('LOT-CLIENT-42')).toBe(false)
+    expect(estNumeroLotAuto('2026-09-03 pêches')).toBe(false)
   })
 })
 

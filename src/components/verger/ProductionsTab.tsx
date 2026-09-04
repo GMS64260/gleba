@@ -31,6 +31,7 @@ import {
   Plus,
   Sprout,
   Home,
+  Pencil,
 } from "lucide-react"
 import { Combobox } from "@/components/ui/combobox"
 import { useToast } from "@/hooks/use-toast"
@@ -47,6 +48,12 @@ interface Arbre {
   type: string
   espece?: string | null
   variete?: string | null
+  parcelleGeo?: { id: string; nom: string } | null
+}
+
+interface ParcelleOption {
+  id: string
+  nom: string
 }
 
 interface Client {
@@ -69,7 +76,33 @@ interface RecolteArbre {
   factureId: number | null
   datePeremption: string | null
   notes: string | null
+  parcelleId?: string | null
+  numLot?: string | null
+  statutBioSnapshot?: string | null
+  categorieCommerciale?: string | null
+  destinationCommerce?: string | null
+  conditionnement?: string | null
   arbre: Arbre
+}
+
+// Formulaire vierge d'une récolte (création) — une seule définition pour les
+// trois usages : état initial, remise à zéro après envoi, fermeture du dialogue.
+function formulaireRecolteVierge() {
+  return {
+    arbreId: "",
+    date: todayLocalISO(),
+    quantite: "",
+    qualite: "",
+    prixKg: "",
+    datePeremption: "",
+    notes: "",
+    statutBioSnapshot: "" as string, // auto depuis parcelle si vide
+    parcelleId: "",
+    numLot: "", // auto-généré si vide
+    categorieCommerciale: "",
+    destinationCommerce: "",
+    conditionnement: "",
+  }
 }
 
 interface ProductionBois {
@@ -153,6 +186,12 @@ function RecoltesFruitsSubTab() {
   const [loading, setLoading] = React.useState(true)
   const [activeTab, setActiveTab] = React.useState("stock")
   const [showDialog, setShowDialog] = React.useState(false)
+  // Production 2026-09-04 : une récolte saisie avec la mauvaise date ne
+  // pouvait qu'être supprimée puis re-saisie ; l'utilisateur a re-saisi sans
+  // supprimer, d'où un doublon en stock. Le même dialogue sert désormais à
+  // modifier une récolte existante.
+  const [editingRecolte, setEditingRecolte] = React.useState<RecolteArbre | null>(null)
+  const [parcelles, setParcelles] = React.useState<ParcelleOption[]>([])
   const [isSubmitting, setIsSubmitting] = React.useState(false)
   const [showVenteDialog, setShowVenteDialog] = React.useState(false)
   const [selectedRecolte, setSelectedRecolte] = React.useState<RecolteArbre | null>(null)
@@ -163,33 +202,24 @@ function RecoltesFruitsSubTab() {
     creerFacture: false,
   })
   // DEV3 #4 — Champs traçabilité AB (audit Marc 2026-05-14)
-  const [newRecolte, setNewRecolte] = React.useState({
-    arbreId: "",
-    date: todayLocalISO(),
-    quantite: "",
-    qualite: "",
-    prixKg: "",
-    datePeremption: "",
-    notes: "",
-    // Bloquant #4
-    statutBioSnapshot: "" as string, // auto depuis parcelle si vide
-    parcelleId: "",
-    numLot: "", // auto-généré si vide
-    categorieCommerciale: "",
-    destinationCommerce: "",
-    conditionnement: "",
-  })
+  const [newRecolte, setNewRecolte] = React.useState(formulaireRecolteVierge)
 
   const fetchData = React.useCallback(async () => {
     setLoading(true)
     try {
-      const [recoltesRes, arbresRes, clientsRes] = await Promise.all([
+      const [recoltesRes, arbresRes, clientsRes, parcellesRes] = await Promise.all([
         fetch("/api/arbres/recoltes"),
         fetch("/api/arbres"),
         fetch("/api/comptabilite/clients?actif=true"),
+        fetch("/api/carte"),
       ])
       if (recoltesRes.ok) setRecoltes(await recoltesRes.json())
       if (arbresRes.ok) setArbres(await arbresRes.json())
+      if (parcellesRes.ok) {
+        const brut = await parcellesRes.json()
+        const liste: ParcelleOption[] = Array.isArray(brut?.data) ? brut.data : Array.isArray(brut) ? brut : []
+        setParcelles(liste.map((p) => ({ id: p.id, nom: p.nom })))
+      }
       if (clientsRes.ok) {
         const result = await clientsRes.json()
         setClients(result.data || [])
@@ -266,61 +296,70 @@ function RecoltesFruitsSubTab() {
       return
     }
     setIsSubmitting(true)
+    const modification = editingRecolte !== null
     try {
-      const res = await fetch("/api/arbres/recoltes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          arbreId: parseInt(newRecolte.arbreId),
-          date: newRecolte.date,
-          quantite,
-          qualite: newRecolte.qualite || null,
-          prixKg: newRecolte.prixKg ? parseFloat(newRecolte.prixKg) : null,
-          datePeremption: newRecolte.datePeremption || null,
-          notes: newRecolte.notes || null,
-          // DEV3 #4 — traçabilité AB
-          statutBioSnapshot: newRecolte.statutBioSnapshot || null,
-          // On n'envoie la parcelle que si elle est renseignée, pour laisser
-          // l'API appliquer le défaut (parcelle de l'arbre) — sinon le N° de
-          // lot tombait en "-NA-" (traçabilité AB cassée).
-          ...(newRecolte.parcelleId ? { parcelleId: newRecolte.parcelleId } : {}),
-          numLot: newRecolte.numLot || null,
-          categorieCommerciale: newRecolte.categorieCommerciale || null,
-          destinationCommerce: newRecolte.destinationCommerce || null,
-          conditionnement: newRecolte.conditionnement || null,
-        }),
-      })
+      const corps = {
+        arbreId: parseInt(newRecolte.arbreId),
+        date: newRecolte.date,
+        quantite,
+        qualite: newRecolte.qualite || null,
+        prixKg: newRecolte.prixKg ? parseFloat(newRecolte.prixKg) : null,
+        datePeremption: newRecolte.datePeremption || null,
+        notes: newRecolte.notes || null,
+        // DEV3 #4 — traçabilité AB
+        statutBioSnapshot: newRecolte.statutBioSnapshot || null,
+        numLot: newRecolte.numLot || null,
+        categorieCommerciale: newRecolte.categorieCommerciale || null,
+        destinationCommerce: newRecolte.destinationCommerce || null,
+        conditionnement: newRecolte.conditionnement || null,
+      }
+      const res = modification
+        ? await fetch(`/api/arbres/recoltes/${editingRecolte.id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            // En modification la parcelle est envoyée telle quelle (vide = retirée).
+            body: JSON.stringify({ ...corps, parcelleId: newRecolte.parcelleId || null }),
+          })
+        : await fetch("/api/arbres/recoltes", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              ...corps,
+              // On n'envoie la parcelle que si elle est renseignée, pour laisser
+              // l'API appliquer le défaut (parcelle de l'arbre) — sinon le N° de
+              // lot tombait en "-NA-" (traçabilité AB cassée).
+              ...(newRecolte.parcelleId ? { parcelleId: newRecolte.parcelleId } : {}),
+            }),
+          })
       if (res.ok) {
         // Feedback Marc 2026-05-16 — Bug 08 : si l'API a retourné un
         // warning saisonnier, on l'affiche en plus du toast de succès
         // (récolte hors saison agronomique de la variété).
-        const payload = (await res.json().catch(() => null)) as { warnings?: string[] } | null
-        setShowDialog(false)
-        setNewRecolte({
-          arbreId: "",
-          date: todayLocalISO(),
-          quantite: "",
-          qualite: "",
-          prixKg: "",
-          datePeremption: "",
-          notes: "",
-          statutBioSnapshot: "",
-          parcelleId: "",
-          numLot: "",
-          categorieCommerciale: "",
-          destinationCommerce: "",
-          conditionnement: "",
-        })
-        toast({ title: "Récolte enregistrée" })
+        const payload = (await res.json().catch(() => null)) as
+          | { warnings?: string[]; avertissements?: string[] }
+          | null
+        fermerDialogue()
+        toast({ title: modification ? "Récolte modifiée" : "Récolte enregistrée" })
         if (payload?.warnings && payload.warnings.length > 0) {
           for (const w of payload.warnings) {
             toast({ title: "Attention saison", description: w, variant: "destructive" })
           }
         }
+        // Avertissements de saisie (arbre sans parcelle, doublon récent) :
+        // informatifs, la récolte est bien enregistrée.
+        if (payload?.avertissements && payload.avertissements.length > 0) {
+          for (const a of payload.avertissements) {
+            toast({ title: "À vérifier", description: a })
+          }
+        }
         fetchData()
       } else {
         const data = await res.json().catch(() => ({}))
-        toast({ title: "Échec de l'enregistrement", description: data.error || `Erreur ${res.status}`, variant: "destructive" })
+        toast({
+          title: modification ? "Échec de la modification" : "Échec de l'enregistrement",
+          description: data.error || `Erreur ${res.status}`,
+          variant: "destructive",
+        })
       }
     } catch {
       toast({ title: "Erreur", variant: "destructive" })
@@ -328,6 +367,53 @@ function RecoltesFruitsSubTab() {
       setIsSubmitting(false)
     }
   }
+
+  const fermerDialogue = () => {
+    setShowDialog(false)
+    setEditingRecolte(null)
+    setNewRecolte(formulaireRecolteVierge())
+  }
+
+  const ouvrirCreation = () => {
+    setEditingRecolte(null)
+    setNewRecolte(formulaireRecolteVierge())
+    setShowDialog(true)
+  }
+
+  const ouvrirModification = (r: RecolteArbre) => {
+    setEditingRecolte(r)
+    setNewRecolte({
+      arbreId: r.arbreId.toString(),
+      date: r.date ? r.date.slice(0, 10) : todayLocalISO(),
+      quantite: String(r.quantite),
+      qualite: r.qualite ?? "",
+      prixKg: r.prixKg != null ? String(r.prixKg) : "",
+      datePeremption: r.datePeremption ? r.datePeremption.slice(0, 10) : "",
+      notes: r.notes ?? "",
+      statutBioSnapshot: r.statutBioSnapshot ?? "",
+      parcelleId: r.parcelleId ?? "",
+      numLot: r.numLot ?? "",
+      categorieCommerciale: r.categorieCommerciale ?? "",
+      destinationCommerce: r.destinationCommerce ?? "",
+      conditionnement: r.conditionnement ?? "",
+    })
+    setShowDialog(true)
+  }
+
+  // Sélection d'un arbre : la parcelle d'origine suit celle de l'arbre, sauf
+  // si l'utilisateur en a déjà choisi une autre à la main.
+  const choisirArbre = (arbreId: string) => {
+    const arbre = arbresFruitiers.find((a) => a.id.toString() === arbreId)
+    const parcelleArbre = arbre?.parcelleGeo?.id ?? ""
+    setNewRecolte((courant) => ({
+      ...courant,
+      arbreId,
+      parcelleId: parcelleArbre || courant.parcelleId,
+    }))
+  }
+
+  const arbreSelectionne = arbresFruitiers.find((a) => a.id.toString() === newRecolte.arbreId)
+  const arbreSansParcelle = Boolean(arbreSelectionne) && !arbreSelectionne?.parcelleGeo && !newRecolte.parcelleId
 
   const handleDelete = async (id: number) => {
     if (!(await confirmDialog("Supprimer cette récolte ?"))) return
@@ -520,7 +606,7 @@ function RecoltesFruitsSubTab() {
             </TabsTrigger>
           </TabsList>
         </Tabs>
-        <Button onClick={() => setShowDialog(true)} size="sm" className="bg-orange-600 hover:bg-orange-700 ml-2">
+        <Button onClick={ouvrirCreation} size="sm" className="bg-orange-600 hover:bg-orange-700 ml-2">
           <Plus className="h-4 w-4 mr-1" />
           Nouvelle récolte
         </Button>
@@ -573,6 +659,9 @@ function RecoltesFruitsSubTab() {
                           </Button>
                           <Button variant="ghost" size="sm" onClick={() => handlePerte(r.id)} title="Perte">
                             <AlertTriangle className="h-4 w-4 text-orange-500" />
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => ouvrirModification(r)} title="Modifier (date, quantité, parcelle…)">
+                            <Pencil className="h-4 w-4 text-slate-600" />
                           </Button>
                           <Button variant="ghost" size="sm" onClick={() => handleDelete(r.id)} title="Supprimer">
                             <Trash2 className="h-4 w-4 text-red-500" />
@@ -667,10 +756,10 @@ function RecoltesFruitsSubTab() {
       )}
 
       {/* Dialog Nouvelle recolte */}
-      <Dialog open={showDialog} onOpenChange={setShowDialog}>
+      <Dialog open={showDialog} onOpenChange={(ouvert) => (ouvert ? setShowDialog(true) : fermerDialogue())}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Enregistrer une récolte</DialogTitle>
+            <DialogTitle>{editingRecolte ? "Modifier la récolte" : "Enregistrer une récolte"}</DialogTitle>
           </DialogHeader>
           {/* noValidate : même piège que le formulaire bois (QA cmsw8t3wk) —
               revalidation explicite dans handleSubmit. */}
@@ -679,7 +768,7 @@ function RecoltesFruitsSubTab() {
               <Label>Arbre *</Label>
               <Select
                 value={newRecolte.arbreId}
-                onValueChange={(v) => setNewRecolte({ ...newRecolte, arbreId: v })}
+                onValueChange={choisirArbre}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Sélectionner un arbre" />
@@ -774,6 +863,31 @@ function RecoltesFruitsSubTab() {
               <legend className="px-2 text-xs font-semibold text-emerald-800">
                 Traçabilité Bio / HVE
               </legend>
+              <div>
+                <Label className="text-xs">Parcelle d&apos;origine</Label>
+                <Select
+                  value={newRecolte.parcelleId}
+                  onValueChange={(v) => setNewRecolte({ ...newRecolte, parcelleId: v === "__aucune__" ? "" : v })}
+                >
+                  <SelectTrigger><SelectValue placeholder={arbreSelectionne?.parcelleGeo ? `Auto : ${arbreSelectionne.parcelleGeo.nom}` : "Choisir la parcelle"} /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__aucune__">— Aucune —</SelectItem>
+                    {parcelles.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>{p.nom}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {arbreSansParcelle && (
+                  <div className="mt-2 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-700">
+                    <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                    <span>
+                      Cet arbre n&apos;est rattaché à aucune parcelle : sans parcelle d&apos;origine, le numéro de lot
+                      portera « NA » et le statut bio ne sera pas déduit. Choisissez la parcelle ci-dessus, ou
+                      rattachez l&apos;arbre depuis sa fiche pour les prochaines récoltes.
+                    </span>
+                  </div>
+                )}
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label className="text-xs">Statut Bio</Label>
@@ -862,7 +976,7 @@ function RecoltesFruitsSubTab() {
               />
             </div>
             <Button type="submit" className="w-full" disabled={isSubmitting}>
-              {isSubmitting ? "Enregistrement..." : "Enregistrer"}
+              {isSubmitting ? "Enregistrement..." : editingRecolte ? "Enregistrer les modifications" : "Enregistrer"}
             </Button>
           </form>
         </DialogContent>

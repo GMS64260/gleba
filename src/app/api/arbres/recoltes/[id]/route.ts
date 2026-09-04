@@ -11,6 +11,7 @@ import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { createVenteFromRecolteArbre, deleteAutoEntry } from "@/lib/auto-compta"
 import { creerFacture, annulerFactureLiee } from "@/lib/facture-utils"
+import { estNumeroLotAuto, genererNumeroLot } from "@/lib/recolte/lot"
 
 interface Params {
   params: Promise<{ id: string }>
@@ -71,8 +72,10 @@ export async function PUT(request: NextRequest, { params }: Params) {
       return NextResponse.json({ error: "ID invalide" }, { status: 400 })
     }
 
+    const userId = session!.user.id
     const existing = await prisma.recolteArbre.findUnique({
-      where: { id: recolteId, userId: session!.user.id },
+      where: { id: recolteId, userId },
+      include: { arbre: { select: { espece: true } } },
     })
 
     if (!existing) {
@@ -81,22 +84,115 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
     const body = await request.json()
 
+    // Production 2026-09-04 : un maraîcher a saisi deux fois la même récolte à
+    // une minute d'écart, seule la date différait — l'écran n'offrait aucune
+    // modification, seulement la suppression. La route acceptait déjà PUT,
+    // mais sans contrôle : on valide ici ce que le formulaire peut désormais
+    // corriger (date, quantité, qualité, prix, péremption, parcelle d'origine,
+    // catégorie, destination, conditionnement, notes, n° de lot).
+    if (body.quantite !== undefined) {
+      if (typeof body.quantite !== "number" || !isFinite(body.quantite) || body.quantite <= 0) {
+        return NextResponse.json(
+          { error: "La quantité doit être un nombre supérieur à 0" },
+          { status: 400 }
+        )
+      }
+    }
+
+    let nouvelleDate: Date | undefined
+    if (body.date !== undefined && body.date !== null && body.date !== "") {
+      nouvelleDate = new Date(body.date)
+      if (isNaN(nouvelleDate.getTime())) {
+        return NextResponse.json({ error: "Date de récolte invalide" }, { status: 400 })
+      }
+    }
+
+    // Parcelle d'origine : `null` explicite la retire, `undefined` la laisse.
+    let nouvelleParcelleId: string | null | undefined
+    let nouvelleParcelleNom: string | null = null
+    if (body.parcelleId !== undefined) {
+      if (body.parcelleId === null || body.parcelleId === "") {
+        nouvelleParcelleId = null
+      } else {
+        const parcelle = await prisma.parcelleGeo.findFirst({
+          where: { id: String(body.parcelleId), userId },
+          select: { id: true, nom: true },
+        })
+        if (!parcelle) {
+          return NextResponse.json({ error: "Parcelle non trouvée" }, { status: 404 })
+        }
+        nouvelleParcelleId = parcelle.id
+        nouvelleParcelleNom = parcelle.nom
+      }
+    }
+
+    // Numéro de lot : un numéro saisi explicitement gagne toujours. Sinon, si
+    // la date ou la parcelle change et que le lot courant est automatique, on
+    // le régénère (le lot encode la date et la parcelle) ; un lot saisi à la
+    // main par l'utilisateur n'est jamais écrasé.
+    let numLot: string | undefined
+    if (typeof body.numLot === "string" && body.numLot.trim()) {
+      numLot = body.numLot.trim()
+    } else {
+      const dateChange = nouvelleDate !== undefined && nouvelleDate.getTime() !== existing.date.getTime()
+      const parcelleChange = nouvelleParcelleId !== undefined && nouvelleParcelleId !== existing.parcelleId
+      if ((dateChange || parcelleChange) && estNumeroLotAuto(existing.numLot)) {
+        const dateLot = nouvelleDate ?? existing.date
+        const parcelleIdLot = nouvelleParcelleId !== undefined ? nouvelleParcelleId : existing.parcelleId
+        let parcelleNomLot = nouvelleParcelleNom
+        if (!parcelleNomLot && parcelleIdLot) {
+          parcelleNomLot =
+            (await prisma.parcelleGeo.findUnique({ where: { id: parcelleIdLot }, select: { nom: true } }))?.nom ??
+            null
+        }
+        const dayStart = new Date(dateLot)
+        dayStart.setHours(0, 0, 0, 0)
+        const dayEnd = new Date(dateLot)
+        dayEnd.setHours(23, 59, 59, 999)
+        const sameDayCount = await prisma.recolteArbre.count({
+          where: {
+            userId,
+            id: { not: recolteId },
+            date: { gte: dayStart, lte: dayEnd },
+            ...(parcelleIdLot ? { parcelleId: parcelleIdLot } : {}),
+            arbre: { espece: existing.arbre?.espece ?? undefined },
+          },
+        })
+        numLot = genererNumeroLot({
+          date: dateLot,
+          parcelleNom: parcelleNomLot,
+          espece: existing.arbre?.espece ?? null,
+          numeroSequence: sameDayCount + 1,
+        })
+      }
+    }
+
+    const texteOuNull = (v: unknown): string | null | undefined =>
+      v === undefined ? undefined : typeof v === "string" && v.trim() ? v.trim() : null
+
     const recolte = await prisma.recolteArbre.update({
       where: { id: recolteId },
       data: {
-        date: body.date ? new Date(body.date) : undefined,
+        date: nouvelleDate,
         quantite: body.quantite,
-        qualite: body.qualite,
-        prixKg: body.prixKg,
+        qualite: texteOuNull(body.qualite),
+        prixKg: body.prixKg === undefined ? undefined : typeof body.prixKg === "number" ? body.prixKg : null,
         datePeremption: body.datePeremption !== undefined
           ? (body.datePeremption ? new Date(body.datePeremption) : null)
           : undefined,
-        notes: body.notes,
+        notes: texteOuNull(body.notes),
+        parcelleId: nouvelleParcelleId,
+        numLot,
+        categorieCommerciale: texteOuNull(body.categorieCommerciale),
+        destinationCommerce: texteOuNull(body.destinationCommerce),
+        conditionnement: texteOuNull(body.conditionnement),
+        statutBioSnapshot: texteOuNull(body.statutBioSnapshot),
       },
       include: {
         arbre: {
-          select: { id: true, nom: true, type: true },
+          select: { id: true, nom: true, type: true, espece: true },
         },
+        parcelle: { select: { id: true, nom: true } },
       },
     })
 
