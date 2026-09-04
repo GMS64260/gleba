@@ -98,6 +98,10 @@ export function IrrigationAdvisor({ parcelleId, lat, lng, scopeLabel }: Irrigati
   const [error, setError] = React.useState<string | null>(null)
   const [showAll, setShowAll] = React.useState(false)
   const [nappeData, setNappeData] = React.useState<NappeData | null>(null)
+  // Production 2026-09-04 (exploitation réelle, bien localisée) : les 10 stations Hub'Eau trouvées
+  // dans les 50 km avaient toutes des relevés antérieurs à 2005 ; l'API rend
+  // 404 et le bloc nappe disparaissait sans un mot. On le dit, sobrement.
+  const [nappeIndisponible, setNappeIndisponible] = React.useState(false)
   const [savingPlancheId, setSavingPlancheId] = React.useState<string | null>(null)
 
   const fetchRecos = React.useCallback(async (forceRefresh = false) => {
@@ -181,16 +185,23 @@ export function IrrigationAdvisor({ parcelleId, lat, lng, scopeLabel }: Irrigati
               : []
           const first = arr.find((p) => p.centroidLat && p.centroidLng)
           if (first) {
-            fetch(`/api/meteo/nappe?lat=${first.centroidLat}&lng=${first.centroidLng}`)
-              .then((r) => (r.ok ? r.json() : null))
-              .then((d) => d && setNappeData(d))
-              .catch(() => {})
+            chargerNappe(first.centroidLat as number, first.centroidLng as number)
           }
         })
         .catch(() => {})
     } else {
-      fetch(`/api/meteo/nappe?lat=${lat}&lng=${lng}`)
-        .then((r) => (r.ok ? r.json() : null))
+      chargerNappe(lat, lng)
+    }
+
+    function chargerNappe(latitude: number, longitude: number) {
+      fetch(`/api/meteo/nappe?lat=${latitude}&lng=${longitude}`)
+        .then((r) => {
+          if (r.ok) return r.json()
+          // 404 = aucune station exploitable dans le rayon ; les autres
+          // échecs (réseau, 500) restent silencieux comme avant.
+          if (r.status === 404) setNappeIndisponible(true)
+          return null
+        })
         .then((d) => d && setNappeData(d))
         .catch(() => {})
     }
@@ -284,6 +295,12 @@ export function IrrigationAdvisor({ parcelleId, lat, lng, scopeLabel }: Irrigati
       </div>
 
       {!collapsed && <>
+      {nappeIndisponible && !nappeData && (
+        <div className="px-3 py-1.5 border-b bg-slate-50 flex items-center gap-2 text-xs text-slate-500">
+          <Waves className="h-3.5 w-3.5 shrink-0" />
+          <span>Nappe : aucune station Hub&apos;Eau avec des relevés récents dans un rayon de 50 km.</span>
+        </div>
+      )}
       {/* Nappe phreatique — masquer si relevé trop ancien (> 2 ans). Bug
           feedback testeur 2026-05-26 (cmpm73mgd) — un relevé > 3 mois est
           déjà périmé pour piloter l'irrigation : on affiche un bandeau
