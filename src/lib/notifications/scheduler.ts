@@ -5,6 +5,7 @@
  * - Résumé quotidien : vérifié chaque minute selon les réglages en base.
  * - Surveillance météo + urgences : vérifiée selon l'intervalle configuré en base,
  *   plus un premier scan ~30 s après le boot.
+ * - Purge du cache persistant (`generic_cache`) : chaque nuit.
  *
  * Robustesse : l'init est enveloppé en try/catch (ne fait jamais crasher le
  * démarrage) ; chaque run est isolé et ne peut pas se chevaucher avec le
@@ -20,6 +21,7 @@ import {
 } from "./sender"
 import { pushConfigure } from "@/lib/push"
 import { getSetting } from "@/lib/settings"
+import { purgeExpired } from "@/lib/cache-helper"
 
 let initialized = false
 /** Délai avant le premier scan au démarrage (laisse la DB se réveiller). */
@@ -82,6 +84,22 @@ export async function initNotifScheduler(): Promise<void> {
     const resumeExpression = getResumeCronExpression(process.env)
 
     cron.schedule(scanExpression, () => runScanMeteoEtUrgent().catch((error) => console.error("[notifications] Scan planifié en échec:", error)))
+
+    // Purge du cache persistant, chaque nuit à 03:17 (2026-09-09).
+    // `purgeExpired` existait depuis l'origine, annoncé « cron léger », et
+    // n'était appelé par PERSONNE : 282 des 322 lignes de `generic_cache`
+    // étaient périmées, certaines depuis 28 jours. Rien ne cassait, mais la
+    // table ne faisait que croître et les mesures de cache y perdaient leur
+    // sens. Heure creuse et minute décalée pour ne croiser aucun autre cron.
+    cron.schedule("17 3 * * *", () => {
+      purgeExpired()
+        .then((supprimees) => {
+          if (supprimees > 0) {
+            console.log(`[cache] ${supprimees} entrée(s) périmée(s) purgée(s) de generic_cache`)
+          }
+        })
+        .catch((error) => console.error("[cache] Purge de generic_cache en échec:", error))
+    })
 
     // Vérification chaque minute pour appliquer immédiatement les réglages
     // d'heure et de fuseau sans recréer le cron.
