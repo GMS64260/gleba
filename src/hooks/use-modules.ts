@@ -20,6 +20,7 @@
  *   re-render même si la liste est identique en contenu.
  */
 
+import { messageErreurReponse } from "@/lib/api-erreur"
 import * as React from "react"
 import {
   DEFAULT_MODULES_ACTIFS,
@@ -163,8 +164,7 @@ export function useModules(): UseModulesResult {
         if (typeof window !== "undefined") {
           window.dispatchEvent(new CustomEvent(MODULES_CHANGED_EVENT, { detail: { modules: previous } }))
         }
-        const txt = await res.text().catch(() => "")
-        return { ok: false, error: `HTTP ${res.status}${txt ? `: ${txt}` : ""}` }
+        return { ok: false, error: await messageErreurReponse(res) }
       }
       return { ok: true }
     } catch (err) {

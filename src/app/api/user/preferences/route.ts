@@ -14,6 +14,7 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { getActeurId } from "@/lib/exploitation/garde-session"
+import { estEmailDemo } from "@/lib/demo"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -48,6 +49,31 @@ export async function PUT(request: NextRequest) {
   if (error) return error
 
   const userId = getActeurId(session)
+
+  // Le compte de démonstration est PARTAGÉ : ses réglages sont figés
+  // (2026-09-09). Constat : un visiteur a activé le briefing automatique le
+  // 06/09 à 11:36:00 — un briefing généré à chaque visite ensuite, pour des
+  // prospects qui n'avaient rien demandé —, un autre a changé `modulesActifs`
+  // le 05/09, et `notifPrefs` s'est retrouvé tout à `true`, ce qui a mis les
+  // 7 parcelles de la démo dans le scan météo périodique et pesé sur Open-Meteo.
+  // Le réglage d'un visiteur devenait le décor du suivant, donc la démo ne
+  // montrait plus la même chose à tout le monde. Vérifié en base plutôt que
+  // depuis la session : `session.user` ne porte que id, role et impersonatedBy,
+  // et c'est déjà par l'id que `linkAccount` (auth.ts) protège ce compte.
+  const compte = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { email: true },
+  })
+  if (estEmailDemo(compte?.email)) {
+    return NextResponse.json(
+      {
+        error:
+          "Le compte de démonstration est partagé : ses réglages sont figés pour que chaque visiteur voie la même ferme. Créez un compte gratuit pour conserver vos préférences.",
+      },
+      { status: 403, headers: NO_STORE }
+    )
+  }
+
   const body = await request.json()
 
   if (!body || typeof body !== "object") {

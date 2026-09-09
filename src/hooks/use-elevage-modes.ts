@@ -12,6 +12,7 @@
  * cf. docs/elevage-modes-phase0-spec.md
  */
 
+import { messageErreurReponse } from "@/lib/api-erreur"
 import * as React from "react"
 import {
   DEFAULT_MODES_ELEVAGE,
@@ -111,8 +112,7 @@ export function useElevageModes(): UseElevageModesResult {
         if (!res.ok) {
           setModes([...previous])
           writeCache(previous)
-          const txt = await res.text().catch(() => "")
-          return { ok: false, error: `HTTP ${res.status}${txt ? `: ${txt}` : ""}` }
+          return { ok: false, error: await messageErreurReponse(res) }
         }
         return { ok: true }
       } catch (err) {
