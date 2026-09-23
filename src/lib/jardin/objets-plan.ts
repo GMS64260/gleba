@@ -125,6 +125,21 @@ export const TYPES_OBJETS: TypeObjet[] = [
     hauteur3D: 0,
   },
   {
+    // Tunnel maraîcher (2026-09-19, tickets vigie0abcc/cmu4mp12y) : les
+    // maraîchers calent leurs planches sur un abri réel, et « Serre » était le
+    // seul abri du catalogue — un tunnel de 8 × 30 m se dessinait donc avec le
+    // gabarit d'une serre de jardin, ou pas du tout. Même rendu que la serre
+    // (voile translucide en 2D et en 3D), gabarit d'un tunnel courant.
+    value: "tunnel",
+    label: "Tunnel / abri",
+    color: "#a7f3d0",
+    color3D: "#d1fae5",
+    groupe: "bati",
+    gabarit: { largeur: 8, longueur: 30 },
+    lineaire: false,
+    hauteur3D: 0,
+  },
+  {
     value: "bordure",
     label: "Bordure",
     color: "#78716c",
@@ -229,6 +244,10 @@ export const TYPES_CONVERSION_PLANCHE = [
   "poteau",
   "haie",
   "batiment",
+  // Un abri tracé comme une planche (constat vigie 2026-09-18) se reclasse
+  // désormais en serre ou en tunnel au lieu de rester une fausse planche.
+  "serre",
+  "tunnel",
   "autre",
 ] as const
 

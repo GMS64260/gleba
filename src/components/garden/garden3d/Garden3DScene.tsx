@@ -311,7 +311,7 @@ function Objet({ o }: { o: Objet3D }) {
         </mesh>
       </>
     )
-  } else if (o.type === "serre") {
+  } else if (o.type === "serre" || o.type === "tunnel") {
     node = (
       <>
         <mesh position={[0, 0.05, 0]} receiveShadow>

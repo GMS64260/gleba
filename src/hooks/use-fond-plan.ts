@@ -241,6 +241,35 @@ export function useFondPlan(parcelleId?: string | null) {
   )
 
   /**
+   * Décale le fond affiché de (dx, dy) mètres — le geste « glisser l'image sous
+   * les planches ». Tickets cmu6tpz93 / vigiebd96 (2026-09-18) : sans décalage
+   * direct, la seule façon d'aligner une image sur des planches était de
+   * déplacer les PLANCHES, ce qui désalignait l'autre fond (parcelle ou commun)
+   * que ces mêmes planches partagent — « quand j'aligne sur l'une, ça décale
+   * l'autre ». Même mise à jour optimiste et même PATCH débouncé que
+   * majReglages, mais appliquée à la valeur courante, pour enchaîner les
+   * pointermove sans lire un état périmé.
+   */
+  const decalerFond = React.useCallback(
+    (dx: number, dy: number) => {
+      if (!Number.isFinite(dx) || !Number.isFinite(dy)) return
+      setFond(prev => {
+        if (!prev) return prev
+        const offsetX = Math.round((prev.offsetX + dx) * 1000) / 1000
+        const offsetY = Math.round((prev.offsetY + dy) * 1000) / 1000
+        pendingPatch.current = {
+          parcelle: prev.parcelleKey,
+          reglages: { ...pendingPatch.current?.reglages, offsetX, offsetY },
+        }
+        return { ...prev, offsetX, offsetY }
+      })
+      if (patchTimer.current) clearTimeout(patchTimer.current)
+      patchTimer.current = setTimeout(envoyerPatch, 600)
+    },
+    [envoyerPatch]
+  )
+
+  /**
    * Téléverse une nouvelle image. Si une parcelle est sélectionnée, le fond
    * devient propre à cette parcelle ; sinon il est global. Les réglages du
    * fond affiché sont conservés (l'image remplace souvent une capture de la
@@ -299,5 +328,5 @@ export function useFondPlan(parcelleId?: string | null) {
     return true
   }, [fond, recharger])
 
-  return { fond, loading, majReglages, televerserImage, supprimerImage, recharger }
+  return { fond, loading, majReglages, decalerFond, televerserImage, supprimerImage, recharger }
 }
