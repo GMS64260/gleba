@@ -198,8 +198,9 @@ export function IrrigationAdvisor({ parcelleId, lat, lng, scopeLabel }: Irrigati
         .then((r) => {
           if (r.ok) return r.json()
           // 404 = aucune station exploitable dans le rayon ; les autres
-          // échecs (réseau, 500) restent silencieux comme avant.
-          if (r.status === 404) setNappeIndisponible(true)
+          // indisponibilités maîtrisées (timeout Hub'Eau) affichent le même
+          // état sobre au lieu de faire disparaître le bloc sans explication.
+          if (r.status === 404 || r.status === 503) setNappeIndisponible(true)
           return null
         })
         .then((d) => d && setNappeData(d))
