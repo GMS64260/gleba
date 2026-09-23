@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { X, Save, Trash2, Camera, Loader2, ExternalLink, MoveRight } from 'lucide-react'
+import { X, Save, Trash2, Camera, Loader2, ExternalLink, MoveRight, Copy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -50,6 +50,8 @@ interface ParcellePanelProps {
   newGeometry: string | null
   onSave: (data: Partial<ParcelleGeoData>) => void
   onDelete: (id: string) => void
+  /** Copie la parcelle (même tracé, posé à côté) — vigie5388, 2026-09-18. */
+  onDuplicate?: (id: string) => void
   onClose: () => void
   parcelles: Array<{ id: string; nom: string }>
   onMovementComplete: (destinationId: string) => void | Promise<void>
@@ -76,6 +78,7 @@ export default function ParcellePanel({
   newGeometry,
   onSave,
   onDelete,
+  onDuplicate,
   onClose,
   parcelles,
   onMovementComplete,
@@ -422,6 +425,19 @@ export default function ParcellePanel({
           <Save className="h-4 w-4 mr-2" />
           Enregistrer
         </Button>
+
+        {isEditMode && parcelle && onDuplicate && (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onDuplicate(parcelle.id)}
+            className="w-full"
+            title="Créer une parcelle de même tracé, posée à côté de celle-ci"
+          >
+            <Copy className="h-4 w-4 mr-2" />
+            Dupliquer
+          </Button>
+        )}
 
         {isEditMode && (
           <Button
