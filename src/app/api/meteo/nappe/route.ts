@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { fetchNappeInfo } from '@/lib/hubeau'
 
+function isTimeoutError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false
+  return err.name === 'TimeoutError' || err.name === 'AbortError'
+}
+
 /**
  * GET /api/meteo/nappe?lat=X&lng=Y
  * Retourne les informations de la nappe phréatique la plus proche
@@ -65,6 +70,14 @@ export async function GET(request: NextRequest) {
       })),
     })
   } catch (err) {
+    if (isTimeoutError(err)) {
+      console.warn('GET /api/meteo/nappe HubEau timeout:', err)
+      return NextResponse.json(
+        { error: "Données nappe temporairement indisponibles" },
+        { status: 503 }
+      )
+    }
+
     console.error('GET /api/meteo/nappe error:', err)
     return NextResponse.json(
       { error: 'Erreur lors de la récupération des données nappe' },
