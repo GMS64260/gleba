@@ -33,6 +33,8 @@ export const planchesSerieSchema = z.object({
   ilot: z.string().max(50).nullable().optional(),
   type: z.string().max(50).nullable().optional(),
   irrigation: z.string().max(50).nullable().optional(),
+  typeSol: z.string().max(50).nullable().optional(),
+  retentionEau: z.string().max(50).nullable().optional(),
   notes: z.string().max(5000).nullable().optional(),
 })
 
@@ -68,6 +70,8 @@ type PlancheSerieData = {
   ilot: string | null
   type: string | null
   irrigation: string | null
+  typeSol: string | null
+  retentionEau: string | null
   notes: string | null
 }
 
@@ -107,6 +111,8 @@ export async function creerPlanchesSerie(
 
   const largeur = input.largeur ?? null
   const longueur = input.longueur ?? null
+  const typeSol = input.typeSol ?? null
+  const retentionEau = input.retentionEau ?? null
   if (aCreer.length > 0) {
     await db.planche.createMany({
       data: aCreer.map((nom) => ({
@@ -118,6 +124,8 @@ export async function creerPlanchesSerie(
         ilot: input.ilot ?? null,
         type: input.type ?? null,
         irrigation: input.irrigation ?? null,
+        typeSol,
+        retentionEau,
         notes: input.notes ?? null,
       })),
     })
