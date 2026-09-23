@@ -7,7 +7,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
-import { ArrowLeft, Box, CalendarClock, ChevronDown, Download, ExternalLink, Image as ImageIcon, Layers as LayersIcon, Map as MapIcon, Maximize2, Minimize2, RotateCcw, Ruler, Upload, ZoomIn, ZoomOut, Plus, Crosshair, Trash2, X, RotateCw, Copy } from "lucide-react"
+import { ArrowLeft, Box, CalendarClock, ChevronDown, Download, ExternalLink, Image as ImageIcon, Layers as LayersIcon, Map as MapIcon, Maximize2, Minimize2, Move, RotateCcw, Ruler, Upload, ZoomIn, ZoomOut, Plus, Crosshair, Trash2, X, Copy } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -50,6 +50,7 @@ import {
   type SelectionItem,
 } from "@/components/garden/GardenView"
 import { useFondPlan } from "@/hooks/use-fond-plan"
+import { RotationControl } from "@/components/garden/RotationControl"
 import { calibrerFond, distance, formatDistance } from "@/lib/plan-fond-utils"
 import { croissanceCulture, envergureArbreADate } from "@/lib/plan-croissance"
 import { projeterGpsSurPlan, projeterPlanSurGps } from "@/lib/gps-plan-utils"
@@ -259,7 +260,7 @@ function JardinContent() {
   const [hasChanges, setHasChanges] = React.useState(false)
 
   // Image de fond persistée côté serveur (satellite/drone) + outils du plan
-  const { fond, majReglages, televerserImage, supprimerImage } = useFondPlan(selectedParcelleId)
+  const { fond, majReglages, decalerFond, televerserImage, supprimerImage } = useFondPlan(selectedParcelleId)
   const [tool, setTool] = React.useState<GardenTool>('select')
 
   // Plan vivant : date affichée (null = aujourd'hui) + calques togglables
@@ -1067,29 +1068,21 @@ function JardinContent() {
     }
   }, [selection, arbres])
 
-  // Normalise un angle dans [0, 360). Le modulo JS garde le signe : une
-  // rotation antihoraire (degrees < 0) produisait un angle négatif rejeté
-  // par le schéma Zod (min 0) → sauvegarde en échec (audit 2026-07, #24).
-  const normaliserAngle = (deg: number) => ((deg % 360) + 360) % 360
-
-  // Tourner une planche
-  const handleRotatePlanche = (degrees: number) => {
+  // Orienter une planche : angle absolu, déjà normalisé dans [0, 360) par
+  // RotationControl (le schéma Zod refuse un angle négatif — audit 2026-07, #24).
+  const handleSetRotationPlanche = (angle: number) => {
     if (!selectedPlanche) return
     setPlanches(prev => prev.map(p =>
-      p.id === selectedPlanche
-        ? { ...p, rotation2D: normaliserAngle((p.rotation2D || 0) + degrees) }
-        : p
+      p.id === selectedPlanche ? { ...p, rotation2D: angle } : p
     ))
     marquerChangement()
   }
 
-  // Tourner un objet
-  const handleRotateObjet = (degrees: number) => {
+  // Orienter un objet
+  const handleSetRotationObjet = (angle: number) => {
     if (!selectedObjet) return
     setObjets(prev => prev.map(o =>
-      o.id === selectedObjet
-        ? { ...o, rotation2D: normaliserAngle(o.rotation2D + degrees) }
-        : o
+      o.id === selectedObjet ? { ...o, rotation2D: angle } : o
     ))
     marquerChangement()
   }
@@ -2070,6 +2063,16 @@ function JardinContent() {
               <Ruler className="h-4 w-4" />
             </Button>
             <Button
+              variant={tool === 'fond' ? "default" : "outline"}
+              size="icon"
+              onClick={() => setTool(t => t === 'fond' ? 'select' : 'fond')}
+              disabled={!fond}
+              aria-label="Déplacer l'image de fond"
+              title={fond ? "Déplacer l'image de fond pour la caler sous les planches" : "Importez d'abord une image de fond"}
+            >
+              <Move className="h-4 w-4" />
+            </Button>
+            <Button
               variant="outline"
               size="icon"
               onClick={() => setShowFondDialog(true)}
@@ -2185,6 +2188,17 @@ function JardinContent() {
             >
               <Ruler className="h-4 w-4" />
             </Button>
+            {fond && (
+              <Button
+                variant={tool === 'fond' ? "default" : "outline"}
+                size="icon"
+                className="h-10 w-10"
+                onClick={() => setTool(t => t === 'fond' ? 'select' : 'fond')}
+                aria-label="Déplacer l'image de fond"
+              >
+                <Move className="h-4 w-4" />
+              </Button>
+            )}
 
             {calquesMenu}
 
@@ -2260,6 +2274,17 @@ function JardinContent() {
                     >
                       <Ruler className="h-5 w-5" />
                     </Button>
+                    {fond && (
+                      <Button
+                        variant={tool === 'fond' ? "default" : "ghost"}
+                        size="icon"
+                        className="h-10 w-10"
+                        onClick={() => setTool(t => t === 'fond' ? 'select' : 'fond')}
+                        aria-label="Déplacer l'image de fond"
+                      >
+                        <Move className="h-5 w-5" />
+                      </Button>
+                    )}
                     <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => setIsPlanFullscreen(false)} aria-label="Quitter le plein écran">
                       <Minimize2 className="h-5 w-5" />
                     </Button>
@@ -2274,7 +2299,9 @@ function JardinContent() {
                   <span className="whitespace-nowrap">
                     {tool === 'measure'
                       ? "Mesure : touchez 2 points du plan"
-                      : "Calibration : touchez 2 repères dont vous connaissez la distance réelle"}
+                      : tool === 'fond'
+                        ? "Fond : glissez l'image pour la caler sous vos planches"
+                        : "Calibration : touchez 2 repères dont vous connaissez la distance réelle"}
                   </span>
                   <button
                     type="button"
@@ -2324,6 +2351,7 @@ function JardinContent() {
                     gridColor={settings.gridColor}
                     tool={tool}
                     onCalibrate={handleCalibrate}
+                    onFondMove={decalerFond}
                     layers={layers}
                     liaisons={liaisons}
                     backgroundImage={fond ? {
@@ -2554,21 +2582,12 @@ function JardinContent() {
                   </div>
 
                   <div className="space-y-2 pt-2 border-t">
-                    {/* Rotation */}
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">Rotation: {selectedPlancheData.rotation2D || 0}°</span>
-                      <div className="flex gap-1">
-                        <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => handleRotatePlanche(-15)}>
-                          <RotateCcw className="h-3 w-3" />
-                        </Button>
-                        <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => handleRotatePlanche(15)}>
-                          <RotateCw className="h-3 w-3" />
-                        </Button>
-                        <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => handleRotatePlanche(90)}>
-                          90°
-                        </Button>
-                      </div>
-                    </div>
+                    {/* Rotation : angle libre + ±5° (ticket cmu4mp12y) */}
+                    <RotationControl
+                      idPrefix="planche"
+                      angle={selectedPlancheData.rotation2D || 0}
+                      onChange={handleSetRotationPlanche}
+                    />
                     {/* Actions */}
                     <div className="flex gap-2">
                       <Button variant="outline" size="sm" className="flex-1" onClick={() => setShowNewCultureDialog(true)}>
@@ -2739,20 +2758,13 @@ function JardinContent() {
                         </div>
                       </div>
 
-                      {/* Rotation */}
-                      <div className="flex items-center justify-between pt-2 border-t">
-                        <span className="text-sm text-muted-foreground">Rotation: {selectedObjetData.rotation2D}°</span>
-                        <div className="flex gap-1">
-                          <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => handleRotateObjet(-15)}>
-                            <RotateCcw className="h-3 w-3" />
-                          </Button>
-                          <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => handleRotateObjet(15)}>
-                            <RotateCw className="h-3 w-3" />
-                          </Button>
-                          <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => handleRotateObjet(90)}>
-                            90°
-                          </Button>
-                        </div>
+                      {/* Rotation : angle libre + ±5° (ticket cmu4mp12y) */}
+                      <div className="pt-2 border-t">
+                        <RotationControl
+                          idPrefix="objet"
+                          angle={selectedObjetData.rotation2D}
+                          onChange={handleSetRotationObjet}
+                        />
                       </div>
 
                       {/* Actions */}
@@ -3675,12 +3687,64 @@ function JardinContent() {
                   className="mx-auto max-h-44 w-auto object-contain"
                 />
               </div>
+              {/* Tickets cmu6tpz93 / vigiebd96 : un compte alignait à tour de
+                  rôle le fond de sa parcelle et le fond commun en déplaçant ses
+                  planches, sans savoir que les deux images ont chacune leurs
+                  réglages. On le dit, et on donne le geste qui aligne l'IMAGE. */}
               <p className="text-xs text-muted-foreground">
                 {fond.source === 'parcelle'
-                  ? "Fond propre à la parcelle sélectionnée."
-                  : "Fond commun à toutes les parcelles."}{" "}
+                  ? "Fond propre à la parcelle sélectionnée : son échelle, son décalage et sa rotation sont indépendants du fond commun. Régler l'un ne touche pas l'autre."
+                  : "Fond commun à toutes les parcelles : le régler ici le règle partout."}{" "}
                 Échelle actuelle : {fond.scale.toFixed(3)} m/pixel.
               </p>
+              <div>
+                <Label className="mb-2 block text-xs text-muted-foreground">
+                  Décalage de l&apos;image (m) — pour caler l&apos;image sous les planches sans les déplacer
+                </Label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs text-muted-foreground">X</span>
+                    <Input
+                      type="number"
+                      inputMode="decimal"
+                      step="0.1"
+                      className="h-8 w-24 px-2 text-sm"
+                      value={Math.round(fond.offsetX * 100) / 100}
+                      onChange={(e) => {
+                        const v = parseFloat(e.target.value.replace(",", "."))
+                        if (Number.isFinite(v)) majReglages({ offsetX: v })
+                      }}
+                      aria-label="Décalage horizontal de l'image de fond (m)"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs text-muted-foreground">Y</span>
+                    <Input
+                      type="number"
+                      inputMode="decimal"
+                      step="0.1"
+                      className="h-8 w-24 px-2 text-sm"
+                      value={Math.round(fond.offsetY * 100) / 100}
+                      onChange={(e) => {
+                        const v = parseFloat(e.target.value.replace(",", "."))
+                        if (Number.isFinite(v)) majReglages({ offsetY: v })
+                      }}
+                      aria-label="Décalage vertical de l'image de fond (m)"
+                    />
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setShowFondDialog(false)
+                      setTool('fond')
+                    }}
+                  >
+                    <Move className="h-4 w-4 mr-2" />
+                    Glisser sur le plan
+                  </Button>
+                </div>
+              </div>
               <div>
                 <Label className="mb-2 flex justify-between text-xs text-muted-foreground">
                   <span>Opacité</span>
@@ -3729,7 +3793,7 @@ function JardinContent() {
                   onClick={handleFondRemove}
                 >
                   <Trash2 className="h-4 w-4 mr-2" />
-                  Supprimer
+                  {fond.source === 'parcelle' ? "Retirer (revenir au fond commun)" : "Supprimer"}
                 </Button>
               </div>
               {selectedParcelleId && selectedParcelleId !== 'none' && fond.source === 'global' && (

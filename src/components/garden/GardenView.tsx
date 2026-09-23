@@ -335,7 +335,7 @@ function defsCulture(cultureId: number, silhouette: Silhouette, couleur: string,
   }
 }
 
-export type GardenTool = 'select' | 'measure' | 'calibrate'
+export type GardenTool = 'select' | 'measure' | 'calibrate' | 'fond'
 
 /** Calques d'affichage togglables du plan. */
 export interface GardenLayers {
@@ -389,10 +389,13 @@ interface GardenViewProps {
   gridColor?: string
   // Image de fond
   backgroundImage?: BackgroundImageSettings
-  // Outil actif : 'measure' = règle 2 points, 'calibrate' = calibration du fond
+  // Outil actif : 'measure' = règle 2 points, 'calibrate' = calibration du
+  // fond, 'fond' = glisser l'image de fond pour la caler sous les planches
   tool?: GardenTool
   // Calibration : appelé avec les 2 points cliqués (coordonnées monde, mètres)
   onCalibrate?: (p1: { x: number; y: number }, p2: { x: number; y: number }) => void
+  // Outil 'fond' : décalage cumulatif de l'image, en mètres du plan
+  onFondMove?: (dx: number, dy: number) => void
   // Calques togglables (fond, grille, étiquettes, projection adulte, associations)
   layers?: Partial<GardenLayers>
   // Liaisons d'association entre planches (rendues si layers.associations)
@@ -418,6 +421,7 @@ export function GardenView({
   backgroundImage,
   tool = 'select',
   onCalibrate,
+  onFondMove,
   layers,
   liaisons,
 }: GardenViewProps) {
@@ -456,6 +460,12 @@ export function GardenView({
   const [toolPoints, setToolPoints] = React.useState<{ x: number; y: number }[]>([])
   const [toolHover, setToolHover] = React.useState<{ x: number; y: number } | null>(null)
   const toolDown = React.useRef<{ clientX: number; clientY: number } | null>(null)
+
+  // Outil 'fond' : dernier point (monde) du glisser en cours. Le viewBox est
+  // figé pendant ce glisser (fondDragging), pour la même raison que le drag
+  // d'un élément : le recalculer à chaque mousemove fausse le mapping écran→SVG.
+  const fondDrag = React.useRef<{ x: number; y: number } | null>(null)
+  const [fondDragging, setFondDragging] = React.useState(false)
 
   React.useEffect(() => {
     // Changement d'outil → repartir de zéro
@@ -520,7 +530,7 @@ export function GardenView({
     // chaque mousemove décalait la conversion, faisant « fuir » l'élément
     // déplacé vers des coordonnées de plus en plus négatives. Le viewBox est
     // figé le temps du drag puis réajusté à la fin (dragging → null).
-    if (dragging) return
+    if (dragging || fondDragging) return
 
     // Inclure l'image de fond meme s'il n'y a pas d'elements
     const hasElements = planches.length > 0 || objets.length > 0 || arbres.length > 0
@@ -585,7 +595,7 @@ export function GardenView({
       w: Math.max(maxX - minX + margin * 2, 10),
       h: Math.max(maxY - minY + margin * 2, 8)
     })
-  }, [planches, objets, arbres, backgroundImage, bgImageSize, dragging])
+  }, [planches, objets, arbres, backgroundImage, bgImageSize, dragging, fondDragging])
 
   // Check if an item is in the current selection
   const isItemSelected = React.useCallback((type: SelectionItem['type'], id: string | number) => {
@@ -710,6 +720,16 @@ export function GardenView({
       toolDown.current = null
       return
     }
+    if (tool === 'fond') {
+      // Glisser l'image de fond : on mémorise le point de départ (monde) et
+      // chaque pointermove remonte le delta au parent, qui décale les réglages.
+      if (!onFondMove) return
+      const svgP = clientToSvg(e.clientX, e.clientY)
+      if (!svgP) return
+      fondDrag.current = { x: svgP.x, y: svgP.y }
+      setFondDragging(true)
+      return
+    }
     if (toolActive) {
       // Le point sera posé au pointerup si le pointeur n'a pas bougé (clic)
       toolDown.current = { clientX: e.clientX, clientY: e.clientY }
@@ -750,6 +770,15 @@ export function GardenView({
       const distance = Math.hypot(a.x - b.x, a.y - b.y)
       const nextScale = Math.min(120, Math.max(6, pinchStart.current.scale * distance / pinchStart.current.distance))
       onScaleChange(Math.round(nextScale))
+      return
+    }
+
+    if (tool === 'fond') {
+      if (!fondDrag.current || activePointers.current.size > 1) return
+      const svgP = clientToSvg(e.clientX, e.clientY)
+      if (!svgP) return
+      onFondMove?.(svgP.x - fondDrag.current.x, svgP.y - fondDrag.current.y)
+      fondDrag.current = { x: svgP.x, y: svgP.y }
       return
     }
 
@@ -898,6 +927,12 @@ export function GardenView({
     activePointers.current.delete(e.pointerId)
     if (activePointers.current.size < 2) pinchStart.current = null
 
+    if (tool === 'fond') {
+      fondDrag.current = null
+      if (activePointers.current.size === 0) setFondDragging(false)
+      return
+    }
+
     if (toolActive) {
       const down = toolDown.current
       toolDown.current = null
@@ -979,7 +1014,9 @@ export function GardenView({
         height={svgHeight}
         viewBox={`${effectiveViewBox.x} ${effectiveViewBox.y} ${effectiveViewBox.w} ${effectiveViewBox.h}`}
         className={
-          toolActive
+          tool === 'fond'
+            ? `${fondDragging ? "cursor-grabbing" : "cursor-move"} touch-none select-none`
+            : toolActive
             ? "cursor-crosshair touch-none select-none"
             : editable
               ? `${panning ? "cursor-grabbing" : "cursor-grab"} touch-none select-none`
@@ -1409,8 +1446,8 @@ export function GardenView({
                     style={{ pointerEvents: "none" }}
                   />
                 </>
-              ) : objet.type === 'serre' ? (
-                // Serre: forme semi-transparente
+              ) : objet.type === 'serre' || objet.type === 'tunnel' ? (
+                // Serre ou tunnel : forme semi-transparente (voile)
                 <>
                   <rect
                     x={0}
@@ -2003,7 +2040,7 @@ export function GardenView({
         )}
 
         {/* Outil mesure / calibration : ligne + distance, tailles constantes à l'écran */}
-        {toolActive && (() => {
+        {toolActive && tool !== 'fond' && (() => {
           const p1 = toolPoints[0] ?? null
           const p2 = toolPoints[1] ?? (toolPoints.length === 1 ? toolHover : null)
           const couleurOutil = tool === 'calibrate' ? '#2563eb' : '#b45309'
