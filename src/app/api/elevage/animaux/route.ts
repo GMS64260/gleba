@@ -15,6 +15,7 @@ import { enregistrerChangementLot, isAssignableAnimalLot, isOwnedParcelle } from
 import { resoudreRaceTexte } from '@/lib/elevage/race-referentiel'
 import { normaliserSexe, SEXES_ANIMAL } from '@/lib/elevage/sexe'
 import { verifierLienParenteSansCycle } from '@/lib/elevage/genealogie-validation'
+import { effacementSortieSiActif, erreurMereSortieAvantNaissance } from '@/lib/elevage/sortie-animal'
 import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 import { invalidateKpi } from '@/lib/kpi'
 
@@ -225,13 +226,16 @@ export async function POST(request: NextRequest) {
       if (parentId) {
         const parent = await prisma.animal.findFirst({
           where: { id: parentId, userId: session.user.id },
-          select: { id: true, dateNaissance: true },
+          select: { id: true, dateNaissance: true, statut: true, dateSortie: true },
         })
         if (!parent) {
           return NextResponse.json({ error: `Animal ${label} introuvable` }, { status: 400 })
         }
         // Ticket cmsoevxrj — durcissement généalogie : dates invraisemblables.
         const erreurDates = erreurParentNeApresEnfant(label, parent.dateNaissance, dateNaissance ?? null)
+          // Ticket cmud1e386 — une mère sortie reste possible pour une naissance
+          // antérieure à sa sortie, jamais postérieure.
+          ?? (label === 'mère' ? erreurMereSortieAvantNaissance(parent, dateNaissance ?? null) : null)
         if (erreurDates) {
           return NextResponse.json({ error: erreurDates }, { status: 400 })
         }
@@ -512,14 +516,16 @@ export async function PATCH(request: NextRequest) {
         }
         const parent = await prisma.animal.findFirst({
           where: { id: parentId, userId: session.user.id },
-          select: { id: true, dateNaissance: true },
+          select: { id: true, dateNaissance: true, statut: true, dateSortie: true },
         })
         if (!parent) {
           return NextResponse.json({ error: `Animal ${label} introuvable` }, { status: 400 })
         }
         // Ticket cmsoevxrj — durcissement généalogie : un parent nouvellement
         // affecté né après l'enfant est refusé (dates connues uniquement).
+        // Ticket cmud1e386 — ni une mère sortie avant la naissance de l'enfant.
         const erreurDates = erreurParentNeApresEnfant(label, parent.dateNaissance, dateNaissanceEnfant)
+          ?? (label === 'mère' ? erreurMereSortieAvantNaissance(parent, dateNaissanceEnfant) : null)
         if (erreurDates) {
           return NextResponse.json({ error: erreurDates }, { status: 400 })
         }
@@ -577,6 +583,9 @@ export async function PATCH(request: NextRequest) {
     if (nExploitationDestination !== undefined) updateData.nExploitationDestination = nExploitationDestination ?? null
     if (motifSortie !== undefined) updateData.motifSortie = motifSortie ?? null
     if (statutSanitaire !== undefined) updateData.statutSanitaire = Array.isArray(statutSanitaire) ? statutSanitaire : []
+    // Ticket cmud1e386 — un animal remis « actif » ne garde aucune sortie
+    // (avant : actif avec une date de mort au 15/03).
+    Object.assign(updateData, effacementSortieSiActif(statut))
 
     const animal = await prisma.$transaction(async (tx) => {
       const updated = await tx.animal.update({

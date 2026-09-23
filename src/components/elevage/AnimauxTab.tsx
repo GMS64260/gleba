@@ -6,6 +6,7 @@
 
 import * as React from "react"
 import { urlApercu } from "@/lib/apercu-document"
+import { merePresenteALaNaissance } from "@/lib/elevage/sortie-animal"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import {
@@ -85,6 +86,7 @@ interface Animal {
   raceAnimale: { id: string; nom: string } | null
   orientationProduction: string | null
   sexe: string | null
+  dateSortie?: string | null
   dateNaissance: string | null
   dateArrivee: string | null
   statut: string
@@ -227,6 +229,11 @@ function AnimauxSubTab() {
   const searchInputRef = React.useRef<HTMLInputElement>(null)
   const [isLoading, setIsLoading] = React.useState(true)
   const [animaux, setAnimaux] = React.useState<Animal[]>([])
+  // Ticket cmud1e386 — tout le cheptel, sorties comprises, pour les
+  // sélecteurs de parents : la liste affichée suit le filtre de statut
+  // (« actif » par défaut), et une chèvre morte n'y était plus proposable
+  // comme mère de ses petits oubliés.
+  const [cheptelComplet, setCheptelComplet] = React.useState<Animal[]>([])
   const [especes, setEspeces] = React.useState<EspeceAnimale[]>([])
   const [search, setSearch] = React.useState("")
   const [filterEspece, setFilterEspece] = React.useState<string>("all")
@@ -384,15 +391,21 @@ function AnimauxSubTab() {
       let url = '/api/elevage/animaux?'
       if (filterStatut !== 'all') url += `statut=${filterStatut}&`
 
-      const [animauxRes, especesRes, lotsRes, parcellesRes, racesRes] = await Promise.all([
+      const [animauxRes, especesRes, lotsRes, parcellesRes, racesRes, cheptelRes] = await Promise.all([
         fetch(url),
         fetch('/api/elevage/especes-animales'),
         fetch('/api/elevage/lots'),
         fetch('/api/carte'),
         fetch('/api/elevage/races'),
+        filterStatut !== 'all' ? fetch('/api/elevage/animaux') : Promise.resolve(null),
       ])
 
-      if (animauxRes.ok) setAnimaux((await animauxRes.json()).data)
+      if (animauxRes.ok) {
+        const liste: Animal[] = (await animauxRes.json()).data
+        setAnimaux(liste)
+        if (!cheptelRes) setCheptelComplet(liste)
+      }
+      if (cheptelRes?.ok) setCheptelComplet((await cheptelRes.json()).data)
       if (especesRes.ok) setEspeces((await especesRes.json()).data)
       if (lotsRes.ok) {
         const lotsJson = await lotsRes.json()
@@ -825,7 +838,7 @@ function AnimauxSubTab() {
     const exclus = new Set<number>()
     if (editingAnimalId === null) return exclus
     const enfantsParParent = new Map<number, number[]>()
-    for (const a of animaux) {
+    for (const a of cheptelComplet) {
       for (const parentId of [a.pereId, a.mereId]) {
         if (parentId == null) continue
         const liste = enfantsParParent.get(parentId)
@@ -841,7 +854,7 @@ function AnimauxSubTab() {
       for (const enfant of enfantsParParent.get(courant) ?? []) aVisiter.push(enfant)
     }
     return exclus
-  }, [animaux, editingAnimalId])
+  }, [cheptelComplet, editingAnimalId])
 
   // Filière de l'espèce choisie dans le formulaire (fallback : atelier courant).
   // Pilote le vocabulaire et les champs affichés : un chien/chat n'a ni « N°
@@ -1113,7 +1126,7 @@ function AnimauxSubTab() {
                         formulaire de naissance, sans ce filtre, listait bien
                         les mêmes animaux. */}
                     <AnimalCombobox
-                      animaux={animaux.filter(a => !exclusParenteEdition.has(a.id) && a.sexe === "femelle" && (!formData.especeAnimaleId || especeBaseId(a.especeAnimale.id) === especeBaseId(formData.especeAnimaleId)))}
+                      animaux={cheptelComplet.filter(a => !exclusParenteEdition.has(a.id) && a.sexe === "femelle" && (!formData.especeAnimaleId || especeBaseId(a.especeAnimale.id) === especeBaseId(formData.especeAnimaleId)) && (String(a.id) === formData.mereId || merePresenteALaNaissance(a, formData.dateNaissance || null)))}
                       value={formData.mereId}
                       onChange={(v) => setFormData(f => ({ ...f, mereId: v }))}
                       emptyLabel="Non renseignée"
@@ -1122,7 +1135,7 @@ function AnimauxSubTab() {
                   <div className="space-y-2">
                     <Label>{estRente ? "Père dans le cheptel" : "Père (dans l’élevage)"}</Label>
                     <AnimalCombobox
-                      animaux={animaux.filter(a => !exclusParenteEdition.has(a.id) && a.sexe === "male" && (!formData.especeAnimaleId || especeBaseId(a.especeAnimale.id) === especeBaseId(formData.especeAnimaleId)))}
+                      animaux={cheptelComplet.filter(a => !exclusParenteEdition.has(a.id) && a.sexe === "male" && (!formData.especeAnimaleId || especeBaseId(a.especeAnimale.id) === especeBaseId(formData.especeAnimaleId)))}
                       value={formData.pereId}
                       onChange={(v) => setFormData(f => ({ ...f, pereId: v }))}
                       emptyLabel="Non renseigné"

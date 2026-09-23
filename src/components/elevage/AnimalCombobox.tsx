@@ -19,14 +19,27 @@ export type AnimalOption = {
   nom?: string | null
   identifiant?: string | null
   especeAnimale?: { nom?: string | null } | null
+  sexe?: string | null
+  statut?: string | null
+  dateSortie?: string | null
 }
 
-/** Libellé d'affichage : boucle en tête (identifiant IPG), puis nom. */
+const SORTIE_FEMININ: Record<string, string> = { mort: "morte", abattu: "abattue", vendu: "vendue" }
+const SORTIE_MASCULIN: Record<string, string> = { mort: "mort", abattu: "abattu", vendu: "vendu" }
+
+/**
+ * Libellé d'affichage : boucle en tête (identifiant IPG), puis nom. Un animal
+ * sorti du cheptel l'annonce (ticket cmud1e386 : une mère morte reste
+ * proposable pour des naissances oubliées, elle doit se reconnaître).
+ */
 export function labelAnimal(a: AnimalOption): string {
   const boucle = a.identifiant?.trim()
   const nom = a.nom?.trim()
-  if (boucle && nom) return `${boucle} — ${nom}`
-  return boucle || nom || `#${a.id}`
+  const base = boucle && nom ? `${boucle} — ${nom}` : boucle || nom || `#${a.id}`
+  if (!a.statut || a.statut === "actif") return base
+  const etat = (a.sexe === "male" ? SORTIE_MASCULIN : SORTIE_FEMININ)[a.statut] ?? "sorti"
+  const date = a.dateSortie ? ` le ${a.dateSortie.slice(0, 10).split("-").reverse().join("/")}` : ""
+  return `${base} (${etat}${date})`
 }
 
 interface Props {

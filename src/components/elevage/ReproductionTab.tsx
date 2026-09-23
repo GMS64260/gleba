@@ -55,6 +55,7 @@ import {
 } from "@/components/ui/chart"
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Legend } from "recharts"
 import { todayLocalISO } from '@/lib/format-utils'
+import { merePresenteALaNaissance } from "@/lib/elevage/sortie-animal"
 
 // ============================================================
 // Types
@@ -133,6 +134,8 @@ interface AnimalFemelle {
   identifiant: string | null
   race: string | null
   dateNaissance?: string | null
+  statut: string
+  dateSortie?: string | null
   especeAnimale: {
     id: string
     nom: string
@@ -794,9 +797,12 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
   // naissance en cours d'édition reste sélectionnable.
   const dateMiseBasSaisie = formData.date ? new Date(formData.date) : new Date()
   const mereSelPourLots = femelles.find((f) => String(f.id) === formData.mereId)
+  // Ticket cmud1e386 — une femelle morte, abattue ou vendue reste proposée
+  // pour une mise bas antérieure à sa sortie (naissances oubliées).
   const femellesCibles = femelles.filter((f) =>
     filiereMatch(filiereSel, f.especeAnimale.filiere) &&
-    (String(f.id) === formData.mereId || mereBiologiquementPossible(f, dateMiseBasSaisie)))
+    (String(f.id) === formData.mereId ||
+      (mereBiologiquementPossible(f, dateMiseBasSaisie) && merePresenteALaNaissance(f, dateMiseBasSaisie))))
   // QA cmsqmty0u — le « Lot des petits » proposait les 11 lots de
   // l'exploitation toutes espèces confondues : des poussins pouvaient être
   // versés dans un lot de chèvres sans avertissement, faussant les effectifs
@@ -960,7 +966,7 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
     try {
       const [naissRes, animauxRes, lotsRes, sailliesRes] = await Promise.all([
         fetch('/api/elevage/naissances'),
-        fetch('/api/elevage/animaux?statut=actif&sexe=femelle'),
+        fetch('/api/elevage/animaux?sexe=femelle'),
         fetch('/api/elevage/lots?statut=actif'),
         fetch('/api/elevage/saillies'),
       ])

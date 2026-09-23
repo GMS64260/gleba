@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { naissanceSchema } from '@/lib/validations/elevage-naissance'
+import { erreurMereSortieAvantNaissance } from '@/lib/elevage/sortie-animal'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -124,9 +125,13 @@ export async function POST(request: NextRequest) {
     if (parsed.data.mereId) {
       const mere = await prisma.animal.findFirst({
         where: { id: parsed.data.mereId, userId },
-        select: { id: true },
+        select: { id: true, statut: true, dateSortie: true },
       })
       if (!mere) return NextResponse.json({ error: 'Mère introuvable' }, { status: 404 })
+      // Ticket cmud1e386 — mise bas oubliée d'une mère sortie : acceptée si
+      // antérieure à sa sortie, refusée sinon.
+      const erreurSortie = erreurMereSortieAvantNaissance(mere, parsed.data.date ?? new Date())
+      if (erreurSortie) return NextResponse.json({ error: erreurSortie }, { status: 400 })
     }
     if (parsed.data.lotId) {
       const lot = await prisma.lotAnimaux.findFirst({
@@ -254,9 +259,12 @@ export async function PATCH(request: NextRequest) {
     if (parsed.data.mereId) {
       const mere = await prisma.animal.findFirst({
         where: { id: parsed.data.mereId, userId },
-        select: { id: true },
+        select: { id: true, statut: true, dateSortie: true },
       })
       if (!mere) return NextResponse.json({ error: 'Mère introuvable' }, { status: 404 })
+      // Ticket cmud1e386 — une mère sortie avant la mise bas est impossible.
+      const erreurSortie = erreurMereSortieAvantNaissance(mere, parsed.data.date ?? existing.date)
+      if (erreurSortie) return NextResponse.json({ error: erreurSortie }, { status: 400 })
     }
     if (parsed.data.lotId) {
       const lot = await prisma.lotAnimaux.findFirst({
