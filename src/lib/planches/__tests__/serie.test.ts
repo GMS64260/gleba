@@ -25,7 +25,14 @@ describe('création de planches en série', () => {
   it('crée toute la série demandée en un appel', async () => {
     const db = dbFactice()
     const input = planchesSerieSchema.parse({
-      prefixe: 'Z1p', debut: 4, nombre: 14, largeur: 0.8, longueur: 17, ilot: 'Zone 1',
+      prefixe: 'Z1p',
+      debut: 4,
+      nombre: 14,
+      largeur: 0.8,
+      longueur: 17,
+      ilot: 'Zone 1',
+      typeSol: 'Limoneux',
+      retentionEau: 'Élevée',
     })
 
     const resultat = await creerPlanchesSerie(db, 'user-1', input)
@@ -36,7 +43,15 @@ describe('création de planches en série', () => {
     expect(resultat.ignores).toEqual([])
     const data = db.createMany.mock.calls[0][0].data
     expect(data).toHaveLength(14)
-    expect(data[0]).toMatchObject({ userId: 'user-1', largeur: 0.8, longueur: 17, surface: 13.6, ilot: 'Zone 1' })
+    expect(data[0]).toMatchObject({
+      userId: 'user-1',
+      largeur: 0.8,
+      longueur: 17,
+      surface: 13.6,
+      ilot: 'Zone 1',
+      typeSol: 'Limoneux',
+      retentionEau: 'Élevée',
+    })
   })
 
   it('ignore les noms déjà pris sans jamais les écraser', async () => {
