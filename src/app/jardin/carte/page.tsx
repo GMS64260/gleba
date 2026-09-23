@@ -16,6 +16,7 @@ import type L from "leaflet"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
 import type { ParcelleGeoData } from "@/components/carte/ParcelleLayer"
+import { decalerGeometrieParcelle, nomCopieParcelle } from "@/lib/geo-duplication"
 import type { CadastreResult } from "@/components/carte/CadastreSearch"
 
 // Composants non-Leaflet : import statique
@@ -245,6 +246,49 @@ function CartePageContent() {
       })
     }
   }, [fetchParcelles, toast])
+
+  // -- Duplication (vigie5388, 2026-09-18) --
+  // Même tracé posé juste à l'est de l'original, sans référence cadastrale
+  // (une copie n'est pas la parcelle du cadastre, et l'API refuse le doublon).
+  const handleDuplicate = useCallback(async (id: string) => {
+    const source = parcelles.find((p) => p.id === id)
+    if (!source) return
+    const geometry = decalerGeometrieParcelle(source.geometry)
+    if (!geometry) {
+      toast({ title: "Duplication impossible", description: "Le tracé de cette parcelle n'est pas exploitable.", variant: "destructive" })
+      return
+    }
+    try {
+      const res = await fetch("/api/carte", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nom: nomCopieParcelle(source.nom, parcelles.map((p) => p.nom)),
+          geometry,
+          usage: source.usage ?? null,
+          typeSol: source.typeSol ?? null,
+          couleur: source.couleur ?? null,
+          notes: source.notes ?? null,
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => null)
+        throw new Error(err?.error || "Erreur lors de la duplication")
+      }
+      const copie: ParcelleGeoData = await res.json()
+      toast({
+        title: "Parcelle dupliquée",
+        description: `« ${copie.nom} » est posée à côté de l'original : déplacez-la ou modifiez son tracé.`,
+      })
+      await fetchParcelles()
+      setIsCreating(false)
+      setNewGeometry(null)
+      setSelectedParcelle(copie)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erreur inconnue"
+      toast({ title: "Erreur", description: message, variant: "destructive" })
+    }
+  }, [parcelles, fetchParcelles, toast])
 
   // -- Import cadastral --
   const handleCadastreImport = useCallback(async (result: CadastreResult) => {
@@ -550,6 +594,7 @@ function CartePageContent() {
               newGeometry={newGeometry}
               onSave={handleSave}
               onDelete={handleDelete}
+              onDuplicate={handleDuplicate}
               onClose={handleClosePanel}
               parcelles={parcelles}
               onMovementComplete={handleMovementComplete}
