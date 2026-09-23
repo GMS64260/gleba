@@ -12,6 +12,7 @@ import { createDepenseFromAchatAnimal, deleteAutoEntry } from '@/lib/auto-compta
 import { isPlausibleAnimalDate } from '@/lib/validations/elevage-animal'
 import { enregistrerChangementLot, isAssignableAnimalLot, isOwnedParcelle } from '@/lib/elevage/animal-lot'
 import { verifierLienParenteSansCycle } from '@/lib/elevage/genealogie-validation'
+import { effacementSortieSiActif, erreurMereSortieAvantNaissance } from '@/lib/elevage/sortie-animal'
 import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 import { invalidateKpi } from '@/lib/kpi'
 
@@ -153,8 +154,10 @@ export async function PATCH(
 
     const data: Record<string, unknown> = {}
     if (body.statut !== undefined) data.statut = body.statut
-    if (body.dateSortie !== undefined) data.dateSortie = new Date(body.dateSortie)
+    if (body.dateSortie !== undefined) data.dateSortie = body.dateSortie ? new Date(body.dateSortie) : null
     if (body.causeSortie !== undefined) data.causeSortie = body.causeSortie
+    // Ticket cmud1e386 — un animal remis « actif » ne garde aucune sortie.
+    Object.assign(data, effacementSortieSiActif(body.statut))
     if (body.poidsActuel !== undefined) data.poidsActuel = body.poidsActuel
     // PROMPT 24 — bascule lactation longue (trait sans tarir)
     if (body.lactationLongue !== undefined) data.lactationLongue = Boolean(body.lactationLongue)
@@ -204,10 +207,18 @@ export async function PUT(
       }
       const mere = await prisma.animal.findFirst({
         where: { id: mid, userId: session.user.id },
-        select: { id: true },
+        select: { id: true, statut: true, dateSortie: true },
       })
       if (!mere) {
         return NextResponse.json({ error: 'Animal mère introuvable' }, { status: 400 })
+      }
+      // Ticket cmud1e386 — une mère sortie avant la naissance est impossible.
+      const erreurSortie = erreurMereSortieAvantNaissance(
+        mere,
+        body.dateNaissance ? new Date(body.dateNaissance) : existing.dateNaissance,
+      )
+      if (erreurSortie) {
+        return NextResponse.json({ error: erreurSortie }, { status: 400 })
       }
       const lienValide = await verifierLienParenteSansCycle({
         animalId: existing.id,
@@ -368,6 +379,8 @@ export async function PUT(
         couleur,
         notes,
         parcelleGeoId: parcelleGeoId !== undefined ? (parcelleGeoId || null) : undefined,
+        // Ticket cmud1e386 — un animal remis « actif » ne garde aucune sortie.
+        ...effacementSortieSiActif(statut),
       },
         include: {
           especeAnimale: true,

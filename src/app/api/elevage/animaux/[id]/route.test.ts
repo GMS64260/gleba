@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   isAssignableAnimalLot: vi.fn(),
   animalFindFirst: vi.fn(),
   animalUpdate: vi.fn(),
+  animalFindMany: vi.fn(),
   enregistrerChangementLot: vi.fn(),
   soinFindMany: vi.fn(),
 }))
@@ -19,13 +20,13 @@ vi.mock('@/lib/auto-compta', () => ({ createDepenseFromAchatAnimal: vi.fn(), del
 vi.mock('@/lib/prisma', () => ({
   default: {
     $transaction: (callback: (tx: unknown) => unknown) => callback({ animal: { update: mocks.animalUpdate } }),
-    animal: { findFirst: mocks.animalFindFirst, update: mocks.animalUpdate },
+    animal: { findFirst: mocks.animalFindFirst, update: mocks.animalUpdate, findMany: mocks.animalFindMany },
     // Ticket cmsoglwee — le GET fusionne les soins du lot de l'animal.
     soinAnimal: { findMany: mocks.soinFindMany },
   },
 }))
 
-import { GET, PUT } from './route'
+import { GET, PATCH, PUT } from './route'
 
 const callPut = (body: object) => PUT(
   new NextRequest('http://localhost/api/elevage/animaux/7', { method: 'PUT', body: JSON.stringify(body) }),
@@ -136,5 +137,68 @@ describe('affectation d’un lot via PUT /api/elevage/animaux/[id]', () => {
     expect(response.status).toBe(200)
     expect(mocks.isAssignableAnimalLot).not.toHaveBeenCalled()
     expect(mocks.animalUpdate).toHaveBeenCalled()
+  })
+})
+
+// Ticket cmud1e386 — chèvre morte remise « actif » par l'assistant pour saisir
+// ses petits oubliés : elle gardait sa date de mort. Et la saisie des petits
+// d'une mère sortie doit être possible avant sa sortie, jamais après.
+describe('sorties et filiation — /api/elevage/animaux/[id]', () => {
+  const callPatch = (body: object) => PATCH(
+    new NextRequest('http://localhost/api/elevage/animaux/7', { method: 'PATCH', body: JSON.stringify(body) }),
+    { params: Promise.resolve({ id: '7' }) }
+  )
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.requireAuthApi.mockResolvedValue({ error: null, session: { user: { id: 'user-1' } } })
+    mocks.animalFindMany.mockResolvedValue([])
+    mocks.animalUpdate.mockImplementation(async ({ data }) => ({ id: 7, ...data }))
+  })
+
+  it("efface date, cause et motif de sortie quand l'animal redevient actif", async () => {
+    mocks.animalFindFirst.mockResolvedValue({ id: 7, statut: 'mort', dateSortie: new Date('2026-03-15') })
+
+    const response = await callPatch({ statut: 'actif' })
+
+    expect(response.status).toBe(200)
+    expect(mocks.animalUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ statut: 'actif', dateSortie: null, causeSortie: null, motifSortie: null }),
+    }))
+  })
+
+  it('garde la date fournie lors d’un décès', async () => {
+    mocks.animalFindFirst.mockResolvedValue({ id: 7, statut: 'actif', dateSortie: null })
+
+    await callPatch({ statut: 'mort', dateSortie: '2026-03-15', causeSortie: 'Mort' })
+
+    const data = mocks.animalUpdate.mock.calls[0][0].data
+    expect(data.dateSortie).toEqual(new Date('2026-03-15'))
+    expect(data.causeSortie).toBe('Mort')
+  })
+
+  it('accepte une mère morte pour un petit né avant sa mort', async () => {
+    mocks.animalFindFirst
+      .mockResolvedValueOnce({ id: 7, especeAnimaleId: 'caprin', dateNaissance: null })
+      .mockResolvedValueOnce({ id: 410, statut: 'mort', dateSortie: new Date('2026-03-15') })
+
+    const response = await callPut({ mereId: 410, dateNaissance: '2025-03-08' })
+
+    expect(response.status).toBe(200)
+    expect(mocks.animalUpdate).toHaveBeenCalled()
+  })
+
+  it('refuse une mère morte avant la naissance du petit', async () => {
+    mocks.animalFindFirst
+      .mockResolvedValueOnce({ id: 7, especeAnimaleId: 'caprin', dateNaissance: null })
+      .mockResolvedValueOnce({ id: 410, statut: 'mort', dateSortie: new Date('2026-03-15') })
+
+    const response = await callPut({ mereId: 410, dateNaissance: '2026-04-02' })
+
+    expect(response.status).toBe(400)
+    expect((await response.json()).error).toBe(
+      'Filiation impossible : la mère proposée est morte le 15/03/2026, avant cette naissance (02/04/2026)',
+    )
+    expect(mocks.animalUpdate).not.toHaveBeenCalled()
   })
 })
