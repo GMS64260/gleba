@@ -13,11 +13,10 @@
 
 import * as React from "react"
 import { useHideOnScroll } from "@/hooks/use-hide-on-scroll"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-
 interface TabDef {
   id: string
   label: string
+  shortLabel?: string
   icon: React.ComponentType<{ className?: string }>
 }
 
@@ -61,25 +60,34 @@ export function ModuleTabBar({ tabs, activeTab, onTabChange, accent, actions }: 
       style={{ "--module-tabbar-top": headerHidden ? "0px" : "var(--app-header-h, 61px)" } as React.CSSProperties}
     >
       <div className="container mx-auto px-4 max-w-[1600px]">
-        {/* Mobile : une section clairement nommée, puis les raccourcis sur une
-            ligne compacte. Les cinq icônes sans libellé n'étaient pas
-            compréhensibles et la rangée d'actions se cassait sur 2–3 lignes. */}
+        {/* Mobile/tablette : onglets visibles. Le menu déroulant affichait
+            seulement « Calendrier » fermé, ce qui rendait les autres sections
+            introuvables sur les écrans tactiles. */}
         <div className="space-y-2 py-2 xl:hidden">
-          <Select value={activeTab} onValueChange={onTabChange}>
-            <SelectTrigger className="h-10 w-full bg-white font-medium">
-              <SelectValue placeholder="Choisir une section" />
-            </SelectTrigger>
-            <SelectContent>
-              {tabs.map((tab) => (
-                <SelectItem key={tab.id} value={tab.id}>
-                  <span className="flex items-center gap-2">
-                    <tab.icon className={`h-4 w-4 ${activeTab === tab.id ? a.icon : "text-slate-500"}`} />
-                    {tab.label}
-                  </span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="-mx-4 overflow-x-auto px-4 pb-0.5 scrollbar-hide">
+            <div className="flex w-max min-w-full items-center gap-1.5">
+              {tabs.map((tab) => {
+                const isActive = activeTab === tab.id
+                return (
+                  <button
+                    type="button"
+                    key={tab.id}
+                    onClick={() => onTabChange(tab.id)}
+                    aria-current={isActive ? "page" : undefined}
+                    className={`flex h-9 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-sm font-medium transition-colors ${
+                      isActive
+                        ? `${a.active} bg-white`
+                        : "border-slate-200 bg-white/80 text-slate-600 hover:border-slate-300 hover:text-slate-800"
+                    }`}
+                    title={tab.label}
+                  >
+                    <tab.icon className={`h-4 w-4 ${isActive ? a.icon : "text-slate-500"}`} />
+                    <span>{tab.shortLabel ?? tab.label}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
           {actions && (
             <div className="flex items-center gap-2 overflow-x-auto pb-0.5 scrollbar-hide [&>*]:shrink-0">
               {actions}
