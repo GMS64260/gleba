@@ -684,8 +684,15 @@ export async function PATCH(request: NextRequest) {
         `
         for (const injection of calendrier) {
           const realisee = realisees.get(injection.numero)
-          const marquerPremiereFaite = injection.numero === 1 && fait === true && !realisee
-          const rouvrirPremiere = injection.numero === 1 && fait === false && realisee
+          // Ces deux drapeaux sont interpolés dans le SQL brut ci-dessous : ils
+          // doivent être de VRAIS booléens. `a && b && realisee` rendait la LIGNE
+          // de la Map (un objet) quand la première injection était réalisée,
+          // Prisma l'envoyait en jsonb et Postgres refusait le CASE WHEN —
+          // rouvrir un traitement effectué échouait en 500 (api_errors du
+          // 2026-09-19 19:27, deux essais). Le cast `::boolean` posé le même
+          // soir ne suffisait pas : un objet jsonb ne se caste pas en booléen.
+          const marquerPremiereFaite = injection.numero === 1 && fait === true && realisee === undefined
+          const rouvrirPremiere = injection.numero === 1 && fait === false && realisee !== undefined
           const statut = marquerPremiereFaite ? 'realisee' : rouvrirPremiere ? 'a_faire' : injection.statut
           const dateRealisee = marquerPremiereFaite ? ((updateData.date as Date | undefined) ?? new Date()) : null
           await tx.$executeRaw`
@@ -697,13 +704,13 @@ export async function PATCH(request: NextRequest) {
             ON CONFLICT (soin_id, numero) DO UPDATE SET
               date_prevue = CASE WHEN injections_soins.statut = 'realisee' THEN injections_soins.date_prevue ELSE EXCLUDED.date_prevue END,
               statut = CASE
-                WHEN ${marquerPremiereFaite} THEN 'realisee'
-                WHEN ${rouvrirPremiere} THEN 'a_faire'
+                WHEN ${marquerPremiereFaite}::boolean THEN 'realisee'
+                WHEN ${rouvrirPremiere}::boolean THEN 'a_faire'
                 ELSE injections_soins.statut
               END,
               date_realisee = CASE
-                WHEN ${marquerPremiereFaite} THEN ${dateRealisee}
-                WHEN ${rouvrirPremiere} THEN NULL
+                WHEN ${marquerPremiereFaite}::boolean THEN ${dateRealisee}
+                WHEN ${rouvrirPremiere}::boolean THEN NULL
                 ELSE injections_soins.date_realisee
               END,
               updated_at = NOW()

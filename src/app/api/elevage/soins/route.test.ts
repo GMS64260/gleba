@@ -95,6 +95,105 @@ describe('soins planifies et temps attente lait', () => {
     }) }))
   })
 
+  it('type les conditions CASE de resynchronisation des injections', async () => {
+    const existing = {
+      id: 1,
+      userId: 'user-1',
+      animalId: 7,
+      lotId: null,
+      date: new Date('2026-07-21T00:00:00Z'),
+      fait: false,
+      tempsAttenteLaitJ: 5,
+      tempsAttenteOeufsJ: null,
+      tempsAttenteViandeJ: 12,
+      finAttenteLait: null,
+      finAttenteOeufs: null,
+      finAttenteViande: null,
+      cout: null,
+      type: 'Traitement vétérinaire',
+      nbInjections: 2,
+      intervalleInjectionsHeures: 24,
+      stockMedicamentId: null,
+      quantitePreleveeStock: 0,
+    }
+    mocks.soinFindFirst.mockResolvedValue(existing)
+    mocks.queryRaw
+      .mockResolvedValueOnce([{ id: 'inj-1', numero: 1, datePrevue: existing.date, dateRealisee: null, statut: 'a_faire' }])
+      .mockResolvedValueOnce([
+        { numero: 1, datePrevue: existing.date, dateRealisee: existing.date, statut: 'realisee' },
+        { numero: 2, datePrevue: new Date('2026-07-22T00:00:00Z'), dateRealisee: null, statut: 'a_faire' },
+      ])
+    mocks.soinUpdate.mockImplementation(async ({ data }) => ({ ...existing, ...data }))
+
+    const response = await PATCH(request('PATCH', { id: 1, fait: true }))
+
+    expect(response.status).toBe(200)
+    const insertion = mocks.executeRaw.mock.calls.find(([strings]) =>
+      Array.isArray(strings) && strings.join('').includes('INSERT INTO injections_soins')
+    )
+    expect(insertion).toBeDefined()
+    expect((insertion![0] as TemplateStringsArray).join('')).toContain('::boolean')
+  })
+
+  // api_errors du 2026-09-19 19:27 (deux essais) : rouvrir un traitement dont la
+  // première injection était réalisée rendait 500 « argument of CASE/WHEN must
+  // be type boolean, not type jsonb ». Cause : `a && b && realisee` interpolait
+  // la LIGNE de la Map (un objet) à la place d'un booléen, et le cast
+  // `::boolean` ajouté le soir même ne sauve pas un objet jsonb (« cannot cast
+  // jsonb object to type boolean », prouvé contre la base). Le SQL brut ne doit
+  // recevoir que des valeurs scalaires.
+  it('rouvre un traitement effectué en n’interpolant que des scalaires dans le SQL brut', async () => {
+    const existing = {
+      id: 1,
+      userId: 'user-1',
+      animalId: 7,
+      lotId: null,
+      date: new Date('2026-07-21T00:00:00Z'),
+      fait: true,
+      tempsAttenteLaitJ: 5,
+      tempsAttenteOeufsJ: null,
+      tempsAttenteViandeJ: 12,
+      finAttenteLait: new Date('2026-07-27T00:00:00Z'),
+      finAttenteOeufs: null,
+      finAttenteViande: new Date('2026-08-03T00:00:00Z'),
+      cout: null,
+      type: 'Traitement vétérinaire',
+      nbInjections: 2,
+      intervalleInjectionsHeures: 24,
+      stockMedicamentId: null,
+      quantitePreleveeStock: 0,
+    }
+    mocks.soinFindFirst.mockResolvedValue(existing)
+    mocks.queryRaw
+      .mockResolvedValueOnce([
+        { id: 'inj-1', numero: 1, datePrevue: existing.date, dateRealisee: existing.date, statut: 'realisee' },
+        { id: 'inj-2', numero: 2, datePrevue: new Date('2026-07-22T00:00:00Z'), dateRealisee: null, statut: 'a_faire' },
+      ])
+      .mockResolvedValueOnce([
+        { numero: 1, datePrevue: existing.date, dateRealisee: null, statut: 'a_faire' },
+        { numero: 2, datePrevue: new Date('2026-07-22T00:00:00Z'), dateRealisee: null, statut: 'a_faire' },
+      ])
+    mocks.soinUpdate.mockImplementation(async ({ data }) => ({ ...existing, ...data }))
+
+    const response = await PATCH(request('PATCH', { id: 1, fait: false }))
+
+    expect(response.status).toBe(200)
+    const insertions = mocks.executeRaw.mock.calls.filter(([strings]) =>
+      Array.isArray(strings) && strings.join('').includes('INSERT INTO injections_soins')
+    )
+    expect(insertions).toHaveLength(2)
+    for (const [, ...valeurs] of insertions) {
+      for (const valeur of valeurs) {
+        expect(valeur === null || valeur instanceof Date || ['string', 'number', 'boolean'].includes(typeof valeur)).toBe(true)
+      }
+    }
+    // Première injection : statut interpolé « a_faire », drapeau de réouverture vrai.
+    const [, ...premiere] = insertions[0]
+    expect(premiere).toContain('a_faire')
+    expect(premiere.filter((v) => v === true)).toHaveLength(2)
+    expect(premiere.filter((v) => typeof v === 'object' && v !== null && !(v instanceof Date))).toHaveLength(0)
+  })
+
   // Ticket cmsof7ccx — « Rappel planifié » d'un soin déjà effectué : le GET
   // ?rappels=1 exige fait=false, un soin fait=true avec datePrevue future ne
   // remontait donc jamais. Le POST doit matérialiser un second soin planifié.
