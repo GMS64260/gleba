@@ -198,4 +198,51 @@ describe("API déclarations réglementaires", () => {
       }),
     }))
   })
+  // Reprise d'historique (signalement 2026-09-25) : un mouvement déjà déclaré
+  // sur papier s'atteste même si Gleba n'a pas toutes les informations.
+  it("atteste une déclaration faite hors Gleba malgré des informations manquantes", async () => {
+    mocks.charger.mockResolvedValueOnce({
+      year: 2024,
+      generatedAt: "2026-09-25T00:00:00.000Z",
+      declarations: [{ ...declaration, statut: "HORS_DELAI", anomalies: ["Numéro d’exploitation de destination manquant"] }],
+      resume: { total: 1, aCompleter: 0, aDeclarer: 0, horsDelai: 1, transmises: 0, modifieesApresTransmission: 0 },
+    })
+
+    const response = await PATCH(requestPatch({
+      key: declaration.key,
+      year: 2024,
+      statut: "TRANSMISE",
+      horsGleba: true,
+    }))
+
+    expect(response.status).toBe(200)
+    expect(mocks.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({
+        statut: "TRANSMISE",
+        canalTransmission: "Déclarée hors Gleba",
+        referenceTransmission: "Déclaration faite hors Gleba",
+      }),
+    }))
+    expect(mocks.auditCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        statutAvant: "HORS_DELAI",
+        statutApres: "TRANSMISE",
+        metadata: expect.objectContaining({ horsGleba: true, year: 2024 }),
+      }),
+    })
+  })
+
+  it("marque « sans objet » sans inventer de date d'envoi", async () => {
+    const response = await PATCH(requestPatch({
+      key: declaration.key,
+      year: 2026,
+      statut: "ANNULEE",
+      notes: "Sans objet",
+    }))
+
+    expect(response.status).toBe(200)
+    expect(mocks.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({ statut: "ANNULEE", transmisAt: null, notes: "Sans objet" }),
+    }))
+  })
 })

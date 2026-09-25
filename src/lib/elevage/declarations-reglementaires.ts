@@ -14,6 +14,12 @@ export const STATUTS_DECLARATION = [
 ] as const
 export type StatutDeclarationReglementaire = (typeof STATUTS_DECLARATION)[number]
 
+export {
+  CANAL_HORS_GLEBA,
+  REFERENCE_HORS_GLEBA,
+  declarationATraiter,
+} from "@/lib/elevage/declarations-constantes"
+
 export type CategorieReglementaireCouverte = "BOVIN" | "OVIN" | "CAPRIN"
 
 export interface SuiviDeclaration {
@@ -152,6 +158,37 @@ const memeJourUtc = (a: Date | null, b: Date | null) =>
       && a.getUTCMonth() === b.getUTCMonth()
       && a.getUTCDate() === b.getUTCDate(),
   )
+
+/**
+ * Un animal arrivé le jour même de sa naissance est né sur l'exploitation :
+ * on n'achète pas un animal le jour où il naît. Sauf si une origine externe
+ * est indiquée (n° d'exploitation d'origine, ou provenance autre qu'une
+ * naissance).
+ *
+ * Signalement 2026-09-25 : la règle exigeait le mot « naissance » dans la
+ * provenance. Les chevreaux saisis à la main, provenance vide, devenaient des
+ * « entrées » réclamant un n° d'exploitation d'origine : 15 des 27 alertes
+ * « hors délai » d'un éleveur caprin, et autant de fausses entrées au registre.
+ */
+export function animalNeSurExploitation(args: {
+  ficheNaissance?: unknown
+  dateArrivee: Date | null
+  dateNaissance: Date | null
+  provenance: string | null
+  nExploitationOrigine: string | null
+}): boolean {
+  if (args.ficheNaissance) return true
+  if (!memeJourUtc(args.dateArrivee, args.dateNaissance)) return false
+  if (args.nExploitationOrigine?.trim()) return false
+  const provenance = (args.provenance ?? "")
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .trim()
+  return provenance === ""
+    || provenance.includes("naissance")
+    || /\bnee?s? (sur|ici|a la ferme|chez nous)/.test(provenance)
+}
 
 /**
  * Un lot sans provenance, rattaché à une naissance du même jour que sa date

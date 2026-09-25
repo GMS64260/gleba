@@ -12,7 +12,7 @@ import prisma from '@/lib/prisma'
 import { lotSchema } from '@/lib/validations/elevage-lot'
 import { deleteAutoEntry, createDepenseFromLotAnimaux } from '@/lib/auto-compta'
 import { isPlausibleAnimalDate } from '@/lib/validations/elevage-animal'
-import { isOwnedParcelle } from '@/lib/elevage/animal-lot'
+import { enregistrerChangementLot, isOwnedParcelle } from '@/lib/elevage/animal-lot'
 import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
 import { createDepenseFromAchatAnimal } from '@/lib/auto-compta'
 import { invalidateKpi } from '@/lib/kpi'
@@ -168,7 +168,7 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { id, nom, especeAnimaleId, dateArrivee, quantiteInitiale, quantiteActuelle, statut, dateReforme, provenance, prixAchatTotal, notes, parcelleGeoId } = body
+    const { id, nom, especeAnimaleId, dateArrivee, quantiteInitiale, quantiteActuelle, statut, dateReforme, provenance, prixAchatTotal, notes, parcelleGeoId, nExploitationDestination } = body
 
     if (!id) {
       return NextResponse.json({ error: 'ID requis' }, { status: 400 })
@@ -252,6 +252,12 @@ export async function PATCH(request: NextRequest) {
     if (statut !== undefined) updateData.statut = statut
     if (dateReforme !== undefined) updateData.dateReforme = dateReforme ? new Date(dateReforme) : null
     if (provenance !== undefined) updateData.provenance = provenance || null
+    // Signalement 2026-09-25 — n° de l'exploitation ou de l'établissement qui
+    // reçoit les têtes à la sortie du lot (exigé par la déclaration de sortie).
+    if (nExploitationDestination !== undefined) {
+      updateData.nExploitationDestination =
+        typeof nExploitationDestination === 'string' ? nExploitationDestination.trim() || null : null
+    }
     if (prixAchatTotal !== undefined) {
       const p = prixAchatTotal === null || prixAchatTotal === '' ? null : Number(prixAchatTotal)
       if (p != null && (!Number.isFinite(p) || p < 0)) {
@@ -343,6 +349,9 @@ export async function DELETE(request: NextRequest) {
             animaux: true,
             abattages: true,
             productionsOeufs: true,
+            soins: true,
+            consommations: true,
+            naissances: true,
           },
         },
       },
@@ -352,12 +361,51 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Lot non trouvé' }, { status: 404 })
     }
 
-    // Empêcher la suppression si le lot a des dépendances actives
+    // Empêcher la suppression si le lot a des dépendances actives.
+    //
+    // Signalement 2026-09-25 : un lot terminé dont les 12 animaux étaient tous
+    // vendus ou abattus restait insupprimable (« lié à 12 animaux »), sans
+    // piste pour s'en sortir. Les animaux SORTIS ne bloquent plus : ils gardent
+    // leur fiche et leur historique, seul le rattachement au lot disparaît.
+    // Les animaux présents, eux, se retirent d'abord du lot ; et un lot qui
+    // porte des soins, naissances ou consommations reste au registre.
     const deps = existing._count
-    if (deps.animaux > 0 || deps.abattages > 0 || deps.productionsOeufs > 0) {
+    const lotIdNum = parseInt(id)
+    const animauxPresents = deps.animaux > 0
+      ? await prisma.animal.count({ where: { userId: session.user.id, lotId: lotIdNum, statut: 'actif' } })
+      : 0
+    const animauxSortis = deps.animaux - animauxPresents
+    if (animauxPresents > 0) {
       return NextResponse.json(
         {
-          error: `Impossible de supprimer ce lot : il est lié à ${deps.animaux} animaux, ${deps.abattages} abattages, ${deps.productionsOeufs} productions`,
+          error: `Ce lot contient encore ${animauxPresents} animal(aux) présent(s) : retirez-les du lot (« Ajouter / retirer des animaux ») ou clôturez le lot.`,
+          details: { ...deps, animauxPresents },
+        },
+        { status: 409 }
+      )
+    }
+    if (deps.abattages > 0 || deps.productionsOeufs > 0) {
+      return NextResponse.json(
+        {
+          error: `Ce lot porte ${deps.abattages} abattage(s) et ${deps.productionsOeufs} production(s) : il reste au registre. Clôturez-le plutôt que de le supprimer.`,
+          details: deps,
+        },
+        { status: 409 }
+      )
+    }
+    if (animauxSortis > 0 && Number(existing.prixAchatTotal || 0) > 0) {
+      return NextResponse.json(
+        {
+          error: "Ce lot porte un prix d'achat : son écriture reste en comptabilité. Clôturez le lot plutôt que de le supprimer.",
+          details: deps,
+        },
+        { status: 409 }
+      )
+    }
+    if (animauxSortis > 0 && (deps.soins > 0 || deps.consommations > 0 || deps.naissances > 0)) {
+      return NextResponse.json(
+        {
+          error: `Ce lot porte ${deps.soins} soin(s), ${deps.naissances} naissance(s) et ${deps.consommations} consommation(s) d'aliment : ils restent au registre et en comptabilité. Clôturez le lot plutôt que de le supprimer.`,
           details: deps,
         },
         { status: 409 }
@@ -365,6 +413,20 @@ export async function DELETE(request: NextRequest) {
     }
 
     await prisma.$transaction(async (tx) => {
+      if (animauxSortis > 0) {
+        const dateEffet = new Date()
+        const sortis = await tx.animal.findMany({
+          where: { userId: session.user.id, lotId: lotIdNum },
+          select: { id: true },
+        })
+        await tx.animal.updateMany({
+          where: { userId: session.user.id, lotId: lotIdNum },
+          data: { lotId: null },
+        })
+        for (const animal of sortis) {
+          await enregistrerChangementLot(tx, session.user.id, animal.id, lotIdNum, null, dateEffet, 'Suppression du lot')
+        }
+      }
       // Auto-compta : purger les écritures auto des consommations et soins du
       // lot AVANT leur suppression en masse (sinon les DepenseManuelle auto
       // resteraient orphelines).

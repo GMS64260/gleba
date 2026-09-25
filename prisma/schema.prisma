@@ -2317,6 +2317,9 @@ model LotAnimaux {
   prixAchatTotal   Float?        @map("prix_achat_total")
   statut           String        @default("actif") @map("statut") // "actif", "reforme", "termine"
   dateReforme      DateTime?     @map("date_reforme")
+  // N° d'exploitation ou d'établissement recevant les têtes à la sortie du lot
+  // (déclaration de sortie ; 2026-09-25).
+  nExploitationDestination String? @map("n_exploitation_destination")
   notes            String?       @map("notes")
   parcelleGeoId    String?       @map("parcelle_geo_id")
   parcelleGeo      ParcelleGeo?  @relation(fields: [parcelleGeoId], references: [id], onDelete: SetNull)
@@ -2504,6 +2507,9 @@ model Abattage {
   factureId      Int?        @map("facture_id")
   facture        Facture?    @relation("AbattageFacture", fields: [factureId], references: [id])
   lieu           String?     @map("lieu") // "ferme", "abattoir"
+  // N° de l'abattoir ou de l'établissement destinataire (déclaration de
+  // sortie d'un abattage de lot ; 2026-09-25).
+  nEtablissementDestination String? @map("n_etablissement_destination")
   annule         Boolean     @default(false) @map("annule")
   dateAnnulation DateTime?   @map("date_annulation")
   notes          String?     @map("notes")

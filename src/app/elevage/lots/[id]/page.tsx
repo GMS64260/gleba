@@ -26,6 +26,7 @@ import {
   Wallet,
   TrendingDown,
   TrendingUp,
+  UserPlus,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -35,6 +36,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { UserMenu } from "@/components/auth/UserMenu"
 import { ModulesNav } from "@/components/auth/ModulesNav"
 import { especeBaseLabel } from "@/lib/elevage/espece-base"
+import { ComposerLotDialog } from "@/components/elevage/ComposerLotDialog"
 
 interface AnimalLite {
   id: number
@@ -94,6 +96,13 @@ export default function LotDetailPage() {
   const [lot, setLot] = React.useState<LotDetail | null>(null)
   const [isLoading, setIsLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
+  const [composerOuvert, setComposerOuvert] = React.useState(false)
+  const [version, setVersion] = React.useState(0)
+  // Référence stable : la fenêtre recharge sa liste quand le lot change.
+  const lotAComposer = React.useMemo(
+    () => (lot ? { id: lot.id, nom: lot.nom, especeAnimaleId: lot.especeAnimale.id } : null),
+    [lot],
+  )
 
   React.useEffect(() => {
     let cancelled = false
@@ -116,7 +125,7 @@ export default function LotDetailPage() {
     return () => {
       cancelled = true
     }
-  }, [lotId])
+  }, [lotId, version])
 
   return (
     <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
@@ -285,7 +294,15 @@ export default function LotDetailPage() {
             {/* Animaux du lot */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Animaux du lot ({lot.animaux.length})</CardTitle>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <CardTitle className="text-base">Animaux du lot ({lot.animaux.length})</CardTitle>
+                  {lot.statut === "actif" && (
+                    <Button size="sm" variant="outline" className="min-h-11 sm:min-h-9" onClick={() => setComposerOuvert(true)}>
+                      <UserPlus className="mr-1 h-4 w-4" />
+                      Ajouter / retirer des animaux
+                    </Button>
+                  )}
+                </div>
               </CardHeader>
               <CardContent className="p-0">
                 {lot.animaux.length === 0 ? (
@@ -331,6 +348,12 @@ export default function LotDetailPage() {
               </CardContent>
             </Card>
 
+            <ComposerLotDialog
+              lot={lotAComposer}
+              open={composerOuvert}
+              onOpenChange={setComposerOuvert}
+              onComposed={() => setVersion((v) => v + 1)}
+            />
           </>
         ) : null}
       </main>
