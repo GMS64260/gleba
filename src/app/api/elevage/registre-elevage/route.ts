@@ -22,7 +22,7 @@ import {
   acteurReglementaire,
   journaliserEvenementReglementaire,
 } from '@/lib/elevage/audit-reglementaire'
-import { empreinteDeclaration } from '@/lib/elevage/declarations-reglementaires'
+import { animalNeSurExploitation, empreinteDeclaration } from '@/lib/elevage/declarations-reglementaires'
 import {
   dessinerEnteteTableauPdf,
   dessinerLigneTableauPdf,
@@ -129,13 +129,17 @@ export async function GET(request: NextRequest) {
         && texteNormalise(a.provenance).includes("naissance")
       )
     if (naissanceSurExploitation) continue
+    // Signalement 2026-09-25 — un animal saisi à la main, arrivé le jour de sa
+    // naissance sans origine externe, est né ici : il reste une ligne du
+    // registre (aucune mise bas ne le compte), mais son origine n'est plus vide.
+    const neIci = animalNeSurExploitation(a)
     lignes.push({
       date: a.dateArrivee || a.createdAt,
       sens: 'Entrée',
       espece: a.especeAnimale?.nom || '—',
       ident: `${a.identifiant || `#${a.id}`}${a.nom ? ` (${a.nom})` : ''}`,
       lot: a.lot?.nom || '',
-      origine: a.nExploitationOrigine || a.provenance || '',
+      origine: neIci ? 'Naissance sur l’exploitation' : (a.nExploitationOrigine || a.provenance || ''),
       destination: '',
       motif: '',
     })

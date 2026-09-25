@@ -15,7 +15,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { Prisma } from '@prisma/client'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
-import { createDepenseFromSoinAnimal, deleteAutoEntry } from '@/lib/auto-compta'
+import { createDepenseFromSoinAnimal } from '@/lib/auto-compta'
 import { invalidateKpi } from '@/lib/kpi'
 import { soinPatchSchema, soinSchema } from '@/lib/validations/elevage-soin'
 import { calendrierInjections, derniereInjectionActive, ajouterJours } from '@/lib/elevage/injections'
@@ -24,6 +24,7 @@ import { randomUUID } from 'node:crypto'
 // (recompute-from-truth), cross-granularité individu↔lot et symétrique
 // POST/PATCH/DELETE. Cf. src/lib/elevage/attente-lait.ts.
 import { ciblesAffectees, resyncEcartementLait } from '@/lib/elevage/attente-lait'
+import { fenetreSoin, supprimerSoin } from '@/lib/elevage/suppression-soin'
 import { estEspeceSansDelaiLait } from '@/lib/elevage/cibles-collecte-lait'
 import {
   PLANCHER_CASCADE_LAIT_J,
@@ -45,14 +46,6 @@ const TYPES_MEDICAMENTEUX = new Set([
   'Traitement vétérinaire',
 ])
 
-// Fenêtre couverte par un soin (pour cibler le resync) : de sa date à la plus
-// lointaine de ses fins d'attente. Bornes filtrées des nulls.
-function fenetreSoin(...dates: (Date | null | undefined)[]): { min: Date; max: Date } | null {
-  const ds = dates.filter((x): x is Date => x != null)
-  if (ds.length === 0) return null
-  const t = ds.map((d) => d.getTime())
-  return { min: new Date(Math.min(...t)), max: new Date(Math.max(...t)) }
-}
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -798,31 +791,10 @@ export async function DELETE(request: NextRequest) {
     const id = searchParams.get('id')
     if (!id) return NextResponse.json({ error: 'ID requis' }, { status: 400 })
 
-    const existing = await prisma.soinAnimal.findFirst({
-      where: { id: parseInt(id), userId: session.user.id },
-    })
-    if (!existing) return NextResponse.json({ error: 'Soin non trouvé' }, { status: 404 })
-
-    // Réintégration recompute-from-truth : on supprime d'abord le soin, puis on
-    // recalcule l'écartement sur sa fenêtre et ses cibles (cross-granularité).
-    // Les collectes couvertes uniquement par ce soin redeviennent
-    // commercialisables ; celles couvertes par un autre soin restent écartées.
-    await prisma.$transaction(async (tx) => {
-      await deleteAutoEntry('soin_animal', existing.id, 'depense', session.user.id, tx)
-      if (existing.stockMedicamentId && existing.quantitePreleveeStock > 0) {
-        await tx.stockMedicamentElevage.update({
-          where: { id: existing.stockMedicamentId },
-          data: { quantite: { increment: existing.quantitePreleveeStock } },
-        })
-      }
-      await tx.soinAnimal.delete({ where: { id: parseInt(id) } })
-      if (existing.finAttenteLait) {
-        const cibles = await ciblesAffectees(tx, session.user.id, existing.animalId, existing.lotId)
-        const f = fenetreSoin(existing.date, existing.finAttenteLait)
-        if (f) await resyncEcartementLait(tx, session.user.id, cibles, f.min, f.max)
-      }
-    })
-    invalidateKpi(session.user.id)
+    const soinId = parseInt(id)
+    if (Number.isNaN(soinId)) return NextResponse.json({ error: 'ID invalide' }, { status: 400 })
+    const resultat = await supprimerSoin(session.user.id, soinId)
+    if (!resultat.ok) return NextResponse.json({ error: resultat.error }, { status: resultat.status })
 
     return NextResponse.json({ success: true })
   } catch (error) {

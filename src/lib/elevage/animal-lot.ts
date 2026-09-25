@@ -66,3 +66,33 @@ export async function enregistrerChangementLot(
     `)
   }
 }
+
+/**
+ * Règle comptable du prix d'achat d'un animal rattaché à un lot, partagée par
+ * la fiche animal (PATCH) et la composition groupée d'un lot : le prix
+ * individuel n'est « inclus dans le lot » que si l'animal ET le lot ont un prix
+ * d'achat, et un animal payé seul ne peut entrer dans un lot payé en bloc sans
+ * que l'on dise lequel des deux prix fait foi.
+ */
+export function regleAchatInclusLot(args: {
+  prixAchat: number | null
+  inclusDemande: boolean
+  lotCible: number | null
+  lotPorteAchat: boolean
+}): { inclus: boolean; erreur: string | null } {
+  const inclus = args.lotCible === null ? false : args.inclusDemande
+  const prixPositif = Number(args.prixAchat || 0) > 0
+  if (inclus && (!prixPositif || !args.lotPorteAchat)) {
+    return {
+      inclus,
+      erreur: "Le prix ne peut être inclus dans le lot que si l'animal et le lot ont tous deux un prix d'achat.",
+    }
+  }
+  if (prixPositif && args.lotPorteAchat && !inclus) {
+    return {
+      inclus,
+      erreur: "Ce lot possède déjà un prix d'achat total. Cochez « prix inclus dans le lot » ou retirez l'un des deux prix.",
+    }
+  }
+  return { inclus, erreur: null }
+}

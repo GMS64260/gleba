@@ -12,6 +12,8 @@ export const abattageSchema = z.object({
   destination: caseInsensitiveEnum(['auto_consommation', 'vente', 'don'] as const),
   prixVente: z.number().min(0).nullable().optional(),
   lieu: z.string().max(200).nullable().optional(),
+  // N° de l'abattoir ou de l'établissement destinataire (déclaration de sortie).
+  nEtablissementDestination: z.string().trim().max(100).nullable().optional(),
   notes: z.string().max(5000).nullable().optional(),
 }).refine(
   data => data.animalId != null || data.lotId != null,

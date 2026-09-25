@@ -11,7 +11,7 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { createDepenseFromAchatAnimal } from '@/lib/auto-compta'
 import { animalSchema, isPlausibleAnimalDate } from '@/lib/validations/elevage-animal'
-import { enregistrerChangementLot, isAssignableAnimalLot, isOwnedParcelle } from '@/lib/elevage/animal-lot'
+import { enregistrerChangementLot, isAssignableAnimalLot, isOwnedParcelle, regleAchatInclusLot } from '@/lib/elevage/animal-lot'
 import { resoudreRaceTexte } from '@/lib/elevage/race-referentiel'
 import { normaliserSexe, SEXES_ANIMAL } from '@/lib/elevage/sexe'
 import { verifierLienParenteSansCycle } from '@/lib/elevage/genealogie-validation'
@@ -403,28 +403,23 @@ export async function PATCH(request: NextRequest) {
     if (prixFinal != null && (!Number.isFinite(prixFinal) || prixFinal < 0)) {
       return NextResponse.json({ error: "Prix d'achat invalide" }, { status: 400 })
     }
-    let inclusFinal = prixAchatInclusDansLot === undefined
+    const inclusDemande = prixAchatInclusDansLot === undefined
       ? existing.prixAchatInclusDansLot
       : Boolean(prixAchatInclusDansLot)
-    if (lotCible === null) inclusFinal = false
-    const lotAchatCible = lotCible != null && (Number(prixFinal || 0) > 0 || inclusFinal)
+    const lotAchatCible = lotCible != null && (Number(prixFinal || 0) > 0 || inclusDemande)
       ? await prisma.lotAnimaux.findFirst({
           where: { id: lotCible, userId: session.user.id },
           select: { prixAchatTotal: true },
         })
       : null
-    const lotPorteAchatFinal = Number(lotAchatCible?.prixAchatTotal || 0) > 0
-    if (inclusFinal && (!(Number(prixFinal || 0) > 0) || !lotPorteAchatFinal)) {
-      return NextResponse.json(
-        { error: "Le prix ne peut être inclus dans le lot que si l'animal et le lot ont tous deux un prix d'achat." },
-        { status: 400 },
-      )
-    }
-    if (Number(prixFinal || 0) > 0 && lotPorteAchatFinal && !inclusFinal) {
-      return NextResponse.json(
-        { error: "Ce lot possède déjà un prix d'achat total. Cochez « prix inclus dans le lot » ou retirez l'un des deux prix." },
-        { status: 400 },
-      )
+    const { inclus: inclusFinal, erreur: erreurAchat } = regleAchatInclusLot({
+      prixAchat: prixFinal,
+      inclusDemande,
+      lotCible,
+      lotPorteAchat: Number(lotAchatCible?.prixAchatTotal || 0) > 0,
+    })
+    if (erreurAchat) {
+      return NextResponse.json({ error: erreurAchat }, { status: 400 })
     }
 
     // Cartographie élevage — parcelle validée propriétaire (null/'' ⇒ détache).

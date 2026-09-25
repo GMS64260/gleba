@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+  animalNeSurExploitation,
   calculerEcheanceDeclaration,
   calculerStatutDeclaration,
   csvCell,
@@ -88,5 +89,22 @@ describe("déclarations réglementaires d'élevage", () => {
       provenance: null,
       datesNaissances: [new Date("2026-03-11T07:00:00.000Z")],
     })).toBe(false)
+  })
+  // Signalement 2026-09-25 : des chevreaux saisis à la main, provenance vide,
+  // devenaient des « entrées » réclamant un n° d'exploitation d'origine.
+  it("reconnaît un animal né sur place même sans provenance saisie", () => {
+    const jour = new Date("2026-04-21T00:00:00.000Z")
+    const base = { dateArrivee: jour, dateNaissance: jour, provenance: null, nExploitationOrigine: null }
+    expect(animalNeSurExploitation(base)).toBe(true)
+    expect(animalNeSurExploitation({ ...base, provenance: "Née sur l'exploitation" })).toBe(true)
+    expect(animalNeSurExploitation({ ...base, provenance: "Naissance" })).toBe(true)
+    // Une origine externe fait foi.
+    expect(animalNeSurExploitation({ ...base, nExploitationOrigine: "FR46100999" })).toBe(false)
+    expect(animalNeSurExploitation({ ...base, provenance: "Achat GAEC du Causse" })).toBe(false)
+    // Arrivée un autre jour que la naissance : une vraie entrée.
+    expect(animalNeSurExploitation({ ...base, dateArrivee: new Date("2026-06-01T00:00:00.000Z") })).toBe(false)
+    expect(animalNeSurExploitation({ ...base, dateNaissance: null })).toBe(false)
+    // Une fiche issue d'une mise bas enregistrée l'est toujours.
+    expect(animalNeSurExploitation({ ...base, dateArrivee: null, ficheNaissance: { id: "p1" } })).toBe(true)
   })
 })

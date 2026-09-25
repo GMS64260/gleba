@@ -1,5 +1,7 @@
 import prisma from "@/lib/prisma"
+import { reconstituerEffectifsLots } from "@/lib/elevage/effectif"
 import {
+  animalNeSurExploitation,
   calculerEcheanceDeclaration,
   calculerStatutDeclaration,
   empreinteDeclaration,
@@ -16,15 +18,6 @@ import {
 
 const dansPeriode = (date: Date | null, debut: Date, fin: Date) =>
   Boolean(date && date >= debut && date < fin)
-
-const memeJourUTC = (a: Date | null, b: Date | null) =>
-  Boolean(
-    a
-      && b
-      && a.getUTCFullYear() === b.getUTCFullYear()
-      && a.getUTCMonth() === b.getUTCMonth()
-      && a.getUTCDate() === b.getUTCDate(),
-  )
 
 const texteNormalise = (value: string | null | undefined) =>
   (value ?? "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase()
@@ -139,6 +132,7 @@ export async function chargerDeclarationsReglementaires(
         quantiteActuelle: true,
         provenance: true,
         statut: true,
+        nExploitationDestination: true,
         especeAnimale: {
           select: { nom: true, filiere: true, categorieReglementaire: true },
         },
@@ -158,6 +152,7 @@ export async function chargerDeclarationsReglementaires(
         quantite: true,
         lieu: true,
         destination: true,
+        nEtablissementDestination: true,
         lot: {
           select: {
             id: true,
@@ -171,6 +166,8 @@ export async function chargerDeclarationsReglementaires(
     }),
     prisma.declarationReglementaireSuivi.findMany({ where: { userId } }),
   ])
+  const lotsReformes = lots.filter((lot) => dansPeriode(lot.dateReforme, debut, fin))
+  const effectifsLots = await reconstituerEffectifsLots(userId, lotsReformes)
 
   const suiviParCle = new Map<string, SuiviDeclaration>(
     suivis.map((suivi) => [suivi.declarationKey, suivi]),
@@ -307,12 +304,7 @@ export async function chargerDeclarationsReglementaires(
     const espece = animal.especeAnimale
     const cible = animal.identifiant || animal.nom || `Animal #${animal.id}`
     const identifiants = animal.identifiant ? [animal.identifiant] : []
-    const naissanceSurExploitation =
-      Boolean(animal.ficheNaissance)
-      || (
-        memeJourUTC(animal.dateArrivee, animal.dateNaissance)
-        && texteNormalise(animal.provenance).includes("naissance")
-      )
+    const naissanceSurExploitation = animalNeSurExploitation(animal)
 
     if (dansPeriode(animal.dateArrivee, debut, fin) && !naissanceSurExploitation) {
       const anomalies: string[] = []
@@ -345,6 +337,14 @@ export async function chargerDeclarationsReglementaires(
         || texteSortie.includes("equarr")
       const type: TypeDeclarationReglementaire = mortalite ? "MORTALITE" : "SORTIE"
       const anomalies: string[] = []
+      // Signalement 2026-09-25 — une chèvre morte, remise « active » avant le
+      // correctif du 23/09, gardait sa date de sortie : elle ressortait ici en
+      // « sortie » réclamant un n° de destination. On dit la vraie cause.
+      if (animal.statut === "actif") {
+        anomalies.push(
+          "Fiche encore « active » avec une date de sortie : enregistrez sa mort, sa vente ou son abattage, ou effacez la date de sortie",
+        )
+      }
       if (!animal.identifiant) anomalies.push("Identifiant officiel de l’animal manquant")
       if (!mortalite && !animal.nExploitationDestination) {
         anomalies.push("Numéro d’exploitation de destination manquant")
@@ -401,20 +401,31 @@ export async function chargerDeclarationsReglementaires(
       })
     }
     if (dansPeriode(lot.dateReforme, debut, fin)) {
-      ajouter({
-        key: `lot:${lot.id}:SORTIE`,
-        type: "SORTIE",
-        categorieBrute: espece.categorieReglementaire,
-        filiere: espece.filiere,
-        dateEvenement: lot.dateReforme!,
-        libelle: `Sortie / réforme du lot ${cible}`,
-        espece: espece.nom,
-        cible,
-        sourceUrl: "/elevage?tab=animaux",
-        quantite: lot.quantiteActuelle,
-        anomalies: ["Exploitation ou établissement de destination manquant"],
-        donnees: { lotId: lot.id, statut: lot.statut },
-      })
+      // Signalement 2026-09-25 — l'anomalie « destination manquante » était
+      // posée en dur : aucune sortie de lot ne pouvait être soldée. Seules les
+      // têtes encore comptées au lot, donc sorties sans vente, abattage ni
+      // mortalité enregistrés, relèvent de cette déclaration : les autres sont
+      // déclarées par leur propre mouvement.
+      const tetesSorties = effectifsLots.get(lot.id)?.effectifCalcule ?? lot.quantiteActuelle
+      if (tetesSorties > 0) {
+        ajouter({
+          key: `lot:${lot.id}:SORTIE`,
+          type: "SORTIE",
+          categorieBrute: espece.categorieReglementaire,
+          filiere: espece.filiere,
+          dateEvenement: lot.dateReforme!,
+          libelle: `Sortie / réforme du lot ${cible}`,
+          espece: espece.nom,
+          cible,
+          sourceUrl: `/elevage?tab=animaux&sub=lots&editLot=${lot.id}`,
+          quantite: tetesSorties,
+          destination: lot.nExploitationDestination,
+          anomalies: lot.nExploitationDestination
+            ? []
+            : ["Exploitation ou établissement de destination manquant"],
+          donnees: { lotId: lot.id, statut: lot.statut },
+        })
+      }
     }
   }
 
@@ -429,13 +440,16 @@ export async function chargerDeclarationsReglementaires(
       libelle: `Sortie de ${abattage.quantite} animal(aux) du lot ${abattage.lot.nom || `#${abattage.lot.id}`}`,
       espece: abattage.lot.especeAnimale.nom,
       cible: abattage.lot.nom || `Lot #${abattage.lot.id}`,
-      sourceUrl: "/elevage?tab=production",
+      sourceUrl: `/elevage?tab=production&editAbattage=${abattage.id}`,
       quantite: abattage.quantite,
-      destination: abattage.lieu === "abattoir" ? "Abattoir" : null,
-      anomalies:
-        abattage.lieu === "abattoir"
-          ? ["Numéro de l’établissement destinataire à reporter dans l’export"]
-          : ["Destination réglementaire du mouvement manquante"],
+      destination:
+        abattage.nEtablissementDestination
+        ?? (abattage.lieu === "abattoir" ? "Abattoir" : abattage.lieu),
+      // Même défaut que la sortie de lot : ces anomalies ne se levaient jamais,
+      // faute de champ où saisir le numéro de l'établissement.
+      anomalies: abattage.nEtablissementDestination
+        ? []
+        : ["Numéro de l’abattoir ou de l’établissement destinataire manquant"],
       donnees: {
         abattageId: abattage.id,
         lotId: abattage.lot.id,

@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { animalId, lotId, date, quantite, poidsVif, poidsCarcasse, destination, prixVente, lieu, notes } = parsed.data
+    const { animalId, lotId, date, quantite, poidsVif, poidsCarcasse, destination, prixVente, lieu, nEtablissementDestination, notes } = parsed.data
     const dateAbattage = date || new Date()
     const overrideCoherence = (body as { overrideCoherence?: boolean })?.overrideCoherence === true
 
@@ -182,6 +182,7 @@ export async function POST(request: NextRequest) {
           destination,
           prixVente: prixVente || null,
           lieu,
+          nEtablissementDestination: nEtablissementDestination || null,
           notes,
         },
         include: {
@@ -202,6 +203,8 @@ export async function POST(request: NextRequest) {
               statut: 'abattu',
               dateSortie: date || new Date(),
               causeSortie: 'Abattage',
+              // La déclaration de sortie de l'animal lit ce numéro.
+              ...(nEtablissementDestination ? { nExploitationDestination: nEtablissementDestination } : {}),
             },
           })
         }
@@ -254,7 +257,7 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { id, date, quantite, poidsVif, poidsCarcasse, destination, prixVente, notes } = body
+    const { id, date, quantite, poidsVif, poidsCarcasse, destination, prixVente, lieu, nEtablissementDestination, notes } = body
     const userId = session.user.id
 
     if (!id) {
@@ -298,6 +301,12 @@ export async function PATCH(request: NextRequest) {
     if (poidsCarcasse !== undefined) updateData.poidsCarcasse = poidsCarcasse ? parseFloat(poidsCarcasse) : null
     if (destination !== undefined) updateData.destination = destination
     if (prixVente !== undefined) updateData.prixVente = prixVente ? parseFloat(prixVente) : null
+    // Le formulaire d'édition envoyait le lieu, que ce PATCH ignorait en silence.
+    if (lieu !== undefined) updateData.lieu = typeof lieu === 'string' ? lieu.trim() || null : null
+    if (nEtablissementDestination !== undefined) {
+      updateData.nEtablissementDestination =
+        typeof nEtablissementDestination === 'string' ? nEtablissementDestination.trim() || null : null
+    }
     if (notes !== undefined) updateData.notes = notes
 
     const doitAnnulerFacture =

@@ -17,7 +17,8 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@/lib/auth-utils', () => ({ requireAuthApi: mocks.requireAuthApi }))
-vi.mock('@/lib/elevage/animal-lot', () => ({
+vi.mock('@/lib/elevage/animal-lot', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/elevage/animal-lot')>()),
   isAssignableAnimalLot: mocks.isAssignableAnimalLot,
   enregistrerChangementLot: mocks.enregistrerChangementLot,
 }))

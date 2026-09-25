@@ -27,6 +27,7 @@ import {
   CheckCircle2,
   RotateCcw,
   MoreHorizontal,
+  UserPlus,
 } from "lucide-react"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -37,6 +38,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { labelStatutAnimal, labelStatutLot } from "@/lib/elevage/labels"
 import { sexeAffichable } from "@/lib/elevage/sexe"
 import { confirmDialog } from "@/lib/global-dialog"
+import { ComposerLotDialog, type LotAComposer } from "@/components/elevage/ComposerLotDialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -87,6 +89,8 @@ interface Animal {
   orientationProduction: string | null
   sexe: string | null
   dateSortie?: string | null
+  causeSortie?: string | null
+  nExploitationDestination?: string | null
   dateNaissance: string | null
   dateArrivee: string | null
   statut: string
@@ -133,6 +137,8 @@ interface Lot {
   prixAchatTotal: number | null
   notes: string | null
   statut: string
+  dateReforme?: string | null
+  nExploitationDestination?: string | null
   parcelleGeo: { id: string; nom: string } | null
   especeAnimale: { id: string; nom: string; type: string; filiere: string | null; couleur: string | null }
   _count: { animaux: number; productionsOeufs: number; soins: number }
@@ -245,6 +251,13 @@ function AnimauxSubTab() {
   const [animalSubmitError, setAnimalSubmitError] = React.useState<string | null>(null)
   // QA 2026-05-15 — édition par ligne pour les animaux
   const [editingAnimalId, setEditingAnimalId] = React.useState<number | null>(null)
+  // Statut et date de sortie de l'animal édité : la section « Sortie » du
+  // formulaire n'apparaît que pour un animal sorti (ou incohérent).
+  const [sortieEnEdition, setSortieEnEdition] = React.useState<{ statut: string; dateSortie: string | null } | null>(null)
+  const afficherSortie =
+    editingAnimalId !== null
+    && sortieEnEdition !== null
+    && (sortieEnEdition.statut !== "actif" || Boolean(sortieEnEdition.dateSortie))
   // Ticket cmsoexauc — certains identifiants historiques (ex. FR85001 typé
   // « IPG caprin ») ne passent pas la regex actuelle : la fiche devenait non
   // modifiable (bouton « Mettre à jour » désactivé). On mémorise l'identifiant
@@ -266,6 +279,7 @@ function AnimauxSubTab() {
     nom: "", raceAnimaleId: "", raceHistorique: "", orientationProduction: "", sexe: "",
     dateNaissance: "", dateArrivee: todayLocalISO(),
     provenance: "", nExploitationOrigine: "",
+    causeSortie: "", nExploitationDestination: "",
     statutSanitaire: "",
     prixAchat: "", prixAchatInclusDansLot: false, poidsActuel: "", notes: "",
     mereId: "", pereId: "", pereIdentifiant: "", mereIdentifiant: "",
@@ -281,6 +295,7 @@ function AnimauxSubTab() {
 
   const resetAnimalForm = () => {
     setEditingAnimalId(null)
+    setSortieEnEdition(null)
     setIdentifiantCharge(null)
     setAnimalSubmitError(null)
     // Quand l'atelier courant ne contient qu'une espèce possible, on la
@@ -293,6 +308,7 @@ function AnimauxSubTab() {
 
   const handleEditAnimal = (a: Animal) => {
     setEditingAnimalId(a.id)
+    setSortieEnEdition({ statut: a.statut, dateSortie: a.dateSortie ?? null })
     setIdentifiantCharge({ identifiant: a.identifiant ?? "", typeIdentifiant: a.typeIdentifiant ?? "" })
     setFormData({
       especeAnimaleId: a.especeAnimale.id,
@@ -309,6 +325,8 @@ function AnimauxSubTab() {
       dateArrivee: a.dateArrivee ? a.dateArrivee.split('T')[0] : todayLocalISO(),
       provenance: a.provenance ?? "",
       nExploitationOrigine: a.nExploitationOrigine ?? "",
+      causeSortie: a.causeSortie ?? "",
+      nExploitationDestination: a.nExploitationDestination ?? "",
       statutSanitaire: a.statutSanitaire.join("\n"),
       prixAchat: a.prixAchat ? a.prixAchat.toString() : "",
       prixAchatInclusDansLot: a.prixAchatInclusDansLot,
@@ -513,6 +531,10 @@ function AnimauxSubTab() {
         sexe: formData.sexe || null,
         provenance: formData.provenance || null,
         nExploitationOrigine: formData.nExploitationOrigine || null,
+        // Champs de sortie : édités seulement sur un animal sorti (section
+        // « Sortie ») ; jamais envoyés à la création.
+        causeSortie: afficherSortie ? formData.causeSortie.trim() || null : undefined,
+        nExploitationDestination: afficherSortie ? formData.nExploitationDestination.trim() || null : undefined,
         statutSanitaire: formData.statutSanitaire
           .split(/[\n,;]+/)
           .map((value) => value.trim())
@@ -611,13 +633,14 @@ function AnimauxSubTab() {
   const [abattageForm, setAbattageForm] = React.useState({
     date: todayLocalISO(),
     poidsVif: "", poidsCarcasse: "", destination: "auto_consommation", prixVente: "", lieu: "", notes: "",
+    nEtablissementDestination: "",
   })
   const [isSavingAbattage, setIsSavingAbattage] = React.useState(false)
 
   const [venteDialog, setVenteDialog] = React.useState<Animal | null>(null)
   const [venteForm, setVenteForm] = React.useState({
     date: todayLocalISO(),
-    prixUnitaire: "", client: "", description: "", notes: "",
+    prixUnitaire: "", client: "", description: "", notes: "", nExploitationDestination: "",
   })
   const [isSavingVente, setIsSavingVente] = React.useState(false)
 
@@ -646,13 +669,14 @@ function AnimauxSubTab() {
           destination: abattageForm.destination,
           prixVente: abattageForm.prixVente ? parseFloat(abattageForm.prixVente) : null,
           lieu: abattageForm.lieu || null,
+          nEtablissementDestination: abattageForm.nEtablissementDestination.trim() || null,
           notes: abattageForm.notes || null,
         }),
       })
       if (!res.ok) throw new Error('Erreur')
       toast({ title: "Abattage enregistré", description: `${abattageDialog.nom || abattageDialog.identifiant || ''} marqué comme abattu` })
       setAbattageDialog(null)
-      setAbattageForm({ date: todayLocalISO(), poidsVif: "", poidsCarcasse: "", destination: "auto_consommation", prixVente: "", lieu: "", notes: "" })
+      setAbattageForm({ date: todayLocalISO(), poidsVif: "", poidsCarcasse: "", destination: "auto_consommation", prixVente: "", lieu: "", notes: "", nEtablissementDestination: "" })
       fetchData()
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible d'enregistrer l'abattage" })
@@ -693,11 +717,16 @@ function AnimauxSubTab() {
       await fetch(`/api/elevage/animaux/${venteDialog.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ statut: 'vendu', dateSortie: venteForm.date }),
+        body: JSON.stringify({
+          statut: 'vendu',
+          dateSortie: venteForm.date,
+          // N° de l'exploitation de l'acheteur : exigé pour déclarer la sortie.
+          nExploitationDestination: venteForm.nExploitationDestination.trim() || null,
+        }),
       })
       toast({ title: "Vente enregistrée", description: `${venteDialog.nom || venteDialog.identifiant || ''} marque comme vendu` })
       setVenteDialog(null)
-      setVenteForm({ date: todayLocalISO(), prixUnitaire: "", client: "", description: "", notes: "" })
+      setVenteForm({ date: todayLocalISO(), prixUnitaire: "", client: "", description: "", notes: "", nExploitationDestination: "" })
       fetchData()
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible d'enregistrer la vente" })
@@ -1202,6 +1231,53 @@ function AnimauxSubTab() {
                   </span>
                 </label>
               )}
+              {/* Signalement 2026-09-25 — la déclaration d'une vente ou d'un
+                  abattage exige le n° de l'exploitation qui reçoit l'animal, et
+                  aucun écran ne permettait de le saisir : « Corriger la source »
+                  ouvrait ce formulaire sans le champ. */}
+              {afficherSortie && sortieEnEdition && (
+                <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <div className="text-sm font-medium">
+                    Sortie
+                    <span className="ml-2 font-normal text-muted-foreground">
+                      {sortieEnEdition.statut === "actif" ? "fiche active" : sortieEnEdition.statut}
+                      {sortieEnEdition.dateSortie
+                        ? ` le ${new Date(sortieEnEdition.dateSortie).toLocaleDateString("fr-FR")}`
+                        : ""}
+                    </span>
+                  </div>
+                  {sortieEnEdition.statut === "actif" && (
+                    <p className="text-xs text-amber-800">
+                      Cette fiche est active mais porte une date de sortie. Si l’animal est mort, vendu ou
+                      abattu, enregistrez-le avec l’action correspondante de la liste ; sinon, la date
+                      disparaîtra à sa prochaine remise en activité.
+                    </p>
+                  )}
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label>Cause de sortie</Label>
+                      <Input
+                        value={formData.causeSortie}
+                        onChange={(e) => setFormData(f => ({ ...f, causeSortie: e.target.value }))}
+                        placeholder="Vente, abattage, maladie…"
+                      />
+                    </div>
+                    {estRente && (
+                      <div className="space-y-2">
+                        <Label>N° d’exploitation de destination</Label>
+                        <Input
+                          value={formData.nExploitationDestination}
+                          onChange={(e) => setFormData(f => ({ ...f, nExploitationDestination: e.target.value }))}
+                          placeholder="Acheteur, abattoir…"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Exigé pour déclarer une vente ou un abattage.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
               {/* Le modèle possédait déjà `statutSanitaire`, mais aucun écran ne
                   permettait de le renseigner ni de le relire (cms1v8am6). Une
                   ligne par qualification garde la saisie simple tout en
@@ -1649,6 +1725,14 @@ function AnimauxSubTab() {
               <Input value={abattageForm.lieu} onChange={(e) => setAbattageForm(f => ({ ...f, lieu: e.target.value }))} placeholder="Lieu d'abattage" />
             </div>
             <div className="space-y-2">
+              <Label>N° de l’abattoir (établissement)</Label>
+              <Input
+                value={abattageForm.nEtablissementDestination}
+                onChange={(e) => setAbattageForm(f => ({ ...f, nEtablissementDestination: e.target.value }))}
+                placeholder="(optionnel) exigé pour déclarer la sortie"
+              />
+            </div>
+            <div className="space-y-2">
               <Label>Notes</Label>
               <Textarea value={abattageForm.notes} onChange={(e) => setAbattageForm(f => ({ ...f, notes: e.target.value }))} rows={2} />
             </div>
@@ -1687,6 +1771,16 @@ function AnimauxSubTab() {
               <Label>Client</Label>
               <Input value={venteForm.client} onChange={(e) => setVenteForm(f => ({ ...f, client: e.target.value }))} placeholder="Nom du client" />
             </div>
+            {(venteDialog?.especeAnimale.filiere ?? "rente") === "rente" && (
+              <div className="space-y-2">
+                <Label>N° d’exploitation de l’acheteur</Label>
+                <Input
+                  value={venteForm.nExploitationDestination}
+                  onChange={(e) => setVenteForm(f => ({ ...f, nExploitationDestination: e.target.value }))}
+                  placeholder="(optionnel) exigé pour déclarer la sortie"
+                />
+              </div>
+            )}
             <div className="space-y-2">
               <Label>Description</Label>
               <Input value={venteForm.description} onChange={(e) => setVenteForm(f => ({ ...f, description: e.target.value }))} placeholder="Ex: Poulet fermier plein air" />
@@ -1789,17 +1883,24 @@ function LotsSubTab() {
   const [isSavingLot, setIsSavingLot] = React.useState(false)
   // QA 2026-05-15 — édition par ligne
   const [editingLotId, setEditingLotId] = React.useState<number | null>(null)
+  // Composition groupée d'un lot (signalement 2026-09-25).
+  const [lotAComposer, setLotAComposer] = React.useState<LotAComposer | null>(null)
+  const ouvrirComposition = (lot: Lot) =>
+    setLotAComposer({ id: lot.id, nom: lot.nom, especeAnimaleId: lot.especeAnimale.id })
 
   const EMPTY_LOT_FORM = {
     especeAnimaleId: "", nom: "",
     dateArrivee: todayLocalISO(),
     quantiteInitiale: "", provenance: "", prixAchatTotal: "", notes: "",
-    parcelleGeoId: "",
+    parcelleGeoId: "", nExploitationDestination: "",
   }
   const [formData, setFormData] = React.useState(EMPTY_LOT_FORM)
+  // Statut du lot édité : le n° de destination ne concerne qu'un lot sorti.
+  const [statutLotEdite, setStatutLotEdite] = React.useState<string | null>(null)
 
   const resetLotForm = () => {
     setEditingLotId(null)
+    setStatutLotEdite(null)
     const defautEspece =
       especesPourAtelier.length === 1 ? especesPourAtelier[0].id : ""
     setFormData({ ...EMPTY_LOT_FORM, especeAnimaleId: defautEspece })
@@ -1807,6 +1908,7 @@ function LotsSubTab() {
 
   const handleEditLot = (lot: Lot) => {
     setEditingLotId(lot.id)
+    setStatutLotEdite(lot.statut)
     setFormData({
       especeAnimaleId: lot.especeAnimale.id,
       nom: lot.nom ?? "",
@@ -1816,6 +1918,7 @@ function LotsSubTab() {
       prixAchatTotal: lot.prixAchatTotal ? lot.prixAchatTotal.toString() : "",
       notes: lot.notes ?? "",
       parcelleGeoId: lot.parcelleGeo?.id ?? "",
+      nExploitationDestination: lot.nExploitationDestination ?? "",
     })
     setIsDialogOpen(true)
   }
@@ -1826,6 +1929,7 @@ function LotsSubTab() {
     date: todayLocalISO(),
     quantite: "1", poidsVif: "", poidsCarcasse: "",
     destination: "auto_consommation", prixVente: "", lieu: "", notes: "",
+    nEtablissementDestination: "",
   })
   const [isSavingAbatLot, setIsSavingAbatLot] = React.useState(false)
 
@@ -1847,13 +1951,14 @@ function LotsSubTab() {
           destination: abatLotForm.destination,
           prixVente: abatLotForm.prixVente ? parseFloat(abatLotForm.prixVente) : null,
           lieu: abatLotForm.lieu || null,
+          nEtablissementDestination: abatLotForm.nEtablissementDestination.trim() || null,
           notes: abatLotForm.notes || null,
         }),
       })
       if (!res.ok) throw new Error('Erreur')
       toast({ title: "Abattage enregistré", description: `${abatLotForm.quantite} animal(aux) du lot ${abatLotDialog.nom || `#${abatLotDialog.id}`}` })
       setAbatLotDialog(null)
-      setAbatLotForm({ date: todayLocalISO(), quantite: "1", poidsVif: "", poidsCarcasse: "", destination: "auto_consommation", prixVente: "", lieu: "", notes: "" })
+      setAbatLotForm({ date: todayLocalISO(), quantite: "1", poidsVif: "", poidsCarcasse: "", destination: "auto_consommation", prixVente: "", lieu: "", notes: "", nEtablissementDestination: "" })
       fetchData()
     } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible d'enregistrer l'abattage" })
@@ -1909,7 +2014,9 @@ function LotsSubTab() {
   // L'API refuse (409) si le lot porte des animaux/abattages/productions et
   // renvoie un message explicite. Feedback éleveur 2026-07-24.
   const handleSupprimerLot = async (lot: Lot) => {
-    if (!(await confirmDialog(`Supprimer définitivement le lot ${lot.nom || `#${lot.id}`} ? Cette action est irréversible.`))) return
+    if (!(await confirmDialog(
+      `Supprimer définitivement le lot ${lot.nom || `#${lot.id}`} ? Les animaux déjà sortis (vendus, abattus, morts) restent dans votre registre, sans rattachement à ce lot. Cette action est irréversible.`,
+    ))) return
     try {
       const res = await fetch(`/api/elevage/lots?id=${lot.id}`, { method: 'DELETE' })
       if (res.ok) {
@@ -1965,6 +2072,21 @@ function LotsSubTab() {
 
   React.useEffect(() => { fetchData() }, [fetchData])
 
+  // Lien « Corriger la source » d'une déclaration de sortie de lot :
+  // /elevage?tab=animaux&sub=lots&editLot=<id> ouvre la fiche du lot.
+  const router = useRouter()
+  const editLotTraiteRef = React.useRef(false)
+  React.useEffect(() => {
+    if (editLotTraiteRef.current || isLoading) return
+    const editLot = Number(new URLSearchParams(window.location.search).get("editLot"))
+    if (!Number.isInteger(editLot) || editLot <= 0) return
+    editLotTraiteRef.current = true
+    const cible = lots.find((lot) => lot.id === editLot)
+    if (cible) handleEditLot(cible)
+    router.replace("/elevage?tab=animaux&sub=lots", { scroll: false })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading, lots])
+
   // Même règle que pour les animaux : filières actives ET restreintes à
   // l'atelier sélectionné, en gardant l'espèce du lot édité (cf. §7 de la spec).
   const especesPourAtelier = React.useMemo(
@@ -2013,7 +2135,15 @@ function LotsSubTab() {
         parcelleGeoId: formData.parcelleGeoId || null,
         notes: formData.notes || null,
       }
-      const body = isEdit ? { id: editingLotId, ...payload } : payload
+      const body = isEdit
+        ? {
+            id: editingLotId,
+            ...payload,
+            ...(statutLotEdite && statutLotEdite !== "actif"
+              ? { nExploitationDestination: formData.nExploitationDestination.trim() || null }
+              : {}),
+          }
+        : payload
       const response = await fetch('/api/elevage/lots', {
         method: isEdit ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2051,6 +2181,12 @@ function LotsSubTab() {
 
   return (
     <div className="space-y-4">
+      <ComposerLotDialog
+        lot={lotAComposer}
+        open={lotAComposer !== null}
+        onOpenChange={(open) => { if (!open) setLotAComposer(null) }}
+        onComposed={fetchData}
+      />
       <div className="flex items-center justify-between">
         <div className="text-sm text-muted-foreground">
           {lots.length} lot(s) &bull; {lots.reduce((sum, l) => sum + ((l as typeof l & { effectifCalcule?: number }).effectifCalcule ?? l.quantiteActuelle), 0)} animaux au total
@@ -2132,6 +2268,21 @@ function LotsSubTab() {
                     </Select>
                   </div>
                 </div>
+                {/* Signalement 2026-09-25 — la déclaration de sortie d'un lot
+                    réclamait ce numéro sans qu'aucun écran permette de le saisir. */}
+                {editingLotId !== null && statutLotEdite && statutLotEdite !== "actif" && (
+                  <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <Label>N° d’exploitation ou d’établissement de destination</Label>
+                    <Input
+                      value={formData.nExploitationDestination}
+                      onChange={(e) => setFormData(f => ({ ...f, nExploitationDestination: e.target.value }))}
+                      placeholder="Acheteur, abattoir…"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Où sont partis les animaux du lot à sa sortie : exigé pour déclarer cette sortie.
+                    </p>
+                  </div>
+                )}
                 <div className="flex justify-end gap-2 pt-4">
                   <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
                   <Button type="submit" disabled={isSavingLot}>
@@ -2176,6 +2327,12 @@ function LotsSubTab() {
                         <Pencil className="mr-2 h-4 w-4" />
                         Modifier
                       </Button>
+                      {lot.statut === "actif" && (
+                        <Button className="col-span-2 min-h-11" variant="outline" onClick={() => ouvrirComposition(lot)}>
+                          <UserPlus className="mr-2 h-4 w-4" />
+                          Ajouter / retirer des animaux
+                        </Button>
+                      )}
                     </div>
                   </article>
                 )
@@ -2291,6 +2448,20 @@ function LotsSubTab() {
                             </TooltipTrigger>
                             <TooltipContent>Modifier le lot</TooltipContent>
                           </Tooltip>
+                          {lot.statut === 'actif' && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  onClick={() => ouvrirComposition(lot)}
+                                  className="p-1.5 rounded-md transition-colors bg-slate-100 text-slate-400 hover:bg-emerald-100 hover:text-emerald-700"
+                                  aria-label="Ajouter ou retirer des animaux"
+                                >
+                                  <UserPlus className="h-3.5 w-3.5" />
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent>Ajouter / retirer des animaux</TooltipContent>
+                            </Tooltip>
+                          )}
                           {lot.statut === 'actif' && lot.quantiteActuelle > 0 && capacites(coerceFiliere(lot.especeAnimale.filiere)).abattage && (
                             <Tooltip>
                               <TooltipTrigger asChild>
@@ -2420,6 +2591,20 @@ function LotsSubTab() {
                 <Input type="number" step="0.01" value={abatLotForm.prixVente} onChange={(e) => setAbatLotForm(f => ({ ...f, prixVente: e.target.value }))} />
               </div>
             )}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Lieu</Label>
+                <Input value={abatLotForm.lieu} onChange={(e) => setAbatLotForm(f => ({ ...f, lieu: e.target.value }))} placeholder="Abattoir, à la ferme…" />
+              </div>
+              <div className="space-y-2">
+                <Label>N° de l’abattoir</Label>
+                <Input
+                  value={abatLotForm.nEtablissementDestination}
+                  onChange={(e) => setAbatLotForm(f => ({ ...f, nEtablissementDestination: e.target.value }))}
+                  placeholder="(optionnel)"
+                />
+              </div>
+            </div>
             <div className="space-y-2">
               <Label>Notes</Label>
               <Textarea value={abatLotForm.notes} onChange={(e) => setAbatLotForm(f => ({ ...f, notes: e.target.value }))} rows={2} />

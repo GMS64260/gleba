@@ -6,6 +6,7 @@
 
 import * as React from "react"
 import { useSession } from "next-auth/react"
+import { useRouter } from "next/navigation"
 import {
   Egg,
   ShoppingCart,
@@ -85,6 +86,12 @@ export function ProductionTab({ year }: { year?: number } = {}) {
 
   React.useEffect(() => {
     if (!productionTabKey) return
+    // Lien « Corriger la source » d'une déclaration d'abattage de lot : il
+    // ouvre l'onglet Abattages, quel que soit le dernier onglet mémorisé.
+    if (new URLSearchParams(window.location.search).get("editAbattage")) {
+      setActive("abattages")
+      return
+    }
     let annule = false
     const stored = window.localStorage.getItem(productionTabKey)
     if (stored && (PROD_TABS as readonly string[]).includes(stored)) {
@@ -1606,6 +1613,7 @@ interface Abattage {
   destination: string
   prixVente: number | null
   lieu: string | null
+  nEtablissementDestination?: string | null
   notes: string | null
   animal: { id: number; nom: string; identifiant: string; race: string; especeAnimale: { id: string; nom: string; couleur: string | null } } | null
   lot: { id: number; nom: string; especeAnimale: { id: string; nom: string; couleur: string | null } } | null
@@ -1638,11 +1646,12 @@ function AbattagesSubTab() {
   const [formData, setFormData] = React.useState({
     lotId: "", date: todayLocalISO(), quantite: "1",
     poidsVif: "", poidsCarcasse: "", destination: "auto_consommation", prixVente: "", lieu: "", notes: "",
+    nEtablissementDestination: "",
   })
 
   const resetForm = () => {
     setEditingId(null)
-    setFormData({ lotId: "", date: todayLocalISO(), quantite: "1", poidsVif: "", poidsCarcasse: "", destination: "auto_consommation", prixVente: "", lieu: "", notes: "" })
+    setFormData({ lotId: "", date: todayLocalISO(), quantite: "1", poidsVif: "", poidsCarcasse: "", destination: "auto_consommation", prixVente: "", lieu: "", notes: "", nEtablissementDestination: "" })
   }
 
   const handleEdit = (a: Abattage) => {
@@ -1657,6 +1666,7 @@ function AbattagesSubTab() {
       prixVente: a.prixVente ? a.prixVente.toString() : "",
       lieu: a.lieu ?? "",
       notes: a.notes ?? "",
+      nEtablissementDestination: a.nEtablissementDestination ?? "",
     })
     setIsDialogOpen(true)
   }
@@ -1678,6 +1688,21 @@ function AbattagesSubTab() {
   }, [toast])
 
   React.useEffect(() => { fetchData() }, [fetchData])
+
+  // /elevage?tab=production&editAbattage=<id> (déclaration à compléter) : on
+  // ouvre la fiche de l'abattage dès la liste chargée, une seule fois.
+  const router = useRouter()
+  const editAbattageTraiteRef = React.useRef(false)
+  React.useEffect(() => {
+    if (editAbattageTraiteRef.current || isLoading) return
+    const cible = Number(new URLSearchParams(window.location.search).get("editAbattage"))
+    if (!Number.isInteger(cible) || cible <= 0) return
+    editAbattageTraiteRef.current = true
+    const abattage = abattages.find((a) => a.id === cible)
+    if (abattage) handleEdit(abattage)
+    router.replace("/elevage?tab=production", { scroll: false })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading, abattages])
 
   // Espèces uniques extraites des abattages
   const especesUniques = React.useMemo(() => {
@@ -1734,6 +1759,7 @@ function AbattagesSubTab() {
         destination: formData.destination,
         prixVente: formData.prixVente ? parseFloat(formData.prixVente) : null,
         lieu: formData.lieu || null,
+        nEtablissementDestination: formData.nEtablissementDestination.trim() || null,
         notes: formData.notes || null,
       }
       const response = await fetch('/api/elevage/abattages', {
@@ -1871,6 +1897,14 @@ function AbattagesSubTab() {
               </div>
               {/* Ticket cmsog52qx — lieu et notes étaient persistés (formData/API) mais absents du dialog. */}
               <div className="space-y-2"><Label>Lieu</Label><Input value={formData.lieu} onChange={(e) => setFormData(f => ({ ...f, lieu: e.target.value }))} placeholder="Abattoir, à la ferme…" /></div>
+              <div className="space-y-2">
+                <Label>N° de l’abattoir ou de l’établissement destinataire</Label>
+                <Input
+                  value={formData.nEtablissementDestination}
+                  onChange={(e) => setFormData(f => ({ ...f, nEtablissementDestination: e.target.value }))}
+                  placeholder="(optionnel) exigé pour déclarer la sortie d’un lot"
+                />
+              </div>
               <div className="space-y-2"><Label>Notes</Label><Textarea rows={2} value={formData.notes} onChange={(e) => setFormData(f => ({ ...f, notes: e.target.value }))} placeholder="Remarques (découpe, congélation…)" /></div>
               <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>

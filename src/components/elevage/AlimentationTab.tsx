@@ -44,6 +44,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { confirmDialog } from "@/lib/global-dialog"
 import { useToast } from "@/hooks/use-toast"
 import { verifierPrixAliment, type CategorieAliment } from "@/lib/elevage/prix-aliment-seuils"
 import { todayLocalISO } from '@/lib/format-utils'
@@ -1102,6 +1103,33 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
     setLotPharmacieError(null)
   }, [])
 
+  // Signalement 2026-09-25 — un soin saisi par erreur ne se supprimait
+  // d'aucun écran, alors que l'API le permet (médicament remis en stock,
+  // dépense automatique retirée, attente lait recalculée).
+  const [isDeletingSoin, setIsDeletingSoin] = React.useState(false)
+  const supprimerSoin = async () => {
+    if (!editingSoinId || isDeletingSoin) return
+    if (!(await confirmDialog(
+      "Supprimer définitivement ce soin ? Il disparaît du registre sanitaire ; le médicament prélevé est remis en stock et la dépense automatique retirée.",
+      { title: "Supprimer le soin", confirmLabel: "Supprimer" },
+    ))) return
+    setIsDeletingSoin(true)
+    try {
+      const res = await fetch(`/api/elevage/soins?id=${editingSoinId}`, { method: "DELETE" })
+      const payload = await res.json().catch(() => null)
+      if (!res.ok) {
+        toast({ variant: "destructive", title: "Suppression impossible", description: payload?.error })
+        return
+      }
+      toast({ title: "Soin supprimé" })
+      setIsDialogOpen(false)
+      resetSoinForm()
+      fetchData()
+    } finally {
+      setIsDeletingSoin(false)
+    }
+  }
+
   const handleEditSoin = (s: Soin) => {
     setEditingSoinId(s.id)
     setFormData({
@@ -1990,6 +2018,18 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
                 <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
                   {soinSubmitError && (
                     <p role="alert" className="mr-auto text-sm text-red-600">{soinSubmitError}</p>
+                  )}
+                  {editingSoinId !== null && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className={`text-red-600 hover:bg-red-50 hover:text-red-700 ${soinSubmitError ? "" : "mr-auto"}`}
+                      onClick={() => void supprimerSoin()}
+                      disabled={isDeletingSoin || isSavingSoin}
+                    >
+                      <Trash2 className="mr-1 h-4 w-4" />
+                      {isDeletingSoin ? "Suppression…" : "Supprimer ce soin"}
+                    </Button>
                   )}
                   <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Annuler</Button>
                   <Button

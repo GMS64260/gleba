@@ -156,6 +156,14 @@ export async function PATCH(
     if (body.statut !== undefined) data.statut = body.statut
     if (body.dateSortie !== undefined) data.dateSortie = body.dateSortie ? new Date(body.dateSortie) : null
     if (body.causeSortie !== undefined) data.causeSortie = body.causeSortie
+    // Signalement 2026-09-25 — le n° de l'exploitation qui reçoit l'animal
+    // (acheteur, abattoir) est exigé pour déclarer la sortie : la fenêtre de
+    // vente le transmet désormais.
+    if (body.nExploitationDestination !== undefined) {
+      data.nExploitationDestination = typeof body.nExploitationDestination === 'string'
+        ? body.nExploitationDestination.trim() || null
+        : null
+    }
     // Ticket cmud1e386 — un animal remis « actif » ne garde aucune sortie.
     Object.assign(data, effacementSortieSiActif(body.statut))
     if (body.poidsActuel !== undefined) data.poidsActuel = body.poidsActuel
