@@ -1,13 +1,15 @@
 /**
  * API Export des données
- * GET /api/export?format=json
- * Exporte les données de l'utilisateur connecté + référentiels globaux
+ * GET /api/export?format=json — potager + référentiels (format relu par l'import partiel)
+ * GET /api/export?format=csv  — archive ZIP, un CSV par table de toutes les données du compte
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
+import { refusSiPasProprietaire } from '@/lib/exploitation/garde-session'
+import { exporterDonneesTabulaires } from '@/lib/export-tabulaire'
 
 export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
@@ -17,6 +19,25 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const format = searchParams.get('format') || 'json'
     const userId = session!.user.id
+
+    // Format CSV : une vraie archive ZIP, un CSV par table de TOUTES les données
+    // du compte (élevage, verger, gestion… et plus seulement le potager).
+    // Signalement 2026-09-25 : on renvoyait du JSON que l'écran enregistrait
+    // sous `.zip`, fichier refusé par l'Utilitaire d'archive de macOS.
+    if (format === 'csv') {
+      // Comme la sauvegarde complète, l'export emporte toute l'exploitation.
+      const refus = refusSiPasProprietaire(session)
+      if (refus) return refus
+      const { archive } = await exporterDonneesTabulaires(userId)
+      const filename = `gleba_export_tableur_${new Date().toISOString().split('T')[0]}.zip`
+      return new NextResponse(new Uint8Array(archive), {
+        headers: {
+          'Content-Type': 'application/zip',
+          'Content-Disposition': `attachment; filename="${filename}"`,
+          'Cache-Control': 'private, no-store',
+        },
+      })
+    }
 
     // Référentiels communautaires : on n'exporte que ce que CET utilisateur a le
     // droit de voir. Les `findMany` étaient nus sous un commentaire « partagés
@@ -69,7 +90,7 @@ export async function GET(request: NextRequest) {
       prisma.arbre.findMany({ where: { userId }, orderBy: { id: 'asc' } }),
     ])
 
-    // Nettoyer les données utilisateur (supprimer le champ odonnées utilisateur (supprimer le champ odonnées utilisateur (supprimer le champ userId pour l'export)
+    // Nettoyer les données utilisateur (supprimer le champ userId pour l'export)
     const cleanPlanches = planches.map(({ userId: _, ...rest }) => rest)
     const cleanCultures = cultures.map(({ userId: _, createdAt: __, updatedAt: ___, ...rest }) => rest)
     const cleanRecoltes = recoltes.map(({ userId: _, createdAt: __, ...rest }) => rest)
@@ -127,58 +148,6 @@ export async function GET(request: NextRequest) {
       const filename = `gleba_export_${new Date().toISOString().split('T')[0]}.json`
 
       return new NextResponse(JSON.stringify({ ...data, stats }, null, 2), {
-        headers: {
-          'Content-Type': 'application/json',
-          'Content-Disposition': `attachment; filename="${filename}"`,
-        },
-      })
-    }
-
-    // Format CSV - créer un objet avec chaque table en CSV
-    if (format === 'csv') {
-      // Fonction pour convertir un tableau d'objets en CSV
-      const toCSV = (arr: Record<string, unknown>[]): string => {
-        if (arr.length === 0) return ''
-        const headers = Object.keys(arr[0])
-        const rows = arr.map((obj) =>
-          headers
-            .map((h) => {
-              const val = obj[h]
-              if (val === null || val === undefined) return ''
-              if (val instanceof Date) return val.toISOString()
-              if (typeof val === 'object') return JSON.stringify(val).replace(/"/g, '""')
-              return String(val).replace(/"/g, '""')
-            })
-            .map((v) => `"${v}"`)
-            .join(',')
-        )
-        return [headers.join(','), ...rows].join('\n')
-      }
-
-      const csvFiles: Record<string, string> = {}
-
-      if (familles.length) csvFiles['familles.csv'] = toCSV(familles as Record<string, unknown>[])
-      if (fournisseurs.length) csvFiles['fournisseurs.csv'] = toCSV(fournisseurs as Record<string, unknown>[])
-      if (especes.length) csvFiles['espèces.csv'] = toCSV(especes as Record<string, unknown>[])
-      if (varietes.length) csvFiles['variétés.csv'] = toCSV(varietes as Record<string, unknown>[])
-      if (itps.length) csvFiles['itps.csv'] = toCSV(itps as Record<string, unknown>[])
-      if (rotations.length) csvFiles['rotations.csv'] = toCSV(rotations as Record<string, unknown>[])
-      if (rotationDetails.length) csvFiles['rotation_details.csv'] = toCSV(rotationDetails as Record<string, unknown>[])
-      if (fertilisants.length) csvFiles['fertilisants.csv'] = toCSV(fertilisants as Record<string, unknown>[])
-      if (associations.length) csvFiles['associations.csv'] = toCSV(associations as Record<string, unknown>[])
-      if (associationDetails.length) csvFiles['association_details.csv'] = toCSV(associationDetails as Record<string, unknown>[])
-      if (cleanPlanches.length) csvFiles['planches.csv'] = toCSV(cleanPlanches as Record<string, unknown>[])
-      if (cleanCultures.length) csvFiles['cultures.csv'] = toCSV(cleanCultures as Record<string, unknown>[])
-      if (cleanRecoltes.length) csvFiles['récoltes.csv'] = toCSV(cleanRecoltes as Record<string, unknown>[])
-      if (cleanFertilisations.length) csvFiles['fertilisations.csv'] = toCSV(cleanFertilisations as Record<string, unknown>[])
-      if (cleanAnalyses.length) csvFiles['analyses_sol.csv'] = toCSV(cleanAnalyses as Record<string, unknown>[])
-      if (cleanObjetsJardin.length) csvFiles['objets_jardin.csv'] = toCSV(cleanObjetsJardin as Record<string, unknown>[])
-      if (cleanArbres.length) csvFiles['arbres.csv'] = toCSV(cleanArbres as Record<string, unknown>[])
-
-      // Retourner un JSON contenant tous les CSV (le client peut les séparer)
-      const filename = `gleba_export_csv_${new Date().toISOString().split('T')[0]}.json`
-
-      return new NextResponse(JSON.stringify({ files: csvFiles, stats }, null, 2), {
         headers: {
           'Content-Type': 'application/json',
           'Content-Disposition': `attachment; filename="${filename}"`,

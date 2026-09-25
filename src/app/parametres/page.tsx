@@ -313,13 +313,20 @@ export default function ParametresPage() {
     setExporting(true)
     try {
       const response = await fetch(`/api/export?format=${format}`)
-      if (!response.ok) throw new Error('Erreur export')
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null)
+        throw new Error(payload?.error || 'Erreur export')
+      }
 
       const blob = await response.blob()
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `gleba_export_${todayLocalISO()}.${format === 'json' ? 'json' : 'zip'}`
+      // Le CSV est une archive ZIP (un fichier par table) depuis le 2026-09-25 :
+      // avant, du JSON partait sous un nom en .zip que macOS refusait d'ouvrir.
+      a.download = format === 'json'
+        ? `gleba_export_${todayLocalISO()}.json`
+        : `gleba_export_tableur_${todayLocalISO()}.zip`
       document.body.appendChild(a)
       a.click()
       window.URL.revokeObjectURL(url)
@@ -327,13 +334,17 @@ export default function ParametresPage() {
 
       toast({
         title: 'Export réussi',
-        description: `Données exportées en ${format.toUpperCase()}`,
+        description: format === 'json'
+          ? 'Données du potager exportées en JSON'
+          : 'Archive ZIP téléchargée : un fichier CSV par table',
       })
-    } catch {
+    } catch (err) {
       toast({
         variant: 'destructive',
         title: 'Erreur',
-        description: "Impossible d'exporter les données",
+        description: err instanceof Error && err.message !== 'Erreur export'
+          ? err.message
+          : "Impossible d'exporter les données",
       })
     } finally {
       setExporting(false)
@@ -924,8 +935,9 @@ export default function ParametresPage() {
           <CardHeader>
             <CardTitle>Export tabulaire (avancé)</CardTitle>
             <CardDescription>
-              Pour tableur ou analyse. N'inclut que le module potager (planches, cultures,
-              récoltes) — pour une vraie sauvegarde, utilisez « Sauvegarde complète » ci-dessus.
+              Pour tableur ou analyse. Le CSV est une archive ZIP avec un fichier par table
+              (potager, verger, élevage, gestion…). Le JSON et l'import partiel ne couvrent que
+              le potager : pour une vraie sauvegarde, utilisez « Sauvegarde complète » ci-dessus.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -939,7 +951,7 @@ export default function ParametresPage() {
                   </Button>
                   <Button variant="outline" onClick={() => handleExport('csv')} disabled={exporting}>
                     {exporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
-                    CSV
+                    CSV (ZIP)
                   </Button>
                 </div>
               </div>
