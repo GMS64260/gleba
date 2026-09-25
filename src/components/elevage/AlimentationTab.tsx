@@ -50,6 +50,7 @@ import { verifierPrixAliment, type CategorieAliment } from "@/lib/elevage/prix-a
 import { todayLocalISO } from '@/lib/format-utils'
 import { useFiliereSelection, capacitesSelection, filiereMatch } from "@/lib/elevage/filiere-context"
 import { stockMedicamentEstDisponible } from "@/lib/elevage/stock-medicament"
+import { TYPES_SOIN } from "@/lib/elevage/types-soin"
 
 // ============================================================
 // Composant principal
@@ -1592,18 +1593,9 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
                         (tonte, parage, prophylaxie réglementaire, tarissement…)
                         masqués pour compagnie/équin/NAC. */}
                     <select className="w-full h-10 rounded-md border border-slate-300 px-2 bg-white text-sm" value={formData.type} onChange={(e) => setFormData(f => ({ ...f, type: e.target.value }))}>
-                      <option value="Vaccination">Vaccination</option>
-                      <option value="Vermifuge">Vermifuge</option>
-                      <option value="Traitement vétérinaire">Traitement vétérinaire</option>
-                      <option value="Castration">Castration</option>
-                      <option value="Identification">Identification</option>
-                      {caps.productionRente && <option value="Tonte">Tonte</option>}
-                      {caps.productionRente && <option value="Parage onglons">Parage onglons</option>}
-                      {caps.productionRente && <option value="Prophylaxie obligatoire">Prophylaxie obligatoire</option>}
-                      {caps.productionRente && <option value="Coproscopie">Coproscopie</option>}
-                      {caps.productionRente && <option value="Mise en lutte">Mise en lutte</option>}
-                      {caps.productionRente && <option value="Tarissement">Tarissement</option>}
-                      <option value="Autre">Autre</option>
+                      {TYPES_SOIN.filter((t) => !t.rente || caps.productionRente).map((t) => (
+                        <option key={t.valeur} value={t.valeur}>{t.valeur}</option>
+                      ))}
                     </select>
                   </div>
                   <div className="space-y-2">
