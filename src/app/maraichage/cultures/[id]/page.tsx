@@ -143,8 +143,27 @@ export default function EditCulturePage() {
         setEspeces(especesData.data || [])
         setPlanches(planchesData.data || [])
 
+        // Signalement 2026-09-25 — une culture dont on avait changé l'espèce
+        // gardait la variété et l'ITP de l'ancienne (un « Navet » en variété
+        // « Roquette »). On ne recharge pas ces références incohérentes : le
+        // formulaire les vide et demande d'en choisir pour la bonne espèce.
+        const varieteIncoherente = Boolean(
+          cultureData.varieteId && cultureData.variete?.especeId
+          && cultureData.variete.especeId !== cultureData.especeId
+        )
+        const itpIncoherent = Boolean(
+          cultureData.itpId && cultureData.itp?.especeId
+          && cultureData.itp.especeId !== cultureData.especeId
+        )
+        if (varieteIncoherente || itpIncoherent) {
+          toast({
+            title: "Variété ou itinéraire à revoir",
+            description: `${varieteIncoherente ? "La variété" : "L'itinéraire technique"}${varieteIncoherente && itpIncoherent ? " et l'itinéraire technique" : ""} enregistré${varieteIncoherente && itpIncoherent ? "s" : ""} appartenai${varieteIncoherente && itpIncoherent ? "ent" : "t"} à une autre espèce que ${cultureData.especeId}. Choisissez-en pour cette espèce, puis enregistrez.`,
+          })
+        }
+
         // Mémoriser l'ITP initial pour ne pas écraser les données existantes
-        initialItpId.current = cultureData.itpId || null
+        initialItpId.current = itpIncoherent ? null : cultureData.itpId || null
         // Début de cycle tel que chargé : baseline du recalage de la récolte.
         const debutInitial = cultureData.datePlantation || cultureData.dateSemis
         debutCycleRef.current = debutInitial ? new Date(debutInitial).toISOString() : null
@@ -155,8 +174,8 @@ export default function EditCulturePage() {
         // Remplir le formulaire
         form.reset({
           especeId: cultureData.especeId || "",
-          varieteId: cultureData.varieteId || null,
-          itpId: cultureData.itpId || null,
+          varieteId: varieteIncoherente ? null : cultureData.varieteId || null,
+          itpId: itpIncoherent ? null : cultureData.itpId || null,
           plancheId: cultureData.plancheId || null,
           annee: cultureData.annee || new Date().getFullYear(),
           dateSemis: cultureData.dateSemis || null,
@@ -465,7 +484,18 @@ export default function EditCulturePage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Espèce *</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
+                      <Select
+                        onValueChange={(value) => {
+                          // La variété et l'ITP appartiennent à une espèce :
+                          // en changer les rend caducs (signalement 2026-09-25).
+                          if (value !== field.value) {
+                            form.setValue("varieteId", null)
+                            form.setValue("itpId", null)
+                          }
+                          field.onChange(value)
+                        }}
+                        value={field.value}
+                      >
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue placeholder="Sélectionner une espèce" />

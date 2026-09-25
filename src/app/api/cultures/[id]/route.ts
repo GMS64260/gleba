@@ -26,6 +26,7 @@ import {
 } from '@/lib/cultures/execution'
 import type { ChampDateEtape, ChampEtape } from '@/lib/cultures/execution'
 import { whereItpUtilisable } from '@/lib/itp-acces'
+import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 import { appliquerDecalageItp, decalageItpPourLecteur } from '@/lib/calendrier-climat'
 import { zoneEffectiveUser } from '@/lib/terroir'
 
@@ -187,6 +188,50 @@ export async function PUT(
         return NextResponse.json(
           {
             error: `L'itinéraire technique « ${data.itpId} » n'est pas disponible : introuvable, privé, ou retiré du service.`,
+          },
+          { status: 400 }
+        )
+      }
+    }
+
+    // Signalement 2026-09-25 — changer l'espèce d'une culture gardait la
+    // variété et l'ITP de l'ancienne : un « Navet » restait en variété
+    // « Roquette », avec l'itinéraire de la roquette. La règle de la création
+    // (variété et ITP de CETTE espèce) vaut aussi en modification, dès que
+    // l'espèce ou la référence change ; une édition qui ne touche à aucune des
+    // trois ne bloque pas une fiche ancienne.
+    const especeFinale = data.especeId ?? existing.especeId
+    const varieteFinale = data.varieteId !== undefined ? data.varieteId : existing.varieteId
+    const itpFinal = data.itpId !== undefined ? data.itpId : existing.itpId
+    const especeChangee = especeFinale !== existing.especeId
+    if (varieteFinale && (especeChangee || varieteFinale !== existing.varieteId)) {
+      const variete = await prisma.variete.findFirst({
+        where: {
+          AND: [
+            { id: varieteFinale, especeId: especeFinale },
+            visibiliteReferentiel(session!.user.id),
+          ],
+        },
+        select: { id: true },
+      })
+      if (!variete) {
+        return NextResponse.json(
+          {
+            error: `La variété « ${varieteFinale} » n'est pas disponible pour l'espèce « ${especeFinale} » : introuvable, privée, ou rattachée à une autre espèce. Choisissez une variété de cette espèce.`,
+          },
+          { status: 400 }
+        )
+      }
+    }
+    if (itpFinal && (especeChangee || itpFinal !== existing.itpId)) {
+      const itpCible = await prisma.iTP.findUnique({
+        where: { id: itpFinal },
+        select: { especeId: true },
+      })
+      if (itpCible?.especeId && itpCible.especeId !== especeFinale) {
+        return NextResponse.json(
+          {
+            error: `L'itinéraire technique « ${itpFinal} » est prévu pour l'espèce « ${itpCible.especeId} », pas pour « ${especeFinale} ». Choisissez un itinéraire de cette espèce.`,
           },
           { status: 400 }
         )
