@@ -82,8 +82,40 @@ function lireOverlaysActifs(): string[] {
   }
 }
 
-/** Événements qui prouvent une interaction humaine sur la carte (cf. cmsx6dvhu). */
-const EVENEMENTS_INTERACTION = ["pointerdown", "click", "change", "keydown"] as const
+/**
+ * Lit le choix RÉEL du contrôle Calques dans le DOM et le persiste.
+ *
+ * QA 2026-09-28 (Satellite IGN perdu au rechargement, Cadastre conservé) —
+ * l'écriture du fond n'était acceptée que dans les 1,5 s suivant un événement
+ * d'interaction sur la carte (cmswtxnnb, cmsx6dvhu) : une heuristique de
+ * temps, seule voie par laquelle un choix légitime pouvait se perdre, alors que
+ * l'overlay, écrit sans garde, survivait toujours. On ne s'appuie plus sur
+ * `baselayerchange` (émis aussi par les addLayer programmatiques du (re)montage)
+ * mais sur l'événement `change` des boutons radio/cases du contrôle : un
+ * navigateur ne l'émet QUE pour une interaction (clic, clavier, automate),
+ * jamais pour un `input.checked = …` posé par Leaflet.
+ */
+function persisterChoixCalques(conteneur: HTMLElement) {
+  try {
+    const controle = conteneur.querySelector(".leaflet-control-layers")
+    if (!controle) return
+    const base = controle.querySelector<HTMLInputElement>(".leaflet-control-layers-base input:checked")
+    const nomBase = base?.parentElement?.textContent?.trim()
+    // Symétrique de la whitelist de lecture : un libellé inconnu n'empoisonne
+    // pas le slot unique.
+    if (nomBase && (FONDS_VALIDES as readonly string[]).includes(nomBase)) {
+      window.localStorage.setItem(FOND_STORAGE_KEY, nomBase)
+    }
+    const overlays = Array.from(
+      controle.querySelectorAll<HTMLInputElement>(".leaflet-control-layers-overlays input:checked"),
+    )
+      .map((input) => input.parentElement?.textContent?.trim())
+      .filter((nom): nom is string => !!nom)
+    window.localStorage.setItem(OVERLAYS_STORAGE_KEY, JSON.stringify(overlays))
+  } catch {
+    // stockage indisponible (navigation privée…)
+  }
+}
 
 export default function MapContainer({
   center = DEFAULT_CENTER,
@@ -102,24 +134,9 @@ export default function MapContainer({
   const [overlaysActifs] = useState(lireOverlaysActifs)
 
   // Écouteurs posés lors de l'attache courante, pour pouvoir les retirer :
-  // React rappelle le ref avec null au démontage/ré-attache, et sans map.off
+  // React rappelle le ref avec null au démontage/ré-attache, et sans retrait
   // les handlers s'accumulaient (fuite + écritures localStorage dupliquées).
   const detachListenersRef = useRef<(() => void) | null>(null)
-  // QA cmswtxnnb — Leaflet émet `baselayerchange` sur TOUT addLayer d'un fond
-  // enregistré, pas seulement au clic (diff react-leaflet au montage ou au
-  // remontage du contrôle) : un événement programmatique réécrivait
-  // « OpenStreetMap » par-dessus le choix persisté. On n'écrit donc le slot que
-  // si l'événement suit une INTERACTION RÉELLE sur cette carte.
-  //
-  // Ticket cmsx6dvhu (QA 2026-08-17) — ce garde-fou ne reconnaissait que
-  // `pointerdown`. Or le contrôle Calques de Leaflet est fait de vrais boutons
-  // radio : les choisir au CLAVIER (Tab puis flèches/Espace) n'émet aucun
-  // pointerdown, et le choix ne survivait pas au rechargement. Un clic émis par
-  // un outil d'automatisation ou une aide à la saisie vocale était dans le même
-  // cas. On marque donc l'interaction sur pointerdown, clic, changement de
-  // champ et touche clavier — tous absents d'un événement programmatique de
-  // (re)montage, qui reste ignoré.
-  const dernierPointerRef = useRef(0)
 
   // Callback quand la carte est initialisee
   const handleMapRef = useCallback(
@@ -129,42 +146,21 @@ export default function MapContainer({
         detachListenersRef.current = null
       }
       if (map) {
-        const marquerInteraction = () => { dernierPointerRef.current = Date.now() }
-        for (const type of EVENEMENTS_INTERACTION) {
-          map.getContainer().addEventListener(type, marquerInteraction, { capture: true })
+        // Historique : cmswtxnnb (un `baselayerchange` programmatique
+        // réécrivait OSM), cmsx6dvhu (le clavier n'émettait pas de pointerdown),
+        // QA 2026-09-28 (fenêtre de 1,5 s trop fragile). Voir
+        // persisterChoixCalques : seul l'événement `change` d'un sélecteur du
+        // contrôle Calques déclenche l'écriture, après que Leaflet a appliqué
+        // le choix.
+        const conteneur = map.getContainer()
+        const onChangeCalques = (event: Event) => {
+          const cible = event.target
+          if (!(cible instanceof HTMLInputElement) || !cible.classList.contains("leaflet-control-layers-selector")) return
+          window.setTimeout(() => persisterChoixCalques(conteneur), 0)
         }
-        const onBaseLayerChange = (e: L.LayersControlEvent) => {
-          try {
-            // QA cmswtxnnb — pas d'interaction récente = événement
-            // programmatique (montage, re-render) : ne jamais écrire.
-            if (Date.now() - dernierPointerRef.current > 1500) return
-            // Symétrique de la whitelist de lecture : un événement parasite
-            // (nom inconnu) ne doit pas empoisonner le slot unique.
-            if ((FONDS_VALIDES as readonly string[]).includes(e.name)) {
-              window.localStorage.setItem(FOND_STORAGE_KEY, e.name)
-            }
-          } catch { /* stockage indisponible */ }
-        }
-        const majOverlays = (nom: string, actif: boolean) => {
-          try {
-            const courants = new Set(lireOverlaysActifs())
-            if (actif) courants.add(nom)
-            else courants.delete(nom)
-            window.localStorage.setItem(OVERLAYS_STORAGE_KEY, JSON.stringify([...courants]))
-          } catch { /* stockage indisponible */ }
-        }
-        const onOverlayAdd = (e: L.LayersControlEvent) => majOverlays(e.name, true)
-        const onOverlayRemove = (e: L.LayersControlEvent) => majOverlays(e.name, false)
-        map.on("baselayerchange", onBaseLayerChange)
-        map.on("overlayadd", onOverlayAdd)
-        map.on("overlayremove", onOverlayRemove)
+        conteneur.addEventListener("change", onChangeCalques, { capture: true })
         detachListenersRef.current = () => {
-          map.off("baselayerchange", onBaseLayerChange)
-          map.off("overlayadd", onOverlayAdd)
-          map.off("overlayremove", onOverlayRemove)
-          for (const type of EVENEMENTS_INTERACTION) {
-            map.getContainer().removeEventListener(type, marquerInteraction, { capture: true })
-          }
+          conteneur.removeEventListener("change", onChangeCalques, { capture: true })
         }
       }
       if (map && onMapReady) {
