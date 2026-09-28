@@ -11,6 +11,7 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { createDepenseFromIntervention, deleteAutoEntry } from '@/lib/auto-compta'
 import { createInterventionSchema, updateInterventionSchema } from '@/lib/validations/intervention'
+import { resoudreIdPlanche } from '@/lib/planches/resolution'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -61,8 +62,9 @@ export async function GET(request: NextRequest) {
         where: { id: { in: manualCultureIds } },
         include: { espece: true, variete: true, planche: true },
       }) : [],
+      // `plancheId` historique : id OU nom de planche (cf. registre phyto).
       manualPlancheIds.length > 0 ? prisma.planche.findMany({
-        where: { id: { in: manualPlancheIds } },
+        where: { userId, OR: [{ id: { in: manualPlancheIds } }, { nom: { in: manualPlancheIds } }] },
       }) : [],
       manualArbreIds.length > 0 ? prisma.arbre.findMany({
         where: { id: { in: manualArbreIds } },
@@ -70,7 +72,11 @@ export async function GET(request: NextRequest) {
     ])
 
     const cultureMap = new Map(refCultures.map(c => [c.id, c]))
-    const plancheMap = new Map(refPlanches.map(p => [p.id, p]))
+    const plancheMap = new Map<string, (typeof refPlanches)[number]>()
+    for (const p of refPlanches) {
+      plancheMap.set(p.id, p)
+      if (p.nom) plancheMap.set(p.nom, p)
+    }
     const arbreMap = new Map(refArbres.map(a => [a.id, a]))
 
     // Format manual interventions with source marker and resolved names
@@ -476,6 +482,12 @@ export async function POST(request: NextRequest) {
 
     const userId = session.user.id
     const d = parsed.data
+    // On stocke l'identifiant de la planche, jamais son libellé (règle du
+    // projet) ; une référence par nom, héritée des anciens formulaires, est
+    // traduite ; une référence inconnue est conservée telle quelle.
+    const plancheIdNormalise = d.plancheId
+      ? (await resoudreIdPlanche(prisma, d.plancheId, userId)) ?? d.plancheId
+      : null
 
     const intervention = await prisma.intervention.create({
       data: {
@@ -483,7 +495,7 @@ export async function POST(request: NextRequest) {
         date: d.date,
         type: d.type,
         cultureId: d.cultureId ?? null,
-        plancheId: d.plancheId ?? null,
+        plancheId: plancheIdNormalise,
         arbreId: d.arbreId ?? null,
         description: d.description ?? null,
         dureeMinutes: d.dureeMinutes ?? null,
@@ -617,7 +629,11 @@ export async function PATCH(request: NextRequest) {
     if (updates.coutTotal !== undefined) data.coutTotal = updates.coutTotal ? parseFloat(updates.coutTotal) : null
     if (updates.fait !== undefined) data.fait = updates.fait
     if (updates.cultureId !== undefined) data.cultureId = updates.cultureId || null
-    if (updates.plancheId !== undefined) data.plancheId = updates.plancheId || null
+    if (updates.plancheId !== undefined) {
+      data.plancheId = updates.plancheId
+        ? (await resoudreIdPlanche(prisma, String(updates.plancheId), userId)) ?? updates.plancheId
+        : null
+    }
     if (updates.arbreId !== undefined) data.arbreId = updates.arbreId || null
     if (updates.datePrevue !== undefined) data.datePrevue = updates.datePrevue ? new Date(updates.datePrevue) : null
     // Phyto

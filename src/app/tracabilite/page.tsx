@@ -736,10 +736,12 @@ function PhytoTab({
                     )}
                   </td>
                   <td className="p-2">
-                    <span className="font-medium">{entry.culture}</span>
-                    {!entry.culture || entry.culture === "Non renseigné" ? (
-                      <MissingField />
-                    ) : null}
+                    {/* Un traitement saisi sur une planche seule n'a pas de culture :
+                        ce n'est « manquant » que si la planche l'est aussi. */}
+                    <span className="font-medium">
+                      {entry.culture === "Non renseigné" && entry.parcelle !== "Non renseigné" ? "— (planche seule)" : entry.culture}
+                    </span>
+                    {entry.champsManquants.includes("culture/parcelle") ? <MissingField /> : null}
                   </td>
                   <td className="p-2">
                     {entry.parcelle}
