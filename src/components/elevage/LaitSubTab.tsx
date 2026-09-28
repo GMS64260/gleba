@@ -108,6 +108,8 @@ type LotFromage = {
 function todayIso(): string {
   return todayLocalISO()
 }
+/** Les collectes proposées à une fabrication : celles des 60 jours qui la précèdent. */
+const FENETRE_COLLECTES_JOURS = 60
 function addDaysIso(iso: string, n: number): string {
   const d = new Date(iso)
   d.setUTCDate(d.getUTCDate() + n)
@@ -1112,11 +1114,13 @@ function FabricationsView() {
               value={year}
               onChange={(e) => setYear(parseInt(e.target.value))}
             >
-              {[0, -1, -2].map((d) => (
-                <option key={d} value={new Date().getFullYear() + d}>
-                  {new Date().getFullYear() + d}
-                </option>
-              ))}
+              {Array.from(new Set([0, -1, -2].map((d) => new Date().getFullYear() + d).concat(year)))
+                .sort((a, b) => b - a)
+                .map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
             </select>
             <Button onClick={() => setOpenCreate(true)}>
               <Plus className="h-4 w-4 mr-2" />
@@ -1204,12 +1208,21 @@ function FabricationsView() {
           </div>
         )}
       </CardContent>
-      <DialogCreationLot open={openCreate} onOpenChange={setOpenCreate} onCreated={reload} />
+      <DialogCreationLot
+        open={openCreate}
+        onOpenChange={setOpenCreate}
+        onCreated={(anneeFabrication) => {
+          // Une fabrication datée d'une autre année (ressaisie d'historique)
+          // s'affiche là où elle vient d'être créée, pas dans l'année courante.
+          if (anneeFabrication !== year) setYear(anneeFabrication)
+          else reload()
+        }}
+      />
     </Card>
   )
 }
 
-function DialogCreationLot(props: { open: boolean; onOpenChange: (b: boolean) => void; onCreated: () => void }) {
+function DialogCreationLot(props: { open: boolean; onOpenChange: (b: boolean) => void; onCreated: (anneeFabrication: number) => void }) {
   const { toast } = useToast()
   const [collectesDispo, setCollectesDispo] = React.useState<Collecte[]>([])
   const [selection, setSelection] = React.useState<Set<string>>(new Set())
@@ -1227,17 +1240,29 @@ function DialogCreationLot(props: { open: boolean; onOpenChange: (b: boolean) =>
   })
   const [saving, setSaving] = React.useState(false)
 
+  // Signalement 2026-09-27 : un éleveur ressaisissant son historique 2025 ne
+  // pouvait « pas saisir la fabrication de fromages » — la fenêtre des
+  // collectes proposées partait d'AUJOURD'HUI (60 j), et le bouton « Créer le
+  // lot » reste muet tant qu'aucune collecte n'est cochée. La fenêtre suit
+  // désormais la date de fabrication saisie : les 60 jours qui la précèdent.
+  const dateFabricationValide = /^\d{4}-\d{2}-\d{2}$/.test(form.dateFabrication)
+  const fenetreDebut = dateFabricationValide ? addDaysIso(form.dateFabrication, -FENETRE_COLLECTES_JOURS) : null
   React.useEffect(() => {
-    if (!props.open) return
-    const from = addDaysIso(todayIso(), -60)
-    fetch(`/api/elevage/collectes-lait?from=${from}`)
+    if (!props.open || !fenetreDebut) return
+    let annule = false
+    fetch(`/api/elevage/collectes-lait?from=${fenetreDebut}&to=${form.dateFabrication}`)
       .then((r) => r.json())
       .then(({ data }) => {
+        if (annule) return
         const dispo = (data || []).filter((c: Collecte) => !c.lotFromageId && !c.ecarteAttente)
         setCollectesDispo(dispo)
-        setSelection(new Set())
+        // Une collecte cochée qui sort de la fenêtre n'est plus comptée.
+        setSelection((prev) => new Set(dispo.filter((c: Collecte) => prev.has(c.id)).map((c: Collecte) => c.id)))
       })
-  }, [props.open])
+    return () => {
+      annule = true
+    }
+  }, [props.open, fenetreDebut, form.dateFabrication])
 
   const volumeSelection = collectesDispo
     .filter((c) => selection.has(c.id))
@@ -1270,7 +1295,7 @@ function DialogCreationLot(props: { open: boolean; onOpenChange: (b: boolean) =>
       } else {
         toast({ title: "Lot créé", description: json.data.numeroLot })
         props.onOpenChange(false)
-        props.onCreated()
+        props.onCreated(parseInt(form.dateFabrication.slice(0, 4), 10) || new Date().getFullYear())
       }
     } finally {
       setSaving(false)
@@ -1347,7 +1372,10 @@ function DialogCreationLot(props: { open: boolean; onOpenChange: (b: boolean) =>
           <div className="max-h-64 overflow-y-auto border rounded">
             {collectesDispo.length === 0 ? (
               <div className="p-4 text-sm text-slate-500">
-                Aucune collecte disponible (toutes affectées, écartées ou hors période 60 j).
+                Aucune collecte disponible dans les {FENETRE_COLLECTES_JOURS} jours précédant le{" "}
+                {dateFabricationValide ? new Date(form.dateFabrication).toLocaleDateString("fr-FR") : "date de fabrication"}
+                {" "}: toutes affectées ou écartées, ou aucune collecte saisie sur cette période. Changez la date de fabrication
+                pour retrouver les collectes d’une autre période.
               </div>
             ) : (
               <table className="w-full text-xs">
