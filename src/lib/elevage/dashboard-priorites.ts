@@ -6,6 +6,7 @@ type SoinAvecDate = {
 type AttenteAvecRemiseVente = {
   lait?: { remiseVente: string } | null
   viande?: { remiseVente: string } | null
+  oeufs?: { remiseVente: string } | null
 }
 
 function timestamp(value: string | null | undefined): number {
@@ -24,7 +25,7 @@ export function soinsSanitairesPrioritaires<T extends SoinAvecDate>(
     .slice(0, Math.max(0, limite))
 }
 
-/** Délais les plus proches, en prenant la première remise en vente lait/viande. */
+/** Délais les plus proches, en prenant la première remise en vente lait/viande/œufs. */
 export function attentesSanitairesPrioritaires<T extends AttenteAvecRemiseVente>(
   attentes: readonly T[],
   limite = 3,
@@ -33,6 +34,7 @@ export function attentesSanitairesPrioritaires<T extends AttenteAvecRemiseVente>
     Math.min(
       timestamp(attente.lait?.remiseVente),
       timestamp(attente.viande?.remiseVente),
+      timestamp(attente.oeufs?.remiseVente),
     )
 
   return [...attentes]

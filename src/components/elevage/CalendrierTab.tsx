@@ -115,6 +115,9 @@ type AttenteActive = {
   cible: { label: string; nom?: string | null }
   lait: { remiseVente: string } | null
   viande: { remiseVente: string } | null
+  // QA 2026-09-28 — un lot de pondeuses sous vermifuge était listé sans date :
+  // l'API renvoyait bien le délai œufs, l'écran ne le lisait pas.
+  oeufs?: { remiseVente: string } | null
 }
 
 const SOIN_TYPE_LABELS: Record<string, string> = {
@@ -382,6 +385,11 @@ export function CalendrierTab() {
                       {attente.viande && (
                         <span className="font-medium text-red-700">
                           Remise en vente de la viande le {new Date(attente.viande.remiseVente).toLocaleDateString("fr-FR")}
+                        </span>
+                      )}
+                      {attente.oeufs && (
+                        <span className="font-medium text-amber-700">
+                          Remise en vente des œufs le {new Date(attente.oeufs.remiseVente).toLocaleDateString("fr-FR")}
                         </span>
                       )}
                     </div>

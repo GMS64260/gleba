@@ -162,6 +162,7 @@ interface AttenteItem {
   cible: { type: string; id: number | null; label: string; nom?: string | null }
   lait: { finAttente: string; remiseVente: string } | null
   viande: { finAttente: string; remiseVente: string } | null
+  oeufs?: { finAttente: string; remiseVente: string } | null
 }
 
 interface SoinItem {
@@ -294,7 +295,10 @@ export function DashboardTab({ year }: DashboardTabProps) {
       debut.setDate(debut.getDate() - 30)
       const fin = new Date()
       fin.setDate(fin.getDate() + 30)
-      const res = await fetch(`/api/elevage/taches?start=${debut.toISOString()}&end=${fin.toISOString()}`)
+      // QA 2026-09-28 — deux traitements en retard de 35 et 40 jours avaient
+      // disparu des priorités : la fenêtre de 30 jours les excluait. `retards=1`
+      // ramène tout soin planifié non fait antérieur à la fenêtre.
+      const res = await fetch(`/api/elevage/taches?start=${debut.toISOString()}&end=${fin.toISOString()}&retards=1`)
       if (res.ok) {
         const result = await res.json()
         setSoins((result.soins || []).filter((s: SoinItem) => !s.fait).slice(0, 20))
@@ -664,6 +668,11 @@ export function DashboardTab({ year }: DashboardTabProps) {
                                     {attente.viande && (
                                       <Badge variant="outline" className="border-red-200 text-[11px] text-red-700">
                                         Viande {new Date(attente.viande.remiseVente).toLocaleDateString("fr-FR")}
+                                      </Badge>
+                                    )}
+                                    {attente.oeufs && (
+                                      <Badge variant="outline" className="border-amber-200 text-[11px] text-amber-700">
+                                        Œufs {new Date(attente.oeufs.remiseVente).toLocaleDateString("fr-FR")}
                                       </Badge>
                                     )}
                                   </div>

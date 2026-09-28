@@ -56,7 +56,7 @@ import { TYPES_SOIN } from "@/lib/elevage/types-soin"
 // Composant principal
 // ============================================================
 
-export function AlimentationTab() {
+export function AlimentationTab({ year }: { year?: number } = {}) {
   // Bug testeur 2026-05-31 — le bouton « + Soin » d'une fiche animale pointe
   // vers /elevage?tab=alimentation&sub=soins&animalId=29 mais on retombait
   // toujours sur l'onglet Stocks (defaultValue figé) et le formulaire ne
@@ -153,7 +153,7 @@ export function AlimentationTab() {
         <ConsommationsSubTab />
       </TabsContent>
       <TabsContent value="soins">
-        <SoinsSubTab initialAnimalId={soinAnimalId} initialOpen={ouvrirNouveauSoin} />
+        <SoinsSubTab initialAnimalId={soinAnimalId} initialOpen={ouvrirNouveauSoin} year={year} />
       </TabsContent>
       {caps.productionRente && (
         <TabsContent value="ration">
@@ -975,8 +975,16 @@ interface Soin {
     dateRealisee: string | null
     statut: "a_faire" | "realisee" | "annulee"
   }[]
-  animal: { id: number; nom: string; identifiant: string; especeAnimale?: { id: string; filiere: string | null } | null } | null
-  lot: { id: number; nom: string; especeAnimale?: { id: string; filiere: string | null } | null } | null
+  animal: {
+    id: number
+    nom: string
+    identifiant: string
+    especeAnimale?: { id: string; filiere: string | null } | null
+    statut?: string | null
+    sexe?: string | null
+    dateSortie?: string | null
+  } | null
+  lot: { id: number; nom: string; especeAnimale?: { id: string; filiere: string | null } | null; statut?: string | null } | null
 }
 
 interface LotSoin { id: number; nom: string | null; quantiteActuelle: number; especeAnimale?: { id?: string; filiere?: string | null } | null }
@@ -1067,7 +1075,7 @@ function lotPharmacieFormVide() {
   }
 }
 
-function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialAnimalId?: string | null; initialOpen?: boolean }) {
+function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { initialAnimalId?: string | null; initialOpen?: boolean; year?: number }) {
   const caps = capacitesSelection(useFiliereSelection())
   const filiereSel = useFiliereSelection()
   const { toast } = useToast()
@@ -1078,6 +1086,13 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
   const [lots, setLots] = React.useState<LotSoin[]>([])
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
   const [filterFait, setFilterFait] = React.useState<string>("all")
+  // Signalement 2026-09-27 (éleveur caprin) — les soins ressaisis pour les
+  // années passées figuraient au registre (qui suit l'exercice choisi) mais
+  // jamais dans cette liste, qui ne demandait à l'API que l'année civile
+  // courante : impossible de les modifier ou de les supprimer. La liste suit
+  // désormais l'exercice du module et peut afficher toutes les années.
+  const anneeExercice = year ?? new Date().getFullYear()
+  const [periode, setPeriode] = React.useState<"exercice" | "toutes">("exercice")
   // QA 2026-05-15 — édition par ligne
   const [editingSoinId, setEditingSoinId] = React.useState<number | null>(null)
 
@@ -1180,8 +1195,35 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
   const [animaux, setAnimaux] = React.useState<{ id: number; nom: string | null; identifiant: string | null; especeAnimale?: { id?: string; nom?: string; filiere?: string | null } }[]>([])
   // Cibles proposées dans « Nouveau soin » scopées à l'atelier courant : on ne
   // veut pas soigner une chèvre depuis l'atelier « Chiens & chats ».
-  const animauxCibles = animaux.filter((a) => filiereMatch(filiereSel, a.especeAnimale?.filiere))
-  const lotsCibles = lots.filter((l) => filiereMatch(filiereSel, l.especeAnimale?.filiere))
+  // Les sélecteurs proposent les animaux et lots PRÉSENTS ; un soin d'un
+  // animal sorti ou d'un lot terminé (historique) garde pourtant sa cible à la
+  // modification, annoncée comme telle.
+  const soinEnEdition = editingSoinId != null ? soins.find((s) => s.id === editingSoinId) : undefined
+  const animauxCibles = React.useMemo(() => {
+    const base = animaux.filter((a) => filiereMatch(filiereSel, a.especeAnimale?.filiere))
+    const cible = soinEnEdition?.animal
+    if (!cible || base.some((a) => a.id === cible.id)) return base
+    return [
+      ...base,
+      {
+        id: cible.id,
+        nom: cible.nom,
+        identifiant: cible.identifiant,
+        especeAnimale: cible.especeAnimale
+          ? { id: cible.especeAnimale.id, nom: undefined, filiere: cible.especeAnimale.filiere }
+          : undefined,
+        statut: cible.statut ?? "sorti",
+        sexe: cible.sexe ?? null,
+        dateSortie: cible.dateSortie ?? null,
+      },
+    ]
+  }, [animaux, filiereSel, soinEnEdition])
+  const lotsCibles = React.useMemo(() => {
+    const base = lots.filter((l) => filiereMatch(filiereSel, l.especeAnimale?.filiere))
+    const cible = soinEnEdition?.lot
+    if (!cible || base.some((l) => l.id === cible.id)) return base
+    return [...base, { id: cible.id, nom: `${cible.nom || `Lot #${cible.id}`} (terminé)`, quantiteActuelle: 0, especeAnimale: cible.especeAnimale }]
+  }, [lots, filiereSel, soinEnEdition])
   const [produits, setProduits] = React.useState<{
     id: string
     nom: string
@@ -1229,7 +1271,9 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
     try {
-      let url = '/api/elevage/soins?limit=100'
+      let url = periode === "toutes"
+        ? "/api/elevage/soins?annee=all&limit=1000"
+        : `/api/elevage/soins?annee=${anneeExercice}&limit=500`
       if (filterFait !== 'all') url += `&fait=${filterFait}`
       const [soinsRes, lotsRes, animauxRes, stocksRes] = await Promise.all([
         fetch(url),
@@ -1262,7 +1306,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
     } finally {
       setIsLoading(false)
     }
-  }, [filterFait, toast])
+  }, [filterFait, periode, anneeExercice, toast])
 
   React.useEffect(() => { fetchData() }, [fetchData])
 
@@ -1550,6 +1594,13 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false }: { initialA
             <SelectItem value="all">Tous</SelectItem>
             <SelectItem value="false">À faire</SelectItem>
             <SelectItem value="true">Faits</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={periode} onValueChange={(v) => setPeriode(v === "toutes" ? "toutes" : "exercice")}>
+          <SelectTrigger className="w-[180px]" aria-label="Période des soins affichés"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="exercice">Exercice {anneeExercice}</SelectItem>
+            <SelectItem value="toutes">Toutes les années</SelectItem>
           </SelectContent>
         </Select>
         <div className="flex items-center gap-2 ml-auto">

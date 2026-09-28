@@ -62,14 +62,21 @@ export async function GET() {
         .filter((d) => d.viande)
         .map((d) => d.viande!.remiseVente)
         .sort()[0] ?? null
+    const prochaineOeufs =
+      data
+        .filter((d) => d.oeufs)
+        .map((d) => d.oeufs!.remiseVente)
+        .sort()[0] ?? null
 
     return NextResponse.json({
       data,
       stats: {
         nbLait: data.filter((d) => d.lait).length,
         nbViande: data.filter((d) => d.viande).length,
+        nbOeufs: data.filter((d) => d.oeufs).length,
         prochaineRemiseLait: prochaineLait,
         prochaineRemiseViande: prochaineViande,
+        prochaineRemiseOeufs: prochaineOeufs,
       },
     })
   } catch (err) {

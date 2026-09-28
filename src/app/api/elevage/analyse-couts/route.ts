@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { reconstituerEffectifsLots } from '@/lib/elevage/effectif'
 
 const round = (value: number) => Math.round(value * 100) / 100
 
@@ -89,9 +90,21 @@ export async function GET(request: NextRequest) {
       return species ? getAtelier(species.id, species.nom) : getAtelier('non_affecte', 'Non affecté')
     }
 
+    // QA 2026-09-28 — l'effectif d'un atelier additionnait le compteur brut du
+    // lot ET chaque fiche nominative active, y compris celles rattachées à ce
+    // lot (5 chèvres comptées 9). Même source de vérité que la fiche du lot et
+    // le dashboard : effectif reconstitué du lot, dont on retire les
+    // nominatives présentes, comptées une fois chacune sur leur propre espèce.
+    const effectifsLots = await reconstituerEffectifsLots(
+      userId,
+      lots.filter((l) => l.statut === 'actif'),
+    )
     for (const lot of lots) {
       const a = getAtelier(lot.especeAnimale.id, lot.especeAnimale.nom)
-      if (lot.statut === 'actif') a.effectif += lot.quantiteActuelle
+      if (lot.statut === 'actif') {
+        const e = effectifsLots.get(lot.id)
+        a.effectif += e ? Math.max(0, e.effectifCalcule - e.nominatifsActifs) : lot.quantiteActuelle
+      }
       if (lot.dateArrivee && lot.dateArrivee >= start && lot.dateArrivee <= end) a.couts.achat += lot.prixAchatTotal || 0
     }
     for (const animal of animals) {
