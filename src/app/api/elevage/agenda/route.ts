@@ -193,17 +193,21 @@ export async function GET(request: NextRequest) {
     for (const s of gestantes) {
       if (s.dateMiseBasAttendue) {
         const jr = jours(now, s.dateMiseBasAttendue)
-        // Une saillie restée « Gestante » ne doit pas polluer l'agenda à vie.
-        // Au-delà de 30 jours de retard, elle relève d'une correction de donnée,
-        // pas des prochaines échéances quotidiennes.
-        if (jr <= horizonJours && jr >= -30) {
+        // Revue 2026-09-28 — la borne basse de 30 j faisait disparaître une
+        // gestation jamais soldée (9 saillies « Gestante » d'un éleveur réel,
+        // mise-bas attendue en mars 2024, qu'aucun écran ne signalait plus).
+        // Un retard n'a pas de borne basse : la ligne reste, nommée comme une
+        // régularisation à faire, jusqu'à la naissance ou la correction.
+        if (jr <= horizonJours) {
           echeances.push({
             id: `mb-${s.id}`,
             kind: 'mise_bas',
             date: s.dateMiseBasAttendue.toISOString(),
             joursRestants: jr,
-            titre: `Mise-bas — ${nomAnimal(s.femelle)}`,
-            detail: jr < 0 ? 'échéance dépassée' : `dans ${jr} j`,
+            titre: jr < 0 ? `Mise-bas dépassée — ${nomAnimal(s.femelle)}` : `Mise-bas — ${nomAnimal(s.femelle)}`,
+            detail: jr < 0
+              ? `attendue il y a ${-jr} j : enregistrer la naissance ou corriger la saillie (Reproduction)`
+              : `dans ${jr} j`,
             gravite: jr <= 3 ? 'urgent' : 'attention',
           })
         }

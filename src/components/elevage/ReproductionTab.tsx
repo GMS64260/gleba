@@ -965,7 +965,9 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
     setIsLoading(true)
     try {
       const [naissRes, animauxRes, lotsRes, sailliesRes] = await Promise.all([
-        fetch('/api/elevage/naissances'),
+        // Revue 2026-09-28 — `year` était reçu mais ignoré : 100 naissances les
+        // plus récentes toutes années, troncature silencieuse au-delà.
+        fetch(year ? `/api/elevage/naissances?annee=${year}&limit=500` : '/api/elevage/naissances?limit=500'),
         fetch('/api/elevage/animaux?sexe=femelle'),
         fetch('/api/elevage/lots?statut=actif'),
         fetch('/api/elevage/saillies'),
@@ -1012,7 +1014,7 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
     } finally {
       setIsLoading(false)
     }
-  }, [toast])
+  }, [toast, year])
 
   React.useEffect(() => { fetchData() }, [fetchData])
 
@@ -1935,17 +1937,27 @@ function SailliesSubTab({ year }: { year?: number } = {}) {
   // Filtrage par filière de l'atelier sélectionné (via l'espèce de la femelle).
   // QA caprin cms1vlsa9 — le sélecteur d'année global filtre désormais la liste
   // (année de la saillie). Sans année fournie : tout l'historique.
-  const visibleSaillies = saillies.filter((s) =>
-    filiereMatch(filiereSel, s.femelle.especeAnimale?.filiere) &&
-    (year == null || new Date(s.date).getFullYear() === year))
-  // Alertes : mises-bas dans les 7 prochains jours, tarissements à programmer (≤14j)
+  // Revue 2026-09-28 — une saillie de novembre dont la mise-bas tombe en avril
+  // appartient aux deux exercices : filtrer sur la seule année de la saillie
+  // masquait la gestation en cours (10 gestantes à cheval, 2 comptes).
+  const sailliesFiliere = saillies.filter((s) => filiereMatch(filiereSel, s.femelle.especeAnimale?.filiere))
+  const visibleSaillies = sailliesFiliere.filter((s) =>
+    year == null ||
+    new Date(s.date).getFullYear() === year ||
+    (s.dateMiseBasAttendue != null && new Date(s.dateMiseBasAttendue).getFullYear() === year))
+  // Alertes : calculées sur TOUTES les saillies de l'atelier (pas la liste
+  // filtrée par année), mises-bas dans les 7 prochains jours OU dépassées et
+  // jamais soldées (un retard n'a pas de borne basse), tarissements ≤ 14 j.
   const now = new Date()
   const dans7j = new Date(now.getTime() + 7 * 86_400_000)
   const dans14j = new Date(now.getTime() + 14 * 86_400_000)
-  const misesBasImminentes = visibleSaillies.filter(
+  const misesBasImminentes = sailliesFiliere.filter(
     (s) => s.statut === "Gestante" && new Date(s.dateMiseBasAttendue) <= dans7j && new Date(s.dateMiseBasAttendue) >= now
   )
-  const tarissementsAProgrammer = visibleSaillies.filter(
+  const misesBasDepassees = sailliesFiliere.filter(
+    (s) => s.statut === "Gestante" && new Date(s.dateMiseBasAttendue) < now
+  )
+  const tarissementsAProgrammer = sailliesFiliere.filter(
     (s) =>
       s.statut === "Gestante" &&
       s.dateTarissementPrevue &&
@@ -1955,9 +1967,15 @@ function SailliesSubTab({ year }: { year?: number } = {}) {
 
   return (
     <div className="space-y-4">
-      {(misesBasImminentes.length > 0 || tarissementsAProgrammer.length > 0) && (
+      {(misesBasImminentes.length > 0 || misesBasDepassees.length > 0 || tarissementsAProgrammer.length > 0) && (
         <Card className="border-amber-200 bg-amber-50">
           <CardContent className="py-3 text-sm space-y-1">
+            {misesBasDepassees.length > 0 && (
+              <div>
+                <strong>⚠ Mises-bas dépassées, à régulariser (naissance à enregistrer ou saillie à corriger) :</strong>{" "}
+                {misesBasDepassees.map((s) => `${s.femelle.nom || s.femelle.identifiant || `#${s.femelle.id}`} (attendue le ${new Date(s.dateMiseBasAttendue).toLocaleDateString("fr-FR")})`).join(", ")}
+              </div>
+            )}
             {misesBasImminentes.length > 0 && (
               <div>
                 <strong>⚠ Mises-bas attendues dans les 7 jours :</strong>{" "}
