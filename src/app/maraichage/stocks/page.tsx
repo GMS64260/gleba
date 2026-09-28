@@ -524,8 +524,10 @@ function StocksPageContent() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold">{data.graines.length}</p>
-                <p className="text-sm text-muted-foreground">variétés en stock</p>
+                {/* QA 2026-09-28 — « 375 variétés en stock » comptait les lignes du
+                    référentiel, dont 374 « Cliquer pour ajouter ». */}
+                <p className="text-2xl font-bold">{data.graines.filter((g) => (g.stockGraines ?? 0) > 0).length}</p>
+                <p className="text-sm text-muted-foreground">variétés en stock sur {data.graines.length} au référentiel</p>
               </CardContent>
             </Card>
             <Card>
@@ -536,8 +538,8 @@ function StocksPageContent() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold">{data.plants.length}</p>
-                <p className="text-sm text-muted-foreground">variétés en stock</p>
+                <p className="text-2xl font-bold">{data.plants.filter((p) => (p.stockPlants ?? 0) > 0).length}</p>
+                <p className="text-sm text-muted-foreground">variétés en stock sur {data.plants.length} au référentiel</p>
               </CardContent>
             </Card>
             <Card>

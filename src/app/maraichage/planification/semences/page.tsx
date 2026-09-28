@@ -64,7 +64,7 @@ interface BesoinSemence {
   tauxGerminationPct: number | null
   aCommander: number
   caieuxACommander: number
-  statut: "OK" | "LOW" | "MISSING" | "IGNORE" | "DONNEE_MANQUANTE"
+  statut: "OK" | "LOW" | "MISSING" | "IGNORE" | "DONNEE_MANQUANTE" | "SURFACE_MANQUANTE"
   stockDateMaj: string | null
 }
 
@@ -87,6 +87,8 @@ interface Stats {
   nbBulbeCaieu: number
   nbDonneeManquante?: number
   especesDonneeManquante?: string[]
+  nbSurfaceManquante?: number
+  especesSurfaceManquante?: string[]
   nbModeNonListe?: number
   especesModeNonListe?: string[]
   stockObsolete: boolean
@@ -119,6 +121,19 @@ function StatutBadge({ statut }: { statut: BesoinSemence["statut"] }) {
         <Badge variant="outline" className="flex items-center gap-1 border-amber-400 text-amber-700">
           <AlertTriangle className="h-3 w-3" />
           Dose manquante
+        </Badge>
+      )
+    case "SURFACE_MANQUANTE":
+      // QA 2026-09-28 — la dose existe, c'est la surface (planche, longueur)
+      // qui manque : le référentiel n'y peut rien, la culture si.
+      return (
+        <Badge
+          variant="outline"
+          className="flex items-center gap-1 border-amber-400 text-amber-700"
+          title="Culture sans planche ou sans dimensions : renseignez sa planche ou sa longueur"
+        >
+          <AlertTriangle className="h-3 w-3" />
+          Surface manquante
         </Badge>
       )
     default:
@@ -611,6 +626,32 @@ function SemencesContent() {
                   className="underline underline-offset-2 hover:text-amber-900"
                 >
                   Compléter le référentiel
+                </Link>
+                .
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {/* QA 2026-09-28 — cause distincte : la dose est connue, la culture n'a
+            ni planche ni dimensions exploitables (surface 0). */}
+        {stats?.nbSurfaceManquante ? (
+          <Card className="mb-4 border-amber-300 bg-amber-50">
+            <CardContent className="py-3 flex items-start gap-3">
+              <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0" />
+              <div className="text-sm text-amber-800">
+                Surface inconnue pour{" "}
+                <strong>
+                  {stats.especesSurfaceManquante?.join(", ") || `${stats.nbSurfaceManquante} espèce(s)`}
+                </strong>{" "}
+                : la dose est renseignée, mais la culture n&apos;a pas de planche (ou pas de
+                dimensions), donc aucune surface à ensemencer. Ces lignes portent le statut
+                « Surface manquante » et n&apos;entrent pas dans les totaux à commander.{" "}
+                <Link
+                  href={`/maraichage/cultures?annee=${annee}`}
+                  className="underline underline-offset-2 hover:text-amber-900"
+                >
+                  Rattacher les cultures à une planche
                 </Link>
                 .
               </div>

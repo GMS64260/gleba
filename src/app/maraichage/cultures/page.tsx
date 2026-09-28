@@ -506,7 +506,9 @@ function CulturesPageInner() {
         <Tabs value={selectedEtat} onValueChange={handleEtatChange} className="mb-4">
           <TabsList className="flex-wrap h-auto gap-1">
             {CULTURE_ETATS.map(({ value, label, icon: Icon }) => (
-              <TabsTrigger key={value} value={value} className="flex items-center gap-1">
+              // QA 2026-09-28 (mobile 375 px) — le libellé est masqué sous 640 px :
+              // sans nom accessible, six onglets anonymes (CulturesTab les porte).
+              <TabsTrigger key={value} value={value} className="flex items-center gap-1" aria-label={label} title={label}>
                 <Icon className="h-4 w-4" />
                 <span className="hidden sm:inline">{label}</span>
               </TabsTrigger>

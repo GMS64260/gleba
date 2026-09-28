@@ -27,7 +27,19 @@ export type UniteDose = 'g_m2' | 'pieces_m2' | 'graines_plant' | 'caieux_m2'
  *   engrais vert sans `doseSemis` retombait dans `IGNORE`, filtré comme « rien
  *   à faire ». Une donnée absente doit se voir, pas s'escamoter.
  */
-export type StatutSemence = 'OK' | 'LOW' | 'MISSING' | 'IGNORE' | 'DONNEE_MANQUANTE'
+export type StatutSemence = 'OK' | 'LOW' | 'MISSING' | 'IGNORE' | 'DONNEE_MANQUANTE' | 'SURFACE_MANQUANTE'
+
+/**
+ * Pourquoi un besoin planifié vaut zéro : le référentiel ne permet aucun calcul
+ * (`referentiel` : dose, graines/g…) ou la culture n'a ni surface ni plants
+ * exploitables (`dimension` : culture sans planche ou sans longueur).
+ *
+ * QA 2026-09-28 : « Radis — Dose = 1,5 g/m², Surface = 0,0 m², Statut = Dose
+ * manquante », avec un bandeau qui renvoyait au référentiel. La dose était là ;
+ * c'est la surface qui manquait. Les deux causes se corrigent à des endroits
+ * différents, elles ont donc deux statuts.
+ */
+export type RaisonBesoinNul = 'referentiel' | 'dimension' | null
 
 export interface BesoinSemenceInput {
   mode: ModeSemis | null | undefined
@@ -152,6 +164,7 @@ export function calculerBesoin(input: BesoinSemenceInput): BesoinSemenceResult {
 
   let besoinGrammes = 0
   let besoinCaieux = 0
+  let raisonBesoinNul: RaisonBesoinNul = null
 
   // L'unité de la dose détermine l'interprétation. Si le référentiel ne la
   // précise pas, on retombe sur la convention historique (g/m² en mode
@@ -169,6 +182,8 @@ export function calculerBesoin(input: BesoinSemenceInput): BesoinSemenceResult {
           // g/m² par défaut
           besoinGrammes = round2(surfaceM2 * dose * margeFactor)
         }
+      } else {
+        raisonBesoinNul = dose > 0 ? 'dimension' : 'referentiel'
       }
       break
     }
@@ -188,9 +203,13 @@ export function calculerBesoin(input: BesoinSemenceInput): BesoinSemenceResult {
           besoinGrammes = round2((totalGraines / gpg) * margeFactor)
         } else if (totalGraines > 0) {
           besoinCaieux = Math.ceil(totalGraines * margeFactor)
+        } else {
+          raisonBesoinNul = 'dimension'
         }
       } else if (gpg > 0 && nbPlants > 0) {
         besoinGrammes = round2((nbPlants / gpg) * margeFactor)
+      } else {
+        raisonBesoinNul = gpg > 0 ? 'dimension' : 'referentiel'
       }
       break
     }
@@ -210,6 +229,7 @@ export function calculerBesoin(input: BesoinSemenceInput): BesoinSemenceResult {
         besoinCaieux = Math.ceil(surfaceM2 * (input.doseGParM2 as number) * margeFactor)
       } else {
         besoinCaieux = 0
+        raisonBesoinNul = surfaceM2 > 0 ? 'referentiel' : 'dimension'
       }
       break
     }
@@ -217,6 +237,7 @@ export function calculerBesoin(input: BesoinSemenceInput): BesoinSemenceResult {
     case 'bouture': {
       // Boutures : comptage en unités sans marge.
       besoinCaieux = nbPlants
+      if (nbPlants === 0) raisonBesoinNul = 'dimension'
       break
     }
   }
@@ -245,8 +266,15 @@ export function calculerBesoin(input: BesoinSemenceInput): BesoinSemenceResult {
       // « rien à commander » : c'est une donnée manquante, qui doit rester
       // visible à l'écran au lieu d'être filtrée avec les lignes hors plan.
       surfaceM2 > 0 || nbPlants > 0,
+      raisonBesoinNul,
     ),
   }
+}
+
+/** Statut d'un besoin planifié dont le calcul ne donne rien, selon la cause. */
+function statutBesoinNul(cultureplanifiee: boolean, raison: RaisonBesoinNul): StatutSemence {
+  if (!cultureplanifiee) return 'IGNORE'
+  return raison === 'dimension' ? 'SURFACE_MANQUANTE' : 'DONNEE_MANQUANTE'
 }
 
 function computeStatut(
@@ -256,9 +284,10 @@ function computeStatut(
   stockG: number,
   stockC: number,
   cultureplanifiee = false,
+  raisonBesoinNul: RaisonBesoinNul = null,
 ): StatutSemence {
   if (mode === 'bulbe_caieu' || mode === 'bouture') {
-    if (besoinC === 0) return cultureplanifiee ? 'DONNEE_MANQUANTE' : 'IGNORE'
+    if (besoinC === 0) return statutBesoinNul(cultureplanifiee, raisonBesoinNul)
     if (stockC === 0) return 'MISSING'
     if (stockC < besoinC) return 'LOW'
     return 'OK'
@@ -267,7 +296,7 @@ function computeStatut(
   // unités (graines à acheter à l'unité). On considère "absent" si les
   // deux compteurs sont à zéro.
   if (besoinG === 0 && besoinC === 0) {
-    return cultureplanifiee ? 'DONNEE_MANQUANTE' : 'IGNORE'
+    return statutBesoinNul(cultureplanifiee, raisonBesoinNul)
   }
   if (besoinG > 0) {
     if (stockG === 0) return 'MISSING'

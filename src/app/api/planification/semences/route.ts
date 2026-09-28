@@ -69,6 +69,11 @@ export async function GET(request: NextRequest) {
     const especesDonneeManquante = [
       ...new Set(besoins.filter(b => b.statut === 'DONNEE_MANQUANTE').map(b => b.especeId)),
     ]
+    // QA 2026-09-28 — cause distincte, corrigée sur la culture et non au
+    // référentiel : dose connue mais culture sans surface (sans planche).
+    const especesSurfaceManquante = [
+      ...new Set(besoins.filter(b => b.statut === 'SURFACE_MANQUANTE').map(b => b.especeId)),
+    ]
     // Espèces planifiées dont le MODE de propagation n'a aucun onglet
     // (bouture, greffe, tubercule, rejet) : elles pesaient sur les compteurs
     // sans être listées nulle part, et n'entrent pas non plus dans le bandeau
@@ -115,6 +120,10 @@ export async function GET(request: NextRequest) {
         nbGraineDirecte: graineDirecte.length,
         nbPlantRepique: plantRepique.length,
         nbBulbeCaieu: bulbeCaieu.length,
+        nbSurfaceManquante: especesSurfaceManquante.length,
+        especesSurfaceManquante: especesSurfaceManquante.map(
+          (id) => especeNomMap.get(id) ?? id,
+        ),
         nbDonneeManquante: especesDonneeManquante.length,
         especesDonneeManquante: especesDonneeManquante.map(
           (id) => especeNomMap.get(id) ?? id,

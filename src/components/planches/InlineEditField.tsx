@@ -18,6 +18,8 @@ interface InlineEditFieldProps {
   unit?: string
   placeholder?: string
   className?: string
+  /** Pas d'un champ numérique (0.1 par défaut ; 1 pour une année). */
+  step?: string
 }
 
 export function InlineEditField({
@@ -29,6 +31,7 @@ export function InlineEditField({
   unit = '',
   placeholder = '-',
   className = '',
+  step,
 }: InlineEditFieldProps) {
   const [isEditing, setIsEditing] = React.useState(false)
   const [editValue, setEditValue] = React.useState('')
@@ -165,7 +168,7 @@ export function InlineEditField({
         onChange={(e) => setEditValue(e.target.value)}
         onKeyDown={handleKeyDown}
         disabled={isSaving}
-        step={type === 'number' ? '0.1' : undefined}
+        step={type === 'number' ? step ?? '0.1' : undefined}
         className="w-full rounded border border-green-500 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
       />
       <button

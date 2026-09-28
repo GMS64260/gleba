@@ -213,8 +213,8 @@ function RotationAncrage({ planche }: { planche: Planche }) {
         <p className="text-sm font-medium text-slate-700">Aucune rotation affectée</p>
         <p className="mt-1 text-sm text-slate-500">
           Les conseils ci-dessous reposent alors uniquement sur l&apos;historique des cultures de
-          la planche. Affectez une rotation depuis l&apos;onglet Informations pour planifier une
-          succession.
+          la planche. Affectez une rotation depuis l&apos;onglet Informations (carte Rotation)
+          pour planifier une succession.
         </p>
       </div>
     )
@@ -253,8 +253,8 @@ function RotationAncrage({ planche }: { planche: Planche }) {
       </p>
       {!planche.annee && (
         <p className="mt-1 text-sm text-amber-700">
-          Renseignez « Année de départ du cycle de rotation » dans l&apos;onglet Informations pour
-          décider à quelle étape cette planche démarre. Sans elle, deux planches de la même
+          Renseignez « Année de départ du cycle de rotation » dans l&apos;onglet Informations
+          (carte Rotation) pour décider à quelle étape cette planche démarre. Sans elle, deux planches de la même
           rotation suivent des successions décalées sans raison lisible.
         </p>
       )}

@@ -9,7 +9,7 @@ import * as React from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { InlineEditField } from "./InlineEditField"
-import { Droplets, Ruler, MapPin, Loader2, Satellite, Pencil } from "lucide-react"
+import { Droplets, Ruler, MapPin, Loader2, Satellite, Pencil, RotateCw } from "lucide-react"
 import { alertDialog } from "@/lib/global-dialog"
 
 interface Planche {
@@ -30,6 +30,9 @@ interface Planche {
   phSol?: number | null
   carboneOrg?: number | null
   parcelleGeoId?: string | null
+  /** Rotation affectée (identifiant de la rotation) et année de départ du cycle. */
+  rotationId?: string | null
+  annee?: number | null
   parcelleGeo?: {
     id?: string
     nom?: string
@@ -58,6 +61,7 @@ const PLANCHE_IRRIGATION = ['Goutte-a-goutte', 'Aspersion', 'Manuel', 'Aucun']
 export function PlancheInfoTable({ planche, onUpdate, onRenamed }: PlancheInfoTableProps) {
   const [ilotOptions, setIlotOptions] = React.useState<{value: string, label: string}[]>([])
   const [parcelles, setParcelles] = React.useState<{id: string, nom: string}[]>([])
+  const [rotations, setRotations] = React.useState<{ id: string; nbAnnees?: number | null }[]>([])
   const [soilLoading, setSoilLoading] = React.useState(false)
   const [soilEstimate, setSoilEstimate] = React.useState<{
     argile: number; limon: number; sable: number; ph: number; carboneOrg: number
@@ -74,6 +78,14 @@ export function PlancheInfoTable({ planche, onUpdate, onRenamed }: PlancheInfoTa
     fetch("/api/carte").then(r => r.json()).then(data => {
       const list = Array.isArray(data) ? data : []
       setParcelles(list.map((p: any) => ({ id: p.id, nom: p.nom })))
+    }).catch(() => {})
+
+    // QA 2026-09-28 — l'onglet Rotation renvoyait vers « Année de départ du
+    // cycle de rotation » dans Informations, qui n'existait plus (ancien
+    // composant PlancheInfo). Rotation et année de départ s'éditent ici.
+    fetch("/api/rotations?pageSize=200").then(r => r.json()).then(data => {
+      const list = Array.isArray(data?.data) ? data.data : []
+      setRotations(list.map((r: any) => ({ id: r.id, nbAnnees: r.nbAnnees ?? null })))
     }).catch(() => {})
   }, [])
 
@@ -288,6 +300,68 @@ export function PlancheInfoTable({ planche, onUpdate, onRenamed }: PlancheInfoTa
                       <option key={p.id} value={p.id}>{p.nom}</option>
                     ))}
                   </select>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
+
+      {/* Rotation — QA 2026-09-28 : l'ancrage du cycle se règle ici, comme
+          l'annonce l'onglet Rotation. */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <RotateCw className="h-4 w-4" />
+            Rotation
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <table className="w-full text-sm">
+            <tbody className="divide-y">
+              <tr>
+                <td className="py-2 text-muted-foreground w-1/3">Rotation affectée</td>
+                <td className="py-2 font-medium">
+                  <select
+                    aria-label="Rotation affectée"
+                    value={planche.rotationId || ""}
+                    onChange={async (e) => {
+                      await handleUpdate('rotationId', e.target.value || null)
+                    }}
+                    className="bg-transparent border-0 p-0 text-sm font-medium cursor-pointer hover:text-green-600"
+                  >
+                    <option value="">Aucune</option>
+                    {planche.rotationId && !rotations.some((r) => r.id === planche.rotationId) && (
+                      <option value={planche.rotationId}>{planche.rotationId}</option>
+                    )}
+                    {rotations.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.id}{r.nbAnnees ? ` (${r.nbAnnees} ans)` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+              </tr>
+              <tr>
+                <td className="py-2 text-muted-foreground">Année de départ du cycle de rotation</td>
+                <td className="py-2 font-medium">
+                  <InlineEditField
+                    value={planche.annee ?? null}
+                    onSave={async (v) => {
+                      const annee = v ? parseInt(v, 10) : null
+                      if (v && (!Number.isInteger(annee) || (annee as number) < 2000 || (annee as number) > 2100)) {
+                        await alertDialog("Année invalide : indiquez une année entre 2000 et 2100.")
+                        return
+                      }
+                      await handleUpdate('annee', annee)
+                    }}
+                    type="number"
+                    step="1"
+                    placeholder="Non défini"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Année où cette planche est à l&apos;étape 1 de sa rotation. Sans elle, la phase du cycle est arbitraire.
+                  </p>
                 </td>
               </tr>
             </tbody>
