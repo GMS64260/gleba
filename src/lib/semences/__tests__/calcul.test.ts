@@ -32,6 +32,32 @@ describe('calculerBesoin', () => {
       expect(r.statut).toBe('DONNEE_MANQUANTE')
     })
 
+    // QA 2026-09-28 — « Radis : Dose = 1,5 g/m², Surface = 0,0 m², Nb plants
+    // = 216, Statut = Dose manquante » : la dose était là, la surface manquait
+    // (culture sans planche). Le diagnostic doit nommer la vraie cause.
+    it("signale une SURFACE manquante quand la dose existe mais la surface est nulle", () => {
+      const r = calculerBesoin({
+        mode: 'graine_directe',
+        surfaceM2: 0,
+        nbPlants: 216,
+        doseGParM2: 1.5,
+        margeSecuritePct: 15,
+      })
+      expect(r.besoinGrammes).toBe(0)
+      expect(r.statut).toBe('SURFACE_MANQUANTE')
+    })
+
+    it("signale une DONNÉE manquante (référentiel) quand ni dose ni surface, mais des plants", () => {
+      const r = calculerBesoin({
+        mode: 'graine_directe',
+        surfaceM2: 0,
+        nbPlants: 216,
+        doseGParM2: null,
+        margeSecuritePct: 15,
+      })
+      expect(r.statut).toBe('DONNEE_MANQUANTE')
+    })
+
     it("retourne IGNORE si dose ou surface manquent (besoin = 0)", () => {
       const r = calculerBesoin({
         mode: 'graine_directe',
