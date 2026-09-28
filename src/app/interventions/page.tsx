@@ -140,8 +140,19 @@ function valeurOptionPlanche(culture: Culture, planches: Planche[]): string {
   const id = culture.plancheId ?? culture.planche?.id ?? null
   const nom = culture.planche?.nom ?? null
   const match = planches.find((p) => (id && p.id === id) || (nom && p.nom === nom))
-  if (match) return match.nom || match.id
-  return nom || id || ""
+  if (match) return match.id
+  return id || nom || ""
+}
+
+/**
+ * Valeur d'option pour une référence de planche déjà stockée (id ou nom
+ * historique) : l'option vaut désormais l'ID de la planche (QA 2026-09-28, le
+ * registre phyto perdait l'emplacement d'un traitement saisi par nom).
+ */
+function valeurOptionPlancheRef(ref: string | null | undefined, planches: Planche[]): string {
+  if (!ref) return ""
+  const match = planches.find((p) => p.id === ref || p.nom === ref)
+  return match ? match.id : ref
 }
 
 // ============================================================
@@ -541,7 +552,7 @@ export default function InterventionsPage() {
       date: intervention.date ? intervention.date.split("T")[0] : todayLocalISO(),
       type: intervention.type,
       cultureId: intervention.cultureId?.toString() || "",
-      plancheId: intervention.plancheId || "",
+      plancheId: valeurOptionPlancheRef(intervention.plancheId, planches),
       description: intervention.description || "",
       dureeHeures: totalMin >= 60 ? Math.floor(totalMin / 60).toString() : "",
       dureeMinutesForm: (totalMin % 60).toString() || "",
@@ -823,7 +834,7 @@ export default function InterventionsPage() {
                       >
                         <option value="">-- Aucune --</option>
                         {planches.map((p) => (
-                          <option key={p.id || p.nom} value={p.nom || p.id}>
+                          <option key={p.id} value={p.id}>
                             {p.nom || p.id}
                           </option>
                         ))}

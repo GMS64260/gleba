@@ -13,6 +13,7 @@
  */
 
 import prisma from '@/lib/prisma'
+import { resoudreIdPlanche } from '@/lib/planches/resolution'
 
 /**
  * Classification heuristique en rétro-compatibilité pour les anciennes saisies
@@ -99,12 +100,19 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
         }
       }
 
-      // Si pas de culture mais une planche directe
+      // Si pas de culture mais une planche directe.
+      // QA 2026-09-28 — `Intervention.plancheId` porte historiquement le NOM
+      // de la planche autant que son id (formulaire qui envoyait `nom || id`) :
+      // résolu par id puis par nom, borné au compte, sinon un traitement saisi
+      // « sur planche » sortait au registre sans emplacement et « Non conforme ».
       if (!plancheNom && intervention.plancheId) {
-        const planche = await prisma.planche.findUnique({
-          where: { id: intervention.plancheId },
-          select: { nom: true, ilot: true, type: true },
-        })
+        const plancheId = await resoudreIdPlanche(prisma, intervention.plancheId, userId)
+        const planche = plancheId
+          ? await prisma.planche.findUnique({
+              where: { id: plancheId },
+              select: { nom: true, ilot: true, type: true },
+            })
+          : null
         if (planche) {
           plancheNom = planche.nom
           plancheLocalisation = [planche.ilot, planche.type]
