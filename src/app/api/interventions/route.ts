@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { lireAnnee } from '@/lib/api/annee'
 import { createDepenseFromIntervention, deleteAutoEntry } from '@/lib/auto-compta'
 import { createInterventionSchema, updateInterventionSchema } from '@/lib/validations/intervention'
 import { resoudreIdPlanche } from '@/lib/planches/resolution'
@@ -24,12 +25,11 @@ export async function GET(request: NextRequest) {
     const dateFrom = searchParams.get('dateFrom')
     const dateTo = searchParams.get('dateTo')
     const fait = searchParams.get('fait')
-    const annee = searchParams.get('annee')
-      ? parseInt(searchParams.get('annee')!)
-      : new Date().getFullYear()
-
-    const yearStart = new Date(annee, 0, 1)
-    const yearEnd = new Date(annee, 11, 31, 23, 59, 59)
+    // Revue 2026-09-28 : `annee=all` (registre phyto du verger, qui n'a pas
+    // d'exercice et perdait ses traitements de l'an passé au 1er janvier).
+    const { annee, bornes } = lireAnnee(searchParams)
+    const yearStart = bornes?.gte ?? new Date(annee, 0, 1)
+    const yearEnd = bornes?.lte ?? new Date(annee, 11, 31, 23, 59, 59)
 
     // Build where clause for manual interventions
     const where: any = { userId }
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
       where.date = {}
       if (dateFrom) where.date.gte = new Date(dateFrom)
       if (dateTo) where.date.lte = new Date(dateTo + 'T23:59:59')
-    } else {
+    } else if (bornes) {
       where.date = { gte: yearStart, lte: yearEnd }
     }
 

@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { lireAnnee } from '@/lib/api/annee'
 import { creerFacture } from '@/lib/facture-utils'
 import { invalidateKpi } from '@/lib/kpi'
 
@@ -15,19 +16,16 @@ export async function GET(request: NextRequest) {
 
   try {
     const { searchParams } = new URL(request.url)
-    const year = searchParams.get('year') ? parseInt(searchParams.get('year')!) : new Date().getFullYear()
+    // Revue 2026-09-28 : `year=all` (impayés de tous les exercices).
+    const { bornes } = lireAnnee(searchParams, 'year')
     const statut = searchParams.get('statut')
     const type = searchParams.get('type')
     const clientId = searchParams.get('clientId')
 
     const userId = session.user.id
-    const startOfYear = new Date(year, 0, 1)
-    const endOfYear = new Date(year, 11, 31, 23, 59, 59)
 
-    const where: any = {
-      userId,
-      date: { gte: startOfYear, lte: endOfYear },
-    }
+    const where: any = { userId }
+    if (bornes) where.date = { ...bornes }
     if (statut) where.statut = statut
     if (type) where.type = type
     if (clientId) where.clientId = parseInt(clientId)

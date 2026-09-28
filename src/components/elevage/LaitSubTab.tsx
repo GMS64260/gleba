@@ -1114,7 +1114,7 @@ function FabricationsView() {
               value={year}
               onChange={(e) => setYear(parseInt(e.target.value))}
             >
-              {Array.from(new Set([0, -1, -2].map((d) => new Date().getFullYear() + d).concat(year)))
+              {Array.from(new Set([0, -1, -2, -3, -4, -5].map((d) => new Date().getFullYear() + d).concat(year)))
                 .sort((a, b) => b - a)
                 .map((y) => (
                   <option key={y} value={y}>

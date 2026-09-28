@@ -20,6 +20,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { SelectNatif } from "@/components/ui/select-natif"
+import { getAvailableYears } from "@/components/year-selector"
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
 import { todayLocalISO } from '@/lib/format-utils'
@@ -150,7 +152,10 @@ export default function FacturesPage() {
         // QA cmsjilhre — l'onglet Impayées n'interrogeait jamais la table
         // Facture : deux factures « Émise » non réglées ressortaient « 0 € dû ».
         // Une facture au statut « emise » (hors avoir) est un impayé.
-        fetch(`/api/comptabilite/factures?year=${new Date().getFullYear()}`),
+        // Revue 2026-09-28 — un impayé de décembre disparaissait au 1er janvier
+        // (année civile courante imposée) : les impayés se lisent sur tous les
+        // exercices.
+        fetch(`/api/comptabilite/factures?year=all`),
       ])
 
       let factures: any[] = []
@@ -176,9 +181,14 @@ export default function FacturesPage() {
     }
   }, [toast])
 
+  // Revue 2026-09-28 — la page était câblée sur l'année civile courante, sans
+  // sélecteur : au 1er janvier, toutes les factures émises en décembre (PDF,
+  // avoirs, encaissements) sortaient du seul écran qui les gère.
+  const [selectedYear, setSelectedYear] = React.useState(new Date().getFullYear())
+  const years = React.useMemo(() => getAvailableYears(), [])
   const fetchFacturesEmises = React.useCallback(async () => {
     try {
-      const res = await fetch(`/api/comptabilite/factures?year=${new Date().getFullYear()}`)
+      const res = await fetch(`/api/comptabilite/factures?year=${selectedYear}`)
       if (res.ok) {
         const data = await res.json()
         setFacturesEmises(Array.isArray(data) ? data : (data.data || data.factures || []))
@@ -186,7 +196,7 @@ export default function FacturesPage() {
     } catch {
       // silent
     }
-  }, [])
+  }, [selectedYear])
 
   React.useEffect(() => {
     fetchImpayees()
@@ -652,7 +662,20 @@ export default function FacturesPage() {
             </p>
             <Card>
               <CardHeader>
-                <CardTitle>Factures émises {new Date().getFullYear()}</CardTitle>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <CardTitle>Factures émises {selectedYear}</CardTitle>
+                  <SelectNatif
+                    aria-label="Exercice des factures émises"
+                    title="Exercice"
+                    className="w-[110px]"
+                    value={String(selectedYear)}
+                    onChange={(e) => setSelectedYear(parseInt(e.target.value, 10))}
+                  >
+                    {years.map((y) => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </SelectNatif>
+                </div>
                 <CardDescription>
                   Téléchargez vos factures au format PDF
                 </CardDescription>

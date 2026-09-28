@@ -1303,8 +1303,8 @@ export function DashboardTab({ year }: DashboardTabProps) {
                 immédiat : un registre se relit avant d'être classé. */}
             <a
               href={urlApercu(
-                `/api/elevage/registre-sanitaire?year=${new Date().getFullYear()}`,
-                `Registre sanitaire ${new Date().getFullYear()}`,
+                `/api/elevage/registre-sanitaire?year=${year}`,
+                `Registre sanitaire ${year}`,
               )}
               target="_blank"
               rel="noreferrer"

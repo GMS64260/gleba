@@ -26,6 +26,7 @@ import {
   Flower2,
 } from "lucide-react"
 import { LaitSubTab } from "./LaitSubTab"
+import { SelecteurPeriodeExercice, parametreAnnee, type PeriodeListe } from "./SelecteurPeriodeExercice"
 import { EconomieLaitSubTab } from "./EconomieLaitSubTab"
 import { ProduitsRucheSubTab } from "./ProduitsRucheSubTab"
 
@@ -157,10 +158,10 @@ export function ProductionTab({ year }: { year?: number } = {}) {
         <ProduitsRucheSubTab year={year} />
       </TabsContent>
       <TabsContent value="ventes">
-        <VentesSubTab />
+        <VentesSubTab year={year} />
       </TabsContent>
       <TabsContent value="abattages">
-        <AbattagesSubTab />
+        <AbattagesSubTab year={year} />
       </TabsContent>
       <TabsContent value="economie">
         <EconomieLaitSubTab year={year} />
@@ -1154,9 +1155,14 @@ const PREFIXE_CESSION_GRATUITE = '[Cession gratuite]'
 const estCessionGratuite = (notes: string | null | undefined) =>
   (notes ?? '').startsWith(PREFIXE_CESSION_GRATUITE)
 
-function VentesSubTab() {
+function VentesSubTab({ year }: { year?: number } = {}) {
   const { toast } = useToast()
   const [isLoading, setIsLoading] = React.useState(true)
+  // Revue 2026-09-28 — la liste ne demandait que l'année civile courante :
+  // 13 ventes 2023-2025 d'un éleveur réel étaient invisibles, donc ni
+  // modifiables ni annulables. Elle suit l'exercice du module, ou toutes les années.
+  const anneeExercice = year ?? new Date().getFullYear()
+  const [periode, setPeriode] = React.useState<PeriodeListe>("exercice")
   const [ventes, setVentes] = React.useState<Vente[]>([])
   const [stats, setStats] = React.useState<any>(null)
   const [isDialogOpen, setIsDialogOpen] = React.useState(false)
@@ -1218,7 +1224,7 @@ function VentesSubTab() {
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
     try {
-      const response = await fetch('/api/elevage/ventes?limit=100')
+      const response = await fetch(`/api/elevage/ventes?limit=500&${parametreAnnee(periode, anneeExercice)}`)
       if (response.ok) {
         const result = await response.json()
         setVentes(result.data)
@@ -1229,7 +1235,7 @@ function VentesSubTab() {
     } finally {
       setIsLoading(false)
     }
-  }, [toast])
+  }, [toast, periode, anneeExercice])
 
   React.useEffect(() => { fetchData() }, [fetchData])
 
@@ -1386,6 +1392,7 @@ function VentesSubTab() {
 
       {/* Actions */}
       <div className="flex items-center justify-end gap-2">
+        <SelecteurPeriodeExercice annee={anneeExercice} periode={periode} onChange={setPeriode} libelle="Période des ventes affichées" />
         <Button variant="outline" size="sm" onClick={fetchData}>
           <RefreshCw className="h-4 w-4" />
         </Button>
@@ -1631,9 +1638,14 @@ function getEspeceFromAbattage(a: Abattage): { id: string; nom: string; couleur:
   return a.lot?.especeAnimale || a.animal?.especeAnimale || null
 }
 
-function AbattagesSubTab() {
+function AbattagesSubTab({ year }: { year?: number } = {}) {
   const { toast } = useToast()
   const [isLoading, setIsLoading] = React.useState(true)
+  // Revue 2026-09-28 — même défaut que les ventes : 15 abattages 2023-2025
+  // d'un éleveur réel invisibles, et le lien « déclaration à compléter »
+  // (editAbattage=) muet pour un abattage d'une autre année.
+  const anneeExercice = year ?? new Date().getFullYear()
+  const [periode, setPeriode] = React.useState<PeriodeListe>("exercice")
   const [abattages, setAbattages] = React.useState<Abattage[]>([])
   const [lots, setLots] = React.useState<LotActif[]>([])
   const [stats, setStats] = React.useState<any>(null)
@@ -1675,7 +1687,7 @@ function AbattagesSubTab() {
     setIsLoading(true)
     try {
       const [abatRes, lotsRes] = await Promise.all([
-        fetch('/api/elevage/abattages?limit=100'),
+        fetch(`/api/elevage/abattages?limit=500&${parametreAnnee(periode, anneeExercice)}`),
         fetch('/api/elevage/lots?statut=actif'),
       ])
       if (abatRes.ok) { const r = await abatRes.json(); setAbattages(r.data); setStats(r.stats) }
@@ -1685,7 +1697,7 @@ function AbattagesSubTab() {
     } finally {
       setIsLoading(false)
     }
-  }, [toast])
+  }, [toast, periode, anneeExercice])
 
   React.useEffect(() => { fetchData() }, [fetchData])
 
@@ -1849,6 +1861,7 @@ function AbattagesSubTab() {
           )}
         </div>
         <div className="flex items-center gap-2">
+          <SelecteurPeriodeExercice annee={anneeExercice} periode={periode} onChange={setPeriode} libelle="Période des abattages affichés" />
           <Button variant="outline" size="sm" onClick={fetchData}>
             <RefreshCw className="h-4 w-4" />
           </Button>

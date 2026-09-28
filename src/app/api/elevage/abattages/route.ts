@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { lireAnnee } from '@/lib/api/annee'
 import { createVenteFromAbattage, deleteAutoEntry } from '@/lib/auto-compta'
 import { invalidateKpi } from '@/lib/kpi'
 import { creerFacture, annulerFactureLiee } from '@/lib/facture-utils'
@@ -23,14 +24,15 @@ export async function GET(request: NextRequest) {
     const dateDebut = searchParams.get('dateDebut')
     const dateFin = searchParams.get('dateFin')
     const destination = searchParams.get('destination')
-    const limit = parseInt(searchParams.get('limit') || '100')
-    const annee = parseInt(searchParams.get('annee') || String(new Date().getFullYear()))
-    const yearStart = new Date(annee, 0, 1)
-    const yearEnd = new Date(annee, 11, 31, 23, 59, 59)
+    const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '100') || 100, 1), 1000)
+    // Revue 2026-09-28 : `annee=all` pour la liste de gestion d'un historique.
+    const { annee, bornes } = lireAnnee(searchParams)
 
-    const where: any = { userId: session.user.id, annule: { not: true }, date: { gte: yearStart, lte: yearEnd } }
+    const where: any = { userId: session.user.id, annule: { not: true } }
+    if (bornes) where.date = { ...bornes }
     if (destination) where.destination = destination
     if (dateDebut || dateFin) {
+      where.date = where.date ?? {}
       if (dateDebut) where.date.gte = new Date(dateDebut)
       if (dateFin) where.date.lte = new Date(dateFin)
     }
