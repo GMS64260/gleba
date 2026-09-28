@@ -59,8 +59,13 @@ export async function GET(request: NextRequest) {
     const fait = searchParams.get('fait')
     const rappels = searchParams.get('rappels') === '1'
     const filiere = searchParams.get('filiere')
-    const limit = parseInt(searchParams.get('limit') || '100')
-    const annee = parseInt(searchParams.get('annee') || String(new Date().getFullYear()))
+    const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '100') || 100, 1), 1000)
+    // `annee=all` : toutes les années (liste de gestion d'un historique
+    // ressaisi, signalement 2026-09-27). Sinon l'exercice demandé, ou l'année
+    // civile courante.
+    const anneeParam = searchParams.get('annee')
+    const toutesAnnees = anneeParam === 'all'
+    const annee = parseInt(anneeParam && !toutesAnnees ? anneeParam : String(new Date().getFullYear()))
     const yearStart = new Date(annee, 0, 1)
     const yearEnd = new Date(annee, 11, 31, 23, 59, 59)
 
@@ -70,7 +75,9 @@ export async function GET(request: NextRequest) {
     // son filtre annuel et sa pagination existants.
     const where: any = rappels
       ? { userId: session.user.id, fait: false, datePrevue: { not: null } }
-      : { userId: session.user.id, date: { gte: yearStart, lte: yearEnd } }
+      : toutesAnnees
+        ? { userId: session.user.id }
+        : { userId: session.user.id, date: { gte: yearStart, lte: yearEnd } }
     if (animalId) where.animalId = parseInt(animalId)
     if (lotId) where.lotId = parseInt(lotId)
     if (type) where.type = type
@@ -92,8 +99,10 @@ export async function GET(request: NextRequest) {
       orderBy: [{ date: 'desc' }, { id: 'desc' }],
       ...(rappels ? {} : { take: limit }),
       include: {
-        animal: { select: { id: true, nom: true, identifiant: true, especeAnimale: { select: { id: true, filiere: true } } } },
-        lot: { select: { id: true, nom: true, especeAnimale: { select: { id: true, filiere: true } } } },
+        // statut/sexe/dateSortie : un soin d'un animal sorti reste modifiable,
+        // le sélecteur de l'écran annonce l'état de sa cible.
+        animal: { select: { id: true, nom: true, identifiant: true, statut: true, sexe: true, dateSortie: true, especeAnimale: { select: { id: true, filiere: true } } } },
+        lot: { select: { id: true, nom: true, statut: true, especeAnimale: { select: { id: true, filiere: true } } } },
         produitVeterinaire: { select: { id: true, nom: true, substanceActive: true } },
         stockMedicament: {
           select: {

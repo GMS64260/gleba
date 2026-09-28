@@ -15,6 +15,10 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
+// QA 2026-09-28 — l'effectif des lots passe par la reconstitution partagée
+// (naissances, abattages, nominatifs) ; ici sans base, la route retombe sur
+// `quantiteActuelle` quand le lot n'est pas dans la Map.
+vi.mock("@/lib/elevage/effectif", () => ({ reconstituerEffectifsLots: vi.fn(async () => new Map()) }))
 vi.mock("@/lib/prisma", () => ({
   default: {
     lotAnimaux: { findMany: mocks.lotFindMany },

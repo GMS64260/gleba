@@ -27,7 +27,7 @@ function row(partial: Partial<SoinAttenteRow> & Pick<SoinAttenteRow, 'id'>): Soi
 describe('consoliderAttentes — cas QA animal 253 (Engemycin sur 3 jours)', () => {
   const today = D('2026-07-24')
 
-  it('ancre la fenêtre sur la DERNIÈRE injection (planifiée) et déduplique', () => {
+  it('ancre la fenêtre sur la DERNIÈRE injection ADMINISTRÉE et déduplique', () => {
     // 3 lignes : 2 doublons faits le 24/07 + 1 planifiée le 26/07 (non faite).
     const soins: SoinAttenteRow[] = [
       row({ id: 69, date: D('2026-07-24'), fait: true }),
@@ -39,16 +39,28 @@ describe('consoliderAttentes — cas QA animal 253 (Engemycin sur 3 jours)', () 
     // Une SEULE échéance consolidée (QA #9 : plus de doublons).
     expect(res).toHaveLength(1)
     const a = res[0]
-    // Ancrée sur le 26/07 (QA #2 : depuis la dernière injection, pas la 1re).
-    expect(a.derniereInjection.toISOString()).toBe(D('2026-07-26').toISOString())
-    // Lait : 26/07 + 7 = 02/08 ; viande : 26/07 + 28 = 23/08.
-    expect(a.finAttenteLait?.toISOString()).toBe(D('2026-08-02').toISOString())
-    expect(a.finAttenteViande?.toISOString()).toBe(D('2026-08-23').toISOString())
+    // Ancrée sur le 24/07 : la ligne du 26/07 n'est pas encore administrée,
+    // elle ne compte qu'une fois validée (QA 2026-09-28, carnet = calendrier).
+    expect(a.derniereInjection.toISOString()).toBe(D('2026-07-24').toISOString())
+    // Lait : 24/07 + 7 = 31/07 ; viande : 24/07 + 28 = 21/08.
+    expect(a.finAttenteLait?.toISOString()).toBe(D('2026-07-31').toISOString())
+    expect(a.finAttenteViande?.toISOString()).toBe(D('2026-08-21').toISOString())
     // Remise en vente = lendemain de la fin d'attente.
-    expect(remiseVente(a.finAttenteLait)?.toISOString()).toBe(D('2026-08-03').toISOString())
-    expect(remiseVente(a.finAttenteViande)?.toISOString()).toBe(D('2026-08-24').toISOString())
+    expect(remiseVente(a.finAttenteLait)?.toISOString()).toBe(D('2026-08-01').toISOString())
+    expect(remiseVente(a.finAttenteViande)?.toISOString()).toBe(D('2026-08-22').toISOString())
     // Les 3 lignes sont bien rattachées au même traitement.
     expect(a.soinIds.sort()).toEqual([69, 70, 71])
+  })
+
+  it('une fois la 3e injection validée, elle devient l’ancre', () => {
+    const soins: SoinAttenteRow[] = [
+      row({ id: 69, date: D('2026-07-24'), fait: true }),
+      row({ id: 71, date: D('2026-07-26'), fait: true }),
+    ]
+    const res = consoliderAttentes(soins, D('2026-07-26'))
+    expect(res).toHaveLength(1)
+    expect(res[0].derniereInjection.toISOString()).toBe(D('2026-07-26').toISOString())
+    expect(res[0].finAttenteLait?.toISOString()).toBe(D('2026-08-02').toISOString())
   })
 
   it('ignore un traitement non commencé (aucune injection faite)', () => {
@@ -134,12 +146,23 @@ describe('consoliderAttentes — QA cmsqlj7bn (un rappel futur ne prolonge pas l
     expect(remiseVente(res[0].finAttenteViande).toISOString()).toBe(D('2026-09-17').toISOString())
   })
 
-  it("laisse une injection du protocole en cours (48 h) repousser l'ancre", () => {
-    // Garde-fou de la correction QA #2 : un protocole J0/J2 reste un seul
-    // traitement, sa dernière injection pilote bien la fenêtre.
+  it("un rappel planifié à 48 h ne repousse pas l'ancre tant qu'il n'est pas administré", () => {
+    // QA 2026-09-28 : la route matérialise les rappels d'un soin fait en lignes
+    // planifiées à J+1 / J+2 ; avec une tolérance de 72 h, le calendrier
+    // annonçait une remise en vente un à deux jours après celle du carnet.
     const soins: SoinAttenteRow[] = [
       row({ id: 130, date: D('2026-08-12'), fait: true }),
       row({ id: 131, date: D('2026-08-14'), datePrevue: D('2026-08-14'), fait: false }),
+    ]
+    const res = consoliderAttentes(soins, today)
+    expect(res).toHaveLength(1)
+    expect(res[0].derniereInjection.toISOString()).toBe(D('2026-08-12').toISOString())
+    expect(res[0].soinIds.sort()).toEqual([130, 131])
+  })
+
+  it('un protocole J0/J2 porté par la ligne administrée pilote bien la fenêtre', () => {
+    const soins: SoinAttenteRow[] = [
+      row({ id: 132, date: D('2026-08-12'), fait: true, nbInjections: 2, intervalleInjectionsHeures: 48 }),
     ]
     const res = consoliderAttentes(soins, today)
     expect(res).toHaveLength(1)

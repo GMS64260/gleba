@@ -348,7 +348,9 @@ function ElevageDashboardInner() {
         {activeTab === "production" && yearReady && <ProductionTab year={selectedYear} />}
         {/* QA caprin cms1vc12t — même fenêtre temporelle que Dashboard/Production */}
         {activeTab === "reproduction" && yearReady && <ReproductionTab year={selectedYear} />}
-        {activeTab === "alimentation" && <AlimentationTab />}
+        {/* Signalement 2026-09-27 — la liste des soins suit l'exercice choisi,
+            comme le registre, sinon les années passées y sont invisibles. */}
+        {activeTab === "alimentation" && yearReady && <AlimentationTab year={selectedYear} />}
         {activeTab === "especes" && <EspecesTab />}
         {activeTab === "races" && <RacesTab />}
         </FiliereProvider>

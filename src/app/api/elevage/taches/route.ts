@@ -4,6 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { oeufsAttendusJour } from '@/lib/elevage/taux-ponte'
@@ -18,6 +19,10 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const startStr = searchParams.get('start')
     const endStr = searchParams.get('end')
+    // `retards=1` (dashboard) : ajoute les soins planifiés non faits ANTÉRIEURS
+    // à la fenêtre. QA 2026-09-28 : deux traitements en retard de 35 et 40 j
+    // sortaient de la fenêtre de ±30 j et disparaissaient des priorités.
+    const retards = searchParams.get('retards') === '1'
 
     const userId = session.user.id
     const now = new Date()
@@ -39,6 +44,7 @@ export async function GET(request: NextRequest) {
           OR: [
             { datePrevue: { gte: start, lte: end } },
             { date: { gte: start, lte: end } },
+            ...(retards ? [{ fait: false, datePrevue: { lt: start } }] : []),
           ],
           ...animLotFiliere,
         },
@@ -208,8 +214,10 @@ export async function GET(request: NextRequest) {
       LEFT JOIN animaux a ON a.id = s.animal_id
       LEFT JOIN lots_animaux l ON l.id = s.lot_id
       WHERE i.user_id = ${userId}
-        AND i.date_prevue >= ${start}
-        AND i.date_prevue <= ${end}
+        AND (
+          (i.date_prevue >= ${start} AND i.date_prevue <= ${end})
+          OR ${retards ? Prisma.sql`(i.statut = 'a_faire' AND i.date_prevue < ${start})` : Prisma.sql`FALSE`}
+        )
         AND (
           ${filiere}::text IS NULL
           OR a.espece_animale_id IN (SELECT espece_animale FROM especes_animales WHERE filiere = ${filiere})
