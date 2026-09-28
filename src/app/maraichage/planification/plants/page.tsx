@@ -9,6 +9,7 @@ import { Suspense } from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { useAnneePlanification } from "@/hooks/use-annee-planification"
+import { SelecteurAnneePlanification } from "@/components/maraichage/SelecteurAnneePlanification"
 import { ColumnDef } from "@tanstack/react-table"
 import { ArrowLeft, Package, AlertTriangle, Leaf } from "lucide-react"
 
@@ -16,13 +17,6 @@ import { DataTable } from "@/components/tables/DataTable"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 
@@ -222,21 +216,7 @@ function PlantsContent() {
               Gérer stocks
             </Button>
           </Link>
-          <Select
-            value={annee.toString()}
-            onValueChange={(value) => definirAnnee(parseInt(value))}
-          >
-            <SelectTrigger className="w-[100px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {annees.map((a) => (
-                <SelectItem key={a} value={a.toString()}>
-                  {a}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SelecteurAnneePlanification annee={annee} annees={annees} onChange={definirAnnee} />
         </div>
       </div>
 

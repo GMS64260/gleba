@@ -15,15 +15,9 @@ import { ArrowLeft, Leaf, CheckCircle2, XCircle, Info } from "lucide-react"
 import { DataTable } from "@/components/tables/DataTable"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
 import { useAnneePlanification } from "@/hooks/use-annee-planification"
+import { SelecteurAnneePlanification } from "@/components/maraichage/SelecteurAnneePlanification"
 
 interface CulturePrevue {
   plancheId: string
@@ -228,21 +222,7 @@ function CulturesPrevuesContent() {
             <Badge variant="default" className="bg-green-600">{stats.existantes} créées</Badge>
             <Badge variant="secondary">{stats.aCreer} à créer</Badge>
           </div>
-          <Select
-            value={annee.toString()}
-            onValueChange={(value) => definirAnnee(parseInt(value))}
-          >
-            <SelectTrigger className="w-[100px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {annees.map((a) => (
-                <SelectItem key={a} value={a.toString()}>
-                  {a}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SelecteurAnneePlanification annee={annee} annees={annees} onChange={definirAnnee} />
         </div>
       </div>
 

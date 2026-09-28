@@ -9,18 +9,12 @@ import { Suspense } from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { useAnneePlanification } from "@/hooks/use-annee-planification"
+import { SelecteurAnneePlanification } from "@/components/maraichage/SelecteurAnneePlanification"
 import { ArrowLeft, CalendarRange } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import {
   Table,
   TableBody,
@@ -137,21 +131,7 @@ function RecoltesPrevuesParSemainesContent() {
             )}{" "}
             restants
           </Badge>
-          <Select
-            value={annee.toString()}
-            onValueChange={(value) => definirAnnee(parseInt(value))}
-          >
-            <SelectTrigger className="w-[100px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {annees.map((a) => (
-                <SelectItem key={a} value={a.toString()}>
-                  {a}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SelecteurAnneePlanification annee={annee} annees={annees} onChange={definirAnnee} />
         </div>
       </div>
 

@@ -14,16 +14,10 @@ import { ArrowLeft, Map, CheckCircle2, XCircle } from "lucide-react"
 import { DataTable } from "@/components/tables/DataTable"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 import { useAnneePlanification } from "@/hooks/use-annee-planification"
+import { SelecteurAnneePlanification } from "@/components/maraichage/SelecteurAnneePlanification"
 
 interface CulturePrevue {
   plancheId: string
@@ -206,21 +200,7 @@ function CulturesPrevuesParIlotsContent() {
               </Badge>
             ))}
           </div>
-          <Select
-            value={annee.toString()}
-            onValueChange={(value) => definirAnnee(parseInt(value))}
-          >
-            <SelectTrigger className="w-[100px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {annees.map((a) => (
-                <SelectItem key={a} value={a.toString()}>
-                  {a}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SelecteurAnneePlanification annee={annee} annees={annees} onChange={definirAnnee} />
         </div>
       </div>
 
