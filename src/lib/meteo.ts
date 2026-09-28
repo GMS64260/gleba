@@ -154,8 +154,16 @@ async function fetchOpenMeteoForecastUncached(lat: number, lng: number): Promise
   const timeoutId = setTimeout(() => controller.abort(), 8000)
   let res: Response
   try {
+    // QA 2026-09-28 (« Auj. » sur dimanche un lundi) — le Data Cache de Next
+    // (`next: { revalidate }`) est stale-while-revalidate : passé l'heure, il
+    // SERT la réponse périmée et revalide en arrière-plan. L'URL ne porte pas
+    // la date, donc les prévisions de la VEILLE repartaient comme un succès et
+    // se rangeaient 30 min dans generic_cache (prouvé en production : clé
+    // openmeteo:forecast:46.93,-1.21 écrite à 09:07 UTC avec daily[0] =
+    // 27/09, fichier fetch-cache réécrit 110 ms plus tard avec le 28/09).
+    // generic_cache est le seul cache voulu ici.
     res = await fetch(`${OPEN_METEO_FORECAST_URL}?${params}`, {
-      next: { revalidate: 3600 }, // Cache Next.js 1h
+      cache: 'no-store',
       signal: controller.signal,
     })
   } finally {

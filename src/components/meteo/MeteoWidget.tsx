@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { todayLocalISO } from "@/lib/format-utils"
 import {
   Cloud,
   CloudRain,
@@ -88,9 +89,14 @@ function PluieGraph({ historique, previsions }: { historique: MeteoHistorique[];
   const maxMm = Math.max(...barres.map(b => b.mm), 5)
   const w = 14, gap = 2, h = 40
 
-  function jourLabel(dateStr: string, i: number) {
-    const d = new Date(dateStr + "T00:00:00")
-    if (i === historique.length - 1) return "Auj."
+  // QA 2026-09-28 — « Auj. » se décidait par POSITION (dernier point de
+  // l'historique, qui est la veille ; premier jour des prévisions) : dès que la
+  // série n'était pas alignée sur le jour courant, l'étiquette mentait. On
+  // compare la date du point au jour civil local du navigateur.
+  const aujourdhui = todayLocalISO()
+  function jourLabel(dateStr: string) {
+    if (dateStr === aujourdhui) return "Auj."
+    const d = new Date(dateStr + "T12:00:00")
     return d.toLocaleDateString("fr-FR", { weekday: "short" }).slice(0, 3)
   }
 
@@ -131,7 +137,7 @@ function PluieGraph({ historique, previsions }: { historique: MeteoHistorique[];
                   </text>
                 )}
                 <text x={x + w / 2} y={h + 13} textAnchor="middle" fontSize={7} fill={b.prevu ? "#60a5fa" : "#9ca3af"}>
-                  {jourLabel(b.date, i)}
+                  {jourLabel(b.date)}
                 </text>
               </g>
             )
@@ -240,7 +246,10 @@ export function MeteoWidget({ parcelleId, lat, lng, compact = false, defaultExpa
 
   const { actuelle, previsions, alertes, ensoleillement } = data
   const dangers = alertes.filter(a => a.niveau === "danger" || a.niveau === "attention")
-  const prochainsJours = previsions.slice(0, 5)
+  // Fenêtres de travail : jamais un jour déjà passé (QA 2026-09-28, « dim. 27 »
+  // proposé un lundi 28).
+  const aujourdhui = todayLocalISO()
+  const prochainsJours = previsions.filter((j) => j.date >= aujourdhui).slice(0, 5)
   const traitement = prochainsJours.find(j => j.windSpeedMax < 19 && j.precipitation < 1)
   const recolte = prochainsJours.find(j => j.precipitation < 1 && j.precipitationProba < 30 && j.windSpeedMax < 35)
   const chaleur = Math.max(...prochainsJours.map(j => j.tempMax), -Infinity)
@@ -332,11 +341,13 @@ export function MeteoWidget({ parcelleId, lat, lng, compact = false, defaultExpa
             <p className="text-xs font-medium text-slate-500 mb-2">Prévisions 7 jours</p>
             <div className="grid grid-cols-7 gap-1">
               {previsions.slice(0, 7).map((jour, i) => {
-                const date = new Date(jour.date)
+                // `new Date("YYYY-MM-DD")` = minuit UTC : à l'ouest d'UTC le jour
+                // de semaine reculait d'un jour. Midi local, comme jourCourt.
+                const date = new Date(`${jour.date}T12:00:00`)
                 const jourSemaine = date.toLocaleDateString("fr-FR", { weekday: "short" }).slice(0, 3)
                 return (
                   <div key={i} className="text-center">
-                    <p className="text-[10px] text-slate-400 uppercase">{i === 0 ? "Auj." : jourSemaine}</p>
+                    <p className="text-[10px] text-slate-400 uppercase">{jour.date === aujourdhui ? "Auj." : jourSemaine}</p>
                     <div className="flex justify-center my-0.5">
                       {jour.precipitation > 5 ? (
                         <CloudRain className="h-4 w-4 text-blue-400" />
