@@ -38,7 +38,10 @@ export async function GET(request: NextRequest) {
   if (from || to) {
     where.date = {}
     if (from) where.date.gte = new Date(from)
-    if (to) where.date.lte = new Date(to)
+    // Une borne « to » donnée en jour (YYYY-MM-DD) couvre le jour entier :
+    // sans cela, `lte` s'arrêtait à minuit et excluait les collectes datées
+    // dans la journée.
+    if (to) where.date.lte = /^\d{4}-\d{2}-\d{2}$/.test(to) ? new Date(`${to}T23:59:59.999Z`) : new Date(to)
   }
   if (animalId) where.animalId = parseInt(animalId, 10)
   if (lotId) where.lotId = parseInt(lotId, 10)

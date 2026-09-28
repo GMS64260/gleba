@@ -49,6 +49,43 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ data }, { status: 201 })
 }
 
+// Signalement 2026-09-25 (éleveur caprin) — un lot périmé lié à des soins ne
+// pouvait ni se supprimer (409, avalé par l'écran) ni se corriger : ni date de
+// péremption, ni quantité modifiables. Le lot reste au registre (traçabilité),
+// mais son stock se met à zéro (rebut) et ses données se corrigent.
+const schemaModification = z.object({
+  id: z.string().min(1),
+  quantite: z.coerce.number().min(0).optional(),
+  datePeremption: z.coerce.date().nullable().optional(),
+  fournisseur: z.string().max(200).nullable().optional(),
+  notes: z.string().max(2000).nullable().optional(),
+  /** Mise au rebut : quantité à zéro, note horodatée. Éteint l'alerte du calendrier. */
+  rebut: z.boolean().optional(),
+})
+
+export async function PATCH(request: NextRequest) {
+  const { session, error } = await requireAuthApi()
+  if (error) return error
+  const parsed = schemaModification.safeParse(await request.json())
+  if (!parsed.success) return NextResponse.json({ error: 'Données invalides', details: parsed.error.flatten() }, { status: 400 })
+  const { id, rebut, ...champs } = parsed.data
+  const stock = await prisma.stockMedicamentElevage.findFirst({ where: { id, userId: session.user.id } })
+  if (!stock) return NextResponse.json({ error: 'Stock introuvable' }, { status: 404 })
+  const data: Record<string, unknown> = { ...champs }
+  if (rebut) {
+    const jour = new Date().toLocaleDateString('fr-FR')
+    data.quantite = 0
+    data.notes = [stock.notes, `Mis au rebut le ${jour} (${stock.quantite} ${stock.unite} restants).`].filter(Boolean).join('\n')
+  }
+  if (Object.keys(data).length === 0) return NextResponse.json({ error: 'Aucune modification' }, { status: 400 })
+  const maj = await prisma.stockMedicamentElevage.update({
+    where: { id },
+    data,
+    include: { produit: { select: { id: true, nom: true, amm: true } } },
+  })
+  return NextResponse.json({ data: maj })
+}
+
 export async function DELETE(request: NextRequest) {
   const { session, error } = await requireAuthApi()
   if (error) return error
@@ -61,7 +98,11 @@ export async function DELETE(request: NextRequest) {
   if (!stock) return NextResponse.json({ error: 'Stock introuvable' }, { status: 404 })
   if (stock._count.soins > 0) {
     return NextResponse.json(
-      { error: "Ce lot est lié à des soins et doit rester dans la traçabilité réglementaire." },
+      {
+        error: `Ce lot est lié à ${stock._count.soins} soin(s) et doit rester dans la traçabilité réglementaire. Mettez-le au rebut (stock à zéro) : il n'apparaîtra plus dans les alertes.`,
+        code: 'LIE_A_DES_SOINS',
+        nbSoins: stock._count.soins,
+      },
       { status: 409 },
     )
   }

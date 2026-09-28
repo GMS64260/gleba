@@ -719,9 +719,69 @@ export function SanitaireReglementaireSubTab() {
     if (res.ok) await reload()
   }
 
-  async function supprimerStock(id: string) {
-    const res = await fetch(`/api/elevage/stock-medicaments?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
-    if (res.ok) await reload()
+  // Signalement 2026-09-25 (éleveur caprin) — le refus de suppression d'un lot
+  // lié à des soins (409) était avalé : clic sans effet, alerte « périmé »
+  // impossible à éteindre. Le refus s'affiche et propose la mise au rebut.
+  async function mettreAuRebut(s: Stock) {
+    if (!(await confirmDialog(
+      `Mettre au rebut le lot ${s.numeroLot} (${s.produit?.nom || s.produitId}) ? Son stock passe à zéro, la ligne reste au registre pour la traçabilité et l'alerte de péremption s'éteint.`,
+      { title: "Mettre au rebut", confirmLabel: "Mettre au rebut" },
+    ))) return
+    const res = await fetch('/api/elevage/stock-medicaments', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: s.id, rebut: true }),
+    })
+    const payload = await res.json().catch(() => null)
+    if (!res.ok) {
+      toast({ variant: 'destructive', title: 'Mise au rebut impossible', description: payload?.error || `HTTP ${res.status}` })
+      return
+    }
+    toast({ title: 'Lot mis au rebut', description: `${s.numeroLot} : stock à zéro, ligne conservée au registre.` })
+    await reload()
+  }
+
+  async function corrigerPeremption(s: Stock) {
+    const saisie = window.prompt(
+      `Nouvelle date de péremption du lot ${s.numeroLot} (AAAA-MM-JJ, vide pour effacer) :`,
+      s.datePeremption ? s.datePeremption.slice(0, 10) : '',
+    )
+    if (saisie === null) return
+    const valeur = saisie.trim()
+    if (valeur && !/^\d{4}-\d{2}-\d{2}$/.test(valeur)) {
+      toast({ variant: 'destructive', title: 'Date invalide', description: 'Format attendu : AAAA-MM-JJ.' })
+      return
+    }
+    const res = await fetch('/api/elevage/stock-medicaments', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: s.id, datePeremption: valeur || null }),
+    })
+    const payload = await res.json().catch(() => null)
+    if (!res.ok) {
+      toast({ variant: 'destructive', title: 'Correction impossible', description: payload?.error || `HTTP ${res.status}` })
+      return
+    }
+    toast({ title: 'Péremption corrigée' })
+    await reload()
+  }
+
+  async function supprimerStock(s: Stock) {
+    const res = await fetch(`/api/elevage/stock-medicaments?id=${encodeURIComponent(s.id)}`, { method: 'DELETE' })
+    if (res.ok) {
+      toast({ title: 'Lot supprimé' })
+      await reload()
+      return
+    }
+    const payload = await res.json().catch(() => null)
+    if (res.status === 409 && payload?.code === 'LIE_A_DES_SOINS') {
+      if (await confirmDialog(
+        `${payload.error}\n\nMettre ce lot au rebut maintenant ?`,
+        { title: "Suppression impossible", confirmLabel: "Mettre au rebut" },
+      )) {
+        await mettreAuRebut(s)
+      }
+      return
+    }
+    toast({ variant: 'destructive', title: 'Suppression impossible', description: payload?.error || `HTTP ${res.status}` })
   }
 
   function ouvrirTransmission(declaration: Declaration) {
@@ -2125,7 +2185,7 @@ export function SanitaireReglementaireSubTab() {
         </DialogContent></Dialog>
       </CardHeader>
       <CardContent><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Produit</TableHead><TableHead>Lot</TableHead><TableHead>Stock</TableHead><TableHead>Péremption</TableHead><TableHead>Ordonnance</TableHead><TableHead /></TableRow></TableHeader><TableBody>
-        {stocks.map(s => { const expire = s.datePeremption && new Date(s.datePeremption) < new Date(); return <TableRow key={s.id}><TableCell>{s.produit?.nom || s.produitId}</TableCell><TableCell>{s.numeroLot}</TableCell><TableCell>{s.quantite} {s.unite}</TableCell><TableCell className={expire ? 'text-red-700 font-medium' : ''}>{s.datePeremption ? new Date(s.datePeremption).toLocaleDateString('fr-FR') : '—'} {expire && <AlertTriangle className="inline h-4 w-4" />}</TableCell><TableCell>{s.ordonnanceUrl ? <a className="underline" href={s.ordonnanceUrl} target="_blank" rel="noreferrer">Ouvrir</a> : '—'}</TableCell><TableCell><Button size="icon" variant="ghost" onClick={() => supprimerStock(s.id)} aria-label="Supprimer"><Trash2 className="h-4 w-4" /></Button></TableCell></TableRow> })}
+        {stocks.map(s => { const expire = s.datePeremption && new Date(s.datePeremption) < new Date(); return <TableRow key={s.id}><TableCell>{s.produit?.nom || s.produitId}</TableCell><TableCell>{s.numeroLot}</TableCell><TableCell>{s.quantite} {s.unite}</TableCell><TableCell className={expire ? 'text-red-700 font-medium' : ''}>{s.datePeremption ? new Date(s.datePeremption).toLocaleDateString('fr-FR') : '—'} {expire && <AlertTriangle className="inline h-4 w-4" />}</TableCell><TableCell>{s.ordonnanceUrl ? <a className="underline" href={s.ordonnanceUrl} target="_blank" rel="noreferrer">Ouvrir</a> : '—'}</TableCell><TableCell className="whitespace-nowrap">{s.datePeremption && <Button size="icon" variant="ghost" onClick={() => corrigerPeremption(s)} aria-label="Corriger la date de péremption" title="Corriger la date de péremption"><Pencil className="h-4 w-4" /></Button>}{s.quantite > 0 && <Button size="icon" variant="ghost" onClick={() => mettreAuRebut(s)} aria-label="Mettre au rebut (stock à zéro)" title="Mettre au rebut (stock à zéro)"><Archive className="h-4 w-4" /></Button>}<Button size="icon" variant="ghost" onClick={() => supprimerStock(s)} aria-label="Supprimer" title="Supprimer"><Trash2 className="h-4 w-4" /></Button></TableCell></TableRow> })}
         {!stocks.length && <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">Pharmacie non inventoriée</TableCell></TableRow>}
       </TableBody></Table></div></CardContent>
     </Card>
