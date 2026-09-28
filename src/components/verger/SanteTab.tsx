@@ -831,7 +831,9 @@ function RegistrePhytoSubTab() {
         // table que ce registre ne lisait pas : le traitement semblait perdu
         // alors qu'il figurait bien dans /tracabilite. On agrège les
         // interventions traitement_phyto rattachées à un arbre.
-        fetch("/api/interventions?type=traitement_phyto"),
+        // Revue 2026-09-28 — ce registre n'a pas d'exercice : sans `annee=all`,
+        // un traitement de l'an passé disparaissait au 1er janvier.
+        fetch("/api/interventions?type=traitement_phyto&annee=all"),
       ])
       const allObs: Observation[] = []
       const ids = new Set<number>()

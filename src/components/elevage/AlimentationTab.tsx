@@ -49,6 +49,7 @@ import { useToast } from "@/hooks/use-toast"
 import { verifierPrixAliment, type CategorieAliment } from "@/lib/elevage/prix-aliment-seuils"
 import { todayLocalISO } from '@/lib/format-utils'
 import { useFiliereSelection, capacitesSelection, filiereMatch } from "@/lib/elevage/filiere-context"
+import { SelecteurPeriodeExercice, parametreAnnee, type PeriodeListe } from "./SelecteurPeriodeExercice"
 import { stockMedicamentEstDisponible } from "@/lib/elevage/stock-medicament"
 import { TYPES_SOIN } from "@/lib/elevage/types-soin"
 
@@ -150,7 +151,7 @@ export function AlimentationTab({ year }: { year?: number } = {}) {
         <StocksSubTab />
       </TabsContent>
       <TabsContent value="consommations">
-        <ConsommationsSubTab />
+        <ConsommationsSubTab year={year} />
       </TabsContent>
       <TabsContent value="soins">
         <SoinsSubTab initialAnimalId={soinAnimalId} initialOpen={ouvrirNouveauSoin} year={year} />
@@ -559,10 +560,15 @@ interface ConsoStats {
   parAliment: { alimentId: string; nom: string; totalKg: number; count: number }[]
 }
 
-function ConsommationsSubTab() {
+function ConsommationsSubTab({ year }: { year?: number } = {}) {
   const { toast } = useToast()
   const filiereSel = useFiliereSelection()
   const [isLoading, setIsLoading] = React.useState(true)
+  // Revue 2026-09-28 — même motif que les soins : la liste ne demandait que
+  // l'année civile courante ; avec une date de fin seule, la borne basse
+  // restait au 1er janvier courant et la liste se vidait.
+  const anneeExercice = year ?? new Date().getFullYear()
+  const [periode, setPeriode] = React.useState<PeriodeListe>("exercice")
   const [consommations, setConsommations] = React.useState<Consommation[]>([])
   const [aliments, setAliments] = React.useState<AlimentSimple[]>([])
   const [lots, setLots] = React.useState<LotSimple[]>([])
@@ -610,7 +616,7 @@ function ConsommationsSubTab() {
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
     try {
-      let url = "/api/elevage/consommations-aliments?limit=200"
+      let url = `/api/elevage/consommations-aliments?limit=500&${parametreAnnee(periode, anneeExercice)}`
       if (filterDateDebut) url += `&dateDebut=${filterDateDebut}`
       if (filterDateFin) url += `&dateFin=${filterDateFin}`
 
@@ -630,7 +636,7 @@ function ConsommationsSubTab() {
     } finally {
       setIsLoading(false)
     }
-  }, [toast, filterDateDebut, filterDateFin])
+  }, [toast, filterDateDebut, filterDateFin, periode, anneeExercice])
 
   React.useEffect(() => { fetchData() }, [fetchData])
 
@@ -783,6 +789,7 @@ function ConsommationsSubTab() {
 
       {/* Filtres et actions */}
       <div className="flex items-center gap-4 flex-wrap">
+        <SelecteurPeriodeExercice annee={anneeExercice} periode={periode} onChange={setPeriode} libelle="Période des consommations affichées" />
         <div className="flex flex-wrap items-center gap-2">
           <Calendar className="h-4 w-4 text-muted-foreground" />
           <Input type="date" value={filterDateDebut} onChange={(e) => setFilterDateDebut(e.target.value)} className="w-[150px]" />
@@ -1092,7 +1099,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
   // courante : impossible de les modifier ou de les supprimer. La liste suit
   // désormais l'exercice du module et peut afficher toutes les années.
   const anneeExercice = year ?? new Date().getFullYear()
-  const [periode, setPeriode] = React.useState<"exercice" | "toutes">("exercice")
+  const [periode, setPeriode] = React.useState<PeriodeListe>("exercice")
   // QA 2026-05-15 — édition par ligne
   const [editingSoinId, setEditingSoinId] = React.useState<number | null>(null)
 
@@ -1596,13 +1603,7 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
             <SelectItem value="true">Faits</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={periode} onValueChange={(v) => setPeriode(v === "toutes" ? "toutes" : "exercice")}>
-          <SelectTrigger className="w-[180px]" aria-label="Période des soins affichés"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="exercice">Exercice {anneeExercice}</SelectItem>
-            <SelectItem value="toutes">Toutes les années</SelectItem>
-          </SelectContent>
-        </Select>
+        <SelecteurPeriodeExercice annee={anneeExercice} periode={periode} onChange={setPeriode} libelle="Période des soins affichés" />
         <div className="flex items-center gap-2 ml-auto">
           <Button variant="outline" size="sm" onClick={fetchData}><RefreshCw className="h-4 w-4" /></Button>
           <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) resetSoinForm() }}>

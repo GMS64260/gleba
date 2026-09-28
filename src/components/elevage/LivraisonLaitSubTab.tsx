@@ -110,7 +110,7 @@ export function LivraisonLaitSubTab() {
     <div className="space-y-4">
       <div className="flex items-center justify-end">
         <select className="h-9 rounded-md border border-slate-300 px-2 bg-white text-sm" value={annee} onChange={(e) => setAnnee(parseInt(e.target.value, 10))}>
-          {[0, -1, -2].map((d) => <option key={d} value={new Date().getFullYear() + d}>{new Date().getFullYear() + d}</option>)}
+          {[0, -1, -2, -3, -4, -5].map((d) => <option key={d} value={new Date().getFullYear() + d}>{new Date().getFullYear() + d}</option>)}
         </select>
       </div>
 
