@@ -29,6 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { SelectNatif } from "@/components/ui/select-natif"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -251,19 +252,21 @@ export function ConsommationsTab() {
               <div className="space-y-4 py-4">
                 <div className="space-y-2">
                   <Label htmlFor="espece">Espèce *</Label>
-                  <Select value={formData.especeId} onValueChange={(v) => setFormData(prev => ({ ...prev, especeId: v }))}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Choisir une espèce" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {especes.map(e => (
-                        <SelectItem key={e.id} value={e.id}>
-                          {e.id}
-                          {stocksNet[e.id] && ` (stock: ${stocksNet[e.id].stockNet.toFixed(1)} kg)`}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {/* QA 2026-09-28 — <select> natif : voir SelectNatif. */}
+                  <SelectNatif
+                    id="espece"
+                    name="especeId"
+                    value={formData.especeId}
+                    onChange={(e) => setFormData(prev => ({ ...prev, especeId: e.target.value }))}
+                  >
+                    <option value="">Choisir une espèce</option>
+                    {especes.map(e => (
+                      <option key={e.id} value={e.id}>
+                        {e.id}
+                        {stocksNet[e.id] ? ` (stock: ${stocksNet[e.id].stockNet.toFixed(1)} kg)` : ""}
+                      </option>
+                    ))}
+                  </SelectNatif>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">

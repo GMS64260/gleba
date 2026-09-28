@@ -24,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { SelectNatif } from "@/components/ui/select-natif"
 import {
   Form,
   FormControl,
@@ -616,23 +617,21 @@ export default function NewCulturePage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Planche</FormLabel>
-                      <Select
-                        onValueChange={field.onChange}
-                        value={field.value || undefined}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Sélectionner une planche" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
+                      {/* QA 2026-09-28 — <select> natif : voir SelectNatif. */}
+                      <FormControl>
+                        <SelectNatif
+                          name="plancheId"
+                          value={field.value || ""}
+                          onChange={(e) => field.onChange(e.target.value || null)}
+                        >
+                          <option value="">Sélectionner une planche</option>
                           {planches.map((p) => (
-                            <SelectItem key={p.id} value={p.id}>
+                            <option key={p.id} value={p.id}>
                               {p.nom || p.id}
-                            </SelectItem>
+                            </option>
                           ))}
-                        </SelectContent>
-                      </Select>
+                        </SelectNatif>
+                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}

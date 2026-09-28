@@ -32,6 +32,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { SelectNatif } from "@/components/ui/select-natif"
 import { useToast } from "@/hooks/use-toast"
 import { createITPSchema, type CreateITPInput } from "@/lib/validations"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
@@ -207,25 +208,22 @@ export default function NewITPPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Espèce</FormLabel>
-                      <Select
-                        name="especeId"
-                        onValueChange={(value) => field.onChange(value === "_none" ? null : value)}
-                        value={field.value || "_none"}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Sélectionner une espèce" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="_none">Aucune</SelectItem>
+                      {/* QA 2026-09-28 — <select> natif : le filet DOM (name= +
+                          FormData) n'a pas suffi ici. Voir SelectNatif. */}
+                      <FormControl>
+                        <SelectNatif
+                          name="especeId"
+                          value={field.value || ""}
+                          onChange={(e) => field.onChange(e.target.value || null)}
+                        >
+                          <option value="">Aucune</option>
                           {especes.map((espece) => (
-                            <SelectItem key={espece.id} value={espece.id}>
+                            <option key={espece.id} value={espece.id}>
                               {espece.nom ?? espece.id} {espece.famille ? `(${espece.famille.id})` : ""}
-                            </SelectItem>
+                            </option>
                           ))}
-                        </SelectContent>
-                      </Select>
+                        </SelectNatif>
+                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}

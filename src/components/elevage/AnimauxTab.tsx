@@ -46,6 +46,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
+import { SelectNatif } from "@/components/ui/select-natif"
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog"
@@ -2215,22 +2216,25 @@ function LotsSubTab() {
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-2">
-                  <Label>Profil d&apos;élevage *</Label>
-                  <Select value={formData.especeAnimaleId} onValueChange={(v) => setFormData(f => ({ ...f, especeAnimaleId: v }))}>
-                    <SelectTrigger><SelectValue placeholder="— Sélectionner une espèce —" /></SelectTrigger>
-                    <SelectContent>
-                      {especesProposables.map(e => <SelectItem key={e.id} value={e.id}>{e.nom}</SelectItem>)}
-                      {/* QA caprin cms1vdadf — si la liste (rechargée en async) ne
-                          contient plus la valeur du state, Radix réaffiche le
-                          placeholder alors que la sélection est intacte : on garde
-                          un item pour la valeur courante. */}
-                      {formData.especeAnimaleId && !especesProposables.some(e => e.id === formData.especeAnimaleId) && (
-                        <SelectItem value={formData.especeAnimaleId}>
-                          {especes.find(e => e.id === formData.especeAnimaleId)?.nom ?? formData.especeAnimaleId}
-                        </SelectItem>
-                      )}
-                    </SelectContent>
-                  </Select>
+                  <Label htmlFor="lot-espece">Profil d&apos;élevage *</Label>
+                  {/* QA 2026-09-28 (FB-II3HFZ et complément) — <select> natif : voir SelectNatif. */}
+                  <SelectNatif
+                    id="lot-espece"
+                    name="especeAnimaleId"
+                    value={formData.especeAnimaleId}
+                    onChange={(e) => setFormData(f => ({ ...f, especeAnimaleId: e.target.value }))}
+                  >
+                    <option value="">— Sélectionner une espèce —</option>
+                    {especesProposables.map(e => <option key={e.id} value={e.id}>{e.nom}</option>)}
+                    {/* QA caprin cms1vdadf — si la liste (rechargée en async) ne
+                        contient plus la valeur du state, on garde une option pour
+                        la valeur courante. */}
+                    {formData.especeAnimaleId && !especesProposables.some(e => e.id === formData.especeAnimaleId) && (
+                      <option value={formData.especeAnimaleId}>
+                        {especes.find(e => e.id === formData.especeAnimaleId)?.nom ?? formData.especeAnimaleId}
+                      </option>
+                    )}
+                  </SelectNatif>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
