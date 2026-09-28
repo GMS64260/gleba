@@ -23,7 +23,7 @@
  */
 
 import * as React from "react"
-import { usePathname, useRouter, useSearchParams } from "next/navigation"
+import { usePathname, useSearchParams } from "next/navigation"
 
 import {
   DASHBOARD_YEAR_STORAGE_KEY,
@@ -43,7 +43,6 @@ export interface AnneePlanification {
 
 export function useAnneePlanification(): AnneePlanification {
   const searchParams = useSearchParams()
-  const router = useRouter()
   const pathname = usePathname()
   const anneeUrl = searchParams.get("annee")
 
@@ -77,11 +76,21 @@ export function useAnneePlanification(): AnneePlanification {
       }
       const params = new URLSearchParams(query)
       params.set("annee", String(valeur))
-      // `replace` : un filtre d'année n'encombre pas l'historique, mais il doit
+      // Un filtre d'année n'encombre pas l'historique (replace), mais il doit
       // rester dans le deep-link et survivre à un rechargement.
-      router.replace(`${pathname}?${params.toString()}`, { scroll: false })
+      //
+      // QA 2026-09-28 (« impossible de sélectionner 2027 », puis constat de
+      // Tinky) — `router.replace(même chemin, autre query)` était IGNORÉ en
+      // silence dès que la page avait été préchargée sous ce chemin (la
+      // sous-navigation du hub porte un lien vers la page courante avec
+      // `?annee=`) : prouvé en navigateur sur Next 16.2.10, aussi sur une page
+      // saine après `router.prefetch()` du même chemin. Un changement de
+      // paramètre n'a pas besoin d'un aller-retour serveur : l'API History,
+      // que Next synchronise avec `useSearchParams`, met l'URL à jour
+      // immédiatement et n'entre jamais dans la file du routeur.
+      window.history.replaceState(null, "", `${pathname}?${params.toString()}`)
     },
-    [pathname, query, router]
+    [pathname, query]
   )
 
   return { annee, definirAnnee, annees, pret: restauree || Boolean(anneeUrl) }

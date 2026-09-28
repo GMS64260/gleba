@@ -57,6 +57,12 @@ export function PlanificationSubnav() {
           <Link
             key={s.label}
             href={avecAnnee(s.href)}
+            // QA 2026-09-28 — précharger la page COURANTE sous son propre chemin
+            // rendait ensuite muet tout router.replace/push vers ce chemin avec
+            // une autre query (Next 16.2.10, prouvé en navigateur). Le sélecteur
+            // de saison passe désormais par l'API History, mais on ne poisonne
+            // plus le routeur pour autant : pas de préchargement du lien actif.
+            prefetch={isActive ? false : undefined}
             aria-current={isActive ? "page" : undefined}
             className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm whitespace-nowrap transition-colors ${
               isActive
