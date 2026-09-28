@@ -83,6 +83,15 @@ export async function getTachesPotager(
   // afficher les tâches 2026 encore ouvertes.
   const retardAnneeFilter = annee === currentYear ? {} : { annee }
 
+  // QA 2026-09-28 — la saison 2027 affichait « 10 dont 10 en retard » un
+  // 28/09/2026 : « en retard » signifiait « avant le lundi de la semaine
+  // AFFICHÉE », donc tout le printemps d'une saison future. Une tâche n'est en
+  // retard que si sa date est déjà passée AUJOURD'HUI (jour civil local) et
+  // antérieure à la semaine affichée.
+  const aujourdhui = new Date()
+  aujourdhui.setHours(0, 0, 0, 0)
+  const borneRetard = start < aujourdhui ? start : aujourdhui
+
   // ── Tâches de la semaine + tâches en retard (non faites, date passée) ──
 
   // Audit Marc 2026-05-14 — Bug 06 : une culture "En récolte" affichait
@@ -105,7 +114,7 @@ export async function getTachesPotager(
         plantationFaite: false,
         recolteFaite: false,
         terminee: null,
-        dateSemis: { lt: start, not: null },
+        dateSemis: { lt: borneRetard, not: null },
       },
       select: CULTURE_SELECT,
       orderBy: { dateSemis: 'asc' },
@@ -126,7 +135,7 @@ export async function getTachesPotager(
         plantationFaite: false,
         recolteFaite: false,
         terminee: null,
-        datePlantation: { lt: start, not: null },
+        datePlantation: { lt: borneRetard, not: null },
       },
       select: CULTURE_SELECT,
       orderBy: { datePlantation: 'asc' },
@@ -146,7 +155,7 @@ export async function getTachesPotager(
         ...retardAnneeFilter,
         recolteFaite: false,
         terminee: null,
-        dateRecolte: { lt: start, not: null },
+        dateRecolte: { lt: borneRetard, not: null },
       },
       select: CULTURE_SELECT,
       orderBy: { dateRecolte: 'asc' },
@@ -202,7 +211,7 @@ export async function getTachesPotager(
         userId,
         fait: false,
         perimee: false,
-        datePrevue: { lt: start },
+        datePrevue: { lt: borneRetard },
         culture: { annee },
       },
       include: irrigationInclude,
