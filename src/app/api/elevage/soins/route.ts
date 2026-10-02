@@ -18,7 +18,8 @@ import prisma from '@/lib/prisma'
 import { createDepenseFromSoinAnimal } from '@/lib/auto-compta'
 import { invalidateKpi } from '@/lib/kpi'
 import { soinPatchSchema, soinSchema } from '@/lib/validations/elevage-soin'
-import { calendrierInjections, derniereInjectionActive, ajouterJours } from '@/lib/elevage/injections'
+import { calendrierInjections } from '@/lib/elevage/injections'
+import { lireInjections, synchroniserInjections, fenetresAttenteDepuisInjections } from '@/lib/elevage/injections-protocole'
 import { randomUUID } from 'node:crypto'
 // Review caprin 2026-07-22 — écartement du lait recalculé depuis la vérité
 // (recompute-from-truth), cross-granularité individu↔lot et symétrique
@@ -665,75 +666,32 @@ export async function PATCH(request: NextRequest) {
       })
       let finalSoin = updated
 
-      const injectionsExistantes = await tx.$queryRaw<Array<{
-        id: string; numero: number; datePrevue: Date; dateRealisee: Date | null; statut: string
-      }>>`
-        SELECT id, numero, date_prevue AS "datePrevue", date_realisee AS "dateRealisee", statut
-        FROM injections_soins WHERE soin_id = ${id} AND user_id = ${session.user.id}
-        ORDER BY numero
-      `
+      const injectionsExistantes = await lireInjections(tx, session.user.id, id)
       if (injectionsChangees || dateChangee || faitChange || taChange || injectionsExistantes.length === 0) {
         const nombre = updateData.nbInjections ?? existing.nbInjections
         const intervalle = updateData.intervalleInjectionsHeures !== undefined
           ? updateData.intervalleInjectionsHeures
           : existing.intervalleInjectionsHeures
         const debut = (updateData.date as Date | undefined) ?? existing.date
-        const calendrier = calendrierInjections(debut, nombre, intervalle, false)
-        const realisees = new Map(injectionsExistantes.filter((i) => i.statut === 'realisee').map((i) => [i.numero, i]))
-        await tx.$executeRaw`
-          DELETE FROM injections_soins
-          WHERE soin_id = ${id} AND numero > ${nombre} AND statut <> 'realisee'
-        `
-        for (const injection of calendrier) {
-          const realisee = realisees.get(injection.numero)
-          // Ces deux drapeaux sont interpolés dans le SQL brut ci-dessous : ils
-          // doivent être de VRAIS booléens. `a && b && realisee` rendait la LIGNE
-          // de la Map (un objet) quand la première injection était réalisée,
-          // Prisma l'envoyait en jsonb et Postgres refusait le CASE WHEN —
-          // rouvrir un traitement effectué échouait en 500 (api_errors du
-          // 2026-09-19 19:27, deux essais). Le cast `::boolean` posé le même
-          // soir ne suffisait pas : un objet jsonb ne se caste pas en booléen.
-          const marquerPremiereFaite = injection.numero === 1 && fait === true && realisee === undefined
-          const rouvrirPremiere = injection.numero === 1 && fait === false && realisee !== undefined
-          const statut = marquerPremiereFaite ? 'realisee' : rouvrirPremiere ? 'a_faire' : injection.statut
-          const dateRealisee = marquerPremiereFaite ? ((updateData.date as Date | undefined) ?? new Date()) : null
-          await tx.$executeRaw`
-            INSERT INTO injections_soins
-              (id, user_id, soin_id, numero, date_prevue, date_realisee, statut, created_at, updated_at)
-            VALUES
-              (${randomUUID()}, ${session.user.id}, ${id}, ${injection.numero}, ${injection.datePrevue},
-               ${dateRealisee}, ${statut}, NOW(), NOW())
-            ON CONFLICT (soin_id, numero) DO UPDATE SET
-              date_prevue = CASE WHEN injections_soins.statut = 'realisee' THEN injections_soins.date_prevue ELSE EXCLUDED.date_prevue END,
-              statut = CASE
-                WHEN ${marquerPremiereFaite}::boolean THEN 'realisee'
-                WHEN ${rouvrirPremiere}::boolean THEN 'a_faire'
-                ELSE injections_soins.statut
-              END,
-              date_realisee = CASE
-                WHEN ${marquerPremiereFaite}::boolean THEN ${dateRealisee}
-                WHEN ${rouvrirPremiere}::boolean THEN NULL
-                ELSE injections_soins.date_realisee
-              END,
-              updated_at = NOW()
-          `
-        }
-        const injections = await tx.$queryRaw<Array<{
-          numero: number; datePrevue: Date; dateRealisee: Date | null; statut: string
-        }>>`
-          SELECT numero, date_prevue AS "datePrevue", date_realisee AS "dateRealisee", statut
-          FROM injections_soins WHERE soin_id = ${id}
-        `
-        const derniere = derniereInjectionActive(injections)
-        const commence = injections.some((i) => i.statut === 'realisee')
+        const premiereRealisee = injectionsExistantes.some((i) => i.numero === 1 && i.statut === 'realisee')
+        // Tickets vigie2cc83585 / cmupz9djj (2026-10-01) : le calendrier est
+        // recalculé pour TOUTES les injections, réalisées comprises, et un
+        // changement de protocole (date de départ, nombre, intervalle) recale
+        // aussi leurs dates réelles. Cf. src/lib/elevage/injections-protocole.ts.
+        await synchroniserInjections(tx, session.user.id, id, { debut, nombre, intervalleHeures: intervalle }, {
+          protocoleChange: dateChangee || injectionsChangees,
+          marquerPremiereFaite: fait === true && !premiereRealisee,
+          rouvrirPremiere: fait === false && premiereRealisee,
+          dateRealiseePremiere: (updateData.date as Date | undefined) ?? new Date(),
+        })
+        const injections = await lireInjections(tx, session.user.id, id)
         finalSoin = await tx.soinAnimal.update({
           where: { id },
-          data: {
-            fait: commence,
-            finAttenteLait: commence && derniere ? ajouterJours(derniere, taLaitEffectif) : null,
-            finAttenteOeufs: commence && derniere ? ajouterJours(derniere, taOeufsEffectif) : null,
-            finAttenteViande: commence && derniere ? ajouterJours(derniere, taViandeEffectif) : null,
-          },
+          data: fenetresAttenteDepuisInjections(injections, {
+            tempsAttenteLaitJ: taLaitEffectif,
+            tempsAttenteOeufsJ: taOeufsEffectif,
+            tempsAttenteViandeJ: taViandeEffectif,
+          }),
           include: { animal: true, lot: true, produitVeterinaire: true },
         })
       }
