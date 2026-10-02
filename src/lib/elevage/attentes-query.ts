@@ -5,6 +5,7 @@
  */
 import prisma from '@/lib/prisma'
 import { consoliderAttentes, type SoinAttenteRow, type AttenteConsolidee } from './attentes'
+import { STATUT_ACTIF } from './sortie-animal'
 
 export async function chargerAttentesConsolidees(
   userId: string,
@@ -13,6 +14,11 @@ export async function chargerAttentesConsolidees(
   const rows = await prisma.soinAnimal.findMany({
     where: {
       userId,
+      // Ticket cmulnl0wk (2026-09-28) : l'éleveur demandait de supprimer le
+      // délai lait d'une chèvre morte. Un animal sorti (mort, vendu, abattu) n'a plus de lait ni de
+      // viande à remettre en vente sur cette ferme : ses fenêtres d'attente ne
+      // figurent plus dans les alertes. Les soins de lot restent portés.
+      AND: [{ OR: [{ animalId: null }, { animal: { statut: STATUT_ACTIF } }] }],
       OR: [
         // Injections administrées dont la fenêtre est encore active.
         { fait: true, OR: [{ finAttenteLait: { gte: today } }, { finAttenteViande: { gte: today } }, { finAttenteOeufs: { gte: today } }] },

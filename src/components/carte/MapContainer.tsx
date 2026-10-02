@@ -158,9 +158,19 @@ export default function MapContainer({
           if (!(cible instanceof HTMLInputElement) || !cible.classList.contains("leaflet-control-layers-selector")) return
           window.setTimeout(() => persisterChoixCalques(conteneur), 0)
         }
+        // Retest QA du 2026-09-28 13:44 (ticket cmulatx23), reproduit le
+        // 2026-10-02 : Leaflet applique le fond sur l'événement `click` de
+        // l'input (`_onInputClick`), pas sur `change`. Un clic qui ne produit
+        // que `click` (automate, lecteur d'écran, certains navigateurs
+        // mobiles) affichait le satellite sans l'enregistrer. On écoute donc
+        // les deux, comme Leaflet ; l'écriture relit l'état réel du DOM, donc
+        // un doublon click+change est idempotent. Un `addLayer` programmatique
+        // n'émet toujours aucun des deux.
         conteneur.addEventListener("change", onChangeCalques, { capture: true })
+        conteneur.addEventListener("click", onChangeCalques, { capture: true })
         detachListenersRef.current = () => {
           conteneur.removeEventListener("change", onChangeCalques, { capture: true })
+          conteneur.removeEventListener("click", onChangeCalques, { capture: true })
         }
       }
       if (map && onMapReady) {
