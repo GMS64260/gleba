@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   parcelleFindMany: vi.fn(),
   lotArbresFindFirst: vi.fn(),
   especeFindFirst: vi.fn(),
+  especeFindMany: vi.fn(),
   zoneFindFirst: vi.fn(),
   genererCalendrierEntretien: vi.fn(),
 }))
@@ -27,7 +28,7 @@ vi.mock("@/lib/prisma", () => ({
       findMany: mocks.parcelleFindMany,
     },
     lotArbres: { findFirst: mocks.lotArbresFindFirst },
-    espece: { findFirst: mocks.especeFindFirst },
+    espece: { findFirst: mocks.especeFindFirst, findMany: mocks.especeFindMany },
     zoneVerger: { findFirst: mocks.zoneFindFirst },
   },
 }))
@@ -59,6 +60,11 @@ beforeEach(() => {
   })
   mocks.lotArbresFindFirst.mockResolvedValue(null)
   mocks.especeFindFirst.mockResolvedValue(null)
+  mocks.especeFindMany.mockResolvedValue([
+    { id: "Pommier", nom: "Pommier", userId: null, type: "arbre_fruitier" },
+    { id: "Kiwi", nom: "Kiwi", userId: null, type: "petit_fruit" },
+  ])
+  mocks.parcelleFindMany.mockResolvedValue([])
   mocks.genererCalendrierEntretien.mockResolvedValue(true)
   mocks.arbreCreate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
     id: 1, ...data, _count: {},
@@ -103,5 +109,39 @@ describe("POST /api/arbres — statut productif dérivé", () => {
     const aujourdhui = new Date().toISOString().slice(0, 10)
     await POST(request({ ...arbreValide, datePlantation: aujourdhui, productif: true }))
     expect(mocks.arbreCreate.mock.calls[0][0].data.productif).toBe(true)
+  })
+})
+
+describe("POST /api/arbres — catalogue et parcelle par défaut (friction 2026-10-05)", () => {
+  it("rattache une espèce saisie en minuscules au catalogue", async () => {
+    const res = await POST(request({ ...arbreValide, espece: "kiwi" }))
+    expect(res.status).toBe(201)
+    const data = mocks.arbreCreate.mock.calls[0][0].data
+    expect(data.espece).toBe("Kiwi")
+    expect(data.especeId).toBe("Kiwi")
+    expect((await res.json()).especeHorsCatalogue).toBe(false)
+  })
+
+  it("accepte une espèce hors catalogue en le signalant", async () => {
+    const res = await POST(request({ ...arbreValide, espece: "asiminier" }))
+    expect(res.status).toBe(201)
+    expect(mocks.arbreCreate.mock.calls[0][0].data.especeId).toBeNull()
+    expect((await res.json()).especeHorsCatalogue).toBe(true)
+  })
+
+  it("rattache à la seule parcelle du compte quand aucune n'est donnée", async () => {
+    mocks.parcelleFindMany.mockResolvedValue([{ id: "p1", usage: null, couches: ["VERGER"] }])
+    const res = await POST(request(arbreValide))
+    expect(mocks.arbreCreate.mock.calls[0][0].data.parcelleGeoId).toBe("p1")
+    expect((await res.json()).parcelleAttribueeAuto).toBe(true)
+  })
+
+  it("ne devine pas entre plusieurs parcelles", async () => {
+    mocks.parcelleFindMany.mockResolvedValue([
+      { id: "p1", usage: null, couches: [] },
+      { id: "p2", usage: null, couches: [] },
+    ])
+    await POST(request(arbreValide))
+    expect(mocks.arbreCreate.mock.calls[0][0].data.parcelleGeoId).toBeNull()
   })
 })

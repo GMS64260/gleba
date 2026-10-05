@@ -8,7 +8,8 @@ import * as React from "react"
 import { urlApercu } from "@/lib/apercu-document"
 import { useRouter } from "next/navigation"
 import { ColumnDef } from "@tanstack/react-table"
-import { TreeDeciduous, Leaf, Cherry, Fence, Flower2, Shrub, CalendarPlus, Map as MapIcon, MapPin } from "lucide-react"
+import { TreeDeciduous, Leaf, Cherry, Fence, Flower2, Shrub, CalendarPlus, Copy, Map as MapIcon, MapPin } from "lucide-react"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -150,7 +151,10 @@ const TYPE_TO_REF: Record<string, string> = {
   petit_fruit: "petit_fruit",
 }
 
-function makeColumns(onGenererCalendrier: (arbre: Arbre) => void): ColumnDef<Arbre>[] {
+function makeColumns(
+  onGenererCalendrier: (arbre: Arbre) => void,
+  onDupliquer: (arbre: Arbre, nombre: number) => void,
+): ColumnDef<Arbre>[] {
   return [
     {
       accessorKey: "nom",
@@ -263,8 +267,31 @@ function makeColumns(onGenererCalendrier: (arbre: Arbre) => void): ColumnDef<Arb
       meta: { className: "hidden md:table-cell" },
       cell: ({ row }) => {
         const arbre = row.original
-        if (!arbre.espece) return null
         return (
+          <div className="flex items-center gap-1">
+            {/* Friction 2026-10-05 : 52 arbres saisis un par un faute de copie. */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2"
+                  onClick={(e) => e.stopPropagation()}
+                  title="Dupliquer l'arbre"
+                  aria-label={`Dupliquer ${arbre.nom}`}
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                {[1, 2, 3, 5, 10].map((n) => (
+                  <DropdownMenuItem key={n} onClick={() => onDupliquer(arbre, n)}>
+                    {n === 1 ? "Dupliquer" : `Dupliquer ×${n}`}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            {arbre.espece && (
           <Button
             variant="ghost"
             size="sm"
@@ -277,6 +304,8 @@ function makeColumns(onGenererCalendrier: (arbre: Arbre) => void): ColumnDef<Arb
           >
             <CalendarPlus className="h-3.5 w-3.5" />
           </Button>
+            )}
+          </div>
         )
       },
     },
@@ -372,7 +401,6 @@ export function ArbresTab() {
     }
   }, [toast])
 
-  const columns = React.useMemo(() => makeColumns(handleGenererCalendrier), [handleGenererCalendrier])
 
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
@@ -459,6 +487,28 @@ export function ArbresTab() {
   React.useEffect(() => {
     fetchData()
   }, [fetchData])
+
+  const handleDupliquer = React.useCallback(async (arbre: Arbre, nombre: number) => {
+    try {
+      const res = await fetch(`/api/arbres/${arbre.id}/dupliquer`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nombre }),
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(data?.error || "Duplication impossible")
+      const noms: string[] = (data?.arbres ?? []).map((a: { nom: string }) => a.nom)
+      toast({ title: noms.length > 1 ? `${noms.length} arbres créés` : "Arbre dupliqué", description: noms.join(", ") })
+      fetchData()
+    } catch (e) {
+      toast({ title: "Erreur", description: e instanceof Error ? e.message : undefined, variant: "destructive" })
+    }
+  }, [fetchData, toast])
+
+  const columns = React.useMemo(
+    () => makeColumns(handleGenererCalendrier, handleDupliquer),
+    [handleGenererCalendrier, handleDupliquer]
+  )
 
   // Zone climatique effective de l'utilisateur (pour l'avertissement plantation).
   React.useEffect(() => {
@@ -725,7 +775,15 @@ export function ArbresTab() {
         const created = await res.json()
         setShowDialog(false)
         resetForm()
-        toast({ title: created.calendrierGenere ? `Arbre ajouté — calendrier d'entretien généré pour ${newArbre.espece}` : "Arbre ajouté" })
+        toast({
+          title: created.calendrierGenere ? `Arbre ajouté — calendrier d'entretien généré pour ${created.espece ?? newArbre.espece}` : "Arbre ajouté",
+          description: [
+            created.especeHorsCatalogue
+              ? `« ${created.espece} » n'est pas au catalogue : pas de calendrier d'entretien ni de contrôle climatique automatiques.`
+              : null,
+            created.parcelleAttribueeAuto ? "Rattaché à votre parcelle." : null,
+          ].filter(Boolean).join(" ") || undefined,
+        })
         fetchData()
       } else {
         const error = await res.json().catch(() => ({}))

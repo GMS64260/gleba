@@ -11,6 +11,7 @@ import { requireAuthApi } from "@/lib/auth-utils"
 import { doitInfererParcelle, trouverParcelleGpsProche } from "@/lib/parcelle-gps-utils"
 import { messageErreurCoordonnees } from "@/lib/geolocation"
 import { normaliserLibelle } from "@/lib/libelle-libre"
+import { resoudreEspeceArbre } from "@/lib/verger/espece-arbre"
 import { noteArbreSupprime, preserverTracesPhytoArbre } from "@/lib/verger/preserver-traces-phyto"
 
 interface Params {
@@ -156,8 +157,16 @@ export async function PUT(request: NextRequest, { params }: Params) {
       })
       parcelleGeoId = trouverParcelleGpsProche(parcelles, gpsLat, gpsLng)?.id ?? null
     }
+    // Espèce rattachée au catalogue à chaque écriture du champ (cf.
+    // espece-arbre.ts) : la sauvegarde du plan renvoie l'espèce de chaque
+    // arbre, ce qui recale aussi les saisies historiques (« kiwi » → « Kiwi »).
+    const saisieEspece =
+      body.espece !== undefined && body.espece !== null ? String(body.espece).trim() : null
+    const especeResolue = saisieEspece
+      ? await resoudreEspeceArbre(prisma, session!.user.id, saisieEspece)
+      : null
     const espece =
-      body.espece !== undefined ? (String(body.espece).trim() || null) : existing.espece
+      body.espece !== undefined ? (especeResolue?.espece ?? null) : existing.espece
     const rattachementChange =
       parcelleGeoId !== existing.parcelleGeoId ||
       (espece ?? "").toLocaleLowerCase("fr") !==
@@ -198,7 +207,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
         // une espace de bordure créait une espèce en double dans les
         // regroupements. `undefined` reste `undefined` : un payload partiel ne
         // doit rien effacer.
-        espece: normaliserLibelle(body.espece),
+        espece: body.espece !== undefined ? espece : undefined,
         variete: normaliserLibelle(body.variete),
         portGreffe: normaliserLibelle(body.portGreffe),
         // Bug #1 — Le PUT ignorait porte-greffe structuré + circonférence + GPS,
@@ -234,7 +243,8 @@ export async function PUT(request: NextRequest, { params }: Params) {
         rendementMoyen: body.rendementMoyen !== undefined
           ? (body.rendementMoyen != null && body.rendementMoyen !== "" ? parseFloat(body.rendementMoyen) : null)
           : undefined,
-        especeId: body.especeId || undefined,
+        especeId:
+          body.espece !== undefined ? (especeResolue?.especeId ?? null) : body.especeId || undefined,
         // Champs verger enrichis
         formeTaille: body.formeTaille !== undefined ? (body.formeTaille || null) : undefined,
         vigueur: body.vigueur !== undefined ? (body.vigueur || null) : undefined,

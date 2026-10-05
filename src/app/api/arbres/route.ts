@@ -15,6 +15,7 @@ import { visibiliteReferentiel } from "@/lib/referentiel-communaute"
 import { trouverParcelleGpsProche } from "@/lib/parcelle-gps-utils"
 import { messageErreurCoordonnees } from "@/lib/geolocation"
 import { normaliserLibelle } from "@/lib/libelle-libre"
+import { parcelleParDefautArbre, resoudreEspeceArbre } from "@/lib/verger/espece-arbre"
 
 // Types d'arbres disponibles
 export const TYPES_ARBRES = [
@@ -192,7 +193,12 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Zone non trouvée" }, { status: 404 })
       }
     }
+    // Espèce rattachée au catalogue quand la saisie le désigne (casse, accents
+    // et tirets près) ; repli explicite hors catalogue — voir espece-arbre.ts.
+    const especeResolue = await resoudreEspeceArbre(prisma, session!.user.id, String(body.espece))
+
     let parcelleGeoId = body.parcelleGeoId || null
+    let parcelleAttribueeAuto = false
     if (parcelleGeoId) {
       const parcelle = await prisma.parcelleGeo.findFirst({
         where: { id: parcelleGeoId, userId: session!.user.id },
@@ -206,6 +212,16 @@ export async function POST(request: NextRequest) {
         select: { id: true, geometry: true },
       })
       parcelleGeoId = trouverParcelleGpsProche(parcelles, gpsLat, gpsLng)?.id ?? null
+    } else {
+      // Friction du 2026-10-05 : créé depuis la vue « toutes les parcelles » du
+      // plan, chaque arbre naissait orphelin alors que le compte n'avait qu'une
+      // parcelle. Sans ambiguïté possible, on rattache ; sinon on ne devine pas.
+      const parcelles = await prisma.parcelleGeo.findMany({
+        where: { userId: session!.user.id },
+        select: { id: true, usage: true, couches: true },
+      })
+      parcelleGeoId = parcelleParDefautArbre(parcelles)
+      parcelleAttribueeAuto = parcelleGeoId != null
     }
     if (
       parcelleGeoId &&
@@ -214,7 +230,7 @@ export async function POST(request: NextRequest) {
         where: {
           userId: session!.user.id,
           parcelleGeoId,
-          espece: { equals: String(body.espece).trim(), mode: "insensitive" },
+          espece: { in: [String(body.espece).trim(), especeResolue.espece], mode: "insensitive" },
         },
         select: { id: true },
       })
@@ -235,7 +251,8 @@ export async function POST(request: NextRequest) {
         // seconde ligne d'espèce dans le diagramme d'entretien et les
         // regroupements. Une espace invisible ne doit jamais fabriquer une
         // espèce distincte.
-        espece: normaliserLibelle(body.espece),
+        espece: especeResolue.espece,
+        especeId: especeResolue.especeId,
         variete: normaliserLibelle(body.variete),
         portGreffe: normaliserLibelle(body.portGreffe),
         fournisseur: normaliserLibelle(body.fournisseur),
@@ -264,7 +281,7 @@ export async function POST(request: NextRequest) {
         productif:
           body.productif !== undefined
             ? body.productif
-            : productifParDefaut(body.espece, body.datePlantation),
+            : productifParDefaut(especeResolue.espece, body.datePlantation),
         anneeProduction: body.anneeProduction ? parseInt(body.anneeProduction) : null,
         rendementMoyen: body.rendementMoyen ? parseFloat(body.rendementMoyen) : null,
         // Nouveaux champs verger enrichi
@@ -326,7 +343,16 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ ...arbre, calendrierGenere, avertissementZone }, { status: 201 })
+    return NextResponse.json(
+      {
+        ...arbre,
+        calendrierGenere,
+        avertissementZone,
+        especeHorsCatalogue: especeResolue.horsCatalogue,
+        parcelleAttribueeAuto,
+      },
+      { status: 201 }
+    )
   } catch (err) {
     console.error("POST /api/arbres error:", err)
     return NextResponse.json(

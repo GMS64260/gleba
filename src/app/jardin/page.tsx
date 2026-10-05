@@ -56,6 +56,7 @@ import { croissanceCulture, envergureArbreADate } from "@/lib/plan-croissance"
 import { projeterGpsSurPlan, projeterPlanSurGps } from "@/lib/gps-plan-utils"
 import { partitionnerArbresPourSauvegarde } from "@/lib/plan-sauvegarde"
 import { nomsCopiesEnLot } from "@/lib/jardin/noms-copie"
+import { parcelleParDefautArbre } from "@/lib/verger/espece-arbre"
 import {
   TYPES_CONVERSION_PLANCHE,
   TYPES_OBJETS_PAR_GROUPE,
@@ -571,6 +572,65 @@ function JardinContent() {
     }
   }
 
+  /**
+   * Arbres rattachés à aucune parcelle (friction 2026-10-05 : 52 arbres d'un
+   * compte nés orphelins, créés depuis la vue « toutes les parcelles »). Même
+   * logique que les planches : on dit ce qui manque et on rattache d'un geste,
+   * à la parcelle affichée, ou à la seule parcelle possible depuis la vue
+   * d'ensemble.
+   */
+  const [arbresSansParcelle, setArbresSansParcelle] = React.useState<number[]>([])
+  const [rattachementArbresEnCours, setRattachementArbresEnCours] = React.useState(false)
+  const fetchArbresSansParcelle = React.useCallback(async () => {
+    try {
+      const response = await fetch("/api/arbres?parcelle=none")
+      if (!response.ok) return
+      const data = await response.json()
+      setArbresSansParcelle(Array.isArray(data) ? data.map((a: { id: number }) => a.id) : [])
+    } catch {
+      // Silencieux, comme pour les planches.
+    }
+  }, [])
+  const parcelleCibleArbres = React.useMemo(() => {
+    if (selectedParcelleId && selectedParcelleId !== "none") {
+      return parcelles.find((p) => p.id === selectedParcelleId) ?? null
+    }
+    if (selectedParcelleId === "none") return null
+    const id = parcelleParDefautArbre(parcelles)
+    return id ? parcelles.find((p) => p.id === id) ?? null : null
+  }, [parcelles, selectedParcelleId])
+  const rattacherArbresSansParcelle = async () => {
+    if (!parcelleCibleArbres || arbresSansParcelle.length === 0) return
+    setRattachementArbresEnCours(true)
+    try {
+      const response = await fetch("/api/arbres/bulk-parcelle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ arbreIds: arbresSansParcelle, parcelleGeoId: parcelleCibleArbres.id }),
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(data?.error || "Rattachement impossible")
+      const refuses = Array.isArray(data?.refusedIds) ? data.refusedIds.length : 0
+      toast({
+        variant: refuses > 0 ? "destructive" : undefined,
+        title: `${data?.updated ?? 0} arbre(s) rattaché(s) à ${parcelleCibleArbres.nom}`,
+        description: [
+          refuses > 0 ? `${refuses} refusé(s) : espèce déjà suivie en lot agrégé sur cette parcelle.` : null,
+          data?.avertissement ?? null,
+        ].filter(Boolean).join(" ") || undefined,
+      })
+      await Promise.all([fetchArbres(), fetchParcelles(), fetchArbresSansParcelle()])
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Erreur",
+        description: error instanceof Error ? error.message : "Erreur inconnue",
+      })
+    } finally {
+      setRattachementArbresEnCours(false)
+    }
+  }
+
   const [arbreEspecesRef, setArbreEspecesRef] = React.useState<string[]>([])
   const [arbreVarietesRef, setArbreVarietesRef] = React.useState<string[]>([])
   const [arbreFournisseursRef, setArbreFournisseursRef] = React.useState<string[]>([])
@@ -628,8 +688,8 @@ function JardinContent() {
 
   // Charger arbres et données de reference une seule fois
   React.useEffect(() => {
-    Promise.all([fetchArbres(), fetchEspeces(), fetchParcelles(), fetchPlanchesSansParcelle()])
-  }, [fetchArbres, fetchEspeces, fetchParcelles, fetchPlanchesSansParcelle])
+    Promise.all([fetchArbres(), fetchEspeces(), fetchParcelles(), fetchPlanchesSansParcelle(), fetchArbresSansParcelle()])
+  }, [fetchArbres, fetchEspeces, fetchParcelles, fetchPlanchesSansParcelle, fetchArbresSansParcelle])
 
   // Le GPS et le plan utilisent deux repères indépendants : WGS84 pour le
   // relevé terrain, mètres SVG pour l'éditeur. Une capture issue de la
@@ -1676,22 +1736,64 @@ function JardinContent() {
       // Avertissement d'adéquation géographique (ex. fruitier à besoin de froid
       // en zone tropicale) renvoyé par l'API — non bloquant.
       const created = await response.json().catch(() => null)
+      const precisions = [
+        created?.especeHorsCatalogue
+          ? `« ${created.espece} » n'est pas au catalogue : pas de calendrier d'entretien ni de contrôle climatique automatiques.`
+          : null,
+        created?.parcelleAttribueeAuto && created?.parcelleGeoId
+          ? `Rattaché à ${parcelles.find(p => p.id === created.parcelleGeoId)?.nom ?? "votre parcelle"}.`
+          : null,
+      ].filter(Boolean).join(" ")
       if (created?.avertissementZone) {
         toast({
           title: "Arbre créé — attention à votre climat",
-          description: `${newArbre.espece} : ${created.avertissementZone}.`,
+          description: `${created.espece ?? newArbre.espece} : ${created.avertissementZone}.${precisions ? ` ${precisions}` : ""}`,
         })
       } else {
-        toast({ title: "Arbre créé", description: newArbre.nom })
+        toast({ title: "Arbre créé", description: [newArbre.nom, precisions].filter(Boolean).join(" — ") })
       }
       setShowNewArbreDialog(false)
       setNewArbre({ nom: "", type: "fruitier", espece: "", variete: "", fournisseur: "", envergure: 2, envergureAdulte: "" })
       fetchArbres()
+      fetchArbresSansParcelle()
     } catch (error) {
       toast({
         variant: "destructive",
         title: "Erreur",
         description: error instanceof Error ? error.message : "Erreur inconnue"
+      })
+    }
+  }
+
+  // Dupliquer l'arbre sélectionné (friction 2026-10-05 : 52 arbres saisis un
+  // par un, et un visiteur de la démo qui demandait comment faire). Les
+  // positions et noms sont calculés côté serveur, la sauvegarde en attente est
+  // d'abord écrite pour que la copie parte de la position affichée.
+  const handleDuplicateArbre = async (nombre = 1) => {
+    if (!selectedArbre) return
+    try {
+      if (hasChanges) await handleSave()
+      const response = await fetch(`/api/arbres/${selectedArbre}/dupliquer`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nombre }),
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(data?.error || "Erreur duplication")
+      const noms: string[] = (data?.arbres ?? []).map((a: { nom: string }) => a.nom)
+      toast({
+        title: noms.length > 1 ? `${noms.length} arbres créés` : "Arbre dupliqué",
+        description: noms.join(", "),
+      })
+      await Promise.all([fetchArbres(), fetchArbresSansParcelle()])
+      const dernier = data?.arbres?.[data.arbres.length - 1]
+      if (dernier) setSelection([{ type: 'arbre', id: dernier.id }])
+    } catch (error) {
+      await fetchArbres()
+      toast({
+        variant: "destructive",
+        title: "Erreur",
+        description: error instanceof Error ? error.message : "Erreur inconnue",
       })
     }
   }
@@ -2408,6 +2510,30 @@ function JardinContent() {
                   </div>
                 </div>
               )}
+
+              {!isLoading && arbresSansParcelle.length > 0 && parcelleCibleArbres && (() => {
+                const bandeauPlanches = Boolean(
+                  selectedParcelleId && selectedParcelleId !== "none"
+                  && planches.length === 0 && planchesSansParcelle.length > 0
+                )
+                return (
+                  <div className={`absolute left-1/2 ${bandeauPlanches ? "top-40" : "top-3"} z-20 w-[min(30rem,calc(100%-1.5rem))] -translate-x-1/2 rounded-lg border border-amber-300 bg-amber-50/95 p-3 shadow-lg backdrop-blur`}>
+                    <p className="text-sm font-medium text-amber-900">
+                      {arbresSansParcelle.length > 1
+                        ? `${arbresSansParcelle.length} arbres ne sont rattachés à aucune parcelle`
+                        : "1 arbre n'est rattaché à aucune parcelle"}
+                    </p>
+                    <p className="mt-1 text-xs text-amber-800">
+                      Sans parcelle, ils n&apos;apparaissent sur le plan d&apos;aucune parcelle et leurs lots de récolte sont numérotés sans parcelle.
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Button size="sm" onClick={rattacherArbresSansParcelle} disabled={rattachementArbresEnCours}>
+                        {rattachementArbresEnCours ? "Rattachement…" : `Rattacher à ${parcelleCibleArbres.nom}`}
+                      </Button>
+                    </div>
+                  </div>
+                )
+              })()}
 
               {/* Plan vivant : curseur temporel (masqué en plein écran) */}
               {!isPlanFullscreen && !isLoading && (planches.length > 0 || arbres.length > 0) && (
@@ -3287,11 +3413,27 @@ function JardinContent() {
                         </Link>
                       </Button>
 
-                      {/* Bouton supprimer */}
-                    <Button variant="destructive" size="sm" onClick={handleDeleteArbre} className="w-full">
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      Supprimer
-                    </Button>
+                      <div className="flex gap-2">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="outline" size="sm" className="flex-1">
+                              <Copy className="h-4 w-4 mr-2" />
+                              Dupliquer
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start">
+                            {[1, 2, 3, 5, 10].map(n => (
+                              <DropdownMenuItem key={n} onClick={() => handleDuplicateArbre(n)}>
+                                {n === 1 ? "Dupliquer" : `Dupliquer ×${n}`}
+                              </DropdownMenuItem>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                        <Button variant="destructive" size="sm" onClick={handleDeleteArbre} className="flex-1">
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Supprimer
+                        </Button>
+                      </div>
                   </div>
                 </CardContent>
               </Card>
