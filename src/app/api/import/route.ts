@@ -11,6 +11,8 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import { normalizeVarieteName } from '@/lib/normalize'
 import { invalidateKpi } from '@/lib/kpi'
 import { frequenceIrrigationJours } from '@/lib/irrigation-peremption'
+import { rendementEffectif } from '@/lib/recolte/rendement-effectif'
+import { uniteQuantiteRecolte, type UniteQuantite } from '@/lib/recolte/projection'
 
 interface ImportData {
   version?: string
@@ -169,6 +171,8 @@ interface ImportData {
     cultureId: number
     date: string
     quantite: number
+    /** kg | tige | piece | botte, tel que l'export l'emporte depuis 2026-08-20. */
+    unite?: string | null
     notes?: string | null
   }>
   fertilisations?: Array<{
@@ -925,13 +929,36 @@ export async function POST(request: NextRequest) {
 
     // 13. Récoltes (ID auto-généré - créer de nouvelles avec le bon cultureId)
     if (data.recoltes?.length) {
+      // L'unité d'une récolte est figée à la saisie : l'export l'emporte, et
+      // l'import la perdait (relue en kilos). On reprend celle du fichier quand
+      // elle est canonique ; un export antérieur au 2026-08-20 n'en a pas, on
+      // dérive alors comme POST /api/recoltes : rendement effectif de l'espèce
+      // chez cet utilisateur (surcharge « Chez moi », sinon catalogue).
+      const UNITES_QUANTITE: ReadonlySet<string> = new Set(['kg', 'tige', 'piece', 'botte'])
+      const surchargesRendement = await tx.userStockEspece.findMany({
+        where: { userId, OR: [{ rendement: { not: null } }, { uniteRendement: { not: null } }] },
+        select: { especeId: true, rendement: true, uniteRendement: true },
+      })
+      const surchargeParEspece = new Map(
+        surchargesRendement.map((l) => [l.especeId, { rendement: l.rendement, uniteRendement: l.uniteRendement }]),
+      )
       for (const item of data.recoltes) {
         // Trouver le nouvel ID de la culture
         const newCultureId = cultureIdMap.get(item.cultureId)
         if (!newCultureId) continue // Skip si la culture n'a pas été importée
 
-        const especeExists = await tx.espece.findUnique({ where: { id: item.especeId } })
+        const especeExists = await tx.espece.findUnique({
+          where: { id: item.especeId },
+          select: { id: true, rendement: true, uniteRendement: true },
+        })
         if (!especeExists) continue
+
+        const unite: UniteQuantite =
+          item.unite && UNITES_QUANTITE.has(item.unite)
+            ? (item.unite as UniteQuantite)
+            : uniteQuantiteRecolte(
+                rendementEffectif(especeExists, surchargeParEspece.get(item.especeId)).uniteRendement,
+              )
 
         await tx.recolte.create({
           data: {
@@ -940,6 +967,7 @@ export async function POST(request: NextRequest) {
             cultureId: newCultureId,
             date: new Date(item.date),
             quantite: item.quantite,
+            unite,
             notes: item.notes,
           },
         })

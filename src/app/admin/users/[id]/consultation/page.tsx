@@ -11,6 +11,8 @@
 
 import { requireAdmin } from "@/lib/auth-utils"
 import prisma from "@/lib/prisma"
+import type { UniteQuantite } from "@/lib/recolte/projection"
+import { ajouterQuantite, formatQuantiteParUnite, type QuantiteParUnite } from "@/lib/recolte/quantites"
 import { reconstituerEffectifsLots } from "@/lib/elevage/effectif"
 import { chargerAttentesConsolidees } from "@/lib/elevage/attentes-query"
 import { remiseVente } from "@/lib/elevage/attentes"
@@ -70,7 +72,7 @@ export default async function ConsultationUserPage({ params }: PageProps) {
     culturesCount,
     planchesCount,
     recoltesCount,
-    recolteKgAnnee,
+    recoltesAnneeParUnite,
     arbresCount,
     caAnnee,
     attentes,
@@ -104,7 +106,10 @@ export default async function ConsultationUserPage({ params }: PageProps) {
     prisma.culture.count({ where: { userId } }),
     prisma.planche.count({ where: { userId } }),
     prisma.recolte.count({ where: { userId } }),
-    prisma.recolte.aggregate({
+    // Ventilé par unité : un compte de fleurs coupées récolte des tiges, pas
+    // des kilos, et les additionner ferait un chiffre sans sens.
+    prisma.recolte.groupBy({
+      by: ["unite"],
       where: { userId, date: { gte: debutAnnee, lte: finAnnee } },
       _sum: { quantite: true },
     }),
@@ -149,7 +154,10 @@ export default async function ConsultationUserPage({ params }: PageProps) {
   // QA caprin cms1v227a — effectif réel = lots (fiches rattachées incluses) + hors lot.
   const cheptelTotal = animauxHorsLot + animauxEnLots
   const laitLitres = Number(laitAnnee._sum.quantiteLitres ?? 0)
-  const recolteKg = Number(recolteKgAnnee._sum.quantite ?? 0)
+  const recolteAnnee = recoltesAnneeParUnite.reduce<QuantiteParUnite>(
+    (acc, l) => ajouterQuantite(acc, (l.unite ?? "kg") as UniteQuantite, l._sum.quantite ?? 0),
+    {},
+  )
   const ca = Number(caAnnee._sum.prixTotal ?? 0)
   const annee = now.getFullYear()
 
@@ -176,7 +184,7 @@ export default async function ConsultationUserPage({ params }: PageProps) {
         { label: "Cultures", value: `${culturesCount}` },
         { label: "Planches", value: `${planchesCount}` },
         { label: "Récoltes", value: `${recoltesCount}` },
-        { label: `Récolté ${annee}`, value: `${fmt(recolteKg)} kg` },
+        { label: `Récolté ${annee}`, value: formatQuantiteParUnite(recolteAnnee) },
       ],
     },
     {

@@ -5,7 +5,7 @@
 
 import { getISOWeek } from 'date-fns'
 import { semaineVersDate } from './cultures/dates-itp'
-import { projectionRecolteKg } from './recolte/projection'
+import { projectionRecolte, type UniteQuantite } from './recolte/projection'
 
 /**
  * Lundi de la semaine ISO `semaine` de l'année `annee`.
@@ -160,13 +160,17 @@ export function estimerNombrePlantsStrict(
  * d'un kiwi à 25 kg/ARBRE 750 kg sur 30 m². L'unité fait partie de la donnée
  * (cf. `recolte/projection`) ; rend 0 quand elle n'est pas surfacique, à
  * charge de l'appelant de ne rien afficher plutôt qu'un chiffre inventé.
+ *
+ * Rend la quantité AVEC son unité (kg, tige, pièce, botte) : jusqu'au
+ * 2026-10-08 la version « kilos seulement » faisait valoir 0 à toute espèce en
+ * tiges, et l'assistant affichait « - » sur un plan de dahlias.
  */
 export function estimerRendement(
   rendement: number | null | undefined,
   surface: number, // m²
   uniteRendement?: string | null
-): number {
-  return projectionRecolteKg(surface, rendement, uniteRendement)
+): { quantite: number; unite: UniteQuantite } {
+  return projectionRecolte(surface, rendement, uniteRendement)
 }
 
 /**

@@ -109,6 +109,8 @@ interface CultureEntry {
     notes: string | null
   }[]
   totalRecolte: number
+  /** « 12 kg + 360 tiges » : total ventilé par unité, à afficher tel quel. */
+  totalRecolteTexte?: string
   interventions: {
     id: number
     date: string
@@ -154,6 +156,7 @@ interface CultureData {
     totalCultures: number
     nbEspeces: number
     totalRecoltes: number
+    totalRecoltesTexte?: string
     totalInterventions: number
   }
 }
@@ -904,7 +907,7 @@ function CultureTab({
             <CardTitle className="text-sm text-muted-foreground">Récolte totale</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold">{data.stats.totalRecoltes.toFixed(1)} kg</p>
+            <p className="text-2xl font-bold">{data.stats.totalRecoltesTexte ?? `${data.stats.totalRecoltes.toFixed(1)} kg`}</p>
           </CardContent>
         </Card>
         <Card>
@@ -974,9 +977,9 @@ function CultureTab({
                         <span>{culture.dates.semis ? formatDateShort(culture.dates.semis) : "-"}</span>
                         <span className="text-slate-300">&rarr;</span>
                         <span>{culture.dates.premiereRecolte ? formatDateShort(culture.dates.premiereRecolte) : "-"}</span>
-                        {culture.totalRecolte > 0 && (
+                        {(culture.totalRecolteTexte ?? (culture.totalRecolte > 0 ? `${culture.totalRecolte.toFixed(1)} kg` : '')) !== '' && culture.totalRecolteTexte !== '0 kg' && (
                           <span className="font-medium text-emerald-600">
-                            {culture.totalRecolte.toFixed(1)} kg
+                            {culture.totalRecolteTexte ?? `${culture.totalRecolte.toFixed(1)} kg`}
                           </span>
                         )}
                       </div>

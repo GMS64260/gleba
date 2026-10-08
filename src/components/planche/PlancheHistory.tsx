@@ -211,9 +211,11 @@ function CultureCard({ culture }: { culture: CultureHistory }) {
           {culture.dateRecolte && <span>Récolte: {formatDate(culture.dateRecolte)}</span>}
         </div>
       </div>
-      {culture.totalRecolte > 0 && (
+      {culture.recoltes.length > 0 && (
         <div className="text-right">
-          <div className="text-lg font-semibold text-green-600">{culture.totalRecolte} kg</div>
+          <div className="text-lg font-semibold text-green-600">
+            {culture.totalRecolteTexte ?? `${culture.totalRecolte} kg`}
+          </div>
           <div className="text-xs text-slate-500">
             {culture.recoltes.length} recolte{culture.recoltes.length > 1 ? 's' : ''}
           </div>

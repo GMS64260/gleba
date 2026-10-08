@@ -266,6 +266,11 @@ const RENDEMENT_MAX: Record<typeof UNITE_RENDEMENT[number], number> = {
   bottes_m2: 500,
 }
 
+/** Plafond de vraisemblance d'un rendement dans une unité donnée. */
+export function rendementMaximum(unite: typeof UNITE_RENDEMENT[number]): number {
+  return RENDEMENT_MAX[unite]
+}
+
 /** Plafond le plus large, seul filet quand le payload n'établit aucune unité. */
 const RENDEMENT_MAX_ABSOLU = Math.max(...Object.values(RENDEMENT_MAX))
 

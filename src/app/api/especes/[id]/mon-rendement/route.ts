@@ -21,7 +21,7 @@ import { z } from 'zod'
 import prisma from '@/lib/prisma'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
-import { UNITE_RENDEMENT } from '@/lib/validations/espece'
+import { UNITE_RENDEMENT, UNITE_RENDEMENT_LABELS, rendementMaximum } from '@/lib/validations/espece'
 import { rendementEffectif } from '@/lib/recolte/rendement-effectif'
 
 interface RouteParams {
@@ -34,6 +34,18 @@ const schema = z.object({
   uniteRendement: z.enum(UNITE_RENDEMENT).nullable().optional(),
   objectifAnnuel: z.number().min(0).nullable().optional(),
 })
+
+/**
+ * Même borne de vraisemblance que la fiche espèce, contre l'unité que le
+ * payload établit. Quand il ne la porte pas, elle est en base (surcharge ou
+ * catalogue) : on la résout avant de valider, cf. `bornerRendementEffectif`.
+ */
+function erreurBorne(rendement: number, unite: typeof UNITE_RENDEMENT[number]): string | null {
+  const maximum = rendementMaximum(unite)
+  return rendement > maximum
+    ? `Rendement invraisemblable : maximum ${maximum} ${UNITE_RENDEMENT_LABELS[unite]}`
+    : null
+}
 
 /** Même décodage défensif que la fiche : l'id peut arriver percent-encodé. */
 function decodeId(id: string): string {
@@ -76,6 +88,29 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     }
 
     const { rendement, uniteRendement, objectifAnnuel } = parsed.data
+
+    if (rendement != null) {
+      // Unité contre laquelle juger la valeur : celle du payload, sinon celle
+      // déjà enregistrée chez moi, sinon celle du catalogue.
+      const existante = uniteRendement === undefined
+        ? await prisma.userStockEspece.findUnique({
+            where: { userId_especeId: { userId, especeId: espece.id } },
+            select: { uniteRendement: true },
+          })
+        : null
+      const uniteJugee = (uniteRendement
+        ?? existante?.uniteRendement
+        ?? espece.uniteRendement
+        ?? 'kg_m2') as typeof UNITE_RENDEMENT[number]
+      const erreur = UNITE_RENDEMENT.includes(uniteJugee) ? erreurBorne(rendement, uniteJugee) : null
+      if (erreur) {
+        return NextResponse.json(
+          { error: 'Données invalides', details: { fieldErrors: { rendement: [erreur] } } },
+          { status: 400 }
+        )
+      }
+    }
+
     const ligne = await prisma.userStockEspece.upsert({
       where: { userId_especeId: { userId, especeId: espece.id } },
       create: {
@@ -117,7 +152,8 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     }
 
     // On ne supprime pas la ligne : elle porte aussi l'inventaire et le prix.
-    // Seuls les trois champs de rendement retournent au catalogue.
+    // Seuls le rendement et son unité retournent au catalogue ; l'objectif
+    // annuel est une donnée de la ferme sans équivalent au catalogue, il reste.
     const existe = await prisma.userStockEspece.findUnique({
       where: { userId_especeId: { userId, especeId: espece.id } },
       select: { id: true },
