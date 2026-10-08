@@ -16,7 +16,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { User, LogOut, Shield, Settings, Megaphone, Store } from "lucide-react"
+import { User, LogOut, Shield, Settings, Megaphone, Store, Inbox } from "lucide-react"
+import { OPEN_FEEDBACK_EVENT } from "@/components/feedback/OpenFeedbackButton"
 
 interface UserMenuProps {
   user: {
@@ -68,9 +69,24 @@ export function UserMenu({ user }: UserMenuProps) {
         <Link href="/communaute">
           <DropdownMenuItem className="cursor-pointer">
             <Megaphone className="mr-2 h-4 w-4" />
-            Community Voice
+            Communauté
           </DropdownMenuItem>
         </Link>
+
+        {/* Signalement 2026-10-07 : l'utilisateur cherchait « Mes signalements »
+            dans ce menu. Le suivi vit dans le panneau de feedback (onglet
+            « Mes demandes ») : on l'ouvre directement dessus. */}
+        <DropdownMenuItem
+          className="cursor-pointer"
+          onSelect={() =>
+            window.dispatchEvent(
+              new CustomEvent(OPEN_FEEDBACK_EVENT, { detail: { view: "requests" } }),
+            )
+          }
+        >
+          <Inbox className="mr-2 h-4 w-4" />
+          Mes demandes
+        </DropdownMenuItem>
 
         <Link href="/parametres">
           <DropdownMenuItem className="cursor-pointer">
@@ -95,7 +111,7 @@ export function UserMenu({ user }: UserMenuProps) {
           onClick={() => signOut({ callbackUrl: "/login" })}
         >
           <LogOut className="mr-2 h-4 w-4" />
-          Se deconnecter
+          Se déconnecter
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
