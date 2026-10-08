@@ -6,7 +6,6 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { Prisma } from '@prisma/client'
 import prisma from '@/lib/prisma'
 import { updateRecolteSchema, recoltePatchSchema } from '@/lib/validations'
 import { requireAuthApi } from '@/lib/auth-utils'
@@ -214,7 +213,7 @@ export async function PATCH(
     }
 
     // Préparer les données de mise à jour
-    const updateData: any = {}
+    const updateData: Record<string, unknown> = {}
     if (body.statut !== undefined) updateData.statut = body.statut
     if (body.dateVente !== undefined) updateData.dateVente = body.dateVente ? new Date(body.dateVente) : null
     if (body.prixKg !== undefined) updateData.prixKg = body.prixKg

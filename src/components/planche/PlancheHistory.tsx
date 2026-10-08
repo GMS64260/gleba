@@ -5,7 +5,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { CultureHistory, FertilisationHistory, PlancheHistory as PlancheHistoryType } from '@/lib/rotation'
+import { CultureHistory, PlancheHistory as PlancheHistoryType } from '@/lib/rotation'
 import { FamilyBadge } from './RotationBadge'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
