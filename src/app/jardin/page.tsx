@@ -55,6 +55,11 @@ import { calibrerFond, distance, formatDistance } from "@/lib/plan-fond-utils"
 import { croissanceCulture, envergureArbreADate } from "@/lib/plan-croissance"
 import { projeterGpsSurPlan, projeterPlanSurGps } from "@/lib/gps-plan-utils"
 import { partitionnerArbresPourSauvegarde } from "@/lib/plan-sauvegarde"
+import {
+  confirmerEtatSauve,
+  entitesModifiees,
+  indexerEtatSauve,
+} from "@/lib/jardin/sauvegarde-differentielle"
 import { nomsCopiesEnLot } from "@/lib/jardin/noms-copie"
 import { parcelleParDefautArbre } from "@/lib/verger/espece-arbre"
 import {
@@ -237,6 +242,59 @@ interface ParcelleOption {
   arbreCount: number
 }
 
+// L'empreinte porte exactement sur les champs envoyés par handleSave. Les
+// relations et valeurs calculées chargées pour l'affichage ne doivent pas
+// transformer un geste unique en une réécriture de tout le plan.
+const empreintePlanche = (planche: PlancheWithCulture) => JSON.stringify([
+  planche.posX,
+  planche.posY,
+  planche.rotation2D,
+  planche.largeur,
+  planche.longueur,
+])
+
+const empreinteObjet = (objet: ObjetJardin) => JSON.stringify([
+  objet.nom,
+  objet.type,
+  objet.largeur,
+  objet.longueur,
+  objet.posX,
+  objet.posY,
+  objet.rotation2D,
+  objet.couleur,
+])
+
+const empreinteArbre = (arbre: Arbre) => JSON.stringify([
+  arbre.nom,
+  arbre.type,
+  arbre.espece,
+  arbre.variete,
+  arbre.portGreffe,
+  arbre.porteGreffeId,
+  arbre.formeTaille,
+  arbre.circonferenceCm,
+  arbre.fournisseur,
+  arbre.datePlantation,
+  arbre.age,
+  arbre.dateAchat,
+  arbre.prixAchat,
+  arbre.posX,
+  arbre.posY,
+  arbre.envergure,
+  arbre.envergureAdulte,
+  arbre.hauteur,
+  arbre.etat,
+  arbre.productif,
+  arbre.anneeProduction,
+  arbre.rendementMoyen,
+  arbre.pollinisateur,
+  arbre.couleur,
+  arbre.notes,
+  arbre.gpsLat,
+  arbre.gpsLng,
+  arbre.parcelleGeoId,
+])
+
 export default function JardinPage() {
   return (
     <React.Suspense fallback={<div className="flex items-center justify-center h-screen">Chargement...</div>}>
@@ -254,6 +312,9 @@ function JardinContent() {
   const [planches, setPlanches] = React.useState<PlancheWithCulture[]>([])
   const [objets, setObjets] = React.useState<ObjetJardin[]>([])
   const [arbres, setArbres] = React.useState<Arbre[]>([])
+  const planchesSauveesRef = React.useRef<Map<string | number, string>>(new Map())
+  const objetsSauvesRef = React.useRef<Map<string | number, string>>(new Map())
+  const arbresSauvesRef = React.useRef<Map<string | number, string>>(new Map())
   const [especes, setEspeces] = React.useState<Espece[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [scale, setScale] = React.useState(16)
@@ -379,6 +440,10 @@ function JardinContent() {
       if (!response.ok) throw new Error("Erreur chargement")
       let data: PlancheWithCulture[] = await response.json()
 
+      // Capturé avant l'auto-positionnement local : les anciennes planches
+      // sans coordonnées seront persistées au prochain vrai geste.
+      planchesSauveesRef.current = indexerEtatSauve(data, empreintePlanche)
+
       // Auto-positionner les planches sans position
       let needsPositioning = false
       const positioned = data.filter(p => p.posX !== null && p.posY !== null)
@@ -426,7 +491,9 @@ function JardinContent() {
       const response = await fetch(`/api/objets-jardin${params}`)
       if (!response.ok) return
       const data = await response.json()
-      setObjets(data || [])
+      const rows: ObjetJardin[] = data || []
+      objetsSauvesRef.current = indexerEtatSauve(rows, empreinteObjet)
+      setObjets(rows)
     } catch (error) {
       // Ignorer
     }
@@ -484,6 +551,7 @@ function JardinContent() {
         : selectedParcelleId === 'none'
           ? rows.filter((a: { parcelleGeoId?: string | null }) => !a.parcelleGeoId)
           : rows.filter((a: { parcelleGeoId?: string | null }) => a.parcelleGeoId === selectedParcelleId)
+      arbresSauvesRef.current = indexerEtatSauve(filtered, empreinteArbre)
       setArbres(filtered)
     } catch (error) {
       // Ignorer
@@ -1160,9 +1228,20 @@ function JardinContent() {
     // pas de bouton « Enregistrer » manuel). Cf. src/lib/plan-sauvegarde.ts.
     const { aEcrire: arbresAEcrire, differes: arbresDifferes } =
       partitionnerArbresPourSauvegarde(arbres, pendingGpsMovesRef.current.keys())
+    const planchesAEcrire = entitesModifiees(
+      planches,
+      planchesSauveesRef.current,
+      empreintePlanche
+    )
+    const objetsAEcrire = entitesModifiees(objets, objetsSauvesRef.current, empreinteObjet)
+    const arbresModifies = entitesModifiees(
+      arbresAEcrire,
+      arbresSauvesRef.current,
+      empreinteArbre
+    )
     setSaving(true)
     try {
-      const planchePromises = planches.map(p =>
+      const planchePromises = planchesAEcrire.map(p =>
         fetch(`/api/planches/${encodeURIComponent(p.id)}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -1176,7 +1255,7 @@ function JardinContent() {
         })
       )
 
-      const objetPromises = objets.map(o =>
+      const objetPromises = objetsAEcrire.map(o =>
         fetch(`/api/objets-jardin/${o.id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -1193,7 +1272,7 @@ function JardinContent() {
         })
       )
 
-      const arbrePromises = arbresAEcrire.map(a =>
+      const arbrePromises = arbresModifies.map(a =>
         fetch(`/api/arbres/${a.id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -1235,6 +1314,9 @@ function JardinContent() {
       const results = await Promise.all([...planchePromises, ...objetPromises, ...arbrePromises])
 
       if (results.every(r => r.ok)) {
+        confirmerEtatSauve(planchesSauveesRef.current, planchesAEcrire, empreintePlanche)
+        confirmerEtatSauve(objetsSauvesRef.current, objetsAEcrire, empreinteObjet)
+        confirmerEtatSauve(arbresSauvesRef.current, arbresModifies, empreinteArbre)
         if (versionPlanRef.current === versionAuDepart) setHasChanges(false)
         toast({
           title: "Plan sauvegardé",

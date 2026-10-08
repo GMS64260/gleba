@@ -16,6 +16,7 @@ import { trouverParcelleGpsProche } from "@/lib/parcelle-gps-utils"
 import { messageErreurCoordonnees } from "@/lib/geolocation"
 import { normaliserLibelle } from "@/lib/libelle-libre"
 import { parcelleParDefautArbre, resoudreEspeceArbre } from "@/lib/verger/espece-arbre"
+import { normaliserDateApi } from "@/lib/validations/date-api"
 
 // Types d'arbres disponibles
 export const TYPES_ARBRES = [
@@ -153,6 +154,16 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const dateAchat = normaliserDateApi(body.dateAchat)
+    const datePlantation = normaliserDateApi(body.datePlantation)
+    const dateGreffe = normaliserDateApi(body.dateGreffe)
+    if (!dateAchat.ok || !datePlantation.ok || !dateGreffe.ok) {
+      return NextResponse.json(
+        { error: "Date invalide : saisissez une année sur quatre chiffres (par exemple 2020)." },
+        { status: 400 }
+      )
+    }
+
     // Friction du 2026-08-12 (compte inscrit le jour même) : l'espèce était
     // facultative, et un arbre sans espèce est un arbre sans rien — le
     // calendrier d'entretien n'est généré que `if (arbre.espece)`, l'adéquation
@@ -256,9 +267,9 @@ export async function POST(request: NextRequest) {
         variete: normaliserLibelle(body.variete),
         portGreffe: normaliserLibelle(body.portGreffe),
         fournisseur: normaliserLibelle(body.fournisseur),
-        dateAchat: body.dateAchat ? new Date(body.dateAchat) : null,
+        dateAchat: dateAchat.value ?? null,
         prixAchat: body.prixAchat ? parseFloat(body.prixAchat) : null,
-        datePlantation: body.datePlantation ? new Date(body.datePlantation) : null,
+        datePlantation: datePlantation.value ?? null,
         age: body.age || null,
         posX: body.posX ?? 0,
         posY: body.posY ?? 0,
@@ -290,7 +301,7 @@ export async function POST(request: NextRequest) {
         distancePlantation: body.distancePlantation ? parseFloat(body.distancePlantation) : null,
         distanceRang: body.distanceRang ? parseFloat(body.distanceRang) : null,
         orientationRang: body.orientationRang || null,
-        dateGreffe: body.dateGreffe ? new Date(body.dateGreffe) : null,
+        dateGreffe: dateGreffe.value ?? null,
         typeGreffe: body.typeGreffe || null,
         heuresFroidRequis: body.heuresFroidRequis ? parseInt(body.heuresFroidRequis) : null,
         floraison: body.floraison || null,

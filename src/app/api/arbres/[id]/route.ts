@@ -13,6 +13,7 @@ import { messageErreurCoordonnees } from "@/lib/geolocation"
 import { normaliserLibelle } from "@/lib/libelle-libre"
 import { resoudreEspeceArbre } from "@/lib/verger/espece-arbre"
 import { noteArbreSupprime, preserverTracesPhytoArbre } from "@/lib/verger/preserver-traces-phyto"
+import { normaliserDateApi } from "@/lib/validations/date-api"
 
 interface Params {
   params: Promise<{ id: string }>
@@ -89,6 +90,17 @@ export async function PUT(request: NextRequest, { params }: Params) {
     }
 
     const body = await request.json()
+
+    const dateAchat = normaliserDateApi(body.dateAchat)
+    const datePlantation = normaliserDateApi(body.datePlantation)
+    const dateGreffe = normaliserDateApi(body.dateGreffe)
+    const dateSuppression = normaliserDateApi(body.dateSuppression)
+    if (!dateAchat.ok || !datePlantation.ok || !dateGreffe.ok || !dateSuppression.ok) {
+      return NextResponse.json(
+        { error: "Date invalide : saisissez une année sur quatre chiffres (par exemple 2020)." },
+        { status: 400 }
+      )
+    }
 
     // Isolation multi-tenant : la zone / parcelle référencée doit appartenir à l'utilisateur
     if (body.zoneId) {
@@ -219,11 +231,11 @@ export async function PUT(request: NextRequest, { params }: Params) {
         gpsLat: body.gpsLat !== undefined ? gpsLat : undefined,
         gpsLng: body.gpsLng !== undefined ? gpsLng : undefined,
         fournisseur: normaliserLibelle(body.fournisseur),
-        dateAchat: body.dateAchat !== undefined ? (body.dateAchat ? new Date(body.dateAchat) : null) : undefined,
+        dateAchat: dateAchat.value,
         prixAchat: body.prixAchat !== undefined
           ? (body.prixAchat != null && body.prixAchat !== "" ? parseFloat(body.prixAchat) : null)
           : undefined,
-        datePlantation: body.datePlantation !== undefined ? (body.datePlantation ? new Date(body.datePlantation) : null) : undefined,
+        datePlantation: datePlantation.value,
         age: body.age,
         posX: body.posX,
         posY: body.posY,
@@ -251,7 +263,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
         distancePlantation: body.distancePlantation !== undefined ? (body.distancePlantation ? parseFloat(body.distancePlantation) : null) : undefined,
         distanceRang: body.distanceRang !== undefined ? (body.distanceRang ? parseFloat(body.distanceRang) : null) : undefined,
         orientationRang: body.orientationRang !== undefined ? (body.orientationRang || null) : undefined,
-        dateGreffe: body.dateGreffe !== undefined ? (body.dateGreffe ? new Date(body.dateGreffe) : null) : undefined,
+        dateGreffe: dateGreffe.value,
         typeGreffe: body.typeGreffe !== undefined ? (body.typeGreffe || null) : undefined,
         heuresFroidRequis: body.heuresFroidRequis !== undefined ? (body.heuresFroidRequis ? parseInt(body.heuresFroidRequis) : null) : undefined,
         floraison: body.floraison !== undefined ? (body.floraison || null) : undefined,
@@ -265,7 +277,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
           body.parcelleGeoId !== undefined || parcelleGeoId !== existing.parcelleGeoId
             ? parcelleGeoId
             : undefined,
-        dateSuppression: body.dateSuppression !== undefined ? (body.dateSuppression ? new Date(body.dateSuppression) : null) : undefined,
+        dateSuppression: dateSuppression.value,
         causeSuppression: body.causeSuppression !== undefined ? (body.causeSuppression || null) : undefined,
       },
       include: {

@@ -112,6 +112,23 @@ describe("POST /api/arbres — statut productif dérivé", () => {
   })
 })
 
+describe("POST /api/arbres — dates sérialisables par Prisma", () => {
+  it("refuse une année à trois chiffres au lieu de répondre 500", async () => {
+    const res = await POST(request({ ...arbreValide, datePlantation: "0120-10-06" }))
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toContain("année sur quatre chiffres")
+    expect(mocks.arbreCreate).not.toHaveBeenCalled()
+  })
+
+  it("refuse une date civile impossible", async () => {
+    const res = await POST(request({ ...arbreValide, datePlantation: "2026-02-31" }))
+
+    expect(res.status).toBe(400)
+    expect(mocks.arbreCreate).not.toHaveBeenCalled()
+  })
+})
+
 describe("POST /api/arbres — catalogue et parcelle par défaut (friction 2026-10-05)", () => {
   it("rattache une espèce saisie en minuscules au catalogue", async () => {
     const res = await POST(request({ ...arbreValide, espece: "kiwi" }))

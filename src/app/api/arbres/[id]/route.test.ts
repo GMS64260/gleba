@@ -232,6 +232,17 @@ describe("PUT /api/arbres/[id]", () => {
       })
     )
   })
+
+  it("refuse une année à trois chiffres au lieu de laisser Prisma répondre 500", async () => {
+    const response = await PUT(
+      request({ datePlantation: "0120-10-06" }) as never,
+      params
+    )
+
+    expect(response.status).toBe(400)
+    expect((await response.json()).error).toContain("année sur quatre chiffres")
+    expect(mocks.arbreUpdate).not.toHaveBeenCalled()
+  })
 })
 
 // QA cmsofhlzg — Intervention.arbreId est une colonne sans FK : la
