@@ -18,9 +18,10 @@
  */
 
 import { normalizeReferentielKey } from "@/lib/normalize"
+import { ESPECE_TYPES_VERGER } from "@/lib/validations/espece"
 
-/** Types d'espèces du référentiel qui désignent des arbres (cf. `?type=all_arbres`). */
-export const TYPES_ESPECE_ARBRE = ["arbre_fruitier", "petit_fruit"] as const
+/** Types d'espèces du référentiel qui désignent des arbres (cf. `?type=all_arbres`) : la liste vit dans `ESPECE_TYPES_VERGER`. */
+export const TYPES_ESPECE_ARBRE = ESPECE_TYPES_VERGER
 
 export interface EspeceCandidate {
   id: string

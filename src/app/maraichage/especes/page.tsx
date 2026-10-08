@@ -11,7 +11,7 @@ import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useSession } from "next-auth/react"
 import { ColumnDef } from "@tanstack/react-table"
-import { ArrowLeft, Leaf, Droplets, TreeDeciduous, Cherry, Salad, Sprout, Flower, Flower2 } from "lucide-react"
+import { ArrowLeft, Leaf, Droplets, TreeDeciduous, Cherry, Grape, Salad, Sprout, Flower, Flower2 } from "lucide-react"
 
 import { DataTable } from "@/components/tables/DataTable"
 import { Button } from "@/components/ui/button"
@@ -57,6 +57,7 @@ const ESPECE_TYPES = [
   { value: 'legume', label: 'Légumes', icon: Salad, arbresOnly: false },
   { value: 'arbre_fruitier', label: 'Arbres fruitiers', icon: TreeDeciduous, arbresOnly: true },
   { value: 'petit_fruit', label: 'Petits fruits', icon: Cherry, arbresOnly: true },
+  { value: 'liane', label: 'Lianes', icon: Grape, arbresOnly: true },
   { value: 'aromatique', label: 'Aromatiques', icon: Flower2, arbresOnly: false },
   // Ticket FB-PMWX8O — fermes florales : les fleurs sont une production à part
   // entière, pas un sous-cas des légumes.
@@ -69,6 +70,7 @@ const ESPECE_TYPES_ARBRES = [
   { value: 'all_arbres', label: 'Tous', icon: TreeDeciduous },
   { value: 'arbre_fruitier', label: 'Arbres fruitiers', icon: TreeDeciduous },
   { value: 'petit_fruit', label: 'Petits fruits', icon: Cherry },
+  { value: 'liane', label: 'Lianes', icon: Grape },
 ] as const
 
 // Ticket FB-E33FAA (2026-08-18) : la carte de libellés locale de cet écran était
@@ -269,9 +271,9 @@ function EspecesPageContent() {
   const [pageCount, setPageCount] = React.useState(0)
 
   // Lire le type depuis l'URL (pour filtrage depuis dashboard arbres)
-  // Supporte 'arbres' qui active le mode arbres (arbre_fruitier + petit_fruit seulement)
+  // Supporte 'arbres' qui active le mode arbres (types du verger seulement)
   const typeFromUrl = searchParams.get('type')
-  const validTypes = ['legume', 'arbre_fruitier', 'petit_fruit', 'aromatique', 'fleur', 'engrais_vert']
+  const validTypes = ['legume', 'arbre_fruitier', 'petit_fruit', 'liane', 'aromatique', 'fleur', 'engrais_vert']
 
   // Mode arbres: détecté depuis l'URL, persiste en état
   const [isArbresMode, setIsArbresMode] = React.useState(false)

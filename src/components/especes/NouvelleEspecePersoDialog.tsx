@@ -33,7 +33,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { ESPECE_TYPES, ESPECE_TYPE_LABELS } from "@/lib/validations/espece"
+import { ESPECE_TYPES, ESPECE_TYPE_LABELS, estTypeVerger } from "@/lib/validations/espece"
 
 export type NouvelleEspecePerso = {
   nom: string
@@ -99,7 +99,7 @@ export function NouvelleEspecePersoDialog({
         type,
         familleId: familleId === SANS_FAMILLE ? null : familleId,
         // Les pérennes ne repassent pas dans le plan de rotation annuel.
-        vivace: type === "arbre_fruitier" || type === "petit_fruit",
+        vivace: estTypeVerger(type),
       })
       onOpenChange(false)
     } finally {

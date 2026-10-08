@@ -33,6 +33,7 @@ export const CATEGORIES_EMOJIS: Record<string, string> = {
   'legume': '🥬',
   'légume': '🥬',
   'petit fruit': '🍓',
+  'liane': '🍇',
   'engrais vert': '🟩',
 }
 

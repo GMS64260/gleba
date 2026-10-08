@@ -9,6 +9,7 @@
  */
 
 import * as React from "react"
+import type { EspeceTypeVerger } from "@/lib/validations/espece"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -87,7 +88,7 @@ const LABELS_PROVENANCE = [
 
 type EssenceItem = {
   source: "forestiere" | "fruitier" | "bocagere"
-  sousType?: "arbre_fruitier" | "petit_fruit"
+  sousType?: EspeceTypeVerger
   id: string
   nom: string
   nomLatin: string
@@ -701,7 +702,10 @@ export function AssistantPlantationDialog({ open, onOpenChange, onSuccess, prefi
                           {e.source === "fruitier" && e.sousType === "petit_fruit" && (
                             <Badge variant="outline" className="text-[10px] bg-purple-50 border-purple-200 text-purple-700">Petit fruit</Badge>
                           )}
-                          {e.source === "fruitier" && e.sousType !== "petit_fruit" && (
+                          {e.source === "fruitier" && e.sousType === "liane" && (
+                            <Badge variant="outline" className="text-[10px] bg-violet-50 border-violet-200 text-violet-700">Liane</Badge>
+                          )}
+                          {e.source === "fruitier" && e.sousType !== "petit_fruit" && e.sousType !== "liane" && (
                             <Badge variant="outline" className="text-[10px] bg-rose-50 border-rose-200 text-rose-700">Fruitier</Badge>
                           )}
                           {e.source === "bocagere" && (

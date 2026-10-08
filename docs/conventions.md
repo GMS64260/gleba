@@ -15,6 +15,7 @@ Stocké en `snake_case` en base, mappé vers un label français à l'affichage v
 | `engrais_vert`   | Engrais vert     | Trèfle incarnat, Tournesol       |
 | `arbre_fruitier` | Arbre fruitier   | Pommier, Poirier, Amandier       |
 | `petit_fruit`    | Petit fruit      | Cassissier, Argousier, Groseille |
+| `liane`          | Liane fruitière  | Kiwi, Vigne, Kiwaï               |
 | `ornement`       | Ornement         | Bambou, Albizia                  |
 
 Le contrôle d'intégrité est posé via un `CHECK` SQL (`especes_type_check`) et un

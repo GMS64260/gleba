@@ -6,6 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server"
+import { ESPECE_TYPES_VERGER } from "@/lib/validations/espece"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 
@@ -36,7 +37,7 @@ export async function GET(request: NextRequest) {
 
   if (onglet === "especes") {
     const data = await prisma.espece.findMany({
-      where: { type: { in: ["arbre_fruitier", "petit_fruit"] } },
+      where: { type: { in: [...ESPECE_TYPES_VERGER] } },
       select: { id: true, type: true, familleId: true, nomLatin: true, rendement: true, uniteRendement: true, besoinEau: true, vivace: true },
       orderBy: { id: "asc" },
     })

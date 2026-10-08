@@ -9,7 +9,7 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { calculerStocksNet } from '@/lib/stocks-helpers'
 import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
-import { ESPECE_TYPES_MARAICHAGE } from '@/lib/validations/espece'
+import { ESPECE_TYPES_MARAICHAGE, ESPECE_TYPES_VERGER } from '@/lib/validations/espece'
 
 // Ticket FB-PMWX8O — le filtre « légumes » énumérait le triplet historique en
 // dur : les semences, plants et récoltes d'une espèce de type `fleur` étaient
@@ -120,7 +120,7 @@ export async function GET(request: NextRequest) {
     // Construire le filtre par type d'espece
     let especeTypeFilter: { in: string[] } | undefined
     if (especeType === 'arbres') {
-      especeTypeFilter = { in: ['arbre_fruitier', 'petit_fruit'] }
+      especeTypeFilter = { in: [...ESPECE_TYPES_VERGER] }
     } else if (especeType === 'legumes') {
       especeTypeFilter = { in: TYPES_MARAICHAGE }
     }
@@ -248,7 +248,7 @@ export async function GET(request: NextRequest) {
       const especes = await prisma.espece.findMany({
         where: {
           ...(especeType === 'arbres'
-            ? { type: { in: ['arbre_fruitier', 'petit_fruit'] } }
+            ? { type: { in: [...ESPECE_TYPES_VERGER] } }
             : especeType === 'legumes'
             ? { type: { in: TYPES_MARAICHAGE } }
             : {}),
@@ -304,7 +304,7 @@ export async function GET(request: NextRequest) {
           AND: [
             { OR: especesAvecStock(userId) },
             especeType === 'arbres'
-              ? { type: { in: ['arbre_fruitier', 'petit_fruit'] } }
+              ? { type: { in: [...ESPECE_TYPES_VERGER] } }
               : especeType === 'legumes'
               ? { type: { in: TYPES_MARAICHAGE } }
               : {},
