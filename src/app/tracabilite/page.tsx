@@ -576,9 +576,9 @@ function TraçabilitéContent() {
         description={
           <span>
             {phytoData?.stats.nbIncomplets ?? 0} traitement(s) ont des champs obligatoires
-            manquants (N° AMM, dose ou DAR). Un registre incomplet n'est{" "}
-            <strong>pas opposable</strong> lors d'un contrôle (HVE, AB, DDPP). Complétez les
-            fiches signalées « Non conforme » avant l'export, ou exportez quand même pour un
+            manquants (N° AMM, dose ou DAR). Un registre incomplet n&apos;est{" "}
+            <strong>pas opposable</strong> lors d&apos;un contrôle (HVE, AB, DDPP). Complétez les
+            fiches signalées « Non conforme » avant l&apos;export, ou exportez quand même pour un
             usage interne.
           </span>
         }

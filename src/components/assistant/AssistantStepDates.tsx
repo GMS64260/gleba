@@ -13,7 +13,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -21,14 +20,12 @@ import {
   AlertTriangle,
   Calendar,
   Check,
-  Grid3X3,
   HelpCircle,
   Ruler,
   Sprout,
   TrendingUp,
   CalendarDays,
   ToggleLeft,
-  RefreshCw,
 } from "lucide-react"
 import { format, getISOWeek } from "date-fns"
 import { fr } from "date-fns/locale"
@@ -40,7 +37,6 @@ import {
 } from "@/lib/assistant-helpers"
 import {
   peutAjouterCulture,
-  calculerLargeurOccupee,
   suggererAjustements,
 } from "@/lib/planche-validation"
 import type { CultureData, PlancheData, EspeceData, ITPData } from "./AssistantDialog"
@@ -87,7 +83,6 @@ export function AssistantStepDates({
   culture,
   planche,
   selectedPlancheId,
-  mode,
   onCultureChange,
 }: AssistantStepDatesProps) {
   const annee = culture.annee || new Date().getFullYear()
@@ -281,9 +276,14 @@ export function AssistantStepDates({
           plancheLargeur = plancheData.largeur || plancheLargeur
           plancheLongueur = plancheData.longueur || plancheLongueur
 
+          type CultureExistante = {
+            terminee: string | null
+            nbRangs?: number | null
+            itp?: { espacementRangs?: number | null } | null
+          }
           culturesExistantes = (plancheData.cultures || [])
-            .filter((c: any) => c.terminee === null)
-            .map((c: any) => ({
+            .filter((c: CultureExistante) => c.terminee === null)
+            .map((c: CultureExistante) => ({
               nbRangs: c.nbRangs || 1,
               espacementRangs: c.itp?.espacementRangs || 30,
             }))
@@ -404,7 +404,7 @@ export function AssistantStepDates({
             }`}
           >
             <CalendarDays className="h-3.5 w-3.5 inline-block mr-1.5 -mt-0.5" />
-            Calculer depuis l'ITP
+            Calculer depuis l&apos;ITP
           </button>
           <button
             type="button"
@@ -446,7 +446,7 @@ export function AssistantStepDates({
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Label>Décalage par rapport à l'ITP</Label>
+                    <Label>Décalage par rapport à l&apos;ITP</Label>
                     <Tooltip>
                       <TooltipTrigger>
                         <HelpCircle className="h-4 w-4 text-muted-foreground" />
@@ -483,7 +483,7 @@ export function AssistantStepDates({
               <Card className="bg-muted/50 border-dashed">
                 <CardContent className="py-6 text-center text-sm text-muted-foreground">
                   Sélectionnez un ITP pour calculer les dates automatiquement,
-                  ou passez en mode "Saisir manuellement".
+                  ou passez en mode « Saisir manuellement ».
                 </CardContent>
               </Card>
             ) : (
@@ -656,7 +656,7 @@ export function AssistantStepDates({
               className={!culture.nbRangs && !itp?.nbRangs ? 'border-red-300 focus:border-red-500' : ''}
             />
             {nbRangsDepuisITP && (
-              <p className="text-xs text-blue-600">depuis l'ITP</p>
+              <p className="text-xs text-blue-600">depuis l&apos;ITP</p>
             )}
           </div>
           <div className="space-y-2">
@@ -720,7 +720,7 @@ export function AssistantStepDates({
             className={!culture.espacement && !itp?.espacement ? 'border-red-300 focus:border-red-500' : ''}
           />
           {espacementDepuisITP && (
-            <p className="text-xs text-blue-600">depuis l'ITP</p>
+            <p className="text-xs text-blue-600">depuis l&apos;ITP</p>
           )}
         </div>
 
@@ -728,7 +728,6 @@ export function AssistantStepDates({
         {(plancheId || hasPlancheDimensions) && culture.nbRangs && (
           <PlancheValidationIndicator
             validation={plancheValidation}
-            usagePercent={getUsagePercent()}
             usageColor={getUsageColor()}
             status={getUsageStatus()}
           />
@@ -779,12 +778,10 @@ export function AssistantStepDates({
 
 function PlancheValidationIndicator({
   validation,
-  usagePercent,
   usageColor,
   status,
 }: {
   validation: PlancheValidation | null
-  usagePercent: number
   usageColor: string
   status: { label: string; variant: "success" | "warning" | "error" } | null
 }) {

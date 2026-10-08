@@ -62,7 +62,7 @@ export default async function ConsultationUserPage({ params }: PageProps) {
   today.setUTCHours(0, 0, 0, 0)
 
   const [
-    animauxActifs,
+    ,
     animauxHorsLot,
     lotsActifs,
     oeufsAnnee,

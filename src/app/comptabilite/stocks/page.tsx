@@ -34,10 +34,12 @@ const MODULE_ICONS: Record<string, React.ReactNode> = {
   elevage: <Bird className="h-4 w-4 text-amber-600" />,
 }
 
-const MODULE_COLORS: Record<string, string> = {
-  potager: "bg-green-100 text-green-800",
-  verger: "bg-lime-100 text-lime-800",
-  elevage: "bg-amber-100 text-amber-800",
+interface StocksStats {
+  totalItems: number
+  alertes: number
+  valeurTotale: number
+  valeurParModule?: Record<string, number>
+  parModule: Record<string, number>
 }
 
 interface Reconciliation {
@@ -55,7 +57,7 @@ export default function StocksPage() {
   const [isLoading, setIsLoading] = React.useState(true)
   const [stocks, setStocks] = React.useState<StockItem[]>([])
   const [alertes, setAlertes] = React.useState<StockItem[]>([])
-  const [stats, setStats] = React.useState<any>(null)
+  const [stats, setStats] = React.useState<StocksStats | null>(null)
   const [reconciliation, setReconciliation] = React.useState<Reconciliation | null>(null)
   const [selectedModule, setSelectedModule] = React.useState<string>("all")
 
@@ -70,7 +72,7 @@ export default function StocksPage() {
         setStats(result.stats)
         setReconciliation(result.reconciliationPotager ?? null)
       }
-    } catch (error) {
+    } catch {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible de charger les données" })
     } finally {
       setIsLoading(false)

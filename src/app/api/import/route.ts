@@ -772,7 +772,7 @@ export async function POST(request: NextRequest) {
     const plancheNameToIdMap = new Map<string, string>() // name → cuid
     if (data.planches?.length) {
       for (const item of data.planches) {
-        const plancheName = (item as any).nom || item.id // support both old (id) and new (nom) export formats
+        const plancheName = (item as { nom?: string | null }).nom || item.id // support both old (id) and new (nom) export formats
         const existing = await tx.planche.findUnique({
           where: {
             nom_userId: {
@@ -1115,7 +1115,7 @@ export async function POST(request: NextRequest) {
       const frequenceJours = frequenceIrrigationJours(culture.espece.besoinEau)
 
       const irrigations: Date[] = []
-      let currentDate = new Date(dateDebut)
+      const currentDate = new Date(dateDebut)
       currentDate.setDate(currentDate.getDate() + frequenceJours)
 
       const finDate = dateFin ? new Date(dateFin) : new Date(dateDebut.getFullYear(), 11, 31)
