@@ -14,6 +14,13 @@ import prisma from '@/lib/prisma'
 import { calculerStockOeufs, OEUFS_PAR_UNITE } from '@/lib/stocks-helpers'
 import { arrondiQuantiteStock, computeStocksTotaux, moyennePrix } from '@/lib/stocks/agregation'
 import { surfaceCultureM2 } from '@/lib/culture-surface'
+import { chargerSurchargesRendement, rendementEffectif } from '@/lib/recolte/rendement-effectif'
+import {
+  libelleUniteQuantite,
+  projectionRecolte,
+  type UniteQuantite,
+} from '@/lib/recolte/projection'
+import { ajouterQuantite, partKg, formatQuantiteParUnite, type QuantiteParUnite } from '@/lib/recolte/quantites'
 import { prixReferenceKg, PRIX_REF_OEUF_UNITAIRE } from '@/lib/stocks/prix-reference'
 import {
   calculerStocksRuche,
@@ -124,7 +131,7 @@ export async function computeStocksUnifies(userId: string) {
         plancheId: true,
         quantite: true,
         longueur: true,
-        espece: { select: { id: true, nom: true, rendement: true, prixKg: true } },
+        espece: { select: { id: true, nom: true, rendement: true, uniteRendement: true, prixKg: true } },
         variete: { select: { id: true } },
         planche: { select: { surface: true, largeur: true, longueur: true, nom: true } },
       },
@@ -343,39 +350,45 @@ export async function computeStocksUnifies(userId: string) {
   // QA 2026-05-15 — Bug #12 : ajout d'un 3e niveau de fallback sur
   // le barème de référence (lib prix-reference.ts) pour ne plus
   // afficher 0 € sur les stocks d'espèces sans historique de vente.
-  const recoltesParEspece = new Map<string, { nom: string; totalKg: number; valeur: number; hasPrix: boolean }>()
+  // Une ligne par (espèce, UNITÉ) : la récolte fige son unité à la saisie
+  // (kg, tige, pièce, botte), et 12 kg de carottes plus 360 tiges de dahlia ne
+  // font pas 372 de quoi que ce soit. L'ancien cumul « totalKg » affichait les
+  // tiges en kilos. Le prix (`prixKg`) est « € par unité de l'espèce ».
+  const recoltesParEspeceUnite = new Map<string, { nom: string; unite: UniteQuantite; total: number; valeur: number; hasPrix: boolean }>()
   recoltesEnStock.forEach(r => {
-    const key = r.especeId
-    const existing = recoltesParEspece.get(key)
+    const unite = (r.unite ?? 'kg') as UniteQuantite
+    const key = `${r.especeId}::${unite}`
+    const existing = recoltesParEspeceUnite.get(key)
     const prixFallback =
       r.prixKg
       ?? moyennePrix(prixParEspece.get(r.especeId) ?? [])
       ?? r.espece?.prixKg
-      ?? prixReferenceKg(r.especeId)
+      ?? (unite === 'kg' ? prixReferenceKg(r.especeId) : null)
       ?? 0
     const val = r.quantite * prixFallback
     const hasPrix = prixFallback > 0
     if (existing) {
-      existing.totalKg += r.quantite
+      existing.total += r.quantite
       existing.valeur += val
       existing.hasPrix = existing.hasPrix || hasPrix
     } else {
-      recoltesParEspece.set(key, {
-        nom: r.espece?.nom ?? r.espece?.id ?? key,
-        totalKg: r.quantite,
+      recoltesParEspeceUnite.set(key, {
+        nom: r.espece?.nom ?? r.espece?.id ?? r.especeId,
+        unite,
+        total: r.quantite,
         valeur: val,
         hasPrix,
       })
     }
   })
-  recoltesParEspece.forEach((data, especeId) => {
+  recoltesParEspeceUnite.forEach((data, key) => {
     stocks.push({
-      id: `recolte-potager-${especeId}`,
+      id: `recolte-potager-${key}`,
       module: 'potager',
       categorie: 'Récoltes en stock',
       nom: data.nom,
-      stock: data.totalKg,
-      unite: 'kg',
+      stock: data.total,
+      unite: libelleUniteQuantite(data.unite, data.total),
       stockMin: null,
       alerteBas: false,
       valeur: data.hasPrix ? data.valeur : null,
@@ -390,10 +403,20 @@ export async function computeStocksUnifies(userId: string) {
     nom: string
     nbCultures: number
     planches: Set<string>
+    /** Quantité attendue DANS L'UNITÉ de l'espèce (kg, tiges, pièces, bottes). */
     stockEstime: number
+    unite: UniteQuantite
     valeurEstimee: number
     hasPrix: boolean
   }
+  // Rendement effectif de la ferme (bloc « Chez moi », sinon catalogue) et
+  // projection dans SON unité via le SSOT `projectionRecolte` : l'ancien
+  // `surface × rendement` lisait un kiwi en kg/arbre ou un dahlia en tiges/m²
+  // comme des kg/m², et ignorait le rendement saisi par l'utilisateur.
+  const surchargesRendement = await chargerSurchargesRendement(
+    userId,
+    Array.from(new Set(culturesActives.map((c) => c.espece?.id).filter((id): id is string => !!id))),
+  )
   const culturesParEspece = new Map<string, CultureAcc>()
   for (const c of culturesActives) {
     if (!c.espece?.id) continue
@@ -402,8 +425,10 @@ export async function computeStocksUnifies(userId: string) {
     // pas de la planche entière : le stock prévisionnel doublait pour une
     // culture n'occupant que la moitié de sa planche.
     const surface = surfaceCultureM2({ longueur: c.longueur, planche: c.planche })
-    const rendement = c.espece.rendement ?? 0
-    const estimeKg = surface * rendement
+    const effectif = rendementEffectif(c.espece, surchargesRendement.get(key))
+    const projection = projectionRecolte(surface, effectif.rendement, effectif.uniteRendement)
+    const estimeKg = projection.quantite
+    const uniteEstimee = projection.unite
     // QA 2026-05-15 — Bug #12 : 3 niveaux de fallback (ventes
     // observées → barème de référence) pour éviter "0 €" parasite.
     // Feedback cmpkyfjyx — Ajout du prix_kg saisi sur l'espèce comme
@@ -413,7 +438,7 @@ export async function computeStocksUnifies(userId: string) {
     const prixMoyen =
       moyennePrix(prixParEspece.get(key) ?? [])
       ?? c.espece.prixKg
-      ?? prixReferenceKg(key)
+      ?? (uniteEstimee === 'kg' ? prixReferenceKg(key) : null)
       ?? 0
     const valeur = estimeKg * prixMoyen
     const existing = culturesParEspece.get(key)
@@ -429,20 +454,25 @@ export async function computeStocksUnifies(userId: string) {
         nbCultures: 1,
         planches: new Set(c.plancheId ? [c.plancheId] : []),
         stockEstime: estimeKg,
+        unite: uniteEstimee,
         valeurEstimee: valeur,
         hasPrix: prixMoyen > 0,
       })
     }
   }
   culturesParEspece.forEach((acc, especeId) => {
-    const stockArrondi = Math.round(acc.stockEstime * 10) / 10
+    const stockArrondi = acc.unite === 'kg'
+      ? Math.round(acc.stockEstime * 10) / 10
+      : Math.round(acc.stockEstime)
     stocks.push({
       id: `culture-active-${especeId}`,
       module: 'potager',
       categorie: 'Cultures en cours',
       nom: `${acc.nom} (${acc.nbCultures} culture${acc.nbCultures > 1 ? 's' : ''} · ${acc.planches.size} planche${acc.planches.size > 1 ? 's' : ''})`,
       stock: stockArrondi > 0 ? stockArrondi : acc.nbCultures,
-      unite: stockArrondi > 0 ? 'kg estimés' : 'cultures',
+      unite: stockArrondi > 0
+        ? `${libelleUniteQuantite(acc.unite, stockArrondi)} estimé${acc.unite === 'kg' ? 's' : stockArrondi > 1 ? 'es' : 'e'}`
+        : 'cultures',
       stockMin: null,
       alerteBas: false,
       valeur: acc.hasPrix ? Math.round(acc.valeurEstimee * 100) / 100 : null,
@@ -644,17 +674,27 @@ export async function computeStocksUnifies(userId: string) {
   const year = new Date().getFullYear()
   const startOfYear = new Date(year, 0, 1)
   const endOfYear = new Date(year, 11, 31, 23, 59, 59)
+  // Ventilé par unité (règle : tout `groupBy` sur une quantité de récolte met
+  // `unite` dans son `by`). Les champs numériques ne gardent que la part en
+  // kilos ; les champs `*Texte` sont la vérité affichable (« 12 kg + 360 tiges »).
   const recoltesParStatut = await prisma.recolte.groupBy({
-    by: ['statut'],
+    by: ['statut', 'unite'],
     where: { userId, date: { gte: startOfYear, lte: endOfYear } },
     _sum: { quantite: true },
   })
-  const reconciliationPotager: Record<string, number> = {}
-  let totalRecoltesAnnee = 0
+  const parStatutVentile: Record<string, QuantiteParUnite> = {}
+  const totalVentile: QuantiteParUnite = {}
   for (const r of recoltesParStatut) {
     const q = r._sum.quantite ?? 0
-    reconciliationPotager[r.statut] = q
-    totalRecoltesAnnee += q
+    const unite = (r.unite ?? 'kg') as UniteQuantite
+    parStatutVentile[r.statut] = ajouterQuantite(parStatutVentile[r.statut] ?? {}, unite, q)
+    ajouterQuantite(totalVentile, unite, q)
+  }
+  const parStatut: Record<string, number> = {}
+  const parStatutTexte: Record<string, string> = {}
+  for (const [statut, ventilation] of Object.entries(parStatutVentile)) {
+    parStatut[statut] = partKg(ventilation)
+    parStatutTexte[statut] = formatQuantiteParUnite(ventilation)
   }
   return {
     data: stocks,
@@ -662,8 +702,11 @@ export async function computeStocksUnifies(userId: string) {
     stats,
     reconciliationPotager: {
       annee: year,
-      totalRecoltesAnnee,
-      parStatut: reconciliationPotager,
+      aDesRecoltes: recoltesParStatut.length > 0,
+      totalRecoltesAnnee: partKg(totalVentile),
+      totalRecoltesAnneeTexte: formatQuantiteParUnite(totalVentile),
+      parStatut,
+      parStatutTexte,
     },
   }
 }

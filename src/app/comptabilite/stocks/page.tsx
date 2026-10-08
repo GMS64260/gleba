@@ -42,8 +42,12 @@ const MODULE_COLORS: Record<string, string> = {
 
 interface Reconciliation {
   annee: number
+  aDesRecoltes: boolean
+  /** Part en kilos seulement ; afficher les champs `*Texte`, ventilés par unité. */
   totalRecoltesAnnee: number
+  totalRecoltesAnneeTexte: string
   parStatut: Record<string, number>
+  parStatutTexte: Record<string, string>
 }
 
 export default function StocksPage() {
@@ -225,7 +229,7 @@ export default function StocksPage() {
         {/* Bug cmp8sqkh2 (Marc 2026-05-16) — Conciliation Récoltes potager
             pour expliquer l'écart entre dashboard et stocks (90 kg récoltés
             ≠ 85 kg en stock = 5 kg vendus/donnés). */}
-        {reconciliation && reconciliation.totalRecoltesAnnee > 0 && (
+        {reconciliation && reconciliation.aDesRecoltes && (
           <Card className="mb-6 border-violet-200 bg-violet-50/50">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm">
@@ -236,12 +240,12 @@ export default function StocksPage() {
               <div className="grid gap-3 grid-cols-2 md:grid-cols-4 text-sm">
                 <div>
                   <p className="text-xs text-muted-foreground">Total récolté</p>
-                  <p className="font-semibold">{reconciliation.totalRecoltesAnnee.toFixed(1)} kg</p>
+                  <p className="font-semibold">{reconciliation.totalRecoltesAnneeTexte}</p>
                 </div>
-                {Object.entries(reconciliation.parStatut).map(([statut, kg]) => (
+                {Object.entries(reconciliation.parStatutTexte).map(([statut, texte]) => (
                   <div key={statut}>
                     <p className="text-xs text-muted-foreground capitalize">{statut.replace(/_/g, ' ')}</p>
-                    <p className="font-medium">{kg.toFixed(1)} kg</p>
+                    <p className="font-medium">{texte}</p>
                   </div>
                 ))}
               </div>

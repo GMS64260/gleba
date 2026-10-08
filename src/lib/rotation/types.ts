@@ -18,8 +18,13 @@ export interface CultureHistory {
   recoltes: {
     date: Date
     quantite: number
+    /** kg | tige | piece | botte ; absent sur une ligne héritée (= kg). */
+    unite?: string | null
   }[]
+  /** Part en KILOS seulement ; le total affichable est `totalRecolteTexte`. */
   totalRecolte: number
+  /** « 12 kg + 360 tiges » : total ventilé par unité, à afficher tel quel. */
+  totalRecolteTexte: string
 }
 
 export interface FertilisationHistory {

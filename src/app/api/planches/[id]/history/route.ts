@@ -8,6 +8,8 @@ import prisma from '@/lib/prisma'
 import { resoudreIdPlanche } from '@/lib/planches/resolution'
 import { PlancheHistory, CultureHistory, FertilisationHistory } from '@/lib/rotation'
 import { requireAuthApi } from '@/lib/auth-utils'
+import type { UniteQuantite } from '@/lib/recolte/projection'
+import { ajouterQuantite, formatQuantiteParUnite, partKg, type QuantiteParUnite } from '@/lib/recolte/quantites'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -78,7 +80,11 @@ export async function GET(request: NextRequest, { params }: Params) {
 
     // Transformer les cultures
     const culturesHistory: CultureHistory[] = cultures.map((c) => {
-      const totalRecolte = c.recoltes.reduce((sum, r) => sum + r.quantite, 0)
+      // Ventilé par unité : additionner des tiges à des kilos n'a pas de sens.
+      const totalParUnite = c.recoltes.reduce<QuantiteParUnite>(
+        (acc, r) => ajouterQuantite(acc, (r.unite ?? 'kg') as UniteQuantite, r.quantite),
+        {},
+      )
       return {
         id: c.id,
         annee: c.annee || currentYear,
@@ -95,8 +101,10 @@ export async function GET(request: NextRequest, { params }: Params) {
         recoltes: c.recoltes.map((r) => ({
           date: r.date,
           quantite: r.quantite,
+          unite: r.unite,
         })),
-        totalRecolte,
+        totalRecolte: partKg(totalParUnite),
+        totalRecolteTexte: formatQuantiteParUnite(totalParUnite),
       }
     })
 

@@ -44,6 +44,7 @@ import {
   suggererAjustements,
 } from "@/lib/planche-validation"
 import type { CultureData, PlancheData, EspeceData, ITPData } from "./AssistantDialog"
+import { formatQuantite } from "@/lib/recolte/quantites"
 
 type DateMode = "calculated" | "manual"
 
@@ -763,7 +764,7 @@ export function AssistantStepDates({
                   Rendement
                 </div>
                 <div className="font-medium">
-                  {rendement > 0 ? `~${rendement.toFixed(1)} kg` : '-'}
+                  {rendement.quantite > 0 ? `~${formatQuantite(rendement.quantite, rendement.unite)}` : '-'}
                 </div>
               </div>
             </div>

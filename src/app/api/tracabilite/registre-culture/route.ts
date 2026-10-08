@@ -7,6 +7,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import type { UniteQuantite } from '@/lib/recolte/projection'
+import {
+  ajouterQuantite,
+  arrondirQuantites,
+  formatQuantite,
+  formatQuantiteParUnite,
+  fusionnerQuantites,
+  partKg,
+  type QuantiteParUnite,
+} from '@/lib/recolte/quantites'
+
+/** Une ligne héritée sans unité compte des kilos (défaut du schéma). */
+function uniteRecolte(unite: string | null | undefined): UniteQuantite {
+  return (unite ?? 'kg') as UniteQuantite
+}
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi(request)
@@ -60,6 +75,7 @@ export async function GET(request: NextRequest) {
             id: true,
             date: true,
             quantite: true,
+            unite: true,
             statut: true,
             prixKg: true,
             prixTotal: true,
@@ -245,9 +261,10 @@ export async function GET(request: NextRequest) {
           chronologie.push({
             date: r.date.toISOString(),
             type: 'recolte',
-            description: `Récolte : ${r.quantite} kg`,
+            description: `Récolte : ${formatQuantite(r.quantite, uniteRecolte(r.unite))}`,
             details: {
               quantite: r.quantite,
+              unite: uniteRecolte(r.unite),
               statut: r.statut,
               prixKg: r.prixKg,
               prixTotal: r.prixTotal,
@@ -261,11 +278,16 @@ export async function GET(request: NextRequest) {
           (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
         )
 
-        // Total recolte
-        const totalRecolte = culture.recoltes.reduce(
-          (sum, r) => sum + r.quantite,
-          0
+        // Total récolte VENTILÉ par unité : une culture de dahlias se lit en
+        // tiges, et un registre réglementaire ne peut pas écrire « 360 kg » sur
+        // des tiges. `totalRecolte` (nombre) ne garde que la part pondérale.
+        const totalRecolteParUnite = arrondirQuantites(
+          culture.recoltes.reduce<QuantiteParUnite>(
+            (acc, r) => ajouterQuantite(acc, uniteRecolte(r.unite), r.quantite),
+            {},
+          ),
         )
+        const totalRecolte = partKg(totalRecolteParUnite)
 
         return {
           id: culture.id,
@@ -301,12 +323,15 @@ export async function GET(request: NextRequest) {
             id: r.id,
             date: r.date.toISOString(),
             quantite: r.quantite,
+            unite: uniteRecolte(r.unite),
             statut: r.statut,
             prixKg: r.prixKg,
             prixTotal: r.prixTotal,
             notes: r.notes,
           })),
           totalRecolte,
+          totalRecolteParUnite,
+          totalRecolteTexte: formatQuantiteParUnite(totalRecolteParUnite),
           interventions: autresInterventions.map((i) => ({
             id: i.id,
             date: i.date.toISOString(),
@@ -351,7 +376,8 @@ export async function GET(request: NextRequest) {
     })
 
     // Stats
-    const totalRecoltes = registre.reduce((sum, c) => sum + c.totalRecolte, 0)
+    const totalRecoltesParUnite = fusionnerQuantites(...registre.map((c) => c.totalRecolteParUnite))
+    const totalRecoltes = partKg(totalRecoltesParUnite)
     const totalInterventions = registre.reduce(
       (sum, c) => sum + c.interventions.length + c.traitementsPhyto.length + c.fertilisations.length,
       0
@@ -364,6 +390,8 @@ export async function GET(request: NextRequest) {
         totalCultures: registre.length,
         nbEspeces: Object.keys(parEspece).length,
         totalRecoltes,
+        totalRecoltesParUnite,
+        totalRecoltesTexte: formatQuantiteParUnite(totalRecoltesParUnite),
         totalInterventions,
         periodeDebut: registre.length > 0 && registre[0].chronologie.length > 0
           ? registre[0].chronologie[0].date

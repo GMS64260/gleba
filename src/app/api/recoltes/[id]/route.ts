@@ -342,6 +342,10 @@ export async function PATCH(
             cultureId: existing.cultureId,
             date: existing.date,
             quantite: reliquat,
+            // Le reliquat est la même matière que la récolte scindée : il garde
+            // son unité figée (des tiges restent des tiges), comme son snapshot
+            // Bio. Sans cette ligne il naissait sans unité, donc relu en kilos.
+            unite: existing.unite,
             statut: 'en_stock',
             datePeremption: existing.datePeremption,
             statutBioSnapshot: existing.statutBioSnapshot,
