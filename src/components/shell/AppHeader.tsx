@@ -16,7 +16,7 @@ import * as React from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { useSession } from "next-auth/react"
-import { Settings } from "lucide-react"
+import { Megaphone, Settings } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { UserMenu } from "@/components/auth/UserMenu"
 import { ModulesNav } from "@/components/auth/ModulesNav"
@@ -85,6 +85,18 @@ export function AppHeader({ current, showLune = false }: AppHeaderProps) {
         <div className="flex items-center gap-2 flex-wrap justify-end">
           {session?.user && <ModulesNav current={current} />}
           {session?.user && <BoutiqueHeaderButton />}
+          {/* Signalement 2026-10-06 : la communauté (demandes d'évolution et
+              votes) n'était atteignable que par le menu du profil, sous un
+              libellé anglais ; un utilisateur a dû demander à l'assistant où
+              elle était. Elle a sa place dans le bandeau, comme Paramètres. */}
+          {session?.user && (
+            <Link href="/communaute">
+              <Button variant="ghost" size="sm" aria-label="Communauté" title="Communauté : demandes d'évolution et votes">
+                <Megaphone className="h-4 w-4" />
+                <span className="hidden xl:inline ml-1.5">Communauté</span>
+              </Button>
+            </Link>
+          )}
           <Link href="/parametres">
             <Button variant="ghost" size="sm" aria-label="Paramètres">
               <Settings className="h-4 w-4" />
