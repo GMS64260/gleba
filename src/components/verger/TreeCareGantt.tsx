@@ -62,6 +62,17 @@ export function TreeCareGantt({ especes }: TreeCareGanttProps) {
   // référentiel complet (Marc 2026-05-14 : la frise ne montrait que les
   // 3 espèces de l'user, alors que 26 profils existent).
   const [scope, setScope] = React.useState<"mine" | "all">("mine")
+  // Demande du 2026-10-07 : n'afficher que certaines espèces. Les pastilles
+  // d'espèces sont des interrupteurs ; une espèce masquée reste listée, barrée,
+  // pour être remise d'un clic. Le PDF exporte toujours tout le scope.
+  const [especesMasquees, setEspecesMasquees] = React.useState<Set<string>>(() => new Set())
+  const basculerEspece = (espece: string) =>
+    setEspecesMasquees((courant) => {
+      const suivant = new Set(courant)
+      if (suivant.has(espece)) suivant.delete(espece)
+      else suivant.add(espece)
+      return suivant
+    })
 
   // Lignes correspondant aux arbres de l'utilisateur (profil compatible avec
   // le type de l'arbre), dédupliquées par profil.
@@ -88,6 +99,10 @@ export function TreeCareGantt({ especes }: TreeCareGanttProps) {
   }, [scope, lignesMine])
 
   const profiles = React.useMemo(() => lignes.map((l) => l.profile), [lignes])
+  const lignesVisibles = React.useMemo(
+    () => lignes.filter((l) => !especesMasquees.has(l.profile.espece)),
+    [lignes, especesMasquees]
+  )
 
   if (profiles.length === 0 && scope === "mine") {
     return (
@@ -136,14 +151,34 @@ export function TreeCareGantt({ especes }: TreeCareGanttProps) {
 
       {/* Espèces détectées */}
       <div className="flex flex-wrap gap-1.5 text-xs">
-        {profiles.map((p) => (
-          <span
-            key={p.espece}
-            className="px-2 py-0.5 rounded-full bg-lime-100 text-lime-700 font-medium"
+        {profiles.map((p) => {
+          const masquee = especesMasquees.has(p.espece)
+          return (
+            <button
+              key={p.espece}
+              type="button"
+              aria-pressed={!masquee}
+              onClick={() => basculerEspece(p.espece)}
+              title={masquee ? "Afficher cette espèce" : "Masquer cette espèce"}
+              className={`px-2 py-0.5 rounded-full font-medium transition-colors ${
+                masquee
+                  ? "bg-slate-100 text-slate-400 line-through"
+                  : "bg-lime-100 text-lime-700 hover:bg-lime-200"
+              }`}
+            >
+              {p.espece}
+            </button>
+          )
+        })}
+        {especesMasquees.size > 0 && (
+          <button
+            type="button"
+            onClick={() => setEspecesMasquees(new Set())}
+            className="px-2 py-0.5 rounded-full border text-slate-600 hover:bg-slate-100"
           >
-            {p.espece}
-          </span>
-        ))}
+            Tout afficher
+          </button>
+        )}
         {scope === "mine" && especes.filter((e) => !findTreeCareProfile(e.espece, e.type)).map((e) => (
           <span
             key={`${e.espece}::${e.type ?? ""}`}
@@ -195,7 +230,14 @@ export function TreeCareGantt({ especes }: TreeCareGanttProps) {
             </tr>
           </thead>
           <tbody>
-            {lignes.map(({ profile, typeAffiche }) => {
+            {lignesVisibles.length === 0 && (
+              <tr className="border-t">
+                <td colSpan={13} className="p-3 text-sm text-muted-foreground">
+                  Toutes les espèces sont masquées : cliquez sur une pastille pour l’afficher.
+                </td>
+              </tr>
+            )}
+            {lignesVisibles.map(({ profile, typeAffiche }) => {
               const calendar = getMonthlyCalendar(profile)
               const isExpanded = expandedEspece === profile.espece
 

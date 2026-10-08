@@ -50,6 +50,8 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Label } from "@/components/ui/label"
+import { PeriodeSemainesField } from "@/components/referentiel/PeriodeSemainesField"
+import { libellePeriodeSemainesCourt } from "@/lib/semaines-lisibles"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
@@ -68,6 +70,7 @@ import {
   formatRendement,
   libelleUniteRendement,
   uniteRendementParType,
+  estTypeVerger,
 } from "@/lib/validations/espece"
 import {
   libelleUniteObjectif,
@@ -94,6 +97,8 @@ interface Variete {
   fournisseur: { id: string } | null
   semaineRecolte: number | null
   dureeRecolte: number | null
+  semaineFloraison: number | null
+  dureeFloraison: number | null
   nbGrainesG: number | null
   prixGraine: number | null
   stockGraines: number | null
@@ -112,6 +117,8 @@ const EMPTY_VARIETE_FORM = {
   bio: false,
   semaineRecolte: "",
   dureeRecolte: "",
+  semaineFloraison: "",
+  dureeFloraison: "",
   nbGrainesG: "",
   prixGraine: "",
   stockGraines: "",
@@ -154,6 +161,10 @@ export default function EditEspecePage() {
    * par type ne sert qu'aux lignes héritées sans unité.
    */
   const [uniteRendementEspece, setUniteRendementEspece] = React.useState<string | null>(null)
+  // Type de l'espèce (chargé avec elle) : la période de floraison d'une variété
+  // n'est proposée qu'au verger, où elle sert à la pollinisation.
+  const [especeType, setEspeceType] = React.useState<string | null>(null)
+  const especeDuVerger = estTypeVerger(especeType)
 
   // Charge les variétés via /api/varietes (superset enrichi des stats d'avis via avis=1).
   const reloadVarietes = React.useCallback(async () => {
@@ -297,6 +308,7 @@ export default function EditEspecePage() {
       .then(([famillesData, especeData, fournisseursData]) => {
         setFamilles(Array.isArray(famillesData) ? famillesData : [])
         setEspeceNom(especeData.nom ?? especeId)
+        setEspeceType(especeData.type ?? null)
         setUniteRendementEspece(
           especeData.uniteRendement ?? uniteRendementParType(especeData.type)
         )
@@ -428,6 +440,8 @@ export default function EditEspecePage() {
       bio: v.bio,
       semaineRecolte: v.semaineRecolte?.toString() || "",
       dureeRecolte: v.dureeRecolte?.toString() || "",
+      semaineFloraison: v.semaineFloraison?.toString() || "",
+      dureeFloraison: v.dureeFloraison?.toString() || "",
       nbGrainesG: v.nbGrainesG?.toString() || "",
       prixGraine: v.prixGraine?.toString() || "",
       stockGraines: v.stockGraines?.toString() || "",
@@ -453,6 +467,8 @@ export default function EditEspecePage() {
             bio: varieteForm.bio,
             semaineRecolte: varieteForm.semaineRecolte ? parseInt(varieteForm.semaineRecolte) : null,
             dureeRecolte: varieteForm.dureeRecolte ? parseInt(varieteForm.dureeRecolte) : null,
+            semaineFloraison: varieteForm.semaineFloraison ? parseInt(varieteForm.semaineFloraison) : null,
+            dureeFloraison: varieteForm.dureeFloraison ? parseInt(varieteForm.dureeFloraison) : null,
             nbGrainesG: varieteForm.nbGrainesG ? parseFloat(varieteForm.nbGrainesG) : null,
             prixGraine: varieteForm.prixGraine ? parseFloat(varieteForm.prixGraine) : null,
             stockGraines: varieteForm.stockGraines ? parseFloat(varieteForm.stockGraines) : null,
@@ -479,6 +495,8 @@ export default function EditEspecePage() {
             bio: varieteForm.bio,
             semaineRecolte: varieteForm.semaineRecolte ? parseInt(varieteForm.semaineRecolte) : null,
             dureeRecolte: varieteForm.dureeRecolte ? parseInt(varieteForm.dureeRecolte) : null,
+            semaineFloraison: varieteForm.semaineFloraison ? parseInt(varieteForm.semaineFloraison) : null,
+            dureeFloraison: varieteForm.dureeFloraison ? parseInt(varieteForm.dureeFloraison) : null,
             nbGrainesG: varieteForm.nbGrainesG ? parseFloat(varieteForm.nbGrainesG) : null,
             prixGraine: varieteForm.prixGraine ? parseFloat(varieteForm.prixGraine) : null,
             stockGraines: varieteForm.stockGraines ? parseFloat(varieteForm.stockGraines) : null,
@@ -1477,6 +1495,7 @@ export default function EditEspecePage() {
                             <TableHead>Nom</TableHead>
                             <TableHead>Fournisseur</TableHead>
                             <TableHead>Bio</TableHead>
+                            <TableHead>Périodes</TableHead>
                             <TableHead>Avis</TableHead>
                             <TableHead>Origine</TableHead>
                             <TableHead className="text-right">Stock graines (g)</TableHead>
@@ -1487,7 +1506,7 @@ export default function EditEspecePage() {
                         <TableBody>
                           {varietesAffichees.length === 0 && (
                             <TableRow>
-                              <TableCell colSpan={8} className="text-center text-muted-foreground py-6">
+                              <TableCell colSpan={9} className="text-center text-muted-foreground py-6">
                                 Aucune variété pour ce filtre.
                               </TableCell>
                             </TableRow>
@@ -1497,6 +1516,16 @@ export default function EditEspecePage() {
                               <TableCell className="font-medium">{v.nom ?? v.id}</TableCell>
                               <TableCell>{v.fournisseur?.id || "-"}</TableCell>
                               <TableCell>{v.bio ? "Oui" : "-"}</TableCell>
+                              <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                                {[
+                                  libellePeriodeSemainesCourt(v.semaineRecolte, v.dureeRecolte) &&
+                                    `Récolte ${libellePeriodeSemainesCourt(v.semaineRecolte, v.dureeRecolte)}`,
+                                  libellePeriodeSemainesCourt(v.semaineFloraison, v.dureeFloraison) &&
+                                    `Floraison ${libellePeriodeSemainesCourt(v.semaineFloraison, v.dureeFloraison)}`,
+                                ]
+                                  .filter(Boolean)
+                                  .join(" · ") || "-"}
+                              </TableCell>
                               <TableCell>
                                 <button
                                   type="button"
@@ -1643,28 +1672,39 @@ export default function EditEspecePage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Semaine récolte (1-52)</Label>
-                  <Input
-                    type="number"
-                    min="1"
-                    max="52"
-                    value={varieteForm.semaineRecolte}
-                    onChange={(e) => setVarieteForm({ ...varieteForm, semaineRecolte: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <Label>Durée récolte (sem.)</Label>
-                  <Input
-                    type="number"
-                    min="1"
-                    max="52"
-                    value={varieteForm.dureeRecolte}
-                    onChange={(e) => setVarieteForm({ ...varieteForm, dureeRecolte: e.target.value })}
-                  />
-                </div>
-              </div>
+              {/* Demande du 2026-10-07 : « semaine 27 + durée » n'était pas
+                  reconnu comme une période de récolte. Début et fin en dates
+                  lisibles ; stockage inchangé (semaine ISO + durée). */}
+              <PeriodeSemainesField
+                idPrefix="variete-recolte"
+                label="Période de récolte"
+                debut={varieteForm.semaineRecolte ? parseInt(varieteForm.semaineRecolte) : null}
+                duree={varieteForm.dureeRecolte ? parseInt(varieteForm.dureeRecolte) : null}
+                onChange={({ debut, duree }) =>
+                  setVarieteForm({
+                    ...varieteForm,
+                    semaineRecolte: debut ? String(debut) : "",
+                    dureeRecolte: duree ? String(duree) : "",
+                  })
+                }
+                aide="Semaine de début puis semaine de fin ; la période peut passer par janvier."
+              />
+              {especeDuVerger && (
+                <PeriodeSemainesField
+                  idPrefix="variete-floraison"
+                  label="Période de floraison"
+                  debut={varieteForm.semaineFloraison ? parseInt(varieteForm.semaineFloraison) : null}
+                  duree={varieteForm.dureeFloraison ? parseInt(varieteForm.dureeFloraison) : null}
+                  onChange={({ debut, duree }) =>
+                    setVarieteForm({
+                      ...varieteForm,
+                      semaineFloraison: debut ? String(debut) : "",
+                      dureeFloraison: duree ? String(duree) : "",
+                    })
+                  }
+                  aide="Sert à la pollinisation : deux variétés aux floraisons simultanées peuvent se polliniser."
+                />
+              )}
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
