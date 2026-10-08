@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { estTypeVerger } from "@/lib/validations/espece";
+import { libellePeriodeSemaines } from "@/lib/semaines-lisibles";
 import Link from "next/link";
 import Image from "next/image";
 import { notFound } from "next/navigation";
@@ -26,7 +28,7 @@ async function getEspece(id: string) {
       famille: { select: { id: true, nomFr: true } },
       varietes: {
         where: visibiliteEnfantPublic(),
-        select: { id: true, nom: true, userId: true, bio: true, semaineRecolte: true, groupePollinisation: true, ploidie: true },
+        select: { id: true, nom: true, userId: true, bio: true, semaineRecolte: true, dureeRecolte: true, semaineFloraison: true, dureeFloraison: true, groupePollinisation: true, ploidie: true },
         orderBy: [{ nom: "asc" }, { id: "asc" }],
         take: 24,
       },
@@ -108,6 +110,28 @@ function QualiteBadge({ statut }: { statut: string }) {
  * divergent. Pour un arbre fruitier, on annonce le délai en années plutôt qu'un
  * nombre de jours qui ne parle à personne.
  */
+/**
+ * Faits lisibles d'une variété : périodes de floraison et de récolte saisies
+ * (2026-10-07), puis groupe de floraison et ploïdie du catalogue.
+ */
+function faitsVariete(variete: {
+  semaineFloraison: number | null;
+  dureeFloraison: number | null;
+  semaineRecolte: number | null;
+  dureeRecolte: number | null;
+  groupePollinisation: string | null;
+  ploidie: string | null;
+}): string[] {
+  const floraison = libellePeriodeSemaines(variete.semaineFloraison, variete.dureeFloraison);
+  const recolte = libellePeriodeSemaines(variete.semaineRecolte, variete.dureeRecolte);
+  return [
+    floraison && `Floraison ${floraison}`,
+    recolte && `Récolte ${recolte}`,
+    variete.groupePollinisation && `Groupe de floraison ${variete.groupePollinisation}`,
+    variete.ploidie,
+  ].filter((fait): fait is string => Boolean(fait));
+}
+
 function cycleLisible(itp: {
   semaineSemis: number | null;
   semainePlantation: number | null;
@@ -129,7 +153,7 @@ export default async function FicheVegetalPage({ params }: PageProps) {
   const espece = await getEspece(decodeURIComponent(id));
   if (!espece) notFound();
   const name = nomPublic(espece);
-  const isTree = espece.type === "arbre_fruitier" || espece.type === "petit_fruit";
+  const isTree = estTypeVerger(espece.type);
   const zones = espece.zonesAdaptees?.split(",").map((zone) => zone.trim()).filter(Boolean) ?? [];
 
   return (
@@ -187,7 +211,7 @@ export default async function FicheVegetalPage({ params }: PageProps) {
 
         <section className="mt-10">
           <h2 className="text-2xl font-bold text-slate-900">Variétés</h2>
-          {espece.varietes.length ? <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{espece.varietes.map((variete) => <div key={variete.id} className="rounded-xl border border-slate-200 bg-white p-4"><div className="flex items-start justify-between gap-2"><h3 className="font-medium text-slate-900">{nomPublic(variete)}</h3><span className="text-xs text-slate-400">{originePublique(variete)}</span></div>{(variete.groupePollinisation || variete.ploidie) && <p className="mt-2 text-xs text-slate-500">{[variete.groupePollinisation && `Floraison ${variete.groupePollinisation}`, variete.ploidie].filter(Boolean).join(" · ")}</p>}</div>)}</div> : <Empty>Aucune variété publique n’est encore rattachée à cette fiche.</Empty>}
+          {espece.varietes.length ? <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{espece.varietes.map((variete) => <div key={variete.id} className="rounded-xl border border-slate-200 bg-white p-4"><div className="flex items-start justify-between gap-2"><h3 className="font-medium text-slate-900">{nomPublic(variete)}</h3><span className="text-xs text-slate-400">{originePublique(variete)}</span></div>{faitsVariete(variete).length > 0 && <p className="mt-2 text-xs text-slate-500">{faitsVariete(variete).join(" · ")}</p>}</div>)}</div> : <Empty>Aucune variété publique n’est encore rattachée à cette fiche.</Empty>}
         </section>
 
         <aside className="mt-12 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm leading-6 text-amber-950"><strong>Repères à vérifier localement.</strong> Les informations affichées proviennent du catalogue Gleba et des contributions explicitement partagées. Une source n’est affichée que lorsqu’elle est effectivement renseignée sur l’itinéraire technique.</aside>

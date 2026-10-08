@@ -11,6 +11,11 @@
 
 import prisma from '@/lib/prisma'
 import {
+  libellePeriodeSemainesCourt,
+  periodeDepuisSemaines,
+  periodesSeChevauchent,
+} from '@/lib/semaines-lisibles'
+import {
   doitSignalerSansPollinisateur,
   isAutofertileFallback,
 } from '@/lib/pollinisation'
@@ -102,7 +107,13 @@ export async function computePollinisationVerger(userId: string) {
   const varietes = varieteIds.length
     ? await prisma.variete.findMany({
         where: { id: { in: varieteIds } },
-        select: { id: true, ploidie: true, groupePollinisation: true },
+        select: {
+          id: true,
+          ploidie: true,
+          groupePollinisation: true,
+          semaineFloraison: true,
+          dureeFloraison: true,
+        },
       })
     : []
   const varieteMap = new Map(varietes.map((v) => [v.id, v]))
@@ -156,6 +167,24 @@ export async function computePollinisationVerger(userId: string) {
           ploidiePollinisateur: vb?.ploidie,
         })
       ) continue
+      // Périodes de floraison saisies sur les variétés (2026-10-07) : quand les
+      // deux sont connues, elles priment sur le groupe du catalogue — deux
+      // floraisons sans semaine commune ne se pollinisent pas, quel que soit
+      // le groupe ; deux floraisons simultanées sont une compatibilité vérifiée.
+      const fa = periodeDepuisSemaines(va?.semaineFloraison, va?.dureeFloraison)
+      const fb = periodeDepuisSemaines(vb?.semaineFloraison, vb?.dureeFloraison)
+      if (fa && fb) {
+        if (!periodesSeChevauchent(fa, fb)) continue
+        candidats.push({
+          id: b.id,
+          nom: b.nom,
+          espece: b.espece,
+          variete: b.variete,
+          raison: `Même espèce, floraisons simultanées (${libellePeriodeSemainesCourt(fa.debut, fa.duree)} / ${libellePeriodeSemainesCourt(fb.debut, fb.duree)})`,
+          certitude: 'verifiee',
+        })
+        continue
+      }
       const ga = a.groupePollinisation ?? va?.groupePollinisation ?? null
       const gb = b.groupePollinisation ?? vb?.groupePollinisation ?? null
       if (!groupeAdjacent(ga, gb)) continue

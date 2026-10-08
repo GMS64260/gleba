@@ -10,6 +10,9 @@ export const varieteSchema = z.object({
   fournisseurId: z.string().nullable().optional(),
   semaineRecolte: z.number().int().min(1).max(52).nullable().optional(),
   dureeRecolte: z.number().int().min(1).max(52).nullable().optional(),
+  // Période de floraison (2026-10-07) : même forme que la récolte.
+  semaineFloraison: z.number().int().min(1).max(52).nullable().optional(),
+  dureeFloraison: z.number().int().min(1).max(52).nullable().optional(),
   nbGrainesG: z.number().min(0).nullable().optional(),
   prixGraine: z.number().min(0).nullable().optional(),
   stockGraines: z.number().min(0).nullable().optional(),

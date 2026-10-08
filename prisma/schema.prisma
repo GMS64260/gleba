@@ -906,6 +906,12 @@ model Variete {
   fournisseur    Fournisseur? @relation(fields: [fournisseurId], references: [id], onDelete: SetNull)
   semaineRecolte Int?         @map("s_recolte") // Semaine récolte théorique (1-52)
   dureeRecolte   Int?         @map("d_recolte") // Durée période récolte (semaines)
+  // Période de floraison (demande du 2026-10-07, compte verger) : semaine ISO
+  // de début + durée, saisies par l'utilisateur sur ses variétés. Lue sur la
+  // fiche et par la matrice de pollinisation (floraisons simultanées) ;
+  // `groupePollinisation` reste la donnée de catalogue.
+  semaineFloraison Int? @map("s_floraison")
+  dureeFloraison   Int? @map("d_floraison")
   nbGrainesG     Float?       @map("nb_graines_g") // Nombre graines/gramme
   prixGraine     Float?       @map("prix_graine") // €/kg ou €/1000 graines
   stockGraines   Float?       @map("stock_graines") // Quantité graines en stock (g)
