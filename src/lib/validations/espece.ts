@@ -13,6 +13,7 @@ export const ESPECE_TYPES = [
   'engrais_vert',
   'arbre_fruitier',
   'petit_fruit',
+  'liane',
   'ornement',
 ] as const
 
@@ -23,6 +24,7 @@ export const ESPECE_TYPE_LABELS: Record<typeof ESPECE_TYPES[number], string> = {
   engrais_vert: 'Engrais vert',
   arbre_fruitier: 'Arbre fruitier',
   petit_fruit: 'Petit fruit',
+  liane: 'Liane fruitière',
   ornement: 'Ornement',
 }
 
@@ -84,6 +86,7 @@ export const ESPECE_TYPE_DESCRIPTIONS: Record<typeof ESPECE_TYPES[number], strin
   engrais_vert: 'Couvert semé pour le sol : rendement en biomasse, aucune récolte commercialisée.',
   arbre_fruitier: 'Verger : se plante en arbre, jamais sur une planche. Rendement par arbre.',
   petit_fruit: 'Arbustes à petits fruits (framboisier, cassissier), rattachés au verger.',
+  liane: 'Plantes grimpantes fruitières conduites sur support (kiwi, vigne, kiwaï), rattachées au verger. Rendement par pied.',
   ornement: 'Ligneux d’agrément du verger : haie, brise-vent, ombrage. Pas de conduite sur planche.',
 }
 
@@ -108,6 +111,25 @@ export const ESPECE_TYPES_MARAICHAGE = [
   'fleur',
   'engrais_vert',
 ] as const
+
+/**
+ * Types conduits au verger : plantés en individu (arbre, arbuste, pied),
+ * jamais sur planche ; mêmes écrans (Verger), mêmes stocks, même catégorie
+ * boutique, même export du référentiel verger.
+ *
+ * Demande communautaire du 2026-10-07 : `liane` (kiwi, vigne, kiwaï) rejoint
+ * `arbre_fruitier` et `petit_fruit`, parce que la conduite sur support et
+ * l'emprise d'une grimpante ne sont pas celles d'un arbre. Avant, le couple
+ * `['arbre_fruitier', 'petit_fruit']` était recopié dans vingt fichiers ; tout
+ * ce qui énumère les types du verger passe désormais par cette constante.
+ */
+export const ESPECE_TYPES_VERGER = ['arbre_fruitier', 'petit_fruit', 'liane'] as const
+
+export type EspeceTypeVerger = (typeof ESPECE_TYPES_VERGER)[number]
+
+export function estTypeVerger(type: string | null | undefined): type is EspeceTypeVerger {
+  return (ESPECE_TYPES_VERGER as readonly string[]).includes(type ?? '')
+}
 
 // Unités de rendement métier. L'unité est portée par l'ESPÈCE et se choisit à
 // la saisie ; le type ne fait que proposer le défaut le plus probable.
@@ -206,6 +228,7 @@ export function uniteRendementParType(
 ): typeof UNITE_RENDEMENT[number] {
   switch (type) {
     case 'arbre_fruitier':
+    case 'liane':
       return 'kg_arbre'
     case 'engrais_vert':
       return 'biomasse_t_ha'

@@ -46,6 +46,7 @@ export type EspeceType =
   | "engrais_vert"
   | "arbre_fruitier"
   | "petit_fruit"
+  | "liane"
   | "ornement"
 
 export type EspeceOption = {
@@ -82,6 +83,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "engrais_vert", label: "Engrais verts" },
   { key: "arbre_fruitier", label: "Arbres fruitiers" },
   { key: "petit_fruit", label: "Petits fruits" },
+  { key: "liane", label: "Lianes" },
 ]
 
 // Stockage des récemment utilisés (par contexte d'usage, ex: "maraichage" vs "verger").
@@ -136,7 +138,7 @@ export function EspeceCombobox({
   value,
   onChange,
   defaultTypes,
-  visibleTabs = ["all", "legume", "aromatique", "fleur", "engrais_vert", "arbre_fruitier", "petit_fruit"],
+  visibleTabs = ["all", "legume", "aromatique", "fleur", "engrais_vert", "arbre_fruitier", "petit_fruit", "liane"],
   placeholder = "Rechercher une espèce…",
   recentStorageKey = "espece-recents-default",
   disabled,

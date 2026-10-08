@@ -9,7 +9,7 @@ import * as React from "react"
 import Link from "next/link"
 import { useSession } from "next-auth/react"
 import { ColumnDef } from "@tanstack/react-table"
-import { Leaf, TreeDeciduous, Cherry, Loader2, ExternalLink, GitBranch, Bug, TreePine, Trees, Download } from "lucide-react"
+import { Leaf, TreeDeciduous, Cherry, Grape, Loader2, ExternalLink, GitBranch, Bug, TreePine, Trees, Download } from "lucide-react"
 
 import { DataTable } from "@/components/tables/DataTable"
 import { Badge } from "@/components/ui/badge"
@@ -38,18 +38,14 @@ import type { AvisStatsListe } from "@/lib/avis/types"
 import { libelleForesterie } from "@/lib/verger/libelles-foresterie"
 // Bug #cmp8e4qut puis ticket cmsx5wjsb : les libellés de catégorie vivent
 // désormais dans la SSOT du référentiel espèces, jamais recopiés par écran.
-import { libelleCategorieEspece } from "@/lib/validations/espece"
+import { estTypeVerger, libelleCategorieEspece, libelleTypeEspece } from "@/lib/validations/espece"
 
 const ESPECE_TYPES = [
   { value: "all", label: "Tous", icon: Leaf },
   { value: "arbre_fruitier", label: "Arbres fruitiers", icon: TreeDeciduous },
   { value: "petit_fruit", label: "Petits fruits", icon: Cherry },
+  { value: "liane", label: "Lianes", icon: Grape },
 ] as const
-
-const TYPE_LABELS: Record<string, string> = {
-  arbre_fruitier: "Arbre fruitier",
-  petit_fruit: "Petit fruit",
-}
 
 // QA Hélène 2026-05-15 — Bug #15 + #16 : les sensibilités porte-greffes
 // et méthodes PBI bioagresseurs sortaient en snake_case du seed
@@ -192,7 +188,7 @@ const columns: ColumnDef<EspeceWithRelations>[] = [
       const type = getValue() as string
       return (
         <Badge variant="outline" className="text-xs">
-          {TYPE_LABELS[type] || type}
+          {libelleTypeEspece(type)}
         </Badge>
       )
     },
@@ -340,7 +336,7 @@ function EspecesReferentiel() {
       const items = Array.isArray(result) ? result : result.data || []
       // Filtrer uniquement les types arbres
       const arbresItems = items.filter((e: EspeceWithRelations) =>
-        ["arbre_fruitier", "petit_fruit"].includes(e.type)
+        estTypeVerger(e.type)
       )
       setData(arbresItems)
       setFilteredData(arbresItems)
@@ -509,7 +505,7 @@ function EspecesReferentiel() {
                 <SheetDescription className="text-left">
                   {detail.nomLatin && <span className="italic">{detail.nomLatin}</span>}
                   {detail.nomLatin && " — "}
-                  {TYPE_LABELS[detail.type] || detail.type}
+                  {libelleTypeEspece(detail.type)}
                 </SheetDescription>
               </SheetHeader>
 

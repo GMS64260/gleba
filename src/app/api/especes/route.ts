@@ -5,6 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { ESPECE_TYPES_VERGER } from '@/lib/validations/espece'
 import prisma from '@/lib/prisma'
 import { createEspeceSchema } from '@/lib/validations'
 import { visibiliteReferentiel, attributionCreation } from '@/lib/referentiel-communaute'
@@ -56,7 +57,7 @@ export async function GET(request: NextRequest) {
     if (type) {
       // Support special 'all_arbres' type which filters for tree types
       if (type === 'all_arbres') {
-        where.type = { in: ['arbre_fruitier', 'petit_fruit'] }
+        where.type = { in: [...ESPECE_TYPES_VERGER] }
       } else {
         where.type = type
       }

@@ -8,7 +8,7 @@ import * as React from "react"
 import { useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
 import { ColumnDef } from "@tanstack/react-table"
-import { Leaf, Salad, TreeDeciduous, Cherry, Sprout, Flower, Flower2 } from "lucide-react"
+import { Leaf, Salad, TreeDeciduous, Cherry, Sprout, Flower, Flower2, Grape } from "lucide-react"
 
 import { DataTable } from "@/components/tables/DataTable"
 import { Badge } from "@/components/ui/badge"
@@ -33,6 +33,7 @@ const ESPECE_TYPES = [
   { value: "engrais_vert", label: "Engrais verts", icon: Sprout },
   { value: "arbre_fruitier", label: "Arbres fruitiers", icon: TreeDeciduous },
   { value: "petit_fruit", label: "Petits fruits", icon: Cherry },
+  { value: "liane", label: "Lianes", icon: Grape },
 ] as const
 
 // Bug feedback testeur 2026-05-26 (cmpm71z5s) : le label « Ornement » avait été

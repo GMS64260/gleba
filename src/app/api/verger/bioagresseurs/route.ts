@@ -8,6 +8,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server"
+import { ESPECE_TYPES_VERGER, estTypeVerger } from "@/lib/validations/espece"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 
@@ -32,7 +33,7 @@ export async function GET(request: NextRequest) {
     where.especes = {
       some: {
         espece: {
-          type: { in: ["arbre_fruitier", "petit_fruit"] },
+          type: { in: [...ESPECE_TYPES_VERGER] },
         },
       },
     }
@@ -73,7 +74,7 @@ export async function GET(request: NextRequest) {
     seuilNuisibilite: b.seuilNuisibilite,
     notes: b.notes,
     especesCibles: b.especes
-      .filter((e) => ["arbre_fruitier", "petit_fruit"].includes(e.espece?.type ?? ""))
+      .filter((e) => estTypeVerger(e.espece?.type))
       .map((e) => e.especeId),
   }))
 

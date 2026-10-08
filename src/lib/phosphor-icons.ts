@@ -31,6 +31,10 @@ export {
   Checks as CheckCheck,
   CheckCircle as CheckCircle2,
   Cherries as Cherry,
+  // 2026-10-08 : catégorie d'espèce « liane » (Phosphor n'a pas de vigne) et
+  // entrée « Mes demandes » du menu du profil (bac de réception).
+  PottedPlant as Grape,
+  Tray as Inbox,
   CaretDown as ChevronDown,
   CaretLeft as ChevronLeft,
   CaretRight as ChevronRight,
