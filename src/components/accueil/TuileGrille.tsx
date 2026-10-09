@@ -20,7 +20,14 @@ export function TuileGrille({ className, children, ...props }: TuileGrilleProps)
 /** Rangée de repères : deux par ligne sur mobile, cinq à partir de lg. */
 export function RepereRangee({ className, children, ...props }: TuileGrilleProps) {
   return (
-    <div className={cn("grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5", className)} {...props}>
+    <div
+      className={cn(
+        // Sur deux colonnes, un dernier repère impair prend toute la largeur au lieu de rester seul.
+        "grid grid-cols-2 gap-2.5 max-sm:[&>*:last-child:nth-child(odd)]:col-span-2 sm:grid-cols-3 lg:grid-cols-5",
+        className,
+      )}
+      {...props}
+    >
       {children}
     </div>
   )

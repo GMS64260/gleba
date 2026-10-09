@@ -39,6 +39,12 @@ import {
 import { echeanceDuJour, etatEcheance, hrefEcheance } from "./elevage"
 import { recolteDominante } from "./reperes"
 import { mutationEtapeCulture, mutationIrrigationFaite } from "./mutations"
+
+/** Une variété de repli (« Non spécifiée ») n'est pas une information à afficher. */
+function varieteAffichable(nom: string | null | undefined): string {
+  if (!nom) return ""
+  return /non sp[ée]cifi/i.test(nom) ? "" : nom
+}
 import type {
   AccueilAujourdhui,
   ElementAujourdhui,
@@ -240,7 +246,7 @@ export async function composerAujourdhui(
         module: "maraichage",
         etat: etatPourRetard(r.retardJours, { critiqueApres: 21 }),
         titre: `Récolter ${r.especeNom}${r.plancheId ? ` ${r.plancheId}` : ""}`,
-        meta: [r.retardJours > 0 ? `prête depuis ${r.retardJours} j` : "prête aujourd'hui", r.varieteNom ?? ""].filter(Boolean),
+        meta: [r.retardJours > 0 ? `prête depuis ${r.retardJours} j` : "prête aujourd'hui", varieteAffichable(r.varieteNom)].filter(Boolean),
         action: { libelle: "Récolte", href: "/maraichage/recoltes" },
         retardJours: r.retardJours,
         plancheIds: r.plancheRefId ? [r.plancheRefId] : [],
@@ -253,7 +259,7 @@ export async function composerAujourdhui(
         module: "maraichage",
         etat: etatPourRetard(s.retardJours),
         titre: `Semer ${s.especeNom}${s.plancheId ? ` ${s.plancheId}` : ""}`,
-        meta: [libelleRetard(s.retardJours), s.varieteNom ?? ""].filter(Boolean),
+        meta: [libelleRetard(s.retardJours), varieteAffichable(s.varieteNom)].filter(Boolean),
         action: {
           libelle: "Fait",
           href: "/taches",
@@ -270,7 +276,7 @@ export async function composerAujourdhui(
         module: "maraichage",
         etat: etatPourRetard(p.retardJours),
         titre: `Planter ${p.especeNom}${p.plancheId ? ` ${p.plancheId}` : ""}`,
-        meta: [libelleRetard(p.retardJours), p.varieteNom ?? ""].filter(Boolean),
+        meta: [libelleRetard(p.retardJours), varieteAffichable(p.varieteNom)].filter(Boolean),
         action: {
           libelle: "Fait",
           href: "/taches",

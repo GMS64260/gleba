@@ -10,24 +10,26 @@ describe("recolteDominante", () => {
         recoltesParUniteYtd: { kg: 11666, tige: 40 },
         recoltesParUniteN1Ytd: { kg: 11332 },
       }),
-    ).toEqual({ valeur: 11666, unite: "kg", ecartN1: 334 })
+    ).toEqual({ valeur: 11666, unite: "kg", valeurN1: 11332, ecartN1: 334 })
   })
 
   it("une ferme de fleurs coupées lit ses tiges, pas zéro kilo", () => {
     expect(
       recolteDominante({ recoltesParUniteYtd: { tige: 647 }, recoltesParUniteN1Ytd: { tige: 700 } }),
-    ).toEqual({ valeur: 647, unite: "tige", ecartN1: -53 })
+    ).toEqual({ valeur: 647, unite: "tige", valeurN1: 700, ecartN1: -53 })
   })
 
   it("sans récolte cette année : zéro dans l'unité de l'an passé", () => {
     expect(recolteDominante({ recoltesParUniteYtd: {}, recoltesParUniteN1Ytd: { kg: 120 } })).toEqual({
       valeur: 0,
       unite: "kg",
+      valeurN1: 120,
       ecartN1: -120,
     })
     expect(recolteDominante({ recoltesParUniteYtd: {}, recoltesParUniteN1Ytd: {} })).toEqual({
       valeur: 0,
       unite: "kg",
+      valeurN1: 0,
       ecartN1: 0,
     })
   })

@@ -49,7 +49,7 @@ describe("phraseFenetreTravail", () => {
   it("« sec jusqu'à samedi · 6,2 mm dimanche · gel probable mardi »", () => {
     const phrase = phraseFenetreTravail(calculerFenetreTravail(previsions), AUJOURDHUI)
     expect(phrase.principal).toBe("sec jusqu'à samedi")
-    expect(phrase.details).toEqual(["6.2 mm dimanche", "gel probable mardi (-1 °C)"])
+    expect(phrase.details).toEqual(["6,2 mm dimanche", "gel probable mardi (-1 °C)"])
   })
 
   it("sec toute la semaine quand aucune pluie n'est prévue", () => {
