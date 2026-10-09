@@ -6,7 +6,7 @@
  * autour de son centre. Fonctions PURES.
  */
 
-import type { PlanVignetteDonnees } from "./types"
+import type { ElementAujourdhui, PlanVignetteDonnees } from "./types"
 
 export interface CadreVignette {
   x: number
@@ -76,4 +76,23 @@ export function compterEtats(plan: PlanVignetteDonnees): { arroser: number; reco
     else compte.libre += 1
   }
   return compte
+}
+
+/**
+ * Repeint l'état du jour à partir des lignes encore ouvertes : une planche
+ * « à arroser » ou « à récolter » dont plus aucune ligne ne parle passe « en
+ * place » (mouvement 4 : après un arrosage noté, le liseré argile se fond).
+ * Le plan reçu du serveur n'est jamais modifié.
+ */
+export function appliquerElementsAuPlan(
+  plan: PlanVignetteDonnees,
+  elements: readonly Pick<ElementAujourdhui, "plancheIds">[],
+): PlanVignetteDonnees {
+  const encoreCitees = new Set(elements.flatMap((e) => e.plancheIds))
+  return {
+    ...plan,
+    planches: plan.planches.map((p) =>
+      (p.etat === "arroser" || p.etat === "recolter") && !encoreCitees.has(p.id) ? { ...p, etat: "en-place" } : p,
+    ),
+  }
 }

@@ -342,6 +342,14 @@
     transform: translateY(0);
   }
 }
+@keyframes accueil-coche {
+  from {
+    stroke-dashoffset: 24;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
 @media (prefers-reduced-motion: no-preference) {
   .accueil-entree {
     animation: accueil-entree var(--d-base) var(--e-out) both;
@@ -349,6 +357,18 @@
   }
   .accueil-sortie {
     animation: accueil-entree var(--d-fast) var(--e-in) reverse both;
+  }
+  /* Mouvement 2 : la coche de « Fait » se trace en 220 ms (stroke seulement). */
+  .accueil-coche path {
+    stroke-dasharray: 24;
+    animation: accueil-coche var(--d-base) var(--e-out) both;
+  }
+  /* Mouvement 4 : sur la vignette du plan, un liseré d'état se fond en 420 ms. */
+  .accueil-vignette rect {
+    transition:
+      fill var(--d-slow) var(--e-out),
+      stroke var(--d-slow) var(--e-out),
+      stroke-width var(--d-slow) var(--e-out);
   }
 }
 

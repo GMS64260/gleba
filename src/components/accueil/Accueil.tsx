@@ -5,11 +5,13 @@ import * as React from "react"
 import { AppHeader } from "@/components/shell/AppHeader"
 import { messageErreurReponse } from "@/lib/api-erreur"
 import { formatNombre, jourLocalISO } from "@/lib/accueil/classement"
+import { appliquerElementsAuPlan } from "@/lib/accueil/plan-vignette"
 import { calculerFenetreTravail, phraseFenetreTravail, type PhraseFenetre } from "@/lib/accueil/fenetre-travail"
-import type { AccueilAujourdhui } from "@/lib/accueil/types"
+import type { AccueilAujourdhui, ElementAujourdhui } from "@/lib/accueil/types"
 import { symboleDevise } from "@/lib/format-utils"
 
 import { AccueilEnTete } from "./AccueilEnTete"
+import { NombreAnime } from "./NombreAnime"
 import { Repere } from "./Repere"
 import { RetourAncienAccueil } from "./RetourAncienAccueil"
 import { TuileAgent, alerteMeteoPrioritaire } from "./TuileAgent"
@@ -66,6 +68,8 @@ export function Accueil() {
   const [accueil, setAccueil] = React.useState<Chargement<AccueilAujourdhui>>(INITIAL)
   const [meteo, setMeteo] = React.useState<Chargement<MeteoSemaine>>(INITIAL)
   const [tentative, setTentative] = React.useState(0)
+  /** Lignes soldées depuis l'ouverture : le repère Semaine et le plan en tiennent compte. */
+  const [soldees, setSoldees] = React.useState<Set<string>>(() => new Set())
 
   React.useEffect(() => {
     let annule = false
@@ -76,7 +80,10 @@ export function Accueil() {
         return (await res.json()) as AccueilAujourdhui
       })
       .then((donnees) => {
-        if (!annule) setAccueil({ donnees, erreur: null, chargement: false })
+        if (!annule) {
+          setAccueil({ donnees, erreur: null, chargement: false })
+          setSoldees(new Set())
+        }
       })
       .catch((e: unknown) => {
         if (!annule) setAccueil({ donnees: null, erreur: e instanceof Error ? e.message : "Erreur réseau", chargement: false })
@@ -85,6 +92,16 @@ export function Accueil() {
       annule = true
     }
   }, [tentative])
+
+  const marquerSoldee = React.useCallback((e: ElementAujourdhui) => setSoldees((s) => new Set(s).add(e.id)), [])
+  const restaurer = React.useCallback((e: ElementAujourdhui) => {
+    setSoldees((s) => {
+      if (!s.has(e.id)) return s
+      const suivant = new Set(s)
+      suivant.delete(e.id)
+      return suivant
+    })
+  }, [])
 
   React.useEffect(() => {
     let annule = false
@@ -110,9 +127,23 @@ export function Accueil() {
     return phraseFenetreTravail(calculerFenetreTravail(meteo.donnees.previsions), new Date())
   }, [meteo.donnees])
 
+  const elementsOuverts = React.useMemo(
+    () => (donnees?.elements ?? []).filter((e) => !soldees.has(e.id)),
+    [donnees, soldees],
+  )
+  /** Lignes soldées de la semaine (semis, plantation, arrosage) : le repère Semaine descend d'autant. */
+  const tachesSoldees = React.useMemo(
+    () => (donnees?.elements ?? []).filter((e) => soldees.has(e.id) && e.action.mutation).length,
+    [donnees, soldees],
+  )
+  const plan = React.useMemo(
+    () => (donnees ? appliquerElementsAuPlan(donnees.plan, elementsOuverts) : null),
+    [donnees, elementsOuverts],
+  )
+
   const rm = donnees?.reperes.maraichage ?? null
   const rc = donnees?.reperes.comptabilite ?? null
-  const rs = donnees?.reperes.semaine ?? null
+  const rs = donnees?.reperes.semaine ? { ...donnees.reperes.semaine, aFaire: Math.max(0, donnees.reperes.semaine.aFaire - tachesSoldees) } : null
   const nonDemarrees = rm ? Math.max(0, rm.culturesPlanifiees - rm.culturesActives) : 0
   const ecartRecoltes = rm?.recoltes
     ? rm.recoltes.ecartN1 > 0
@@ -122,7 +153,7 @@ export function Accueil() {
         : <span>comme en {annee - 1}</span>
     : undefined
 
-  const elementCritique = donnees?.elements.find((e) => e.etat === "critique") ?? null
+  const elementCritique = elementsOuverts.find((e) => e.etat === "critique") ?? null
   const elevageActif = modules.includes("elevage")
   let rang = 0
 
@@ -136,7 +167,7 @@ export function Accueil() {
           {(accueil.chargement || rm) && (
             <Repere
               libelle="Cultures en place"
-              valeur={rm ? rm.culturesActives : null}
+              valeur={rm ? <NombreAnime valeur={rm.culturesActives} /> : null}
               unite={rm ? `/ ${rm.culturesPlanifiees}` : undefined}
               detail={rm ? `${nonDemarrees} non démarrée${nonDemarrees > 1 ? "s" : ""}` : undefined}
               vide={accueil.chargement ? "…" : undefined}
@@ -146,7 +177,7 @@ export function Accueil() {
           {(accueil.chargement || rm) && (
             <Repere
               libelle="Surface cultivée"
-              valeur={rm ? formatNombre(rm.surfaceCultiveeM2) : null}
+              valeur={rm ? <NombreAnime valeur={rm.surfaceCultiveeM2} /> : null}
               unite="m²"
               detail={rm ? `${rm.planchesCount} planche${rm.planchesCount > 1 ? "s" : ""}` : undefined}
               vide={accueil.chargement ? "…" : undefined}
@@ -156,7 +187,7 @@ export function Accueil() {
           {(accueil.chargement || rm?.recoltes) && (
             <Repere
               libelle={`Récoltes ${annee}`}
-              valeur={rm?.recoltes ? formatNombre(rm.recoltes.valeur, 1) : null}
+              valeur={rm?.recoltes ? <NombreAnime valeur={rm.recoltes.valeur} format={(n) => formatNombre(n, 1)} /> : null}
               unite={rm?.recoltes?.unite}
               detail={ecartRecoltes}
               vide={accueil.chargement ? "…" : undefined}
@@ -166,7 +197,7 @@ export function Accueil() {
           {(accueil.chargement || rc) && (
             <Repere
               libelle="Trésorerie"
-              valeur={rc ? formatNombre(rc.beneficeYtd) : null}
+              valeur={rc ? <NombreAnime valeur={rc.beneficeYtd} /> : null}
               unite={rc ? symboleDevise(rc.devise) : undefined}
               detail={rc ? `marge ${rc.margePercentYtd} %` : undefined}
               alerte={rc && rc.nbRevenusNonPayes > 0 ? `${rc.nbRevenusNonPayes} créance${rc.nbRevenusNonPayes > 1 ? "s" : ""}` : undefined}
@@ -176,7 +207,7 @@ export function Accueil() {
           )}
           <Repere
             libelle="Semaine"
-            valeur={rs ? rs.aFaire : null}
+            valeur={rs ? <NombreAnime valeur={rs.aFaire} /> : null}
             unite={rs ? (rs.aFaire > 1 ? "tâches" : "tâche") : undefined}
             detail={rs && rs.enRetard === 0 ? "rien en retard" : undefined}
             alerte={rs && rs.enRetard > 0 ? `${rs.enRetard} en retard` : undefined}
@@ -187,17 +218,20 @@ export function Accueil() {
 
         <TuileGrille>
           <TuileAujourdhui
+            key={donnees?.date ?? "chargement"}
             elements={donnees?.elements ?? []}
             sourcesEnErreur={donnees?.sourcesEnErreur ?? []}
             chargement={accueil.chargement}
             erreur={accueil.erreur}
             onReessayer={() => setTentative((n) => n + 1)}
+            onElementFait={marquerSoldee}
+            onElementRestaure={restaurer}
             rang={rang++}
           />
           {!accueil.chargement && donnees && donnees.plan.planches.length === 0 ? (
             <TuilePlanVide rang={rang++} />
           ) : (
-            <TuilePlan plan={donnees?.plan ?? null} nomFerme={donnees?.exploitation.nom ?? null} chargement={accueil.chargement} rang={rang++} />
+            <TuilePlan plan={plan} nomFerme={donnees?.exploitation.nom ?? null} chargement={accueil.chargement} rang={rang++} />
           )}
           <TuileSemaine meteo={meteo.donnees} chargement={meteo.chargement} erreur={meteo.erreur} rang={rang++} />
           <TuileAgent

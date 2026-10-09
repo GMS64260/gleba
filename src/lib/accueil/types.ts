@@ -9,6 +9,7 @@
 import type { ModuleId } from "@/lib/modules"
 import type { EtatRegistre } from "@/components/accueil/PastilleEtat"
 import type { EcheanceElevage } from "@/lib/elevage/agenda.server"
+import type { MutationLigne } from "./mutations"
 
 export type { EtatRegistre }
 
@@ -25,7 +26,14 @@ export type SourceAujourdhui =
 
 export interface ActionAccueil {
   libelle: string
+  /** Écran de l'action ; sert aussi de repli si la mutation n'est pas possible. */
   href: string
+  /**
+   * Quand la ligne peut être soldée d'un geste (semis, plantation, arrosage
+   * planifié), l'action devient un bouton qui joue cette mutation, confirme
+   * avec « Annuler » et rejoue l'inverse. Sinon, c'est un lien.
+   */
+  mutation?: MutationLigne
 }
 
 /** Une ligne de registre de la tuile Aujourd'hui. */
