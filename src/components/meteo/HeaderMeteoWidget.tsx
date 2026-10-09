@@ -39,14 +39,14 @@ interface MeteoResume {
 
 function WeatherIconSmall({ code }: { code: number }) {
   const cls = "h-4 w-4"
-  if (code === 0 || code === 1) return <Sun className={`${cls} text-yellow-500`} />
-  if (code === 2) return <CloudSun className={`${cls} text-slate-500`} />
-  if (code === 3) return <Cloud className={`${cls} text-slate-400`} />
-  if (code >= 45 && code <= 48) return <CloudFog className={`${cls} text-slate-400`} />
-  if (code >= 51 && code <= 67) return <CloudRain className={`${cls} text-blue-400`} />
-  if (code >= 71 && code <= 86) return <CloudSnow className={`${cls} text-blue-200`} />
-  if (code >= 95) return <CloudLightning className={`${cls} text-yellow-600`} />
-  return <Cloud className={`${cls} text-slate-400`} />
+  if (code === 0 || code === 1) return <Sun className={`${cls} text-paille`} />
+  if (code === 2) return <CloudSun className={`${cls} text-ardoise`} />
+  if (code === 3) return <Cloud className={`${cls} text-ardoise`} />
+  if (code >= 45 && code <= 48) return <CloudFog className={`${cls} text-ardoise`} />
+  if (code >= 51 && code <= 67) return <CloudRain className={`${cls} text-eau`} />
+  if (code >= 71 && code <= 86) return <CloudSnow className={`${cls} text-eau`} />
+  if (code >= 95) return <CloudLightning className={`${cls} text-ocre`} />
+  return <Cloud className={`${cls} text-ardoise`} />
 }
 
 export function HeaderMeteoWidget({ showLune = false }: { showLune?: boolean }) {
@@ -112,8 +112,8 @@ export function HeaderMeteoWidget({ showLune = false }: { showLune?: boolean }) 
 
   if (loading) {
     return (
-      <div className="flex items-center px-2 py-1 text-slate-300">
-        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+      <div className="flex items-center px-2 py-1 text-ardoise/60">
+        <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" />
       </div>
     )
   }
@@ -121,31 +121,31 @@ export function HeaderMeteoWidget({ showLune = false }: { showLune?: boolean }) 
   if (!parcelle || !meteo) return null
 
   return (
-    <div className={`flex items-stretch gap-0 rounded-lg border border-sky-200 overflow-hidden isolate flex-shrink-0`}>
+    <div className="isolate flex flex-shrink-0 items-stretch gap-0 overflow-hidden rounded-lg border border-lin">
       <Popover>
         <PopoverTrigger asChild>
-          <button className="flex items-center gap-2 px-2 py-1.5 sm:gap-2.5 sm:px-3 sm:py-2 bg-sky-50/80 hover:bg-sky-100 transition-colors group">
+          <button className="group flex items-center gap-2 bg-papier px-2 py-1.5 transition-colors hover:bg-lin-doux sm:gap-2.5 sm:px-3 sm:py-2" aria-label="Météo de la parcelle suivie">
             <WeatherIconSmall code={meteo.weatherCode} />
 
             {/* Température + description */}
             <div className="text-left">
               <div className="flex items-center gap-1.5">
-                <span className="text-sm font-semibold text-slate-800">{Math.round(meteo.temperature)}°C</span>
-                <span className="hidden md:inline text-xs text-slate-500">{meteo.weatherDescription}</span>
+                <span className="text-sm font-semibold text-encre">{Math.round(meteo.temperature)}°C</span>
+                <span className="hidden text-xs text-ardoise md:inline">{meteo.weatherDescription}</span>
               </div>
-              <div className="hidden sm:flex items-center gap-0.5 text-[11px] text-slate-400">
+              <div className="hidden items-center gap-0.5 text-[11px] text-ardoise sm:flex">
                 <MapPin className="h-3 w-3 flex-shrink-0" />
                 <span className="max-w-[100px] truncate">{parcelle.nom}</span>
               </div>
             </div>
 
             {/* Humidité + vent */}
-            <div className="hidden lg:flex items-center gap-2 pl-2 border-l border-sky-200">
-              <span className="flex items-center gap-0.5 text-xs text-blue-500">
+            <div className="hidden items-center gap-2 border-l border-lin pl-2 lg:flex">
+              <span className="flex items-center gap-0.5 text-xs text-eau">
                 <Droplets className="h-3.5 w-3.5" />
                 {meteo.humidity}%
               </span>
-              <span className="flex items-center gap-0.5 text-xs text-slate-500">
+              <span className="flex items-center gap-0.5 text-xs text-ardoise">
                 <Wind className="h-3.5 w-3.5" />
                 {Math.round(meteo.windSpeed)} km/h
               </span>
@@ -153,22 +153,22 @@ export function HeaderMeteoWidget({ showLune = false }: { showLune?: boolean }) 
 
             {/* Alertes */}
             {meteo.alertCount > 0 && (
-              <span className="flex items-center gap-0.5 text-xs text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-200">
+              <span className="flex items-center gap-0.5 rounded-full border border-paille bg-paille-doux px-1.5 py-0.5 text-xs font-semibold text-ocre">
                 <AlertTriangle className="h-3 w-3" />
                 {meteo.alertCount}
               </span>
             )}
 
-            <ChevronDown className="h-3.5 w-3.5 text-slate-400 group-hover:text-slate-600" />
+            <ChevronDown className="h-3.5 w-3.5 text-ardoise group-hover:text-encre" />
           </button>
         </PopoverTrigger>
         <PopoverContent className="w-[calc(100vw-2rem)] max-w-[380px] p-0" align="start" sideOffset={8}>
           <MeteoWidget parcelleId={parcelle.id} />
           {/* Palier 3 : la météo a désormais une page dédiée */}
-          <div className="border-t px-3 py-2 text-right">
+          <div className="border-t border-lin px-3 py-2 text-right">
             <Link
               href="/meteo"
-              className="text-xs font-medium text-sky-700 hover:text-sky-900 hover:underline underline-offset-2"
+              className="text-xs font-semibold text-sauge underline-offset-2 hover:underline"
             >
               Ouvrir la page Météo →
             </Link>
@@ -177,7 +177,7 @@ export function HeaderMeteoWidget({ showLune = false }: { showLune?: boolean }) 
       </Popover>
 
       {showLune && (
-        <div className="border-l border-sky-200">
+        <div className="border-l border-lin">
           <LunaireWidget embedded />
         </div>
       )}

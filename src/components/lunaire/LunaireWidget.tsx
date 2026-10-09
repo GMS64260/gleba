@@ -85,8 +85,8 @@ export function LunaireWidget({ embedded = false }: { embedded?: boolean }) {
 
   if (loading) {
     return (
-      <div className="flex items-center px-2 py-1 text-slate-300">
-        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+      <div className="flex items-center px-2 py-1 text-ardoise/60">
+        <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" />
       </div>
     )
   }
@@ -105,11 +105,11 @@ export function LunaireWidget({ embedded = false }: { embedded?: boolean }) {
       <PopoverTrigger asChild>
         <button className={`flex items-center justify-center gap-1.5 px-2 sm:px-3 transition-colors group ${
           embedded
-            ? "h-full bg-indigo-50/60 hover:bg-indigo-100/80"
-            : "py-1.5 sm:py-2 rounded-lg border bg-indigo-50/80 border-indigo-200 hover:bg-indigo-100"
-        }`}>
+            ? "h-full bg-papier hover:bg-lin-doux"
+            : "rounded-lg border border-lin bg-papier py-1.5 hover:bg-lin-doux sm:py-2"
+        }`} aria-label="Calendrier lunaire">
           <span className="text-base leading-none">{today.emoji}</span>
-          <ChevronDown className="h-3 w-3 text-slate-400 group-hover:text-slate-600" />
+          <ChevronDown className="h-3 w-3 text-ardoise group-hover:text-encre" />
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-[min(320px,calc(100vw-1rem))] p-0" align="end" sideOffset={8}>

@@ -21,8 +21,8 @@ export function BoutiqueHeaderButton() {
   }
   return (
     <Link href="/boutique">
-      <Button variant="outline" size="sm" className="text-teal-700 border-teal-300 hover:bg-teal-50">
-        <Store className="h-4 w-4 mr-1" />
+      <Button variant="outline" size="sm" className="border-lin bg-craie text-encre hover:bg-papier hover:text-encre">
+        <Store className="mr-1 h-4 w-4 text-ardoise" />
         <span className="hidden sm:inline">Boutique</span>
       </Button>
     </Link>

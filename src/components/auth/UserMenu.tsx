@@ -35,8 +35,8 @@ export function UserMenu({ user }: UserMenuProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-2">
-          <User className="h-4 w-4" />
+        <Button variant="outline" size="sm" className="gap-2 border-lin bg-craie text-encre hover:bg-papier hover:text-encre">
+          <User className="h-4 w-4 text-ardoise" />
           <span className="hidden sm:inline">
             {user.name || user.email?.split("@")[0]}
           </span>
@@ -48,7 +48,7 @@ export function UserMenu({ user }: UserMenuProps) {
             <p className="text-sm font-medium">{user.name || "Utilisateur"}</p>
             <p className="text-xs text-muted-foreground">{user.email}</p>
             {isAdmin && (
-              <span className="inline-flex items-center gap-1 text-xs text-amber-600 font-medium">
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-ocre">
                 <Shield className="h-3 w-3" />
                 Administrateur
               </span>
@@ -107,7 +107,7 @@ export function UserMenu({ user }: UserMenuProps) {
         <DropdownMenuSeparator />
 
         <DropdownMenuItem
-          className="cursor-pointer text-red-600 focus:text-red-600"
+          className="cursor-pointer text-garance focus:text-garance"
           onClick={() => signOut({ callbackUrl: "/login" })}
         >
           <LogOut className="mr-2 h-4 w-4" />

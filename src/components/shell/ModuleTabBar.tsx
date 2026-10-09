@@ -23,12 +23,16 @@ interface TabDef {
 type Accent = "emerald" | "lime" | "amber" | "blue"
 
 // Classes littérales complètes : Tailwind ne génère pas les classes
-// construites dynamiquement.
+// construites dynamiquement. Charte « carnet de ferme » (2026-10-09) : les
+// noms d'accent historiques (emerald, lime, amber, blue) restent l'API des
+// pages, mais pointent sur les accents discrets de la charte — sauge
+// (maraîchage), prairie (verger), ocre (élevage), eau (comptabilité). Le
+// texte de l'onglet actif reste en encre : la couleur souligne, elle ne lit pas.
 const ACCENTS: Record<Accent, { top: string; active: string; icon: string }> = {
-  emerald: { top: "border-t-emerald-500", active: "border-emerald-600 text-emerald-700", icon: "text-emerald-600" },
-  lime: { top: "border-t-lime-500", active: "border-lime-600 text-lime-700", icon: "text-lime-600" },
-  amber: { top: "border-t-amber-500", active: "border-amber-600 text-amber-700", icon: "text-amber-600" },
-  blue: { top: "border-t-blue-500", active: "border-blue-600 text-blue-700", icon: "text-blue-600" },
+  emerald: { top: "border-t-sauge", active: "border-sauge text-encre", icon: "text-sauge" },
+  lime: { top: "border-t-prairie", active: "border-prairie text-encre", icon: "text-prairie" },
+  amber: { top: "border-t-ocre", active: "border-ocre text-encre", icon: "text-ocre" },
+  blue: { top: "border-t-eau", active: "border-eau text-encre", icon: "text-eau" },
 }
 
 interface ModuleTabBarProps {
@@ -47,7 +51,7 @@ export function ModuleTabBar({ tabs, activeTab, onTabChange, accent, actions }: 
   const headerHidden = useHideOnScroll()
   return (
     <nav
-      className={`relative top-0 border-b border-t-2 ${a.top} bg-white/90 backdrop-blur-sm z-40 xl:sticky xl:top-[var(--module-tabbar-top)] xl:transition-[top] xl:duration-200 motion-reduce:transition-none`}
+      className={`relative top-0 z-40 border-b border-t-2 border-lin ${a.top} bg-craie/90 font-ui text-encre backdrop-blur-sm xl:sticky xl:top-[var(--module-tabbar-top)] xl:transition-[top] xl:duration-200 motion-reduce:transition-none`}
       // Ticket cmsx5x1z2 — décalage MESURÉ (publié par AppHeader dans
       // `--app-header-h`) et non plus 61 px codés en dur : un header qui passe
       // sur deux lignes recouvrait sinon cette barre et avalait les clics de ses
@@ -76,12 +80,12 @@ export function ModuleTabBar({ tabs, activeTab, onTabChange, accent, actions }: 
                     aria-current={isActive ? "page" : undefined}
                     className={`flex h-9 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-sm font-medium transition-colors ${
                       isActive
-                        ? `${a.active} bg-white`
-                        : "border-slate-200 bg-white/80 text-slate-600 hover:border-slate-300 hover:text-slate-800"
+                        ? `${a.active} bg-craie`
+                        : "border-lin bg-craie/80 text-ardoise hover:border-ardoise hover:text-encre"
                     }`}
                     title={tab.label}
                   >
-                    <tab.icon className={`h-4 w-4 ${isActive ? a.icon : "text-slate-500"}`} />
+                    <tab.icon className={`h-4 w-4 ${isActive ? a.icon : "text-ardoise"}`} />
                     <span>{tab.shortLabel ?? tab.label}</span>
                   </button>
                 )
@@ -107,7 +111,7 @@ export function ModuleTabBar({ tabs, activeTab, onTabChange, accent, actions }: 
                   className={`flex items-center gap-1.5 px-3 lg:px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                     isActive
                       ? a.active
-                      : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
+                      : "border-transparent text-ardoise hover:border-lin hover:text-encre"
                   }`}
                   title={tab.label}
                 >

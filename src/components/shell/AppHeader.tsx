@@ -64,7 +64,8 @@ export function AppHeader({ current, showLune = false }: AppHeaderProps) {
   return (
     <header
       ref={headerRef}
-      className={`border-b bg-white/95 backdrop-blur-sm sticky top-0 z-50 transition-transform duration-200 motion-reduce:transition-none ${
+      // Charte « carnet de ferme » (2026-10-09) : craie, lin, Geist ; aucune action déplacée.
+      className={`sticky top-0 z-50 border-b border-lin bg-craie/95 font-ui text-encre backdrop-blur-sm transition-transform duration-200 motion-reduce:transition-none ${
         hidden ? "-translate-y-full" : "translate-y-0"
       }`}
     >
@@ -91,14 +92,14 @@ export function AppHeader({ current, showLune = false }: AppHeaderProps) {
               elle était. Elle a sa place dans le bandeau, comme Paramètres. */}
           {session?.user && (
             <Link href="/communaute">
-              <Button variant="ghost" size="sm" aria-label="Communauté" title="Communauté : demandes d'évolution et votes">
+              <Button variant="ghost" size="sm" className="text-ardoise hover:bg-papier hover:text-encre" aria-label="Communauté" title="Communauté : demandes d'évolution et votes">
                 <Megaphone className="h-4 w-4" />
                 <span className="hidden xl:inline ml-1.5">Communauté</span>
               </Button>
             </Link>
           )}
           <Link href="/parametres">
-            <Button variant="ghost" size="sm" aria-label="Paramètres">
+            <Button variant="ghost" size="sm" className="text-ardoise hover:bg-papier hover:text-encre" aria-label="Paramètres">
               <Settings className="h-4 w-4" />
             </Button>
           </Link>
@@ -116,7 +117,7 @@ export function AppHeader({ current, showLune = false }: AppHeaderProps) {
  */
 export function PageToolbar({ children }: { children: React.ReactNode }) {
   return (
-    <div className="border-b bg-white/70 backdrop-blur-sm">
+    <div className="border-b border-lin bg-craie/80 backdrop-blur-sm">
       <div className="container mx-auto px-4 py-3 flex items-center justify-between gap-2 flex-wrap max-w-[1600px]">
         {children}
       </div>
