@@ -59,6 +59,7 @@ export function calculerFenetreTravail(
 }
 
 const JOURS = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"]
+const FORMAT_MM = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 1 })
 
 /** « samedi », ou « aujourd'hui » / « demain » quand c'est le cas. */
 export function nommerJour(jourIso: string, aujourdhui: Date): string {
@@ -82,7 +83,7 @@ export function phraseFenetreTravail(fenetre: FenetreTravail, aujourdhui: Date, 
   let principal: string
 
   if (fenetre.joursSecs === 0 && fenetre.prochainePluie) {
-    principal = `pluie ${nommerJour(fenetre.prochainePluie.date, aujourdhui)} · ${fenetre.prochainePluie.mm} mm`
+    principal = `pluie ${nommerJour(fenetre.prochainePluie.date, aujourdhui)} · ${FORMAT_MM.format(fenetre.prochainePluie.mm)} mm`
   } else if (fenetre.joursSecs >= nbJoursPrevus) {
     principal = "sec toute la semaine"
   } else if (fenetre.joursSecs === 1) {
@@ -94,10 +95,10 @@ export function phraseFenetreTravail(fenetre: FenetreTravail, aujourdhui: Date, 
   }
 
   if (fenetre.prochainePluie && fenetre.joursSecs > 0) {
-    details.push(`${fenetre.prochainePluie.mm} mm ${nommerJour(fenetre.prochainePluie.date, aujourdhui)}`)
+    details.push(`${FORMAT_MM.format(fenetre.prochainePluie.mm)} mm ${nommerJour(fenetre.prochainePluie.date, aujourdhui)}`)
   }
   if (fenetre.gel) {
-    details.push(`gel probable ${nommerJour(fenetre.gel.date, aujourdhui)} (${fenetre.gel.tempMin} °C)`)
+    details.push(`gel probable ${nommerJour(fenetre.gel.date, aujourdhui)} (${FORMAT_MM.format(fenetre.gel.tempMin)} °C)`)
   }
 
   return { principal, details }

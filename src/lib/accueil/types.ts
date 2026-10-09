@@ -101,7 +101,7 @@ export interface ReperesAccueil {
     surfaceCultiveeM2: number
     planchesCount: number
     /** Récolte dominante de l'année : la plus grosse unité (kg, tige, pièce…). */
-    recoltes: { valeur: number; unite: string; ecartN1: number } | null
+    recoltes: { valeur: number; unite: string; valeurN1: number; ecartN1: number } | null
   } | null
   comptabilite: {
     beneficeYtd: number

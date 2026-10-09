@@ -146,7 +146,9 @@ export function Accueil() {
   const rs = donnees?.reperes.semaine ? { ...donnees.reperes.semaine, aFaire: Math.max(0, donnees.reperes.semaine.aFaire - tachesSoldees) } : null
   const nonDemarrees = rm ? Math.max(0, rm.culturesPlanifiees - rm.culturesActives) : 0
   const ecartRecoltes = rm?.recoltes
-    ? rm.recoltes.ecartN1 > 0
+    ? rm.recoltes.valeurN1 === 0
+      ? <span>{rm.recoltes.valeur > 0 ? "première année de récoltes" : "aucune récolte pour l'instant"}</span>
+      : rm.recoltes.ecartN1 > 0
       ? <span className="font-semibold text-prairie">+{formatNombre(rm.recoltes.ecartN1)} {rm.recoltes.unite} vs {annee - 1}</span>
       : rm.recoltes.ecartN1 < 0
         ? <span>{formatNombre(rm.recoltes.ecartN1)} {rm.recoltes.unite} vs {annee - 1}</span>

@@ -26,44 +26,80 @@ function demiDiagonale(largeur: number, longueur: number): number {
   return Math.hypot(largeur, longueur) / 2
 }
 
+/**
+ * Au-delà de ce facteur (en taille du cadre des planches), un arbre ou un
+ * objet isolé est laissé hors cadre : sans cela, une haie ou un bâtiment à
+ * 80 m réduisent les planches à des traits (vu sur la ferme de démonstration).
+ */
+export const TOLERANCE_HORS_PLANCHES = 0.6
+
+interface Boite {
+  minX: number
+  minY: number
+  maxX: number
+  maxY: number
+}
+
+function boiteVide(): Boite {
+  return { minX: Number.POSITIVE_INFINITY, minY: Number.POSITIVE_INFINITY, maxX: Number.NEGATIVE_INFINITY, maxY: Number.NEGATIVE_INFINITY }
+}
+
+function etendre(b: Boite, cx: number, cy: number, r: number): void {
+  b.minX = Math.min(b.minX, cx - r)
+  b.minY = Math.min(b.minY, cy - r)
+  b.maxX = Math.max(b.maxX, cx + r)
+  b.maxY = Math.max(b.maxY, cy + r)
+}
+
+function finie(b: Boite): boolean {
+  return [b.minX, b.minY, b.maxX, b.maxY].every(Number.isFinite)
+}
+
+/** Centre d'une forme (planche ou objet). */
+function centre(f: { posX: number; posY: number; largeur: number; longueur: number }): { cx: number; cy: number } {
+  return { cx: f.posX + f.largeur / 2, cy: f.posY + f.longueur / 2 }
+}
+
+/** Étend la boîte à une forme : rectangle exact si elle n'est pas tournée, sinon son cercle englobant. */
+function etendreForme(b: Boite, f: { posX: number; posY: number; largeur: number; longueur: number; rotation2D: number }): void {
+  if (f.rotation2D % 180 === 0) {
+    b.minX = Math.min(b.minX, f.posX)
+    b.minY = Math.min(b.minY, f.posY)
+    b.maxX = Math.max(b.maxX, f.posX + f.largeur)
+    b.maxY = Math.max(b.maxY, f.posY + f.longueur)
+  } else {
+    const { cx, cy } = centre(f)
+    etendre(b, cx, cy, demiDiagonale(f.largeur, f.longueur))
+  }
+}
+
 export function calculerCadre(plan: PlanVignetteDonnees, margeM = MARGE_CADRE_M): CadreVignette {
-  let minX = Number.POSITIVE_INFINITY
-  let minY = Number.POSITIVE_INFINITY
-  let maxX = Number.NEGATIVE_INFINITY
-  let maxY = Number.NEGATIVE_INFINITY
+  // 1. Les planches d'abord : c'est elles que la vignette doit montrer.
+  const planches = boiteVide()
+  for (const p of plan.planches) etendreForme(planches, p)
 
-  const etendre = (cx: number, cy: number, r: number) => {
-    minX = Math.min(minX, cx - r)
-    minY = Math.min(minY, cy - r)
-    maxX = Math.max(maxX, cx + r)
-    maxY = Math.max(maxY, cy + r)
-  }
-
-  for (const p of plan.planches) {
-    const r = p.rotation2D % 180 === 0 ? 0 : demiDiagonale(p.largeur, p.longueur)
-    if (r === 0) {
-      minX = Math.min(minX, p.posX)
-      minY = Math.min(minY, p.posY)
-      maxX = Math.max(maxX, p.posX + p.largeur)
-      maxY = Math.max(maxY, p.posY + p.longueur)
-    } else {
-      etendre(p.posX + p.largeur / 2, p.posY + p.longueur / 2, r)
-    }
-  }
+  // 2. Arbres et objets : seulement s'ils restent à portée des planches
+  //    (ou tout, quand il n'y a aucune planche).
+  const cadre = finie(planches) ? { ...planches } : boiteVide()
+  const tolerance = finie(planches)
+    ? Math.max(planches.maxX - planches.minX, planches.maxY - planches.minY, 10) * TOLERANCE_HORS_PLANCHES
+    : Number.POSITIVE_INFINITY
+  const aPortee = (cx: number, cy: number) =>
+    !finie(planches) ||
+    (cx >= planches.minX - tolerance && cx <= planches.maxX + tolerance && cy >= planches.minY - tolerance && cy <= planches.maxY + tolerance)
   for (const o of plan.objets) {
-    etendre(o.posX + o.largeur / 2, o.posY + o.longueur / 2, demiDiagonale(o.largeur, o.longueur))
+    const { cx, cy } = centre(o)
+    if (aPortee(cx, cy)) etendreForme(cadre, o)
   }
   for (const a of plan.arbres) {
-    etendre(a.posX, a.posY, Math.max(a.envergure, 0.5) / 2)
+    if (aPortee(a.posX, a.posY)) etendre(cadre, a.posX, a.posY, Math.max(a.envergure, 0.5) / 2)
   }
 
-  if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
-    return CADRE_VIDE
-  }
+  if (!finie(cadre)) return CADRE_VIDE
 
-  const largeur = Math.max(maxX - minX, 1) + 2 * margeM
-  const hauteur = Math.max(maxY - minY, 1) + 2 * margeM
-  return { x: minX - margeM, y: minY - margeM, largeur, hauteur }
+  const largeur = Math.max(cadre.maxX - cadre.minX, 1) + 2 * margeM
+  const hauteur = Math.max(cadre.maxY - cadre.minY, 1) + 2 * margeM
+  return { x: cadre.minX - margeM, y: cadre.minY - margeM, largeur, hauteur }
 }
 
 /** Résumé des états pour les pastilles de la vignette (« 3 à arroser », « 2 à récolter »). */
