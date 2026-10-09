@@ -199,8 +199,8 @@ function HomeContent() {
         actions={
           <>
             <Link href="/jardin?usage=culture">
-              <Button variant="outline" size="sm" className="text-teal-700 border-teal-300 hover:bg-teal-50">
-                <MapIcon className="h-4 w-4 mr-1" />
+              <Button variant="outline" size="sm" className="border-lin bg-craie text-encre hover:bg-papier hover:text-encre">
+                <MapIcon className="mr-1 h-4 w-4 text-ardoise" />
                 <span className="hidden sm:inline">Plan</span>
               </Button>
             </Link>
@@ -208,25 +208,25 @@ function HomeContent() {
               variant="outline"
               size="sm"
               onClick={handleSemer}
-              className="text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+              className="border-lin bg-craie text-encre hover:bg-papier hover:text-encre"
               title="Assistant culture"
             >
-              <Wand2 className="h-4 w-4 mr-1" />
+              <Wand2 className="mr-1 h-4 w-4 text-ardoise" />
               <span className="hidden sm:inline">Semer</span>
             </Button>
             <Button
               variant="outline"
               size="sm"
               onClick={() => setShowChat((v) => !v)}
-              className={showChat ? "text-white bg-emerald-600 hover:bg-emerald-700 border-emerald-600" : "text-emerald-700 border-emerald-300 hover:bg-emerald-50"}
+              className={showChat ? "border-sauge bg-sauge text-craie hover:border-foret hover:bg-foret hover:text-craie" : "border-lin bg-craie text-encre hover:bg-papier hover:text-encre"}
               title="Assistant IA"
             >
-              <Bot className="h-4 w-4 mr-1" />
+              <Bot className={`mr-1 h-4 w-4 ${showChat ? "text-craie" : "text-ardoise"}`} />
               <span className="hidden sm:inline">IA</span>
             </Button>
             <Link href="/parcelles">
-              <Button variant="outline" size="sm" className="text-purple-700 border-purple-300 hover:bg-purple-50">
-                <MapPin className="h-4 w-4 mr-1" />
+              <Button variant="outline" size="sm" className="border-lin bg-craie text-encre hover:bg-papier hover:text-encre">
+                <MapPin className="mr-1 h-4 w-4 text-ardoise" />
                 <span className="hidden sm:inline">Parcelles</span>
               </Button>
             </Link>
@@ -255,15 +255,15 @@ function HomeContent() {
 
       {/* Bannière nouveauté - pluviométrie */}
       {showPluieBanner && session?.user && (
-        <div className="border-b bg-emerald-50/80 backdrop-blur-sm">
+        <div className="border-b border-lin bg-sauge-doux backdrop-blur-sm">
           <div className="container mx-auto px-4 py-2 max-w-[1600px] flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 text-sm text-emerald-700">
+            <div className="flex items-center gap-2 text-sm text-foret">
               <CloudRain className="h-4 w-4 flex-shrink-0" />
               <span>
                 <strong>Nouveau —</strong> Pluviométrie par planche disponible : cliquez sur une planche dans le{" "}
                 <button
                   onClick={() => { dismissPluieBanner(); window.location.href = "/jardin" }}
-                  className="underline underline-offset-2 hover:text-emerald-900 font-medium"
+                  className="font-medium underline underline-offset-2 hover:text-encre"
                 >
                   Plan du jardin
                 </button>{" "}
@@ -272,7 +272,7 @@ function HomeContent() {
             </div>
             <button
               onClick={dismissPluieBanner}
-              className="flex-shrink-0 text-emerald-400 hover:text-emerald-700 transition-colors"
+              className="flex-shrink-0 text-foret/60 transition-colors hover:text-foret"
               aria-label="Fermer"
             >
               <X className="h-4 w-4" />
