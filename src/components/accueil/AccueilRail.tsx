@@ -65,7 +65,7 @@ export function AccueilRail({ nomFerme, sousTitreFerme, className }: AccueilRail
   }
 
   return (
-    <aside className={cn("flex h-full flex-col gap-1 border-r border-lin bg-craie px-3 py-4", className)} aria-label="Navigation principale">
+    <aside className={cn("flex h-full flex-col gap-1 border-r border-lin bg-craie px-3 pt-4 pb-20", className)} aria-label="Navigation principale">
       <Link href="/aujourdhui" className="mb-3 flex items-center gap-2.5 px-2 font-display text-[22px] font-semibold text-foret">
         <Image src="/gleba-logo.png" alt="" width={120} height={80} className="h-7 w-auto rounded-md" priority />
         Gleba
