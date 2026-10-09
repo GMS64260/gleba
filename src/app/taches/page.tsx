@@ -11,8 +11,6 @@ import { useSearchParams } from "next/navigation"
 import { Suspense } from "react"
 import {
   ArrowLeft,
-  CheckCircle2,
-  Circle,
   Sprout,
   Leaf,
   Package,
@@ -36,6 +34,8 @@ import { useToast } from "@/hooks/use-toast"
 import { format, startOfWeek, endOfWeek, addWeeks } from "date-fns"
 import { fr } from "date-fns/locale"
 import { libelleUniteQuantite, type UniteQuantite } from "@/lib/recolte/projection"
+import { libelleIrrigationInutile } from "@/lib/irrigation-meteo-decision"
+import { LigneArrosage, LigneTache } from "@/components/potager/LigneTache"
 
 interface TacheItem {
   id: number
@@ -63,6 +63,11 @@ interface IrrigationItem {
   datePrevue: string
   fait: boolean
   couleur: string | null
+  retardJours?: number
+  pluiePrevue?: number | null
+  pluieRecente?: number | null
+  probablementInutile?: boolean
+  raisonInutile?: "pluie-recente" | "pluie-prevue" | null
 }
 
 interface TachesData {
@@ -474,73 +479,24 @@ function TachesContent() {
         {items.length === 0 ? (
           <p className="text-sm text-muted-foreground py-2">{emptyText}</p>
         ) : (
-          <div className="space-y-2">
+          // P4 « une liste est un registre » (2026-10-09) : liseré d'état,
+          // verbe en pastille, une action et le report en geste secondaire ;
+          // plus de fond rouge ni de badge destructif.
+          <div className="-mx-2">
             {items.map(item => (
-              <div key={item.id} className="flex items-center gap-1">
-              <button
-                onClick={() => toggleTache(item.id, type, item.fait, item.especeId, item.especeNom ?? item.especeId, item.unite)}
-                className={`flex-1 min-w-0 flex items-center gap-3 p-3 rounded-lg border transition-all ${
-                  item.fait
-                    ? "bg-green-50 border-green-200 opacity-60"
-                    : "bg-white border-slate-200 hover:border-slate-300 hover:shadow-sm"
-                }`}
-              >
-                {item.fait ? (
-                  <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0" />
-                ) : (
-                  <Circle className="h-5 w-5 text-slate-300 flex-shrink-0" />
-                )}
-                <div className="flex items-center gap-2 flex-1 min-w-0">
-                  {item.couleur && (
-                    <div
-                      className="w-3 h-3 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: item.couleur }}
-                    />
-                  )}
-                  <span className={`font-medium truncate ${item.fait ? "line-through" : ""}`}>
-                    {item.especeNom ?? item.especeId}
-                  </span>
-                  {item.varieteId && (
-                    <span className="text-sm text-muted-foreground truncate">
-                      {item.varieteNom ?? item.varieteId}
-                    </span>
-                  )}
-                </div>
-                {/* QA cmsjiedps — la page ne montrait ni le retard ni la date
-                    prévue, donc impossible d'identifier les tâches en retard
-                    remontées par le KPI du dashboard. On affiche la date prévue
-                    et un badge de retard rouge le cas échéant. */}
-                {!item.fait && (item.retardJours ?? 0) > 0 && (
-                  <Badge variant="destructive" className="flex-shrink-0">
-                    {(item.retardJours ?? 0) >= 7
-                      ? `${Math.floor((item.retardJours ?? 0) / 7)} sem. de retard`
-                      : `${item.retardJours} j de retard`}
-                  </Badge>
-                )}
-                {item.date && (
-                  <span className="text-xs text-muted-foreground flex-shrink-0 tabular-nums">
-                    {new Date(item.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" })}
-                  </span>
-                )}
-                {item.plancheId && (
-                  <Badge variant="outline" className="flex-shrink-0">
-                    {item.plancheId}
-                  </Badge>
-                )}
-              </button>
-              {!item.fait && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-9 px-2 flex-shrink-0 text-muted-foreground"
-                  aria-label="Reporter cette échéance"
-                  title="Reporter cette échéance"
-                  onClick={() => ouvrirReport(item, type)}
-                >
-                  <CalendarClock className="h-4 w-4" />
-                </Button>
-              )}
-              </div>
+              <LigneTache
+                key={item.id}
+                type={type}
+                especeNom={item.especeNom ?? item.especeId}
+                varieteNom={item.varieteId ? item.varieteNom ?? item.varieteId : null}
+                plancheNom={item.plancheId}
+                couleur={item.couleur}
+                date={item.date}
+                fait={item.fait}
+                retardJours={item.retardJours}
+                onAction={() => toggleTache(item.id, type, item.fait, item.especeId, item.especeNom ?? item.especeId, item.unite)}
+                onReporter={() => ouvrirReport(item, type)}
+              />
             ))}
           </div>
         )}
@@ -718,15 +674,25 @@ function TachesContent() {
                             </Badge>
                           )}
                         </div>
-                        {groupe.items.map(item => {
-                          const datePrevue = new Date(item.datePrevue)
-                          const isToday = datePrevue.toDateString() === new Date().toDateString()
-                          const isPast = datePrevue < new Date() && !isToday
-
-                          return (
-                            <button
+                        <div className="rounded-lg border border-lin-doux bg-craie">
+                          {groupe.items.map(item => (
+                            <LigneArrosage
                               key={item.id}
-                              onClick={() => {
+                              titre={item.plancheId || "Sans planche"}
+                              datePrevue={item.datePrevue}
+                              fait={item.fait}
+                              retardJours={item.retardJours}
+                              probablementInutile={item.probablementInutile}
+                              noteMeteo={
+                                item.probablementInutile
+                                  ? libelleIrrigationInutile({
+                                      raisonInutile: item.raisonInutile ?? null,
+                                      pluiePrevue: item.pluiePrevue ?? null,
+                                      pluieRecente: item.pluieRecente ?? null,
+                                    })
+                                  : null
+                              }
+                              onAction={() => {
                                 setActionValue("")
                                 setPendingAction({
                                   kind: "irrigation",
@@ -734,26 +700,9 @@ function TachesContent() {
                                   label: `${groupe.especeNom ?? groupe.especeId} · ${item.plancheId || "Sans planche"}`,
                                 })
                               }}
-                              className={`w-full flex items-center gap-3 p-2.5 pl-5 rounded-lg border bg-white transition-all ${
-                                isPast ? 'border-red-300 bg-red-50' : 'border-slate-200 hover:border-cyan-300 hover:shadow-sm'
-                              }`}
-                            >
-                              <Droplets className={`h-4 w-4 flex-shrink-0 ${
-                                isPast ? 'text-red-600' : isToday ? 'text-cyan-600' : 'text-blue-500'
-                              }`} />
-                              <div className="flex items-center gap-2 flex-1 min-w-0">
-                                <span className="text-sm text-muted-foreground truncate">
-                                  {item.plancheId || 'Sans planche'}
-                                </span>
-                              </div>
-                              <span className={`text-sm ${
-                                isPast ? 'text-red-600 font-medium' : isToday ? 'text-cyan-600' : 'text-blue-500'
-                              }`}>
-                                {isToday ? "Aujourd'hui" : format(datePrevue, "EEE d", { locale: fr })}
-                              </span>
-                            </button>
-                          )
-                        })}
+                            />
+                          ))}
+                        </div>
                       </div>
                     ))}
                   </div>

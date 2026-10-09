@@ -42,6 +42,8 @@ import { useToast } from "@/hooks/use-toast"
 import { VergerCalendarView } from "./VergerCalendarView"
 import { TreeCareGantt, type EspeceArbreGantt } from "./TreeCareGantt"
 import { kpiCardClass, kpiSubtleClass } from "@/lib/kpi-theme"
+import { LigneRegistre } from "@/components/accueil/LigneRegistre"
+import { PastilleEtat, type EtatRegistre } from "@/components/accueil/PastilleEtat"
 import { libelleOperationArbre } from "@/lib/verger/operation-label"
 import {
   debutDeJour,
@@ -135,6 +137,19 @@ interface CalendrierTabProps {
 /** Au-delà, on renvoie vers l'onglet Opérations plutôt que de dérouler 80 lignes. */
 const MAX_ARBRES_DEPLIES = 25
 
+/** État de registre d'un lot selon sa place dans la saison. */
+const ETAT_LOT: Record<LotCardProps["variante"], { etat: EtatRegistre; libelle: string }> = {
+  a_faire: { etat: "attention", libelle: "À faire" },
+  a_venir: { etat: "neutre", libelle: "Prévu" },
+  depassee: { etat: "neutre", libelle: "Hors saison" },
+}
+
+const CLASSES_SOLDER =
+  "inline-flex min-h-11 items-center gap-1 rounded-lg px-3 text-sm font-medium text-ardoise transition-colors duration-fast hover:bg-lin-doux hover:text-encre focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sauge disabled:opacity-50"
+
+const CLASSES_FAIT_ARBRE =
+  "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-sauge transition-colors duration-fast hover:bg-sauge-doux focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sauge disabled:opacity-50"
+
 interface LotCardProps {
   lot: LotOperations
   variante: "a_faire" | "a_venir" | "depassee"
@@ -161,93 +176,83 @@ function LotCard({
 }: LotCardProps) {
   const nb = lot.operations.length
   const occupe = enCours !== null
-  const fond =
-    variante === "depassee"
-      ? "bg-amber-50 border-amber-100"
-      : variante === "a_faire"
-        ? "bg-lime-50 border-lime-100"
-        : "bg-slate-50 border-slate-100"
+  // P4 « une liste est un registre » (2026-10-09) : le lot est une ligne de
+  // registre (liseré, verbe, une action « Fait sur les N »), la liste des
+  // arbres se déplie sous la ligne. Plus de fond ambre ou citron.
+  const { etat, libelle } = ETAT_LOT[variante]
 
   return (
-    <div className={`rounded-lg border ${fond}`}>
-      <div className="flex flex-wrap items-center justify-between gap-2 p-3">
-        <button
-          type="button"
-          onClick={onToggle}
-          className="flex min-w-0 flex-1 items-start gap-2 text-left"
-          aria-expanded={deplie}
-        >
-          {deplie ? (
-            <ChevronDown className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-          ) : (
-            <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-          )}
-          <span className="min-w-0">
-            <span className="block font-medium">{lot.libelle}</span>
-            <span className="block text-sm text-muted-foreground">
-              {libelleOperationArbre(lot.type)} · {nb} {nb > 1 ? "arbres" : "arbre"}
-              {lot.fenetre ? ` · fenêtre ${lot.fenetre}` : ""}
-              {!lot.fenetre && lot.echeance
-                ? ` · prévu le ${lot.echeance.toLocaleDateString("fr-FR")}`
-                : ""}
-            </span>
-          </span>
-        </button>
-        <div className="flex shrink-0 items-center gap-2">
-          {variante === "depassee" ? (
-            <Button
-              size="sm"
-              variant="outline"
+    <div className="rounded-lg border border-lin-doux bg-craie">
+      <LigneRegistre
+        etat={etat}
+        titre={
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={deplie}
+            className="flex min-w-0 max-w-full items-center gap-1.5 text-left hover:underline"
+          >
+            {deplie ? (
+              <ChevronDown className="h-4 w-4 shrink-0 text-ardoise" aria-hidden />
+            ) : (
+              <ChevronRight className="h-4 w-4 shrink-0 text-ardoise" aria-hidden />
+            )}
+            <span className="truncate">{lot.libelle}</span>
+          </button>
+        }
+        meta={[
+          libelleOperationArbre(lot.type),
+          `${nb} ${nb > 1 ? "arbres" : "arbre"}`,
+          lot.fenetre ? `fenêtre ${lot.fenetre}` : "",
+          !lot.fenetre && lot.echeance ? `prévu le ${lot.echeance.toLocaleDateString("fr-FR")}` : "",
+        ]}
+        pastille={<PastilleEtat etat={etat} libelle={libelle} className="hidden sm:inline-flex" />}
+        secondaire={
+          variante === "depassee" ? (
+            <button
+              type="button"
               disabled={occupe}
-              className="text-amber-800 border-amber-300 hover:bg-amber-100"
+              className={CLASSES_SOLDER}
               onClick={() => onTraiterLot(lot, "solder")}
             >
-              <Archive className="h-4 w-4 mr-1" />
+              <Archive className="h-4 w-4" aria-hidden />
               {enCours === `${lot.cle}:solder` ? "…" : "Solder"}
-            </Button>
-          ) : null}
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={occupe}
-            className="text-green-700 border-green-200 hover:bg-green-50"
-            onClick={() => onTraiterLot(lot, "fait")}
-          >
-            <Check className="h-4 w-4 mr-1" />
-            {enCours === `${lot.cle}:fait`
-              ? "…"
-              : nb > 1
-                ? `Fait sur les ${nb}`
-                : "Fait"}
-          </Button>
-        </div>
-      </div>
+            </button>
+          ) : undefined
+        }
+        action={{
+          libelle: enCours === `${lot.cle}:fait` ? "…" : nb > 1 ? `Fait sur les ${nb}` : "Fait",
+          onClick: () => onTraiterLot(lot, "fait"),
+          disabled: occupe,
+        }}
+      />
 
       {deplie && (
-        <div className="border-t bg-white/60 px-3 py-2">
-          <ul className="divide-y">
+        <div className="border-t border-lin-doux px-3 py-1">
+          <ul className="divide-y divide-lin-doux">
             {lot.operations.slice(0, MAX_ARBRES_DEPLIES).map((operation) => (
-              <li key={operation.id} className="flex items-center justify-between gap-2 py-1.5">
+              <li key={operation.id} className="flex items-center justify-between gap-2 py-1">
                 <Link
                   href={`/verger/${operation.arbre.id}`}
                   className="min-w-0 truncate text-sm hover:underline"
                 >
                   {operation.arbre.nom}
                 </Link>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 shrink-0 px-2 text-green-700 hover:bg-green-50"
+                <button
+                  type="button"
+                  className={CLASSES_FAIT_ARBRE}
                   disabled={occupe}
+                  aria-label={`Fait pour ${operation.arbre.nom}`}
+                  title="Fait pour cet arbre"
                   onClick={() => onMarquerFait(operation)}
                 >
-                  <Check className="h-4 w-4" />
-                </Button>
+                  <Check className="h-4 w-4" aria-hidden />
+                </button>
               </li>
             ))}
           </ul>
           {nb > MAX_ARBRES_DEPLIES && (
-            <p className="pt-2 text-xs text-muted-foreground">
+            <p className="py-2 text-xs text-muted-foreground">
               et {nb - MAX_ARBRES_DEPLIES} autres —{" "}
               <Link href="/verger?tab=operations" className="underline">
                 voir toutes les opérations
@@ -1045,28 +1050,26 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-              {arbresAttention.map((arbre) => (
-                <Link key={arbre.id} href={`/verger/${arbre.id}`}>
-                  <div className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg border border-yellow-100 hover:bg-yellow-100 transition-colors">
-                    <div>
-                      <p className="font-medium">{arbre.nom}</p>
-                      <p className="text-sm text-muted-foreground capitalize">
-                        {arbre.type.replace("_", " ")}
-                      </p>
-                    </div>
-                    <span
-                      className={`px-2 py-0.5 rounded-full text-xs ${
-                        arbre.etat === "mauvais"
-                          ? "bg-red-100 text-red-700"
-                          : "bg-yellow-100 text-yellow-700"
-                      }`}
-                    >
-                      {arbre.etat}
-                    </span>
-                  </div>
-                </Link>
-              ))}
+            <div className="rounded-lg border border-lin-doux bg-craie">
+              {arbresAttention.map((arbre) => {
+                const mauvais = arbre.etat === "mauvais"
+                return (
+                  <LigneRegistre
+                    key={arbre.id}
+                    etat={mauvais ? "critique" : "attention"}
+                    titre={arbre.nom}
+                    meta={[arbre.type.replace("_", " ")]}
+                    pastille={
+                      <PastilleEtat
+                        etat={mauvais ? "critique" : "attention"}
+                        libelle={mauvais ? "Mauvais état" : `À surveiller · ${arbre.etat}`}
+                        className="hidden sm:inline-flex"
+                      />
+                    }
+                    action={{ libelle: "Voir", href: `/verger/${arbre.id}` }}
+                  />
+                )
+              })}
             </div>
           </CardContent>
         </Card>

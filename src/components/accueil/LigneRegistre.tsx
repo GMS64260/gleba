@@ -9,8 +9,9 @@ import { type EtatRegistre } from "./PastilleEtat"
  * métadonnées, pastille d'état et une seule action. Remplace, dans l'accueil
  * v2, les lignes à fond rouge et les badges « Critique ».
  *
- * Palier 1 (2026-10-08) : posée, utilisée par personne. Cible tactile de
- * l'action : 44 px minimum.
+ * Palier 1 (2026-10-08) : posée. P4 (2026-10-09) : consommée par l'accueil,
+ * la page Tâches et l'onglet Calendrier. Cible tactile de l'action : 44 px
+ * minimum.
  */
 export interface ActionLigne {
   libelle: string
@@ -28,6 +29,11 @@ export interface LigneRegistreProps extends Omit<React.HTMLAttributes<HTMLDivEle
   meta?: React.ReactNode[]
   /** Pastille d'état ou tout autre élément à droite du texte. */
   pastille?: React.ReactNode
+  /**
+   * Geste secondaire discret entre la pastille et l'action (icône de 44 px,
+   * « Reporter » par exemple). La ligne garde une seule action principale.
+   */
+  secondaire?: React.ReactNode
   action?: ActionLigne
 }
 
@@ -57,7 +63,7 @@ function ActionRegistre({ action }: { action: ActionLigne }) {
   )
 }
 
-export function LigneRegistre({ etat, titre, meta, pastille, action, className, ...props }: LigneRegistreProps) {
+export function LigneRegistre({ etat, titre, meta, pastille, secondaire, action, className, ...props }: LigneRegistreProps) {
   const metas = (meta ?? []).filter((m) => m !== null && m !== undefined && m !== "")
   return (
     <div
@@ -82,9 +88,10 @@ export function LigneRegistre({ etat, titre, meta, pastille, action, className, 
           </div>
         )}
       </div>
-      {(pastille || action) && (
+      {(pastille || secondaire || action) && (
         <div className="flex items-center gap-2">
           {pastille}
+          {secondaire}
           {action && <ActionRegistre action={action} />}
         </div>
       )}

@@ -7,8 +7,6 @@
 
 import * as React from "react"
 import {
-  CheckCircle2,
-  Circle,
   Sprout,
   Leaf,
   Package,
@@ -37,6 +35,8 @@ import {
 import { Info } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { libelleIrrigationInutile } from "@/lib/irrigation-meteo-decision"
+import { LigneArrosage, LigneTache } from "@/components/potager/LigneTache"
+import { PastilleEtat } from "@/components/accueil/PastilleEtat"
 import { BulkActions } from "@/components/calendrier/BulkActions"
 import { CalendarView } from "@/components/dashboard/CalendarView"
 import { ItpCalendarView } from "@/components/dashboard/ItpCalendarView"
@@ -836,65 +836,24 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                   {taches.irrigation.length === 0 ? (
                     <p className="text-sm text-muted-foreground py-2">Tout est arrosé !</p>
                   ) : (
-                    <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                      {taches.irrigation.map((item) => {
-                        const isRetard = item.retardJours > 0
-                        const inutile = item.probablementInutile && !isRetard
-                        return (
-                          <button
-                            key={item.id}
-                            onClick={() => marquerIrrigation(item.id)}
-                            className={`w-full flex flex-col gap-1 p-2 rounded-lg border transition-all text-left ${
-                              inutile
-                                ? "bg-blue-50/60 border-blue-200/60 opacity-70 hover:opacity-90 hover:shadow-sm"
-                                : isRetard
-                                  ? "bg-red-50 border-red-200 hover:border-red-300 hover:shadow-sm"
-                                  : "bg-white border-slate-200 hover:border-cyan-300 hover:shadow-sm"
-                            }`}
-                          >
-                            <div className="flex items-center gap-3">
-                              {inutile ? (
-                                <CloudRain className="h-4 w-4 text-blue-400 flex-shrink-0" />
-                              ) : isRetard ? (
-                                <AlertTriangle className="h-4 w-4 text-red-500 flex-shrink-0" />
-                              ) : (
-                                <Droplets className="h-4 w-4 text-cyan-600 flex-shrink-0" />
-                              )}
-                              <div className="flex items-center gap-2 flex-1 min-w-0">
-                                {item.couleur && (
-                                  <div
-                                    className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                                    style={{ backgroundColor: item.couleur }}
-                                  />
-                                )}
-                                <span className={`font-medium truncate text-sm ${inutile ? "line-through text-muted-foreground" : ""}`}>
-                                  {item.especeNom ?? item.especeId}
-                                  {item.cultureCount && item.cultureCount > 1
-                                    ? ` · ${item.cultureCount} cultures`
-                                    : ""}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-1.5 flex-shrink-0">
-                                {isRetard && (
-                                  <span className="text-[10px] font-medium text-red-600 bg-red-100 px-1.5 py-0.5 rounded-full whitespace-nowrap">
-                                    {retardLabel(item.retardJours)}
-                                  </span>
-                                )}
-                                {item.plancheId && (
-                                  <Badge variant="outline" className={`text-xs ${inutile ? "opacity-60" : ""}`}>
-                                    {item.plancheId}
-                                  </Badge>
-                                )}
-                              </div>
-                            </div>
-                            {inutile && (
-                              <p className="text-[11px] text-blue-500 pl-7">
-                                {libelleIrrigationInutile(item)}
-                              </p>
-                            )}
-                          </button>
-                        )
-                      })}
+                    <div className="max-h-[300px] overflow-y-auto rounded-lg border border-lin-doux bg-craie">
+                      {taches.irrigation.map((item) => (
+                        <LigneArrosage
+                          key={item.id}
+                          titre={item.plancheId || (item.especeNom ?? item.especeId)}
+                          couleur={item.couleur}
+                          details={[
+                            item.plancheId ? item.especeNom ?? item.especeId : null,
+                            item.cultureCount && item.cultureCount > 1 ? `${item.cultureCount} cultures` : null,
+                          ]}
+                          datePrevue={item.datePrevue}
+                          fait={item.fait}
+                          retardJours={item.retardJours}
+                          probablementInutile={item.probablementInutile}
+                          noteMeteo={item.probablementInutile ? libelleIrrigationInutile(item) : null}
+                          onAction={() => marquerIrrigation(item.id)}
+                        />
+                      ))}
                     </div>
                   )}
                 </CardContent>
@@ -959,14 +918,6 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
   )
 }
 
-function retardLabel(jours: number): string {
-  if (jours <= 0) return ''
-  const semaines = Math.floor(jours / 7)
-  if (semaines < 1) return `${jours}j de retard`
-  if (semaines === 1) return '1 sem. de retard'
-  return `${semaines} sem. de retard`
-}
-
 // Composant réutilisable pour une section de tâches
 function TaskSection({
   title,
@@ -1008,11 +959,7 @@ function TaskSection({
           <Icon className={`h-5 w-5 ${iconColor}`} />
           {title}
           <div className="flex items-center gap-1.5 ml-auto">
-            {enRetardCount > 0 && (
-              <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
-                {enRetardCount} en retard
-              </Badge>
-            )}
+            {enRetardCount > 0 && <PastilleEtat etat="critique" libelle={`${enRetardCount} en retard`} />}
             {items.length > 0 && (
               <Badge variant="secondary" title="Tâches faites / total">
                 {faitCount}/{items.length}
@@ -1030,63 +977,23 @@ function TaskSection({
         {items.length === 0 ? (
           <p className="text-sm text-muted-foreground py-2">{emptyText}</p>
         ) : (
-          <div className="space-y-2 max-h-[300px] overflow-y-auto">
-            {items.map((item) => {
-              const isRetard = item.retardJours > 0 && !item.fait
-              return (
-                <button
-                  key={`${item.id}-${item.retardJours}`}
-                  onClick={() => onToggle(item.id, type, item.fait, item.especeId, undefined, item.unite)}
-                  className={`w-full p-2 rounded-lg border transition-all text-left ${
-                    item.fait
-                      ? "bg-green-50 border-green-200 opacity-60"
-                      : isRetard
-                        ? "bg-red-50 border-red-200 hover:border-red-300 hover:shadow-sm"
-                        : "bg-white border-slate-200 hover:border-slate-300 hover:shadow-sm"
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    {item.fait ? (
-                      <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0" />
-                    ) : isRetard ? (
-                      <AlertTriangle className="h-4 w-4 text-red-500 flex-shrink-0" />
-                    ) : (
-                      <Circle className="h-4 w-4 text-slate-300 flex-shrink-0" />
-                    )}
-                    <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                      {item.couleur && (
-                        <div
-                          className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                          style={{ backgroundColor: item.couleur }}
-                        />
-                      )}
-                      <span className={`font-medium truncate text-sm ${item.fait ? "line-through" : ""}`}>
-                        {item.especeNom ?? item.especeId}
-                      </span>
-                      {item.varieteId && (
-                        <span className="text-xs text-muted-foreground truncate hidden sm:inline">{item.varieteNom ?? item.varieteId}</span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      {isRetard && (
-                        <span className="text-[10px] font-medium text-red-600 bg-red-100 px-1.5 py-0.5 rounded-full whitespace-nowrap">
-                          {retardLabel(item.retardJours)}
-                        </span>
-                      )}
-                      {item.plancheId && (
-                        <Badge variant="outline" className="text-[10px] sm:text-xs max-w-[80px] sm:max-w-none truncate">
-                          {item.plancheId}
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                  {/* Variété visible sur mobile sous le nom */}
-                  {item.varieteId && (
-                    <p className="text-[11px] text-muted-foreground truncate pl-6 mt-0.5 sm:hidden">{item.varieteNom ?? item.varieteId}</p>
-                  )}
-                </button>
-              )
-            })}
+          // P4 « une liste est un registre » (2026-10-09) : liseré d'état,
+          // verbe en pastille, une action ; plus de fond rouge.
+          <div className="max-h-[300px] overflow-y-auto rounded-lg border border-lin-doux bg-craie">
+            {items.map((item) => (
+              <LigneTache
+                key={`${item.id}-${item.retardJours}`}
+                type={type}
+                especeNom={item.especeNom ?? item.especeId}
+                varieteNom={item.varieteId ? item.varieteNom ?? item.varieteId : null}
+                plancheNom={item.plancheId}
+                couleur={item.couleur}
+                date={item.date}
+                fait={item.fait}
+                retardJours={item.retardJours}
+                onAction={() => onToggle(item.id, type, item.fait, item.especeId, undefined, item.unite)}
+              />
+            ))}
           </div>
         )}
       </CardContent>

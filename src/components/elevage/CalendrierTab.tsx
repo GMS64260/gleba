@@ -28,6 +28,11 @@ import { useToast } from "@/hooks/use-toast"
 import { useFiliereSelection, capacitesSelection } from "@/lib/elevage/filiere-context"
 import { formatRemisesEnVente } from "@/lib/elevage/remise-vente-label"
 import { SoinDetailDialog } from "@/components/elevage/SoinDetailDialog"
+import { LigneRegistre } from "@/components/accueil/LigneRegistre"
+import { PastilleEtat } from "@/components/accueil/PastilleEtat"
+import { etatEcheance } from "@/lib/accueil/elevage"
+import type { EcheanceElevage } from "@/lib/elevage/agenda.server"
+import { libelleDatePrevue, libelleRetard } from "@/lib/accueil/etat-tache"
 
 // ============================================================
 // Types
@@ -101,7 +106,7 @@ interface TachesData {
 
 type AgendaEcheance = {
   id: string
-  kind: string
+  kind: EcheanceElevage["kind"]
   date: string | null
   joursRestants: number | null
   titre: string
@@ -154,6 +159,22 @@ function formatDateRange(start: Date, end: Date): string {
 }
 
 // QA caprin cms1vbkl4 — nom + boucle : reconnaissance rapide en bâtiment.
+/** Verbe de la pastille d'une échéance d'agenda. */
+function libelleEcheance(e: Pick<AgendaEcheance, 'joursRestants' | 'gravite'>): string {
+  if (e.joursRestants === null) return e.gravite === 'urgent' ? 'Urgent' : 'À prévoir'
+  if (e.joursRestants < 0) return 'En retard'
+  if (e.joursRestants === 0) return "Aujourd'hui"
+  return `Sous ${e.joursRestants} j`
+}
+
+/** Jours entiers écoulés depuis la date prévue (0 si à venir ou aujourd'hui). */
+function joursDeRetard(date: string): number {
+  const prevue = new Date(date)
+  if (Number.isNaN(prevue.getTime())) return 0
+  const debutJour = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+  return Math.max(0, Math.round((debutJour(new Date()) - debutJour(prevue)) / 86_400_000))
+}
+
 function libelleCibleSoin(soin: Pick<SoinTask, 'animal' | 'lot'>): string {
   if (soin.lot?.nom) return soin.lot.nom
   const a = soin.animal
@@ -410,31 +431,28 @@ export function CalendrierTab() {
               Prochaines échéances
               <span className="text-xs font-normal text-slate-500">(21 jours)</span>
               {echeances.filter((e) => e.gravite === "urgent").length > 0 && (
-                <Badge className="bg-red-100 text-red-700 border-red-200">
-                  {echeances.filter((e) => e.gravite === "urgent").length} urgent(s)
-                </Badge>
+                <PastilleEtat etat="critique" libelle={`${echeances.filter((e) => e.gravite === "urgent").length} urgent(s)`} />
               )}
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <ul className="space-y-1.5">
-              {echeances.slice(0, 15).map((e) => (
-                <li key={e.id} className="flex items-center gap-2 text-sm">
-                  <span
-                    className={`inline-block h-2 w-2 rounded-full shrink-0 ${
-                      e.gravite === "urgent" ? "bg-red-500" : e.gravite === "attention" ? "bg-amber-500" : "bg-slate-300"
-                    }`}
+            {/* P4 « une liste est un registre » (2026-10-09) : l'état d'une
+                échéance se lit en verbe (« En retard », « Aujourd'hui »,
+                « Sous 5 j »), plus seulement par la couleur d'un point. */}
+            <div className="rounded-lg border border-lin-doux bg-craie">
+              {echeances.slice(0, 15).map((e) => {
+                const etat = etatEcheance(e)
+                return (
+                  <LigneRegistre
+                    key={e.id}
+                    etat={etat}
+                    titre={e.titre}
+                    meta={[e.detail ?? "", e.date ? new Date(e.date).toLocaleDateString("fr-FR") : ""]}
+                    pastille={<PastilleEtat etat={etat} libelle={libelleEcheance(e)} />}
                   />
-                  <span className="font-medium text-slate-700">{e.titre}</span>
-                  {e.detail && <span className="text-xs text-slate-500">— {e.detail}</span>}
-                  {e.date && (
-                    <span className="ml-auto text-xs text-slate-400 shrink-0">
-                      {new Date(e.date).toLocaleDateString("fr-FR")}
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
+                )
+              })}
+            </div>
             {echeances.length > 15 && (
               <p className="text-xs text-slate-400 mt-2">+{echeances.length - 15} autre(s) échéance(s)…</p>
             )}
@@ -727,37 +745,26 @@ export function CalendrierTab() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                  {data.soins.filter(s => !s.fait).map(soin => (
-                    <button
-                      key={soin.id}
-                      onClick={() => toggleSoin(soin.id, soin.fait)}
-                      className="w-full flex items-center gap-3 p-3 rounded-lg border bg-white border-blue-200 hover:border-blue-400 hover:shadow-sm transition-all text-left"
-                    >
-                      <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
-                        <Stethoscope className="h-4 w-4 text-blue-600" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className="text-xs">
-                            {SOIN_TYPE_LABELS[soin.type] || soin.type}
-                          </Badge>
-                          <span className="font-medium text-sm truncate">
-                            {libelleCibleSoin(soin)}
-                          </span>
-                        </div>
-                        {(soin.produit || soin.description) && (
-                          <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                            {soin.produit || soin.description}
-                          </p>
-                        )}
-                      </div>
-                      <span className="text-xs text-muted-foreground flex-shrink-0">
-                        {new Date(soin.date).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' })}
-                      </span>
-                      <Check className="h-4 w-4 text-slate-300 flex-shrink-0" />
-                    </button>
-                  ))}
+                <div className="max-h-[300px] overflow-y-auto rounded-lg border border-lin-doux bg-craie">
+                  {data.soins.filter(s => !s.fait).map(soin => {
+                    const retard = joursDeRetard(soin.date)
+                    const etat = retard >= 7 ? "critique" : retard > 0 ? "attention" : "neutre"
+                    return (
+                      <LigneRegistre
+                        key={soin.id}
+                        etat={etat}
+                        titre={libelleCibleSoin(soin)}
+                        meta={[
+                          SOIN_TYPE_LABELS[soin.type] || soin.type,
+                          soin.produit || soin.description || "",
+                          libelleDatePrevue(soin.date),
+                          libelleRetard(retard),
+                        ]}
+                        pastille={<PastilleEtat etat={etat} libelle={retard > 0 ? "En retard" : "À soigner"} className="hidden sm:inline-flex" />}
+                        action={{ libelle: "Fait", onClick: () => toggleSoin(soin.id, soin.fait) }}
+                      />
+                    )
+                  })}
                 </div>
               </CardContent>
             </Card>
