@@ -50,7 +50,9 @@ export function PlanVignette({ plan, className }: PlanVignetteProps) {
   return (
     <svg
       viewBox={`${cadre.x} ${cadre.y} ${cadre.largeur} ${cadre.hauteur}`}
-      preserveAspectRatio="xMidYMid slice"
+      // `meet` : tout le cadre reste visible, la tuile (fond herbe) comble les
+      // marges ; `slice` rognait les planches d'une ferme plus haute que large.
+      preserveAspectRatio="xMidYMid meet"
       className={cn("accueil-vignette", className)}
       aria-hidden="true"
       focusable="false"
