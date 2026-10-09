@@ -82,6 +82,32 @@ describe("TuileAujourdhui", () => {
     expect(html).not.toContain("Ligne 8")
     expect(html).toContain("Voir les 2 autres")
   })
+
+  it("une ligne qui porte sa mutation a un bouton, les autres un lien", () => {
+    const html = renderToStaticMarkup(
+      createElement(TuileAujourdhui, {
+        elements: [
+          element({
+            id: "semis:1",
+            etat: "attention",
+            titre: "Semer phacélie B4",
+            retardJours: 2,
+            action: {
+              libelle: "Fait",
+              href: "/taches",
+              mutation: { url: "/api/cultures/1", corps: { semisFait: true }, inverse: { semisFait: false }, titre: "Semis noté" },
+            },
+          }),
+          element({ id: "recolte:2", etat: "info", titre: "Récolter radis B1", action: { libelle: "Récolte", href: "/maraichage/recoltes" } }),
+        ],
+        sourcesEnErreur: [],
+        chargement: false,
+        erreur: null,
+      }),
+    )
+    expect(html).toMatch(/<button[^>]*>Fait<\/button>/)
+    expect(html).toMatch(/<a[^>]*href="\/maraichage\/recoltes"[^>]*>Récolte<\/a>/)
+  })
 })
 
 describe("TuilePlan et PlanVignette", () => {

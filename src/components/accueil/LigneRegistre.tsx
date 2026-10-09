@@ -68,7 +68,7 @@ export function LigneRegistre({ etat, titre, meta, pastille, action, className, 
       )}
       {...props}
     >
-      <i aria-hidden className={cn("block h-9 w-1 rounded-sm", LISERES[etat])} />
+      <i aria-hidden className={cn("block h-9 w-1 rounded-sm transition-colors duration-fast", LISERES[etat])} />
       <div className="min-w-0">
         <div className="font-semibold leading-tight">{titre}</div>
         {metas.length > 0 && (

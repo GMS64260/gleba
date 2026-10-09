@@ -6,6 +6,7 @@
 
 import { messageErreurReponse } from "@/lib/api-erreur"
 
+import type { MutationLigne } from "./mutations"
 import { CLE_PREFERENCE_ACCUEIL, type VersionAccueil } from "./preference"
 
 export async function enregistrerVersionAccueil(version: VersionAccueil): Promise<{ ok: boolean; error?: string }> {
@@ -20,4 +21,28 @@ export async function enregistrerVersionAccueil(version: VersionAccueil): Promis
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Erreur réseau" }
   }
+}
+
+async function patch(url: string, corps: Record<string, unknown>): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await fetch(url, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(corps),
+    })
+    if (!res.ok) return { ok: false, error: await messageErreurReponse(res) }
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Erreur réseau" }
+  }
+}
+
+/** Marque la ligne faite. */
+export function executerMutation(m: MutationLigne) {
+  return patch(m.url, m.corps)
+}
+
+/** Rejoue l'inverse exact (bouton « Annuler » du toast). */
+export function annulerMutation(m: MutationLigne) {
+  return patch(m.url, m.inverse)
 }

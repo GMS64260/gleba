@@ -12,8 +12,8 @@ import { cn } from "@/lib/utils"
  */
 export interface RepereProps extends Omit<React.HTMLAttributes<HTMLElement>, "children"> {
   libelle: string
-  /** Valeur déjà formatée (« 11 666 ») ; null ou undefined = pas encore de donnée. */
-  valeur?: string | number | null
+  /** Valeur déjà formatée (« 11 666 ») ou un nœud (compteur animé) ; null ou undefined = pas encore de donnée. */
+  valeur?: React.ReactNode | null
   unite?: string
   /** Tendance ou précision : « +334 kg », « 3 non démarrées ». */
   detail?: React.ReactNode

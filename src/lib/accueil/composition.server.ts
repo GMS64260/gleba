@@ -38,6 +38,7 @@ import {
 } from "./classement"
 import { echeanceDuJour, etatEcheance, hrefEcheance } from "./elevage"
 import { recolteDominante } from "./reperes"
+import { mutationEtapeCulture, mutationIrrigationFaite } from "./mutations"
 import type {
   AccueilAujourdhui,
   ElementAujourdhui,
@@ -253,7 +254,11 @@ export async function composerAujourdhui(
         etat: etatPourRetard(s.retardJours),
         titre: `Semer ${s.especeNom}${s.plancheId ? ` ${s.plancheId}` : ""}`,
         meta: [libelleRetard(s.retardJours), s.varieteNom ?? ""].filter(Boolean),
-        action: { libelle: "Ouvrir", href: "/taches" },
+        action: {
+          libelle: "Fait",
+          href: "/taches",
+          mutation: mutationEtapeCulture(s.id, "semis", [s.especeNom, s.plancheId].filter(Boolean).join(" · ")),
+        },
         retardJours: s.retardJours,
         plancheIds: s.plancheRefId ? [s.plancheRefId] : [],
       })
@@ -266,7 +271,11 @@ export async function composerAujourdhui(
         etat: etatPourRetard(p.retardJours),
         titre: `Planter ${p.especeNom}${p.plancheId ? ` ${p.plancheId}` : ""}`,
         meta: [libelleRetard(p.retardJours), p.varieteNom ?? ""].filter(Boolean),
-        action: { libelle: "Ouvrir", href: "/taches" },
+        action: {
+          libelle: "Fait",
+          href: "/taches",
+          mutation: mutationEtapeCulture(p.id, "plantation", [p.especeNom, p.plancheId].filter(Boolean).join(" · ")),
+        },
         retardJours: p.retardJours,
         plancheIds: p.plancheRefId ? [p.plancheRefId] : [],
       })
@@ -286,7 +295,11 @@ export async function composerAujourdhui(
         meta: [i.plancheId ? i.especeNom : "", i.retardJours > 0 ? `prévu il y a ${i.retardJours} j` : "prévu aujourd'hui"].filter(
           Boolean,
         ),
-        action: { libelle: "Noter", href: "/taches" },
+        action: {
+          libelle: "Noter",
+          href: "/taches",
+          mutation: mutationIrrigationFaite(i.id, [i.especeNom, i.plancheId].filter(Boolean).join(" · ")),
+        },
         retardJours: i.retardJours,
         plancheIds: i.plancheRefId ? [i.plancheRefId] : [],
       })

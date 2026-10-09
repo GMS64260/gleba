@@ -2,6 +2,7 @@ import * as React from "react"
 
 import { calculerCadre } from "@/lib/accueil/plan-vignette"
 import type { EtatPlanche, PlanVignetteDonnees } from "@/lib/accueil/types"
+import { cn } from "@/lib/utils"
 
 /**
  * Vignette SVG du plan de la ferme, calculée côté client à partir des
@@ -50,7 +51,7 @@ export function PlanVignette({ plan, className }: PlanVignetteProps) {
     <svg
       viewBox={`${cadre.x} ${cadre.y} ${cadre.largeur} ${cadre.hauteur}`}
       preserveAspectRatio="xMidYMid slice"
-      className={className}
+      className={cn("accueil-vignette", className)}
       aria-hidden="true"
       focusable="false"
     >

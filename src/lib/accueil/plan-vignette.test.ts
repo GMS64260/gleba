@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { calculerCadre, compterEtats } from "./plan-vignette"
+import { appliquerElementsAuPlan, calculerCadre, compterEtats } from "./plan-vignette"
 import type { PlanVignetteDonnees } from "./types"
 
 const vide: PlanVignetteDonnees = { planches: [], arbres: [], objets: [] }
@@ -57,5 +57,28 @@ describe("compterEtats", () => {
         ],
       }),
     ).toEqual({ arroser: 2, recolter: 1, enPlace: 1, libre: 1 })
+  })
+})
+
+describe("appliquerElementsAuPlan", () => {
+  const base = { nom: "x", posX: 0, posY: 0, largeur: 1, longueur: 1, rotation2D: 0 }
+  const plan = {
+    ...vide,
+    planches: [
+      { ...base, id: "a", etat: "arroser" as const },
+      { ...base, id: "b", etat: "recolter" as const },
+      { ...base, id: "c", etat: "libre" as const },
+    ],
+  }
+
+  it("une planche dont plus aucune ligne ne parle passe en place, les autres restent", () => {
+    const repeint = appliquerElementsAuPlan(plan, [{ plancheIds: ["b"] }])
+    expect(repeint.planches.map((p) => p.etat)).toEqual(["en-place", "recolter", "libre"])
+    expect(plan.planches[0].etat).toBe("arroser") // jamais modifié
+  })
+
+  it("avec les lignes d'origine, rien ne change", () => {
+    const repeint = appliquerElementsAuPlan(plan, [{ plancheIds: ["a"] }, { plancheIds: ["b"] }])
+    expect(repeint.planches.map((p) => p.etat)).toEqual(["arroser", "recolter", "libre"])
   })
 })
