@@ -163,3 +163,6 @@ et)
 # générée pesait 6,5 Mo dans chaque clone sans être référencée nulle part.
 /gleba-pro.pptx
 /Gemini_Generated_Image_*.png
+
+# Captures Playwright de référence (binaires, compte démo) : rejouables par scripts/qa/captures-accueil.mjs
+/audit/captures/
