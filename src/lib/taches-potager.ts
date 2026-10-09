@@ -345,6 +345,9 @@ export async function getTachesPotager(
       varieteId: c.varieteId,
       varieteNom: c.variete?.nom ?? c.varieteId,
       plancheId: c.planche?.nom || null,
+      // Identifiant technique de la planche (cuid) : `plancheId` ci-dessus porte
+      // le NOM pour compatibilité ; tout nouveau consommateur route sur celui-ci.
+      plancheRefId: c.plancheId ?? null,
       date: c.dateSemis?.toISOString() || '',
       fait: c.semisFait,
       couleur: c.espece?.couleur || null,
@@ -361,6 +364,7 @@ export async function getTachesPotager(
       varieteId: c.varieteId,
       varieteNom: c.variete?.nom ?? c.varieteId,
       plancheId: c.planche?.nom || null,
+      plancheRefId: c.plancheId ?? null,
       date: c.datePlantation?.toISOString() || '',
       fait: c.plantationFaite,
       couleur: c.espece?.couleur || null,
@@ -377,6 +381,7 @@ export async function getTachesPotager(
       varieteId: c.varieteId,
       varieteNom: c.variete?.nom ?? c.varieteId,
       plancheId: c.planche?.nom || null,
+      plancheRefId: c.plancheId ?? null,
       date: c.dateRecolte?.toISOString() || '',
       fait: c.recolteFaite,
       couleur: c.espece?.couleur || null,
@@ -439,6 +444,7 @@ export async function getTachesPotager(
       especeId: i.culture.especeId,
       especeNom: i.culture.espece?.nom ?? i.culture.especeId,
       plancheId: i.culture.planche?.nom || null,
+      plancheRefId: i.culture.plancheId ?? null,
       ilot: i.culture.planche?.ilot || null,
       datePrevue: i.datePrevue.toISOString(),
       fait: i.fait,
