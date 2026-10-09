@@ -46,7 +46,6 @@
     radial-gradient(ellipse 70% 50% at 50% 80%, rgba(16, 185, 129, 0.05) 0%, transparent 60%),
     radial-gradient(ellipse 50% 60% at 70% 60%, rgba(245, 245, 244, 0.4) 0%, transparent 50%);
   background-size: 200% 200%;
-  animation: aurora 25s ease-in-out infinite;
 }
 
 /* Aurora subtle — version atténuée pour les pages app */
@@ -57,7 +56,6 @@
     radial-gradient(ellipse 70% 50% at 50% 80%, rgba(16, 185, 129, 0.025) 0%, transparent 60%),
     radial-gradient(ellipse 50% 60% at 70% 60%, rgba(245, 245, 244, 0.2) 0%, transparent 50%);
   background-size: 200% 200%;
-  animation: aurora 35s ease-in-out infinite;
 }
 
 /* Dot grid pattern */
@@ -93,13 +91,11 @@
 .btn-gradient {
   background: linear-gradient(135deg, #059669, #0d9488, #059669, #10b981);
   background-size: 300% 300%;
-  animation: btn-shimmer 4s ease-in-out infinite;
 }
 
 .btn-gradient:hover {
   background: linear-gradient(135deg, #047857, #0f766e, #047857, #059669);
   background-size: 300% 300%;
-  animation: btn-shimmer 2s ease-in-out infinite;
 }
 
 /* Fade in up — entrées séquentielles */
@@ -165,8 +161,25 @@
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(6px); }
 }
-.animate-gentle-float {
-  animation: gentle-float 2.5s ease-in-out infinite;
+/* Les animations infinies (aurora, reflet de bouton, flottement) ne tournent
+   que si la personne n'a pas demandé moins de mouvement (charte, palier 1,
+   2026-10-08). Leur état final est identique avec ou sans animation. */
+@media (prefers-reduced-motion: no-preference) {
+  .aurora-bg {
+    animation: aurora 25s ease-in-out infinite;
+  }
+  .aurora-bg-subtle {
+    animation: aurora 35s ease-in-out infinite;
+  }
+  .btn-gradient {
+    animation: btn-shimmer 4s ease-in-out infinite;
+  }
+  .btn-gradient:hover {
+    animation: btn-shimmer 2s ease-in-out infinite;
+  }
+  .animate-gentle-float {
+    animation: gentle-float 2.5s ease-in-out infinite;
+  }
 }
 
 /* Stats counter — nombre avec tracking large */
@@ -204,6 +217,44 @@
     --chart-4: 173 58% 39%;
     --chart-5: 43 74% 66%;
     --radius: 0.75rem;
+
+    /* ---- Charte « carnet de ferme » (palier 1, 2026-10-08) ----------
+       Jetons sémantiques de la direction visuelle retenue, en hexadécimal.
+       Ils cohabitent avec les variables shadcn ci-dessus sans les modifier :
+       aucun écran existant ne les consomme avant l'accueil v2. Exposés par
+       tailwind.config.ts (bg-papier, text-encre, border-lin…). */
+    --papier: #F3F1EB;
+    --craie: #FFFFFF;
+    --encre: #1F2A24;
+    --ardoise: #5B675F;
+    --lin: #DCD7CA;
+    --lin-doux: #ECE8DE;
+    --sauge: #3F6B4F;
+    --foret: #27452F;
+    --sauge-doux: #E4EDE6;
+    --argile: #B5603F;
+    --argile-doux: #F6E6DE;
+    --paille: #C9A84A;
+    --paille-doux: #F7EFD6;
+    --eau: #3F7A86;
+    --eau-doux: #E0ECEF;
+    --prairie: #3A7D4C;
+    --ocre: #A7651E;
+    --garance: #A3423B;
+    --garance-doux: #F6E3E1;
+    --terre: #8B6A4A;
+    --terre-claire: #A9896A;
+    --herbe: #A9BE8E;
+    --herbe-sombre: #8FAA75;
+    --ombre-fiche: 0 1px 2px rgba(31, 42, 36, 0.06), 0 8px 24px rgba(31, 42, 36, 0.08);
+
+    /* Mouvement : trois durées, deux courbes. Une sortie est toujours plus
+       courte que son entrée ; on n'anime que transform et opacity. */
+    --d-fast: 120ms;
+    --d-base: 220ms;
+    --d-slow: 420ms;
+    --e-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+    --e-in: cubic-bezier(0.4, 0, 1, 1);
   }
   .dark {
     --background: 222 47% 11%;
@@ -230,6 +281,32 @@
     --chart-3: 210 40% 98%;
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
+
+    /* Charte « carnet de ferme », variantes sombres */
+    --papier: #151916;
+    --craie: #1E2420;
+    --encre: #ECE9E0;
+    --ardoise: #A2ABA4;
+    --lin: #343C37;
+    --lin-doux: #272E2A;
+    --sauge: #8BB899;
+    --foret: #B9D6C2;
+    --sauge-doux: #223229;
+    --argile: #D98A68;
+    --argile-doux: #3A2A22;
+    --paille: #D8BB63;
+    --paille-doux: #3A3220;
+    --eau: #7FB3BE;
+    --eau-doux: #1F3236;
+    --prairie: #7DBB8C;
+    --ocre: #D39A5C;
+    --garance: #D9847D;
+    --garance-doux: #3B2524;
+    --terre: #7A5F45;
+    --terre-claire: #8F7659;
+    --herbe: #5E7350;
+    --herbe-sombre: #4D6142;
+    --ombre-fiche: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.35);
   }
 }
 
@@ -246,6 +323,32 @@
        Le contenu individuel reste scrollable horizontalement quand
        explicitement marqué overflow-x-auto (tableaux, onglets). */
     overflow-x: hidden;
+  }
+}
+
+/* ============================================================ */
+/* ACCUEIL — mouvements d'entrée (système de motion, palier 1)   */
+/* ============================================================ */
+/* Fondu + 8 px vers le haut, 220 ms, décalé de 40 ms par rang via
+   --rang. Sans animation demandée, l'état final est affiché d'emblée :
+   la page n'est jamais vide. Consommé par les composants d'accueil. */
+@keyframes accueil-entree {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .accueil-entree {
+    animation: accueil-entree var(--d-base) var(--e-out) both;
+    animation-delay: calc(var(--rang, 0) * 40ms);
+  }
+  .accueil-sortie {
+    animation: accueil-entree var(--d-fast) var(--e-in) reverse both;
   }
 }
 

@@ -59,6 +59,37 @@ const config: Config = {
   			'carbone': '#1E293B',
   			'terre-cuite': '#B45309',
   			'gris-nuage': '#F8FAFC',
+  			// Charte « carnet de ferme » (palier 1, 2026-10-08) : jetons de
+  			// globals.css, clair et sombre. Aucune classe existante renommée.
+  			papier: 'var(--papier)',
+  			craie: 'var(--craie)',
+  			encre: 'var(--encre)',
+  			ardoise: 'var(--ardoise)',
+  			lin: { DEFAULT: 'var(--lin)', doux: 'var(--lin-doux)' },
+  			sauge: { DEFAULT: 'var(--sauge)', doux: 'var(--sauge-doux)' },
+  			foret: 'var(--foret)',
+  			argile: { DEFAULT: 'var(--argile)', doux: 'var(--argile-doux)' },
+  			paille: { DEFAULT: 'var(--paille)', doux: 'var(--paille-doux)' },
+  			eau: { DEFAULT: 'var(--eau)', doux: 'var(--eau-doux)' },
+  			prairie: 'var(--prairie)',
+  			ocre: 'var(--ocre)',
+  			garance: { DEFAULT: 'var(--garance)', doux: 'var(--garance-doux)' },
+  			terre: { DEFAULT: 'var(--terre)', claire: 'var(--terre-claire)' },
+  			herbe: { DEFAULT: 'var(--herbe)', sombre: 'var(--herbe-sombre)' },
+  		},
+  		boxShadow: {
+  			fiche: 'var(--ombre-fiche)',
+  		},
+  		transitionDuration: {
+  			fast: 'var(--d-fast)',
+  			base: 'var(--d-base)',
+  			slow: 'var(--d-slow)',
+  		},
+  		// Clés « entree »/« sortie » et non « in »/« out » : ces dernières
+  		// écraseraient les classes ease-in / ease-out déjà employées.
+  		transitionTimingFunction: {
+  			entree: 'var(--e-out)',
+  			sortie: 'var(--e-in)',
   		},
   		borderRadius: {
   			lg: 'var(--radius)',
@@ -69,6 +100,10 @@ const config: Config = {
   			sans: ['var(--font-inter)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
   			heading: ['var(--font-space-grotesk)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
   			mono: ['var(--font-jetbrains-mono)', 'ui-monospace', 'monospace'],
+  			// Charte : interface Geist (locale), titres Fraunces. font-sans
+  			// reste sur Inter jusqu'à la livraison L2.
+  			ui: ['var(--font-ui)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+  			display: ['var(--font-display)', 'Georgia', 'serif'],
   		}
   	}
   },

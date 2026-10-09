@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { Space_Grotesk, Inter, JetBrains_Mono } from "next/font/google";
+import { Space_Grotesk, Inter, JetBrains_Mono, Fraunces } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 
 import { Toaster } from "@/components/ui/toaster";
@@ -33,6 +34,24 @@ const jetbrainsMono = JetBrains_Mono({
   variable: "--font-jetbrains-mono",
   display: "swap",
   weight: ["400", "500"],
+});
+
+// Charte « carnet de ferme » (palier 1, 2026-10-08) : Geist pour l'interface
+// (fichier local déjà dans le dépôt) et Fraunces pour les titres, exposées
+// sous --font-ui et --font-display. Inter et Space Grotesk restent appliquées
+// tant que l'accueil v2 (L2) n'a pas basculé font-sans.
+const geist = localFont({
+  src: "./fonts/GeistVF.woff",
+  variable: "--font-ui",
+  display: "swap",
+  weight: "100 900",
+});
+
+const fraunces = Fraunces({
+  subsets: ["latin", "latin-ext"],
+  variable: "--font-display",
+  display: "swap",
+  axes: ["opsz"],
 });
 
 export const metadata: Metadata = {
@@ -198,7 +217,7 @@ export default function RootLayout({
         />
       </head>
       <body
-        className={`${inter.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable} font-sans antialiased`}
+        className={`${inter.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable} ${geist.variable} ${fraunces.variable} font-sans antialiased`}
       >
         <SessionProvider>
           <ImpersonationBanner />
