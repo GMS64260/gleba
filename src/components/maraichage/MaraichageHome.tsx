@@ -30,6 +30,7 @@ import { Wand2, Bot } from "lucide-react"
 import { ChatPanel } from "@/components/chat/ChatPanel"
 import { CalendrierTab } from "@/components/potager/CalendrierTab"
 import { PremiersPasBanner } from "@/components/premiers-pas-banner"
+import { BandeauNouvelAccueil } from "@/components/accueil/BandeauNouvelAccueil"
 import { TourMaraichage } from "@/components/tours/tour-maraichage"
 import { CulturesTab } from "@/components/potager/CulturesTab"
 import { TerrainTab } from "@/components/potager/TerrainTab"
@@ -248,6 +249,9 @@ function HomeContent() {
           </>
         }
       />
+
+      {/* Accueil v2 en opt-in (L2, 2026-10-09) : invitation, masquable */}
+      {session?.user && <BandeauNouvelAccueil />}
 
       {/* Bannière nouveauté - pluviométrie */}
       {showPluieBanner && session?.user && (
