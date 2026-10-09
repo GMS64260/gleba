@@ -39,29 +39,16 @@
   }
 }
 
-.aurora-bg {
-  background:
-    radial-gradient(ellipse 80% 60% at 20% 40%, rgba(16, 185, 129, 0.08) 0%, transparent 60%),
-    radial-gradient(ellipse 60% 80% at 80% 20%, rgba(20, 184, 166, 0.06) 0%, transparent 60%),
-    radial-gradient(ellipse 70% 50% at 50% 80%, rgba(16, 185, 129, 0.05) 0%, transparent 60%),
-    radial-gradient(ellipse 50% 60% at 70% 60%, rgba(245, 245, 244, 0.4) 0%, transparent 50%);
-  background-size: 200% 200%;
-}
-
-/* Aurora subtle — version atténuée pour les pages app */
+/* Charte « carnet de ferme » (2026-10-09) : les fonds « aurora » et la grille
+   de points deviennent du papier uni. Les 46 fichiers qui posent ces classes
+   n'ont pas à bouger ; elles seront retirées en L5. */
+.aurora-bg,
 .aurora-bg-subtle {
-  background:
-    radial-gradient(ellipse 80% 60% at 20% 40%, rgba(16, 185, 129, 0.04) 0%, transparent 60%),
-    radial-gradient(ellipse 60% 80% at 80% 20%, rgba(20, 184, 166, 0.03) 0%, transparent 60%),
-    radial-gradient(ellipse 70% 50% at 50% 80%, rgba(16, 185, 129, 0.025) 0%, transparent 60%),
-    radial-gradient(ellipse 50% 60% at 70% 60%, rgba(245, 245, 244, 0.2) 0%, transparent 50%);
-  background-size: 200% 200%;
+  background: var(--papier);
 }
 
-/* Dot grid pattern */
 .dot-grid {
-  background-image: radial-gradient(circle, rgba(0,0,0,0.06) 1px, transparent 1px);
-  background-size: 24px 24px;
+  background-image: none;
 }
 
 /* Glow effect pour la card login */
@@ -74,7 +61,7 @@
   inset: -1px;
   border-radius: 1.25rem;
   padding: 1px;
-  background: linear-gradient(135deg, rgba(16,185,129,0.3), rgba(20,184,166,0.1), rgba(255,255,255,0.2), rgba(16,185,129,0.15));
+  background: linear-gradient(135deg, var(--lin), var(--lin-doux), var(--craie), var(--lin));
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
@@ -89,13 +76,11 @@
 }
 
 .btn-gradient {
-  background: linear-gradient(135deg, #059669, #0d9488, #059669, #10b981);
-  background-size: 300% 300%;
+  background: var(--sauge);
 }
 
 .btn-gradient:hover {
-  background: linear-gradient(135deg, #047857, #0f766e, #047857, #059669);
-  background-size: 300% 300%;
+  background: var(--foret);
 }
 
 /* Fade in up — entrées séquentielles */
@@ -192,30 +177,35 @@
 
 @layer base {
   :root {
-    --background: 210 40% 98%;
-    --foreground: 215 28% 17%;
+    /* Variables shadcn, désormais alignées sur la charte « carnet de ferme »
+       (2026-10-09, suite de L2) : papier, encre, craie, sauge, lin, ardoise,
+       garance. Tout composant qui consomme bg-primary, border, bg-muted,
+       bg-card… suit sans être réécrit. Valeurs HSL des jetons hexadécimaux
+       déclarés plus bas. */
+    --background: 45 25% 94%;
+    --foreground: 147 15% 14%;
     --card: 0 0% 100%;
-    --card-foreground: 215 28% 17%;
+    --card-foreground: 147 15% 14%;
     --popover: 0 0% 100%;
-    --popover-foreground: 215 28% 17%;
-    --primary: 160 84% 39%;
+    --popover-foreground: 147 15% 14%;
+    --primary: 142 26% 33%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 215 28% 17%;
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%;
-    --accent: 28 80% 52%;
-    --accent-foreground: 0 0% 100%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 160 84% 39%;
-    --chart-1: 160 84% 39%;
-    --chart-2: 28 80% 52%;
-    --chart-3: 215 28% 17%;
-    --chart-4: 173 58% 39%;
-    --chart-5: 43 74% 66%;
+    --secondary: 43 27% 90%;
+    --secondary-foreground: 147 15% 14%;
+    --muted: 43 27% 90%;
+    --muted-foreground: 140 6% 38%;
+    --accent: 133 20% 91%;
+    --accent-foreground: 136 28% 21%;
+    --destructive: 4 47% 44%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 43 20% 83%;
+    --input: 43 20% 83%;
+    --ring: 142 26% 33%;
+    --chart-1: 142 26% 33%;
+    --chart-2: 44 54% 54%;
+    --chart-3: 190 36% 39%;
+    --chart-4: 17 48% 48%;
+    --chart-5: 31 69% 39%;
     --radius: 0.75rem;
 
     /* ---- Charte « carnet de ferme » (palier 1, 2026-10-08) ----------
@@ -257,30 +247,30 @@
     --e-in: cubic-bezier(0.4, 0, 1, 1);
   }
   .dark {
-    --background: 222 47% 11%;
-    --foreground: 210 40% 98%;
-    --card: 217 33% 17%;
-    --card-foreground: 210 40% 98%;
-    --popover: 217 33% 17%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 160 84% 39%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 217 33% 17%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217 33% 17%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 28 80% 52%;
-    --accent-foreground: 0 0% 100%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 217 33% 17%;
-    --input: 217 33% 17%;
-    --ring: 160 84% 39%;
-    --chart-1: 160 84% 39%;
-    --chart-2: 28 80% 52%;
-    --chart-3: 210 40% 98%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
+    --background: 135 9% 9%;
+    --foreground: 45 24% 90%;
+    --card: 140 9% 13%;
+    --card-foreground: 45 24% 90%;
+    --popover: 140 9% 13%;
+    --popover-foreground: 45 24% 90%;
+    --primary: 139 24% 63%;
+    --primary-foreground: 147 15% 14%;
+    --secondary: 146 8% 17%;
+    --secondary-foreground: 45 24% 90%;
+    --muted: 146 8% 17%;
+    --muted-foreground: 133 5% 65%;
+    --accent: 146 19% 16%;
+    --accent-foreground: 139 26% 78%;
+    --destructive: 5 55% 67%;
+    --destructive-foreground: 147 15% 14%;
+    --border: 142 7% 22%;
+    --input: 142 7% 22%;
+    --ring: 139 24% 63%;
+    --chart-1: 139 24% 63%;
+    --chart-2: 44 60% 62%;
+    --chart-3: 190 32% 62%;
+    --chart-4: 17 60% 63%;
+    --chart-5: 31 60% 59%;
 
     /* Charte « carnet de ferme », variantes sombres */
     --papier: #151916;
