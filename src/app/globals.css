@@ -317,6 +317,17 @@
 }
 
 /* ============================================================ */
+/* ACCUEIL v2 — shell : le rail (200 px) remplace l'en-tête       */
+/* ============================================================ */
+/* Posé sur <html> par CoquilleV2 pour un compte en v2 : le contenu de toutes
+   les pages est décalé de la largeur du rail sur grand écran. */
+@media (min-width: 1024px) {
+  html.coquille-v2 body {
+    padding-left: 200px;
+  }
+}
+
+/* ============================================================ */
 /* ACCUEIL — mouvements d'entrée (système de motion, palier 1)   */
 /* ============================================================ */
 /* Fondu + 8 px vers le haut, 220 ms, décalé de 40 ms par rang via

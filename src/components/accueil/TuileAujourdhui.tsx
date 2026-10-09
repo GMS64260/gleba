@@ -3,7 +3,7 @@
 import * as React from "react"
 import Link from "next/link"
 
-import { annulerMutation, executerMutation } from "@/lib/accueil/client"
+import { annulerMutation, annulerRecolte, executerMutation, noterRecolte, rouvrirCulture, terminerCulture } from "@/lib/accueil/client"
 import { sousTitreAujourdhui } from "@/lib/accueil/classement"
 import type { ElementAujourdhui } from "@/lib/accueil/types"
 import { notifierEnregistrement } from "@/lib/notifications-ecran"
@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils"
 
 import { CLASSES_LIEN_DISCRET } from "./boutons"
 import { CocheAnimee } from "./CocheAnimee"
+import { DialogueRecolte } from "./DialogueRecolte"
 import { LigneRegistre } from "./LigneRegistre"
 import { PastilleEtat } from "./PastilleEtat"
 import { Tuile, TuileVide } from "./Tuile"
@@ -64,6 +65,11 @@ export function TuileAujourdhui({
   const [phases, setPhases] = React.useState<Record<string, Phase>>({})
   const [retires, setRetires] = React.useState<Set<string>>(() => new Set())
   const minuteries = React.useRef<Map<string, number[]>>(new Map())
+  /** Ligne dont on saisit la quantité récoltée, et récoltes créées (pour « Annuler »). */
+  const [recolteEnSaisie, setRecolteEnSaisie] = React.useState<ElementAujourdhui | null>(null)
+  const recoltesCreees = React.useRef<Map<string, number | null>>(new Map())
+  /** Cultures terminées sans récolte depuis la liste (pour « Annuler »). */
+  const culturesTerminees = React.useRef<Set<string>>(new Set())
 
   React.useEffect(() => {
     const m = minuteries.current
@@ -101,9 +107,14 @@ export function TuileAujourdhui({
 
   const annuler = async (e: ElementAujourdhui) => {
     const mutation = e.action.mutation
-    if (!mutation) return
+    const saisie = e.action.saisieRecolte
+    if (!mutation && !saisie) return
     annulerMinuteries(e.id)
-    const resultat = await annulerMutation(mutation)
+    const resultat = saisie
+      ? culturesTerminees.current.has(e.id)
+        ? await rouvrirCulture(saisie.cultureId)
+        : await annulerRecolte(saisie, recoltesCreees.current.get(e.id) ?? null)
+      : await annulerMutation(mutation!)
     if (!resultat.ok) {
       toast({ variant: "destructive", title: "Annulation impossible", description: resultat.error ?? "L'enregistrement est conservé." })
       // La ligne est déjà cochée : on reprend le repli là où il en était.
@@ -120,7 +131,55 @@ export function TuileAujourdhui({
     onElementRestaure?.(e)
   }
 
+  const confirmerRecolte = async (quantite: number) => {
+    const e = recolteEnSaisie
+    const saisie = e?.action.saisieRecolte
+    if (!e || !saisie || phases[e.id]) return
+    poserPhase(e.id, "en-cours")
+    const resultat = await noterRecolte(saisie, quantite)
+    if (!resultat.ok) {
+      poserPhase(e.id, null)
+      toast({ variant: "destructive", title: "Récolte non enregistrée", description: resultat.error })
+      return
+    }
+    setRecolteEnSaisie(null)
+    recoltesCreees.current.set(e.id, resultat.recolteId)
+    poserPhase(e.id, "fait")
+    notifierEnregistrement({
+      titre: "Récolte notée",
+      detail: `${quantite.toLocaleString("fr-FR")} ${saisie.unite} · ${saisie.especeNom}${saisie.plancheNom ? ` · ${saisie.plancheNom}` : ""}`,
+      annuler: () => annuler(e),
+    })
+    programmerRepli(e)
+  }
+
+  const terminerSansRecolte = async () => {
+    const e = recolteEnSaisie
+    const saisie = e?.action.saisieRecolte
+    if (!e || !saisie || phases[e.id]) return
+    poserPhase(e.id, "en-cours")
+    const resultat = await terminerCulture(saisie.cultureId)
+    if (!resultat.ok) {
+      poserPhase(e.id, null)
+      toast({ variant: "destructive", title: "Culture non terminée", description: resultat.error ?? "Erreur réseau" })
+      return
+    }
+    setRecolteEnSaisie(null)
+    culturesTerminees.current.add(e.id)
+    poserPhase(e.id, "fait")
+    notifierEnregistrement({
+      titre: "Culture terminée sans récolte",
+      detail: `${saisie.especeNom}${saisie.plancheNom ? ` · ${saisie.plancheNom}` : ""}`,
+      annuler: () => annuler(e),
+    })
+    programmerRepli(e)
+  }
+
   const marquerFait = async (e: ElementAujourdhui) => {
+    if (e.action.saisieRecolte && !phases[e.id]) {
+      setRecolteEnSaisie(e)
+      return
+    }
     const mutation = e.action.mutation
     if (!mutation || phases[e.id]) return
     poserPhase(e.id, "en-cours")
@@ -219,7 +278,7 @@ export function TuileAujourdhui({
                 className={repliMobile}
                 pastille={pastillePour(e)}
                 action={
-                  e.action.mutation
+                  e.action.mutation || e.action.saisieRecolte
                     ? { libelle: e.action.libelle, onClick: () => marquerFait(e), disabled: phase === "en-cours" }
                     : { libelle: e.action.libelle, href: e.action.href }
                 }
@@ -260,6 +319,13 @@ export function TuileAujourdhui({
       rang={rang}
     >
       {corps}
+      <DialogueRecolte
+        saisie={recolteEnSaisie?.action.saisieRecolte ?? null}
+        enCours={recolteEnSaisie ? phases[recolteEnSaisie.id] === "en-cours" : false}
+        onFermer={() => setRecolteEnSaisie(null)}
+        onConfirmer={confirmerRecolte}
+        onTerminer={terminerSansRecolte}
+      />
     </Tuile>
   )
 }
