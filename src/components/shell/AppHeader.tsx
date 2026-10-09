@@ -94,7 +94,7 @@ export function AppHeader({ current, showLune = false }: AppHeaderProps) {
             <Link href="/communaute">
               <Button variant="ghost" size="sm" className="text-ardoise hover:bg-papier hover:text-encre" aria-label="Communauté" title="Communauté : demandes d'évolution et votes">
                 <Megaphone className="h-4 w-4" />
-                <span className="hidden xl:inline ml-1.5">Communauté</span>
+                <span className="ml-1.5 hidden 2xl:inline">Communauté</span>
               </Button>
             </Link>
           )}
