@@ -65,7 +65,7 @@ export function ModulesNav({ current }: Props) {
             aria-label={def.label}
           >
             <Icon className={`h-4 w-4 sm:mr-1 ${isCurrent ? "text-sauge" : "text-ardoise"}`} />
-            <span className="hidden lg:inline">{def.label}</span>
+            <span className="hidden xl:inline">{def.label}</span>
           </Button>
         )
 

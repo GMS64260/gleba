@@ -140,7 +140,7 @@ export function HeaderMeteoWidget({ showLune = false }: { showLune?: boolean }) 
             </div>
 
             {/* Humidité + vent */}
-            <div className="hidden items-center gap-2 border-l border-lin pl-2 lg:flex">
+            <div className="hidden items-center gap-2 border-l border-lin pl-2 2xl:flex">
               <span className="flex items-center gap-0.5 text-xs text-eau">
                 <Droplets className="h-3.5 w-3.5" />
                 {meteo.humidity}%
