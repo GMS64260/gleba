@@ -36,10 +36,11 @@ const jetbrainsMono = JetBrains_Mono({
   weight: ["400", "500"],
 });
 
-// Charte « carnet de ferme » (palier 1, 2026-10-08) : Geist pour l'interface
-// (fichier local déjà dans le dépôt) et Fraunces pour les titres, exposées
-// sous --font-ui et --font-display. Inter et Space Grotesk restent appliquées
-// tant que l'accueil v2 (L2) n'a pas basculé font-sans.
+// Charte « carnet de ferme » : Geist pour l'interface (fichier local déjà
+// dans le dépôt) et Fraunces pour les titres, exposées sous --font-ui et
+// --font-display. Depuis L2 (2026-10-09), font-sans et font-heading pointent
+// dessus (tailwind.config.ts) ; Inter et Space Grotesk restent chargées
+// jusqu'au retrait L5, prouvé par captures.
 const geist = localFont({
   src: "./fonts/GeistVF.woff",
   variable: "--font-ui",
