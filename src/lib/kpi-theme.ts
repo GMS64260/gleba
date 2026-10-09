@@ -7,9 +7,9 @@
  *   - alerte  → orange (amber) : alertes, à faire, urgences, en attente
  *   - neutre  → gris (slate)   : totaux, effectifs, informationnel
  *
- * UNE seule source de vérité. Reprend le style visuel existant des grosses
- * cartes (gradient `bg-gradient-to-br`, texte blanc) en ne pilotant que la
- * teinte via le `tone`.
+ * UNE seule source de vérité. Depuis la charte « carnet de ferme »
+ * (2026-10-09), la carte est à plat : craie, bordure lin, liseré de couleur
+ * à gauche selon le `tone`, texte en encre.
  *
  * Client-safe : aucun import serveur (utilisable dans des composants "use client").
  */
@@ -32,21 +32,25 @@ interface KpiToneClasses {
  * fond saturé, ≥ WCAG AA).
  */
 export const KPI_TONES: Record<KpiTone, KpiToneClasses> = {
+  // Charte « carnet de ferme » (2026-10-09) : plus de dégradé ni de texte
+  // blanc sur fond saturé. Carte craie bordée de lin, liseré de 4 px à gauche
+  // qui dit la nature de la donnée (prairie = revenu, garance = dépense,
+  // paille = attention, lin = information), texte en encre et ardoise.
   revenu: {
-    card: "bg-gradient-to-br from-emerald-500 to-emerald-600 text-white",
-    subtle: "text-emerald-100",
+    card: "border border-lin border-l-4 border-l-prairie bg-craie text-encre shadow-none",
+    subtle: "text-ardoise",
   },
   depense: {
-    card: "bg-gradient-to-br from-red-500 to-red-600 text-white",
-    subtle: "text-red-100",
+    card: "border border-lin border-l-4 border-l-garance bg-craie text-encre shadow-none",
+    subtle: "text-ardoise",
   },
   alerte: {
-    card: "bg-gradient-to-br from-amber-500 to-amber-600 text-white",
-    subtle: "text-amber-100",
+    card: "border border-lin border-l-4 border-l-paille bg-craie text-encre shadow-none",
+    subtle: "text-ardoise",
   },
   neutre: {
-    card: "bg-gradient-to-br from-slate-700 to-slate-800 text-white",
-    subtle: "text-slate-300",
+    card: "border border-lin border-l-4 border-l-lin bg-craie text-encre shadow-none",
+    subtle: "text-ardoise",
   },
 }
 
