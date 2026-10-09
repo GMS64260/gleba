@@ -18,6 +18,10 @@ export interface AccueilEnTeteProps {
   fenetre: PhraseFenetre | null
   /** Météo en cours de lecture : la ligne reste réservée, sans texte inventé. */
   chargementFenetre?: boolean
+  /** Température actuelle, en tête de la ligne sur téléphone (le bandeau météo n'y est pas). */
+  temperature?: number | null
+  /** Actions supplémentaires à droite (bouton Personnaliser). */
+  actions?: React.ReactNode
   className?: string
 }
 
@@ -28,7 +32,7 @@ export function libelleDate(dateIso: string): string {
   return texte.charAt(0).toUpperCase() + texte.slice(1)
 }
 
-export function AccueilEnTete({ date, fenetre, chargementFenetre = false, className }: AccueilEnTeteProps) {
+export function AccueilEnTete({ date, fenetre, chargementFenetre = false, temperature, actions, className }: AccueilEnTeteProps) {
   return (
     <div className={cn("flex flex-wrap items-end justify-between gap-x-6 gap-y-3", className)}>
       <div className="min-w-0">
@@ -36,6 +40,11 @@ export function AccueilEnTete({ date, fenetre, chargementFenetre = false, classN
           {libelleDate(date)}
         </h1>
         <p className="mt-1 text-sm text-ardoise" aria-live="polite">
+          {typeof temperature === "number" && (
+            <span className="font-semibold text-encre lg:hidden">
+              {Math.round(temperature)} °C<span aria-hidden> · </span>
+            </span>
+          )}
           {fenetre ? (
             <>
               Fenêtre de travail : <b className="font-semibold text-prairie">{fenetre.principal}</b>
@@ -60,6 +69,7 @@ export function AccueilEnTete({ date, fenetre, chargementFenetre = false, classN
         <Link href="/maraichage/recoltes" className={CLASSES_BOUTON_PRINCIPAL}>
           + Récolte
         </Link>
+        {actions}
       </div>
     </div>
   )

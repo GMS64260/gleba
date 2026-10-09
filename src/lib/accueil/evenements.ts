@@ -16,3 +16,11 @@ export function ouvrirAssistant(detail: DetailOuvrirAssistant = {}): void {
   if (typeof window === "undefined") return
   window.dispatchEvent(new CustomEvent<DetailOuvrirAssistant>(EVENEMENT_OUVRIR_ASSISTANT, { detail }))
 }
+
+/** La barre de commande de l'accueil ouvre la palette de recherche existante (`GlobalSearch`). */
+export const EVENEMENT_OUVRIR_RECHERCHE = "gleba:ouvrir-recherche"
+
+export function ouvrirRecherche(): void {
+  if (typeof window === "undefined") return
+  window.dispatchEvent(new CustomEvent(EVENEMENT_OUVRIR_RECHERCHE))
+}

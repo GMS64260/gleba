@@ -1,5 +1,8 @@
+"use client"
+
 import * as React from "react"
 import Link from "next/link"
+import dynamic from "next/dynamic"
 
 import { compterEtats } from "@/lib/accueil/plan-vignette"
 import type { PlanVignetteDonnees } from "@/lib/accueil/types"
@@ -9,10 +12,14 @@ import { CLASSES_LIEN_DISCRET } from "./boutons"
 import { PlanVignette } from "./PlanVignette"
 import { Tuile } from "./Tuile"
 
+// Le vrai plan 2D (composant lourd, navigateur seulement) arrive après le
+// premier rendu ; le dessin reconstitué tient lieu d'image d'attente.
+const PlanVivant = dynamic(() => import("./PlanVivant").then((m) => m.PlanVivant), { ssr: false })
+
 /**
- * Tuile « plan » de l'accueil v2 : vignette SVG, nom de la ferme, pastilles
- * d'état (à arroser, à récolter) en texte, et un seul lien vers le plan
- * complet. Pas d'en-tête : l'image est la tuile.
+ * Tuile « plan » de l'accueil v2 : le vrai plan de la ferme en lecture seule
+ * (silhouettes de cultures, fond aérien), nom de la ferme, pastilles d'état
+ * (à arroser, à récolter) en texte, et un seul lien vers le plan complet.
  */
 export interface TuilePlanProps {
   plan: PlanVignetteDonnees | null
@@ -23,13 +30,15 @@ export interface TuilePlanProps {
 
 export function TuilePlan({ plan, nomFerme, chargement, rang }: TuilePlanProps) {
   const style = rang !== undefined ? ({ "--rang": rang } as React.CSSProperties) : undefined
+  const [vivantPret, setVivantPret] = React.useState(false)
+  const marquerPret = React.useCallback(() => setVivantPret(true), [])
 
   if (chargement) {
     return (
       <section
         data-tuile="plan"
         aria-label="Plan de la ferme, chargement"
-        className={cn("col-span-1 min-h-[190px] rounded-2xl border border-lin bg-herbe/60 lg:col-span-5", rang !== undefined && "accueil-entree")}
+        className={cn("col-span-1 min-h-[220px] rounded-2xl border border-lin bg-herbe/60 lg:col-span-5", rang !== undefined && "accueil-entree")}
         style={style}
       />
     )
@@ -50,17 +59,24 @@ export function TuilePlan({ plan, nomFerme, chargement, rang }: TuilePlanProps) 
     <section
       data-tuile="plan"
       className={cn(
-        "relative col-span-1 min-h-[190px] overflow-hidden rounded-2xl border border-lin bg-herbe lg:col-span-5",
+        "relative col-span-1 min-h-[220px] overflow-hidden rounded-2xl border border-lin bg-craie lg:col-span-5",
         rang !== undefined && "accueil-entree",
       )}
       style={style}
     >
-      <PlanVignette plan={plan} className="absolute inset-0 h-full w-full" />
+      {/* Image d'attente : le dessin reconstitué, effacé quand le vrai plan est prêt. */}
+      <PlanVignette
+        plan={plan}
+        className={cn("absolute inset-0 h-full w-full transition-opacity duration-slow", vivantPret ? "opacity-0" : "opacity-100")}
+      />
+      <div className={cn("absolute inset-0 p-2 transition-opacity duration-slow", vivantPret ? "opacity-100" : "opacity-0")}>
+        <PlanVivant onPret={marquerPret} />
+      </div>
       <p className="sr-only">
         Plan de la ferme : {plan.planches.length} planches, {pastilles.map((p) => p.libelle).join(", ")}.
       </p>
       {nomFerme && (
-        <span className="absolute left-2.5 top-2.5 rounded-md bg-craie/90 px-2 py-0.5 text-[11px] font-semibold text-encre">
+        <span className="absolute left-2.5 top-2.5 rounded-md bg-craie/90 px-2 py-0.5 text-[11px] font-semibold text-encre shadow-sm">
           {nomFerme}
         </span>
       )}
@@ -68,7 +84,7 @@ export function TuilePlan({ plan, nomFerme, chargement, rang }: TuilePlanProps) 
         {pastilles.map((p) => (
           <span
             key={p.libelle}
-            className="inline-flex items-center gap-1.5 rounded-full bg-craie/90 px-2 py-0.5 text-[11px] font-medium text-encre"
+            className="inline-flex items-center gap-1.5 rounded-full bg-craie/90 px-2 py-0.5 text-[11px] font-medium text-encre shadow-sm"
           >
             <i aria-hidden className={cn("h-2 w-2 rounded-full", p.couleur)} />
             {p.libelle}

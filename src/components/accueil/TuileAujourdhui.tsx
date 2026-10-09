@@ -8,6 +8,7 @@ import { sousTitreAujourdhui } from "@/lib/accueil/classement"
 import type { ElementAujourdhui } from "@/lib/accueil/types"
 import { notifierEnregistrement } from "@/lib/notifications-ecran"
 import { toast } from "@/hooks/use-toast"
+import { cn } from "@/lib/utils"
 
 import { CLASSES_LIEN_DISCRET } from "./boutons"
 import { CocheAnimee } from "./CocheAnimee"
@@ -15,8 +16,9 @@ import { LigneRegistre } from "./LigneRegistre"
 import { PastilleEtat } from "./PastilleEtat"
 import { Tuile, TuileVide } from "./Tuile"
 
-/** Lignes visibles avant « Voir les N autres ». */
+/** Lignes visibles avant « Voir les N autres » : huit sur bureau, trois sur téléphone (maquette). */
 export const LIGNES_VISIBLES = 8
+export const LIGNES_VISIBLES_MOBILE = 3
 /** Une ligne cochée reste visible ce temps-là, avec « Annuler », avant de se replier. */
 export const DELAI_REPLI_MS = 5000
 /** Durée du repli (classe `accueil-sortie`, --d-fast) avant retrait du DOM. */
@@ -189,8 +191,10 @@ export function TuileAujourdhui({
     corps = (
       <>
         <div role="list">
-          {visibles.map((e) => {
+          {visibles.map((e, index) => {
             const phase = phases[e.id]
+            // Au-delà de la troisième ligne, masqué sur téléphone tant que la liste n'est pas dépliée.
+            const repliMobile = !toutVoir && index >= LIGNES_VISIBLES_MOBILE ? "max-lg:hidden" : undefined
             if (phase === "fait" || phase === "sortie") {
               return (
                 <LigneRegistre
@@ -199,7 +203,7 @@ export function TuileAujourdhui({
                   etat="ok"
                   titre={e.titre}
                   meta={e.meta}
-                  className={phase === "sortie" ? "accueil-sortie" : undefined}
+                  className={cn(phase === "sortie" && "accueil-sortie", repliMobile)}
                   pastille={<PastilleEtat etat="ok" libelle="Fait" icone={CocheAnimee} />}
                   action={{ libelle: "Annuler", onClick: () => annuler(e) }}
                 />
@@ -212,6 +216,7 @@ export function TuileAujourdhui({
                 etat={e.etat}
                 titre={e.titre}
                 meta={e.meta}
+                className={repliMobile}
                 pastille={pastillePour(e)}
                 action={
                   e.action.mutation
@@ -222,8 +227,15 @@ export function TuileAujourdhui({
             )
           })}
         </div>
+        {!toutVoir && ouverts.length > LIGNES_VISIBLES_MOBILE && (
+          <div className="border-t border-lin-doux px-3 py-1 lg:hidden">
+            <button type="button" onClick={() => setToutVoir(true)} className={CLASSES_LIEN_DISCRET}>
+              Voir {ouverts.length - LIGNES_VISIBLES_MOBILE === 1 ? "la dernière" : `les ${ouverts.length - LIGNES_VISIBLES_MOBILE} autres`}
+            </button>
+          </div>
+        )}
         {reste > 0 && (
-          <div className="border-t border-lin-doux px-3 py-1">
+          <div className="hidden border-t border-lin-doux px-3 py-1 lg:block">
             <button type="button" onClick={() => setToutVoir(true)} className={CLASSES_LIEN_DISCRET}>
               Voir {reste === 1 ? "la dernière" : `les ${reste} autres`}
             </button>
