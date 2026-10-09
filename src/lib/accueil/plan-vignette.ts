@@ -15,8 +15,8 @@ export interface CadreVignette {
   hauteur: number
 }
 
-/** Marge autour des formes, en mètres. */
-export const MARGE_CADRE_M = 1.5
+/** Marge autour des formes, en mètres : laisse la place aux pastilles et au nom de la ferme. */
+export const MARGE_CADRE_M = 3
 
 /** Cadre par défaut quand rien n'est placé (évite un viewBox nul). */
 const CADRE_VIDE: CadreVignette = { x: 0, y: 0, largeur: 20, hauteur: 12 }
