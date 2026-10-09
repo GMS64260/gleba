@@ -168,7 +168,7 @@ function HomeContent() {
       {/* Assistant IA */}
       {showChat && (
         <div
-          className={`fixed rounded-xl border bg-background shadow-2xl flex flex-col overflow-hidden transition-[width,height,inset] duration-200 ${
+          className={`fixed flex flex-col overflow-hidden rounded-2xl border border-lin bg-craie shadow-fiche transition-[width,height,inset] duration-base motion-reduce:transition-none ${
             isChatExpanded
               ? 'z-[70] inset-2 sm:inset-5 lg:inset-y-8 lg:left-1/2 lg:right-auto lg:w-[min(1100px,calc(100vw-4rem))] lg:-translate-x-1/2'
               : 'z-50 bottom-2 left-4 right-4 h-[45vh] max-w-sm mx-auto sm:mx-0 sm:left-auto sm:bottom-4 sm:right-4 sm:h-[540px] sm:w-[400px] sm:max-w-none'
