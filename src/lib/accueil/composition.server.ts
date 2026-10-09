@@ -247,7 +247,11 @@ export async function composerAujourdhui(
         etat: etatPourRetard(r.retardJours, { critiqueApres: 21 }),
         titre: `Récolter ${r.especeNom}${r.plancheId ? ` ${r.plancheId}` : ""}`,
         meta: [r.retardJours > 0 ? `prête depuis ${r.retardJours} j` : "prête aujourd'hui", varieteAffichable(r.varieteNom)].filter(Boolean),
-        action: { libelle: "Récolte", href: "/maraichage/recoltes" },
+        action: {
+          libelle: "Récolter",
+          href: "/maraichage/recoltes",
+          saisieRecolte: { cultureId: r.id, especeId: r.especeId, especeNom: r.especeNom, plancheNom: r.plancheId ?? null, unite: r.unite },
+        },
         retardJours: r.retardJours,
         plancheIds: r.plancheRefId ? [r.plancheRefId] : [],
       })

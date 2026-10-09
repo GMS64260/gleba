@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 
 import { enregistrerVersionAccueil } from "@/lib/accueil/client"
 import { CHEMIN_ACCUEIL } from "@/lib/accueil/preference"
+import { definirVersionAccueilLocale } from "@/hooks/use-version-accueil"
 import { toast } from "@/hooks/use-toast"
 
 import { CLASSES_LIEN_DISCRET } from "./boutons"
@@ -18,6 +19,7 @@ export function RetourAncienAccueil({ className }: { className?: string }) {
     if (enCours) return
     setEnCours(true)
     const resultat = await enregistrerVersionAccueil("v1")
+    if (resultat.ok) definirVersionAccueilLocale("v1")
     if (!resultat.ok) {
       toast({ title: "Choix non enregistré", description: resultat.error ?? "Erreur réseau" })
     }

@@ -14,6 +14,7 @@ import { ImpersonationBanner } from "@/components/admin/ImpersonationBanner";
 import { BandeauExploitation } from "@/components/exploitation/BandeauExploitation";
 import { ChatBubble } from "@/components/chat/ChatBubble";
 import { PushRegister } from "@/components/notifications/push-register";
+import { CoquilleV2 } from "@/components/accueil/CoquilleV2";
 
 
 const spaceGrotesk = Space_Grotesk({
@@ -224,6 +225,7 @@ export default function RootLayout({
           <ImpersonationBanner />
           <BandeauExploitation />
           <OnboardingRedirect />
+          <CoquilleV2 />
           {children}
           <ChatBubble />
           <GlobalSearch />

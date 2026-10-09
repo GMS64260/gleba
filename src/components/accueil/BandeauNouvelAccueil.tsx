@@ -6,6 +6,7 @@ import { Sparkles, X } from "lucide-react"
 
 import { enregistrerVersionAccueil } from "@/lib/accueil/client"
 import { CHEMIN_ACCUEIL } from "@/lib/accueil/preference"
+import { definirVersionAccueilLocale } from "@/hooks/use-version-accueil"
 import { toast } from "@/hooks/use-toast"
 
 import { CLASSES_BOUTON_PRINCIPAL } from "./boutons"
@@ -38,6 +39,7 @@ export function BandeauNouvelAccueil() {
     if (enCours) return
     setEnCours(true)
     const resultat = await enregistrerVersionAccueil("v2")
+    if (resultat.ok) definirVersionAccueilLocale("v2")
     if (!resultat.ok) {
       toast({
         title: "Choix non enregistré",

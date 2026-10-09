@@ -32,7 +32,6 @@ import { useAccueilDisposition } from "@/hooks/use-accueil-disposition"
 import { cn } from "@/lib/utils"
 
 import { AccueilEnTete } from "./AccueilEnTete"
-import { AccueilRail } from "./AccueilRail"
 import { BarreCommande } from "./BarreCommande"
 import { CLASSES_BOUTON, CLASSES_BOUTON_PRINCIPAL } from "./boutons"
 import { NavigationBasse } from "./NavigationBasse"
@@ -290,13 +289,8 @@ export function Accueil() {
     }
   }
 
-  const sousTitreFerme = meteo.donnees
-    ? `${meteo.donnees.nbParcelles} parcelle${meteo.donnees.nbParcelles > 1 ? "s" : ""}`
-    : null
-
   return (
-    <div className="min-h-screen bg-papier font-ui text-encre lg:grid lg:grid-cols-[200px_minmax(0,1fr)]">
-      <AccueilRail nomFerme={donnees?.exploitation.nom ?? null} sousTitreFerme={sousTitreFerme} className="hidden lg:sticky lg:top-0 lg:flex lg:h-screen" />
+    <div className="min-h-screen bg-papier font-ui text-encre">
       <div className="min-w-0">
         <main className="mx-auto max-w-[1400px] space-y-4 px-4 pb-28 pt-4 lg:px-7 lg:pb-8 lg:pt-5">
           {/* Rangée du haut : barre de commande, météo, compte */}

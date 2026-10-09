@@ -34,6 +34,21 @@ export interface ActionAccueil {
    * avec « Annuler » et rejoue l'inverse. Sinon, c'est un lien.
    */
   mutation?: MutationLigne
+  /**
+   * Une récolte ne se solde pas d'un clic : il faut une quantité. L'action
+   * ouvre alors une saisie courte (quantité, unité de la culture), crée la
+   * récolte et marque la culture récoltée, avec « Annuler ».
+   */
+  saisieRecolte?: SaisieRecolte
+}
+
+export interface SaisieRecolte {
+  cultureId: number
+  especeId: string
+  especeNom: string
+  plancheNom: string | null
+  /** Unité de saisie de la culture (kg, tige, pièce, botte…), figée côté serveur à la création. */
+  unite: string
 }
 
 /** Une ligne de registre de la tuile Aujourd'hui. */
