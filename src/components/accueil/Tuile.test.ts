@@ -43,9 +43,10 @@ describe("TuileGrille", () => {
     expect(html).toContain("lg:grid-cols-12")
   })
 
-  it("range les repères par deux sur mobile et par cinq sur grand écran", () => {
+  it("fait défiler les repères sur téléphone et les range par cinq sur grand écran", () => {
     const html = renderToStaticMarkup(createElement(RepereRangee, null))
-    expect(html).toContain("grid-cols-2")
+    expect(html).toContain("overflow-x-auto")
+    expect(html).toContain("sm:grid-cols-3")
     expect(html).toContain("lg:grid-cols-5")
   })
 })
