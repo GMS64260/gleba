@@ -8,7 +8,8 @@ import * as React from "react"
 import { urlApercu } from "@/lib/apercu-document"
 import { merePresenteALaNaissance } from "@/lib/elevage/sortie-animal"
 import Link from "next/link"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useSearchParams } from "next/navigation"
+import { updateDashboardSearchParams } from "@/lib/dashboard-navigation"
 import {
   Bird,
   Plus,
@@ -186,7 +187,6 @@ export function AnimauxTab() {
   // à chaque navigation interne (y compris le clic sur l'onglet déjà actif,
   // qui réécrit une URL propre et doit ramener au sous-onglet par défaut).
   const searchParams = useSearchParams()
-  const router = useRouter()
   const [activeSub, setActiveSub] = React.useState<string>("animaux")
   React.useEffect(() => {
     const sub = searchParams.get("sub")
@@ -200,8 +200,11 @@ export function AnimauxTab() {
     params.set("tab", "animaux")
     if (nextSub === "lots") params.set("sub", "lots")
     else params.delete("sub")
-    router.replace(`/elevage?${params.toString()}`, { scroll: false })
-  }, [router, searchParams])
+    // QA cmv2ec55b — router.replace sur la seule query de la page courante est
+    // un no-op en production : l'URL gardait /elevage?tab=animaux et F5
+    // ramenait sur Animaux. L'API History met l'URL à jour (Next la suit).
+    updateDashboardSearchParams(params, "replace")
+  }, [searchParams])
 
   return (
     <Tabs value={activeSub} onValueChange={handleSubChange} className="space-y-4">
@@ -232,7 +235,6 @@ export function AnimauxTab() {
 
 function AnimauxSubTab() {
   const { toast } = useToast()
-  const router = useRouter()
   const searchInputRef = React.useRef<HTMLInputElement>(null)
   const [isLoading, setIsLoading] = React.useState(true)
   const [animaux, setAnimaux] = React.useState<Animal[]>([])
@@ -356,9 +358,10 @@ function AnimauxSubTab() {
     const numId = Number(editId)
     if (Number.isNaN(numId)) return
     handledEditParamRef.current = true
-    // Retire le param via le routeur (pas l'History API brute) pour qu'un
-    // reload ne rouvre pas le dialog, sans désynchroniser l'App Router.
-    const cleanupUrl = () => router.replace("/elevage?tab=animaux", { scroll: false })
+    // Retire le param pour qu'un reload ne rouvre pas le dialog. Par l'API
+    // History, que Next synchronise : router.replace sur la seule query est un
+    // no-op en production (QA cmv2ec55b).
+    const cleanupUrl = () => updateDashboardSearchParams(new URLSearchParams([["tab", "animaux"]]), "replace")
     const target = animaux.find((a) => a.id === numId)
     if (target) {
       handleEditAnimal(target)
@@ -2075,7 +2078,6 @@ function LotsSubTab() {
 
   // Lien « Corriger la source » d'une déclaration de sortie de lot :
   // /elevage?tab=animaux&sub=lots&editLot=<id> ouvre la fiche du lot.
-  const router = useRouter()
   const editLotTraiteRef = React.useRef(false)
   React.useEffect(() => {
     if (editLotTraiteRef.current || isLoading) return
@@ -2084,7 +2086,7 @@ function LotsSubTab() {
     editLotTraiteRef.current = true
     const cible = lots.find((lot) => lot.id === editLot)
     if (cible) handleEditLot(cible)
-    router.replace("/elevage?tab=animaux&sub=lots", { scroll: false })
+    updateDashboardSearchParams(new URLSearchParams([["tab", "animaux"], ["sub", "lots"]]), "replace")
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading, lots])
 

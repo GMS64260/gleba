@@ -5,7 +5,8 @@
  */
 
 import * as React from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useSearchParams } from "next/navigation"
+import { updateDashboardSearchParams } from "@/lib/dashboard-navigation"
 import {
   Package,
   TrendingDown,
@@ -64,7 +65,6 @@ export function AlimentationTab({ year }: { year?: number } = {}) {
   // s'ouvrait pas. On lit `sub` (onglet) et `animalId` (pré-remplissage du
   // soin) depuis l'URL et on se resynchronise à chaque navigation interne.
   const [activeSub, setActiveSub] = React.useState<string>("stocks")
-  const router = useRouter()
   const searchParams = useSearchParams()
   const [soinAnimalId, setSoinAnimalId] = React.useState<string | null>(null)
   const [ouvrirNouveauSoin, setOuvrirNouveauSoin] = React.useState(false)
@@ -106,9 +106,11 @@ export function AlimentationTab({ year }: { year?: number } = {}) {
       params.set("sub", "soins")
       params.delete("animalId")
       params.delete("action")
-      router.replace(`/elevage?${params.toString()}`, { scroll: false })
+      // API History : router.replace sur la seule query est un no-op en
+      // production (QA cmv2ec55b), le deep-link restait dans l'URL.
+      updateDashboardSearchParams(params, "replace")
     }
-  }, [searchParams, router])
+  }, [searchParams])
 
   const handleSubChange = React.useCallback((sub: string) => {
     setActiveSub(sub)
@@ -117,8 +119,8 @@ export function AlimentationTab({ year }: { year?: number } = {}) {
     params.set("sub", sub)
     params.delete("animalId")
     params.delete("action")
-    router.replace(`/elevage?${params.toString()}`, { scroll: false })
-  }, [router, searchParams])
+    updateDashboardSearchParams(params, "replace")
+  }, [searchParams])
 
   return (
     <Tabs value={activeSub} onValueChange={handleSubChange} className="space-y-4">
