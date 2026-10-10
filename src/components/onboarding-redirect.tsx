@@ -10,17 +10,20 @@
 
 import * as React from "react"
 import { useRouter, usePathname } from "next/navigation"
+import { useSession } from "next-auth/react"
 
 const EXEMPTS = ["/login", "/onboarding", "/feedback", "/raccourcis", "/aide"]
 
 export function OnboardingRedirect() {
   const router = useRouter()
   const pathname = usePathname()
+  const { status } = useSession()
   const [checked, setChecked] = React.useState(false)
 
   React.useEffect(() => {
-    if (checked) return
-    if (EXEMPTS.some((p) => pathname?.startsWith(p))) {
+    if (checked || status === "loading") return
+    // Visiteur sans session : la route répondrait 401, rien à vérifier.
+    if (status !== "authenticated" || EXEMPTS.some((p) => pathname?.startsWith(p))) {
       setChecked(true)
       return
     }
@@ -35,7 +38,7 @@ export function OnboardingRedirect() {
         // Si l'API échoue (utilisateur non auth, par exemple), on laisse passer
       })
       .finally(() => setChecked(true))
-  }, [checked, pathname, router])
+  }, [checked, status, pathname, router])
 
   return null
 }

@@ -440,7 +440,8 @@ export default function DashboardComptabilite() {
 
               <Card className={kpiCardClass(data.stats.benefice >= 0 ? "revenu" : "depense")}>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-white/80 flex items-center gap-2">
+                  {/* Ancien texte blanc sur carte saturée : invisible depuis les cartes à plat (kpi-theme). */}
+                  <CardTitle className={`text-sm font-medium ${kpiSubtleClass(data.stats.benefice >= 0 ? "revenu" : "depense")} flex items-center gap-2`}>
                     <Wallet className="h-4 w-4" />
                     {data.stats.benefice >= 0 ? 'Bénéfice' : 'Perte'}
                   </CardTitle>

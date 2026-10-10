@@ -48,8 +48,9 @@ function verifier(chemin: string, m: Metadata) {
 }
 
 describe("métadonnées des pages publiques", () => {
-  it("couvre les 19 pages métier", () => {
-    expect(Object.keys(pagesMetier)).toHaveLength(19)
+  it("trouve les pages du groupe (marketing)", () => {
+    // Plancher, pas un compte exact : une page ajoutée est couverte d'office.
+    expect(Object.keys(pagesMetier).length).toBeGreaterThanOrEqual(21)
   })
 
   for (const [fichier, mod] of Object.entries(pagesMetier)) {

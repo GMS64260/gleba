@@ -166,17 +166,21 @@ export default function ConfidentialitePage() {
         <h2>5. Destinataires et sous-traitants</h2>
         <p>
           Vos données ne sont ni vendues, ni cédées, ni transmises à des fins
-          publicitaires. Elles sont hébergées sur des serveurs situés en France.
+          publicitaires. Elles sont hébergées par IONOS SE sur des
+          serveurs situés en Allemagne, dans l&apos;Union européenne.
           Certaines fonctions font toutefois appel à des services extérieurs :
         </p>
         <ul>
           <li>
             <strong>Assistant IA</strong> : lorsque vous l&apos;interrogez, votre
-            question et les éléments de contexte nécessaires à la réponse sont
-            transmis à Ollama Cloud, situé hors de l&apos;Union européenne, qui
-            effectue le calcul et ne conserve pas ces contenus pour son propre
-            compte. Si vous ne souhaitez pas ce transfert, n&apos;utilisez pas
-            l&apos;assistant : le reste de l&apos;application fonctionne sans lui.
+            question, les derniers messages de la conversation et un résumé
+            pseudonymisé de votre exploitation (sans nom ni coordonnées de
+            personnes) sont transmis à OpenAI (service Codex), établi aux
+            États-Unis, hors de l&apos;Union européenne, qui génère la réponse.
+            Le traitement de ces contenus par OpenAI relève de ses propres
+            conditions et de sa politique de confidentialité. Si vous ne
+            souhaitez pas ce transfert, n&apos;utilisez pas l&apos;assistant : le
+            reste de l&apos;application fonctionne sans lui.
           </li>
           <li>
             <strong>Météo, sol et eau</strong> : les coordonnées de la parcelle
@@ -285,7 +289,7 @@ export default function ConfidentialitePage() {
         </p>
 
         <p className="text-xs text-slate-500 mt-12">
-          Dernière mise à jour : 2026-07-30 — version 2.0.
+          Dernière mise à jour : 2026-10-10 — version 2.1.
         </p>
       </main>
     </div>
