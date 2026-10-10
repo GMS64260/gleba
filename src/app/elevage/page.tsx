@@ -6,7 +6,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import { useSession } from "next-auth/react"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -91,7 +91,6 @@ export default function ElevageDashboard() {
 
 function ElevageDashboardInner() {
   const { data: session } = useSession()
-  const router = useRouter()
   const searchParams = useSearchParams()
   const [selectedYear, setSelectedYear] = React.useState(currentYearNow)
   // QA cmsob8lon — l'année choisie revenait à l'année courante après F5.
@@ -162,20 +161,17 @@ function ElevageDashboardInner() {
   React.useEffect(() => {
     if (rawTab && !VALID_TABS.includes(rawTab) && TAB_ALIASES[rawTab]) {
       const canonical = TAB_ALIASES[rawTab]
-      // Normalise l'alias via le routeur Next (et non l'History API brute :
-      // un replaceState(null,…) désynchronise l'arbre interne de l'App Router
-      // et casse les <Link> ultérieurs vers /elevage/animaux/[id] — bug QA #1).
       // QA caprin cms1vps0c — l'alias ?tab=lots doit ouvrir le sous-onglet
       // Lots d'« Animaux & Lots » : on propage sub=lots (lu par AnimauxTab).
-      const suffix =
-        rawTab === "lots"
-          ? "&sub=lots"
-          : rawTab === "sanitaire"
-            ? "&sub=registre"
-            : ""
-      router.replace(`/elevage?tab=${canonical}${suffix}`, { scroll: false })
+      // QA cmv2ec55b — par l'API History, que Next synchronise avec
+      // useSearchParams : router.replace sur la seule query de la page
+      // courante est un no-op en production, l'alias restait dans l'URL.
+      const params = new URLSearchParams([["tab", canonical]])
+      if (rawTab === "lots") params.set("sub", "lots")
+      else if (rawTab === "sanitaire") params.set("sub", "registre")
+      updateDashboardSearchParams(params, "replace")
     }
-  }, [rawTab, router])
+  }, [rawTab])
 
   // Si l'onglet courant devient masqué (ex. Production en filière compagnie),
   // rebasculer vers le Dashboard (activeTab est dérivé de l'URL).
