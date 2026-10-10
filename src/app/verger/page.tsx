@@ -38,9 +38,10 @@ const TABS = [
   { id: "plantations", label: "Plantations", icon: Sprout, shortLabel: "Plant." },
   { id: "arbres", label: "Arbres", icon: TreeDeciduous, shortLabel: "Arbres" },
   { id: "productions", label: "Productions", icon: Apple, shortLabel: "Prod." },
-  { id: "operations", label: "Opérations", icon: Wrench, shortLabel: "Oper." },
-  { id: "sante", label: "Santé & Phyto", icon: HeartPulse, shortLabel: "Sante" },
-  { id: "referentiel", label: "Référentiel", icon: Leaf, shortLabel: "Ref." },
+  // QA cmv29ds0t — les libellés abrégés du mobile gardent leurs accents.
+  { id: "operations", label: "Opérations", icon: Wrench, shortLabel: "Opér." },
+  { id: "sante", label: "Santé & Phyto", icon: HeartPulse, shortLabel: "Santé" },
+  { id: "referentiel", label: "Référentiel", icon: Leaf, shortLabel: "Réf." },
 ] as const
 
 type TabId = (typeof TABS)[number]["id"]
