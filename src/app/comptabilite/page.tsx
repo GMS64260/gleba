@@ -15,7 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { AppHeader } from "@/components/shell/AppHeader"
 import { TourComptabilite } from "@/components/tours/tour-comptabilite"
 import { PremiersPasBanner } from "@/components/premiers-pas-banner"
-import { computeYearDiff } from "@/lib/comptabilite/year-diff"
+import { computeYearDiff, libelleComparatifRevenus } from "@/lib/comptabilite/year-diff"
 import { getAvailableYears } from "@/components/year-selector"
 import {
   BarChart,
@@ -396,34 +396,22 @@ export default function DashboardComptabilite() {
                 </CardHeader>
                 <CardContent>
                   <p className="text-3xl font-bold">{formatEuro(data.stats.revenus)}</p>
-                  {yearDiff.state === "compare" ? (
-                    <>
-                      <p className={`text-sm ${kpiSubtleClass("revenu")} mt-1`}>
-                        {yearDiff.percent > 0 ? "+" : ""}{yearDiff.percent}% vs {selectedYear - 1}
-                      </p>
-                      <p className={`text-[10px] ${kpiSubtleClass("revenu")} opacity-90`}>
-                        (YTD vs YTD année dernière)
-                      </p>
-                    </>
-                  ) : yearDiff.state === "nouveau" ? (
-                    <p className={`text-sm ${kpiSubtleClass("revenu")} mt-1`}>
-                      Nouveau · pas d'activité en {selectedYear - 1}
-                    </p>
-                  ) : yearDiff.state === "nouveau-revenus" ? (
-                    // Bug COMPTA #2 — revenus N-1 = 0 mais il y a eu des
-                    // dépenses en N-1 : ne pas prétendre « pas d'activité ».
-                    <p className={`text-sm ${kpiSubtleClass("revenu")} mt-1`}>
-                      {selectedYear - 1} : 0 € de revenus, {formatEuro(yearDiff.depensesPrecedente)} de dépenses
-                    </p>
-                  ) : yearDiff.state === "depenses-seules" ? (
-                    // QA 2026-08-11 (cmsp5ti6m) — même exigence côté année N :
-                    // des dépenses sans revenus restent de l'activité.
-                    <p className={`text-sm ${kpiSubtleClass("revenu")} mt-1`}>
-                      {selectedYear} : 0 € de revenus, {formatEuro(yearDiff.depensesCourante)} de dépenses
+                  {/* Libellés : libelleComparatifRevenus (src/lib/comptabilite/year-diff.ts),
+                      chacun porte sur N-1 (ticket cmv290vir). */}
+                  {yearDiff.state === "vide" ? (
+                    <p className={`text-[10px] ${kpiSubtleClass("revenu")} italic mt-1`}>
+                      {libelleComparatifRevenus(yearDiff, selectedYear, formatEuro)}
                     </p>
                   ) : (
-                    <p className={`text-[10px] ${kpiSubtleClass("revenu")} italic mt-1`}>
-                      Aucune activité en {selectedYear} ni en {selectedYear - 1}
+                    <p className={`text-sm ${kpiSubtleClass("revenu")} mt-1`}>
+                      {libelleComparatifRevenus(yearDiff, selectedYear, formatEuro)}
+                    </p>
+                  )}
+                  {yearDiff.state === "compare" && selectedYear === currentYear && (
+                    // Exercice en cours : N-1 est lu jusqu'au même jour
+                    // (src/lib/kpi/compta.ts) ; un exercice passé se compare entier.
+                    <p className={`text-[10px] ${kpiSubtleClass("revenu")} opacity-90`}>
+                      (à date, comparé au même jour de {selectedYear - 1})
                     </p>
                   )}
                 </CardContent>
