@@ -191,9 +191,9 @@ export async function DELETE(
       )
     }
 
-    // QA cmv29i9ad — cultures, interventions et fertilisations retiennent la
-    // planche : sinon l'intervention perd son emplacement et la fertilisation
-    // part en cascade.
+    // QA cmv29i9ad — cultures et interventions retiennent la planche, sinon
+    // l'intervention perd son emplacement (voir traces.ts pour ce qui ne la
+    // retient pas).
     const traces = (await compterTracesPlanches(prisma, [planche], session!.user.id)).get(planche.id)!
     if (aDesTraces(traces)) {
       return NextResponse.json(

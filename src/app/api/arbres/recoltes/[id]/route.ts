@@ -152,9 +152,13 @@ export async function PUT(request: NextRequest, { params }: Params) {
     // la date, la parcelle ou l'espèce change et que le lot courant est
     // automatique, on le régénère (le lot encode date, parcelle et espèce) ; un
     // lot saisi à la main par l'utilisateur n'est jamais écrasé.
+    // Le formulaire renvoie toujours le lot qu'il affiche : un lot identique au
+    // lot stocké n'est pas une saisie, sinon un lot automatique ne suivrait
+    // jamais un changement d'arbre, de date ou de parcelle (revue cmv2ebsdk).
     let numLot: string | undefined
-    if (typeof body.numLot === "string" && body.numLot.trim()) {
-      numLot = body.numLot.trim()
+    const lotSaisi = typeof body.numLot === "string" ? body.numLot.trim() : ""
+    if (lotSaisi && lotSaisi !== existing.numLot) {
+      numLot = lotSaisi
     } else {
       const dateChange = nouvelleDate !== undefined && nouvelleDate.getTime() !== existing.date.getTime()
       const parcelleChange = nouvelleParcelleId !== undefined && nouvelleParcelleId !== existing.parcelleId

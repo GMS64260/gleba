@@ -12,7 +12,8 @@
 
 import * as React from "react"
 import { urlApercu } from "@/lib/apercu-document"
-import { usePathname, useRouter, useSearchParams } from "next/navigation"
+import { useSearchParams } from "next/navigation"
+import { updateDashboardSearchParams } from "@/lib/dashboard-navigation"
 import { Milk, FileText, LineChart, Plus, Copy, Loader2, Download, Trash2, ShieldAlert, TrendingUp, TrendingDown, Minus, Trophy, Truck, Warehouse, FlaskConical } from "lucide-react"
 import { LivraisonLaitSubTab } from "./LivraisonLaitSubTab"
 import { AffinageSubTab } from "./AffinageSubTab"
@@ -607,8 +608,6 @@ function QualiteView() {
 
 function CollecteView() {
   const { toast } = useToast()
-  const router = useRouter()
-  const pathname = usePathname()
   const searchParams = useSearchParams()
   const cibleUrl = searchParams.get("laitCible") === "lot" ? "lot" : "animal"
   const idUrl = Number.parseInt(searchParams.get("laitId") || "", 10)
@@ -677,8 +676,10 @@ function CollecteView() {
     if (params.get("laitCible") === target && params.get("laitId") === String(selectedId)) return
     params.set("laitCible", target)
     params.set("laitId", String(selectedId))
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false })
-  }, [pathname, router, searchParams, selectedId, target])
+    // API History : router.replace sur la seule query est un no-op en
+    // production, la cible n'entrait jamais dans l'URL (QA cmv2ec55b).
+    updateDashboardSearchParams(params, "replace")
+  }, [searchParams, selectedId, target])
 
   const findCollecte = (day: string, traite: "Matin" | "Soir"): Collecte | undefined => {
     return collectes.find((c) => {

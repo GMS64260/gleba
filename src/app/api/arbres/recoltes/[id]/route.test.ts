@@ -37,7 +37,9 @@ const RECOLTE = {
   id: 132,
   userId: "u1",
   arbreId: 10,
-  date: new Date("2026-10-10T00:00:00.000Z"),
+  // Midi UTC : le lot lit la date en heure locale, minuit UTC tomberait la
+  // veille à l'ouest de Greenwich.
+  date: new Date("2026-10-10T12:00:00.000Z"),
   parcelleId: "parc-1",
   numLot: "20261010-Verger-Prunier-01",
   arbre: { espece: "Prunier" },
@@ -115,11 +117,31 @@ describe("PUT /api/arbres/recoltes/[id] — changement d'arbre", () => {
     })
   })
 
+  // Revue : le formulaire renvoie le lot affiché ; ce lot inchangé ne doit pas
+  // bloquer la régénération (sinon arbre Pommier et lot « Prunier »).
+  it("régénère le lot automatique quand l'écran renvoie le lot affiché, inchangé", async () => {
+    mocks.arbreFindFirst.mockResolvedValue({ id: 30, espece: "Pommier" })
+    mocks.parcelleFindFirst.mockResolvedValue({ id: "parc-1", nom: "Verger" })
+
+    await modifier({ arbreId: 30, numLot: RECOLTE.numLot, notes: null, parcelleId: "parc-1" })
+
+    expect(mocks.recolteUpdate.mock.calls[0][0].data.numLot).toBe("20261010-Verger-Pommier-01")
+  })
+
+  it("garde un nouveau lot saisi dans le formulaire", async () => {
+    mocks.arbreFindFirst.mockResolvedValue({ id: 30, espece: "Pommier" })
+
+    await modifier({ arbreId: 30, numLot: "  ETIQUETTE-42 " })
+
+    expect(mocks.recolteUpdate.mock.calls[0][0].data.numLot).toBe("ETIQUETTE-42")
+  })
+
   it("ne touche jamais un lot saisi à la main", async () => {
     mocks.recolteFindUnique.mockResolvedValue({ ...RECOLTE, numLot: "LOT-MANUEL-1010" })
     mocks.arbreFindFirst.mockResolvedValue({ id: 30, espece: "Pommier" })
 
-    await modifier({ arbreId: 30 })
+    // Corps réel de l'écran : il renvoie le lot affiché.
+    await modifier({ arbreId: 30, numLot: "LOT-MANUEL-1010" })
 
     expect(mocks.recolteUpdate.mock.calls[0][0].data.numLot).toBeUndefined()
   })

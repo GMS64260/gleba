@@ -64,10 +64,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: `Planche "${reference}" non trouvée` }, { status: 404 })
     }
 
-    // Garde de la suppression (cultures, interventions, fertilisations, QA
-    // cmv29i9ad), plus les analyses de sol, qui perdraient leur planche. Ces
-    // traces prouvent un usage maraîcher réel, donc une conversion faite par
-    // erreur.
+    // Plus stricte que la suppression : cultures, fertilisations, analyses de
+    // sol et interventions (QA cmv29i9ad) prouvent un usage maraîcher réel,
+    // donc une conversion faite par erreur.
     const { cultures, fertilisations, analyses } = planche._count
     const { interventions } = (await compterTracesPlanches(prisma, [planche], userId)).get(planche.id)!
     if (cultures > 0 || fertilisations > 0 || analyses > 0 || interventions > 0) {
