@@ -32,7 +32,7 @@
 | PUT | `/api/cultures/[id]` | Mise à jour complète |
 | PATCH | `/api/cultures/[id]` | Mise à jour partielle (semisFait, plantationFaite, etc.) |
 | DELETE | `/api/cultures/[id]` | Supprimer (cascade récoltes) |
-| POST | `/api/cultures/irriguer` | Marquer irrigation effectuée |
+| PATCH | `/api/cultures/irriguer` | Noter un arrosage (ou l'annuler), cocher « à irriguer » |
 
 ## Module Récoltes
 
@@ -180,7 +180,7 @@
 
 | Méthode | Path | Description |
 |---------|------|-------------|
-| GET | `/api/calendrier` | Événements calendrier (semis, plantations, récoltes, irrigations, soins) |
+| GET | `/api/calendrier` | Événements calendrier (semis, plantations, récoltes, arrosages notés) |
 | GET | `/api/taches` | Tâches à faire (tous modules) |
 | POST | `/api/taches` | Créer tâche |
 | GET | `/api/interventions` | Lister interventions terrain |
@@ -191,7 +191,6 @@
 | GET | `/api/meteo` | Données météo (cache Open-Meteo) |
 | GET | `/api/lunaire` | Calendrier lunaire |
 | GET | `/api/sol` | Données pédologiques (SoilGrids) |
-| POST | `/api/irrigations/generate` | Générer planning irrigation |
 
 ## Admin
 

@@ -8,8 +8,8 @@
  *   `computeConseilIrrigation`, `getKpiMaraichage`, `getKpiCompta`,
  *   `chargerAgendaElevage`, `chargerDeclarationsReglementaires`), jamais un
  *   second calcul ;
- * - lecture seule : aucune auto-validation persistée, même pour un compte
- *   qui pourrait écrire (`persistAutoValidation: false`) ;
+ * - lecture seule : rien n'est écrit en base (l'arrosage du jour se calcule
+ *   depuis le bilan hydrique, refonte du 2026-10-10) ;
  * - scopée par le TENANT (`getUserId`) pour les données métier, par
  *   l'ACTEUR (`getActeurId`) pour les préférences, comme les routes appelées ;
  * - une source en panne ne vide pas la page : elle est nommée dans

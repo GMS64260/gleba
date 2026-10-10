@@ -5,6 +5,12 @@
  */
 
 import type { MeteoJournaliere, MeteoPrevision } from './meteo'
+import {
+  DEFICIT_CRITIQUE_MM,
+  DEFICIT_HAUTE_MM,
+  DEFICIT_MOYENNE_MM,
+  SEUIL_PLUIE_SIGNIFICATIVE,
+} from './irrigation/seuils'
 
 // ============================================================
 // TYPES
@@ -236,12 +242,12 @@ export function genererRecommandationIrrigation(
 
   // Jours sans pluie significative
   let joursSansPluie = 0
-  if (pluieAujourdhui >= 1) {
+  if (pluieAujourdhui >= SEUIL_PLUIE_SIGNIFICATIVE) {
     joursSansPluie = 0
   } else {
     joursSansPluie = 1
     for (let i = historique7j.length - 1; i >= 0; i--) {
-      if (historique7j[i].precipitation < 1) joursSansPluie++
+      if (historique7j[i].precipitation < SEUIL_PLUIE_SIGNIFICATIVE) joursSansPluie++
       else break
     }
   }
@@ -264,17 +270,14 @@ export function genererRecommandationIrrigation(
     : planche.retentionEau === 'Élevée' ? 0.7
     : 1.0
 
-  // Calcul de l'urgence — aligné avec /api/cultures/irriguer
+  // Calcul de l'urgence : mêmes seuils que les lignes « à arroser »
+  // (src/lib/irrigation/seuils.ts). Revue du 2026-10-10 : les seuils étaient
+  // multipliés par un facteur de besoin (critique dès 4 mm pour une tomate),
+  // et ce conseiller disait « critique » sur une planche absente des tâches.
+  // Le déficit dérive déjà de l'ETc de la culture (Kc au stade) : une culture
+  // gourmande le creuse plus vite, sans seuil propre.
   let urgence: RecommandationIrrigation['urgence']
   const deficit = Math.abs(Math.min(0, bilanHydrique7j)) * facteurSol
-  // Feedback Marc 2026-05-16 — Bug 14 : la formule précédente
-  // `deficit > 20 * besoinNormalise` (avec besoinNormalise = besoinEau/5)
-  // était INVERSÉE : une tomate (besoinEau=5) tolerait un déficit
-  // de 20mm avant critique alors qu'une roquette (besoinEau=1) basculait
-  // à 4mm. Or les plantes gourmandes en eau doivent passer en critique
-  // PLUS VITE. On utilise donc l'inverse normalisé (1 pour les peu
-  // exigeantes, 0.2 pour les très exigeantes) pour piloter les seuils.
-  const facteurBesoin = Math.max(0.2, (6 - culture.besoinEau) / 5) // 1.0 → 0.2
 
   // Bilan prospectif : si on ajoute la pluie prévue 5j, est-ce que le déficit se comble ?
   const bilanProspectif = bilanHydrique7j + pluiePrevue5j
@@ -292,11 +295,11 @@ export function genererRecommandationIrrigation(
     urgence = bilanProspectif > -5 ? 'faible' : 'moyenne'
   } else if (pluiePrevue48h >= 10 && bilanHydrique7j > -10) {
     urgence = 'faible'
-  } else if (deficit > 20 * facteurBesoin && joursSansEau >= 5 && pluiePrevue48h < 5 && pluiePrevue5j < 8) {
+  } else if (deficit > DEFICIT_CRITIQUE_MM && joursSansEau >= 5 && pluiePrevue48h < 5 && pluiePrevue5j < 8) {
     urgence = 'critique'
-  } else if (deficit > 10 * facteurBesoin && joursSansEau >= 3 && pluiePrevue48h < 8 && pluiePrevue5j < 10) {
+  } else if (deficit > DEFICIT_HAUTE_MM && joursSansEau >= 3 && pluiePrevue48h < 8 && pluiePrevue5j < 10) {
     urgence = 'haute'
-  } else if (deficit > 5 * facteurBesoin && joursSansEau > 2) {
+  } else if (deficit > DEFICIT_MOYENNE_MM && joursSansEau > 2) {
     urgence = 'moyenne'
   } else if (bilanHydrique7j < 0) {
     urgence = 'faible'

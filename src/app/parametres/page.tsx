@@ -1552,7 +1552,7 @@ const notifPreferenceRows: Array<{
   { key: 'stocks', label: 'Stocks bas', description: 'Stocks passés sous leur seuil minimum.' },
   { key: 'itpSemaine', label: 'Tâches ITP de la semaine', description: 'Opérations prévues cette semaine selon vos ITP.' },
   { key: 'recoltes', label: 'Récoltes mûres', description: 'Cultures arrivées à maturité.' },
-  { key: 'irrigations', label: 'Irrigations', description: 'Rappels et passages probablement inutiles.' },
+  { key: 'irrigations', label: 'Irrigations', description: 'Planches en urgence critique d’arrosage (bilan hydrique), au plus une fois par jour.' },
   { key: 'autresUrgentes', label: 'Autres actions urgentes', description: 'Retards et associations incompatibles.' },
 ]
 

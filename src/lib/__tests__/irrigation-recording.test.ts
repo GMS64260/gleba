@@ -113,7 +113,7 @@ describe("enregistrerArrosageCultures", () => {
           },
         ],
       },
-      select: { id: true },
+      select: { id: true, derniereIrrigation: true },
     })
     // Les passages ouverts sont lus avant d'être clos : seuls les
     // rattrapables sont ensuite estampillés de la date réelle.

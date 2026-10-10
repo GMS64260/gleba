@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { whereArrosageNote } from '@/lib/irrigation/arrosages-notes'
 import { lireAnnee } from '@/lib/api/annee'
 import { createDepenseFromIntervention, deleteAutoEntry } from '@/lib/auto-compta'
 import { createInterventionSchema, updateInterventionSchema } from '@/lib/validations/intervention'
@@ -232,11 +233,15 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // === 3. Irrigations planifiées ===
+    // === 3. Arrosages notés ===
+    // Refonte de l'arrosage (2026-10-10) : seuls les arrosages réellement notés
+    // vont au registre. Les reliquats de l'ancien plan (passages en attente ou
+    // périmés affichés « Planifié », auto-validations par la pluie) n'étaient
+    // pas des interventions.
     const irrigations = await prisma.irrigationPlanifiee.findMany({
       where: {
         userId,
-        datePrevue: { gte: yearStart, lte: yearEnd },
+        AND: [whereArrosageNote(), { datePrevue: { gte: yearStart, lte: yearEnd } }],
       },
       include: {
         culture: { include: { espece: true, planche: true } },

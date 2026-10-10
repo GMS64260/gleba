@@ -1,6 +1,11 @@
 /**
  * Péremption des irrigations planifiées.
  *
+ * HISTORIQUE depuis la refonte de l'arrosage du 2026-10-10 : plus aucun
+ * passage n'est planifié d'avance (`src/lib/irrigation/a-arroser.ts`), le
+ * planificateur cité ci-dessous est supprimé. Ce module ne sert plus qu'à
+ * `irrigation-recording.ts`, pour clore d'éventuels anciens passages.
+ *
  * Un arrosage est une tâche PÉRISSABLE : il ne se rattrape pas. Le plan est
  * pourtant généré une fois pour toute la saison (`irrigation-scheduler.ts`,
  * jusqu'à 45 passages par culture), si bien que chaque passage manqué restait

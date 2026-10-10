@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi, getUserId } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { jourCivilLocalISO } from '@/lib/irrigation-meteo-decision'
+import { whereArrosageNote } from '@/lib/irrigation/arrosages-notes'
 
 export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
@@ -118,7 +119,7 @@ export async function GET(request: NextRequest) {
       prisma.irrigationPlanifiee.findMany({
         where: {
           userId,
-          fait: true,
+          ...whereArrosageNote(),
           dateEffective: {
             gte: start,
             lte: end,

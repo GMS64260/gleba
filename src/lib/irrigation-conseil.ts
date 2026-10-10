@@ -53,28 +53,16 @@ const TYPES_SOUS_ABRI = ['Serre', 'Tunnel', 'Châssis', 'Chassis']
 /** Mm de pluie cumulés sur 48h pour considérer que le sol est suffisamment arrosé */
 const SEUIL_PLUIE_SOL_ARROSE = 8
 
-/**
- * Pluie qui compte comme un apport d'eau (mm/jour). Une bruine de 1 mm ne
- * remet pas à zéro les « jours sans eau » : elle masquait un vrai déficit.
- */
-export const SEUIL_PLUIE_SIGNIFICATIVE = 3
-
-/**
- * Déficits (mm) qui rendent l'arrosage nécessaire. ABSOLUS depuis la revue du
- * 2026-10-10 : le déficit dérive déjà de l'ETc de l'espèce (une culture
- * gourmande le creuse plus vite). Les anciens seuils, multipliés par le
- * besoin de l'espèce, s'inversaient : par une semaine sèche d'hiver, l'ail
- * (besoin 1) sortait « à arroser » et pas la tomate (besoin 5).
- * Calibrage : la réserve facilement utilisable de légumes à enracinement court
- * vaut 30 à 40 mm, on arrose vers la moitié. Mesuré sur les comptes réels le
- * 2026-10-10 (octobre, pluie significative = 3 mm) : 10 mm faisait sortir 83
- * comptes sur 109 « à arroser », 15 mm en laisse 4 (9 planches) ; en été,
- * 15 mm de déficit est atteint en trois jours. */
-export const DEFICIT_HAUTE_MM = 15
-export const DEFICIT_CRITIQUE_MM = 25
-
-/** Une culture dont la récolte est finie depuis plus longtemps n'est plus à arroser. */
-export const JOURS_APRES_FIN_RECOLTE = 14
+// Seuils partagés avec le conseiller du Calendrier (meteo-agro.ts).
+import {
+  DEFICIT_CRITIQUE_MM,
+  DEFICIT_HAUTE_MM,
+  DEFICIT_MOYENNE_MM,
+  JOURS_APRES_DEBUT_RECOLTE_SANS_FIN,
+  JOURS_APRES_FIN_RECOLTE,
+  SEUIL_PLUIE_SIGNIFICATIVE,
+} from '@/lib/irrigation/seuils'
+export { DEFICIT_CRITIQUE_MM, DEFICIT_HAUTE_MM, JOURS_APRES_FIN_RECOLTE, SEUIL_PLUIE_SIGNIFICATIVE }
 
 /** Nb de jours couverts par la pluie selon la rétention du sol */
 function joursCouverts(pluieMm: number, retentionEau: string | null, et0Journalier: number): number {
@@ -204,7 +192,7 @@ export function calculerUrgenceMeteo(
     }
   }
 
-  if (deficit > 5 && joursEffectifsSansEau > 2) {
+  if (deficit > DEFICIT_MOYENNE_MM && joursEffectifsSansEau > 2) {
     return {
       urgence: 'moyenne',
       raison: `Déficit modéré (${Math.round(deficit)}mm). ${joursEffectifsSansEau}j sans eau.`,
@@ -257,12 +245,14 @@ export type ConseilIrrigation = Awaited<ReturnType<typeof computeConseilIrrigati
  * - une vivace non terminée, quelle que soit son année ;
  * - une annuelle de la saison ou de la précédente (un poireau d'hiver semé en
  *   2026 est encore en terre en janvier 2027), dont la fenêtre de récolte
- *   n'est pas finie depuis plus de JOURS_APRES_FIN_RECOLTE jours, ou sans
- *   date de récolte. 12 % des cultures retenues le 2026-10-10 avaient fini
+ *   n'est pas finie depuis plus de JOURS_APRES_FIN_RECOLTE jours (sans fin
+ *   connue : JOURS_APRES_DEBUT_RECOLTE_SANS_FIN jours après son début), ou
+ *   sans date de récolte. 12 % des cultures retenues le 2026-10-10 avaient fini
  *   leur récolte sans être clôturées : elles sortaient « à arroser ».
  */
 export function whereCulturesEnPlace(annee: number, maintenant: Date = new Date()): Prisma.CultureWhereInput {
   const borne = new Date(maintenant.getTime() - JOURS_APRES_FIN_RECOLTE * 86_400_000)
+  const borneSansFin = new Date(maintenant.getTime() - JOURS_APRES_DEBUT_RECOLTE_SANS_FIN * 86_400_000)
   return {
     AND: [
       { OR: [{ espece: { vivace: true } }, { annee: { in: [annee - 1, annee] } }] },
@@ -270,8 +260,9 @@ export function whereCulturesEnPlace(annee: number, maintenant: Date = new Date(
         OR: [
           { espece: { vivace: true } },
           { dateRecolte: null, finRecolte: null },
-          { dateRecolte: { gte: borne } },
           { finRecolte: { gte: borne } },
+          // Sans fin de récolte, `dateRecolte` n'en est que le début.
+          { finRecolte: null, dateRecolte: { gte: borneSansFin } },
         ],
       },
     ],

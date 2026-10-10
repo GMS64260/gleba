@@ -54,7 +54,7 @@ Gleba est un ERP open source (AGPL-3.0) de gestion de micro-fermes diversifiées
 │  ┌────────▼─────────────────────────▼────────────┐   │
 │  │              LIB (Business Logic)              │   │
 │  │  auth.ts │ auto-compta.ts │ validations/ (Zod) │   │
-│  │  planification.ts │ irrigation-scheduler.ts     │   │
+│  │  planification.ts │ irrigation/a-arroser.ts     │   │
 │  │  meteo.ts │ lunar.ts │ soil-quality.ts          │   │
 │  └────────────────────────┬──────────────────────┘   │
 │                            │                          │

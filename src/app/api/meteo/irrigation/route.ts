@@ -14,6 +14,7 @@ import { fetchEcowittData, fetchOpenMeteoForecast, fetchOpenMeteoHistory, fetchW
 import { adapterConseilSousAbri, genererRecommandationIrrigation } from '@/lib/meteo-agro'
 import { irrigationCache, irrigationCacheKey } from '@/lib/irrigation-cache'
 import { cultureIrrigationDemarreeWhere } from '@/lib/irrigation-eligibility'
+import { whereCulturesEnPlace } from '@/lib/irrigation-conseil'
 import { grouperRecommandationsParPlanche } from '@/lib/irrigation-planche'
 import { etatCulture } from '@/lib/cultures/etat'
 import type { MeteoJournaliere, MeteoPrevision } from '@/lib/meteo'
@@ -63,10 +64,12 @@ export async function GET(request: NextRequest) {
     }
 
     // Récupérer les cultures actives (non terminées) avec leurs planches et parcelles
+    // Mêmes cultures que les lignes « à arroser » (revue du 2026-10-10) : une
+    // culture finie non clôturée ne doit pas sortir « critique » ici.
     const whereClause: Prisma.CultureWhereInput = {
       userId,
       terminee: null,
-      AND: [cultureIrrigationDemarreeWhere],
+      AND: [cultureIrrigationDemarreeWhere, whereCulturesEnPlace(new Date().getFullYear())],
       planche: parcelleId
         ? { is: { parcelleGeoId: parcelleId } }
         : { isNot: null },

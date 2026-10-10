@@ -34,7 +34,8 @@ import {
 import { Info } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import type { ArrosageDuJour } from "@/lib/irrigation/a-arroser"
-import { noterArrosage } from "@/lib/irrigation/noter-arrosage"
+import { annulerArrosage, noterArrosage } from "@/lib/irrigation/noter-arrosage"
+import { notifierEnregistrement } from "@/lib/notifications-ecran"
 import { LigneArrosage, LigneTache } from "@/components/potager/LigneTache"
 import { PastilleEtat } from "@/components/accueil/PastilleEtat"
 import { BulkActions } from "@/components/calendrier/BulkActions"
@@ -317,7 +318,16 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
         stats: { ...prev.stats, aIrriguer: Math.max(0, prev.stats.aIrriguer - 1) },
       }
     })
-    toast({ title: "Arrosage noté", description: arrosage.plancheNom ?? arrosage.especes })
+    // Un tap de trop s'annule : inverse exact (revue du 2026-10-10).
+    notifierEnregistrement({
+      titre: "Arrosage noté",
+      detail: arrosage.plancheNom ?? arrosage.especes,
+      annuler: async () => {
+        const annule = await annulerArrosage(resultat.annulation)
+        if (!annule.ok) throw new Error(annule.erreur)
+        fetchTaches()
+      },
+    })
   }
 
   const yearDiff = stats ? stats.recoltesAnnee - stats.recoltesAnneePrecedente : 0
@@ -722,7 +732,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                       plus d'un plan pré-généré à cadence fixe. */}
                   {taches.irrigation.length === 0 ? (
                     <p className="text-sm text-muted-foreground py-2">
-                      Rien à arroser aujourd&apos;hui d&apos;après la météo et les derniers arrosages notés.
+                      Aucune planche à arroser aujourd&apos;hui. Le conseil d&apos;irrigation détaille chaque culture.
                     </p>
                   ) : (
                     <div className="max-h-[300px] overflow-y-auto rounded-lg border border-lin-doux bg-craie">
