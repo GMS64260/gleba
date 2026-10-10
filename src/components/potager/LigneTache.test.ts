@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 
-import { LigneArrosage, LigneTache } from "./LigneTache"
+import { LigneArrosage, LigneTache, varieteAffichable } from "./LigneTache"
 
 describe("LigneTache", () => {
   it("rend une récolte en retard : liseré critique, verbe en pastille, retard en métadonnée, action Noter et report", () => {
@@ -41,6 +41,19 @@ describe("LigneTache", () => {
     expect(html).toContain(">Annuler<")
     expect(html).not.toContain("de retard")
     expect(html).not.toContain("Reporter")
+  })
+})
+
+describe("varieteAffichable", () => {
+  it("tait une variété « Non spécifiée », garde les autres", () => {
+    expect(varieteAffichable("Non spécifiée")).toBe("")
+    expect(varieteAffichable("non specifiee")).toBe("")
+    expect(varieteAffichable(null)).toBe("")
+    expect(varieteAffichable("Coco de Prague")).toBe("Coco de Prague")
+    const html = renderToStaticMarkup(
+      createElement(LigneTache, { type: "recolte", especeNom: "Radis", varieteNom: "Non spécifiée", fait: false, onAction: () => {} }),
+    )
+    expect(html).not.toContain("Non spécifiée")
   })
 })
 

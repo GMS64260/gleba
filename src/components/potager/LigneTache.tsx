@@ -24,6 +24,12 @@ import {
   type TypeTache,
 } from "@/lib/accueil/etat-tache"
 
+/** Une variété « Non spécifiée » n'est pas une information : même règle que l'accueil. */
+export function varieteAffichable(nom: string | null | undefined): string {
+  if (!nom) return ""
+  return /non sp[ée]cifi/i.test(nom) ? "" : nom
+}
+
 /** Nom d'espèce précédé de sa couleur de plan ; barré quand c'est fait. */
 export function TitreEspece({ nom, couleur, barre }: { nom: string; couleur?: string | null; barre?: boolean }) {
   return (
@@ -77,7 +83,7 @@ export function LigneTache({
     <LigneRegistre
       etat={etat}
       titre={<TitreEspece nom={especeNom} couleur={couleur} barre={fait} />}
-      meta={[varieteNom ?? "", plancheNom ?? "", dateLisible, fait ? "" : libelleRetard(retardJours ?? 0)]}
+      meta={[varieteAffichable(varieteNom), plancheNom ?? "", dateLisible, fait ? "" : libelleRetard(retardJours ?? 0)]}
       pastille={<PastilleEtat etat={etat} libelle={libelle} className="hidden sm:inline-flex" />}
       secondaire={
         !fait && onReporter ? (

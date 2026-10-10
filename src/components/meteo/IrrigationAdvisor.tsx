@@ -3,9 +3,7 @@
 import * as React from "react"
 import {
   Droplets,
-  AlertTriangle,
   CheckCircle2,
-  CloudRain,
   Loader2,
   ChevronDown,
   ChevronUp,
@@ -15,10 +13,10 @@ import {
   TrendingDown,
   Minus,
   Info,
-  Droplet,
 } from "lucide-react"
-import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
+import { LigneRegistre } from "@/components/accueil/LigneRegistre"
+import { PastilleEtat, type EtatRegistre } from "@/components/accueil/PastilleEtat"
 
 // ============================================================
 // TYPES
@@ -275,9 +273,7 @@ export function IrrigationAdvisor({ parcelleId, lat, lng, scopeLabel }: Irrigati
             </span>
           )}
           {data.urgentes > 0 && (
-            <span className="text-xs font-medium text-red-600 bg-red-50 px-2 py-1 rounded-full">
-              {data.urgentes} urgente{data.urgentes > 1 ? "s" : ""}
-            </span>
+            <PastilleEtat etat="critique" libelle={`${data.urgentes} urgente${data.urgentes > 1 ? "s" : ""}`} />
           )}
           <button
             onClick={(e) => { e.stopPropagation(); fetchRecos(true) }}
@@ -375,7 +371,7 @@ export function IrrigationAdvisor({ parcelleId, lat, lng, scopeLabel }: Irrigati
         Les conseils tiennent compte des arrosages notés. Un équipement automatique
         indique le système installé, pas qu&apos;un passage a réellement eu lieu.
       </div>
-      <div className="divide-y">
+      <div>
         {displayed.map((reco) => (
           <RecoRow
             key={reco.plancheId}
@@ -412,6 +408,15 @@ export function IrrigationAdvisor({ parcelleId, lat, lng, scopeLabel }: Irrigati
 // LIGNE DE RECOMMANDATION
 // ============================================================
 
+/** Verbe d'une recommandation d'arrosage, par urgence. */
+const ETAT_URGENCE: Record<RecommandationIrrigation["urgence"], { etat: EtatRegistre; libelle: string }> = {
+  critique: { etat: "critique", libelle: "À arroser d'urgence" },
+  haute: { etat: "attention", libelle: "À arroser" },
+  moyenne: { etat: "neutre", libelle: "À surveiller" },
+  faible: { etat: "info", libelle: "Peut attendre" },
+  aucune: { etat: "ok", libelle: "Rien à faire" },
+}
+
 function RecoRow({
   reco,
   saving,
@@ -423,75 +428,49 @@ function RecoRow({
 }) {
   const [expanded, setExpanded] = React.useState(false)
 
-  const urgenceConfig = {
-    critique: { bg: "bg-red-50", text: "text-red-700", border: "border-red-200", label: "Critique", icon: AlertTriangle },
-    haute: { bg: "bg-orange-50", text: "text-orange-700", border: "border-orange-200", label: "Haute", icon: AlertTriangle },
-    moyenne: { bg: "bg-yellow-50", text: "text-yellow-700", border: "border-yellow-200", label: "Moyenne", icon: Droplets },
-    faible: { bg: "bg-blue-50", text: "text-blue-700", border: "border-blue-200", label: "Faible", icon: Droplets },
-    aucune: { bg: "bg-green-50", text: "text-green-700", border: "border-green-200", label: "OK", icon: CheckCircle2 },
-  }
-
-  const config = urgenceConfig[reco.urgence]
-  const Icon = config.icon
+  // P4 « une liste est un registre » (2026-10-09) : l'urgence se lit en
+  // verbe dans une pastille, plus en fond rouge ni en badge « Critique ».
+  const { etat, libelle } = ETAT_URGENCE[reco.urgence]
+  const arroseeAujourdhui = reco.joursDepuisIrrigation === 0
 
   return (
-    <div className={`${reco.urgence === "critique" || reco.urgence === "haute" ? config.bg : ""}`}>
-      <div
-        className="px-3 py-2 flex items-center justify-between cursor-pointer hover:bg-slate-50/50 transition-colors"
-        onClick={() => setExpanded(!expanded)}
-      >
-        <div className="flex items-center gap-2 min-w-0">
-          <Icon className={`h-4 w-4 flex-shrink-0 ${config.text}`} />
-          <div className="min-w-0">
-            <p className="text-sm font-medium truncate">
+    <div>
+      <LigneRegistre
+        etat={etat}
+        titre={
+          <button
+            type="button"
+            onClick={() => setExpanded(!expanded)}
+            aria-expanded={expanded}
+            className="-my-1.5 flex min-h-11 min-w-0 max-w-full items-center gap-1.5 text-left hover:underline"
+          >
+            {expanded ? (
+              <ChevronUp className="h-4 w-4 shrink-0 text-ardoise" aria-hidden />
+            ) : (
+              <ChevronDown className="h-4 w-4 shrink-0 text-ardoise" aria-hidden />
+            )}
+            <span className="truncate">
               {reco.cultureName}
               {reco.varietyName ? ` · ${reco.varietyName}` : ""}
-            </p>
-            <p className="text-xs text-slate-400 truncate">
-              {reco.plancheName} · {reco.etatCulture}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {reco.pluiePrevue48h > 3 && (
-            <span className="text-xs text-blue-500 flex items-center gap-0.5">
-              <CloudRain className="h-3 w-3" />
-              {Math.round(reco.pluiePrevue48h)}mm
             </span>
-          )}
-          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${config.bg} ${config.text} border ${config.border}`}>
-            {config.label}
-          </span>
-          {reco.joursDepuisIrrigation === 0 ? (
-            <span className="hidden text-xs font-medium text-cyan-700 sm:inline">
-              Arrosée aujourd&apos;hui
-            </span>
-          ) : (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="h-7 px-2 text-xs text-cyan-700"
-              disabled={saving}
-              onClick={(event) => {
-                event.stopPropagation()
-                void onWater(reco)
-              }}
-              title={reco.cultureCount > 1
-                ? `Noter l'arrosage de toute la planche (${reco.cultureCount} cultures)`
-                : "Noter l’arrosage d’aujourd’hui"}
-            >
-              {saving
-                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                : <Droplet className="h-3.5 w-3.5" />}
-              <span className="ml-1 hidden sm:inline">Noter</span>
-            </Button>
-          )}
-        </div>
-      </div>
+          </button>
+        }
+        meta={[
+          reco.plancheName,
+          reco.cultureCount > 1 ? `${reco.cultureCount} cultures` : reco.etatCulture,
+          reco.pluiePrevue48h > 3 ? `${Math.round(reco.pluiePrevue48h)} mm de pluie sous 48 h` : "",
+          arroseeAujourdhui ? "Arrosée aujourd'hui" : "",
+        ]}
+        pastille={<PastilleEtat etat={etat} libelle={libelle} className="hidden sm:inline-flex" />}
+        action={
+          arroseeAujourdhui
+            ? undefined
+            : { libelle: saving ? "…" : "Noter", disabled: saving, onClick: () => { void onWater(reco) } }
+        }
+      />
 
       {expanded && (
-        <div className="px-3 pb-2 pl-9">
+        <div className="border-b border-lin-doux px-4 pb-3 pl-7">
           <p className="text-xs text-slate-600 leading-relaxed">{reco.conseilMessage}</p>
           <div className="flex items-center gap-3 mt-1.5 text-[10px] text-slate-400">
             <span>Bilan 7j : {reco.bilanHydrique7j > 0 ? "+" : ""}{reco.bilanHydrique7j}mm</span>
