@@ -123,6 +123,28 @@ export function libellePetit(especeAnimaleId: string | null | undefined): { s: s
   return LIBELLE_PETIT[base] ?? { s: "petit", p: "petits" }
 }
 
+/** Espèces de base dont les petits sortent d'un œuf couvé (volailles, oiseaux de compagnie). */
+const BASES_ECLOSION = new Set([
+  "poule", "canard", "oie", "dinde", "pintade", "caille",
+  "perruche", "calopsitte", "inseparable", "perroquet", "canari", "mandarin",
+])
+
+/**
+ * Vrai si la naissance de cette espèce est une éclosion et non une mise bas.
+ *
+ * Ticket cmv292a85 (QA 2026-10-10) — une couvée enregistrée sur un lot de
+ * poules pondeuses s'intitulait « Mise bas » et proposait d'élever les
+ * poussins « au biberon » : seul `dureeCouvaison` de la mère était lu, et le
+ * lot n'en porte pas. Seule source pour le formulaire de naissance et sa liste.
+ */
+export function naitParEclosion(
+  espece: { id?: string | null; dureeCouvaison?: number | null } | null | undefined
+): boolean {
+  if (!espece) return false
+  if (espece.dureeCouvaison != null) return true
+  return BASES_ECLOSION.has(especeBaseId(espece.id ?? "").toLowerCase())
+}
+
 export function especeBaseId(especeAnimaleId: string): string {
   const head = especeAnimaleId.split("_")[0]
   return head || especeAnimaleId
