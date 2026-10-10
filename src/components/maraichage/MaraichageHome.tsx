@@ -42,7 +42,7 @@ const TABS = [
   { id: "cultures", label: "Cultures", icon: Sprout, shortLabel: "Cultures" },
   { id: "terrain", label: "Terrain", icon: LayoutGrid, shortLabel: "Terrain" },
   { id: "planification", label: "Planification", icon: BarChart3, shortLabel: "Planif." },
-  { id: "referentiel", label: "Référentiel", icon: Leaf, shortLabel: "Ref." },
+  { id: "referentiel", label: "Référentiel", icon: Leaf, shortLabel: "Réf." },
 ] as const
 
 type TabId = (typeof TABS)[number]["id"]
