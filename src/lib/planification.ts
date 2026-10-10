@@ -1462,10 +1462,11 @@ export async function creerCulturesBatch(
   // client permettait de rattacher une culture à la planche d'un autre compte).
   const planchesDb = await prisma.planche.findMany({
     where: { userId, OR: [{ nom: { in: plancheNoms } }, { id: { in: plancheNoms } }] },
-    select: { id: true, nom: true, largeur: true },
+    select: { id: true, nom: true, largeur: true, longueur: true },
   })
   const plancheNomToId = new Map(planchesDb.map(p => [p.nom, p.id]))
   const plancheIdsUser = new Set(planchesDb.map(p => p.id))
+  const plancheParId = new Map(planchesDb.map(p => [p.id, p]))
 
   for (const culture of cultures) {
     const itp = itpMap.get(culture.itpId)
@@ -1547,6 +1548,18 @@ export async function creerCulturesBatch(
         )
       : null
 
+    // QA cmv29cg0h — une culture concrétisée depuis la rotation arrivait sans
+    // longueur, espacement ni quantité : la fiche affichait des champs vides
+    // et la liste « — », alors que la création unitaire (NewCultureDialog)
+    // reprend la longueur de la planche, l'espacement de l'itinéraire et en
+    // déduit les plants. Même règle ici : longueur de la planche, espacement
+    // sur le rang de l'ITP (cm), quantité = rangs × plants par rang.
+    const planche = plancheParId.get(plancheCuidId)
+    const longueur = planche?.longueur ?? null
+    const espacement = itp.espacement && itp.espacement > 0 ? Math.round(itp.espacement) : null
+    const nbPlants = calculerNbPlants(longueur, null, itp.nbRangs, espacement)
+    const quantite = nbPlants > 0 ? nbPlants : null
+
     // Creer la culture
     const newCulture = await prisma.culture.create({
       data: {
@@ -1560,6 +1573,9 @@ export async function creerCulturesBatch(
         datePlantation,
         dateRecolte,
         nbRangs: itp.nbRangs,
+        longueur,
+        espacement,
+        quantite,
       },
     })
 
