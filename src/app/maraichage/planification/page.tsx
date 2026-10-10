@@ -6,5 +6,5 @@ import { redirect } from "next/navigation"
  * dans la page principale.
  */
 export default function PlanificationPage() {
-  redirect("/?tab=planification")
+  redirect("/maraichage?tab=planification")
 }

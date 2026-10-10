@@ -25,7 +25,10 @@ import {
 const BASE = "/maraichage/planification"
 
 const SECTIONS = [
-  { label: "Vue d'ensemble", href: "/?tab=planification", match: null, icon: LayoutDashboard },
+  // QA cmv295yon — depuis l'accueil v2, « / » est l'accueil de la ferme (plus
+  // le module maraîchage) : `/?tab=planification` menait à /aujourdhui. Le hub
+  // vit sous /maraichage, qui sert l'onglet demandé (et redirige en v1).
+  { label: "Vue d'ensemble", href: "/maraichage?tab=planification", match: null, icon: LayoutDashboard },
   { label: "Cultures prévues", href: `${BASE}/cultures-prevues`, match: `${BASE}/cultures-prevues`, icon: Sprout },
   { label: "Récoltes prévues", href: `${BASE}/recoltes-prevues`, match: `${BASE}/recoltes-prevues`, icon: Apple },
   { label: "Semences", href: `${BASE}/semences`, match: `${BASE}/semences`, icon: Bean },
