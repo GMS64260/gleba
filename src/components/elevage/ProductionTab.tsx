@@ -6,7 +6,7 @@
 
 import * as React from "react"
 import { useSession } from "next-auth/react"
-import { useRouter } from "next/navigation"
+import { updateDashboardSearchParams } from "@/lib/dashboard-navigation"
 import {
   Egg,
   ShoppingCart,
@@ -1703,7 +1703,6 @@ function AbattagesSubTab({ year }: { year?: number } = {}) {
 
   // /elevage?tab=production&editAbattage=<id> (déclaration à compléter) : on
   // ouvre la fiche de l'abattage dès la liste chargée, une seule fois.
-  const router = useRouter()
   const editAbattageTraiteRef = React.useRef(false)
   React.useEffect(() => {
     if (editAbattageTraiteRef.current || isLoading) return
@@ -1712,7 +1711,9 @@ function AbattagesSubTab({ year }: { year?: number } = {}) {
     editAbattageTraiteRef.current = true
     const abattage = abattages.find((a) => a.id === cible)
     if (abattage) handleEdit(abattage)
-    router.replace("/elevage?tab=production", { scroll: false })
+    // API History : router.replace sur la seule query est un no-op en
+    // production, F5 rouvrait la fiche (QA cmv2ec55b, même motif).
+    updateDashboardSearchParams(new URLSearchParams([["tab", "production"]]), "replace")
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading, abattages])
 

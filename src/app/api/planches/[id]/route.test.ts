@@ -8,7 +8,6 @@ const mocks = vi.hoisted(() => ({
   delete: vi.fn(),
   invalidateKpi: vi.fn(),
   cultureGroupBy: vi.fn(),
-  fertilisationGroupBy: vi.fn(),
   interventionGroupBy: vi.fn(),
 }))
 
@@ -23,7 +22,6 @@ vi.mock("@/lib/prisma", () => ({
       delete: mocks.delete,
     },
     culture: { groupBy: mocks.cultureGroupBy },
-    fertilisation: { groupBy: mocks.fertilisationGroupBy },
     intervention: { groupBy: mocks.interventionGroupBy },
   },
 }))
@@ -132,7 +130,6 @@ describe("DELETE /api/planches/[id] — traces qui retiennent la planche", () =>
     mocks.findFirst.mockResolvedValue({ id: EXISTANTE.id })
     mocks.findUnique.mockResolvedValue({ id: EXISTANTE.id, nom: EXISTANTE.nom })
     mocks.cultureGroupBy.mockResolvedValue([])
-    mocks.fertilisationGroupBy.mockResolvedValue([])
     mocks.interventionGroupBy.mockResolvedValue([])
     mocks.delete.mockResolvedValue({})
   })
@@ -148,31 +145,50 @@ describe("DELETE /api/planches/[id] — traces qui retiennent la planche", () =>
   it.each([
     ["par son identifiant", EXISTANTE.id],
     ["par son nom historique", EXISTANTE.nom],
-  ])("refuse une planche référencée par une intervention %s, en le disant", async (_l, reference) => {
-    mocks.interventionGroupBy.mockResolvedValue([{ plancheId: reference, _count: { _all: 1 } }])
+  ])("refuse une planche référencée par une intervention %s, en disant où la trouver", async (_l, reference) => {
+    mocks.interventionGroupBy.mockResolvedValue([
+      {
+        plancheId: reference,
+        _count: { _all: 1 },
+        _min: { date: new Date("2025-06-12T10:00:00Z") },
+        _max: { date: new Date("2025-06-12T10:00:00Z") },
+      },
+    ])
 
     const res = await DELETE(suppression(), params(EXISTANTE.id))
 
     expect(res.status).toBe(409)
     const corps = await res.json()
     expect(corps.error).toBe(
-      `La planche « ${EXISTANTE.nom} » porte encore 1 intervention : supprimez-la ou rattachez-la à une autre planche avant de la supprimer, pour ne pas perdre son emplacement.`
+      `La planche « ${EXISTANTE.nom} » porte encore 1 intervention : supprimez cette intervention ou rattachez-la à une autre planche (Interventions, année 2025), puis supprimez la planche.`
     )
-    expect(corps.details).toEqual({ cultures: 0, interventions: 1, fertilisations: 0 })
+    expect(corps.details).toEqual({ cultures: 0, interventions: 1, anneesInterventions: [2025, 2025] })
     expect(mocks.interventionGroupBy).toHaveBeenCalledWith(
       expect.objectContaining({ where: { userId: "u1", plancheId: { in: [EXISTANTE.id, EXISTANTE.nom] } } })
     )
     expect(mocks.delete).not.toHaveBeenCalled()
   })
 
-  it("refuse une planche qui porte des fertilisations (supprimées en cascade sinon)", async () => {
-    mocks.fertilisationGroupBy.mockResolvedValue([{ plancheId: EXISTANTE.id, _count: { _all: 2 } }])
+  it("additionne les interventions stockées par id et par nom, années comprises", async () => {
     mocks.cultureGroupBy.mockResolvedValue([{ plancheId: EXISTANTE.id, _count: { _all: 3 } }])
+    mocks.interventionGroupBy.mockResolvedValue([
+      { plancheId: EXISTANTE.id, _count: { _all: 1 }, _min: { date: new Date("2026-04-02T10:00:00Z") }, _max: { date: new Date("2026-04-02T10:00:00Z") } },
+      { plancheId: EXISTANTE.nom, _count: { _all: 2 }, _min: { date: new Date("2024-05-01T10:00:00Z") }, _max: { date: new Date("2025-05-01T10:00:00Z") } },
+    ])
 
     const res = await DELETE(suppression(), params(EXISTANTE.id))
 
     expect(res.status).toBe(409)
-    expect((await res.json()).error).toContain("3 cultures et 2 fertilisations")
+    expect((await res.json()).error).toContain(
+      "porte encore 3 cultures et 3 interventions : supprimez ces saisies ou rattachez-les à une autre planche (Interventions, années 2024 à 2026)"
+    )
     expect(mocks.delete).not.toHaveBeenCalled()
+  })
+
+  // Les fertilisations (import Potaléger) n'ont aucun écran pour être
+  // supprimées ou déplacées : elles ne retiennent pas la planche.
+  it("ne compte pas les fertilisations comme une trace bloquante", async () => {
+    const res = await DELETE(suppression(), params(EXISTANTE.id))
+    expect(res.status).toBe(200)
   })
 })

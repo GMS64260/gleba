@@ -204,7 +204,16 @@ export default function PlanchesPage() {
       return
     }
 
-    if (!(await confirmDialog(`Supprimer la planche "${row.nom}" ?`))) return
+    // Les fertilisations (import Potaléger) partent avec la planche : aucun
+    // écran ne les gère, on le dit avant de confirmer (QA cmv29i9ad).
+    const fertilisations = row._count.fertilisations ?? 0
+    const avertissement =
+      fertilisations > 1
+        ? ` Ses ${fertilisations} fertilisations importées seront supprimées avec elle.`
+        : fertilisations === 1
+          ? " Sa fertilisation importée sera supprimée avec elle."
+          : ""
+    if (!(await confirmDialog(`Supprimer la planche "${row.nom}" ?${avertissement}`))) return
 
     try {
       const response = await fetch(`/api/planches/${encodeURIComponent(row.id)}`, {

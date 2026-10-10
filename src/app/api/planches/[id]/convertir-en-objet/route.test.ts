@@ -10,7 +10,6 @@ const mocks = vi.hoisted(() => ({
   resoudreIdPlanche: vi.fn(),
   invalidateKpi: vi.fn(),
   cultureGroupBy: vi.fn(),
-  fertilisationGroupBy: vi.fn(),
   interventionGroupBy: vi.fn(),
 }))
 
@@ -20,7 +19,6 @@ vi.mock("@/lib/prisma", () => ({
     planche: { findFirst: mocks.plancheFindFirst, delete: mocks.plancheDelete },
     objetJardin: { create: mocks.objetCreate },
     culture: { groupBy: mocks.cultureGroupBy },
-    fertilisation: { groupBy: mocks.fertilisationGroupBy },
     intervention: { groupBy: mocks.interventionGroupBy },
     $transaction: mocks.transaction,
   },
@@ -72,7 +70,6 @@ describe("POST /api/planches/[id]/convertir-en-objet", () => {
     mocks.plancheFindFirst.mockResolvedValue(planche())
     mocks.objetCreate.mockImplementation(async ({ data }) => ({ id: 77, ...data }))
     mocks.cultureGroupBy.mockResolvedValue([])
-    mocks.fertilisationGroupBy.mockResolvedValue([])
     mocks.interventionGroupBy.mockResolvedValue([])
     // Le mock de transaction exécute le callback avec le même client : on
     // vérifie ainsi l'ordre création → suppression réellement écrit.
@@ -146,7 +143,9 @@ describe("POST /api/planches/[id]/convertir-en-objet", () => {
     ["par son identifiant", "pl-mur"],
     ["par son nom historique", "Mur 2"],
   ])("refuse une planche référencée par une intervention %s", async (_libelle, reference) => {
-    mocks.interventionGroupBy.mockResolvedValue([{ plancheId: reference, _count: { _all: 1 } }])
+    mocks.interventionGroupBy.mockResolvedValue([
+      { plancheId: reference, _count: { _all: 1 }, _min: { date: null }, _max: { date: null } },
+    ])
 
     const response = await convertir({ type: "mur" })
     expect(response.status).toBe(409)

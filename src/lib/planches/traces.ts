@@ -5,12 +5,19 @@
  * cultures. Une intervention saisie sur la planche survivait, sa colonne
  * `planche_id` (sans clé étrangère) pointant vers une planche disparue, et la
  * liste affichait l'identifiant brut ; le registre phyto perdait l'emplacement
- * du traitement. Les fertilisations, elles, partaient en cascade
- * (`onDelete: Cascade`) sans un mot.
+ * du traitement.
  *
- * Règle : une planche se supprime seulement si plus rien ne s'y rapporte
- * (cultures, interventions, fertilisations). Toute suppression passe par cette
+ * Règle : une planche se supprime seulement si aucune culture ni intervention
+ * ne s'y rapporte, deux saisies que l'utilisateur peut supprimer ou rattacher
+ * à une autre planche depuis l'interface. Toute suppression passe par cette
  * fonction : route, conversion en objet du plan, assistant.
+ *
+ * Ne retiennent PAS la planche, volontairement :
+ * - les fertilisations (`onDelete: Cascade`) : elles ne viennent que de
+ *   l'import Potaléger et aucun écran ne les supprime ni ne les déplace ; les
+ *   exiger rendait la planche indestructible. L'écran Planches annonce leur
+ *   suppression à la confirmation.
+ * - les analyses de sol (`onDelete: SetNull`) : elles survivent, détachées.
  */
 
 import type { Prisma, PrismaClient } from '@prisma/client'
@@ -20,7 +27,12 @@ type Tx = Prisma.TransactionClient | PrismaClient
 export interface TracesPlanche {
   cultures: number
   interventions: number
-  fertilisations: number
+  /**
+   * Années de la plus ancienne et de la plus récente intervention : la liste
+   * des interventions est filtrée par année, celle d'une saison passée ne s'y
+   * voit pas sans changer l'année.
+   */
+  anneesInterventions: [number, number] | null
 }
 
 /**
@@ -38,15 +50,10 @@ export async function compterTracesPlanches(
   const ids = planches.map((p) => p.id)
   const references = [...new Set(planches.flatMap((p) => [p.id, p.nom]))]
 
-  const [cultures, fertilisations, interventions] = await Promise.all([
-    // Cultures et fertilisations sont liées par clé étrangère à une planche déjà
-    // vérifiée comme appartenant au compte : on les compte toutes.
+  const [cultures, interventions] = await Promise.all([
+    // Cultures liées par clé étrangère à une planche déjà vérifiée comme
+    // appartenant au compte : on les compte toutes.
     tx.culture.groupBy({
-      by: ['plancheId'],
-      where: { plancheId: { in: ids } },
-      _count: { _all: true },
-    }),
-    tx.fertilisation.groupBy({
       by: ['plancheId'],
       where: { plancheId: { in: ids } },
       _count: { _all: true },
@@ -56,27 +63,33 @@ export async function compterTracesPlanches(
       by: ['plancheId'],
       where: { userId, plancheId: { in: references } },
       _count: { _all: true },
+      _min: { date: true },
+      _max: { date: true },
     }),
   ])
 
-  const parReference = (lignes: Array<{ plancheId: string | null; _count: { _all: number } }>) =>
-    new Map(lignes.map((l) => [l.plancheId, l._count._all]))
-  const culturesPar = parReference(cultures)
-  const fertilisationsPar = parReference(fertilisations)
-  const interventionsPar = parReference(interventions)
+  const culturesPar = new Map(cultures.map((l) => [l.plancheId, l._count._all]))
+  const interventionsPar = new Map(interventions.map((l) => [l.plancheId, l]))
 
   for (const p of planches) {
+    const lignes = [interventionsPar.get(p.id), p.nom !== p.id ? interventionsPar.get(p.nom) : undefined].filter(
+      (l): l is NonNullable<typeof l> => l !== undefined
+    )
+    const annees = lignes
+      .flatMap((l) => [l._min.date, l._max.date])
+      .filter((d): d is Date => d instanceof Date)
+      .map((d) => d.getFullYear())
     traces.set(p.id, {
       cultures: culturesPar.get(p.id) ?? 0,
-      fertilisations: fertilisationsPar.get(p.id) ?? 0,
-      interventions: (interventionsPar.get(p.id) ?? 0) + (p.nom !== p.id ? interventionsPar.get(p.nom) ?? 0 : 0),
+      interventions: lignes.reduce((total, l) => total + l._count._all, 0),
+      anneesInterventions: annees.length > 0 ? [Math.min(...annees), Math.max(...annees)] : null,
     })
   }
   return traces
 }
 
 export function aDesTraces(traces: TracesPlanche): boolean {
-  return traces.cultures > 0 || traces.interventions > 0 || traces.fertilisations > 0
+  return traces.cultures > 0 || traces.interventions > 0
 }
 
 const pluriel = (n: number, singulier: string, plurielForme: string) =>
@@ -87,16 +100,18 @@ export function decrireTraces(traces: TracesPlanche): string {
   const parties = [
     traces.cultures > 0 ? pluriel(traces.cultures, 'culture', 'cultures') : null,
     traces.interventions > 0 ? pluriel(traces.interventions, 'intervention', 'interventions') : null,
-    traces.fertilisations > 0 ? pluriel(traces.fertilisations, 'fertilisation', 'fertilisations') : null,
   ].filter((p): p is string => p !== null)
-  if (parties.length <= 1) return parties[0] ?? ''
-  return `${parties.slice(0, -1).join(', ')} et ${parties[parties.length - 1]}`
+  return parties.join(' et ')
 }
 
-/** Message de refus d'une suppression, qui dit quoi faire. */
+/** Message de refus d'une suppression, qui dit quoi faire et où chercher. */
 export function messageSuppressionRefusee(nom: string, traces: TracesPlanche): string {
-  // Culture, intervention, fertilisation : trois féminins.
-  const plusieurs = traces.cultures + traces.interventions + traces.fertilisations > 1
+  const plusieurs = traces.cultures + traces.interventions > 1
+  const quoi = plusieurs ? 'ces saisies' : traces.cultures > 0 ? 'cette culture' : 'cette intervention'
   const pronom = plusieurs ? 'les' : 'la'
-  return `La planche « ${nom} » porte encore ${decrireTraces(traces)} : supprimez-${pronom} ou rattachez-${pronom} à une autre planche avant de la supprimer, pour ne pas perdre ${plusieurs ? 'leur' : 'son'} emplacement.`
+  const annees = traces.anneesInterventions
+  const ou = annees
+    ? ` (Interventions, ${annees[0] === annees[1] ? `année ${annees[0]}` : `années ${annees[0]} à ${annees[1]}`})`
+    : ''
+  return `La planche « ${nom} » porte encore ${decrireTraces(traces)} : supprimez ${quoi} ou rattachez-${pronom} à une autre planche${ou}, puis supprimez la planche.`
 }
