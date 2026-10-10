@@ -22,7 +22,6 @@ vi.mock("@/lib/prisma", () => ({
   },
 }))
 vi.mock("@/lib/irrigation-cache", () => ({ irrigationCache: { invalidateUser: vi.fn() } }))
-vi.mock("@/lib/irrigation-scheduler", () => ({ etendrePlanArrosage: vi.fn() }))
 vi.mock("@/lib/kpi", () => ({ invalidateKpi: vi.fn() }))
 
 import { PUT } from "./route"

@@ -16,10 +16,9 @@ import { CalendarClock } from "lucide-react"
 import { LigneRegistre } from "@/components/accueil/LigneRegistre"
 import { PastilleEtat } from "@/components/accueil/PastilleEtat"
 import {
-  etatIrrigation,
+  etatArrosage,
   etatTache,
   libelleActionTache,
-  libelleDatePrevue,
   libelleRetard,
   type TypeTache,
 } from "@/lib/accueil/etat-tache"
@@ -105,46 +104,27 @@ export function LigneTache({
 }
 
 export interface LigneArrosageProps {
-  /** La planche d'abord ; à défaut l'espèce. */
+  /** La planche d'abord ; à défaut les espèces. */
   titre: string
-  couleur?: string | null
-  /** Métadonnées supplémentaires (espèce, nombre de cultures…). */
+  /** Métadonnées (espèces, nombre de cultures, raison du bilan hydrique). */
   details?: Array<string | null | undefined>
-  datePrevue: string
+  /** Urgence du bilan hydrique (`src/lib/irrigation/a-arroser.ts`). */
+  urgence: "critique" | "haute"
   fait?: boolean
-  retardJours?: number | null
-  probablementInutile?: boolean
-  /** Pourquoi l'arrosage semble inutile (pluie récente ou prévue). */
-  noteMeteo?: string | null
   onAction: () => void
   disabled?: boolean
 }
 
-export function LigneArrosage({
-  titre,
-  couleur,
-  details,
-  datePrevue,
-  fait,
-  retardJours,
-  probablementInutile,
-  noteMeteo,
-  onAction,
-  disabled,
-}: LigneArrosageProps) {
-  const { etat, libelle } = etatIrrigation({ fait, retardJours, probablementInutile, datePrevue })
+/** Une planche à arroser aujourd'hui : on la note arrosée, d'un geste. */
+export function LigneArrosage({ titre, details, urgence, fait = false, onAction, disabled }: LigneArrosageProps) {
+  const { etat, libelle } = etatArrosage(urgence, fait)
   return (
     <LigneRegistre
       etat={etat}
-      titre={<TitreEspece nom={titre} couleur={couleur} barre={fait} />}
-      meta={[
-        ...(details ?? []).map((d) => d ?? ""),
-        libelleDatePrevue(datePrevue),
-        fait ? "" : libelleRetard(retardJours ?? 0),
-        probablementInutile && !fait ? noteMeteo ?? "" : "",
-      ]}
+      titre={<TitreEspece nom={titre} barre={fait} />}
+      meta={(details ?? []).map((d) => d ?? "")}
       pastille={<PastilleEtat etat={etat} libelle={libelle} className="hidden sm:inline-flex" />}
-      action={{ libelle: fait ? "Annuler" : "Fait", onClick: onAction, disabled }}
+      action={{ libelle: "Noter", onClick: onAction, disabled: disabled || fait }}
     />
   )
 }

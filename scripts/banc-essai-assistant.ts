@@ -86,7 +86,7 @@ async function main() {
   // A1. Tâches potager : compteur de retard exact de l'écran (invariant 11=11)
   {
     const fenetre = computeDateRange({}, 'cette_semaine')
-    const ecran = await getTachesPotager(userId, { ...fenetre, annee, persistAutoValidation: false })
+    const ecran = await getTachesPotager(userId, { ...fenetre, annee })
     const outil = await lireOutil('get_taches', { periode: 'cette_semaine' }, userId)
     egal('A1 get_taches.enRetard', outil.resume?.enRetard, ecran.stats.enRetard)
     egal('A1b get_taches.aIrriguer', outil.resume?.aIrriguer, ecran.stats.aIrriguer)
@@ -227,7 +227,7 @@ async function main() {
 
   {
     const fenetre = computeDateRange({}, 'cette_semaine')
-    const ecran = await getTachesPotager(userId, { ...fenetre, annee, persistAutoValidation: false })
+    const ecran = await getTachesPotager(userId, { ...fenetre, annee })
     const direct = await tenterReponseDirecte('Quelles tâches sont en retard ?', userId, 'potager')
     verifier(
       'C1 tâches en retard',

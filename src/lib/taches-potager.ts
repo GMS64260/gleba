@@ -1,6 +1,6 @@
 /**
- * Tâches du potager (semis, plantations, récoltes, irrigations) sur une
- * période, avec les tâches en retard et leurs stats.
+ * Tâches du potager (semis, plantations, récoltes) sur une période, avec les
+ * tâches en retard et leurs stats, plus les planches à arroser aujourd'hui.
  *
  * Source unique de vérité partagée par `GET /api/taches` (page /taches,
  * dashboard maraîchage) et l'outil assistant `get_taches` — QA cmsno8277 /
@@ -13,18 +13,7 @@
  */
 
 import prisma from '@/lib/prisma'
-import { fetchOpenMeteoForecast, fetchOpenMeteoHistory } from '@/lib/meteo'
-import {
-  grouperIrrigationsPlanifieesParPlancheEtJour,
-  irrigationEstDue,
-} from '@/lib/irrigation-planche'
-import { idsAExpirer } from '@/lib/irrigation-peremption'
-import {
-  decideIrrigationMeteo,
-  jourCivilLocalISO,
-  joursCivilsAvant,
-  type DecisionIrrigationMeteo,
-} from '@/lib/irrigation-meteo-decision'
+import { chargerArrosagesDuJour, type ArrosageDuJour } from '@/lib/irrigation/a-arroser'
 import { uniteQuantiteRecolte } from '@/lib/recolte/projection'
 import { chargerSurchargesRendement, rendementEffectif } from '@/lib/recolte/rendement-effectif'
 
@@ -62,18 +51,11 @@ export interface TachesPotagerOptions {
   start: Date
   end: Date
   annee: number
-  /**
-   * Le chemin écran (GET /api/taches) auto-valide en base les irrigations
-   * dues couvertes par la pluie récente. Le chemin assistant reste en
-   * lecture pure : passer `false` conserve le même décompte (l'irrigation
-   * est marquée faite en mémoire) sans écrire.
-   */
-  persistAutoValidation?: boolean
 }
 
 export async function getTachesPotager(
   userId: string,
-  { start, end, annee, persistAutoValidation = true }: TachesPotagerOptions
+  { start, end, annee }: TachesPotagerOptions
 ) {
   const currentYear = new Date().getFullYear()
 
@@ -169,170 +151,14 @@ export async function getTachesPotager(
     ...new Set([...recoltesSemaine, ...recoltesRetard].map((c) => c.especeId)),
   ])
 
-  // Irrigations : cette semaine OU en retard
-  const irrigationInclude = {
-    culture: {
-      select: {
-        id: true,
-        especeId: true,
-        plancheId: true,
-        espece: { select: { couleur: true, nom: true, besoinEau: true } },
-        planche: {
-          select: {
-            nom: true,
-            ilot: true,
-            parcelleGeo: {
-              select: { centroidLat: true, centroidLng: true },
-            },
-          },
-        },
-      },
-    },
-  } as const
-
-  // Bug #18 — Les irrigations n'étaient pas scopées à l'année sélectionnée,
-  // donc le KPI "Cette semaine" affichait 23 même quand on basculait sur
-  // 2024 ou 2027 (sans aucune culture sur cette année). On filtre via la
-  // culture pour rester cohérent avec les sub-totaux Semis/Plantations/Récoltes.
-  const [irrigationsSemaineBrutes, irrigationsRetardBrutes] = await Promise.all([
-    prisma.irrigationPlanifiee.findMany({
-      where: {
-        userId,
-        fait: false,
-        perimee: false,
-        datePrevue: { gte: start, lte: end },
-        culture: { annee },
-      },
-      include: irrigationInclude,
-      orderBy: { datePrevue: 'asc' },
-    }),
-    prisma.irrigationPlanifiee.findMany({
-      where: {
-        userId,
-        fait: false,
-        perimee: false,
-        datePrevue: { lt: borneRetard },
-        culture: { annee },
-      },
-      include: irrigationInclude,
-      orderBy: { datePrevue: 'asc' },
-    }),
-  ])
-
-  // ── Péremption : un passage manqué de plus d'un cycle est abandonné ──
-  // Un arrosage ne se rattrape pas. Sans cette règle, le plan de saison
-  // accumulait un retard indéfini : « 19 en retard, échéance 09/08 » chez un
-  // maraîcher quotidien le 2026-08-14, soldés d'un clic par planche qui
-  // antidatait la trace. Filtré AVANT la météo : on ne paie pas de prévision
-  // pour un passage qu'on abandonne.
-  const referencePeremption = new Date()
-  const idsPerimes = new Set(
-    idsAExpirer([...irrigationsSemaineBrutes, ...irrigationsRetardBrutes], referencePeremption)
-  )
-  if (persistAutoValidation && idsPerimes.size > 0) {
-    await prisma.irrigationPlanifiee.updateMany({
-      where: { id: { in: Array.from(idsPerimes) } },
-      data: { perimee: true },
-    })
-  }
-  const nonPerimee = (irr: { id: number }) => !idsPerimes.has(irr.id)
-  const irrigationsSemaine = irrigationsSemaineBrutes.filter(nonPerimee)
-  const irrigationsRetard = irrigationsRetardBrutes.filter(nonPerimee)
-
-  // ── Prévisions météo pour les irrigations ──
-  const allIrrigations = [...irrigationsSemaine, ...irrigationsRetard]
-
-  // Coordonnées : d'abord depuis la parcelle de la planche, sinon fallback user
-  let fallbackCoords: { lat: number; lng: number } | null = null
-  if (allIrrigations.length > 0) {
-    // Charger un fallback dès qu'AU MOINS une planche n'a pas de
-    // coordonnées. L'ancien test ne le faisait que si aucune planche
-    // n'était géolocalisée : dans un lot mixte, toutes les planches non
-    // rattachées perdaient silencieusement l'intégration météo.
-    const manqueCoordonnees = allIrrigations.some((irr) => {
-      const lat = irr.culture.planche?.parcelleGeo?.centroidLat
-      const lng = irr.culture.planche?.parcelleGeo?.centroidLng
-      return !lat || !lng
-    })
-
-    if (manqueCoordonnees) {
-      const userParcelle = await prisma.parcelleGeo.findFirst({
-        where: { userId },
-        select: { centroidLat: true, centroidLng: true },
-      })
-      if (userParcelle?.centroidLat && userParcelle?.centroidLng) {
-        fallbackCoords = { lat: userParcelle.centroidLat, lng: userParcelle.centroidLng }
-      }
-    }
-  }
-
-  // Regrouper par coordonnées uniques
-  const coordsMap = new Map<string, { lat: number; lng: number }>()
-  for (const irr of allIrrigations) {
-    const lat = irr.culture.planche?.parcelleGeo?.centroidLat ?? fallbackCoords?.lat
-    const lng = irr.culture.planche?.parcelleGeo?.centroidLng ?? fallbackCoords?.lng
-    if (!lat || !lng) continue
-    const key = `${Math.round(lat * 100)}_${Math.round(lng * 100)}`
-    if (!coordsMap.has(key)) coordsMap.set(key, { lat, lng })
-  }
-
-  // Fetch prévisions + historique récent pour chaque jeu de coordonnées unique
-  const precipByCoordAndDate = new Map<string, Map<string, number>>()
-  const pluieRecente3jByCoord = new Map<string, number>() // Pluie cumulée 3 derniers jours + aujourd'hui
-  const et0RecenteByCoord = new Map<string, number | null>() // ET0 moyenne journalière récente
-
-  await Promise.all(
-    Array.from(coordsMap.entries()).map(async ([coordKey, { lat, lng }]) => {
-      try {
-        const forecast = await fetchOpenMeteoForecast(lat, lng)
-        const dateMap = new Map<string, number>()
-        for (const day of forecast.daily) {
-          dateMap.set(day.date, day.precipitation)
-        }
-        precipByCoordAndDate.set(coordKey, dateMap)
-
-        // Historique 3 derniers jours
-        const today = new Date()
-        const j3 = new Date(today)
-        j3.setDate(j3.getDate() - 3)
-        const yesterday = new Date(today)
-        yesterday.setDate(yesterday.getDate() - 1)
-
-        const historique = await fetchOpenMeteoHistory(
-          lat, lng,
-          j3.toISOString().split('T')[0],
-          yesterday.toISOString().split('T')[0]
-        )
-        const pluieHisto = historique.reduce((s, d) => s + d.precipitation, 0)
-        const pluieAujourdhui = forecast.daily[0]?.precipitation ?? 0
-        pluieRecente3jByCoord.set(coordKey, pluieHisto + pluieAujourdhui)
-        const et0Hist = historique.length > 0
-          ? historique.reduce((s, d) => s + d.et0, 0) / historique.length
-          : null
-        et0RecenteByCoord.set(coordKey, et0Hist ?? forecast.daily[0]?.et0 ?? null)
-      } catch {
-        // En cas d'erreur météo, on n'enrichit pas (pas bloquant)
-      }
-    })
-  )
-
-  // Décision « probablement inutile » : règle partagée avec /api/calendrier
-  // (QA cmswu3260 — seuils et cause dans irrigation-meteo-decision.ts).
-  function getIrrigationMeteo(irr: typeof allIrrigations[number]): DecisionIrrigationMeteo {
-    const lat = irr.culture.planche?.parcelleGeo?.centroidLat ?? fallbackCoords?.lat
-    const lng = irr.culture.planche?.parcelleGeo?.centroidLng ?? fallbackCoords?.lng
-    if (!lat || !lng) {
-      return { pluiePrevue: null, pluieRecente: 0, probablementInutile: false, raisonInutile: null }
-    }
-    const coordKey = `${Math.round(lat * 100)}_${Math.round(lng * 100)}`
-
-    return decideIrrigationMeteo({
-      pluiePrevueJour: precipByCoordAndDate.get(coordKey)?.get(jourCivilLocalISO(irr.datePrevue)) ?? null,
-      pluieRecente: pluieRecente3jByCoord.get(coordKey) ?? 0,
-      et0MoyenneJournaliere: et0RecenteByCoord.get(coordKey) ?? null,
-      joursAvant: joursCivilsAvant(irr.datePrevue),
-    })
-  }
+  // ── Arrosage : le besoin du jour, jamais un plan d'avance ──
+  // Refonte du 2026-10-10 (`src/lib/irrigation/a-arroser.ts`) : une planche est
+  // à arroser quand le bilan hydrique d'une de ses cultures l'exige
+  // AUJOURD'HUI. Une semaine qui ne contient pas aujourd'hui n'en a pas : ni
+  // passage futur prévu d'office, ni retard à rattraper.
+  const finAujourdhui = new Date(aujourdhui.getTime() + 86_400_000 - 1)
+  const irrigation: ArrosageDuJour[] =
+    start <= finAujourdhui && end >= aujourdhui ? await chargerArrosagesDuJour(userId, annee) : []
 
   // ── Formatter ──
 
@@ -393,25 +219,6 @@ export async function getTachesPotager(
     }
   }
 
-  // Auto-valider les irrigations passées ou du jour couvertes par la pluie
-  // récente. Le marquage en mémoire (irr.fait = true) est conservé dans tous
-  // les cas pour que le décompte reste identique entre l'écran et l'assistant.
-  const autoValidIds: number[] = []
-  for (const irr of allIrrigations) {
-    if (irr.fait) continue
-    const meteo = getIrrigationMeteo(irr)
-    if (irrigationEstDue(irr.datePrevue) && meteo.probablementInutile) {
-      autoValidIds.push(irr.id)
-      irr.fait = true
-    }
-  }
-  if (persistAutoValidation && autoValidIds.length > 0) {
-    await prisma.irrigationPlanifiee.updateMany({
-      where: { id: { in: autoValidIds } },
-      data: { fait: true, notes: 'Auto-validée (pluie suffisante)' },
-    })
-  }
-
   // QA cmsjiwn48 — le retard était mesuré depuis `start` (le lundi de la
   // semaine affichée) et non depuis aujourd'hui : une plantation prévue le
   // 31/07 affichait « 2 j » au 08/08 au lieu de 8 j. Le nombre de jours de
@@ -436,37 +243,8 @@ export async function getTachesPotager(
     ...recoltesSemaine.map(c => formatRecolte(c, 0)),
   ]
 
-  function formatIrrigation(i: typeof irrigationsSemaine[number], retard: number) {
-    const meteo = getIrrigationMeteo(i)
-    return {
-      id: i.id,
-      cultureId: i.culture.id,
-      especeId: i.culture.especeId,
-      especeNom: i.culture.espece?.nom ?? i.culture.especeId,
-      plancheId: i.culture.planche?.nom || null,
-      plancheRefId: i.culture.plancheId ?? null,
-      ilot: i.culture.planche?.ilot || null,
-      datePrevue: i.datePrevue.toISOString(),
-      fait: i.fait,
-      couleur: i.culture.espece?.couleur || null,
-      retardJours: retard,
-      pluiePrevue: meteo.pluiePrevue !== null ? Math.round(meteo.pluiePrevue * 10) / 10 : null,
-      pluieRecente: Math.round(meteo.pluieRecente * 10) / 10,
-      probablementInutile: meteo.probablementInutile,
-      raisonInutile: meteo.raisonInutile,
-    }
-  }
-
-  const irrigation = grouperIrrigationsPlanifieesParPlancheEtJour([
-    ...irrigationsRetard.map(i => formatIrrigation(i, joursRetard(i.datePrevue, refRetard))),
-    ...irrigationsSemaine.map(i => formatIrrigation(i, 0)),
-  ])
-
-  const enRetardTotal =
-    semisRetard.length +
-    plantationsRetard.length +
-    recoltesRetard.length +
-    irrigation.filter((item) => item.retardJours > 0 && !item.fait).length
+  // Un arrosage n'est jamais en retard : le besoin se recalcule chaque jour.
+  const enRetardTotal = semisRetard.length + plantationsRetard.length + recoltesRetard.length
 
   return {
     semis,
@@ -480,9 +258,7 @@ export async function getTachesPotager(
       plantationsFaites: plantations.filter(p => p.fait).length,
       recoltesPrevues: recoltes.length,
       recoltesFaites: recoltes.filter(r => r.fait).length,
-      aIrriguer: irrigation.filter(
-        (item) => !item.fait && !item.probablementInutile
-      ).length,
+      aIrriguer: irrigation.length,
       enRetard: enRetardTotal,
     },
   }

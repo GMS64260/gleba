@@ -20,7 +20,6 @@ import prisma from "@/lib/prisma"
 import type { SessionExploitation } from "@/lib/auth-utils"
 import { getActeurId, getUserId } from "@/lib/exploitation/garde-session"
 import { getTachesPotager } from "@/lib/taches-potager"
-import { computeConseilIrrigation } from "@/lib/irrigation-conseil"
 import { getKpiCompta, getKpiMaraichage } from "@/lib/kpi"
 import { chargerAgendaElevage } from "@/lib/elevage/agenda.server"
 import { chargerDeclarationsReglementaires } from "@/lib/elevage/declarations-reglementaires.server"
@@ -38,7 +37,7 @@ import {
 } from "./classement"
 import { echeanceDuJour, etatEcheance, hrefEcheance } from "./elevage"
 import { recolteDominante } from "./reperes"
-import { mutationEtapeCulture, mutationIrrigationFaite } from "./mutations"
+import { mutationEtapeCulture } from "./mutations"
 import { regrouperLotsVerger } from "./verger"
 import { projeterParcelles } from "./carte"
 import { TUILES_OPTIONNELLES, type IdTuile } from "./disposition"
@@ -138,16 +137,15 @@ export async function composerAujourdhui(
   const comptaActif = modules.includes("comptabilite")
   const devise = deviseDuTerritoire(exploitation?.territoire)
 
-  const [taches, conseil, kpiMaraichage, agenda, animauxActifs, declarations, factures, kpiCompta, planches, arbres, objets] =
+  const [taches, kpiMaraichage, agenda, animauxActifs, declarations, factures, kpiCompta, planches, arbres, objets] =
     await Promise.all([
       maraichageActif
         ? lire(
             "tâches",
-            () => getTachesPotager(userId, { start: semaine.debut, end: semaine.fin, annee, persistAutoValidation: false }),
+            () => getTachesPotager(userId, { start: semaine.debut, end: semaine.fin, annee }),
             null,
           )
         : null,
-      maraichageActif ? lire("irrigation", () => computeConseilIrrigation(userId, annee, false), null) : null,
       maraichageActif ? lire("repères maraîchage", () => getKpiMaraichage(userId, annee, maintenant), null) : null,
       elevageActif
         ? lire("élevage", () => chargerAgendaElevage(userId, { horizonJours: HORIZON_ELEVAGE_JOURS, maintenant }), null)
@@ -217,24 +215,27 @@ export async function composerAujourdhui(
   const planchesAArroser = new Set<string>()
   const planchesARecolter = new Set<string>()
 
-  // ── Irrigation : conseil (réserve en eau) ─────────────────────────────
-  if (conseil) {
+  // ── Irrigation : planches à arroser aujourd'hui (bilan hydrique) ──────
+  // Mêmes lignes que les tâches (`src/lib/irrigation/a-arroser.ts`) : plus de
+  // passage planifié d'avance depuis la refonte du 2026-10-10.
+  if (taches) {
     const pousser = (urgence: "critique" | "haute", etat: EtatRegistre) => {
-      const groupe = conseil.data.filter((c) => c.urgence === urgence)
+      const groupe = taches.irrigation.filter((a) => a.urgence === urgence)
       if (groupe.length === 0) return
-      const ids = Array.from(new Set(groupe.map((c) => c.planche?.id).filter((id): id is string => Boolean(id))))
-      const noms = groupe.map((c) => c.planche?.nom).filter((n): n is string => Boolean(n))
+      const ids = groupe.map((a) => a.plancheRefId).filter((id): id is string => Boolean(id))
+      const noms = groupe.map((a) => a.plancheNom).filter((n): n is string => Boolean(n))
       ids.forEach((id) => planchesAArroser.add(id))
       const liste = listerNoms(noms)
+      const nbCultures = groupe.reduce((n, a) => n + a.cultureIds.length, 0)
       elements.push({
         id: `irrigation:${urgence}`,
         source: "irrigation",
         module: "maraichage",
         etat,
-        titre: liste ? `Arroser ${liste}` : `Arroser ${groupe.length} culture${groupe.length > 1 ? "s" : ""}`,
+        titre: liste ? `Arroser ${liste}` : `Arroser ${nbCultures} culture${nbCultures > 1 ? "s" : ""}`,
         meta: [
-          `${groupe.length} culture${groupe.length > 1 ? "s" : ""}`,
-          groupe[0].raisonUrgence,
+          `${nbCultures} culture${nbCultures > 1 ? "s" : ""}`,
+          groupe[0].raison,
         ].filter((m): m is string => Boolean(m)),
         action: { libelle: "Noter", href: "/maraichage/cultures/irriguer" },
         retardJours: urgence === "critique" ? 1 : 0,
@@ -300,30 +301,6 @@ export async function composerAujourdhui(
         },
         retardJours: p.retardJours,
         plancheIds: p.plancheRefId ? [p.plancheRefId] : [],
-      })
-    }
-    for (const i of taches.irrigation) {
-      if (i.fait || i.probablementInutile) continue
-      if (!estDuJourOuEnRetard({ date: i.datePrevue, fait: i.fait, retardJours: i.retardJours })) continue
-      // Déjà couvert par le conseil d'irrigation (même planche) : une seule ligne.
-      if (i.plancheRefId && planchesAArroser.has(i.plancheRefId)) continue
-      if (i.plancheRefId) planchesAArroser.add(i.plancheRefId)
-      elements.push({
-        id: `irrigation:planifiee:${i.id}`,
-        source: "irrigation",
-        module: "maraichage",
-        etat: etatPourRetard(i.retardJours, { critiqueApres: 2 }),
-        titre: `Arroser ${i.plancheId ?? i.especeNom}`,
-        meta: [i.plancheId ? i.especeNom : "", i.retardJours > 0 ? `prévu il y a ${i.retardJours} j` : "prévu aujourd'hui"].filter(
-          Boolean,
-        ),
-        action: {
-          libelle: "Noter",
-          href: "/taches",
-          mutation: mutationIrrigationFaite(i.id, [i.especeNom, i.plancheId].filter(Boolean).join(" · ")),
-        },
-        retardJours: i.retardJours,
-        plancheIds: i.plancheRefId ? [i.plancheRefId] : [],
       })
     }
   }
@@ -430,9 +407,10 @@ export async function composerAujourdhui(
 
   // ── Repères ───────────────────────────────────────────────────────────
   const tachesSemaine = taches
-    ? [...taches.semis, ...taches.plantations, ...taches.recoltes, ...taches.irrigation].filter(
-        (t) => !t.fait,
-      )
+    ? [
+        ...[...taches.semis, ...taches.plantations, ...taches.recoltes].filter((t) => !t.fait),
+        ...taches.irrigation,
+      ]
     : []
   const reperes: ReperesAccueil = {
     maraichage: kpiMaraichage

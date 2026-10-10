@@ -11,7 +11,6 @@
  */
 
 import prisma from "@/lib/prisma"
-import { genererIrrigationsPlanifiees } from "@/lib/irrigation-scheduler"
 import { PARCELLE_EXEMPLE } from "@/lib/localisation-exemple"
 import { productifParDefaut } from "@/lib/tree-care-calendar"
 
@@ -237,9 +236,6 @@ export async function createSampleDataForUser(
       notes: "Courgettes bien développées",
     },
   })
-
-  // Générer les irrigations planifiées pour les cultures actives
-  await genererIrrigationsPlanifiees(userId)
 }
 
 async function creerArbresExemple(userId: string, datePlantationArbres: Date): Promise<void> {

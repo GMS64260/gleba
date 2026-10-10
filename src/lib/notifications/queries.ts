@@ -3,26 +3,22 @@
  *
  * Réutilise volontairement les fonctions existantes plutôt que de les
  * dupliquer : fetchOpenMeteoForecast / fetchOpenMeteoHistory (lib/meteo),
- * grouperIrrigationsPlanifieesParPlancheEtJour (lib/irrigation-planche),
- * alertesAssociations (lib/associations-alertes).
+ * chargerArrosagesDuJour (lib/irrigation/a-arroser), alertesAssociations
+ * (lib/associations-alertes).
  */
 
 import prisma from "@/lib/prisma"
 import { fetchOpenMeteoForecast, fetchOpenMeteoHistory } from "@/lib/meteo"
-import { grouperIrrigationsPlanifieesParPlancheEtJour } from "@/lib/irrigation-planche"
-import { borneLectureIrrigation, idsAExpirer } from "@/lib/irrigation-peremption"
+import { chargerArrosagesDuJour } from "@/lib/irrigation/a-arroser"
 import { alertesAssociations } from "@/lib/associations-alertes"
 import { zoneEffectiveUser } from "@/lib/terroir"
 import type { ZoneClimat } from "@/lib/terroir"
 import { itpApplicableAZone } from "@/lib/calendrier-climat"
 import { finDeCycle } from "@/lib/cultures/fenetre-recolte"
 import {
-  calculerRappelsIrrigationsEnRetard,
   calculerRecoltesMures,
   coordKey,
-  dateLocaleIso,
   debutDeJournee,
-  deciderIrrigationInutile,
   detecterAlertesMeteo,
   detecterStocksAlimentsBas,
   detecterStocksFertilisantsBas,
@@ -31,6 +27,7 @@ import {
   formatDateFr,
   formaterStockBas,
   fusionnerStocksBas,
+  rappelsArrosageCritique,
 } from "./detect"
 import { semaineCourante, tachesItpSemainePourCultures } from "./itp-semaine"
 import { visibiliteReferentiel } from "@/lib/referentiel-communaute"
@@ -322,7 +319,7 @@ export async function chargerTachesDuJour(userId: string): Promise<TacheJour[]> 
   const start = debutDeJournee()
   const end = finDeJournee()
 
-  const [semis, plantations, recoltes, culturesMures, irrigations, coords] = await Promise.all([
+  const [semis, plantations, recoltes, culturesMures, arrosages] = await Promise.all([
     prisma.culture.findMany({
       where: { userId, dateSemis: { gte: start, lte: end } },
       select: CULTURE_SELECT,
@@ -348,32 +345,8 @@ export async function chargerTachesDuJour(userId: string): Promise<TacheJour[]> 
       },
       select: CULTURE_SELECT,
     }),
-    prisma.irrigationPlanifiee.findMany({
-      // `perimee: false` — un arrosage manqué depuis plus d'un cycle est
-      // ABANDONNÉ (cf. irrigation-peremption) : il ne compte plus à l'écran, il
-      // ne doit pas non plus arriver par courriel. Les trois requêtes
-      // d'irrigation de ce module l'omettaient (2026-08-20).
-      where: { userId, perimee: false, datePrevue: { gte: start, lte: end } },
-      include: {
-        culture: {
-          select: {
-            id: true,
-            especeId: true,
-            varieteId: true,
-            espece: { select: { couleur: true, nom: true } },
-            variete: { select: { nom: true } },
-            planche: {
-              select: {
-                nom: true,
-                ilot: true,
-                parcelleGeo: { select: { centroidLat: true, centroidLng: true } },
-              },
-            },
-          },
-        },
-      },
-    }),
-    getCoordsUtilisateur(userId),
+    // Planches à arroser aujourd'hui (bilan hydrique, refonte du 2026-10-10).
+    chargerArrosagesDuJour(userId, start.getFullYear()).catch(() => []),
   ])
 
   const taches: TacheJour[] = [
@@ -413,59 +386,17 @@ export async function chargerTachesDuJour(userId: string): Promise<TacheJour[]> 
     })
   }
 
-  if (irrigations.length === 0) return taches
-
-  const meteo = await fetchMeteoParCoord(coords)
-  const fallback = coords[0]
-
-  const mappees = irrigations.map((irrigation) => {
-    const parcelle = irrigation.culture.planche?.parcelleGeo
-    const lat = parcelle?.centroidLat ?? fallback?.lat
-    const lng = parcelle?.centroidLng ?? fallback?.lng
-    let pluiePrevue: number | null = null
-    let probablementInutile = false
-    if (lat !== undefined && lng !== undefined) {
-      const dateStr = irrigation.datePrevue.toISOString().split("T")[0]
-      pluiePrevue = meteo.precipParCoordEtJour.get(coordKey(lat, lng))?.get(dateStr) ?? null
-      const pluieRecente = meteo.pluieRecente3jParCoord.get(coordKey(lat, lng)) ?? 0
-      const joursAvant = Math.floor((irrigation.datePrevue.getTime() - Date.now()) / 86_400_000)
-      probablementInutile = deciderIrrigationInutile({ pluiePrevue, pluieRecente3j: pluieRecente, joursAvant })
-    }
-    return {
-      id: irrigation.id,
-      type: "irrigation" as const,
-      especeId: irrigation.culture.especeId,
-      varieteId: irrigation.culture.varieteId || null,
-      plancheId: irrigation.culture.planche?.nom || null,
-      plancheName: irrigation.culture.planche?.nom || null,
-      ilot: irrigation.culture.planche?.ilot || null,
-      datePrevue: irrigation.datePrevue.toISOString(),
-      date: irrigation.datePrevue.toISOString(),
-      fait: irrigation.fait,
-      couleur: irrigation.culture.espece?.couleur || null,
-      especeNom: irrigation.culture.espece?.nom ?? irrigation.culture.especeId,
-      varieteNom: irrigation.culture.variete?.nom ?? irrigation.culture.varieteId ?? null,
-      cultureId: irrigation.culture.id,
-      retardJours: 0,
-      pluiePrevue: pluiePrevue !== null ? Math.round(pluiePrevue * 10) / 10 : null,
-      probablementInutile,
-    }
-  })
-
-  const groupes = grouperIrrigationsPlanifieesParPlancheEtJour(mappees)
-  for (const groupe of groupes) {
+  for (const arrosage of arrosages) {
     taches.push({
-      id: groupe.irrigationIds[0],
+      id: arrosage.cultureIds[0],
       type: "irrigation",
-      especeNom: groupe.especeNom ?? "Irrigation",
+      especeNom: arrosage.especes || "Arrosage",
       varieteNom: null,
-      plancheName: groupe.plancheName ?? null,
-      ilot: groupe.ilot ?? null,
-      date: groupe.datePrevue,
-      fait: groupe.fait,
-      couleur: groupe.couleur ?? null,
-      pluiePrevue: groupe.pluiePrevue,
-      probablementInutile: groupe.probablementInutile,
+      plancheName: arrosage.plancheNom,
+      ilot: arrosage.ilot,
+      date: start.toISOString(),
+      fait: false,
+      couleur: null,
     })
   }
 
@@ -492,154 +423,15 @@ async function detecterStocksCritiques(userId: string): Promise<AlerteUrgente[]>
 }
 
 /** Irrigation(s) du jour probablement inutiles (pluie récente/prévue). */
-async function detecterIrrigationsInutiles(userId: string): Promise<AlerteUrgente[]> {
-  const start = debutDeJournee()
-  const end = finDeJournee()
-  const [irrigations, coords] = await Promise.all([
-    prisma.irrigationPlanifiee.findMany({
-      where: { userId, fait: false, perimee: false, datePrevue: { gte: start, lte: end } },
-      include: {
-        culture: {
-          select: {
-            id: true,
-            especeId: true,
-            varieteId: true,
-            espece: { select: { nom: true } },
-            variete: { select: { nom: true } },
-            planche: {
-              select: {
-                nom: true,
-                ilot: true,
-                parcelleGeo: { select: { centroidLat: true, centroidLng: true } },
-              },
-            },
-          },
-        },
-      },
-    }),
-    getCoordsUtilisateur(userId),
-  ])
-  if (irrigations.length === 0) return []
-
-  const meteo = await fetchMeteoParCoord(coords)
-  const fallback = coords[0]
-
-  const mappees = irrigations.map((irrigation) => {
-    const parcelle = irrigation.culture.planche?.parcelleGeo
-    const lat = parcelle?.centroidLat ?? fallback?.lat
-    const lng = parcelle?.centroidLng ?? fallback?.lng
-    let pluiePrevue: number | null = null
-    let probablementInutile = false
-    if (lat !== undefined && lng !== undefined) {
-      const dateStr = irrigation.datePrevue.toISOString().split("T")[0]
-      pluiePrevue = meteo.precipParCoordEtJour.get(coordKey(lat, lng))?.get(dateStr) ?? null
-      const pluieRecente = meteo.pluieRecente3jParCoord.get(coordKey(lat, lng)) ?? 0
-      const joursAvant = Math.floor((irrigation.datePrevue.getTime() - Date.now()) / 86_400_000)
-      probablementInutile = deciderIrrigationInutile({ pluiePrevue, pluieRecente3j: pluieRecente, joursAvant })
-    }
-    return {
-      id: irrigation.id,
-      type: "irrigation" as const,
-      especeId: irrigation.culture.especeId,
-      varieteId: irrigation.culture.varieteId || null,
-      plancheId: irrigation.culture.planche?.nom || null,
-      plancheName: irrigation.culture.planche?.nom || null,
-      ilot: irrigation.culture.planche?.ilot || null,
-      datePrevue: irrigation.datePrevue.toISOString(),
-      date: irrigation.datePrevue.toISOString(),
-      fait: irrigation.fait,
-      couleur: null,
-      especeNom: irrigation.culture.espece?.nom ?? irrigation.culture.especeId,
-      varieteNom: irrigation.culture.variete?.nom ?? irrigation.culture.varieteId ?? null,
-      cultureId: irrigation.culture.id,
-      retardJours: 0,
-      pluiePrevue: pluiePrevue !== null ? Math.round(pluiePrevue * 10) / 10 : null,
-      probablementInutile,
-    }
-  })
-
-  const groupes = grouperIrrigationsPlanifieesParPlancheEtJour(mappees)
-  const urgentes: AlerteUrgente[] = []
-  const dateStr = dateLocaleIso()
-  for (const groupe of groupes) {
-    if (!groupe.probablementInutile) continue
-    const planche = groupe.plancheName ?? "sans planche"
-    urgentes.push({
-      type: "irrigation-inutile",
-      titre: `irrigation planche ${planche}`,
-      message: groupe.especeNom
-        ? `L'irrigation prévue aujourd'hui pour « ${groupe.especeNom} » (planche ${planche}) est probablement inutile : ${
-            groupe.pluiePrevue != null && groupe.pluiePrevue >= 5
-              ? `${groupe.pluiePrevue} mm de pluie sont prévus.`
-              : "les précipitations récentes couvrent le besoin en eau."
-          }`
-        : `Irrigation planche ${planche} probablement inutile : pluie suffisante.`,
-      key: `irrigation-inutile:${groupe.plancheId ?? groupe.cultureIds[0]}:${dateStr}`,
-    })
-  }
-  return urgentes
-}
-
-/** Irrigations échues non faites, hors passages probablement couverts par la pluie. */
-async function detecterIrrigationsEnRetard(userId: string): Promise<AlerteUrgente[]> {
-  const [irrigations, coords] = await Promise.all([
-    prisma.irrigationPlanifiee.findMany({
-      // Sans borne basse, cette lecture remontait TOUT l'historique des passages
-      // manqués : un compte à un millier de passages abandonnés recevait quinze
-      // courriels de rappel (le plafond anti-spam), pour des arrosages
-      // abandonnés depuis des semaines. La borne est celle de l'écran et du
-      // briefing — au-delà d'un cycle complet, un passage n'est plus dû.
-      where: {
-        userId,
-        fait: false,
-        perimee: false,
-        datePrevue: { gte: borneLectureIrrigation(new Date(), new Date(0)), lte: finDeJournee() },
-      },
-      orderBy: { datePrevue: "asc" },
-      include: {
-        culture: {
-          select: {
-            especeId: true,
-            varieteId: true,
-            espece: { select: { nom: true, besoinEau: true } },
-            variete: { select: { nom: true } },
-            planche: {
-              select: {
-                nom: true,
-                parcelleGeo: { select: { centroidLat: true, centroidLng: true } },
-              },
-            },
-          },
-        },
-      },
-    }),
-    getCoordsUtilisateur(userId),
-  ])
-  if (irrigations.length === 0) return []
-
-  // La colonne `perimee` n'est qu'une TRACE : la règle se rejoue en mémoire à
-  // chaque lecture (même invariant que l'écran et l'assistant, « 11 = 11 »).
-  // Un passage périmé mais pas encore estampillé serait sinon notifié.
-  const perimees = new Set(idsAExpirer(irrigations))
-  const dues = irrigations.filter((irrigation) => !perimees.has(irrigation.id))
-  if (dues.length === 0) return []
-
-  const meteo = await fetchMeteoParCoord(coords)
-  const fallback = coords[0]
-  return calculerRappelsIrrigationsEnRetard(
-    dues.map((irrigation) => ({
-      id: irrigation.id,
-      fait: irrigation.fait,
-      datePrevue: irrigation.datePrevue,
-      especeNom: irrigation.culture.espece?.nom ?? irrigation.culture.especeId,
-      varieteNom: irrigation.culture.variete?.nom ?? irrigation.culture.varieteId ?? null,
-      plancheNom: irrigation.culture.planche?.nom ?? null,
-      lat: irrigation.culture.planche?.parcelleGeo?.centroidLat ?? null,
-      lng: irrigation.culture.planche?.parcelleGeo?.centroidLng ?? null,
-    })),
-    meteo,
-    { fallbackCoord: fallback }
-  )
+/**
+ * Planches au bilan hydrique CRITIQUE aujourd'hui (refonte de l'arrosage du
+ * 2026-10-10). Remplace « irrigation probablement inutile » et les rappels de
+ * passages planifiés en retard : il n'y a plus de plan d'avance à annuler ni
+ * à rattraper.
+ */
+async function detecterArrosagesCritiques(userId: string): Promise<AlerteUrgente[]> {
+  const arrosages = await chargerArrosagesDuJour(userId, new Date().getFullYear()).catch(() => [])
+  return rappelsArrosageCritique(arrosages)
 }
 
 /** Associations défavorables (incompatibles) sur les planches actives. */
@@ -985,9 +777,8 @@ async function detecterTachesItpSemaine(userId: string): Promise<AlerteUrgente[]
 
 /** Toutes les alertes urgentes détectables pour un utilisateur. */
 export async function detecterAlertesUrgentes(userId: string): Promise<AlerteUrgente[]> {
-  const [irrigations, irrigationsEnRetard, associations, retards, recoltes, itpSemaine, stocksCritiques] = await Promise.all([
-    detecterIrrigationsInutiles(userId),
-    detecterIrrigationsEnRetard(userId),
+  const [arrosagesCritiques, associations, retards, recoltes, itpSemaine, stocksCritiques] = await Promise.all([
+    detecterArrosagesCritiques(userId),
     detecterAssociationsIncompatibles(userId),
     detecterTachesEnRetard(userId),
     detecterRecoltesMures(userId),
@@ -995,8 +786,7 @@ export async function detecterAlertesUrgentes(userId: string): Promise<AlerteUrg
     detecterStocksCritiques(userId),
   ])
   return [
-    ...irrigations,
-    ...irrigationsEnRetard,
+    ...arrosagesCritiques,
     ...associations,
     ...retards,
     ...recoltes,

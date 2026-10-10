@@ -45,14 +45,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Année invalide' }, { status: 400 })
     }
 
-    // Un compte en consultation voit la péremption et l'auto-validation
-    // calculées, mais rien n'est écrit en base pour lui.
-    const data = await getTachesPotager(userId, {
-      start,
-      end,
-      annee,
-      persistAutoValidation: session!.user.peutEcrireExploitation !== false,
-    })
+    // Lecture pure : l'arrosage du jour se calcule, il n'y a plus de passage
+    // planifié à périmer ni à auto-valider (refonte du 2026-10-10).
+    const data = await getTachesPotager(userId, { start, end, annee })
     return NextResponse.json(data)
   } catch (error) {
     console.error('GET /api/taches error:', error)

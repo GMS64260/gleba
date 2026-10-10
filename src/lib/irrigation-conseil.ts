@@ -11,7 +11,9 @@
  *  - Évapotranspiration (ET0) réelle
  *  - Rétention du sol, besoin eau de l'espece
  *
- * Les irrigations planifiées sont auto-validées quand la pluie est suffisante.
+ * Lecture pure depuis la refonte du 2026-10-10 : il n'existe plus de passages
+ * planifiés à clore quand il pleut. L'urgence alimente les lignes « à
+ * arroser » (`src/lib/irrigation/a-arroser.ts`).
  */
 
 import prisma from '@/lib/prisma'
@@ -48,7 +50,7 @@ const TYPES_SOUS_ABRI = ['Serre', 'Tunnel', 'Châssis', 'Chassis']
 // ── Seuils ──────────────────────────────────────────────────
 
 /** Mm de pluie cumulés sur 48h pour considérer que le sol est suffisamment arrosé */
-const SEUIL_PLUIE_AUTO_VALIDE = 8
+const SEUIL_PLUIE_SOL_ARROSE = 8
 
 /** Nb de jours couverts par la pluie selon la rétention du sol */
 function joursCouverts(pluieMm: number, retentionEau: string | null, et0Journalier: number): number {
@@ -103,7 +105,7 @@ function calculerUrgenceMeteo(
 
   // ── Cas favorable : beaucoup de pluie récente ──
   // S'il a plu > seuil ces dernières 48h et qu'il y a encore de la pluie prévue
-  if (pluie48h >= SEUIL_PLUIE_AUTO_VALIDE) {
+  if (pluie48h >= SEUIL_PLUIE_SOL_ARROSE) {
     const et0Moy = meteo.et0_7j / Math.max(meteo.historique.length, 1)
     const joursCouv = joursCouverts(pluie48h, retentionEau, et0Moy)
 
@@ -229,15 +231,7 @@ function urgenceFallback(
 
 export type ConseilIrrigation = Awaited<ReturnType<typeof computeConseilIrrigation>>
 
-/**
- * `persisterAutoValidation` : un acteur en LECTURE SEULE obtient le même
- * conseil, sans qu'aucune irrigation ne soit clôturée en base pour lui.
- */
-export async function computeConseilIrrigation(
-  userId: string,
-  annee: number,
-  persisterAutoValidation = true,
-) {
+export async function computeConseilIrrigation(userId: string, annee: number) {
   // 1. Récupérer cultures actives avec planches + coordonnées parcelle
   const cultures = await prisma.culture.findMany({
     where: {
@@ -307,23 +301,6 @@ export async function computeConseilIrrigation(
       variete: {
         select: {
           id: true,
-        },
-      },
-      irrigationsPlanifiees: {
-        where: {
-          fait: false,
-          perimee: false,
-          datePrevue: {
-            gte: new Date(),
-            lte: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-          },
-        },
-        select: {
-          id: true,
-          datePrevue: true,
-        },
-        orderBy: {
-          datePrevue: 'asc',
         },
       },
     },
@@ -455,50 +432,6 @@ export async function computeConseilIrrigation(
     })
   )
 
-  // 4. Auto-valider les irrigations planifiées si la pluie est suffisante
-  const irrigationsAutoValidees: number[] = []
-  for (const c of cultures) {
-    const coordKey = cultureCoordKey.get(c.id)
-    const meteo = coordKey ? meteoParCoord.get(coordKey) ?? null : null
-    if (!meteo) continue
-
-    const sousAbri = TYPES_SOUS_ABRI.includes(c.planche?.type ?? '')
-    if (sousAbri) continue // Sous abri = pluie n'aide pas
-
-    const pluie48h = meteo.pluie48hPassees
-    if (pluie48h < SEUIL_PLUIE_AUTO_VALIDE) continue
-
-    // Auto-valider UNIQUEMENT les irrigations DUES (aujourd'hui ou en retard)
-    // couvertes par la pluie PASSÉE. Avant, on validait aussi les irrigations
-    // FUTURES sur la base des prévisions (joursCouv) : une irrigation de demain
-    // passait « faite » dès aujourd'hui, définitivement, via un simple GET
-    // (audit 2026-07, #34/#46). Les prévisions peuvent changer : on attend
-    // l'échéance réelle.
-    for (const irr of c.irrigationsPlanifiees) {
-      if (new Date(irr.datePrevue).getTime() <= Date.now()) {
-        irrigationsAutoValidees.push(irr.id)
-      }
-    }
-  }
-
-  // Batch auto-validation en DB
-  if (irrigationsAutoValidees.length > 0 && persisterAutoValidation) {
-    await prisma.irrigationPlanifiee.updateMany({
-      where: {
-        id: { in: irrigationsAutoValidees },
-        fait: false, // sécurité
-        // Un passage abandonné n'est pas « couvert par la pluie » : le clore
-        // inventerait un arrosage dans le registre d'interventions.
-        perimee: false,
-      },
-      data: {
-        fait: true,
-        dateEffective: new Date(),
-        notes: `Auto-validé : pluie suffisante (${new Date().toLocaleDateString('fr-FR')})`,
-      },
-    })
-  }
-
   // 5. Calculer urgence + enrichir chaque culture
   const now = Date.now()
   const culturesAvecUrgence = cultures.map(c => {
@@ -551,11 +484,6 @@ export async function computeConseilIrrigation(
       joursSansEau, retentionEauSol, besoinEau, joursSansPluieEffectifs
     )
 
-    // Compter irrigations planifiées restantes (exclure celles auto-validées)
-    const irrigationsRestantes = c.irrigationsPlanifiees.filter(
-      irr => !irrigationsAutoValidees.includes(irr.id)
-    )
-
     // Résumé météo pour le frontend
     const meteoResume = meteo ? {
       pluie48h: sousAbri ? 0 : Math.round(meteo.pluie48hPassees * 10) / 10,
@@ -576,8 +504,6 @@ export async function computeConseilIrrigation(
       sousAbri,
       alerteSecheresse: alerteSecheresseActive,
       consommationEauSemaine: Math.round(consommationSemaine * 10) / 10,
-      prochainesIrrigations: irrigationsRestantes.length,
-      irrigationsAutoValidees: c.irrigationsPlanifiees.length - irrigationsRestantes.length,
       meteo: meteoResume,
     }
   })
@@ -617,8 +543,6 @@ export async function computeConseilIrrigation(
     haute: culturesAvecUrgence.filter(c => c.urgence === 'haute').length,
     aucune: culturesAvecUrgence.filter(c => c.urgence === 'aucune').length,
     jamaisArrose: culturesAvecUrgence.filter(c => c.joursSansEau === null).length,
-    prochainesIrrigations7j: culturesAvecUrgence.reduce((s, c) => s + c.prochainesIrrigations, 0),
-    irrigationsAutoValidees: irrigationsAutoValidees.length,
     consommationTotaleEstimee: consommationHebdoTotale(culturesAvecUrgence),
     parTypeIrrigation: Object.entries(parTypeIrrigation).map(([type, cultures]) => ({
       type,

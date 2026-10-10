@@ -58,32 +58,28 @@ describe("varieteAffichable", () => {
 })
 
 describe("LigneArrosage", () => {
-  it("rend un arrosage probablement inutile avec sa raison météo, en info, sans retard", () => {
-    const demain = new Date(Date.now() + 86_400_000).toISOString()
+  it("rend une planche à arroser en critique, avec espèces, cultures et raison du bilan hydrique", () => {
     const html = renderToStaticMarkup(
       createElement(LigneArrosage, {
         titre: "A3",
-        details: ["Tomate", "3 cultures"],
-        datePrevue: demain,
-        probablementInutile: true,
-        noteMeteo: "8mm de pluie prévue — irrigation probablement inutile",
+        urgence: "critique",
+        details: ["Tomate + Basilic", "3 cultures", "Déficit de 18mm. 5j sans eau. Pas de pluie prévue."],
         onAction: () => {},
       }),
     )
-    expect(html).toContain('data-etat="info"')
-    expect(html).toContain("Pluie prévue")
-    expect(html).toContain("Tomate")
+    expect(html).toContain('data-etat="critique"')
+    expect(html).toContain("À arroser")
+    expect(html).toContain("Tomate + Basilic")
     expect(html).toContain("3 cultures")
-    expect(html).toContain("8mm de pluie prévue")
-    expect(html).toContain(">Fait<")
+    expect(html).toContain("Déficit de 18mm")
+    expect(html).toContain(">Noter<")
+    // Plus de retard ni de date prévue : le besoin se recalcule chaque jour.
+    expect(html).not.toContain("retard")
   })
 
-  it("rend un arrosage du jour en attention, « À arroser »", () => {
-    const html = renderToStaticMarkup(
-      createElement(LigneArrosage, { titre: "Sans planche", datePrevue: new Date().toISOString(), onAction: () => {} }),
-    )
+  it("rend une urgence haute en attention", () => {
+    const html = renderToStaticMarkup(createElement(LigneArrosage, { titre: "B1", urgence: "haute", onAction: () => {} }))
     expect(html).toContain('data-etat="attention"')
     expect(html).toContain("À arroser")
-    expect(html).toContain("Aujourd&#x27;hui")
   })
 })

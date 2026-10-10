@@ -56,21 +56,14 @@ export function libelleActionTache(type: TypeTache, fait: boolean): "Fait" | "No
   return type === "recolte" ? "Noter" : "Fait"
 }
 
-export function etatIrrigation(arrosage: {
-  fait?: boolean
-  retardJours?: number | null
-  probablementInutile?: boolean
-  datePrevue: string | Date
-  maintenant?: Date
-}): EtatLigne {
-  if (arrosage.fait) return { etat: "ok", libelle: "Arrosé" }
-  const retard = arrosage.retardJours ?? 0
-  if (retard > 0) return { etat: etatRetard(retard), libelle: "En retard" }
-  if (arrosage.probablementInutile) return { etat: "info", libelle: "Pluie prévue" }
-  const maintenant = arrosage.maintenant ?? new Date()
-  const prevue = new Date(arrosage.datePrevue)
-  if (prevue.toDateString() === maintenant.toDateString()) return { etat: "attention", libelle: "À arroser" }
-  return { etat: "neutre", libelle: "Prévu" }
+/**
+ * État d'une planche à arroser aujourd'hui, depuis l'urgence du bilan
+ * hydrique (`src/lib/irrigation/a-arroser.ts`) : plus de retard ni de passage
+ * « prévu » depuis la refonte de l'arrosage du 2026-10-10.
+ */
+export function etatArrosage(urgence: "critique" | "haute", fait = false): EtatLigne {
+  if (fait) return { etat: "ok", libelle: "Arrosé" }
+  return { etat: urgence === "critique" ? "critique" : "attention", libelle: "À arroser" }
 }
 
 /** « Aujourd'hui », sinon « jeu. 10 ». */

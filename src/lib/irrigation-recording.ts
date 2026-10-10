@@ -7,6 +7,8 @@ interface EnregistrerArrosageParams {
   userId: string
   cultureIds: number[]
   dateEffective?: Date
+  /** Observation saisie avec l'arrosage (page Tâches) ; sinon libellé par défaut. */
+  notes?: string | null
 }
 
 export interface EnregistrerArrosageResult {
@@ -33,6 +35,7 @@ export async function enregistrerArrosageCultures({
   userId,
   cultureIds,
   dateEffective = new Date(),
+  notes,
 }: EnregistrerArrosageParams): Promise<EnregistrerArrosageResult> {
   const idsDemandes = Array.from(new Set(
     cultureIds.filter((id) => Number.isInteger(id) && id > 0)
@@ -184,7 +187,7 @@ export async function enregistrerArrosageCultures({
           datePrevue: dateEffective,
           fait: true,
           dateEffective,
-          notes: 'Arrosage noté depuis les conseils d’irrigation',
+          notes: notes?.trim().slice(0, 1000) || 'Arrosage noté',
         })),
       }),
     ])

@@ -183,20 +183,10 @@ export function CalendarView({ year }: CalendarViewProps) {
     const newDate = new Date(dateKey)
 
     try {
+      // Un arrosage noté ne se déplace pas (plus de passage planifié depuis la
+      // refonte du 2026-10-10) : seuls semis, plantations et récoltes se glissent.
       if (draggedEvent.type === "irrigation") {
-        // Déplacer l'irrigation planifiée
-        const response = await fetch(`/api/irrigations/${draggedEvent.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            datePrevue: newDate.toISOString(),
-          }),
-        })
-
-        if (!response.ok) {
-          const error = await response.json()
-          throw new Error(error.error || "Erreur")
-        }
+        return
       } else {
         // Déterminer le champ à mettre à jour selon le type
         const fieldMap = {
@@ -499,7 +489,9 @@ export function CalendarView({ year }: CalendarViewProps) {
                                   return (
                                     <div
                                       key={`${event.id}-${event.type}`}
-                                      draggable
+                                      // Un arrosage affiché est un arrosage NOTÉ (refonte du
+                                      // 2026-10-10) : il ne se déplace pas dans le temps.
+                                      draggable={event.type !== "irrigation"}
                                       onDragStart={(e) => handleDragStart(event, e)}
                                       onDragEnd={handleDragEnd}
                                       onClick={() => {
@@ -512,7 +504,9 @@ export function CalendarView({ year }: CalendarViewProps) {
                                         ? "Passage manqué depuis plus d'un cycle : abandonné, il ne sera pas rattrapé"
                                         : pluie
                                           ? libelleIrrigationInutile(event)
-                                          : "Glisser pour deplacer, cliquer pour details"}
+                                          : event.type === "irrigation"
+                                            ? "Arrosage noté, cliquer pour détails"
+                                            : "Glisser pour déplacer, cliquer pour détails"}
                                     >
                                       <EventIcon className={`h-4 w-4 ${iconColor} flex-shrink-0`} />
                                       <span className={`truncate ${event.fait ? "line-through opacity-60" : ""} ${inutile ? "line-through text-muted-foreground" : ""}`}>
