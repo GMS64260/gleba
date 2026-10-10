@@ -397,7 +397,7 @@ function AnimauxSubTab() {
   // Cochon. On fetch aussi les lots actifs pour agréger leurs espèces.
   const [lotsEspeceIds, setLotsEspeceIds] = React.useState<string[]>([])
   // Lots actifs, pour rattacher un animal à un lot depuis sa fiche. Feedback
-  // éleveur 2026-07-21 (Cyril) : il n'existait aucune passerelle animal → lot
+  // éleveur 2026-07-21 : il n'existait aucune passerelle animal → lot
   // dans l'UI (ni sur la fiche animal, ni sur la page du lot).
   const [lotsActifs, setLotsActifs] = React.useState<Array<{ id: number; nom: string | null; especeAnimaleId: string; prixAchatTotal: number | null }>>([])
   const [races, setRaces] = React.useState<RaceAnimaleOption[]>([])
