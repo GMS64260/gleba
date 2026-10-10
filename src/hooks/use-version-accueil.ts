@@ -15,6 +15,7 @@
  */
 
 import * as React from "react"
+import { useSession } from "next-auth/react"
 
 import { VERSION_ACCUEIL_DEFAUT, sanitizeVersionAccueil, type VersionAccueil } from "@/lib/accueil/preference"
 
@@ -58,10 +59,19 @@ export function definirVersionAccueilLocale(version: VersionAccueil) {
 }
 
 export function useVersionAccueil(): { version: VersionAccueil; chargement: boolean } {
+  const { status } = useSession()
   const [version, setVersion] = React.useState<VersionAccueil>(VERSION_ACCUEIL_DEFAUT)
   const [chargement, setChargement] = React.useState(true)
 
   React.useEffect(() => {
+    // Sans session (visiteur des pages publiques), la route répond 401 :
+    // ne pas l'appeler, la version par défaut suffit (constat du 2026-10-10,
+    // trois 401 par page publique avec onboarding-redirect).
+    if (status === "loading") return
+    if (status !== "authenticated") {
+      setChargement(false)
+      return
+    }
     const cache = lireCache()
     if (cache) {
       setVersion(cache)
@@ -88,7 +98,7 @@ export function useVersionAccueil(): { version: VersionAccueil; chargement: bool
       annule = true
       window.removeEventListener(EVENEMENT, onChange)
     }
-  }, [])
+  }, [status])
 
   return { version, chargement }
 }

@@ -27,6 +27,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     "/assistant-ia-agricole": 0.75,
     "/logiciel-permaculture": 0.7,
     "/logiciel-potager": 0.65,
+    "/plan-de-ferme": 0.8,
+    "/carnet-de-culture": 0.75,
+    "/registre-phytosanitaire-numerique": 0.8,
+    "/comparatif-logiciels-maraichage": 0.8,
   };
 
   // Pages principales
@@ -73,6 +77,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     "/registre-phytosanitaire",
     "/calendrier-semis",
     "/assistant-ia-agricole",
+    "/plan-de-ferme",
+    "/carnet-de-culture",
+    "/registre-phytosanitaire-numerique",
+    "/comparatif-logiciels-maraichage",
   ].map((path) => ({
     url: `${baseUrl}${path}`,
     lastModified: vitrineUpdatedAt,

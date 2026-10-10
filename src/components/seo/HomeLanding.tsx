@@ -127,8 +127,8 @@ const CHAPITRES: Chapitre[] = [
       "Vue 3D du jardin et du verger",
     ],
     liens: [
+      ["/plan-de-ferme", "Plan de ferme sur le cadastre"],
       ["/logiciel-potager", "Plan de potager 2D et 3D"],
-      ["/logiciel-micro-ferme", "Logiciel pour micro-ferme"],
     ],
     image: {
       src: "/screenshots/vitrine-plan-bureau.webp",
@@ -150,6 +150,7 @@ const CHAPITRES: Chapitre[] = [
       "Ateliers d'élevage : lots, soins, naissances, productions",
     ],
     liens: [
+      ["/carnet-de-culture", "Carnet de culture"],
       ["/registre-phytosanitaire", "Registre phytosanitaire"],
       ["/logiciel-verger", "Logiciel de verger"],
       ["/logiciel-elevage", "Ateliers d'élevage"],
@@ -264,7 +265,7 @@ const FAQS: { question: string; answer: string }[] = [
   {
     question: "Puis-je héberger Gleba sur mon propre serveur ?",
     answer:
-      "Oui. Gleba se déploie avec Docker Compose sur un serveur Linux. Le code source est public sur GitHub. Vos données restent chez vous et vous gardez la main sur les sauvegardes.",
+      "Oui. Gleba se déploie avec Docker Compose sur un serveur Linux. Le code source est public sur GitHub. Vos données restent chez vous et vous gardez la main sur les sauvegardes. L'assistant IA, lui, n'est disponible que sur gleba.fr.",
   },
   {
     question: "Gleba peut-il remplacer un logiciel de comptabilité ?",
@@ -331,8 +332,8 @@ export function HomeLanding() {
           <div className="max-w-3xl">
             <Surtitre>Logiciel libre · maraîchage, verger, élevage</Surtitre>
             <h1 id="titre-accueil" className="mt-4 font-display text-[40px] font-medium leading-[1.04] tracking-tight text-encre sm:text-[56px] lg:text-[64px]">
-              Le carnet libre des <span className="whitespace-nowrap">micro-fermes,</span>{" "}
-              <span className="italic text-sauge">qui commence par aujourd&apos;hui.</span>
+              Votre <span className="whitespace-nowrap">micro-ferme,</span>{" "}
+              <span className="italic text-sauge">du plan de culture à la récolte.</span>
             </h1>
             <p className="mt-6 max-w-2xl text-lg leading-relaxed text-ardoise sm:text-xl">
               Gleba est un logiciel de maraîchage et de gestion de ferme diversifiée. Chaque matin, il
@@ -531,7 +532,7 @@ export function HomeLanding() {
             <ul className="mt-8 space-y-5">
               {[
                 { icone: GithubLogo, titre: "Code public sous licence AGPL-3.0", texte: "Lisible, vérifiable et modifiable sur GitHub.", href: "https://github.com/GMS64260/gleba", lien: "Voir le code" },
-                { icone: Database, titre: "Auto-hébergement avec Docker Compose", texte: "Installez Gleba sur votre serveur ou celui de votre structure." },
+                { icone: Database, titre: "Auto-hébergement avec Docker Compose", texte: "Installez Gleba sur votre serveur ou celui de votre structure ; l'assistant IA reste propre à gleba.fr." },
                 { icone: DownloadSimple, titre: "Export complet du compte", texte: "Toutes vos données à tout moment : un fichier CSV par table, dans une archive ZIP." },
                 { icone: Plant, titre: "Référentiel agricole ouvert", texte: "Plus de 200 végétaux et 750 itinéraires techniques, consultables sans compte.", href: "/referentiel", lien: "Parcourir le référentiel" },
                 { icone: Megaphone, titre: "Feuille de route publique", texte: "Les demandes et les votes des utilisateurs sont visibles par tous.", href: "/communaute", lien: "Voir la feuille de route" },
@@ -575,14 +576,14 @@ export function HomeLanding() {
               <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-4 py-4">
                 <dt>
                   <span className="font-semibold text-encre">Auto-hébergement</span>
-                  <span className="mt-0.5 block text-sm text-ardoise">Le code complet, sur votre serveur.</span>
+                  <span className="mt-0.5 block text-sm text-ardoise">Le code public, sur votre serveur, sans l&apos;assistant IA.</span>
                 </dt>
                 <dd className="text-right font-semibold text-prairie">Gratuit</dd>
               </div>
             </dl>
             <p className="mt-5 text-sm leading-relaxed text-ardoise">
               Après la bêta, le service hébergé deviendra payant. Le code et l&apos;auto-hébergement
-              restent gratuits, sans module retiré à la version libre.
+              restent gratuits.
             </p>
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">
               <Link href="/register" className={CLASSES_CTA}>

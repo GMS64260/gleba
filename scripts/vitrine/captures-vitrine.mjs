@@ -26,7 +26,8 @@ const PUBLIC = resolve("public/screenshots");
 const SEULES = process.env.CAPTURES_SEULES?.split(",").filter(Boolean);
 mkdirSync(OUT, { recursive: true });
 
-// [nom publié, chemin, vue, attente supplémentaire en ms, découpe en px CSS]
+// [nom publié, chemin, vue, attente supplémentaire en ms, découpe en px CSS,
+//  texte d'un onglet à cliquer avant la capture]
 // La découpe écarte ce qui ne sert pas la page (barre d'outils, tuile sans
 // libellé, lignes de test de la démo) ; sans découpe, la fenêtre entière est
 // publiée. L'écran Aujourd'hui de la vitrine est un aperçu HTML
@@ -42,6 +43,7 @@ const CAPTURES = [
   ["rotations-bureau", "/maraichage/rotations", "bureau", 3000],
   ["calendrier-itp-bureau", "/maraichage/itps/calendrier", "bureau", 4000],
   ["tracabilite-bureau", "/tracabilite", "bureau", 4000, { x: 216, y: 20, width: 1224, height: 540 }],
+  ["carnet-culture-bureau", "/tracabilite", "bureau", 4000, { x: 216, y: 20, width: 1224, height: 540 }, "Registre de culture"],
 ];
 
 const VUES = {
@@ -82,10 +84,14 @@ try {
     });
     const page = await ctx.newPage();
     await connexionDemo(page);
-    for (const [nom, chemin, , attente, decoupe] of aFaire) {
+    for (const [nom, chemin, , attente, decoupe, onglet] of aFaire) {
       try {
         await page.goto(`${BASE}${chemin}`, { waitUntil: "domcontentloaded" });
         await page.waitForTimeout(attente);
+        if (onglet) {
+          await page.getByRole("tab", { name: onglet }).or(page.getByText(onglet, { exact: true })).first().click();
+          await page.waitForTimeout(attente);
+        }
         await page.addStyleTag({ content: CSS_MASQUE });
         await page.waitForTimeout(300);
         const png = `${OUT}/${nom}.png`;

@@ -71,6 +71,8 @@ export default auth((req) => {
     "/rotation-cultures-maraichage", "/itineraire-technique-maraichage",
     "/registre-phytosanitaire", "/referentiel",
     "/logiciel-potager",
+    "/carnet-de-culture", "/plan-de-ferme",
+    "/registre-phytosanitaire-numerique", "/comparatif-logiciels-maraichage",
   ]
   // La home publique est traitée à part car `route + "/"` matcherait tout
   // avec une route égale à "/".

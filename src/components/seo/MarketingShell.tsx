@@ -99,6 +99,7 @@ const COLONNES: { titre: string; liens: [string, string][] }[] = [
       ["/logiciel-verger", "Logiciel de verger"],
       ["/logiciel-arboriculture", "Logiciel d'arboriculture"],
       ["/logiciel-potager", "Plan de potager 2D et 3D"],
+      ["/plan-de-ferme", "Plan de ferme sur le cadastre"],
       ["/logiciel-permaculture", "Ferme en permaculture"],
     ],
   },
@@ -109,6 +110,7 @@ const COLONNES: { titre: string; liens: [string, string][] }[] = [
       ["/rotation-cultures-maraichage", "Rotation des cultures"],
       ["/itineraire-technique-maraichage", "Itinéraires techniques"],
       ["/calendrier-semis", "Calendrier de semis"],
+      ["/carnet-de-culture", "Carnet de culture"],
       ["/registre-phytosanitaire", "Registre phytosanitaire"],
       ["/assistant-ia-agricole", "Assistant IA agricole"],
     ],
@@ -128,6 +130,8 @@ const COLONNES: { titre: string; liens: [string, string][] }[] = [
   {
     titre: "Ressources",
     liens: [
+      ["/comparatif-logiciels-maraichage", "Comparatif des logiciels de maraîchage"],
+      ["/registre-phytosanitaire-numerique", "Registre phyto numérique 2027"],
       ["/referentiel", "Référentiel agricole ouvert"],
       ["/glossaire", "Glossaire agricole"],
       ["/communaute", "Feuille de route publique"],

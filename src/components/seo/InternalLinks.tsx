@@ -14,6 +14,10 @@ import {
   PawPrint,
   Dog,
   Rabbit,
+  Map as IconeCarte,
+  BookOpen,
+  ClipboardCheck,
+  Scale,
   type LucideIcon,
 } from "lucide-react";
 
@@ -32,6 +36,9 @@ const MARAICHAGE_PAGES: Page[] = [
   { href: "/itineraire-technique-maraichage", label: "Itinéraires techniques", icon: ListChecks },
   { href: "/calendrier-semis", label: "Calendrier de semis", icon: Calendar },
   { href: "/logiciel-potager", label: "Plan de potager", icon: Carrot },
+  { href: "/plan-de-ferme", label: "Plan de ferme sur le cadastre", icon: IconeCarte },
+  { href: "/carnet-de-culture", label: "Carnet de culture", icon: BookOpen },
+  { href: "/registre-phytosanitaire", label: "Registre phytosanitaire", icon: ClipboardCheck },
   { href: "/logiciel-permaculture", label: "Ferme en permaculture", icon: Layers },
 ];
 
@@ -49,6 +56,7 @@ const ELEVAGE_PAGES: Page[] = [
 ];
 
 const DISCOVERY_PAGES: Page[] = [
+  { href: "/comparatif-logiciels-maraichage", label: "Comparatif des logiciels de maraîchage", icon: Scale },
   { href: "/assistant-ia-agricole", label: "Assistant IA agricole", icon: Bot },
   { href: "/referentiel", label: "Référentiel agricole public", icon: Sprout },
   { href: "/communaute", label: "Feuille de route publique", icon: Milestone },
@@ -62,7 +70,10 @@ function contextualPages(currentPath: string): Page[] {
     currentPath.includes("cultures") ||
     currentPath.includes("semis") ||
     currentPath.includes("potager") ||
-    currentPath.includes("permaculture")
+    currentPath.includes("permaculture") ||
+    currentPath.includes("plan-de-ferme") ||
+    currentPath.includes("carnet") ||
+    currentPath.includes("phytosanitaire")
   ) {
     return MARAICHAGE_PAGES;
   }
