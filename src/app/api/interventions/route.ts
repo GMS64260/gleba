@@ -27,6 +27,17 @@ function messageValidation(error: ZodError): string {
   return champ ? `Données invalides — ${champ} : ${premiere.message}` : `Données invalides — ${premiere.message}`
 }
 
+/**
+ * QA cmv29i9ad — une intervention dont la planche n'existe plus affichait
+ * l'identifiant brut (« cmv2987co… ») dans la colonne Culture / Planche. Un
+ * cuid introuvable devient « Planche supprimée » ; un ancien nom stocké à la
+ * place de l'id (avant 2026-09-28) reste lisible tel quel.
+ */
+function libellePlancheIntrouvable(plancheId: string | null): string | null {
+  if (!plancheId) return null
+  return /^c[a-z0-9]{24}$/.test(plancheId) ? 'Planche supprimée' : plancheId
+}
+
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
   if (error) return error
@@ -102,7 +113,7 @@ export async function GET(request: NextRequest) {
         source: 'intervention' as const,
         sourceLabel: null as string | null,
         cultureNom: cult ? `${cult.espece?.nom ?? cult.espece?.id ?? '?'}${cult.variete ? ' - ' + (cult.variete.nom ?? cult.variete.id) : ''}` : (arbre ? arbre.nom : null),
-        plancheNom: planche?.nom || (cult?.planche as any)?.nom || null,
+        plancheNom: planche?.nom || (cult?.planche as any)?.nom || libellePlancheIntrouvable(i.plancheId),
       }
     })
 
