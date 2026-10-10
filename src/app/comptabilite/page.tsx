@@ -126,7 +126,7 @@ const modulesCompta = [
   },
   {
     title: "Interventions",
-    description: "Opérations terrain, temps, couts",
+    description: "Opérations terrain, temps, coûts",
     href: "/interventions",
     icon: Hammer,
     color: "text-orange-600",
