@@ -77,7 +77,7 @@ export function useVersionAccueil(): { version: VersionAccueil; chargement: bool
         ecrireCache(v)
       })
       .catch(() => {
-        // non connecté ou réseau : v1
+        // non connecté ou réseau : version par défaut
       })
       .finally(() => {
         if (!annule) setChargement(false)
