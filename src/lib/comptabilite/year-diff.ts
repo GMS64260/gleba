@@ -87,3 +87,32 @@ export function computeYearDiff(stats: StatsCompta | null | undefined): YearDiff
   }
   return { state: "vide", diff: 0, percent: 0, depensesPrecedente: 0, depensesCourante: 0 }
 }
+
+/**
+ * Sous-titre de la carte « Revenus N » hors état "compare" (qui affiche un
+ * pourcentage). Chaque libellé nomme l'année N-1 : c'est le comparatif.
+ *
+ * Ticket cmv290vir (QA 2026-10-10) — l'état "depenses-seules" affichait
+ * « 2024 : 0 € de revenus, 1 400,00 € de dépenses » : l'exercice affiché,
+ * déjà lisible dans les cartes voisines, au lieu de dire qu'il n'y a rien
+ * à comparer en 2023.
+ */
+export function libelleComparatifRevenus(
+  diff: YearDiff,
+  annee: number,
+  formatEuro: (n: number) => string,
+): string {
+  const precedente = annee - 1
+  switch (diff.state) {
+    case "compare":
+      return `${diff.percent > 0 ? "+" : ""}${diff.percent}% vs ${precedente}`
+    case "nouveau":
+      return `Nouveau · pas d'activité en ${precedente}`
+    case "nouveau-revenus":
+      return `${precedente} : 0 € de revenus, ${formatEuro(diff.depensesPrecedente)} de dépenses`
+    case "depenses-seules":
+      return `Pas de revenus en ${annee} · aucune activité en ${precedente}`
+    case "vide":
+      return `Aucune activité en ${annee} ni en ${precedente}`
+  }
+}
