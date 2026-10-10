@@ -74,8 +74,9 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
       return
     }
 
-    const stockGraines = variete.userStockGraines ?? variete.stockGraines ?? 0
-    const stockPlants = variete.userStockPlants ?? variete.stockPlants ?? 0
+    // Stock de l'utilisateur seulement (ticket cmv29j6q7).
+    const stockGraines = variete.userStockGraines ?? 0
+    const stockPlants = variete.userStockPlants ?? 0
     const grainesParPlant = itp?.nbGrainesPlant || culture.itp?.nbGrainesPlant || 0
 
     // Determiner si on est en mode "plants" ou "graines"

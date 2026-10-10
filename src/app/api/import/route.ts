@@ -13,6 +13,7 @@ import { invalidateKpi } from '@/lib/kpi'
 import { frequenceIrrigationJours } from '@/lib/irrigation-peremption'
 import { rendementEffectif } from '@/lib/recolte/rendement-effectif'
 import { uniteQuantiteRecolte, type UniteQuantite } from '@/lib/recolte/projection'
+import { enregistrerStockVariete } from '@/lib/stocks/stock-variete'
 
 interface ImportData {
   version?: string
@@ -455,7 +456,6 @@ export async function POST(request: NextRequest) {
             dureeRecolte: item.dureeRecolte,
             nbGrainesG: item.nbGrainesG,
             prixGraine: item.prixGraine,
-            dateStock: item.dateStock ? new Date(item.dateStock) : null,
             bio: item.bio,
             description: item.description,
           },
@@ -468,30 +468,19 @@ export async function POST(request: NextRequest) {
             dureeRecolte: item.dureeRecolte,
             nbGrainesG: item.nbGrainesG,
             prixGraine: item.prixGraine,
-            dateStock: item.dateStock ? new Date(item.dateStock) : null,
             bio: item.bio ?? false,
             description: item.description,
           },
         })
 
-        // Stock per-user
-        if (item.stockGraines !== undefined || item.stockPlants !== undefined) {
-          await tx.userStockVariete.upsert({
-            where: { userId_varieteId: { userId, varieteId: item.id } },
-            create: {
-              userId,
-              varieteId: item.id,
-              stockGraines: item.stockGraines ?? null,
-              stockPlants: item.stockPlants ?? null,
-              dateStock: item.dateStock ? new Date(item.dateStock) : new Date(),
-            },
-            update: {
-              ...(item.stockGraines !== undefined && { stockGraines: item.stockGraines }),
-              ...(item.stockPlants !== undefined && { stockPlants: item.stockPlants }),
-              dateStock: item.dateStock ? new Date(item.dateStock) : new Date(),
-            },
-          })
-        }
+        // Stock per-user : même chemin d'écriture que /api/stocks et
+        // /api/varietes ; la date de stock n'est plus une colonne de la variété
+        // (ticket cmv29j6q7).
+        await enregistrerStockVariete(tx, userId, item.id, {
+          stockGraines: item.stockGraines,
+          stockPlants: item.stockPlants,
+          dateStock: item.dateStock ? new Date(item.dateStock) : undefined,
+        })
 
         stats.varietes++
       }

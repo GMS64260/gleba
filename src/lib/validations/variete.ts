@@ -15,7 +15,10 @@ export const varieteSchema = z.object({
   dureeFloraison: z.number().int().min(1).max(52).nullable().optional(),
   nbGrainesG: z.number().min(0).nullable().optional(),
   prixGraine: z.number().min(0).nullable().optional(),
+  // Stock de l'APPELANT (`UserStockVariete`), jamais une colonne de la variété :
+  // les routes les séparent du catalogue (`separerStockVariete`). Ticket cmv29j6q7.
   stockGraines: z.number().min(0).nullable().optional(),
+  stockPlants: z.number().int().min(0).nullable().optional(),
   dateStock: z.coerce.date().nullable().optional(),
   bio: z.boolean().default(false),
   description: z.string().max(5000).nullable().optional(),
