@@ -151,7 +151,8 @@ function CartePageContent() {
 
       const latlngs = coords.map((c: [number, number]) => [c[1], c[0]] as [number, number])
       const bounds = (window as any).L.latLngBounds(latlngs)
-      mapRef.flyToBounds(bounds, { padding: [50, 50], maxZoom: 18 })
+      // fitBounds et non flyToBounds : voir handleFlyTo (QA cmv2ek8t6).
+      mapRef.fitBounds(bounds, { padding: [50, 50], maxZoom: 18 })
       setSelectedParcelle(target)
     } catch {
       console.warn("Impossible de parser la geometrie pour auto-focus")
@@ -415,7 +416,12 @@ function CartePageContent() {
       const latlngs = coords.map((c: [number, number]) => [c[1], c[0]] as [number, number])
       const bounds = (window as any).L.latLngBounds(latlngs)
 
-      mapRef.flyToBounds(bounds, { padding: [50, 50], maxZoom: 18 })
+      // QA cmv2ek8t6 — fitBounds, jamais flyToBounds : pendant un vol de
+      // plusieurs niveaux, Leaflet étire le SVG des contours sans les
+      // recalculer. Une parcelle réduite à un point au zoom de départ (bouts
+      // de trait ronds) devenait un disque vert qui couvrait toute la carte,
+      // et un vol interrompu par un glisser laissait les contours perdus.
+      mapRef.fitBounds(bounds, { padding: [50, 50], maxZoom: 18 })
       if (window.matchMedia('(max-width: 767px)').matches) setShowList(false)
     } catch {
       // Fallback : si le centroid est disponible dans les données
