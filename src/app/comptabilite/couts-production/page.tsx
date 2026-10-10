@@ -23,12 +23,12 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  ResponsiveContainer,
   PieChart,
   Pie,
   Cell,
   Legend,
 } from "recharts"
+import { ResponsiveContainer } from "@/components/ui/responsive-container"
 import {
   Sprout,
   TreeDeciduous,

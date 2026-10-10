@@ -48,11 +48,10 @@ const ChartContainer = React.forwardRef<HTMLDivElement, ChartContainerProps>(
           data-chart={chartId}
           ref={ref}
           className={cn(
-            // DEV2 #6 — `w-full min-w-0` empêche le ResponsiveContainer
-            // recharts de recevoir width=-1 au premier render (cause des
-            // warnings "width and height should be greater than 0").
-            // `min-h-[200px]` garantit une hauteur de mesure même avant
-            // que `h-[XXXpx]` (className passé) ne soit appliqué.
+            // DEV2 #6 — `w-full min-w-0` et `min-h-[200px]` donnent au
+            // graphique une taille de mesure. Le warning « width(-1) and
+            // height(-1) » du premier rendu ne vient pas du CSS mais de
+            // Recharts : voir ui/responsive-container.tsx (cmv29ksh8).
             "flex aspect-video w-full min-w-0 min-h-[200px] justify-center text-xs [&_.recharts-cartesian-axis-tick_text]:fill-muted-foreground [&_.recharts-cartesian-grid_line[stroke='#ccc']]:stroke-border/50 [&_.recharts-curve.recharts-tooltip-cursor]:stroke-border [&_.recharts-dot[stroke='#fff']]:stroke-transparent [&_.recharts-layer]:outline-none [&_.recharts-polar-grid_[stroke='#ccc']]:stroke-border [&_.recharts-radial-bar-background-sector]:fill-muted [&_.recharts-rectangle.recharts-tooltip-cursor]:fill-muted [&_.recharts-reference-line_[stroke='#ccc']]:stroke-border [&_.recharts-sector[stroke='#fff']]:stroke-transparent [&_.recharts-sector]:outline-none [&_.recharts-surface]:outline-none",
             className
           )}

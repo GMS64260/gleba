@@ -35,9 +35,9 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  ResponsiveContainer,
   Legend,
 } from "recharts"
+import { ResponsiveContainer } from "@/components/ui/responsive-container"
 import {
   TrendingUp,
   Shield,

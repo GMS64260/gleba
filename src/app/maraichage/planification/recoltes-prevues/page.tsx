@@ -18,8 +18,8 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  ResponsiveContainer,
 } from "recharts"
+import { ResponsiveContainer } from "@/components/ui/responsive-container"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"

@@ -1,6 +1,18 @@
 {
   "extends": ["next/core-web-vitals", "next/typescript"],
   "rules": {
+    "no-restricted-imports": [
+      "error",
+      {
+        "paths": [
+          {
+            "name": "recharts",
+            "importNames": ["ResponsiveContainer"],
+            "message": "Importer ResponsiveContainer depuis @/components/ui/responsive-container : celui de Recharts avertit width(-1) au premier rendu (ticket cmv29ksh8)."
+          }
+        ]
+      }
+    ],
     "no-restricted-syntax": [
       "warn",
       {
