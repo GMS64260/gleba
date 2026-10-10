@@ -95,7 +95,7 @@ interface ITPData {
 
 const CHAMPS_DATE = ["dateSemis", "datePlantation", "dateRecolte"] as const
 type ChampDate = (typeof CHAMPS_DATE)[number]
-type ChampSaisi = ChampDate | "nbRangs" | "espacement"
+type ChampSaisi = ChampDate | "finRecolte" | "nbRangs" | "espacement"
 const LIBELLE_CHAMP_DATE: Record<ChampDate, string> = {
   dateSemis: "semis",
   datePlantation: "plantation",
@@ -435,8 +435,11 @@ export default function NewCulturePage() {
 
   // Revue du 2026-10-10 (cmv2qzhkf) — changer l'année gardait les dates saisies
   // dans l'ancienne, sans signal : une culture 2027 partait semée en 2026. Les
-  // dates suivent l'année, décalées du même nombre d'années (sans date saisie,
-  // l'effet précédent recalcule le cycle de l'ITP).
+  // dates saisies CALÉES SUR L'ANCIENNE ANNÉE la suivent, décalées du même
+  // nombre d'années ; des dates déjà tapées pour une autre saison (saison 2027
+  // préparée depuis la vue 2026, puis année corrigée) ne bougent pas. Sans date
+  // de cycle saisie, l'effet précédent recalcule le cycle de l'ITP, et seule une
+  // fin de récolte saisie restée avant ce nouveau début est décalée.
   const anneeDatesRef = React.useRef<number | null>(null)
   React.useEffect(() => {
     // Année en cours de frappe (« 2 », « 20 »…) : attendre une année complète.
@@ -444,14 +447,31 @@ export default function NewCulturePage() {
     const precedente = anneeDatesRef.current
     anneeDatesRef.current = selectedYear
     if (precedente === null || precedente === selectedYear) return
-    if (!CHAMPS_DATE.some((champ) => saisiesManuellesRef.current.has(champ))) return
-    const ecart = selectedYear - precedente
-    for (const champ of [...CHAMPS_DATE, "finRecolte"] as const) {
+    const saisies = saisiesManuellesRef.current
+    const lire = (champ: ChampDate | "finRecolte") => {
       const v = form.getValues(champ)
-      if (v) form.setValue(champ, addYears(new Date(v), ecart))
+      return v ? new Date(v) : null
     }
-    const debut = form.getValues("datePlantation") ?? form.getValues("dateSemis")
-    if (debut) debutCycleRef.current = new Date(debut).toISOString()
+    let champs: (ChampDate | "finRecolte")[] = []
+    if (CHAMPS_DATE.some((champ) => saisies.has(champ))) {
+      const debut = lire("datePlantation") ?? lire("dateSemis") ?? lire("dateRecolte")
+      if (debut && debut.getFullYear() === precedente) champs = [...CHAMPS_DATE, "finRecolte"]
+    } else if (saisies.has("finRecolte")) {
+      const fin = lire("finRecolte")
+      const debut = lire("datePlantation") ?? lire("dateSemis")
+      if (fin && debut && fin < debut) champs = ["finRecolte"]
+    }
+    const ecart = selectedYear - precedente
+    let decalees = 0
+    for (const champ of champs) {
+      const v = lire(champ)
+      if (!v) continue
+      form.setValue(champ, addYears(v, ecart))
+      decalees++
+    }
+    if (decalees === 0) return
+    const debut = lire("datePlantation") ?? lire("dateSemis")
+    if (debut) debutCycleRef.current = debut.toISOString()
     setDateSemisInfo(
       `Année ${selectedYear} : vos dates sont décalées de ${ecart > 0 ? "+" : ""}${ecart} an${Math.abs(ecart) > 1 ? "s" : ""}.`
     )
@@ -953,9 +973,10 @@ export default function NewCulturePage() {
                             type="date"
                             {...field}
                             value={field.value ? format(new Date(field.value), "yyyy-MM-dd") : ""}
-                            onChange={(e) =>
+                            onChange={(e) => {
+                              marquerSaisie("finRecolte")
                               field.onChange(e.target.value ? new Date(e.target.value) : null)
-                            }
+                            }}
                           />
                         </FormControl>
                         <FormDescription>
