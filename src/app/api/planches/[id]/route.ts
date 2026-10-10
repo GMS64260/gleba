@@ -11,6 +11,7 @@ import { updatePlancheSchema } from '@/lib/validations'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { invalidateKpi } from '@/lib/kpi'
 import { resoudreIdPlanche } from '@/lib/planches/resolution'
+import { aDesTraces, compterTracesPlanches, messageSuppressionRefusee } from '@/lib/planches/traces'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -180,13 +181,7 @@ export async function DELETE(
     const plancheId = await resoudreIdPlanche(prisma, reference, session!.user.id)
     const planche = plancheId ? await prisma.planche.findUnique({
       where: { id: plancheId },
-      include: {
-        _count: {
-          select: {
-            cultures: true,
-          },
-        },
-      },
+      select: { id: true, nom: true },
     }) : null
 
     if (!planche) {
@@ -196,12 +191,15 @@ export async function DELETE(
       )
     }
 
-    // Vérifier si des cultures sont liées
-    if (planche._count.cultures > 0) {
+    // QA cmv29i9ad — cultures, interventions et fertilisations retiennent la
+    // planche : sinon l'intervention perd son emplacement et la fertilisation
+    // part en cascade.
+    const traces = (await compterTracesPlanches(prisma, [planche], session!.user.id)).get(planche.id)!
+    if (aDesTraces(traces)) {
       return NextResponse.json(
         {
-          error: `Impossible de supprimer la planche "${planche.nom}" car elle a des cultures`,
-          details: { cultures: planche._count.cultures }
+          error: messageSuppressionRefusee(planche.nom, traces),
+          details: traces,
         },
         { status: 409 }
       )

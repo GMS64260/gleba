@@ -18,6 +18,7 @@ import prisma from '@/lib/prisma'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { invalidateKpi } from '@/lib/kpi'
 import { resoudreIdPlanche } from '@/lib/planches/resolution'
+import { compterTracesPlanches } from '@/lib/planches/traces'
 import { TYPES_OBJETS, typeObjet } from '@/lib/jardin/objets-plan'
 
 type RouteParams = { params: Promise<{ id: string }> }
@@ -63,16 +64,17 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: `Planche "${reference}" non trouvée` }, { status: 404 })
     }
 
-    // Garde volontairement plus stricte que la suppression, qui ne regarde que
-    // les cultures : une fertilisation serait supprimée en cascade et une
-    // analyse de sol perdrait sa planche. Ces trois traces prouvent un usage
-    // maraîcher réel, donc une conversion faite par erreur.
+    // Garde de la suppression (cultures, interventions, fertilisations, QA
+    // cmv29i9ad), plus les analyses de sol, qui perdraient leur planche. Ces
+    // traces prouvent un usage maraîcher réel, donc une conversion faite par
+    // erreur.
     const { cultures, fertilisations, analyses } = planche._count
-    if (cultures > 0 || fertilisations > 0 || analyses > 0) {
+    const { interventions } = (await compterTracesPlanches(prisma, [planche], userId)).get(planche.id)!
+    if (cultures > 0 || fertilisations > 0 || analyses > 0 || interventions > 0) {
       return NextResponse.json(
         {
           error: `« ${planche.nom} » a un historique de culture : elle ne peut pas être reclassée en objet du plan.`,
-          details: { cultures, fertilisations, analyses },
+          details: { cultures, fertilisations, analyses, interventions },
         },
         { status: 409 }
       )

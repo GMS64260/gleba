@@ -9,6 +9,9 @@ const mocks = vi.hoisted(() => ({
   transaction: vi.fn(),
   resoudreIdPlanche: vi.fn(),
   invalidateKpi: vi.fn(),
+  cultureGroupBy: vi.fn(),
+  fertilisationGroupBy: vi.fn(),
+  interventionGroupBy: vi.fn(),
 }))
 
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
@@ -16,6 +19,9 @@ vi.mock("@/lib/prisma", () => ({
   default: {
     planche: { findFirst: mocks.plancheFindFirst, delete: mocks.plancheDelete },
     objetJardin: { create: mocks.objetCreate },
+    culture: { groupBy: mocks.cultureGroupBy },
+    fertilisation: { groupBy: mocks.fertilisationGroupBy },
+    intervention: { groupBy: mocks.interventionGroupBy },
     $transaction: mocks.transaction,
   },
 }))
@@ -65,6 +71,9 @@ describe("POST /api/planches/[id]/convertir-en-objet", () => {
     mocks.resoudreIdPlanche.mockResolvedValue("pl-mur")
     mocks.plancheFindFirst.mockResolvedValue(planche())
     mocks.objetCreate.mockImplementation(async ({ data }) => ({ id: 77, ...data }))
+    mocks.cultureGroupBy.mockResolvedValue([])
+    mocks.fertilisationGroupBy.mockResolvedValue([])
+    mocks.interventionGroupBy.mockResolvedValue([])
     // Le mock de transaction exécute le callback avec le même client : on
     // vérifie ainsi l'ordre création → suppression réellement écrit.
     mocks.transaction.mockImplementation(async cb =>
@@ -129,6 +138,23 @@ describe("POST /api/planches/[id]/convertir-en-objet", () => {
     // Le point critique : rien ne doit être supprimé sur un refus.
     expect(mocks.plancheDelete).not.toHaveBeenCalled()
     expect(mocks.objetCreate).not.toHaveBeenCalled()
+  })
+
+  // QA cmv29i9ad — une intervention saisie sur la planche (par son id, ou par
+  // son nom avant 2026-09-28) perdrait son emplacement.
+  it.each([
+    ["par son identifiant", "pl-mur"],
+    ["par son nom historique", "Mur 2"],
+  ])("refuse une planche référencée par une intervention %s", async (_libelle, reference) => {
+    mocks.interventionGroupBy.mockResolvedValue([{ plancheId: reference, _count: { _all: 1 } }])
+
+    const response = await convertir({ type: "mur" })
+    expect(response.status).toBe(409)
+    expect(await response.json()).toMatchObject({ details: { interventions: 1 } })
+    expect(mocks.interventionGroupBy).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { userId: "user-1", plancheId: { in: ["pl-mur", "Mur 2"] } } })
+    )
+    expect(mocks.plancheDelete).not.toHaveBeenCalled()
   })
 
   it("répond 404 sur une planche inconnue ou appartenant à une autre exploitation", async () => {

@@ -210,7 +210,17 @@ export default function PlanchesPage() {
       const response = await fetch(`/api/planches/${encodeURIComponent(row.id)}`, {
         method: "DELETE",
       })
-      if (!response.ok) throw new Error("Erreur lors de la suppression")
+      if (!response.ok) {
+        // QA cmv29i9ad — le refus serveur dit ce qui retient la planche
+        // (interventions, fertilisations) : on l'affiche tel quel.
+        const corps = (await response.json().catch(() => null)) as { error?: string } | null
+        toast({
+          variant: "destructive",
+          title: "Impossible de supprimer",
+          description: corps?.error || "Impossible de supprimer la planche",
+        })
+        return
+      }
       toast({
         title: "Planche supprimée",
         description: `La planche "${row.nom}" a été supprimée`,
