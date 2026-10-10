@@ -18,8 +18,9 @@
 
 import type { Prisma } from '@prisma/client'
 import prisma from '@/lib/prisma'
-import { bilanReserveSol, type ResultatBilanSol } from '@/lib/irrigation/bilan-sol'
-import { chargerMeteoBilan, jourLocalIso, JOURS_HISTORIQUE_BILAN, type MeteoBilan } from '@/lib/irrigation/meteo-bilan'
+import { volumeArrosage, type ResultatBilanSol } from '@/lib/irrigation/bilan-sol'
+import { bilanCulture } from '@/lib/irrigation/bilan-culture'
+import { chargerMeteoBilan, debutArrosagesBilan, type MeteoBilan } from '@/lib/irrigation/meteo-bilan'
 import { whereArrosageNote } from '@/lib/irrigation/arrosages-notes'
 import {
   getIrrigationFactors,
@@ -186,6 +187,7 @@ export async function computeConseilIrrigation(userId: string, annee: number) {
           couleur: true,
           besoinEau: true,
           irrigation: true,
+          vivace: true,
         },
       },
       planche: {
@@ -279,9 +281,9 @@ export async function computeConseilIrrigation(userId: string, annee: number) {
     })
   )
 
-  // 4. Arrosages notés des 30 derniers jours, par culture (traces de
-  //    `enregistrerArrosageCultures`), plus le dernier arrosage connu.
-  const debutFenetre = new Date(Date.now() - (JOURS_HISTORIQUE_BILAN + 1) * 86_400_000)
+  // 4. Arrosages notés depuis le début de l'historique du bilan, par culture
+  //    (traces de `enregistrerArrosageCultures`), plus le dernier arrosage connu.
+  const debutFenetre = debutArrosagesBilan()
   const traces = cultures.length
     ? await prisma.irrigationPlanifiee.findMany({
         where: {
@@ -292,12 +294,10 @@ export async function computeConseilIrrigation(userId: string, annee: number) {
         select: { cultureId: true, dateEffective: true },
       })
     : []
-  const joursArrosesParCulture = new Map<number, Set<string>>()
+  const arrosagesParCulture = new Map<number, Date[]>()
   for (const t of traces) {
     if (!t.dateEffective) continue
-    const set = joursArrosesParCulture.get(t.cultureId) ?? new Set<string>()
-    set.add(jourLocalIso(t.dateEffective))
-    joursArrosesParCulture.set(t.cultureId, set)
+    arrosagesParCulture.set(t.cultureId, [...(arrosagesParCulture.get(t.cultureId) ?? []), t.dateEffective])
   }
 
   // 5. Calculer urgence + enrichir chaque culture
@@ -329,26 +329,25 @@ export async function computeConseilIrrigation(userId: string, annee: number) {
     const meteo = coordKey ? meteoParCoord.get(coordKey) ?? null : null
 
     // Bilan hydrique de la réserve du sol (moteur unique, bilan-sol.ts).
-    let bilan: ResultatBilanSol | null = null
-    if (meteo) {
-      const joursArroses = new Set(joursArrosesParCulture.get(c.id) ?? [])
-      if (c.derniereIrrigation) joursArroses.add(jourLocalIso(new Date(c.derniereIrrigation)))
-      const debut = c.datePlantation ?? c.dateSemis
-      const finCycle = c.finRecolte ?? c.dateRecolte
-      bilan = bilanReserveSol({
-        ...meteo.bilan,
-        joursArroses: Array.from(joursArroses),
-        sol: { typeSol: c.planche?.typeSol ?? null, retentionEau: retentionEauSol },
-        culture: {
-          espece: c.espece?.nom ?? c.especeId,
-          besoinEau,
-          debut: debut ? jourLocalIso(new Date(debut)) : null,
-          dureeCycleJours:
-            debut && finCycle ? Math.round((new Date(finCycle).getTime() - new Date(debut).getTime()) / 86_400_000) : null,
-          sousAbri,
-        },
-      })
-    }
+    const bilan: ResultatBilanSol | null = meteo
+      ? bilanCulture(
+          meteo.bilan,
+          {
+            espece: c.espece?.nom ?? c.especeId,
+            besoinEau,
+            vivace: c.espece?.vivace ?? false,
+            dateSemis: c.dateSemis,
+            datePlantation: c.datePlantation,
+            semisFait: c.semisFait,
+            plantationFaite: c.plantationFaite,
+            dateRecolte: c.dateRecolte,
+            finRecolte: c.finRecolte,
+            derniereIrrigation: c.derniereIrrigation,
+          },
+          { typeSol: c.planche?.typeSol ?? null, retentionEau: retentionEauSol },
+          { sousAbri, arrosages: arrosagesParCulture.get(c.id) ?? [] },
+        )
+      : null
     const coordKeyCulture = cultureCoordKey.get(c.id)
     const { urgence, raison } = bilan
       ? { urgence: bilan.urgence, raison: bilan.raison }
@@ -357,10 +356,15 @@ export async function computeConseilIrrigation(userId: string, annee: number) {
           coordKeyCulture && zonesEnEchec.has(coordKeyCulture) ? 'meteo-indisponible' : 'sans-coordonnees',
         )
 
-    // Consommation : ETc moyenne des 7 derniers jours × surface (mm × m² = L).
+    // Besoin de la semaine : ETc potentielle moyenne des 7 derniers jours ×
+    // surface (mm × m² = L). Pas la consommation réelle, que le manque d'eau
+    // réduit : une planche assoiffée afficherait un besoin plus faible.
     const consommationSemaine = bilan
-      ? bilan.etcMoyenne7j * 7 * surface
+      ? bilan.etcPotentielleMoyenne7j * 7 * surface
       : calculerConsommationEauAvecSol(surface, besoinEau, retentionEauSol)
+
+    // Volume d'un passage : dose au sol / efficacité du système, sur la surface de la culture.
+    const volume = bilan ? volumeArrosage(bilan.doseMm, surface, c.planche?.irrigation) : null
 
     // Alerte sécheresse (sol faible rétention + pas pluie + culture exigeante)
     const joursSansPluieEffectifs = meteo ? (sousAbri ? 999 : meteo.joursSansPluie) : 0
@@ -390,7 +394,7 @@ export async function computeConseilIrrigation(userId: string, annee: number) {
       consommationEauSemaine: Math.round(consommationSemaine * 10) / 10,
       meteo: meteoResume,
       /** Réserve du sol (null sans météo). Dose en mm = L/m² ; litres pour la surface. */
-      reserve: bilan
+      reserve: bilan && volume
         ? {
             depletionMm: bilan.depletionMm,
             reserveFacileMm: bilan.reserveFacileMm,
@@ -398,7 +402,9 @@ export async function computeConseilIrrigation(userId: string, annee: number) {
             tauxEpuisement: bilan.tauxEpuisement,
             joursAvantSeuil: bilan.joursAvantSeuil,
             doseMm: bilan.doseMm,
-            litresConseilles: Math.round(bilan.doseMm * surface),
+            litresParM2: volume.litresParM2,
+            litresConseilles: volume.litres,
+            passages: volume.passages,
             kc: bilan.kc,
             profondeurRacinesM: bilan.profondeurRacinesM,
             dernierApport: bilan.dernierApport,

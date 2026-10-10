@@ -5,9 +5,14 @@
 import { describe, expect, it } from "vitest"
 import {
   bilanReserveSol,
+  dureeCycleJours,
   eauDisponibleSol,
+  kcAuStade,
   profilEspece,
   pluieUtile,
+  phraseVolume,
+  racinesAuStade,
+  volumeArrosage,
   type EntreeBilanSol,
   type JourMeteoBilan,
 } from "../bilan-sol"
@@ -51,12 +56,13 @@ function entree(o: Partial<EntreeBilanSol> & { et0?: number } = {}): EntreeBilan
 const RANG = { critique: 0, haute: 1, moyenne: 2, faible: 3, aucune: 4 } as const
 
 describe("bilanReserveSol", () => {
-  it("canicule sans pluie ni arrosage depuis 30 jours : critique, dose pour remplir la réserve", () => {
+  it("canicule sans pluie ni arrosage depuis 30 jours : critique, une réserve facile à apporter", () => {
     const r = bilanReserveSol(entree())
     expect(r.urgence).toBe("critique")
     expect(r.joursAvantSeuil).toBe(0)
     expect(r.doseMm).toBeGreaterThan(30)
     expect(r.raison).toMatch(/^À arroser/)
+    expect(r.raison).toMatch(/Aucun arrosage noté : le bilan ne compte que la pluie\.$/)
   })
 
   it("arrosé hier : rien à faire aujourd'hui, seuil dans quelques jours", () => {
@@ -68,7 +74,8 @@ describe("bilanReserveSol", () => {
   })
 
   it("forte pluie avant-hier sur un sol régulièrement arrosé par la pluie : réserve rechargée", () => {
-    const historique = jours(30, "2026-07-19", (i) => ({ pluie: i === 28 ? 40 : i % 4 === 0 ? 15 : 0, et0: 5 }))
+    // 15 mm un jour sur deux : la pluie couvre la consommation d'une tomate en pleine saison.
+    const historique = jours(30, "2026-07-19", (i) => ({ pluie: i === 28 ? 40 : i % 2 === 0 ? 15 : 0, et0: 5 }))
     const r = bilanReserveSol(entree({ historique }))
     expect(RANG[r.urgence]).toBeGreaterThanOrEqual(RANG.faible)
     expect(r.dernierApport).toEqual({ type: "pluie", date: "2026-07-18", mm: 40 })
@@ -82,14 +89,32 @@ describe("bilanReserveSol", () => {
     expect(RANG[r.urgence]).toBeLessThanOrEqual(RANG.haute)
   })
 
+  it("libellés : réserve dépassée sans pourcentage absurde, réserve entamée jamais dite « bien pourvue »", () => {
+    const sec = bilanReserveSol(entree())
+    expect(sec.raison).toMatch(/réserve facile épuisée \(\d+ mm consommés pour \d+ mm, réserve totale \d+ mm\)/)
+    expect(sec.raison).not.toMatch(/%/)
+    const entame = bilanReserveSol(entree({ joursArroses: ["2026-07-13"], previsions: apres(7, () => ({ pluie: 0, et0: 0.5 })) }))
+    expect(entame.urgence).toBe("moyenne")
+    expect(entame.raison).not.toMatch(/bien pourvu/)
+  })
+
   it("une bruine de 2 mm n'apporte rien", () => {
     expect(pluieUtile(2)).toBe(0)
     expect(pluieUtile(12)).toBeCloseTo(9)
   })
 
-  it("une pluie annoncée qui remplit la réserve dispense d'arroser une réserve entamée", () => {
-    // Arrosé il y a 6 jours : réserve facile presque consommée.
+  it("une pluie annoncée ne change rien à une culture seulement « à surveiller »", () => {
+    // Arrosé il y a 6 jours : réserve facile presque consommée, pas dépassée.
     const base = entree({ joursArroses: ["2026-07-14"] })
+    const sansPluie = bilanReserveSol(base)
+    const avecPluie = bilanReserveSol({ ...base, previsions: apres(7, (i) => ({ pluie: i === 0 ? 30 : 0, et0: 5 })) })
+    expect(sansPluie.urgence).toBe("moyenne")
+    expect(avecPluie.urgence).toBe("moyenne")
+  })
+
+  it("une pluie annoncée qui remplit la réserve dispense d'arroser une réserve entamée", () => {
+    // Arrosé il y a 8 jours : réserve facile dépassée.
+    const base = entree({ joursArroses: ["2026-07-12"] })
     const sansPluie = bilanReserveSol(base)
     const avecPluie = bilanReserveSol({ ...base, previsions: apres(7, (i) => ({ pluie: i === 0 ? 30 : 0, et0: 5 })) })
     expect(RANG[avecPluie.urgence]).toBeGreaterThan(RANG[sansPluie.urgence])
@@ -143,5 +168,229 @@ describe("bilanReserveSol", () => {
     expect(profilEspece("Tomate cerise", 3).racinesM).toBe(0.7)
     expect(profilEspece("tomate", 3).p).toBe(0.4)
     expect(profilEspece("Inconnue", 5).p).toBeLessThan(profilEspece("Inconnue", 1).p)
+  })
+
+  it("noms usuels : accents, pluriels, tirets et alias", () => {
+    const tomate = profilEspece("Tomate", 3)
+    expect(profilEspece("Tomates", 1)).toBe(tomate)
+    expect(profilEspece("TOMATE  cœur de bœuf", 1)).toBe(tomate)
+    expect(profilEspece("Epinard", 1)).toBe(profilEspece("Épinard", 1))
+    expect(profilEspece("pomme-de-terre", 1)).toBe(profilEspece("Pomme de terre", 1))
+    expect(profilEspece("Petit pois", 1)).toBe(profilEspece("Pois", 1))
+    expect(profilEspece("Petits pois", 1)).toBe(profilEspece("Pois", 1))
+    expect(profilEspece("Laitue batavia", 1)).toBe(profilEspece("Salade", 1))
+    expect(profilEspece("Mâche", 1)).toBe(profilEspece("Salade", 1))
+    expect(profilEspece("Potimarron", 1)).toBe(profilEspece("Courge", 1))
+    expect(profilEspece("Choux de Bruxelles", 1)).toBe(profilEspece("Chou", 1))
+    expect(profilEspece("Chou-fleur", 1)).toBe(profilEspece("Chou", 1))
+    expect(profilEspece("Radis", 1)).toBe(profilEspece("radis noir", 5))
+    expect(profilEspece("Fraisiers", 1)).toBe(profilEspece("Fraise", 1))
+    expect(profilEspece("Céleri-rave", 1).racinesM).toBe(0.3)
+    expect(profilEspece("Maïs doux", 1).racinesM).toBe(0.8)
+    expect(profilEspece("Pomme de terre primeur", 1)).toBe(profilEspece("Pomme de terre", 1))
+  })
+
+  it("Kc en quatre phases : plateau de pleine saison", () => {
+    const tomate = profilEspece("Tomate", 3)
+    expect(kcAuStade(tomate, 0.05)).toBe(0.6)
+    expect(kcAuStade(tomate, 0.3)).toBeGreaterThan(0.6)
+    expect(kcAuStade(tomate, 0.3)).toBeLessThan(1.15)
+    expect(kcAuStade(tomate, 0.5)).toBe(1.15)
+    expect(kcAuStade(tomate, 0.75)).toBe(1.15)
+    expect(kcAuStade(tomate, 1)).toBeCloseTo(0.8)
+    expect(racinesAuStade(tomate, 0.45)).toBeCloseTo(0.7)
+  })
+
+  it("durée du cycle : la date de récolte seule est un début de récolte", () => {
+    expect(dureeCycleJours("2026-05-01", "2026-07-01", "2026-09-01")).toBe(123)
+    expect(dureeCycleJours("2026-05-01", "2026-07-01", null)).toBe(91)
+    expect(dureeCycleJours("2026-05-01", null, null)).toBeNull()
+    expect(dureeCycleJours(null, "2026-07-01", null)).toBeNull()
+  })
+
+  it("25 mm annoncés demain dispensent d'arroser une réserve facile tout juste consommée", () => {
+    // Arrosé il y a 8 jours : réserve facile juste consommée, pas encore critique.
+    const base = entree({ joursArroses: ["2026-07-12"] })
+    expect(bilanReserveSol(base).urgence).toBe("haute")
+    const pluie = (mm: number) => bilanReserveSol({ ...base, previsions: apres(7, (i) => ({ pluie: i === 0 ? mm : 0, et0: 5 })) })
+    // Dans 48 h, la réserve est revenue sous le seuil : inutile d'arroser la veille.
+    expect(pluie(25).urgence).toBe("moyenne")
+    expect(pluie(25).doseMm).toBe(0)
+    expect(pluie(25).raison).toMatch(/^25 mm de pluie prévus/)
+    // 8 mm ne compensent pas deux jours de consommation : il faut arroser.
+    expect(pluie(8).urgence).toBe("haute")
+  })
+
+  it("la dose d'un arrosage est l'épuisement, au plus la réserve facile", () => {
+    const r = bilanReserveSol(entree())
+    expect(r.depletionMm).toBeGreaterThan(r.reserveFacileMm)
+    expect(r.doseMm).toBeCloseTo(r.reserveFacileMm, 0)
+    const juste = bilanReserveSol(entree({ joursArroses: ["2026-07-13"] }))
+    expect(juste.urgence).toBe("moyenne")
+    expect(juste.doseMm).toBeCloseTo(juste.depletionMm, 0)
+  })
+
+  it("la projection ne compte pas la consommation avant la plantation", () => {
+    const r = bilanReserveSol(entree({ culture: { debut: "2026-07-25" } as never }))
+    expect(r.depletionMm).toBe(0)
+    expect(r.joursAvantSeuil).toBeNull()
+  })
+
+  it("le volume hebdomadaire suit le besoin potentiel, pas la consommation réduite par le stress", () => {
+    const r = bilanReserveSol(entree())
+    expect(r.etcPotentielleMoyenne7j).toBeGreaterThan(r.etcMoyenne7j)
+  })
+
+  it("vivace installée en dormance (décembre) : Kc de départ de végétation", () => {
+    const decembre = (j: number) => `2026-12-${String(j).padStart(2, "0")}`
+    const r = bilanReserveSol({
+      ...entree({ culture: { espece: "Groseillier", debut: "2022-03-01", dureeCycleJours: null, vivace: true } as never }),
+      historique: [1, 2, 3, 4, 5].map((j) => ({ date: decembre(j), pluie: 0, et0: 0.5 })),
+      aujourdhui: { date: decembre(6), pluie: 0, et0: 0.5 },
+      previsions: [],
+    })
+    expect(r.kc).toBeCloseTo(0.3)
+  })
+
+  it("vivace installée : Kc de pleine saison en juillet, racines en place", () => {
+    const groseillier = bilanReserveSol(
+      entree({ culture: { espece: "Groseillier", debut: "2022-03-01", dureeCycleJours: null, vivace: true } as never }),
+    )
+    expect(groseillier.kc).toBeCloseTo(1.05)
+    expect(groseillier.profondeurRacinesM).toBe(0.6)
+    // Même vivace l'année de sa plantation : jeune, racines courtes.
+    const jeune = bilanReserveSol(
+      entree({ culture: { espece: "Groseillier", debut: "2026-06-20", dureeCycleJours: null, vivace: true } as never }),
+    )
+    expect(jeune.profondeurRacinesM).toBeLessThan(0.6)
+  })
+
+  it("volume selon le système d'arrosage, en passages d'au plus 20 L/m² versés", () => {
+    expect(volumeArrosage(18, 10, "Goutte-à-goutte")).toEqual({ litresParM2: 20, litres: 200, passages: 1 })
+    expect(volumeArrosage(15, 10, "Aspersion")).toEqual({ litresParM2: 20, litres: 200, passages: 1 })
+    expect(volumeArrosage(16, 10, null)).toEqual({ litresParM2: 20, litres: 200, passages: 1 })
+    expect(volumeArrosage(0, 10, null)).toEqual({ litresParM2: 0, litres: 0, passages: 0 })
+    // 17 mm au sol en aspersion : 22,7 L/m² versés, donc deux passages.
+    expect(volumeArrosage(17, 10, "Aspersion").passages).toBe(2)
+    // Une grosse dose au goutte-à-goutte reste un seul passage (apport au pied).
+    expect(volumeArrosage(60, 10, "goutte à goutte").passages).toBe(1)
+    expect(volumeArrosage(60, 10, "Arrosoir")).toEqual({ litresParM2: 75, litres: 750, passages: 4 })
+    expect(volumeArrosage(16.5, 10, null).passages).toBe(1)
+  })
+
+  it("phrase de volume : passages et litres seulement s'ils ont un sens", () => {
+    expect(phraseVolume(volumeArrosage(60, 10, null), "pour la planche")).toBe(
+      "Apport conseillé : 75 L/m², soit 750 L pour la planche, en 4 passages d'environ 19 L/m² espacés de quelques heures.",
+    )
+    expect(phraseVolume(volumeArrosage(16, 0, null), "pour la planche")).toBe("Apport conseillé : 20 L/m².")
+    expect(phraseVolume(volumeArrosage(0, 10, null), "pour la planche")).toBe("")
+  })
+
+  it("une culture pas encore en place n'a aucun besoin hebdomadaire", () => {
+    const r = bilanReserveSol(entree({ culture: { debut: "2026-07-25" } as never }))
+    expect(r.etcJour).toBe(0)
+    expect(r.etcPotentielleMoyenne7j).toBe(0)
+    expect(r.raison).toMatch(/^Pas encore sur la planche : mise en place prévue le 25\/07/)
+  })
+
+  it("une bruine ou un jour sans ET0 ne relèvent pas le seuil : l'urgence ne baisse que de l'eau reçue", () => {
+    // Réserve facile dépassée depuis la veille (tomate, temps chaud), puis un jour frais.
+    const base = entree({ joursArroses: ["2026-07-10"] })
+    const hier = bilanReserveSol({ ...base, historique: base.historique.slice(0, -1), aujourdhui: base.historique[29] })
+    expect(hier.urgence).toBe("haute")
+    const bruine = bilanReserveSol({ ...base, aujourdhui: { date: AUJOURDHUI, pluie: 4.5, et0: 1 } })
+    const trou = bilanReserveSol({ ...base, aujourdhui: { date: AUJOURDHUI, pluie: 0, et0: 0 } })
+    for (const r of [bruine, trou]) {
+      expect(r.reserveFacileMm).toBeLessThanOrEqual(hier.reserveFacileMm)
+      expect(r.urgence).toBe("haute")
+    }
+    // La bruine (2,25 mm utiles) moins la journée (1,15 mm) : 1,1 mm de moins, pas davantage.
+    expect(hier.depletionMm - bruine.depletionMm).toBeCloseTo(1.1, 0)
+    expect(trou.depletionMm).toBeCloseTo(hier.depletionMm, 1)
+  })
+
+  it("après une vague de chaleur, la fraîcheur relève progressivement le seuil d'arrosage", () => {
+    // 15 jours à 7 mm d'ET0, arrosé le dernier jour chaud, puis 16 jours frais sans pluie.
+    const historique = jours(30, "2026-07-19", (i) => ({ pluie: 0, et0: i < 15 ? 7 : 1.5 }))
+    const r = bilanReserveSol(entree({ et0: 1.5, historique, joursArroses: ["2026-07-04"] }))
+    // p de la tomate à 1,7 mm/j d'ETc : 0,53 ; au plus chaud : 0,28.
+    expect(r.reserveFacileMm / r.reserveUtileMm).toBeGreaterThan(0.45)
+    expect(r.urgence).toBe("faible")
+  })
+
+  // Revue du 2026-10-10 : avec une fenêtre glissante de 30 jours, sans
+  // arrosage noté, l'épuisement redevenait chaque jour la somme des 30 derniers
+  // jours ; à l'automne il baissait sans une goutte d'eau. L'historique part
+  // désormais d'un jour fixe (meteo-bilan.ts) et ne fait que s'allonger.
+  describe("automne sans pluie ni arrosage noté, historique ancré : l'urgence ne recule jamais", () => {
+    const ANCRE = Date.parse("2026-06-01T12:00:00")
+    const iso = (k: number) => new Date(ANCRE + k * 86_400_000).toISOString().slice(0, 10)
+    for (const [espece, typeSol] of [["Tomate", "Limoneux"], ["Tomate", "Mixte"], ["Carotte", "Argileux"], ["Salade", "Sableux"]]) {
+      it(`${espece}, sol ${typeSol}, ET0 de 5 à 0,8 mm`, () => {
+        // ET0 décroissante avec un bruit déterministe de ±40 %.
+        const meteo = Array.from({ length: 150 }, (_, k) => ({
+          date: iso(k),
+          pluie: 0,
+          et0: (5 - (4.2 * k) / 150) * (1 + 0.4 * Math.sin(k * 2.3)),
+        }))
+        let precedent = RANG.aucune
+        for (let k = 20; k < 140; k++) {
+          const r = bilanReserveSol({
+            historique: meteo.slice(0, k),
+            aujourdhui: meteo[k],
+            previsions: meteo.slice(k + 1, k + 8),
+            joursArroses: [],
+            sol: { typeSol, retentionEau: null },
+            culture: { espece, besoinEau: 3, debut: "2026-05-01", dureeCycleJours: 200, sousAbri: false },
+          })
+          expect(RANG[r.urgence]).toBeLessThanOrEqual(precedent)
+          precedent = RANG[r.urgence]
+        }
+      })
+    }
+  })
+
+  describe("stabilité : sans pluie ni arrosage, l'urgence ne recule jamais d'un jour à l'autre", () => {
+    const DEBUT = Date.parse("2026-06-01T12:00:00")
+    const iso = (k: number) => new Date(DEBUT + k * 86_400_000).toISOString().slice(0, 10)
+    function serie(et0: (k: number) => number, espece: string, typeSol: string) {
+      const meteo = Array.from({ length: 80 }, (_, k) => ({ date: iso(k), pluie: 0, et0: et0(k) }))
+      const rangs: number[] = []
+      for (let k = 41; k < 70; k++) {
+        const r = bilanReserveSol({
+          historique: meteo.slice(k - 30, k),
+          aujourdhui: meteo[k],
+          previsions: meteo.slice(k + 1, k + 8),
+          joursArroses: [iso(40)],
+          sol: { typeSol, retentionEau: null },
+          culture: { espece, besoinEau: 3, debut: "2026-05-01", dureeCycleJours: 150, sousAbri: false },
+        })
+        rangs.push(RANG[r.urgence])
+      }
+      return rangs
+    }
+    // Générateur pseudo-aléatoire déterministe (LCG).
+    function aleatoire(graine: number) {
+      let s = graine
+      return () => ((s = (s * 1_103_515_245 + 12_345) % 2_147_483_648) / 2_147_483_648)
+    }
+    const cas: [string, (k: number) => number][] = [
+      ["ET0 alternée 2/8 mm", (k) => (k % 2 ? 8 : 2)],
+      ["ET0 alternée 1/6 mm", (k) => (k % 2 ? 6 : 1)],
+      ...[1, 2, 3, 4, 5].map((g): [string, (k: number) => number] => {
+        const r = aleatoire(g)
+        const valeurs = Array.from({ length: 80 }, () => 0.5 + r() * 7.5)
+        return [`ET0 aléatoire, graine ${g}`, (k) => valeurs[k]]
+      }),
+    ]
+    for (const [nom, et0] of cas) {
+      for (const [espece, sol] of [["Tomate", "Limoneux"], ["Salade", "Sableux"], ["Carotte", "Argileux"]]) {
+        it(`${nom}, ${espece}, sol ${sol}`, () => {
+          const rangs = serie(et0, espece, sol)
+          for (let i = 1; i < rangs.length; i++) expect(rangs[i]).toBeLessThanOrEqual(rangs[i - 1])
+          expect(rangs[rangs.length - 1]).toBe(RANG.critique)
+        })
+      }
+    }
   })
 })

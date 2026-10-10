@@ -13,6 +13,7 @@ function meteoSeche(): MeteoBilan {
     historique: Array.from({ length: 30 }, (_, i) => ({ date: jour(i - 30), pluie: 0, et0: 5 })),
     aujourdhui: { date: jour(0), pluie: 0, et0: 5 },
     previsions: Array.from({ length: 7 }, (_, i) => ({ date: jour(i + 1), pluie: 0, et0: 5 })),
+    decalageUtcS: 7200,
   }
 }
 
@@ -23,8 +24,13 @@ describe('recommandation irrigation (moteur de bilan hydrique)', () => {
     id: 852,
     espece: 'Laitue',
     besoinEau: 4,
-    debut: new Date('2026-06-20T00:00:00.000Z'),
-    finCycle: new Date('2026-08-20T00:00:00.000Z'),
+    vivace: false,
+    dateSemis: new Date('2026-05-20T00:00:00.000Z'),
+    datePlantation: new Date('2026-06-20T00:00:00.000Z'),
+    semisFait: true,
+    plantationFaite: true,
+    dateRecolte: null,
+    finRecolte: new Date('2026-08-20T00:00:00.000Z'),
   }
   const planche = { nom: 'Planche 3', surface: 9.6, retentionEau: null, typeSol: null, irrigation: 'Goutte-à-goutte' }
 
@@ -34,12 +40,12 @@ describe('recommandation irrigation (moteur de bilan hydrique)', () => {
 
     const sansArrosage = genererRecommandationIrrigation(
       meteoSeche(),
-      { ...culture, derniereIrrigation: null, joursArroses: [] },
+      { ...culture, derniereIrrigation: null, arrosages: [] },
       planche,
     )
     const avecArrosage = genererRecommandationIrrigation(
       meteoSeche(),
-      { ...culture, derniereIrrigation: new Date('2026-07-29T18:22:00.000Z'), joursArroses: ['2026-07-29'] },
+      { ...culture, derniereIrrigation: new Date('2026-07-29T18:22:00.000Z'), arrosages: [new Date('2026-07-29T18:22:00.000Z')] },
       planche,
     )
 
@@ -54,14 +60,26 @@ describe('recommandation irrigation (moteur de bilan hydrique)', () => {
   it('sous abri : ni pluie ni prochaine pluie, message dit une seule fois « Sous abri »', () => {
     const pluvieux = meteoSeche()
     pluvieux.previsions = pluvieux.previsions.map((j) => ({ ...j, pluie: 12 }))
-    const r = genererRecommandationIrrigation(pluvieux, { ...culture, derniereIrrigation: null, joursArroses: [] }, planche, true)
+    const r = genererRecommandationIrrigation(pluvieux, { ...culture, derniereIrrigation: null, arrosages: [] }, planche, true)
     expect(r.prochainePluie).toBeNull()
     expect(r.pluiePrevue48h).toBe(0)
     expect(r.conseilMessage.match(/Sous abri/g)).toHaveLength(1)
   })
 
+  it('un plant encore en pépinière ne dessèche pas sa planche', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-29T10:00:00.000Z'))
+    const r = genererRecommandationIrrigation(
+      meteoSeche(),
+      { ...culture, datePlantation: new Date('2026-08-05T00:00:00.000Z'), plantationFaite: false, derniereIrrigation: null, arrosages: [] },
+      planche,
+    )
+    expect(r.urgence).toBe('aucune')
+    expect(r.conseilMessage).toMatch(/Pas encore sur la planche/)
+  })
+
   it("l'efficacité du système d'arrosage majore la dose", () => {
-    const base = { ...culture, derniereIrrigation: null, joursArroses: [] }
+    const base = { ...culture, derniereIrrigation: null, arrosages: [] }
     const goutte = genererRecommandationIrrigation(meteoSeche(), base, planche)
     const aspersion = genererRecommandationIrrigation(meteoSeche(), base, { ...planche, irrigation: 'Aspersion' })
     expect(aspersion.conseilQuantite).toBeGreaterThan(goutte.conseilQuantite)

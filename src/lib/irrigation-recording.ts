@@ -171,8 +171,14 @@ export async function enregistrerArrosageCultures({
         lte: finJournee,
       },
     },
-    select: { cultureId: true },
+    select: { id: true, cultureId: true, notes: true },
   })
+  // Double geste avec une observation : elle complète la trace existante au
+  // lieu d'être perdue avec le doublon.
+  const observation = notes?.trim().slice(0, 1000) || null
+  const tracesACompleter = observation
+    ? closesAujourdhui.filter((t) => !(t.notes ?? '').includes(observation))
+    : []
   const cultureIdsTracees = new Set<number>([
     ...aClore.map((irr) => irr.cultureId),
     ...closesAujourdhui.map((irr) => irr.cultureId),
@@ -208,9 +214,19 @@ export async function enregistrerArrosageCultures({
           datePrevue: dateEffective,
           fait: true,
           dateEffective,
-          notes: notes?.trim().slice(0, 1000) || 'Arrosage noté',
+          notes: observation || 'Arrosage noté',
         })),
       }),
+      ...tracesACompleter.map((t) =>
+        prisma.irrigationPlanifiee.update({
+          where: { id: t.id },
+          data: {
+            notes: !t.notes || t.notes === 'Arrosage noté'
+              ? observation
+              : `${t.notes} · ${observation}`.slice(0, 1000),
+          },
+        }),
+      ),
     ])
 
   irrigationCache.invalidateUser(userId)

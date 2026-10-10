@@ -6,7 +6,8 @@
 
 import type { MeteoJournaliere, MeteoPrevision } from './meteo'
 import { SEUIL_PLUIE_SIGNIFICATIVE } from './irrigation/seuils'
-import { bilanReserveSol, kcAuStade, profilEspece } from './irrigation/bilan-sol'
+import { kcAuStade, phraseVolume, profilEspece, volumeArrosage } from './irrigation/bilan-sol'
+import { bilanCulture, type CultureBilan } from './irrigation/bilan-culture'
 import type { MeteoBilan } from './irrigation/meteo-bilan'
 
 // ============================================================
@@ -160,17 +161,10 @@ export function calculerDegreJours(
  */
 export function genererRecommandationIrrigation(
   meteo: MeteoBilan,
-  culture: {
+  culture: CultureBilan & {
     id: number
-    espece: string
-    besoinEau: number // 1-5
-    /** Plantation, sinon semis. */
-    debut: Date | null
-    /** Fin de récolte, sinon début de récolte. */
-    finCycle: Date | null
-    derniereIrrigation: Date | null
-    /** Jours (AAAA-MM-JJ) d'arrosage noté sur la fenêtre du bilan. */
-    joursArroses: string[]
+    /** Arrosages notés sur la fenêtre du bilan. */
+    arrosages: Date[]
   },
   planche: {
     nom: string
@@ -182,33 +176,12 @@ export function genererRecommandationIrrigation(
   },
   sousAbri = false,
 ): RecommandationIrrigation {
-  const jour = (d: Date) => {
-    const y = d.getFullYear()
-    return `${y}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-  }
-  const joursArroses = new Set(culture.joursArroses)
-  if (culture.derniereIrrigation) joursArroses.add(jour(culture.derniereIrrigation))
-
-  const res = bilanReserveSol({
-    ...meteo,
-    joursArroses: Array.from(joursArroses),
-    sol: { typeSol: planche.typeSol, retentionEau: planche.retentionEau },
-    culture: {
-      espece: culture.espece,
-      besoinEau: culture.besoinEau,
-      debut: culture.debut ? jour(culture.debut) : null,
-      dureeCycleJours:
-        culture.debut && culture.finCycle
-          ? Math.round((culture.finCycle.getTime() - culture.debut.getTime()) / 86_400_000)
-          : null,
-      sousAbri,
-    },
-  })
+  const res = bilanCulture(meteo, culture, planche, { sousAbri, arrosages: culture.arrosages })
 
   // Bilan des 7 derniers jours (pluie utile à l'écran, sans pluie sous abri).
   const derniers7 = meteo.historique.slice(-6).concat(meteo.aujourdhui)
   const pluie7j = sousAbri ? 0 : derniers7.reduce((s, j) => s + j.pluie, 0)
-  const bilanHydrique7j = Math.round((pluie7j - res.etcMoyenne7j * 7) * 10) / 10
+  const bilanHydrique7j = Math.round((pluie7j - res.etcPotentielleMoyenne7j * 7) * 10) / 10
 
   // Jours sans pluie significative.
   let joursSansPluie = 0
@@ -222,12 +195,10 @@ export function genererRecommandationIrrigation(
   const prochainePluie = sousAbri ? null : meteo.previsions.find((j) => j.pluie >= 5)?.date ?? null
 
   // Dose : remplir la réserve, à l'efficacité du système près.
-  const systeme = (planche.irrigation ?? '').toLowerCase()
-  const efficacite = systeme.includes('goutte') ? 0.9 : systeme.includes('aspersion') ? 0.75 : 0.8
-  const conseilQuantite = res.doseMm > 0 ? Math.round((res.doseMm / efficacite) * 10) / 10 : 0
-  const litresPlanche = Math.round(conseilQuantite * planche.surface)
+  const volume = volumeArrosage(res.doseMm, planche.surface, planche.irrigation)
+  const conseilQuantite = volume.litresParM2
   const conseilMessage = conseilQuantite > 0
-    ? `${res.raison} Apport conseillé : ${conseilQuantite} L/m², soit ${litresPlanche} L pour la planche.`
+    ? `${res.raison} ${phraseVolume(volume, 'pour la planche')}`
     : res.raison
 
   return {
