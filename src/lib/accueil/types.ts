@@ -134,7 +134,12 @@ export interface ReperesAccueil {
 export interface ElevageAccueil {
   animauxActifs: number
   echeances: EcheanceElevage[]
-  counts: { total: number; urgent: number }
+  counts: {
+    total: number
+    urgent: number
+    /** Échéances déjà portées par la liste du jour, donc absentes de la tuile. */
+    dansListeDuJour: number
+  }
 }
 
 export interface AccueilAujourdhui {

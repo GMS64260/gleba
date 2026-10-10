@@ -193,7 +193,7 @@ describe("TuileElevage", () => {
       createElement(TuileElevage, {
         elevage: {
           animauxActifs: 48,
-          counts: { total: 2, urgent: 1 },
+          counts: { total: 2, urgent: 1, dansListeDuJour: 0 },
           echeances: [
             { id: "soin-1", kind: "soin_retard", date: null, joursRestants: -2, titre: "Vermifuge — Noisette", detail: "en retard de 2 j", gravite: "urgent" },
             { id: "att-1", kind: "attente_lait", date: null, joursRestants: 6, titre: "Lait non commercialisable — Noisette", detail: "remise en vente le 15/10", gravite: "urgent" },
@@ -206,6 +206,14 @@ describe("TuileElevage", () => {
     expect(html).toContain('data-etat="critique"')
     expect(html).toContain('data-etat="info"')
     expect(html).toContain("/elevage?tab=alimentation&amp;sub=soins")
+    const dejaDansLaListe = renderToStaticMarkup(
+      createElement(TuileElevage, {
+        elevage: { animauxActifs: 19, counts: { total: 2, urgent: 2, dansListeDuJour: 2 }, echeances: [] },
+        chargement: false,
+      }),
+    )
+    expect(dejaDansLaListe).toContain("2 dans la liste du jour")
+    expect(dejaDansLaListe).toContain("Rien d&#x27;autre sous 7 jours")
     const vide = renderToStaticMarkup(createElement(TuileElevage, { elevage: null, chargement: false }))
     expect(vide).toContain("Aucune échéance sous 7 jours")
   })
