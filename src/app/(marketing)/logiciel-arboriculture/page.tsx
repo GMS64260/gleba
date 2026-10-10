@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import { BusinessLanding } from "@/components/seo/BusinessLanding";
+import { ogBase } from "@/lib/seo/og";
 
 export const metadata: Metadata = {
   title: "Logiciel d'arboriculture — Suivi du verger arbre par arbre",
   description: "Gérez arbres, parcelles, variétés, porte-greffes, tailles, greffes, traitements, pollinisation et récoltes avec le logiciel d'arboriculture open source Gleba.",
   alternates: { canonical: "https://gleba.fr/logiciel-arboriculture" },
-  openGraph: { title: "Logiciel d'arboriculture open source — Gleba", description: "Suivi du verger, opérations, pollinisation, traitements et récoltes.", url: "https://gleba.fr/logiciel-arboriculture", type: "article" },
+  openGraph: { ...ogBase, title: "Logiciel d'arboriculture open source — Gleba", description: "Suivi du verger, opérations, pollinisation, traitements et récoltes.", url: "https://gleba.fr/logiciel-arboriculture", type: "article" },
 };
 
 const capabilities = [
@@ -18,7 +19,7 @@ const capabilities = [
 ];
 
 export default function Page() {
-  return <BusinessLanding breadcrumb="Logiciel d'arboriculture" currentPath="/logiciel-arboriculture" eyebrow="Arboriculture · Verger · Traçabilité" title="Le logiciel d'arboriculture pour" highlightedTitle="suivre chaque arbre et chaque campagne" introduction="Gleba centralise le plan du verger, les variétés, les porte-greffes, les opérations, la pollinisation, les traitements et les récoltes. Il convient particulièrement aux vergers diversifiés et aux exploitations qui veulent conserver un historique arbre par arbre." proof="les fiches arbres, campagnes, opérations, observations, récoltes, porte-greffes et analyses de pollinisation sont accessibles dans le module Verger." screenshot={{ src: "/screenshots/gleba-gestion-verger.png", alt: "Tableau de bord du module arboriculture et verger de Gleba", caption: "Capture réelle du compte de démonstration : arbres, surface, récoltes et calendrier des opérations." }} capabilities={capabilities} workflowTitle="Du plan du verger à la récolte" workflow={[
+  return <BusinessLanding breadcrumb="Logiciel d'arboriculture" currentPath="/logiciel-arboriculture" eyebrow="Arboriculture · Verger · Traçabilité" title="Le logiciel d'arboriculture pour" highlightedTitle="suivre chaque arbre et chaque campagne" introduction="Gleba centralise le plan du verger, les variétés, les porte-greffes, les opérations, la pollinisation, les traitements et les récoltes. Il convient particulièrement aux vergers diversifiés et aux exploitations qui veulent conserver un historique arbre par arbre." proof="les fiches arbres, campagnes, opérations, observations, récoltes, porte-greffes et analyses de pollinisation sont accessibles dans le module Verger." screenshot={{ src: "/screenshots/vitrine-verger-bureau.webp", alt: "Tableau de bord du module arboriculture et verger de Gleba", caption: "Capture réelle du compte de démonstration : arbres, surface, récoltes et calendrier des opérations.", width: 1920, height: 1200 }} capabilities={capabilities} workflowTitle="Du plan du verger à la récolte" workflow={[
     { title: "Décrire le patrimoine", description: "Créez les parcelles et les arbres avec leur variété, porte-greffe, date et position." },
     { title: "Conduire le verger", description: "Planifiez et consignez tailles, greffes, observations, soins et traitements." },
     { title: "Comparer les campagnes", description: "Enregistrez les récoltes et consultez l'historique conservé pour chaque arbre." },

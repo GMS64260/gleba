@@ -1,101 +1,189 @@
 import Link from "next/link";
 import Image from "next/image";
-import { BookOpen, Shield } from "lucide-react";
+import { GithubLogo } from "@/lib/phosphor-icons";
 
 /**
- * Nav + footer partagés pour toutes les pages marketing / SEO.
- * Volontairement aligné avec le style de /login pour cohérence visuelle.
+ * Navigation et pied de page partagés par l'accueil public et les pages
+ * métier, dans la charte « carnet de ferme » (papier, craie, encre, sauge,
+ * Fraunces pour la marque). Le pied de page porte le maillage complet des
+ * pages publiques : chaque page indexable reste à un clic de toutes les autres.
  */
 export function MarketingShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-white via-emerald-50/20 to-white">
+    <div className="min-h-screen bg-papier text-encre">
+      <a
+        href="#contenu"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-craie focus:px-4 focus:py-3 focus:text-sm focus:font-semibold focus:text-encre focus:outline focus:outline-2 focus:outline-sauge"
+      >
+        Aller au contenu
+      </a>
       <MarketingNav />
-      <main>{children}</main>
+      <main id="contenu">{children}</main>
       <MarketingFooter />
     </div>
   );
 }
 
-function MarketingNav() {
-  const businessLinks = [
-    ["/logiciel-micro-ferme", "Micro-ferme"],
-    ["/logiciel-maraichage", "Maraîchage"],
-    ["/logiciel-verger", "Verger"],
-    ["/logiciel-elevage", "Élevage"],
-    ["/planification-maraichage", "Planification"],
-  ] as const;
+const METIERS = [
+  ["/logiciel-maraichage", "Maraîchage"],
+  ["/logiciel-verger", "Verger"],
+  ["/logiciel-elevage", "Élevage"],
+  ["/logiciel-micro-ferme", "Micro-ferme"],
+] as const;
 
+const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sauge";
+
+export const CLASSES_CTA = `inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-sauge bg-sauge px-5 text-sm font-semibold text-craie transition-colors duration-fast hover:border-foret hover:bg-foret ${FOCUS}`;
+export const CLASSES_CTA_SECONDAIRE = `inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-lin bg-craie px-5 text-sm font-semibold text-encre transition-colors duration-fast hover:border-sauge hover:bg-sauge-doux ${FOCUS}`;
+
+export function Marque({ className = "" }: { className?: string }) {
   return (
-    <nav aria-label="Navigation principale" className="w-full border-b border-slate-100 bg-white/90 backdrop-blur-sm">
-      <div className="mx-auto flex max-w-7xl items-center justify-between gap-5 px-4 py-4 sm:px-6 lg:px-8">
-        <Link href="/" aria-label="Accueil Gleba" className="shrink-0">
-          <Image src="/gleba-logo.png" alt="Gleba" width={400} height={136} className="h-11 w-auto sm:h-14" priority />
-        </Link>
-        <div className="hidden items-center gap-1 lg:flex">
-          {businessLinks.map(([href, label]) => (
-            <Link key={href} href={href} className="rounded-full px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-emerald-50 hover:text-emerald-800">{label}</Link>
-          ))}
-        </div>
-        <div className="flex shrink-0 items-center gap-3">
-          <Link href="/referentiel" className="hidden items-center gap-1.5 text-sm font-medium text-slate-500 transition-colors hover:text-emerald-700 xl:flex"><BookOpen className="h-4 w-4" />Référentiel</Link>
-          <Link href="/register" className="inline-flex items-center rounded-full bg-emerald-700 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-emerald-800">Essayer la bêta</Link>
-        </div>
-      </div>
-      <div className="border-t border-slate-100 px-3 py-2 lg:hidden">
-        <div className="mx-auto flex max-w-2xl flex-wrap items-center justify-center gap-1">
-          {businessLinks.map(([href, label]) => (
-            <Link key={href} href={href} className="whitespace-nowrap rounded-full px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-emerald-50 hover:text-emerald-800">{label}</Link>
-          ))}
-        </div>
-      </div>
-    </nav>
+    <span className={`inline-flex items-center gap-2.5 font-display text-[26px] font-semibold leading-none tracking-tight text-foret ${className}`}>
+      <Image src="/icon-192.png" alt="" width={32} height={32} className="h-8 w-8 rounded-md" />
+      Gleba
+    </span>
   );
 }
 
+function MarketingNav() {
+  return (
+    <header className="border-b border-lin bg-craie px-4 sm:px-6">
+      <nav aria-label="Navigation principale" className="mx-auto flex max-w-6xl items-center justify-between gap-4 py-3">
+        <Link href="/" aria-label="Gleba, accueil" className={`shrink-0 rounded-md ${FOCUS}`}>
+          <Marque />
+        </Link>
+        <ul className="hidden items-center gap-1 lg:flex">
+          {METIERS.map(([href, label]) => (
+            <li key={href}>
+              <Link href={href} className={`inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-medium text-encre transition-colors duration-fast hover:bg-sauge-doux hover:text-foret ${FOCUS}`}>
+                {label}
+              </Link>
+            </li>
+          ))}
+          <li>
+            <Link href="/referentiel" className={`inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-medium text-encre transition-colors duration-fast hover:bg-sauge-doux hover:text-foret ${FOCUS}`}>
+              Référentiel
+            </Link>
+          </li>
+        </ul>
+        <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+          <Link href="/login" className={`inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-semibold text-encre transition-colors duration-fast hover:text-foret ${FOCUS}`}>
+            Se connecter
+          </Link>
+          <Link href="/register" className={`${CLASSES_CTA} hidden px-4 sm:inline-flex`}>
+            Créer mon carnet
+          </Link>
+        </div>
+      </nav>
+      <div className="-mx-4 border-t border-lin-doux sm:-mx-6 lg:hidden">
+        <ul aria-label="Parcours métier" className="mx-auto flex max-w-2xl flex-wrap items-center justify-center gap-x-1 px-2 py-1">
+          {METIERS.map(([href, label]) => (
+            <li key={href}>
+              <Link href={href} className={`inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-medium text-encre hover:bg-sauge-doux ${FOCUS}`}>
+                {label}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </header>
+  );
+}
+
+const COLONNES: { titre: string; liens: [string, string][] }[] = [
+  {
+    titre: "Logiciels",
+    liens: [
+      ["/logiciel-micro-ferme", "Logiciel pour micro-ferme"],
+      ["/logiciel-maraichage", "Logiciel de maraîchage"],
+      ["/logiciel-verger", "Logiciel de verger"],
+      ["/logiciel-arboriculture", "Logiciel d'arboriculture"],
+      ["/logiciel-potager", "Plan de potager 2D et 3D"],
+      ["/logiciel-permaculture", "Ferme en permaculture"],
+    ],
+  },
+  {
+    titre: "Maraîchage",
+    liens: [
+      ["/planification-maraichage", "Planification maraîchère"],
+      ["/rotation-cultures-maraichage", "Rotation des cultures"],
+      ["/itineraire-technique-maraichage", "Itinéraires techniques"],
+      ["/calendrier-semis", "Calendrier de semis"],
+      ["/registre-phytosanitaire", "Registre phytosanitaire"],
+      ["/assistant-ia-agricole", "Assistant IA agricole"],
+    ],
+  },
+  {
+    titre: "Élevage",
+    liens: [
+      ["/logiciel-elevage", "Ateliers d'élevage"],
+      ["/logiciel-elevage-volailles", "Volailles"],
+      ["/logiciel-elevage-ovin", "Ovins"],
+      ["/logiciel-elevage-caprin", "Caprins"],
+      ["/logiciel-elevage-equin", "Équins"],
+      ["/logiciel-elevage-canin-felin", "Canins et félins"],
+      ["/logiciel-elevage-nac", "NAC"],
+    ],
+  },
+  {
+    titre: "Ressources",
+    liens: [
+      ["/referentiel", "Référentiel agricole ouvert"],
+      ["/glossaire", "Glossaire agricole"],
+      ["/communaute", "Feuille de route publique"],
+      ["/licence", "Licence AGPL-3.0"],
+      ["/login?demo=1", "Ferme de démonstration"],
+    ],
+  },
+];
+
 function MarketingFooter() {
   return (
-    <footer className="py-10 px-4 border-t border-slate-100/80 mt-20">
-      <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-6 text-sm text-slate-400">
-        <div className="flex items-center gap-3">
-          <Image
-            src="/gleba-logo.png"
-            alt="Gleba"
-            width={100}
-            height={34}
-            className="h-8 w-auto opacity-40"
-          />
-          <span className="text-slate-300">v1.1.0</span>
+    <footer className="border-t border-lin bg-craie px-4 sm:px-6">
+      <div className="mx-auto max-w-6xl py-14">
+        <div className="grid gap-10 lg:grid-cols-[1.2fr_repeat(4,1fr)]">
+          <div className="max-w-xs">
+            <Marque />
+            <p className="mt-4 text-sm leading-relaxed text-ardoise">
+              Le carnet d&apos;exploitation libre des micro-fermes diversifiées : maraîchage, verger,
+              élevage, traçabilité et gestion dans un même dossier.
+            </p>
+            <div className="mt-5 flex flex-col items-start gap-1 text-sm">
+              <a href="mailto:contact@gleba.fr" className={`inline-flex min-h-11 items-center font-semibold text-sauge hover:underline ${FOCUS}`}>
+                contact@gleba.fr
+              </a>
+              <a
+                href="https://github.com/GMS64260/gleba"
+                rel="noopener"
+                className={`inline-flex min-h-11 items-center gap-2 text-encre hover:text-foret ${FOCUS}`}
+              >
+                <GithubLogo className="h-4 w-4" weight="regular" aria-hidden />
+                Code source sur GitHub
+              </a>
+            </div>
+          </div>
+          {COLONNES.map((col) => (
+            <div key={col.titre}>
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ardoise">{col.titre}</p>
+              <ul className="mt-3 space-y-0.5">
+                {col.liens.map(([href, label]) => (
+                  <li key={href}>
+                    <Link href={href} className={`inline-flex min-h-9 items-center text-sm text-encre transition-colors duration-fast hover:text-foret hover:underline ${FOCUS}`}>
+                      {label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
         </div>
-        <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
-          <Link href="/logiciel-micro-ferme" className="hover:text-emerald-600 transition-colors">
-            Micro-ferme
-          </Link>
-          <Link href="/logiciel-maraichage" className="hover:text-emerald-600 transition-colors">
-            Maraîchage
-          </Link>
-          <Link href="/logiciel-verger" className="hover:text-emerald-600 transition-colors">
-            Verger
-          </Link>
-          <Link href="/logiciel-elevage" className="hover:text-emerald-600 transition-colors">
-            Élevage
-          </Link>
-          <Link href="/planification-maraichage" className="hover:text-emerald-600 transition-colors">
-            Planification
-          </Link>
-          <Link href="/referentiel" className="hover:text-emerald-600 transition-colors">
-            Référentiel
-          </Link>
-        </div>
-        <div className="flex items-center gap-4">
-          <Link href="/mentions-legales" className="hover:text-slate-600 transition-colors">
-            Mentions
-          </Link>
-          <Link href="/confidentialite" className="hover:text-slate-600 transition-colors">
-            Confidentialité
-          </Link>
-          <span className="inline-flex items-center gap-1.5 text-xs">
-            <Shield className="h-3 w-3" /> AGPL-3.0
-          </span>
+        <div className="mt-12 flex flex-col gap-3 border-t border-lin pt-6 text-xs text-ardoise sm:flex-row sm:items-center sm:justify-between">
+          <p>Logiciel libre sous licence AGPL-3.0 · Hébergement gratuit pendant la bêta</p>
+          <ul className="flex flex-wrap gap-x-5 gap-y-1">
+            <li><Link href="/mentions-legales" className={`inline-flex min-h-9 items-center hover:text-encre ${FOCUS}`}>Mentions légales</Link></li>
+            <li><Link href="/confidentialite" className={`inline-flex min-h-9 items-center hover:text-encre ${FOCUS}`}>Confidentialité</Link></li>
+            <li><Link href="/cgv" className={`inline-flex min-h-9 items-center hover:text-encre ${FOCUS}`}>CGV</Link></li>
+          </ul>
         </div>
       </div>
     </footer>

@@ -1,15 +1,16 @@
 import type { Metadata } from "next";
 import { BusinessLanding } from "@/components/seo/BusinessLanding";
+import { ogBase } from "@/lib/seo/og";
 
 export const metadata: Metadata = {
   title: "Registre phytosanitaire numérique — Interventions, AMM, DAR et ZNT",
   description: "Consignez vos interventions phytosanitaires : parcelle, culture ou arbre, produit, AMM, dose, DAR, délai de rentrée, ZNT, météo et export PDF avec Gleba.",
   alternates: { canonical: "https://gleba.fr/registre-phytosanitaire" },
-  openGraph: { title: "Registre phytosanitaire numérique — Gleba", description: "Saisie et export des interventions phytosanitaires de la ferme.", url: "https://gleba.fr/registre-phytosanitaire", type: "article" },
+  openGraph: { ...ogBase, title: "Registre phytosanitaire numérique — Gleba", description: "Saisie et export des interventions phytosanitaires de la ferme.", url: "https://gleba.fr/registre-phytosanitaire", type: "article" },
 };
 
 export default function Page() {
-  return <BusinessLanding breadcrumb="Registre phytosanitaire" currentPath="/registre-phytosanitaire" eyebrow="Traçabilité · AMM · DAR · ZNT" title="Un registre phytosanitaire" highlightedTitle="relié aux cultures et au verger" introduction="Gleba permet de consigner les traitements avec leur contexte agronomique, puis de retrouver et exporter les informations saisies. Le même registre couvre les interventions rattachées aux parcelles, cultures et arbres." proof="la route d'export du registre restitue notamment produit, substance active, AMM, dose, DAR, délai de rentrée, ZNT, opérateur et météo lorsqu'ils ont été renseignés." screenshot={{ src: "/screenshots/gleba-registre-phytosanitaire.png", alt: "Registre phytosanitaire réel de Gleba avec contrôle des champs manquants", caption: "Le registre de démonstration signale explicitement une fiche incomplète au lieu de présenter une conformité fictive." }} capabilities={[
+  return <BusinessLanding breadcrumb="Registre phytosanitaire" currentPath="/registre-phytosanitaire" eyebrow="Traçabilité · AMM · DAR · ZNT" title="Un registre phytosanitaire" highlightedTitle="relié aux cultures et au verger" introduction="Gleba permet de consigner les traitements avec leur contexte agronomique, puis de retrouver et exporter les informations saisies. Le même registre couvre les interventions rattachées aux parcelles, cultures et arbres." proof="la route d'export du registre restitue notamment produit, substance active, AMM, dose, DAR, délai de rentrée, ZNT, opérateur et météo lorsqu'ils ont été renseignés." screenshot={{ src: "/screenshots/vitrine-tracabilite-bureau.webp", alt: "Registre phytosanitaire de Gleba avec contrôle des champs manquants", caption: "Le registre de démonstration compte ses traitements et signale les fiches incomplètes (AMM, dose, surface) au lieu de présenter une conformité fictive.", width: 1920, height: 847 }} capabilities={[
     { title: "Contexte de l'intervention", description: "Rattachez la saisie à une parcelle, une planche, une culture ou un arbre selon le travail effectué." },
     { title: "Produit et usage", description: "Conservez nom commercial, substance active, numéro AMM, cible et informations d'autorisation disponibles." },
     { title: "Dose et surface", description: "Saisissez dose appliquée, unité, surface traitée et quantité utilisée." },

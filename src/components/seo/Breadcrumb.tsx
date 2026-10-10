@@ -28,15 +28,12 @@ export function Breadcrumb({ items }: { items: BreadcrumbItem[] }) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      <nav
-        aria-label="Fil d'ariane"
-        className="max-w-5xl mx-auto px-4 pt-6 pb-2 text-sm text-slate-500"
-      >
-        <ol className="flex flex-wrap items-center gap-1.5">
+      <nav aria-label="Fil d'ariane" className="px-4 pb-2 pt-6 text-sm text-ardoise sm:px-6">
+        <ol className="mx-auto flex max-w-6xl flex-wrap items-center gap-1.5">
           <li>
             <Link
               href="/"
-              className="flex items-center gap-1 hover:text-emerald-600 transition-colors"
+              className="flex min-h-9 items-center gap-1 hover:text-foret focus-visible:outline focus-visible:outline-2 focus-visible:outline-sauge"
             >
               <Home className="h-3.5 w-3.5" />
               <span className="sr-only">Accueil</span>
@@ -46,15 +43,15 @@ export function Breadcrumb({ items }: { items: BreadcrumbItem[] }) {
             const isLast = i === items.length - 1;
             return (
               <li key={item.href} className="flex items-center gap-1.5">
-                <ChevronRight className="h-3.5 w-3.5 text-slate-300" />
+                <ChevronRight className="h-3.5 w-3.5 text-lin" aria-hidden />
                 {isLast ? (
-                  <span className="text-slate-700 font-medium" aria-current="page">
+                  <span className="font-medium text-encre" aria-current="page">
                     {item.label}
                   </span>
                 ) : (
                   <Link
                     href={item.href}
-                    className="hover:text-emerald-600 transition-colors"
+                    className="hover:text-foret"
                   >
                     {item.label}
                   </Link>

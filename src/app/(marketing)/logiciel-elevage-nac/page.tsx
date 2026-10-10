@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import { BusinessLanding } from "@/components/seo/BusinessLanding";
+import { ogBase } from "@/lib/seo/og";
 
 export const metadata: Metadata = {
   title: "Logiciel d'élevage NAC — Rongeurs, oiseaux et reptiles",
   description: "Suivez furets, lapins nains, rongeurs, oiseaux, reptiles et autres NAC : espèces, variétés, généalogie, reproduction, santé et soins avec Gleba.",
   alternates: { canonical: "https://gleba.fr/logiciel-elevage-nac" },
   openGraph: {
+    ...ogBase,
     title: "Logiciel de gestion d'élevage NAC — Gleba",
     description: "Furets, rongeurs, oiseaux, reptiles et amphibiens : fiches, reproduction et soins.",
     url: "https://gleba.fr/logiciel-elevage-nac",

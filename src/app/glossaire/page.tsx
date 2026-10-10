@@ -6,8 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { listGlossaireEntries } from "@/lib/glossaire"
 
 export const metadata = {
-  title: "Glossaire agricole — Gleba",
+  title: "Glossaire agricole",
   description: "Définitions des principaux termes agricoles et comptables utilisés dans Gleba.",
+  alternates: { canonical: "https://gleba.fr/glossaire" },
 }
 
 export default function GlossairePage() {

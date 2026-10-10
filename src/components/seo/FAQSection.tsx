@@ -28,46 +28,28 @@ export function FAQSection({
   };
 
   return (
-    <section
-      id="faq"
-      className="py-24 px-4 bg-gradient-to-b from-white to-emerald-50/30 scroll-mt-8"
-    >
+    <section id="faq" className="scroll-mt-8 px-4 py-16 sm:px-6 sm:py-20">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      <div className="max-w-3xl mx-auto">
-        <div className="text-center mb-14">
-          <p className="text-xs tracking-[0.25em] uppercase text-emerald-600/60 font-medium mb-4">
-            FAQ
-          </p>
-          <h2 className="font-heading text-3xl sm:text-4xl font-extralight text-slate-900 tracking-tight">
+      <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-12">
+        <div className="lg:col-span-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sauge">FAQ</p>
+          <h2 className="mt-3 font-display text-[30px] font-medium leading-tight tracking-tight text-encre sm:text-[36px]">
             {title}
           </h2>
-          {subtitle && (
-            <p className="mt-4 text-base text-slate-500 max-w-2xl mx-auto">
-              {subtitle}
-            </p>
-          )}
+          {subtitle && <p className="mt-4 text-ardoise">{subtitle}</p>}
         </div>
 
-        <div className="space-y-4">
+        <div className="divide-y divide-lin border-y border-lin lg:col-span-8">
           {faqs.map((faq) => (
-            <details
-              key={faq.question}
-              className="group bg-white/80 backdrop-blur-sm rounded-2xl border border-slate-100 overflow-hidden hover:border-emerald-200 transition-colors"
-            >
-              <summary className="flex items-center justify-between gap-4 cursor-pointer list-none p-6">
-                <h3 className="text-base sm:text-lg font-medium text-slate-900 tracking-tight">
-                  {faq.question}
-                </h3>
-                <ChevronDown className="h-5 w-5 flex-shrink-0 text-emerald-600/60 transition-transform duration-300 group-open:rotate-180" />
+            <details key={faq.question} className="group">
+              <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-4 py-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sauge [&::-webkit-details-marker]:hidden">
+                <h3 className="text-[17px] font-semibold text-encre">{faq.question}</h3>
+                <ChevronDown className="h-5 w-5 shrink-0 text-sauge transition-transform duration-base group-open:rotate-180" aria-hidden />
               </summary>
-              <div className="px-6 pb-6 -mt-2">
-                <p className="text-slate-500 leading-relaxed text-[15px] whitespace-pre-line">
-                  {faq.answer}
-                </p>
-              </div>
+              <p className="whitespace-pre-line pb-5 pr-8 leading-relaxed text-ardoise">{faq.answer}</p>
             </details>
           ))}
         </div>

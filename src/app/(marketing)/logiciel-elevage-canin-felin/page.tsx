@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import { BusinessLanding } from "@/components/seo/BusinessLanding";
+import { ogBase } from "@/lib/seo/og";
 
 export const metadata: Metadata = {
   title: "Logiciel d'élevage canin et félin — Chiens et chats",
   description: "Suivez chiens, chats, races, généalogie, portées, tests de santé, consanguinité, réservations, acomptes et documents de cession avec Gleba.",
   alternates: { canonical: "https://gleba.fr/logiciel-elevage-canin-felin" },
   openGraph: {
+    ...ogBase,
     title: "Logiciel d'élevage canin et félin — Gleba",
     description: "Fiches chiens et chats, généalogie, portées, santé et réservations dans un même suivi.",
     url: "https://gleba.fr/logiciel-elevage-canin-felin",

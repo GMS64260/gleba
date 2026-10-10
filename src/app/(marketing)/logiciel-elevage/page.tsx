@@ -1,15 +1,16 @@
 import type { Metadata } from "next";
 import { BusinessLanding } from "@/components/seo/BusinessLanding";
+import { ogBase } from "@/lib/seo/og";
 
 export const metadata: Metadata = {
   title: "Logiciel d'élevage pour ferme diversifiée — Suivi multi-espèces",
   description: "Reliez les ateliers d'élevage à votre exploitation : animaux, lots, soins, alimentation, productions, reproduction, naissances et traçabilité.",
   alternates: { canonical: "https://gleba.fr/logiciel-elevage" },
-  openGraph: { title: "Ateliers d'élevage pour ferme diversifiée — Gleba", description: "Animaux, lots, soins et productions reliés au même dossier que les parcelles, les stocks et la gestion.", url: "https://gleba.fr/logiciel-elevage", type: "article" },
+  openGraph: { ...ogBase, title: "Ateliers d'élevage pour ferme diversifiée — Gleba", description: "Animaux, lots, soins et productions reliés au même dossier que les parcelles, les stocks et la gestion.", url: "https://gleba.fr/logiciel-elevage", type: "article" },
 };
 
 export default function Page() {
-  return <BusinessLanding breadcrumb="Logiciel de gestion d'élevage" currentPath="/logiciel-elevage" eyebrow="Ateliers d'élevage · Ferme diversifiée · Traçabilité" title="L'élevage relié" highlightedTitle="au reste de l'exploitation" introduction="Gleba centralise animaux, lots, événements sanitaires, alimentation, productions et reproduction sans isoler l'élevage des parcelles, des stocks et de la gestion. Les écrans s'adaptent aux ateliers réellement conduits dans la ferme diversifiée." proof="les modes bovins, ovins, caprins, volailles, chiens et chats, équins et NAC adaptent le tableau de bord, les productions, le pâturage, l'économie et les délais d'attente selon les animaux sélectionnés." screenshot={{ src: "/screenshots/gleba-gestion-elevage.png", alt: "Tableau de bord réel du logiciel de gestion d'élevage Gleba", caption: "Capture du compte de démonstration : tâches, ponte, alimentation et suivi hebdomadaire." }} capabilities={[
+  return <BusinessLanding breadcrumb="Logiciel de gestion d'élevage" currentPath="/logiciel-elevage" eyebrow="Ateliers d'élevage · Ferme diversifiée · Traçabilité" title="L'élevage relié" highlightedTitle="au reste de l'exploitation" introduction="Gleba centralise animaux, lots, événements sanitaires, alimentation, productions et reproduction sans isoler l'élevage des parcelles, des stocks et de la gestion. Les écrans s'adaptent aux ateliers réellement conduits dans la ferme diversifiée." proof="les modes bovins, ovins, caprins, volailles, chiens et chats, équins et NAC adaptent le tableau de bord, les productions, le pâturage, l'économie et les délais d'attente selon les animaux sélectionnés." screenshot={{ src: "/screenshots/vitrine-elevage-bureau.webp", alt: "Échéances sanitaires de l'atelier élevage dans Gleba", caption: "Échéances de l'élevage de démonstration en lignes de registre : traitements en retard, diagnostic de gestation à prévoir, soins et collectes de la semaine.", width: 1920, height: 722 }} capabilities={[
     { title: "Cheptel individuel", description: "Identifiant, espèce, race, sexe, parents, poids, statut, origine, destination et notes sur une même fiche." },
     { title: "Gestion par lots", description: "Regroupez les animaux suivis collectivement et rattachez productions, alimentation, soins et mouvements au lot." },
     { title: "Généalogie", description: "Renseignez mère et père puis consultez l'ascendance calculée sur plusieurs générations." },
