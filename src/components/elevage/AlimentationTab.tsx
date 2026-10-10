@@ -1633,9 +1633,24 @@ function SoinsSubTab({ initialAnimalId = null, initialOpen = false, year }: { in
         toast({ variant: "destructive", title: "Erreur", description: json.error || "Échec" })
         return
       }
+      // QA cmv29egw6 — dire ce qui a été retenu pour le rappel : le serveur ne
+      // matérialise un rappel que si le soin est fait ET la date de rappel
+      // postérieure au soin (sinon la date est gardée sur un soin fait, que
+      // les listes « à faire » n'affichent jamais) ; l'éleveur le découvrait
+      // au calendrier. Le retour nomme la date du rappel créé, ou dit pourquoi
+      // la date demandée n'en a pas produit. Une date jamais arrivée au
+      // serveur (saisie non prise) ne peut pas être annoncée ici.
+      const dateRappelDemandee = datePrevueSoumise
+        ? new Date(datePrevueSoumise).toLocaleDateString("fr-FR")
+        : null
+      const infosRappel = json.rappel?.id
+        ? `Rappel planifié le ${dateRappelDemandee}.`
+        : !isEdit && formData.fait && dateRappelDemandee
+          ? `Aucun rappel créé : la date ${dateRappelDemandee} n'est pas postérieure au soin.`
+          : null
       toast({
         title: isEdit ? "Soin mis à jour" : "Soin enregistré",
-        description: json.info || undefined,
+        description: [json.info, infosRappel].filter(Boolean).join(" ") || undefined,
       })
       setIsDialogOpen(false)
       resetSoinForm()
