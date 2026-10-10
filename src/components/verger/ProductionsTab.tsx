@@ -1611,26 +1611,32 @@ function ProductionBoisSubTab() {
               {/* QA 2026-07-30 — L'arbre est la clé de traçabilité d'un élagage
                   ou d'un abattage : le libellé « optionnel » et une liste vide
                   silencieuse laissaient créer des lignes orphelines. */}
-              <Label>
+              <Label htmlFor="production-bois-arbre">
                 Arbre{newProduction.type === "elagage" || newProduction.type === "abattage"
                   ? <span className="text-red-600"> *</span>
                   : " (optionnel)"}
               </Label>
-              <Select
+              {/* QA cmv2r1kjv (même motif) — <select> natif : l'arbre, exigé pour
+                  un élagage ou un abattage, ne retombe plus sur le placeholder ;
+                  l'option vide permet aussi de revenir à « aucun arbre ». */}
+              <SelectNatif
+                id="production-bois-arbre"
+                name="arbreId"
                 value={newProduction.arbreId}
-                onValueChange={(v) => setNewProduction({ ...newProduction, arbreId: v })}
+                onChange={(e) => {
+                  const arbreId = e.target.value
+                  setNewProduction((courant) => ({ ...courant, arbreId }))
+                }}
               >
-                <SelectTrigger>
-                  <SelectValue placeholder={arbres.length === 0 ? "Aucun arbre forestier ou de haie" : "Aucun arbre spécifique"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {arbres.map((a) => (
-                    <SelectItem key={a.id} value={a.id.toString()}>
-                      {a.nom}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                <option value="">
+                  {arbres.length === 0 ? "Aucun arbre forestier ou de haie" : "Aucun arbre spécifique"}
+                </option>
+                {arbres.map((a) => (
+                  <option key={a.id} value={a.id.toString()}>
+                    {a.nom}
+                  </option>
+                ))}
+              </SelectNatif>
               {arbres.length === 0 && (
                 <p className="mt-1 text-xs text-muted-foreground">
                   Aucun arbre de type forestier ou haie n&apos;est disponible : créez-en un pour tracer la production.

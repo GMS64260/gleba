@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { SelectNatif } from "@/components/ui/select-natif"
 import {
   Dialog,
   DialogContent,
@@ -330,10 +331,10 @@ export function OperationsTab() {
     const submittedDatePrevue = String(submitted.get("datePrevue") || "").trim()
     const date = submittedDate || newOperation.date
     const datePrevue = submittedDatePrevue || newOperation.datePrevue
-    // QA cmsnnybbg — même course sur les Select Radix : une valeur posée sur
-    // le select natif caché (SelectBubbleInput) sans passer par onValueChange
-    // laissait l'état React vide et la garde « Sélectionnez un arbre »
-    // rejetait une saisie pourtant visible à l'écran.
+    // QA cmsnnybbg — l'arbre affiché dans le champ gagne sur l'état React.
+    // QA cmv2r0t6a — sûr depuis le <select> natif : sans choix, l'option vide
+    // (désactivée, donc absente du FormData) laisse l'état vide, et la garde
+    // ci-dessous refuse au lieu d'envoyer le premier arbre de la liste.
     const arbreId = String(submitted.get("arbreId") || "").trim() || newOperation.arbreId
     const typeOperation = String(submitted.get("type") || "").trim() || newOperation.type
 
@@ -490,26 +491,29 @@ export function OperationsTab() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Arbre *</Label>
-                {/* name= : expose la valeur au FormData via le select natif
-                    Radix (SelectBubbleInput) — le submit relit le DOM, cf.
-                    handleSubmit (course état React vs remplissage direct). */}
-                <Select
+                <Label htmlFor="operation-arbre">Arbre *</Label>
+                {/* QA cmv2r0t6a — <select> natif avec une option vide : le
+                    select caché du Select Radix n'en avait pas tant que rien
+                    n'était choisi, le navigateur y sélectionnait donc le
+                    premier arbre, que la relecture FormData envoyait. */}
+                <SelectNatif
+                  id="operation-arbre"
                   name="arbreId"
                   value={newOperation.arbreId}
-                  onValueChange={(v) => setNewOperation((prev) => ({ ...prev, arbreId: v }))}
+                  onChange={(e) => {
+                    const arbreId = e.target.value
+                    setNewOperation((prev) => ({ ...prev, arbreId }))
+                  }}
                 >
-                  <SelectTrigger>
-                    <SelectValue placeholder="— Sélectionner un arbre —" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {arbres.map((a) => (
-                      <SelectItem key={a.id} value={a.id.toString()}>
-                        {a.nom}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  <option value="" disabled>
+                    — Sélectionner un arbre —
+                  </option>
+                  {arbres.map((a) => (
+                    <option key={a.id} value={a.id.toString()}>
+                      {a.nom}
+                    </option>
+                  ))}
+                </SelectNatif>
               </div>
               <div>
                 <Label>Type *</Label>
