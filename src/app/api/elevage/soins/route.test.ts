@@ -281,4 +281,29 @@ describe('soins planifies et temps attente lait', () => {
     expect(query.where).not.toHaveProperty('date')
     expect(query).not.toHaveProperty('take')
   })
+
+  // Ticket cmv294whk — un animal mort restait à vacciner : les rappels et le
+  // compteur « à venir » ne gardent que les soins de lot ou d'un animal actif,
+  // le carnet (mode historique) garde tout.
+  it("écarte des rappels et du compteur les soins d'un animal sorti", async () => {
+    mocks.soinFindMany.mockResolvedValue([])
+    const present = { OR: [{ animalId: null }, { animal: { statut: 'actif' } }] }
+
+    await GET(new NextRequest('http://localhost/api/elevage/soins?rappels=1&filiere=rente'))
+
+    const query = mocks.soinFindMany.mock.calls[0][0]
+    expect(query.where.AND).toEqual([present])
+    expect(query.where.OR).toHaveLength(2)
+    expect(mocks.soinCount).toHaveBeenCalledWith({
+      where: { userId: 'user-1', fait: false, AND: [present] },
+    })
+  })
+
+  it("le carnet historique garde les soins d'un animal sorti", async () => {
+    mocks.soinFindMany.mockResolvedValue([])
+
+    await GET(new NextRequest('http://localhost/api/elevage/soins?annee=all&animalId=625'))
+
+    expect(mocks.soinFindMany.mock.calls[0][0].where).not.toHaveProperty('AND')
+  })
 })
