@@ -19,10 +19,16 @@ function periodeAnnee(annee: number) {
 
 export type ProductionsRucheLecture = Awaited<ReturnType<typeof computeProductionsRuche>>
 
+/**
+ * `limit` borne la liste des récoltes (les plus récentes) ; `null` = toutes.
+ * Les totaux et stocks portent toujours sur toute l'année. `meta.total` est
+ * le nombre réel de récoltes de l'année : la liste était coupée à 200 sans le
+ * dire (défaut ouvert de Gleba-motifs-bugs, 2026-10-10).
+ */
 export async function computeProductionsRuche(
   userId: string,
   annee: number,
-  limit = 200,
+  limit: number | null = 200,
 ) {
   const where = {
     userId,
@@ -33,7 +39,7 @@ export async function computeProductionsRuche(
     prisma.productionRuche.findMany({
       where,
       orderBy: [{ date: "desc" }, { id: "desc" }],
-      take: limit,
+      ...(limit != null ? { take: limit } : {}),
       include: {
         mouvementsStock: { select: { quantite: true } },
         lot: {
@@ -89,6 +95,10 @@ export async function computeProductionsRuche(
       nbRecoltes: total._count,
     })),
     stocks: calculerStocksRuche(productionsStock),
-    meta: { annee, total: productions.length },
+    meta: {
+      annee,
+      total: totaux.reduce((somme, total) => somme + total._count, 0),
+      affichees: productions.length,
+    },
   }
 }
