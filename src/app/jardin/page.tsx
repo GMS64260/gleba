@@ -104,6 +104,7 @@ interface PlancheWithCulture {
   rotation2D: number | null
   ilot: string | null
   type: string | null
+  parcelleGeoId?: string | null
   cultures: {
     id: number
     nbRangs: number | null
@@ -415,7 +416,12 @@ function JardinContent() {
   const [showNewObjetDialog, setShowNewObjetDialog] = React.useState(false)
   const [showNewArbreDialog, setShowNewArbreDialog] = React.useState(false)
   const [showNewCultureDialog, setShowNewCultureDialog] = React.useState(false)
-  const [newPlanche, setNewPlanche] = React.useState({ nom: "", largeur: settings.defaultPlancheLargeur, longueur: settings.defaultPlancheLongueur })
+  // QA cmv29ae8p — la parcelle de la nouvelle planche est un choix explicite du
+  // formulaire (pré-rempli par le filtre du plan), plus un effet de bord du
+  // filtre : en « Toutes les parcelles » la planche naissait sans parcelle, et
+  // sa position (sous TOUTES les planches du compte) sortait de la limite du
+  // plan (posY ≤ 100 m), d'où un « Données invalides » muet.
+  const [newPlanche, setNewPlanche] = React.useState({ nom: "", largeur: settings.defaultPlancheLargeur, longueur: settings.defaultPlancheLongueur, parcelleGeoId: "" })
   const [newObjet, setNewObjet] = React.useState({ nom: "", type: "allee", largeur: 0.5, longueur: 5 })
   const [newArbre, setNewArbre] = React.useState({ nom: "", type: "fruitier", espece: "", variete: "", fournisseur: "", envergure: 2, envergureAdulte: "" })
 
@@ -1392,19 +1398,56 @@ function JardinContent() {
   }
 
   // Créer une nouvelle planche
+  // Parcelle proposée par défaut dans « Nouvelle planche » : celle du filtre
+  // (« Non assigné » → « Sans parcelle », même sentinelle « none »).
+  const parcelleFiltreCourante = selectedParcelleId ?? ""
+  const ouvrirNouvellePlanche = () => {
+    setNewPlanche(p => ({ ...p, parcelleGeoId: parcelleFiltreCourante }))
+    setShowNewPlancheDialog(true)
+  }
+
+  // Limite de position acceptée par l'API (schéma planche : posX/posY ≤ 100 m).
+  const POS_MAX = 100
+
+  // Planches de la parcelle cible, pour y trouver une position libre. L'état
+  // `planches` ne porte que le filtre courant : si la cible est une autre
+  // parcelle, on la lit à part, sinon la nouvelle planche se posait sur la
+  // première planche de la cible.
+  const planchesDeLaParcelle = async (parcelleGeoId: string | null): Promise<PlancheWithCulture[]> => {
+    const filtreCourant = selectedParcelleId === "none" ? null : selectedParcelleId
+    if (selectedParcelleId === null || filtreCourant === parcelleGeoId) {
+      return planches.filter(p => (p.parcelleGeoId ?? null) === parcelleGeoId)
+    }
+    const response = await fetch(`/api/jardin?parcelle=${parcelleGeoId ?? "none"}`)
+    if (!response.ok) return []
+    const data: PlancheWithCulture[] = await response.json()
+    return data
+  }
+
   const handleCreatePlanche = async () => {
     if (!newPlanche.nom.trim()) {
       toast({ variant: "destructive", title: "Nom requis" })
       return
     }
+    if (parcelles.length > 0 && newPlanche.parcelleGeoId === "") {
+      toast({
+        variant: "destructive",
+        title: "Parcelle à choisir",
+        description: "Indiquez la parcelle de la planche, ou « Sans parcelle ».",
+      })
+      return
+    }
+    const parcelleGeoId = newPlanche.parcelleGeoId === "none" ? null : newPlanche.parcelleGeoId || null
 
     try {
-      // Trouver une position libre
+      // Position libre : sous les planches de la MÊME parcelle (le plan se lit
+      // par parcelle), bornée à la limite du plan.
       let maxY = 0
-      planches.forEach(p => {
+      for (const p of await planchesDeLaParcelle(parcelleGeoId)) {
         const bottom = (p.posY || 0) + (p.longueur || 2)
         if (bottom > maxY) maxY = bottom
-      })
+      }
+      const posY = Math.max(0, Math.min(maxY + 0.5, POS_MAX - newPlanche.longueur))
 
       const response = await fetch("/api/planches", {
         method: "POST",
@@ -1415,19 +1458,26 @@ function JardinContent() {
           longueur: newPlanche.longueur,
           surface: newPlanche.largeur * newPlanche.longueur,
           posX: 0,
-          posY: maxY + 0.5,
-          parcelleGeoId: selectedParcelleId || undefined,
+          posY,
+          parcelleGeoId: parcelleGeoId ?? undefined,
         })
       })
 
       if (!response.ok) {
         const err = await response.json()
-        throw new Error(err.error || "Erreur création")
+        // Un 400 de validation nomme son champ : « Données invalides » seul ne
+        // disait rien de ce qu'il fallait corriger.
+        const champs = err?.details?.fieldErrors
+          ? Object.entries(err.details.fieldErrors as Record<string, string[]>)
+              .map(([champ, msgs]) => `${champ} : ${msgs.join(", ")}`)
+              .join(" ; ")
+          : ""
+        throw new Error(champs ? `${err.error || "Données invalides"} (${champs})` : err.error || "Erreur création")
       }
 
       toast({ title: "Planche créée", description: newPlanche.nom })
       setShowNewPlancheDialog(false)
-      setNewPlanche({ nom: "", largeur: settings.defaultPlancheLargeur, longueur: settings.defaultPlancheLongueur })
+      setNewPlanche({ nom: "", largeur: settings.defaultPlancheLargeur, longueur: settings.defaultPlancheLongueur, parcelleGeoId: "" })
       fetchPlanches()
     } catch (error) {
       toast({
@@ -2279,7 +2329,7 @@ function JardinContent() {
 
             <div className="w-px h-6 bg-slate-300 mx-1" />
 
-            <Button variant="outline" size="sm" onClick={() => setShowNewPlancheDialog(true)}>
+            <Button variant="outline" size="sm" onClick={ouvrirNouvellePlanche}>
               <Plus className="h-4 w-4 mr-2" />
               Planche
             </Button>
@@ -2395,7 +2445,7 @@ function JardinContent() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-52">
-                <DropdownMenuItem onSelect={() => setShowNewPlancheDialog(true)}>
+                <DropdownMenuItem onSelect={ouvrirNouvellePlanche}>
                   <Plus /> Nouvelle planche
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => setShowNewObjetDialog(true)}>
@@ -2506,7 +2556,7 @@ function JardinContent() {
                   <MapIcon className="h-12 w-12 mb-4 opacity-50" />
                   <p>Aucun élément sur cette parcelle</p>
                   <div className="flex flex-wrap items-center justify-center gap-1">
-                    <Button variant="link" onClick={() => setShowNewPlancheDialog(true)}>
+                    <Button variant="link" onClick={ouvrirNouvellePlanche}>
                       Créer une planche
                     </Button>
                     <Button variant="link" onClick={() => setShowFondDialog(true)}>
@@ -2551,6 +2601,12 @@ function JardinContent() {
                 </div>
               )}
 
+              {/* Bandeaux « non rattachés » : une seule colonne absolue qui les
+                  empile. QA cmv2999p5 — le second bandeau était calé à `top-40`
+                  (10 rem) sous le premier ; à 375 px le texte du premier se
+                  replie, dépasse 10 rem et le second le recouvrait, boutons
+                  compris. Empilés en flux, chacun prend sa hauteur. */}
+              <div className="pointer-events-none absolute left-1/2 top-3 z-20 flex w-[min(30rem,calc(100%-1.5rem))] -translate-x-1/2 flex-col gap-2 [&>*]:pointer-events-auto">
               {/* Planches invisibles parce que non rattachées. Le plan filtré par
                   parcelle ne peut pas les montrer ; sans ce bandeau l'écran est
                   vide et muet — c'est ce qu'a vu un compte réel le 2026-08-17,
@@ -2561,7 +2617,7 @@ function JardinContent() {
                 && selectedParcelleId !== "none"
                 && planches.length === 0
                 && planchesSansParcelle.length > 0 && (
-                <div className="absolute left-1/2 top-3 z-20 w-[min(30rem,calc(100%-1.5rem))] -translate-x-1/2 rounded-lg border border-amber-300 bg-amber-50/95 p-3 shadow-lg backdrop-blur">
+                <div className="rounded-lg border border-amber-300 bg-amber-50/95 p-3 shadow-lg backdrop-blur">
                   <p className="text-sm font-medium text-amber-900">
                     {planchesSansParcelle.length > 1
                       ? `${planchesSansParcelle.length} planches ne sont rattachées à aucune parcelle`
@@ -2593,13 +2649,8 @@ function JardinContent() {
                 </div>
               )}
 
-              {!isLoading && arbresSansParcelle.length > 0 && parcelleCibleArbres && (() => {
-                const bandeauPlanches = Boolean(
-                  selectedParcelleId && selectedParcelleId !== "none"
-                  && planches.length === 0 && planchesSansParcelle.length > 0
-                )
-                return (
-                  <div className={`absolute left-1/2 ${bandeauPlanches ? "top-40" : "top-3"} z-20 w-[min(30rem,calc(100%-1.5rem))] -translate-x-1/2 rounded-lg border border-amber-300 bg-amber-50/95 p-3 shadow-lg backdrop-blur`}>
+              {!isLoading && arbresSansParcelle.length > 0 && parcelleCibleArbres && (
+                  <div className="rounded-lg border border-amber-300 bg-amber-50/95 p-3 shadow-lg backdrop-blur">
                     <p className="text-sm font-medium text-amber-900">
                       {arbresSansParcelle.length > 1
                         ? `${arbresSansParcelle.length} arbres ne sont rattachés à aucune parcelle`
@@ -2614,8 +2665,8 @@ function JardinContent() {
                       </Button>
                     </div>
                   </div>
-                )
-              })()}
+              )}
+              </div>
 
               {/* Plan vivant : curseur temporel (masqué en plein écran) */}
               {!isPlanFullscreen && !isLoading && (planches.length > 0 || arbres.length > 0) && (
@@ -3722,6 +3773,32 @@ function JardinContent() {
             <div className="text-sm text-muted-foreground">
               Surface: {(newPlanche.largeur * newPlanche.longueur).toFixed(1)} m²
             </div>
+            {parcelles.length > 0 && (
+              <div>
+                <Label htmlFor="planche-parcelle">Parcelle</Label>
+                <Select
+                  value={newPlanche.parcelleGeoId || undefined}
+                  onValueChange={(v) => setNewPlanche(p => ({ ...p, parcelleGeoId: v }))}
+                >
+                  <SelectTrigger id="planche-parcelle">
+                    <SelectValue placeholder="Choisir une parcelle…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {parcelles.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.nom}{p.usage ? ` (${p.usage})` : ""}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value="none">Sans parcelle</SelectItem>
+                  </SelectContent>
+                </Select>
+                {newPlanche.parcelleGeoId === "none" && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Une planche sans parcelle n&apos;apparaît que dans « Toutes les parcelles » et « Non assigné ».
+                  </p>
+                )}
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowNewPlancheDialog(false)}>Annuler</Button>
