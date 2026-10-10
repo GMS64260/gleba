@@ -11,9 +11,8 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
+import { DEMO_EMAIL } from "@/lib/demo"
 import { requireAdminApi } from "@/lib/auth-utils"
-
-const DEMO_EMAIL = "demo@gleba.fr"
 
 export async function GET(request: NextRequest) {
   const { error } = await requireAdminApi()

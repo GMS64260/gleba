@@ -17,10 +17,10 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
+import { DEMO_EMAIL } from "@/lib/demo"
 import { Prisma } from "@prisma/client"
 import { requireAdminApi } from "@/lib/auth-utils"
 
-const DEMO_EMAIL = "demo@gleba.fr"
 const VALID_BUCKETS = ["day", "week", "month"] as const
 type Bucket = (typeof VALID_BUCKETS)[number]
 

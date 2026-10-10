@@ -11,6 +11,7 @@ import { signIn } from "next-auth/react"
 import { Loader2, ArrowRight, RefreshCw } from "lucide-react"
 import { GoogleSignInButton } from "./GoogleSignInButton"
 import { REFUS_CONNEXION, messageRefusConnexion } from "@/lib/auth-refus"
+import { DEMO_EMAIL } from "@/lib/demo"
 
 const VERIFY_MESSAGES: Record<string, { text: string; type: "success" | "error" | "info" }> = {
   success: { text: "Email vérifié ! Vous pouvez maintenant vous connecter.", type: "success" },
@@ -140,7 +141,7 @@ export function LoginForm({ googleEnabled = false }: { googleEnabled?: boolean }
   const formRef = React.useRef<HTMLFormElement>(null)
 
   function handleDemo() {
-    setEmail("demo@gleba.fr")
+    setEmail(DEMO_EMAIL)
     setPassword("demo2026")
     // Auto-submit après un tick pour laisser React mettre à jour les champs
     setTimeout(() => formRef.current?.requestSubmit(), 0)
