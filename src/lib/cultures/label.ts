@@ -35,3 +35,27 @@ export function libelleCulture(culture: CulturePourLabel): string {
   const avecVariete = variete && variete !== espece ? `${base} (${variete})` : base
   return planche ? `${avecVariete} — ${planche}` : avecVariete
 }
+
+/**
+ * Une variété de repli (« Radis — Non spécifiée », créée quand aucune variété
+ * n'est choisie) n'est pas une information à afficher.
+ */
+export function varieteAffichable(nom: string | null | undefined): string {
+  if (!nom) return ""
+  return /non sp[ée]cifi/i.test(nom) ? "" : nom
+}
+
+const cleComparaison = (texte: string) =>
+  texte.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim()
+
+/**
+ * « Espèce · Variété » dit une seule fois chaque nom (QA cmv2ex2vq, conseils
+ * d'irrigation : « Radis · Radis — Non spécifiée · Radis — Non spécifiée »).
+ * Le repli « Non spécifiée » est tu ; une variété dont le nom commence déjà
+ * par l'espèce (« Courge butternut-Waltham ») s'affiche seule.
+ */
+export function libelleEspeceVariete(espece: string, variete: string | null | undefined): string {
+  const nomVariete = varieteAffichable(variete)
+  if (!nomVariete) return espece
+  return cleComparaison(nomVariete).startsWith(cleComparaison(espece)) ? nomVariete : `${espece} · ${nomVariete}`
+}
