@@ -14,8 +14,10 @@ import { cn } from "@/lib/utils"
  * Enveloppe d'un repère ou d'une tuile en mode « Personnaliser » : contour
  * pointillé, poignée de glisser-déposer (souris, doigt, clavier : espace,
  * flèches, espace), flèches Monter/Descendre, taille, et l'œil qui masque.
- * Le mouvement 6 (contours en 120 ms, réorganisation en 420 ms par FLIP)
- * est porté par les classes d'entrée et par la transition de `@dnd-kit`.
+ * Dans la grille des tuiles, le placement est libre : rien ne se décale
+ * pendant le geste, la tuile sous le pointeur se marque comme cible, et la
+ * tuile lâchée prend sa place (mouvement 6 : contours en 120 ms, remise en
+ * ordre en 420 ms par la transition de `@dnd-kit`).
  *
  * Doit être rendue dans un `SortableContext` ; hors édition, la poignée
  * n'existe pas et le tri est désactivé.
@@ -56,7 +58,7 @@ export function Personnalisable({
   children,
   ...props
 }: PersonnalisableProps) {
-  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging, isOver, active } = useSortable({
     id,
     disabled: !edition,
     transition: TRANSITION,
@@ -70,7 +72,9 @@ export function Personnalisable({
       className={cn(
         "relative grid rounded-2xl",
         edition && "outline-dashed outline-[1.5px] outline-offset-[3px] outline-sauge/80 accueil-entree",
-        isDragging && "z-20 rotate-[0.6deg] shadow-fiche",
+        isDragging && "opacity-40",
+        // Cible du placement libre : la tuile sous le pointeur prend un contour plein.
+        isOver && active && !isDragging && "outline outline-[3px] outline-offset-[3px] outline-sauge",
         className,
       )}
       {...props}

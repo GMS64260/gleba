@@ -38,18 +38,40 @@ await page.click('button[aria-label="Personnaliser l\'accueil"]');
 await page.waitForTimeout(600);
 rapport.poignees = await page.$$eval('button[aria-label^="Déplacer «"]', (els) => els.length);
 rapport.catalogue = await page.$$eval('section[aria-label="Ajouter une tuile"] li', (els) => els.map((li) => ({ libelle: li.querySelector("b")?.textContent?.trim(), grisee: li.className.includes("opacity-70"), bouton: !li.querySelector("button")?.disabled })));
+rapport.catalogueAvantReperes = await page.evaluate(() => {
+  const cat = document.querySelector('section[aria-label="Ajouter une tuile"]');
+  const reperes = document.querySelector('[aria-label="Repères"]');
+  return !!cat && !!reperes && cat.compareDocumentPosition(reperes) === Node.DOCUMENT_POSITION_FOLLOWING;
+});
 await page.screenshot({ path: `${OUT}/01-edition.png`, fullPage: true, animations: "disabled" });
 
-// Glisser au clavier : la première tuile descend d'un cran
-const poignee = page.locator('button[aria-label^="Déplacer «"]').first();
+// Glisser au clavier : « Semaine météo » (3e) vient prendre la place de « Plan de la ferme » (2e)
+const poignee = page.locator('button[aria-label^="Déplacer « Semaine météo »"]');
 await poignee.focus();
 await page.keyboard.press("Space");
 await page.waitForTimeout(300);
-await page.keyboard.press("ArrowRight");
+await page.keyboard.press("ArrowLeft");
 await page.waitForTimeout(600);
+rapport.cibleMarquee = await page.$$eval("[data-tuile]", (els) => els.filter((e) => e.parentElement?.className.includes("outline-[3px]")).map((e) => e.getAttribute("data-tuile")));
 await page.keyboard.press("Space");
 await page.waitForTimeout(800);
 rapport.apresGlisser = await ordreTuiles();
+
+// Glisser à la souris : « Gleba » déposée sur « Aujourd'hui »
+const poigneeAgent = page.locator('button[aria-label^="Déplacer « Gleba »"]');
+const cible = page.locator('[data-tuile="aujourdhui"]');
+const a = await poigneeAgent.boundingBox();
+const b = await cible.boundingBox();
+if (a && b) {
+  await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(a.x + 20, a.y + 20, { steps: 4 });
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 12 });
+  await page.waitForTimeout(300);
+  await page.mouse.up();
+  await page.waitForTimeout(800);
+}
+rapport.apresSouris = await ordreTuiles();
 
 // Taille : la tuile « Plan de la ferme » passe à la taille suivante
 const boutonTaille = page.locator('button[aria-label^="Taille de « Plan de la ferme »"]');
