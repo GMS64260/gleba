@@ -161,4 +161,20 @@ describe("GET /api/elevage/analyse-couts — coûts unitaires par atelier", () =
     const payload = await (await GET(request())).json()
     expect(atelierDe(payload, "poule")?.metriques.coutParOeuf).toBeNull()
   })
+
+  // QA cmv2evlla — la saisie rapide annonçait une ventilation par effectif :
+  // le calcul garde la saisie globale dans « Non affecté », la méthode le dit.
+  it("compte une consommation globale dans « Non affecté », sans la répartir", async () => {
+    mocks.consommationFindMany.mockResolvedValue([
+      { lotId: null, animalId: null, lot: null, animal: null, quantite: 1, aliment: { prix: 0.5, userStocks: [{ coutUnitaire: 0.39, prix: null }] } },
+    ])
+
+    const payload = await (await GET(request())).json()
+    const nonAffecte = payload.ateliers.find((a: { code: string }) => a.code === "non_affecte")
+    const poule = payload.ateliers.find((a: { code: string }) => a.code === "poule")
+
+    expect(nonAffecte?.couts.alimentation).toBe(0.39)
+    expect(poule?.couts.alimentation).toBe(0)
+    expect(payload.methode.affectation).toContain("« Non affecté », sans répartition")
+  })
 })
