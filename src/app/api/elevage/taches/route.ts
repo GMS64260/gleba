@@ -10,6 +10,7 @@ import prisma from '@/lib/prisma'
 import { oeufsAttendusJour } from '@/lib/elevage/taux-ponte'
 import { chargerFenetresMiseBas } from '@/lib/elevage/fenetre-mise-bas'
 import { remiseVente } from '@/lib/elevage/attentes'
+import { sqlSoinAnimalPresent, whereSoinAnimalPresent } from '@/lib/elevage/soins-a-faire'
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -33,7 +34,9 @@ export async function GET(request: NextRequest) {
 
     // Scoping optionnel par filière d'atelier (modes d'élevage).
     const filiere = searchParams.get('filiere')
-    const animLotFiliere = filiere ? { AND: [{ OR: [{ animal: { especeAnimale: { filiere } } }, { lot: { especeAnimale: { filiere } } }] }] } : {}
+    const animLotFiliere: Prisma.SoinAnimalWhereInput[] = filiere
+      ? [{ OR: [{ animal: { especeAnimale: { filiere } } }, { lot: { especeAnimale: { filiere } } }] }]
+      : []
     const lotFiliere = filiere ? { lot: { especeAnimale: { filiere } } } : {}
 
     const [soins, productions, consommations, lotsActifs, animauxPondeurs] = await Promise.all([
@@ -46,7 +49,12 @@ export async function GET(request: NextRequest) {
             { date: { gte: start, lte: end } },
             ...(retards ? [{ fait: false, datePrevue: { lt: start } }] : []),
           ],
-          ...animLotFiliere,
+          AND: [
+            ...animLotFiliere,
+            // Ticket cmv294whk — un soin à faire d'un animal mort, vendu ou
+            // abattu n'est plus une action ; un soin fait reste dans l'historique.
+            { OR: [{ fait: true }, whereSoinAnimalPresent()] },
+          ],
         },
         include: {
           animal: { select: { id: true, nom: true, identifiant: true } },
@@ -218,6 +226,7 @@ export async function GET(request: NextRequest) {
           (i.date_prevue >= ${start} AND i.date_prevue <= ${end})
           OR ${retards ? Prisma.sql`(i.statut = 'a_faire' AND i.date_prevue < ${start})` : Prisma.sql`FALSE`}
         )
+        AND (i.statut <> 'a_faire' OR ${sqlSoinAnimalPresent})
         AND (
           ${filiere}::text IS NULL
           OR a.espece_animale_id IN (SELECT espece_animale FROM especes_animales WHERE filiere = ${filiere})
