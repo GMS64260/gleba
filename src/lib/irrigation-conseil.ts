@@ -16,6 +16,7 @@
  * arroser » (`src/lib/irrigation/a-arroser.ts`).
  */
 
+import type { Prisma } from '@prisma/client'
 import prisma from '@/lib/prisma'
 import { fetchOpenMeteoForecast, fetchOpenMeteoHistory } from '@/lib/meteo'
 import type { MeteoJournaliere, MeteoPrevision } from '@/lib/meteo'
@@ -52,6 +53,29 @@ const TYPES_SOUS_ABRI = ['Serre', 'Tunnel', 'Châssis', 'Chassis']
 /** Mm de pluie cumulés sur 48h pour considérer que le sol est suffisamment arrosé */
 const SEUIL_PLUIE_SOL_ARROSE = 8
 
+/**
+ * Pluie qui compte comme un apport d'eau (mm/jour). Une bruine de 1 mm ne
+ * remet pas à zéro les « jours sans eau » : elle masquait un vrai déficit.
+ */
+export const SEUIL_PLUIE_SIGNIFICATIVE = 3
+
+/**
+ * Déficits (mm) qui rendent l'arrosage nécessaire. ABSOLUS depuis la revue du
+ * 2026-10-10 : le déficit dérive déjà de l'ETc de l'espèce (une culture
+ * gourmande le creuse plus vite). Les anciens seuils, multipliés par le
+ * besoin de l'espèce, s'inversaient : par une semaine sèche d'hiver, l'ail
+ * (besoin 1) sortait « à arroser » et pas la tomate (besoin 5).
+ * Calibrage : la réserve facilement utilisable de légumes à enracinement court
+ * vaut 30 à 40 mm, on arrose vers la moitié. Mesuré sur les comptes réels le
+ * 2026-10-10 (octobre, pluie significative = 3 mm) : 10 mm faisait sortir 83
+ * comptes sur 109 « à arroser », 15 mm en laisse 4 (9 planches) ; en été,
+ * 15 mm de déficit est atteint en trois jours. */
+export const DEFICIT_HAUTE_MM = 15
+export const DEFICIT_CRITIQUE_MM = 25
+
+/** Une culture dont la récolte est finie depuis plus longtemps n'est plus à arroser. */
+export const JOURS_APRES_FIN_RECOLTE = 14
+
 /** Nb de jours couverts par la pluie selon la rétention du sol */
 function joursCouverts(pluieMm: number, retentionEau: string | null, et0Journalier: number): number {
   // Combien de jours d'ETc sont couverts par la pluie reçue ?
@@ -77,7 +101,7 @@ function joursCouverts(pluieMm: number, retentionEau: string | null, et0Journali
 
 type Urgence = 'critique' | 'haute' | 'moyenne' | 'faible' | 'aucune'
 
-function calculerUrgenceMeteo(
+export function calculerUrgenceMeteo(
   joursSansArrosage: number | null,
   besoinEau: number,
   retentionEau: string | null,
@@ -166,14 +190,14 @@ function calculerUrgenceMeteo(
   )
 
   // ── Seuils dynamiques ──
-  if (deficit > 20 * besoinNorm && joursEffectifsSansEau >= 5 && pluiePrevue48h < 5 && pluiePrevue5j < 8) {
+  if (deficit > DEFICIT_CRITIQUE_MM && joursEffectifsSansEau >= 5 && pluiePrevue48h < 5 && pluiePrevue5j < 8) {
     return {
       urgence: 'critique',
       raison: `Déficit hydrique de ${Math.round(deficit)}mm. ${joursEffectifsSansEau}j sans eau. Pas de pluie prévue.`,
     }
   }
 
-  if (deficit > 10 * besoinNorm && joursEffectifsSansEau >= 3 && pluiePrevue48h < 8 && pluiePrevue5j < 10) {
+  if (deficit > DEFICIT_HAUTE_MM && joursEffectifsSansEau >= 3 && pluiePrevue48h < 8 && pluiePrevue5j < 10) {
     return {
       urgence: 'haute',
       raison: `Déficit de ${Math.round(deficit)}mm, ${joursEffectifsSansEau}j sans eau.${pluiePrevue48h > 0 ? ` ${Math.round(pluiePrevue48h)}mm prévus.` : ''}`,
@@ -200,29 +224,26 @@ function calculerUrgenceMeteo(
   }
 }
 
-/** Fallback quand on n'a pas de données météo (pas de coordonnées parcelle) */
+/**
+ * Sans coordonnées de parcelle, pas de bilan hydrique : on ne sait pas s'il a
+ * plu. Revue du 2026-10-10 : l'ancien compteur de jours rendait « critique »
+ * tous les 3 à 4 jours, été comme hiver (le défaut du plan supprimé). Le
+ * conseil plafonne donc à « moyenne » (à surveiller, jamais une tâche) et
+ * invite à géolocaliser une parcelle.
+ */
 function urgenceFallback(
   joursSansEau: number | null,
   besoinEau: number,
   retentionEau: string | null
 ): { urgence: Urgence; raison: string } {
+  const conseil = 'Géolocalisez une parcelle pour un conseil météo.'
   if (joursSansEau === null) {
-    return { urgence: 'moyenne', raison: 'Jamais arrosé (pas de données météo).' }
+    return { urgence: 'moyenne', raison: `Jamais arrosé, pas de données météo. ${conseil}` }
   }
-
   const factors = getIrrigationFactors(retentionEau || 'Moyenne')
-  const joursAjustes = joursSansEau * factors.urgenceFactor
-  const seuilCritique = besoinEau >= 4 ? 3 : 4
-  const seuilHaute = besoinEau >= 4 ? 2 : 3
-
-  if (joursAjustes >= seuilCritique) {
-    return { urgence: 'critique', raison: `${joursSansEau}j sans arrosage (pas de données météo).` }
-  }
-  if (joursAjustes >= seuilHaute) {
-    return { urgence: 'haute', raison: `${joursSansEau}j sans arrosage.` }
-  }
-  if (joursAjustes >= 1) {
-    return { urgence: 'moyenne', raison: `${joursSansEau}j sans arrosage.` }
+  const seuil = besoinEau >= 4 ? 2 : 3
+  if (joursSansEau * factors.urgenceFactor >= seuil) {
+    return { urgence: 'moyenne', raison: `${joursSansEau}j sans arrosage, pas de données météo. ${conseil}` }
   }
   return { urgence: 'faible', raison: 'Arrosé récemment.' }
 }
@@ -231,14 +252,40 @@ function urgenceFallback(
 
 export type ConseilIrrigation = Awaited<ReturnType<typeof computeConseilIrrigation>>
 
+/**
+ * Cultures réellement en place à arroser (revue du 2026-10-10) :
+ * - une vivace non terminée, quelle que soit son année ;
+ * - une annuelle de la saison ou de la précédente (un poireau d'hiver semé en
+ *   2026 est encore en terre en janvier 2027), dont la fenêtre de récolte
+ *   n'est pas finie depuis plus de JOURS_APRES_FIN_RECOLTE jours, ou sans
+ *   date de récolte. 12 % des cultures retenues le 2026-10-10 avaient fini
+ *   leur récolte sans être clôturées : elles sortaient « à arroser ».
+ */
+export function whereCulturesEnPlace(annee: number, maintenant: Date = new Date()): Prisma.CultureWhereInput {
+  const borne = new Date(maintenant.getTime() - JOURS_APRES_FIN_RECOLTE * 86_400_000)
+  return {
+    AND: [
+      { OR: [{ espece: { vivace: true } }, { annee: { in: [annee - 1, annee] } }] },
+      {
+        OR: [
+          { espece: { vivace: true } },
+          { dateRecolte: null, finRecolte: null },
+          { dateRecolte: { gte: borne } },
+          { finRecolte: { gte: borne } },
+        ],
+      },
+    ],
+  }
+}
+
 export async function computeConseilIrrigation(userId: string, annee: number) {
   // 1. Récupérer cultures actives avec planches + coordonnées parcelle
   const cultures = await prisma.culture.findMany({
     where: {
       userId,
-      annee,
       terminee: null,
       AND: [
+        whereCulturesEnPlace(annee),
         cultureIrrigationDemarreeWhere,
         {
           OR: [
@@ -394,12 +441,12 @@ export async function computeConseilIrrigation(userId: string, annee: number) {
         // Jours consécutifs sans pluie significative (>1mm)
         // Si aujourd'hui il pleut, joursSansPluie = 0
         let joursSansPluie = 0
-        if (pluieAujourdhui >= 1) {
+        if (pluieAujourdhui >= SEUIL_PLUIE_SIGNIFICATIVE) {
           joursSansPluie = 0
         } else {
           joursSansPluie = 1 // au moins aujourd'hui
           for (let i = historique.length - 1; i >= 0; i--) {
-            if (historique[i].precipitation < 1) joursSansPluie++
+            if (historique[i].precipitation < SEUIL_PLUIE_SIGNIFICATIVE) joursSansPluie++
             else break
           }
         }
@@ -413,7 +460,7 @@ export async function computeConseilIrrigation(userId: string, annee: number) {
         // Jours avant prochaine pluie significative (>3mm), à partir de demain
         let joursAvantPluie = 99
         for (let i = 1; i < previsions.length; i++) {
-          if (previsions[i].precipitation >= 3) {
+          if (previsions[i].precipitation >= SEUIL_PLUIE_SIGNIFICATIVE) {
             joursAvantPluie = i
             break
           }
