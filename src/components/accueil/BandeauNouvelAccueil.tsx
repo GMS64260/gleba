@@ -6,7 +6,7 @@ import { Sparkles, X } from "lucide-react"
 
 import { enregistrerVersionAccueil } from "@/lib/accueil/client"
 import { CHEMIN_ACCUEIL } from "@/lib/accueil/preference"
-import { definirVersionAccueilLocale } from "@/hooks/use-version-accueil"
+import { definirVersionAccueilLocale, useVersionAccueil } from "@/hooks/use-version-accueil"
 import { toast } from "@/hooks/use-toast"
 
 import { CLASSES_BOUTON_PRINCIPAL } from "./boutons"
@@ -16,11 +16,14 @@ import { CLASSES_BOUTON_PRINCIPAL } from "./boutons"
  * par compte). « Essayer » enregistre la préférence puis ouvre /aujourdhui ;
  * si l'enregistrement est refusé (compte démo figé en 403), la page s'ouvre
  * quand même et le message dit pourquoi le choix ne sera pas retenu.
+ * Invisible pour une personne déjà en v2 : depuis le 2026-10-10 le module
+ * maraîchage se rend aussi sous `/maraichage` pour elle.
  */
 export const CLE_BANDEAU_MASQUE = "gleba-bandeau-accueil-v2"
 
 export function BandeauNouvelAccueil() {
   const router = useRouter()
+  const { version } = useVersionAccueil()
   const [visible, setVisible] = React.useState(false)
   const [enCours, setEnCours] = React.useState(false)
 
@@ -33,7 +36,7 @@ export function BandeauNouvelAccueil() {
     }
   }, [])
 
-  if (!visible) return null
+  if (!visible || version === "v2") return null
 
   const essayer = async () => {
     if (enCours) return
