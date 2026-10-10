@@ -90,10 +90,13 @@ export async function blocagesVetoPontes(
 }
 
 export async function computeStockOeufsParLots(userId: string, now = new Date()) {
+  // Pas de plafond : ce calcul est désormais LE stock physique (écran, assistant,
+  // tableau de bord et valorisation comptable via `calculerStockOeufs`). Un
+  // `take: 2000` en date croissante aurait écarté les pontes les plus récentes,
+  // les seules encore en stock, dès qu'un compte dépasse 2 000 collectes.
   const productions = await prisma.productionOeuf.findMany({
     where: { userId },
     orderBy: { date: "asc" },
-    take: 2000,
     include: {
       lot: { select: { id: true, nom: true } },
       mouvementsStock: {
