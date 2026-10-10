@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
+import { whereSoinAnimalPresent } from '@/lib/elevage/soins-a-faire'
 import { calculerStockOeufs } from '@/lib/stocks-helpers'
 import { computeStockOeufsParLots } from '@/lib/elevage/stock-oeufs-lots'
 import { tauxPonteSaisonnalise } from '@/lib/lait'
@@ -151,12 +152,13 @@ export async function GET(request: NextRequest) {
         _count: true,
       }),
 
-      // Soins à planifier (non faits)
+      // Soins à planifier (non faits), d'un animal encore présent (ticket cmv294whk)
       prisma.soinAnimal.count({
         where: {
           userId,
           fait: false,
           datePrevue: { lte: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) }, // 30 jours
+          AND: [whereSoinAnimalPresent()],
         },
       }),
 

@@ -27,6 +27,7 @@ import { randomUUID } from 'node:crypto'
 import { ciblesAffectees, resyncEcartementLait } from '@/lib/elevage/attente-lait'
 import { fenetreSoin, supprimerSoin } from '@/lib/elevage/suppression-soin'
 import { estEspeceSansDelaiLait } from '@/lib/elevage/cibles-collecte-lait'
+import { whereSoinAnimalPresent } from '@/lib/elevage/soins-a-faire'
 import {
   PLANCHER_CASCADE_LAIT_J,
   PLANCHER_CASCADE_VIANDE_J,
@@ -89,6 +90,9 @@ export async function GET(request: NextRequest) {
         { lot: { especeAnimale: { filiere } } },
       ]
     }
+    // Ticket cmv294whk — un rappel n'est une action que pour un animal encore
+    // présent ; le carnet (mode historique) garde les soins d'un animal sorti.
+    if (rappels) where.AND = [whereSoinAnimalPresent()]
 
     // QA cmsqmq9q6 — l'ancien tri [fait asc, datePrevue asc, date desc]
     // entremêlait planifiés et réalisés sans ordre lisible (20/08, 10/05,
@@ -134,7 +138,7 @@ export async function GET(request: NextRequest) {
     }
 
     const soinsAVenir = await prisma.soinAnimal.count({
-      where: { userId: session.user.id, fait: false },
+      where: { userId: session.user.id, fait: false, AND: [whereSoinAnimalPresent()] },
     })
 
     return NextResponse.json({
