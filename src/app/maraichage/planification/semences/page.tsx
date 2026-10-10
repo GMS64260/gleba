@@ -530,7 +530,7 @@ function SemencesContent() {
       <div className="flex items-center justify-between gap-2 flex-wrap mb-4">
         {/* Responsive 360px — retour + titre débordent sinon */}
         <div className="flex items-center gap-4 flex-wrap">
-          <Link href="/?tab=planification">
+          <Link href="/maraichage?tab=planification">
             <Button variant="ghost" size="sm">
               <ArrowLeft className="h-4 w-4 mr-2" />
               Planification
@@ -602,7 +602,7 @@ function SemencesContent() {
                 listées avec le statut « Dose manquante » et n&apos;entrent pas dans les totaux à
                 commander.{" "}
                 <Link
-                  href="/?tab=referentiel"
+                  href="/maraichage?tab=referentiel"
                   className="underline underline-offset-2 hover:text-amber-900"
                 >
                   Compléter le référentiel
