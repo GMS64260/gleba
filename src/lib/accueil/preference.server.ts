@@ -1,7 +1,7 @@
 /**
  * Lecture serveur de la version d'accueil d'une PERSONNE (acteur) : la page
  * `/dashboard` redirige en 307 avant tout rendu, le middleware ne lisant pas
- * la base. Toute panne retombe sur v1, l'accueil historique.
+ * la base. Toute panne retombe sur la version par défaut.
  */
 
 import prisma from "@/lib/prisma"
@@ -40,7 +40,7 @@ export async function lireVersionAccueil(acteurId: string): Promise<VersionAccue
       accueilDemoEnv: process.env[ENV_ACCUEIL_DEMO],
     })
   } catch (e) {
-    console.error("[accueil] version d'accueil illisible, repli v1 :", e)
+    console.error("[accueil] version d'accueil illisible, repli sur la version par défaut :", e)
     return VERSION_ACCUEIL_DEFAUT
   }
 }
