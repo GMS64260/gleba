@@ -12,6 +12,8 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import { createVenteFromRecolte, deleteAutoEntry } from '@/lib/auto-compta'
 import { invalidateKpi } from '@/lib/kpi'
 import { creerFacture, annulerFactureLiee } from '@/lib/facture-utils'
+import { jourCivilLocal } from '@/lib/cultures/execution'
+import { refusRecolteAvantDebut } from '@/lib/recolte/date-coherente'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -120,12 +122,47 @@ export async function PUT(
       )
     }
 
+    // QA cmv2r19al — même règle qu'à la création : la date de récolte ne
+    // précède pas le début de la culture. Contrôlée seulement quand la date, la
+    // culture ou l'espèce change, pour ne pas bloquer la retouche d'une ligne
+    // ancienne.
+    // La culture visée est relue dans le compte : un rattachement à la culture
+    // d'un autre compte n'était pas vérifié.
+    const data = validationResult.data
+    const cultureCible = data.cultureId ?? existing.cultureId
+    const especeCible = data.especeId ?? existing.especeId
+    const dateCible = data.date ?? existing.date
+    const dateChange = data.date !== undefined && jourCivilLocal(data.date) !== jourCivilLocal(existing.date)
+    if (cultureCible !== existing.cultureId || especeCible !== existing.especeId || dateChange) {
+      const culture = await prisma.culture.findUnique({
+        where: { id: cultureCible, userId: session!.user.id },
+        select: { id: true, especeId: true, dateSemis: true, datePlantation: true, semisFait: true, plantationFaite: true },
+      })
+      if (!culture) {
+        return NextResponse.json(
+          { error: `La culture #${cultureCible} n'existe pas` },
+          { status: 400 }
+        )
+      }
+      // Même cohérence qu'à la création : l'espèce est celle de la culture.
+      if (culture.especeId !== especeCible) {
+        return NextResponse.json(
+          { error: `L'espèce de la récolte doit correspondre à l'espèce de la culture #${culture.id}`, champ: 'especeId' },
+          { status: 400 }
+        )
+      }
+      const refusDate = refusRecolteAvantDebut(culture, dateCible)
+      if (refusDate) {
+        return NextResponse.json({ error: refusDate, champ: 'date' }, { status: 400 })
+      }
+    }
+
     // Mise à jour + ajustement de l'inventaire si la récolte est en stock
     // (changement de quantité ou d'espèce → le compteur doit suivre).
     const recolte = await prisma.$transaction(async (tx) => {
       const updated = await tx.recolte.update({
         where: { id: recolteId },
-        data: validationResult.data,
+        data,
         include: {
           espece: true,
           culture: true,

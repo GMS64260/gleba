@@ -14,7 +14,9 @@ export const recolteSchema = z.object({
 })
 
 export const createRecolteSchema = recolteSchema
-export const updateRecolteSchema = recolteSchema.partial()
+// Le défaut « aujourd'hui » de la création ne vaut pas en modification :
+// `.partial()` le conservait, et un PUT sans date redatait la récolte du jour.
+export const updateRecolteSchema = recolteSchema.extend({ date: z.coerce.date() }).partial()
 
 /**
  * BUG-07 — Schéma PATCH pour les transitions de statut (vendu, perte, etc).
