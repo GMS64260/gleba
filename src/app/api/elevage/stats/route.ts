@@ -33,6 +33,10 @@ export async function GET(request: NextRequest) {
     const startOfPrevYear = new Date(annee - 1, 0, 1)
     const endOfPrevYear = new Date(annee - 1, 11, 31, 23, 59, 59)
 
+    // Lots de ponte : une seule lecture, partagée par le stock physique et les
+    // statuts (commercialisables, bloqués véto).
+    const stockOeufsLotsPromise = computeStockOeufsParLots(userId)
+
     // Stats animaux
     const [
       animauxActifs,
@@ -185,14 +189,15 @@ export async function GET(request: NextRequest) {
         return lowStock.filter(a => a.stock !== null && a.stockMin !== null && a.stock <= a.stockMin).length
       }),
 
-      // Stock œufs calculé
-      calculerStockOeufs(userId),
+      // Stock œufs : physique (QA cmv29bm4o — même chiffre que Production >
+      // Œufs, calculé une seule fois et partagé avec la ligne suivante).
+      stockOeufsLotsPromise.then((lots) => calculerStockOeufs(userId, lots)),
 
       // QA cmsw97cn5 (2026-08-16) — statuts par lot (SSOT partagée avec
       // Production > Œufs et l'assistant) : le dashboard annonçait
       // « disponibles » un stock physique intégralement DCR dépassée/bloqué
       // véto, et son seuil d'alerte portait sur le physique.
-      computeStockOeufsParLots(userId),
+      stockOeufsLotsPromise,
 
       // Mortalité annee (animaux morts cette annee)
       prisma.animal.count({

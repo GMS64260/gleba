@@ -8,6 +8,7 @@ import { arrondiQuantiteStock } from '@/lib/stocks/agregation'
 import { uniteQuantiteRecolte, type UniteQuantite } from '@/lib/recolte/projection'
 import { ajouterQuantite, arrondirQuantites, type QuantiteParUnite } from '@/lib/recolte/quantites'
 import { chargerSurchargesRendement, rendementEffectif } from '@/lib/recolte/rendement-effectif'
+import { computeStockOeufsParLots, type StockOeufsParLots } from '@/lib/elevage/stock-oeufs-lots'
 
 /**
  * Nombre d'œufs par unité de vente. QA cmsjioqg — le conditionnement n'était
@@ -197,39 +198,62 @@ export async function calculerStocksNet(
 }
 
 /**
- * Calcule le stock d'oeufs disponible pour un utilisateur
- * Stock = Produits - Cassés - Souillés - Vendus
+ * Stock physique d'œufs d'un utilisateur, avec son détail.
  *
  * Bug cmp8rw40u (Marc 2026-05-16) — les œufs souillés étaient saisis
  * mais jamais sortis du stock, donc "stock œufs == production" même
  * quand l'éleveur déclarait des sales. On les soustrait désormais comme
  * les cassés (ils ne sont pas vendables).
+ *
+ * QA cmv29bm4o (2026-10-10) — le tableau de bord annonçait 1 441 œufs et
+ * Production > Œufs 1 435 : ici on déduisait les ventes commerciales
+ * (`VenteProduit`, 1 douzaine = 12), là les sorties de lot
+ * (`MouvementStockOeuf` : 18 vendus, dons, autoconsommation…). Deux
+ * registres, deux stocks. Le stock physique est celui des lots de ponte
+ * (`computeStockOeufsParLots`, source unique de l'écran Production et de
+ * l'assistant) ; le détail restitue ses sorties par type. Les ventes
+ * commerciales ne sont plus un décompte de stock : elles passent par les
+ * sorties FIFO des lots (`stock-oeufs-vente.ts`, miroir écrit à chaque vente
+ * depuis 2026-07 ; vérifié le 2026-10-10 : aucun compte n'a de vente d'œufs
+ * sans ses sorties de lot).
+ *
+ * Le détail est informatif : chaque lot est borné à zéro, l'API refuse une
+ * sortie supérieure au restant, donc produits − cassés − souillés − sorties
+ * = stock sauf donnée incohérente héritée.
+ *
+ * `lots` : résultat déjà calculé par l'appelant (la route stats le charge
+ * aussi), pour ne pas relire deux fois pontes, mouvements et blocages véto.
  */
-export async function calculerStockOeufs(userId: string): Promise<{
+export async function calculerStockOeufs(
+  userId: string,
+  lots?: StockOeufsParLots,
+): Promise<{
   stockNet: number
-  detail: { produits: number; casses: number; sales: number; vendus: number }
+  detail: { produits: number; casses: number; sales: number; vendus: number; autresSorties: number }
 }> {
-  const production = await prisma.productionOeuf.aggregate({
-    where: { userId },
-    _sum: { quantite: true, casses: true, sales: true },
-  })
+  const [production, sorties, lotsCalcules] = await Promise.all([
+    prisma.productionOeuf.aggregate({
+      where: { userId },
+      _sum: { quantite: true, casses: true, sales: true },
+    }),
+    prisma.mouvementStockOeuf.groupBy({
+      by: ['type'],
+      where: { userId },
+      _sum: { quantite: true },
+    }),
+    lots ?? computeStockOeufsParLots(userId),
+  ])
 
   const produits = production._sum.quantite || 0
   const casses = production._sum.casses || 0
   const sales = production._sum.sales || 0
-
-  // Total vendus (normalisation d'unité : douzaine -> x12)
-  const ventes = await prisma.venteProduit.findMany({
-    // Revue élevage 2026-07-21 — exclure les ventes annulées (soft-delete),
-    // sinon leurs œufs restent déduits du stock à perpétuité.
-    where: { userId, type: 'oeufs', annule: false },
-    select: { quantite: true, unite: true },
-  })
-
-  const vendus = ventes.reduce((sum, v) => sum + oeufsDepuisUnite(v.quantite, v.unite), 0)
+  const vendus = sorties.find((s) => s.type === 'vente')?._sum.quantite || 0
+  const autresSorties = sorties
+    .filter((s) => s.type !== 'vente')
+    .reduce((somme, s) => somme + (s._sum.quantite || 0), 0)
 
   return {
-    stockNet: produits - casses - sales - vendus,
-    detail: { produits, casses, sales, vendus },
+    stockNet: lotsCalcules.stats.stockPhysique,
+    detail: { produits, casses, sales, vendus, autresSorties },
   }
 }
