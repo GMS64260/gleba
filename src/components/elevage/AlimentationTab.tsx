@@ -845,7 +845,14 @@ function ConsommationsSubTab({ year }: { year?: number } = {}) {
                       emptyLabel="Sélectionner un animal"
                     />
                   )}
-                  <p className="text-xs text-muted-foreground">Une saisie globale sera ventilée par effectif dans l'analyse économique.</p>
+                  {/* QA cmv2evlla — l'aide promettait une ventilation par effectif
+                      que l'analyse économique n'a jamais faite : une saisie
+                      globale y reste dans « Non affecté » (analyse-couts). */}
+                  <p className="text-xs text-muted-foreground">
+                    {formData.cible === "tous"
+                      ? "Une saisie globale n'est imputée à aucun atelier : l'économie de l'élevage la compte dans « Non affecté », sans répartition. Choisissez un lot ou un animal pour imputer son coût."
+                      : "Le coût est imputé à l'atelier de l'espèce choisie dans l'économie de l'élevage."}
+                  </p>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2"><Label>Date</Label><Input type="date" value={formData.date} onChange={(e) => setFormData(f => ({ ...f, date: e.target.value }))} /></div>
