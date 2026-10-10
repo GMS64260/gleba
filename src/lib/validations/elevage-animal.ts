@@ -5,7 +5,7 @@ import { normaliserSexe, SEXES_ANIMAL } from '@/lib/elevage/sexe'
 
 /**
  * Borne plausible pour une date d'animal (naissance / arrivée).
- * Bug éleveur 2026-07-21 (Cyril) — une faute de frappe d'année ("0204" au
+ * Bug éleveur 2026-07-21 — une faute de frappe d'année ("0204" au
  * lieu de "2024") passait sans contrôle et faussait la compta (dépense
  * d'achat datée en l'an 204). On rejette toute année hors [1990 ; année+1].
  * `null`/`undefined` restent valides (champ optionnel).

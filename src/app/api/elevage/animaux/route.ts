@@ -546,7 +546,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'La mère et le père doivent être deux animaux distincts' }, { status: 400 })
     }
     if (provenance !== undefined) updateData.provenance = provenance ?? null
-    // Bug éleveur 2026-07-21 (Cyril) — prixAchat était absent du PATCH : toute
+    // Bug éleveur 2026-07-21 — prixAchat était absent du PATCH : toute
     // modification du prix d'achat (notamment la remise à 0 d'un achat saisi par
     // erreur) était silencieusement ignorée, sans erreur. On l'applique désormais,
     // 0 compris (0/null ⇒ la resync auto-compta ci-dessous supprime la dépense).
