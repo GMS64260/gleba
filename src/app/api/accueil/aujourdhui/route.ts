@@ -12,18 +12,30 @@
 import { NextResponse } from "next/server"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { composerAujourdhui } from "@/lib/accueil/composition.server"
+import { estIdTuile, type IdTuile } from "@/lib/accueil/disposition"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
 
 const NO_STORE = { "Cache-Control": "no-store, no-cache, must-revalidate" }
 
-export async function GET() {
+/** `?tuiles=verger,carte` : tuiles optionnelles affichées par la personne, inconnues ignorées. */
+export function tuilesDemandees(url: string | undefined): IdTuile[] {
+  if (!url) return []
+  try {
+    const brut = new URL(url).searchParams.get("tuiles") ?? ""
+    return brut.split(",").map((t) => t.trim()).filter(estIdTuile)
+  } catch {
+    return []
+  }
+}
+
+export async function GET(request?: Request) {
   const { error, session } = await requireAuthApi()
   if (error) return error
 
   try {
-    const donnees = await composerAujourdhui(session)
+    const donnees = await composerAujourdhui(session, { tuiles: tuilesDemandees(request?.url) })
     return NextResponse.json(donnees, { headers: NO_STORE })
   } catch (e) {
     console.error("GET /api/accueil/aujourdhui error:", e)

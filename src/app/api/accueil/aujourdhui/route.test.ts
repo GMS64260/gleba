@@ -14,7 +14,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
 vi.mock("@/lib/accueil/composition.server", () => ({ composerAujourdhui: mocks.composerAujourdhui }))
 
-import { GET } from "./route"
+import { GET, tuilesDemandees } from "./route"
 
 const session = { user: { id: "exploitation-1", acteurId: "personne-2", role: "USER" } }
 
@@ -39,7 +39,7 @@ describe("GET /api/accueil/aujourdhui", () => {
     const res = await GET()
 
     expect(res.status).toBe(200)
-    expect(mocks.composerAujourdhui).toHaveBeenCalledWith(session)
+    expect(mocks.composerAujourdhui).toHaveBeenCalledWith(session, { tuiles: [] })
     expect(res.headers.get("Cache-Control")).toContain("no-store")
     expect(await res.json()).toMatchObject({ date: "2026-10-09" })
   })
@@ -51,5 +51,18 @@ describe("GET /api/accueil/aujourdhui", () => {
 
     expect(res.status).toBe(500)
     expect((await res.json()).error).toContain("Impossible de composer")
+  })
+})
+
+describe("tuilesDemandees", () => {
+  it("lit les tuiles optionnelles de la requête et ignore les inconnues", () => {
+    expect(tuilesDemandees("http://x/api/accueil/aujourdhui?tuiles=verger,carte,inconnue, ventes")).toEqual(["verger", "carte", "ventes"])
+    expect(tuilesDemandees("http://x/api/accueil/aujourdhui")).toEqual([])
+    expect(tuilesDemandees(undefined)).toEqual([])
+  })
+
+  it("transmet les tuiles demandées à la composition", async () => {
+    await GET(new Request("http://x/api/accueil/aujourdhui?tuiles=journal"))
+    expect(mocks.composerAujourdhui).toHaveBeenCalledWith(session, { tuiles: ["journal"] })
   })
 })
