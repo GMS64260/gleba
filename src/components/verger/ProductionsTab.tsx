@@ -37,6 +37,7 @@ import { Combobox } from "@/components/ui/combobox"
 import { useToast } from "@/hooks/use-toast"
 import { AssistantPlantationDialog } from "./AssistantPlantationDialog"
 import { todayLocalISO } from '@/lib/format-utils'
+import { labelStatutRecolteArbre } from '@/lib/verger/statut-recolte-arbre'
 
 // ============================================================
 // Types
@@ -742,7 +743,7 @@ function RecoltesFruitsSubTab() {
                       <TableCell className="capitalize">{r.qualite || "-"}</TableCell>
                       <TableCell>
                         <Badge variant={r.statut === "perte" ? "destructive" : "outline"}>
-                          {r.statut === "perte" ? "Perte" : "Usage interne"}
+                          {labelStatutRecolteArbre(r.statut)}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-muted-foreground text-sm">{r.notes || "-"}</TableCell>

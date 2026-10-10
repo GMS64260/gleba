@@ -21,6 +21,7 @@ import { GpsMapPickerDialog } from "@/components/gps/GpsMapPickerDialog"
 import { roundCoord } from "@/lib/geolocation"
 import { parcelleCompatibleVerger } from "@/lib/verger/lot-arbres"
 import { CONDUITES_ARBRE, ETATS_ARBRE as ETATS } from "@/lib/verger/arbre-constants"
+import { labelStatutRecolteArbre } from "@/lib/verger/statut-recolte-arbre"
 
 interface Arbre {
   id: number
@@ -853,8 +854,8 @@ export default function DetailArbrePage() {
                               {new Date(r.date).toLocaleDateString("fr-FR")}
                             </td>
                             <td className="p-2 text-right font-medium">{r.quantite} kg</td>
-                            <td className="p-2">{r.qualite || "—"}</td>
-                            <td className="p-2">{r.statut}</td>
+                            <td className="p-2 capitalize">{r.qualite || "—"}</td>
+                            <td className="p-2">{labelStatutRecolteArbre(r.statut)}</td>
                           </tr>
                         ))}
                       </tbody>
