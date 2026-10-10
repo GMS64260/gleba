@@ -6,6 +6,7 @@ import { MarketingShell } from "@/components/seo/MarketingShell";
 import prisma from "@/lib/prisma";
 import { nomPublic, originePublique, visibiliteEnfantPublic, visibiliteReferentielPublic } from "@/lib/referentiel-public";
 import { ESPECE_TYPES, estTypeVerger, libelleTypeEspece } from "@/lib/validations/espece";
+import { ogBase } from "@/lib/seo/og";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,7 @@ export const metadata: Metadata = {
   description: "Explorez le référentiel agricole contributif de Gleba : légumes, arbres fruitiers, variétés et itinéraires techniques contextualisés par climat et terroir.",
   alternates: { canonical: "https://gleba.fr/referentiel" },
   openGraph: {
+    ...ogBase,
     title: "Le référentiel agricole ouvert de Gleba",
     description: "Des connaissances agricoles structurées, sourcées et adaptées aux terroirs.",
     url: "https://gleba.fr/referentiel",

@@ -1,15 +1,16 @@
 import type { Metadata } from "next";
 import { BusinessLanding } from "@/components/seo/BusinessLanding";
+import { ogBase } from "@/lib/seo/og";
 
 export const metadata: Metadata = {
   title: "Logiciel d'élevage de volailles — Ponte, lots, soins et coûts",
   description: "Suivez poules et volailles par animal ou lot : ponte, alimentation, traitements, reproduction, naissances, mortalité, stocks et coûts dans Gleba.",
   alternates: { canonical: "https://gleba.fr/logiciel-elevage-volailles" },
-  openGraph: { title: "Logiciel de gestion d'élevage de volailles — Gleba", description: "Lots, ponte, alimentation, soins, reproduction et coûts.", url: "https://gleba.fr/logiciel-elevage-volailles", type: "article" },
+  openGraph: { ...ogBase, title: "Logiciel de gestion d'élevage de volailles — Gleba", description: "Lots, ponte, alimentation, soins, reproduction et coûts.", url: "https://gleba.fr/logiciel-elevage-volailles", type: "article" },
 };
 
 export default function Page() {
-  return <BusinessLanding breadcrumb="Logiciel d'élevage de volailles" currentPath="/logiciel-elevage-volailles" eyebrow="Lots · Ponte · Aliments · Suivi sanitaire" title="Suivez votre élevage de volailles" highlightedTitle="du lot jusqu'au coût de production" introduction="Gleba réunit cheptel, lots, ponte, stocks d'aliments, soins, reproduction et événements d'élevage. Les saisies portent sur un animal identifié ou sur un lot, et les indicateurs œufs ne s'affichent que lorsqu'une activité de ponte existe." proof="la collecte d'œufs, les stocks, les traitements planifiés ou réalisés et les indicateurs de ponte reposent sur des données distinctes ; le dashboard évite de compter ou d'afficher plusieurs fois la même production." screenshot={{ src: "/screenshots/gleba-gestion-elevage.png", alt: "Suivi réel d'un élevage de volailles dans Gleba", caption: "Le tableau de bord Élevage du compte de démonstration, sans maquette ni fonctionnalité fictive." }} capabilities={[
+  return <BusinessLanding breadcrumb="Logiciel d'élevage de volailles" currentPath="/logiciel-elevage-volailles" eyebrow="Lots · Ponte · Aliments · Suivi sanitaire" title="Suivez votre élevage de volailles" highlightedTitle="du lot jusqu'au coût de production" introduction="Gleba réunit cheptel, lots, ponte, stocks d'aliments, soins, reproduction et événements d'élevage. Les saisies portent sur un animal identifié ou sur un lot, et les indicateurs œufs ne s'affichent que lorsqu'une activité de ponte existe." proof="la collecte d'œufs, les stocks, les traitements planifiés ou réalisés et les indicateurs de ponte reposent sur des données distinctes ; le dashboard évite de compter ou d'afficher plusieurs fois la même production." screenshot={{ src: "/screenshots/vitrine-elevage-bureau.webp", alt: "Échéances et indicateurs de la semaine de l'atelier élevage dans Gleba", caption: "Le tableau de bord Élevage du compte de démonstration : échéances, soins, œufs collectés et aliments distribués de la semaine.", width: 1920, height: 722 }} capabilities={[
     { title: "Animaux et lots", description: "Créez des animaux identifiés ou des lots avec espèce, race, effectif, provenance, statut et parcelle." },
     { title: "Suivi de ponte", description: "Enregistrez les œufs produits, les œufs cassés, la date et le lot ou l'animal concerné." },
     { title: "Alimentation", description: "Consignez achats, distributions et stocks d'aliments pour suivre les quantités et les dépenses." },

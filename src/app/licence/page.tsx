@@ -5,8 +5,9 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
 export const metadata = {
-  title: "Licence — Gleba",
-  description: "Informations sur la licence libre AGPL-3.0 de Gleba.",
+  title: "Licence libre AGPL-3.0",
+  description: "Gleba est un logiciel libre sous licence AGPL-3.0 : ce que la licence autorise, ce qu'elle impose et où trouver le code source.",
+  alternates: { canonical: "https://gleba.fr/licence" },
 }
 
 export default function LicencePage() {

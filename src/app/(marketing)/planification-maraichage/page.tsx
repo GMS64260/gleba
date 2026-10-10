@@ -1,15 +1,16 @@
 import type { Metadata } from "next";
 import { BusinessLanding } from "@/components/seo/BusinessLanding";
+import { ogBase } from "@/lib/seo/og";
 
 export const metadata: Metadata = {
   title: "Planification maraîchère — Plan de culture, rotations et semis",
   description: "Construisez votre planification maraîchère avec itinéraires techniques, calendrier de semis, planches, rotations, besoins en plants et suivi des cultures.",
   alternates: { canonical: "https://gleba.fr/planification-maraichage" },
-  openGraph: { title: "Logiciel de planification maraîchère — Gleba", description: "Plan de culture, ITP, semis, planches, rotations et récoltes.", url: "https://gleba.fr/planification-maraichage", type: "article" },
+  openGraph: { ...ogBase, title: "Logiciel de planification maraîchère — Gleba", description: "Plan de culture, ITP, semis, planches, rotations et récoltes.", url: "https://gleba.fr/planification-maraichage", type: "article" },
 };
 
 export default function Page() {
-  return <BusinessLanding breadcrumb="Planification maraîchère" currentPath="/planification-maraichage" eyebrow="Plan de culture · Semis · Rotations" title="Une planification maraîchère" highlightedTitle="reliée au travail réellement réalisé" introduction="Gleba transforme les itinéraires techniques en cultures planifiées, les place sur les planches et conserve ensuite semis, plantations, interventions et récoltes dans le même outil." proof="les ITP, besoins, prévisionnels, affectations aux planches, rotations et calendriers sont des écrans distincts du module Maraîchage." screenshot={{ src: "/screenshots/gleba-planification-maraichage.png", alt: "Planification de cultures maraîchères dans Gleba", caption: "Capture authentique de l'espace Organiser ma saison du compte de démonstration." }} capabilities={[
+  return <BusinessLanding breadcrumb="Planification maraîchère" currentPath="/planification-maraichage" eyebrow="Plan de culture · Semis · Rotations" title="Une planification maraîchère" highlightedTitle="reliée au travail réellement réalisé" introduction="Gleba transforme les itinéraires techniques en cultures planifiées, les place sur les planches et conserve ensuite semis, plantations, interventions et récoltes dans le même outil." proof="les ITP, besoins, prévisionnels, affectations aux planches, rotations et calendriers sont des écrans distincts du module Maraîchage." screenshot={{ src: "/screenshots/vitrine-planification-bureau.webp", alt: "Planification de cultures maraîchères dans Gleba", caption: "Capture authentique de l'espace Organiser ma saison du compte de démonstration.", width: 1920, height: 1200 }} capabilities={[
     { title: "Itinéraires techniques", description: "Définissez les semaines de semis, plantation et récolte, les espacements, la densité et la durée de chaque conduite." },
     { title: "Calendrier climatique", description: "Les périodes peuvent être décalées selon la zone climatique configurée pour l'exploitation." },
     { title: "Besoins et prévisionnels", description: "Préparez les quantités et surfaces attendues avant d'affecter les séries aux planches." },

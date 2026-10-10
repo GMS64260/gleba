@@ -1,15 +1,16 @@
 import type { Metadata } from "next";
 import { BusinessLanding } from "@/components/seo/BusinessLanding";
+import { ogBase } from "@/lib/seo/og";
 
 export const metadata: Metadata = {
   title: "Rotation des cultures en maraîchage — Cycles et planches",
   description: "Créez des rotations pluriannuelles, associez chaque année à un itinéraire technique et affectez les cycles aux planches avec Gleba.",
   alternates: { canonical: "https://gleba.fr/rotation-cultures-maraichage" },
-  openGraph: { title: "Gestion des rotations de cultures maraîchères — Gleba", description: "Cycles pluriannuels, ITP, planches et historique des cultures.", url: "https://gleba.fr/rotation-cultures-maraichage", type: "article" },
+  openGraph: { ...ogBase, title: "Gestion des rotations de cultures maraîchères — Gleba", description: "Cycles pluriannuels, ITP, planches et historique des cultures.", url: "https://gleba.fr/rotation-cultures-maraichage", type: "article" },
 };
 
 export default function Page() {
-  return <BusinessLanding breadcrumb="Rotation des cultures" currentPath="/rotation-cultures-maraichage" eyebrow="Rotations · Planches · ITP" title="Organisez vos rotations de cultures" highlightedTitle="sur plusieurs années et par planche" introduction="Dans Gleba, une rotation décrit une succession annuelle d'itinéraires techniques. Elle peut ensuite être affectée aux planches concernées afin de relier le cycle prévu à l'historique des cultures de la ferme." proof="l'écran Rotations affiche le nombre d'années, le plan de rotation, les planches rattachées et le statut actif, incomplet ou non appliqué ; l'ajout, l'édition, la suppression et l'export sont déjà disponibles." screenshot={{ src: "/screenshots/gleba-rotations-maraichage.png", alt: "Écran réel des rotations de cultures maraîchères dans Gleba", caption: "Rotations de trois et quatre ans du compte démo, avec cultures successives et nombre de planches affectées." }} capabilities={[
+  return <BusinessLanding breadcrumb="Rotation des cultures" currentPath="/rotation-cultures-maraichage" eyebrow="Rotations · Planches · ITP" title="Organisez vos rotations de cultures" highlightedTitle="sur plusieurs années et par planche" introduction="Dans Gleba, une rotation décrit une succession annuelle d'itinéraires techniques. Elle peut ensuite être affectée aux planches concernées afin de relier le cycle prévu à l'historique des cultures de la ferme." proof="l'écran Rotations affiche le nombre d'années, le plan de rotation, les planches rattachées et le statut actif, incomplet ou non appliqué ; l'ajout, l'édition, la suppression et l'export sont déjà disponibles." screenshot={{ src: "/screenshots/vitrine-rotations-bureau.webp", alt: "Écran réel des rotations de cultures maraîchères dans Gleba", caption: "Rotations de trois et quatre ans du compte démo, avec cultures successives et nombre de planches affectées.", width: 1920, height: 1200 }} capabilities={[
     { title: "Cycles pluriannuels", description: "Définissez le nombre d'années du cycle et nommez la rotation selon l'organisation de la ferme." },
     { title: "Une étape par année", description: "Associez chaque année à un itinéraire technique et à la culture qu'il décrit." },
     { title: "Affectation aux planches", description: "Rattachez une rotation aux planches où elle doit être utilisée et visualisez le nombre d'affectations." },

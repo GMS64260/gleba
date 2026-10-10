@@ -1,15 +1,16 @@
 import type { Metadata } from "next";
 import { BusinessLanding } from "@/components/seo/BusinessLanding";
+import { ogBase } from "@/lib/seo/og";
 
 export const metadata: Metadata = {
   title: "Logiciel d'élevage ovin — Troupeau, reproduction et soins",
   description: "Suivez brebis et béliers : boucles, lots, généalogie, agnelages détaillés, traitements, délais d'attente, mouvements, lait et registres avec Gleba.",
   alternates: { canonical: "https://gleba.fr/logiciel-elevage-ovin" },
-  openGraph: { title: "Logiciel de gestion d'élevage ovin — Gleba", description: "Troupeau ovin, reproduction, agnelages, soins, alimentation et mouvements.", url: "https://gleba.fr/logiciel-elevage-ovin", type: "article" },
+  openGraph: { ...ogBase, title: "Logiciel de gestion d'élevage ovin — Gleba", description: "Troupeau ovin, reproduction, agnelages, soins, alimentation et mouvements.", url: "https://gleba.fr/logiciel-elevage-ovin", type: "article" },
 };
 
 export default function Page() {
-  return <BusinessLanding breadcrumb="Logiciel d'élevage ovin" currentPath="/logiciel-elevage-ovin" eyebrow="Boucles · Agnelages · Soins · Registres" title="Suivez votre élevage ovin" highlightedTitle="de l'animal aux événements du troupeau" introduction="Gleba réunit brebis, béliers et lots avec leur identification, généalogie, reproduction, agnelages détaillés, traitements, alimentation et mouvements entre parcelles. Les ateliers laitiers peuvent aussi saisir leurs collectes et délais d'attente." proof="les animaux sont recherchables par boucle, chaque petit d'une naissance peut être détaillé, les injections sont tracées individuellement et les inventaires et registres sont générés à partir des données saisies." screenshot={{ src: "/screenshots/gleba-gestion-troupeau.png", alt: "Liste réelle de brebis et chèvres suivies dans Gleba", caption: "Capture du compte de démonstration : animaux identifiés, espèces, races, sexe et statut, sans maquette." }} capabilities={[
+  return <BusinessLanding breadcrumb="Logiciel d'élevage ovin" currentPath="/logiciel-elevage-ovin" eyebrow="Boucles · Agnelages · Soins · Registres" title="Suivez votre élevage ovin" highlightedTitle="de l'animal aux événements du troupeau" introduction="Gleba réunit brebis, béliers et lots avec leur identification, généalogie, reproduction, agnelages détaillés, traitements, alimentation et mouvements entre parcelles. Les ateliers laitiers peuvent aussi saisir leurs collectes et délais d'attente." proof="les animaux sont recherchables par boucle, chaque petit d'une naissance peut être détaillé, les injections sont tracées individuellement et les inventaires et registres sont générés à partir des données saisies." screenshot={{ src: "/screenshots/vitrine-elevage-bureau.webp", alt: "Échéances sanitaires du cheptel dans Gleba", caption: "Échéances du cheptel de démonstration : traitements vétérinaires en retard et diagnostic de gestation à prévoir, animal par animal.", width: 1920, height: 722 }} capabilities={[
     { title: "Boucles, animaux et lots", description: "Recherchez un ovin par numéro de boucle ou nom et utilisez le suivi individuel ou collectif selon le troupeau." },
     { title: "Identification et races", description: "Conservez identifiant, espèce, race, sexe, date de naissance, provenance, poids et statut de l'animal." },
     { title: "Généalogie", description: "Reliez mère et père connus afin de consulter les ascendants enregistrés et les liens de parenté disponibles." },

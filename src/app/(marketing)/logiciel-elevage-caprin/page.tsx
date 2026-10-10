@@ -1,15 +1,16 @@
 import type { Metadata } from "next";
 import { BusinessLanding } from "@/components/seo/BusinessLanding";
+import { ogBase } from "@/lib/seo/og";
 
 export const metadata: Metadata = {
   title: "Logiciel d'élevage caprin — Chèvres, soins et lait",
   description: "Gérez chèvres et boucs : boucles, lots, généalogie, mises bas détaillées, injections, délais d'attente, lait, fromages et registres avec Gleba.",
   alternates: { canonical: "https://gleba.fr/logiciel-elevage-caprin" },
-  openGraph: { title: "Logiciel de gestion d'élevage caprin — Gleba", description: "Troupeau caprin, boucles, mises bas, soins tracés, lait, fromages et registres.", url: "https://gleba.fr/logiciel-elevage-caprin", type: "article" },
+  openGraph: { ...ogBase, title: "Logiciel de gestion d'élevage caprin — Gleba", description: "Troupeau caprin, boucles, mises bas, soins tracés, lait, fromages et registres.", url: "https://gleba.fr/logiciel-elevage-caprin", type: "article" },
 };
 
 export default function Page() {
-  return <BusinessLanding breadcrumb="Logiciel d'élevage caprin" currentPath="/logiciel-elevage-caprin" eyebrow="Boucles · Mises bas · Soins · Lait" title="Suivez votre élevage caprin" highlightedTitle="du troupeau jusqu'aux collectes de lait" introduction="Gleba relie chèvres, boucs et lots à l'identification, la reproduction, aux naissances détaillées, aux soins, à l'alimentation et aux mouvements. Pour l'atelier laitier, les traites, délais d'attente et lots de fabrication fromagère disposent de données dédiées." proof="la recherche fonctionne par numéro de boucle ou nom, chaque cabri d'une portée peut être décrit séparément, les injections sont acquittées une par une et les registres d'élevage, sanitaire et d'inventaire sont exportables depuis l'application." screenshot={{ src: "/screenshots/gleba-gestion-troupeau.png", alt: "Chèvres Alpine suivies dans la liste des animaux de Gleba", caption: "Capture authentique du compte démo avec plusieurs chèvres Alpine identifiées et leur race." }} capabilities={[
+  return <BusinessLanding breadcrumb="Logiciel d'élevage caprin" currentPath="/logiciel-elevage-caprin" eyebrow="Boucles · Mises bas · Soins · Lait" title="Suivez votre élevage caprin" highlightedTitle="du troupeau jusqu'aux collectes de lait" introduction="Gleba relie chèvres, boucs et lots à l'identification, la reproduction, aux naissances détaillées, aux soins, à l'alimentation et aux mouvements. Pour l'atelier laitier, les traites, délais d'attente et lots de fabrication fromagère disposent de données dédiées." proof="la recherche fonctionne par numéro de boucle ou nom, chaque cabri d'une portée peut être décrit séparément, les injections sont acquittées une par une et les registres d'élevage, sanitaire et d'inventaire sont exportables depuis l'application." screenshot={{ src: "/screenshots/vitrine-elevage-bureau.webp", alt: "Échéances sanitaires de chèvres Alpine dans Gleba", caption: "Échéances des chèvres de démonstration : traitements vétérinaires en retard et diagnostic de gestation à prévoir, avec leur identifiant.", width: 1920, height: 722 }} capabilities={[
     { title: "Boucles, chèvres et lots", description: "Recherchez un caprin par numéro de boucle ou nom, suivez-le individuellement ou rattachez-le à un lot actif." },
     { title: "Généalogie", description: "Rattachez les parents connus et conservez les liens utiles à la lecture de l'ascendance enregistrée." },
     { title: "Saillies et mises bas", description: "Consignez monte, reproducteurs, confirmation, mise bas attendue et naissance ; détaillez chaque cabri avec sexe, boucles, mode d'élevage, poids et état." },

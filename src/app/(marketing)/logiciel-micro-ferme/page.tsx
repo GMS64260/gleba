@@ -1,15 +1,17 @@
 import type { Metadata } from "next";
 import { BusinessLanding } from "@/components/seo/BusinessLanding";
+import { ogBase } from "@/lib/seo/og";
 
 export const metadata: Metadata = {
-  title: "Logiciel pour micro-ferme professionnelle et diversifiée",
-  description: "Le carnet d'exploitation libre des micro-fermes : planifiez le maraîchage, suivez le verger, l'élevage, les stocks, la traçabilité et la gestion.",
+  title: "Logiciel de micro-ferme : maraîchage, verger et élevage",
+  description: "Le carnet libre des micro-fermes diversifiées : planches, arbres, animaux, stocks, traçabilité et ventes dans un seul dossier, sur le plan de la ferme.",
   alternates: { canonical: "https://gleba.fr/logiciel-micro-ferme" },
-  openGraph: { title: "Gleba, le carnet d'exploitation libre des micro-fermes", description: "Maraîchage, verger, élevage et gestion reliés dans le même dossier d'exploitation.", url: "https://gleba.fr/logiciel-micro-ferme", type: "article" },
+  openGraph: { ...ogBase, title: "Gleba, le carnet d'exploitation libre des micro-fermes", description: "Maraîchage, verger, élevage et gestion reliés dans le même dossier d'exploitation.", url: "https://gleba.fr/logiciel-micro-ferme", type: "article" },
 };
 
 export default function Page() {
   return <BusinessLanding breadcrumb="Logiciel pour micro-ferme" currentPath="/logiciel-micro-ferme" eyebrow="Micro-fermes professionnelles · Installation agricole" title="Le carnet d'exploitation libre" highlightedTitle="des micro-fermes diversifiées" introduction="Gleba relie le plan de culture, le terrain, le verger et les éventuels ateliers d'élevage aux stocks, à la traçabilité et à la gestion. Une micro-ferme prépare sa saison puis conserve le réalisé dans le même dossier, sans empiler carnets et tableurs." proof="les modules Maraîchage, Verger, Élevage, Comptabilité, Stocks, Boutique, Météo et Interventions sont présents dans l'application et reliés au même compte." capabilities={[
+    { title: "Écran Aujourd'hui", description: "Chaque matin, les gestes du jour de tous les ateliers classés par urgence : semis, récoltes, arrosages, soins, déclarations et factures échues." },
     { title: "Maraîchage", description: "Planification, planches, cultures, rotations, interventions, récoltes et stocks." },
     { title: "Verger", description: "Arbres, variétés, porte-greffes, opérations, pollinisation, observations et récoltes." },
     { title: "Élevage", description: "Animaux, lots, soins, alimentation, productions, reproduction et naissances." },

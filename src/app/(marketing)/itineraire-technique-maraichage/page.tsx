@@ -1,15 +1,16 @@
 import type { Metadata } from "next";
 import { BusinessLanding } from "@/components/seo/BusinessLanding";
+import { ogBase } from "@/lib/seo/og";
 
 export const metadata: Metadata = {
   title: "Itinéraire technique maraîcher — Semis, plantation et récolte",
   description: "Créez et adaptez des itinéraires techniques : périodes, démarrage, durée, densité, espacements et zone climatique pour planifier les cultures dans Gleba.",
   alternates: { canonical: "https://gleba.fr/itineraire-technique-maraichage" },
-  openGraph: { title: "Itinéraires techniques de maraîchage — Gleba", description: "ITP, calendrier, zone climatique, semis, plantation et récolte.", url: "https://gleba.fr/itineraire-technique-maraichage", type: "article" },
+  openGraph: { ...ogBase, title: "Itinéraires techniques de maraîchage — Gleba", description: "ITP, calendrier, zone climatique, semis, plantation et récolte.", url: "https://gleba.fr/itineraire-technique-maraichage", type: "article" },
 };
 
 export default function Page() {
-  return <BusinessLanding breadcrumb="Itinéraire technique maraîcher" currentPath="/itineraire-technique-maraichage" eyebrow="ITP · Calendrier · Climat" title="Transformez vos itinéraires techniques" highlightedTitle="en dates et cultures planifiées" introduction="Un itinéraire technique de Gleba décrit la conduite d'une culture : mode de démarrage, semaines de semis, plantation et récolte, durée, densité et espacements disponibles. Ces données servent ensuite à calculer les dates d'une culture planifiée." proof="les écrans ITP, calendrier annuel et assistant de création de culture lisent les mêmes données ; l'utilisateur peut sélectionner une référence, la modifier ou créer son propre itinéraire." screenshot={{ src: "/screenshots/gleba-calendrier-lunaire.png", alt: "Calendrier annuel réel des itinéraires techniques dans Gleba", caption: "Calendrier des ITP du compte démo : zone climatique, réglage de précocité, semis, croissance et récolte." }} capabilities={[
+  return <BusinessLanding breadcrumb="Itinéraire technique maraîcher" currentPath="/itineraire-technique-maraichage" eyebrow="ITP · Calendrier · Climat" title="Transformez vos itinéraires techniques" highlightedTitle="en dates et cultures planifiées" introduction="Un itinéraire technique de Gleba décrit la conduite d'une culture : mode de démarrage, semaines de semis, plantation et récolte, durée, densité et espacements disponibles. Ces données servent ensuite à calculer les dates d'une culture planifiée." proof="les écrans ITP, calendrier annuel et assistant de création de culture lisent les mêmes données ; l'utilisateur peut sélectionner une référence, la modifier ou créer son propre itinéraire." screenshot={{ src: "/screenshots/vitrine-calendrier-itp-bureau.webp", alt: "Calendrier annuel des itinéraires techniques dans Gleba", caption: "Calendrier des ITP du compte démo : zone climatique détectée, réglage de précocité, jours favorables, semis, croissance et récolte.", width: 1920, height: 1200 }} capabilities={[
     { title: "Périodes culturales", description: "Renseignez les semaines de semis, plantation, début et fin de récolte prévues dans l'itinéraire." },
     { title: "Mode de démarrage", description: "Distinguez semis direct, pépinière, plantation et conditions de conduite lorsqu'elles sont renseignées." },
     { title: "Densité et espacements", description: "Conservez nombre de rangs, distance entre plants et paramètres utilisés pour préparer la culture." },

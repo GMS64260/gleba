@@ -5,9 +5,10 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
 export const metadata = {
-  title: "Supprimer mon compte — Gleba",
+  title: "Supprimer mon compte",
   description:
     "Procédure de suppression d'un compte Gleba et des données associées : ce qui est effacé, ce qui est conservé et pendant combien de temps.",
+  alternates: { canonical: "https://gleba.fr/suppression-compte" },
 }
 
 /**

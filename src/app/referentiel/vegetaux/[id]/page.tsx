@@ -13,6 +13,7 @@ import { ZONE_CLIMAT_LABEL, type ZoneClimat } from "@/lib/terroir";
 import { nomPublic, originePublique, visibiliteEnfantPublic, visibiliteReferentielPublic } from "@/lib/referentiel-public";
 import { nomAffichableItp } from "@/lib/itp-label";
 import { dureeCycleItpJours } from "@/lib/cultures/dates-itp";
+import { ogBase } from "@/lib/seo/og";
 
 export const dynamic = "force-dynamic";
 
@@ -69,7 +70,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const name = nomPublic(espece);
   const description = espece.description || `Fiche agricole de ${name} : variétés, exigences et itinéraires techniques selon le terroir.`;
   const url = `https://gleba.fr/referentiel/vegetaux/${encodeURIComponent(espece.id)}`;
-  return { title: `${name} — Variétés, culture et terroirs`, description, alternates: { canonical: url }, openGraph: { title: `${name} — Référentiel Gleba`, description, url, type: "article" } };
+  return { title: `${name} — Variétés, culture et terroirs`, description, alternates: { canonical: url }, openGraph: { ...ogBase, title: `${name} — Référentiel Gleba`, description, url, type: "article" } };
 }
 
 /**

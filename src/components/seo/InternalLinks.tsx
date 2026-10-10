@@ -51,7 +51,7 @@ const ELEVAGE_PAGES: Page[] = [
 const DISCOVERY_PAGES: Page[] = [
   { href: "/assistant-ia-agricole", label: "Assistant IA agricole", icon: Bot },
   { href: "/referentiel", label: "Référentiel agricole public", icon: Sprout },
-  { href: "/communaute", label: "Community Voice", icon: Milestone },
+  { href: "/communaute", label: "Feuille de route publique", icon: Milestone },
 ];
 
 function contextualPages(currentPath: string): Page[] {
@@ -82,24 +82,25 @@ export function InternalLinks({ currentPath }: { currentPath: string }) {
   const pages = Array.from(uniquePages.values());
 
   return (
-    <section className="py-16 px-4 bg-white/60">
-      <div className="max-w-4xl mx-auto">
-        <h2 className="font-heading text-2xl sm:text-3xl font-extralight text-slate-900 tracking-tight text-center mb-10">
-          Explorez les parcours de la <span className="font-normal">micro-ferme</span>
+    <section className="border-t border-lin bg-craie px-4 py-16 sm:px-6">
+      <nav aria-labelledby="titre-parcours" className="mx-auto max-w-6xl">
+        <h2 id="titre-parcours" className="font-display text-[26px] font-medium tracking-tight text-encre sm:text-[30px]">
+          Explorer les parcours de la micro-ferme
         </h2>
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <ul className="mt-8 grid gap-x-10 sm:grid-cols-2 lg:grid-cols-3">
           {pages.map(({ href, label, icon: Icon }) => (
-            <Link
-              key={href}
-              href={href}
-              className="flex items-center gap-3 p-4 rounded-xl border border-slate-100 bg-white hover:border-emerald-300 hover:bg-emerald-50/30 transition-colors"
-            >
-              <Icon className="h-5 w-5 text-emerald-600" strokeWidth={1.5} />
-              <span className="text-sm font-medium text-slate-700">{label}</span>
-            </Link>
+            <li key={href} className="border-t border-lin">
+              <Link
+                href={href}
+                className="flex min-h-12 items-center gap-3 py-3 text-[15px] font-medium text-encre transition-colors duration-fast hover:text-foret hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sauge"
+              >
+                <Icon className="h-5 w-5 shrink-0 text-sauge" aria-hidden />
+                {label}
+              </Link>
+            </li>
           ))}
-        </div>
-      </div>
+        </ul>
+      </nav>
     </section>
   );
 }
