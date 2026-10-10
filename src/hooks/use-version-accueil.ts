@@ -7,13 +7,16 @@
  * shell (rail, en-tête) bascule sans rechargement quand « Essayer » ou
  * « Revenir » enregistre la préférence.
  *
- * Le compte démo garde v1 ici (ses préférences sont figées) ; côté serveur,
- * `ACCUEIL_DEMO` ne pilote que la redirection de /dashboard.
+ * La version lue est la version EFFECTIVE décidée par le serveur
+ * (`GET /api/accueil/version`) : la même que celle qui redirige /dashboard,
+ * `ACCUEIL_DEMO` compris pour le compte démo. Lire la préférence brute par
+ * `/api/user/preferences` laissait le rail disparaître sur les modules pour
+ * la démo forcée en v2 (2026-10-10).
  */
 
 import * as React from "react"
 
-import { CLE_PREFERENCE_ACCUEIL, VERSION_ACCUEIL_DEFAUT, sanitizeVersionAccueil, type VersionAccueil } from "@/lib/accueil/preference"
+import { VERSION_ACCUEIL_DEFAUT, sanitizeVersionAccueil, type VersionAccueil } from "@/lib/accueil/preference"
 
 const CACHE_KEY = "gleba_accueil_version"
 const CACHE_TTL_MS = 5 * 60 * 1000
@@ -65,11 +68,11 @@ export function useVersionAccueil(): { version: VersionAccueil; chargement: bool
       setChargement(false)
     }
     let annule = false
-    fetch("/api/user/preferences", { cache: "no-store" })
+    fetch("/api/accueil/version", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
-      .then((prefs) => {
-        if (annule || !prefs) return
-        const v = sanitizeVersionAccueil(prefs[CLE_PREFERENCE_ACCUEIL])
+      .then((reponse: { version?: unknown } | null) => {
+        if (annule || !reponse) return
+        const v = sanitizeVersionAccueil(reponse.version)
         setVersion(v)
         ecrireCache(v)
       })
