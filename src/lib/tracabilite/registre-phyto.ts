@@ -14,6 +14,17 @@
 
 import prisma from '@/lib/prisma'
 import { resoudreIdPlanche } from '@/lib/planches/resolution'
+import { numAMMValide } from '@/lib/tracabilite/amm'
+
+/**
+ * Conformité du numéro d'AMM au registre : absent → « numAMM » manquant ;
+ * présent mais pas sept chiffres → « numAMM invalide » (QA cmv2962ey). Le
+ * numéro retenu est celui affiché : référentiel produit d'abord, saisie ensuite.
+ */
+function controlerNumAMM(numAMM: string | null | undefined, champsMissing: string[]) {
+  if (!numAMM) champsMissing.push('numAMM')
+  else if (!numAMMValide(numAMM)) champsMissing.push('numAMM invalide')
+}
 
 /**
  * Classification heuristique en rétro-compatibilité pour les anciennes saisies
@@ -139,18 +150,20 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
         if (snapshot) cultureNom = snapshot
       }
 
+      // PROMPT 11 — Source de vérité pour la classification : produitPhytoRef si présent,
+      // sinon fallback heuristique sur le nom (rétro-compat saisies historiques).
+      const ref = intervention.produitPhytoRef
+      const numAMMRetenu = ref?.amm || intervention.numAMM || null
+
       // Detecter les champs manquants obligatoires
       const champsMissing: string[] = []
       if (!intervention.produitPhyto) champsMissing.push('produitPhyto')
-      if (!intervention.numAMM) champsMissing.push('numAMM')
+      controlerNumAMM(numAMMRetenu, champsMissing)
       if (!intervention.doseAppliquee) champsMissing.push('doseAppliquee')
       if (!intervention.surfaceTraitee) champsMissing.push('surfaceTraitee')
       if (intervention.dar === null || intervention.dar === undefined) champsMissing.push('dar')
       if (!cultureNom && !plancheNom) champsMissing.push('culture/parcelle')
 
-      // PROMPT 11 — Source de vérité pour la classification : produitPhytoRef si présent,
-      // sinon fallback heuristique sur le nom (rétro-compat saisies historiques).
-      const ref = intervention.produitPhytoRef
       const produitNom = ref?.nomCommercial ?? intervention.produitPhyto ?? null
       const classification = ref?.classification ?? classifierProduitHeuristique(produitNom)
       const autoriseAB = ref?.autoriseAB ?? null
@@ -168,7 +181,7 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
         substanceActive: ref?.substanceActive ?? null,
         classification,
         autoriseAB,
-        numAMM: ref?.amm || intervention.numAMM || null,
+        numAMM: numAMMRetenu,
         doseAppliquee: intervention.doseAppliquee || null,
         uniteDose: intervention.uniteDose || null,
         surfaceTraitee: intervention.surfaceTraitee || null,
@@ -223,7 +236,7 @@ export async function genererRegistrePhyto(userId: string, annee: number) {
     const produitNom = o.produit ?? null
     const champsMissing: string[] = []
     if (!o.produit) champsMissing.push('produitPhyto')
-    if (!o.numAMM) champsMissing.push('numAMM')
+    controlerNumAMM(o.numAMM, champsMissing)
     if (o.doseAppliquee == null) champsMissing.push('doseAppliquee')
     entries.push({
       id: 1_000_000_000 + o.id, // évite la collision d'id avec les interventions

@@ -13,6 +13,19 @@ import { lireAnnee } from '@/lib/api/annee'
 import { createDepenseFromIntervention, deleteAutoEntry } from '@/lib/auto-compta'
 import { createInterventionSchema, updateInterventionSchema } from '@/lib/validations/intervention'
 import { resoudreIdPlanche } from '@/lib/planches/resolution'
+import type { ZodError } from 'zod'
+
+/**
+ * Un refus de validation nomme le champ fautif : « Données invalides » seul
+ * laissait l'utilisateur deviner (QA cmv2962ey, AMM « ABC » refusée sans dire
+ * pourquoi). Le formulaire affiche `error` tel quel.
+ */
+function messageValidation(error: ZodError): string {
+  const premiere = error.issues[0]
+  if (!premiere) return 'Données invalides'
+  const champ = premiere.path.filter((p) => typeof p === 'string').join('.')
+  return champ ? `Données invalides — ${champ} : ${premiere.message}` : `Données invalides — ${premiere.message}`
+}
 
 export async function GET(request: NextRequest) {
   const { session, error } = await requireAuthApi()
@@ -475,7 +488,7 @@ export async function POST(request: NextRequest) {
     const parsed = createInterventionSchema.safeParse(body)
     if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Données invalides', details: parsed.error.flatten() },
+        { error: messageValidation(parsed.error), details: parsed.error.flatten() },
         { status: 400 }
       )
     }
@@ -585,7 +598,7 @@ export async function PATCH(request: NextRequest) {
     const parsedUpdates = updateInterventionSchema.safeParse({ id: parseInt(id), ...updates })
     if (!parsedUpdates.success) {
       return NextResponse.json(
-        { error: 'Données invalides', details: parsedUpdates.error.flatten() },
+        { error: messageValidation(parsedUpdates.error), details: parsedUpdates.error.flatten() },
         { status: 400 },
       )
     }

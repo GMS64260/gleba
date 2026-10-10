@@ -125,6 +125,31 @@ describe('genererRegistrePhyto — 3ᵉ source operations_arbres', () => {
     expect(stats.produitsUtilises).toContain('Bouillie bordelaise')
   })
 
+  // QA cmv2962ey — une AMM « ABC » passait au registre sans badge.
+  it("signale « Non conforme » une AMM qui n'a pas sept chiffres, et accepte 7 chiffres", async () => {
+    mocks.interventionFindMany.mockResolvedValue([
+      fakeIntervention({ id: 1, numAMM: 'ABC' }),
+      fakeIntervention({ id: 2, numAMM: '2100123' }),
+      fakeIntervention({ id: 3, numAMM: null }),
+      // Référentiel produit : son AMM prime sur la saisie libre.
+      fakeIntervention({ id: 4, numAMM: 'ABC', produitPhytoRef: { id: 'p1', nomCommercial: 'Produit X', amm: '9800203', classification: 'Chimique conventionnel', autoriseAB: false, substanceActive: null, darJours: 3 } }),
+    ])
+
+    const { registre, stats } = await genererRegistrePhyto('user-1', 2026)
+    const parId = new Map(registre.map((e) => [e.id, e]))
+
+    expect(parId.get(1)?.champsManquants).toContain('numAMM invalide')
+    expect(parId.get(1)?.complet).toBe(false)
+    expect(parId.get(2)?.champsManquants).not.toContain('numAMM')
+    expect(parId.get(2)?.champsManquants).not.toContain('numAMM invalide')
+    expect(parId.get(3)?.champsManquants).toContain('numAMM')
+    expect(parId.get(4)?.numAMM).toBe('9800203')
+    expect(parId.get(4)?.champsManquants).not.toContain('numAMM invalide')
+    // Les quatre fiches restent sans culture ni parcelle : toutes incomplètes
+    // pour cette raison-là, l'AMM n'en ajoute ni n'en retire.
+    expect(stats.nbIncomplets).toBe(4)
+  })
+
   it('fusionne les trois sources triées par date, sans collision d’ids', async () => {
     mocks.interventionFindMany.mockResolvedValue([fakeIntervention({ id: 5 })])
     mocks.observationFindMany.mockResolvedValue([

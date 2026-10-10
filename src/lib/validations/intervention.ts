@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { MESSAGE_AMM_INVALIDE, numAMMValide } from '@/lib/tracabilite/amm'
 
 /**
  * Les formulaires HTML envoient TOUJOURS des chaînes (`<input type="number">`
@@ -36,7 +37,13 @@ export const createInterventionSchema = z.object({
   fait: z.boolean().optional().default(true),
   // Phyto
   produitPhyto: z.string().max(200).nullable().optional(),
-  numAMM: z.string().max(50).nullable().optional(),
+  // QA cmv2962ey — « ABC » passait pour une AMM : sept chiffres ou rien.
+  numAMM: z
+    .string()
+    .max(50)
+    .nullable()
+    .optional()
+    .refine((v) => !v || numAMMValide(v), { message: MESSAGE_AMM_INVALIDE }),
   cibleTraitement: z.string().max(200).nullable().optional(),
   doseAppliquee: numInput(),
   uniteDose: z.string().max(50).nullable().optional(),
