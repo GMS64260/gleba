@@ -2,8 +2,9 @@
 
 /**
  * Page des cultures à irriguer — intégration météo complète
- * Affiche l'urgence d'irrigation basée sur le bilan hydrique réel,
- * les précipitations passées/prevues, et l'auto-validation par la pluie.
+ * Affiche l'urgence d'irrigation basée sur le bilan hydrique réel et les
+ * précipitations passées et prévues ; on y note les arrosages. Les lignes
+ * « à arroser » des tâches en dérivent (src/lib/irrigation/a-arroser.ts).
  */
 
 import * as React from "react"

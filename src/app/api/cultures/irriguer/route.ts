@@ -1,7 +1,7 @@
 /**
  * API Route pour les cultures à irriguer — intégration météo complète
  * GET  /api/cultures/irriguer - Liste avec urgence météo-aware
- * PATCH /api/cultures/irriguer - Marquer arrosage / toggle aIrriguer
+ * PATCH /api/cultures/irriguer - Marquer arrosage, l'annuler / toggle aIrriguer
  *
  * Le calcul (bilan hydrique, urgences, consommations) vit dans
  * src/lib/irrigation-conseil.ts, partagé avec l'assistant IA pour que les
@@ -12,7 +12,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { getUserId, refusSiLectureSeule } from '@/lib/exploitation/garde-session'
 import prisma from '@/lib/prisma'
-import { enregistrerArrosageCultures } from '@/lib/irrigation-recording'
+import { annulerArrosageCultures, enregistrerArrosageCultures } from '@/lib/irrigation-recording'
 import { computeConseilIrrigation } from '@/lib/irrigation-conseil'
 
 // ── GET ─────────────────────────────────────────────────────
@@ -50,6 +50,17 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json()
     const { cultureId, cultureIds, aIrriguer, marquerArrosage } = body
     const notes = typeof body.notes === 'string' ? body.notes : null
+
+    // Annuler un arrosage noté (inverse exact, revue du 2026-10-10).
+    if (body.annulerArrosage === true) {
+      const dateEffective = new Date(body.dateEffective)
+      const avant = body.avant && typeof body.avant === 'object' ? (body.avant as Record<number, string | null>) : null
+      if (Number.isNaN(dateEffective.getTime()) || !avant) {
+        return NextResponse.json({ error: 'dateEffective et avant requis' }, { status: 400 })
+      }
+      const result = await annulerArrosageCultures({ userId, dateEffective, avant })
+      return NextResponse.json({ success: true, ...result })
+    }
 
     // Arrosage multiple (groupe par îlot). Chaque culture demandée étend la
     // mise à jour à ses colocataires actifs sur la même planche.

@@ -7,7 +7,8 @@
  * ni pluie : 17 comptes réels, 3 283 passages, 5 % notés faits, des arrosages
  * prévus tous les deux jours en janvier. Le besoin se calcule désormais chaque
  * jour depuis le bilan hydrique (`computeConseilIrrigation` : pluie passée et
- * prévue, ET0, sol, besoin de l'espèce, dernier arrosage noté). Noter un
+ * prévue, ET0, sol, besoin de l'espèce, dernier arrosage noté), pour les
+ * seules cultures cochées « à irriguer ». Noter un
  * arrosage remet le compteur à zéro ; rien n'est dû d'avance, donc rien n'est
  * « en retard » ni « périmé ».
  */
@@ -21,6 +22,14 @@ export type UrgenceAArroser = (typeof URGENCES_A_ARROSER)[number]
 /** Sous-ensemble d'une culture du conseil, suffisant pour décider. */
 export interface CultureConseil {
   id: number
+  /**
+   * Opt-in « à irriguer » : seule une culture cochée fait une ligne. Le
+   * conseil montre aussi les espèces exigeantes non cochées (information),
+   * mais l'outil propose sans imposer (revue du 2026-10-10 : une courgette
+   * en goutte-à-goutte programmé, décochée, sortait quand même en tâche et
+   * en courriel).
+   */
+  aIrriguer: boolean | null
   urgence: string
   raisonUrgence: string
   sousAbri: boolean
@@ -55,7 +64,7 @@ function estAArroser(urgence: string): urgence is UrgenceAArroser {
 export function arrosagesDuJour(cultures: CultureConseil[]): ArrosageDuJour[] {
   const groupes = new Map<string, CultureConseil[]>()
   for (const c of cultures) {
-    if (!estAArroser(c.urgence)) continue
+    if (c.aIrriguer !== true || !estAArroser(c.urgence)) continue
     const cle = c.planche ? `planche:${c.planche.id}` : `culture:${c.id}`
     const groupe = groupes.get(cle) ?? []
     groupe.push(c)

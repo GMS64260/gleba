@@ -35,7 +35,8 @@ import { format, startOfWeek, endOfWeek, addWeeks } from "date-fns"
 import { fr } from "date-fns/locale"
 import { libelleUniteQuantite, type UniteQuantite } from "@/lib/recolte/projection"
 import type { ArrosageDuJour } from "@/lib/irrigation/a-arroser"
-import { noterArrosage } from "@/lib/irrigation/noter-arrosage"
+import { annulerArrosage, noterArrosage } from "@/lib/irrigation/noter-arrosage"
+import { notifierEnregistrement } from "@/lib/notifications-ecran"
 import { LigneArrosage, LigneTache } from "@/components/potager/LigneTache"
 
 interface TacheItem {
@@ -374,9 +375,15 @@ function TachesContent() {
         }
       })
 
-      toast({
-        title: "Arrosage noté",
-        description: noteStr || (arrosage.plancheNom ?? arrosage.especes),
+      // Un geste de trop s'annule : inverse exact (revue du 2026-10-10).
+      notifierEnregistrement({
+        titre: "Arrosage noté",
+        detail: noteStr || (arrosage.plancheNom ?? arrosage.especes),
+        annuler: async () => {
+          const annule = await annulerArrosage(resultat.annulation)
+          if (!annule.ok) throw new Error(annule.erreur)
+          fetchData()
+        },
       })
       setPendingAction(null)
     } catch {
@@ -606,7 +613,7 @@ function TachesContent() {
                     (src/lib/irrigation/a-arroser.ts). Plus de plan d'avance. */}
                 {data.irrigation.length === 0 ? (
                   <p className="text-sm text-muted-foreground py-2">
-                    Rien à arroser aujourd&apos;hui d&apos;après la météo et les derniers arrosages notés.
+                    Aucune planche à arroser aujourd&apos;hui. Le conseil d&apos;irrigation détaille chaque culture.
                   </p>
                 ) : (
                   <div className="rounded-lg border border-lin-doux bg-craie">

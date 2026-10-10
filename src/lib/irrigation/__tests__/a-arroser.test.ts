@@ -12,6 +12,7 @@ import { arrosagesDuJour, type CultureConseil } from "../a-arroser"
 function culture(id: number, urgence: string, planche: CultureConseil["planche"], espece = "Tomate"): CultureConseil {
   return {
     id,
+    aIrriguer: true,
     urgence,
     raisonUrgence: `raison ${id}`,
     sousAbri: false,
@@ -51,6 +52,11 @@ describe("arrosagesDuJour", () => {
       urgence: "critique",
       raison: "raison 2",
     })
+  })
+
+  it("une culture décochée « à irriguer » ne fait pas de ligne, même en urgence critique", () => {
+    const decochee = { ...culture(1, "critique", A3), aIrriguer: false }
+    expect(arrosagesDuJour([decochee, culture(2, "haute", B1)]).map((l) => l.plancheNom)).toEqual(["B1"])
   })
 
   it("une culture sans planche fait sa propre ligne", () => {

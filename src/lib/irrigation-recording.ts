@@ -20,6 +20,11 @@ export interface EnregistrerArrosageResult {
   irrigationsPerimees: number
   irrigationsTraceesCreees: number
   dateEffective: Date
+  /**
+   * `derniereIrrigation` de chaque culture touchée AVANT ce geste (ISO ou
+   * null) : ce qu'il faut pour l'annuler exactement (`annulerArrosageCultures`).
+   */
+  derniereIrrigationAvant: Record<number, string | null>
 }
 
 /**
@@ -50,6 +55,7 @@ export async function enregistrerArrosageCultures({
       irrigationsPerimees: 0,
       irrigationsTraceesCreees: 0,
       dateEffective,
+      derniereIrrigationAvant: {},
     }
   }
 
@@ -80,6 +86,7 @@ export async function enregistrerArrosageCultures({
       irrigationsPerimees: 0,
       irrigationsTraceesCreees: 0,
       dateEffective,
+      derniereIrrigationAvant: {},
     }
   }
 
@@ -97,9 +104,12 @@ export async function enregistrerArrosageCultures({
           : []),
       ],
     },
-    select: { id: true },
+    select: { id: true, derniereIrrigation: true },
   })
   const idsCibles = culturesCibles.map((culture) => culture.id)
+  const derniereIrrigationAvant = Object.fromEntries(
+    culturesCibles.map((c) => [c.id, c.derniereIrrigation ? c.derniereIrrigation.toISOString() : null]),
+  ) as Record<number, string | null>
 
   const finJournee = new Date(dateEffective)
   finJournee.setHours(23, 59, 59, 999)
@@ -202,5 +212,59 @@ export async function enregistrerArrosageCultures({
     irrigationsPerimees: perimeesUpdate.count,
     irrigationsTraceesCreees: tracesCreees.count,
     dateEffective,
+    derniereIrrigationAvant,
   }
+}
+
+export interface AnnulerArrosageParams {
+  userId: string
+  /** Horodatage EXACT du geste à annuler (renvoyé par `enregistrerArrosageCultures`). */
+  dateEffective: Date
+  /** `derniereIrrigation` d'avant le geste, par culture (renvoyé par le même appel). */
+  avant: Record<number, string | null>
+}
+
+/**
+ * Inverse exact de « Noter » (revue du modèle d'arrosage, 2026-10-10) : sans
+ * lui, un tap de trop effaçait le besoin de toute la planche pendant des
+ * jours et laissait une trace définitive au registre.
+ *
+ * Ne supprime que les traces posées par CE geste (même horodatage exact, même
+ * compte, cultures concernées) et ne restaure `derniereIrrigation` que si
+ * aucun arrosage plus récent ne l'a remplacé depuis.
+ */
+export async function annulerArrosageCultures({ userId, dateEffective, avant }: AnnulerArrosageParams) {
+  const ids = Object.keys(avant)
+    .map(Number)
+    .filter((id) => Number.isInteger(id) && id > 0)
+  if (ids.length === 0 || Number.isNaN(dateEffective.getTime())) {
+    return { tracesSupprimees: 0, culturesRestaurees: 0 }
+  }
+
+  const resultat = await prisma.$transaction(async (tx) => {
+    const cultures = await tx.culture.findMany({
+      where: { userId, id: { in: ids } },
+      select: { id: true, derniereIrrigation: true },
+    })
+    const idsAutorises = cultures.map((c) => c.id)
+    const traces = await tx.irrigationPlanifiee.deleteMany({
+      where: { userId, cultureId: { in: idsAutorises }, fait: true, dateEffective },
+    })
+    let culturesRestaurees = 0
+    for (const c of cultures) {
+      // Un arrosage noté depuis l'emporte : on ne le défait pas.
+      if (c.derniereIrrigation?.getTime() !== dateEffective.getTime()) continue
+      const precedente = avant[c.id]
+      const date = precedente ? new Date(precedente) : null
+      await tx.culture.update({
+        where: { id: c.id },
+        data: { derniereIrrigation: date && !Number.isNaN(date.getTime()) ? date : null },
+      })
+      culturesRestaurees++
+    }
+    return { tracesSupprimees: traces.count, culturesRestaurees }
+  })
+
+  irrigationCache.invalidateUser(userId)
+  return resultat
 }

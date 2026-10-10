@@ -79,6 +79,7 @@ describe("calculerUrgenceMeteo", () => {
 describe("whereCulturesEnPlace", () => {
   const maintenant = new Date(2027, 0, 15)
   const borne = new Date(maintenant.getTime() - JOURS_APRES_FIN_RECOLTE * 86_400_000)
+  const borneSansFin = new Date(maintenant.getTime() - 60 * 86_400_000)
 
   it("garde la saison précédente (cultures d'hiver en terre en janvier) et les vivaces de toute année", () => {
     const where = whereCulturesEnPlace(2027, maintenant)
@@ -89,8 +90,9 @@ describe("whereCulturesEnPlace", () => {
           OR: [
             { espece: { vivace: true } },
             { dateRecolte: null, finRecolte: null },
-            { dateRecolte: { gte: borne } },
             { finRecolte: { gte: borne } },
+            // Sans fin de récolte, une courgette récoltée tout l'été reste suivie 60 jours.
+            { finRecolte: null, dateRecolte: { gte: borneSansFin } },
           ],
         },
       ],
