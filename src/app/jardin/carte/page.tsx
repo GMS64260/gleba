@@ -200,7 +200,7 @@ function CartePageContent() {
         })
         if (!res.ok) {
           const err = await res.json().catch(() => null)
-          throw new Error(err?.error || "Erreur lors de la creation")
+          throw new Error(err?.error || "Erreur lors de la création")
         }
         toast({ title: "Parcelle créée", description: `"${data.nom}" a été ajoutée.` })
       } else if (selectedParcelle) {
@@ -212,7 +212,7 @@ function CartePageContent() {
         })
         if (!res.ok) {
           const err = await res.json().catch(() => null)
-          throw new Error(err?.error || "Erreur lors de la mise a jour")
+          throw new Error(err?.error || "Erreur lors de la mise à jour")
         }
         toast({ title: "Parcelle modifiée", description: `"${data.nom}" a été mise à jour.` })
       }
@@ -378,7 +378,7 @@ function CartePageContent() {
       })
       if (!res.ok) {
         const err = await res.json().catch(() => null)
-        throw new Error(err?.error || "Erreur lors de la mise a jour")
+        throw new Error(err?.error || "Erreur lors de la mise à jour")
       }
       toast({
         title: "Parcelle modifiée",

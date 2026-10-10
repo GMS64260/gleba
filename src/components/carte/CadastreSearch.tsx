@@ -195,7 +195,7 @@ export default function CadastreSearch({ onImport }: CadastreSearchProps) {
                   className="text-sm w-1/2"
                 />
                 <Input
-                  placeholder="Numero"
+                  placeholder="Numéro"
                   value={numero}
                   onChange={(e) => setNumero(e.target.value)}
                   className="text-sm w-1/2"

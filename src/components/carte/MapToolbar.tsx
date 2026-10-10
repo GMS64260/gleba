@@ -38,8 +38,8 @@ export default function MapToolbar({
         <>
           <span className="text-sm text-blue-600 font-medium px-2">
             {editMode === "vertices"
-              ? "Glissez les sommets pour modifier le trace"
-              : "Glissez la parcelle pour la deplacer"}
+              ? "Glissez les sommets pour modifier le tracé"
+              : "Glissez la parcelle pour la déplacer"}
           </span>
           <Button
             size="sm"
@@ -85,7 +85,7 @@ export default function MapToolbar({
                 className="flex items-center gap-2 border-blue-300 text-blue-700 hover:bg-blue-50"
               >
                 <Pencil className="h-4 w-4" />
-                Modifier le trace
+                Modifier le tracé
               </Button>
               <Button
                 variant="outline"
@@ -94,7 +94,7 @@ export default function MapToolbar({
                 className="flex items-center gap-2 border-blue-300 text-blue-700 hover:bg-blue-50"
               >
                 <Move className="h-4 w-4" />
-                Deplacer
+                Déplacer
               </Button>
               <div className="w-px h-6 bg-slate-200" />
             </>

@@ -168,7 +168,7 @@ export function ParcelleFormMap({ geometry, onGeometryChange }: ParcelleFormMapP
                   </Button>
                   <Button type="button" variant="outline" size="sm" onClick={() => startEdit("move")}>
                     <Move className="h-3 w-3 mr-1" />
-                    Deplacer
+                    Déplacer
                   </Button>
                   <Button type="button" variant="outline" size="sm" onClick={clearGeometry}>
                     <Trash2 className="h-3 w-3" />
@@ -185,7 +185,7 @@ export function ParcelleFormMap({ geometry, onGeometryChange }: ParcelleFormMapP
           {isEditing && (
             <div className="flex items-center gap-1">
               <span className="text-sm text-blue-600 font-medium">
-                Mode {editMode === "vertices" ? "sommets" : "deplacement"}
+                Mode {editMode === "vertices" ? "sommets" : "déplacement"}
               </span>
               <Button type="button" size="sm" onClick={confirmEdit}>
                 Valider
