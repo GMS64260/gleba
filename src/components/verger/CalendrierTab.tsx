@@ -190,7 +190,7 @@ function LotCard({
             type="button"
             onClick={onToggle}
             aria-expanded={deplie}
-            className="flex min-w-0 max-w-full items-center gap-1.5 text-left hover:underline"
+            className="-my-1.5 flex min-h-11 min-w-0 max-w-full items-center gap-1.5 text-left hover:underline"
           >
             {deplie ? (
               <ChevronDown className="h-4 w-4 shrink-0 text-ardoise" aria-hidden />
