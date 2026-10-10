@@ -69,12 +69,14 @@ interface AssistantStepPlanteProps {
 // Helpers (stock)
 // ---------------------------------------------------------------------------
 
+// Stock de l'utilisateur seulement : la colonne de la variété (commune à tous
+// les comptes) n'est plus un stock (ticket cmv29j6q7).
 function getEffectiveGraines(v: VarieteData): number {
-  return v.userStockGraines ?? v.stockGraines ?? 0
+  return v.userStockGraines ?? 0
 }
 
 function getEffectivePlants(v: VarieteData): number {
-  return v.userStockPlants ?? v.stockPlants ?? 0
+  return v.userStockPlants ?? 0
 }
 
 function getTotalStock(v: VarieteData): number {

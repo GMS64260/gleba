@@ -9,6 +9,7 @@ import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { calculerStocksNet } from '@/lib/stocks-helpers'
 import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
+import { enregistrerStockVariete, stockVarieteSchema } from '@/lib/stocks/stock-variete'
 import { ESPECE_TYPES_MARAICHAGE, ESPECE_TYPES_VERGER } from '@/lib/validations/espece'
 
 // Ticket FB-PMWX8O — le filtre « légumes » énumérait le triplet historique en
@@ -49,24 +50,29 @@ export async function PATCH(request: NextRequest) {
 
     const date = dateStock ? new Date(dateStock) : new Date()
 
-    switch (type) {
-      case 'graines': {
-        const userStock = await prisma.userStockVariete.upsert({
-          where: { userId_varieteId: { userId, varieteId: id } },
-          create: { userId, varieteId: id, stockGraines: stock, dateStock: date },
-          update: { stockGraines: stock, dateStock: date },
-        })
-        return NextResponse.json({ success: true, data: userStock })
+    // Stock de variété (graines, plants, ou les deux en un seul appel atomique) :
+    // un seul chemin d'écriture, validé comme le formulaire variété
+    // (ticket cmv29j6q7). `variete` reçoit `stockGraines` et/ou `stockPlants`.
+    if (type === 'graines' || type === 'plants' || type === 'variete') {
+      const saisie = stockVarieteSchema.safeParse(
+        type === 'graines'
+          ? { stockGraines: stock ?? null, dateStock: date }
+          : type === 'plants'
+            ? { stockPlants: stock ?? null, dateStock: date }
+            : { stockGraines: body.stockGraines, stockPlants: body.stockPlants, dateStock: date },
+      )
+      if (!saisie.success) {
+        const premiere = saisie.error.issues[0]
+        return NextResponse.json(
+          { error: `Stock invalide — ${premiere?.path.join('.') ?? 'stock'} : ${premiere?.message ?? ''}` },
+          { status: 400 },
+        )
       }
+      const userStock = await enregistrerStockVariete(prisma, userId, String(id), saisie.data)
+      return NextResponse.json({ success: true, data: userStock })
+    }
 
-      case 'plants': {
-        const userStock = await prisma.userStockVariete.upsert({
-          where: { userId_varieteId: { userId, varieteId: id } },
-          create: { userId, varieteId: id, stockPlants: stock, dateStock: date },
-          update: { stockPlants: stock, dateStock: date },
-        })
-        return NextResponse.json({ success: true, data: userStock })
-      }
+    switch (type) {
 
       case 'fertilisant': {
         const userStock = await prisma.userStockFertilisant.upsert({

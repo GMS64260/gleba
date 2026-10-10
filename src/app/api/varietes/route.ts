@@ -12,6 +12,7 @@ import { requireAuthApi, requireAdminApi } from '@/lib/auth-utils'
 import { displayReferentielName, normalizeVarieteName } from '@/lib/normalize'
 import { statsAvisPourRefs } from '@/lib/avis/stats-liste'
 import { visibiliteReferentiel, attributionCreation } from '@/lib/referentiel-communaute'
+import { enregistrerStockVariete, separerStockVariete, serialiserVariete } from '@/lib/stocks/stock-variete'
 
 // GET /api/varietes - Référentiel global (lecture)
 export async function GET(request: NextRequest) {
@@ -122,16 +123,14 @@ export async function GET(request: NextRequest) {
       ? await statsAvisPourRefs(prisma, 'VARIETE', varietes.map((v) => v.id))
       : null
 
-    // Enrichir les varietes avec le stock per-user (+ stats communautaires si demandé)
+    // Enrichir les varietes avec le stock per-user (+ stats communautaires si demandé).
+    // Les colonnes historiques `stockGraines`/`stockPlants`/`dateStock` de la
+    // variété (communes à tous les comptes) ne sont plus exposées : la fiche
+    // d'espèce les affichait comme « le » stock (ticket cmv29j6q7).
     const enriched = varietes.map(v => {
-      const userStock = v.userStocks[0]
-      const { userStocks: _us, ...rest } = v
-      const base = {
-        ...rest,
-        userStockGraines: userStock?.stockGraines ?? null,
-        userStockPlants: userStock?.stockPlants ?? null,
-        userStockDate: userStock?.dateStock ?? null,
-      }
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- la relation ne sort pas de l'API
+      const { userStocks, ...rest } = v
+      const base = serialiserVariete(rest, userStocks[0])
       if (!statsMap) return base
       return { ...base, avisStats: statsMap.get(v.id) }
     })
@@ -232,19 +231,25 @@ export async function POST(request: NextRequest) {
     }
 
     // Création : officiel → id = nom lisible ; perso → id omis → cuid (@default).
-    const { id: _nomBrut, ...rest } = data
-    const variete = await prisma.variete.create({
-      data: {
-        ...rest,
-        ...(estOfficiel ? { id: nomSaisi } : {}),
-        nom: nomSaisi,
-        nomNormalise,
-        ...attrib,
-      },
-      include: {
-        espece: true,
-        fournisseur: true,
-      },
+    // Le stock saisi avec la variété est celui de l'appelant (ticket cmv29j6q7).
+    const { id: _nomBrut, ...donneesSaisies } = data
+    const { catalogue: rest, stock } = separerStockVariete(donneesSaisies)
+    const variete = await prisma.$transaction(async (tx) => {
+      const creee = await tx.variete.create({
+        data: {
+          ...rest,
+          ...(estOfficiel ? { id: nomSaisi } : {}),
+          nom: nomSaisi,
+          nomNormalise,
+          ...attrib,
+        },
+        include: {
+          espece: true,
+          fournisseur: true,
+        },
+      })
+      const userStock = await enregistrerStockVariete(tx, session!.user.id, creee.id, stock)
+      return serialiserVariete(creee, userStock)
     })
 
     return NextResponse.json(variete, { status: 201 })

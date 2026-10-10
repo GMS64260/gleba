@@ -92,8 +92,6 @@ export interface VarieteData {
   nom?: string | null
   especeId: string
   fournisseurId?: string | null
-  stockGraines?: number | null
-  stockPlants?: number | null
   userStockGraines?: number | null
   userStockPlants?: number | null
   /** Graines par gramme : sans elle, un nombre de graines n'est pas convertible en grammes. */

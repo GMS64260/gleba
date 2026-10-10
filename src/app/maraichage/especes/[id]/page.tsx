@@ -101,8 +101,10 @@ interface Variete {
   dureeFloraison: number | null
   nbGrainesG: number | null
   prixGraine: number | null
-  stockGraines: number | null
-  stockPlants: number | null
+  // Stock de l'utilisateur connecté (`UserStockVariete`), le même que
+  // Planification > Stocks ; la variété n'a pas de stock propre (cmv29j6q7).
+  userStockGraines: number | null
+  userStockPlants: number | null
   bio: boolean
   description: string | null
   userId: string | null
@@ -444,19 +446,50 @@ export default function EditEspecePage() {
       dureeFloraison: v.dureeFloraison?.toString() || "",
       nbGrainesG: v.nbGrainesG?.toString() || "",
       prixGraine: v.prixGraine?.toString() || "",
-      stockGraines: v.stockGraines?.toString() || "",
-      stockPlants: v.stockPlants?.toString() || "",
+      stockGraines: v.userStockGraines?.toString() || "",
+      stockPlants: v.userStockPlants?.toString() || "",
       description: v.description || "",
     })
     setShowVarieteDialog(true)
   }
+
+  // Les caractéristiques d'une variété du catalogue (ou d'un autre membre) ne
+  // sont modifiables que par son auteur ou un admin ; son STOCK, lui, est
+  // propre à chaque compte et toujours modifiable ici.
+  const estAdmin = (session?.user as { role?: string } | undefined)?.role === "ADMIN"
+  const peutModifierCatalogue = (v: Variete) => estAdmin || (!!v.userId && v.userId === currentUserId)
+
+  const enregistrerStockVariete = async (varieteId: string) => {
+    // Un seul appel pour les deux quantités (écriture atomique côté serveur).
+    const res = await fetch("/api/stocks", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "variete",
+        id: varieteId,
+        stockGraines: varieteForm.stockGraines ? parseFloat(varieteForm.stockGraines) : null,
+        stockPlants: varieteForm.stockPlants ? parseInt(varieteForm.stockPlants) : null,
+      }),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.error || "Enregistrement du stock impossible")
+    }
+  }
+  const catalogueVerrouille = !!editingVariete && !peutModifierCatalogue(editingVariete)
 
   const handleVarieteSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (isSavingVariete) return
     setIsSavingVariete(true)
     try {
-      if (editingVariete) {
+      if (editingVariete && !peutModifierCatalogue(editingVariete)) {
+        // Variété du catalogue : seul MON stock est enregistré (PATCH /api/stocks,
+        // la route des stocks par utilisateur), le catalogue reste intact.
+        await enregistrerStockVariete(editingVariete.id)
+        await reloadVarietes()
+        toast({ title: "Stock enregistré", description: "Le même que Planification > Stocks." })
+      } else if (editingVariete) {
         // PUT
         const res = await fetch(`/api/varietes/${encodeURIComponent(editingVariete.id)}`, {
           method: "PUT",
@@ -1498,8 +1531,8 @@ export default function EditEspecePage() {
                             <TableHead>Périodes</TableHead>
                             <TableHead>Avis</TableHead>
                             <TableHead>Origine</TableHead>
-                            <TableHead className="text-right">Stock graines (g)</TableHead>
-                            <TableHead className="text-right">Stock plants</TableHead>
+                            <TableHead className="text-right" title="Votre stock, le même que Planification > Stocks">Mon stock graines (g)</TableHead>
+                            <TableHead className="text-right" title="Votre stock, le même que Planification > Stocks">Mes plants</TableHead>
                             <TableHead className="text-right">Actions</TableHead>
                           </TableRow>
                         </TableHeader>
@@ -1560,8 +1593,8 @@ export default function EditEspecePage() {
                                   signalerRefType="VARIETE"
                                 />
                               </TableCell>
-                              <TableCell className="text-right">{v.stockGraines ?? "-"}</TableCell>
-                              <TableCell className="text-right">{v.stockPlants ?? "-"}</TableCell>
+                              <TableCell className="text-right">{v.userStockGraines ?? "-"}</TableCell>
+                              <TableCell className="text-right">{v.userStockPlants ?? "-"}</TableCell>
                               <TableCell className="text-right">
                                 <div className="flex justify-end gap-1">
                                   <Button
@@ -1629,6 +1662,10 @@ export default function EditEspecePage() {
               <DialogTitle>{editingVariete ? `Modifier : ${editingVariete.nom ?? editingVariete.id}` : "Nouvelle variété"}</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleVarieteSubmit} className="space-y-4">
+              {/* Caractéristiques du catalogue : verrouillées (fieldset désactivé)
+                  quand la variété n'est pas la mienne ; seuls mes stocks restent
+                  saisissables plus bas. */}
+              <fieldset disabled={catalogueVerrouille} className="contents">
               {!editingVariete && (
                 <div>
                   <Label>Nom de la variété *</Label>
@@ -1728,10 +1765,16 @@ export default function EditEspecePage() {
                   />
                 </div>
               </div>
+              </fieldset>
 
+              {catalogueVerrouille && (
+                <p className="text-xs text-muted-foreground">
+                  Variété du catalogue : ses caractéristiques ne sont modifiables que par son auteur. Seuls vos stocks sont enregistrés ici.
+                </p>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Stock graines (g)</Label>
+                  <Label>Mon stock de graines (g)</Label>
                   <Input
                     type="number"
                     step="0.1"
@@ -1741,7 +1784,7 @@ export default function EditEspecePage() {
                   />
                 </div>
                 <div>
-                  <Label>Stock plants</Label>
+                  <Label>Mes plants</Label>
                   <Input
                     type="number"
                     min="0"
@@ -1758,6 +1801,7 @@ export default function EditEspecePage() {
                   onChange={(e) => setVarieteForm({ ...varieteForm, description: e.target.value })}
                   rows={2}
                   placeholder="Notes sur cette variété..."
+                  disabled={catalogueVerrouille}
                 />
               </div>
 
