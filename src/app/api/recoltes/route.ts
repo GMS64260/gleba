@@ -15,6 +15,7 @@ import { ecrituresPassageAFait } from '@/lib/cultures/execution'
 import { uniteQuantiteRecolte, type UniteQuantite } from '@/lib/recolte/projection'
 import { ajouterQuantite, arrondirQuantites, partKg, type QuantiteParUnite } from '@/lib/recolte/quantites'
 import { chargerSurchargesRendement, rendementEffectif } from '@/lib/recolte/rendement-effectif'
+import { refusRecolteAvantDebut } from '@/lib/recolte/date-coherente'
 
 // GET /api/recoltes
 export async function GET(request: NextRequest) {
@@ -208,6 +209,14 @@ export async function POST(request: NextRequest) {
 
     // PROMPT 12 — snapshot statut Bio depuis la planche (si rattachée).
     const dateRecolte = data.date ? new Date(data.date as unknown as string) : new Date()
+
+    // QA cmv2r19al — une récolte ne précède pas la plantation (ou le semis) de
+    // sa culture : elle était acceptée et recalait la culture « récoltée »
+    // avant même d'être plantée.
+    const refusDate = refusRecolteAvantDebut(culture, dateRecolte)
+    if (refusDate) {
+      return NextResponse.json({ error: refusDate, champ: 'date' }, { status: 400 })
+    }
     const statutBioSnapshot = culture.planche
       ? snapshotStatutBio(
           culture.planche.statutBio,

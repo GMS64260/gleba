@@ -87,6 +87,9 @@ export default function SaisieRecoltePage() {
   const [datePeremption, setDatePeremption] = React.useState<string>("")
   const [notes, setNotes] = React.useState<string>("")
   const [isSubmitting, setIsSubmitting] = React.useState(false)
+  // Un refus du serveur (récolte avant la plantation…) reste affiché sous le
+  // formulaire : un toast de quelques secondes passait inaperçu (cmsp5927v).
+  const [submitError, setSubmitError] = React.useState<string | null>(null)
   const [recentRecoltes, setRecentRecoltes] = React.useState<{especeId: string; especeNom?: string; cultureId: number; quantite: number; unite: UniteQuantite}[]>([])
 
   // Charger les cultures actives (en cours de recolte ou plantées)
@@ -190,8 +193,39 @@ export default function SaisieRecoltePage() {
     }
   }, [selectedCulture, estimation])
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    setSubmitError(null)
+
+    // QA cmv2r0qua — filet FormData (même règle que la récolte de fruits,
+    // cmv2ejjvp) : la date visible dans le champ gagne sur l'état React, qu'un
+    // remplissage sans onChange laissait à aujourd'hui (17/10 affiché, 10/10
+    // enregistré). Lu avant tout await.
+    const formulaireSoumis = e.currentTarget
+    const champsSoumis = new FormData(formulaireSoumis)
+    for (const [champName, label] of [
+      ["date", "de récolte"],
+      ["datePeremption", "de péremption"],
+    ] as const) {
+      const champ = formulaireSoumis.elements.namedItem(champName) as HTMLInputElement | null
+      if (champ?.validity?.badInput) {
+        toast({
+          variant: "destructive",
+          title: `Date ${label} incomplète`,
+          description: "Saisissez jj/mm/aaaa ou utilisez le calendrier.",
+        })
+        return
+      }
+    }
+    const dateSoumise = String(champsSoumis.get("date") || "").trim() || date
+    const peremptionSoumise = String(champsSoumis.get("datePeremption") || "").trim() || datePeremption
+    if (dateSoumise !== date) setDate(dateSoumise)
+    if (peremptionSoumise !== datePeremption) setDatePeremption(peremptionSoumise)
+    // Un champ vidé partait en `new Date("")`, que le serveur lisait 01/01/1970.
+    if (!dateSoumise) {
+      setSubmitError("Indiquez la date de la récolte.")
+      return
+    }
 
     if (!selectedCulture || !quantite) {
       toast({
@@ -214,15 +248,17 @@ export default function SaisieRecoltePage() {
           especeId: cultureData.especeId,
           cultureId: cultureData.id,
           quantite: parseFloat(quantite),
-          date: new Date(date),
-          datePeremption: datePeremption ? new Date(datePeremption) : null,
+          date: new Date(dateSoumise),
+          datePeremption: peremptionSoumise ? new Date(peremptionSoumise) : null,
           notes: notes || null,
         }),
       })
 
       if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || "Erreur lors de l'enregistrement")
+        const error = await response.json().catch(() => null)
+        const message = error?.error || "Erreur lors de l'enregistrement"
+        setSubmitError(message)
+        throw new Error(message)
       }
 
       // Ajouter aux recoltes récentes
@@ -299,20 +335,34 @@ export default function SaisieRecoltePage() {
               {/* Date */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-sm font-medium">Date récolte</label>
+                  <label className="text-sm font-medium" htmlFor="saisie-recolte-date">Date récolte</label>
+                  {/* QA cmv2r0qua — name + resynchronisation au blur : la date
+                      affichée est celle enregistrée (filet relu à l'envoi). */}
                   <Input
+                    id="saisie-recolte-date"
                     type="date"
+                    name="date"
                     value={date}
                     onChange={(e) => setDate(e.target.value)}
+                    onBlur={(e) => {
+                      const valeur = e.currentTarget.value
+                      if (valeur && valeur !== date) setDate(valeur)
+                    }}
                     className="mt-1"
                   />
                 </div>
                 <div>
-                  <label className="text-sm font-medium">Péremption</label>
+                  <label className="text-sm font-medium" htmlFor="saisie-recolte-peremption">Péremption</label>
                   <Input
+                    id="saisie-recolte-peremption"
                     type="date"
+                    name="datePeremption"
                     value={datePeremption}
                     onChange={(e) => setDatePeremption(e.target.value)}
+                    onBlur={(e) => {
+                      const valeur = e.currentTarget.value
+                      if (valeur && valeur !== datePeremption) setDatePeremption(valeur)
+                    }}
                     className="mt-1"
                     placeholder="Optionnel"
                   />
@@ -445,6 +495,10 @@ export default function SaisieRecoltePage() {
               </div>
             </CardContent>
           </Card>
+
+          {submitError && (
+            <p role="alert" className="text-sm text-red-600">{submitError}</p>
+          )}
 
           {/* scroll-mb-28 : un scrollIntoView (agent, clavier mobile) ne doit
               pas caler le bouton sous les pastilles fixed feedback/IA qui

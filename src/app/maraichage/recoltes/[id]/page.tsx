@@ -41,6 +41,9 @@ export default function EditRecoltePage() {
   const { toast } = useToast()
   const [isLoading, setIsLoading] = React.useState(true)
   const [isSubmitting, setIsSubmitting] = React.useState(false)
+  // Un refus du serveur (récolte redatée avant la plantation, cmv2r19al) reste
+  // affiché sous le formulaire : un toast passait inaperçu (cmsp5927v).
+  const [submitError, setSubmitError] = React.useState<string | null>(null)
   const [recolteInfo, setRecolteInfo] = React.useState<{
     especeId: string
     especeNom?: string
@@ -85,7 +88,26 @@ export default function EditRecoltePage() {
       })
   }, [recolteId, form, router, toast])
 
-  const onSubmit = async (data: RecolteFormData) => {
+  const onSubmit = async (data: RecolteFormData, event?: React.BaseSyntheticEvent) => {
+    // QA cmv2r0qua — filet FormData, comme la saisie : la date visible dans le
+    // champ gagne sur l'état du formulaire, qu'un remplissage sans onChange
+    // laissait à l'ancienne valeur.
+    const formulaire = event?.target instanceof HTMLFormElement ? event.target : null
+    const champDate = formulaire?.elements.namedItem("date") as HTMLInputElement | null
+    if (champDate?.validity?.badInput) {
+      toast({
+        variant: "destructive",
+        title: "Date de récolte incomplète",
+        description: "Saisissez jj/mm/aaaa ou utilisez le calendrier.",
+      })
+      return
+    }
+    const dateSoumise = champDate?.value.trim() || data.date
+    setSubmitError(null)
+    if (!dateSoumise) {
+      setSubmitError("Indiquez la date de la récolte.")
+      return
+    }
     setIsSubmitting(true)
     try {
       const response = await fetch(`/api/recoltes/${recolteId}`, {
@@ -93,13 +115,15 @@ export default function EditRecoltePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...data,
-          date: new Date(data.date).toISOString(),
+          date: new Date(dateSoumise).toISOString(),
         }),
       })
 
       if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || "Erreur lors de la mise à jour")
+        const error = await response.json().catch(() => null)
+        const message = error?.error || "Erreur lors de la mise à jour"
+        setSubmitError(message)
+        throw new Error(message)
       }
 
       toast({
@@ -210,7 +234,17 @@ export default function EditRecoltePage() {
                     <FormItem>
                       <FormLabel>Date</FormLabel>
                       <FormControl>
-                        <Input type="date" {...field} />
+                        {/* QA cmv2r0qua — resynchronisation au blur : la date
+                            affichée est celle enregistrée (filet relu à l'envoi). */}
+                        <Input
+                          type="date"
+                          {...field}
+                          onBlur={(e) => {
+                            field.onBlur()
+                            const valeur = e.currentTarget.value
+                            if (valeur && valeur !== field.value) field.onChange(valeur)
+                          }}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -261,6 +295,10 @@ export default function EditRecoltePage() {
                 />
               </CardContent>
             </Card>
+
+            {submitError && (
+              <p role="alert" className="text-sm text-red-600">{submitError}</p>
+            )}
 
             <div className="flex justify-end gap-4">
               <Link href="/maraichage/recoltes">

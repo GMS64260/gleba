@@ -136,7 +136,12 @@ export function EventDialog({ event, open, onOpenChange, onUpdate }: EventDialog
             quantite: parsedQuantite,
           }),
         })
-        if (!responseRecolte.ok) throw new Error("Erreur création récolte")
+        if (!responseRecolte.ok) {
+          // Le refus du serveur dit quoi corriger (récolte avant la
+          // plantation, cmv2r19al) : il était remplacé par un message muet.
+          const p = await responseRecolte.json().catch(() => null)
+          throw new Error(p?.error || "Impossible d'enregistrer la récolte")
+        }
 
         // Marquer la culture comme récoltée
         await fetch(`/api/cultures/${event.id}`, {
@@ -152,11 +157,11 @@ export function EventDialog({ event, open, onOpenChange, onUpdate }: EventDialog
 
         onUpdate()
         onOpenChange(false)
-      } catch {
+      } catch (error) {
         toast({
           variant: "destructive",
           title: "Erreur",
-          description: "Impossible d'enregistrer la récolte",
+          description: error instanceof Error ? error.message : "Impossible d'enregistrer la récolte",
         })
       } finally {
         setLoading(false)
