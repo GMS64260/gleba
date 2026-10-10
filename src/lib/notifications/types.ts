@@ -74,8 +74,9 @@ export interface TacheItpSemaine {
 
 /** Types d'alertes urgentes (temps réel). */
 export type TypeAlerteUrgente =
+  /** Plus émis depuis la refonte de l'arrosage (2026-10-10) ; gardé pour les préférences. */
   | "irrigation-inutile"
-  /** Issue #16 : irrigation planifiée non effectuée. */
+  /** Planche au bilan hydrique critique aujourd'hui (refonte du 2026-10-10). */
   | "irrigation-rappel"
   | "association-incompatible"
   | "tache-retard"

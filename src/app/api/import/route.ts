@@ -10,7 +10,6 @@ import { nomItpDepuisSaisie } from '@/lib/itp-nom'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { normalizeVarieteName } from '@/lib/normalize'
 import { invalidateKpi } from '@/lib/kpi'
-import { frequenceIrrigationJours } from '@/lib/irrigation-peremption'
 import { rendementEffectif } from '@/lib/recolte/rendement-effectif'
 import { uniteQuantiteRecolte, type UniteQuantite } from '@/lib/recolte/projection'
 import { enregistrerStockVariete } from '@/lib/stocks/stock-variete'
@@ -1063,70 +1062,9 @@ export async function POST(request: NextRequest) {
 
     const totalImported = Object.values(stats).reduce((a, b) => a + b, 0)
 
-    // Générer les irrigations planifiées pour les cultures importées.
-    // Audit 2026-07 (#30) : auparavant on régénérait pour TOUTES les cultures
-    // actives sans déduplication ni borne au présent → chaque import doublait
-    // les plannings existants et créait des dizaines de dates passées « en
-    // retard ». On saute les cultures qui ont déjà un planning et on ne crée
-    // que des dates futures.
-    let irrigationsCreated = 0
-    const currentYear = new Date().getFullYear()
-    const aujourdhui = new Date()
-
-    const culturesAIrriguer = await tx.culture.findMany({
-      where: {
-        userId,
-        aIrriguer: true,
-        terminee: null,
-        annee: { in: [currentYear, currentYear + 1] },
-      },
-      include: {
-        espece: { select: { besoinEau: true } },
-      },
-    })
-
-    for (const culture of culturesAIrriguer) {
-      // Dédup : ne pas régénérer si un planning existe déjà pour cette culture.
-      const dejaPlanifie = await tx.irrigationPlanifiee.count({
-        where: { cultureId: culture.id, userId },
-      })
-      if (dejaPlanifie > 0) continue
-
-      const dateDebut = culture.datePlantation || culture.dateSemis
-      const dateFin = culture.finRecolte || culture.dateRecolte
-
-      if (!dateDebut) continue
-
-      // Cadence partagée avec le planificateur et la péremption. Cette copie
-      // ignorait le palier « besoin faible » (5 j) et arrosait tout tous les
-      // 3 jours : une culture importée périmait donc sur un cycle qu'elle
-      // n'avait jamais suivi.
-      const frequenceJours = frequenceIrrigationJours(culture.espece.besoinEau)
-
-      const irrigations: Date[] = []
-      const currentDate = new Date(dateDebut)
-      currentDate.setDate(currentDate.getDate() + frequenceJours)
-
-      const finDate = dateFin ? new Date(dateFin) : new Date(dateDebut.getFullYear(), 11, 31)
-
-      while (currentDate <= finDate) {
-        // Ne planifier que le futur : pas de tâche d'irrigation passée « en retard ».
-        if (currentDate >= aujourdhui) irrigations.push(new Date(currentDate))
-        currentDate.setDate(currentDate.getDate() + frequenceJours)
-      }
-
-      if (irrigations.length > 0) {
-        await tx.irrigationPlanifiee.createMany({
-          data: irrigations.map(date => ({
-            userId,
-            cultureId: culture.id,
-            datePrevue: date,
-            fait: false,
-          })),
-        })
-        irrigationsCreated += irrigations.length
-      }
-    }
+    // Plus de plan d'arrosage généré à l'import (refonte du 2026-10-10) : le
+    // besoin du jour se calcule depuis le bilan hydrique (src/lib/irrigation/a-arroser.ts).
+    const irrigationsCreated = 0
 
     return {
       totalImported,
@@ -1167,7 +1105,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `${result.totalImported} enregistrements importés + ${result.irrigationsCreated} irrigations générées`,
+      message: `${result.totalImported} enregistrements importés`,
       stats: {
         ...result.stats,
         irrigations: result.irrigationsCreated,

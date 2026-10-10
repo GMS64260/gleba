@@ -3,9 +3,9 @@
  * GET  /api/cultures/irriguer - Liste avec urgence météo-aware
  * PATCH /api/cultures/irriguer - Marquer arrosage / toggle aIrriguer
  *
- * Le calcul (bilan hydrique, urgences, consommations, auto-validation des
- * irrigations planifiées) vit dans src/lib/irrigation-conseil.ts, partagé
- * avec l'assistant IA pour que les deux affichent les mêmes chiffres.
+ * Le calcul (bilan hydrique, urgences, consommations) vit dans
+ * src/lib/irrigation-conseil.ts, partagé avec l'assistant IA pour que les
+ * deux affichent les mêmes chiffres.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -26,11 +26,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const annee = parseInt(searchParams.get('annee') || new Date().getFullYear().toString())
 
-    const payload = await computeConseilIrrigation(
-      userId,
-      annee,
-      session!.user.peutEcrireExploitation !== false,
-    )
+    const payload = await computeConseilIrrigation(userId, annee)
     return NextResponse.json(payload)
   } catch (error) {
     console.error('GET /api/cultures/irriguer error:', error)
@@ -53,6 +49,7 @@ export async function PATCH(request: NextRequest) {
     const userId = getUserId(session)
     const body = await request.json()
     const { cultureId, cultureIds, aIrriguer, marquerArrosage } = body
+    const notes = typeof body.notes === 'string' ? body.notes : null
 
     // Arrosage multiple (groupe par îlot). Chaque culture demandée étend la
     // mise à jour à ses colocataires actifs sur la même planche.
@@ -60,6 +57,7 @@ export async function PATCH(request: NextRequest) {
       const result = await enregistrerArrosageCultures({
         userId,
         cultureIds,
+        notes,
       })
       return NextResponse.json({
         success: true,

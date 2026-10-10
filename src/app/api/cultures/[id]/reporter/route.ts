@@ -16,7 +16,6 @@ import { refusSiLectureSeule } from '@/lib/exploitation/garde-session'
 import { SELECT_ETAPES } from '@/lib/cultures/execution'
 import { ecrituresReport } from '@/lib/cultures/report'
 import { invalidateKpi } from '@/lib/kpi'
-import { etendrePlanArrosage } from '@/lib/irrigation-scheduler'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -80,12 +79,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     })
 
     invalidateKpi(session!.user.id)
-
-    // Friction 2026-08-14 — un plan d'arrosage existant suit les cultures :
-    // un cycle déplacé doit re-couvrir sa nouvelle fenêtre.
-    if (maj.aIrriguer) {
-      await etendrePlanArrosage(session!.user.id, cultureId)
-    }
 
     return NextResponse.json({ culture: maj, decalages: resultat.decalages })
   } catch (error) {

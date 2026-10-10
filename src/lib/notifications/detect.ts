@@ -138,117 +138,52 @@ export function detecterAlertesMeteo(
   return alertes
 }
 
-export const SEUILS_IRRIGATION_INUTILE = {
-  pluiePrevue: 5, // mm prévus le jour J → irrigation inutile
-  pluieRecente: 5, // mm cumulés sur 3 j
-  joursCouverture: 3,
-} as const
-
-/**
- * Décide si une irrigation planifiée est probablement inutile (même heuristique
- * que la route /api/calendrier, factorisée pour être testable et réutilisée
- * par les alertes temps réel).
- */
-export function deciderIrrigationInutile(opts: {
-  pluiePrevue: number | null
-  pluieRecente3j: number
-  joursAvant: number
-}): boolean {
-  const { pluiePrevue, pluieRecente3j, joursAvant } = opts
-  const inutileParPluieRecente =
-    pluieRecente3j >= SEUILS_IRRIGATION_INUTILE.pluieRecente &&
-    joursAvant <= SEUILS_IRRIGATION_INUTILE.joursCouverture
-  const inutileParPrevision =
-    pluiePrevue !== null && pluiePrevue >= SEUILS_IRRIGATION_INUTILE.pluiePrevue
-  return inutileParPluieRecente || inutileParPrevision
-}
-
-/** Entrée enrichie d'une irrigation planifiée pour la détection pure. */
-export interface IrrigationRetardInput {
-  id: number
-  fait: boolean
-  datePrevue: Date | string
-  especeNom: string
-  varieteNom: string | null
-  plancheNom: string | null
-  lat: number | null
-  lng: number | null
-}
-
-/** Météo déjà chargée pour les coordonnées des cultures. */
-export interface MeteoIrrigationRetard {
-  precipParCoordEtJour: Map<string, Map<string, number>>
-  pluieRecente3jParCoord: Map<string, number>
-}
-
-/** Nombre maximal de rappels d'irrigation produits par scan utilisateur. */
+/** Nombre maximal de rappels d'arrosage produits par scan utilisateur. */
 export const MAX_RAPPELS_IRRIGATIONS = 5
 
-/** Clé quotidienne anti-redondance d'une irrigation non effectuée. */
-export function creerCleRappelIrrigation(irrigationId: number, aujourdHui: Date = new Date()): string {
-  return `irrigation-rappel:${irrigationId}:${dateLocaleIso(aujourdHui)}`
+/** Planche à arroser vue par la détection (sous-ensemble d'`ArrosageDuJour`). */
+export interface ArrosageCritiqueInput {
+  cle: string
+  plancheNom: string | null
+  especes: string
+  urgence: string
+  raison: string
+}
+
+/** Clé quotidienne anti-redondance d'une planche à arroser. */
+export function creerCleRappelIrrigation(cle: string, aujourdHui: Date = new Date()): string {
+  return `irrigation-rappel:${cle}:${dateLocaleIso(aujourdHui)}`
+}
+
+/**
+ * Rappel d'une planche dont le bilan hydrique est CRITIQUE aujourd'hui.
+ *
+ * Refonte de l'arrosage du 2026-10-10 : remplace les rappels de « passages
+ * planifiés en retard », qui envoyaient des courriels pour un plan à cadence
+ * fixe que personne ne suivait. Seule l'urgence critique (déficit marqué, des
+ * jours sans eau, pas de pluie prévue) mérite un courriel. Pur.
+ */
+export function rappelsArrosageCritique(
+  arrosages: ArrosageCritiqueInput[],
+  aujourdHui: Date = new Date(),
+): AlerteUrgente[] {
+  return arrosages
+    .filter((a) => a.urgence === "critique")
+    .slice(0, MAX_RAPPELS_IRRIGATIONS)
+    .map((a) => {
+      const planche = a.plancheNom ?? "sans planche"
+      return {
+        type: "irrigation-rappel" as const,
+        titre: `arrosage planche ${planche}`,
+        message: `La planche ${planche}${a.especes ? ` (${a.especes})` : ""} est à arroser aujourd'hui : ${a.raison}`,
+        key: creerCleRappelIrrigation(a.cle, aujourdHui),
+      }
+    })
 }
 
 /** Clé utilisée par les cartes météo pour une coordonnée arrondie. */
 export function coordKey(lat: number, lng: number): string {
   return `${Math.round(lat * 100)}_${Math.round(lng * 100)}`
-}
-
-/**
- * Détecte les irrigations échues qui ne sont probablement pas couvertes par
- * la pluie. Fonction pure : Prisma et les appels météo restent dans queries.ts.
- */
-export function calculerRappelsIrrigationsEnRetard(
-  irrigations: IrrigationRetardInput[],
-  meteo: MeteoIrrigationRetard,
-  options: {
-    aujourdHui?: Date
-    fallbackCoord?: { lat: number; lng: number }
-  } = {}
-): AlerteUrgente[] {
-  const aujourdHui = options.aujourdHui ?? new Date()
-  const finJour = finDeJournee(aujourdHui)
-  const candidates = irrigations
-    .filter((irrigation) => !irrigation.fait)
-    .map((irrigation) => ({ irrigation, date: new Date(irrigation.datePrevue) }))
-    .filter(({ date }) => !Number.isNaN(date.getTime()) && date <= finJour)
-    .sort((a, b) => a.date.getTime() - b.date.getTime())
-
-  const rappels: AlerteUrgente[] = []
-  for (const { irrigation, date } of candidates) {
-    const coord =
-      irrigation.lat !== null && irrigation.lng !== null
-        ? { lat: irrigation.lat, lng: irrigation.lng }
-        : options.fallbackCoord
-    if (coord) {
-      const cleCoord = coordKey(coord.lat, coord.lng)
-      const dateStr = dateLocaleIso(date)
-      const pluiePrevue = meteo.precipParCoordEtJour.get(cleCoord)?.get(dateStr) ?? null
-      const pluieRecente = meteo.pluieRecente3jParCoord.get(cleCoord) ?? 0
-      const joursAvant = Math.floor((date.getTime() - aujourdHui.getTime()) / JOUR_MS)
-      if (deciderIrrigationInutile({ pluiePrevue, pluieRecente3j: pluieRecente, joursAvant })) {
-        continue
-      }
-    }
-
-    const datePrevue = dateLocaleIso(date)
-    const joursRetard = Math.max(
-      0,
-      Math.floor((debutDeJournee(aujourdHui).getTime() - debutDeJournee(date).getTime()) / JOUR_MS)
-    )
-    const variete = irrigation.varieteNom ? ` (${irrigation.varieteNom})` : ""
-    const planche = irrigation.plancheNom ?? "sans planche"
-    const culture = `${irrigation.especeNom}${variete}`
-    rappels.push({
-      type: "irrigation-rappel",
-      titre: `${culture} — planche ${planche}`,
-      message: `L'irrigation prévue le ${formatDateFr(datePrevue)} pour « ${culture} » (planche ${planche}) n'a pas été marquée comme faite (${joursRetard} jour${joursRetard > 1 ? "s" : ""} de retard). À faire, ou à marquer comme effectuée si c'est déjà le cas.`,
-      key: creerCleRappelIrrigation(irrigation.id, aujourdHui),
-    })
-    if (rappels.length >= MAX_RAPPELS_IRRIGATIONS) break
-  }
-
-  return rappels
 }
 
 /** Date locale du serveur (fuseau TZ, ex. Europe/Paris) au format YYYY-MM-DD. */

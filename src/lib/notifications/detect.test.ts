@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest"
 import {
-  deciderIrrigationInutile,
   detecterAlertesMeteo,
   SEUILS_METEO,
   detecterStocksAlimentsBas,
@@ -226,22 +225,5 @@ describe("détection des stocks bas", () => {
 
     expect(fertilisants[0].ratio).toBe(0.4)
     expect(aliments[0].ratio).toBe(0.4)
-  })
-})
-
-describe("deciderIrrigationInutile", () => {
-  it("inutile si >= 5 mm de pluie prévus le jour J", () => {
-    expect(deciderIrrigationInutile({ pluiePrevue: 6, pluieRecente3j: 0, joursAvant: 0 })).toBe(true)
-  })
-
-  it("inutile si pluie récente >= 5 mm et échéance dans les 3 jours", () => {
-    expect(deciderIrrigationInutile({ pluiePrevue: null, pluieRecente3j: 12, joursAvant: 1 })).toBe(true)
-    // Échéance plus lointaine → la pluie récente ne couvre plus
-    expect(deciderIrrigationInutile({ pluiePrevue: null, pluieRecente3j: 12, joursAvant: 5 })).toBe(false)
-  })
-
-  it("nécessaire si ni pluie prévue ni pluie récente", () => {
-    expect(deciderIrrigationInutile({ pluiePrevue: 1, pluieRecente3j: 2, joursAvant: 0 })).toBe(false)
-    expect(deciderIrrigationInutile({ pluiePrevue: null, pluieRecente3j: 0, joursAvant: 0 })).toBe(false)
   })
 })

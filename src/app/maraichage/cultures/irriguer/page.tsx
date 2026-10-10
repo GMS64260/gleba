@@ -62,8 +62,6 @@ interface CultureIrriguer {
   urgence: 'critique' | 'haute' | 'moyenne' | 'faible' | 'aucune'
   raisonUrgence: string
   consommationEauSemaine: number
-  prochainesIrrigations: number
-  irrigationsAutoValidees: number
   meteo: MeteoResume | null
   espece: {
     id: string
@@ -95,8 +93,6 @@ interface Stats {
   haute: number
   aucune: number
   jamaisArrose: number
-  prochainesIrrigations7j: number
-  irrigationsAutoValidees: number
   consommationTotaleEstimee: number
   parTypeIrrigation: { type: string; count: number }[]
 }
@@ -403,12 +399,6 @@ function CulturesIrriguerContent() {
                       ? `${meteoGlobal.joursSansPluie} jours sans pluie`
                       : 'Conditions normales'}
                   </span>
-                  {stats && stats.irrigationsAutoValidees > 0 && (
-                    <Badge className="bg-blue-500 text-white">
-                      <CheckCircle2 className="h-3 w-3 mr-1" />
-                      {stats.irrigationsAutoValidees} irrigation{stats.irrigationsAutoValidees > 1 ? 's' : ''} auto-validee{stats.irrigationsAutoValidees > 1 ? 's' : ''}
-                    </Badge>
-                  )}
                 </div>
                 <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
                   <span>7j: {Math.round(meteoGlobal.pluie7j)}mm</span>
@@ -527,17 +517,14 @@ function CulturesIrriguerContent() {
             </Card>
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm text-muted-foreground">Irrigations planifiées</CardTitle>
+                <CardTitle className="text-sm text-muted-foreground">À arroser aujourd&apos;hui</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold text-blue-600">{stats.prochainesIrrigations7j}</p>
+                {/* Refonte du 2026-10-10 : plus de passages planifiés d'avance ; le
+                    besoin du jour vient de l'urgence du bilan hydrique. */}
+                <p className="text-2xl font-bold text-blue-600">{stats.critique + stats.haute}</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  restantes (7j)
-                  {stats.irrigationsAutoValidees > 0 && (
-                    <span className="text-green-600 ml-1">
-                      · {stats.irrigationsAutoValidees} auto-validée{stats.irrigationsAutoValidees > 1 ? 's' : ''} par la pluie
-                    </span>
-                  )}
+                  culture{stats.critique + stats.haute > 1 ? 's' : ''} en urgence critique ou haute
                 </p>
               </CardContent>
             </Card>
@@ -569,7 +556,6 @@ function CulturesIrriguerContent() {
               // multiculture est arrosée en un seul passage, donc on dédoublonne
               // par planche au lieu d'additionner culture par culture.
               const consommationGroupe = consommationHebdoTotale(cultures)
-              const prochainesGroupe = cultures.reduce((sum, c) => sum + c.prochainesIrrigations, 0)
               const okCount = cultures.filter(c => c.urgence === 'aucune').length
 
               return (
@@ -605,11 +591,6 @@ function CulturesIrriguerContent() {
                         <Droplets className="h-3 w-3 text-cyan-600 flex-shrink-0" />
                         <span>{Math.round(consommationGroupe)}L/sem</span>
                       </div>
-                      {prochainesGroupe > 0 && (
-                        <span className="text-blue-600 whitespace-nowrap">
-                          +{prochainesGroupe} à venir
-                        </span>
-                      )}
                     </div>
                   </CardTitle>
                 </CardHeader>
@@ -675,17 +656,6 @@ function CulturesIrriguerContent() {
                                   )}
                                   {culture.consommationEauSemaine > 0 && (
                                     <span>~{Math.round(culture.consommationEauSemaine)}L/sem</span>
-                                  )}
-                                  {culture.prochainesIrrigations > 0 && (
-                                    <span className="text-blue-600">
-                                      +{culture.prochainesIrrigations} planifiée{culture.prochainesIrrigations > 1 ? 's' : ''} (7j)
-                                    </span>
-                                  )}
-                                  {culture.irrigationsAutoValidees > 0 && (
-                                    <span className="text-green-600">
-                                      <CheckCircle2 className="h-3 w-3 inline mr-0.5" />
-                                      {culture.irrigationsAutoValidees} auto-validee{culture.irrigationsAutoValidees > 1 ? 's' : ''}
-                                    </span>
                                   )}
                                 </div>
                               </div>

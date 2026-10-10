@@ -16,7 +16,6 @@ import { checkRotationViolation } from '@/lib/rotation-check'
 import { estEtatCulture, etatCulture, whereEtatCulture } from '@/lib/cultures/etat'
 import { ecrituresPassageAFait, ETAPES, type EtatEtapes } from '@/lib/cultures/execution'
 import { chevauchePeriode, estVivaceEnPlace, finDeCycle, finRecolteDepuisItp } from '@/lib/cultures/fenetre-recolte'
-import { etendrePlanArrosage } from '@/lib/irrigation-scheduler'
 import { whereItpUtilisable } from '@/lib/itp-acces'
 import { visibiliteReferentiel } from '@/lib/referentiel-communaute'
 import { appliquerDecalageItp, decalageItpPourLecteur } from '@/lib/calendrier-climat'
@@ -612,13 +611,6 @@ export async function POST(request: NextRequest) {
     })
 
     invalidateKpi(session!.user.id)
-
-    // Friction 2026-08-14 — un plan d'arrosage existant suit les cultures :
-    // une culture « à irriguer » créée après la génération du plan restait
-    // sans passage jusqu'à un clic explicite dans l'onglet Calendrier.
-    if (culture.aIrriguer) {
-      await etendrePlanArrosage(session!.user.id, culture.id)
-    }
 
     // Audit Marc 2026-05-14 — Bug 04 : warnings remontés non bloquants
     return NextResponse.json(

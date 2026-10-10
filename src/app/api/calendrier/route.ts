@@ -1,21 +1,17 @@
 /**
  * API Route pour le calendrier
  * GET /api/calendrier?start=&end=
- * Retourne les événements (semis, plantations, recoltes, irrigations) pour une période
+ * Retourne les événements (semis, plantations, récoltes, arrosages notés) pour une période.
+ *
+ * Arrosage : depuis la refonte du 2026-10-10, plus aucun passage n'est planifié
+ * d'avance. Le calendrier montre les arrosages NOTÉS (historique) ; le besoin
+ * du jour vit dans les tâches (`src/lib/irrigation/a-arroser.ts`).
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi, getUserId } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
-import { fetchOpenMeteoForecast, fetchOpenMeteoHistory } from '@/lib/meteo'
-import { grouperIrrigationsPlanifieesParPlancheEtJour } from '@/lib/irrigation-planche'
-import { idsAExpirer } from '@/lib/irrigation-peremption'
-import {
-  decideIrrigationMeteo,
-  jourCivilLocalISO,
-  joursCivilsAvant,
-  type DecisionIrrigationMeteo,
-} from '@/lib/irrigation-meteo-decision'
+import { jourCivilLocalISO } from '@/lib/irrigation-meteo-decision'
 
 export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
@@ -23,8 +19,6 @@ export async function GET(request: NextRequest) {
 
   try {
     const userId = getUserId(session)
-    // Un acteur en lecture seule voit l'état calculé, sans écriture en base.
-    const peutPersister = session!.user.peutEcrireExploitation !== false
     const { searchParams } = new URL(request.url)
 
     const startStr = searchParams.get('start')
@@ -120,11 +114,12 @@ export async function GET(request: NextRequest) {
           },
         },
       }),
-      // Irrigations planifiées
+      // Arrosages notés de la période (traces closes)
       prisma.irrigationPlanifiee.findMany({
         where: {
           userId,
-          datePrevue: {
+          fait: true,
+          dateEffective: {
             gte: start,
             lte: end,
           },
@@ -145,9 +140,6 @@ export async function GET(request: NextRequest) {
                 select: {
                   nom: true,
                   ilot: true,
-                  parcelleGeo: {
-                    select: { centroidLat: true, centroidLng: true },
-                  },
                 },
               },
             },
@@ -156,173 +148,35 @@ export async function GET(request: NextRequest) {
       }),
     ])
 
-    // ── Prévisions météo pour les irrigations ──
-    let fallbackCoords: { lat: number; lng: number } | null = null
-
-    // Bug #11 — Open-Meteo Forecast ne couvre que les 16 jours à venir et
-    // Archive démarre 5 jours après aujourd'hui ; pour une fenêtre 2027 on
-    // appelait quand même 4 fois l'API, on collectait un timeout côté
-    // reverse-proxy (Caddy renvoie 503). On évite l'appel si la fenêtre
-    // est hors plage exploitable.
-    const FORECAST_HORIZON_DAYS = 16
-    const now = new Date()
-    const horizonForecast = new Date(now.getTime() + FORECAST_HORIZON_DAYS * 86_400_000)
-    const periodeExploitable = start <= horizonForecast
-
-    if (periodeExploitable && irrigationsPlanifiees.length > 0) {
-      const manqueCoordonnees = irrigationsPlanifiees.some((irr) => {
-        const lat = irr.culture.planche?.parcelleGeo?.centroidLat
-        const lng = irr.culture.planche?.parcelleGeo?.centroidLng
-        return !lat || !lng
-      })
-      if (manqueCoordonnees) {
-        const userParcelle = await prisma.parcelleGeo.findFirst({
-          where: { userId },
-          select: { centroidLat: true, centroidLng: true },
-        })
-        if (userParcelle?.centroidLat && userParcelle?.centroidLng) {
-          fallbackCoords = { lat: userParcelle.centroidLat, lng: userParcelle.centroidLng }
-        }
-      }
-    }
-
-    const coordsMap = new Map<string, { lat: number; lng: number }>()
+    // Un passage arrose toute la planche : un événement par planche et par jour.
+    const parPlancheJour = new Map<string, typeof irrigationsPlanifiees>()
     for (const irr of irrigationsPlanifiees) {
-      const lat = irr.culture.planche?.parcelleGeo?.centroidLat ?? fallbackCoords?.lat
-      const lng = irr.culture.planche?.parcelleGeo?.centroidLng ?? fallbackCoords?.lng
-      if (!lat || !lng) continue
-      const key = `${Math.round(lat * 100)}_${Math.round(lng * 100)}`
-      if (!coordsMap.has(key)) coordsMap.set(key, { lat, lng })
+      const jour = jourCivilLocalISO(irr.dateEffective ?? irr.datePrevue)
+      const cle = `${irr.culture.planche?.nom ?? `culture:${irr.culture.id}`}:${jour}`
+      parPlancheJour.set(cle, [...(parPlancheJour.get(cle) ?? []), irr])
     }
-
-    const precipByCoordAndDate = new Map<string, Map<string, number>>()
-    const pluieRecente3jByCoord = new Map<string, number>()
-    const et0RecenteByCoord = new Map<string, number | null>()
-
-    await Promise.all(
-      Array.from(coordsMap.entries()).map(async ([coordKey, { lat, lng }]) => {
-        try {
-          const forecast = await fetchOpenMeteoForecast(lat, lng)
-          const dateMap = new Map<string, number>()
-          for (const day of forecast.daily) {
-            dateMap.set(day.date, day.precipitation)
-          }
-          precipByCoordAndDate.set(coordKey, dateMap)
-
-          // Historique 3 derniers jours pour évaluer la pluie récente
-          const today = new Date()
-          const j3 = new Date(today)
-          j3.setDate(j3.getDate() - 3)
-          const yesterday = new Date(today)
-          yesterday.setDate(yesterday.getDate() - 1)
-
-          const historique = await fetchOpenMeteoHistory(
-            lat, lng,
-            j3.toISOString().split('T')[0],
-            yesterday.toISOString().split('T')[0]
-          )
-          const pluieHisto = historique.reduce((s, d) => s + d.precipitation, 0)
-          const pluieAujourdhui = forecast.daily[0]?.precipitation ?? 0
-          pluieRecente3jByCoord.set(coordKey, pluieHisto + pluieAujourdhui)
-          const et0Hist = historique.length > 0
-            ? historique.reduce((s, d) => s + d.et0, 0) / historique.length
-            : null
-          et0RecenteByCoord.set(coordKey, et0Hist ?? forecast.daily[0]?.et0 ?? null)
-        } catch {
-          // pas bloquant
-        }
-      })
-    )
-
-    // Décision « probablement inutile » : règle partagée avec getTachesPotager
-    // (QA cmswu3260 — seuils et cause dans irrigation-meteo-decision.ts).
-    function getIrrigationMeteo(irr: typeof irrigationsPlanifiees[number]): DecisionIrrigationMeteo {
-      const lat = irr.culture.planche?.parcelleGeo?.centroidLat ?? fallbackCoords?.lat
-      const lng = irr.culture.planche?.parcelleGeo?.centroidLng ?? fallbackCoords?.lng
-      if (!lat || !lng) {
-        return { pluiePrevue: null, pluieRecente: 0, probablementInutile: false, raisonInutile: null }
+    const irrigationEvents = Array.from(parPlancheJour.values()).map((groupe) => {
+      const i = groupe[0]
+      const date = (i.dateEffective ?? i.datePrevue).toISOString()
+      const especes = Array.from(new Set(groupe.map((g) => g.culture.espece?.nom ?? g.culture.especeId)))
+      return {
+        id: i.id,
+        type: 'irrigation' as const,
+        especeId: i.culture.especeId,
+        varieteId: null,
+        plancheName: i.culture.planche?.nom || null,
+        ilot: i.culture.planche?.ilot || null,
+        date,
+        fait: true,
+        couleur: i.culture.espece?.couleur || null,
+        especeNom: especes.join(' + '),
+        varieteNom: null,
+        cultureId: i.culture.id,
+        cultureIds: Array.from(new Set(groupe.map((g) => g.culture.id))),
       }
-      const coordKey = `${Math.round(lat * 100)}_${Math.round(lng * 100)}`
+    })
 
-      return decideIrrigationMeteo({
-        pluiePrevueJour: precipByCoordAndDate.get(coordKey)?.get(jourCivilLocalISO(irr.datePrevue)) ?? null,
-        pluieRecente: pluieRecente3jByCoord.get(coordKey) ?? 0,
-        et0MoyenneJournaliere: et0RecenteByCoord.get(coordKey) ?? null,
-        joursAvant: joursCivilsAvant(irr.datePrevue),
-      })
-    }
-
-    // Péremption : un passage manqué de plus d'un cycle est abandonné, jamais
-    // rattrapé. Le calendrier continue de l'AFFICHER — c'est l'historique du
-    // plan — mais il cesse d'être une action due.
-    const idsPerimes = new Set(idsAExpirer(irrigationsPlanifiees))
-    if (idsPerimes.size > 0) {
-      // Un compte en consultation VOIT la péremption sans la persister : sauter
-      // l'écriture, pas l'affichage.
-      if (peutPersister) {
-        await prisma.irrigationPlanifiee.updateMany({
-          where: { id: { in: Array.from(idsPerimes) } },
-          data: { perimee: true },
-        })
-      }
-      for (const irr of irrigationsPlanifiees) {
-        if (idsPerimes.has(irr.id)) irr.perimee = true
-      }
-    }
-
-    // Auto-valider les irrigations passées ou du jour couvertes par la pluie récente
-    const autoValidIds: number[] = []
-    for (const irr of irrigationsPlanifiees) {
-      // Un passage abandonné n'est pas « couvert par la pluie » : le clore
-      // comme fait inventerait un arrosage dans le registre.
-      if (irr.fait || irr.perimee) continue
-      const meteo = getIrrigationMeteo(irr)
-      // Auto-valider seulement si l'échéance est RÉELLEMENT passée. Avant,
-      // `floor((datePrevue - now)/24h) <= 0` comptait une irrigation de
-      // demain-minuit comme « aujourd'hui » dès qu'elle était à moins de 24 h,
-      // et la marquait faite en avance (audit 2026-07, #46).
-      if (irr.datePrevue.getTime() <= Date.now() && meteo.probablementInutile) {
-        autoValidIds.push(irr.id)
-        irr.fait = true // Marquer localement pour l'affichage
-      }
-    }
-    if (autoValidIds.length > 0 && peutPersister) {
-      await prisma.irrigationPlanifiee.updateMany({
-        where: { id: { in: autoValidIds } },
-        data: { fait: true, notes: 'Auto-validée (pluie suffisante)' },
-      })
-    }
-
-    const irrigationEvents = grouperIrrigationsPlanifieesParPlancheEtJour(
-      irrigationsPlanifiees.map(i => {
-        const meteo = getIrrigationMeteo(i)
-        return {
-          id: i.id,
-          type: 'irrigation' as const,
-          especeId: i.culture.especeId,
-          varieteId: i.culture.varieteId || null,
-          plancheId: i.culture.planche?.nom || null,
-          plancheName: i.culture.planche?.nom || null,
-          ilot: i.culture.planche?.ilot || null,
-          datePrevue: i.datePrevue.toISOString(),
-          date: i.datePrevue.toISOString(),
-          fait: i.fait,
-          perimee: i.perimee,
-          couleur: i.culture.espece?.couleur || null,
-          especeNom: i.culture.espece?.nom ?? i.culture.especeId,
-          varieteNom: i.culture.variete?.nom ?? i.culture.varieteId ?? null,
-          cultureId: i.culture.id,
-          retardJours: 0,
-          pluiePrevue: meteo.pluiePrevue !== null ? Math.round(meteo.pluiePrevue * 10) / 10 : null,
-          pluieRecente: Math.round(meteo.pluieRecente * 10) / 10,
-          probablementInutile: meteo.probablementInutile,
-          raisonInutile: meteo.raisonInutile,
-        }
-      })
-    )
-
-    // Formater les événements. Les irrigations sont regroupées par planche
-    // et par jour pour éviter plusieurs alertes pour un même passage.
+    // Formater les événements.
     const events = [
       ...culturesAvecSemis.map(c => ({
         id: c.id,

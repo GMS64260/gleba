@@ -36,15 +36,3 @@ export function mutationEtapeCulture(
     detail,
   }
 }
-
-export function mutationIrrigationFaite(irrigationId: number, detail?: string): MutationLigne {
-  return {
-    url: `/api/irrigations/${irrigationId}`,
-    // La route pose elle-même `dateEffective` à maintenant quand `fait` passe à
-    // vrai ; l'inverse l'efface pour revenir exactement à l'état d'avant.
-    corps: { fait: true },
-    inverse: { fait: false, dateEffective: null },
-    titre: "Arrosage noté",
-    detail,
-  }
-}

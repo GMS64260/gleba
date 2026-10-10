@@ -11,7 +11,6 @@ import { updateCultureSchema, normalizeCultureDateFields } from '@/lib/validatio
 import { validateCultureDates } from '@/lib/validations/date-validation'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { irrigationCache } from '@/lib/irrigation-cache'
-import { etendrePlanArrosage } from '@/lib/irrigation-scheduler'
 import { invalidateKpi } from '@/lib/kpi'
 import { etatCulture } from '@/lib/cultures/etat'
 import { type UniteQuantite } from '@/lib/recolte/projection'
@@ -365,13 +364,6 @@ export async function PUT(
 
     invalidateKpi(session!.user.id)
 
-    // Friction 2026-08-14 — un plan d'arrosage existant suit les cultures :
-    // cocher « à irriguer » ou (re)dater le cycle depuis le formulaire doit
-    // produire les passages sans repasser par l'onglet Calendrier.
-    if (culture.aIrriguer) {
-      await etendrePlanArrosage(session!.user.id, culture.id)
-    }
-
     return NextResponse.json(
       dateWarnings.length > 0 ? { ...culture, warnings: dateWarnings } : culture
     )
@@ -589,13 +581,6 @@ export async function PATCH(
 
     invalidateKpi(session!.user.id)
 
-    // Friction 2026-08-14 — un plan d'arrosage existant suit les cultures :
-    // le toggle « à irriguer » des actions rapides doit produire les passages
-    // sans repasser par l'onglet Calendrier.
-    const champsPlanArrosage = ['aIrriguer', 'dateSemis', 'datePlantation', 'dateRecolte']
-    if (culture.aIrriguer && champsPlanArrosage.some((champ) => champ in updateData)) {
-      await etendrePlanArrosage(session!.user.id, culture.id)
-    }
 
     return NextResponse.json(culture)
   } catch (error) {

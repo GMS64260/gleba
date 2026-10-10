@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { etatIrrigation, etatTache, libelleActionTache, libelleDatePrevue, libelleRetard } from "./etat-tache"
+import { etatArrosage, etatTache, libelleActionTache, libelleDatePrevue, libelleRetard } from "./etat-tache"
 
 describe("etatTache", () => {
   it("dit ce qu'il reste à faire, en verbe, sans retard", () => {
@@ -42,19 +42,14 @@ describe("libelleRetard", () => {
   })
 })
 
-describe("etatIrrigation", () => {
-  const maintenant = new Date(2026, 9, 9, 10, 0)
-  it("distingue retard, jour même, pluie prévue, à venir et fait", () => {
-    expect(etatIrrigation({ retardJours: 2, datePrevue: new Date(2026, 9, 7), maintenant })).toEqual({ etat: "attention", libelle: "En retard" })
-    expect(etatIrrigation({ retardJours: 9, datePrevue: new Date(2026, 9, 0), maintenant }).etat).toBe("critique")
-    expect(etatIrrigation({ datePrevue: new Date(2026, 9, 9, 18), maintenant })).toEqual({ etat: "attention", libelle: "À arroser" })
-    expect(etatIrrigation({ datePrevue: new Date(2026, 9, 11), maintenant })).toEqual({ etat: "neutre", libelle: "Prévu" })
-    expect(etatIrrigation({ datePrevue: new Date(2026, 9, 11), probablementInutile: true, maintenant })).toEqual({ etat: "info", libelle: "Pluie prévue" })
-    expect(etatIrrigation({ fait: true, retardJours: 3, datePrevue: new Date(2026, 9, 7), maintenant })).toEqual({ etat: "ok", libelle: "Arrosé" })
+describe("etatArrosage", () => {
+  it("dit « À arroser », critique ou en attention selon l'urgence du bilan hydrique", () => {
+    expect(etatArrosage("critique")).toEqual({ etat: "critique", libelle: "À arroser" })
+    expect(etatArrosage("haute")).toEqual({ etat: "attention", libelle: "À arroser" })
   })
 
-  it("le retard prime sur la pluie prévue : un arrosage en retard reste à décider", () => {
-    expect(etatIrrigation({ retardJours: 1, probablementInutile: true, datePrevue: new Date(2026, 9, 8), maintenant }).libelle).toBe("En retard")
+  it("une planche notée est arrosée", () => {
+    expect(etatArrosage("critique", true)).toEqual({ etat: "ok", libelle: "Arrosé" })
   })
 })
 

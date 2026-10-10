@@ -237,7 +237,7 @@ describe("enregistrerArrosageCultures", () => {
           datePrevue: DATE_EFFECTIVE,
           fait: true,
           dateEffective: DATE_EFFECTIVE,
-          notes: "Arrosage noté depuis les conseils d’irrigation",
+          notes: "Arrosage noté",
         },
         {
           userId: "user-1",
@@ -245,9 +245,29 @@ describe("enregistrerArrosageCultures", () => {
           datePrevue: DATE_EFFECTIVE,
           fait: true,
           dateEffective: DATE_EFFECTIVE,
-          notes: "Arrosage noté depuis les conseils d’irrigation",
+          notes: "Arrosage noté",
         },
       ],
+    })
+  })
+
+  // Refonte de l'arrosage (2026-10-10) : l'observation saisie sur la page
+  // Tâches accompagne la trace, au lieu d'un passage planifié qu'on cochait.
+  it("garde l'observation saisie avec l'arrosage dans la trace", async () => {
+    mockedPrisma.culture.findMany
+      .mockResolvedValueOnce([{ id: 10, plancheId: "planche-a" }])
+      .mockResolvedValueOnce([{ id: 10 }])
+    mockLectures([])
+
+    await enregistrerArrosageCultures({
+      userId: "user-1",
+      cultureIds: [10],
+      dateEffective: DATE_EFFECTIVE,
+      notes: "  Sol sec en surface  ",
+    })
+
+    expect(mockedPrisma.irrigationPlanifiee.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({ cultureId: 10, notes: "Sol sec en surface" })],
     })
   })
 
