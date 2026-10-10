@@ -560,17 +560,29 @@ function ObservationsSubTab() {
             </div>
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <Label>Type <span className="text-red-500">*</span></Label>
-                <Select value={formData.type} onValueChange={(v) => setFormData({ ...formData, type: v })}>
-                  <SelectTrigger className={!formData.type ? "border-amber-400" : ""}>
-                    <SelectValue placeholder="— Choisir un type —" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {TYPES_OBS.map((t) => (
-                      <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="observation-type">Type <span className="text-red-500">*</span></Label>
+                {/* Même motif que l'arbre (cmv2r1kjv) : le type, obligatoire,
+                    passe en <select> natif pour ne plus retomber sur le
+                    placeholder quand le choix n'atteint pas onValueChange. */}
+                <SelectNatif
+                  id="observation-type"
+                  name="type"
+                  value={formData.type}
+                  onChange={(e) => {
+                    const type = e.target.value
+                    setFormData((courant) => ({ ...courant, type }))
+                  }}
+                  className={!formData.type ? "border-amber-400" : ""}
+                >
+                  <option value="" disabled>— Choisir un type —</option>
+                  {/* Un type hors liste (observation ancienne) reste affiché tel quel. */}
+                  {formData.type && !TYPES_OBS.some((t) => t.value === formData.type) && (
+                    <option value={formData.type}>{formData.type}</option>
+                  )}
+                  {TYPES_OBS.map((t) => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </SelectNatif>
               </div>
               <div>
                 <Label>Gravité</Label>
