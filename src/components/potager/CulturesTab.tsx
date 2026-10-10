@@ -22,6 +22,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
+import { etatCulture } from "@/lib/cultures/etat"
 import type { PluviometrieBulkItem } from "@/app/api/meteo/pluviometrie-bulk/route"
 
 const CULTURE_ETATS = [
@@ -367,15 +368,7 @@ export function CulturesTab({ year }: CulturesTabProps = {}) {
           prev.map((c) => {
             if (c.id !== id) return c
             const updated = { ...c, [field]: value }
-            updated.etat = updated.terminee
-              ? "Terminée"
-              : updated.recolteFaite
-                ? "En récolte"
-                : updated.plantationFaite
-                  ? "Plantée"
-                  : updated.semisFait
-                    ? "Semée"
-                    : "Planifiée"
+            updated.etat = etatCulture(updated)
             return updated
           })
         )
