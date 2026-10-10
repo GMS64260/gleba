@@ -53,7 +53,8 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart"
-import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Legend } from "recharts"
+import { BarChart, Bar, XAxis, YAxis, Legend } from "recharts"
+import { ResponsiveContainer } from "@/components/ui/responsive-container"
 import { todayLocalISO } from '@/lib/format-utils'
 import { merePresenteALaNaissance } from "@/lib/elevage/sortie-animal"
 

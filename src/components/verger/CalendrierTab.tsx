@@ -16,7 +16,6 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  ResponsiveContainer,
   PieChart,
   Pie,
   Cell,
@@ -24,6 +23,7 @@ import {
   AreaChart,
   Area,
 } from "recharts"
+import { ResponsiveContainer } from "@/components/ui/responsive-container"
 import {
   TreeDeciduous,
   TrendingUp,

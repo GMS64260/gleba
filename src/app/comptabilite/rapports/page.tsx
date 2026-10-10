@@ -25,7 +25,6 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  ResponsiveContainer,
   PieChart as RechartsPie,
   Pie,
   Cell,
@@ -33,6 +32,7 @@ import {
   LineChart,
   Line,
 } from "recharts"
+import { ResponsiveContainer } from "@/components/ui/responsive-container"
 import { kpiCardClass } from "@/lib/kpi-theme"
 import { getAvailableYears } from "@/components/year-selector"
 

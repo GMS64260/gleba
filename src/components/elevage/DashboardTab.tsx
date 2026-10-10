@@ -42,7 +42,8 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart"
-import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts"
+import { BarChart, Bar, XAxis, YAxis, PieChart, Pie, Cell, Legend } from "recharts"
+import { ResponsiveContainer } from "@/components/ui/responsive-container"
 import { kpiCardClass, kpiSubtleClass } from "@/lib/kpi-theme"
 import { updateDashboardSearchParams } from "@/lib/dashboard-navigation"
 
