@@ -135,6 +135,7 @@ async function avantPlantation(page) {
       body: JSON.stringify({
         especeId: "Zinnia", plancheId: planches.data?.[0]?.id ?? null, annee: new Date().getFullYear(),
         dateSemis: jour(0), datePlantation: jour(42), dateRecolte: jour(98), nbRangs: 1, notes: marque, confirmRotation: true,
+        semisFait: false, plantationFaite: false, recolteFaite: false,
       }),
     });
     return { statut: res.status, corps: await res.json().catch(() => null) };
