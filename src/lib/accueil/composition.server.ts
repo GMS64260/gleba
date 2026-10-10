@@ -39,6 +39,9 @@ import {
 import { echeanceDuJour, etatEcheance, hrefEcheance } from "./elevage"
 import { recolteDominante } from "./reperes"
 import { mutationEtapeCulture, mutationIrrigationFaite } from "./mutations"
+import { regrouperLotsVerger } from "./verger"
+import { projeterParcelles } from "./carte"
+import { TUILES_OPTIONNELLES, type IdTuile } from "./disposition"
 
 /** Une variété de repli (« Non spécifiée ») n'est pas une information à afficher. */
 function varieteAffichable(nom: string | null | undefined): string {
@@ -52,12 +55,21 @@ import type {
   EtatRegistre,
   PlanVignetteDonnees,
   ReperesAccueil,
+  TuilesOptionnelles,
 } from "./types"
 
 export interface OptionsComposition {
   /** Instant de référence (tests). */
   maintenant?: Date
+  /**
+   * Tuiles optionnelles affichées par la personne : leurs données ne sont
+   * composées que sur demande (`?tuiles=verger,carte`), les autres jamais.
+   */
+  tuiles?: readonly IdTuile[]
 }
+
+/** Dernières lignes montrées par les tuiles de listes. */
+const LIGNES_TUILE = 6
 
 /** Largeur et longueur par défaut d'une planche sans dimensions, comme le plan 2D. */
 const PLANCHE_LARGEUR_DEFAUT = 0.8
@@ -446,6 +458,196 @@ export async function composerAujourdhui(
     },
   }
 
+  // ── Tuiles optionnelles (catalogue) : composées seulement si demandées ──
+  const demandees = new Set((options.tuiles ?? []).filter((t) => TUILES_OPTIONNELLES.includes(t)))
+  const optionnelles: TuilesOptionnelles = {}
+  const debutMois = new Date(maintenant.getFullYear(), maintenant.getMonth(), 1)
+
+  if (demandees.has("recoltes-semaine") && taches) {
+    optionnelles.recoltesSemaine = taches.recoltes
+      .filter((r) => !r.fait && !estDuJourOuEnRetard(r))
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map((r) => ({
+        cultureId: r.id,
+        especeId: r.especeId,
+        especeNom: r.especeNom,
+        varieteNom: varieteAffichable(r.varieteNom) || null,
+        plancheNom: r.plancheId ?? null,
+        date: r.date,
+        unite: r.unite,
+      }))
+  }
+
+  const [tresorerie, verger, stocks, ventes, journal, carte] = await Promise.all([
+    demandees.has("tresorerie") && comptaActif
+      ? lire(
+          "trésorerie",
+          async () => {
+            const emises = await prisma.facture.findMany({
+              where: { userId, type: { not: "avoir" }, statut: "emise" },
+              select: { id: true, numero: true, clientNom: true, totalTTC: true, dateEcheance: true },
+              orderBy: [{ dateEcheance: "asc" }, { date: "asc" }],
+              take: LIGNES_TUILE,
+            })
+            const total = await prisma.facture.aggregate({
+              where: { userId, type: { not: "avoir" }, statut: "emise" },
+              _sum: { totalTTC: true },
+            })
+            return {
+              devise,
+              revenusYtd: Math.round(kpiCompta?.revenusYtd ?? 0),
+              depensesYtd: Math.round(kpiCompta?.depensesYtd ?? 0),
+              beneficeYtd: Math.round(kpiCompta?.beneficeYtd ?? 0),
+              margePercentYtd: Math.round(kpiCompta?.margePercentYtd ?? 0),
+              creances: emises.map((f) => {
+                const echeance = f.dateEcheance ? new Date(f.dateEcheance) : null
+                return {
+                  id: f.id,
+                  numero: f.numero,
+                  client: f.clientNom,
+                  montant: f.totalTTC,
+                  echeance: echeance ? echeance.toISOString() : null,
+                  retardJours: echeance ? Math.max(0, Math.round((debutJour.getTime() - echeance.getTime()) / 86_400_000)) : 0,
+                }
+              }),
+              totalCreances: Math.round(total._sum.totalTTC ?? 0),
+              nbDepensesNonPayees: kpiCompta?.nbDepensesNonPayees ?? 0,
+              depensesNonPayees: Math.round(kpiCompta?.depensesNonPayeesYtd ?? 0),
+            }
+          },
+          null,
+        )
+      : undefined,
+    demandees.has("verger") && modules.includes("verger")
+      ? lire(
+          "verger",
+          async () =>
+            regrouperLotsVerger(
+              await prisma.operationArbre.findMany({
+                where: { userId, fait: false, abandonneeLe: null },
+                select: {
+                  id: true,
+                  type: true,
+                  description: true,
+                  datePrevue: true,
+                  fenetreDebut: true,
+                  dateLimite: true,
+                  abandonneeLe: true,
+                  fait: true,
+                  arbre: { select: { id: true, nom: true } },
+                },
+                orderBy: { datePrevue: "asc" },
+                take: 500,
+              }),
+              maintenant,
+            ),
+          null,
+        )
+      : undefined,
+    demandees.has("stocks") && elevageActif
+      ? lire(
+          "stocks",
+          async () => {
+            const stocks = await prisma.userStockAliment.findMany({
+              where: { userId, stock: { not: null }, stockMin: { not: null } },
+              select: { alimentId: true, stock: true, stockMin: true, aliment: { select: { nom: true } } },
+            })
+            return {
+              aliments: stocks
+                .filter((s) => (s.stock ?? 0) <= (s.stockMin ?? 0))
+                .sort((a, b) => (a.stock ?? 0) / Math.max(a.stockMin ?? 1, 1) - (b.stock ?? 0) / Math.max(b.stockMin ?? 1, 1))
+                .slice(0, LIGNES_TUILE)
+                .map((s) => ({ id: s.alimentId, nom: s.aliment.nom, stock: s.stock ?? 0, stockMin: s.stockMin ?? 0 })),
+              peremptions: (agenda?.echeances ?? [])
+                .filter((e) => e.kind === "medicament_peremption")
+                .slice(0, LIGNES_TUILE)
+                .map((e) => ({ id: e.id, titre: e.titre, detail: e.detail ?? null, joursRestants: e.joursRestants })),
+            }
+          },
+          null,
+        )
+      : undefined,
+    demandees.has("ventes") && comptaActif
+      ? lire(
+          "ventes",
+          async () => {
+            const [dernieres, mois] = await Promise.all([
+              prisma.venteManuelle.findMany({
+                where: { userId },
+                select: { id: true, date: true, description: true, montant: true, clientNom: true, paye: true, client: { select: { nom: true } } },
+                orderBy: { date: "desc" },
+                take: LIGNES_TUILE,
+              }),
+              prisma.venteManuelle.aggregate({ where: { userId, date: { gte: debutMois } }, _sum: { montant: true }, _count: true }),
+            ])
+            return {
+              devise,
+              totalMois: Math.round(mois._sum.montant ?? 0),
+              nbMois: mois._count,
+              dernieres: dernieres.map((v) => ({
+                id: v.id,
+                date: v.date.toISOString(),
+                description: v.description,
+                montant: v.montant,
+                client: v.client?.nom ?? v.clientNom ?? null,
+                paye: v.paye,
+              })),
+            }
+          },
+          null,
+        )
+      : undefined,
+    demandees.has("journal")
+      ? lire(
+          "journal",
+          async () => {
+            const interventions = await prisma.intervention.findMany({
+              where: { userId, fait: true },
+              select: { id: true, date: true, type: true, description: true },
+              orderBy: { date: "desc" },
+              take: LIGNES_TUILE,
+            })
+            return {
+              entrees: interventions.map((i) => ({
+                id: `intervention:${i.id}`,
+                date: i.date.toISOString(),
+                titre: i.type.replace(/_/g, " "),
+                detail: i.description ?? null,
+                href: "/interventions",
+              })),
+            }
+          },
+          null,
+        )
+      : undefined,
+    demandees.has("carte")
+      ? lire(
+          "carte",
+          async () => {
+            const parcelles = await prisma.parcelleGeo.findMany({
+              where: { userId },
+              select: { id: true, nom: true, geometry: true, couleur: true, surface: true, usage: true },
+              take: 60,
+            })
+            return {
+              nbParcelles: parcelles.length,
+              surfaceHa: Math.round(parcelles.reduce((s, p) => s + (p.surface ?? 0), 0) * 100) / 100,
+              vignette: projeterParcelles(
+                parcelles.map((p) => ({ id: p.id, nom: p.nom, geometry: p.geometry, couleur: p.couleur, surfaceHa: p.surface, usage: p.usage })),
+              ),
+            }
+          },
+          null,
+        )
+      : undefined,
+  ])
+  if (tresorerie !== undefined) optionnelles.tresorerie = tresorerie
+  if (verger !== undefined) optionnelles.verger = verger
+  if (stocks !== undefined) optionnelles.stocks = stocks
+  if (ventes !== undefined) optionnelles.ventes = ventes
+  if (journal !== undefined) optionnelles.journal = journal
+  if (carte !== undefined) optionnelles.carte = carte
+
   return {
     date: aujourdhui,
     annee,
@@ -464,6 +666,7 @@ export async function composerAujourdhui(
           counts: { total: agenda.counts.total, urgent: agenda.counts.urgent , dansListeDuJour: agenda.echeances.filter(echeanceDuJour).length },
         }
       : null,
+    optionnelles,
     sourcesEnErreur: Array.from(sourcesEnErreur),
   }
 }

@@ -142,6 +142,66 @@ export interface ElevageAccueil {
   }
 }
 
+/** Récolte prévue plus tard dans la semaine (celles du jour sont dans la liste). */
+export interface RecolteSemaineAccueil {
+  cultureId: number
+  especeId: string
+  especeNom: string
+  varieteNom: string | null
+  plancheNom: string | null
+  /** Date prévue (ISO). */
+  date: string
+  unite: string
+}
+
+export interface TresorerieAccueil {
+  devise: "EUR" | "XPF"
+  revenusYtd: number
+  depensesYtd: number
+  beneficeYtd: number
+  margePercentYtd: number
+  /** Factures émises non encaissées, de la plus ancienne échéance à la plus récente. */
+  creances: { id: number; numero: string; client: string; montant: number; echeance: string | null; retardJours: number }[]
+  totalCreances: number
+  nbDepensesNonPayees: number
+  depensesNonPayees: number
+}
+
+export interface StocksAccueil {
+  /** Aliments dont le stock est sous le seuil d'alerte. */
+  aliments: { id: string; nom: string; stock: number; stockMin: number }[]
+  /** Échéances de péremption de médicaments (agenda élevage). */
+  peremptions: { id: string; titre: string; detail: string | null; joursRestants: number | null }[]
+}
+
+export interface VentesAccueil {
+  devise: "EUR" | "XPF"
+  totalMois: number
+  nbMois: number
+  dernieres: { id: number; date: string; description: string; montant: number; client: string | null; paye: boolean }[]
+}
+
+export interface JournalAccueil {
+  entrees: { id: string; date: string; titre: string; detail: string | null; href: string }[]
+}
+
+export interface CarteAccueil {
+  nbParcelles: number
+  surfaceHa: number
+  vignette: import("./carte").CarteVignette
+}
+
+/** Données des tuiles optionnelles, composées seulement si la tuile est affichée. */
+export interface TuilesOptionnelles {
+  recoltesSemaine?: RecolteSemaineAccueil[]
+  tresorerie?: TresorerieAccueil | null
+  verger?: import("./verger").VergerAccueil | null
+  stocks?: StocksAccueil | null
+  ventes?: VentesAccueil | null
+  journal?: JournalAccueil | null
+  carte?: CarteAccueil | null
+}
+
 export interface AccueilAujourdhui {
   /** Jour civil local (AAAA-MM-JJ). */
   date: string
@@ -153,6 +213,7 @@ export interface AccueilAujourdhui {
   plan: PlanVignetteDonnees
   reperes: ReperesAccueil
   elevage: ElevageAccueil | null
+  optionnelles: TuilesOptionnelles
   /**
    * Sources dont la lecture a échoué. La page le dit, au lieu d'afficher un
    * faux « rien à signaler » (règle du vault : un état vide affirmé teste

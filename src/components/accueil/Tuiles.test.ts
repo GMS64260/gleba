@@ -14,6 +14,7 @@ import { PlanVignette } from "./PlanVignette"
 import { TuileAgent, alerteMeteoPrioritaire } from "./TuileAgent"
 import { TuileAujourdhui } from "./TuileAujourdhui"
 import { TuileElevage } from "./TuileElevage"
+import { TuileCarte, TuileJournal, TuileRaccourcis, TuileStocks, TuileTresorerie, TuileVentes, TuileVerger } from "./TuilesCatalogue"
 import { TuilePlan, TuilePlanVide } from "./TuilePlan"
 import { TuileSemaine } from "./TuileSemaine"
 import type { ElementAujourdhui, PlanVignetteDonnees } from "@/lib/accueil/types"
@@ -216,5 +217,77 @@ describe("TuileElevage", () => {
     expect(dejaDansLaListe).toContain("Rien d&#x27;autre sous 7 jours")
     const vide = renderToStaticMarkup(createElement(TuileElevage, { elevage: null, chargement: false }))
     expect(vide).toContain("Aucune échéance sous 7 jours")
+  })
+})
+
+describe("tuiles du catalogue", () => {
+  it("Trésorerie : créances en lignes de registre, retard en verbe, total à encaisser", () => {
+    const html = renderToStaticMarkup(
+      createElement(TuileTresorerie, {
+        chargement: false,
+        tresorerie: {
+          devise: "EUR", revenusYtd: 12000, depensesYtd: 8000, beneficeYtd: 4000, margePercentYtd: 33,
+          creances: [
+            { id: 1, numero: "F-2026-0002", client: "La Table du Bocage", montant: 1111.24, echeance: "2026-08-15T00:00:00.000Z", retardJours: 56 },
+            { id: 2, numero: "F-2026-0009", client: "AMAP du Bourg", montant: 240, echeance: "2026-10-20T00:00:00.000Z", retardJours: 0 },
+          ],
+          totalCreances: 1351, nbDepensesNonPayees: 2, depensesNonPayees: 380,
+        },
+      }),
+    )
+    expect(html).toContain('data-etat="critique"')
+    expect(html).toContain("À relancer")
+    expect(html).toContain("À encaisser")
+    expect(html).toContain("échue depuis 56 j")
+    expect(html).toContain("2 dépenses à régler")
+  })
+
+  it("Verger : un lot par geste, « Fait » n'est pas promis ici, l'état vide parle", () => {
+    const html = renderToStaticMarkup(
+      createElement(TuileVerger, {
+        chargement: false,
+        verger: { lots: [{ cle: "taille|Taille en vert", libelle: "Taille en vert", type: "taille", nbArbres: 4, arbres: ["P1", "P2", "P3"], fenetre: "septembre-octobre", echeance: null, enRetard: false }], counts: { aFaire: 4, aVenir: 2 } },
+      }),
+    )
+    expect(html).toContain("Taille en vert")
+    expect(html).toContain("4 arbres")
+    expect(html).toContain("fenêtre septembre-octobre")
+    expect(html).toContain("4 à faire · 2 à venir")
+    const vide = renderToStaticMarkup(createElement(TuileVerger, { chargement: false, verger: { lots: [], counts: { aFaire: 0, aVenir: 0 } } }))
+    expect(vide).toContain("Rien à faire au verger")
+  })
+
+  it("Stocks, Ventes, Journal : états en verbe, aucune couleur seule", () => {
+    const stocks = renderToStaticMarkup(
+      createElement(TuileStocks, { chargement: false, stocks: { aliments: [{ id: "foin", nom: "Foin", stock: 0, stockMin: 200 }], peremptions: [{ id: "m1", titre: "Vermifuge X périme", detail: null, joursRestants: 3 }] } }),
+    )
+    expect(stocks).toContain("Épuisé")
+    expect(stocks).toContain("Bientôt périmé")
+    const ventes = renderToStaticMarkup(
+      createElement(TuileVentes, { chargement: false, ventes: { devise: "EUR", totalMois: 420, nbMois: 3, dernieres: [{ id: 1, date: "2026-10-09T00:00:00.000Z", description: "Panier légumes", montant: 25, client: "Marie", paye: false }] } }),
+    )
+    expect(ventes).toContain("Panier légumes")
+    expect(ventes).toContain("À encaisser")
+    const journal = renderToStaticMarkup(
+      createElement(TuileJournal, { chargement: false, journal: { entrees: [{ id: "intervention:1", date: "2026-10-09T00:00:00.000Z", titre: "desherbage", detail: "Planche B1", href: "/interventions" }] } }),
+    )
+    expect(journal).toContain("desherbage")
+    expect(journal).toContain("Planche B1")
+  })
+
+  it("Raccourcis : seuls les modules actifs ont leur raccourci ; Carte dessine les parcelles", () => {
+    const raccourcis = renderToStaticMarkup(createElement(TuileRaccourcis, { modules: ["maraichage"] }))
+    expect(raccourcis).toContain("Noter une récolte")
+    expect(raccourcis).not.toContain("Soin")
+    expect(raccourcis).toContain("Demander à Gleba")
+    const carte = renderToStaticMarkup(
+      createElement(TuileCarte, {
+        chargement: false,
+        carte: { nbParcelles: 1, surfaceHa: 0.5, vignette: { largeur: 320, hauteur: 180, formes: [{ id: "a", nom: "Le Clos", anneaux: ["10,10 100,10 100,100"], couleur: null }] } },
+      }),
+    )
+    expect(carte).toContain("<polygon")
+    expect(carte).toContain("1 parcelle · 0,5 ha")
+    expect(carte).toContain("Le Clos")
   })
 })

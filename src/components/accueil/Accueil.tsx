@@ -4,20 +4,30 @@ import * as React from "react"
 import { useSession } from "next-auth/react"
 import { CloudSun, LayoutGrid } from "lucide-react"
 import Link from "next/link"
+import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core"
+import { SortableContext, horizontalListSortingStrategy, rectSortingStrategy, sortableKeyboardCoordinates } from "@dnd-kit/sortable"
 
 import { UserMenu } from "@/components/auth/UserMenu"
 import { messageErreurReponse } from "@/lib/api-erreur"
 import { formatNombre, jourLocalISO } from "@/lib/accueil/classement"
 import {
+  CATALOGUE_TUILES,
   IDS_REPERES,
   IDS_TUILES,
   LIBELLES,
+  LIBELLES_TAILLE,
+  catalogue,
+  definirTaille,
   deplacer,
   dispositionDefaut,
+  largeurTuile,
   masques,
   memeDisposition,
   remettre,
+  reordonner,
   retirer,
+  tailleSuivante,
+  tuilesOptionnellesDemandees,
   visiblesSelonModules,
   type AccueilDisposition,
   type IdRepere,
@@ -36,7 +46,7 @@ import { BarreCommande } from "./BarreCommande"
 import { CLASSES_BOUTON, CLASSES_BOUTON_PRINCIPAL } from "./boutons"
 import { NavigationBasse } from "./NavigationBasse"
 import { NombreAnime } from "./NombreAnime"
-import { BandeMasques, Personnalisable } from "./Personnalisable"
+import { BandeMasques, CatalogueTuiles, Personnalisable } from "./Personnalisable"
 import { Repere } from "./Repere"
 import { RetourAncienAccueil } from "./RetourAncienAccueil"
 import { TuileAgent, alerteMeteoPrioritaire } from "./TuileAgent"
@@ -44,14 +54,19 @@ import { TuileAujourdhui } from "./TuileAujourdhui"
 import { TuileElevage } from "./TuileElevage"
 import { RepereRangee, TuileGrille } from "./TuileGrille"
 import { TuilePlan, TuilePlanVide } from "./TuilePlan"
+import { TuileRecoltesSemaine } from "./TuileRecoltesSemaine"
 import { TuileSemaine, type MeteoSemaine } from "./TuileSemaine"
+import { TuileCarte, TuileJournal, TuileRaccourcis, TuileStocks, TuileTresorerie, TuileVentes, TuileVerger } from "./TuilesCatalogue"
+import { CLASSES_LARGEUR } from "./Tuile"
 
 /**
  * Accueil v2 « La ferme d'abord » (variante B, bento) : rail de navigation
  * et rangée du haut (barre de commande, météo, compte) sur bureau,
  * navigation basse sur téléphone ; repères puis grille, dans la disposition
- * du compte ; mode « Personnaliser » (déplacer, masquer, remettre,
- * réinitialiser), enregistré pour la personne.
+ * du compte ; mode « Personnaliser » (glisser-déposer, flèches, masquer,
+ * taille, catalogue de tuiles à ajouter, réinitialiser), enregistré pour
+ * la personne. Les tuiles optionnelles du catalogue ne sont composées côté
+ * serveur que si elles sont sur la page (`?tuiles=`).
  */
 
 interface Chargement<T> {
@@ -65,14 +80,8 @@ const INITIAL = { donnees: null, erreur: null, chargement: true }
 /** Même clé que `HeaderMeteoWidget` et la page Météo : une seule parcelle suivie. */
 const CLE_PARCELLE_METEO = "gleba_meteo_parcelle"
 
-/** Largeur et hauteur de chaque tuile dans la grille de douze colonnes. */
-const PLACE_TUILE: Record<IdTuile, string> = {
-  aujourdhui: "lg:col-span-7 lg:row-span-2",
-  plan: "lg:col-span-5",
-  semaine: "lg:col-span-5",
-  agent: "lg:col-span-7",
-  elevage: "lg:col-span-5",
-}
+/** Tous les modules, pour l'affichage tant que la composition n'a pas répondu. */
+const TOUS_MODULES = ["maraichage", "verger", "elevage", "comptabilite"] as const
 
 async function chargerMeteo(): Promise<(MeteoSemaine & { nbParcelles: number }) | null> {
   const carteRes = await fetch("/api/carte", { cache: "no-store" })
@@ -132,11 +141,15 @@ export function Accueil() {
   const [edition, setEdition] = React.useState(false)
   const [brouillon, setBrouillon] = React.useState<AccueilDisposition | null>(null)
   const dispositionAffichee = brouillon ?? disposition
+  /** Tuiles optionnelles sur la page : la composition ne lit que celles-là. */
+  const cleTuiles = tuilesOptionnellesDemandees(dispositionAffichee.tuiles).join(",")
 
   React.useEffect(() => {
     let annule = false
-    setAccueil((etat) => ({ ...etat, chargement: true, erreur: null }))
-    fetch("/api/accueil/aujourdhui", { cache: "no-store" })
+    // Une tuile ajoutée recharge la composition sans vider la page : les
+    // données déjà là restent affichées, la nouvelle tuile attend les siennes.
+    setAccueil((etat) => ({ ...etat, chargement: etat.donnees === null, erreur: null }))
+    fetch(`/api/accueil/aujourdhui${cleTuiles ? `?tuiles=${encodeURIComponent(cleTuiles)}` : ""}`, { cache: "no-store" })
       .then(async (res) => {
         if (!res.ok) throw new Error(await messageErreurReponse(res))
         return (await res.json()) as AccueilAujourdhui
@@ -153,7 +166,7 @@ export function Accueil() {
     return () => {
       annule = true
     }
-  }, [tentative])
+  }, [tentative, cleTuiles])
 
   React.useEffect(() => {
     let annule = false
@@ -221,7 +234,7 @@ export function Accueil() {
 
   // ── Mode Personnaliser ──
   const commencerEdition = () => {
-    setBrouillon({ reperes: [...disposition.reperes], tuiles: [...disposition.tuiles] })
+    setBrouillon({ reperes: [...disposition.reperes], tuiles: [...disposition.tuiles], tailles: { ...disposition.tailles } })
     setEdition(true)
   }
   const terminerEdition = async () => {
@@ -235,13 +248,39 @@ export function Accueil() {
   }
   const reinitialiser = () => setBrouillon(dispositionDefaut())
   const majBrouillon = (fn: (d: AccueilDisposition) => AccueilDisposition) =>
-    setBrouillon((b) => fn(b ?? { reperes: [...disposition.reperes], tuiles: [...disposition.tuiles] }))
+    setBrouillon((b) => fn(b ?? { reperes: [...disposition.reperes], tuiles: [...disposition.tuiles], tailles: { ...disposition.tailles } }))
+
+  // Glisser-déposer (souris, doigt, clavier) : 6 px avant de saisir, pour
+  // que le clic sur un lien d'une tuile reste un clic.
+  const capteurs = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
+  const finGlisser = (groupe: "reperes" | "tuiles") => (e: DragEndEvent) => {
+    const { active, over } = e
+    if (!over || active.id === over.id) return
+    majBrouillon((d) =>
+      groupe === "reperes"
+        ? { ...d, reperes: reordonner(d.reperes, active.id as IdRepere, over.id as IdRepere) }
+        : { ...d, tuiles: reordonner(d.tuiles, active.id as IdTuile, over.id as IdTuile) },
+    )
+  }
 
   // Repères et tuiles réellement affichés : la disposition, moins les modules désactivés.
-  const reperesVisibles = visiblesSelonModules(dispositionAffichee.reperes, modules.length ? modules : ["maraichage", "verger", "elevage", "comptabilite"])
-  const tuilesVisibles = visiblesSelonModules(dispositionAffichee.tuiles, modules.length ? modules : ["maraichage", "verger", "elevage", "comptabilite"])
+  const modulesEffectifs = modules.length ? modules : [...TOUS_MODULES]
+  const reperesVisibles = visiblesSelonModules(dispositionAffichee.reperes, modulesEffectifs)
+  const tuilesVisibles = visiblesSelonModules(dispositionAffichee.tuiles, modulesEffectifs)
   const reperesMasques = masques(IDS_REPERES, dispositionAffichee.reperes, modules)
-  const tuilesMasquees = masques(IDS_TUILES, dispositionAffichee.tuiles, modules)
+  const propositions = catalogue(dispositionAffichee.tuiles, modulesEffectifs)
+  const classesTuile = (id: IdTuile) =>
+    cn("col-span-1", CLASSES_LARGEUR[largeurTuile(id, dispositionAffichee)], CATALOGUE_TUILES[id].hauteur === 2 && "lg:row-span-2")
+  const libelleTaille = (id: IdTuile) => {
+    const choisie = dispositionAffichee.tailles[id]
+    return choisie ? LIBELLES_TAILLE[choisie] : "Maquette"
+  }
+  const opt = donnees?.optionnelles ?? {}
+  /** Une tuile optionnelle attend ses données tant que sa clé n'est pas dans la réponse. */
+  const attend = (cle: keyof typeof opt) => accueil.chargement || !(cle in opt)
 
   const rendreRepere = (id: IdRepere): React.ReactNode => {
     switch (id) {
@@ -286,6 +325,22 @@ export function Accueil() {
         return <TuileAgent alerteMeteo={alerteMeteoPrioritaire(meteo.donnees?.alertes)} elementCritique={elementCritique} chargement={accueil.chargement || meteo.chargement} rang={rang} />
       case "elevage":
         return <TuileElevage elevage={donnees?.elevage ?? null} chargement={accueil.chargement} rang={rang} />
+      case "recoltes-semaine":
+        return <TuileRecoltesSemaine recoltes={opt.recoltesSemaine} chargement={attend("recoltesSemaine")} rang={rang} />
+      case "tresorerie":
+        return <TuileTresorerie tresorerie={opt.tresorerie} chargement={attend("tresorerie")} rang={rang} />
+      case "verger":
+        return <TuileVerger verger={opt.verger} chargement={attend("verger")} rang={rang} />
+      case "stocks":
+        return <TuileStocks stocks={opt.stocks} chargement={attend("stocks")} rang={rang} />
+      case "ventes":
+        return <TuileVentes ventes={opt.ventes} chargement={attend("ventes")} rang={rang} />
+      case "journal":
+        return <TuileJournal journal={opt.journal} chargement={attend("journal")} rang={rang} />
+      case "raccourcis":
+        return <TuileRaccourcis modules={modulesEffectifs} rang={rang} />
+      case "carte":
+        return <TuileCarte carte={opt.carte} chargement={attend("carte")} rang={rang} />
     }
   }
 
@@ -317,7 +372,7 @@ export function Accueil() {
           {edition && (
             <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-lin bg-sauge-doux px-4 py-2.5 text-[13.5px] accueil-entree" role="region" aria-label="Personnaliser l'accueil">
               <b className="font-semibold text-foret">Personnaliser l&rsquo;accueil</b>
-              <span className="text-ardoise">Les flèches déplacent, l&rsquo;œil masque. Enregistré pour votre compte.</span>
+              <span className="text-ardoise">Glissez par la poignée ou utilisez les flèches ; l&rsquo;œil masque, la taille se change d&rsquo;un clic. Enregistré pour votre compte.</span>
               <div className="ml-auto flex gap-2">
                 <button type="button" onClick={reinitialiser} className={`${CLASSES_BOUTON} min-h-9 px-3 text-xs`}>
                   Réinitialiser
@@ -331,9 +386,12 @@ export function Accueil() {
 
           {(reperesVisibles.length > 0 || edition) && (
             <RepereRangee className="accueil-entree" style={{ "--rang": 0 } as React.CSSProperties} aria-label="Repères">
+              <DndContext sensors={capteurs} collisionDetection={closestCenter} onDragEnd={finGlisser("reperes")}>
+              <SortableContext items={reperesVisibles} strategy={horizontalListSortingStrategy}>
               {reperesVisibles.map((id, i) => (
                 <Personnalisable
                   key={id}
+                  id={id}
                   libelle={LIBELLES[id]}
                   edition={edition}
                   axe="rangee"
@@ -347,6 +405,8 @@ export function Accueil() {
                   {rendreRepere(id)}
                 </Personnalisable>
               ))}
+              </SortableContext>
+              </DndContext>
               {edition && (
                 <BandeMasques
                   titre="Repères masqués"
@@ -359,9 +419,12 @@ export function Accueil() {
           )}
 
           <TuileGrille>
+            <DndContext sensors={capteurs} collisionDetection={closestCenter} onDragEnd={finGlisser("tuiles")}>
+            <SortableContext items={tuilesVisibles} strategy={rectSortingStrategy}>
             {tuilesVisibles.map((id, i) => (
               <Personnalisable
                 key={id}
+                id={id}
                 libelle={LIBELLES[id]}
                 edition={edition}
                 premier={i === 0}
@@ -369,20 +432,26 @@ export function Accueil() {
                 onMonter={() => majBrouillon((d) => ({ ...d, tuiles: deplacer(d.tuiles, id, -1) }))}
                 onDescendre={() => majBrouillon((d) => ({ ...d, tuiles: deplacer(d.tuiles, id, 1) }))}
                 onMasquer={() => majBrouillon((d) => ({ ...d, tuiles: retirer(d.tuiles, id) }))}
-                className={cn("col-span-1", PLACE_TUILE[id])}
+                taille={{
+                  libelle: libelleTaille(id),
+                  onSuivante: () => majBrouillon((d) => definirTaille(d, id, tailleSuivante(id, d))),
+                }}
+                className={classesTuile(id)}
               >
                 {rendreTuile(id, i + 1)}
               </Personnalisable>
             ))}
-            {edition && (
-              <BandeMasques
-                titre="Tuiles masquées"
-                elements={tuilesMasquees.map((id) => ({ id, libelle: LIBELLES[id] }))}
-                onRemettre={(id) => majBrouillon((d) => ({ ...d, tuiles: remettre(d.tuiles, id as IdTuile, IDS_TUILES) }))}
-                className="col-span-1 min-h-[120px] lg:col-span-5"
-              />
-            )}
+            </SortableContext>
+            </DndContext>
           </TuileGrille>
+
+          {edition && (
+            <CatalogueTuiles
+              propositions={propositions}
+              onAjouter={(id) => majBrouillon((d) => ({ ...d, tuiles: remettre(d.tuiles, id, IDS_TUILES) }))}
+              className="accueil-entree"
+            />
+          )}
 
           <p className="flex flex-wrap items-center justify-between gap-2 pt-2 text-xs text-ardoise">
             <span>Nouvel accueil, en essai : vos retours comptent, surtout « je ne retrouve plus… ».</span>

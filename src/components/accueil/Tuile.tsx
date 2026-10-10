@@ -32,7 +32,8 @@ export interface TuileProps extends React.HTMLAttributes<HTMLElement> {
   rang?: number
 }
 
-const LARGEURS: Record<LargeurTuile, string> = {
+/** Classes littérales (Tailwind ne génère pas les classes construites). */
+export const CLASSES_LARGEUR: Record<LargeurTuile, string> = {
   4: "lg:col-span-4",
   5: "lg:col-span-5",
   6: "lg:col-span-6",
@@ -76,7 +77,7 @@ export function Tuile({
       data-tuile={idTuile}
       className={cn(
         "col-span-1 flex min-w-0 flex-col rounded-2xl border border-lin bg-craie text-encre",
-        LARGEURS[largeur],
+        CLASSES_LARGEUR[largeur],
         HAUTEURS[hauteur],
         rang !== undefined && "accueil-entree",
         className,
