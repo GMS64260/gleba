@@ -40,7 +40,6 @@ const mockedPrisma = prisma as unknown as {
 
 const DATE_EFFECTIVE = new Date("2026-07-29T10:00:00.000Z")
 const FIN_JOURNEE = new Date("2026-07-29T23:59:59.999Z")
-const DEBUT_JOURNEE = new Date("2026-07-29T00:00:00.000Z")
 
 /** Espèce gourmande : cycle d'arrosage de 2 jours. */
 const GOURMANDE = { espece: { besoinEau: 4 } }
@@ -225,7 +224,8 @@ describe("enregistrerArrosageCultures", () => {
         userId: "user-1",
         cultureId: { in: [10, 11] },
         fait: true,
-        dateEffective: { gte: DEBUT_JOURNEE, lte: FIN_JOURNEE },
+        // Fenêtre anti-doublon de 10 minutes (un second arrosage du soir a sa trace).
+        dateEffective: { gte: new Date(DATE_EFFECTIVE.getTime() - 10 * 60_000), lte: FIN_JOURNEE },
       },
       select: { cultureId: true },
     })
