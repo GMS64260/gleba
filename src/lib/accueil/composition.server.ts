@@ -457,8 +457,11 @@ export async function composerAujourdhui(
     elevage: agenda
       ? {
           animauxActifs,
-          echeances: agenda.echeances.slice(0, 6),
-          counts: { total: agenda.counts.total, urgent: agenda.counts.urgent },
+          // Pas de doublon avec la liste du jour (retour de Guillaume du
+          // 2026-10-10) : la tuile ne montre que ce qui vient ensuite, et dit
+          // combien d'échéances sont déjà dans la liste au-dessus.
+          echeances: agenda.echeances.filter((e) => !echeanceDuJour(e)).slice(0, 6),
+          counts: { total: agenda.counts.total, urgent: agenda.counts.urgent , dansListeDuJour: agenda.echeances.filter(echeanceDuJour).length },
         }
       : null,
     sourcesEnErreur: Array.from(sourcesEnErreur),

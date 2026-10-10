@@ -11,6 +11,10 @@ import { Tuile } from "./Tuile"
 /** Échéances visibles dans la tuile ; le reste est dans l'agenda du module. */
 const LIGNES = 4
 
+function libelleDansListe(n: number): string {
+  return n > 1 ? `${n} dans la liste du jour` : "1 dans la liste du jour"
+}
+
 export interface TuileElevageProps {
   elevage: ElevageAccueil | null
   chargement: boolean
@@ -23,6 +27,7 @@ export function TuileElevage({ elevage, chargement, rang }: TuileElevageProps) {
     ? [
         `${elevage.animauxActifs} ${elevage.animauxActifs > 1 ? "animaux" : "animal"}`,
         elevage.counts.urgent > 0 ? `${elevage.counts.urgent} urgent${elevage.counts.urgent > 1 ? "s" : ""}` : null,
+        elevage.counts.dansListeDuJour > 0 ? libelleDansListe(elevage.counts.dansListeDuJour) : null,
       ]
         .filter(Boolean)
         .join(" · ")
@@ -43,7 +48,11 @@ export function TuileElevage({ elevage, chargement, rang }: TuileElevageProps) {
         </Link>
       }
       vide={!chargement && echeances.length === 0}
-      messageVide="Aucune échéance sous 7 jours : soins, mises bas et délais d'attente sont à jour."
+      messageVide={
+        elevage && elevage.counts.dansListeDuJour > 0
+          ? `Rien d'autre sous 7 jours : ${libelleDansListe(elevage.counts.dansListeDuJour)}, au-dessus.`
+          : "Aucune échéance sous 7 jours : soins, mises bas et délais d'attente sont à jour."
+      }
       actionVide={
         <Link href="/elevage" className={CLASSES_LIEN_DISCRET}>
           Ouvrir l&rsquo;élevage
