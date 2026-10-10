@@ -20,7 +20,7 @@ export default function GeolocateControl() {
 
   const handleGeolocate = useCallback(async () => {
     if (!navigator.geolocation) {
-      await alertDialog("La geolocalisation n'est pas supportee par votre navigateur.")
+      await alertDialog("La géolocalisation n'est pas prise en charge par votre navigateur.")
       return
     }
 
@@ -42,7 +42,7 @@ export default function GeolocateControl() {
         // Ajouter un marqueur temporaire a la position
         const newMarker = L.marker(latlng)
           .addTo(map)
-          .bindPopup("Vous etes ici")
+          .bindPopup("Vous êtes ici")
           .openPopup()
 
         // Supprimer le marqueur apres 10 secondes
@@ -56,10 +56,10 @@ export default function GeolocateControl() {
       },
       (error) => {
         setLoading(false)
-        let message = "Impossible de determiner votre position."
+        let message = "Impossible de déterminer votre position."
         switch (error.code) {
           case error.PERMISSION_DENIED:
-            message = "Acces a la geolocalisation refuse."
+            message = "Accès à la géolocalisation refusé."
             break
           case error.POSITION_UNAVAILABLE:
             message = "Position indisponible."

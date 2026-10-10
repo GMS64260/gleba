@@ -73,7 +73,7 @@ export function ParcelleFormDialog({ open, parcelle, onClose }: ParcelleFormDial
     const formData = { nom: nom.trim(), geometry: geometry || "", couches, typeSol: typeSol || null }
     const validation = createParcelleSchema.safeParse(formData)
     if (!validation.success) {
-      const msg = validation.error.issues[0]?.message || "Donnees invalides"
+      const msg = validation.error.issues[0]?.message || "Données invalides"
       toast({ variant: "destructive", title: "Erreur de validation", description: msg })
       return
     }
@@ -105,7 +105,7 @@ export function ParcelleFormDialog({ open, parcelle, onClose }: ParcelleFormDial
 
       toast({
         title: isEdit ? "Parcelle modifiée" : "Parcelle créée",
-        description: `"${nom.trim()}" a ete ${isEdit ? "modifiee" : "creee"}`,
+        description: `« ${nom.trim()} » a été ${isEdit ? "modifiée" : "créée"}`,
       })
       onClose(true)
     } catch (err) {
@@ -145,7 +145,7 @@ export function ParcelleFormDialog({ open, parcelle, onClose }: ParcelleFormDial
           </div>
 
           <div className="space-y-2">
-            <Label>Couches d'activite</Label>
+            <Label>Couches d’activité</Label>
             <div className="flex flex-wrap gap-3">
               {COUCHES_ACTIVITE.map((couche) => (
                 <label key={couche} className="flex items-center gap-2 cursor-pointer">
