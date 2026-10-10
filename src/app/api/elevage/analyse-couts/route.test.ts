@@ -176,5 +176,6 @@ describe("GET /api/elevage/analyse-couts — coûts unitaires par atelier", () =
     expect(nonAffecte?.couts.alimentation).toBe(0.39)
     expect(poule?.couts.alimentation).toBe(0)
     expect(payload.methode.affectation).toContain("« Non affecté », sans répartition")
+    expect(payload.methode.affectation).toContain("« Ventes <type> » par type")
   })
 })

@@ -850,7 +850,7 @@ function ConsommationsSubTab({ year }: { year?: number } = {}) {
                       globale y reste dans « Non affecté » (analyse-couts). */}
                   <p className="text-xs text-muted-foreground">
                     {formData.cible === "tous"
-                      ? "Une saisie globale n'est imputée à aucun atelier : l'économie de l'élevage la compte dans « Non affecté », sans répartition. Choisissez un lot ou un animal pour imputer son coût."
+                      ? "Une saisie globale n'est imputée à aucun atelier : l'économie de l'élevage la compte dans « Non affecté », sans répartition ; seule l'économie lait & fromage en retient une part au prorata des têtes laitières. Choisissez un lot ou un animal pour imputer son coût."
                       : "Le coût est imputé à l'atelier de l'espèce choisie dans l'économie de l'élevage."}
                   </p>
                 </div>
