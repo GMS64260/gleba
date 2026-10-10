@@ -489,7 +489,12 @@ export default function NewCulturePage() {
   const watchedDateSemis = form.watch("dateSemis")
   const watchedDatePlantation = form.watch("datePlantation")
   React.useEffect(() => {
-    const debutRaw = watchedDatePlantation ?? watchedDateSemis
+    // Valeurs COURANTES du formulaire, pas celles du rendu : quand un autre
+    // effet du même passage vient de poser la plantation (complétion depuis
+    // l'ITP), les valeurs observées sont encore celles d'avant, et la récolte
+    // était recalée sur le semis avec la durée prévue depuis la plantation
+    // (récolte au 20/12 pour une plantation au 06/12, constaté en production).
+    const debutRaw = form.getValues("datePlantation") ?? form.getValues("dateSemis")
     if (!debutRaw) return
     const debut = new Date(debutRaw)
     if (Number.isNaN(debut.getTime())) return
