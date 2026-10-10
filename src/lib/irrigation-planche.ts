@@ -1,3 +1,5 @@
+import { libelleEspeceVariete } from "@/lib/cultures/label"
+
 export type IrrigationUrgence = "critique" | "haute" | "moyenne" | "faible" | "aucune"
 
 const ORDRE_URGENCE: Record<IrrigationUrgence, number> = {
@@ -62,7 +64,7 @@ export function grouperRecommandationsParPlanche<T extends RecommandationCulture
       etat: item.etatCulture,
     }))
     const libelles = Array.from(new Set(cultures.map((culture) =>
-      culture.variete ? `${culture.nom} · ${culture.variete}` : culture.nom
+      libelleEspeceVariete(culture.nom, culture.variete)
     )))
     const cultureName = libelles.length <= 2
       ? libelles.join(" + ")

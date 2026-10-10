@@ -110,3 +110,32 @@ describe("irrigation d'une planche multiculture", () => {
     )).toBe(true)
   })
 })
+
+// QA cmv2ex2vq — « Radis · Radis — Non spécifiée · Radis — Non spécifiée » :
+// la variété de repli était affichée et la variété répétée par l'écran.
+describe("libellé de culture d'un conseil d'irrigation", () => {
+  const reco = (cultureId: number, cultureName: string, varietyName: string | null) => ({
+    cultureId,
+    cultureName,
+    plancheId: `planche-${cultureId}`,
+    plancheName: "B5",
+    urgence: "moyenne" as const,
+    conseilQuantite: 5,
+    conseilMessage: "Surveiller.",
+    joursDepuisIrrigation: 2,
+    varietyName,
+    etatCulture: "Semée",
+    derniereIrrigation: null,
+  })
+
+  it("dit chaque nom une seule fois", () => {
+    const [radis, courge, aubergine] = grouperRecommandationsParPlanche([
+      reco(1, "Radis", "Radis — Non spécifiée"),
+      reco(2, "Courge butternut", "Courge butternut-Waltham"),
+      reco(3, "Aubergine", "Violette longue"),
+    ])
+    expect(radis.cultureName).toBe("Radis")
+    expect(courge.cultureName).toBe("Courge butternut-Waltham")
+    expect(aubergine.cultureName).toBe("Aubergine · Violette longue")
+  })
+})

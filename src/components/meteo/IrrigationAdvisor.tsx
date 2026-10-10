@@ -449,10 +449,9 @@ function RecoRow({
             ) : (
               <ChevronDown className="h-4 w-4 shrink-0 text-ardoise" aria-hidden />
             )}
-            <span className="truncate">
-              {reco.cultureName}
-              {reco.varietyName ? ` · ${reco.varietyName}` : ""}
-            </span>
+            {/* cultureName porte déjà la variété (libelleEspeceVariete) :
+                la rajouter la répétait (QA cmv2ex2vq). */}
+            <span className="truncate">{reco.cultureName}</span>
           </button>
         }
         meta={[
