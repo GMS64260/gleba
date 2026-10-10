@@ -612,7 +612,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Intervention non trouvée' }, { status: 404 })
     }
 
-    // DEV2 #7 — Audit Larcher : la transition "Planifié → Fait" exige
+    // DEV2 #7 — Audit comptable : la transition "Planifié → Fait" exige
     // une durée renseignée (sinon les statistiques de coût MO restent
     // à 0). On la bloque ici plutôt que de filtrer après coup.
     if (updates.fait === true && existing.fait === false) {

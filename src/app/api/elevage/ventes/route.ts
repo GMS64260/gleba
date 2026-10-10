@@ -237,8 +237,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // QA 2026-05-15 — garde-fou anti-saisie aberrante : Sophie a vu une
-    // ligne "999 999 douzaines d'œufs à 4€ = 4M€" remonter en compta.
+    // QA 2026-05-15 — garde-fou anti-saisie aberrante : un test a fait
+    // remonter en compta une ligne "999 999 douzaines d'œufs à 4€ = 4M€".
     // On bloque toute vente unitaire > 100 000 € à la saisie ; les
     // ventes en gros au-dessus passent via un POST dédié confirmé.
     const SEUIL_VENTE_PRODUIT = 100_000

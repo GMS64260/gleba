@@ -327,7 +327,7 @@ model PushSubscription {
   @@map("push_subscriptions")
 }
 
-/// DEV2 audit Larcher - P0 #2
+/// DEV2 audit comptable - P0 #2
 /// Stockage du consentement cookies (CNIL : durée max 13 mois,
 /// IP hashée, traçabilité de la version du bandeau acceptée).
 model CookieConsent {
@@ -2577,7 +2577,7 @@ model SoinAnimal {
   motif                      String?                 @map("motif") // Indication clinique
   ordonnanceUrl              String?                 @map("ordonnance_url") // PDF ordonnance archivée
   // PROMPT 30 — un traitement = souvent plusieurs injections (ex. Pénijectyl J0/J1/J2).
-  // Feedback La ferme des belles chèvres 2026-07-24 : noter durée/répétition sur une
+  // Feedback d’une éleveuse caprine 2026-07-24 : noter durée/répétition sur une
   // même ligne. Le délai d'attente court depuis la DERNIÈRE injection.
   nbInjections               Int                     @default(1) @map("nb_injections")
   intervalleInjectionsHeures Int?                    @map("intervalle_injections_heures") // heures entre 2 injections (24, 48…)
@@ -2870,7 +2870,7 @@ model NaissanceAnimale {
 }
 
 /// Détail d'un petit (cabri, agneau, lapereau…) au sein d'une mise-bas.
-/// Feedback La ferme des belles chèvres 2026-07-24 : saisir chaque petit
+/// Feedback d’une éleveuse caprine 2026-07-24 : saisir chaque petit
 /// individuellement (sexe, boucle provisoire, élevé sous mère ou au biberon,
 /// poids) au lieu d'une liste globale de boucles.
 model PetitNaissance {

@@ -1,5 +1,5 @@
 /**
- * DEV2 audit Larcher - P0 #2 — RGPD
+ * DEV2 audit comptable - P0 #2 — RGPD
  *
  * POST /api/cookie-consent
  *   Enregistre le choix de l'utilisateur ou visiteur sur les catégories

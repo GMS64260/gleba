@@ -1,5 +1,5 @@
 /**
- * DEV2 audit Larcher - P1 #5
+ * DEV2 audit comptable - P1 #5
  * Validation IBAN (Bank Account Number international, ISO 13616).
  *
  * Algorithme :
@@ -69,7 +69,7 @@ export function formatIban(iban: string | null | undefined): string {
 }
 
 /**
- * Types canoniques de fournisseur (audit Larcher : remplacer "Mixte" par
+ * Types canoniques de fournisseur (audit comptable : remplacer "Mixte" par
  * défaut par un typage métier précis).
  */
 export const FOURNISSEUR_TYPES = [
