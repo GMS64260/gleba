@@ -14,9 +14,16 @@ export interface ParcelleWithRelations {
 // QA cmswu0bql — options de type de sol partagées entre le panneau de la
 // carte (ParcellePanel) et le formulaire /parcelles (ParcelleFormDialog),
 // alignées sur les valeurs déjà en base (minuscules).
+// Textures composées courantes ajoutées le 2026-10-10 (ticket QA cmv2rfzqs) :
+// « limono-argileux », saisi avant la liste fermée, ne pouvait plus être
+// remis une fois changé. Le conseil d'irrigation les lit toutes
+// (`eauDisponibleTexture`, src/lib/irrigation/bilan-sol.ts).
 export const TYPE_SOL_OPTIONS = [
   { value: "argileux", label: "Argileux" },
+  { value: "argilo-calcaire", label: "Argilo-calcaire" },
   { value: "limoneux", label: "Limoneux" },
+  { value: "limono-argileux", label: "Limono-argileux" },
+  { value: "limono-sableux", label: "Limono-sableux" },
   { value: "sableux", label: "Sableux" },
   { value: "calcaire", label: "Calcaire" },
   { value: "mixte", label: "Mixte" },

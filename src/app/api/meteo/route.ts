@@ -8,6 +8,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi, getUserId } from '@/lib/auth-utils'
 import { getMeteoForParcelle, fetchOpenMeteoForecast, fetchOpenMeteoHistory } from '@/lib/meteo'
 import { genererAlertesMeteo, calculerEnsoleillement } from '@/lib/meteo-agro'
+import { aligner7DerniersJours } from '@/lib/irrigation/meteo-bilan'
+import { jourCivilLocalISO } from '@/lib/irrigation-meteo-decision'
 
 export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
@@ -32,12 +34,17 @@ export async function GET(request: NextRequest) {
         )
       }
 
+      // 7 derniers jours = ceux du conseil d'irrigation (même pluie, même total).
+      const { historique7j, pluie7j } = await aligner7DerniersJours(meteo.parcelle.lat, meteo.parcelle.lng, meteo.historique7j)
+
       // Enrichir avec les alertes et l'ensoleillement
-      const alertes = genererAlertesMeteo(meteo.previsions, meteo.historique7j)
-      const ensoleillement = calculerEnsoleillement([...meteo.historique7j, ...meteo.previsions])
+      const alertes = genererAlertesMeteo(meteo.previsions, historique7j)
+      const ensoleillement = calculerEnsoleillement([...historique7j, ...meteo.previsions])
 
       return NextResponse.json({
         ...meteo,
+        historique7j,
+        pluie7j,
         alertes,
         ensoleillement,
       })
@@ -64,14 +71,15 @@ export async function GET(request: NextRequest) {
       const yesterday = new Date(today)
       yesterday.setDate(yesterday.getDate() - 1)
 
-      let historique7j: Awaited<ReturnType<typeof fetchOpenMeteoHistory>> = []
+      let archive7j: Awaited<ReturnType<typeof fetchOpenMeteoHistory>> = []
       try {
-        historique7j = await fetchOpenMeteoHistory(
+        archive7j = await fetchOpenMeteoHistory(
           latNum, lngNum,
-          weekAgo.toISOString().split('T')[0],
-          yesterday.toISOString().split('T')[0]
+          jourCivilLocalISO(weekAgo),
+          jourCivilLocalISO(yesterday)
         )
       } catch { /* ignore */ }
+      const { historique7j, pluie7j } = await aligner7DerniersJours(latNum, lngNum, archive7j)
 
       const alertes = genererAlertesMeteo(daily, historique7j)
       const ensoleillement = calculerEnsoleillement([...historique7j, ...daily])
@@ -81,6 +89,7 @@ export async function GET(request: NextRequest) {
         actuelle: current,
         previsions: daily,
         historique7j,
+        pluie7j,
         alertes,
         ensoleillement,
         source: 'open-meteo',

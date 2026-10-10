@@ -8,7 +8,8 @@ import type { MeteoJournaliere, MeteoPrevision } from './meteo'
 import { SEUIL_PLUIE_SIGNIFICATIVE } from './irrigation/seuils'
 import { kcAuStade, phraseVolume, profilEspece, volumeArrosage } from './irrigation/bilan-sol'
 import { bilanCulture, type CultureBilan } from './irrigation/bilan-culture'
-import type { MeteoBilan } from './irrigation/meteo-bilan'
+import { dernierArrosage, type ArrosageSaisi } from './irrigation/arrosages-saisis'
+import { pluieSeptDerniersJours, type MeteoBilan } from './irrigation/meteo-bilan'
 
 // ============================================================
 // TYPES
@@ -163,14 +164,16 @@ export function genererRecommandationIrrigation(
   meteo: MeteoBilan,
   culture: CultureBilan & {
     id: number
-    /** Arrosages notés sur la fenêtre du bilan. */
-    arrosages: Date[]
+    /** Arrosages saisis sur la fenêtre du bilan (« Noter » et interventions). */
+    arrosages: ArrosageSaisi[]
   },
   planche: {
     nom: string
     surface: number // m²
     retentionEau: string | null
     typeSol: string | null
+    /** Sol de la parcelle, quand la planche n'en a pas. */
+    typeSolParcelle?: string | null
     /** Système d'arrosage de la planche (efficacité de l'apport). */
     irrigation?: string | null
   },
@@ -179,8 +182,8 @@ export function genererRecommandationIrrigation(
   const res = bilanCulture(meteo, culture, planche, { sousAbri, arrosages: culture.arrosages })
 
   // Bilan des 7 derniers jours (pluie utile à l'écran, sans pluie sous abri).
-  const derniers7 = meteo.historique.slice(-6).concat(meteo.aujourdhui)
-  const pluie7j = sousAbri ? 0 : derniers7.reduce((s, j) => s + j.pluie, 0)
+  // Les 7 derniers jours, aujourd'hui exclu : la définition de /meteo.
+  const pluie7j = sousAbri ? 0 : pluieSeptDerniersJours(meteo)
   const bilanHydrique7j = Math.round((pluie7j - res.etcPotentielleMoyenne7j * 7) * 10) / 10
 
   // Jours sans pluie significative.
@@ -201,6 +204,7 @@ export function genererRecommandationIrrigation(
     ? `${res.raison} ${phraseVolume(volume, 'pour la planche')}`
     : res.raison
 
+  const dernier = dernierArrosage(culture.derniereIrrigation, culture.arrosages)
   return {
     cultureId: culture.id,
     cultureName: culture.espece,
@@ -212,9 +216,7 @@ export function genererRecommandationIrrigation(
     conseilMessage,
     prochainePluie,
     joursSansPluie,
-    joursDepuisIrrigation: culture.derniereIrrigation
-      ? Math.max(0, Math.floor((Date.now() - culture.derniereIrrigation.getTime()) / 86_400_000))
-      : null,
+    joursDepuisIrrigation: dernier ? Math.max(0, Math.floor((Date.now() - dernier.getTime()) / 86_400_000)) : null,
   }
 }
 

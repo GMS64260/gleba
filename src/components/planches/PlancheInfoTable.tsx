@@ -9,6 +9,7 @@ import * as React from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { InlineEditField } from "./InlineEditField"
+import { libelleIrrigation } from "@/lib/planches/libelle-irrigation"
 import { Droplets, Ruler, MapPin, Loader2, Satellite, Pencil, RotateCw } from "lucide-react"
 import { alertDialog } from "@/lib/global-dialog"
 
@@ -281,6 +282,7 @@ export function PlancheInfoTable({ planche, onUpdate, onRenamed }: PlancheInfoTa
                     onSave={(v) => handleUpdate('irrigation', v)}
                     type="select"
                     options={PLANCHE_IRRIGATION}
+                    libelle={libelleIrrigation}
                     placeholder="Non défini"
                   />
                 </td>

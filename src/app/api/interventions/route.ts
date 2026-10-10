@@ -10,6 +10,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import prisma from '@/lib/prisma'
 import { whereArrosageNote } from '@/lib/irrigation/arrosages-notes'
+import { irrigationCache } from '@/lib/irrigation-cache'
+import { supprimerArrosageNote } from '@/lib/irrigation-recording'
 import { lireAnnee } from '@/lib/api/annee'
 import { createDepenseFromIntervention, deleteAutoEntry } from '@/lib/auto-compta'
 import { createInterventionSchema, updateInterventionSchema } from '@/lib/validations/intervention'
@@ -275,6 +277,9 @@ export async function GET(request: NextRequest) {
       updatedAt: ir.updatedAt,
       source: 'irrigation' as const,
       sourceLabel: `Irrigation #${ir.id}`,
+      // Trace « Noter » : modifiable (complétée en intervention) ou supprimable
+      // depuis le registre (ticket QA cmv2rfmzl).
+      irrigationId: ir.id,
       cultureNom: ir.culture?.espece?.id || null,
       plancheNom: ir.culture?.planche?.nom || null,
     }))
@@ -587,6 +592,23 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // « Modifier » un arrosage noté : l'intervention complète (volume, durée)
+    // remplace la trace « Noter », sans double compte (ticket QA cmv2rfmzl).
+    // Seulement pour un arrosage réalisé : une intervention « planifiée » ne
+    // remplace pas un arrosage qui a eu lieu. Un échec de suppression laisse la
+    // trace (le plein l'emporte dans le bilan) plutôt que de renvoyer une 500
+    // qui ferait recréer l'intervention.
+    const remplace = Number(body.remplaceArrosageNoteId)
+    if (intervention.type === 'arrosage' && intervention.fait && Number.isInteger(remplace) && remplace > 0) {
+      try {
+        await supprimerArrosageNote({ userId, traceId: remplace })
+      } catch (e) {
+        console.error('POST /api/interventions : trace d\'arrosage non remplacée', e)
+      }
+    }
+    // Un arrosage saisi ici nourrit le bilan hydrique (ticket QA cmv2rdmdn).
+    irrigationCache.invalidateUser(userId)
+
     return NextResponse.json(intervention, { status: 201 })
   } catch (err) {
     console.error('Erreur POST /api/interventions:', err)
@@ -716,6 +738,7 @@ export async function PATCH(request: NextRequest) {
       console.error('Auto-compta error (intervention PATCH):', autoComptaError)
     }
 
+    irrigationCache.invalidateUser(userId)
     return NextResponse.json(updated)
   } catch (err) {
     console.error('Erreur PATCH /api/interventions:', err)
@@ -755,6 +778,7 @@ export async function DELETE(request: NextRequest) {
     await prisma.intervention.delete({
       where: { id: parseInt(id) },
     })
+    irrigationCache.invalidateUser(userId)
 
     return NextResponse.json({ success: true })
   } catch (err) {

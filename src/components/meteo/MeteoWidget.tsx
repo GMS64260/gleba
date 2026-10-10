@@ -73,13 +73,15 @@ interface MeteoData {
   actuelle: MeteoActuelle | null
   previsions: MeteoPrevision[]
   historique7j: MeteoHistorique[]
+  /** Pluie des 7 derniers jours, même série que le conseil d'irrigation (null si indisponible). */
+  pluie7j?: number | null
   alertes: AlerteMeteo[]
   ensoleillement: EnsoleillementResume
   source: string
 }
 
 // Graphique de pluviométrie : historique 7j + prévisions 7j
-function PluieGraph({ historique, previsions }: { historique: MeteoHistorique[]; previsions: MeteoPrevision[] }) {
+function PluieGraph({ historique, previsions, pluie7j }: { historique: MeteoHistorique[]; previsions: MeteoPrevision[]; pluie7j?: number | null }) {
   const barres = [
     ...historique.map(d => ({ date: d.date, mm: d.precipitation, prevu: false })),
     ...previsions.slice(0, 7).map(d => ({ date: d.date, mm: d.precipitation, prevu: true })),
@@ -100,7 +102,8 @@ function PluieGraph({ historique, previsions }: { historique: MeteoHistorique[];
     return d.toLocaleDateString("fr-FR", { weekday: "short" }).slice(0, 3)
   }
 
-  const total7jPasse = historique.reduce((s, d) => s + d.precipitation, 0)
+  // Ticket QA cmv2rf6mb : le total vient de la série du conseil d'irrigation.
+  const total7jPasse = pluie7j ?? historique.reduce((s, d) => s + d.precipitation, 0)
   const total7jPrevu = previsions.slice(0, 7).reduce((s, d) => s + d.precipitation, 0)
 
   return (
@@ -377,7 +380,7 @@ export function MeteoWidget({ parcelleId, lat, lng, compact = false, defaultExpa
                 <CloudRain className="h-3.5 w-3.5 text-blue-400" />
                 Pluviométrie (7j passés + 7j prévus)
               </p>
-              <PluieGraph historique={data.historique7j ?? []} previsions={previsions} />
+              <PluieGraph historique={data.historique7j ?? []} previsions={previsions} pluie7j={data.pluie7j} />
             </div>
           )}
 

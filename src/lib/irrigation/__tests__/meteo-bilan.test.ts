@@ -33,3 +33,12 @@ describe("météo du bilan", () => {
     expect(jourDuLieu(new Date("2026-07-14T20:30:00.000Z"), { decalageUtcS: 4 * 3600 })).toBe("2026-07-15")
   })
 })
+
+describe("pluie des 7 derniers jours (ticket QA cmv2rf6mb)", () => {
+  it("aujourd'hui exclu, 7 jours exactement", async () => {
+    const { pluieSeptDerniersJours } = await import("../meteo-bilan")
+    const historique = Array.from({ length: 10 }, (_, i) => ({ date: `2026-10-0${i}`, pluie: i, et0: 1 }))
+    // Jours 3 à 9 : 3 + 4 + … + 9 = 42.
+    expect(pluieSeptDerniersJours({ historique })).toBe(42)
+  })
+})

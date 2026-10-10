@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
+import { irrigationCache } from '@/lib/irrigation-cache'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { updateParcelleSchema } from '@/lib/validations/parcelle'
 import { calculateCentroid, calculateSurfaceHa } from '@/lib/geo-utils'
@@ -150,6 +151,8 @@ export async function PUT(
       data: updateData,
       select: parcelleSelect,
     })
+    // Le sol de la parcelle nourrit le conseil d'irrigation (ticket QA cmv2re9vl).
+    irrigationCache.invalidateUser(session!.user.id)
 
     return NextResponse.json(parcelle)
   } catch (err) {

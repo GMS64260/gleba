@@ -20,6 +20,8 @@ interface InlineEditFieldProps {
   className?: string
   /** Pas d'un champ numérique (0.1 par défaut ; 1 pour une année). */
   step?: string
+  /** Libellé affiché d'une valeur (liste et lecture), la valeur enregistrée restant inchangée. */
+  libelle?: (valeur: string) => string
 }
 
 export function InlineEditField({
@@ -32,13 +34,14 @@ export function InlineEditField({
   placeholder = '-',
   className = '',
   step,
+  libelle,
 }: InlineEditFieldProps) {
   const [isEditing, setIsEditing] = React.useState(false)
   const [editValue, setEditValue] = React.useState('')
   const [isSaving, setIsSaving] = React.useState(false)
   const inputRef = React.useRef<HTMLInputElement | HTMLSelectElement>(null)
 
-  const displayValue = value !== null && value !== '' ? `${value}${unit}` : placeholder
+  const displayValue = value !== null && value !== '' ? `${libelle ? libelle(String(value)) : value}${unit}` : placeholder
 
   React.useEffect(() => {
     if (isEditing && inputRef.current) {
@@ -105,7 +108,7 @@ export function InlineEditField({
         >
           <option value="">-</option>
           {options.map(opt => (
-            <option key={opt} value={opt}>{opt}</option>
+            <option key={opt} value={opt}>{libelle ? libelle(opt) : opt}</option>
           ))}
         </select>
         <button

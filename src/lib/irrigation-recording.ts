@@ -2,6 +2,7 @@ import prisma from "@/lib/prisma"
 import { irrigationCache } from "@/lib/irrigation-cache"
 import { cultureIrrigationDemarreeWhere } from "@/lib/irrigation-eligibility"
 import { idsAExpirer } from "@/lib/irrigation-peremption"
+import { whereArrosageNote } from "@/lib/irrigation/arrosages-notes"
 
 /** Deux « Noter » à moins de 10 minutes d'écart sont un seul arrosage. */
 export const FENETRE_DOUBLON_MS = 10 * 60_000
@@ -294,4 +295,78 @@ export async function annulerArrosageCultures({ userId, dateEffective, avant }: 
 
   irrigationCache.invalidateUser(userId)
   return resultat
+}
+
+/**
+ * Supprime un arrosage noté depuis le registre d'interventions (ticket QA
+ * cmv2rfmzl : la ligne « via Irrigations » n'était ni modifiable ni
+ * supprimable, seul le toast « Annuler » rattrapait une erreur).
+ *
+ * « Noter » arrose toute la planche : un geste laisse une trace par culture de
+ * la planche, au même horodatage. On supprime donc le GESTE (toutes ses traces
+ * sur cette planche), sinon les colocataires gardaient l'arrosage. Chaque
+ * culture dont `derniereIrrigation` vient de ce geste (jusqu'à
+ * FENETRE_DOUBLON_MS après : un double « Noter » ne laisse qu'une trace mais
+ * avance l'horodatage) revient à son arrosage noté précédent, ou à rien.
+ * « Modifier » passe par la même suppression après création d'une
+ * intervention « arrosage » complète (volume, durée), que le bilan lit aussi.
+ */
+export async function supprimerArrosageNote({
+  userId,
+  traceId,
+}: {
+  userId: string
+  traceId: number
+}): Promise<{ supprime: boolean; cultureIds: number[] }> {
+  const trace = await prisma.irrigationPlanifiee.findFirst({
+    where: { id: traceId, userId, AND: [whereArrosageNote()] },
+    select: { id: true, cultureId: true, dateEffective: true, culture: { select: { plancheId: true } } },
+  })
+  if (!trace || !trace.dateEffective) return { supprime: false, cultureIds: [] }
+  const geste = trace.dateEffective
+
+  const traces = await prisma.irrigationPlanifiee.findMany({
+    where: {
+      userId,
+      dateEffective: geste,
+      AND: [whereArrosageNote()],
+      ...(trace.culture?.plancheId ? { culture: { plancheId: trace.culture.plancheId } } : { id: trace.id }),
+    },
+    select: { id: true, cultureId: true },
+  })
+  const ids = traces.map((t) => t.id)
+  const cultureIds = Array.from(new Set(traces.map((t) => t.cultureId)))
+
+  const [cultures, precedentes] = await Promise.all([
+    prisma.culture.findMany({
+      where: { userId, id: { in: cultureIds } },
+      select: { id: true, derniereIrrigation: true },
+    }),
+    prisma.irrigationPlanifiee.findMany({
+      where: {
+        userId,
+        cultureId: { in: cultureIds },
+        id: { notIn: ids },
+        dateEffective: { lt: geste },
+        AND: [whereArrosageNote()],
+      },
+      orderBy: { dateEffective: 'desc' },
+      select: { cultureId: true, dateEffective: true },
+    }),
+  ])
+  const precedente = new Map<number, Date | null>()
+  for (const p of precedentes) if (!precedente.has(p.cultureId)) precedente.set(p.cultureId, p.dateEffective)
+  const finGeste = geste.getTime() + FENETRE_DOUBLON_MS
+  const aRetablir = cultures.filter(
+    (c) => c.derniereIrrigation && c.derniereIrrigation.getTime() >= geste.getTime() && c.derniereIrrigation.getTime() <= finGeste,
+  )
+
+  await prisma.$transaction([
+    prisma.irrigationPlanifiee.deleteMany({ where: { id: { in: ids }, userId } }),
+    ...aRetablir.map((c) =>
+      prisma.culture.update({ where: { id: c.id }, data: { derniereIrrigation: precedente.get(c.id) ?? null } }),
+    ),
+  ])
+  irrigationCache.invalidateUser(userId)
+  return { supprime: true, cultureIds }
 }

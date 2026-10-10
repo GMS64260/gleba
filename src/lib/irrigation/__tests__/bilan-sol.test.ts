@@ -41,6 +41,7 @@ function entree(o: Partial<EntreeBilanSol> & { et0?: number } = {}): EntreeBilan
     aujourdhui: o.aujourdhui ?? { date: AUJOURDHUI, pluie: 0, et0 },
     previsions: o.previsions ?? apres(7, () => ({ pluie: 0, et0 })),
     joursArroses: o.joursArroses ?? [],
+    apports: o.apports,
     sol: o.sol ?? { typeSol: "Limoneux", retentionEau: null },
     culture: {
       espece: "Tomate",
@@ -96,6 +97,46 @@ describe("bilanReserveSol", () => {
     const entame = bilanReserveSol(entree({ joursArroses: ["2026-07-13"], previsions: apres(7, () => ({ pluie: 0, et0: 0.5 })) }))
     expect(entame.urgence).toBe("moyenne")
     expect(entame.raison).not.toMatch(/bien pourvu/)
+  })
+
+  // Ticket QA cmv2rdmdn : 312 L saisis en intervention étaient ignorés.
+  it("un arrosage de volume connu compte pour ce qu'il apporte", () => {
+    const sec = bilanReserveSol(entree({ joursArroses: ["2026-07-13"] }))
+    expect(sec.urgence).toBe("moyenne")
+    // Exactement la dose conseillée, arrivée au sol aujourd'hui : réserve remplie.
+    const plein = bilanReserveSol(entree({ joursArroses: ["2026-07-13"], apports: [{ date: AUJOURDHUI, mm: sec.doseMm }] }))
+    expect(plein.depletionMm).toBe(0)
+    expect(plein.urgence).toBe("aucune")
+    expect(plein.dernierApport).toEqual({ type: "arrosage", date: AUJOURDHUI, mm: sec.doseMm })
+    expect(plein.raison).toMatch(/dernier arrosage le 20\/07 \([0-9.]+ mm au sol\)/)
+    // Un apport partiel ne retranche que son eau.
+    const partiel = bilanReserveSol(entree({ joursArroses: ["2026-07-13"], apports: [{ date: AUJOURDHUI, mm: 10 }] }))
+    expect(sec.depletionMm - partiel.depletionMm).toBeCloseTo(10, 0)
+    // Un apport saisi fait taire « Aucun arrosage noté ».
+    const sansNote = bilanReserveSol(entree({ apports: [{ date: "2026-07-01", mm: 5 }] }))
+    expect(sansNote.raison).not.toMatch(/Aucun arrosage noté/)
+  })
+
+  // Ticket QA cmv2re9vl : le sol de la parcelle n'était pas lu.
+  it("sans sol de planche, le sol de la parcelle compte, quelle que soit son écriture", () => {
+    const sol = (s: Partial<EntreeBilanSol["sol"]>) => ({ typeSol: null, retentionEau: null, ...s })
+    expect(eauDisponibleSol(sol({ typeSolParcelle: "sableux" }))).toBe(80)
+    expect(eauDisponibleSol(sol({ typeSolParcelle: "limono-argileux" }))).toBe(160)
+    expect(eauDisponibleSol(sol({ typeSolParcelle: "calcaire" }))).toBe(120)
+    expect(eauDisponibleSol(sol({ typeSol: "Argileux", typeSolParcelle: "sableux" }))).toBe(150)
+    expect(eauDisponibleSol(sol({ retentionEau: "Élevée", typeSolParcelle: "sableux" }))).toBe(160)
+    const sable = bilanReserveSol(entree({ joursArroses: ["2026-07-15"], sol: sol({ typeSolParcelle: "sableux" }) }))
+    const limon = bilanReserveSol(entree({ joursArroses: ["2026-07-15"], sol: sol({ typeSolParcelle: "limoneux" }) }))
+    expect(sable.reserveUtileMm).toBeLessThan(limon.reserveUtileMm)
+    expect(sable.tauxEpuisement).toBeGreaterThan(limon.tauxEpuisement)
+    expect(sable.solRenseigne).toBe(true)
+  })
+
+  it("sol inconnu partout : réserve d'un sol moyen, et le motif le dit", () => {
+    const r = bilanReserveSol(entree({ sol: { typeSol: null, retentionEau: null, typeSolParcelle: null } }))
+    expect(r.solRenseigne).toBe(false)
+    expect(r.raison).toMatch(/Sol non renseigné \(planche et parcelle\)/)
+    expect(bilanReserveSol(entree()).raison).not.toMatch(/Sol non renseigné/)
   })
 
   it("une bruine de 2 mm n'apporte rien", () => {

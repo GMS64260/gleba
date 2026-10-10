@@ -12,7 +12,7 @@
  * évaporation.
  */
 import { getOrFetch } from '@/lib/cache-helper'
-import { fetchOpenMeteoHistory } from '@/lib/meteo'
+import { fetchOpenMeteoHistory, type MeteoJournaliere } from '@/lib/meteo'
 import type { JourMeteoBilan } from './bilan-sol'
 
 export interface MeteoBilan {
@@ -148,4 +148,34 @@ export async function chargerMeteoBilan(lat: number, lng: number, maintenant: Da
   if (!duJour) return null
   const previsions = prevision.jours.filter((j) => j.date > aujourdhui).slice(0, 7)
   return { historique, aujourdhui: duJour, previsions, decalageUtcS }
+}
+
+/** Pluie des 7 derniers jours, hier compris, aujourd'hui exclu : la définition commune. */
+export function pluieSeptDerniersJours(meteo: Pick<MeteoBilan, 'historique'>): number {
+  return meteo.historique.slice(-7).reduce((s, j) => s + j.pluie, 0)
+}
+
+/**
+ * Les 7 derniers jours de l'écran Météo alignés sur la série du bilan : mêmes
+ * jours et même pluie (ET0 comprise) que le conseil d'irrigation. Ticket QA
+ * cmv2rf6mb : /meteo additionnait 8 jours d'archive, dont les derniers, pas
+ * encore publiés, valaient 0 (17 mm), le conseil 7 jours plus aujourd'hui
+ * (19 mm). Températures, soleil et vent restent ceux de l'archive.
+ */
+export async function aligner7DerniersJours(
+  lat: number,
+  lng: number,
+  historique: MeteoJournaliere[],
+): Promise<{ historique7j: MeteoJournaliere[]; pluie7j: number | null }> {
+  const meteo = await chargerMeteoBilan(lat, lng).catch(() => null)
+  if (!meteo) return { historique7j: historique.slice(-7), pluie7j: null }
+  const parDate = new Map(historique.map((j) => [j.date, j]))
+  const historique7j = meteo.historique
+    .slice(-7)
+    .map((j) => {
+      const archive = parDate.get(j.date)
+      return archive ? { ...archive, precipitation: j.pluie, et0: j.et0 } : null
+    })
+    .filter((j): j is MeteoJournaliere => j !== null)
+  return { historique7j, pluie7j: Math.round(pluieSeptDerniersJours(meteo) * 10) / 10 }
 }
