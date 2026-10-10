@@ -10,14 +10,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireAuthApi, getUserId } from '@/lib/auth-utils'
-import { fetchEcowittData, fetchOpenMeteoForecast, fetchOpenMeteoHistory, fetchWundergroundData } from '@/lib/meteo'
-import { adapterConseilSousAbri, genererRecommandationIrrigation } from '@/lib/meteo-agro'
+import { fetchEcowittData, fetchOpenMeteoForecast, fetchWundergroundData } from '@/lib/meteo'
+import { chargerMeteoBilan, jourLocalIso, JOURS_HISTORIQUE_BILAN, type MeteoBilan } from '@/lib/irrigation/meteo-bilan'
+import { whereArrosageNote } from '@/lib/irrigation/arrosages-notes'
+import { genererRecommandationIrrigation } from '@/lib/meteo-agro'
 import { irrigationCache, irrigationCacheKey } from '@/lib/irrigation-cache'
 import { cultureIrrigationDemarreeWhere } from '@/lib/irrigation-eligibility'
 import { whereCulturesEnPlace } from '@/lib/irrigation-conseil'
 import { grouperRecommandationsParPlanche } from '@/lib/irrigation-planche'
 import { etatCulture } from '@/lib/cultures/etat'
-import type { MeteoJournaliere, MeteoPrevision } from '@/lib/meteo'
+import type { MeteoJournaliere } from '@/lib/meteo'
 import type { Prisma } from '@prisma/client'
 
 const TYPES_SOUS_ABRI = ['Serre', 'Tunnel', 'Châssis', 'Chassis']
@@ -140,75 +142,60 @@ export async function GET(request: NextRequest) {
       parCoords.get(key)!.cultures.push(culture)
     }
 
+    // Arrosages notés des 30 derniers jours (même source que le conseil des tâches).
+    const traces = await prisma.irrigationPlanifiee.findMany({
+      where: {
+        userId,
+        cultureId: { in: cultures.map((c) => c.id) },
+        AND: [whereArrosageNote(), { dateEffective: { gte: new Date(Date.now() - (JOURS_HISTORIQUE_BILAN + 1) * 86_400_000) } }],
+      },
+      select: { cultureId: true, dateEffective: true },
+    })
+    const joursArroses = new Map<number, string[]>()
+    for (const t of traces) {
+      if (!t.dateEffective) continue
+      joursArroses.set(t.cultureId, [...(joursArroses.get(t.cultureId) ?? []), jourLocalIso(t.dateEffective)])
+    }
+
     const recommandationsCultures = []
 
     for (const [, group] of parCoords) {
-      let historique7j: MeteoJournaliere[]
-      let previsions: MeteoPrevision[]
-
+      // Même série que le moteur des tâches : 30 jours d'archive, aujourd'hui, 7 jours prévus.
+      let meteo: MeteoBilan | null
       try {
-        const today = new Date()
-        const weekAgo = new Date(today)
-        weekAgo.setDate(weekAgo.getDate() - 8)
-        const yesterday = new Date(today)
-        yesterday.setDate(yesterday.getDate() - 1)
-
-        historique7j = await fetchOpenMeteoHistory(
-          group.lat, group.lng,
-          weekAgo.toISOString().split('T')[0],
-          yesterday.toISOString().split('T')[0]
-        )
-
-        const forecast = await fetchOpenMeteoForecast(group.lat, group.lng)
-        previsions = forecast.daily
-        if (stationToday && previsions[0]?.date === stationToday.date) {
-          previsions[0] = {
-            ...previsions[0],
-            precipitation: stationToday.precipitation,
-            tempMin: stationToday.tempMin,
-            tempMax: stationToday.tempMax,
-            windSpeedMax: stationToday.windSpeedMax,
-          }
-        }
+        meteo = await chargerMeteoBilan(group.lat, group.lng)
       } catch {
-        continue
+        meteo = null
+      }
+      if (!meteo) continue
+      // Station de l'exploitation : sa pluie du jour prime sur le modèle.
+      if (stationToday && stationToday.date === meteo.aujourdhui.date) {
+        meteo = { ...meteo, aujourdhui: { ...meteo.aujourdhui, pluie: stationToday.precipitation } }
       }
 
       for (const culture of group.cultures) {
         const sousAbri = TYPES_SOUS_ABRI.includes(culture.planche?.type ?? '')
-
-        // Sous abri : neutraliser les précipitations extérieures dans le calcul
-        const historiquePourCalcul: MeteoJournaliere[] = sousAbri
-          ? historique7j.map(d => ({ ...d, precipitation: 0 }))
-          : historique7j
-        const previsionsPourCalcul = sousAbri
-          ? previsions.map(d => ({ ...d, precipitation: 0 }))
-          : previsions
-
+        const debut = culture.datePlantation ?? culture.dateSemis
         const reco = genererRecommandationIrrigation(
-          historiquePourCalcul,
-          previsionsPourCalcul,
+          meteo,
           {
             id: culture.id,
             espece: culture.espece.nom || culture.especeId,
             besoinEau: culture.espece.besoinEau ?? 3,
-            dateSemis: culture.dateSemis,
+            debut,
+            finCycle: culture.finRecolte ?? culture.dateRecolte,
             derniereIrrigation: culture.derniereIrrigation,
+            joursArroses: joursArroses.get(culture.id) ?? [],
           },
           {
             nom: culture.planche!.nom,
             surface: culture.planche!.surface ?? 10,
             retentionEau: culture.planche!.retentionEau,
             typeSol: culture.planche!.typeSol,
-          }
+            irrigation: culture.planche!.irrigation,
+          },
+          sousAbri,
         )
-
-        if (sousAbri) {
-          reco.conseilMessage = adapterConseilSousAbri(reco.conseilMessage)
-          reco.pluiePrevue48h = 0
-          reco.prochainePluie = null
-          reco.joursSansPluie = 0
-        }
 
         recommandationsCultures.push({
           ...reco,

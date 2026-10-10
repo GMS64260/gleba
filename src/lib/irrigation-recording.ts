@@ -3,6 +3,9 @@ import { irrigationCache } from "@/lib/irrigation-cache"
 import { cultureIrrigationDemarreeWhere } from "@/lib/irrigation-eligibility"
 import { idsAExpirer } from "@/lib/irrigation-peremption"
 
+/** Deux « Noter » à moins de 10 minutes d'écart sont un seul arrosage. */
+export const FENETRE_DOUBLON_MS = 10 * 60_000
+
 interface EnregistrerArrosageParams {
   userId: string
   cultureIds: number[]
@@ -153,12 +156,20 @@ export async function enregistrerArrosageCultures({
   // journée reçoivent donc une irrigation clôturée, qui sert de trace — un
   // passage périmé ne compte pas comme trace, sinon l'arrosage réel du jour
   // disparaîtrait du registre.
+  //
+  // Itération du 2026-10-10 : chaque arrosage noté a sa trace, un second
+  // arrosage le soir compris (il gardait sinon la seule trace du matin et
+  // perdait son observation). Seul un double geste dans les
+  // FENETRE_DOUBLON_MS (double tap, deux écrans) est dédoublonné.
   const closesAujourdhui = await prisma.irrigationPlanifiee.findMany({
     where: {
       userId,
       cultureId: { in: idsCibles },
       fait: true,
-      dateEffective: { gte: debutJournee, lte: finJournee },
+      dateEffective: {
+        gte: new Date(Math.max(debutJournee.getTime(), dateEffective.getTime() - FENETRE_DOUBLON_MS)),
+        lte: finJournee,
+      },
     },
     select: { cultureId: true },
   })
