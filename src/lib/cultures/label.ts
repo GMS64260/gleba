@@ -57,5 +57,10 @@ const cleComparaison = (texte: string) =>
 export function libelleEspeceVariete(espece: string, variete: string | null | undefined): string {
   const nomVariete = varieteAffichable(variete)
   if (!nomVariete) return espece
-  return cleComparaison(nomVariete).startsWith(cleComparaison(espece)) ? nomVariete : `${espece} · ${nomVariete}`
+  const cleVariete = cleComparaison(nomVariete)
+  const cleEspece = cleComparaison(espece)
+  // Le préfixe doit être un mot entier : « Courgette ronde » ne contient pas
+  // l'espèce « Courge ».
+  const contientEspece = cleVariete.startsWith(cleEspece) && !/[a-z0-9]/.test(cleVariete.charAt(cleEspece.length))
+  return contientEspece ? nomVariete : `${espece} · ${nomVariete}`
 }

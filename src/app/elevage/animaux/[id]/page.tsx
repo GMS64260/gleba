@@ -144,6 +144,7 @@ interface AnimalDetail {
     dose: string | null
     motif: string | null
     notes: string | null
+    datePrevue: string | null
     cout: number | null
     fait: boolean
     finAttenteLait: string | null
@@ -235,9 +236,19 @@ export default function AnimalDetailPage() {
         bgColor: "bg-blue-100",
         title: SOIN_TYPE_LABELS[s.type] || s.type,
         // Ticket cmsoglwee \u2014 mention discr\u00e8te des soins h\u00e9rit\u00e9s du lot.
-        // QA cmv2emln0 \u2014 dose, motif et observations du soin : une visite de
-        // ruche n'affichait que « Autre », deux visites du jour \u00e9taient indiscernables.
-        detail: [s.produit, s.dose, s.motif, s.description, s.cout ? `${s.cout.toFixed(2)} \u20ac` : null, s.fait ? null : "pr\u00e9vu", s.viaLot ? "soin de lot" : null].filter(Boolean).join(" - "),
+        // QA cmv2emln0 — dose, motif et observations du soin : une visite de
+        // ruche n'affichait que « Autre », deux visites du jour étaient
+        // indiscernables. Un soin à faire dit son échéance (datePrevue), pas
+        // sa date de saisie.
+        detail: [
+          s.produit,
+          s.dose,
+          s.motif,
+          s.description,
+          s.cout ? `${s.cout.toFixed(2)} €` : null,
+          s.fait ? null : `prévu le ${new Date(s.datePrevue ?? s.date).toLocaleDateString("fr-FR")}`,
+          s.viaLot ? "soin de lot" : null,
+        ].filter(Boolean).join(" - "),
         notes: s.notes,
       })
     })
@@ -622,7 +633,7 @@ export default function AnimalDetailPage() {
                               </span>
                             </div>
                             {event.detail && (
-                              <p className="text-xs text-muted-foreground mt-0.5">{event.detail}</p>
+                              <p className="text-xs text-muted-foreground mt-0.5 break-words">{event.detail}</p>
                             )}
                             {event.notes && (
                               <p className="text-xs text-slate-700 mt-0.5 whitespace-pre-wrap break-words">{event.notes}</p>

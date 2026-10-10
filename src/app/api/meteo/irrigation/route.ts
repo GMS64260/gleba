@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
         espece: {
           select: { id: true, nom: true, besoinEau: true },
         },
-        variete: { select: { nom: true } },
+        variete: { select: { nom: true, isPlaceholder: true } },
         planche: {
           select: {
             id: true,
@@ -210,7 +210,8 @@ export async function GET(request: NextRequest) {
         recommandationsCultures.push({
           ...reco,
           plancheId: culture.planche!.id,
-          varietyName: culture.variete?.nom ?? null,
+          // Variété de repli « Non spécifiée » : le drapeau du référentiel fait foi.
+          varietyName: culture.variete?.isPlaceholder ? null : culture.variete?.nom ?? null,
           // QA cmv2eg99z — même état que la liste des cultures : une culture
           // récoltée s'affichait « Semée » (cascade recopiée sans `recolteFaite`).
           etatCulture: etatCulture(culture),

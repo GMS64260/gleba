@@ -1,4 +1,4 @@
-import { libelleEspeceVariete } from "@/lib/cultures/label"
+import { libelleEspeceVariete, varieteAffichable } from "@/lib/cultures/label"
 
 export type IrrigationUrgence = "critique" | "haute" | "moyenne" | "faible" | "aucune"
 
@@ -79,7 +79,8 @@ export function grouperRecommandationsParPlanche<T extends RecommandationCulture
     return {
       ...pilote,
       cultureName,
-      varietyName: groupe.length === 1 ? pilote.varietyName : null,
+      // La variété de repli ne ressort pas non plus par ce champ (revue cmv2ex2vq).
+      varietyName: groupe.length === 1 ? varieteAffichable(pilote.varietyName) || null : null,
       etatCulture: groupe.length === 1
         ? pilote.etatCulture
         : `${groupe.length} cultures actives`,

@@ -61,3 +61,11 @@ describe("libelleEspeceVariete (QA cmv2ex2vq)", () => {
     expect(libelleEspeceVariete("Aubergine", "Violette longue")).toBe("Aubergine · Violette longue")
   })
 })
+
+describe("libelleEspeceVariete — préfixe en mot entier (revue)", () => {
+  it("ne prend pas une variété qui commence par l'espèce au milieu d'un mot", () => {
+    expect(libelleEspeceVariete("Courge", "Courgette ronde")).toBe("Courge · Courgette ronde")
+    expect(libelleEspeceVariete("Ail", "Ailette")).toBe("Ail · Ailette")
+    expect(libelleEspeceVariete("Courge", "Courge musquée")).toBe("Courge musquée")
+  })
+})

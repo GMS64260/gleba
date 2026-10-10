@@ -220,7 +220,7 @@ export async function GET(request: NextRequest) {
       stats: { totalCouts: round(totalCouts), totalRevenus: round(totalRevenus), margeGlobale: round(totalRevenus - totalCouts), nbLots: lots.length, nbAnimaux: animals.length },
       methode: {
         achats: "Comptés uniquement si la date d'arrivée est dans l'année sélectionnée.",
-        affectation: "Lot ou animal : coût imputé directement à l'atelier de son espèce. Aliments et soins saisis sans lot ni animal : comptés dans « Non affecté », sans répartition. Ventes sans animal : atelier « Ventes » distinct.",
+        affectation: "Lot ou animal : imputé directement à l'atelier de son espèce. Saisies sans lot ni animal (aliments, soins, abattages, œufs) : comptées dans « Non affecté », sans répartition ; miel sans ruche : atelier dédié. Ventes sans animal : un atelier « Ventes <type> » par type.",
         lait: "Les paies et livraisons sont rapprochées au mois mais non attribuées à une espèce faute de lien dans la saisie.",
         coutsUnitaires: "Coût unitaire = coûts totaux de l'atelier divisés par sa production de l'année (œufs, kg de carcasse, litres livrés). Affiché seulement si la production est non nulle.",
       },

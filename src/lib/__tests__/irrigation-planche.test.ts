@@ -69,6 +69,7 @@ describe("libellé de culture d'un conseil d'irrigation", () => {
       reco(3, "Aubergine", "Violette longue"),
     ])
     expect(radis.cultureName).toBe("Radis")
+    expect(radis.varietyName).toBeNull()
     expect(courge.cultureName).toBe("Courge butternut-Waltham")
     expect(aubergine.cultureName).toBe("Aubergine · Violette longue")
   })
