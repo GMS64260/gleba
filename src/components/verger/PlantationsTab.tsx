@@ -28,6 +28,7 @@ import { useToast } from "@/hooks/use-toast"
 import { DeleteConfirmDialog } from "@/components/ui/delete-confirm-dialog"
 import { AssistantPlantationDialog } from "./AssistantPlantationDialog"
 import { CampagneDetailDialog } from "./CampagneDetailDialog"
+import { nomEssenceCampagne } from "@/lib/verger/essence-campagne"
 
 const TYPES_LIBELLE: Record<string, { label: string; icon: React.ComponentType<{ className?: string }>; color: string }> = {
   verger: { label: "Verger", icon: Apple, color: "text-lime-600" },
@@ -77,7 +78,7 @@ interface Campagne {
   coutReel: number | null
   parcelleGeo: { id: string; nom: string; surface: number | null } | null
   zoneVerger: { id: number; nom: string } | null
-  espece: { id: string; nomLatin: string | null } | null
+  espece: { id: string; nom: string | null; nomLatin: string | null } | null
   _count: { etapes: number; observations: number }
 }
 
@@ -287,9 +288,9 @@ export function PlantationsTab() {
                     <Badge variant="outline">{NATURE_LIBELLE[c.nature] || c.nature}</Badge>
                   </div>
 
-                  {(c.essenceLibre || c.espece?.nomLatin) && (
+                  {nomEssenceCampagne(c) && (
                     <p className="text-sm text-muted-foreground truncate">
-                      {c.essenceLibre || c.espece?.nomLatin}
+                      {nomEssenceCampagne(c)}
                       {c.varieteOuProvenance && ` — ${c.varieteOuProvenance}`}
                     </p>
                   )}

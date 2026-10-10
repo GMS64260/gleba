@@ -19,6 +19,7 @@ import { dispositionDocument } from "@/lib/http/disposition-fichier"
 import { requireAuthApi } from "@/lib/auth-utils"
 import prisma from "@/lib/prisma"
 import PDFDocument from "pdfkit"
+import { nomEssenceCampagne } from "@/lib/verger/essence-campagne"
 
 interface Params {
   params: Promise<{ id: string }>
@@ -39,7 +40,7 @@ export async function GET(request: NextRequest, { params }: Params) {
       observations: { orderBy: { date: "asc" } },
       porteGreffe: { select: { nom: true } },
       parcelleGeo: { select: { nom: true, surface: true } },
-      espece: { select: { id: true, nomLatin: true } },
+      espece: { select: { id: true, nom: true, nomLatin: true } },
     },
   })
   if (!campagne) {
@@ -84,7 +85,7 @@ export async function GET(request: NextRequest, { params }: Params) {
     const infos: [string, string | number | null | undefined][] = [
       ["Nature", campagne.nature ?? "—"],
       ["Type de formation", campagne.typeFormation ?? "—"],
-      ["Espèce", campagne.espece?.id ?? campagne.essenceLibre ?? "—"],
+      ["Espèce", nomEssenceCampagne(campagne) ?? "—"],
       ["Nom latin", campagne.espece?.nomLatin ?? "—"],
       ["Variété / Provenance", campagne.varieteOuProvenance ?? "—"],
       ["Porte-greffe", campagne.porteGreffe?.nom ?? "—"],

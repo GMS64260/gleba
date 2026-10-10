@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
       include: {
         parcelleGeo: { select: { id: true, nom: true, surface: true } },
         zoneVerger: { select: { id: true, nom: true } },
-        espece: { select: { id: true, nomLatin: true } },
+        espece: { select: { id: true, nom: true, nomLatin: true } },
         productionBois: { select: { id: true, type: true, date: true, volumeM3: true } },
         _count: {
           select: {
@@ -173,7 +173,7 @@ export async function POST(request: NextRequest) {
       include: {
         parcelleGeo: { select: { id: true, nom: true } },
         zoneVerger: { select: { id: true, nom: true } },
-        espece: { select: { id: true, nomLatin: true } },
+        espece: { select: { id: true, nom: true, nomLatin: true } },
         etapes: { orderBy: { ordre: "asc" } },
       },
     })
