@@ -64,6 +64,14 @@ interface CultureIrriguer {
   raisonUrgence: string
   consommationEauSemaine: number
   meteo: MeteoResume | null
+  /** Bilan hydrique (null sans météo) : dose pour remplir la réserve du sol. */
+  reserve: {
+    doseMm: number
+    litresParM2: number
+    litresConseilles: number
+    /** Passages d'au plus 20 L/m² (1 au goutte-à-goutte). */
+    passages: number
+  } | null
   espece: {
     id: string
     nom: string | null
@@ -721,6 +729,14 @@ function CulturesIrriguerContent() {
                               <Info className={`h-3 w-3 flex-shrink-0 mt-0.5 ${urgenceColor}`} />
                               <p className={`text-xs ${urgenceColor}`}>
                                 {culture.raisonUrgence}
+                                {culture.reserve && culture.reserve.litresParM2 > 0 && (
+                                  <>
+                                    {" "}Dose conseillée : {culture.reserve.litresParM2} L/m²
+                                    {culture.reserve.litresConseilles > 0 && `, soit ${culture.reserve.litresConseilles} L pour cette culture`}
+                                    {culture.reserve.passages >= 2 &&
+                                      `, en ${culture.reserve.passages} passages d'environ ${Math.round(culture.reserve.litresParM2 / culture.reserve.passages)} L/m² espacés de quelques heures`}.
+                                  </>
+                                )}
                               </p>
                             </div>
                           )}

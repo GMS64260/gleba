@@ -10,6 +10,7 @@ vi.mock("@/lib/prisma", () => ({
       findMany: vi.fn(),
       updateMany: vi.fn(),
       createMany: vi.fn(),
+      update: vi.fn(),
     },
     $transaction: vi.fn(),
   },
@@ -34,6 +35,7 @@ const mockedPrisma = prisma as unknown as {
     findMany: ReturnType<typeof vi.fn>
     updateMany: ReturnType<typeof vi.fn>
     createMany: ReturnType<typeof vi.fn>
+    update: ReturnType<typeof vi.fn>
   }
   $transaction: ReturnType<typeof vi.fn>
 }
@@ -56,7 +58,7 @@ function passage(
 /** Les deux lectures de la fonction : passages ouverts, puis clos du jour. */
 function mockLectures(
   ouvertes: ReturnType<typeof passage>[],
-  closesAujourdhui: Array<{ cultureId: number }> = [],
+  closesAujourdhui: Array<{ id?: number; cultureId: number; notes?: string | null }> = [],
 ) {
   mockedPrisma.irrigationPlanifiee.findMany
     .mockResolvedValueOnce(ouvertes)
@@ -227,7 +229,7 @@ describe("enregistrerArrosageCultures", () => {
         // Fenêtre anti-doublon de 10 minutes (un second arrosage du soir a sa trace).
         dateEffective: { gte: new Date(DATE_EFFECTIVE.getTime() - 10 * 60_000), lte: FIN_JOURNEE },
       },
-      select: { cultureId: true },
+      select: { id: true, cultureId: true, notes: true },
     })
     expect(mockedPrisma.irrigationPlanifiee.createMany).toHaveBeenCalledWith({
       data: [
@@ -285,6 +287,46 @@ describe("enregistrerArrosageCultures", () => {
 
     const [{ data }] = mockedPrisma.irrigationPlanifiee.createMany.mock.calls[0]
     expect(data.map((d: { cultureId: number }) => d.cultureId)).toEqual([11])
+  })
+
+  // Double geste (deux écrans, double tap) avec une observation : elle
+  // complète la trace du premier geste au lieu d'être perdue.
+  it("complète la trace d'un double geste avec la nouvelle observation", async () => {
+    mockedPrisma.culture.findMany
+      .mockResolvedValueOnce([{ id: 10, plancheId: "planche-a" }])
+      .mockResolvedValueOnce([{ id: 10 }, { id: 11 }])
+    mockLectures([], [
+      { id: 5, cultureId: 10, notes: "Arrosage noté" },
+      { id: 6, cultureId: 11, notes: "Paillage refait" },
+    ])
+
+    await enregistrerArrosageCultures({
+      userId: "user-1",
+      cultureIds: [10],
+      dateEffective: DATE_EFFECTIVE,
+      notes: "Feuilles flétries",
+    })
+
+    expect(mockedPrisma.irrigationPlanifiee.createMany.mock.calls[0][0].data).toEqual([])
+    expect(mockedPrisma.irrigationPlanifiee.update).toHaveBeenCalledWith({
+      where: { id: 5 },
+      data: { notes: "Feuilles flétries" },
+    })
+    expect(mockedPrisma.irrigationPlanifiee.update).toHaveBeenCalledWith({
+      where: { id: 6 },
+      data: { notes: "Paillage refait · Feuilles flétries" },
+    })
+  })
+
+  it("un double geste sans observation ne touche pas la trace", async () => {
+    mockedPrisma.culture.findMany
+      .mockResolvedValueOnce([{ id: 10, plancheId: "planche-a" }])
+      .mockResolvedValueOnce([{ id: 10 }])
+    mockLectures([], [{ id: 5, cultureId: 10, notes: "Paillage refait" }])
+
+    await enregistrerArrosageCultures({ userId: "user-1", cultureIds: [10], dateEffective: DATE_EFFECTIVE })
+
+    expect(mockedPrisma.irrigationPlanifiee.update).not.toHaveBeenCalled()
   })
 
   // Un passage abandonné n'est pas une trace : sans cela, l'arrosage réel du
