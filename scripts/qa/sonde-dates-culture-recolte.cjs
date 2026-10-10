@@ -8,7 +8,9 @@
 //   PLAYWRIGHT_DIR=/var/www/escalier node … [BASE] avant-plantation
 // Le mode « recolte » exige une culture déjà marquée récoltée : supprimer la récolte de
 // sonde ne décoche pas « récolte faite » sur la culture.
+// Variantes culture : A-fill, E-avant-itp, F-semis-seul-avant-itp, G-annee-changee.
 // Avant correctif : E-avant-itp part aux dates de l'ITP (10/10, 21/11, 16/01) ;
+// F part sans plantation ni récolte ; G garde les dates 2026 sur une culture 2027 ;
 // B-setter-dernier affiche le 17/10 et envoie la date du jour ; avant-plantation rend 201.
 const { chromium } = require(`${process.env.PLAYWRIGHT_DIR || "/var/www/escalier"}/node_modules/playwright`);
 const BASE = process.argv[2] || "https://gleba.fr";
@@ -53,6 +55,21 @@ async function culture(page, variante) {
     await itpResp;
     await page.waitForTimeout(1500);
     await page.selectOption('select[name="plancheId"]', { index: 1 });
+  } else if (variante.startsWith("F")) {
+    // Semis seul avant les ITP : plantation et récolte complétées depuis l'ITP,
+    // recalées sur ce semis (attendu : non vides, décalées comme le semis).
+    await poserDate(dates.nth(0), "2026-10-25", "fill");
+    await itpResp;
+    await page.waitForTimeout(1500);
+    await page.selectOption('select[name="plancheId"]', { index: 1 });
+  } else if (variante.startsWith("G")) {
+    // Dates saisies puis année changée : attendu, dates décalées d'un an.
+    await itpResp;
+    await page.waitForTimeout(1500);
+    await page.selectOption('select[name="plancheId"]', { index: 1 });
+    for (const [i, v] of ["2026-10-25", "2026-12-06", "2027-01-31"].entries()) await poserDate(dates.nth(i), v, "fill");
+    await page.locator('input[name="annee"]').fill("2027");
+    await page.waitForTimeout(800);
   } else {
     await itpResp;
     await page.waitForTimeout(1500);
@@ -60,7 +77,7 @@ async function culture(page, variante) {
     for (const [i, v] of ["2026-10-25", "2026-12-06", "2027-01-31"].entries()) await poserDate(dates.nth(i), v, "fill");
   }
   await page.fill('textarea[name="notes"]', MARQUE);
-  console.log("champs avant envoi :", await dates.evaluateAll((els) => els.slice(0, 3).map((e) => e.value)));
+  console.log("champs avant envoi :", await dates.evaluateAll((els) => els.slice(0, 3).map((e) => e.value)), "| message :", await page.locator("p.text-amber-700").allInnerTexts());
   const rep = page.waitForResponse((r) => r.url().endsWith("/api/cultures") && r.request().method() === "POST", { timeout: 15000 }).catch(() => null);
   await page.click('button[type="submit"]:has-text("Enregistrer")');
   const r = await rep;

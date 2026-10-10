@@ -12,7 +12,6 @@ import { checkOperationSaison } from "@/lib/tree-care-calendar"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { SelectNatif } from "@/components/ui/select-natif"
 import {
   Dialog,
@@ -516,23 +515,30 @@ export function OperationsTab() {
                 </SelectNatif>
               </div>
               <div>
-                <Label>Type *</Label>
-                <Select
+                <Label htmlFor="operation-type">Type *</Label>
+                {/* Même motif que l'arbre (cmv2r0t6a) : le type, relu dans le
+                    FormData à l'envoi, passe en <select> natif. */}
+                <SelectNatif
+                  id="operation-type"
                   name="type"
                   value={newOperation.type}
-                  onValueChange={(v) => setNewOperation((prev) => ({ ...prev, type: v }))}
+                  onChange={(e) => {
+                    const type = e.target.value
+                    setNewOperation((prev) => ({ ...prev, type }))
+                  }}
                 >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {TYPES_OPERATIONS.map((t) => (
-                      <SelectItem key={t.value} value={t.value}>
-                        {t.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  {/* Un type hors liste (ligne ancienne) reste affiché tel
+                      quel : un <select> natif retomberait sur « Taille » et le
+                      renverrait à l'enregistrement. */}
+                  {newOperation.type && !TYPES_OPERATIONS.some((t) => t.value === newOperation.type) && (
+                    <option value={newOperation.type}>{newOperation.type}</option>
+                  )}
+                  {TYPES_OPERATIONS.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
+                  ))}
+                </SelectNatif>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">

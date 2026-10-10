@@ -12,7 +12,7 @@ import { ArrowLeft, Sprout, Save } from "lucide-react"
 import { formatSemaine } from "@/lib/assistant-helpers"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { format } from "date-fns"
+import { addDays, addYears, differenceInCalendarDays, format } from "date-fns"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -93,8 +93,14 @@ interface ITPData {
   espacementRangs: number | null
 }
 
-type ChampSaisi = "dateSemis" | "datePlantation" | "dateRecolte" | "nbRangs" | "espacement"
-const CHAMPS_DATE: readonly ChampSaisi[] = ["dateSemis", "datePlantation", "dateRecolte"]
+const CHAMPS_DATE = ["dateSemis", "datePlantation", "dateRecolte"] as const
+type ChampDate = (typeof CHAMPS_DATE)[number]
+type ChampSaisi = ChampDate | "nbRangs" | "espacement"
+const LIBELLE_CHAMP_DATE: Record<ChampDate, string> = {
+  dateSemis: "semis",
+  datePlantation: "plantation",
+  dateRecolte: "récolte",
+}
 
 /**
  * Cycle proposé par un ITP pour une année, partagé par le pré-remplissage et
@@ -338,7 +344,7 @@ export default function NewCulturePage() {
   const [datesSaisies, setDatesSaisies] = React.useState(false)
   const marquerSaisie = React.useCallback((champ: ChampSaisi) => {
     saisiesManuellesRef.current.add(champ)
-    if (CHAMPS_DATE.includes(champ)) setDatesSaisies(true)
+    if ((CHAMPS_DATE as readonly string[]).includes(champ)) setDatesSaisies(true)
   }, [])
   const appliquerCycleItp = React.useCallback(
     (itp: ITPData, year: number) => {
@@ -359,10 +365,42 @@ export default function NewCulturePage() {
     },
     [form]
   )
+  // Revue du 2026-10-10 (cmv2qzhkf) — un semis seul tapé avant l'arrivée des
+  // ITP laissait plantation et récolte vides, et la culture partait sans date
+  // de récolte. Les dates encore vides (et que l'utilisateur n'a pas vidées)
+  // sont complétées par le calendrier de l'ITP, recalé sur la première date
+  // saisie que l'ITP connaît aussi. Les dates saisies ne bougent pas.
+  const completerDatesManquantes = React.useCallback(
+    (itp: ITPData, year: number) => {
+      const saisies = saisiesManuellesRef.current
+      const cycle = datesDepuisItp(year, itp)
+      const valeur = (champ: ChampDate) => {
+        const v = form.getValues(champ)
+        return v ? new Date(v) : null
+      }
+      const ancre = CHAMPS_DATE.find((champ) => saisies.has(champ) && valeur(champ) && cycle[champ])
+      if (!ancre) return
+      const decalage = differenceInCalendarDays(valeur(ancre)!, cycle[ancre]!)
+      let complete = false
+      for (const champ of CHAMPS_DATE) {
+        const reference = cycle[champ]
+        if (saisies.has(champ) || valeur(champ) || !reference) continue
+        form.setValue(champ, addDays(reference, decalage))
+        complete = true
+      }
+      if (!complete) return
+      const debut = valeur("datePlantation") ?? valeur("dateSemis")
+      if (debut) debutCycleRef.current = debut.toISOString()
+      setDateSemisInfo(
+        `Dates manquantes complétées depuis l'ITP, recalées sur votre ${LIBELLE_CHAMP_DATE[ancre]}.`
+      )
+    },
+    [form]
+  )
 
   // PROMPT 20b — Auto-remplissage ITP → dates de culture
-  // L'année est dans les deps : changer d'année recalcule les dates si ITP fixé,
-  // sauf celles que l'utilisateur a saisies (QA cmv2qzhkf, plus haut).
+  // L'année est dans les deps : changer d'année recalcule les dates si ITP fixé ;
+  // des dates saisies (QA cmv2qzhkf, plus haut) suivent l'année (effet suivant).
   const selectedYear = form.watch("annee")
   React.useEffect(() => {
     // QA cmsw8z9jt — ITP vidé ⇒ purger le bandeau « fenêtre dépassée », sinon
@@ -389,10 +427,35 @@ export default function NewCulturePage() {
       // Dates de l'utilisateur conservées : le bandeau « fenêtre dépassée »
       // d'un ITP précédent ne les décrit plus.
       setDateSemisInfo(null)
+      completerDatesManquantes(itp, selectedYear || new Date().getFullYear())
       return
     }
     appliquerCycleItp(itp, selectedYear || new Date().getFullYear())
-  }, [selectedItp, selectedYear, itps, form, appliquerCycleItp])
+  }, [selectedItp, selectedYear, itps, form, appliquerCycleItp, completerDatesManquantes])
+
+  // Revue du 2026-10-10 (cmv2qzhkf) — changer l'année gardait les dates saisies
+  // dans l'ancienne, sans signal : une culture 2027 partait semée en 2026. Les
+  // dates suivent l'année, décalées du même nombre d'années (sans date saisie,
+  // l'effet précédent recalcule le cycle de l'ITP).
+  const anneeDatesRef = React.useRef<number | null>(null)
+  React.useEffect(() => {
+    // Année en cours de frappe (« 2 », « 20 »…) : attendre une année complète.
+    if (!selectedYear || selectedYear < 2000 || selectedYear > 2100) return
+    const precedente = anneeDatesRef.current
+    anneeDatesRef.current = selectedYear
+    if (precedente === null || precedente === selectedYear) return
+    if (!CHAMPS_DATE.some((champ) => saisiesManuellesRef.current.has(champ))) return
+    const ecart = selectedYear - precedente
+    for (const champ of [...CHAMPS_DATE, "finRecolte"] as const) {
+      const v = form.getValues(champ)
+      if (v) form.setValue(champ, addYears(new Date(v), ecart))
+    }
+    const debut = form.getValues("datePlantation") ?? form.getValues("dateSemis")
+    if (debut) debutCycleRef.current = new Date(debut).toISOString()
+    setDateSemisInfo(
+      `Année ${selectedYear} : vos dates sont décalées de ${ecart > 0 ? "+" : ""}${ecart} an${Math.abs(ecart) > 1 ? "s" : ""}.`
+    )
+  }, [selectedYear, form])
 
   // QA cmsfxvbab + friction 2026-08-14 — la date de récolte SUIT le début de
   // cycle saisi. Les dates n'étaient recalculées qu'au changement d'ITP : un
