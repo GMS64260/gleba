@@ -1,7 +1,7 @@
 "use client"
 
 /**
- * DEV2 audit Larcher - P0 #2 — Bandeau cookies CNIL/RGPD.
+ * DEV2 audit comptable - P0 #2 — Bandeau cookies CNIL/RGPD.
  *
  * Conformité :
  *  - Refus aussi facile que l'acceptation (CNIL délibération 2020-091)

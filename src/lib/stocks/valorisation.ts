@@ -1,5 +1,5 @@
 /**
- * DEV2 audit Larcher - P1 #6
+ * DEV2 audit comptable - P1 #6
  * Valorisation de stocks selon PCG 211-23.
  *
  * Trois méthodes au choix par utilisateur :

@@ -771,7 +771,7 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
     setEditingNaissId(null)
     setIsDialogOpen(true)
   }, [initialOpen])
-  // Feedback La ferme des belles chèvres 2026-07-24 — création d'un lot des petits
+  // Feedback d’une éleveuse caprine 2026-07-24 — création d'un lot des petits
   // à la volée (sinon, sans lot actif, le champ « Lot des petits » restait vide
   // et inutilisable).
   const [creatingLot, setCreatingLot] = React.useState(false)

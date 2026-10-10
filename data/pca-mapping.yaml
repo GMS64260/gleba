@@ -7,7 +7,7 @@
 # Validation : tout changement doit être validé par un expert-comptable agricole
 # avant merge.
 #
-# DEV 1 PROMPT #8 (Sophie Larcher 2026-05-14)
+# DEV 1 PROMPT #8 (audit comptable 2026-05-14)
 
 version: 1
 date_revision: 2026-05-14
@@ -76,7 +76,7 @@ achats:
   animaux: { num: '601300', libelle: 'Achats d''animaux' }
   # Phyto, fertilisants (601)
   fertilisants: { num: '601400', libelle: 'Achats d''engrais et amendements' }
-  # Audit Larcher : « Bouillie bordelaise » ne doit JAMAIS être 215400 (immo).
+  # Audit comptable : « Bouillie bordelaise » ne doit JAMAIS être 215400 (immo).
   # → catégorie 'phyto' = 601500 (produits phytosanitaires consommables).
   phyto: { num: '601500', libelle: 'Achats de produits phytosanitaires' }
   # Énergie / carburant (606)

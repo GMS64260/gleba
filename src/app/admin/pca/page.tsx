@@ -73,7 +73,7 @@ export default function AdminPcaPage() {
             </p>
             <p className="text-xs mt-2">
               Référence : CRC 99-03 + adaptations agricoles (arrêté du 11/12/1986). Validation
-              audit Sophie Larcher — 2026-05-14.
+              audit comptable du 2026-05-14.
             </p>
           </CardContent>
         </Card>
@@ -137,7 +137,7 @@ export default function AdminPcaPage() {
           <CardHeader>
             <CardTitle>Charges — comptes 6xx (Achats)</CardTitle>
             <CardDescription>
-              Audit Larcher : « Bouillie bordelaise » = catégorie <code>phyto</code> → <code>601500</code>{" "}
+              Audit comptable : « Bouillie bordelaise » = catégorie <code>phyto</code> → <code>601500</code>{" "}
               (et non 215400 qui serait une immobilisation).
             </CardDescription>
           </CardHeader>

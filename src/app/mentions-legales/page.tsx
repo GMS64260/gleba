@@ -1,5 +1,5 @@
 /**
- * DEV2 audit Larcher - P0 #2
+ * DEV2 audit comptable - P0 #2
  * Mentions légales (LCEN art. 6-III).
  *
  * Affiche l'identité légale de la première exploitation publique trouvée,

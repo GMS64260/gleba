@@ -1,5 +1,5 @@
 /**
- * DEV2 audit Larcher - P0 #2
+ * DEV2 audit comptable - P0 #2
  * Politique de confidentialité (RGPD).
  *
  * Mentions obligatoires CNIL : responsable de traitement, finalités, base
