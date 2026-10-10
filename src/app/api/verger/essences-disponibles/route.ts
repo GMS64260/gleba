@@ -138,6 +138,12 @@ export async function GET(request: NextRequest) {
       where: { AND: [{ type: { in: [...ESPECE_TYPES_VERGER] } }, visibiliteReferentiel(userId)] },
       select: {
         id: true,
+        // Ticket cmv2908du (QA 2026-10-10) — l'id d'une espèce n'est son nom
+        // que pour le catalogue historique ; une espèce créée depuis (perso,
+        // communauté, référentiel outre-mer) a un cuid pour id et son nom dans
+        // `nom`. « Citrus paradisi » s'affichait « cmuu5t8mx… » à l'étape
+        // Essences, et ce cuid était recopié dans `essenceLibre` de la campagne.
+        nom: true,
         nomLatin: true,
         // QA cmsnnu2q2 — Fraise et Framboise étaient badgées « Fruitier » :
         // la route écrasait arbre_fruitier et petit_fruit dans une seule
@@ -151,7 +157,7 @@ export async function GET(request: NextRequest) {
         besoinFroid: true,
         _count: { select: { portesGreffe: true } },
       },
-      orderBy: { id: "asc" },
+      orderBy: [{ nom: "asc" }, { id: "asc" }],
     })
     for (const f of fruitiers) {
       // Une espèce sans zone renseignée reste proposée (statut « inconnue ») :
@@ -167,7 +173,7 @@ export async function GET(request: NextRequest) {
         source: "fruitier",
         sousType: estTypeVerger(f.type) ? f.type : "arbre_fruitier",
         id: `fruitier::${f.id}`,
-        nom: f.id,
+        nom: f.nom ?? f.id,
         nomLatin: f.nomLatin ?? "",
         porteGreffeRequis: f._count.portesGreffe > 0,
       })

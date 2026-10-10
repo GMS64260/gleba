@@ -38,6 +38,7 @@ import {
 import Link from "next/link"
 import { useToast } from "@/hooks/use-toast"
 import { getAidesByType, NIVEAU_LIBELLE } from "@/data/aides-plantation"
+import { nomEssenceCampagne } from "@/lib/verger/essence-campagne"
 
 const ETAPE_LIBELLES: Record<string, string> = {
   preparation_sol: "Préparation du sol",
@@ -85,7 +86,7 @@ interface Campagne {
   notes: string | null
   parcelleGeo: { id: string; nom: string } | null
   zoneVerger: { id: number; nom: string } | null
-  espece: { id: string; nomLatin: string | null } | null
+  espece: { id: string; nom: string | null; nomLatin: string | null } | null
   etapes: Etape[]
   observations: Observation[]
 }
@@ -395,7 +396,7 @@ export function CampagneDetailDialog({ campagneId, open, onOpenChange, onUpdate 
                   <Info label="Surface" value={campagne.surfaceHa ? `${campagne.surfaceHa} ha` : "—"} />
                   <Info label="Plants prévus" value={campagne.nombrePlants?.toLocaleString("fr-FR") || "—"} />
                   <Info label="Densité" value={campagne.densitePlantsParHa ? `${Math.round(campagne.densitePlantsParHa)}/ha` : "—"} />
-                  <Info label="Essence" value={campagne.essenceLibre || campagne.espece?.nomLatin || "—"} />
+                  <Info label="Essence" value={nomEssenceCampagne(campagne) || "—"} />
                   <Info label="Variété/Provenance" value={campagne.varieteOuProvenance || "—"} />
                   {/* QA cmsqn6gds — porte-greffe, type de plant et conduite,
                       saisis à l'assistant et bien persistés, n'étaient
