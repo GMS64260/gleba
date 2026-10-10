@@ -17,6 +17,7 @@ import prisma from '@/lib/prisma'
 import { chargerAttentesConsolidees } from '@/lib/elevage/attentes-query'
 import { chargerFenetresMiseBas } from '@/lib/elevage/fenetre-mise-bas'
 import { remiseVente } from '@/lib/elevage/attentes'
+import { sqlSoinAnimalPresent, whereSoinAnimalPresent } from '@/lib/elevage/soins-a-faire'
 
 export type GraviteEcheance = 'info' | 'attention' | 'urgent'
 export type EcheanceElevage = {
@@ -127,9 +128,16 @@ export async function chargerAgendaElevage(userId: string, options: OptionsAgend
     (filiere && filiere !== 'rente')
       ? Promise.resolve([] as Awaited<ReturnType<typeof chargerAttentesConsolidees>>)
       : chargerAttentesConsolidees(userId, floorDay(now)),
-    // Soins planifiés (non faits) à échéance ou en retard
+    // Soins planifiés (non faits) à échéance ou en retard, d'un animal encore
+    // présent (ticket cmv294whk : un animal mort restait à vacciner).
     prisma.soinAnimal.findMany({
-      where: { userId, fait: false, datePrevue: { not: null, lte: horizon }, ...soinFiliere },
+      where: {
+        userId,
+        fait: false,
+        datePrevue: { not: null, lte: horizon },
+        ...soinFiliere,
+        AND: [whereSoinAnimalPresent()],
+      },
       select: {
         id: true,
         type: true,
@@ -201,6 +209,7 @@ export async function chargerAgendaElevage(userId: string, options: OptionsAgend
     WHERE i.user_id = ${userId}
       AND i.statut = 'a_faire'
       AND i.date_prevue <= ${horizon}
+      AND ${sqlSoinAnimalPresent}
       AND (
         ${filiere}::text IS NULL
         OR a.espece_animale_id IN (SELECT espece_animale FROM especes_animales WHERE filiere = ${filiere})
