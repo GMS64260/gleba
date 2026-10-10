@@ -4,14 +4,14 @@
  * GET /api/meteo/irrigation?parcelleId=X → filtré par parcelle
  * GET /api/meteo/irrigation?refresh=1 → force le recalcul (ignore le cache)
  *
- * Cache en mémoire TTL 1h — recalcul automatique à la première connexion après expiration.
+ * Cache en mémoire de 2 minutes (src/lib/irrigation-cache.ts).
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireAuthApi, getUserId } from '@/lib/auth-utils'
 import { chargerMeteoBilan, debutArrosagesBilan } from '@/lib/irrigation/meteo-bilan'
-import { whereArrosageNote } from '@/lib/irrigation/arrosages-notes'
+import { chargerArrosagesSaisis, dernierArrosage } from '@/lib/irrigation/arrosages-saisis'
 import { genererRecommandationIrrigation } from '@/lib/meteo-agro'
 import { irrigationCache, irrigationCacheKey } from '@/lib/irrigation-cache'
 import { cultureIrrigationDemarreeWhere } from '@/lib/irrigation-eligibility'
@@ -88,6 +88,7 @@ export async function GET(request: NextRequest) {
                 id: true,
                 centroidLat: true,
                 centroidLng: true,
+                typeSol: true,
               },
             },
           },
@@ -106,12 +107,14 @@ export async function GET(request: NextRequest) {
     let fallbackLng: number | null = null
     const premiereParcelle = await prisma.parcelleGeo.findFirst({
       where: { userId, centroidLat: { not: null }, centroidLng: { not: null } },
-      select: { centroidLat: true, centroidLng: true },
+      select: { centroidLat: true, centroidLng: true, typeSol: true },
     })
     if (premiereParcelle?.centroidLat && premiereParcelle?.centroidLng) {
       fallbackLat = premiereParcelle.centroidLat
       fallbackLng = premiereParcelle.centroidLng
     }
+    // Même repli que le conseil des tâches : météo ET sol de la première parcelle.
+    const solParcelleRepli = premiereParcelle?.typeSol ?? null
 
     // Regrouper les cultures par coordonnées de parcelle (évite les appels API redondants)
     const parCoords = new Map<string, {
@@ -132,20 +135,9 @@ export async function GET(request: NextRequest) {
       parCoords.get(key)!.cultures.push(culture)
     }
 
-    // Arrosages notés sur l'historique du bilan (même source que le conseil des tâches).
-    const traces = await prisma.irrigationPlanifiee.findMany({
-      where: {
-        userId,
-        cultureId: { in: cultures.map((c) => c.id) },
-        AND: [whereArrosageNote(), { dateEffective: { gte: debutArrosagesBilan() } }],
-      },
-      select: { cultureId: true, dateEffective: true },
-    })
-    const arrosages = new Map<number, Date[]>()
-    for (const t of traces) {
-      if (!t.dateEffective) continue
-      arrosages.set(t.cultureId, [...(arrosages.get(t.cultureId) ?? []), t.dateEffective])
-    }
+    // Arrosages saisis sur l'historique du bilan, « Noter » et interventions
+    // « arrosage » (même chargeur que le conseil des tâches).
+    const arrosages = await chargerArrosagesSaisis(userId, cultures, debutArrosagesBilan())
 
     // Même série que le conseil des tâches (30 jours d'archive, aujourd'hui,
     // 7 jours prévus), chargée en parallèle pour toutes les zones. La pluie du
@@ -185,6 +177,7 @@ export async function GET(request: NextRequest) {
             surface: surfaceCultureM2({ planche: culture.planche }),
             retentionEau: culture.planche!.retentionEau,
             typeSol: culture.planche!.typeSol,
+            typeSolParcelle: culture.planche!.parcelleGeo ? culture.planche!.parcelleGeo.typeSol : solParcelleRepli,
             irrigation: culture.planche!.irrigation,
           },
           sousAbri,
@@ -198,7 +191,7 @@ export async function GET(request: NextRequest) {
           // QA cmv2eg99z — même état que la liste des cultures : une culture
           // récoltée s'affichait « Semée » (cascade recopiée sans `recolteFaite`).
           etatCulture: etatCulture(culture),
-          derniereIrrigation: culture.derniereIrrigation?.toISOString() ?? null,
+          derniereIrrigation: dernierArrosage(culture.derniereIrrigation, arrosages.get(culture.id) ?? [])?.toISOString() ?? null,
           irrigationSysteme: culture.planche?.irrigation ?? null,
         })
       }

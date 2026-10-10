@@ -6,6 +6,7 @@
 
 import prisma from '@/lib/prisma'
 import { getOrFetch } from '@/lib/cache-helper'
+import { jourCivilLocalISO } from '@/lib/irrigation-meteo-decision'
 
 // ============================================================
 // TYPES
@@ -541,8 +542,10 @@ export async function getMeteoForParcelle(
   yesterday.setDate(yesterday.getDate() - 1)
   const historiquePromise = fetchOpenMeteoHistory(
     lat, lng,
-    weekAgo.toISOString().split('T')[0],
-    yesterday.toISOString().split('T')[0]
+    // Jours civils locaux (revue du 2026-10-10) : en UTC, entre 0 h et 2 h à
+    // Paris, la plage perdait un jour et /meteo n'en montrait que 6.
+    jourCivilLocalISO(weekAgo),
+    jourCivilLocalISO(yesterday)
   )
   // L'historique peut échouer pour des dates trop récentes, on ignore
   const historiqueSafe = historiquePromise.catch(() => [] as MeteoJournaliere[])

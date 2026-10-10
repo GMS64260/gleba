@@ -12,7 +12,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { getUserId, refusSiLectureSeule } from '@/lib/exploitation/garde-session'
 import prisma from '@/lib/prisma'
-import { annulerArrosageCultures, enregistrerArrosageCultures } from '@/lib/irrigation-recording'
+import { annulerArrosageCultures, enregistrerArrosageCultures, supprimerArrosageNote } from '@/lib/irrigation-recording'
 import { computeConseilIrrigation } from '@/lib/irrigation-conseil'
 
 // ── GET ─────────────────────────────────────────────────────
@@ -128,5 +128,31 @@ export async function PATCH(request: NextRequest) {
       { error: 'Erreur lors de la mise à jour', details: "Erreur interne du serveur" },
       { status: 500 }
     )
+  }
+}
+
+// ── DELETE ──────────────────────────────────────────────────
+// Supprime un arrosage noté (ligne « via Irrigations » du registre).
+
+export async function DELETE(request: NextRequest) {
+  const { error, session } = await requireAuthApi()
+  if (error) return error
+  const refus = refusSiLectureSeule(session)
+  if (refus) return refus
+
+  try {
+    const userId = getUserId(session)
+    const traceId = Number(new URL(request.url).searchParams.get('traceId'))
+    if (!Number.isInteger(traceId) || traceId <= 0) {
+      return NextResponse.json({ error: 'traceId requis' }, { status: 400 })
+    }
+    const result = await supprimerArrosageNote({ userId, traceId })
+    if (!result.supprime) {
+      return NextResponse.json({ error: 'Arrosage noté introuvable' }, { status: 404 })
+    }
+    return NextResponse.json({ success: true, ...result })
+  } catch (error) {
+    console.error('DELETE /api/cultures/irriguer error:', error)
+    return NextResponse.json({ error: "Impossible de supprimer l'arrosage" }, { status: 500 })
   }
 }

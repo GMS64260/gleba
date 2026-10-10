@@ -47,9 +47,16 @@ export interface EntreeBilanSol {
   aujourdhui: JourMeteoBilan
   /** Jours suivants (demain d'abord). */
   previsions: JourMeteoBilan[]
-  /** Jours (AAAA-MM-JJ) où un arrosage a été noté. */
+  /** Jours (AAAA-MM-JJ) d'un arrosage de volume inconnu (« Noter ») : le sol est remis plein. */
   joursArroses: string[]
-  sol: { typeSol: string | null; retentionEau: string | null }
+  /**
+   * Arrosages de volume connu (intervention « arrosage » avec ses litres) :
+   * eau arrivée au sol (mm = L/m² versés × efficacité du système), retranchée
+   * de l'épuisement comme une pluie.
+   */
+  apports?: { date: string; mm: number }[]
+  /** Sol de la planche, sinon (`typeSolParcelle`) celui de sa parcelle. Textes libres tolérés. */
+  sol: { typeSol: string | null; retentionEau: string | null; typeSolParcelle?: string | null }
   culture: {
     espece: string
     besoinEau: number // 1-5
@@ -90,6 +97,8 @@ export interface ResultatBilanSol {
   pluiePrevue48h: number
   /** Dernier apport ayant rechargé le sol (pluie utile ≥ 10 mm ou arrosage noté). */
   dernierApport: { type: 'pluie' | 'arrosage'; date: string; mm: number | null } | null
+  /** Sol connu (planche ou parcelle) ; sinon la réserve est celle d'un sol moyen. */
+  solRenseigne: boolean
 }
 
 // ── Référentiels ─────────────────────────────────────────────
@@ -99,23 +108,45 @@ export interface ResultatBilanSol {
  * flétrissement). FAO-56 tableau 19 : sable 50-110, limon 130-210, argile
  * 120-200. Valeurs basses de fourchette, prudentes pour un sol de maraîchage.
  */
-const EAU_DISPONIBLE_PAR_TEXTURE: Record<string, number> = {
-  Sableux: 80,
-  Mixte: 130,
-  Limoneux: 170,
-  Argileux: 150,
-}
-const EAU_DISPONIBLE_PAR_RETENTION: Record<string, number> = {
-  Faible: 80,
-  Moyenne: 130,
-  Élevée: 160,
-}
 const EAU_DISPONIBLE_DEFAUT = 130
 
+/**
+ * Texture → eau disponible, sur le texte normalisé : la planche écrit
+ * « Sableux », la parcelle « sableux » ou « calcaire », d'anciennes saisies
+ * « limono-argileux » (ticket QA cmv2re9vl : le sol de la parcelle n'était
+ * pas lu, ni ses écritures reconnues). Sol mixte de texture : moyenne.
+ */
+function eauDisponibleTexture(texte: string | null | undefined): number | null {
+  const t = normaliserNom(texte ?? '')
+  if (!t) return null
+  const sable = t.includes('sabl'), limon = t.includes('limon'), argile = t.includes('argil')
+  if (sable) return limon || argile ? 110 : 80
+  if (t.includes('caillou')) return 90
+  if (t.includes('franche')) return 150
+  if (limon && argile) return 160
+  if (argile) return 150
+  if (limon) return 170
+  if (t.includes('humif') || t.includes('tourb')) return 200
+  if (t.includes('calcaire')) return 120
+  if (t.includes('mixte')) return 130
+  return null
+}
+
+function eauDisponibleRetention(texte: string | null | undefined): number | null {
+  const t = normaliserNom(texte ?? '')
+  if (t.includes('faible')) return 80
+  if (t.includes('moyen')) return 130
+  if (t.includes('elev') || t.includes('fort')) return 160
+  return null
+}
+
+/** Texture de la planche, sinon sa rétention, sinon la texture de la parcelle ; null si rien. */
+function eauDisponibleConnue(sol: EntreeBilanSol['sol']): number | null {
+  return eauDisponibleTexture(sol.typeSol) ?? eauDisponibleRetention(sol.retentionEau) ?? eauDisponibleTexture(sol.typeSolParcelle)
+}
+
 export function eauDisponibleSol(sol: EntreeBilanSol['sol']): number {
-  if (sol.typeSol && EAU_DISPONIBLE_PAR_TEXTURE[sol.typeSol]) return EAU_DISPONIBLE_PAR_TEXTURE[sol.typeSol]
-  if (sol.retentionEau && EAU_DISPONIBLE_PAR_RETENTION[sol.retentionEau]) return EAU_DISPONIBLE_PAR_RETENTION[sol.retentionEau]
-  return EAU_DISPONIBLE_DEFAUT
+  return eauDisponibleConnue(sol) ?? EAU_DISPONIBLE_DEFAUT
 }
 
 interface ProfilEspece {
@@ -288,6 +319,12 @@ export function pluieUtile(pluie: number): number {
   return Math.max(0, (pluie - PLUIE_INTERCEPTEE_MM) * EFFICACITE_PLUIE)
 }
 
+/** Part de l'eau versée qui arrive aux racines selon le système d'arrosage. */
+export function efficaciteArrosage(systeme: string | null | undefined): number {
+  const s = normaliserNom(systeme ?? '')
+  return s.includes('goutte') ? 0.9 : s.includes('aspersion') ? 0.75 : 0.8
+}
+
 /**
  * Volume à verser : la dose au sol divisée par l'efficacité du système
  * (goutte-à-goutte 0,9, aspersion 0,75, arrosoir ou tuyau 0,8), pour la
@@ -295,9 +332,8 @@ export function pluieUtile(pluie: number): number {
  * n'apporte qu'au pied, en un seul). Seul calcul de volume des écrans.
  */
 export function volumeArrosage(doseMm: number, surfaceM2: number, systeme: string | null | undefined) {
-  const s = normaliserNom(systeme ?? '')
-  const goutte = s.includes('goutte')
-  const efficacite = goutte ? 0.9 : s.includes('aspersion') ? 0.75 : 0.8
+  const goutte = normaliserNom(systeme ?? '').includes('goutte')
+  const efficacite = efficaciteArrosage(systeme)
   const litresParM2 = doseMm > 0 ? Math.round((doseMm / efficacite) * 10) / 10 : 0
   // 10 % de tolérance : 20,6 L/m² se versent en une fois, pas en deux de 10.
   const passages = litresParM2 === 0 ? 0 : goutte ? 1 : Math.ceil(litresParM2 / (LITRES_M2_MAX_PAR_PASSAGE * 1.1))
@@ -396,11 +432,13 @@ export function bilanReserveSol(e: EntreeBilanSol): ResultatBilanSol {
   const profil = profilEspece(e.culture.espece, e.culture.besoinEau)
   const eauDispo = eauDisponibleSol(e.sol)
   const arroses = new Set(e.joursArroses)
+  const apportsDuJour = new Map<string, number>()
+  for (const a of e.apports ?? []) apportsDuJour.set(a.date, (apportsDuJour.get(a.date) ?? 0) + Math.max(0, a.mm))
   const facteurEt = e.culture.sousAbri ? FACTEUR_ET_SOUS_ABRI : 1
   const pluieDe = (j: JourMeteoBilan) => (e.culture.sousAbri ? 0 : pluieUtile(j.pluie))
 
   /** Avance l'état d'un jour (culture en place) et décrit ce jour. */
-  const avancer = (etat: EtatBilan, jour: JourMeteoBilan, arrose: boolean): Pas => {
+  const avancer = (etat: EtatBilan, jour: JourMeteoBilan, arrose: boolean, apport = 0): Pas => {
     const stade = stadeAuJour(e, jour.date)
     const kc = kcAuStade(profil, stade)
     const zr = vivaceInstallee(e, jour.date) ? profil.racinesM : racinesAuStade(profil, stade)
@@ -414,7 +452,7 @@ export function bilanReserveSol(e: EntreeBilanSol): ResultatBilanSol {
       // FAO-56 éq. 84 : coefficient de stress quand la réserve facile est épuisée.
       const ks = d <= raw ? 1 : Math.max(0, (taw - d) / Math.max(1e-6, taw - raw))
       const etc = ks * potentielle
-      const suivant = arrose ? 0 : Math.min(taw, Math.max(0, d + etc - pluieDe(jour)))
+      const suivant = arrose ? 0 : Math.min(taw, Math.max(0, d + etc - pluieDe(jour) - apport))
       return { raw, etc, suivant }
     }
 
@@ -452,10 +490,12 @@ export function bilanReserveSol(e: EntreeBilanSol): ResultatBilanSol {
     // Une culture pas encore en terre ne consomme rien sur sa planche.
     if (!enPlace(e, jour.date)) continue
     const arrose = arroses.has(jour.date)
-    const r = avancer(etat, jour, arrose)
+    const apport = apportsDuJour.get(jour.date) ?? 0
+    const r = avancer(etat, jour, arrose, apport)
     etcReels.push(r.etc)
     if (jour === e.aujourdhui) duJour = r
     if (arrose) dernierApport = { type: 'arrosage', date: jour.date, mm: null }
+    else if (apport > 0) dernierApport = { type: 'arrosage', date: jour.date, mm: Math.round(apport * 10) / 10 }
     else if (pluieDe(jour) >= PLUIE_RECHARGE_MM) dernierApport = { type: 'pluie', date: jour.date, mm: Math.round(jour.pluie) }
   }
   const depletion = etat.depletion
@@ -518,7 +558,9 @@ export function bilanReserveSol(e: EntreeBilanSol): ResultatBilanSol {
     : `le ${formatJour(premierJour)}`
   const apport = dernierApport
     ? dernierApport.type === 'arrosage'
-      ? `dernier arrosage noté le ${formatJour(dernierApport.date)}`
+      ? dernierApport.mm === null
+        ? `dernier arrosage noté le ${formatJour(dernierApport.date)}`
+        : `dernier arrosage le ${formatJour(dernierApport.date)} (${dernierApport.mm} mm au sol)`
       : `dernière pluie utile ${dernierApport.mm} mm le ${formatJour(dernierApport.date)}`
     : `aucun apport notable depuis ${depuis}`
   const reserve = taux < 1
@@ -532,7 +574,9 @@ export function bilanReserveSol(e: EntreeBilanSol): ResultatBilanSol {
   else if (urgence === 'faible') raison = `${dans ?? 'Sol encore pourvu'} : ${reserve}, ${apport}.`
   else raison = `Sol bien pourvu : ${reserve}, ${apport}.`
   if (e.culture.sousAbri) raison = `Sous abri, sans pluie. ${raison}`
-  if (aFaire && e.joursArroses.length === 0) raison += ' Aucun arrosage noté : le bilan ne compte que la pluie.'
+  if (aFaire && e.joursArroses.length === 0 && !(e.apports ?? []).length) raison += ' Aucun arrosage noté : le bilan ne compte que la pluie.'
+  const solRenseigne = eauDisponibleConnue(e.sol) !== null
+  if (!solRenseigne) raison += ' Sol non renseigné (planche et parcelle) : réserve calculée pour un sol moyen.'
   if (!enPlace(e, e.aujourdhui.date)) raison = `Pas encore sur la planche : mise en place prévue le ${formatJour(e.culture.debut!)}.`
 
   return {
@@ -551,5 +595,6 @@ export function bilanReserveSol(e: EntreeBilanSol): ResultatBilanSol {
     profondeurRacinesM: Math.round(duJour.zr * 100) / 100,
     pluiePrevue48h: Math.round(pluiePrevue48h * 10) / 10,
     dernierApport,
+    solRenseigne,
   }
 }

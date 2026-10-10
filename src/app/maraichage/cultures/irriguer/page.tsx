@@ -37,6 +37,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 import { consommationHebdoTotale } from "@/lib/irrigation/consommation"
+import { libelleIrrigation } from '@/lib/planches/libelle-irrigation'
 
 interface MeteoResume {
   pluie48h: number
@@ -302,7 +303,7 @@ function CulturesIrriguerContent() {
     } else if (groupBy === 'type-irrigation') {
       const groups: Record<string, typeof filteredData> = {}
       filteredData.forEach(c => {
-        const key = c.planche?.irrigation || 'Non défini'
+        const key = libelleIrrigation(c.planche?.irrigation) || 'Non défini'
         if (!groups[key]) groups[key] = []
         groups[key].push(c)
       })
@@ -438,7 +439,7 @@ function CulturesIrriguerContent() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="ilot">Grouper par ilot</SelectItem>
+              <SelectItem value="ilot">Grouper par îlot</SelectItem>
               <SelectItem value="type-irrigation">Par type irrigation</SelectItem>
               <SelectItem value="urgence">Par urgence</SelectItem>
             </SelectContent>
@@ -499,7 +500,9 @@ function CulturesIrriguerContent() {
                 <p className="text-2xl font-bold">{stats.total}</p>
                 {stats.aucune > 0 && (
                   <p className="text-xs text-green-600 mt-1">
-                    {stats.aucune} n&apos;ont pas besoin d&apos;arrosage
+                    {stats.aucune === 1
+                      ? "1 n'a pas besoin d'arrosage"
+                      : `${stats.aucune} n'ont pas besoin d'arrosage`}
                   </p>
                 )}
               </CardContent>
@@ -660,7 +663,7 @@ function CulturesIrriguerContent() {
                                   {culture.planche?.irrigation && (
                                     <span className="flex items-center gap-1">
                                       <Droplets className="h-3 w-3" />
-                                      {culture.planche.irrigation}
+                                      {libelleIrrigation(culture.planche.irrigation)}
                                     </span>
                                   )}
                                   {culture.consommationEauSemaine > 0 && (

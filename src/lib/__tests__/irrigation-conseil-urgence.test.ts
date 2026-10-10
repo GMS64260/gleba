@@ -50,6 +50,21 @@ describe("resumeMeteo", () => {
     expect(r.pluiePrevue48h).toBe(6)
     expect(r.pluie48hPassees).toBe(3)
   })
+
+  // Ticket QA cmv2rf6mb : même définition que /meteo, aujourd'hui exclu.
+  it("cumuls passés sans la pluie du jour", () => {
+    const r = resumeMeteo({
+      historique: [
+        { date: "2026-10-06", pluie: 4, et0: 2 },
+        { date: "2026-10-07", pluie: 6, et0: 2 },
+      ],
+      aujourdhui: { date: "2026-10-08", pluie: 12, et0: 2 },
+      previsions: [],
+      decalageUtcS: 7200,
+    })
+    expect(r.pluie48hPassees).toBe(10)
+    expect(r.pluie7jPassees).toBe(10)
+  })
 })
 
 describe("whereCulturesEnPlace", () => {

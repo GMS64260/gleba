@@ -95,6 +95,8 @@ interface Intervention {
   // Source tracking (virtual entries from other modules)
   source: 'intervention' | 'culture' | 'irrigation' | 'fertilisation' | 'operation_arbre' | 'soin_animal'
   sourceLabel: string | null
+  /** Arrosage noté (« Noter ») : id de sa trace, modifiable ou supprimable ici. */
+  irrigationId?: number
   cultureNom: string | null
   plancheNom: string | null
 }
@@ -255,6 +257,8 @@ export default function InterventionsPage() {
   const [expandedRow, setExpandedRow] = React.useState<number | null>(null)
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [editingIntervention, setEditingIntervention] = React.useState<Intervention | null>(null)
+  // Arrosage noté en cours de complément : l'intervention créée le remplace.
+  const [arrosageAComplete, setArrosageAComplete] = React.useState<number | null>(null)
   const [isSubmitting, setIsSubmitting] = React.useState(false)
 
   // Form state
@@ -473,7 +477,11 @@ export default function InterventionsPage() {
         ? "/api/interventions"
         : "/api/interventions"
       const method = editingIntervention ? "PATCH" : "POST"
-      const payload = editingIntervention ? { id: editingIntervention.id, ...body } : body
+      const payload = editingIntervention
+        ? { id: editingIntervention.id, ...body }
+        : arrosageAComplete
+          ? { ...body, remplaceArrosageNoteId: arrosageAComplete }
+          : body
 
       const res = await fetch(url, {
         method,
@@ -488,6 +496,7 @@ export default function InterventionsPage() {
         })
         setDialogOpen(false)
         setEditingIntervention(null)
+        setArrosageAComplete(null)
         setForm(emptyForm)
         fetchInterventions()
       } else {
@@ -508,6 +517,15 @@ export default function InterventionsPage() {
   }
 
   const handleMarkDone = async (intervention: Intervention) => {
+    // Ticket QA cmv2resok : une intervention réalisée exige sa durée (coût de
+    // main-d'œuvre). Sans durée, ce bouton échouait sur un « Impossible de
+    // modifier » muet : on ouvre la fiche, cochée « Réalisée », pour la saisir.
+    if (!intervention.dureeMinutes) {
+      handleEdit(intervention)
+      setForm((f) => ({ ...f, fait: true }))
+      toast({ title: "Durée à renseigner", description: "Indiquez le temps passé pour marquer l'intervention comme réalisée." })
+      return
+    }
     try {
       const res = await fetch("/api/interventions", {
         method: "PATCH",
@@ -522,10 +540,57 @@ export default function InterventionsPage() {
         toast({ title: "Fait", description: "Intervention marquée comme réalisée" })
         fetchInterventions()
       } else {
-        throw new Error()
+        const d = await res.json().catch(() => ({}))
+        throw new Error(d.error ?? `Erreur ${res.status}`)
       }
-    } catch {
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible de modifier" })
+    } catch (e) {
+      toast({
+        variant: "destructive",
+        title: "Erreur",
+        description: e instanceof Error && e.message ? e.message : "Impossible de modifier",
+      })
+    }
+  }
+
+  // Ticket QA cmv2rfmzl : un arrosage noté se complète (volume, durée,
+  // méthode) en intervention « arrosage », qui le remplace au registre et
+  // dans le bilan hydrique, ou se supprime.
+  const handleCompleterArrosage = (intervention: Intervention) => {
+    if (!intervention.irrigationId) return
+    setEditingIntervention(null)
+    setArrosageAComplete(intervention.irrigationId)
+    setForm({
+      ...emptyForm,
+      date: intervention.date ? new Date(intervention.date).toLocaleDateString("sv-SE") : todayLocalISO(),
+      type: "arrosage",
+      cultureId: intervention.cultureId?.toString() || "",
+      plancheId: valeurOptionPlancheRef(intervention.plancheId, planches),
+      fait: true,
+      intrantNom: "Eau",
+      intrantUnite: "L",
+      notes: intervention.notes && intervention.notes !== "Arrosage noté" ? intervention.notes : "",
+    })
+    setDialogOpen(true)
+  }
+
+  const handleSupprimerArrosage = async (intervention: Intervention) => {
+    if (!intervention.irrigationId) return
+    if (!(await confirmDialog("Supprimer cet arrosage noté ? « Noter » arrose toute la planche : il est retiré pour toutes ses cultures, et le conseil d'irrigation est recalculé sans lui."))) return
+    try {
+      const res = await fetch(`/api/cultures/irriguer?traceId=${intervention.irrigationId}`, { method: "DELETE" })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        throw new Error(d.error ?? `Erreur ${res.status}`)
+      }
+      toast({ title: "Supprimé", description: "Arrosage noté supprimé" })
+      window.dispatchEvent(new CustomEvent("gleba:irrigation-updated", { detail: { source: "interventions" } }))
+      fetchInterventions()
+    } catch (e) {
+      toast({
+        variant: "destructive",
+        title: "Erreur",
+        description: e instanceof Error && e.message ? e.message : "Impossible de supprimer l'arrosage",
+      })
     }
   }
 
@@ -547,6 +612,7 @@ export default function InterventionsPage() {
 
   const handleEdit = (intervention: Intervention) => {
     const totalMin = intervention.dureeMinutes || 0
+    setArrosageAComplete(null)
     setEditingIntervention(intervention)
     setForm({
       date: intervention.date ? intervention.date.split("T")[0] : todayLocalISO(),
@@ -586,6 +652,7 @@ export default function InterventionsPage() {
 
   const handleOpenNew = () => {
     setEditingIntervention(null)
+    setArrosageAComplete(null)
     setForm(emptyForm)
     setDialogOpen(true)
   }
@@ -737,6 +804,7 @@ export default function InterventionsPage() {
               setDialogOpen(open)
               if (!open) {
                 setEditingIntervention(null)
+                setArrosageAComplete(null)
                 setForm(emptyForm)
               }
             }}>
@@ -752,7 +820,11 @@ export default function InterventionsPage() {
               <DialogContent className="max-w-2xl max-h-[90dvh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>
-                    {editingIntervention ? "Modifier l'intervention" : "Nouvelle intervention"}
+                    {editingIntervention
+                      ? "Modifier l'intervention"
+                      : arrosageAComplete
+                        ? "Compléter l'arrosage noté"
+                        : "Nouvelle intervention"}
                   </DialogTitle>
                   <DialogDescription>
                     {editingIntervention ? "Modifiez les champs puis enregistrez." : "Remplissez les informations de l'intervention."}
@@ -784,7 +856,16 @@ export default function InterventionsPage() {
                       <Label>Type</Label>
                       <select
                         value={form.type}
-                        onChange={(e) => setForm({ ...form, type: e.target.value })}
+                        onChange={(e) =>
+                          setForm({
+                            ...form,
+                            type: e.target.value,
+                            // Un arrosage se compte en litres, pas en « kg » (unité par défaut).
+                            ...(e.target.value === "arrosage" && form.intrantUnite === "kg" && !form.intrantQuantite
+                              ? { intrantUnite: "L", intrantNom: form.intrantNom || "Eau" }
+                              : {}),
+                          })
+                        }
                         className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
                         required
                       >
@@ -805,6 +886,10 @@ export default function InterventionsPage() {
                         />
                         <span className="text-sm">{form.fait ? "Réalisée" : "Planifiée"}</span>
                       </label>
+                      {/* Ticket QA cmv2resok : passer en « Réalisée » exige la durée (refus serveur sinon). */}
+                      {form.fait && editingIntervention && !editingIntervention.fait && !form.dureeHeures && !Number(form.dureeMinutesForm) && (
+                        <span className="text-xs text-amber-700 pb-2">Durée requise</span>
+                      )}
                     </div>
                   </div>
 
@@ -1370,7 +1455,28 @@ export default function InterventionsPage() {
                                 className="flex items-center justify-end gap-1"
                                 onClick={(e) => e.stopPropagation()}
                               >
-                                {isVirtual ? (
+                                {intervention.source === 'irrigation' && intervention.irrigationId ? (
+                                  <>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 px-2 text-blue-700 hover:text-blue-800 hover:bg-blue-50"
+                                      onClick={() => handleCompleterArrosage(intervention)}
+                                      title="Compléter (volume, durée, méthode)"
+                                    >
+                                      <Pencil className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 px-2 text-red-700 hover:text-red-800 hover:bg-red-50"
+                                      onClick={() => handleSupprimerArrosage(intervention)}
+                                      title="Supprimer l'arrosage noté"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </>
+                                ) : isVirtual ? (
                                   <span className="text-xs text-muted-foreground italic">
                                     {intervention.source === 'culture' ? 'via Cultures' : intervention.source === 'irrigation' ? 'via Irrigations' : intervention.source === 'fertilisation' ? 'via Fertilisations' : intervention.source === 'operation_arbre' ? 'via Verger' : intervention.source === 'soin_animal' ? 'via Elevage' : ''}
                                   </span>

@@ -20,8 +20,8 @@ import type { Prisma } from '@prisma/client'
 import prisma from '@/lib/prisma'
 import { volumeArrosage, type ResultatBilanSol } from '@/lib/irrigation/bilan-sol'
 import { bilanCulture } from '@/lib/irrigation/bilan-culture'
-import { chargerMeteoBilan, debutArrosagesBilan, type MeteoBilan } from '@/lib/irrigation/meteo-bilan'
-import { whereArrosageNote } from '@/lib/irrigation/arrosages-notes'
+import { chargerArrosagesSaisis, dernierArrosage } from '@/lib/irrigation/arrosages-saisis'
+import { chargerMeteoBilan, debutArrosagesBilan, pluieSeptDerniersJours, type MeteoBilan } from '@/lib/irrigation/meteo-bilan'
 import {
   getIrrigationFactors,
   calculerConsommationEauAvecSol,
@@ -38,9 +38,9 @@ interface MeteoParCoord {
   lng: number
   /** Série du bilan hydrique (30 j passés, aujourd'hui, 7 j prévus). */
   bilan: MeteoBilan
-  pluie48hPassees: number  // mm cumulés hier + avant-hier + aujourd'hui
-  pluie7jPassees: number   // mm cumulés 7 derniers jours + aujourd'hui
-  et0_7j: number           // mm ET0 cumulés 7 j + aujourd'hui
+  pluie48hPassees: number  // mm d'hier et d'avant-hier (aujourd'hui exclu, comme pluie7jPassees)
+  pluie7jPassees: number   // mm des 7 derniers jours, aujourd'hui exclu (définition de /meteo)
+  et0_7j: number           // mm ET0 des 7 derniers jours, aujourd'hui exclu
   joursSansPluie: number   // jours consécutifs sans pluie significative
   pluiePrevue48h: number   // mm prévus demain et après-demain
   pluiePrevue5j: number    // mm prévus dans les 5 prochains jours
@@ -76,9 +76,10 @@ export function resumeMeteo(bilan: MeteoBilan): Omit<MeteoParCoord, 'lat' | 'lng
   }
   const idx = bilan.previsions.findIndex((j) => j.pluie >= SEUIL_PLUIE_SIGNIFICATIVE)
   return {
-    pluie48hPassees: bilan.historique.slice(-2).reduce((s, j) => s + j.pluie, 0) + pluieAujourdhui,
-    pluie7jPassees: derniers7.reduce((s, j) => s + j.pluie, 0) + pluieAujourdhui,
-    et0_7j: derniers7.reduce((s, j) => s + j.et0, 0) + bilan.aujourdhui.et0,
+    pluie48hPassees: bilan.historique.slice(-2).reduce((s, j) => s + j.pluie, 0),
+    // Ticket QA cmv2rf6mb : même définition que /meteo (`pluieSeptDerniersJours`).
+    pluie7jPassees: pluieSeptDerniersJours(bilan),
+    et0_7j: derniers7.reduce((s, j) => s + j.et0, 0),
     joursSansPluie,
     pluiePrevue48h: bilan.previsions.slice(0, 2).reduce((s, j) => s + j.pluie, 0),
     pluiePrevue5j: bilan.previsions.slice(0, 5).reduce((s, j) => s + j.pluie, 0),
@@ -207,6 +208,7 @@ export async function computeConseilIrrigation(userId: string, annee: number) {
               id: true,
               centroidLat: true,
               centroidLng: true,
+              typeSol: true,
             },
           },
         },
@@ -236,12 +238,15 @@ export async function computeConseilIrrigation(userId: string, annee: number) {
 
   const premiereParcelle = await prisma.parcelleGeo.findFirst({
     where: { userId, centroidLat: { not: null }, centroidLng: { not: null } },
-    select: { centroidLat: true, centroidLng: true },
+    select: { centroidLat: true, centroidLng: true, typeSol: true },
   })
   if (premiereParcelle?.centroidLat && premiereParcelle?.centroidLng) {
     fallbackLat = premiereParcelle.centroidLat
     fallbackLng = premiereParcelle.centroidLng
   }
+  // Une planche sans parcelle prend la météo de la première parcelle : elle
+  // en prend aussi le sol (revue du 2026-10-10).
+  const solParcelleRepli = premiereParcelle?.typeSol ?? null
 
   for (const c of cultures) {
     let lat = c.planche?.parcelleGeo?.centroidLat
@@ -281,31 +286,20 @@ export async function computeConseilIrrigation(userId: string, annee: number) {
     })
   )
 
-  // 4. Arrosages notés depuis le début de l'historique du bilan, par culture
-  //    (traces de `enregistrerArrosageCultures`), plus le dernier arrosage connu.
-  const debutFenetre = debutArrosagesBilan()
-  const traces = cultures.length
-    ? await prisma.irrigationPlanifiee.findMany({
-        where: {
-          userId,
-          cultureId: { in: cultures.map((c) => c.id) },
-          AND: [whereArrosageNote(), { dateEffective: { gte: debutFenetre } }],
-        },
-        select: { cultureId: true, dateEffective: true },
-      })
-    : []
-  const arrosagesParCulture = new Map<number, Date[]>()
-  for (const t of traces) {
-    if (!t.dateEffective) continue
-    arrosagesParCulture.set(t.cultureId, [...(arrosagesParCulture.get(t.cultureId) ?? []), t.dateEffective])
-  }
+  // 4. Arrosages saisis depuis le début de l'historique du bilan, par
+  //    culture : « Noter » et interventions « arrosage » avec leur volume
+  //    (`arrosages-saisis.ts`).
+  const arrosagesParCulture = await chargerArrosagesSaisis(userId, cultures, debutArrosagesBilan())
 
   // 5. Calculer urgence + enrichir chaque culture
   const now = Date.now()
   const culturesAvecUrgence = cultures.map(c => {
+    // Dernier arrosage : « Noter » ou intervention « arrosage » (ticket cmv2rdmdn).
+    const arrosages = arrosagesParCulture.get(c.id) ?? []
+    const dernierArrosageConnu = dernierArrosage(c.derniereIrrigation, arrosages)
     let joursSansEau: number | null = null
-    if (c.derniereIrrigation) {
-      joursSansEau = Math.floor((now - new Date(c.derniereIrrigation).getTime()) / (1000 * 60 * 60 * 24))
+    if (dernierArrosageConnu) {
+      joursSansEau = Math.max(0, Math.floor((now - dernierArrosageConnu.getTime()) / (1000 * 60 * 60 * 24)))
     }
 
     // Âge depuis plantation/semis
@@ -344,8 +338,13 @@ export async function computeConseilIrrigation(userId: string, annee: number) {
             finRecolte: c.finRecolte,
             derniereIrrigation: c.derniereIrrigation,
           },
-          { typeSol: c.planche?.typeSol ?? null, retentionEau: retentionEauSol },
-          { sousAbri, arrosages: arrosagesParCulture.get(c.id) ?? [] },
+          {
+            typeSol: c.planche?.typeSol ?? null,
+            retentionEau: retentionEauSol,
+            typeSolParcelle: c.planche?.parcelleGeo ? c.planche.parcelleGeo.typeSol : solParcelleRepli,
+            irrigation: c.planche?.irrigation ?? null,
+          },
+          { sousAbri, arrosages },
         )
       : null
     const coordKeyCulture = cultureCoordKey.get(c.id)
@@ -384,6 +383,8 @@ export async function computeConseilIrrigation(userId: string, annee: number) {
 
     return {
       ...c,
+      // « Noter » ou intervention « arrosage », le plus récent.
+      derniereIrrigation: dernierArrosageConnu,
       joursSansEau,
       ageJours,
       isJeune,

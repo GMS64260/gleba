@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
+import { irrigationCache } from '@/lib/irrigation-cache'
 import { updatePlancheSchema } from '@/lib/validations'
 import { requireAuthApi } from '@/lib/auth-utils'
 import { invalidateKpi } from '@/lib/kpi'
@@ -155,6 +156,8 @@ export async function PUT(
     })
 
     invalidateKpi(session!.user.id)
+    // Sol et système d'arrosage de la planche nourrissent le conseil d'irrigation.
+    irrigationCache.invalidateUser(session!.user.id)
     return NextResponse.json(planche)
   } catch (error) {
     console.error('PUT /api/planches/[id] error:', error)

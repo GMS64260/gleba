@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { MapPin, ArrowLeft, AlertTriangle } from 'lucide-react'
+import { libelleIrrigation } from '@/lib/planches/libelle-irrigation'
 
 interface ParcellePlanche {
   id: string
@@ -215,7 +216,7 @@ export default function ParcelleDetailPage({ params }: PageProps) {
                     </td>
                     <td className="py-2">{p.surface != null ? `${p.surface} m²` : '-'}</td>
                     <td className="py-2">{p.type || '-'}</td>
-                    <td className="py-2">{p.irrigation || '-'}</td>
+                    <td className="py-2">{libelleIrrigation(p.irrigation) || '-'}</td>
                   </tr>
                 ))}
               </tbody>

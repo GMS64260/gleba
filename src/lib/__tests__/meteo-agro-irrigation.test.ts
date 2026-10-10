@@ -45,7 +45,7 @@ describe('recommandation irrigation (moteur de bilan hydrique)', () => {
     )
     const avecArrosage = genererRecommandationIrrigation(
       meteoSeche(),
-      { ...culture, derniereIrrigation: new Date('2026-07-29T18:22:00.000Z'), arrosages: [new Date('2026-07-29T18:22:00.000Z')] },
+      { ...culture, derniereIrrigation: new Date('2026-07-29T18:22:00.000Z'), arrosages: [{ date: new Date('2026-07-29T18:22:00.000Z'), calendaire: false, litresParM2: null }] },
       planche,
     )
 

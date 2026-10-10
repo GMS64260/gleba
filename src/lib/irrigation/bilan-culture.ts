@@ -5,7 +5,8 @@
  * (`/api/meteo/irrigation`), pour qu'une même culture ait la même urgence et
  * la même dose sur les deux écrans.
  */
-import { bilanReserveSol, dureeCycleJours, type ResultatBilanSol } from './bilan-sol'
+import { bilanReserveSol, dureeCycleJours, efficaciteArrosage, type ResultatBilanSol } from './bilan-sol'
+import type { ArrosageSaisi } from './arrosages-saisis'
 import { jourDuLieu, jourLocalIso, type MeteoBilan } from './meteo-bilan'
 
 export interface CultureBilan {
@@ -44,12 +45,31 @@ export function debutSurPlanche(c: CultureBilan, aujourdhui: string): string | n
 export function bilanCulture(
   meteo: MeteoBilan,
   c: CultureBilan,
-  planche: { typeSol: string | null; retentionEau: string | null },
-  options: { sousAbri: boolean; arrosages: Date[] },
+  planche: {
+    typeSol: string | null
+    retentionEau: string | null
+    /** Sol de la parcelle de la planche, quand la planche n'en a pas. */
+    typeSolParcelle?: string | null
+    /** Système d'arrosage : part de l'eau versée qui arrive aux racines. */
+    irrigation?: string | null
+  },
+  options: { sousAbri: boolean; arrosages: ArrosageSaisi[] },
 ): ResultatBilanSol {
-  // Un arrosage est daté dans le jour du lieu (un arrosage du soir aux Antilles
-  // tombe le lendemain à l'heure de Paris).
-  const jours = new Set(options.arrosages.map((d) => jourDuLieu(d, meteo)))
+  // Un horodatage (« Noter », intervention créée par l'assistant à l'instant)
+  // est daté dans le jour du lieu : un arrosage du soir aux Antilles tombe le
+  // lendemain à l'heure de Paris. Une date de calendrier (minuit à Paris ou
+  // UTC, saisie du formulaire) garde son jour.
+  const minuit = (d: Date) =>
+    (d.getUTCHours() === 0 && d.getUTCMinutes() === 0) || (d.getHours() === 0 && d.getMinutes() === 0)
+  const jourDe = (a: { date: Date; calendaire: boolean }) =>
+    a.calendaire && minuit(a.date) ? jourLocalIso(a.date) : jourDuLieu(a.date, meteo)
+  const jours = new Set<string>()
+  const apports: { date: string; mm: number }[] = []
+  const efficacite = efficaciteArrosage(planche.irrigation)
+  for (const a of options.arrosages) {
+    if (a.litresParM2 === null) jours.add(jourDe(a))
+    else apports.push({ date: jourDe(a), mm: a.litresParM2 * efficacite })
+  }
   if (c.derniereIrrigation) jours.add(jourDuLieu(c.derniereIrrigation, meteo))
   const debut = debutSurPlanche(c, meteo.aujourdhui.date)
   return bilanReserveSol({
@@ -57,7 +77,8 @@ export function bilanCulture(
     aujourdhui: meteo.aujourdhui,
     previsions: meteo.previsions,
     joursArroses: Array.from(jours),
-    sol: planche,
+    apports,
+    sol: { typeSol: planche.typeSol, retentionEau: planche.retentionEau, typeSolParcelle: planche.typeSolParcelle ?? null },
     culture: {
       espece: c.espece,
       besoinEau: c.besoinEau,
