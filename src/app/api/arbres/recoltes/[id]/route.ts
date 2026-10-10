@@ -88,8 +88,8 @@ export async function PUT(request: NextRequest, { params }: Params) {
     // une minute d'écart, seule la date différait — l'écran n'offrait aucune
     // modification, seulement la suppression. La route acceptait déjà PUT,
     // mais sans contrôle : on valide ici ce que le formulaire peut désormais
-    // corriger (date, quantité, qualité, prix, péremption, parcelle d'origine,
-    // catégorie, destination, conditionnement, notes, n° de lot).
+    // corriger (arbre, date, quantité, qualité, prix, péremption, parcelle
+    // d'origine, catégorie, destination, conditionnement, notes, n° de lot).
     if (body.quantite !== undefined) {
       if (typeof body.quantite !== "number" || !isFinite(body.quantite) || body.quantite <= 0) {
         return NextResponse.json(
@@ -98,6 +98,28 @@ export async function PUT(request: NextRequest, { params }: Params) {
         )
       }
     }
+
+    // QA cmv2ebsdk — l'arbre se corrige comme le reste : la route l'ignorait,
+    // le formulaire l'envoyait. L'arbre doit appartenir au compte ; l'espèce
+    // suit, et avec elle le numéro de lot automatique.
+    let nouvelArbre: { id: number; espece: string | null } | undefined
+    if (body.arbreId !== undefined && body.arbreId !== null && body.arbreId !== "") {
+      const arbreId = typeof body.arbreId === "number" ? body.arbreId : Number(body.arbreId)
+      if (!Number.isInteger(arbreId) || arbreId <= 0) {
+        return NextResponse.json({ error: "Arbre invalide" }, { status: 400 })
+      }
+      if (arbreId !== existing.arbreId) {
+        const arbre = await prisma.arbre.findFirst({
+          where: { id: arbreId, userId },
+          select: { id: true, espece: true },
+        })
+        if (!arbre) {
+          return NextResponse.json({ error: "Arbre non trouvé" }, { status: 404 })
+        }
+        nouvelArbre = arbre
+      }
+    }
+    const especeLot = nouvelArbre ? nouvelArbre.espece : existing.arbre?.espece ?? null
 
     let nouvelleDate: Date | undefined
     if (body.date !== undefined && body.date !== null && body.date !== "") {
@@ -127,16 +149,17 @@ export async function PUT(request: NextRequest, { params }: Params) {
     }
 
     // Numéro de lot : un numéro saisi explicitement gagne toujours. Sinon, si
-    // la date ou la parcelle change et que le lot courant est automatique, on
-    // le régénère (le lot encode la date et la parcelle) ; un lot saisi à la
-    // main par l'utilisateur n'est jamais écrasé.
+    // la date, la parcelle ou l'espèce change et que le lot courant est
+    // automatique, on le régénère (le lot encode date, parcelle et espèce) ; un
+    // lot saisi à la main par l'utilisateur n'est jamais écrasé.
     let numLot: string | undefined
     if (typeof body.numLot === "string" && body.numLot.trim()) {
       numLot = body.numLot.trim()
     } else {
       const dateChange = nouvelleDate !== undefined && nouvelleDate.getTime() !== existing.date.getTime()
       const parcelleChange = nouvelleParcelleId !== undefined && nouvelleParcelleId !== existing.parcelleId
-      if ((dateChange || parcelleChange) && estNumeroLotAuto(existing.numLot)) {
+      const especeChange = especeLot !== (existing.arbre?.espece ?? null)
+      if ((dateChange || parcelleChange || especeChange) && estNumeroLotAuto(existing.numLot)) {
         const dateLot = nouvelleDate ?? existing.date
         const parcelleIdLot = nouvelleParcelleId !== undefined ? nouvelleParcelleId : existing.parcelleId
         let parcelleNomLot = nouvelleParcelleNom
@@ -155,13 +178,13 @@ export async function PUT(request: NextRequest, { params }: Params) {
             id: { not: recolteId },
             date: { gte: dayStart, lte: dayEnd },
             ...(parcelleIdLot ? { parcelleId: parcelleIdLot } : {}),
-            arbre: { espece: existing.arbre?.espece ?? undefined },
+            arbre: { espece: especeLot ?? undefined },
           },
         })
         numLot = genererNumeroLot({
           date: dateLot,
           parcelleNom: parcelleNomLot,
-          espece: existing.arbre?.espece ?? null,
+          espece: especeLot,
           numeroSequence: sameDayCount + 1,
         })
       }
@@ -173,6 +196,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
     const recolte = await prisma.recolteArbre.update({
       where: { id: recolteId },
       data: {
+        arbreId: nouvelArbre?.id,
         date: nouvelleDate,
         quantite: body.quantite,
         qualite: texteOuNull(body.qualite),
