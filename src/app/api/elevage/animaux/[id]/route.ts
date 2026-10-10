@@ -77,9 +77,12 @@ export async function GET(
           orderBy: { date: 'desc' },
           take: 20,
         },
+        // Tous les soins, sans borne : la fiche n'en montrait que les 20 plus
+        // récents, sans « voir tout », et l'alerte de délai d'attente était
+        // calculée sur cette seule tranche (défaut de Gleba-motifs-bugs,
+        // 2026-10-10). C'est un carnet sanitaire ; la frise défile.
         soins: {
           orderBy: { date: 'desc' },
-          take: 20,
         },
         abattages: true,
       },
@@ -94,7 +97,7 @@ export async function GET(
     // l'alerte de délai d'attente ne voyaient un traitement de lot (ex. Dectomax
     // sur le lot 58, fin_attente_lait 2026-09-08, concernant Clochette). On
     // fusionne les soins du lot, marqués `viaLot`, dans data.soins (tri par date
-    // décroissante, même take global de 20 que l'include).
+    // décroissante, sans borne comme l'include).
     let soins: Array<(typeof animal.soins)[number] & { viaLot?: boolean }> = animal.soins
     if (animal.lotId != null) {
       // QA cmsqmpqzx — un animal rattaché à un lot héritait de TOUT l'historique
@@ -111,7 +114,6 @@ export async function GET(
           ...(presenceDepuis ? { date: { gte: presenceDepuis } } : {}),
         },
         orderBy: { date: 'desc' },
-        take: 20,
       })
       const dejaPresents = new Set(animal.soins.map((soin) => soin.id))
       soins = [
@@ -121,7 +123,6 @@ export async function GET(
           .map((soin) => ({ ...soin, viaLot: true })),
       ]
         .sort((a, b) => b.date.getTime() - a.date.getTime())
-        .slice(0, 20)
     }
 
     return NextResponse.json({ data: { ...animal, soins } })

@@ -78,6 +78,32 @@ describe('GET /api/elevage/animaux/[id] — soins du lot fusionnés', () => {
     expect(data.soins[1].viaLot).toBeUndefined()
   })
 
+  it('rend tout le carnet : ni l’include ni la fusion ne bornent les soins à 20', async () => {
+    const soinsAnimal = Array.from({ length: 25 }, (_, i) => ({
+      id: i + 1,
+      date: new Date(Date.UTC(2025, 0, i + 1)),
+      type: 'Vaccination',
+      fait: true,
+    }))
+    mocks.animalFindFirst.mockResolvedValue({ id: 7, lotId: 58, soins: soinsAnimal })
+    mocks.soinFindMany.mockResolvedValue(Array.from({ length: 10 }, (_, i) => ({
+      id: 100 + i,
+      date: new Date(Date.UTC(2025, 1, i + 1)),
+      type: 'Vermifuge',
+      fait: true,
+      animalId: null,
+      lotId: 58,
+    })))
+
+    const response = await callGet()
+
+    const include = mocks.animalFindFirst.mock.calls[0][0].include
+    expect(include.soins).not.toHaveProperty('take')
+    expect(mocks.soinFindMany.mock.calls[0][0]).not.toHaveProperty('take')
+    const { data } = await response.json()
+    expect(data.soins).toHaveLength(35)
+  })
+
   it('ne requête pas les soins de lot pour un animal sans lot', async () => {
     mocks.animalFindFirst.mockResolvedValue({
       id: 7,
