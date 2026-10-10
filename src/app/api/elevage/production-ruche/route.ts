@@ -103,7 +103,11 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const annee = Number.parseInt(searchParams.get("annee") ?? String(new Date().getFullYear()), 10)
-    const limit = Math.min(Math.max(Number.parseInt(searchParams.get("limit") ?? "200", 10) || 200, 1), 500)
+    // `limit=tout` : toutes les récoltes de l'année (bouton « Tout afficher »).
+    const limitParam = searchParams.get("limit")
+    const limit = limitParam === "tout"
+      ? null
+      : Math.min(Math.max(Number.parseInt(limitParam ?? "200", 10) || 200, 1), 500)
     if (!Number.isInteger(annee) || annee < 1990 || annee > new Date().getFullYear() + 1) {
       return NextResponse.json({ error: "Année invalide" }, { status: 400 })
     }

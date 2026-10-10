@@ -149,13 +149,17 @@ export function ProduitsRucheSubTab({ year }: { year?: number } = {}) {
   const [mouvements, setMouvements] = React.useState<MouvementStockRuche[]>([])
   const [lots, setLots] = React.useState<LotApicole[]>([])
   const [ruches, setRuches] = React.useState<RucheApicole[]>([])
+  // La liste ne montre que les 200 récoltes les plus récentes de l'année :
+  // l'API donne le nombre réel pour le dire, et « Tout afficher » lève la borne.
+  const [nbRecoltesAnnee, setNbRecoltesAnnee] = React.useState<number | null>(null)
+  const [toutAfficher, setToutAfficher] = React.useState(false)
   const [formData, setFormData] = React.useState(formInitial)
   const [sortieData, setSortieData] = React.useState(sortieInitiale)
 
   const fetchData = React.useCallback(async () => {
     setIsLoading(true)
     try {
-      const response = await fetch(`/api/elevage/production-ruche?annee=${effectiveYear}`)
+      const response = await fetch(`/api/elevage/production-ruche?annee=${effectiveYear}${toutAfficher ? "&limit=tout" : ""}`)
       const result = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(result?.error || "Impossible de charger les récoltes")
       setProductions(result.data ?? [])
@@ -164,6 +168,7 @@ export function ProduitsRucheSubTab({ year }: { year?: number } = {}) {
       setMouvements(result.mouvements ?? [])
       setLots(result.lots ?? [])
       setRuches(result.ruches ?? [])
+      setNbRecoltesAnnee(typeof result.meta?.total === "number" ? result.meta.total : null)
     } catch (cause) {
       toast({
         variant: "destructive",
@@ -173,7 +178,7 @@ export function ProduitsRucheSubTab({ year }: { year?: number } = {}) {
     } finally {
       setIsLoading(false)
     }
-  }, [effectiveYear, toast])
+  }, [effectiveYear, toutAfficher, toast])
 
   React.useEffect(() => {
     fetchData()
@@ -747,6 +752,16 @@ export function ProduitsRucheSubTab({ year }: { year?: number } = {}) {
               </Table>
             </CardContent>
           </Card>
+          {nbRecoltesAnnee != null && nbRecoltesAnnee > productions.length && (
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
+              <span>
+                {productions.length} récoltes affichées sur {nbRecoltesAnnee} en {effectiveYear} (les plus récentes).
+              </span>
+              <Button variant="outline" size="sm" onClick={() => setToutAfficher(true)}>
+                Tout afficher
+              </Button>
+            </div>
+          )}
         </>
       )}
 
