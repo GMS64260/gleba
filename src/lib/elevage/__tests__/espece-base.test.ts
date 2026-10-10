@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { especeBaseId, especeBaseLabel, listEspecesBasePresentes } from "../espece-base"
+import { especeBaseId, especeBaseLabel, listEspecesBasePresentes, naitParEclosion } from "../espece-base"
 
 describe("especeBaseId", () => {
   it("extrait l'espèce avant '_'", () => {
@@ -62,5 +62,27 @@ describe("listEspecesBasePresentes", () => {
       { especeAnimaleId: "brebis_solognote" },
     ])
     expect(result.map((r) => r.label)).toEqual(["Brebis", "Chèvre", "Poule"])
+  })
+})
+
+describe("naitParEclosion (ticket cmv292a85)", () => {
+  it("un lot de poules pondeuses, sans durée de couvaison transmise, éclot", () => {
+    expect(naitParEclosion({ id: "poule_pondeuse" })).toBe(true)
+    expect(naitParEclosion({ id: "Poule" })).toBe(true)
+    expect(naitParEclosion({ id: "canard_coureur" })).toBe(true)
+  })
+
+  it("une durée de couvaison suffit, quelle que soit l'espèce", () => {
+    expect(naitParEclosion({ id: "autre_oiseau", dureeCouvaison: 21 })).toBe(true)
+  })
+
+  it("les mammifères mettent bas", () => {
+    expect(naitParEclosion({ id: "brebis_solognote", dureeCouvaison: null })).toBe(false)
+    expect(naitParEclosion({ id: "chevre" })).toBe(false)
+  })
+
+  it("sans espèce, pas d'éclosion", () => {
+    expect(naitParEclosion(null)).toBe(false)
+    expect(naitParEclosion(undefined)).toBe(false)
   })
 })

@@ -44,7 +44,7 @@ import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
 import { AnimalCombobox } from "./AnimalCombobox"
 import { useFiliereSelection, capacitesSelection, filiereMatch } from "@/lib/elevage/filiere-context"
-import { especeBaseId, libellePetit } from "@/lib/elevage/espece-base"
+import { especeBaseId, libellePetit, naitParEclosion } from "@/lib/elevage/espece-base"
 import { ReservationsSubTab } from "./ReservationsSubTab"
 import { SelectionSubTab } from "./SelectionSubTab"
 import { normaliserSousOnglet } from "@/lib/elevage/filiere-ui"
@@ -1185,7 +1185,8 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
   const handleCreerFiches = async (n: Naissance) => {
     const nb = petitsSansFiche(n)
     if (nb === 0) return
-    if (!(await confirmDialog(`Créer ${nb} fiche(s) animale(s) à partir des petits de cette mise bas ? Chaque fiche sera ensuite disponible dans « Animaux & Lots ».`))) return
+    const evenement = naitParEclosion(n.mere?.especeAnimale ?? n.lot?.especeAnimale) ? "éclosion" : "mise bas"
+    if (!(await confirmDialog(`Créer ${nb} fiche(s) animale(s) à partir des petits de cette ${evenement} ? Chaque fiche sera ensuite disponible dans « Animaux & Lots ».`))) return
     setCreationFiches(n.id)
     try {
       const res = await fetch(`/api/elevage/naissances/${n.id}/fiches`, { method: 'POST' })
@@ -1213,11 +1214,16 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
   const compagnieNaiss = filiereSel !== "toutes" && filiereSel !== "rente"
   const idProvLbl = compagnieNaiss ? "Identifiants provisoires" : "Boucles provisoires"
   const idDefLbl = compagnieNaiss ? "Puce / identifiant définitif" : "Boucles définitives"
-  const libelleEvenementNaissance = mereSel?.especeAnimale.dureeCouvaison != null
+  // Ticket cmv292a85 — l'espèce du lot compte autant que celle de la mère.
+  const eclosionSel = naitParEclosion(mereSel?.especeAnimale ?? lotSel?.especeAnimale)
+  const libelleEvenementNaissance = eclosionSel
     ? "Éclosion"
     : mereSel || lotSel
       ? "Mise bas"
       : "Mise bas / naissance"
+  const libellesModeElevage = eclosionSel
+    ? { sous_mere: "Sous la mère", biberon: "En éleveuse", aide: "élevé sous la mère ou en éleveuse" }
+    : { sous_mere: "Sous mère", biberon: "Biberon", aide: "élevé sous mère ou au biberon" }
 
   // Portées de l'atelier courant + KPIs recalculés dessus : les stats renvoyées
   // par l'API sont globales à l'exploitation, elles fuiteraient les autres
@@ -1248,11 +1254,8 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
       parMois,
     }
   }, [naissancesF])
-  const naissancesIncluentEclosions = naissancesF.some((n) => {
-    if (n.mere?.especeAnimale.dureeCouvaison != null) return true
-    const petit = libellePetit(n.mere?.especeAnimale.id ?? n.lot?.especeAnimale?.id).s
-    return ["poussin", "caneton", "oison", "dindonneau"].includes(petit)
-  })
+  const naissancesIncluentEclosions = naissancesF.some((n) =>
+    naitParEclosion(n.mere?.especeAnimale ?? n.lot?.especeAnimale))
   const nbFichesPetitsACreer = naissancesF.reduce(
     (total, naissance) => total + petitsSansFiche(naissance),
     0
@@ -1373,7 +1376,7 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
                 {editingNaissId
                   ? `Édition de la naissance #${editingNaissId}`
                   : compagnieNaiss
-                    ? "Mise bas / portée"
+                    ? (eclosionSel ? "Éclosion / couvée" : "Mise bas / portée")
                     : libelleEvenementNaissance}
               </DialogDescription>
             </DialogHeader>
@@ -1519,7 +1522,7 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
                 </div>
                 {formData.petits.length === 0 ? (
                   <p className="text-xs text-muted-foreground">
-                    Une ligne par {petitMots.s} : sexe, identifiant provisoire, élevé sous mère ou au biberon, poids. Les
+                    Une ligne par {petitMots.s} : sexe, identifiant provisoire, {libellesModeElevage.aide}, poids. Les
                     compteurs (nés/vivants/mâles/femelles) et le poids total se calculent automatiquement.
                   </p>
                 ) : (
@@ -1553,8 +1556,8 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
                           value={p.modeElevage}
                           onChange={(e) => majPetit(i, { modeElevage: e.target.value })}
                         >
-                          <option value="sous_mere">Sous mère</option>
-                          <option value="biberon">Biberon</option>
+                          <option value="sous_mere">{libellesModeElevage.sous_mere}</option>
+                          <option value="biberon">{libellesModeElevage.biberon}</option>
                         </select>
                         <Input
                           className="col-span-4 sm:col-span-2 h-9"
@@ -1685,7 +1688,9 @@ function NaissancesSubTab({ initialOpen = false, year }: { initialOpen?: boolean
                               {p.boucleProvisoire
                                 ? <span className="font-mono">{p.boucleProvisoire}</span>
                                 : `${libellePetit(n.mere?.especeAnimale?.id ?? n.lot?.especeAnimale?.id).s} ${p.numero ?? i + 1}`}
-                              {p.modeElevage ? <span className="text-muted-foreground"> · {p.modeElevage === 'biberon' ? 'bib' : 'ss mère'}</span> : ''}
+                              {p.modeElevage ? <span className="text-muted-foreground"> · {p.modeElevage === 'biberon'
+                                ? (naitParEclosion(n.mere?.especeAnimale ?? n.lot?.especeAnimale) ? 'éleveuse' : 'bib')
+                                : 'ss mère'}</span> : ''}
                               {p.poids != null ? <span className="text-muted-foreground"> · {p.poids} kg</span> : ''}
                               {p.vivant === false ? <span className="text-red-600"> · mort-né</span> : ''}
                               {p.animalId != null ? <span className="text-green-600"> · fiche ✓</span> : ''}
