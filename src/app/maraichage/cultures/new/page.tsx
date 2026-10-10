@@ -93,6 +93,57 @@ interface ITPData {
   espacementRangs: number | null
 }
 
+type ChampSaisi = "dateSemis" | "datePlantation" | "dateRecolte" | "nbRangs" | "espacement"
+const CHAMPS_DATE: readonly ChampSaisi[] = ["dateSemis", "datePlantation", "dateRecolte"]
+
+/**
+ * Cycle proposé par un ITP pour une année, partagé par le pré-remplissage et
+ * « Resynchroniser » (le bouton ne décalait pas une fenêtre dépassée et posait
+ * des dates passées).
+ *
+ * Bug #33 + bug Ail #509 — Calculer les dates ITP brutes et, si la première
+ * jalon (semis ou plantation) est passée pour l'année courante, décaler
+ * l'ENSEMBLE du cycle uniformément. Sinon on cassait le cycle : ex. semis
+ * remplacé par today, plantation par today, récolte laissée à la date ITP
+ * qui tombait par hasard sur today → cycle d'1 jour.
+ * Chronologie : une étape antérieure au semis tombe l'année suivante (ITP
+ * chevauchant deux années, ex. semis août → récolte janvier).
+ * QA cmsfxvbab — l'ancrage est délégué à datesDepuisItp, qui gère les ITP
+ * « implantation seule » (sans semaine de semis ni de plantation, leur
+ * récolte était posée en absolu, donc éventuellement avant le semis).
+ */
+function cycleItpPropose(itp: ITPData, year: number, today: Date) {
+  const cycle = datesDepuisItp(year, itp)
+  let dateSemis = cycle.dateSemis
+  let datePlantation = cycle.datePlantation
+  let dateRecolte = cycle.dateRecolte
+  let info: string | null = null
+
+  if (year === today.getFullYear()) {
+    const firstAnchor = dateSemis ?? datePlantation
+    if (firstAnchor && firstAnchor < today) {
+      // Audit fuseaux #76 : décalage en JOURS calendaires (setDate), pas en
+      // millisecondes. L'ajout d'un offset ms qui traverse le passage à
+      // l'heure d'été (mars) décalait les dates d'1h → un jour de trop près
+      // de minuit. setDate préserve l'heure locale et gère le DST.
+      const decalageJours = Math.ceil((today.getTime() - firstAnchor.getTime()) / 86400000)
+      const addJours = (d: Date | null) => {
+        if (!d) return d
+        const r = new Date(d)
+        r.setDate(r.getDate() + decalageJours)
+        return r
+      }
+      dateSemis = addJours(dateSemis)
+      datePlantation = addJours(datePlantation)
+      dateRecolte = addJours(dateRecolte)
+      const semaineAncrage = semaineSemisEffective(itp) ?? itp.semainePlantation
+      const semaineLabel = semaineAncrage ? formatSemaine(semaineAncrage) : ""
+      info = `Fenêtre ITP ${semaineLabel} dépassée — cycle décalé de ${decalageJours} j (semis/plantation/récolte alignés).`
+    }
+  }
+  return { dateSemis, datePlantation, dateRecolte, info }
+}
+
 export default function NewCulturePage() {
   const { data: session } = useSession()
   const currentUserId = (session?.user as { id?: string } | undefined)?.id ?? null
@@ -275,8 +326,43 @@ export default function NewCulturePage() {
   // jamais une édition de la seule récolte ni le remplissage initial de l'ITP.
   const debutCycleRef = React.useRef<string | null>(null)
 
+  // QA cmv2qzhkf — les ITP arrivent en différé après le choix de l'espèce (et
+  // l'effet ci-dessous rejoue au changement d'année ou à la ré-affirmation de
+  // l'ITP auto-sélectionné) : des dates saisies entre-temps étaient écrasées
+  // par le calendrier de l'ITP, et la culture partait aux dates ITP. Une date
+  // touchée par l'utilisateur n'est plus réécrite par le pré-remplissage ; seul
+  // le bouton du bandeau rapplique l'ITP. Même règle pour rangs et espacement,
+  // et la récolte saisie ne suit plus le début de cycle tant qu'elle lui reste
+  // postérieure.
+  const saisiesManuellesRef = React.useRef(new Set<ChampSaisi>())
+  const [datesSaisies, setDatesSaisies] = React.useState(false)
+  const marquerSaisie = React.useCallback((champ: ChampSaisi) => {
+    saisiesManuellesRef.current.add(champ)
+    if (CHAMPS_DATE.includes(champ)) setDatesSaisies(true)
+  }, [])
+  const appliquerCycleItp = React.useCallback(
+    (itp: ITPData, year: number) => {
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      const cycle = cycleItpPropose(itp, year, today)
+      setDateSemisInfo(cycle.info)
+      // Les trois dates sont celles de l'ITP, absentes comprises : une
+      // plantation laissée par un ITP précédent (ou tapée) sur un ITP en semis
+      // direct n'appartient pas au calendrier appliqué.
+      form.setValue("dateSemis", cycle.dateSemis ?? null)
+      form.setValue("datePlantation", cycle.datePlantation ?? null)
+      form.setValue("dateRecolte", cycle.dateRecolte ?? null)
+      // Le cycle ITP vient d'être posé en bloc : mémoriser son début pour que
+      // l'effet de recalage ne réécrive pas la récolte calculée par datesDepuisItp.
+      const debutCycle = cycle.datePlantation ?? cycle.dateSemis
+      if (debutCycle) debutCycleRef.current = debutCycle.toISOString()
+    },
+    [form]
+  )
+
   // PROMPT 20b — Auto-remplissage ITP → dates de culture
-  // L'année est dans les deps : changer d'année recalcule les dates si ITP fixé.
+  // L'année est dans les deps : changer d'année recalcule les dates si ITP fixé,
+  // sauf celles que l'utilisateur a saisies (QA cmv2qzhkf, plus haut).
   const selectedYear = form.watch("annee")
   React.useEffect(() => {
     // QA cmsw8z9jt — ITP vidé ⇒ purger le bandeau « fenêtre dépassée », sinon
@@ -288,70 +374,25 @@ export default function NewCulturePage() {
     const itp = itps.find((i) => i.id === selectedItp)
     if (!itp) return
 
-    const year = selectedYear || new Date().getFullYear()
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-
-    setDateSemisInfo(null)
-
-    // Bug #33 + bug Ail #509 — Calculer les dates ITP brutes et, si la première
-    // jalon (semis ou plantation) est passée pour l'année courante, décaler
-    // l'ENSEMBLE du cycle uniformément. Sinon on cassait le cycle : ex. semis
-    // remplacé par today, plantation par today, récolte laissée à la date ITP
-    // qui tombait par hasard sur today → cycle d'1 jour.
-    // Chronologie : une étape antérieure au semis tombe l'année suivante (ITP
-    // chevauchant deux années, ex. semis août → récolte janvier).
-    // QA cmsfxvbab — l'ancrage est délégué à datesDepuisItp, qui gère les ITP
-    // « implantation seule » (sans semaine de semis ni de plantation, leur
-    // récolte était posée en absolu, donc éventuellement avant le semis).
-    const cycle = datesDepuisItp(year, itp)
-    let semisDate = cycle.dateSemis
-    let plantationDate = cycle.datePlantation
-    let recolteDate = cycle.dateRecolte
-
-    if (year === today.getFullYear()) {
-      const firstAnchor = semisDate ?? plantationDate
-      if (firstAnchor && firstAnchor < today) {
-        // Audit fuseaux #76 : décalage en JOURS calendaires (setDate), pas en
-        // millisecondes. L'ajout d'un offset ms qui traverse le passage à
-        // l'heure d'été (mars) décalait les dates d'1h → un jour de trop près
-        // de minuit. setDate préserve l'heure locale et gère le DST.
-        const decalageJours = Math.ceil((today.getTime() - firstAnchor.getTime()) / 86400000)
-        const addJours = (d: Date | null) => {
-          if (!d) return d
-          const r = new Date(d)
-          r.setDate(r.getDate() + decalageJours)
-          return r
-        }
-        semisDate = addJours(semisDate)
-        plantationDate = addJours(plantationDate)
-        recolteDate = addJours(recolteDate)
-        const semaineAncrage = semaineSemisEffective(itp) ?? itp.semainePlantation
-        const semaineLabel = semaineAncrage ? formatSemaine(semaineAncrage) : ""
-        setDateSemisInfo(
-          `Fenêtre ITP ${semaineLabel} dépassée — cycle décalé de ${decalageJours} j (semis/plantation/récolte alignés).`
-        )
-      }
-    }
-
-    if (semisDate) form.setValue("dateSemis", semisDate)
-    if (plantationDate) form.setValue("datePlantation", plantationDate)
-    if (recolteDate) form.setValue("dateRecolte", recolteDate)
-    // Le cycle ITP vient d'être posé en bloc : mémoriser son début pour que
-    // l'effet de recalage ne réécrive pas la récolte calculée par datesDepuisItp.
-    const debutCycle = plantationDate ?? semisDate
-    if (debutCycle) debutCycleRef.current = debutCycle.toISOString()
-    if (itp.nbRangs) {
+    const saisies = saisiesManuellesRef.current
+    if (!saisies.has("nbRangs") && itp.nbRangs) {
       form.setValue("nbRangs", itp.nbRangs)
     }
     // Bug #29 — Pré-remplir espacement depuis l'ITP. Fallback sur espacementRangs
     // si espacement (sur le rang) absent, pour ne pas laisser le champ vide alors
     // que le calcul "Quantité plants" l'utilise.
     const espVal = itp.espacement ?? itp.espacementRangs
-    if (espVal) {
+    if (!saisies.has("espacement") && espVal) {
       form.setValue("espacement", Math.round(espVal))
     }
-  }, [selectedItp, selectedYear, itps, form])
+    if (CHAMPS_DATE.some((champ) => saisies.has(champ))) {
+      // Dates de l'utilisateur conservées : le bandeau « fenêtre dépassée »
+      // d'un ITP précédent ne les décrit plus.
+      setDateSemisInfo(null)
+      return
+    }
+    appliquerCycleItp(itp, selectedYear || new Date().getFullYear())
+  }, [selectedItp, selectedYear, itps, form, appliquerCycleItp])
 
   // QA cmsfxvbab + friction 2026-08-14 — la date de récolte SUIT le début de
   // cycle saisi. Les dates n'étaient recalculées qu'au changement d'ITP : un
@@ -360,7 +401,8 @@ export default function NewCulturePage() {
   // partait dans un payload que l'API refuse en 400. À chaque changement de
   // semis/plantation, la récolte est recalée en préservant la durée du cycle
   // ITP (`recolteApresDebut`, source unique). Éditer la seule récolte ne
-  // déclenche rien : le choix manuel tient tant que le début ne bouge plus.
+  // déclenche rien, et une récolte saisie à la main tient même quand le début
+  // bouge, tant qu'elle lui reste postérieure (QA cmv2qzhkf).
   const watchedDateSemis = form.watch("dateSemis")
   const watchedDatePlantation = form.watch("datePlantation")
   React.useEffect(() => {
@@ -378,6 +420,7 @@ export default function NewCulturePage() {
     if (Number.isNaN(recolte.getTime())) return
     const recolteIncoherente = recolte <= debut
     if (!debutChange && !recolteIncoherente) return
+    if (saisiesManuellesRef.current.has("dateRecolte") && !recolteIncoherente) return
 
     const itp = itps.find((i) => i.id === selectedItp)
     if (!itp) return
@@ -690,7 +733,8 @@ export default function NewCulturePage() {
                   return (
                     <div className="flex items-center justify-between gap-2 text-xs text-slate-600 bg-blue-50 border border-blue-100 rounded p-2 mt-2">
                       <span>
-                        💡 Dates pré-remplies depuis l&apos;ITP <strong>{nomAffichableItp(itp)}</strong> (
+                        💡 {datesSaisies ? "Calendrier de l'ITP" : "Dates pré-remplies depuis l'ITP"}{" "}
+                        <strong>{nomAffichableItp(itp)}</strong> (
                         {[
                           itp.semaineSemis ? `${formatSemaine(itp.semaineSemis)} semis` : null,
                           // QA cmsfxvbab — ITP sans jalon semis/plantation : la
@@ -700,24 +744,21 @@ export default function NewCulturePage() {
                             : null,
                           itp.semainePlantation ? `${formatSemaine(itp.semainePlantation)} plantation` : null,
                           itp.semaineRecolte ? `${formatSemaine(itp.semaineRecolte)} récolte` : null,
-                        ].filter(Boolean).join(" · ")}). Modifiable.
+                        ].filter(Boolean).join(" · ")}).{" "}
+                        {datesSaisies ? "Vos dates saisies sont conservées." : "Modifiable."}
                       </span>
                       <button
                         type="button"
                         className="text-blue-700 underline hover:text-blue-900"
                         onClick={() => {
-                          const year = form.getValues("annee") || new Date().getFullYear()
-                          // QA cmsfxvbab — même ancrage que l'auto-remplissage :
-                          // le bouton posait les trois dates sur `year` sans
-                          // cascade, donc une récolte antérieure au semis sur un
-                          // ITP à cheval sur deux années.
-                          const cycle = datesDepuisItp(year, itp)
-                          if (cycle.dateSemis) form.setValue("dateSemis", cycle.dateSemis)
-                          if (cycle.datePlantation) form.setValue("datePlantation", cycle.datePlantation)
-                          if (cycle.dateRecolte) form.setValue("dateRecolte", cycle.dateRecolte)
+                          for (const champ of CHAMPS_DATE) saisiesManuellesRef.current.delete(champ)
+                          setDatesSaisies(false)
+                          // QA cmsfxvbab — même ancrage (et même décalage d'une
+                          // fenêtre dépassée) que l'auto-remplissage.
+                          appliquerCycleItp(itp, form.getValues("annee") || new Date().getFullYear())
                         }}
                       >
-                        Resynchroniser
+                        {datesSaisies ? "Appliquer les dates de l'ITP" : "Resynchroniser"}
                       </button>
                     </div>
                   )
@@ -738,6 +779,7 @@ export default function NewCulturePage() {
                             value={field.value ? format(new Date(field.value), "yyyy-MM-dd") : ""}
                             onChange={(e) => {
                               const date = e.target.value ? new Date(e.target.value) : null
+                              marquerSaisie("dateSemis")
                               field.onChange(date)
                               setDateSemisInfo(null)
                               // Antidater est le geste de qui enregistre un
@@ -784,6 +826,7 @@ export default function NewCulturePage() {
                             value={field.value ? format(new Date(field.value), "yyyy-MM-dd") : ""}
                             onChange={(e) => {
                               const date = e.target.value ? new Date(e.target.value) : null
+                              marquerSaisie("datePlantation")
                               field.onChange(date)
                               if (cocherApresSaisieManuelle(date)) {
                                 form.setValue("plantationFaite", true)
@@ -822,9 +865,10 @@ export default function NewCulturePage() {
                             type="date"
                             {...field}
                             value={field.value ? format(new Date(field.value), "yyyy-MM-dd") : ""}
-                            onChange={(e) =>
+                            onChange={(e) => {
+                              marquerSaisie("dateRecolte")
                               field.onChange(e.target.value ? new Date(e.target.value) : null)
-                            }
+                            }}
                           />
                         </FormControl>
                         <FormMessage />
@@ -905,11 +949,12 @@ export default function NewCulturePage() {
                             min="1"
                             {...field}
                             value={field.value ?? ""}
-                            onChange={(e) =>
+                            onChange={(e) => {
+                              marquerSaisie("nbRangs")
                               field.onChange(
                                 e.target.value ? parseInt(e.target.value) : null
                               )
-                            }
+                            }}
                           />
                         </FormControl>
                         <FormMessage />
@@ -931,11 +976,12 @@ export default function NewCulturePage() {
                             min="1"
                             {...field}
                             value={field.value ?? ""}
-                            onChange={(e) =>
+                            onChange={(e) => {
+                              marquerSaisie("espacement")
                               field.onChange(
                                 e.target.value ? parseInt(e.target.value) : null
                               )
-                            }
+                            }}
                           />
                         </FormControl>
                         <FormMessage />
