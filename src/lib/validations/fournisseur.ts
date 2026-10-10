@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { emailOptionnel } from './email-optionnel'
 import { isValidSiret, isValidSiren, isValidTvaIntracomFr } from '@/lib/siret'
 import { isValidIban, isValidBic, FOURNISSEUR_TYPES } from '@/lib/iban'
 
@@ -49,7 +50,7 @@ export const createFournisseurSchema = z.object({
   ville: z.string().max(100).nullable().optional(),
   codePostal: z.string().max(10).nullable().optional(),
   pays: z.string().max(100).optional().default('France'),
-  email: z.string().email('Email invalide').max(200).nullable().optional(),
+  email: emailOptionnel(),
   telephone: z.string().max(30).nullable().optional(),
   siteWeb: z.string().max(300).nullable().optional(),
   siret: optionalSiret,
