@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { SelectNatif } from "@/components/ui/select-natif"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -525,15 +526,32 @@ function ObservationsSubTab() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Arbre *</Label>
-                <Select value={formData.arbreId} onValueChange={(v) => setFormData({ ...formData, arbreId: v })}>
-                  <SelectTrigger><SelectValue placeholder="— Sélectionner un arbre —" /></SelectTrigger>
-                  <SelectContent>
-                    {arbres.map((a) => (
-                      <SelectItem key={a.id} value={a.id.toString()}>{a.nom}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="observation-arbre">Arbre *</Label>
+                {/* QA cmv2r1kjv — champ obligatoire en <select> natif : un choix
+                    qui n'atteignait pas onValueChange laissait le Select Radix
+                    sur son placeholder (voir SelectNatif). */}
+                <SelectNatif
+                  id="observation-arbre"
+                  name="arbreId"
+                  value={formData.arbreId}
+                  onChange={(e) => {
+                    const arbreId = e.target.value
+                    setFormData((courant) => ({ ...courant, arbreId }))
+                  }}
+                >
+                  <option value="" disabled>— Sélectionner un arbre —</option>
+                  {arbres.map((a) => (
+                    <option key={a.id} value={a.id.toString()}>{a.nom}</option>
+                  ))}
+                  {/* En modification, l'arbre de l'observation reste affiché
+                      avant le chargement de la liste : un select natif sans
+                      option correspondante montrerait un autre arbre. */}
+                  {editingObs && !arbres.some((a) => a.id === editingObs.arbreId) && (
+                    <option value={editingObs.arbreId.toString()}>
+                      {editingObs.arbre?.nom ?? `Arbre n° ${editingObs.arbreId}`}
+                    </option>
+                  )}
+                </SelectNatif>
               </div>
               <div>
                 <Label>Date</Label>
@@ -1436,15 +1454,22 @@ function RegistrePhytoSubTab() {
           <form onSubmit={handleAddSubmit} className="space-y-4">
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <Label>Arbre *</Label>
-                <Select value={addForm.arbreId} onValueChange={(v) => setAddForm({ ...addForm, arbreId: v })}>
-                  <SelectTrigger><SelectValue placeholder="— Sélectionner un arbre —" /></SelectTrigger>
-                  <SelectContent>
-                    {arbres.map((a) => (
-                      <SelectItem key={a.id} value={a.id.toString()}>{a.nom}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="traitement-arbre">Arbre *</Label>
+                {/* QA cmv2r1kjv — <select> natif, comme l'observation. */}
+                <SelectNatif
+                  id="traitement-arbre"
+                  name="arbreId"
+                  value={addForm.arbreId}
+                  onChange={(e) => {
+                    const arbreId = e.target.value
+                    setAddForm((courant) => ({ ...courant, arbreId }))
+                  }}
+                >
+                  <option value="" disabled>— Sélectionner un arbre —</option>
+                  {arbres.map((a) => (
+                    <option key={a.id} value={a.id.toString()}>{a.nom}</option>
+                  ))}
+                </SelectNatif>
               </div>
               <div>
                 <Label>Date</Label>
@@ -1993,52 +2018,58 @@ function PollinisationSubTab() {
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <Label>Arbre à polliniser *</Label>
-              <Select
+              <Label htmlFor="pollinisation-arbre">Arbre à polliniser *</Label>
+              {/* QA cmv2r1kjv — les deux arbres de l'association, obligatoires,
+                  passent en <select> natif (voir SelectNatif). */}
+              <SelectNatif
+                id="pollinisation-arbre"
+                name="arbrePolliniseId"
                 value={formData.arbrePolliniseId}
-                onValueChange={(v) =>
+                onChange={(e) => {
+                  const arbrePolliniseId = e.target.value
                   // Changer d'arbre cible invalide le pollinisateur déjà choisi
                   // (l'espèce filtrée n'est plus la même).
-                  setFormData({ ...formData, arbrePolliniseId: v, arbrePollinisateurId: "" })
-                }
-              >
-                <SelectTrigger><SelectValue placeholder="— Sélectionner l'arbre à polliniser —" /></SelectTrigger>
-                <SelectContent>
-                  {data?.arbres.filter((a) => !a.autofertile).map((a) => (
-                    <SelectItem key={a.id} value={a.id.toString()}>
-                      {a.nom} {a.espece ? `(${a.espece})` : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Pollinisateur *</Label>
-              <Select
-                value={formData.arbrePollinisateurId}
-                onValueChange={(v) => {
-                  const pollinisateur = data?.arbres.find((a) => a.id.toString() === v)
-                  setFormData({
-                    ...formData,
-                    arbrePollinisateurId: v,
-                    compatibilite: pollinisateur ? suggererCompatibilite(pollinisateur) : formData.compatibilite,
-                  })
+                  setFormData((courant) => ({ ...courant, arbrePolliniseId, arbrePollinisateurId: "" }))
                 }}
               >
-                <SelectTrigger><SelectValue placeholder="— Sélectionner le pollinisateur —" /></SelectTrigger>
-                <SelectContent>
-                  {candidatsPollinisateurs.map((a) => {
-                    const g = groupeDe(a)
-                    return (
-                      <SelectItem key={a.id} value={a.id.toString()}>
-                        {a.nom} {a.espece ? `(${a.espece})` : ""}{g ? ` — Gr.${g}` : ""}
-                        {estTriploidePollinisateur(a) ? " — ⚠ triploïde (pollen stérile)" : ""}
-                        {donneesIncompletes(a) ? " — données incomplètes, à vérifier" : ""}
-                      </SelectItem>
-                    )
-                  })}
-                </SelectContent>
-              </Select>
+                <option value="" disabled>— Sélectionner l&apos;arbre à polliniser —</option>
+                {data?.arbres.filter((a) => !a.autofertile).map((a) => (
+                  <option key={a.id} value={a.id.toString()}>
+                    {`${a.nom}${a.espece ? ` (${a.espece})` : ""}`}
+                  </option>
+                ))}
+              </SelectNatif>
+            </div>
+            <div>
+              <Label htmlFor="pollinisation-pollinisateur">Pollinisateur *</Label>
+              <SelectNatif
+                id="pollinisation-pollinisateur"
+                name="arbrePollinisateurId"
+                value={formData.arbrePollinisateurId}
+                onChange={(e) => {
+                  const arbrePollinisateurId = e.target.value
+                  const pollinisateur = data?.arbres.find((a) => a.id.toString() === arbrePollinisateurId)
+                  setFormData((courant) => ({
+                    ...courant,
+                    arbrePollinisateurId,
+                    compatibilite: pollinisateur ? suggererCompatibilite(pollinisateur) : courant.compatibilite,
+                  }))
+                }}
+              >
+                <option value="" disabled>— Sélectionner le pollinisateur —</option>
+                {candidatsPollinisateurs.map((a) => {
+                  const g = groupeDe(a)
+                  return (
+                    <option key={a.id} value={a.id.toString()}>
+                      {[
+                        `${a.nom}${a.espece ? ` (${a.espece})` : ""}${g ? ` — Gr.${g}` : ""}`,
+                        estTriploidePollinisateur(a) ? " — ⚠ triploïde (pollen stérile)" : "",
+                        donneesIncompletes(a) ? " — données incomplètes, à vérifier" : "",
+                      ].join("")}
+                    </option>
+                  )
+                })}
+              </SelectNatif>
               {/* QA cmsoeyth0 — alerte visuelle : le pollen d'un triploïde est stérile. */}
               {pollinisateurTriploide && (
                 <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
