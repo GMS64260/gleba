@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
 import { listerObservationsSante } from "@/lib/observations-sante"
+import { MESSAGE_AMM_INVALIDE, numAMMValide } from "@/lib/tracabilite/amm"
 
 export async function GET(request: NextRequest) {
   const { error, session } = await requireAuthApi()
@@ -53,6 +54,11 @@ export async function POST(request: NextRequest) {
     })
     if (!arbre) {
       return NextResponse.json({ error: "Arbre non trouvé" }, { status: 404 })
+    }
+
+    // QA cmv2962ey — même règle de forme que les interventions : sept chiffres ou vide.
+    if (body.numAMM && !numAMMValide(String(body.numAMM))) {
+      return NextResponse.json({ error: MESSAGE_AMM_INVALIDE }, { status: 400 })
     }
 
     // DEV3 audit Marc — Bloquant #1

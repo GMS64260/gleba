@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import prisma from "@/lib/prisma"
 import { requireAuthApi } from "@/lib/auth-utils"
+import { MESSAGE_AMM_INVALIDE, numAMMValide } from "@/lib/tracabilite/amm"
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { error, session } = await requireAuthApi()
@@ -102,6 +103,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     // pas vidés. Évite un trou de conformité phyto (arrêté du 4 mai 2017) où on créerait
     // en règle puis on viderait via PATCH.
     const methodeFinale = data.methodeTraitement ?? existing.methodeTraitement
+    // QA cmv2962ey — même règle de forme que les interventions : sept chiffres ou vide.
+    if (data.numAMM && !numAMMValide(String(data.numAMM))) {
+      return NextResponse.json({ error: MESSAGE_AMM_INVALIDE }, { status: 400 })
+    }
     const isChimique =
       methodeFinale === "chimique_conventionnel" ||
       methodeFinale === "chimique_cuivre" ||

@@ -731,7 +731,7 @@ function PhytoTab({
                     {!entry.complet && (
                       <span
                         className="mt-0.5 flex items-center gap-0.5 text-[10px] font-bold uppercase tracking-wide text-red-600"
-                        title={`Non conforme — champs obligatoires manquants : ${entry.champsManquants.join(", ")}`}
+                        title={`Non conforme — champs obligatoires manquants ou invalides : ${entry.champsManquants.join(", ")}`}
                       >
                         <AlertCircle className="h-3 w-3" />
                         Non conforme
