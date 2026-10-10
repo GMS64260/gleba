@@ -4,8 +4,20 @@ import * as React from "react"
 import { useSession } from "next-auth/react"
 import { CloudSun, LayoutGrid } from "lucide-react"
 import Link from "next/link"
-import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core"
-import { SortableContext, horizontalListSortingStrategy, rectSortingStrategy, sortableKeyboardCoordinates } from "@dnd-kit/sortable"
+import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  pointerWithin,
+  useSensor,
+  useSensors,
+  type CollisionDetection,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core"
+import { SortableContext, horizontalListSortingStrategy, sortableKeyboardCoordinates } from "@dnd-kit/sortable"
 
 import { UserMenu } from "@/components/auth/UserMenu"
 import { messageErreurReponse } from "@/lib/api-erreur"
@@ -256,8 +268,11 @@ export function Accueil() {
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
+  /** Tuile en cours de glisser : un fantôme suit le pointeur, les autres ne bougent pas. */
+  const [tuileSaisie, setTuileSaisie] = React.useState<IdTuile | null>(null)
   const finGlisser = (groupe: "reperes" | "tuiles") => (e: DragEndEvent) => {
     const { active, over } = e
+    setTuileSaisie(null)
     if (!over || active.id === over.id) return
     majBrouillon((d) =>
       groupe === "reperes"
@@ -265,6 +280,17 @@ export function Accueil() {
         : { ...d, tuiles: reordonner(d.tuiles, active.id as IdTuile, over.id as IdTuile) },
     )
   }
+  const debutGlisser = (e: DragStartEvent) => setTuileSaisie(e.active.id as IdTuile)
+
+  // Placement libre d'une tuile (retour de Guillaume, 2026-10-10 : « mettre
+  // mon bloc où je veux du premier coup ») : la cible est la tuile sous le
+  // pointeur, la plus proche au clavier ; aucune tuile ne se décale pendant
+  // le geste, la tuile lâchée prend la place visée et les autres suivent.
+  const collisionTuiles: CollisionDetection = (args) => {
+    const sousPointeur = pointerWithin(args)
+    return sousPointeur.length > 0 ? sousPointeur : closestCenter(args)
+  }
+  const sansDecalage = () => null
 
   // Repères et tuiles réellement affichés : la disposition, moins les modules désactivés.
   const modulesEffectifs = modules.length ? modules : [...TOUS_MODULES]
@@ -384,6 +410,14 @@ export function Accueil() {
             </div>
           )}
 
+          {edition && (
+            <CatalogueTuiles
+              propositions={propositions}
+              onAjouter={(id) => majBrouillon((d) => ({ ...d, tuiles: remettre(d.tuiles, id, IDS_TUILES) }))}
+              className="accueil-entree"
+            />
+          )}
+
           {(reperesVisibles.length > 0 || edition) && (
             <RepereRangee className="accueil-entree" style={{ "--rang": 0 } as React.CSSProperties} aria-label="Repères">
               <DndContext sensors={capteurs} collisionDetection={closestCenter} onDragEnd={finGlisser("reperes")}>
@@ -419,8 +453,14 @@ export function Accueil() {
           )}
 
           <TuileGrille>
-            <DndContext sensors={capteurs} collisionDetection={closestCenter} onDragEnd={finGlisser("tuiles")}>
-            <SortableContext items={tuilesVisibles} strategy={rectSortingStrategy}>
+            <DndContext
+              sensors={capteurs}
+              collisionDetection={collisionTuiles}
+              onDragStart={debutGlisser}
+              onDragCancel={() => setTuileSaisie(null)}
+              onDragEnd={finGlisser("tuiles")}
+            >
+            <SortableContext items={tuilesVisibles} strategy={sansDecalage}>
             {tuilesVisibles.map((id, i) => (
               <Personnalisable
                 key={id}
@@ -442,16 +482,15 @@ export function Accueil() {
               </Personnalisable>
             ))}
             </SortableContext>
+            <DragOverlay dropAnimation={null}>
+              {tuileSaisie && (
+                <div className="rounded-2xl border-2 border-sauge bg-craie/95 px-4 py-3 text-sm font-semibold text-encre shadow-fiche" aria-hidden>
+                  {LIBELLES[tuileSaisie]}
+                </div>
+              )}
+            </DragOverlay>
             </DndContext>
           </TuileGrille>
-
-          {edition && (
-            <CatalogueTuiles
-              propositions={propositions}
-              onAjouter={(id) => majBrouillon((d) => ({ ...d, tuiles: remettre(d.tuiles, id, IDS_TUILES) }))}
-              className="accueil-entree"
-            />
-          )}
 
           <p className="flex flex-wrap items-center justify-between gap-2 pt-2 text-xs text-ardoise">
             <span>Nouvel accueil, en essai : vos retours comptent, surtout « je ne retrouve plus… ».</span>
