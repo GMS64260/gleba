@@ -15,6 +15,7 @@ import { adapterConseilSousAbri, genererRecommandationIrrigation } from '@/lib/m
 import { irrigationCache, irrigationCacheKey } from '@/lib/irrigation-cache'
 import { cultureIrrigationDemarreeWhere } from '@/lib/irrigation-eligibility'
 import { grouperRecommandationsParPlanche } from '@/lib/irrigation-planche'
+import { etatCulture } from '@/lib/cultures/etat'
 import type { MeteoJournaliere, MeteoPrevision } from '@/lib/meteo'
 import type { Prisma } from '@prisma/client'
 
@@ -210,7 +211,9 @@ export async function GET(request: NextRequest) {
           ...reco,
           plancheId: culture.planche!.id,
           varietyName: culture.variete?.nom ?? null,
-          etatCulture: culture.plantationFaite ? 'Plantée' : 'Semée',
+          // QA cmv2eg99z — même état que la liste des cultures : une culture
+          // récoltée s'affichait « Semée » (cascade recopiée sans `recolteFaite`).
+          etatCulture: etatCulture(culture),
           derniereIrrigation: culture.derniereIrrigation?.toISOString() ?? null,
           irrigationSysteme: culture.planche?.irrigation ?? null,
         })
