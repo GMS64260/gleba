@@ -41,7 +41,12 @@ const DialogContent = React.forwardRef<
         // max-h en dvh (viewport dynamique mobile) + scroll interne : sans ça,
         // les longues modales débordent sous la barre du navigateur et le
         // bouton de validation devient inaccessible (feedback LVBB40430).
-        "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 max-h-[calc(100dvh-2rem)] overflow-y-auto data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg",
+        // QA cmv298ouh — le contenu est une grille : un enfant (formulaire)
+        // garde `min-width:auto`, donc la largeur de son plus long texte sans
+        // retour à la ligne (libellé de lot dans un Select) élargissait la
+        // grille au-delà du dialogue (543 px dans 373 px à 375 px, mesuré).
+        // `min-width:0` sur chaque enfant rend aux champs la largeur du dialogue.
+        "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 max-h-[calc(100dvh-2rem)] overflow-y-auto [&>*]:min-w-0 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg",
         className
       )}
       {...props}
