@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { UserMenu } from "@/components/auth/UserMenu"
+import { libelleTypeIntervention } from "@/lib/interventions/types"
 import {
   Sprout,
   TreeDeciduous,
@@ -281,20 +282,6 @@ function getTypeStyle(type: string) {
   return TYPE_COLORS[type] || { bg: "bg-slate-50", border: "border-slate-300", text: "text-slate-700", dot: "bg-slate-500" }
 }
 
-const TYPE_LABELS: Record<string, string> = {
-  semis: "Semis",
-  plantation: "Plantation",
-  recolte: "Récolte",
-  fertilisation: "Fertilisation",
-  traitement_phyto: "Traitement phyto",
-  desherbage: "Désherbage",
-  binage: "Binage",
-  paillage: "Paillage",
-  arrosage: "Arrosage",
-  taille: "Taille",
-  tuteurage: "Tuteurage",
-  autre: "Autre",
-}
 
 // ============================================================
 // MAIN PAGE
@@ -1008,7 +995,7 @@ function CultureTab({
                                     <div className={`flex-1 rounded-md px-3 py-1.5 text-sm ${style.bg} border ${style.border}`}>
                                       <div className="flex items-center justify-between">
                                         <span className={`font-medium ${style.text}`}>
-                                          {TYPE_LABELS[event.type] || event.type}
+                                          {libelleTypeIntervention(event.type)}
                                         </span>
                                         <span className="text-xs text-slate-500">
                                           {formatDate(event.date)}
