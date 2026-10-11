@@ -43,7 +43,7 @@ import { Combobox } from "@/components/ui/combobox"
 import { useToast } from "@/hooks/use-toast"
 import { confirmDialog } from "@/lib/global-dialog"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
-import { type UniteQuantite } from "@/lib/recolte/projection"
+import { libelleUniteQuantite, type UniteQuantite } from "@/lib/recolte/projection"
 import {
   ajouterQuantite,
   formatQuantite,
@@ -54,6 +54,14 @@ import {
 /** Unité d'une ligne de récolte ; null = kg (lignes antérieures au 2026-08-20). */
 const uniteRecolte = (unite: string | null | undefined): UniteQuantite =>
   (unite ?? 'kg') as UniteQuantite
+
+/**
+ * QA cmv2r1oao — la vente d'une récolte en tiges parlait de kilos (« Zinnia -
+ * 5.00 kg », « Prix au kg ») : le prix porté par `prixKg` est un prix PAR UNITÉ
+ * de la récolte, l'écran doit nommer cette unité.
+ */
+const prixParUnite = (unite: UniteQuantite): string =>
+  unite === 'kg' ? 'au kg' : `par ${libelleUniteQuantite(unite, 1)}`
 
 interface RecolteWithRelations {
   id: number
@@ -250,21 +258,24 @@ export default function RecoltesPage() {
     // Règle projet (famille C) : pas de bouton grisé muet — gardes
     // early-return avec toast au submit. Le serveur exige prix + date +
     // client (recoltePatchSchema), on valide donc les trois ici.
+    const unite = uniteRecolte(selectedRecolte.unite)
     const prixKg = parseFloat(venteData.prixKg)
     if (!prixKg || prixKg <= 0) {
       toast({
         variant: "destructive",
         title: "Prix manquant",
-        description: "Saisissez un prix au kg supérieur à 0 €.",
+        description: `Saisissez un prix ${prixParUnite(unite)} supérieur à 0 €.`,
       })
       return
     }
     const quantite = parseFloat(venteData.quantiteVendue)
-    if (!quantite || quantite <= 0) {
+    if (!quantite || quantite <= 0 || (unite !== 'kg' && !Number.isInteger(quantite))) {
       toast({
         variant: "destructive",
         title: "Quantité invalide",
-        description: "Saisissez la quantité vendue en kg.",
+        description: unite === 'kg'
+          ? "Saisissez la quantité vendue en kg."
+          : `Saisissez un nombre entier de ${libelleUniteQuantite(unite, 2)} vendu(e)s.`,
       })
       return
     }
@@ -272,7 +283,7 @@ export default function RecoltesPage() {
       toast({
         variant: "destructive",
         title: "Quantité trop élevée",
-        description: `Maximum disponible : ${selectedRecolte.quantite.toFixed(2)} kg.`,
+        description: `Maximum disponible : ${formatQuantite(selectedRecolte.quantite, unite)}.`,
       })
       return
     }
@@ -652,7 +663,7 @@ export default function RecoltesPage() {
                         <TableHead>Date vente</TableHead>
                         <TableHead>Espèce</TableHead>
                         <TableHead className="text-right">Quantité</TableHead>
-                        <TableHead className="text-right">Prix/kg</TableHead>
+                        <TableHead className="text-right">Prix unitaire</TableHead>
                         <TableHead className="text-right">Total</TableHead>
                         <TableHead>Client</TableHead>
                         <TableHead>Facture</TableHead>
@@ -676,7 +687,9 @@ export default function RecoltesPage() {
                           <TableCell className="text-right">
                             {formatQuantite(r.quantite, uniteRecolte(r.unite))}
                           </TableCell>
-                          <TableCell className="text-right">{r.prixKg ? `${r.prixKg.toFixed(2)} €` : "-"}</TableCell>
+                          <TableCell className="text-right">
+                            {r.prixKg ? `${r.prixKg.toFixed(2)} € / ${libelleUniteQuantite(uniteRecolte(r.unite), 1)}` : "-"}
+                          </TableCell>
                           <TableCell className="text-right font-medium text-green-600">
                             {r.prixTotal ? `${r.prixTotal.toFixed(2)} €` : "-"}
                           </TableCell>
@@ -757,7 +770,7 @@ export default function RecoltesPage() {
               <div className="space-y-4">
                 <div className="p-3 bg-green-50 rounded-lg">
                   <p className="text-sm text-green-700">
-                    {selectedRecolte.especeId} - {selectedRecolte.quantite.toFixed(2)} kg
+                    {selectedRecolte.especeId} - {formatQuantite(selectedRecolte.quantite, uniteRecolte(selectedRecolte.unite))}
                     {selectedRecolte.culture?.variete && ` (${selectedRecolte.culture.variete.nom ?? selectedRecolte.culture.variete.id})`}
                   </p>
                 </div>
@@ -779,7 +792,7 @@ export default function RecoltesPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label>Prix au kg (€)</Label>
+                    <Label>Prix {prixParUnite(uniteRecolte(selectedRecolte.unite))} (€)</Label>
                     <Input
                       type="number"
                       step="0.01"
@@ -789,10 +802,10 @@ export default function RecoltesPage() {
                     />
                   </div>
                   <div>
-                    <Label>Quantité vendue (kg)</Label>
+                    <Label>Quantité vendue ({libelleUniteQuantite(uniteRecolte(selectedRecolte.unite), 2)})</Label>
                     <Input
                       type="number"
-                      step="0.01"
+                      step={uniteRecolte(selectedRecolte.unite) === "kg" ? "0.01" : "1"}
                       min="0"
                       value={venteData.quantiteVendue}
                       onChange={(e) => setVenteData({ ...venteData, quantiteVendue: e.target.value })}

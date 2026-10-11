@@ -14,6 +14,7 @@ import { invalidateKpi } from '@/lib/kpi'
 import { creerFacture, annulerFactureLiee } from '@/lib/facture-utils'
 import { jourCivilLocal } from '@/lib/cultures/execution'
 import { refusRecolteAvantDebut } from '@/lib/recolte/date-coherente'
+import { libelleUniteQuantite, type UniteQuantite } from '@/lib/recolte/projection'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -264,6 +265,22 @@ export async function PATCH(
     // l'ignorait (récolte entière marquée vendue, facture incohérente). On
     // scinde désormais : la récolte vendue porte la quantité vendue, le
     // reliquat redevient une récolte en_stock distincte.
+    // QA cmv2r1oao — des tiges, pièces ou bottes se vendent à l'unité : l'écran
+    // le contrôle, la route aussi (un reliquat de 2,5 tiges n'aurait aucun sens).
+    if (
+      body.statut === 'vendu' &&
+      typeof body.quantiteVendue === 'number' &&
+      (existing.unite ?? 'kg') !== 'kg' &&
+      !Number.isInteger(body.quantiteVendue)
+    ) {
+      return NextResponse.json(
+        {
+          error: `Quantité vendue invalide : un nombre entier de ${libelleUniteQuantite(existing.unite as UniteQuantite, 2)} est attendu.`,
+        },
+        { status: 400 }
+      )
+    }
+
     const quantiteVendue =
       body.statut === 'vendu' &&
       typeof body.quantiteVendue === 'number' &&
@@ -356,7 +373,10 @@ export async function PATCH(
             // Quantité réellement vendue (pas la quantité totale de la
             // récolte) : sinon quantité × prix unitaire ≠ montant.
             quantite: quantiteVendue,
-            unite: 'kg',
+            // QA cmv2r1oao — même règle que l'écriture auto (auto-compta.ts) :
+            // une récolte en tiges se facture en tiges, `prixKg` étant un prix
+            // par unité de la récolte.
+            unite: libelleUniteQuantite((existing.unite ?? 'kg') as UniteQuantite, 1),
             prixUnitaire: (body.prixKg || 0) / 1.055,
             tauxTVA: 5.5,
             montantHT: totalHT,
