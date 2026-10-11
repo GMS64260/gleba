@@ -11,24 +11,27 @@ const mocks = vi.hoisted(() => ({
   recolteFindUnique: vi.fn(),
   recolteUpdate: vi.fn(),
   cultureFindUnique: vi.fn(),
+  recolteCreate: vi.fn(),
+  creerFacture: vi.fn(),
 }))
 
 vi.mock("@/lib/auth-utils", () => ({ requireAuthApi: mocks.requireAuthApi }))
 vi.mock("@/lib/kpi", () => ({ invalidateKpi: vi.fn() }))
 vi.mock("@/lib/auto-compta", () => ({ createVenteFromRecolte: vi.fn(), deleteAutoEntry: vi.fn() }))
-vi.mock("@/lib/facture-utils", () => ({ creerFacture: vi.fn(), annulerFactureLiee: vi.fn() }))
+vi.mock("@/lib/facture-utils", () => ({ creerFacture: mocks.creerFacture, annulerFactureLiee: vi.fn() }))
 vi.mock("@/lib/prisma", () => {
-  const tx = { recolte: { update: mocks.recolteUpdate } }
+  const tx = { recolte: { update: mocks.recolteUpdate, create: mocks.recolteCreate } }
   return {
     default: {
       recolte: { findUnique: mocks.recolteFindUnique },
       culture: { findUnique: mocks.cultureFindUnique },
+      produitBoutique: { findFirst: vi.fn().mockResolvedValue(null) },
       $transaction: async (fn: (t: typeof tx) => unknown) => fn(tx),
     },
   }
 })
 
-import { PUT } from "./route"
+import { PATCH, PUT } from "./route"
 
 // Fuseau de la production : la règle compare des journées civiles de Paris.
 beforeAll(() => { vi.stubEnv("TZ", "Europe/Paris") })
@@ -110,6 +113,68 @@ describe("PUT /api/recoltes/[id] — date de récolte et cycle de la culture", (
     const res = await modifier({ cultureId: 999, quantite: 25 })
     expect(res.status).toBe(400)
     expect(mocks.cultureFindUnique.mock.calls[0][0].where).toEqual({ id: 999, userId: "u1" })
+    expect(mocks.recolteUpdate).not.toHaveBeenCalled()
+  })
+})
+
+describe("PATCH /api/recoltes/[id] — vente d'une récolte comptée en tiges (QA cmv2r1oao)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.requireAuthApi.mockResolvedValue({ session: { user: { id: "u1" } } })
+    mocks.recolteFindUnique.mockResolvedValue({
+      ...RECOLTE,
+      quantite: 5,
+      unite: "tige",
+      statut: "en_stock",
+      factureId: null,
+      espece: { id: "Zinnia", nom: "Zinnia" },
+      culture: { variete: null },
+    })
+    mocks.recolteUpdate.mockResolvedValue({ id: 1150 })
+    mocks.creerFacture.mockResolvedValue({ id: 77 })
+  })
+
+  it("facture des tiges, pas des kilos", async () => {
+    const res = await PATCH(
+      new Request("http://localhost/api/recoltes/1150", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          statut: "vendu",
+          dateVente: "2026-10-11T08:00:00.000Z",
+          prixKg: 1.2,
+          prixTotal: 6,
+          quantiteVendue: 5,
+          clientId: null,
+          clientNom: "Marché",
+          creerFacture: true,
+        }),
+      }) as never,
+      { params: Promise.resolve({ id: "1150" }) }
+    )
+    expect(res.status).toBe(200)
+    const ligne = mocks.creerFacture.mock.calls[0][1].lignes[0]
+    expect(ligne).toMatchObject({ quantite: 5, unite: "tige" })
+  })
+
+  it("refuse une fraction de tige", async () => {
+    const res = await PATCH(
+      new Request("http://localhost/api/recoltes/1150", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          statut: "vendu",
+          dateVente: "2026-10-11T08:00:00.000Z",
+          prixKg: 1.2,
+          prixTotal: 3,
+          quantiteVendue: 2.5,
+          clientNom: "Marché",
+          creerFacture: false,
+        }),
+      }) as never,
+      { params: Promise.resolve({ id: "1150" }) }
+    )
+    expect(res.status).toBe(400)
     expect(mocks.recolteUpdate).not.toHaveBeenCalled()
   })
 })
