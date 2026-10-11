@@ -19,9 +19,10 @@ import { useToast } from "@/hooks/use-toast"
 import { Button } from "@/components/ui/button"
 import { LigneRegistre } from "@/components/accueil/LigneRegistre"
 import { PastilleEtat, type EtatRegistre } from "@/components/accueil/PastilleEtat"
-import { formatNombre } from "@/lib/accueil/classement"
+import { formatNombre } from "@/lib/format-utils"
 import { libelleIrrigation } from "@/lib/planches/libelle-irrigation"
 import { annulerArrosage, noterArrosage } from "@/lib/irrigation/noter-arrosage"
+import { aideQuantite, detailArrosageNote, lireLitres, litresConseilles } from "@/lib/irrigation/quantite-versee"
 import { notifierEnregistrement } from "@/lib/notifications-ecran"
 
 // ============================================================
@@ -147,7 +148,7 @@ export function IrrigationAdvisor({ parcelleId, lat, lng, scopeLabel }: Irrigati
       // QA cmsioeku5 — l'arrosage est tracé : on dit où le retrouver.
       notifierEnregistrement({
         titre: "Arrosage noté",
-        detail: `${reco.plancheName} · ${litres ? `${formatNombre(litres, 1)} L versés` : "arrosage complet"}, consigné dans les interventions.`,
+        detail: detailArrosageNote(reco.plancheName, litres),
         // L'annulation émet « gleba:irrigation-updated » : le conseil se recharge.
         annuler: async () => {
           const annule = await annulerArrosage(resultat.annulation)
@@ -452,10 +453,9 @@ function RecoRow({
   const arroseeAujourdhui = reco.joursDepuisIrrigation === 0
   // Encore à arroser après un apport partiel : on peut noter le complément.
   const aArroser = reco.urgence === "critique" || reco.urgence === "haute"
-  const conseilLitres = reco.conseilQuantite > 0 && reco.surfaceM2 > 0
-    ? Math.round(reco.conseilQuantite * reco.surfaceM2)
-    : null
-  const litresSaisis = litres === null ? NaN : parseFloat(litres.replace(",", "."))
+  // Mêmes chiffres et mêmes mots que les Tâches et le Calendrier (`quantite-versee.ts`).
+  const conseilLitres = litresConseilles(reco.conseilQuantite, reco.surfaceM2)
+  const litresSaisis = litres === null ? NaN : lireLitres(litres)
   const enregistrer = async (quantite: number | null) => {
     if (await onWater(reco, quantite)) setLitres(null)
   }
@@ -522,10 +522,9 @@ function RecoRow({
             <span className="flex items-center gap-1.5">
               <input
                 id={`litres-${reco.plancheId}`}
-                type="number"
+                type="text"
                 inputMode="decimal"
-                min="0"
-                step="any"
+                autoComplete="off"
                 autoFocus
                 value={litres}
                 onChange={(e) => setLitres(e.target.value)}
@@ -544,11 +543,7 @@ function RecoRow({
             </Button>
           </div>
           <p className="text-[11px] leading-relaxed text-slate-500">
-            {conseilLitres !== null && `Conseil : ${formatNombre(reco.conseilQuantite, 1)} L/m², soit ${formatNombre(conseilLitres)} L. `}
-            {reco.surfaceM2 > 0
-              ? `Le conseil est recalculé avec l’eau versée sur ${formatNombre(reco.surfaceM2, 1)} m². `
-              : "Surface de la planche inconnue : l’arrosage comptera comme complet. "}
-            « Quantité inconnue » compte un arrosage complet (réserve du sol remplie).
+            {aideQuantite(reco.conseilQuantite, reco.surfaceM2)}
           </p>
         </form>
       )}

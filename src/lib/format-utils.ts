@@ -10,6 +10,11 @@
 
 import type { Devise } from "./territoires"
 
+/** Nombre en français (« 11 666 », « 29,9 ») ; partagé par les écrans et le moteur d'arrosage. */
+export function formatNombre(valeur: number, decimales = 0): string {
+  return new Intl.NumberFormat("fr-FR", { maximumFractionDigits: decimales }).format(valeur)
+}
+
 const euroFormatter = new Intl.NumberFormat("fr-FR", {
   style: "currency",
   currency: "EUR",

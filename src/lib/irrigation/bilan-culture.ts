@@ -6,7 +6,7 @@
  * la même dose sur les deux écrans.
  */
 import { bilanReserveSol, dureeCycleJours, efficaciteArrosage, joursEntre, noteSol, type ResultatBilanSol } from './bilan-sol'
-import { formatNombre } from '@/lib/accueil/classement'
+import { formatNombre } from '@/lib/format-utils'
 import type { ArrosageSaisi } from './arrosages-saisis'
 import { jourDuLieu, jourLocalIso, type MeteoBilan } from './meteo-bilan'
 
@@ -142,8 +142,9 @@ export function bilanCulture(
   // comptée qu'en plein champ, et on ne la crédite plus en silence.
   // - Seule la pluie évite l'arrosage : le conseil ne tranche pas (« À
   //   surveiller », sans dose, les deux réponses).
-  // - À arroser dans les deux cas : l'urgence commune, la dose la plus forte,
-  //   pas de pluie affichée, les deux chiffres dans le motif.
+  // - À arroser dans les deux cas : l'urgence commune, la dose la plus forte
+  //   avec l'état de réserve qui la porte, pas de pluie affichée, les deux
+  //   chiffres dans le motif.
   // - Ni l'un ni l'autre : le type ne change rien aujourd'hui (l'écran
   //   signale quand même la planche à compléter).
   const plein = bilan(false)
@@ -161,14 +162,25 @@ export function bilanCulture(
   }
   if (!aArroser(plein) || !aArroser(abri)) return plein
   const rang = { critique: 0, haute: 1, moyenne: 2, faible: 3, aucune: 4 } as const
-  // L'urgence certaine (la moindre des deux) et l'état de réserve qui va avec :
-  // pas de courriel « critique » sur une seule hypothèse.
-  const base = rang[plein.urgence] >= rang[abri.urgence] ? plein : abri
+  // L'urgence certaine (la moindre des deux) : pas de courriel « critique »
+  // sur une seule hypothèse. La réserve et la dose viennent du même cas,
+  // sinon la dose affichée pouvait dépasser la réserve facile affichée
+  // (relecture de 0e07f60). Le reste (consommation de la culture, dernier
+  // apport) reste celui du plein champ : l'évapotranspiration sous abri,
+  // réduite, baissait les litres de la semaine.
+  const urgence = rang[plein.urgence] >= rang[abri.urgence] ? plein.urgence : abri.urgence
+  const forte = abri.doseMm >= plein.doseMm ? abri : plein
   const sansArrosage = jours.size === 0 && apports.length === 0 ? ' Aucun arrosage noté.' : ''
   const sol = noteSol({ typeSol: planche.typeSol, retentionEau: planche.retentionEau, typeSolParcelle: planche.typeSolParcelle ?? null })
   return {
-    ...base,
-    doseMm: Math.max(plein.doseMm, abri.doseMm),
+    ...plein,
+    urgence,
+    depletionMm: forte.depletionMm,
+    reserveUtileMm: forte.reserveUtileMm,
+    reserveFacileMm: forte.reserveFacileMm,
+    tauxEpuisement: forte.tauxEpuisement,
+    joursAvantSeuil: forte.joursAvantSeuil,
+    doseMm: forte.doseMm,
     pluiePrevue48h: 0,
     raison:
       `Type de planche à renseigner : à arroser sous abri comme en plein champ. ` +

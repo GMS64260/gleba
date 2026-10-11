@@ -148,9 +148,11 @@ describe("bilanReserveSol", () => {
     const r = bilanReserveSol(entree({ et0: 6 }))
     expect(r.urgence).toBe("critique")
     expect(r.depletionMm - r.doseMm).toBeGreaterThanOrEqual(0.75 * r.reserveFacileMm)
-    expect(r.raison).toMatch(/Un apport ne suffit pas : après cette dose, il manquera encore [0-9,]+ mm, à apporter par un second arrosage\./)
+    expect(r.raison).toMatch(
+      /Un apport ne suffit pas : après cette dose, il manquera encore [0-9,]+ mm\. Notez la quantité versée pour que le conseil demande le complément\./,
+    )
     const leger = bilanReserveSol(entree({ joursArroses: ["2026-07-13"] }))
-    expect(leger.raison).not.toMatch(/second arrosage/)
+    expect(leger.raison).not.toMatch(/Un apport ne suffit pas/)
   })
 
   // Ticket QA cmv3ja7nr : « le bilan ne compte que la pluie » sous un tunnel.

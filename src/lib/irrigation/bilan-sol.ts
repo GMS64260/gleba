@@ -31,7 +31,7 @@
  * noter, c'est dire « la planche a eu son eau », le bilan repart de zéro).
  */
 
-import { formatNombre } from '@/lib/accueil/classement'
+import { formatNombre } from '@/lib/format-utils'
 
 export type UrgenceArrosage = 'critique' | 'haute' | 'moyenne' | 'faible' | 'aucune'
 
@@ -604,10 +604,12 @@ export function bilanReserveSol(e: EntreeBilanSol): ResultatBilanSol {
   else if (urgence === 'faible') raison = `${dans ?? 'Sol encore pourvu'} : ${reserve}, ${apport}.`
   else raison = `Sol bien pourvu : ${reserve}, ${apport}.`
   // La dose est plafonnée à la réserve facile : verser la dose conseillée
-  // peut laisser la planche « à arroser ». On le dit dès le conseil.
+  // peut laisser la planche « à arroser ». On le dit dès le conseil. Le
+  // complément n'est redemandé que si la quantité versée est notée : noté
+  // sans quantité, l'arrosage remet la réserve pleine (relecture de 0e07f60).
   const reste = depletion - doseMm
   if (doseMm > 0 && reste >= 0.75 * raw) {
-    raison += ` Un apport ne suffit pas : après cette dose, il manquera encore ${formatNombre(reste, 1)} mm, à apporter par un second arrosage.`
+    raison += ` Un apport ne suffit pas : après cette dose, il manquera encore ${formatNombre(reste, 1)} mm. Notez la quantité versée pour que le conseil demande le complément.`
   }
   if (e.culture.sousAbri) raison = `Sous abri, sans pluie. ${raison}`
   if (aFaire && e.joursArroses.length === 0 && !(e.apports ?? []).length) {

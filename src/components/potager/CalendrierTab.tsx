@@ -35,8 +35,10 @@ import { Info } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import type { ArrosageDuJour } from "@/lib/irrigation/a-arroser"
 import { annulerArrosage, noterArrosage } from "@/lib/irrigation/noter-arrosage"
+import { detailArrosageNote } from "@/lib/irrigation/quantite-versee"
 import { notifierEnregistrement } from "@/lib/notifications-ecran"
 import { LigneArrosage, LigneTache } from "@/components/potager/LigneTache"
+import { SaisieArrosage } from "@/components/potager/SaisieArrosage"
 import { PastilleEtat } from "@/components/accueil/PastilleEtat"
 import { BulkActions } from "@/components/calendrier/BulkActions"
 import { CalendarView } from "@/components/dashboard/CalendarView"
@@ -128,6 +130,9 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
   } | null>(null)
   const [harvestQuantity, setHarvestQuantity] = React.useState("")
   const [harvestLoading, setHarvestLoading] = React.useState(false)
+  // Planche dont on note l'arrosage, avec la quantité versée (ticket QA cmv3japsf).
+  const [arrosageANoter, setArrosageANoter] = React.useState<ArrosageDuJour | null>(null)
+  const [arrosageEnCours, setArrosageEnCours] = React.useState(false)
   const { weekStart, weekEnd } = React.useMemo(() => {
     // Une saison passée/future conserve le mois et le jour courants, mais
     // dans l'année choisie. Sinon `year=2027` interrogeait encore une semaine
@@ -302,26 +307,33 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
     }
   }
 
-  // Noter l'arrosage d'une planche (besoin du jour, bilan hydrique)
-  const noterArrosagePlanche = async (arrosage: ArrosageDuJour) => {
-    const resultat = await noterArrosage(arrosage.cultureIds)
+  // Noter l'arrosage d'une planche (besoin du jour, bilan hydrique). Avec la
+  // quantité versée, le bilan retranche ces litres et la planche peut rester
+  // à arroser (rechargement par « gleba:irrigation-updated ») ; sans, il
+  // compte comme complet.
+  const noterArrosagePlanche = async (arrosage: ArrosageDuJour, litres: number | null, notes: string | null) => {
+    setArrosageEnCours(true)
+    const resultat = await noterArrosage(arrosage.cultureIds, notes, litres, "calendrier")
+    setArrosageEnCours(false)
     if (!resultat.ok) {
       toast({ variant: "destructive", title: "Erreur", description: resultat.erreur })
-      fetchTaches()
       return
     }
-    setTaches((prev) => {
-      if (!prev) return prev
-      return {
-        ...prev,
-        irrigation: prev.irrigation.filter((a) => a.cle !== arrosage.cle),
-        stats: { ...prev.stats, aIrriguer: Math.max(0, prev.stats.aIrriguer - 1) },
-      }
-    })
+    setArrosageANoter(null)
+    if (!litres) {
+      setTaches((prev) => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          irrigation: prev.irrigation.filter((a) => a.cle !== arrosage.cle),
+          stats: { ...prev.stats, aIrriguer: Math.max(0, prev.stats.aIrriguer - 1) },
+        }
+      })
+    }
     // Un tap de trop s'annule : inverse exact (revue du 2026-10-10).
     notifierEnregistrement({
       titre: "Arrosage noté",
-      detail: arrosage.plancheNom ?? arrosage.especes,
+      detail: detailArrosageNote(arrosage.plancheNom ?? arrosage.especes, litres),
       annuler: async () => {
         const annule = await annulerArrosage(resultat.annulation)
         if (!annule.ok) throw new Error(annule.erreur)
@@ -747,7 +759,7 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
                             arrosage.raison,
                             arrosage.sousAbri ? "sous abri" : null,
                           ]}
-                          onAction={() => noterArrosagePlanche(arrosage)}
+                          onAction={() => setArrosageANoter(arrosage)}
                         />
                       ))}
                     </div>
@@ -808,6 +820,22 @@ export function CalendrierTab({ year }: CalendrierTabProps) {
               Enregistrer la récolte
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={arrosageANoter !== null} onOpenChange={(nextOpen) => {
+        if (!nextOpen && !arrosageEnCours) setArrosageANoter(null)
+      }}>
+        <DialogContent className="max-h-[calc(100dvh-1rem)] overflow-y-auto sm:max-w-[430px]">
+          {arrosageANoter && (
+            <SaisieArrosage
+              key={arrosageANoter.cle}
+              arrosage={arrosageANoter}
+              libelle={[arrosageANoter.plancheNom, arrosageANoter.especes].filter(Boolean).join(" · ")}
+              enCours={arrosageEnCours}
+              onNoter={(litres, notes) => noterArrosagePlanche(arrosageANoter, litres, notes)}
+              onRetour={() => setArrosageANoter(null)}
+            />
+          )}
         </DialogContent>
       </Dialog>
     </div>
