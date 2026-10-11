@@ -3,7 +3,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Bird, CalendarCheck, CloudSun, Map as MapIcon, Megaphone, MoreHorizontal, Pencil, Settings, Sprout, Store, TreeDeciduous, Wallet } from "lucide-react"
+import { Bird, CalendarCheck, ClipboardList, CloudSun, Map as MapIcon, Megaphone, MoreHorizontal, Pencil, Settings, Sprout, Store, TreeDeciduous, Wallet } from "lucide-react"
 
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { useModules } from "@/hooks/use-modules"
@@ -12,8 +12,8 @@ import { cn } from "@/lib/utils"
 
 /**
  * Navigation basse du téléphone (maquette retenue, L4) : cinq entrées,
- * « Noter » au centre, « Plus » ouvre la liste complète (modules, boutique,
- * communauté, réglages). Toute action de l'en-tête reste à deux gestes.
+ * « Noter » au centre, « Plus » ouvre la liste complète (interventions,
+ * modules, boutique, communauté, réglages). Toute action de l'en-tête reste à deux gestes.
  */
 const CLASSE_ENTREE =
   "flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-lg text-[10.5px] font-medium text-ardoise focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sauge"
@@ -25,7 +25,10 @@ interface Lien {
   module?: ModuleId
 }
 
+// QA cmv2r57qk — le registre des interventions (désherbage, traitement,
+// taille…) n'était atteignable que par son URL depuis le nouvel accueil.
 const PLUS: Lien[] = [
+  { href: "/interventions", libelle: "Interventions", icone: ClipboardList },
   { href: "/verger", libelle: "Verger", icone: TreeDeciduous, module: "verger" },
   { href: "/elevage", libelle: "Élevage", icone: Bird, module: "elevage" },
   { href: "/comptabilite", libelle: "Comptabilité", icone: Wallet, module: "comptabilite" },

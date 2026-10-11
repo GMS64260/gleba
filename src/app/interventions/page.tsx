@@ -34,6 +34,7 @@ import { libelleCulture } from "@/lib/cultures/label"
 import { ZntFieldset } from "@/components/phyto/ZntFieldset"
 import { todayLocalISO } from '@/lib/format-utils'
 import { TYPES_INTERVENTION, libelleTypeIntervention } from "@/lib/interventions/types"
+import { EVENEMENT_NOUVELLE_INTERVENTION } from "@/lib/accueil/evenements"
 import {
   Sprout,
   TreeDeciduous,
@@ -285,6 +286,13 @@ export default function InterventionsPage() {
   React.useEffect(() => {
     if (typeof window === "undefined") return
     const sp = new URLSearchParams(window.location.search)
+    // QA cmv2r57qk — « Noter une intervention » depuis la navigation de
+    // l'accueil (palette, Tâches) ouvre directement une fiche vierge.
+    if (sp.get("nouvelle") === "1") {
+      setDialogOpen(true)
+      window.history.replaceState(window.history.state, "", window.location.pathname)
+      return
+    }
     const prefill = sp.get("prefill")
     if (!prefill) return
     const params = new URLSearchParams(prefill)
@@ -635,6 +643,16 @@ export default function InterventionsPage() {
     setForm(emptyForm)
     setDialogOpen(true)
   }
+
+  // QA cmv2r57qk — « Noter une intervention » depuis la palette alors que le
+  // registre est déjà affiché : pas de remontage, donc pas de `?nouvelle=1`.
+  const ouvrirNouvelleRef = React.useRef(handleOpenNew)
+  ouvrirNouvelleRef.current = handleOpenNew
+  React.useEffect(() => {
+    const ouvrir = () => ouvrirNouvelleRef.current()
+    window.addEventListener(EVENEMENT_NOUVELLE_INTERVENTION, ouvrir)
+    return () => window.removeEventListener(EVENEMENT_NOUVELLE_INTERVENTION, ouvrir)
+  }, [])
 
   const clearFilters = () => {
     setFilterType("")

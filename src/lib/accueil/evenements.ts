@@ -24,3 +24,15 @@ export function ouvrirRecherche(): void {
   if (typeof window === "undefined") return
   window.dispatchEvent(new CustomEvent(EVENEMENT_OUVRIR_RECHERCHE))
 }
+
+/**
+ * « Noter une intervention » (palette) quand le registre est déjà affiché : la
+ * page ne se remonte pas sur `?nouvelle=1`, elle ouvre sa fiche sur cet
+ * événement (QA cmv2r57qk).
+ */
+export const EVENEMENT_NOUVELLE_INTERVENTION = "gleba:nouvelle-intervention"
+
+export function ouvrirNouvelleIntervention(): void {
+  if (typeof window === "undefined") return
+  window.dispatchEvent(new CustomEvent(EVENEMENT_NOUVELLE_INTERVENTION))
+}
