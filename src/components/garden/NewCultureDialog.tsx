@@ -329,8 +329,11 @@ export function NewCultureDialog({ open, onOpenChange, plancheId, plancheNom, pl
       }
 
       if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || "Erreur lors de la création")
+        const error = await response.json().catch(() => null)
+        // QA cmv2r1v63 — un refus de largeur arrive avec ses ajustements
+        // (« Réduire à 2 rangs ») : les taire laissait deviner quoi corriger.
+        const suggestions: string[] = Array.isArray(error?.suggestions) ? error.suggestions : []
+        throw new Error([error?.error || "Erreur lors de la création", ...suggestions].join(" · "))
       }
 
       const culture = await response.json()
