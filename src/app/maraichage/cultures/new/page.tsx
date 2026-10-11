@@ -10,7 +10,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, Sprout, Save } from "lucide-react"
 import { formatSemaine } from "@/lib/assistant-helpers"
-import { useForm } from "react-hook-form"
+import { useForm, type FieldErrors } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { addDays, addYears, differenceInCalendarDays, format } from "date-fns"
 
@@ -46,6 +46,7 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { AppHeader, PageToolbar } from "@/components/shell/AppHeader"
 import { cultureFormSchema, type CreateCultureInput } from "@/lib/validations"
+import type { AjustementOccupation } from "@/lib/planche-validation"
 import { estimerNombrePlantsStrict } from "@/lib/assistant-helpers"
 import { RotationAdviceCompact } from "@/components/planche"
 import { EspeceCombobox, type EspeceOption } from "@/components/especes/EspeceCombobox"
@@ -100,6 +101,24 @@ const LIBELLE_CHAMP_DATE: Record<ChampDate, string> = {
   dateSemis: "semis",
   datePlantation: "plantation",
   dateRecolte: "récolte",
+}
+
+/** Libellés des champs, pour dire lequel bloque l'enregistrement (QA cmv2r1v63). */
+const LIBELLE_CHAMP_FORMULAIRE: Record<string, string> = {
+  especeId: "Espèce",
+  varieteId: "Variété",
+  itpId: "Itinéraire technique",
+  plancheId: "Planche",
+  annee: "Année",
+  dateSemis: "Date semis",
+  datePlantation: "Date plantation",
+  dateRecolte: "Début de récolte",
+  finRecolte: "Fin de récolte",
+  longueur: "Longueur",
+  nbRangs: "Nb rangs",
+  espacement: "Espacement",
+  quantite: "Quantité",
+  notes: "Notes",
 }
 
 /**
@@ -164,6 +183,10 @@ export default function NewCulturePage() {
   // QA cmsp5927v — un refus d'occupation de planche n'existait que dans un toast
   // de 5 s : l'utilisateur revoyait un formulaire vide sans savoir pourquoi.
   const [submitError, setSubmitError] = React.useState<string | null>(null)
+  // QA cmv2r1v63 — « Réduire à 2 rangs » est proposé comme une action : la
+  // suggestion s'applique au champ, au lieu d'être recopiée à la main.
+  const [ajustementsRefus, setAjustementsRefus] = React.useState<AjustementOccupation[]>([])
+  const [infoAjustement, setInfoAjustement] = React.useState<string | null>(null)
   // Bug #1 — modale violation rotation (renvoyée par le backend en 409).
   const [rotationWarning, setRotationWarning] = React.useState<{
     payload: CreateCultureInput
@@ -560,6 +583,8 @@ export default function NewCulturePage() {
   const submitCulture = async (data: CreateCultureInput, confirmRotation = false) => {
     setIsSubmitting(true)
     setSubmitError(null)
+    setAjustementsRefus([])
+    setInfoAjustement(null)
     try {
       const response = await fetch("/api/cultures", {
         method: "POST",
@@ -582,8 +607,17 @@ export default function NewCulturePage() {
         // Les refus d'occupation de planche arrivent avec des suggestions
         // d'ajustement : elles ne servent à rien dans un toast de 5 s.
         const suggestions: string[] = Array.isArray(payload?.suggestions) ? payload.suggestions : []
+        const ajustements: AjustementOccupation[] = Array.isArray(payload?.ajustements) ? payload.ajustements : []
         const message = [payload?.error || "Erreur lors de la création", ...suggestions].join(" · ")
-        setSubmitError(message)
+        // Les ajustements applicables sont des boutons sous le message : on ne
+        // les répète pas dans le texte.
+        const applicables = ajustements.filter((a) => a.reduireRangs)
+        setAjustementsRefus(applicables)
+        setSubmitError(
+          applicables.length > 0
+            ? [payload?.error || "Erreur lors de la création", ...suggestions.filter((t) => !applicables.some((a) => a.message === t))].join(" · ")
+            : message
+        )
         throw new Error(message)
       }
 
@@ -617,6 +651,43 @@ export default function NewCulturePage() {
 
   const onSubmit = (data: CreateCultureInput) => submitCulture(data, false)
 
+  // QA cmv2r1v63 — un envoi bloqué par le formulaire (date incohérente…)
+  // laissait affiché le refus de l'essai précédent : « la même erreur revient »
+  // alors que rien n'était parti. Le message dit désormais ce qui bloque.
+  const onInvalid = (erreurs: FieldErrors<CreateCultureInput>) => {
+    setAjustementsRefus([])
+    setInfoAjustement(null)
+    const champs = Object.keys(erreurs).map((champ) => LIBELLE_CHAMP_FORMULAIRE[champ] ?? champ)
+    setSubmitError(
+      champs.length > 0
+        ? `Enregistrement impossible : vérifiez ${champs.length > 1 ? "les champs" : "le champ"} ${champs.join(", ")}.`
+        : "Enregistrement impossible : vérifiez le formulaire."
+    )
+  }
+
+  // Un refus décrit l'essai précédent : il s'efface dès que l'utilisateur
+  // modifie un champ (les pré-remplissages par setValue ne comptent pas).
+  React.useEffect(() => {
+    const abonnement = form.watch((_valeurs, { type }) => {
+      if (type !== "change") return
+      setSubmitError(null)
+      setAjustementsRefus([])
+      setInfoAjustement(null)
+    })
+    return () => abonnement.unsubscribe()
+  }, [form])
+
+  const appliquerAjustement = (ajustement: AjustementOccupation) => {
+    if (!ajustement.reduireRangs) return
+    marquerSaisie("nbRangs")
+    form.setValue("nbRangs", ajustement.reduireRangs, { shouldDirty: true, shouldValidate: true })
+    setAjustementsRefus([])
+    setSubmitError(null)
+    setInfoAjustement(
+      `Nombre de rangs ramené à ${ajustement.reduireRangs} : enregistrez pour créer la culture.`
+    )
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 aurora-bg-subtle">
       <div className="fixed inset-0 dot-grid opacity-40 pointer-events-none" aria-hidden="true" />
@@ -642,7 +713,7 @@ export default function NewCulturePage() {
           recouvrir les boutons de soumission en bas de formulaire mobile. */}
       <main className="container mx-auto px-4 py-6 pb-24 max-w-2xl">
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <form onSubmit={form.handleSubmit(onSubmit, onInvalid)} className="space-y-6">
             <Card>
               <CardHeader>
                 <CardTitle>Plante et emplacement</CardTitle>
@@ -1145,7 +1216,27 @@ export default function NewCulturePage() {
             </Card>
 
             {submitError && (
-              <p role="alert" className="text-sm text-red-600">{submitError}</p>
+              <div role="alert" className="space-y-2 text-sm text-red-600">
+                <p>{submitError}</p>
+                {ajustementsRefus.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {ajustementsRefus.map((a) => (
+                      <Button
+                        key={a.message}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => appliquerAjustement(a)}
+                      >
+                        {a.message}
+                      </Button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            {infoAjustement && (
+              <p role="status" className="text-sm text-emerald-700">{infoAjustement}</p>
             )}
 
             <div className="flex justify-end gap-4">

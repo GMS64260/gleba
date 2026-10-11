@@ -243,8 +243,12 @@ export function AssistantStepRecap({ state, onSuccess }: AssistantStepRecapProps
       })
 
       if (!cultureRes.ok) {
-        const err = await cultureRes.json()
+        const err = await cultureRes.json().catch(() => ({}))
         const errorMsg = err.error || 'Erreur creation culture'
+        // QA cmv2r1v63 — un refus de largeur porte ses ajustements lisibles :
+        // les dire plutôt que de vider l'objet `details` (largeurs brutes).
+        const suggestions: string[] = Array.isArray(err.suggestions) ? err.suggestions : []
+        if (suggestions.length > 0) throw new Error([errorMsg, ...suggestions].join(' · '))
         const details = err.details ? JSON.stringify(err.details) : ''
         throw new Error(`${errorMsg}${details ? ' - ' + details : ''}`)
       }

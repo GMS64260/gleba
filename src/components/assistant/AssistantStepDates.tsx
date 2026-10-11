@@ -35,10 +35,7 @@ import {
   estimerRendement,
   formatSemaine,
 } from "@/lib/assistant-helpers"
-import {
-  peutAjouterCulture,
-  suggererAjustements,
-} from "@/lib/planche-validation"
+import { evaluerOccupationPlanche, type VerdictOccupation } from "@/lib/planche-validation"
 import type { CultureData, PlancheData, EspeceData, ITPData } from "./AssistantDialog"
 import { formatQuantite } from "@/lib/recolte/quantites"
 
@@ -53,6 +50,8 @@ interface PlancheValidation {
   longueurOk: boolean
   message?: string
   suggestions?: string[]
+  /** Espacement entre rangs inconnu : la création ne vérifiera pas non plus. */
+  nonVerifie?: boolean
   loading: boolean
   error?: string
 }
@@ -232,8 +231,6 @@ export function AssistantStepDates({
 
   // --- Real-time planche validation ---
   const plancheId = selectedPlancheId || planche.id
-  // For API URL lookups (expects nom), use planche.nom; for FK, use plancheId (cuid)
-  const plancheNom = planche.nom || planche.id
   const hasPlancheDimensions = !!(planche.largeur && planche.longueur)
 
   React.useEffect(() => {
@@ -262,76 +259,82 @@ export function AssistantStepDates({
       })
 
       try {
-        let plancheLargeur = planche.largeur || 0.8
-        let plancheLongueur = planche.longueur || 10
-        let culturesExistantes: Array<{ nbRangs: number; espacementRangs: number }> = []
-
-        // If existing planche, fetch its data for accurate validation
+        // QA cmv2r1v63 — même règle que la création (evaluerOccupationPlanche) :
+        // l'aperçu ne contredit plus le refus du serveur. Une planche existante
+        // est lue par son identifiant et vérifiée par le serveur, sur les
+        // cultures qui chevauchent la période ; une planche en cours de
+        // création n'a encore aucune culture.
+        // Même sérialisation que l'enregistrement (AssistantStepRecap) : le
+        // verdict compare des instants, pas des jours.
+        const enIso = (d: Date | string | null | undefined) =>
+          d ? new Date(d).toISOString() : ""
+        let verdict: VerdictOccupation | null = null
         if (plancheId) {
-          const res = await fetch(`/api/planches/${encodeURIComponent(plancheNom || plancheId)}`)
-          if (!res.ok) throw new Error("Erreur lors du chargement de la planche")
+          const params = new URLSearchParams({
+            plancheId,
+            itpId: itp?.id ?? "",
+            nbRangs: String(culture.nbRangs),
+            longueur: culture.longueur ? String(culture.longueur) : "",
+            dateSemis: enIso(culture.dateSemis),
+            datePlantation: enIso(culture.datePlantation),
+            dateRecolte: enIso(culture.dateRecolte),
+          })
+          const res = await fetch(`/api/cultures/occupation?${params.toString()}`)
           if (cancelled) return
-
-          const plancheData = await res.json()
-          plancheLargeur = plancheData.largeur || plancheLargeur
-          plancheLongueur = plancheData.longueur || plancheLongueur
-
-          type CultureExistante = {
-            terminee: string | null
-            nbRangs?: number | null
-            itp?: { espacementRangs?: number | null } | null
-          }
-          culturesExistantes = (plancheData.cultures || [])
-            .filter((c: CultureExistante) => c.terminee === null)
-            .map((c: CultureExistante) => ({
-              nbRangs: c.nbRangs || 1,
-              espacementRangs: c.itp?.espacementRangs || 30,
-            }))
+          if (res.ok) verdict = await res.json()
+          else if (res.status !== 404) throw new Error("Erreur lors de la vérification de la planche")
+        }
+        if (!verdict) {
+          verdict = evaluerOccupationPlanche({
+            planche: { largeur: planche.largeur ?? null, longueur: planche.longueur ?? null },
+            culturesEnPlace: [],
+            espacementRangs: itp?.espacementRangs ?? null,
+            nbRangs: culture.nbRangs,
+            longueur: culture.longueur,
+            debut: null,
+            fin: null,
+          })
         }
 
         if (cancelled) return
 
-        const espacementRangs = itp?.espacementRangs || culture.espacement || 30
-        const nouvelleCulture = {
-          nbRangs: culture.nbRangs || 1,
-          espacementRangs,
-          longueur: culture.longueur || undefined,
-        }
-
-        const validation = peutAjouterCulture(
-          { largeur: plancheLargeur, longueur: plancheLongueur },
-          culturesExistantes,
-          nouvelleCulture
+        setPlancheValidation(
+          verdict.verifie
+            ? {
+                possible: verdict.possible,
+                largeurDisponible: verdict.largeurDisponible,
+                largeurNecessaire: verdict.largeurNecessaire,
+                largeurOccupee: verdict.largeurOccupee,
+                largeurPlanche: verdict.largeurPlanche,
+                longueurOk: !culture.longueur || !planche.longueur || culture.longueur <= planche.longueur,
+                message: verdict.message,
+                suggestions: verdict.ajustements.map((a) => a.message),
+                loading: false,
+              }
+            : verdict.longueurExcedentaire
+              ? {
+                  // Largeur non vérifiable, mais la culture dépasse la planche.
+                  possible: false,
+                  largeurDisponible: 0,
+                  largeurNecessaire: 0,
+                  largeurOccupee: 0,
+                  largeurPlanche: verdict.largeurPlanche,
+                  longueurOk: false,
+                  message: `${verdict.longueurExcedentaire}. ${verdict.avertissement}`,
+                  loading: false,
+                }
+              : {
+                  possible: true,
+                  largeurDisponible: 0,
+                  largeurNecessaire: 0,
+                  largeurOccupee: 0,
+                  largeurPlanche: verdict.largeurPlanche,
+                  longueurOk: true,
+                  message: verdict.avertissement,
+                  nonVerifie: true,
+                  loading: false,
+                }
         )
-
-        let suggestions: string[] = []
-        if (!validation.possible) {
-          const ajustements = suggererAjustements(
-            { largeur: plancheLargeur, longueur: plancheLongueur },
-            culturesExistantes,
-            nouvelleCulture
-          )
-          suggestions = ajustements.map(s => s.message)
-        }
-
-        // Check longueur separately
-        const longueurOk = !culture.longueur || culture.longueur <= plancheLongueur
-
-        if (cancelled) return
-
-        setPlancheValidation({
-          possible: validation.possible && longueurOk,
-          largeurDisponible: validation.largeurDisponible,
-          largeurNecessaire: validation.largeurNecessaire,
-          largeurOccupee: validation.largeurOccupee,
-          largeurPlanche: plancheLargeur,
-          longueurOk,
-          message: validation.message || (!longueurOk
-            ? `Longueur de culture (${culture.longueur}m) supérieure à la planche (${plancheLongueur}m)`
-            : undefined),
-          suggestions,
-          loading: false,
-        })
       } catch (err) {
         if (cancelled) return
         setPlancheValidation({
@@ -351,13 +354,15 @@ export function AssistantStepDates({
     return () => { cancelled = true }
   }, [
     plancheId,
-    plancheNom,
     hasPlancheDimensions,
     planche.largeur,
     planche.longueur,
     culture.nbRangs,
-    culture.espacement,
     culture.longueur,
+    culture.dateSemis,
+    culture.datePlantation,
+    culture.dateRecolte,
+    itp?.id,
     itp?.espacementRangs,
   ])
 
@@ -382,6 +387,7 @@ export function AssistantStepDates({
     if (!plancheValidation || plancheValidation.loading) return null
     if (plancheValidation.error) return { label: "Erreur de validation", variant: "error" }
     if (!plancheValidation.possible) return { label: "Espace insuffisant", variant: "error" }
+    if (plancheValidation.nonVerifie) return { label: "Occupation non vérifiée", variant: "warning" }
     const pct = getUsagePercent()
     if (pct > 80) return { label: "Espace limité", variant: "warning" }
     return { label: "L'espace est suffisant", variant: "success" }
@@ -797,6 +803,16 @@ function PlancheValidationIndicator({
         </div>
         <Skeleton className="h-2 w-full rounded-full" />
         <Skeleton className="h-3 w-32" />
+      </div>
+    )
+  }
+
+  // Espacement entre rangs inconnu : la création ne vérifiera rien non plus.
+  if (validation.nonVerifie) {
+    return (
+      <div className="flex items-start gap-2 rounded-lg border border-orange-200 bg-orange-50 p-3 text-xs text-orange-700">
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-orange-600" />
+        <span>{validation.message}</span>
       </div>
     )
   }

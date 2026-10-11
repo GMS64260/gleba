@@ -3,6 +3,8 @@
  * Vérifie si une culture peut tenir dans une planche
  */
 
+import { chevauchePeriode, type CycleCulture } from '@/lib/cultures/fenetre-recolte'
+
 interface CultureOccupation {
   nbRangs: number
   /**
@@ -74,7 +76,9 @@ export function peutAjouterCulture(
   // Largeur disponible (avec marge de 10cm de chaque côté)
   const largeurDisponible = largeurPlanche - largeurOccupee - 0.2
 
-  const possible = largeurNecessaire <= largeurDisponible
+  // Tolérance d'arrondi : 0,90 − 0,20 − 0,20 vaut 0,4999… en flottant, et un
+  // besoin d'exactement 0,50 m était refusé (revue du 2026-10-11).
+  const possible = largeurNecessaire <= largeurDisponible + 1e-9
 
   let message
   if (!possible) {
@@ -154,4 +158,116 @@ export function suggererAjustements(
   }
 
   return suggestions
+}
+
+/** Culture déjà en place sur la planche, telle que la lit `evaluerOccupationPlanche`. */
+export interface CulturePlancheOccupation extends CycleCulture {
+  nbRangs: number | null
+  itp?: { espacementRangs: number | null } | null
+}
+
+export interface AjustementOccupation {
+  reduireRangs?: number
+  reduireEspacement?: number
+  message: string
+}
+
+export type VerdictOccupation =
+  | {
+      /** Espacement entre rangs inconnu pour l'ITP : la largeur n'est pas vérifiée. */
+      verifie: false
+      possible: true
+      avertissement: string
+      /**
+       * La longueur, elle, se compare toujours : une culture plus longue que la
+       * planche est signalée même sans espacement connu (revue du 2026-10-11 :
+       * l'aperçu de l'assistant le disait avant l'alignement sur le serveur).
+       */
+      longueurExcedentaire: string | null
+      largeurPlanche: number
+    }
+  | {
+      verifie: true
+      possible: boolean
+      message?: string
+      ajustements: AjustementOccupation[]
+      largeurPlanche: number
+      largeurDisponible: number
+      largeurNecessaire: number
+      largeurOccupee: number
+      espacementRangs: number
+    }
+
+/** Repli historique des dimensions d'une planche non renseignée. */
+export const LARGEUR_PLANCHE_DEFAUT = 0.8
+export const LONGUEUR_PLANCHE_DEFAUT = 2
+
+export const AVERTISSEMENT_ESPACEMENT_INCONNU =
+  "Espacement entre rangs inconnu pour cet itinéraire technique : l'occupation de la planche n'a pas été vérifiée."
+
+/**
+ * Verdict d'occupation d'une planche pour une nouvelle culture : LA règle, pour
+ * la création (POST /api/cultures) comme pour l'aperçu de l'assistant.
+ *
+ * QA cmv2r1v63 (2026-10-10) — l'assistant recalculait l'occupation de son côté :
+ * 30 cm inventés pour l'espacement des cultures en place (le serveur ne compte
+ * que ce qu'il sait, QA cmsqla9c2), toutes les cultures non terminées au lieu
+ * de celles qui chevauchent la période (QA cmsp5927v). Son verdict et ses
+ * suggestions pouvaient donc contredire le refus du serveur.
+ *
+ * - Seules comptent les cultures dont le cycle chevauche [debut, fin] ; sans
+ *   dates exploitables d'un côté ou de l'autre, la culture est comptée.
+ * - Sans espacement entre rangs pour l'ITP de la nouvelle culture, la largeur
+ *   n'est pas vérifiée (avertissement) ; une longueur excédentaire est dite.
+ */
+export function evaluerOccupationPlanche(args: {
+  planche: { largeur: number | null; longueur: number | null }
+  /** Cultures non terminées de la planche. */
+  culturesEnPlace: CulturePlancheOccupation[]
+  /** Espacement entre rangs de l'ITP de la nouvelle culture (cm). */
+  espacementRangs: number | null
+  nbRangs: number | null | undefined
+  longueur: number | null | undefined
+  debut: Date | null
+  fin: Date | null
+}): VerdictOccupation {
+  const dimensions = {
+    largeur: args.planche.largeur || LARGEUR_PLANCHE_DEFAUT,
+    longueur: args.planche.longueur || LONGUEUR_PLANCHE_DEFAUT,
+  }
+  if (args.espacementRangs == null) {
+    return {
+      verifie: false,
+      possible: true,
+      avertissement: AVERTISSEMENT_ESPACEMENT_INCONNU,
+      // Longueur réelle seulement : le repli de 2 m ferait signaler toute
+      // culture d'une planche dont la longueur n'est pas saisie.
+      longueurExcedentaire:
+        args.longueur && args.planche.longueur && args.longueur > args.planche.longueur
+          ? `Longueur de culture (${args.longueur}m) supérieure à la longueur de la planche (${args.planche.longueur}m)`
+          : null,
+      largeurPlanche: dimensions.largeur,
+    }
+  }
+  const { debut, fin } = args
+  const existantes = args.culturesEnPlace
+    .filter((c) => !debut || !fin || (chevauchePeriode(c, debut, fin) ?? true))
+    .map((c) => ({ nbRangs: c.nbRangs || 1, espacementRangs: c.itp?.espacementRangs ?? null }))
+  const nouvelle = {
+    nbRangs: args.nbRangs || 1,
+    espacementRangs: args.espacementRangs,
+    longueur: args.longueur || undefined,
+  }
+  const validation = peutAjouterCulture(dimensions, existantes, nouvelle)
+  return {
+    verifie: true,
+    possible: validation.possible,
+    message: validation.message,
+    ajustements: validation.possible ? [] : suggererAjustements(dimensions, existantes, nouvelle),
+    largeurPlanche: dimensions.largeur,
+    largeurDisponible: validation.largeurDisponible,
+    largeurNecessaire: validation.largeurNecessaire,
+    largeurOccupee: validation.largeurOccupee,
+    espacementRangs: args.espacementRangs,
+  }
 }

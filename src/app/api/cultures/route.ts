@@ -9,7 +9,8 @@ import prisma from '@/lib/prisma'
 import { createCultureSchema, normalizeCultureDateFields, validateCultureDates } from '@/lib/validations'
 import { Prisma } from '@prisma/client'
 import { requireAuthApi } from '@/lib/auth-utils'
-import { peutAjouterCulture, suggererAjustements } from '@/lib/planche-validation'
+import { evaluerOccupationPlanche } from '@/lib/planche-validation'
+import { selectCulturesOccupation } from '@/lib/planches/occupation'
 import { ensurePlaceholderVariete } from '@/lib/varietes'
 import { invalidateKpi } from '@/lib/kpi'
 import { checkRotationViolation } from '@/lib/rotation-check'
@@ -397,20 +398,7 @@ export async function POST(request: NextRequest) {
         include: {
           cultures: {
             where: { terminee: null },
-            select: {
-              id: true,
-              // `vivace` : une vivace en place occupe la planche sans fin de
-              // cycle (chevauchePeriode), sa fenêtre de récolte ne la libère pas.
-              espece: { select: { id: true, vivace: true } },
-              dateSemis: true,
-              datePlantation: true,
-              dateRecolte: true,
-              finRecolte: true,
-              nbRangs: true,
-              itp: {
-                select: { espacementRangs: true },
-              },
-            },
+            select: selectCulturesOccupation,
           },
         },
       })
@@ -454,78 +442,46 @@ export async function POST(request: NextRequest) {
       }
 
       if (planche) {
-        // Récupérer l'ITP pour avoir l'espacementRangs.
-        // QA cmsqla9c2 — il n'y a plus de défaut inventé : la majorité des ITP
-        // du référentiel INRAE ne renseigne pas l'espacement entre rangs, et le
-        // 30 cm de repli refusait en 400 des créations parfaitement légitimes
-        // (4 rangs de radis sur une planche de 80 cm). Sans donnée, on prévient
-        // au lieu de refuser.
-        // L'ITP a déjà été lu plus haut sous la règle « visible et actif » : le
-        // relire sans cette règle rouvrait la porte qu'on vient de fermer, et
-        // faisait une requête de plus pour la même donnée.
-        const espacementRangs: number | null = itp?.espacementRangs ?? null
+        // QA cmsqla9c2 — pas d'espacement inventé : sans espacement entre rangs
+        // dans l'ITP (déjà lu plus haut sous la règle « visible et actif »), on
+        // prévient au lieu de refuser. QA cmsp5927v — seules comptent les
+        // cultures dont le cycle chevauche la période demandée. QA cmv2r1v63 —
+        // règle partagée avec l'aperçu de l'assistant (evaluerOccupationPlanche).
+        const verdict = evaluerOccupationPlanche({
+          planche: { largeur: planche.largeur, longueur: planche.longueur },
+          culturesEnPlace: planche.cultures,
+          espacementRangs: itp?.espacementRangs ?? null,
+          nbRangs: data.nbRangs,
+          longueur: data.longueur,
+          debut: newStart,
+          fin: newEnd,
+        })
 
-        // Cultures existantes avec leur espacement.
-        // QA cmsp5927v — l'occupation était calculée sur TOUTES les cultures non
-        // clôturées de la planche, sans regarder les dates : une culture d'une
-        // saison passée jamais marquée terminée saturait la planche à vie et la
-        // création était refusée (planche B2 de la démo). On ne compte donc que
-        // les cultures dont le cycle chevauche réellement la période demandée ;
-        // faute de dates exploitables, on reste prudent en la comptant.
-        const chevaucheLaPeriode = (c: (typeof planche.cultures)[number]) => {
-          if (!newStart || !newEnd) return true
-          // `null` = dates insuffisantes pour conclure → comptée, par prudence.
-          return chevauchePeriode(c, newStart, newEnd) ?? true
-        }
-        const culturesExistantes = planche.cultures.filter(chevaucheLaPeriode).map(c => ({
-          nbRangs: c.nbRangs || 1,
-          espacementRangs: c.itp?.espacementRangs ?? null,
-        }))
-
-        if (espacementRangs === null) {
-          dateWarnings.push(
-            "Espacement entre rangs inconnu pour cet itinéraire technique : l'occupation de la planche n'a pas été vérifiée."
-          )
-        } else {
-          // Nouvelle culture
-          const nouvelleCulture = {
-            nbRangs: data.nbRangs || 1,
-            espacementRangs,
-            longueur: data.longueur || undefined,
-          }
-
-          const validation = peutAjouterCulture(
-            { largeur: planche.largeur || 0.8, longueur: planche.longueur || 2 },
-            culturesExistantes,
-            nouvelleCulture
-          )
-
-          if (!validation.possible) {
-            const suggestions = suggererAjustements(
-              { largeur: planche.largeur || 0.8, longueur: planche.longueur || 2 },
-              culturesExistantes,
-              nouvelleCulture
-            )
-
-            return NextResponse.json(
-              {
-                // On nomme l'origine du chiffre : la suggestion « réduire
-                // l'espacement » parlait d'une valeur portée par l'itinéraire
-                // technique, que l'utilisateur confondait avec le champ
-                // « Espacement » du formulaire (espacement SUR le rang).
-                error: `${validation.message}. Espacement entre rangs de l'itinéraire technique : ${espacementRangs} cm.`,
-                suggestions: suggestions.map(s => s.message),
-                details: {
-                  largeurPlanche: planche.largeur,
-                  largeurOccupee: validation.largeurOccupee,
-                  largeurDisponible: validation.largeurDisponible,
-                  largeurNecessaire: validation.largeurNecessaire,
-                  espacementRangsItp: espacementRangs,
-                },
+        if (!verdict.verifie) {
+          dateWarnings.push(verdict.avertissement)
+          if (verdict.longueurExcedentaire) dateWarnings.push(verdict.longueurExcedentaire)
+        } else if (!verdict.possible) {
+          return NextResponse.json(
+            {
+              // On nomme l'origine du chiffre : la suggestion « réduire
+              // l'espacement » parlait d'une valeur portée par l'itinéraire
+              // technique, que l'utilisateur confondait avec le champ
+              // « Espacement » du formulaire (espacement SUR le rang).
+              error: `${verdict.message}. Espacement entre rangs de l'itinéraire technique : ${verdict.espacementRangs} cm.`,
+              suggestions: verdict.ajustements.map(s => s.message),
+              // Forme structurée : l'écran propose « Réduire à 2 rangs » comme
+              // une action, sans relire le texte.
+              ajustements: verdict.ajustements,
+              details: {
+                largeurPlanche: planche.largeur,
+                largeurOccupee: verdict.largeurOccupee,
+                largeurDisponible: verdict.largeurDisponible,
+                largeurNecessaire: verdict.largeurNecessaire,
+                espacementRangsItp: verdict.espacementRangs,
               },
-              { status: 400 }
-            )
-          }
+            },
+            { status: 400 }
+          )
         }
       }
     }
