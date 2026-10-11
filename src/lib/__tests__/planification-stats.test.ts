@@ -26,7 +26,7 @@ vi.mock('@/lib/terroir', async (importOriginal) => ({
 }))
 
 import prisma from '@/lib/prisma'
-import { getCulturesPrevues, getStatsPlanification } from '../planification'
+import { getCulturesPrevues, getCulturesPrevuesEtEtapesNonSuivies, getStatsPlanification } from '../planification'
 
 const mocked = prisma as unknown as {
   planche: { findMany: ReturnType<typeof vi.fn> }
@@ -189,6 +189,91 @@ describe('getCulturesPrevues (inventaire annuel)', () => {
       surface: 12,
       cultureLongueur: 10,
     })
+  })
+})
+
+describe('étapes de rotation non suivies (QA cmv2r2rl8)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocked.planche.findMany.mockResolvedValue([])
+    mocked.espece.findMany.mockResolvedValue([])
+    mocked.culture.findMany.mockResolvedValue([])
+    terroirMocks.zoneEffectiveUser.mockResolvedValue(null)
+  })
+
+  /** Planche dont l'étape de l'année prévoit un oignon, occupée par radis et zinnia. */
+  function plancheOccupeeParDautresEspeces() {
+    const planche = plancheAvecCulture({ id: 1173 })
+    planche.rotation.details[0] = {
+      annee: 1,
+      itpId: 'Oignon-printemps',
+      itp: { ...itpRotation, especeId: 'Oignon', espece: { couleur: '#a855f7' } },
+    }
+    planche.cultures = [
+      { ...planche.cultures[0], id: 1173, especeId: 'Radis', itpId: 'INRAE-MESCLUN-0441', espece: { nom: 'Radis' } },
+      { ...planche.cultures[0], id: 1174, especeId: 'Zinnia', itpId: 'Zinnia — plein champ', espece: { nom: 'Zinnia' } },
+    ] as unknown as typeof planche.cultures
+    return planche
+  }
+
+  it("nomme l'étape au lieu de la compter comme satisfaite par d'autres espèces", async () => {
+    mocked.planche.findMany.mockResolvedValue([plancheOccupeeParDautresEspeces()])
+
+    const { cultures, etapesNonSuivies } = await getCulturesPrevuesEtEtapesNonSuivies('u1', 2027, {
+      includeAllCultures: true,
+    })
+
+    // La règle R3/B tient : pas de culture « à créer » fantôme dans l'inventaire.
+    expect(cultures.filter((c) => !c.existante)).toHaveLength(0)
+    expect(etapesNonSuivies).toEqual([
+      expect.objectContaining({
+        plancheId: 'A2',
+        itpId: 'Oignon-printemps',
+        especeId: 'Oignon',
+        rotationAnnee: 1,
+        rotationNbAnnees: 1,
+        annee: 2027,
+        especesPresentes: ['Radis', 'Zinnia'],
+        etapeEntamee: false,
+      }),
+    ])
+  })
+
+  it("une succession de la même étape n'est pas présentée comme une autre espèce", async () => {
+    const planche = plancheOccupeeParDautresEspeces()
+    planche.rotation.details.push({
+      annee: 1,
+      itpId: 'Zinnia — plein champ',
+      itp: { ...itpRotation, especeId: 'Zinnia', espece: { couleur: '#ec4899' } },
+    })
+    mocked.planche.findMany.mockResolvedValue([planche])
+
+    const { etapesNonSuivies } = await getCulturesPrevuesEtEtapesNonSuivies('u1', 2027, {
+      includeAllCultures: true,
+    })
+
+    expect(etapesNonSuivies).toEqual([
+      expect.objectContaining({ especeId: 'Oignon', especesPresentes: ['Radis'], etapeEntamee: true }),
+    ])
+  })
+
+  it("une étape suivie (même espèce en place) n'est pas signalée", async () => {
+    mocked.planche.findMany.mockResolvedValue([plancheAvecCulture({ id: 856 })])
+
+    const { etapesNonSuivies } = await getCulturesPrevuesEtEtapesNonSuivies('u1', 2027, {
+      includeAllCultures: true,
+    })
+
+    expect(etapesNonSuivies).toHaveLength(0)
+  })
+
+  it('le hub ne dit plus « plan prêt » sur une étape non suivie', async () => {
+    mocked.planche.findMany.mockResolvedValue([plancheOccupeeParDautresEspeces()])
+
+    const stats = await getStatsPlanification('u1', 2027)
+
+    expect(stats.culturesACreer).toBe(0)
+    expect(stats.etapesRotationNonSuivies).toBe(1)
   })
 })
 

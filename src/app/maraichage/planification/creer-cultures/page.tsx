@@ -44,10 +44,30 @@ interface CulturePrevue {
   existante: boolean
 }
 
+/** QA cmv2r2rl8 — étape de rotation prévue que la planche ne suit pas. */
+interface EtapeNonSuivie {
+  plancheId: string
+  ilot: string | null
+  especeId: string | null
+  especeNom?: string | null
+  especeCouleur: string | null
+  itpId: string | null
+  itpNom?: string | null
+  annee: number
+  rotationAnnee: number
+  rotationNbAnnees: number
+  semaineSemis: number | null
+  semainePlantation: number | null
+  semaineRecolte: number | null
+  especesPresentes: string[]
+  etapeEntamee?: boolean
+}
+
 function CreerCulturesContent() {
   const { toast } = useToast()
 
   const [data, setData] = React.useState<CulturePrevue[]>([])
+  const [etapesNonSuivies, setEtapesNonSuivies] = React.useState<EtapeNonSuivie[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [isCreating, setIsCreating] = React.useState(false)
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
@@ -68,6 +88,7 @@ function CreerCulturesContent() {
       if (!response.ok) throw new Error("Erreur lors du chargement")
       const result = await response.json()
       setData(result.data)
+      setEtapesNonSuivies(Array.isArray(result.etapesNonSuivies) ? result.etapesNonSuivies : [])
       setHasError(false)
     } catch {
       // QA cmswunyun — un échec de chargement laissait data=[] et l'écran
@@ -96,6 +117,10 @@ function CreerCulturesContent() {
 
   // Generer un ID unique pour chaque culture
   const getCultureKey = (c: CulturePrevue) => `${c.plancheId}|${c.itpId}|${c.annee}`
+  // Les étapes non suivies se cochent une à une (« créer quand même ») : elles
+  // ne rejoignent jamais « tout sélectionner », la planche étant déjà occupée.
+  const getEtapeKey = (e: EtapeNonSuivie) => `non-suivie|${e.plancheId}|${e.itpId}|${e.annee}`
+  const etapesCreables = etapesNonSuivies.filter((e) => e.itpId)
 
   // Toggle selection
   const toggleSelection = (key: string) => {
@@ -108,13 +133,15 @@ function CreerCulturesContent() {
     setSelectedIds(newSelected)
   }
 
-  // Sélectionner tout
+  // Sélectionner tout (les cultures à créer du plan, pas les étapes non suivies)
+  const toutesCochees = culturesACreer.length > 0 && culturesACreer.every((c) => selectedIds.has(getCultureKey(c)))
   const selectAll = () => {
-    if (selectedIds.size === culturesACreer.length) {
-      setSelectedIds(new Set())
-    } else {
-      setSelectedIds(new Set(culturesACreer.map(getCultureKey)))
+    const suivantes = new Set(selectedIds)
+    for (const c of culturesACreer) {
+      if (toutesCochees) suivantes.delete(getCultureKey(c))
+      else suivantes.add(getCultureKey(c))
     }
+    setSelectedIds(suivantes)
   }
 
   // Créer les cultures sélectionnées
@@ -130,13 +157,14 @@ function CreerCulturesContent() {
 
     setIsCreating(true)
     try {
-      const culturesToCreate = culturesACreer
-        .filter(c => selectedIds.has(getCultureKey(c)))
-        .map(c => ({
-          plancheId: c.plancheId,
-          itpId: c.itpId!,
-          annee: c.annee,
-        }))
+      const culturesToCreate = [
+        ...culturesACreer.filter(c => selectedIds.has(getCultureKey(c))),
+        ...etapesCreables.filter(e => selectedIds.has(getEtapeKey(e))),
+      ].map(c => ({
+        plancheId: c.plancheId,
+        itpId: c.itpId!,
+        annee: c.annee,
+      }))
 
       const response = await fetch("/api/planification/creer-cultures", {
         method: "POST",
@@ -240,16 +268,72 @@ function CreerCulturesContent() {
           </Card>
         </div>
 
+        {/* QA cmv2r2rl8 — étapes de rotation que la planche ne suit pas cette
+            année : nommées au lieu d'être comptées comme créées. */}
+        {!isLoading && !hasError && etapesNonSuivies.length > 0 && (
+          <Card className="mb-6 border-amber-300 bg-amber-50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base text-amber-900">
+                {etapesNonSuivies.length} étape{etapesNonSuivies.length > 1 ? "s" : ""} de rotation non suivie{etapesNonSuivies.length > 1 ? "s" : ""} en {annee}
+              </CardTitle>
+              <CardDescription className="text-amber-900/80">
+                La rotation prévoit ces cultures, mais la planche porte déjà d&apos;autres cultures cette saison.
+                Elles ne sont pas comptées comme créées. Cochez-en une pour la créer quand même (la largeur de la
+                planche est vérifiée), ou adaptez la rotation.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-2">
+                {etapesNonSuivies.map((e) => {
+                  const key = getEtapeKey(e)
+                  return (
+                    <li key={key} className="flex flex-wrap items-start gap-3 rounded-md border border-amber-200 bg-white p-3 text-sm">
+                      {e.itpId ? (
+                        <Checkbox
+                          checked={selectedIds.has(key)}
+                          onCheckedChange={() => toggleSelection(key)}
+                          aria-label={`Créer quand même ${e.especeNom ?? e.especeId ?? "la culture"} sur ${e.plancheId}`}
+                          className="mt-0.5"
+                        />
+                      ) : null}
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium">
+                          <Link href={`/maraichage/planches/${encodeURIComponent(e.plancheId)}`} className="underline-offset-2 hover:underline">
+                            {e.plancheId}
+                          </Link>
+                          {" · "}étape {e.rotationAnnee}/{e.rotationNbAnnees} : {e.especeNom ?? e.especeId ?? "espèce inconnue"}
+                          {e.itpNom ? <span className="text-muted-foreground"> ({e.itpNom})</span> : null}
+                        </p>
+                        <p className="text-muted-foreground">
+                          {e.especesPresentes.length > 0
+                            ? `Déjà sur la planche en ${e.annee} : ${e.especesPresentes.join(", ")}.`
+                            : e.etapeEntamee
+                              ? "Une autre culture de cette étape est déjà créée sur la planche."
+                              : `Planche déjà occupée en ${e.annee}.`}
+                          {" "}Semis {formatSemaine(e.semaineSemis)}, plantation {formatSemaine(e.semainePlantation)}, récolte {formatSemaine(e.semaineRecolte)}.
+                        </p>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Actions */}
-        {culturesACreer.length > 0 && (
+        {(culturesACreer.length > 0 || selectedIds.size > 0) && (
           <div className="flex items-center justify-between mb-4 p-4 bg-white rounded-lg border">
             <div className="flex items-center gap-4">
-              <Checkbox
-                checked={selectedIds.size === culturesACreer.length && culturesACreer.length > 0}
-                onCheckedChange={selectAll}
-              />
+              {culturesACreer.length > 0 && (
+                <Checkbox
+                  checked={toutesCochees}
+                  onCheckedChange={selectAll}
+                  aria-label="Tout sélectionner"
+                />
+              )}
               <span className="text-sm">
-                {selectedIds.size} / {culturesACreer.length} sélectionnée(s)
+                {selectedIds.size} / {culturesACreer.length + etapesCreables.length} sélectionnée(s)
               </span>
             </div>
             <Button
@@ -288,9 +372,15 @@ function CreerCulturesContent() {
             ) : culturesACreer.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <CheckCircle2 className="h-12 w-12 mx-auto mb-4 text-green-600" />
-                <p className="text-lg font-medium">Toutes les cultures sont déjà créées</p>
+                <p className="text-lg font-medium">
+                  {etapesNonSuivies.length > 0
+                    ? "Toutes les cultures du plan sont créées, hors étapes non suivies"
+                    : "Toutes les cultures sont déjà créées"}
+                </p>
                 <p className="mt-2">
-                  Ou aucune planche n&apos;a de rotation assignée.
+                  {etapesNonSuivies.length > 0
+                    ? "Les étapes de rotation non suivies sont listées plus haut."
+                    : "Ou aucune planche n'a de rotation assignée."}
                 </p>
                 <Link href="/maraichage/planches" className="mt-4 inline-block">
                   <Button variant="outline">

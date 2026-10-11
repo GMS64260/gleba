@@ -5,7 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthApi, getUserId } from '@/lib/auth-utils'
-import { getCulturesPrevues } from '@/lib/planification'
+import { getCulturesPrevuesEtEtapesNonSuivies } from '@/lib/planification'
 import prisma from '@/lib/prisma'
 
 export async function GET(request: NextRequest) {
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     const ilot = searchParams.get('ilot') || undefined
     const plancheId = searchParams.get('plancheId') || undefined
 
-    const culturesPrevues = await getCulturesPrevues(userId, annee, {
+    const { cultures: culturesPrevues, etapesNonSuivies } = await getCulturesPrevuesEtEtapesNonSuivies(userId, annee, {
       especeId,
       ilot,
       plancheId,
@@ -37,6 +37,9 @@ export async function GET(request: NextRequest) {
       total: culturesPrevues.length,
       existantes: culturesPrevues.filter(c => c.existante).length,
       aCreer: culturesPrevues.filter(c => !c.existante).length,
+      // QA cmv2r2rl8 — étapes de rotation de l'année que la planche ne suit pas
+      // (occupée par d'autres espèces) : hors des listes, mais comptées.
+      etapesNonSuivies: etapesNonSuivies.length,
       surfaceTotale: culturesPrevues.reduce((sum, c) => sum + c.surface, 0),
       parEspece: {} as Record<string, number>,
       parIlot: {} as Record<string, number>,
@@ -73,8 +76,9 @@ export async function GET(request: NextRequest) {
     // l'officiel, nom = id). On construit des Map id→nom (même motif que la Map
     // de couleurs des espèces ailleurs dans la planification) et on expose
     // especeNom / itpNom en plus — sans toucher especeId (clé de group/tri).
-    const especeIds = [...new Set(culturesPrevues.map(c => c.especeId).filter(Boolean) as string[])]
-    const itpIds = [...new Set(culturesPrevues.map(c => c.itpId).filter(Boolean) as string[])]
+    const lignesNommees = [...culturesPrevues, ...etapesNonSuivies]
+    const especeIds = [...new Set(lignesNommees.map(c => c.especeId).filter(Boolean) as string[])]
+    const itpIds = [...new Set(lignesNommees.map(c => c.itpId).filter(Boolean) as string[])]
     const [especes, itps] = await Promise.all([
       especeIds.length
         ? prisma.espece.findMany({ where: { id: { in: especeIds } }, select: { id: true, nom: true } })
@@ -92,8 +96,15 @@ export async function GET(request: NextRequest) {
       itpNom: c.itpId ? (itpNomMap.get(c.itpId) ?? c.itpId) : null,
     }))
 
+    const etapesNonSuiviesAvecNoms = etapesNonSuivies.map(e => ({
+      ...e,
+      especeNom: e.especeId ? (especeNomMap.get(e.especeId) ?? e.especeId) : null,
+      itpNom: e.itpId ? (itpNomMap.get(e.itpId) ?? e.itpId) : null,
+    }))
+
     return NextResponse.json({
       data: dataAvecNoms,
+      etapesNonSuivies: etapesNonSuiviesAvecNoms,
       stats,
       annee,
       groupBy,

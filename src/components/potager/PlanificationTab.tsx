@@ -46,6 +46,8 @@ interface Stats {
   totalCultures: number
   culturesExistantes: number
   culturesACreer: number
+  /** QA cmv2r2rl8 — étapes de rotation de l'année que la planche ne suit pas. */
+  etapesRotationNonSuivies?: number
   // surfaceTotale = surface planifiée (alimentée par getKpiMaraichage SSOT).
   surfaceTotale: number
   surfaceCultivee?: number
@@ -236,9 +238,14 @@ function PlanificationSubTab({ year }: { year: number }) {
           <div>
             <div className="mb-2 flex flex-wrap items-center gap-2">
               <Badge className="border-white/20 bg-white/10 text-white hover:bg-white/10">Saison {year}</Badge>
-              {!isLoading && stats?.culturesACreer === 0 && (
+              {!isLoading && stats?.culturesACreer === 0 && !stats?.etapesRotationNonSuivies && (
                 <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-100">
                   <CheckCircle2 className="h-4 w-4" /> Plan prêt à utiliser
+                </span>
+              )}
+              {!isLoading && !!stats?.etapesRotationNonSuivies && (
+                <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-200">
+                  {stats.etapesRotationNonSuivies} étape{stats.etapesRotationNonSuivies > 1 ? "s" : ""} de rotation non suivie{stats.etapesRotationNonSuivies > 1 ? "s" : ""}
                 </span>
               )}
             </div>
@@ -248,11 +255,15 @@ function PlanificationSubTab({ year }: { year: number }) {
             </p>
           </div>
           <Link
-            href={`${stats?.culturesACreer ? "/maraichage/planification/creer-cultures" : "/maraichage/planification/cultures-prevues"}?annee=${year}`}
+            href={`${stats?.culturesACreer || stats?.etapesRotationNonSuivies ? "/maraichage/planification/creer-cultures" : "/maraichage/planification/cultures-prevues"}?annee=${year}`}
             className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-white px-4 text-sm font-semibold text-emerald-950 shadow-sm transition hover:bg-emerald-50"
           >
             <ClipboardList className="h-4 w-4" />
-            {stats?.culturesACreer ? `Créer ${stats.culturesACreer} culture${stats.culturesACreer > 1 ? "s" : ""}` : "Consulter mon plan"}
+            {stats?.culturesACreer
+              ? `Créer ${stats.culturesACreer} culture${stats.culturesACreer > 1 ? "s" : ""}`
+              : stats?.etapesRotationNonSuivies
+                ? "Voir les étapes non suivies"
+                : "Consulter mon plan"}
             <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
